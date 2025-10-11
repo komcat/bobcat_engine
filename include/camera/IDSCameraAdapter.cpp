@@ -1,4 +1,4 @@
-// IDSCameraAdapter.cpp - Complete implementation with frame grabbing thread
+﻿// IDSCameraAdapter.cpp - FIXED COLOR FORMAT
 #include "IDSCameraAdapter.h"
 #include <iostream>
 #include <chrono>
@@ -107,7 +107,7 @@ bool IDSCameraAdapter::UpdateCameraProperties() {
 
 		// Try to get camera information with error checking
 		CAMINFO camInfo;
-		memset(&camInfo, 0, sizeof(camInfo)); // Initialize structure to zero
+		memset(&camInfo, 0, sizeof(camInfo));
 
 		INT result = is_GetCameraInfo(m_hCam, &camInfo);
 
@@ -115,7 +115,6 @@ bool IDSCameraAdapter::UpdateCameraProperties() {
 
 		if (result == IS_SUCCESS) {
 			try {
-				// Set default values for now to avoid string conversion issues
 				m_modelName = "IDS_Camera_Connected";
 				m_serialNumber = "DeviceID_" + std::to_string(m_deviceId);
 
@@ -490,12 +489,6 @@ void IDSCameraAdapter::GrabThreadFunction() {
 							m_frameCallback(frameData);
 						}
 					}
-
-					// Debug logging every 30 frames (optional - commented out)
-					/*if ((frameCounter % 30) == 0) {
-						std::cout << "[INFO] IDS camera grabbed " << frameCounter
-											<< " frames: " << m_cameraId << std::endl;
-					}*/
 				}
 			}
 			else if (result != IS_SUCCESS) {
@@ -530,6 +523,9 @@ void IDSCameraAdapter::SetError(const std::string& error) {
 	std::cerr << "[ERROR] IDSCameraAdapter [" << m_cameraId << "]: " << error << std::endl;
 }
 
+// ============================================================================
+// FIXED: Initialize Image Memory with RGB8
+// ============================================================================
 bool IDSCameraAdapter::InitializeImageMemory() {
 	try {
 		// Get image dimensions
@@ -541,7 +537,21 @@ bool IDSCameraAdapter::InitializeImageMemory() {
 
 		int width = rectAOI.s32Width;
 		int height = rectAOI.s32Height;
-		int bitsPerPixel = 24; // RGB8
+
+		// ✅ FIX: Set color mode to RGB8 (not MONO8!)
+		std::cout << "[INFO] Setting IDS camera to RGB8 color mode..." << std::endl;
+		result = is_SetColorMode(m_hCam, IS_CM_RGB8_PACKED);
+		if (!CheckIDSResult(result, "SetColorMode RGB8")) {
+			// Try BGR8 as alternative
+			std::cout << "[INFO] RGB8 failed, trying BGR8..." << std::endl;
+			result = is_SetColorMode(m_hCam, IS_CM_BGR8_PACKED);
+			if (!CheckIDSResult(result, "SetColorMode BGR8")) {
+				std::cerr << "[ERROR] Failed to set RGB/BGR color mode" << std::endl;
+				return false;
+			}
+		}
+
+		int bitsPerPixel = 24; // RGB8 = 24 bits per pixel
 
 		// Allocate image memory
 		result = is_AllocImageMem(m_hCam, width, height, bitsPerPixel, &m_pImageMemory, &m_memoryId);
@@ -555,6 +565,9 @@ bool IDSCameraAdapter::InitializeImageMemory() {
 			CleanupImageMemory();
 			return false;
 		}
+
+		std::cout << "[INFO] IDS camera image memory initialized: "
+			<< width << "x" << height << " RGB8" << std::endl;
 
 		return true;
 	}
@@ -633,25 +646,21 @@ bool IDSCameraAdapter::SetAutoExposure(bool enable) {
 		return false;
 	}
 
-	// IDS cameras use is_SetAutoParameter for auto exposure control
 	double param1 = enable ? 1.0 : 0.0;
-	double param2 = 0.0; // Reserved
+	double param2 = 0.0;
 
 	INT result = is_SetAutoParameter(m_hCam, IS_SET_ENABLE_AUTO_SHUTTER,
 		&param1, &param2);
 
 	if (result == IS_SUCCESS && enable) {
-		// Set reasonable auto exposure parameters
-		double targetBrightness = 128.0; // Mid-range brightness (0-255)
+		double targetBrightness = 128.0;
 		is_SetAutoParameter(m_hCam, IS_SET_AUTO_REFERENCE,
 			&targetBrightness, &param2);
 
-		// Set auto exposure speed (optional)
-		double speed = 50.0; // Medium speed
+		double speed = 50.0;
 		is_SetAutoParameter(m_hCam, IS_SET_AUTO_SPEED, &speed, &param2);
 
-		// Set hysteresis to avoid oscillation
-		double hysteresis = 3.0; // Small hysteresis
+		double hysteresis = 3.0;
 		is_SetAutoParameter(m_hCam, IS_SET_AUTO_HYSTERESIS,
 			&hysteresis, &param2);
 	}
@@ -665,7 +674,7 @@ bool IDSCameraAdapter::SetAutoGain(bool enable) {
 	}
 
 	double param1 = enable ? 1.0 : 0.0;
-	double param2 = 0.0; // Reserved, must be 0
+	double param2 = 0.0;
 
 	INT result = is_SetAutoParameter(m_hCam, IS_SET_ENABLE_AUTO_GAIN, &param1, &param2);
 
