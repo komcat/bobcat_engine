@@ -1,0 +1,11 @@
+{
+  "cameras": [
+    {
+      "id": "ids_camera_1",
+      "enabled": true,
+      "camera_type": "IDS",
+      "connection_type": "index",
+      "port": 0
+    }
+  ]
+}
