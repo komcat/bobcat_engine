@@ -1,4 +1,4 @@
-﻿// CameraWorker.cpp
+﻿// CameraWorker.cpp - With Zoom Feature
 #include "CameraWorker.h"
 #include "CameraManager.h"
 #include "CameraFrameData.h"
@@ -16,6 +16,7 @@ CameraWorker::CameraWorker(CameraManager* cameraManager, const std::string& came
   , m_fpsTimer(nullptr)
   , m_targetFPS(30)
   , m_enableProcessing(false)
+  , m_zoomPercent(100) // Default: no zoom
   , m_frameCount(0)
   , m_avgProcessingTime(0.0)
   , m_skippedFrames(0)
@@ -33,7 +34,7 @@ void CameraWorker::startCapture()
 {
   if (m_running.exchange(true)) {
     std::cout << "[CameraWorker] Already running" << std::endl;
-    return; // Already running
+    return;
   }
 
   std::cout << "[CameraWorker] Starting capture on worker thread..." << std::endl;
@@ -63,7 +64,7 @@ void CameraWorker::startCapture()
 void CameraWorker::stopCapture()
 {
   if (!m_running.exchange(false)) {
-    return; // Already stopped
+    return;
   }
 
   std::cout << "[CameraWorker] Stopping capture..." << std::endl;
@@ -95,7 +96,6 @@ void CameraWorker::captureLoop()
   auto frameStart = std::chrono::steady_clock::now();
 
   try {
-    // Get camera hardware (non-blocking on UI)
     ICameraHardware* camera = m_cameraManager->GetCameraHardware(m_cameraId);
     if (!camera) {
       emit error("Camera hardware not found");
@@ -103,38 +103,32 @@ void CameraWorker::captureLoop()
       return;
     }
 
-    // Check if camera is still connected
     if (!camera->IsConnected()) {
       emit error("Camera disconnected");
       stopCapture();
       return;
     }
 
-    // Capture frame (this is the potentially blocking operation)
-    // ✅ Safe here - we're on worker thread!
+    // Capture frame
     CameraFrameData frameData;
     if (!camera->CaptureFrame(frameData)) {
       m_skippedFrames++;
-      // Don't emit error for occasional frame skip
       if (m_skippedFrames > 10) {
         emit statusMessage(QString("Warning: %1 frames skipped").arg(m_skippedFrames));
-        m_skippedFrames = 0; // Reset counter
+        m_skippedFrames = 0;
       }
       return;
     }
 
-    // Reset skip counter on successful capture
     if (m_skippedFrames > 0) {
       m_skippedFrames = 0;
     }
 
-    // Validate frame data
     if (frameData.imageData.empty() || frameData.width == 0 || frameData.height == 0) {
       return;
     }
 
-    // Process frame (convert + optional processing)
-    // ✅ Heavy operations safe on worker thread
+    // Process frame (includes zoom)
     QImage image = processFrame(frameData);
 
     if (image.isNull()) {
@@ -142,7 +136,7 @@ void CameraWorker::captureLoop()
       return;
     }
 
-    // Emit to UI thread (QImage is implicitly shared, efficient)
+    // Emit to UI thread
     emit frameReady(image);
 
     // Update frame counter
@@ -152,12 +146,11 @@ void CameraWorker::captureLoop()
     auto frameEnd = std::chrono::steady_clock::now();
     double processingMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
 
-    // Update average processing time (simple moving average)
+    // Update average processing time
     double currentAvg = m_avgProcessingTime.load();
     double newAvg = (currentAvg * 0.9) + (processingMs * 0.1);
     m_avgProcessingTime.store(newAvg);
 
-    // Store for FPS calculation
     m_lastFrameTime = frameEnd;
 
   }
@@ -182,24 +175,96 @@ QImage CameraWorker::processFrame(const CameraFrameData& frameData)
     format);
 
   // Make a deep copy for thread safety
-  // (QImage uses implicit sharing, but we want independence from frameData)
   QImage result = image.copy();
 
-  // ============================================================================
-  // REAL-TIME PROCESSING SECTION
-  // Add your image processing operations here!
-  // ============================================================================
+  // Apply zoom if not 100%
+  int zoomLevel = m_zoomPercent.load();
+  if (zoomLevel < 100) {
+    result = applyZoom(result);
+  }
 
+  // Additional processing
   if (m_enableProcessing.load()) {
-    // Example: You can add processing here
-    // result = applyFilter(result);
-    // result = detectFeatures(result);
-    // result = drawOverlay(result);
-
-    // For now, just pass through
+    // Add your custom processing here
+    // result = yourProcessingFunction(result);
   }
 
   return result;
+}
+
+// ============================================================================
+// ZOOM IMPLEMENTATION
+// ============================================================================
+
+QImage CameraWorker::applyZoom(const QImage& originalImage)
+{
+  int zoomLevel = m_zoomPercent.load();
+
+  if (zoomLevel >= 100) {
+    return originalImage; // No zoom needed
+  }
+
+  // Calculate ROI rectangle (centered)
+  QRect roi = calculateZoomROI(originalImage.width(), originalImage.height(), zoomLevel);
+
+  // Validate ROI
+  if (roi.width() <= 0 || roi.height() <= 0) {
+    std::cerr << "[CameraWorker] Invalid ROI dimensions" << std::endl;
+    return originalImage;
+  }
+
+  // Extract ROI from original image
+  QImage zoomed = originalImage.copy(roi);
+
+  return zoomed; // This smaller region will be scaled up by the display
+}
+
+QRect CameraWorker::calculateZoomROI(int imageWidth, int imageHeight, int zoomPercent) const
+{
+  // Clamp zoom percent to valid range
+  if (zoomPercent < 1) zoomPercent = 1;
+  if (zoomPercent > 100) zoomPercent = 100;
+
+  // Calculate ROI dimensions (maintaining aspect ratio)
+  double zoomFactor = zoomPercent / 100.0;
+  int roiWidth = static_cast<int>(imageWidth * zoomFactor);
+  int roiHeight = static_cast<int>(imageHeight * zoomFactor);
+
+  // Ensure dimensions are at least 1 pixel
+  if (roiWidth < 1) roiWidth = 1;
+  if (roiHeight < 1) roiHeight = 1;
+
+  // Calculate centered position
+  int roiX = (imageWidth - roiWidth) / 2;
+  int roiY = (imageHeight - roiHeight) / 2;
+
+  // Debug output
+  static int debugCounter = 0;
+  if (++debugCounter >= 30) { // Print every second at 30 FPS
+    std::cout << "[Zoom] " << zoomPercent << "% → ROI: "
+      << roiX << "," << roiY << " "
+      << roiWidth << "x" << roiHeight
+      << " from " << imageWidth << "x" << imageHeight << std::endl;
+    debugCounter = 0;
+  }
+
+  return QRect(roiX, roiY, roiWidth, roiHeight);
+}
+
+void CameraWorker::setZoomPercent(int percent)
+{
+  // Clamp to valid range
+  if (percent < 1) percent = 1;
+  if (percent > 100) percent = 100;
+
+  int oldZoom = m_zoomPercent.exchange(percent);
+
+  if (oldZoom != percent) {
+    emit zoomChanged(percent);
+    emit statusMessage(QString("Zoom: %1%").arg(percent));
+
+    std::cout << "[CameraWorker] Zoom changed: " << percent << "%" << std::endl;
+  }
 }
 
 void CameraWorker::updateFPS()
@@ -214,7 +279,8 @@ void CameraWorker::updateFPS()
   static int counter = 0;
   if (++counter >= 5) {
     std::cout << "[CameraWorker] FPS: " << fps
-      << ", Processing: " << m_avgProcessingTime.load() << " ms" << std::endl;
+      << ", Processing: " << m_avgProcessingTime.load() << " ms"
+      << ", Zoom: " << m_zoomPercent.load() << "%" << std::endl;
     counter = 0;
   }
 }

@@ -1,9 +1,10 @@
-// CameraWorker.h
+// CameraWorker.h - With Zoom Feature
 #pragma once
 
 #include <QObject>
 #include <QImage>
 #include <QTimer>
+#include <QRect>
 #include <memory>
 #include <atomic>
 #include <string>
@@ -16,11 +17,7 @@ class ICameraHardware;
 /**
  * @brief Worker class that runs on separate thread for camera operations
  *
- * Handles:
- * - Frame capture (non-blocking UI)
- * - Image conversion
- * - Real-time processing
- * - Performance monitoring
+ * Now includes digital zoom via ROI extraction
  */
 class CameraWorker : public QObject
 {
@@ -48,6 +45,9 @@ signals:
   // Status updates
   void statusMessage(QString msg);
 
+  // Zoom info
+  void zoomChanged(int zoomPercent);
+
 public slots:
   // Thread control
   void startCapture();
@@ -57,6 +57,9 @@ public slots:
   void setExposure(double microseconds);
   void setGain(double gain);
 
+  // NEW: Zoom control
+  void setZoomPercent(int percent); // 100 = no zoom, 50 = 2x zoom, 25 = 4x zoom
+
 private slots:
   // Main capture loop - runs on worker thread
   void captureLoop();
@@ -65,8 +68,14 @@ private slots:
   void updateFPS();
 
 private:
-  // Frame processing (extend this for real-time operations)
+  // Frame processing with zoom support
   QImage processFrame(const CameraFrameData& frameData);
+
+  // NEW: Apply digital zoom (ROI extraction)
+  QImage applyZoom(const QImage& originalImage);
+
+  // Calculate centered ROI
+  QRect calculateZoomROI(int imageWidth, int imageHeight, int zoomPercent) const;
 
   // Helper methods
   void updatePerformanceStats();
@@ -83,6 +92,9 @@ private:
   // Settings
   int m_targetFPS;
   std::atomic<bool> m_enableProcessing;
+
+  // NEW: Zoom settings
+  std::atomic<int> m_zoomPercent; // 100 = full image, 50 = 2x zoom, etc.
 
   // Performance monitoring
   std::atomic<int> m_frameCount;

@@ -1,9 +1,11 @@
-// CameraLiveView.h - Updated for worker thread
+// CameraLiveView.h - With Zoom Controls
 #pragma once
 
 #include <QWidget>
 #include <QPushButton>
 #include <QLabel>
+#include <QSlider>
+#include <QSpinBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTimer>
@@ -39,19 +41,34 @@ private slots:
   void onWorkerError(QString errorMsg);
   void onWorkerStatus(QString msg);
 
+  // NEW: Zoom control slots
+  void onZoomSliderChanged(int value);
+  void onZoomSpinBoxChanged(int value);
+  void onZoomResetClicked();
+  void onZoomChanged(int zoomPercent);
+
 private:
   void setupUI();
   void loadCameraConfig();
   void updateConnectionStatus(bool connected);
   void cleanupWorkerThread();
 
+  // NEW: Update zoom display
+  void updateZoomLabel(int zoomPercent);
+
   // UI Components
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
   QLabel* m_videoLabel;
   QLabel* m_statusLabel;
-  QLabel* m_fpsLabel;        // NEW: FPS display
-  QLabel* m_performanceLabel; // NEW: Performance info
+  QLabel* m_fpsLabel;
+  QLabel* m_performanceLabel;
+
+  // NEW: Zoom controls
+  QSlider* m_zoomSlider;
+  QSpinBox* m_zoomSpinBox;
+  QPushButton* m_zoomResetButton;
+  QLabel* m_zoomLabel;
 
   // Camera components
   std::unique_ptr<CameraManager> m_cameraManager;

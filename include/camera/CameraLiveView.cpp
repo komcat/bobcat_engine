@@ -1,10 +1,11 @@
-﻿// CameraLiveView.cpp - Updated for worker thread
+﻿// CameraLiveView.cpp - With Zoom Controls
 #include "CameraLiveView.h"
 #include "CameraManager.h"
 #include "CameraConfigManager.h"
 #include "CameraWorker.h"
 #include <QMessageBox>
 #include <QThread>
+#include <QGroupBox>
 #include <iostream>
 
 CameraLiveView::CameraLiveView(QWidget* parent)
@@ -27,10 +28,8 @@ CameraLiveView::~CameraLiveView()
 {
   std::cout << "[CameraLiveView] Destructor called" << std::endl;
 
-  // Clean up worker thread first
   cleanupWorkerThread();
 
-  // Then disconnect camera
   if (m_isConnected && m_cameraManager) {
     m_cameraManager->StopGrabbing(m_cameraId);
     m_cameraManager->DisconnectCamera(m_cameraId);
@@ -50,7 +49,7 @@ void CameraLiveView::setupUI()
     "QLabel { background-color: #ff4444; color: white; padding: 5px; font-weight: bold; }");
   mainLayout->addWidget(m_statusLabel);
 
-  // Performance info label (NEW)
+  // Performance info label
   m_performanceLabel = new QLabel("Performance: --");
   m_performanceLabel->setStyleSheet(
     "QLabel { background-color: #333333; color: #00ff00; padding: 5px; font-family: monospace; }");
@@ -65,7 +64,50 @@ void CameraLiveView::setupUI()
   m_videoLabel->setScaledContents(false);
   mainLayout->addWidget(m_videoLabel);
 
-  // FPS label (NEW)
+  // ============================================================================
+  // ZOOM CONTROLS (NEW)
+  // ============================================================================
+  QGroupBox* zoomGroup = new QGroupBox("Digital Zoom");
+  QHBoxLayout* zoomLayout = new QHBoxLayout();
+
+  // Zoom label
+  m_zoomLabel = new QLabel("Zoom: 100%");
+  m_zoomLabel->setMinimumWidth(100);
+  m_zoomLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  zoomLayout->addWidget(m_zoomLabel);
+
+  // Zoom slider (1% to 100%)
+  m_zoomSlider = new QSlider(Qt::Horizontal);
+  m_zoomSlider->setMinimum(1);
+  m_zoomSlider->setMaximum(100);
+  m_zoomSlider->setValue(100); // Default: no zoom
+  m_zoomSlider->setTickPosition(QSlider::TicksBelow);
+  m_zoomSlider->setTickInterval(10);
+  m_zoomSlider->setEnabled(false); // Disabled until camera connected
+  connect(m_zoomSlider, &QSlider::valueChanged, this, &CameraLiveView::onZoomSliderChanged);
+  zoomLayout->addWidget(m_zoomSlider);
+
+  // Zoom spinbox (numeric input)
+  m_zoomSpinBox = new QSpinBox();
+  m_zoomSpinBox->setMinimum(1);
+  m_zoomSpinBox->setMaximum(100);
+  m_zoomSpinBox->setValue(100);
+  m_zoomSpinBox->setSuffix("%");
+  m_zoomSpinBox->setEnabled(false); // Disabled until camera connected
+  connect(m_zoomSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+    this, &CameraLiveView::onZoomSpinBoxChanged);
+  zoomLayout->addWidget(m_zoomSpinBox);
+
+  // Reset zoom button
+  m_zoomResetButton = new QPushButton("Reset (100%)");
+  m_zoomResetButton->setEnabled(false); // Disabled until camera connected
+  connect(m_zoomResetButton, &QPushButton::clicked, this, &CameraLiveView::onZoomResetClicked);
+  zoomLayout->addWidget(m_zoomResetButton);
+
+  zoomGroup->setLayout(zoomLayout);
+  mainLayout->addWidget(zoomGroup);
+
+  // FPS label
   m_fpsLabel = new QLabel("FPS: --");
   m_fpsLabel->setStyleSheet(
     "QLabel { background-color: #444444; color: white; padding: 3px; }");
@@ -87,8 +129,8 @@ void CameraLiveView::setupUI()
   mainLayout->addLayout(buttonLayout);
 
   setLayout(mainLayout);
-  setWindowTitle("IDS Camera Live View");
-  resize(800, 650); // Slightly taller for performance labels
+  setWindowTitle("IDS Camera Live View - With Zoom");
+  resize(800, 750); // Taller for zoom controls
 }
 
 void CameraLiveView::loadCameraConfig()
@@ -99,7 +141,6 @@ void CameraLiveView::loadCameraConfig()
     return;
   }
 
-  // Get enabled cameras
   auto cameraIds = m_configManager->GetEnabledCameraIds();
 
   if (cameraIds.empty()) {
@@ -108,10 +149,8 @@ void CameraLiveView::loadCameraConfig()
     return;
   }
 
-  // Use first enabled camera
   m_cameraId = cameraIds[0];
 
-  // Initialize camera manager with config
   m_configManager->InitializeCameraManager(*m_cameraManager);
 
   std::cout << "[CameraLiveView] Camera configuration loaded. Camera ID: " << m_cameraId << std::endl;
@@ -126,14 +165,12 @@ void CameraLiveView::onConnectClicked()
 
   std::cout << "[CameraLiveView] Connecting to camera..." << std::endl;
 
-  // Connect to camera
   if (!m_cameraManager->ConnectCamera(m_cameraId)) {
     QMessageBox::critical(this, "Connection Failed",
       "Failed to connect to camera: " + QString::fromStdString(m_cameraId));
     return;
   }
 
-  // Start grabbing
   if (!m_cameraManager->StartGrabbing(m_cameraId)) {
     QMessageBox::critical(this, "Grabbing Failed",
       "Failed to start video grabbing.");
@@ -143,76 +180,63 @@ void CameraLiveView::onConnectClicked()
 
   std::cout << "[CameraLiveView] Camera connected and grabbing started" << std::endl;
 
-  // ============================================================================
-  // CREATE WORKER THREAD
-  // ============================================================================
-
   // Create worker thread
   m_workerThread = new QThread(this);
   m_workerThread->setObjectName("CameraWorkerThread");
 
-  // Create worker object
   m_worker = new CameraWorker(m_cameraManager.get(), m_cameraId);
-
-  // Move worker to thread (IMPORTANT!)
   m_worker->moveToThread(m_workerThread);
 
-  // ============================================================================
-  // CONNECT SIGNALS/SLOTS
-  // ============================================================================
-
-  // Thread lifecycle
+  // Connect signals/slots
   connect(m_workerThread, &QThread::started, m_worker, &CameraWorker::startCapture);
   connect(m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
 
-  // Frame updates (cross-thread, queued connection automatically)
   connect(m_worker, &CameraWorker::frameReady, this, &CameraLiveView::onFrameReady);
-
-  // Performance monitoring
   connect(m_worker, &CameraWorker::fpsUpdated, this, &CameraLiveView::onFpsUpdated);
   connect(m_worker, &CameraWorker::processingTimeUpdated, this, &CameraLiveView::onProcessingTimeUpdated);
-
-  // Error handling
   connect(m_worker, &CameraWorker::error, this, &CameraLiveView::onWorkerError);
   connect(m_worker, &CameraWorker::statusMessage, this, &CameraLiveView::onWorkerStatus);
 
-  // ============================================================================
-  // START WORKER THREAD
-  // ============================================================================
+  // NEW: Connect zoom signals
+  connect(m_worker, &CameraWorker::zoomChanged, this, &CameraLiveView::onZoomChanged);
 
   m_workerThread->start();
   std::cout << "[CameraLiveView] Worker thread started" << std::endl;
 
   // Update UI
   updateConnectionStatus(true);
+
+  // Enable zoom controls
+  m_zoomSlider->setEnabled(true);
+  m_zoomSpinBox->setEnabled(true);
+  m_zoomResetButton->setEnabled(true);
 }
 
 void CameraLiveView::onDisconnectClicked()
 {
   std::cout << "[CameraLiveView] Disconnecting camera..." << std::endl;
 
-  // Clean up worker thread first
+  // Disable zoom controls
+  m_zoomSlider->setEnabled(false);
+  m_zoomSpinBox->setEnabled(false);
+  m_zoomResetButton->setEnabled(false);
+
   cleanupWorkerThread();
 
-  // Stop grabbing and disconnect camera
   m_cameraManager->StopGrabbing(m_cameraId);
   m_cameraManager->DisconnectCamera(m_cameraId);
 
-  // Update UI
   updateConnectionStatus(false);
   m_videoLabel->setText("No camera feed");
   m_fpsLabel->setText("FPS: --");
   m_performanceLabel->setText("Performance: --");
+  updateZoomLabel(100);
 
   std::cout << "[CameraLiveView] Camera disconnected" << std::endl;
 }
 
 void CameraLiveView::onFrameReady(QImage image)
 {
-  // ✅ This runs on UI thread via Qt's event system
-  // ✅ QImage is implicitly shared (efficient)
-  // ✅ Only UI operations here (no blocking)
-
   if (image.isNull()) {
     return;
   }
@@ -223,7 +247,6 @@ void CameraLiveView::onFrameReady(QImage image)
     Qt::KeepAspectRatio,
     Qt::SmoothTransformation);
 
-  // Display in label
   m_videoLabel->setPixmap(pixmap);
 }
 
@@ -242,7 +265,6 @@ void CameraLiveView::onWorkerError(QString errorMsg)
 {
   std::cerr << "[CameraLiveView] Worker error: " << errorMsg.toStdString() << std::endl;
 
-  // Update status
   m_statusLabel->setText("Error: " + errorMsg);
   m_statusLabel->setStyleSheet(
     "QLabel { background-color: #ff4444; color: white; padding: 5px; font-weight: bold; }");
@@ -252,6 +274,71 @@ void CameraLiveView::onWorkerStatus(QString msg)
 {
   std::cout << "[CameraLiveView] Worker status: " << msg.toStdString() << std::endl;
 }
+
+// ============================================================================
+// ZOOM CONTROL IMPLEMENTATIONS (NEW)
+// ============================================================================
+
+void CameraLiveView::onZoomSliderChanged(int value)
+{
+  // Update spinbox (without triggering its signal)
+  m_zoomSpinBox->blockSignals(true);
+  m_zoomSpinBox->setValue(value);
+  m_zoomSpinBox->blockSignals(false);
+
+  // Update label
+  updateZoomLabel(value);
+
+  // Send to worker (thread-safe via Qt signal)
+  if (m_worker && m_workerThread && m_workerThread->isRunning()) {
+    QMetaObject::invokeMethod(m_worker, "setZoomPercent",
+      Qt::QueuedConnection, Q_ARG(int, value));
+  }
+}
+
+void CameraLiveView::onZoomSpinBoxChanged(int value)
+{
+  // Update slider (without triggering its signal)
+  m_zoomSlider->blockSignals(true);
+  m_zoomSlider->setValue(value);
+  m_zoomSlider->blockSignals(false);
+
+  // Update label
+  updateZoomLabel(value);
+
+  // Send to worker
+  if (m_worker && m_workerThread && m_workerThread->isRunning()) {
+    QMetaObject::invokeMethod(m_worker, "setZoomPercent",
+      Qt::QueuedConnection, Q_ARG(int, value));
+  }
+}
+
+void CameraLiveView::onZoomResetClicked()
+{
+  // Reset to 100% (no zoom)
+  m_zoomSlider->setValue(100);
+  m_zoomSpinBox->setValue(100);
+
+  std::cout << "[CameraLiveView] Zoom reset to 100%" << std::endl;
+}
+
+void CameraLiveView::onZoomChanged(int zoomPercent)
+{
+  // Worker confirmed zoom change
+  updateZoomLabel(zoomPercent);
+}
+
+void CameraLiveView::updateZoomLabel(int zoomPercent)
+{
+  // Calculate actual zoom factor
+  double zoomFactor = 100.0 / zoomPercent;
+
+  m_zoomLabel->setText(QString("Zoom: %1% (%2x)")
+    .arg(zoomPercent)
+    .arg(zoomFactor, 0, 'f', 1));
+}
+
+// ============================================================================
 
 void CameraLiveView::updateConnectionStatus(bool connected)
 {
@@ -276,25 +363,19 @@ void CameraLiveView::updateConnectionStatus(bool connected)
 void CameraLiveView::cleanupWorkerThread()
 {
   if (!m_workerThread) {
-    return; // Nothing to clean up
+    return;
   }
 
   std::cout << "[CameraLiveView] Cleaning up worker thread..." << std::endl;
 
-  // Stop worker
   if (m_worker) {
-    // Call stop on worker thread
     QMetaObject::invokeMethod(m_worker, "stopCapture", Qt::QueuedConnection);
-
-    // Give it a moment to stop gracefully
     QThread::msleep(100);
   }
 
-  // Stop thread
   if (m_workerThread->isRunning()) {
     m_workerThread->quit();
 
-    // Wait for thread to finish (with timeout)
     if (!m_workerThread->wait(3000)) {
       std::cerr << "[CameraLiveView] Warning: Worker thread did not stop gracefully, terminating..." << std::endl;
       m_workerThread->terminate();
@@ -302,7 +383,6 @@ void CameraLiveView::cleanupWorkerThread()
     }
   }
 
-  // Delete thread (will also delete worker due to deleteLater connection)
   m_workerThread->deleteLater();
   m_workerThread = nullptr;
   m_worker = nullptr;
