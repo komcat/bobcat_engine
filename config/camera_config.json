@@ -1,7 +1,13 @@
 {
   "cameras": [
     {
-      "id": "ids_camera_1",
+      "id": "camera_1",
+      "enabled": true,
+      "camera_type": "PYLON",
+      "ip_address": "192.168.0.68"
+    },
+    {
+      "id": "camera_2",
       "enabled": true,
       "camera_type": "IDS",
       "connection_type": "index",
