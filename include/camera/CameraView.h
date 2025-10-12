@@ -6,6 +6,8 @@
 #include <QLabel>
 #include <QSlider>
 #include <QSpinBox>
+#include <QCheckBox>      // ✅ NEW
+#include <QGroupBox>      // ✅ NEW
 #include <QVBoxLayout>
 #include <QTimer>
 #include <memory>
@@ -46,10 +48,22 @@ private slots:
   void onZoomSpinBoxChanged(int value);
   void onZoomResetClicked();
 
+  // ✅ NEW - Camera settings slots
+  void onAutoExposureChanged(int state);
+  void onAutoGainChanged(int state);
+  void onExposureSliderChanged(int value);
+  void onGainSliderChanged(int value);
+  void onSaveImageClicked();
+
 private:
   void setupUI();
   void updateConnectionStatus(bool connected);
   void updateZoomLabel(int zoomPercent);
+  void updateExposureLabel(int microseconds);  // ✅ NEW
+  void updateGainLabel(double gain);           // ✅ NEW
+  void applyCameraSettings();                  // ✅ NEW
+  void loadCurrentSettings();                  // ✅ NEW
+  QString generateSaveFilename();              // ✅ NEW
 
   ApplicationContext* m_context;
   std::string m_cameraId;
@@ -65,6 +79,16 @@ private:
   QLabel* m_statusLabel;
   QLabel* m_fpsLabel;
   QLabel* m_performanceLabel;
+
+  // ✅ NEW - Camera settings controls
+  QGroupBox* m_settingsGroup;
+  QCheckBox* m_autoExposureCheck;
+  QCheckBox* m_autoGainCheck;
+  QSlider* m_exposureSlider;
+  QLabel* m_exposureValueLabel;
+  QSlider* m_gainSlider;
+  QLabel* m_gainValueLabel;
+  QPushButton* m_saveImageButton;
 
   QSlider* m_zoomSlider;
   QSpinBox* m_zoomSpinBox;

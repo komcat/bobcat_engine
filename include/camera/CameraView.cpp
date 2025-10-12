@@ -4,8 +4,12 @@
 #include "CameraManager.h"
 #include "LiveVideoSubscriber.h"
 #include "CameraImageWidget.h"
+#include "ICameraHardware.h"
 #include <QGroupBox>
 #include <QMessageBox>
+#include <QDateTime>
+#include <QDir>
+#include <QHBoxLayout>
 #include <iostream>
 
 CameraView::CameraView(ApplicationContext* context,
@@ -49,19 +53,108 @@ void CameraView::setupUI()
     "QLabel { background-color: #333333; color: #00ff00; padding: 3px; font-family: monospace; }");
   mainLayout->addWidget(m_performanceLabel);
 
-  // ✅ CHANGED: Use CameraImageWidget instead of QLabel
-  m_viewport = new CameraImageWidget(this);
-  m_viewport->setMinimumDisplaySize(320, 240);  // ← CHANGED from 640x480
-  m_viewport->setPlaceholderText("No camera feed");
-  mainLayout->addWidget(m_viewport);
+  // ✅ NEW - Main content: LEFT PANEL + VIDEO
+  QHBoxLayout* contentLayout = new QHBoxLayout();
 
-  // Zoom controls
+  // ================== LEFT PANEL ==================
+  QWidget* leftPanel = new QWidget();
+  leftPanel->setMaximumWidth(250);
+  leftPanel->setMinimumWidth(200);
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
+  leftLayout->setSpacing(10);
+
+  // -------- Camera Settings Group --------
+  m_settingsGroup = new QGroupBox("Camera Settings");
+  QVBoxLayout* settingsLayout = new QVBoxLayout();
+
+  // Auto Exposure checkbox
+  m_autoExposureCheck = new QCheckBox("Auto Exposure");
+  m_autoExposureCheck->setEnabled(false);
+  connect(m_autoExposureCheck, &QCheckBox::checkStateChanged,
+    this, &CameraView::onAutoExposureChanged);
+  settingsLayout->addWidget(m_autoExposureCheck);
+
+  // Auto Gain checkbox
+  m_autoGainCheck = new QCheckBox("Auto Gain");
+  m_autoGainCheck->setEnabled(false);
+  connect(m_autoGainCheck, &QCheckBox::checkStateChanged,
+    this, &CameraView::onAutoGainChanged);
+  settingsLayout->addWidget(m_autoGainCheck);
+
+  settingsLayout->addSpacing(10);
+
+  // Exposure control
+  QLabel* expLabel = new QLabel("Exposure:");
+  expLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  settingsLayout->addWidget(expLabel);
+
+  m_exposureSlider = new QSlider(Qt::Horizontal);
+  m_exposureSlider->setMinimum(1);
+  m_exposureSlider->setMaximum(10000);
+  m_exposureSlider->setValue(1000);
+  m_exposureSlider->setEnabled(false);
+  connect(m_exposureSlider, &QSlider::valueChanged,
+    this, &CameraView::onExposureSliderChanged);
+  settingsLayout->addWidget(m_exposureSlider);
+
+  m_exposureValueLabel = new QLabel("1000 μs");
+  m_exposureValueLabel->setAlignment(Qt::AlignCenter);
+  settingsLayout->addWidget(m_exposureValueLabel);
+
+  settingsLayout->addSpacing(10);
+
+  // Gain control
+  QLabel* gainLabel = new QLabel("Gain:");
+  gainLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  settingsLayout->addWidget(gainLabel);
+
+  m_gainSlider = new QSlider(Qt::Horizontal);
+  m_gainSlider->setMinimum(0);
+  m_gainSlider->setMaximum(100); // 0-10 with 0.1 precision
+  m_gainSlider->setValue(10);
+  m_gainSlider->setEnabled(false);
+  connect(m_gainSlider, &QSlider::valueChanged,
+    this, &CameraView::onGainSliderChanged);
+  settingsLayout->addWidget(m_gainSlider);
+
+  m_gainValueLabel = new QLabel("1.0");
+  m_gainValueLabel->setAlignment(Qt::AlignCenter);
+  settingsLayout->addWidget(m_gainValueLabel);
+
+  settingsLayout->addSpacing(15);
+
+  // Save Image button
+  m_saveImageButton = new QPushButton("Save Image");
+  m_saveImageButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #44aa44; "
+    "  color: white; "
+    "  padding: 8px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #55bb55; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #666666; "
+    "}");
+  m_saveImageButton->setEnabled(false);
+  connect(m_saveImageButton, &QPushButton::clicked,
+    this, &CameraView::onSaveImageClicked);
+  settingsLayout->addWidget(m_saveImageButton);
+
+  m_settingsGroup->setLayout(settingsLayout);
+  leftLayout->addWidget(m_settingsGroup);
+
+  leftLayout->addSpacing(20);
+
+  // -------- Zoom Controls Group --------
   QGroupBox* zoomGroup = new QGroupBox("Digital Zoom");
-  QHBoxLayout* zoomLayout = new QHBoxLayout();
+  QVBoxLayout* zoomLayout = new QVBoxLayout();
 
   m_zoomLabel = new QLabel("Zoom: 100%");
-  m_zoomLabel->setMinimumWidth(100);
   m_zoomLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  m_zoomLabel->setAlignment(Qt::AlignCenter);
   zoomLayout->addWidget(m_zoomLabel);
 
   m_zoomSlider = new QSlider(Qt::Horizontal);
@@ -90,7 +183,19 @@ void CameraView::setupUI()
   zoomLayout->addWidget(m_zoomResetButton);
 
   zoomGroup->setLayout(zoomLayout);
-  mainLayout->addWidget(zoomGroup);
+  leftLayout->addWidget(zoomGroup);
+
+  leftLayout->addStretch();
+
+  contentLayout->addWidget(leftPanel);
+
+  // ================== VIDEO DISPLAY ==================
+  m_viewport = new CameraImageWidget(this);
+  m_viewport->setMinimumDisplaySize(320, 240);
+  m_viewport->setPlaceholderText("No camera feed");
+  contentLayout->addWidget(m_viewport, 1); // stretch factor
+
+  mainLayout->addLayout(contentLayout);
 
   // FPS label
   m_fpsLabel = new QLabel("FPS: --");
@@ -115,7 +220,6 @@ void CameraView::setupUI()
 
   setLayout(mainLayout);
 }
-
 
 bool CameraView::connectCamera()
 {
@@ -154,9 +258,19 @@ bool CameraView::connectCamera()
   m_lastTotalFrames = 0;
 
   updateConnectionStatus(true);
+
+  // ✅ Enable controls
   m_zoomSlider->setEnabled(true);
   m_zoomSpinBox->setEnabled(true);
   m_zoomResetButton->setEnabled(true);
+  m_autoExposureCheck->setEnabled(true);
+  m_autoGainCheck->setEnabled(true);
+  m_exposureSlider->setEnabled(true);
+  m_gainSlider->setEnabled(true);
+  m_saveImageButton->setEnabled(true);
+
+  // ✅ Load current camera settings
+  loadCurrentSettings();
 
   emit cameraConnected(QString::fromStdString(m_cameraId));
   std::cout << "[CameraView] Camera connected: " << m_cameraId << std::endl;
@@ -186,9 +300,15 @@ void CameraView::disconnectCamera()
   m_context->cameraManager->StopGrabbing(m_cameraId);
   m_context->cameraManager->DisconnectCamera(m_cameraId);
 
+  // ✅ Disable ALL controls
   m_zoomSlider->setEnabled(false);
   m_zoomSpinBox->setEnabled(false);
   m_zoomResetButton->setEnabled(false);
+  m_autoExposureCheck->setEnabled(false);
+  m_autoGainCheck->setEnabled(false);
+  m_exposureSlider->setEnabled(false);
+  m_gainSlider->setEnabled(false);
+  m_saveImageButton->setEnabled(false);
 
   m_viewport->clearDisplay();
 
@@ -201,6 +321,204 @@ void CameraView::disconnectCamera()
   std::cout << "[CameraView] Camera disconnected: " << m_cameraId << std::endl;
 }
 
+// ============================================================================
+// ✅ NEW - CAMERA SETTINGS SLOTS
+// ============================================================================
+
+void CameraView::onAutoExposureChanged(int state)
+{
+  bool autoEnabled = (state == Qt::Checked);
+
+  // Enable/disable manual slider
+  m_exposureSlider->setEnabled(!autoEnabled && m_isConnected);
+
+  // Apply setting immediately
+  applyCameraSettings();
+
+  std::cout << "[CameraView] Auto Exposure: " << (autoEnabled ? "ON" : "OFF") << std::endl;
+}
+
+void CameraView::onAutoGainChanged(int state)
+{
+  bool autoEnabled = (state == Qt::Checked);
+
+  // Enable/disable manual slider
+  m_gainSlider->setEnabled(!autoEnabled && m_isConnected);
+
+  // Apply setting immediately
+  applyCameraSettings();
+
+  std::cout << "[CameraView] Auto Gain: " << (autoEnabled ? "ON" : "OFF") << std::endl;
+}
+
+void CameraView::onExposureSliderChanged(int value)
+{
+  updateExposureLabel(value);
+  applyCameraSettings(); // Auto-apply
+}
+
+void CameraView::onGainSliderChanged(int value)
+{
+  double gain = value / 10.0; // Convert to 0.0 - 10.0 range
+  updateGainLabel(gain);
+  applyCameraSettings(); // Auto-apply
+}
+
+void CameraView::onSaveImageClicked()
+{
+  if (!m_isConnected || !m_subscriber) {
+    QMessageBox::warning(this, "Error", "Camera not connected");
+    return;
+  }
+
+  // Get latest frame
+  CameraFrameData frameData = m_subscriber->GetLatestFrame();
+
+  if (!frameData.IsValid()) {
+    QMessageBox::warning(this, "Error", "No valid frame available");
+    return;
+  }
+
+  // Create captures directory if it doesn't exist
+  QDir capturesDir("captures");
+  if (!capturesDir.exists()) {
+    capturesDir.mkpath(".");
+    std::cout << "[CameraView] Created captures directory" << std::endl;
+  }
+
+  // Generate filename
+  QString filename = generateSaveFilename();
+  QString fullPath = "captures/" + filename;
+
+  // Convert frame to QImage
+  QImage::Format format = (frameData.channels == 3)
+    ? QImage::Format_RGB888
+    : QImage::Format_Grayscale8;
+
+  QImage image(frameData.imageData.data(),
+    frameData.width,
+    frameData.height,
+    frameData.width * frameData.channels,
+    format);
+
+  // Save as PNG
+  if (image.save(fullPath, "PNG")) {
+    std::cout << "[CameraView] Image saved: " << fullPath.toStdString() << std::endl;
+
+    // Show success message briefly
+    QString savedMsg = QString("Camera: %1 - ✓ Saved: %2")
+      .arg(QString::fromStdString(m_displayName))
+      .arg(filename);
+    m_statusLabel->setText(savedMsg);
+    m_statusLabel->setStyleSheet(
+      "QLabel { background-color: #44ff44; color: black; padding: 5px; font-weight: bold; }");
+
+    // Reset status after 2 seconds
+    QTimer::singleShot(2000, [this]() {
+      updateConnectionStatus(m_isConnected);
+    });
+  }
+  else {
+    QMessageBox::critical(this, "Error", "Failed to save image to: " + fullPath);
+    std::cerr << "[CameraView] Failed to save image: " << fullPath.toStdString() << std::endl;
+  }
+}
+
+// ============================================================================
+// ✅ NEW - HELPER METHODS
+// ============================================================================
+
+void CameraView::applyCameraSettings()
+{
+  if (!m_isConnected || !m_context || !m_context->cameraManager) {
+    return;
+  }
+
+  ICameraHardware::ExposureSettings settings;
+
+  settings.auto_exposure = m_autoExposureCheck->isChecked();
+  settings.auto_gain = m_autoGainCheck->isChecked();
+  settings.exposure_time = m_exposureSlider->value();
+  settings.gain = m_gainSlider->value() / 10.0;
+
+  if (m_context->cameraManager->ApplyExposureSettings(m_cameraId, settings)) {
+    // Success - settings applied
+  }
+  else {
+    std::cerr << "[CameraView] Failed to apply camera settings" << std::endl;
+  }
+}
+
+void CameraView::loadCurrentSettings()
+{
+  if (!m_isConnected || !m_context || !m_context->cameraManager) {
+    return;
+  }
+
+  auto settings = m_context->cameraManager->GetExposureSettings(m_cameraId);
+
+  // Block signals during load to prevent unnecessary updates
+  m_autoExposureCheck->blockSignals(true);
+  m_autoGainCheck->blockSignals(true);
+  m_exposureSlider->blockSignals(true);
+  m_gainSlider->blockSignals(true);
+
+  m_autoExposureCheck->setChecked(settings.auto_exposure);
+  m_autoGainCheck->setChecked(settings.auto_gain);
+
+  int exposureValue = static_cast<int>(settings.exposure_time);
+  if (exposureValue < 1) exposureValue = 1;
+  if (exposureValue > 10000) exposureValue = 10000;
+  m_exposureSlider->setValue(exposureValue);
+
+  int gainValue = static_cast<int>(settings.gain * 10);
+  if (gainValue < 0) gainValue = 0;
+  if (gainValue > 100) gainValue = 100;
+  m_gainSlider->setValue(gainValue);
+
+  // Update labels
+  updateExposureLabel(exposureValue);
+  updateGainLabel(settings.gain);
+
+  // Update slider enabled state
+  m_exposureSlider->setEnabled(!settings.auto_exposure);
+  m_gainSlider->setEnabled(!settings.auto_gain);
+
+  // Unblock signals
+  m_autoExposureCheck->blockSignals(false);
+  m_autoGainCheck->blockSignals(false);
+  m_exposureSlider->blockSignals(false);
+  m_gainSlider->blockSignals(false);
+
+  std::cout << "[CameraView] Loaded camera settings: "
+    << "Exposure=" << settings.exposure_time << "μs, "
+    << "Gain=" << settings.gain << ", "
+    << "AutoExp=" << (settings.auto_exposure ? "ON" : "OFF") << ", "
+    << "AutoGain=" << (settings.auto_gain ? "ON" : "OFF") << std::endl;
+}
+
+void CameraView::updateExposureLabel(int microseconds)
+{
+  m_exposureValueLabel->setText(QString("%1 μs").arg(microseconds));
+}
+
+void CameraView::updateGainLabel(double gain)
+{
+  m_gainValueLabel->setText(QString::number(gain, 'f', 1));
+}
+
+QString CameraView::generateSaveFilename()
+{
+  QDateTime now = QDateTime::currentDateTime();
+  QString timestamp = now.toString("yyyyMMdd_HHmmss_zzz");
+  QString cameraName = QString::fromStdString(m_cameraId);
+
+  return QString("%1_%2.png").arg(cameraName).arg(timestamp);
+}
+
+// ============================================================================
+// EXISTING METHODS (unchanged from your baseline)
+// ============================================================================
 
 void CameraView::onConnectClicked()
 {
@@ -212,7 +530,6 @@ void CameraView::onDisconnectClicked()
   disconnectCamera();
 }
 
-// ✅ SIMPLIFIED: onUpdateDisplay now uses CameraImageWidget
 void CameraView::onUpdateDisplay()
 {
   if (!m_subscriber || !m_subscriber->HasNewFrame()) {
@@ -221,26 +538,21 @@ void CameraView::onUpdateDisplay()
 
   auto frameStart = std::chrono::steady_clock::now();
 
-  // Get frame from subscriber
   CameraFrameData frameData = m_subscriber->GetLatestFrame();
   m_subscriber->MarkFrameConsumed();
 
-  // Validate frame
   if (!frameData.IsValid() || frameData.imageData.empty()) {
     return;
   }
 
-  // ✅ SIMPLIFIED: Single line to update display!
   m_viewport->setFrame(frameData);
 
-  // Performance tracking
   auto frameEnd = std::chrono::steady_clock::now();
   double processingMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
 
   m_avgProcessingTime = (m_avgProcessingTime * 0.9) + (processingMs * 0.1);
   m_frameCounter++;
 
-  // Update FPS display every second
   auto now = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastUpdateTime).count();
 
@@ -270,14 +582,13 @@ void CameraView::onUpdateDisplay()
   }
 }
 
-// ✅ SIMPLIFIED: Zoom control now uses CameraImageWidget
 void CameraView::onZoomSliderChanged(int value)
 {
   m_zoomSpinBox->blockSignals(true);
   m_zoomSpinBox->setValue(value);
   m_zoomSpinBox->blockSignals(false);
 
-  m_viewport->setZoomPercent(value);  // ✅ Single call!
+  m_viewport->setZoomPercent(value);
   updateZoomLabel(value);
 }
 
@@ -287,7 +598,7 @@ void CameraView::onZoomSpinBoxChanged(int value)
   m_zoomSlider->setValue(value);
   m_zoomSlider->blockSignals(false);
 
-  m_viewport->setZoomPercent(value);  // ✅ Single call!
+  m_viewport->setZoomPercent(value);
   updateZoomLabel(value);
 }
 
