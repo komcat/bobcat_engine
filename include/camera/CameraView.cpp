@@ -251,8 +251,8 @@ void CameraView::onWorkerError(QString errorMsg)
 
 void CameraView::onWorkerStatus(QString msg)
 {
-  std::cout << "[CameraView] Worker status [" << m_cameraId << "]: "
-    << msg.toStdString() << std::endl;
+  //std::cout << "[CameraView] Worker status [" << m_cameraId << "]: "
+  //  << msg.toStdString() << std::endl;
 }
 
 void CameraView::onZoomSliderChanged(int value)

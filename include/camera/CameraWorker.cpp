@@ -7,6 +7,7 @@
 #include <chrono>
 #include <iostream>
 
+
 CameraWorker::CameraWorker(CameraManager* cameraManager, const std::string& cameraId)
   : QObject(nullptr)
   , m_cameraManager(cameraManager)
@@ -16,12 +17,18 @@ CameraWorker::CameraWorker(CameraManager* cameraManager, const std::string& came
   , m_fpsTimer(nullptr)
   , m_targetFPS(30)
   , m_enableProcessing(false)
-  , m_zoomPercent(100) // Default: no zoom
+  , m_zoomPercent(100)
   , m_frameCount(0)
   , m_avgProcessingTime(0.0)
   , m_skippedFrames(0)
+  , m_frameSkipCounter(0)      // NEW: Initialize frame skip counter
+  , m_frameSkipInterval(2)     // NEW: Default to display every 2nd frame (15 FPS from 30 FPS capture)
+  , m_capturedFrames(0)        // NEW: Initialize captured frame counter
+  , m_displayedFrames(0)       // NEW: Initialize displayed frame counter
+  , m_reusableImage()          // Reusable image buffer
 {
-  std::cout << "[CameraWorker] Created for camera: " << cameraId << std::endl;
+  std::cout << "[CameraWorker] Created for camera: " << cameraId
+    << " (Frame skip interval: " << m_frameSkipInterval << ")" << std::endl;
 }
 
 CameraWorker::~CameraWorker()
@@ -42,6 +49,9 @@ void CameraWorker::startCapture()
   // Reset counters
   m_frameCount.store(0);
   m_skippedFrames = 0;
+  m_frameSkipCounter = 0;         // NEW: Reset frame skip counter
+  m_capturedFrames.store(0);      // NEW: Reset captured frames
+  m_displayedFrames.store(0);     // NEW: Reset displayed frames
   m_lastFrameTime = std::chrono::steady_clock::now();
 
   // Create capture timer (runs on worker thread)
@@ -57,9 +67,13 @@ void CameraWorker::startCapture()
   connect(m_fpsTimer, &QTimer::timeout, this, &CameraWorker::updateFPS);
   m_fpsTimer->start(1000);
 
-  emit statusMessage(QString("Capture started at %1 FPS").arg(m_targetFPS));
-  std::cout << "[CameraWorker] Capture started at " << m_targetFPS << " FPS" << std::endl;
+  emit statusMessage(QString("Capture started at %1 FPS (display every %2 frames)")
+    .arg(m_targetFPS).arg(m_frameSkipInterval));
+
+  std::cout << "[CameraWorker] Capture started at " << m_targetFPS
+    << " FPS (display every " << m_frameSkipInterval << " frames)" << std::endl;
 }
+
 
 void CameraWorker::stopCapture()
 {
@@ -128,7 +142,28 @@ void CameraWorker::captureLoop()
       return;
     }
 
-    // Process frame (includes zoom)
+    // Count this as a captured frame
+    m_capturedFrames.fetch_add(1);
+
+    // ========================================================================
+    // FRAME SKIPPING LOGIC
+    // ========================================================================
+    // Only process and display every Nth frame to reduce CPU/memory usage
+    m_frameSkipCounter++;
+
+    if (m_frameSkipCounter < m_frameSkipInterval) {
+      // Skip this frame - don't process or display it
+      // Still count it for FPS calculation
+      m_frameCount.fetch_add(1);
+      return; // Early exit - frame not processed
+    }
+
+    // Reset counter - we're processing this frame
+    m_frameSkipCounter = 0;
+    m_displayedFrames.fetch_add(1);
+    // ========================================================================
+
+    // Process frame (includes zoom and reusable buffer optimization)
     QImage image = processFrame(frameData);
 
     if (image.isNull()) {
@@ -160,42 +195,72 @@ void CameraWorker::captureLoop()
   }
 }
 
+
 QImage CameraWorker::processFrame(const CameraFrameData& frameData)
 {
-  // Convert to QImage format
+  // Determine the required format
   QImage::Format format = (frameData.channels == 3)
     ? QImage::Format_RGB888
     : QImage::Format_Grayscale8;
 
-  // Create QImage from frame data
-  QImage image(frameData.imageData.data(),
-    frameData.width,
-    frameData.height,
-    frameData.width * frameData.channels,
-    format);
+  // Check if we need to reallocate the reusable buffer
+  // Only reallocate when dimensions or format change
+  if (m_reusableImage.width() != static_cast<int>(frameData.width) ||
+    m_reusableImage.height() != static_cast<int>(frameData.height) ||
+    m_reusableImage.format() != format) {
 
-  // Make a deep copy for thread safety
-  QImage result = image.copy();
+    std::cout << "[CameraWorker] Reallocating image buffer: "
+      << frameData.width << "x" << frameData.height
+      << " (" << frameData.channels << " channels)" << std::endl;
+
+    // Reallocate buffer with new dimensions/format
+    m_reusableImage = QImage(frameData.width,
+      frameData.height,
+      format);
+
+    if (m_reusableImage.isNull()) {
+      std::cerr << "[CameraWorker] Failed to allocate image buffer!" << std::endl;
+      return QImage();
+    }
+  }
+
+  // Copy frame data directly into the reusable buffer
+  // This is much faster than creating a new QImage every frame
+  size_t expectedSize = frameData.width * frameData.height * frameData.channels;
+  if (frameData.imageData.size() != expectedSize) {
+    std::cerr << "[CameraWorker] Frame data size mismatch! Expected: "
+      << expectedSize << ", Got: " << frameData.imageData.size() << std::endl;
+    return QImage();
+  }
+
+  std::memcpy(m_reusableImage.bits(),
+    frameData.imageData.data(),
+    frameData.imageData.size());
 
   // Apply zoom if not 100%
   int zoomLevel = m_zoomPercent.load();
   if (zoomLevel < 100) {
-    result = applyZoom(result);
+    // When zooming, we need to return a new image (the cropped region)
+    return applyZoom(m_reusableImage);
   }
 
-  // Additional processing
+  // Additional processing if enabled
   if (m_enableProcessing.load()) {
     // Add your custom processing here
-    // result = yourProcessingFunction(result);
+    // result = yourProcessingFunction(m_reusableImage);
   }
 
-  return result;
+  // Return the reusable image
+  // Qt uses implicit sharing (copy-on-write), so this is efficient
+  return m_reusableImage;
 }
+
 
 // ============================================================================
 // ZOOM IMPLEMENTATION
 // ============================================================================
 
+// In CameraWorker.cpp:
 QImage CameraWorker::applyZoom(const QImage& originalImage)
 {
   int zoomLevel = m_zoomPercent.load();
@@ -213,11 +278,10 @@ QImage CameraWorker::applyZoom(const QImage& originalImage)
     return originalImage;
   }
 
-  // Extract ROI from original image
-  QImage zoomed = originalImage.copy(roi);
-
-  return zoomed; // This smaller region will be scaled up by the display
+  // Extract ROI - this creates a copy, but it's much smaller than the full image
+  return originalImage.copy(roi);
 }
+
 
 QRect CameraWorker::calculateZoomROI(int imageWidth, int imageHeight, int zoomPercent) const
 {
@@ -239,14 +303,14 @@ QRect CameraWorker::calculateZoomROI(int imageWidth, int imageHeight, int zoomPe
   int roiY = (imageHeight - roiHeight) / 2;
 
   // Debug output
-  static int debugCounter = 0;
-  if (++debugCounter >= 30) { // Print every second at 30 FPS
-    std::cout << "[Zoom] " << zoomPercent << "% → ROI: "
-      << roiX << "," << roiY << " "
-      << roiWidth << "x" << roiHeight
-      << " from " << imageWidth << "x" << imageHeight << std::endl;
-    debugCounter = 0;
-  }
+  //static int debugCounter = 0;
+  //if (++debugCounter >= 30) { // Print every second at 30 FPS
+  //  std::cout << "[Zoom] " << zoomPercent << "% → ROI: "
+  //    << roiX << "," << roiY << " "
+  //    << roiWidth << "x" << roiHeight
+  //    << " from " << imageWidth << "x" << imageHeight << std::endl;
+  //  debugCounter = 0;
+  //}
 
   return QRect(roiX, roiY, roiWidth, roiHeight);
 }
@@ -263,8 +327,14 @@ void CameraWorker::setZoomPercent(int percent)
     emit zoomChanged(percent);
     emit statusMessage(QString("Zoom: %1%").arg(percent));
 
-    std::cout << "[CameraWorker] Zoom changed: " << percent << "%" << std::endl;
+    //std::cout << "[CameraWorker] Zoom changed: " << percent << "%" << std::endl;
   }
+}
+
+void CameraWorker::setFrameSkipInterval(int interval) {
+  if (interval < 1) interval = 1; // Minimum: display every frame
+  m_frameSkipInterval = interval;
+  std::cout << "[CameraWorker] Frame skip interval set to: " << interval << std::endl;
 }
 
 void CameraWorker::updateFPS()
@@ -272,18 +342,30 @@ void CameraWorker::updateFPS()
   int frames = m_frameCount.exchange(0);
   double fps = static_cast<double>(frames);
 
+  // Get statistics
+  int captured = m_capturedFrames.load();
+  int displayed = m_displayedFrames.load();
+
   emit fpsUpdated(fps);
   emit processingTimeUpdated(m_avgProcessingTime.load());
 
-  // Debug output every 5 seconds
-  static int counter = 0;
-  if (++counter >= 5) {
-    std::cout << "[CameraWorker] FPS: " << fps
-      << ", Processing: " << m_avgProcessingTime.load() << " ms"
-      << ", Zoom: " << m_zoomPercent.load() << "%" << std::endl;
-    counter = 0;
-  }
+  // Debug output every 5 seconds with frame skip statistics
+  //static int counter = 0;
+  //if (++counter >= 5) {
+  //  int skipRatio = (captured > 0) ? (100 * displayed / captured) : 0;
+
+  //  std::cout << "[CameraWorker] " << m_cameraId
+  //    << " - Display FPS: " << fps
+  //    << ", Processing: " << m_avgProcessingTime.load() << " ms"
+  //    << ", Zoom: " << m_zoomPercent.load() << "%"
+  //    << ", Captured: " << captured
+  //    << ", Displayed: " << displayed
+  //    << " (" << skipRatio << "%)"  // Simple integer percentage
+  //    << std::endl;
+  //  counter = 0;
+  //}
 }
+
 
 void CameraWorker::setExposure(double microseconds)
 {

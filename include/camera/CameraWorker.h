@@ -1,4 +1,4 @@
-// CameraWorker.h - With Zoom Feature
+// CameraWorker.h - With Zoom Feature and Frame Skipping
 #pragma once
 
 #include <QObject>
@@ -17,7 +17,7 @@ class ICameraHardware;
 /**
  * @brief Worker class that runs on separate thread for camera operations
  *
- * Now includes digital zoom via ROI extraction
+ * Includes digital zoom via ROI extraction and frame skipping for performance
  */
 class CameraWorker : public QObject
 {
@@ -30,6 +30,10 @@ public:
   // Configuration
   void setTargetFPS(int fps) { m_targetFPS = fps; }
   void setEnableProcessing(bool enable) { m_enableProcessing = enable; }
+
+  // NEW: Frame skipping control
+  void setFrameSkipInterval(int interval);
+  int getFrameSkipInterval() const { return m_frameSkipInterval; }
 
 signals:
   // Emitted when new frame is ready for display
@@ -57,7 +61,7 @@ public slots:
   void setExposure(double microseconds);
   void setGain(double gain);
 
-  // NEW: Zoom control
+  // Zoom control
   void setZoomPercent(int percent); // 100 = no zoom, 50 = 2x zoom, 25 = 4x zoom
 
 private slots:
@@ -67,11 +71,13 @@ private slots:
   // Performance monitoring
   void updateFPS();
 
+
+
 private:
   // Frame processing with zoom support
   QImage processFrame(const CameraFrameData& frameData);
 
-  // NEW: Apply digital zoom (ROI extraction)
+  // Apply digital zoom (ROI extraction)
   QImage applyZoom(const QImage& originalImage);
 
   // Calculate centered ROI
@@ -93,7 +99,7 @@ private:
   int m_targetFPS;
   std::atomic<bool> m_enableProcessing;
 
-  // NEW: Zoom settings
+  // Zoom settings
   std::atomic<int> m_zoomPercent; // 100 = full image, 50 = 2x zoom, etc.
 
   // Performance monitoring
@@ -103,4 +109,13 @@ private:
 
   // Frame skip detection
   int m_skippedFrames;
+
+  // NEW: Frame skipping for performance optimization
+  int m_frameSkipCounter;   // Current frame counter
+  int m_frameSkipInterval;  // Display every Nth frame (1=all, 2=every other, 3=every third)
+  std::atomic<int> m_capturedFrames;  // Total frames captured (for stats)
+  std::atomic<int> m_displayedFrames; // Total frames displayed (for stats)
+
+  // Reusable image buffer to prevent memory allocation every frame
+  QImage m_reusableImage;
 };
