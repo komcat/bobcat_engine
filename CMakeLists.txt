@@ -111,6 +111,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/camera
     ${CMAKE_SOURCE_DIR}/include/AppUI      
     ${CMAKE_SOURCE_DIR}/include/context
+    ${CMAKE_SOURCE_DIR}/include/logger
 )
 
 # Add nlohmann json include directory if found
@@ -147,6 +148,10 @@ set(SOURCES
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
+ 
+  "include/logger/LogManager.cpp"
+   "include/logger/LogStatusBar.cpp"
+  "include/logger/LogViewerPage.cpp"
 )
 
 set(HEADERS
@@ -169,6 +174,10 @@ set(HEADERS
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h
     include/context/ApplicationContext.h
+ "include/logger/LogManager.h"
+
+ "include/logger/LogStatusBar.h"
+ "include/logger/LogViewerPage.h"
 )
 
 # Conditionally add Pylon camera files if SDK is found

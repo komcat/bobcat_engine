@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "MainWindow.h"
 #include "CameraManager.h"
+#include "LogManager.h"  // ✅ NEW
 #include <QApplication>
 #include <iostream>
 
@@ -41,13 +42,11 @@ void Application::shutdown()
 
   std::cout << "[Application] Shutting down..." << std::endl;
 
-  // Close main window
   if (m_mainWindow) {
     m_mainWindow->close();
     m_mainWindow.reset();
   }
 
-  // Shutdown managers
   shutdownManagers();
 
   m_initialized = false;
@@ -58,7 +57,6 @@ bool Application::initialize()
   if (m_initialized) return true;
 
   try {
-    // Create Qt application
     m_qApplication = std::make_unique<QApplication>(m_argc, m_argv);
     m_qApplication->setApplicationName(QString::fromStdString(getApplicationName()));
     m_qApplication->setApplicationVersion(QString::fromStdString(getVersion()));
@@ -66,10 +64,7 @@ bool Application::initialize()
     std::cout << "[Application] " << getApplicationName()
       << " v" << getVersion() << std::endl;
 
-    // Initialize managers BEFORE creating main window
     initializeManagers();
-
-    // Create main window (receives context)
     createMainWindow();
 
     m_initialized = true;
@@ -88,15 +83,29 @@ void Application::initializeManagers()
   std::cout << "[Application] Initializing managers..." << std::endl;
 
   try {
+    // ✅ Create LogManager FIRST
+    m_logManager = std::make_unique<LogManager>();
+    m_context.logManager = m_logManager.get();
+    m_logManager->EnableFileOutput(true, "logs/bobcat.log");
+    std::cout << "[Application] ✓ LogManager created" << std::endl;
+
+    // Log system startup
+    m_logManager->Info("Bobcat Engine starting...", "Application");
+
     // Create CameraManager
     m_cameraManager = std::make_unique<CameraManager>();
     m_context.cameraManager = m_cameraManager.get();
     std::cout << "[Application] ✓ CameraManager created" << std::endl;
+    m_logManager->Info("CameraManager initialized", "Application");
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
+    m_logManager->Info("All managers initialized", "Application");
   }
   catch (const std::exception& e) {
     std::cerr << "[Application] Manager initialization failed: " << e.what() << std::endl;
+    if (m_logManager) {
+      m_logManager->Critical(std::string("Manager init failed: ") + e.what(), "Application");
+    }
     throw;
   }
 }
@@ -105,11 +114,14 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
-  // Clear context pointers
+  if (m_logManager) {
+    m_logManager->Info("Bobcat Engine shutting down...", "Application");
+  }
+
   m_context = ApplicationContext();
 
-  // Destroy managers
   m_cameraManager.reset();
+  m_logManager.reset();  // ✅ Shutdown log last
 
   std::cout << "[Application] All managers shut down" << std::endl;
 }
@@ -124,4 +136,8 @@ void Application::createMainWindow()
   m_mainWindow->show();
 
   std::cout << "[Application] Main window created" << std::endl;
+
+  if (m_logManager) {
+    m_logManager->Info("Main window created", "Application");
+  }
 }
