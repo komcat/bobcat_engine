@@ -115,11 +115,12 @@ bool IDSCameraAdapter::UpdateCameraProperties() {
 
 		if (result == IS_SUCCESS) {
 			try {
-				m_modelName = "IDS_Camera_Connected";
-				m_serialNumber = "DeviceID_" + std::to_string(m_deviceId);
+				// Read actual camera information
+				m_modelName = std::string(camInfo.ID);  // Camera model
+				m_serialNumber = std::string(camInfo.SerNo);  // Actual serial number
 
-				std::cout << "[INFO] Camera connected - using default names: Model: '"
-					<< m_modelName << "', Serial: '" << m_serialNumber << "'" << std::endl;
+				std::cout << "[INFO] Camera Model: '" << m_modelName
+					<< "', Serial: '" << m_serialNumber << "'" << std::endl;
 
 				return true;
 			}

@@ -47,7 +47,7 @@ void CameraView::setupUI()
 
   // Video display area
   m_videoLabel = new QLabel("No camera feed");
-  m_videoLabel->setMinimumSize(640, 480);
+  m_videoLabel->setMinimumSize(250, 250);
   m_videoLabel->setAlignment(Qt::AlignCenter);
   m_videoLabel->setStyleSheet(
     "QLabel { background-color: #2b2b2b; color: #888888; border: 2px solid #555555; }");
