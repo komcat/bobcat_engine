@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include <QObject>
 #include <memory>
 #include <string>
 
 class QApplication;
-class MultiCameraView;
+class MainWindow;  // Forward declaration
 
 /**
  * @brief Main application controller for Bobcat Engine
@@ -34,7 +34,7 @@ private:
   void createMainWindow();
 
   std::unique_ptr<QApplication> m_qApplication;
-  std::unique_ptr<MultiCameraView> m_mainWindow;
+  std::unique_ptr<MainWindow> m_mainWindow;
 
   bool m_initialized;
   int m_argc;

@@ -50,7 +50,7 @@ void CameraView::setupUI()
 
   // ✅ CHANGED: Use CameraImageWidget instead of QLabel
   m_viewport = new CameraImageWidget(this);
-  m_viewport->setMinimumDisplaySize(640, 480);
+  m_viewport->setMinimumDisplaySize(320, 240);  // ← CHANGED from 640x480
   m_viewport->setPlaceholderText("No camera feed");
   mainLayout->addWidget(m_viewport);
 

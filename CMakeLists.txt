@@ -109,6 +109,7 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/camera
+    ${CMAKE_SOURCE_DIR}/include/AppUI      # ← ADD THIS
 )
 
 # Add nlohmann json include directory if found
@@ -141,6 +142,10 @@ set(SOURCES
     include/camera/MultiCameraView.cpp
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
+    include/AppUI/MainWindow.cpp
+    include/AppUI/MainMenuPage.cpp
+    include/AppUI/HardwareInstrumentPage.cpp
+ include/AppUI/PlaceholderPage.cpp
 )
 
 set(HEADERS
@@ -158,7 +163,10 @@ set(HEADERS
     include/camera/LiveVideoSubscriber.h
     include/camera/FrameConverter.h
     include/camera/CameraImageWidget.h
-    
+    include/AppUI/MainMenuPage.h    
+    include/AppUI/MainWindow.h
+    include/AppUI/HardwareInstrumentPage.h
+ include/AppUI/PlaceholderPage.h
 )
 
 # Conditionally add Pylon camera files if SDK is found

@@ -1,4 +1,4 @@
-#include "CameraImageWidget.h"
+﻿#include "CameraImageWidget.h"
 #include <cstring>
 #include <iostream>
 
@@ -16,6 +16,10 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   m_displayLabel = new QLabel("No camera feed");
   m_displayLabel->setAlignment(Qt::AlignCenter);
   m_displayLabel->setScaledContents(false);
+
+  // ✅ ADD: Make label expand to fill available space
+  m_displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
   m_displayLabel->setStyleSheet(
     "QLabel { "
     "  background-color: #2b2b2b; "
@@ -28,6 +32,7 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
 
   std::cout << "[CameraImageWidget] Created" << std::endl;
 }
+
 
 void CameraImageWidget::setFrame(const CameraFrameData& frameData)
 {
@@ -176,7 +181,7 @@ void CameraImageWidget::renderFrame(const QImage& image)
     return;
   }
 
-  // Convert to pixmap and scale to fit label
+  // Convert to pixmap
   QPixmap pixmap = QPixmap::fromImage(image);
 
   Qt::TransformationMode transformMode =
@@ -184,9 +189,16 @@ void CameraImageWidget::renderFrame(const QImage& image)
     ? Qt::FastTransformation
     : Qt::SmoothTransformation;
 
-  pixmap = pixmap.scaled(m_displayLabel->size(),
-    Qt::KeepAspectRatio,
-    transformMode);
+  // ✅ FIX: Scale to the WIDGET size, not the label size
+  // The label size grows gradually, but the widget size is correct immediately
+  QSize targetSize = this->size();  // ← CHANGED from m_displayLabel->size()
+
+  // Make sure we have a valid size
+  if (targetSize.width() > 0 && targetSize.height() > 0) {
+    pixmap = pixmap.scaled(targetSize,
+      Qt::KeepAspectRatio,
+      transformMode);
+  }
 
   m_displayLabel->setPixmap(pixmap);
 }

@@ -1,5 +1,5 @@
-#include "Application.h"
-#include "MultiCameraView.h"
+﻿#include "Application.h"
+#include "MainWindow.h"  // ← CHANGED from MultiCameraView.h
 #include <QApplication>
 #include <iostream>
 
@@ -78,7 +78,7 @@ void Application::createMainWindow()
 {
   std::cout << "[Application] Creating main window..." << std::endl;
 
-  m_mainWindow = std::make_unique<MultiCameraView>();
+  m_mainWindow = std::make_unique<MainWindow>();
   m_mainWindow->setWindowTitle(QString::fromStdString(
     getApplicationName() + " v" + getVersion()));
   m_mainWindow->show();
