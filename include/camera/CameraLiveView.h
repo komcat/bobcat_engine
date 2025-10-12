@@ -1,4 +1,4 @@
-// CameraLiveView.h - Standalone view using pub-sub pattern
+﻿// CameraLiveView.h - OPTIMIZED VERSION with reusable buffers
 #pragma once
 
 #include <QWidget>
@@ -20,9 +20,12 @@ class CameraConfigManager;
 class LiveVideoSubscriber;
 
 /**
- * @brief Standalone live video view using pub-sub pattern
+ * @brief Standalone live video view using optimized pub-sub pattern
  *
- * Subscribes to camera broadcasts instead of using worker threads
+ * Performance optimizations:
+ * - Reusable image buffer (no allocation per frame)
+ * - Fast transformation for real-time scaling
+ * - Direct memory copy to buffer
  */
 class CameraLiveView : public QWidget
 {
@@ -68,7 +71,7 @@ private:
   std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<CameraConfigManager> m_configManager;
 
-  // Pub-Sub components (replaces worker thread!)
+  // Pub-Sub components
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayUpdateTimer;
 
@@ -80,4 +83,9 @@ private:
   std::chrono::steady_clock::time_point m_lastUpdateTime;
   int m_frameCounter;
   double m_avgProcessingTime;
+  uint64_t m_lastTotalFrames;  // ✅ ADD THIS LINE
+
+  // NEW: Performance optimization - reusable image buffer
+  QImage m_reusableImage;
+  bool m_imageBufferInitialized;
 };

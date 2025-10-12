@@ -1,4 +1,4 @@
-// CameraView.h - Tab view using pub-sub pattern
+﻿// CameraView.h - OPTIMIZED VERSION for tab view
 #pragma once
 
 #include <QWidget>
@@ -19,9 +19,12 @@ class CameraManager;
 class LiveVideoSubscriber;
 
 /**
- * @brief Widget for controlling and displaying a single camera in tab view
+ * @brief Widget for single camera in tab view - optimized pub-sub pattern
  *
- * Uses pub-sub pattern instead of worker threads
+ * Performance optimizations:
+ * - Reusable image buffer (no allocation per frame)
+ * - Fast transformation for real-time scaling
+ * - Direct memory copy to buffer
  */
 class CameraView : public QWidget
 {
@@ -41,7 +44,7 @@ public:
   std::string getCameraId() const { return m_cameraId; }
 
 signals:
-  // Status signals (can be connected to main window)
+  // Status signals
   void cameraConnected(QString cameraId);
   void cameraDisconnected(QString cameraId);
   void cameraError(QString cameraId, QString error);
@@ -50,7 +53,7 @@ private slots:
   void onConnectClicked();
   void onDisconnectClicked();
 
-  // Display update (polls subscriber for new frames)
+  // Display update (polls subscriber)
   void onUpdateDisplay();
 
   // Zoom control
@@ -69,7 +72,7 @@ private:
   std::string m_displayName;
   bool m_isConnected;
 
-  // Pub-Sub components (replaces worker thread!)
+  // Pub-Sub components
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayUpdateTimer;
 
@@ -92,4 +95,9 @@ private:
   std::chrono::steady_clock::time_point m_lastUpdateTime;
   int m_frameCounter;
   double m_avgProcessingTime;
+  uint64_t m_lastTotalFrames;  // ✅ ADD THIS LINE
+
+  // NEW: Performance optimization - reusable image buffer
+  QImage m_reusableImage;
+  bool m_imageBufferInitialized;
 };

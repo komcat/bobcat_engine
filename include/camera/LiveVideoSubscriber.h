@@ -41,7 +41,7 @@ public:
   void OnCameraStatusChanged(const std::string& cameraId, bool connected, bool grabbing) override;
   std::string GetSubscriberId() const override;
   bool WantsFramesFromCamera(const std::string& cameraId) const override;
-  int GetMinFrameIntervalMs() const override { return 33; } // 30fps for UI
+  int GetMinFrameIntervalMs() const override { return 0; } // 30fps for UI
 
   // Camera selection and management
   /**

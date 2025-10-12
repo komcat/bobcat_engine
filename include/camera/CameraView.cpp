@@ -20,6 +20,8 @@ CameraView::CameraView(CameraManager* cameraManager,
   , m_zoomPercent(100)
   , m_frameCounter(0)
   , m_avgProcessingTime(0.0)
+  , m_lastTotalFrames(0)        // ✅ ADD THIS LINE
+  , m_imageBufferInitialized(false)  // ADD THIS
 {
   setupUI();
   std::cout << "[CameraView] Created for camera: " << m_cameraId << std::endl;
@@ -161,6 +163,7 @@ bool CameraView::connectCamera()
 
   m_lastUpdateTime = std::chrono::steady_clock::now();
   m_frameCounter = 0;
+  m_lastTotalFrames = 0;  // ✅ ADD THIS LINE
 
   // Update UI
   updateConnectionStatus(true);
@@ -225,9 +228,15 @@ void CameraView::onDisconnectClicked()
   disconnectCamera();
 }
 
-void CameraView::onUpdateDisplay()
+// OPTIMIZED onUpdateDisplay() - Replace in both CameraView.cpp and CameraLiveView.cpp
+
+void CameraView::onUpdateDisplay()  // or CameraLiveView::onUpdateDisplay()
 {
-  // Check if subscriber has new frame
+
+
+
+
+  // Quick exit if no new frame
   if (!m_subscriber || !m_subscriber->HasNewFrame()) {
     return;
   }
@@ -238,75 +247,135 @@ void CameraView::onUpdateDisplay()
   CameraFrameData frameData = m_subscriber->GetLatestFrame();
   m_subscriber->MarkFrameConsumed();
 
-  // Convert CameraFrameData to QImage
+  // Validate frame
   if (!frameData.IsValid() || frameData.imageData.empty()) {
     return;
   }
+
+  // ========================================================================
+  // OPTIMIZATION 1: Reuse QImage buffer (avoid allocation every frame)
+  // ========================================================================
 
   QImage::Format format = (frameData.channels == 3)
     ? QImage::Format_RGB888
     : QImage::Format_Grayscale8;
 
-  QImage image(frameData.width, frameData.height, format);
+  // Only reallocate if dimensions or format changed
+  if (m_reusableImage.width() != static_cast<int>(frameData.width) ||
+    m_reusableImage.height() != static_cast<int>(frameData.height) ||
+    m_reusableImage.format() != format) {
 
-  if (image.isNull()) {
-    return;
+    m_reusableImage = QImage(frameData.width, frameData.height, format);
+
+    if (m_reusableImage.isNull()) {
+      std::cerr << "[ERROR] Failed to allocate reusable image buffer" << std::endl;
+      return;
+    }
+
+    std::cout << "[INFO] Reallocated image buffer: "
+      << frameData.width << "x" << frameData.height << std::endl;
   }
 
-  // Copy frame data
+  // ========================================================================
+  // OPTIMIZATION 2: Direct memory copy (no intermediate buffer)
+  // ========================================================================
+
   size_t expectedSize = frameData.width * frameData.height * frameData.channels;
   if (frameData.imageData.size() != expectedSize) {
+    std::cerr << "[ERROR] Frame data size mismatch!" << std::endl;
     return;
   }
 
-  std::memcpy(image.bits(), frameData.imageData.data(), frameData.imageData.size());
+  // Fast copy directly to reusable buffer
+  std::memcpy(m_reusableImage.bits(),
+    frameData.imageData.data(),
+    frameData.imageData.size());
 
-  // Apply zoom if needed
+  // ========================================================================
+  // OPTIMIZATION 3: Apply zoom only if needed
+  // ========================================================================
+
+  QImage displayImage;
   int zoom = m_zoomPercent.load();
+
   if (zoom < 100) {
     // Calculate ROI for zoom
     double zoomFactor = zoom / 100.0;
-    int roiWidth = static_cast<int>(image.width() * zoomFactor);
-    int roiHeight = static_cast<int>(image.height() * zoomFactor);
+    int roiWidth = static_cast<int>(m_reusableImage.width() * zoomFactor);
+    int roiHeight = static_cast<int>(m_reusableImage.height() * zoomFactor);
 
     if (roiWidth < 1) roiWidth = 1;
     if (roiHeight < 1) roiHeight = 1;
 
-    int roiX = (image.width() - roiWidth) / 2;
-    int roiY = (image.height() - roiHeight) / 2;
+    int roiX = (m_reusableImage.width() - roiWidth) / 2;
+    int roiY = (m_reusableImage.height() - roiHeight) / 2;
 
-    image = image.copy(QRect(roiX, roiY, roiWidth, roiHeight));
+    // Extract ROI (creates new image, but smaller)
+    displayImage = m_reusableImage.copy(QRect(roiX, roiY, roiWidth, roiHeight));
+  }
+  else {
+    // No zoom - use reusable image directly (Qt uses copy-on-write)
+    displayImage = m_reusableImage;
   }
 
-  // Display image
-  QPixmap pixmap = QPixmap::fromImage(image);
+  // ========================================================================
+  // OPTIMIZATION 4: Faster scaling (use FastTransformation for real-time)
+  // ========================================================================
+
+  QPixmap pixmap = QPixmap::fromImage(displayImage);
   pixmap = pixmap.scaled(m_videoLabel->size(),
     Qt::KeepAspectRatio,
-    Qt::SmoothTransformation);
+    Qt::FastTransformation);  // Changed from SmoothTransformation!
+
   m_videoLabel->setPixmap(pixmap);
 
-  // Performance tracking
+  // ========================================================================
+  // FIXED: Performance tracking with correct FPS calculation
+  // ========================================================================
+
   auto frameEnd = std::chrono::steady_clock::now();
   double processingMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
+
   m_avgProcessingTime = (m_avgProcessingTime * 0.9) + (processingMs * 0.1);
   m_frameCounter++;
 
-  // Update FPS every second
+  // Update FPS display every second
   auto now = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastUpdateTime).count();
 
   if (elapsed >= 1) {
-    double fps = m_frameCounter / static_cast<double>(elapsed);
-    m_fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 1));
+    // Get total frames from subscriber
+    uint64_t totalFrames = m_subscriber->GetTotalFramesReceived();
+
+    // Calculate display FPS
+    double captureFPS = m_frameCounter / static_cast<double>(elapsed);
+
+    // Calculate actual camera capture rate using instance variable
+    double actualFPS = (totalFrames > m_lastTotalFrames)
+      ? (totalFrames - m_lastTotalFrames) / static_cast<double>(elapsed)
+      : 0.0;
+
+    m_lastTotalFrames = totalFrames;  // ✅ CHANGED: Use instance variable
+
+    // Display ACTUAL FPS (from camera), not just display rate
+    m_fpsLabel->setText(QString("FPS: %1 (Actual: %2)")
+      .arg(captureFPS, 0, 'f', 1)
+      .arg(actualFPS, 0, 'f', 1));
+
     m_performanceLabel->setText(
-      QString("Processing: %1 ms | Total: %2")
+      QString("Processing: %1 ms/frame | Total: %2 | Displayed: %3")
       .arg(m_avgProcessingTime, 0, 'f', 2)
-      .arg(m_subscriber->GetTotalFramesReceived()));
+      .arg(totalFrames)
+      .arg(m_frameCounter));
 
     m_frameCounter = 0;
     m_lastUpdateTime = now;
   }
+
+
+
 }
+
 
 void CameraView::onZoomSliderChanged(int value)
 {
