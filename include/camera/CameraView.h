@@ -1,4 +1,4 @@
-// CameraView.h - Widget for displaying a single camera
+// CameraView.h - Tab view using pub-sub pattern
 #pragma once
 
 #include <QWidget>
@@ -8,22 +8,20 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 #include <QImage>
-#include <QThread>
+#include <QTimer>
 #include <memory>
 #include <string>
+#include <atomic>
+#include <chrono>
 
 // Forward declarations
 class CameraManager;
-class CameraWorker;
+class LiveVideoSubscriber;
 
 /**
- * @brief Widget for controlling and displaying a single camera
+ * @brief Widget for controlling and displaying a single camera in tab view
  *
- * Each camera gets its own CameraView instance with:
- * - Independent worker thread
- * - Independent zoom controls
- * - Independent connect/disconnect
- * - Performance monitoring
+ * Uses pub-sub pattern instead of worker threads
  */
 class CameraView : public QWidget
 {
@@ -52,27 +50,17 @@ private slots:
   void onConnectClicked();
   void onDisconnectClicked();
 
-  // Frame display
-  void onFrameReady(QImage image);
-
-  // Performance monitoring
-  void onFpsUpdated(double fps);
-  void onProcessingTimeUpdated(double ms);
-
-  // Error handling
-  void onWorkerError(QString errorMsg);
-  void onWorkerStatus(QString msg);
+  // Display update (polls subscriber for new frames)
+  void onUpdateDisplay();
 
   // Zoom control
   void onZoomSliderChanged(int value);
   void onZoomSpinBoxChanged(int value);
   void onZoomResetClicked();
-  void onZoomChanged(int zoomPercent);
 
 private:
   void setupUI();
   void updateConnectionStatus(bool connected);
-  void cleanupWorkerThread();
   void updateZoomLabel(int zoomPercent);
 
   // Camera info
@@ -81,9 +69,9 @@ private:
   std::string m_displayName;
   bool m_isConnected;
 
-  // Worker thread components
-  QThread* m_workerThread;
-  CameraWorker* m_worker;
+  // Pub-Sub components (replaces worker thread!)
+  std::shared_ptr<LiveVideoSubscriber> m_subscriber;
+  QTimer* m_displayUpdateTimer;
 
   // UI Components
   QPushButton* m_connectButton;
@@ -98,4 +86,10 @@ private:
   QSpinBox* m_zoomSpinBox;
   QPushButton* m_zoomResetButton;
   QLabel* m_zoomLabel;
+  std::atomic<int> m_zoomPercent;
+
+  // Performance tracking
+  std::chrono::steady_clock::time_point m_lastUpdateTime;
+  int m_frameCounter;
+  double m_avgProcessingTime;
 };

@@ -135,7 +135,11 @@ set(SOURCES
     include/camera/CameraManager.cpp
     include/camera/CameraConfigManager.cpp
     include/camera/CameraHardwareFactory.cpp
- "include/camera/CameraWorker.cpp" "include/camera/CameraView.cpp" "include/camera/MultiCameraView.cpp")
+    include/camera/CameraWorker.cpp
+    include/camera/CameraView.cpp
+    include/camera/MultiCameraView.cpp
+    include/camera/LiveVideoSubscriber.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -145,7 +149,12 @@ set(HEADERS
     include/camera/CameraHardwareFactory.h
     include/camera/ICameraHardware.h
     include/camera/CameraFrameData.h
- "include/camera/CameraWorker.h" "include/camera/CameraView.h" "include/camera/MultiCameraView.h")
+    include/camera/CameraWorker.h
+    include/camera/CameraView.h
+    include/camera/MultiCameraView.h
+    include/camera/LiveVideoSubscriber.h
+    include/camera/FrameConverter.h
+)
 
 # Conditionally add Pylon camera files if SDK is found
 if(PYLON_FOUND)

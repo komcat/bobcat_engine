@@ -1,10 +1,11 @@
-// CameraView.cpp - Single camera widget implementation
+﻿// CameraView.cpp - Tab view using pub-sub pattern
 #include "CameraView.h"
 #include "CameraManager.h"
-#include "CameraWorker.h"
+#include "LiveVideoSubscriber.h"
 #include <QGroupBox>
 #include <QMessageBox>
 #include <iostream>
+#include <cstring>
 
 CameraView::CameraView(CameraManager* cameraManager,
   const std::string& cameraId,
@@ -15,8 +16,10 @@ CameraView::CameraView(CameraManager* cameraManager,
   , m_cameraId(cameraId)
   , m_displayName(displayName)
   , m_isConnected(false)
-  , m_workerThread(nullptr)
-  , m_worker(nullptr)
+  , m_displayUpdateTimer(nullptr)
+  , m_zoomPercent(100)
+  , m_frameCounter(0)
+  , m_avgProcessingTime(0.0)
 {
   setupUI();
   std::cout << "[CameraView] Created for camera: " << m_cameraId << std::endl;
@@ -47,7 +50,7 @@ void CameraView::setupUI()
 
   // Video display area
   m_videoLabel = new QLabel("No camera feed");
-  m_videoLabel->setMinimumSize(250, 250);
+  m_videoLabel->setMinimumSize(640, 480);
   m_videoLabel->setAlignment(Qt::AlignCenter);
   m_videoLabel->setStyleSheet(
     "QLabel { background-color: #2b2b2b; color: #888888; border: 2px solid #555555; }");
@@ -138,26 +141,26 @@ bool CameraView::connectCamera()
     return false;
   }
 
-  // Create worker thread
-  m_workerThread = new QThread(this);
-  m_workerThread->setObjectName(QString("Worker_%1").arg(QString::fromStdString(m_cameraId)));
+  // ========================================================================
+  // PUB-SUB SETUP
+  // ========================================================================
 
-  m_worker = new CameraWorker(m_cameraManager, m_cameraId);
-  m_worker->moveToThread(m_workerThread);
+  // Create subscriber
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
+  m_subscriber->InitializeStatusFromManager(m_cameraManager);
 
-  // Connect signals
-  connect(m_workerThread, &QThread::started, m_worker, &CameraWorker::startCapture);
-  connect(m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
+  // Subscribe to broadcasts
+  m_cameraManager->SubscribeToFrames(m_subscriber);
 
-  connect(m_worker, &CameraWorker::frameReady, this, &CameraView::onFrameReady);
-  connect(m_worker, &CameraWorker::fpsUpdated, this, &CameraView::onFpsUpdated);
-  connect(m_worker, &CameraWorker::processingTimeUpdated, this, &CameraView::onProcessingTimeUpdated);
-  connect(m_worker, &CameraWorker::error, this, &CameraView::onWorkerError);
-  connect(m_worker, &CameraWorker::statusMessage, this, &CameraView::onWorkerStatus);
-  connect(m_worker, &CameraWorker::zoomChanged, this, &CameraView::onZoomChanged);
+  std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
 
-  // Start worker thread
-  m_workerThread->start();
+  // Start display update timer (NOT capture timer!)
+  m_displayUpdateTimer = new QTimer(this);
+  connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
+  m_displayUpdateTimer->start(33); // 30 FPS UI polling
+
+  m_lastUpdateTime = std::chrono::steady_clock::now();
+  m_frameCounter = 0;
 
   // Update UI
   updateConnectionStatus(true);
@@ -179,17 +182,27 @@ void CameraView::disconnectCamera()
 
   std::cout << "[CameraView] Disconnecting camera: " << m_cameraId << std::endl;
 
-  // Disable zoom controls
-  m_zoomSlider->setEnabled(false);
-  m_zoomSpinBox->setEnabled(false);
-  m_zoomResetButton->setEnabled(false);
+  // Stop display timer
+  if (m_displayUpdateTimer) {
+    m_displayUpdateTimer->stop();
+    m_displayUpdateTimer->deleteLater();
+    m_displayUpdateTimer = nullptr;
+  }
 
-  // Cleanup worker thread
-  cleanupWorkerThread();
+  // Unsubscribe
+  if (m_subscriber && m_cameraManager) {
+    m_cameraManager->UnsubscribeFromFrames(m_subscriber->GetSubscriberId());
+    m_subscriber.reset();
+  }
 
   // Disconnect camera
   m_cameraManager->StopGrabbing(m_cameraId);
   m_cameraManager->DisconnectCamera(m_cameraId);
+
+  // Disable zoom controls
+  m_zoomSlider->setEnabled(false);
+  m_zoomSpinBox->setEnabled(false);
+  m_zoomResetButton->setEnabled(false);
 
   // Update UI
   updateConnectionStatus(false);
@@ -212,47 +225,87 @@ void CameraView::onDisconnectClicked()
   disconnectCamera();
 }
 
-void CameraView::onFrameReady(QImage image)
+void CameraView::onUpdateDisplay()
 {
+  // Check if subscriber has new frame
+  if (!m_subscriber || !m_subscriber->HasNewFrame()) {
+    return;
+  }
+
+  auto frameStart = std::chrono::steady_clock::now();
+
+  // Get frame from subscriber
+  CameraFrameData frameData = m_subscriber->GetLatestFrame();
+  m_subscriber->MarkFrameConsumed();
+
+  // Convert CameraFrameData to QImage
+  if (!frameData.IsValid() || frameData.imageData.empty()) {
+    return;
+  }
+
+  QImage::Format format = (frameData.channels == 3)
+    ? QImage::Format_RGB888
+    : QImage::Format_Grayscale8;
+
+  QImage image(frameData.width, frameData.height, format);
+
   if (image.isNull()) {
     return;
   }
 
+  // Copy frame data
+  size_t expectedSize = frameData.width * frameData.height * frameData.channels;
+  if (frameData.imageData.size() != expectedSize) {
+    return;
+  }
+
+  std::memcpy(image.bits(), frameData.imageData.data(), frameData.imageData.size());
+
+  // Apply zoom if needed
+  int zoom = m_zoomPercent.load();
+  if (zoom < 100) {
+    // Calculate ROI for zoom
+    double zoomFactor = zoom / 100.0;
+    int roiWidth = static_cast<int>(image.width() * zoomFactor);
+    int roiHeight = static_cast<int>(image.height() * zoomFactor);
+
+    if (roiWidth < 1) roiWidth = 1;
+    if (roiHeight < 1) roiHeight = 1;
+
+    int roiX = (image.width() - roiWidth) / 2;
+    int roiY = (image.height() - roiHeight) / 2;
+
+    image = image.copy(QRect(roiX, roiY, roiWidth, roiHeight));
+  }
+
+  // Display image
   QPixmap pixmap = QPixmap::fromImage(image);
   pixmap = pixmap.scaled(m_videoLabel->size(),
     Qt::KeepAspectRatio,
     Qt::SmoothTransformation);
-
   m_videoLabel->setPixmap(pixmap);
-}
 
-void CameraView::onFpsUpdated(double fps)
-{
-  m_fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 1));
-}
+  // Performance tracking
+  auto frameEnd = std::chrono::steady_clock::now();
+  double processingMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
+  m_avgProcessingTime = (m_avgProcessingTime * 0.9) + (processingMs * 0.1);
+  m_frameCounter++;
 
-void CameraView::onProcessingTimeUpdated(double ms)
-{
-  m_performanceLabel->setText(
-    QString("Performance: %1 ms/frame").arg(ms, 0, 'f', 2));
-}
+  // Update FPS every second
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastUpdateTime).count();
 
-void CameraView::onWorkerError(QString errorMsg)
-{
-  std::cerr << "[CameraView] Worker error [" << m_cameraId << "]: "
-    << errorMsg.toStdString() << std::endl;
+  if (elapsed >= 1) {
+    double fps = m_frameCounter / static_cast<double>(elapsed);
+    m_fpsLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 1));
+    m_performanceLabel->setText(
+      QString("Processing: %1 ms | Total: %2")
+      .arg(m_avgProcessingTime, 0, 'f', 2)
+      .arg(m_subscriber->GetTotalFramesReceived()));
 
-  m_statusLabel->setText("Error: " + errorMsg);
-  m_statusLabel->setStyleSheet(
-    "QLabel { background-color: #ff4444; color: white; padding: 5px; font-weight: bold; }");
-
-  emit cameraError(QString::fromStdString(m_cameraId), errorMsg);
-}
-
-void CameraView::onWorkerStatus(QString msg)
-{
-  //std::cout << "[CameraView] Worker status [" << m_cameraId << "]: "
-  //  << msg.toStdString() << std::endl;
+    m_frameCounter = 0;
+    m_lastUpdateTime = now;
+  }
 }
 
 void CameraView::onZoomSliderChanged(int value)
@@ -261,12 +314,8 @@ void CameraView::onZoomSliderChanged(int value)
   m_zoomSpinBox->setValue(value);
   m_zoomSpinBox->blockSignals(false);
 
+  m_zoomPercent.store(value);
   updateZoomLabel(value);
-
-  if (m_worker && m_workerThread && m_workerThread->isRunning()) {
-    QMetaObject::invokeMethod(m_worker, "setZoomPercent",
-      Qt::QueuedConnection, Q_ARG(int, value));
-  }
 }
 
 void CameraView::onZoomSpinBoxChanged(int value)
@@ -275,12 +324,8 @@ void CameraView::onZoomSpinBoxChanged(int value)
   m_zoomSlider->setValue(value);
   m_zoomSlider->blockSignals(false);
 
+  m_zoomPercent.store(value);
   updateZoomLabel(value);
-
-  if (m_worker && m_workerThread && m_workerThread->isRunning()) {
-    QMetaObject::invokeMethod(m_worker, "setZoomPercent",
-      Qt::QueuedConnection, Q_ARG(int, value));
-  }
 }
 
 void CameraView::onZoomResetClicked()
@@ -289,15 +334,9 @@ void CameraView::onZoomResetClicked()
   m_zoomSpinBox->setValue(100);
 }
 
-void CameraView::onZoomChanged(int zoomPercent)
-{
-  updateZoomLabel(zoomPercent);
-}
-
 void CameraView::updateZoomLabel(int zoomPercent)
 {
   double zoomFactor = 100.0 / zoomPercent;
-
   m_zoomLabel->setText(QString("Zoom: %1% (%2x)")
     .arg(zoomPercent)
     .arg(zoomFactor, 0, 'f', 1));
@@ -308,7 +347,7 @@ void CameraView::updateConnectionStatus(bool connected)
   m_isConnected = connected;
 
   if (connected) {
-    m_statusLabel->setText(QString("Camera: %1 - Connected")
+    m_statusLabel->setText(QString("Camera: %1 - Connected (Pub-Sub)")
       .arg(QString::fromStdString(m_displayName)));
     m_statusLabel->setStyleSheet(
       "QLabel { background-color: #44ff44; color: black; padding: 5px; font-weight: bold; }");
@@ -323,32 +362,4 @@ void CameraView::updateConnectionStatus(bool connected)
     m_connectButton->setEnabled(true);
     m_disconnectButton->setEnabled(false);
   }
-}
-
-void CameraView::cleanupWorkerThread()
-{
-  if (!m_workerThread) {
-    return;
-  }
-
-  std::cout << "[CameraView] Cleaning up worker thread for: " << m_cameraId << std::endl;
-
-  if (m_worker) {
-    QMetaObject::invokeMethod(m_worker, "stopCapture", Qt::QueuedConnection);
-    QThread::msleep(100);
-  }
-
-  if (m_workerThread->isRunning()) {
-    m_workerThread->quit();
-
-    if (!m_workerThread->wait(3000)) {
-      std::cerr << "[CameraView] Warning: Worker thread did not stop gracefully" << std::endl;
-      m_workerThread->terminate();
-      m_workerThread->wait();
-    }
-  }
-
-  m_workerThread->deleteLater();
-  m_workerThread = nullptr;
-  m_worker = nullptr;
 }

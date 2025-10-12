@@ -1,4 +1,4 @@
-// CameraLiveView.h - With Zoom Controls
+// CameraLiveView.h - Standalone view using pub-sub pattern
 #pragma once
 
 #include <QWidget>
@@ -10,14 +10,20 @@
 #include <QHBoxLayout>
 #include <QTimer>
 #include <QImage>
-#include <QThread>
 #include <memory>
+#include <atomic>
+#include <chrono>
 
 // Forward declarations
 class CameraManager;
 class CameraConfigManager;
-class CameraWorker;
+class LiveVideoSubscriber;
 
+/**
+ * @brief Standalone live video view using pub-sub pattern
+ *
+ * Subscribes to camera broadcasts instead of using worker threads
+ */
 class CameraLiveView : public QWidget
 {
   Q_OBJECT
@@ -30,30 +36,18 @@ private slots:
   void onConnectClicked();
   void onDisconnectClicked();
 
-  // Frame display (runs on UI thread)
-  void onFrameReady(QImage image);
+  // UI update timer (polls subscriber for new frames)
+  void onUpdateDisplay();
 
-  // Performance monitoring
-  void onFpsUpdated(double fps);
-  void onProcessingTimeUpdated(double ms);
-
-  // Error handling
-  void onWorkerError(QString errorMsg);
-  void onWorkerStatus(QString msg);
-
-  // NEW: Zoom control slots
+  // Zoom control slots
   void onZoomSliderChanged(int value);
   void onZoomSpinBoxChanged(int value);
   void onZoomResetClicked();
-  void onZoomChanged(int zoomPercent);
 
 private:
   void setupUI();
   void loadCameraConfig();
   void updateConnectionStatus(bool connected);
-  void cleanupWorkerThread();
-
-  // NEW: Update zoom display
   void updateZoomLabel(int zoomPercent);
 
   // UI Components
@@ -64,7 +58,7 @@ private:
   QLabel* m_fpsLabel;
   QLabel* m_performanceLabel;
 
-  // NEW: Zoom controls
+  // Zoom controls
   QSlider* m_zoomSlider;
   QSpinBox* m_zoomSpinBox;
   QPushButton* m_zoomResetButton;
@@ -74,10 +68,16 @@ private:
   std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<CameraConfigManager> m_configManager;
 
-  // Worker thread components
-  QThread* m_workerThread;
-  CameraWorker* m_worker;
+  // Pub-Sub components (replaces worker thread!)
+  std::shared_ptr<LiveVideoSubscriber> m_subscriber;
+  QTimer* m_displayUpdateTimer;
 
   std::string m_cameraId;
   bool m_isConnected;
+  std::atomic<int> m_zoomPercent;
+
+  // Performance tracking
+  std::chrono::steady_clock::time_point m_lastUpdateTime;
+  int m_frameCounter;
+  double m_avgProcessingTime;
 };

@@ -11,6 +11,13 @@ CameraConfigManager::CameraConfigManager(const std::string& configFilePath)
 }
 
 bool CameraConfigManager::LoadConfig() {
+  // Try local override first
+  std::string localPath = "config/camera_config.local.json";
+  if (std::filesystem::exists(localPath)) {
+    return LoadConfig(localPath);
+  }
+
+  // Fall back to default
   return LoadConfig(configFilePath_);
 }
 

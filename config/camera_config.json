@@ -2,13 +2,6 @@
   "cameras": [
     {
       "id": "camera_1",
-      "display_name": "Overhead Camera",
-      "enabled": true,
-      "camera_type": "PYLON",
-      "ip_address": "192.168.0.68"
-    },
-    {
-      "id": "camera_2",
       "display_name": "Side Camera",
       "enabled": true,
       "camera_type": "IDS",
