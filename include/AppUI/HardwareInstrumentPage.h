@@ -1,4 +1,4 @@
-// HardwareInstrumentPage.h - Hardware page with sidebar + content
+﻿// HardwareInstrumentPage.h - Hardware page with sidebar + content
 #pragma once
 
 #include <QWidget>
@@ -6,6 +6,7 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+struct ApplicationContext;  // Forward declaration
 class MultiCameraView;
 
 /**
@@ -17,7 +18,7 @@ class HardwareInstrumentPage : public QWidget
   Q_OBJECT
 
 public:
-  explicit HardwareInstrumentPage(QWidget* parent = nullptr);
+  explicit HardwareInstrumentPage(ApplicationContext* context, QWidget* parent = nullptr);
   ~HardwareInstrumentPage() = default;
 
 signals:
@@ -33,6 +34,8 @@ private:
   void createSidebar();
   void createContentArea();
   QPushButton* createSidebarButton(const QString& text);
+
+  ApplicationContext* m_context;  // ✅ NEW - Store context
 
   // UI Components
   QWidget* m_sidebar;

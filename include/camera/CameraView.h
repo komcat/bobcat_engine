@@ -13,17 +13,16 @@
 #include <atomic>
 #include <chrono>
 
-// Forward declarations
-class CameraManager;
+struct ApplicationContext;
 class LiveVideoSubscriber;
-class CameraImageWidget;  // ✅ ADD THIS
+class CameraImageWidget;
 
 class CameraView : public QWidget
 {
   Q_OBJECT
 
 public:
-  explicit CameraView(CameraManager* cameraManager,
+  explicit CameraView(ApplicationContext* context,
     const std::string& cameraId,
     const std::string& displayName,
     QWidget* parent = nullptr);
@@ -52,31 +51,26 @@ private:
   void updateConnectionStatus(bool connected);
   void updateZoomLabel(int zoomPercent);
 
-  // Camera info
-  CameraManager* m_cameraManager;
+  ApplicationContext* m_context;
   std::string m_cameraId;
   std::string m_displayName;
   bool m_isConnected;
 
-  // Pub-Sub components
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayUpdateTimer;
 
-  // UI Components
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
-  CameraImageWidget* m_viewport;  // ✅ CHANGED from QLabel* m_videoLabel
+  CameraImageWidget* m_viewport;
   QLabel* m_statusLabel;
   QLabel* m_fpsLabel;
   QLabel* m_performanceLabel;
 
-  // Zoom controls
   QSlider* m_zoomSlider;
   QSpinBox* m_zoomSpinBox;
   QPushButton* m_zoomResetButton;
   QLabel* m_zoomLabel;
 
-  // Performance tracking
   std::chrono::steady_clock::time_point m_lastUpdateTime;
   int m_frameCounter;
   double m_avgProcessingTime;

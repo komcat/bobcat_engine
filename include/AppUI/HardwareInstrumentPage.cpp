@@ -1,13 +1,15 @@
 ﻿// HardwareInstrumentPage.cpp
 #include "HardwareInstrumentPage.h"
+#include "ApplicationContext.h"
 #include "MultiCameraView.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
 #include <iostream>
 
-HardwareInstrumentPage::HardwareInstrumentPage(QWidget* parent)
+HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
+  , m_context(context)  // ✅ Store context
   , m_sidebar(nullptr)
   , m_contentStack(nullptr)
   , m_cameraView(nullptr)
@@ -89,8 +91,8 @@ void HardwareInstrumentPage::createContentArea()
 {
   m_contentStack = new QStackedWidget();
 
-  // Camera view
-  m_cameraView = new MultiCameraView();
+  // ✅ Camera view - pass context
+  m_cameraView = new MultiCameraView(m_context);
   m_contentStack->addWidget(m_cameraView);
 
   // PI Hexapod placeholder

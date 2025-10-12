@@ -1,124 +1,80 @@
 ﻿// MainWindow.cpp
 #include "MainWindow.h"
+#include "ApplicationContext.h"
 #include "MainMenuPage.h"
 #include "HardwareInstrumentPage.h"
-#include "PlaceholderPage.h"  // ← ADD THIS
-#include <QVBoxLayout>
-#include <QLabel>
 #include <iostream>
 
-MainWindow::MainWindow(QWidget* parent)
+MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   : QMainWindow(parent)
-  , m_stackedWidget(nullptr)
+  , m_context(context)
+  , m_pageStack(nullptr)
   , m_mainMenuPage(nullptr)
   , m_hardwarePage(nullptr)
 {
   setupUI();
   createPages();
-  connectSignals();
 
-  // Start at main menu
-  showMainMenu();
-
-  std::cout << "[MainWindow] Created" << std::endl;
-}
-
-MainWindow::~MainWindow()
-{
-  std::cout << "[MainWindow] Destroyed" << std::endl;
+  // Show main menu first
+  m_pageStack->setCurrentWidget(m_mainMenuPage);
 }
 
 void MainWindow::setupUI()
 {
-  setWindowTitle("Bobcat Engine");
-  resize(1200, 800);  // ← CHANGED from 1400x900
-  setMinimumSize(800, 600);  // ← ADD THIS - allows resize down to 800x600
+  m_pageStack = new QStackedWidget(this);
+  setCentralWidget(m_pageStack);
 
-  // Create central widget
-  QWidget* centralWidget = new QWidget(this);
-  QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
-  mainLayout->setContentsMargins(0, 0, 0, 0);
-
-  // Create stacked widget for pages
-  m_stackedWidget = new QStackedWidget();
-  mainLayout->addWidget(m_stackedWidget);
-
-  setCentralWidget(centralWidget);
+  resize(1024, 768);
 }
 
 void MainWindow::createPages()
 {
-  // Create main menu page
-  m_mainMenuPage = new MainMenuPage();
-  m_stackedWidget->insertWidget(PAGE_MAIN_MENU, m_mainMenuPage);
+  std::cout << "[MainWindow] Creating pages..." << std::endl;
 
-  // Create placeholder pages with back buttons
-  m_processPage = new PlaceholderPage("Process");
-  m_stackedWidget->insertWidget(PAGE_PROCESS, m_processPage);
-
-  m_recipePage = new PlaceholderPage("Recipe");
-  m_stackedWidget->insertWidget(PAGE_RECIPE, m_recipePage);
-
-  m_motionPage = new PlaceholderPage("Motion");
-  m_stackedWidget->insertWidget(PAGE_MOTION, m_motionPage);
-
-  // Create hardware & instrument page
-  m_hardwarePage = new HardwareInstrumentPage();
-  m_stackedWidget->insertWidget(PAGE_HARDWARE, m_hardwarePage);
-
-  std::cout << "[MainWindow] All pages created" << std::endl;
-}
-
-void MainWindow::connectSignals()
-{
-  // Connect main menu buttons to page navigation
+  // Main menu page
+  m_mainMenuPage = new MainMenuPage(this);
   connect(m_mainMenuPage, &MainMenuPage::processClicked,
-    this, &MainWindow::showProcess);
+    this, &MainWindow::onMainMenuProcess);
   connect(m_mainMenuPage, &MainMenuPage::recipeClicked,
-    this, &MainWindow::showRecipe);
+    this, &MainWindow::onMainMenuRecipe);
   connect(m_mainMenuPage, &MainMenuPage::motionClicked,
-    this, &MainWindow::showMotion);
+    this, &MainWindow::onMainMenuMotion);
   connect(m_mainMenuPage, &MainMenuPage::hardwareClicked,
-    this, &MainWindow::showHardwareInstrument);
+    this, &MainWindow::onMainMenuHardware);
+  m_pageStack->addWidget(m_mainMenuPage);
 
-  // Connect back buttons from all pages
-  connect(m_processPage, &PlaceholderPage::backClicked,
-    this, &MainWindow::showMainMenu);
-  connect(m_recipePage, &PlaceholderPage::backClicked,
-    this, &MainWindow::showMainMenu);
-  connect(m_motionPage, &PlaceholderPage::backClicked,
-    this, &MainWindow::showMainMenu);
+  // Hardware & Instrument page (pass context)
+  m_hardwarePage = new HardwareInstrumentPage(m_context, this);
   connect(m_hardwarePage, &HardwareInstrumentPage::backToMainMenu,
-    this, &MainWindow::showMainMenu);
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_hardwarePage);
+
+  std::cout << "[MainWindow] Pages created" << std::endl;
 }
 
-
-void MainWindow::showMainMenu()
+void MainWindow::onMainMenuProcess()
 {
-  m_stackedWidget->setCurrentIndex(PAGE_MAIN_MENU);
-  std::cout << "[MainWindow] Showing main menu" << std::endl;
+  std::cout << "[MainWindow] Process clicked (not implemented)" << std::endl;
 }
 
-void MainWindow::showProcess()
+void MainWindow::onMainMenuRecipe()
 {
-  m_stackedWidget->setCurrentIndex(PAGE_PROCESS);
-  std::cout << "[MainWindow] Showing process page" << std::endl;
+  std::cout << "[MainWindow] Recipe clicked (not implemented)" << std::endl;
 }
 
-void MainWindow::showRecipe()
+void MainWindow::onMainMenuMotion()
 {
-  m_stackedWidget->setCurrentIndex(PAGE_RECIPE);
-  std::cout << "[MainWindow] Showing recipe page" << std::endl;
+  std::cout << "[MainWindow] Motion clicked (not implemented)" << std::endl;
 }
 
-void MainWindow::showMotion()
+void MainWindow::onMainMenuHardware()
 {
-  m_stackedWidget->setCurrentIndex(PAGE_MOTION);
-  std::cout << "[MainWindow] Showing motion page" << std::endl;
+  std::cout << "[MainWindow] Hardware clicked" << std::endl;
+  m_pageStack->setCurrentWidget(m_hardwarePage);
 }
 
-void MainWindow::showHardwareInstrument()
+void MainWindow::onBackToMainMenu()
 {
-  m_stackedWidget->setCurrentIndex(PAGE_HARDWARE);
-  std::cout << "[MainWindow] Showing hardware & instrument page" << std::endl;
+  std::cout << "[MainWindow] Back to main menu" << std::endl;
+  m_pageStack->setCurrentWidget(m_mainMenuPage);
 }

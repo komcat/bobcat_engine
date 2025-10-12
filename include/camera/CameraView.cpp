@@ -1,18 +1,19 @@
 ﻿// CameraView.cpp
 #include "CameraView.h"
+#include "ApplicationContext.h"
 #include "CameraManager.h"
 #include "LiveVideoSubscriber.h"
-#include "CameraImageWidget.h"  // ✅ ADD THIS
+#include "CameraImageWidget.h"
 #include <QGroupBox>
 #include <QMessageBox>
 #include <iostream>
 
-CameraView::CameraView(CameraManager* cameraManager,
+CameraView::CameraView(ApplicationContext* context,
   const std::string& cameraId,
   const std::string& displayName,
   QWidget* parent)
   : QWidget(parent)
-  , m_cameraManager(cameraManager)
+  , m_context(context)
   , m_cameraId(cameraId)
   , m_displayName(displayName)
   , m_isConnected(false)
@@ -115,6 +116,7 @@ void CameraView::setupUI()
   setLayout(mainLayout);
 }
 
+
 bool CameraView::connectCamera()
 {
   if (m_isConnected) {
@@ -123,36 +125,34 @@ bool CameraView::connectCamera()
 
   std::cout << "[CameraView] Connecting camera: " << m_cameraId << std::endl;
 
-  if (!m_cameraManager->ConnectCamera(m_cameraId)) {
+  // Use context to access camera manager
+  if (!m_context->cameraManager->ConnectCamera(m_cameraId)) {
     QString error = QString("Failed to connect to camera: %1")
       .arg(QString::fromStdString(m_cameraId));
     emit cameraError(QString::fromStdString(m_cameraId), error);
     return false;
   }
 
-  if (!m_cameraManager->StartGrabbing(m_cameraId)) {
-    m_cameraManager->DisconnectCamera(m_cameraId);
+  if (!m_context->cameraManager->StartGrabbing(m_cameraId)) {
+    m_context->cameraManager->DisconnectCamera(m_cameraId);
     emit cameraError(QString::fromStdString(m_cameraId), "Failed to start grabbing");
     return false;
   }
 
-  // Create subscriber
   m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
-  m_subscriber->InitializeStatusFromManager(m_cameraManager);
-  m_cameraManager->SubscribeToFrames(m_subscriber);
+  m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
+  m_context->cameraManager->SubscribeToFrames(m_subscriber);
 
   std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
 
-  // Start display update timer
   m_displayUpdateTimer = new QTimer(this);
   connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
-  m_displayUpdateTimer->start(33); // 30 FPS
+  m_displayUpdateTimer->start(33);
 
   m_lastUpdateTime = std::chrono::steady_clock::now();
   m_frameCounter = 0;
   m_lastTotalFrames = 0;
 
-  // Update UI
   updateConnectionStatus(true);
   m_zoomSlider->setEnabled(true);
   m_zoomSpinBox->setEnabled(true);
@@ -178,19 +178,18 @@ void CameraView::disconnectCamera()
     m_displayUpdateTimer = nullptr;
   }
 
-  if (m_subscriber && m_cameraManager) {
-    m_cameraManager->UnsubscribeFromFrames(m_subscriber->GetSubscriberId());
+  if (m_subscriber && m_context->cameraManager) {
+    m_context->cameraManager->UnsubscribeFromFrames(m_subscriber->GetSubscriberId());
     m_subscriber.reset();
   }
 
-  m_cameraManager->StopGrabbing(m_cameraId);
-  m_cameraManager->DisconnectCamera(m_cameraId);
+  m_context->cameraManager->StopGrabbing(m_cameraId);
+  m_context->cameraManager->DisconnectCamera(m_cameraId);
 
   m_zoomSlider->setEnabled(false);
   m_zoomSpinBox->setEnabled(false);
   m_zoomResetButton->setEnabled(false);
 
-  // ✅ CHANGED: Clear viewport
   m_viewport->clearDisplay();
 
   updateConnectionStatus(false);
@@ -201,6 +200,7 @@ void CameraView::disconnectCamera()
   emit cameraDisconnected(QString::fromStdString(m_cameraId));
   std::cout << "[CameraView] Camera disconnected: " << m_cameraId << std::endl;
 }
+
 
 void CameraView::onConnectClicked()
 {

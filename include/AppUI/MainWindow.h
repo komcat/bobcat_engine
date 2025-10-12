@@ -1,52 +1,35 @@
-﻿#pragma once
+﻿// MainWindow.h
+#pragma once
 
 #include <QMainWindow>
 #include <QStackedWidget>
-#include <memory>
 
+struct ApplicationContext;
 class MainMenuPage;
 class HardwareInstrumentPage;
-class PlaceholderPage;  // ← ADD THIS
 
-/**
- * @brief Main window - holds everything
- */
 class MainWindow : public QMainWindow
 {
   Q_OBJECT
 
 public:
-  explicit MainWindow(QWidget* parent = nullptr);
-  ~MainWindow();
+  explicit MainWindow(ApplicationContext* context, QWidget* parent = nullptr);
+  ~MainWindow() = default;
 
 private slots:
-  void showMainMenu();
-  void showProcess();
-  void showRecipe();
-  void showMotion();
-  void showHardwareInstrument();
+  void onMainMenuProcess();
+  void onMainMenuRecipe();
+  void onMainMenuMotion();
+  void onMainMenuHardware();
+  void onBackToMainMenu();
 
 private:
   void setupUI();
   void createPages();
-  void connectSignals();
 
-  // UI Components
-  QStackedWidget* m_stackedWidget;
+  ApplicationContext* m_context;
+  QStackedWidget* m_pageStack;
 
-  // Pages
   MainMenuPage* m_mainMenuPage;
   HardwareInstrumentPage* m_hardwarePage;
-  PlaceholderPage* m_processPage;     // ← ADD
-  PlaceholderPage* m_recipePage;      // ← ADD
-  PlaceholderPage* m_motionPage;      // ← ADD
-
-  // Page indices
-  enum PageIndex {
-    PAGE_MAIN_MENU = 0,
-    PAGE_PROCESS = 1,
-    PAGE_RECIPE = 2,
-    PAGE_MOTION = 3,
-    PAGE_HARDWARE = 4
-  };
 };

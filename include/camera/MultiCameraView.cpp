@@ -1,22 +1,22 @@
-﻿// MultiCameraView.cpp - Multi-camera manager implementation
+﻿// MultiCameraView.cpp
 #include "MultiCameraView.h"
-#include "CameraView.h"
+#include "ApplicationContext.h"
 #include "CameraManager.h"
+#include "CameraView.h"
 #include "CameraConfigManager.h"
 #include <QMessageBox>
 #include <QHBoxLayout>
 #include <iostream>
 
-MultiCameraView::MultiCameraView(QWidget* parent)
+MultiCameraView::MultiCameraView(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
+  , m_context(context)
 {
   setupUI();
 
-  // Create camera manager and config manager
-  m_cameraManager = std::make_unique<CameraManager>();
+  // Create config manager (no longer creating CameraManager!)
   m_configManager = std::make_unique<CameraConfigManager>("config/camera_config.json");
 
-  // Load camera configuration
   loadCameraConfig();
 
   std::cout << "[MultiCameraView] Created with " << m_cameras.size() << " cameras" << std::endl;
@@ -26,44 +26,27 @@ MultiCameraView::~MultiCameraView()
 {
   std::cout << "[MultiCameraView] Destructor called" << std::endl;
 
-  // ✅ FIX: Force disconnect ALL cameras before destruction
-  if (m_cameraManager) {
-    std::cout << "[MultiCameraView] Stopping all cameras..." << std::endl;
-    m_cameraManager->StopGrabbingAll();
-
-    // Give cameras time to stop cleanly
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Disconnect each camera explicitly
-    for (auto* view : m_cameraViews) {
-      if (view) {
-        view->disconnectCamera();
-      }
+  for (auto* view : m_cameraViews) {
+    if (view) {
+      view->disconnectCamera();
     }
-
-    // Another brief pause before destroying manager
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-
-  std::cout << "[MultiCameraView] Cleanup complete" << std::endl;
 }
+
 
 void MultiCameraView::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
-  // Status summary
   m_statusSummary = new QLabel("Cameras: Loading configuration...");
   m_statusSummary->setStyleSheet(
     "QLabel { background-color: #444444; color: white; padding: 8px; font-weight: bold; font-size: 14px; }");
   mainLayout->addWidget(m_statusSummary);
 
-  // Tab widget for cameras
   m_tabWidget = new QTabWidget();
   m_tabWidget->setTabPosition(QTabWidget::North);
   mainLayout->addWidget(m_tabWidget);
 
-  // Control buttons
   QHBoxLayout* buttonLayout = new QHBoxLayout();
 
   m_connectEnabledButton = new QPushButton("Connect Enabled Cameras");
@@ -89,6 +72,8 @@ void MultiCameraView::setupUI()
   resize(1200, 800);
 }
 
+
+
 void MultiCameraView::loadCameraConfig()
 {
   if (!m_configManager->LoadConfig()) {
@@ -98,7 +83,6 @@ void MultiCameraView::loadCameraConfig()
     return;
   }
 
-  // Get all camera configurations
   const auto& cameraConfigs = m_configManager->GetCameraConfigs();
 
   if (cameraConfigs.empty()) {
@@ -110,25 +94,23 @@ void MultiCameraView::loadCameraConfig()
 
   std::cout << "[MultiCameraView] Loading " << cameraConfigs.size() << " cameras from config" << std::endl;
 
-  // Initialize camera manager with all cameras
-  m_configManager->InitializeCameraManager(*m_cameraManager);
+  // Initialize camera manager with all cameras (using context!)
+  m_configManager->InitializeCameraManager(*m_context->cameraManager);
 
-  // Create camera views for each configured camera
+  // Create camera views
   for (const auto& camConfig : cameraConfigs) {
-    // Store camera info
     CameraInfo info;
     info.id = camConfig.id;
     info.displayName = camConfig.displayName;
     info.enabled = camConfig.enabled;
     m_cameras.push_back(info);
 
-    // Create camera view widget
-    CameraView* cameraView = new CameraView(m_cameraManager.get(),
+    // Pass context to CameraView
+    CameraView* cameraView = new CameraView(m_context,
       camConfig.id,
       camConfig.displayName,
       this);
 
-    // Connect signals
     connect(cameraView, &CameraView::cameraConnected,
       this, &MultiCameraView::onCameraConnected);
     connect(cameraView, &CameraView::cameraDisconnected,
@@ -138,7 +120,6 @@ void MultiCameraView::loadCameraConfig()
 
     m_cameraViews.push_back(cameraView);
 
-    // Add as tab
     QString tabLabel = QString::fromStdString(camConfig.displayName);
     if (!camConfig.enabled) {
       tabLabel += " [DISABLED]";
@@ -149,14 +130,14 @@ void MultiCameraView::loadCameraConfig()
       << " (enabled: " << (camConfig.enabled ? "yes" : "no") << ")" << std::endl;
   }
 
-  // Enable control buttons
   m_connectEnabledButton->setEnabled(true);
   m_connectAllButton->setEnabled(true);
   m_disconnectAllButton->setEnabled(true);
 
-  // Update status
   updateStatusSummary();
 }
+
+
 
 void MultiCameraView::onConnectAllClicked()
 {
@@ -187,6 +168,8 @@ void MultiCameraView::onConnectAllClicked()
 
   updateStatusSummary();
 }
+
+
 
 void MultiCameraView::onConnectEnabledClicked()
 {
@@ -227,6 +210,8 @@ void MultiCameraView::onConnectEnabledClicked()
   updateStatusSummary();
 }
 
+
+
 void MultiCameraView::onDisconnectAllClicked()
 {
   std::cout << "[MultiCameraView] Disconnecting all cameras..." << std::endl;
@@ -259,6 +244,7 @@ void MultiCameraView::onCameraError(QString cameraId, QString error)
     << error.toStdString() << std::endl;
 }
 
+
 void MultiCameraView::updateStatusSummary()
 {
   int totalCameras = m_cameraViews.size();
@@ -281,7 +267,6 @@ void MultiCameraView::updateStatusSummary()
 
   m_statusSummary->setText(status);
 
-  // Change color based on status
   if (connectedCameras == 0) {
     m_statusSummary->setStyleSheet(
       "QLabel { background-color: #ff4444; color: white; padding: 8px; font-weight: bold; font-size: 14px; }");

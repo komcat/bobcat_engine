@@ -1,4 +1,4 @@
-// MultiCameraView.h - Main window for managing multiple cameras
+// MultiCameraView.h
 #pragma once
 
 #include <QWidget>
@@ -10,27 +10,16 @@
 #include <vector>
 #include <string>
 
-// Forward declarations
-class CameraManager;
+struct ApplicationContext;
 class CameraConfigManager;
 class CameraView;
 
-/**
- * @brief Main widget for multi-camera system
- *
- * Features:
- * - Tab-based interface (one tab per camera)
- * - Dynamic camera loading from config
- * - Connect all / Disconnect all buttons
- * - Status summary
- * - Independent camera controls per tab
- */
 class MultiCameraView : public QWidget
 {
   Q_OBJECT
 
 public:
-  explicit MultiCameraView(QWidget* parent = nullptr);
+  explicit MultiCameraView(ApplicationContext* context, QWidget* parent = nullptr);
   ~MultiCameraView();
 
 private slots:
@@ -38,7 +27,6 @@ private slots:
   void onDisconnectAllClicked();
   void onConnectEnabledClicked();
 
-  // Camera status updates
   void onCameraConnected(QString cameraId);
   void onCameraDisconnected(QString cameraId);
   void onCameraError(QString cameraId, QString error);
@@ -48,21 +36,17 @@ private:
   void loadCameraConfig();
   void updateStatusSummary();
 
-  // UI Components
+  ApplicationContext* m_context;
+
   QTabWidget* m_tabWidget;
   QPushButton* m_connectAllButton;
   QPushButton* m_connectEnabledButton;
   QPushButton* m_disconnectAllButton;
   QLabel* m_statusSummary;
 
-  // Camera components
-  std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<CameraConfigManager> m_configManager;
-
-  // Camera views (one per camera)
   std::vector<CameraView*> m_cameraViews;
 
-  // Camera info
   struct CameraInfo {
     std::string id;
     std::string displayName;
