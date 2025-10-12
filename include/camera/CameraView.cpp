@@ -1,11 +1,11 @@
-﻿// CameraView.cpp - Tab view using pub-sub pattern
+﻿// CameraView.cpp
 #include "CameraView.h"
 #include "CameraManager.h"
 #include "LiveVideoSubscriber.h"
+#include "CameraImageWidget.h"  // ✅ ADD THIS
 #include <QGroupBox>
 #include <QMessageBox>
 #include <iostream>
-#include <cstring>
 
 CameraView::CameraView(CameraManager* cameraManager,
   const std::string& cameraId,
@@ -17,11 +17,9 @@ CameraView::CameraView(CameraManager* cameraManager,
   , m_displayName(displayName)
   , m_isConnected(false)
   , m_displayUpdateTimer(nullptr)
-  , m_zoomPercent(100)
   , m_frameCounter(0)
   , m_avgProcessingTime(0.0)
-  , m_lastTotalFrames(0)        // ✅ ADD THIS LINE
-  , m_imageBufferInitialized(false)  // ADD THIS
+  , m_lastTotalFrames(0)
 {
   setupUI();
   std::cout << "[CameraView] Created for camera: " << m_cameraId << std::endl;
@@ -50,14 +48,11 @@ void CameraView::setupUI()
     "QLabel { background-color: #333333; color: #00ff00; padding: 3px; font-family: monospace; }");
   mainLayout->addWidget(m_performanceLabel);
 
-  // Video display area
-  m_videoLabel = new QLabel("No camera feed");
-  m_videoLabel->setMinimumSize(640, 480);
-  m_videoLabel->setAlignment(Qt::AlignCenter);
-  m_videoLabel->setStyleSheet(
-    "QLabel { background-color: #2b2b2b; color: #888888; border: 2px solid #555555; }");
-  m_videoLabel->setScaledContents(false);
-  mainLayout->addWidget(m_videoLabel);
+  // ✅ CHANGED: Use CameraImageWidget instead of QLabel
+  m_viewport = new CameraImageWidget(this);
+  m_viewport->setMinimumDisplaySize(640, 480);
+  m_viewport->setPlaceholderText("No camera feed");
+  mainLayout->addWidget(m_viewport);
 
   // Zoom controls
   QGroupBox* zoomGroup = new QGroupBox("Digital Zoom");
@@ -128,7 +123,6 @@ bool CameraView::connectCamera()
 
   std::cout << "[CameraView] Connecting camera: " << m_cameraId << std::endl;
 
-  // Connect to camera via manager
   if (!m_cameraManager->ConnectCamera(m_cameraId)) {
     QString error = QString("Failed to connect to camera: %1")
       .arg(QString::fromStdString(m_cameraId));
@@ -136,34 +130,27 @@ bool CameraView::connectCamera()
     return false;
   }
 
-  // Start grabbing
   if (!m_cameraManager->StartGrabbing(m_cameraId)) {
     m_cameraManager->DisconnectCamera(m_cameraId);
     emit cameraError(QString::fromStdString(m_cameraId), "Failed to start grabbing");
     return false;
   }
 
-  // ========================================================================
-  // PUB-SUB SETUP
-  // ========================================================================
-
   // Create subscriber
   m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
   m_subscriber->InitializeStatusFromManager(m_cameraManager);
-
-  // Subscribe to broadcasts
   m_cameraManager->SubscribeToFrames(m_subscriber);
 
   std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
 
-  // Start display update timer (NOT capture timer!)
+  // Start display update timer
   m_displayUpdateTimer = new QTimer(this);
   connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
-  m_displayUpdateTimer->start(33); // 30 FPS UI polling
+  m_displayUpdateTimer->start(33); // 30 FPS
 
   m_lastUpdateTime = std::chrono::steady_clock::now();
   m_frameCounter = 0;
-  m_lastTotalFrames = 0;  // ✅ ADD THIS LINE
+  m_lastTotalFrames = 0;
 
   // Update UI
   updateConnectionStatus(true);
@@ -185,31 +172,28 @@ void CameraView::disconnectCamera()
 
   std::cout << "[CameraView] Disconnecting camera: " << m_cameraId << std::endl;
 
-  // Stop display timer
   if (m_displayUpdateTimer) {
     m_displayUpdateTimer->stop();
     m_displayUpdateTimer->deleteLater();
     m_displayUpdateTimer = nullptr;
   }
 
-  // Unsubscribe
   if (m_subscriber && m_cameraManager) {
     m_cameraManager->UnsubscribeFromFrames(m_subscriber->GetSubscriberId());
     m_subscriber.reset();
   }
 
-  // Disconnect camera
   m_cameraManager->StopGrabbing(m_cameraId);
   m_cameraManager->DisconnectCamera(m_cameraId);
 
-  // Disable zoom controls
   m_zoomSlider->setEnabled(false);
   m_zoomSpinBox->setEnabled(false);
   m_zoomResetButton->setEnabled(false);
 
-  // Update UI
+  // ✅ CHANGED: Clear viewport
+  m_viewport->clearDisplay();
+
   updateConnectionStatus(false);
-  m_videoLabel->setText("No camera feed");
   m_fpsLabel->setText("FPS: --");
   m_performanceLabel->setText("Performance: --");
   updateZoomLabel(100);
@@ -228,15 +212,9 @@ void CameraView::onDisconnectClicked()
   disconnectCamera();
 }
 
-// OPTIMIZED onUpdateDisplay() - Replace in both CameraView.cpp and CameraLiveView.cpp
-
-void CameraView::onUpdateDisplay()  // or CameraLiveView::onUpdateDisplay()
+// ✅ SIMPLIFIED: onUpdateDisplay now uses CameraImageWidget
+void CameraView::onUpdateDisplay()
 {
-
-
-
-
-  // Quick exit if no new frame
   if (!m_subscriber || !m_subscriber->HasNewFrame()) {
     return;
   }
@@ -252,87 +230,10 @@ void CameraView::onUpdateDisplay()  // or CameraLiveView::onUpdateDisplay()
     return;
   }
 
-  // ========================================================================
-  // OPTIMIZATION 1: Reuse QImage buffer (avoid allocation every frame)
-  // ========================================================================
+  // ✅ SIMPLIFIED: Single line to update display!
+  m_viewport->setFrame(frameData);
 
-  QImage::Format format = (frameData.channels == 3)
-    ? QImage::Format_RGB888
-    : QImage::Format_Grayscale8;
-
-  // Only reallocate if dimensions or format changed
-  if (m_reusableImage.width() != static_cast<int>(frameData.width) ||
-    m_reusableImage.height() != static_cast<int>(frameData.height) ||
-    m_reusableImage.format() != format) {
-
-    m_reusableImage = QImage(frameData.width, frameData.height, format);
-
-    if (m_reusableImage.isNull()) {
-      std::cerr << "[ERROR] Failed to allocate reusable image buffer" << std::endl;
-      return;
-    }
-
-    std::cout << "[INFO] Reallocated image buffer: "
-      << frameData.width << "x" << frameData.height << std::endl;
-  }
-
-  // ========================================================================
-  // OPTIMIZATION 2: Direct memory copy (no intermediate buffer)
-  // ========================================================================
-
-  size_t expectedSize = frameData.width * frameData.height * frameData.channels;
-  if (frameData.imageData.size() != expectedSize) {
-    std::cerr << "[ERROR] Frame data size mismatch!" << std::endl;
-    return;
-  }
-
-  // Fast copy directly to reusable buffer
-  std::memcpy(m_reusableImage.bits(),
-    frameData.imageData.data(),
-    frameData.imageData.size());
-
-  // ========================================================================
-  // OPTIMIZATION 3: Apply zoom only if needed
-  // ========================================================================
-
-  QImage displayImage;
-  int zoom = m_zoomPercent.load();
-
-  if (zoom < 100) {
-    // Calculate ROI for zoom
-    double zoomFactor = zoom / 100.0;
-    int roiWidth = static_cast<int>(m_reusableImage.width() * zoomFactor);
-    int roiHeight = static_cast<int>(m_reusableImage.height() * zoomFactor);
-
-    if (roiWidth < 1) roiWidth = 1;
-    if (roiHeight < 1) roiHeight = 1;
-
-    int roiX = (m_reusableImage.width() - roiWidth) / 2;
-    int roiY = (m_reusableImage.height() - roiHeight) / 2;
-
-    // Extract ROI (creates new image, but smaller)
-    displayImage = m_reusableImage.copy(QRect(roiX, roiY, roiWidth, roiHeight));
-  }
-  else {
-    // No zoom - use reusable image directly (Qt uses copy-on-write)
-    displayImage = m_reusableImage;
-  }
-
-  // ========================================================================
-  // OPTIMIZATION 4: Faster scaling (use FastTransformation for real-time)
-  // ========================================================================
-
-  QPixmap pixmap = QPixmap::fromImage(displayImage);
-  pixmap = pixmap.scaled(m_videoLabel->size(),
-    Qt::KeepAspectRatio,
-    Qt::FastTransformation);  // Changed from SmoothTransformation!
-
-  m_videoLabel->setPixmap(pixmap);
-
-  // ========================================================================
-  // FIXED: Performance tracking with correct FPS calculation
-  // ========================================================================
-
+  // Performance tracking
   auto frameEnd = std::chrono::steady_clock::now();
   double processingMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();
 
@@ -344,20 +245,16 @@ void CameraView::onUpdateDisplay()  // or CameraLiveView::onUpdateDisplay()
   auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastUpdateTime).count();
 
   if (elapsed >= 1) {
-    // Get total frames from subscriber
     uint64_t totalFrames = m_subscriber->GetTotalFramesReceived();
 
-    // Calculate display FPS
     double captureFPS = m_frameCounter / static_cast<double>(elapsed);
 
-    // Calculate actual camera capture rate using instance variable
     double actualFPS = (totalFrames > m_lastTotalFrames)
       ? (totalFrames - m_lastTotalFrames) / static_cast<double>(elapsed)
       : 0.0;
 
-    m_lastTotalFrames = totalFrames;  // ✅ CHANGED: Use instance variable
+    m_lastTotalFrames = totalFrames;
 
-    // Display ACTUAL FPS (from camera), not just display rate
     m_fpsLabel->setText(QString("FPS: %1 (Actual: %2)")
       .arg(captureFPS, 0, 'f', 1)
       .arg(actualFPS, 0, 'f', 1));
@@ -371,19 +268,16 @@ void CameraView::onUpdateDisplay()  // or CameraLiveView::onUpdateDisplay()
     m_frameCounter = 0;
     m_lastUpdateTime = now;
   }
-
-
-
 }
 
-
+// ✅ SIMPLIFIED: Zoom control now uses CameraImageWidget
 void CameraView::onZoomSliderChanged(int value)
 {
   m_zoomSpinBox->blockSignals(true);
   m_zoomSpinBox->setValue(value);
   m_zoomSpinBox->blockSignals(false);
 
-  m_zoomPercent.store(value);
+  m_viewport->setZoomPercent(value);  // ✅ Single call!
   updateZoomLabel(value);
 }
 
@@ -393,7 +287,7 @@ void CameraView::onZoomSpinBoxChanged(int value)
   m_zoomSlider->setValue(value);
   m_zoomSlider->blockSignals(false);
 
-  m_zoomPercent.store(value);
+  m_viewport->setZoomPercent(value);  // ✅ Single call!
   updateZoomLabel(value);
 }
 

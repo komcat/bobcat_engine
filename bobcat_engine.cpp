@@ -1,14 +1,17 @@
-﻿// bobcat_engine.cpp - Multi-camera main application
-#include <QApplication>
-#include "MultiCameraView.h"
+﻿// bobcat_engine.cpp - Entry point
+#include "Application.h"
+#include <iostream>
 
 int main(int argc, char* argv[])
 {
-  QApplication app(argc, argv);
+  std::cout << "=== Bobcat Engine Starting ===" << std::endl;
 
-  // Create and show multi-camera view window
-  MultiCameraView* multiCameraView = new MultiCameraView();
-  multiCameraView->show();
-
-  return app.exec();
+  try {
+    Application app(argc, argv);
+    return app.run();
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Fatal error: " << e.what() << std::endl;
+    return -1;
+  }
 }

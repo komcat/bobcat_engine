@@ -1,4 +1,4 @@
-﻿// CameraLiveView.h - OPTIMIZED VERSION with reusable buffers
+﻿// CameraLiveView.h - Using CameraImageWidget
 #pragma once
 
 #include <QWidget>
@@ -9,7 +9,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTimer>
-#include <QImage>
 #include <memory>
 #include <atomic>
 #include <chrono>
@@ -18,12 +17,13 @@
 class CameraManager;
 class CameraConfigManager;
 class LiveVideoSubscriber;
+class CameraImageWidget;  // ✅ ADD THIS
 
 /**
  * @brief Standalone live video view using optimized pub-sub pattern
  *
  * Performance optimizations:
- * - Reusable image buffer (no allocation per frame)
+ * - CameraImageWidget for reusable rendering
  * - Fast transformation for real-time scaling
  * - Direct memory copy to buffer
  */
@@ -38,11 +38,7 @@ public:
 private slots:
   void onConnectClicked();
   void onDisconnectClicked();
-
-  // UI update timer (polls subscriber for new frames)
   void onUpdateDisplay();
-
-  // Zoom control slots
   void onZoomSliderChanged(int value);
   void onZoomSpinBoxChanged(int value);
   void onZoomResetClicked();
@@ -56,7 +52,7 @@ private:
   // UI Components
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
-  QLabel* m_videoLabel;
+  CameraImageWidget* m_viewport;  // ✅ CHANGED from QLabel* m_videoLabel
   QLabel* m_statusLabel;
   QLabel* m_fpsLabel;
   QLabel* m_performanceLabel;
@@ -70,22 +66,15 @@ private:
   // Camera components
   std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<CameraConfigManager> m_configManager;
-
-  // Pub-Sub components
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayUpdateTimer;
 
   std::string m_cameraId;
   bool m_isConnected;
-  std::atomic<int> m_zoomPercent;
 
   // Performance tracking
   std::chrono::steady_clock::time_point m_lastUpdateTime;
   int m_frameCounter;
   double m_avgProcessingTime;
-  uint64_t m_lastTotalFrames;  // ✅ ADD THIS LINE
-
-  // NEW: Performance optimization - reusable image buffer
-  QImage m_reusableImage;
-  bool m_imageBufferInitialized;
+  uint64_t m_lastTotalFrames;
 };

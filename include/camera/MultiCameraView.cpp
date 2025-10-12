@@ -1,4 +1,4 @@
-// MultiCameraView.cpp - Multi-camera manager implementation
+﻿// MultiCameraView.cpp - Multi-camera manager implementation
 #include "MultiCameraView.h"
 #include "CameraView.h"
 #include "CameraManager.h"
@@ -26,12 +26,26 @@ MultiCameraView::~MultiCameraView()
 {
   std::cout << "[MultiCameraView] Destructor called" << std::endl;
 
-  // Disconnect all cameras
-  for (auto* view : m_cameraViews) {
-    if (view) {
-      view->disconnectCamera();
+  // ✅ FIX: Force disconnect ALL cameras before destruction
+  if (m_cameraManager) {
+    std::cout << "[MultiCameraView] Stopping all cameras..." << std::endl;
+    m_cameraManager->StopGrabbingAll();
+
+    // Give cameras time to stop cleanly
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Disconnect each camera explicitly
+    for (auto* view : m_cameraViews) {
+      if (view) {
+        view->disconnectCamera();
+      }
     }
+
+    // Another brief pause before destroying manager
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  std::cout << "[MultiCameraView] Cleanup complete" << std::endl;
 }
 
 void MultiCameraView::setupUI()

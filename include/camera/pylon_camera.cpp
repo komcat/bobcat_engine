@@ -55,66 +55,64 @@ PylonCamera::PylonCamera()
 }
 
 
-PylonCamera::~PylonCamera()
-{
+PylonCamera::~PylonCamera() {
 	std::cout << "PylonCamera destructor called" << std::endl;
 
-	try
-	{
-		// First, stop the grabbing thread if it's running
+	try {
+		// Stop thread FIRST
 		bool wasRunning = m_threadRunning.exchange(false);
-		if (wasRunning && m_grabThread.joinable())
-		{
+		if (wasRunning && m_grabThread.joinable()) {
 			std::cout << "Joining grab thread..." << std::endl;
 			m_grabThread.join();
 			std::cout << "Grab thread joined" << std::endl;
 		}
 
-		// Disconnect the camera if it's connected
-		if (m_connected)
-		{
-			Disconnect();
+		// Stop grabbing if active
+		if (m_connected && m_camera.IsGrabbing()) {
+			std::cout << "Stopping grabbing..." << std::endl;
+			m_camera.StopGrabbing();
 		}
 
-		// Detach camera to release device if still attached
-		try
-		{
-			if (m_camera.IsPylonDeviceAttached())
-			{
-				m_camera.DetachDevice();
-				std::cout << "Camera device detached" << std::endl;
+		// Close camera if open
+		if (m_camera.IsOpen()) {
+			std::cout << "Closing camera..." << std::endl;
+			m_camera.Close();
+		}
+
+		// ✅ CRITICAL FIX: DEREGISTER handler BEFORE deleting it
+		if (m_pDeviceRemovalHandler && m_camera.IsPylonDeviceAttached()) {
+			std::cout << "Deregistering event handler..." << std::endl;
+			try {
+				m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
+				std::cout << "Event handler deregistered successfully" << std::endl;
 			}
-
-			m_camera.DestroyDevice();
-		}
-		catch (...)
-		{
-			std::cout << "Ignoring error during DetachDevice" << std::endl;
+			catch (const Pylon::GenericException& e) {
+				std::cerr << "Warning: Failed to deregister handler: " << e.GetDescription() << std::endl;
+			}
 		}
 
-		// Delete the device removal handler
-		delete m_pDeviceRemovalHandler;
-		m_pDeviceRemovalHandler = nullptr;
+		// Detach device
+		if (m_camera.IsPylonDeviceAttached()) {
+			std::cout << "Detaching camera device..." << std::endl;
+			m_camera.DetachDevice();
+		}
 
-		// Terminate Pylon runtime
-		try
-		{
-			// Add a small delay to ensure all resources are released
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			Pylon::PylonTerminate();
-			std::cout << "Pylon terminated successfully" << std::endl;
+		// NOW safe to delete handler
+		if (m_pDeviceRemovalHandler) {
+			std::cout << "Deleting device removal handler..." << std::endl;
+			delete m_pDeviceRemovalHandler;
+			m_pDeviceRemovalHandler = nullptr;
 		}
-		catch (...)
-		{
-			std::cout << "Ignoring Pylon termination error and continuing..." << std::endl;
-		}
+
+		// Terminate Pylon
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		Pylon::PylonTerminate();
+		std::cout << "Pylon terminated successfully" << std::endl;
 	}
-	catch (const std::exception& e)
-	{
+	catch (const std::exception& e) {
 		std::cerr << "Error in PylonCamera destructor: " << e.what() << std::endl;
 	}
-	catch (...)
-	{
+	catch (...) {
 		std::cerr << "Unknown error in PylonCamera destructor" << std::endl;
 	}
 

@@ -131,6 +131,7 @@ endif()
 # ============================================================================
 set(SOURCES
     bobcat_engine.cpp
+    Application.cpp
     include/camera/CameraLiveView.cpp
     include/camera/CameraManager.cpp
     include/camera/CameraConfigManager.cpp
@@ -139,10 +140,12 @@ set(SOURCES
     include/camera/CameraView.cpp
     include/camera/MultiCameraView.cpp
     include/camera/LiveVideoSubscriber.cpp
+    include/camera/CameraImageWidget.cpp
 )
 
 set(HEADERS
     bobcat_engine.h
+    Application.h
     include/camera/CameraLiveView.h
     include/camera/CameraManager.h
     include/camera/CameraConfigManager.h
@@ -154,6 +157,8 @@ set(HEADERS
     include/camera/MultiCameraView.h
     include/camera/LiveVideoSubscriber.h
     include/camera/FrameConverter.h
+    include/camera/CameraImageWidget.h
+    
 )
 
 # Conditionally add Pylon camera files if SDK is found

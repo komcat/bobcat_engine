@@ -1,4 +1,4 @@
-﻿// CameraView.h - OPTIMIZED VERSION for tab view
+﻿// CameraView.h
 #pragma once
 
 #include <QWidget>
@@ -7,7 +7,6 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QVBoxLayout>
-#include <QImage>
 #include <QTimer>
 #include <memory>
 #include <string>
@@ -17,15 +16,8 @@
 // Forward declarations
 class CameraManager;
 class LiveVideoSubscriber;
+class CameraImageWidget;  // ✅ ADD THIS
 
-/**
- * @brief Widget for single camera in tab view - optimized pub-sub pattern
- *
- * Performance optimizations:
- * - Reusable image buffer (no allocation per frame)
- * - Fast transformation for real-time scaling
- * - Direct memory copy to buffer
- */
 class CameraView : public QWidget
 {
   Q_OBJECT
@@ -37,14 +29,12 @@ public:
     QWidget* parent = nullptr);
   ~CameraView();
 
-  // Camera control
   bool connectCamera();
   void disconnectCamera();
   bool isConnected() const { return m_isConnected; }
   std::string getCameraId() const { return m_cameraId; }
 
 signals:
-  // Status signals
   void cameraConnected(QString cameraId);
   void cameraDisconnected(QString cameraId);
   void cameraError(QString cameraId, QString error);
@@ -52,11 +42,7 @@ signals:
 private slots:
   void onConnectClicked();
   void onDisconnectClicked();
-
-  // Display update (polls subscriber)
   void onUpdateDisplay();
-
-  // Zoom control
   void onZoomSliderChanged(int value);
   void onZoomSpinBoxChanged(int value);
   void onZoomResetClicked();
@@ -79,7 +65,7 @@ private:
   // UI Components
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
-  QLabel* m_videoLabel;
+  CameraImageWidget* m_viewport;  // ✅ CHANGED from QLabel* m_videoLabel
   QLabel* m_statusLabel;
   QLabel* m_fpsLabel;
   QLabel* m_performanceLabel;
@@ -89,15 +75,10 @@ private:
   QSpinBox* m_zoomSpinBox;
   QPushButton* m_zoomResetButton;
   QLabel* m_zoomLabel;
-  std::atomic<int> m_zoomPercent;
 
   // Performance tracking
   std::chrono::steady_clock::time_point m_lastUpdateTime;
   int m_frameCounter;
   double m_avgProcessingTime;
-  uint64_t m_lastTotalFrames;  // ✅ ADD THIS LINE
-
-  // NEW: Performance optimization - reusable image buffer
-  QImage m_reusableImage;
-  bool m_imageBufferInitialized;
+  uint64_t m_lastTotalFrames;
 };
