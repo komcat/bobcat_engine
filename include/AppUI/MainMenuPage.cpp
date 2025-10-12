@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
+#include <QIcon>
 
 MainMenuPage::MainMenuPage(QWidget* parent)
   : QWidget(parent)
@@ -35,11 +36,11 @@ void MainMenuPage::setupUI()
   QGridLayout* buttonGrid = new QGridLayout();
   buttonGrid->setSpacing(30);
 
-  // Create buttons
-  m_processButton = createMenuButton("Process");
-  m_recipeButton = createMenuButton("Recipe");
-  m_motionButton = createMenuButton("Motion");
-  m_hardwareButton = createMenuButton("Hardware &\nInstrument");
+  // Create buttons WITH ICONS
+  m_processButton = createMenuButton("Process", "assets/icons/process.png");
+  m_recipeButton = createMenuButton("Recipe", "assets/icons/recipe.png");
+  m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
+  m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
 
   // Add to grid
   buttonGrid->addWidget(m_processButton, 0, 0);
@@ -50,38 +51,60 @@ void MainMenuPage::setupUI()
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
 
-  // Connect signals
-  connect(m_processButton, &QPushButton::clicked, this, &MainMenuPage::processClicked);
-  connect(m_recipeButton, &QPushButton::clicked, this, &MainMenuPage::recipeClicked);
-  connect(m_motionButton, &QPushButton::clicked, this, &MainMenuPage::motionClicked);
-  connect(m_hardwareButton, &QPushButton::clicked, this, &MainMenuPage::hardwareClicked);
+  // Connect signals (QToolButton uses clicked() just like QPushButton)
+  connect(m_processButton, &QToolButton::clicked, this, &MainMenuPage::processClicked);
+  connect(m_recipeButton, &QToolButton::clicked, this, &MainMenuPage::recipeClicked);
+  connect(m_motionButton, &QToolButton::clicked, this, &MainMenuPage::motionClicked);
+  connect(m_hardwareButton, &QToolButton::clicked, this, &MainMenuPage::hardwareClicked);
 
   // Set dark background
   setStyleSheet("QWidget { background-color: #2b2b2b; }");
 }
 
-QPushButton* MainMenuPage::createMenuButton(const QString& text, const QString& icon)
+QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& iconPath)
 {
-  QPushButton* button = new QPushButton(text);
-  button->setMinimumSize(200, 150);  // ← CHANGED from 300x200
-  button->setMaximumSize(600, 300);  // ← CHANGED from 400x250 (more flexible)
-  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);  // ← ADD THIS
+  QToolButton* button = new QToolButton();
+  button->setMinimumSize(200, 180);
+  button->setMaximumSize(600, 300);
+  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
+  // Load icon if path provided
+  if (!iconPath.isEmpty()) {
+    QIcon icon(iconPath);
+
+    // Check if icon loaded successfully
+    if (!icon.isNull()) {
+      button->setIcon(icon);
+      button->setIconSize(QSize(100, 100));  // Icon display size
+    }
+    else {
+      // Icon failed to load - print warning
+      qWarning() << "Failed to load icon:" << iconPath;
+    }
+  }
+
+  // Set text
+  button->setText(text);
+
+  // ✅ THIS NOW WORKS with QToolButton!
+  button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+
+  // Style for QToolButton
   button->setStyleSheet(
-    "QPushButton { "
+    "QToolButton { "
     "  background-color: #3a3a3a; "
     "  color: white; "
     "  border: 2px solid #555555; "
     "  border-radius: 10px; "
-    "  font-size: 24px; "
+    "  font-size: 18px; "
     "  font-weight: bold; "
-    "  padding: 20px; "
+    "  padding: 15px; "
     "} "
-    "QPushButton:hover { "
+    "QToolButton:hover { "
     "  background-color: #4a4a4a; "
     "  border-color: #00aaff; "
     "} "
-    "QPushButton:pressed { "
+    "QToolButton:pressed { "
     "  background-color: #2a2a2a; "
     "}");
 

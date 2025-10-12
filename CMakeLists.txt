@@ -252,3 +252,12 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         $<TARGET_FILE_DIR:bobcat_engine>/config
     COMMENT "Copying config files to output directory"
 )
+
+
+# Copy assets folder (icons, images, etc.) to output directory
+add_custom_command(TARGET bobcat_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        $<TARGET_FILE_DIR:bobcat_engine>/assets
+    COMMENT "Copying assets folder to output directory"
+)

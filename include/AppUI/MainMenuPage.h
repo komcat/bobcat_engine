@@ -1,8 +1,8 @@
-// MainMenuPage.h - Main menu with 4 big buttons
+﻿// MainMenuPage.h - Main menu with 4 big buttons
 #pragma once
 
 #include <QWidget>
-#include <QPushButton>
+#include <QToolButton>  // ← CHANGED from QPushButton
 
 /**
  * @brief Main menu page - 4 category buttons
@@ -23,10 +23,10 @@ signals:
 
 private:
   void setupUI();
-  QPushButton* createMenuButton(const QString& text, const QString& icon = "");
+  QToolButton* createMenuButton(const QString& text, const QString& icon = "");  // ← CHANGED
 
-  QPushButton* m_processButton;
-  QPushButton* m_recipeButton;
-  QPushButton* m_motionButton;
-  QPushButton* m_hardwareButton;
+  QToolButton* m_processButton;      // ← CHANGED
+  QToolButton* m_recipeButton;       // ← CHANGED
+  QToolButton* m_motionButton;       // ← CHANGED
+  QToolButton* m_hardwareButton;     // ← CHANGED
 };
