@@ -4,6 +4,7 @@
 #include "TcpClientManager.h"
 #include <QScrollArea>
 #include <iostream>
+#include <cmath>
 
 TcpClientWidget::TcpClientWidget(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -115,6 +116,25 @@ void TcpClientWidget::createClientCard(const std::string& clientId)
 {
   auto config = m_tcpManager->GetClientConfig(clientId);
 
+  // Infer unit from channel name
+  std::string unit;
+  std::string channelName = config.dataStoreChannel;
+  if (channelName.find("Amp") != std::string::npos || channelName.find("Current") != std::string::npos) {
+    unit = "A";
+  }
+  else if (channelName.find("Volt") != std::string::npos) {
+    unit = "V";
+  }
+  else if (channelName.find("Watt") != std::string::npos || channelName.find("Power") != std::string::npos) {
+    unit = "W";
+  }
+  else if (channelName.find("Ohm") != std::string::npos || channelName.find("Resistance") != std::string::npos) {
+    unit = "Ω";
+  }
+  else {
+    unit = "";
+  }
+
   // Modern flat card
   QWidget* card = new QWidget();
   card->setStyleSheet(
@@ -160,8 +180,16 @@ void TcpClientWidget::createClientCard(const std::string& clientId)
 
   cardLayout->addLayout(infoRow);
 
-  // Value display
-  QLabel* valueLabel = new QLabel("Value: --");
+  // Value display with unit
+  QString initialValue;
+  if (unit.empty()) {
+    initialValue = "Value: --";
+  }
+  else {
+    initialValue = QString("Value: -- %1").arg(QString::fromStdString(unit));
+  }
+
+  QLabel* valueLabel = new QLabel(initialValue);
   valueLabel->setStyleSheet(
     "QLabel { "
     "  color: #00d9ff; "
@@ -224,6 +252,7 @@ void TcpClientWidget::createClientCard(const std::string& clientId)
   // Store card reference
   ClientCard clientCard;
   clientCard.clientId = clientId;
+  clientCard.unit = unit;
   clientCard.cardWidget = card;
   clientCard.nameLabel = nameLabel;
   clientCard.statusLabel = statusLabel;
@@ -257,12 +286,19 @@ void TcpClientWidget::updateClientCard(const std::string& clientId)
     it->disconnectButton->setEnabled(false);
   }
 
-  // Update value
+  // Update value with SI unit
   if (status.connected) {
-    it->valueLabel->setText(QString("Value: ") + formatValue(status.latestValue));
+    it->valueLabel->setText(QString("Value: ") + formatValueWithUnit(status.latestValue, it->unit));
   }
   else {
-    it->valueLabel->setText("Value: --");
+    QString disconnectedValue;
+    if (it->unit.empty()) {
+      disconnectedValue = "Value: --";
+    }
+    else {
+      disconnectedValue = QString("Value: -- %1").arg(QString::fromStdString(it->unit));
+    }
+    it->valueLabel->setText(disconnectedValue);
   }
 }
 
@@ -323,4 +359,59 @@ void TcpClientWidget::onUpdateStatus()
 QString TcpClientWidget::formatValue(float value) const
 {
   return QString::number(value, 'f', 6);
+}
+
+QString TcpClientWidget::formatValueWithUnit(float value, const std::string& baseUnit) const
+{
+  if (baseUnit.empty()) {
+    return QString::number(value, 'f', 6);
+  }
+
+  float absValue = std::abs(value);
+  QString prefix;
+  float scaledValue = value;
+
+  // Select appropriate SI prefix
+  if (absValue >= 1e9) {
+    prefix = "G";
+    scaledValue = value / 1e9;
+  }
+  else if (absValue >= 1e6) {
+    prefix = "M";
+    scaledValue = value / 1e6;
+  }
+  else if (absValue >= 1e3) {
+    prefix = "k";
+    scaledValue = value / 1e3;
+  }
+  else if (absValue >= 1.0) {
+    prefix = "";
+    scaledValue = value;
+  }
+  else if (absValue >= 1e-3) {
+    prefix = "m";
+    scaledValue = value / 1e-3;
+  }
+  else if (absValue >= 1e-6) {
+    prefix = "µ";
+    scaledValue = value / 1e-6;
+  }
+  else if (absValue >= 1e-9) {
+    prefix = "n";
+    scaledValue = value / 1e-9;
+  }
+  else if (absValue >= 1e-12) {
+    prefix = "p";
+    scaledValue = value / 1e-12;
+  }
+  else {
+    prefix = "f";
+    scaledValue = value / 1e-15;
+  }
+
+  QString unitStr = QString::fromStdString(baseUnit);
+  return QString("%1 %2%3")
+    .arg(scaledValue, 0, 'f', 3)
+    .arg(prefix)
+    .arg(unitStr);
 }

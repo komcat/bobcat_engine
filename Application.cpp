@@ -117,7 +117,8 @@ void Application::initializeDataStore()
 
 void Application::initializeTcpClientManager()
 {
-  m_tcpClientManager = std::make_unique<TcpClientManager>(m_dataStore.get());
+  // FIXED: Pass nullptr as parent (or this if Application inherits QObject)
+  m_tcpClientManager = std::make_unique<TcpClientManager>(m_dataStore.get(), nullptr);
   m_context.tcpClientManager = m_tcpClientManager.get();
 
   // Load TCP config - try local first, then default
@@ -142,6 +143,7 @@ void Application::initializeTcpClientManager()
     m_tcpClientManager->ConnectAutoClients();
   }
 }
+
 
 void Application::initializeCameraManager()
 {

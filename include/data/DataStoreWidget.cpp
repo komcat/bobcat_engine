@@ -5,9 +5,9 @@
 #include "TcpClientManager.h"
 #include <QScrollArea>
 #include <QDateTime>
-
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 DataStoreWidget::DataStoreWidget(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -104,7 +104,7 @@ void DataStoreWidget::setupUI()
   mainLayout->addWidget(scrollArea);
 }
 
-void DataStoreWidget::createChannelCard(const std::string& channelId)
+void DataStoreWidget::createChannelCard(const std::string& channelId, const std::string& clientId, const std::string& clientName)
 {
   // Check if card already exists
   if (m_channelCards.find(channelId) != m_channelCards.end()) {
@@ -113,6 +113,25 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
 
   ChannelCard card;
   card.channelId = channelId;
+  card.clientId = clientId;
+  card.clientName = clientName;
+
+  // Infer unit from channel name (can be extended)
+  if (channelId.find("Amp") != std::string::npos || channelId.find("Current") != std::string::npos) {
+    card.unit = "A";
+  }
+  else if (channelId.find("Volt") != std::string::npos) {
+    card.unit = "V";
+  }
+  else if (channelId.find("Watt") != std::string::npos || channelId.find("Power") != std::string::npos) {
+    card.unit = "W";
+  }
+  else if (channelId.find("Ohm") != std::string::npos || channelId.find("Resistance") != std::string::npos) {
+    card.unit = "Ω";
+  }
+  else {
+    card.unit = "";  // No unit
+  }
 
   // Card container
   card.cardWidget = new QWidget();
@@ -127,16 +146,22 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
   cardLayout->setContentsMargins(20, 16, 20, 16);
   cardLayout->setSpacing(12);
 
-  // Header row: Channel name and current value
+  // Header row: Client Name and current value
   QHBoxLayout* headerRow = new QHBoxLayout();
 
-  card.nameLabel = new QLabel(QString("Channel: %1").arg(QString::fromStdString(channelId)));
+  // Display: "Client Name (Client ID)"
+  QString displayName = QString("%1 (%2)")
+    .arg(QString::fromStdString(clientName))
+    .arg(QString::fromStdString(clientId));
+
+  card.nameLabel = new QLabel(displayName);
   card.nameLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 18px; font-weight: bold; background: transparent; }");
   headerRow->addWidget(card.nameLabel);
 
   headerRow->addStretch();
 
-  card.valueLabel = new QLabel("--");
+  QString initialValue = card.unit.empty() ? "--" : QString("-- %1").arg(QString::fromStdString(card.unit));
+  card.valueLabel = new QLabel(initialValue);
   card.valueLabel->setStyleSheet(
     "QLabel { "
     "  color: #00d9ff; "
@@ -171,7 +196,8 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
 
   card.axisY = new QValueAxis();
   card.axisY->setLabelFormat("%.3f");
-  card.axisY->setTitleText("Value");
+  QString yAxisTitle = card.unit.empty() ? "Value" : QString::fromStdString(card.unit);
+  card.axisY->setTitleText(yAxisTitle);
   card.axisY->setTitleBrush(QBrush(Qt::white));
   card.axisY->setLabelsBrush(QBrush(QColor(170, 170, 170)));
   card.axisY->setGridLineColor(QColor(70, 70, 70));
@@ -190,7 +216,8 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
   // Store card
   m_channelCards[channelId] = card;
 
-  std::cout << "[DataStoreWidget] Created card for channel: " << channelId << std::endl;
+  std::cout << "[DataStoreWidget] Created card for: " << clientName
+    << " (" << clientId << ")" << std::endl;
 }
 
 void DataStoreWidget::onDataReceived(const std::string& clientId, float value, qint64 timestamp)
@@ -202,7 +229,7 @@ void DataStoreWidget::onDataReceived(const std::string& clientId, float value, q
   // Get or create card for this channel
   auto it = m_channelCards.find(channelId);
   if (it == m_channelCards.end()) {
-    createChannelCard(channelId);
+    createChannelCard(channelId, config.id, config.name);
     it = m_channelCards.find(channelId);
   }
 
@@ -219,8 +246,8 @@ void DataStoreWidget::onDataReceived(const std::string& clientId, float value, q
     card.dataBuffer.pop_front();
   }
 
-  // Update value label immediately for responsiveness
-  card.valueLabel->setText(QString::number(value, 'f', 6));
+  // Update value label with SI prefix and unit
+  card.valueLabel->setText(formatValueWithUnit(value, card.unit));
 
   // Mark channel as dirty for next chart update (throttled)
   m_dirtyChannels.insert(channelId);
@@ -291,13 +318,77 @@ void DataStoreWidget::refreshChannelList()
 
   auto channels = m_dataStore->GetAvailableChannels();
 
-  // Create cards for new channels
+  // Create cards for new channels by finding their corresponding clients
   for (const auto& channelId : channels) {
     if (m_channelCards.find(channelId) == m_channelCards.end()) {
-      createChannelCard(channelId);
+      // Find which client uses this channel
+      auto clientIds = m_tcpManager->GetClientIds();
+      for (const auto& clientId : clientIds) {
+        auto config = m_tcpManager->GetClientConfig(clientId);
+        if (config.dataStoreChannel == channelId) {
+          createChannelCard(channelId, config.id, config.name);
+          break;
+        }
+      }
     }
   }
 
   // Update summary
   m_summaryLabel->setText(QString("Channels: %1").arg(channels.size()));
+}
+
+QString DataStoreWidget::formatValueWithUnit(float value, const std::string& baseUnit) const
+{
+  if (baseUnit.empty()) {
+    return QString::number(value, 'f', 6);
+  }
+
+  float absValue = std::abs(value);
+  QString prefix;
+  float scaledValue = value;
+
+  // Select appropriate SI prefix
+  if (absValue >= 1e9) {
+    prefix = "G";  // Giga
+    scaledValue = value / 1e9;
+  }
+  else if (absValue >= 1e6) {
+    prefix = "M";  // Mega
+    scaledValue = value / 1e6;
+  }
+  else if (absValue >= 1e3) {
+    prefix = "k";  // kilo
+    scaledValue = value / 1e3;
+  }
+  else if (absValue >= 1.0) {
+    prefix = "";   // base unit
+    scaledValue = value;
+  }
+  else if (absValue >= 1e-3) {
+    prefix = "m";  // milli
+    scaledValue = value / 1e-3;
+  }
+  else if (absValue >= 1e-6) {
+    prefix = "µ";  // micro
+    scaledValue = value / 1e-6;
+  }
+  else if (absValue >= 1e-9) {
+    prefix = "n";  // nano
+    scaledValue = value / 1e-9;
+  }
+  else if (absValue >= 1e-12) {
+    prefix = "p";  // pico
+    scaledValue = value / 1e-12;
+  }
+  else {
+    prefix = "f";  // femto
+    scaledValue = value / 1e-15;
+  }
+
+  // Format with 3 decimal places
+  QString unitStr = QString::fromStdString(baseUnit);
+  return QString("%1 %2%3")
+    .arg(scaledValue, 0, 'f', 3)
+    .arg(prefix)
+    .arg(unitStr);
 }

@@ -41,9 +41,10 @@ private slots:
 
 private:
   void setupUI();
-  void createChannelCard(const std::string& channelId);
+  void createChannelCard(const std::string& channelId, const std::string& clientId, const std::string& clientName);
   void updateChart(const std::string& channelId);
   void refreshChannelList();
+  QString formatValueWithUnit(float value, const std::string& baseUnit) const;
 
   struct DataPoint {
     qint64 timestamp;
@@ -52,6 +53,9 @@ private:
 
   struct ChannelCard {
     std::string channelId;
+    std::string clientId;      // ADD: Store client ID
+    std::string clientName;    // ADD: Store client name
+    std::string unit;          // ADD: Store unit (e.g., "A", "V", "W")
     QWidget* cardWidget;
     QLabel* nameLabel;
     QLabel* valueLabel;
@@ -78,5 +82,5 @@ private:
 
   static constexpr size_t MAX_POINTS = 1000;  // Buffer size
   static constexpr qint64 TIME_WINDOW_MS = 10000;  // 10 seconds window
-  static constexpr int CHART_UPDATE_INTERVAL_MS = 33;  // ~30 FPS
+  static constexpr int CHART_UPDATE_INTERVAL_MS = 16;  // 60 FPS (was 33)
 };

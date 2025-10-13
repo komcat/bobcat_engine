@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <memory>
 #include <vector>
+#include <string>
 
 struct ApplicationContext;
 class TcpClientManager;
@@ -36,9 +37,11 @@ private:
   void createClientCard(const std::string& clientId);
   void updateClientCard(const std::string& clientId);
   QString formatValue(float value) const;
+  QString formatValueWithUnit(float value, const std::string& baseUnit) const;
 
   struct ClientCard {
     std::string clientId;
+    std::string unit;  // ADD: Store unit
     QWidget* cardWidget;
     QLabel* nameLabel;
     QLabel* statusLabel;
