@@ -1,4 +1,4 @@
-// DataStoreWidget.cpp
+﻿// DataStoreWidget.cpp
 #include "DataStoreWidget.h"
 #include "ApplicationContext.h"
 #include "DataStore.h"
@@ -152,11 +152,12 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
 
   // Axes
   card.axisX = new QValueAxis();
-  card.axisX->setLabelFormat("%i");
-  card.axisX->setTitleText("Time (s)");
+  card.axisX->setLabelFormat("%.0f");  // ✅ Change to no decimals
+  card.axisX->setTitleText("Seconds Ago");  // ✅ Change title
   card.axisX->setTitleBrush(QBrush(Qt::white));
   card.axisX->setLabelsBrush(QBrush(QColor(170, 170, 170)));
   card.axisX->setGridLineColor(QColor(70, 70, 70));
+  card.axisX->setTickCount(7);  // ✅ Add this for more tick marks
   card.chart->addAxis(card.axisX, Qt::AlignBottom);
   card.series->attachAxis(card.axisX);
 
@@ -225,13 +226,10 @@ void DataStoreWidget::updateChart(const std::string& channelId)
   auto& card = it->second;
   if (card.dataBuffer.empty()) return;
 
-  // Clear existing series data
   card.series->clear();
 
-  // Get the latest timestamp as reference
   qint64 latestTime = card.dataBuffer.back().timestamp;
 
-  // Convert to relative time in seconds
   QVector<QPointF> points;
   points.reserve(card.dataBuffer.size());
 
@@ -239,7 +237,7 @@ void DataStoreWidget::updateChart(const std::string& channelId)
   float maxValue = std::numeric_limits<float>::lowest();
 
   for (const auto& point : card.dataBuffer) {
-    // Time in seconds relative to latest
+    // Relative time in seconds (negative = past)
     double relativeTime = (point.timestamp - latestTime) / 1000.0;
     points.append(QPointF(relativeTime, point.value));
 
@@ -249,20 +247,24 @@ void DataStoreWidget::updateChart(const std::string& channelId)
 
   card.series->replace(points);
 
-  // Update axes ranges
-  double timeRange = TIME_WINDOW_MS / 1000.0;  // 30 seconds
+  // X-axis: last 30 seconds
+  double timeRange = TIME_WINDOW_MS / 1000.0;
   card.axisX->setRange(-timeRange, 0);
+  card.axisX->setLabelFormat("%.0f");  // No decimals
+  card.axisX->setTitleText("Seconds Ago");
+  card.axisX->setTickCount(7);  // More tick marks for better readability
 
-  // Auto-scale Y axis with 10% margin
+  // Y-axis with 10% margin
   if (minValue < maxValue) {
     float margin = (maxValue - minValue) * 0.1f;
     card.axisY->setRange(minValue - margin, maxValue + margin);
   }
   else {
-    // Single value, show �10% around it
+    // Single value case
     card.axisY->setRange(minValue * 0.9, minValue * 1.1);
   }
 }
+
 
 void DataStoreWidget::onRefreshChannels()
 {

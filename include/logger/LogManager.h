@@ -24,7 +24,7 @@ public:
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
+    FAILURE,
     CRITICAL
   };  // ✅ Make sure semicolon is here
 

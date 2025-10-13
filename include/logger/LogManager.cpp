@@ -41,7 +41,7 @@ void LogManager::Warning(const std::string& message, const std::string& source)
 
 void LogManager::Error(const std::string& message, const std::string& source)
 {
-  Log(Level::ERROR, message, source);
+  Log(Level::FAILURE, message, source);
 }
 
 void LogManager::Critical(const std::string& message, const std::string& source)
@@ -76,7 +76,7 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
     }
 
     // Update statistics
-    if (level == Level::ERROR || level == Level::CRITICAL) {
+    if (level == Level::FAILURE || level == Level::CRITICAL) {
       m_errorCount++;
     }
     else if (level == Level::WARNING) {
@@ -195,7 +195,7 @@ std::string LogManager::LevelToString(Level level)
   case Level::DEBUG:    return "DEBUG";
   case Level::INFO:     return "INFO";
   case Level::WARNING:  return "WARNING";
-  case Level::ERROR:    return "ERROR";
+  case Level::FAILURE:    return "ERROR";
   case Level::CRITICAL: return "CRITICAL";
   default:              return "UNKNOWN";
   }
@@ -207,7 +207,7 @@ std::string LogManager::LevelToColorCode(Level level)
   case Level::DEBUG:    return "#888888";  // Gray
   case Level::INFO:     return "#00ff00";  // Green
   case Level::WARNING:  return "#ffaa00";  // Orange
-  case Level::ERROR:    return "#ff4444";  // Red
+  case Level::FAILURE:    return "#ff4444";  // Red
   case Level::CRITICAL: return "#ff0000";  // Bright Red
   default:              return "#ffffff";  // White
   }

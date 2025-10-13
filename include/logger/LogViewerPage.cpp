@@ -74,7 +74,7 @@ void LogViewerPage::setupUI()
   m_levelFilter->addItem("DEBUG", static_cast<int>(LogManager::Level::DEBUG));
   m_levelFilter->addItem("INFO", static_cast<int>(LogManager::Level::INFO));
   m_levelFilter->addItem("WARNING", static_cast<int>(LogManager::Level::WARNING));
-  m_levelFilter->addItem("ERROR", static_cast<int>(LogManager::Level::ERROR));
+  m_levelFilter->addItem("FAILURE", static_cast<int>(LogManager::Level::FAILURE));
   m_levelFilter->addItem("CRITICAL", static_cast<int>(LogManager::Level::CRITICAL));
   connect(m_levelFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &LogViewerPage::onFilterChanged);
