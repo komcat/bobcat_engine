@@ -10,7 +10,9 @@
 class QApplication;
 class MainWindow;
 class CameraManager;
-class LogManager;  // ✅ NEW
+class LogManager;
+class DataStore;              // ← NEW
+class TcpClientManager; // ← NEW
 
 class Application : public QObject
 {
@@ -33,6 +35,11 @@ private:
   bool initialize();
   void createMainWindow();
   void initializeManagers();
+  void initializeCameraManager();
+	void initializeLogManager();
+	void initializeDataStore();
+	void initializeTcpClientManager();
+
   void shutdownManagers();
 
   std::unique_ptr<QApplication> m_qApplication;
@@ -40,6 +47,8 @@ private:
 
   std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<LogManager> m_logManager;  // ✅ NEW
+  std::unique_ptr<DataStore> m_dataStore;              // ← NEW
+  std::unique_ptr<TcpClientManager> m_tcpClientManager; // ← NEW
 
   ApplicationContext m_context;
 

@@ -112,6 +112,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI      
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
+    ${CMAKE_SOURCE_DIR}/include/data
 )
 
 # Add nlohmann json include directory if found
@@ -152,7 +153,7 @@ set(SOURCES
   "include/logger/LogManager.cpp"
    "include/logger/LogStatusBar.cpp"
   "include/logger/LogViewerPage.cpp"
-)
+ "include/data/DataStore.cpp" "include/data/TcpDataClient.cpp" "include/data/TcpClientManager.cpp" "include/data/TcpClientWidget.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -178,7 +179,7 @@ set(HEADERS
 
  "include/logger/LogStatusBar.h"
  "include/logger/LogViewerPage.h"
-)
+ "include/data/DataStore.h" "include/data/TcpDataClient.h" "include/data/TcpClientManager.h" "include/data/TcpClientWidget.h")
 
 # Conditionally add Pylon camera files if SDK is found
 if(PYLON_FOUND)

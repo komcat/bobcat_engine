@@ -2,6 +2,7 @@
 #include "HardwareInstrumentPage.h"
 #include "ApplicationContext.h"
 #include "MultiCameraView.h"
+#include "TcpClientWidget.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -9,10 +10,11 @@
 
 HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
-  , m_context(context)  // ✅ Store context
+  , m_context(context)
   , m_sidebar(nullptr)
   , m_contentStack(nullptr)
   , m_cameraView(nullptr)
+  , m_tcpClientWidget(nullptr)
   , m_currentButton(nullptr)
 {
   setupUI();
@@ -83,6 +85,27 @@ void HardwareInstrumentPage::createSidebar()
   connect(m_acsButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showACS);
   sidebarLayout->addWidget(m_acsButton);
 
+  // NEW BUTTONS
+  m_dataViewButton = createSidebarButton("Data View");
+  connect(m_dataViewButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showDataView);
+  sidebarLayout->addWidget(m_dataViewButton);
+
+  m_tcpClientButton = createSidebarButton("TCP Client");
+  connect(m_tcpClientButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showTCPClient);
+  sidebarLayout->addWidget(m_tcpClientButton);
+
+  m_laserTECButton = createSidebarButton("Laser/TEC");
+  connect(m_laserTECButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showLaserTEC);
+  sidebarLayout->addWidget(m_laserTECButton);
+
+  m_powerSupplyButton = createSidebarButton("Power Supply");
+  connect(m_powerSupplyButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showPowerSupply);
+  sidebarLayout->addWidget(m_powerSupplyButton);
+
+  m_smuButton = createSidebarButton("SMU");
+  connect(m_smuButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showSMU);
+  sidebarLayout->addWidget(m_smuButton);
+
   // Push buttons to top
   sidebarLayout->addStretch();
 }
@@ -91,21 +114,49 @@ void HardwareInstrumentPage::createContentArea()
 {
   m_contentStack = new QStackedWidget();
 
-  // ✅ Camera view - pass context
+  // Index 0: Camera view
   m_cameraView = new MultiCameraView(m_context);
   m_contentStack->addWidget(m_cameraView);
 
-  // PI Hexapod placeholder
+  // Index 1: PI Hexapod placeholder
   QLabel* piPlaceholder = new QLabel("PI Hexapod\n(Coming Soon)");
   piPlaceholder->setAlignment(Qt::AlignCenter);
   piPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
   m_contentStack->addWidget(piPlaceholder);
 
-  // ACS placeholder
+  // Index 2: ACS placeholder
   QLabel* acsPlaceholder = new QLabel("ACS\n(Coming Soon)");
   acsPlaceholder->setAlignment(Qt::AlignCenter);
   acsPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
   m_contentStack->addWidget(acsPlaceholder);
+
+  // Index 3: Data View placeholder
+  QLabel* dataViewPlaceholder = new QLabel("Data View\n(Coming Soon)");
+  dataViewPlaceholder->setAlignment(Qt::AlignCenter);
+  dataViewPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
+  m_contentStack->addWidget(dataViewPlaceholder);
+
+  // Index 4: TCP Client placeholder
+  m_tcpClientWidget = new TcpClientWidget(m_context);
+  m_contentStack->addWidget(m_tcpClientWidget);
+
+  // Index 5: Laser/TEC placeholder
+  QLabel* laserTECPlaceholder = new QLabel("Laser/TEC\n(Coming Soon)");
+  laserTECPlaceholder->setAlignment(Qt::AlignCenter);
+  laserTECPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
+  m_contentStack->addWidget(laserTECPlaceholder);
+
+  // Index 6: Power Supply placeholder
+  QLabel* powerSupplyPlaceholder = new QLabel("Power Supply\n(Coming Soon)");
+  powerSupplyPlaceholder->setAlignment(Qt::AlignCenter);
+  powerSupplyPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
+  m_contentStack->addWidget(powerSupplyPlaceholder);
+
+  // Index 7: SMU placeholder
+  QLabel* smuPlaceholder = new QLabel("SMU\n(Coming Soon)");
+  smuPlaceholder->setAlignment(Qt::AlignCenter);
+  smuPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
+  m_contentStack->addWidget(smuPlaceholder);
 }
 
 QPushButton* HardwareInstrumentPage::createSidebarButton(const QString& text)
@@ -138,7 +189,6 @@ void HardwareInstrumentPage::showCamera()
 {
   m_contentStack->setCurrentIndex(0);
 
-  // Update button states
   if (m_currentButton) {
     m_currentButton->setChecked(false);
   }
@@ -172,4 +222,70 @@ void HardwareInstrumentPage::showACS()
   m_currentButton = m_acsButton;
 
   std::cout << "[HardwareInstrumentPage] Showing ACS (placeholder)" << std::endl;
+}
+
+// NEW IMPLEMENTATIONS
+void HardwareInstrumentPage::showDataView()
+{
+  m_contentStack->setCurrentIndex(3);
+
+  if (m_currentButton) {
+    m_currentButton->setChecked(false);
+  }
+  m_dataViewButton->setChecked(true);
+  m_currentButton = m_dataViewButton;
+
+  std::cout << "[HardwareInstrumentPage] Showing Data View (placeholder)" << std::endl;
+}
+
+void HardwareInstrumentPage::showTCPClient()
+{
+  m_contentStack->setCurrentIndex(4);
+
+  if (m_currentButton) {
+    m_currentButton->setChecked(false);
+  }
+  m_tcpClientButton->setChecked(true);
+  m_currentButton = m_tcpClientButton;
+
+  std::cout << "[HardwareInstrumentPage] Showing TCP Client (placeholder)" << std::endl;
+}
+
+void HardwareInstrumentPage::showLaserTEC()
+{
+  m_contentStack->setCurrentIndex(5);
+
+  if (m_currentButton) {
+    m_currentButton->setChecked(false);
+  }
+  m_laserTECButton->setChecked(true);
+  m_currentButton = m_laserTECButton;
+
+  std::cout << "[HardwareInstrumentPage] Showing Laser/TEC (placeholder)" << std::endl;
+}
+
+void HardwareInstrumentPage::showPowerSupply()
+{
+  m_contentStack->setCurrentIndex(6);
+
+  if (m_currentButton) {
+    m_currentButton->setChecked(false);
+  }
+  m_powerSupplyButton->setChecked(true);
+  m_currentButton = m_powerSupplyButton;
+
+  std::cout << "[HardwareInstrumentPage] Showing Power Supply (placeholder)" << std::endl;
+}
+
+void HardwareInstrumentPage::showSMU()
+{
+  m_contentStack->setCurrentIndex(7);
+
+  if (m_currentButton) {
+    m_currentButton->setChecked(false);
+  }
+  m_smuButton->setChecked(true);
+  m_currentButton = m_smuButton;
+
+  std::cout << "[HardwareInstrumentPage] Showing SMU (placeholder)" << std::endl;
 }

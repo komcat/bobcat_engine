@@ -8,6 +8,7 @@
 
 struct ApplicationContext;  // Forward declaration
 class MultiCameraView;
+class TcpClientWidget;  // Forward declaration
 
 /**
  * @brief Hardware & Instrument page
@@ -28,6 +29,11 @@ private slots:
   void showCamera();
   void showPIHexapod();
   void showACS();
+  void showDataView();        // NEW
+  void showTCPClient();       // NEW
+  void showLaserTEC();        // NEW
+  void showPowerSupply();     // NEW
+  void showSMU();             // NEW
 
 private:
   void setupUI();
@@ -35,7 +41,7 @@ private:
   void createContentArea();
   QPushButton* createSidebarButton(const QString& text);
 
-  ApplicationContext* m_context;  // ✅ NEW - Store context
+  ApplicationContext* m_context;
 
   // UI Components
   QWidget* m_sidebar;
@@ -46,9 +52,15 @@ private:
   QPushButton* m_cameraButton;
   QPushButton* m_piButton;
   QPushButton* m_acsButton;
+  QPushButton* m_dataViewButton;      // NEW
+  QPushButton* m_tcpClientButton;     // NEW
+  QPushButton* m_laserTECButton;      // NEW
+  QPushButton* m_powerSupplyButton;   // NEW
+  QPushButton* m_smuButton;           // NEW
 
   // Content pages
   MultiCameraView* m_cameraView;
+  TcpClientWidget* m_tcpClientWidget;  // ADD THIS
 
   // Track current selection
   QPushButton* m_currentButton;

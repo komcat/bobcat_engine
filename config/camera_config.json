@@ -1,12 +1,13 @@
 {
   "cameras": [
     {
-      "id": "camera_1",
-      "display_name": "Side Camera",
+      "id": "main_camera",
       "enabled": true,
-      "camera_type": "IDS",
-      "connection_type": "index",
-      "port": 0
+      "camera_type": "PYLON",
+      "connection_type": "ip",
+      "ip_address": "192.168.0.68",
+      "display_name": "Basler Camera",
+      "auto_connect": true
     }
   ]
 }

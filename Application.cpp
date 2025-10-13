@@ -3,6 +3,7 @@
 #include "MainWindow.h"
 #include "CameraManager.h"
 #include "LogManager.h"  // ✅ NEW
+#include "TcpClientManager.h" // ← NEW
 #include <QApplication>
 #include <iostream>
 
@@ -83,23 +84,12 @@ void Application::initializeManagers()
   std::cout << "[Application] Initializing managers..." << std::endl;
 
   try {
-    // ✅ Create LogManager FIRST
-    m_logManager = std::make_unique<LogManager>();
-    m_context.logManager = m_logManager.get();
-    m_logManager->EnableFileOutput(true, "logs/bobcat.log");
-    std::cout << "[Application] ✓ LogManager created" << std::endl;
-
-    // Log system startup
-    m_logManager->Info("Bobcat Engine starting...", "Application");
-
-    // Create CameraManager
-    m_cameraManager = std::make_unique<CameraManager>();
-    m_context.cameraManager = m_cameraManager.get();
-    std::cout << "[Application] ✓ CameraManager created" << std::endl;
-    m_logManager->Info("CameraManager initialized", "Application");
+    initializeLogManager();
+    initializeDataStore();
+    initializeTcpClientManager();
+    initializeCameraManager();
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
-    m_logManager->Info("All managers initialized", "Application");
   }
   catch (const std::exception& e) {
     std::cerr << "[Application] Manager initialization failed: " << e.what() << std::endl;
@@ -110,21 +100,78 @@ void Application::initializeManagers()
   }
 }
 
+void Application::initializeLogManager()
+{
+  m_logManager = std::make_unique<LogManager>();
+  m_context.logManager = m_logManager.get();
+  m_logManager->EnableFileOutput(true, "logs/bobcat.log");
+  m_logManager->Info("Bobcat Engine starting...", "Application");
+}
+
+void Application::initializeDataStore()
+{
+  m_dataStore = std::make_unique<DataStore>();
+  m_context.dataStore = m_dataStore.get();
+  m_logManager->Info("DataStore initialized", "Application");
+}
+
+void Application::initializeTcpClientManager()
+{
+  m_tcpClientManager = std::make_unique<TcpClientManager>(m_dataStore.get());
+  m_context.tcpClientManager = m_tcpClientManager.get();
+
+  // Load TCP config - try local first, then default
+  bool tcpConfigLoaded = false;
+
+  // Try local config first (not in git)
+  if (m_tcpClientManager->LoadConfig("config/tcp_clients.local.json")) {
+    m_logManager->Info("TCP client config loaded from local file", "Application");
+    tcpConfigLoaded = true;
+  }
+  // Fall back to default config
+  else if (m_tcpClientManager->LoadConfig("config/tcp_clients.json")) {
+    m_logManager->Info("TCP client config loaded from default file", "Application");
+    tcpConfigLoaded = true;
+  }
+  else {
+    m_logManager->Warning("No TCP client config found - using empty config", "Application");
+  }
+
+  // Auto-connect if config was loaded
+  if (tcpConfigLoaded) {
+    m_tcpClientManager->ConnectAutoClients();
+  }
+}
+
+void Application::initializeCameraManager()
+{
+  m_cameraManager = std::make_unique<CameraManager>();
+  m_context.cameraManager = m_cameraManager.get();
+  m_logManager->Info("CameraManager initialized", "Application");
+}
+
+
 void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+  // ✅ CRITICAL FIX: Clear UI callback FIRST before any logging
   if (m_logManager) {
+    m_logManager->ClearUICallback();  // ← ADD THIS LINE
     m_logManager->Info("Bobcat Engine shutting down...", "Application");
   }
 
   m_context = ApplicationContext();
 
   m_cameraManager.reset();
-  m_logManager.reset();  // ✅ Shutdown log last
+  m_tcpClientManager.reset();
+  m_dataStore.reset();
+  m_logManager.reset();
 
   std::cout << "[Application] All managers shut down" << std::endl;
 }
+
+
 
 void Application::createMainWindow()
 {
