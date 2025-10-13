@@ -26,6 +26,11 @@ DataStoreWidget::DataStoreWidget(ApplicationContext* context, QWidget* parent)
   connect(m_refreshTimer, &QTimer::timeout, this, &DataStoreWidget::refreshChannelList);
   m_refreshTimer->start(5000);
 
+  // Chart update timer - smooth ~30 FPS updates
+  m_chartUpdateTimer = new QTimer(this);
+  connect(m_chartUpdateTimer, &QTimer::timeout, this, &DataStoreWidget::onUpdateCharts);
+  m_chartUpdateTimer->start(CHART_UPDATE_INTERVAL_MS);
+
   // Initial channel list
   refreshChannelList();
 
@@ -36,6 +41,9 @@ DataStoreWidget::~DataStoreWidget()
 {
   if (m_refreshTimer) {
     m_refreshTimer->stop();
+  }
+  if (m_chartUpdateTimer) {
+    m_chartUpdateTimer->stop();
   }
 }
 
@@ -152,12 +160,12 @@ void DataStoreWidget::createChannelCard(const std::string& channelId)
 
   // Axes
   card.axisX = new QValueAxis();
-  card.axisX->setLabelFormat("%.0f");  // ✅ Change to no decimals
-  card.axisX->setTitleText("Seconds Ago");  // ✅ Change title
+  card.axisX->setLabelFormat("%.0f");
+  card.axisX->setTitleText("Seconds Ago");
   card.axisX->setTitleBrush(QBrush(Qt::white));
   card.axisX->setLabelsBrush(QBrush(QColor(170, 170, 170)));
   card.axisX->setGridLineColor(QColor(70, 70, 70));
-  card.axisX->setTickCount(7);  // ✅ Add this for more tick marks
+  card.axisX->setTickCount(7);
   card.chart->addAxis(card.axisX, Qt::AlignBottom);
   card.series->attachAxis(card.axisX);
 
@@ -211,11 +219,11 @@ void DataStoreWidget::onDataReceived(const std::string& clientId, float value, q
     card.dataBuffer.pop_front();
   }
 
-  // Update value label
+  // Update value label immediately for responsiveness
   card.valueLabel->setText(QString::number(value, 'f', 6));
 
-  // Update chart
-  updateChart(channelId);
+  // Mark channel as dirty for next chart update (throttled)
+  m_dirtyChannels.insert(channelId);
 }
 
 void DataStoreWidget::updateChart(const std::string& channelId)
@@ -247,12 +255,9 @@ void DataStoreWidget::updateChart(const std::string& channelId)
 
   card.series->replace(points);
 
-  // X-axis: last 30 seconds
+  // X-axis: configurable time window
   double timeRange = TIME_WINDOW_MS / 1000.0;
   card.axisX->setRange(-timeRange, 0);
-  card.axisX->setLabelFormat("%.0f");  // No decimals
-  card.axisX->setTitleText("Seconds Ago");
-  card.axisX->setTickCount(7);  // More tick marks for better readability
 
   // Y-axis with 10% margin
   if (minValue < maxValue) {
@@ -265,6 +270,14 @@ void DataStoreWidget::updateChart(const std::string& channelId)
   }
 }
 
+void DataStoreWidget::onUpdateCharts()
+{
+  // Update only dirty channels (throttled at ~30 FPS)
+  for (const auto& channelId : m_dirtyChannels) {
+    updateChart(channelId);
+  }
+  m_dirtyChannels.clear();
+}
 
 void DataStoreWidget::onRefreshChannels()
 {

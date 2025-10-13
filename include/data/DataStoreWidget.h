@@ -13,6 +13,7 @@
 #include <QValueAxis>
 #include <deque>
 #include <map>
+#include <set>
 #include <string>
 
 struct ApplicationContext;
@@ -23,7 +24,8 @@ class TcpClientManager;
  * @brief Widget displaying real-time charts for all DataStore channels
  * - Automatically detects channels from DataStore
  * - Real-time chart updates via TcpClientManager signals
- * - Circular buffer (last 200 points per channel)
+ * - Circular buffer (last 1000 points per channel)
+ * - Throttled rendering at ~30 FPS for smooth performance
  */
 class DataStoreWidget : public QWidget {
   Q_OBJECT
@@ -35,6 +37,7 @@ public:
 private slots:
   void onDataReceived(const std::string& clientId, float value, qint64 timestamp);
   void onRefreshChannels();
+  void onUpdateCharts();  // Periodic chart update at ~30 FPS
 
 private:
   void setupUI();
@@ -68,9 +71,12 @@ private:
   QPushButton* m_refreshButton;
   QVBoxLayout* m_cardsLayout;
   QTimer* m_refreshTimer;
+  QTimer* m_chartUpdateTimer;  // For throttled chart updates
 
   std::map<std::string, ChannelCard> m_channelCards;
+  std::set<std::string> m_dirtyChannels;  // Tracks which charts need update
 
-  static constexpr size_t MAX_POINTS = 200;  // Buffer size
-  static constexpr qint64 TIME_WINDOW_MS = 30000;  // 30 seconds window
+  static constexpr size_t MAX_POINTS = 1000;  // Buffer size
+  static constexpr qint64 TIME_WINDOW_MS = 10000;  // 10 seconds window
+  static constexpr int CHART_UPDATE_INTERVAL_MS = 33;  // ~30 FPS
 };
