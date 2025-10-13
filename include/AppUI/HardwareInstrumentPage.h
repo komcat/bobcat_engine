@@ -6,9 +6,10 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
-struct ApplicationContext;  // Forward declaration
+struct ApplicationContext;
 class MultiCameraView;
-class TcpClientWidget;  // Forward declaration
+class TcpClientWidget;
+class DataStoreWidget;  // ADD THIS
 
 /**
  * @brief Hardware & Instrument page
@@ -29,11 +30,11 @@ private slots:
   void showCamera();
   void showPIHexapod();
   void showACS();
-  void showDataView();        // NEW
-  void showTCPClient();       // NEW
-  void showLaserTEC();        // NEW
-  void showPowerSupply();     // NEW
-  void showSMU();             // NEW
+  void showDataView();
+  void showTCPClient();
+  void showLaserTEC();
+  void showPowerSupply();
+  void showSMU();
 
 private:
   void setupUI();
@@ -52,15 +53,16 @@ private:
   QPushButton* m_cameraButton;
   QPushButton* m_piButton;
   QPushButton* m_acsButton;
-  QPushButton* m_dataViewButton;      // NEW
-  QPushButton* m_tcpClientButton;     // NEW
-  QPushButton* m_laserTECButton;      // NEW
-  QPushButton* m_powerSupplyButton;   // NEW
-  QPushButton* m_smuButton;           // NEW
+  QPushButton* m_dataViewButton;
+  QPushButton* m_tcpClientButton;
+  QPushButton* m_laserTECButton;
+  QPushButton* m_powerSupplyButton;
+  QPushButton* m_smuButton;
 
   // Content pages
   MultiCameraView* m_cameraView;
-  TcpClientWidget* m_tcpClientWidget;  // ADD THIS
+  TcpClientWidget* m_tcpClientWidget;
+  DataStoreWidget* m_dataStoreWidget;  // ADD THIS
 
   // Track current selection
   QPushButton* m_currentButton;

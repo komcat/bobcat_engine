@@ -1,14 +1,16 @@
 ﻿// TcpClientManager.cpp
 #include "TcpClientManager.h"
 #include <nlohmann/json.hpp>
+#include <QDateTime>
 #include <fstream>
 #include <iostream>
 #include <algorithm>
 
 using json = nlohmann::json;
 
-TcpClientManager::TcpClientManager(DataStore* dataStore)
-  : m_dataStore(dataStore)
+TcpClientManager::TcpClientManager(DataStore* dataStore, QObject* parent)
+  : QObject(parent)
+  , m_dataStore(dataStore)
 {
   if (!m_dataStore) {
     throw std::runtime_error("DataStore cannot be null");
@@ -158,16 +160,16 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
   const auto& config = managed->config;
   auto& client = managed->client;
 
-  // Set up callbacks
-  client->SetDataCallback([this, channelId = config.dataStoreChannel](float value) {
-    OnDataReceived(channelId, value);
+  // Set up callbacks - CAPTURE BOTH clientId and channelId
+  client->SetDataCallback([this, id = clientId, channelId = config.dataStoreChannel](float value) {
+    OnDataReceived(id, channelId, value);
   });
 
   client->SetConnectionCallback([this, id = clientId](bool connected) {
     OnConnectionChanged(id, connected);
   });
 
-  // ✅ CHANGED: Connect FIRST, then enable auto-reconnect only if needed
+  // Connect
   bool connected = client->Connect(config.host, config.port);
 
   if (connected) {
@@ -191,7 +193,6 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
     return false;
   }
 }
-
 
 void TcpClientManager::DisconnectClient(const std::string& clientId)
 {
@@ -316,17 +317,25 @@ size_t TcpClientManager::GetClientCount() const
   return m_clients.size();
 }
 
-void TcpClientManager::OnDataReceived(const std::string& channelId, float value)
+void TcpClientManager::OnDataReceived(const std::string& clientId, const std::string& channelId, float value)
 {
+  // Store to DataStore
   if (m_dataStore) {
     m_dataStore->SetValue(channelId, value);
   }
+
+  // Emit signal with timestamp for real-time plotting
+  qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
+  emit dataReceived(clientId, value, timestamp);
 }
 
 void TcpClientManager::OnConnectionChanged(const std::string& clientId, bool connected)
 {
   std::cout << "[TcpClientManager] Client " << clientId
     << (connected ? " connected" : " disconnected") << std::endl;
+
+  // Emit signal for UI updates
+  emit connectionChanged(clientId, connected);
 }
 
 TcpClientManager::ManagedClient* TcpClientManager::FindClient(const std::string& clientId)

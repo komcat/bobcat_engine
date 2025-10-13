@@ -19,7 +19,7 @@ if(MSVC)
 endif()
 
 # Find Qt
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Charts)
 
 # ============================================================================
 # nlohmann JSON Configuration
@@ -149,11 +149,15 @@ set(SOURCES
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
- 
-  "include/logger/LogManager.cpp"
-   "include/logger/LogStatusBar.cpp"
-  "include/logger/LogViewerPage.cpp"
- "include/data/DataStore.cpp" "include/data/TcpDataClient.cpp" "include/data/TcpClientManager.cpp" "include/data/TcpClientWidget.cpp")
+    include/logger/LogManager.cpp
+    include/logger/LogStatusBar.cpp
+    include/logger/LogViewerPage.cpp
+    include/data/DataStore.cpp 
+    include/data/TcpDataClient.cpp 
+    include/data/TcpClientManager.cpp 
+    include/data/TcpClientWidget.cpp
+    include/data/DataStoreWidget.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -175,11 +179,15 @@ set(HEADERS
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h
     include/context/ApplicationContext.h
- "include/logger/LogManager.h"
-
- "include/logger/LogStatusBar.h"
- "include/logger/LogViewerPage.h"
- "include/data/DataStore.h" "include/data/TcpDataClient.h" "include/data/TcpClientManager.h" "include/data/TcpClientWidget.h")
+    include/logger/LogManager.h
+    include/logger/LogStatusBar.h
+    include/logger/LogViewerPage.h
+    include/data/DataStore.h
+    include/data/TcpDataClient.h
+    include/data/TcpClientManager.h
+    include/data/TcpClientWidget.h
+    include/data/DataStoreWidget.h
+)
 
 # Conditionally add Pylon camera files if SDK is found
 if(PYLON_FOUND)
@@ -221,7 +229,7 @@ add_executable(bobcat_engine ${SOURCES} ${HEADERS})
 # ============================================================================
 
 # Link Qt
-target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets)
+target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets Qt6::Charts)
 
 # Link Pylon SDK if found
 if(PYLON_FOUND)

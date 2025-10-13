@@ -1,4 +1,4 @@
-// LogManager.h - Thread-safe logging system
+﻿// LogManager.h - Thread-safe logging system
 #pragma once
 
 #include <string>
@@ -26,14 +26,14 @@ public:
     WARNING,
     ERROR,
     CRITICAL
-  };
+  };  // ✅ Make sure semicolon is here
 
   struct LogEntry {
     Level level;
     std::string message;
     std::string timestamp;
     std::string source;  // Optional: which component logged this
-  };
+  };  // ✅ Make sure semicolon is here
 
   using LogCallback = std::function<void(const LogEntry&)>;
 
@@ -91,4 +91,4 @@ private:
   size_t m_maxHistorySize;
   size_t m_errorCount;
   size_t m_warningCount;
-};
+};  // ✅ Make sure semicolon is here at the end of class

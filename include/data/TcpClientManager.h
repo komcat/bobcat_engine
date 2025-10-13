@@ -3,6 +3,7 @@
 
 #include "TcpDataClient.h"
 #include "DataStore.h"
+#include <QObject>
 #include <memory>
 #include <vector>
 #include <string>
@@ -13,9 +14,11 @@
  *
  * - Loads client configurations from JSON
  * - Connects clients to DataStore
- * - No UI dependencies
+ * - Emits signals for real-time updates
  */
-class TcpClientManager {
+class TcpClientManager : public QObject {
+  Q_OBJECT
+
 public:
   struct ClientConfig {
     std::string id;
@@ -42,7 +45,7 @@ public:
     size_t pendingCount;
   };
 
-  explicit TcpClientManager(DataStore* dataStore);
+  explicit TcpClientManager(DataStore* dataStore, QObject* parent = nullptr);
   ~TcpClientManager();
 
   // Configuration
@@ -66,6 +69,22 @@ public:
   std::vector<ClientStatus> GetAllClientStatus() const;
   size_t GetClientCount() const;
 
+signals:
+  /**
+   * @brief Emitted whenever new data arrives from any client
+   * @param clientId The client that received the data
+   * @param value The received value
+   * @param timestamp Milliseconds since epoch
+   */
+  void dataReceived(const std::string& clientId, float value, qint64 timestamp);
+
+  /**
+   * @brief Emitted when client connection status changes
+   * @param clientId The client ID
+   * @param connected True if connected, false if disconnected
+   */
+  void connectionChanged(const std::string& clientId, bool connected);
+
 private:
   struct ManagedClient {
     ClientConfig config;
@@ -82,7 +101,7 @@ private:
   mutable std::recursive_mutex m_clientsMutex;
   std::vector<ManagedClient> m_clients;
 
-  void OnDataReceived(const std::string& channelId, float value);
+  void OnDataReceived(const std::string& clientId, const std::string& channelId, float value);
   void OnConnectionChanged(const std::string& clientId, bool connected);
   ManagedClient* FindClient(const std::string& clientId);
   const ManagedClient* FindClient(const std::string& clientId) const;
