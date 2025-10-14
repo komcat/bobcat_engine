@@ -32,7 +32,7 @@ void MainMenuPage::setupUI()
   // Add stretch to center buttons vertically
   mainLayout->addStretch();
 
-  // Button grid (2x2)
+  // Button grid (2x3 - 2 columns, 3 rows)
   QGridLayout* buttonGrid = new QGridLayout();
   buttonGrid->setSpacing(30);
 
@@ -41,21 +41,27 @@ void MainMenuPage::setupUI()
   m_recipeButton = createMenuButton("Recipe", "assets/icons/recipe.png");
   m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
   m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
+  m_editConfigButton = createMenuButton("Edit Config", "assets/icons/config.png");           // NEW
+  m_futureUpdateButton = createMenuButton("(future update)", "assets/icons/future.png");     // NEW
 
-  // Add to grid
+  // Add to grid (2 columns, 3 rows)
   buttonGrid->addWidget(m_processButton, 0, 0);
   buttonGrid->addWidget(m_recipeButton, 0, 1);
   buttonGrid->addWidget(m_motionButton, 1, 0);
   buttonGrid->addWidget(m_hardwareButton, 1, 1);
+  buttonGrid->addWidget(m_editConfigButton, 2, 0);       // NEW - Row 2, Col 0
+  buttonGrid->addWidget(m_futureUpdateButton, 2, 1);     // NEW - Row 2, Col 1
 
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
 
-  // Connect signals (QToolButton uses clicked() just like QPushButton)
+  // Connect signals
   connect(m_processButton, &QToolButton::clicked, this, &MainMenuPage::processClicked);
   connect(m_recipeButton, &QToolButton::clicked, this, &MainMenuPage::recipeClicked);
   connect(m_motionButton, &QToolButton::clicked, this, &MainMenuPage::motionClicked);
   connect(m_hardwareButton, &QToolButton::clicked, this, &MainMenuPage::hardwareClicked);
+  connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);         // NEW
+  connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);     // NEW
 
   // Set dark background
   setStyleSheet("QWidget { background-color: #2b2b2b; }");
@@ -86,10 +92,10 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
   // Set text
   button->setText(text);
 
-  // ✅ THIS NOW WORKS with QToolButton!
-  button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+  // Style for icon-above-text layout
+  button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
-  // Style for QToolButton
+  // Button styling
   button->setStyleSheet(
     "QToolButton { "
     "  background-color: #3a3a3a; "
@@ -98,7 +104,7 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
     "  border-radius: 10px; "
     "  font-size: 18px; "
     "  font-weight: bold; "
-    "  padding: 15px; "
+    "  padding: 20px; "
     "} "
     "QToolButton:hover { "
     "  background-color: #4a4a4a; "

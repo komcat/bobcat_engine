@@ -6,6 +6,8 @@
 #include "LogStatusBar.h"      // ✅ NEW
 #include "LogViewerPage.h"     // ✅ NEW
 #include "LogManager.h"        // ✅ NEW
+#include "ConfigEditorPage.h"     // NEW - Add this include
+
 #include <QVBoxLayout>
 #include <iostream>
 
@@ -69,12 +71,25 @@ void MainWindow::createPages()
   connect(m_mainMenuPage, &MainMenuPage::hardwareClicked,
     this, &MainWindow::onMainMenuHardware);
   m_pageStack->addWidget(m_mainMenuPage);
+  // NEW connections
+  connect(m_mainMenuPage, &MainMenuPage::editConfigClicked,
+    this, &MainWindow::onMainMenuEditConfig);
+  connect(m_mainMenuPage, &MainMenuPage::futureUpdateClicked,
+    this, &MainWindow::onMainMenuFutureUpdate);
+
+  m_pageStack->addWidget(m_mainMenuPage);
 
   // Hardware & Instrument page
   m_hardwarePage = new HardwareInstrumentPage(m_context, this);
   connect(m_hardwarePage, &HardwareInstrumentPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_hardwarePage);
+
+  // Config Editor page - NEW
+  m_configEditorPage = new ConfigEditorPage(m_context, this);
+  connect(m_configEditorPage, &ConfigEditorPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_configEditorPage);
 
   // Log viewer page
   m_logViewerPage = new LogViewerPage(m_context->logManager, this);
@@ -155,4 +170,19 @@ void MainWindow::onOpenLogViewer()
   // Refresh logs before showing
   m_logViewerPage->RefreshLogs();
   m_pageStack->setCurrentWidget(m_logViewerPage);
+}
+
+// NEW slot implementations - add these methods:
+
+void MainWindow::onMainMenuEditConfig()
+{
+  std::cout << "[MainWindow] Edit Config clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Config Editor page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_configEditorPage);  // <- Navigate to the page
+}
+
+void MainWindow::onMainMenuFutureUpdate()
+{
+  std::cout << "[MainWindow] Future Update clicked (not implemented)" << std::endl;
+  m_context->logManager->Info("Future update button clicked", "MainWindow");
 }

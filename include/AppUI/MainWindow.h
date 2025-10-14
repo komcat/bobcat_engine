@@ -7,8 +7,9 @@
 struct ApplicationContext;
 class MainMenuPage;
 class HardwareInstrumentPage;
-class LogStatusBar;      // ✅ NEW
-class LogViewerPage;     // ✅ NEW
+class ConfigEditorPage;       // NEW
+class LogStatusBar;
+class LogViewerPage;
 
 class MainWindow : public QMainWindow
 {
@@ -23,19 +24,24 @@ private slots:
   void onMainMenuRecipe();
   void onMainMenuMotion();
   void onMainMenuHardware();
+  void onMainMenuEditConfig();      // NEW
+  void onMainMenuFutureUpdate();    // NEW
   void onBackToMainMenu();
-  void onOpenLogViewer();  // ✅ NEW
+  void onOpenLogViewer();
+
 
 private:
   void setupUI();
   void createPages();
-  void setupLogging();     // ✅ NEW
+  void setupLogging();
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
-  LogStatusBar* m_logStatusBar;     // ✅ NEW
-  LogViewerPage* m_logViewerPage;   // ✅ NEW
+  LogStatusBar* m_logStatusBar;
+  LogViewerPage* m_logViewerPage;
 
   MainMenuPage* m_mainMenuPage;
   HardwareInstrumentPage* m_hardwarePage;
+
+  ConfigEditorPage* m_configEditorPage;  // NEW
 };

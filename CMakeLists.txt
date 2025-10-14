@@ -109,7 +109,9 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/camera
-    ${CMAKE_SOURCE_DIR}/include/AppUI      
+    ${CMAKE_SOURCE_DIR}/include/AppUI
+    ${CMAKE_SOURCE_DIR}/include/AppUI/ConfigEditor
+    ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -157,7 +159,10 @@ set(SOURCES
     include/data/TcpClientManager.cpp 
     include/data/TcpClientWidget.cpp
     include/data/DataStoreWidget.cpp
-)
+    include/AppUI/ConfigEditor/ConfigEditorPage.cpp
+    include/AppUI/Forms/TcpClientFormWidget.cpp
+    include/AppUI/Forms/CameraFormWidget.cpp
+ "include/AppUI/Forms/SavedPositionsFormWidget.cpp" "include/AppUI/Forms/MotorDeviceFormWidget.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -187,7 +192,11 @@ set(HEADERS
     include/data/TcpClientManager.h
     include/data/TcpClientWidget.h
     include/data/DataStoreWidget.h
-)
+    include/AppUI/ConfigEditor/ConfigEditorPage.h 
+    include/AppUI/Forms/TcpClientFormWidget.h 
+    include/AppUI/Forms/CameraFormWidget.h
+ "include/AppUI/Forms/SavedPositionsFormWidget.h" "include/AppUI/Forms/MotorDeviceFormWidget.h")
+
 
 # Conditionally add Pylon camera files if SDK is found
 if(PYLON_FOUND)

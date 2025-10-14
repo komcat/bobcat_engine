@@ -1,0 +1,44 @@
+{
+  "motion_devices": [
+    {
+      "id": "gantry-main",
+      "name": "gantry-main",
+      "device_id": 3,
+      "ip_address": "192.168.0.50",
+      "port": 701,
+      "enabled": false,
+      "controller_type": "ACS",
+      "axes": "X Y Z"
+    },
+    {
+      "id": "hex-left",
+      "name": "hex-left",
+      "device_id": 0,
+      "ip_address": "192.168.0.10",
+      "port": 50000,
+      "enabled": false,
+      "controller_type": "PI",
+      "axes": "X Y Z U V W"
+    },
+    {
+      "id": "hex-right",
+      "name": "hex-right",
+      "device_id": 2,
+      "ip_address": "192.168.0.30",
+      "port": 50000,
+      "enabled": false,
+      "controller_type": "PI",
+      "axes": "X Y Z U V W"
+    },
+    {
+      "id": "hex-bottom",
+      "name": "hex-bottom",
+      "device_id": 1,
+      "ip_address": "192.168.0.20",
+      "port": 50000,
+      "enabled": false,
+      "controller_type": "PI",
+      "axes": "X Y Z U V W"
+    }
+  ]
+}
