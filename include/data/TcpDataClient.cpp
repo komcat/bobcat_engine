@@ -312,7 +312,7 @@ void TcpDataClient::ProcessBuffer(std::string& buffer)
         }
       }
     }
-    catch (const std::exception& e) {
+    catch (const std::exception& ) {
       // Ignore parse errors
     }
   }

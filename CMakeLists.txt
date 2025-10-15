@@ -7,6 +7,16 @@ endif()
 
 project("bobcat_engine")
 
+# Add this after your project() or set(CMAKE_CXX_STANDARD ...) line
+
+if(MSVC)
+    # Suppress warning C4828 (disallowed character in source file)
+    add_compile_options(/wd4828)
+    
+    # If you also want to suppress C4566 (which you had before)
+    add_compile_options(/wd4566)
+endif()
+
 # Point to MSVC version
 set(CMAKE_PREFIX_PATH "C:/Qt/6.9.3/msvc2022_64")
 set(CMAKE_AUTOMOC ON)
@@ -33,6 +43,58 @@ if(EXISTS "${NLOHMANN_JSON_DIR}/nlohmann/json.hpp")
 else()
     message(WARNING "nlohmann json not found at ${NLOHMANN_JSON_DIR}/nlohmann")
     set(NLOHMANN_JSON_FOUND FALSE)
+endif()
+
+# ============================================================================
+# ACS Controller Configuration
+# ============================================================================
+set(ACSC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/ACSC")
+
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # 64-bit build
+        set(ACSC_LIBRARY "${ACSC_DIR}/ACSCL_x64.LIB")
+    else()
+        # 32-bit build
+        set(ACSC_LIBRARY "${ACSC_DIR}/ACSCL_x86.LIB")
+    endif()
+endif()
+
+# Check if ACS library exists
+if(EXISTS "${ACSC_LIBRARY}")
+    message(STATUS "ACS Controller library found at: ${ACSC_LIBRARY}")
+    set(ACSC_FOUND TRUE)
+else()
+    message(WARNING "ACS Controller library not found at ${ACSC_LIBRARY}. ACS features will be disabled.")
+    set(ACSC_FOUND FALSE)
+endif()
+
+# ============================================================================
+# PI GCS2 Controller Configuration
+# ============================================================================
+set(PI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/PI")
+set(PI_INCLUDE_DIR "${PI_ROOT}")
+set(PI_LIB_DIR "${PI_ROOT}")
+
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # 64-bit build
+        set(PI_LIBRARY "${PI_LIB_DIR}/PI_GCS2_DLL_x64.lib")
+        set(PI_DLL "${PI_LIB_DIR}/PI_GCS2_DLL_x64.dll")
+    else()
+        # 32-bit build
+        set(PI_LIBRARY "${PI_LIB_DIR}/PI_GCS2_DLL.lib")
+        set(PI_DLL "${PI_LIB_DIR}/PI_GCS2_DLL.dll")
+    endif()
+endif()
+
+# Check if PI library exists
+if(EXISTS "${PI_LIBRARY}")
+    message(STATUS "PI GCS2 Controller library found at: ${PI_LIBRARY}")
+    set(PI_FOUND TRUE)
+else()
+    message(WARNING "PI GCS2 Controller library not found at ${PI_LIBRARY}. PI features will be disabled.")
+    set(PI_FOUND FALSE)
 endif()
 
 # ============================================================================
@@ -115,11 +177,23 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
+    ${CMAKE_SOURCE_DIR}/include/motions
+    ${CMAKE_SOURCE_DIR}/include/motions/interfaces
 )
 
 # Add nlohmann json include directory if found
 if(NLOHMANN_JSON_FOUND)
     include_directories(${NLOHMANN_JSON_DIR})
+endif()
+
+# Add ACS include directory if found
+if(ACSC_FOUND)
+    include_directories(${ACSC_DIR})
+endif()
+
+# Add PI include directory if found
+if(PI_FOUND)
+    include_directories(${PI_INCLUDE_DIR})
 endif()
 
 # Add Pylon include directory if found
@@ -162,7 +236,9 @@ set(SOURCES
     include/AppUI/ConfigEditor/ConfigEditorPage.cpp
     include/AppUI/Forms/TcpClientFormWidget.cpp
     include/AppUI/Forms/CameraFormWidget.cpp
- "include/AppUI/Forms/SavedPositionsFormWidget.cpp" "include/AppUI/Forms/MotorDeviceFormWidget.cpp")
+    include/AppUI/Forms/SavedPositionsFormWidget.cpp
+    include/AppUI/Forms/MotorDeviceFormWidget.cpp        
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -195,8 +271,58 @@ set(HEADERS
     include/AppUI/ConfigEditor/ConfigEditorPage.h 
     include/AppUI/Forms/TcpClientFormWidget.h 
     include/AppUI/Forms/CameraFormWidget.h
- "include/AppUI/Forms/SavedPositionsFormWidget.h" "include/AppUI/Forms/MotorDeviceFormWidget.h")
+    include/AppUI/Forms/SavedPositionsFormWidget.h
+    include/AppUI/Forms/MotorDeviceFormWidget.h 
+    include/motions/MotionTypes.h
+    include/logger/ILogger.h
+ "include/motions/interfaces/IMotionControllerManager.h")
 
+# Conditionally add ACS controller files if library is found
+if(ACSC_FOUND)
+    list(APPEND SOURCES
+        include/motions/acs_controller_manager.cpp
+        include/motions/acs_controller.cpp
+    )
+    list(APPEND HEADERS
+        include/motions/acs_controller_manager.h
+        include/motions/acs_controller.h
+        include/motions/ACSC.h
+        include/motions/ACSC_wrapper.h
+    )
+    message(STATUS "ACS Controller support enabled")
+else()
+    message(STATUS "ACS Controller support disabled - library not found")
+endif()
+
+# Conditionally add PI controller files if library is found
+if(PI_FOUND)
+    list(APPEND SOURCES
+        include/motions/pi_controller_manager.cpp
+        include/motions/pi_controller.cpp
+    )
+    list(APPEND HEADERS
+        include/motions/pi_controller_manager.h
+        include/motions/pi_controller.h
+        include/motions/PI_GCS2_DLL.h
+    )
+    message(STATUS "PI Controller support enabled")
+else()
+    message(STATUS "PI Controller support disabled - library not found")
+endif()
+
+# Add unified motion manager only if BOTH ACS and PI are found
+if(ACSC_FOUND AND PI_FOUND)
+    list(APPEND SOURCES
+        include/motions/unified_motion_manager.cpp
+    )
+    list(APPEND HEADERS
+        include/motions/unified_motion_manager.h
+        include/motions/IPositionSubscriber.h
+    )
+    message(STATUS "Unified Motion Manager enabled (requires both ACS and PI)")
+elseif(ACSC_FOUND OR PI_FOUND)
+    message(STATUS "Unified Motion Manager disabled (requires both ACS and PI libraries)")
+endif()
 
 # Conditionally add Pylon camera files if SDK is found
 if(PYLON_FOUND)
@@ -240,6 +366,26 @@ add_executable(bobcat_engine ${SOURCES} ${HEADERS})
 # Link Qt
 target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets Qt6::Charts)
 
+# Link ACS library if found
+if(ACSC_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${ACSC_LIBRARY})
+endif()
+
+# Link PI library if found
+if(PI_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${PI_LIBRARY})
+    
+    # On Windows, copy PI DLL to the output directory
+    if(WIN32 AND EXISTS ${PI_DLL})
+        add_custom_command(TARGET bobcat_engine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${PI_DLL}
+                $<TARGET_FILE_DIR:bobcat_engine>
+            COMMENT "Copying PI GCS2 DLL to output directory"
+        )
+    endif()
+endif()
+
 # Link Pylon SDK if found
 if(PYLON_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${PYLON_LIBRARIES})
@@ -281,7 +427,6 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         $<TARGET_FILE_DIR:bobcat_engine>/config
     COMMENT "Copying config files to output directory"
 )
-
 
 # Copy assets folder (icons, images, etc.) to output directory
 add_custom_command(TARGET bobcat_engine POST_BUILD

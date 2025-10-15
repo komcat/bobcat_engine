@@ -247,7 +247,7 @@ void MultiCameraView::onCameraError(QString cameraId, QString error)
 
 void MultiCameraView::updateStatusSummary()
 {
-  int totalCameras = m_cameraViews.size();
+  int totalCameras = static_cast<int>(m_cameraViews.size());
   int connectedCameras = 0;
   int enabledCameras = 0;
 

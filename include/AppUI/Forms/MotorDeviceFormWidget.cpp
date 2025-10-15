@@ -56,7 +56,7 @@ void MotorDeviceFormWidget::addDeviceGroup(const QJsonObject& device)
   QVBoxLayout* formLayout = qobject_cast<QVBoxLayout*>(m_formContent->layout());
   if (!formLayout) return;
 
-  int index = m_fields.size();
+  int index = static_cast<int>(m_fields.size());
 
   QString formStyle =
     "QLineEdit, QSpinBox, QComboBox { background-color: #3a3a3a; color: white; border: 1px solid #555555; "
