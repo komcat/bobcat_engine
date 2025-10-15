@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include "ApplicationContext.h"
+#include "unified_motion_manager.h"  // Add include for UnifiedMotionManager
 
 
 class QApplication;
@@ -35,10 +36,16 @@ private:
   bool initialize();
   void createMainWindow();
   void initializeManagers();
+
+	//declare initialization methods for each manager
   void initializeCameraManager();
 	void initializeLogManager();
 	void initializeDataStore();
 	void initializeTcpClientManager();
+  void initializeMotionManager();  // Add declaration
+
+
+
 
   void shutdownManagers();
 
@@ -49,6 +56,8 @@ private:
   std::unique_ptr<LogManager> m_logManager;  // ✅ NEW
   std::unique_ptr<DataStore> m_dataStore;              // ← NEW
   std::unique_ptr<TcpClientManager> m_tcpClientManager; // ← NEW
+  std::unique_ptr<UnifiedMotionManager> m_motionManager;  // Add member
+
 
   ApplicationContext m_context;
 

@@ -6,6 +6,9 @@
 #include "TcpClientManager.h" // ← NEW
 #include <QApplication>
 #include <iostream>
+#include "nlohmann/json.hpp"
+
+using json = nlohmann::json;
 
 Application::Application(int argc, char* argv[])
   : QObject(nullptr)
@@ -88,6 +91,7 @@ void Application::initializeManagers()
     initializeDataStore();
     initializeTcpClientManager();
     initializeCameraManager();
+    initializeMotionManager();  // ← Add this line
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -157,6 +161,11 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+  if (m_motionManager) {
+    m_motionManager->DisconnectAll();  // Disconnect before shutdown
+  }
+
+
   // ✅ CRITICAL FIX: Clear UI callback FIRST before any logging
   if (m_logManager) {
     m_logManager->ClearUICallback();  // ← ADD THIS LINE
@@ -188,5 +197,91 @@ void Application::createMainWindow()
 
   if (m_logManager) {
     m_logManager->Info("Main window created", "Application");
+  }
+}
+
+void Application::initializeMotionManager() {
+  std::cout << "[Application] Initializing motion manager..." << std::endl;
+
+  try {
+    // 1. Create UnifiedMotionManager
+    m_motionManager = std::make_unique<UnifiedMotionManager>();
+    m_context.motionManager = m_motionManager.get();
+    m_logManager->Info("UnifiedMotionManager created", "Application");
+
+    // 2. Load JSON config - try local first, then default
+    std::string configPath;
+    std::ifstream file;
+
+    // Try local config first (not in git)
+    file.open("config/motor_devices.local.json");
+    if (file.good()) {
+      configPath = "config/motor_devices.local.json";
+      m_logManager->Info("Loading motion config from LOCAL file", "Application");
+    }
+    else {
+      // Fall back to default config
+      file.close();
+      file.open("config/motor_devices.json");
+      if (file.good()) {
+        configPath = "config/motor_devices.json";
+        m_logManager->Info("Loading motion config from DEFAULT file", "Application");
+      }
+      else {
+        m_logManager->Warning("No motion config found - motion control not configured", "Application");
+        return;
+      }
+    }
+
+    // Parse JSON
+    nlohmann::json config = nlohmann::json::parse(file);
+    file.close();
+
+    if (config.contains("motion_devices")) {
+      int deviceCount = 0;
+
+      for (const auto& deviceJson : config["motion_devices"]) {
+        // Parse JSON to MotionDevice struct
+        MotionDevice device;
+        device.Name = deviceJson.value("name", "");
+        device.TypeController = deviceJson.value("controller_type", "");
+        device.IpAddress = deviceJson.value("ip_address", "");
+        device.Port = deviceJson.value("port", 0);
+        device.InstalledAxes = deviceJson.value("axes", "");
+        device.Enabled = deviceJson.value("enabled", false);
+
+        // Add device to UnifiedMotionManager
+        m_motionManager->AddDevice(device);
+        deviceCount++;
+
+        m_logManager->Info(
+          "Added device: " + device.Name +
+          " (Type: " + device.TypeController +
+          ", Enabled: " + (device.Enabled ? "Yes" : "No") + ")",
+          "MotionManager"
+        );
+      }
+
+      m_logManager->Info(
+        "Loaded " + std::to_string(deviceCount) + " motion devices from " + configPath,
+        "Application"
+      );
+
+      // Auto-connect enabled devices
+      int connectedCount = m_motionManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " devices",
+        "Application"
+      );
+    }
+
+    m_logManager->Info("Motion manager initialized successfully", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Motion manager initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without motion control
   }
 }
