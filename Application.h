@@ -43,7 +43,7 @@ private:
 	void initializeDataStore();
 	void initializeTcpClientManager();
   void initializeMotionManager();  // Add declaration
-
+	void testMotionCommands(); // Add test method
 
 
 

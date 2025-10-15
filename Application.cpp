@@ -93,6 +93,9 @@ void Application::initializeManagers()
     initializeCameraManager();
     initializeMotionManager();  // ← Add this line
 
+		// Optional: run test commands to verify motion manager
+    //testMotionCommands();
+
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
   catch (const std::exception& e) {
@@ -284,4 +287,31 @@ void Application::initializeMotionManager() {
     );
     // Don't throw - allow app to continue without motion control
   }
+}
+
+
+
+// In Application.cpp after initializeMotionManager()
+void Application::testMotionCommands() {
+  if (!m_motionManager) return;
+
+  m_logManager->Info("Testing motion commands...", "Application");
+
+  // Test 1: Query positions
+  double xPos = 0.0;
+  if (m_motionManager->GetPosition("gantry-main", "X", xPos)) {
+    m_logManager->Info("Gantry X position: " + std::to_string(xPos), "Motion");
+  }
+
+  // Test 2: Small relative move
+  m_logManager->Info("Moving gantry X by 1mm...", "Motion");
+  if (m_motionManager->MoveRelative("gantry-main", "X", 1.0, true)) {
+    m_logManager->Info("Move completed!", "Motion");
+  }
+
+  // Test 3: Query hex position
+  PositionStruct hexPos = m_motionManager->GetCurrentPosition("hex-left");
+  m_logManager->Info("Hex-left position: X=" + std::to_string(hexPos.x) +
+    " Y=" + std::to_string(hexPos.y) +
+    " Z=" + std::to_string(hexPos.z), "Motion");
 }

@@ -1,15 +1,13 @@
-// LogStatusBar.h - Bottom status bar with expandable log drawer
+// LogStatusBar.h - Bottom status bar (compact view only)
 #pragma once
 
 #include <QWidget>
 #include <QLabel>
 #include <QPushButton>
-#include <QTextEdit>
-#include <QVBoxLayout>
 #include "LogManager.h"
 
 /**
- * @brief Bottom status bar showing last log + expandable drawer
+ * @brief Bottom status bar showing last log entry
  */
 class LogStatusBar : public QWidget
 {
@@ -25,28 +23,19 @@ signals:
   void openFullLogViewer();
 
 private slots:
-  void onToggleDrawer();
   void onOpenFullViewer();
 
 private:
   void setupUI();
   void updateStatusLabel();
-  void addToDrawer(const LogManager::LogEntry& entry);
-  QString formatLogEntry(const LogManager::LogEntry& entry);
 
   LogManager* m_logManager;
 
-  // Status bar (always visible)
+  // Status bar components
   QLabel* m_statusIcon;
   QLabel* m_statusText;
   QLabel* m_errorWarningCount;
-  QPushButton* m_expandButton;
   QPushButton* m_viewerButton;
-
-  // Expandable drawer
-  QWidget* m_drawer;
-  QTextEdit* m_drawerLog;
-  bool m_drawerExpanded;
 
   // Track last message
   LogManager::LogEntry m_lastEntry;

@@ -32,7 +32,7 @@ void MainMenuPage::setupUI()
   // Add stretch to center buttons vertically
   mainLayout->addStretch();
 
-  // Button grid (2x3 - 2 columns, 3 rows)
+  // Button grid (3x2 - 3 columns, 2 rows)  ✅ Changed comment
   QGridLayout* buttonGrid = new QGridLayout();
   buttonGrid->setSpacing(30);
 
@@ -41,27 +41,27 @@ void MainMenuPage::setupUI()
   m_recipeButton = createMenuButton("Recipe", "assets/icons/recipe.png");
   m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
   m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
-  m_editConfigButton = createMenuButton("Edit Config", "assets/icons/config.png");           // NEW
-  m_futureUpdateButton = createMenuButton("(future update)", "assets/icons/future.png");     // NEW
+  m_editConfigButton = createMenuButton("Edit Config", "assets/icons/config.png");
+  m_futureUpdateButton = createMenuButton("(future update)", "assets/icons/future.png");
 
-  // Add to grid (2 columns, 3 rows)
+  // ✅ Add to grid (3 columns, 2 rows)
   buttonGrid->addWidget(m_processButton, 0, 0);
   buttonGrid->addWidget(m_recipeButton, 0, 1);
-  buttonGrid->addWidget(m_motionButton, 1, 0);
-  buttonGrid->addWidget(m_hardwareButton, 1, 1);
-  buttonGrid->addWidget(m_editConfigButton, 2, 0);       // NEW - Row 2, Col 0
-  buttonGrid->addWidget(m_futureUpdateButton, 2, 1);     // NEW - Row 2, Col 1
+  buttonGrid->addWidget(m_motionButton, 0, 2);         // ✅ Moved to row 0, col 2
+  buttonGrid->addWidget(m_hardwareButton, 1, 0);       // ✅ Moved to row 1, col 0
+  buttonGrid->addWidget(m_editConfigButton, 1, 1);     // ✅ Moved to row 1, col 1
+  buttonGrid->addWidget(m_futureUpdateButton, 1, 2);   // ✅ Moved to row 1, col 2
 
   mainLayout->addLayout(buttonGrid);
-  mainLayout->addStretch();
+  mainLayout->addStretch();  // ✅ Pushes buttons up, leaves space for status bar
 
   // Connect signals
   connect(m_processButton, &QToolButton::clicked, this, &MainMenuPage::processClicked);
   connect(m_recipeButton, &QToolButton::clicked, this, &MainMenuPage::recipeClicked);
   connect(m_motionButton, &QToolButton::clicked, this, &MainMenuPage::motionClicked);
   connect(m_hardwareButton, &QToolButton::clicked, this, &MainMenuPage::hardwareClicked);
-  connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);         // NEW
-  connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);     // NEW
+  connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);
+  connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);
 
   // Set dark background
   setStyleSheet("QWidget { background-color: #2b2b2b; }");
@@ -71,8 +71,8 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
 {
   QToolButton* button = new QToolButton();
   button->setMinimumSize(200, 180);
-  button->setMaximumSize(600, 300);
-  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  button->setMaximumSize(400, 250);  // ✅ Lower max height (was 300)
+  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);  // ✅ Changed vertical policy
 
   // Load icon if path provided
   if (!iconPath.isEmpty()) {
@@ -81,7 +81,7 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
     // Check if icon loaded successfully
     if (!icon.isNull()) {
       button->setIcon(icon);
-      button->setIconSize(QSize(100, 100));  // Icon display size
+      button->setIconSize(QSize(48, 48));  // Icon display size
     }
     else {
       // Icon failed to load - print warning
@@ -93,7 +93,7 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
   button->setText(text);
 
   // Style for icon-above-text layout
-  button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+  button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
   // Button styling
   button->setStyleSheet(

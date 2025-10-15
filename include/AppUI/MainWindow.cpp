@@ -52,7 +52,7 @@ void MainWindow::setupUI()
   mainLayout->addWidget(m_logStatusBar, 0);  // No stretch (fixed size)
 
   setCentralWidget(centralWidget);
-  resize(1024, 768);
+  resize(800, 600);
 }
 
 // MainWindow.cpp - Update createPages() method
