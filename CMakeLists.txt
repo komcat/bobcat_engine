@@ -174,6 +174,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI
     ${CMAKE_SOURCE_DIR}/include/AppUI/ConfigEditor
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
+    ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -238,7 +239,7 @@ set(SOURCES
     include/AppUI/Forms/CameraFormWidget.cpp
     include/AppUI/Forms/SavedPositionsFormWidget.cpp
     include/AppUI/Forms/MotorDeviceFormWidget.cpp        
-)
+ "include/AppUI/MotionPages/MotionControllerPageBase.cpp" "include/AppUI/MotionPages/PIControllerPage.cpp" "include/AppUI/MotionPages/ACSControllerPage.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -275,7 +276,7 @@ set(HEADERS
     include/AppUI/Forms/MotorDeviceFormWidget.h 
     include/motions/MotionTypes.h
     include/logger/ILogger.h
- "include/motions/interfaces/IMotionControllerManager.h")
+ "include/motions/interfaces/IMotionControllerManager.h" "include/AppUI/MotionPages/MotionControllerPageBase.h" "include/AppUI/MotionPages/PIControllerPage.h" "include/AppUI/MotionPages/ACSControllerPage.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

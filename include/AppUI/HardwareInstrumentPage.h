@@ -9,7 +9,9 @@
 struct ApplicationContext;
 class MultiCameraView;
 class TcpClientWidget;
-class DataStoreWidget;  // ADD THIS
+class DataStoreWidget;
+class PIControllerPage;      // ADD
+class ACSControllerPage;      // ADD
 
 /**
  * @brief Hardware & Instrument page
@@ -62,7 +64,9 @@ private:
   // Content pages
   MultiCameraView* m_cameraView;
   TcpClientWidget* m_tcpClientWidget;
-  DataStoreWidget* m_dataStoreWidget;  // ADD THIS
+  DataStoreWidget* m_dataStoreWidget;
+  PIControllerPage* m_piControllerPage;      // ADD
+  ACSControllerPage* m_acsControllerPage;    // ADD
 
   // Track current selection
   QPushButton* m_currentButton;

@@ -3,7 +3,9 @@
 #include "ApplicationContext.h"
 #include "MultiCameraView.h"
 #include "TcpClientWidget.h"
-#include "DataStoreWidget.h"  // ADD THIS
+#include "DataStoreWidget.h"
+#include "PIControllerPage.h"      // ADD
+#include "ACSControllerPage.h"     // ADD
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -16,7 +18,9 @@ HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWid
   , m_contentStack(nullptr)
   , m_cameraView(nullptr)
   , m_tcpClientWidget(nullptr)
-  , m_dataStoreWidget(nullptr)  // ADD THIS
+  , m_dataStoreWidget(nullptr)
+  , m_piControllerPage(nullptr)    // ADD
+  , m_acsControllerPage(nullptr)   // ADD
   , m_currentButton(nullptr)
 {
   setupUI();
@@ -110,19 +114,15 @@ void HardwareInstrumentPage::createContentArea()
   m_cameraView = new MultiCameraView(m_context);
   m_contentStack->addWidget(m_cameraView);
 
-  // Index 1: PI Hexapod placeholder
-  QLabel* piPlaceholder = new QLabel("PI Hexapod\n(Coming Soon)");
-  piPlaceholder->setAlignment(Qt::AlignCenter);
-  piPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
-  m_contentStack->addWidget(piPlaceholder);
+  // Index 1: PI Hexapod - REAL PAGE NOW
+  m_piControllerPage = new PIControllerPage(m_context);
+  m_contentStack->addWidget(m_piControllerPage);
 
-  // Index 2: ACS placeholder
-  QLabel* acsPlaceholder = new QLabel("ACS\n(Coming Soon)");
-  acsPlaceholder->setAlignment(Qt::AlignCenter);
-  acsPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
-  m_contentStack->addWidget(acsPlaceholder);
+  // Index 2: ACS - REAL PAGE NOW
+  m_acsControllerPage = new ACSControllerPage(m_context);
+  m_contentStack->addWidget(m_acsControllerPage);
 
-  // Index 3: Data View - REAL WIDGET NOW
+  // Index 3: Data View
   m_dataStoreWidget = new DataStoreWidget(m_context);
   m_contentStack->addWidget(m_dataStoreWidget);
 
@@ -188,7 +188,7 @@ void HardwareInstrumentPage::showPIHexapod()
   if (m_currentButton) m_currentButton->setChecked(false);
   m_piButton->setChecked(true);
   m_currentButton = m_piButton;
-  std::cout << "[HardwareInstrumentPage] Showing PI Hexapod (placeholder)" << std::endl;
+  std::cout << "[HardwareInstrumentPage] Showing PI Hexapod page" << std::endl;
 }
 
 void HardwareInstrumentPage::showACS()
@@ -197,7 +197,7 @@ void HardwareInstrumentPage::showACS()
   if (m_currentButton) m_currentButton->setChecked(false);
   m_acsButton->setChecked(true);
   m_currentButton = m_acsButton;
-  std::cout << "[HardwareInstrumentPage] Showing ACS (placeholder)" << std::endl;
+  std::cout << "[HardwareInstrumentPage] Showing ACS page" << std::endl;
 }
 
 void HardwareInstrumentPage::showDataView()
