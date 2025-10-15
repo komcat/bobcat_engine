@@ -11,12 +11,17 @@ LogStatusBar::LogStatusBar(LogManager* logManager, QWidget* parent)
 
 void LogStatusBar::setupUI()
 {
+  setFixedHeight(30);
+
+  // ✅ Use simple QWidget selector and set palette
+  QPalette pal = palette();
+  pal.setColor(QPalette::Window, QColor(43, 43, 43));  // #2b2b2b
+  setAutoFillBackground(true);
+  setPalette(pal);
+
   QHBoxLayout* mainLayout = new QHBoxLayout(this);
   mainLayout->setContentsMargins(10, 0, 10, 0);
   mainLayout->setSpacing(10);
-
-  setFixedHeight(30);
-  setStyleSheet("QWidget { background-color: #2b2b2b; border-top: 1px solid #555555; }");
 
   // Status icon
   m_statusIcon = new QLabel("●");
@@ -30,7 +35,7 @@ void LogStatusBar::setupUI()
 
   // Error/warning count
   m_errorWarningCount = new QLabel("⚠ 0  ✗ 0");
-  m_errorWarningCount->setStyleSheet("QLabel { color: #888888; font-size: 11px; }");
+  m_errorWarningCount->setStyleSheet("QLabel { color: #ffaa00; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(m_errorWarningCount);
 
   // Full viewer button
@@ -38,8 +43,17 @@ void LogStatusBar::setupUI()
   m_viewerButton->setFixedSize(80, 25);
   m_viewerButton->setToolTip("Open Full Log Viewer");
   m_viewerButton->setStyleSheet(
-    "QPushButton { background-color: #3a3a3a; color: white; border: none; border-radius: 3px; font-size: 11px; }"
-    "QPushButton:hover { background-color: #4a4a4a; }");
+    "QPushButton { "
+    "  background-color: #3a3a3a; "
+    "  color: white; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  font-size: 11px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #00aaff; "
+    "}");
   connect(m_viewerButton, &QPushButton::clicked, this, &LogStatusBar::onOpenFullViewer);
   mainLayout->addWidget(m_viewerButton);
 }

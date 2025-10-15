@@ -29,33 +29,33 @@ LogViewerPage::LogViewerPage(LogManager* logManager, QWidget* parent)
 void LogViewerPage::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(10, 10, 10, 10);
-  mainLayout->setSpacing(10);
+  mainLayout->setContentsMargins(20, 20, 20, 20);
+  mainLayout->setSpacing(15);
 
-  // ✅ NEW - Add back button and title in horizontal layout
+  // Header with back button and title
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_backButton = new QPushButton("← Back");
   m_backButton->setFixedWidth(100);
   m_backButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #555555; "
-    "  color: white; "
-    "  border: none; "
+    "  background-color: #e0e0e0; "
+    "  color: #333333; "
+    "  border: 1px solid #cccccc; "
     "  padding: 8px; "
     "  font-size: 14px; "
     "  font-weight: bold; "
     "  border-radius: 4px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #666666; "
+    "  background-color: #d0d0d0; "
     "}");
   connect(m_backButton, &QPushButton::clicked, this, &LogViewerPage::onBackClicked);
   headerLayout->addWidget(m_backButton);
 
   // Title
   QLabel* title = new QLabel("System Log Viewer");
-  title->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; background-color: #2b2b2b; padding: 5px; }");
+  title->setStyleSheet("QLabel { font-size: 20px; font-weight: bold; color: #333333; padding: 5px; }");
   headerLayout->addWidget(title);
 
   headerLayout->addStretch();
@@ -66,7 +66,7 @@ void LogViewerPage::setupUI()
 
   // Level filter
   QLabel* filterLabel = new QLabel("Level:");
-  filterLabel->setStyleSheet("QLabel { color: #ffffff; font-weight: bold; }");
+  filterLabel->setStyleSheet("QLabel { color: #333333; font-weight: bold; }");
   toolbarLayout->addWidget(filterLabel);
 
   m_levelFilter = new QComboBox();
@@ -76,17 +76,21 @@ void LogViewerPage::setupUI()
   m_levelFilter->addItem("WARNING", static_cast<int>(LogManager::Level::WARNING));
   m_levelFilter->addItem("FAILURE", static_cast<int>(LogManager::Level::FAILURE));
   m_levelFilter->addItem("CRITICAL", static_cast<int>(LogManager::Level::CRITICAL));
+  m_levelFilter->setStyleSheet(
+    "QComboBox { background-color: white; color: #333333; border: 1px solid #cccccc; padding: 5px; }");
   connect(m_levelFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &LogViewerPage::onFilterChanged);
   toolbarLayout->addWidget(m_levelFilter);
 
   // Search box
   QLabel* searchLabel = new QLabel("Search:");
-  searchLabel->setStyleSheet("QLabel { color: #ffffff; font-weight: bold; }");
+  searchLabel->setStyleSheet("QLabel { color: #333333; font-weight: bold; }");
   toolbarLayout->addWidget(searchLabel);
 
   m_searchBox = new QLineEdit();
   m_searchBox->setPlaceholderText("Filter messages...");
+  m_searchBox->setStyleSheet(
+    "QLineEdit { background-color: white; color: #333333; border: 1px solid #cccccc; padding: 5px; }");
   connect(m_searchBox, &QLineEdit::textChanged, this, &LogViewerPage::onSearchChanged);
   toolbarLayout->addWidget(m_searchBox);
 
@@ -95,25 +99,36 @@ void LogViewerPage::setupUI()
   // Auto-scroll checkbox
   m_autoScrollCheck = new QCheckBox("Auto-scroll");
   m_autoScrollCheck->setChecked(true);
-  m_autoScrollCheck->setStyleSheet("QCheckBox { color: #ffffff; font-weight: bold; }");
+  m_autoScrollCheck->setStyleSheet("QCheckBox { color: #333333; font-weight: bold; }");
   connect(m_autoScrollCheck, &QCheckBox::toggled, this, &LogViewerPage::onAutoScrollToggled);
   toolbarLayout->addWidget(m_autoScrollCheck);
 
   // Buttons
   m_refreshButton = new QPushButton("🔄 Refresh");
+  m_refreshButton->setStyleSheet(
+    "QPushButton { background-color: #e0e0e0; color: #333333; border: 1px solid #cccccc; padding: 6px 12px; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #d0d0d0; }");
   connect(m_refreshButton, &QPushButton::clicked, this, &LogViewerPage::onRefreshClicked);
   toolbarLayout->addWidget(m_refreshButton);
 
   m_copyButton = new QPushButton("📋 Copy");
+  m_copyButton->setStyleSheet(
+    "QPushButton { background-color: #e0e0e0; color: #333333; border: 1px solid #cccccc; padding: 6px 12px; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #d0d0d0; }");
   connect(m_copyButton, &QPushButton::clicked, this, &LogViewerPage::onCopyClicked);
   toolbarLayout->addWidget(m_copyButton);
 
   m_saveButton = new QPushButton("💾 Save");
+  m_saveButton->setStyleSheet(
+    "QPushButton { background-color: #e0e0e0; color: #333333; border: 1px solid #cccccc; padding: 6px 12px; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #d0d0d0; }");
   connect(m_saveButton, &QPushButton::clicked, this, &LogViewerPage::onSaveClicked);
   toolbarLayout->addWidget(m_saveButton);
 
   m_clearButton = new QPushButton("🗑 Clear");
-  m_clearButton->setStyleSheet("QPushButton { background-color: #aa4444; }");
+  m_clearButton->setStyleSheet(
+    "QPushButton { background-color: #dc3545; color: white; border: 1px solid #c82333; padding: 6px 12px; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #c82333; }");
   connect(m_clearButton, &QPushButton::clicked, this, &LogViewerPage::onClearClicked);
   toolbarLayout->addWidget(m_clearButton);
 
@@ -121,7 +136,8 @@ void LogViewerPage::setupUI()
 
   // Stats label
   m_statsLabel = new QLabel("Total: 0 | Warnings: 0 | Errors: 0");
-  m_statsLabel->setStyleSheet("QLabel { color: #00ff00; font-size: 12px; font-weight: bold; background-color: #1e1e1e; padding: 5px; border: 1px solid #333333; }");
+  m_statsLabel->setStyleSheet(
+    "QLabel { color: #333333; font-size: 12px; font-weight: bold; background-color: #f5f5f5; padding: 8px; border: 1px solid #cccccc; border-radius: 3px; }");
   mainLayout->addWidget(m_statsLabel);
 
   // Log display
@@ -129,16 +145,19 @@ void LogViewerPage::setupUI()
   m_logDisplay->setReadOnly(true);
   m_logDisplay->setStyleSheet(
     "QTextEdit { "
-    "  background-color: #1e1e1e; "
-    "  color: #cccccc; "
-    "  border: 1px solid #555555; "
+    "  background-color: white; "
+    "  color: #333333; "
+    "  border: 1px solid #cccccc; "
     "  font-family: 'Consolas', 'Courier New', monospace; "
     "  font-size: 11px; "
+    "  padding: 5px; "
     "}");
   mainLayout->addWidget(m_logDisplay);
 
-  setStyleSheet("QWidget { background-color: #2b2b2b; }");
+  // Light background for the whole page
+  setStyleSheet("LogViewerPage { background-color: #f5f5f5; }");
 }
+
 
 // ✅ NEW - Add this method at the end of the file
 void LogViewerPage::onBackClicked()
@@ -186,20 +205,21 @@ QString LogViewerPage::formatLogEntry(const LogManager::LogEntry& entry)
   QString message = QString::fromStdString(entry.message);
   QString source = QString::fromStdString(entry.source);
 
-  QString formatted = QString("<span style='color: #888888;'>[%1]</span> "
+  QString formatted = QString("<span style='color: #666666;'>[%1]</span> "
     "<span style='color: %2; font-weight: bold;'>[%3]</span> ")
     .arg(timestamp)
     .arg(color)
     .arg(level);
 
   if (!source.isEmpty()) {
-    formatted += QString("<span style='color: #00aaff;'>[%1]</span> ").arg(source);
+    formatted += QString("<span style='color: #0066cc;'>[%1]</span> ").arg(source);
   }
 
-  formatted += QString("<span style='color: #cccccc;'>%1</span>").arg(message);
+  formatted += QString("<span style='color: #333333;'>%1</span>").arg(message);
 
   return formatted;
 }
+
 
 bool LogViewerPage::matchesFilter(const LogManager::LogEntry& entry)
 {
