@@ -387,7 +387,7 @@ void IOControllerPage::updateIOStatus()
   if (device->ReadInputs(inputs, latch) == EziIOError::SUCCESS) {
     int inputCount = device->GetInputCount();
     for (int i = 0; i < inputCount && i < m_ioPinTable->rowCount(); ++i) {
-      bool state = (inputs & (1U << i)) != 0;
+      bool state = (inputs & (1U << i)) != 0;  // Inputs use bits 0-7 or 0-15
 
       QTableWidgetItem* statusItem = m_ioPinTable->item(i, COL_STATUS);
       if (statusItem) {
@@ -403,11 +403,17 @@ void IOControllerPage::updateIOStatus()
     int inputCount = device->GetInputCount();
     int outputCount = device->GetOutputCount();
 
+    // ✅ FIXED: Use proper output pin masks
+    // Outputs use bits 8-15 for 8-pin, or bits 16-31 for 16-pin devices
+    bool is16Pin = (outputCount > 8);
+    int bitOffset = is16Pin ? 16 : 8;
+
     for (int i = 0; i < outputCount; ++i) {
       int row = inputCount + i;
       if (row >= m_ioPinTable->rowCount()) break;
 
-      bool state = (outputs & (1U << i)) != 0;
+      // ✅ FIXED: Check the correct bit position
+      bool state = (outputs & (1U << (bitOffset + i))) != 0;
 
       QTableWidgetItem* statusItem = m_ioPinTable->item(row, COL_STATUS);
       if (statusItem) {
@@ -428,6 +434,8 @@ void IOControllerPage::updateIOStatus()
     }
   }
 }
+
+
 
 void IOControllerPage::onRefreshClicked()
 {
