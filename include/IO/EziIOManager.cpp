@@ -353,6 +353,72 @@ EziIOError EziIOManager::SetOutput(const std::string& deviceName, int pin, bool 
 }
 
 // ============================================================================
+// PIN NAME CONVENIENCE METHODS
+// ============================================================================
+
+EziIOError EziIOManager::SetOutputByName(const std::string& deviceName,
+  const std::string& pinName,
+  bool state) {
+  IEziIODevice* device = GetDevice(deviceName);
+  if (!device) {
+    if (m_enableLogging) {
+      std::cerr << "[EziIOManager] SetOutputByName failed: Device '"
+        << deviceName << "' not found" << std::endl;
+    }
+    return EziIOError::DEVICE_NOT_FOUND;
+  }
+
+  if (!device->IsConnected()) {
+    if (m_enableLogging) {
+      std::cerr << "[EziIOManager] SetOutputByName failed: Device '"
+        << deviceName << "' is disconnected" << std::endl;
+    }
+    return EziIOError::DEVICE_DISCONNECTED;
+  }
+
+  // Get pin number from name
+  int pin = device->GetOutputPinByName(pinName);
+  if (pin < 0) {
+    if (m_enableLogging) {
+      std::cerr << "[EziIOManager] SetOutputByName failed: Pin name '"
+        << pinName << "' not found on device '" << deviceName << "'" << std::endl;
+    }
+    return EziIOError::INVALID_PIN;
+  }
+
+  return device->SetOutput(pin, state);
+}
+
+bool EziIOManager::GetInputByName(const std::string& deviceName,
+  const std::string& pinName,
+  bool& state) {
+  IEziIODevice* device = GetDevice(deviceName);
+  if (!device || !device->IsConnected()) {
+    return false;
+  }
+
+  // Get pin number from name
+  int pin = device->GetInputPinByName(pinName);
+  if (pin < 0) {
+    if (m_enableLogging) {
+      std::cerr << "[EziIOManager] GetInputByName failed: Pin name '"
+        << pinName << "' not found on device '" << deviceName << "'" << std::endl;
+    }
+    return false;
+  }
+
+  // Read current inputs
+  uint32_t inputs = 0, latch = 0;
+  if (device->ReadInputs(inputs, latch) != EziIOError::SUCCESS) {
+    return false;
+  }
+
+  // Extract the specific pin state
+  state = (inputs & (1U << pin)) != 0;
+  return true;
+}
+
+// ============================================================================
 // POLLING THREAD
 // ============================================================================
 

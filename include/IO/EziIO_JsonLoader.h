@@ -1,4 +1,4 @@
-// EziIO_JsonLoader.h - JSON configuration loader
+// EziIO_JsonLoader.h - JSON configuration loader with pin name mapping
 #pragma once
 
 #include "EziIOManager.h"
@@ -23,7 +23,15 @@ using json = nlohmann::json;
  *       "inputCount": 16,
  *       "outputCount": 16,
  *       "name": "IOBottom",
- *       "enabled": true
+ *       "enabled": true,
+ *       "ioConfig": {
+ *         "inputs": [
+ *           { "name": "Sensor1", "pin": 0 }
+ *         ],
+ *         "outputs": [
+ *           { "name": "L_Gripper", "pin": 0 }
+ *         ]
+ *       }
  *     }
  *   ]
  * }
@@ -53,10 +61,12 @@ public:
       // Parse device configurations
       std::vector<EziIODeviceConfig> configs = ParseJson(j);
 
-      // Add devices to manager
+      // Add devices to manager and apply pin name mappings
       int addedCount = 0;
       for (const auto& config : configs) {
         if (manager.AddDevice(config)) {
+          // Apply pin name mappings from ioConfig
+          ApplyPinMappings(manager, j, config.Name);
           addedCount++;
         }
       }
@@ -128,6 +138,74 @@ public:
     }
 
     return configs;
+  }
+
+  /**
+   * @brief Apply pin name mappings from ioConfig to device
+   * @param manager The EziIOManager containing the device
+   * @param j JSON object containing full configuration
+   * @param deviceName Name of the device to apply mappings to
+   */
+  static void ApplyPinMappings(EziIOManager& manager, const json& j, const std::string& deviceName) {
+    try {
+      // Find the device configuration in JSON
+      for (const auto& deviceJson : j["eziio"]) {
+        if (deviceJson["name"].get<std::string>() != deviceName) {
+          continue;
+        }
+
+        // Check if ioConfig exists
+        if (!deviceJson.contains("ioConfig")) {
+          return;
+        }
+
+        const auto& ioConfig = deviceJson["ioConfig"];
+        IEziIODevice* device = manager.GetDevice(deviceName);
+        if (!device) {
+          std::cerr << "[EziIOJsonLoader] Device not found: " << deviceName << std::endl;
+          return;
+        }
+
+        int inputMappingCount = 0;
+        int outputMappingCount = 0;
+
+        // Map input pin names
+        if (ioConfig.contains("inputs") && ioConfig["inputs"].is_array()) {
+          for (const auto& inputConfig : ioConfig["inputs"]) {
+            std::string name = inputConfig.at("name").get<std::string>();
+            int pin = inputConfig.at("pin").get<int>();
+            device->MapInputPinName(name, pin);
+            inputMappingCount++;
+          }
+        }
+
+        // Map output pin names
+        if (ioConfig.contains("outputs") && ioConfig["outputs"].is_array()) {
+          for (const auto& outputConfig : ioConfig["outputs"]) {
+            std::string name = outputConfig.at("name").get<std::string>();
+            int pin = outputConfig.at("pin").get<int>();
+            device->MapOutputPinName(name, pin);
+            outputMappingCount++;
+          }
+        }
+
+        if (inputMappingCount > 0 || outputMappingCount > 0) {
+          std::cout << "[EziIOJsonLoader] Applied pin mappings to " << deviceName
+            << ": " << inputMappingCount << " inputs, "
+            << outputMappingCount << " outputs" << std::endl;
+        }
+
+        return; // Found and processed the device
+      }
+
+    }
+    catch (const json::exception& e) {
+      std::cerr << "[EziIOJsonLoader] Error applying pin mappings for "
+        << deviceName << ": " << e.what() << std::endl;
+    }
+    catch (const std::exception& e) {
+      std::cerr << "[EziIOJsonLoader] Error: " << e.what() << std::endl;
+    }
   }
 
   /**

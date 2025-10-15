@@ -8,9 +8,15 @@
 #include <QApplication>
 #include <iostream>
 #include <fstream>
+#include <thread>
+#include <chrono>
 #include "nlohmann/json.hpp"
 
 using json = nlohmann::json;
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 Application::Application(int argc, char* argv[])
   : QObject(nullptr)
@@ -18,6 +24,10 @@ Application::Application(int argc, char* argv[])
   , m_argc(argc)
   , m_argv(argv)
 {
+#ifdef _WIN32
+  SetConsoleOutputCP(CP_UTF8);  // ← ADD HERE (inside constructor)
+#endif
+
   std::cout << "[Application] Creating Bobcat Engine..." << std::endl;
 }
 
@@ -96,8 +106,9 @@ void Application::initializeManagers()
     initializeMotionManager();
     initializeIOManager();  // Add IO manager initialization
 
-    // Optional: run test commands to verify motion manager
+    // Optional: run test commands to verify managers
     //testMotionCommands();
+    testIOCommands();  // Test IO with Vacuum_Base
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -311,6 +322,60 @@ void Application::initializeIOManager()
     );
     // Don't throw - allow app to continue without IO control
   }
+}
+
+void Application::testIOCommands()
+{
+  if (!m_ioManager) {
+    m_logManager->Warning("IO Manager not available for testing", "Application");
+    return;
+  }
+
+  m_logManager->Info("======================================", "IO Test");
+  m_logManager->Info("Testing IO Commands with Vacuum_Base", "IO Test");
+  m_logManager->Info("======================================", "IO Test");
+
+  // Test 1: Turn ON Vacuum_Base
+  m_logManager->Info("Test 1: Turning ON Vacuum_Base (pin 10)...", "IO Test");
+  EziIOError result = m_ioManager->SetOutputByName("IOBottom", "Vacuum_Base", true);
+
+  if (result == EziIOError::SUCCESS) {
+    m_logManager->Info("✓ Vacuum_Base turned ON successfully!", "IO Test");
+  }
+  else {
+    m_logManager->Error("✗ Failed to turn ON Vacuum_Base: " + GetErrorString(result), "IO Test");
+    return;
+  }
+
+  // Test 2: Wait 1 second
+  m_logManager->Info("Waiting 1 second...", "IO Test");
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
+  // Test 3: Turn OFF Vacuum_Base
+  m_logManager->Info("Test 2: Turning OFF Vacuum_Base...", "IO Test");
+  result = m_ioManager->SetOutputByName("IOBottom", "Vacuum_Base", false);
+
+  if (result == EziIOError::SUCCESS) {
+    m_logManager->Info("✓ Vacuum_Base turned OFF successfully!", "IO Test");
+  }
+  else {
+    m_logManager->Error("✗ Failed to turn OFF Vacuum_Base: " + GetErrorString(result), "IO Test");
+  }
+
+  // Test 4: Verify output status
+  m_logManager->Info("Test 3: Verifying output status...", "IO Test");
+  uint32_t outputs = 0, status = 0;
+  if (m_ioManager->ReadOutputs("IOBottom", outputs, status) == EziIOError::SUCCESS) {
+    bool vacuum_state = (outputs & (1U << 10)) != 0;  // Pin 10
+    m_logManager->Info(
+      "Vacuum_Base current state: " + std::string(vacuum_state ? "ON" : "OFF"),
+      "IO Test"
+    );
+  }
+
+  m_logManager->Info("======================================", "IO Test");
+  m_logManager->Info("IO Test completed!", "IO Test");
+  m_logManager->Info("======================================", "IO Test");
 }
 
 void Application::shutdownManagers()

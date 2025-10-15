@@ -45,6 +45,7 @@ private:
   void initializeMotionManager();
   void initializeIOManager();  // Add IO manager initialization
   void testMotionCommands();   // Test method
+  void testIOCommands();       // Test IO method
 
   void shutdownManagers();
 

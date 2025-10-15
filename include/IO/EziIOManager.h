@@ -64,6 +64,10 @@ public:
   EziIOError SetOutputs(const std::string& deviceName, uint32_t setMask, uint32_t clearMask);
   EziIOError SetOutput(const std::string& deviceName, int pin, bool state);
 
+  // Pin name convenience methods
+  EziIOError SetOutputByName(const std::string& deviceName, const std::string& pinName, bool state);
+  bool GetInputByName(const std::string& deviceName, const std::string& pinName, bool& state);
+
   // ============================================================================
   // POLLING THREAD
   // ============================================================================
