@@ -234,12 +234,14 @@ EziIOError EziIODevice::SetOutput(int pin, bool state) {
 void EziIODevice::MapInputPinName(const std::string& pinName, int pinNumber) {
   if (pinNumber >= 0 && pinNumber < m_config.InputCount) {
     m_inputPinNames[pinName] = pinNumber;
+    m_inputPinNumbers[pinNumber] = pinName;  // ✅ ADD THIS LINE!
   }
 }
 
 void EziIODevice::MapOutputPinName(const std::string& pinName, int pinNumber) {
   if (pinNumber >= 0 && pinNumber < m_config.OutputCount) {
     m_outputPinNames[pinName] = pinNumber;
+    m_outputPinNumbers[pinNumber] = pinName;  // ✅ ADD THIS LINE!
   }
 }
 
@@ -251,6 +253,26 @@ int EziIODevice::GetInputPinByName(const std::string& pinName) const {
 int EziIODevice::GetOutputPinByName(const std::string& pinName) const {
   auto it = m_outputPinNames.find(pinName);
   return (it != m_outputPinNames.end()) ? it->second : -1;
+}
+
+
+// NEW: Reverse lookup methods
+std::string EziIODevice::GetInputPinName(int pinNumber) const {
+  auto it = m_inputPinNumbers.find(pinNumber);
+  if (it != m_inputPinNumbers.end()) {
+    return it->second;
+  }
+  // Return default name if not mapped
+  return "Input" + std::to_string(pinNumber);
+}
+
+std::string EziIODevice::GetOutputPinName(int pinNumber) const {
+  auto it = m_outputPinNumbers.find(pinNumber);
+  if (it != m_outputPinNumbers.end()) {
+    return it->second;
+  }
+  // Return default name if not mapped
+  return "Output" + std::to_string(pinNumber);
 }
 
 // ============================================================================

@@ -59,6 +59,10 @@ public:
   int GetInputPinByName(const std::string& pinName) const override;
   int GetOutputPinByName(const std::string& pinName) const override;
 
+  // NEW: Reverse lookup
+  std::string GetInputPinName(int pinNumber) const override;
+  std::string GetOutputPinName(int pinNumber) const override;
+
 private:
   // Configuration
   EziIODeviceConfig m_config;
@@ -79,6 +83,10 @@ private:
   // Pin name mapping
   std::map<std::string, int> m_inputPinNames;
   std::map<std::string, int> m_outputPinNames;
+
+  // NEW: Reverse mappings
+  std::map<int, std::string> m_inputPinNumbers;  // pin number -> name
+  std::map<int, std::string> m_outputPinNumbers; // pin number -> name
 
   // ============================================================================
   // PRIVATE HELPERS

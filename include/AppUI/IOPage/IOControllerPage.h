@@ -1,0 +1,80 @@
+// IOControllerPage.h - IO device monitoring and control page
+#pragma once
+
+#include <QWidget>
+#include <QTableWidget>
+#include <QListWidget>
+#include <QTimer>
+#include <QLabel>
+#include <QPushButton>
+#include <string>
+
+struct ApplicationContext;
+class EziIOManager;
+class IEziIODevice;
+
+/**
+ * @brief IO Controller page with device list and pin control
+ *
+ * Layout:
+ * - Left panel (30%): List of IO devices
+ * - Right panel (70%): Selected device's IO pins table
+ */
+class IOControllerPage : public QWidget
+{
+  Q_OBJECT
+
+public:
+  explicit IOControllerPage(ApplicationContext* context, QWidget* parent = nullptr);
+  ~IOControllerPage();
+
+protected:
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
+
+private slots:
+  void onDeviceSelected();
+  void onRefreshClicked();
+  void updateIOStatus();
+
+private:
+  void setupUI();
+  void createDeviceListPanel();
+  void createIOPinPanel();
+  void refreshDeviceList();
+  void refreshIOPinTable();
+  void updatePinRow(int row, int pinNumber, const std::string& pinName,
+    bool isOutput, bool currentState);
+
+  EziIOManager* getIOManager();
+
+  ApplicationContext* m_context;
+
+  // Left panel - device list
+  QWidget* m_deviceListPanel;
+  QListWidget* m_deviceList;
+  QPushButton* m_refreshButton;
+
+  // Right panel - IO pins
+  QWidget* m_ioPinPanel;
+  QLabel* m_deviceNameLabel;
+  QLabel* m_connectionStatusLabel;
+  QTableWidget* m_ioPinTable;
+
+  // Polling
+  QTimer* m_pollTimer;
+
+  // Current selection
+  std::string m_selectedDevice;
+
+  // Table columns
+  enum ColumnIndex {
+    COL_PIN_NUMBER = 0,
+    COL_PIN_NAME,
+    COL_TYPE,
+    COL_STATUS,
+    COL_TOGGLE
+  };
+
+  static constexpr int POLL_INTERVAL_MS = 100;
+};

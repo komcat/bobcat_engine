@@ -278,24 +278,84 @@ void Application::initializeIOManager()
     std::string configPath;
     int loadedCount = 0;
 
+    // ADD DEBUG: Check which file exists
+    std::cout << "[Application] Checking for IO config files..." << std::endl;
+    std::ifstream testFile1("config/io_devices.local.json");
+    if (testFile1.good()) {
+      std::cout << "[Application] ✓ Found: config/io_devices.local.json" << std::endl;
+      testFile1.close();
+    }
+    else {
+      std::cout << "[Application] ✗ Not found: config/io_devices.local.json" << std::endl;
+    }
+
+    std::ifstream testFile2("config/io_devices.json");
+    if (testFile2.good()) {
+      std::cout << "[Application] ✓ Found: config/io_devices.json" << std::endl;
+      testFile2.close();
+    }
+    else {
+      std::cout << "[Application] ✗ Not found: config/io_devices.json" << std::endl;
+    }
+
     // Try local config first (not in git)
+    std::cout << "[Application] Attempting to load LOCAL config..." << std::endl;
     loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.local.json");
     if (loadedCount > 0) {
       configPath = "config/io_devices.local.json";
       m_logManager->Info("Loading IO config from LOCAL file", "Application");
+      std::cout << "[Application] ✓ Loaded " << loadedCount << " devices from LOCAL config" << std::endl;
     }
     else {
       // Fall back to default config
+      std::cout << "[Application] LOCAL config not found, trying DEFAULT config..." << std::endl;
       loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.json");
       if (loadedCount > 0) {
         configPath = "config/io_devices.json";
         m_logManager->Info("Loading IO config from DEFAULT file", "Application");
+        std::cout << "[Application] ✓ Loaded " << loadedCount << " devices from DEFAULT config" << std::endl;
       }
       else {
         m_logManager->Warning("No IO config found - IO control not configured", "Application");
+        std::cout << "[Application] ✗ No IO config could be loaded!" << std::endl;
         return;
       }
     }
+
+    // ADD DEBUG: Test pin name retrieval
+    std::cout << "\n[Application] ===== TESTING PIN NAME MAPPINGS =====" << std::endl;
+    IEziIODevice* ioBottomDevice = m_ioManager->GetDevice("IOBottom");
+    if (ioBottomDevice) {
+      std::cout << "[Application] IOBottom device found" << std::endl;
+
+      // Test a few output pin names
+      std::string pin0Name = ioBottomDevice->GetOutputPinName(0);
+      std::string pin4Name = ioBottomDevice->GetOutputPinName(4);
+      std::string pin10Name = ioBottomDevice->GetOutputPinName(10);
+
+      std::cout << "[Application]   Output Pin 0: " << pin0Name << " (should be L_Gripper)" << std::endl;
+      std::cout << "[Application]   Output Pin 4: " << pin4Name << " (should be UV_Head)" << std::endl;
+      std::cout << "[Application]   Output Pin 10: " << pin10Name << " (should be Vacuum_Base)" << std::endl;
+    }
+    else {
+      std::cout << "[Application] ERROR: IOBottom device NOT FOUND!" << std::endl;
+    }
+
+    IEziIODevice* ioTopDevice = m_ioManager->GetDevice("IOTop");
+    if (ioTopDevice) {
+      std::cout << "[Application] IOTop device found" << std::endl;
+
+      // Test a few input pin names
+      std::string pin1Name = ioTopDevice->GetInputPinName(1);
+      std::string pin2Name = ioTopDevice->GetInputPinName(2);
+
+      std::cout << "[Application]   Input Pin 1: " << pin1Name << " (should be UV_Head_Up)" << std::endl;
+      std::cout << "[Application]   Input Pin 2: " << pin2Name << " (should be UV_Head_Down)" << std::endl;
+    }
+    else {
+      std::cout << "[Application] ERROR: IOTop device NOT FOUND!" << std::endl;
+    }
+    std::cout << "[Application] ===== END PIN NAME TEST =====\n" << std::endl;
 
     m_logManager->Info(
       "Loaded " + std::to_string(loadedCount) + " IO devices from " + configPath,
@@ -323,6 +383,7 @@ void Application::initializeIOManager()
     // Don't throw - allow app to continue without IO control
   }
 }
+
 
 void Application::testIOCommands()
 {

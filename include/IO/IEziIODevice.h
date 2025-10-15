@@ -53,4 +53,8 @@ public:
   virtual void MapOutputPinName(const std::string& pinName, int pinNumber) = 0;
   virtual int GetInputPinByName(const std::string& pinName) const = 0;
   virtual int GetOutputPinByName(const std::string& pinName) const = 0;
+
+  // NEW: Reverse lookup - get name from pin number
+  virtual std::string GetInputPinName(int pinNumber) const = 0;
+  virtual std::string GetOutputPinName(int pinNumber) const = 0;
 };

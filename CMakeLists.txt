@@ -211,6 +211,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/ConfigEditor
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
+    ${CMAKE_SOURCE_DIR}/include/AppUI/IOPage
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -284,7 +285,7 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControllerPageBase.cpp
     include/AppUI/MotionPages/PIControllerPage.cpp
     include/AppUI/MotionPages/ACSControllerPage.cpp
-)
+ "include/AppUI/IOPage/IOControllerPage.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -325,7 +326,7 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControllerPageBase.h
     include/AppUI/MotionPages/PIControllerPage.h
     include/AppUI/MotionPages/ACSControllerPage.h
-)
+ "include/AppUI/IOPage/IOControllerPage.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

@@ -10,8 +10,9 @@ struct ApplicationContext;
 class MultiCameraView;
 class TcpClientWidget;
 class DataStoreWidget;
-class PIControllerPage;      // ADD
-class ACSControllerPage;      // ADD
+class PIControllerPage;
+class ACSControllerPage;
+class IOControllerPage;  // ADD
 
 /**
  * @brief Hardware & Instrument page
@@ -32,6 +33,7 @@ private slots:
   void showCamera();
   void showPIHexapod();
   void showACS();
+  void showIO();        // ADD
   void showDataView();
   void showTCPClient();
   void showLaserTEC();
@@ -55,6 +57,7 @@ private:
   QPushButton* m_cameraButton;
   QPushButton* m_piButton;
   QPushButton* m_acsButton;
+  QPushButton* m_ioButton;       // ADD
   QPushButton* m_dataViewButton;
   QPushButton* m_tcpClientButton;
   QPushButton* m_laserTECButton;
@@ -65,8 +68,9 @@ private:
   MultiCameraView* m_cameraView;
   TcpClientWidget* m_tcpClientWidget;
   DataStoreWidget* m_dataStoreWidget;
-  PIControllerPage* m_piControllerPage;      // ADD
-  ACSControllerPage* m_acsControllerPage;    // ADD
+  PIControllerPage* m_piControllerPage;
+  ACSControllerPage* m_acsControllerPage;
+  IOControllerPage* m_ioControllerPage;  // ADD
 
   // Track current selection
   QPushButton* m_currentButton;

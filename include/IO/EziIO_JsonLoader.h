@@ -1,4 +1,4 @@
-// EziIO_JsonLoader.h - JSON configuration loader with pin name mapping
+﻿// EziIO_JsonLoader.h - JSON configuration loader with pin name mapping
 #pragma once
 
 #include "EziIOManager.h"
@@ -146,23 +146,30 @@ public:
    * @param j JSON object containing full configuration
    * @param deviceName Name of the device to apply mappings to
    */
+   // In EziIO_JsonLoader.h, update the ApplyPinMappings function:
+
   static void ApplyPinMappings(EziIOManager& manager, const json& j, const std::string& deviceName) {
     try {
+      std::cout << "[EziIOJsonLoader] === ApplyPinMappings for: " << deviceName << " ===" << std::endl;
+
       // Find the device configuration in JSON
       for (const auto& deviceJson : j["eziio"]) {
         if (deviceJson["name"].get<std::string>() != deviceName) {
           continue;
         }
 
+        std::cout << "[EziIOJsonLoader] Found device in JSON: " << deviceName << std::endl;
+
         // Check if ioConfig exists
         if (!deviceJson.contains("ioConfig")) {
+          std::cout << "[EziIOJsonLoader] WARNING: No ioConfig found for " << deviceName << std::endl;
           return;
         }
 
         const auto& ioConfig = deviceJson["ioConfig"];
         IEziIODevice* device = manager.GetDevice(deviceName);
         if (!device) {
-          std::cerr << "[EziIOJsonLoader] Device not found: " << deviceName << std::endl;
+          std::cerr << "[EziIOJsonLoader] ERROR: Device not found in manager: " << deviceName << std::endl;
           return;
         }
 
@@ -171,9 +178,13 @@ public:
 
         // Map input pin names
         if (ioConfig.contains("inputs") && ioConfig["inputs"].is_array()) {
+          std::cout << "[EziIOJsonLoader] Processing " << ioConfig["inputs"].size() << " input mappings..." << std::endl;
           for (const auto& inputConfig : ioConfig["inputs"]) {
             std::string name = inputConfig.at("name").get<std::string>();
             int pin = inputConfig.at("pin").get<int>();
+
+            std::cout << "[EziIOJsonLoader]   Mapping input: " << name << " -> Pin " << pin << std::endl;
+
             device->MapInputPinName(name, pin);
             inputMappingCount++;
           }
@@ -181,32 +192,37 @@ public:
 
         // Map output pin names
         if (ioConfig.contains("outputs") && ioConfig["outputs"].is_array()) {
+          std::cout << "[EziIOJsonLoader] Processing " << ioConfig["outputs"].size() << " output mappings..." << std::endl;
           for (const auto& outputConfig : ioConfig["outputs"]) {
             std::string name = outputConfig.at("name").get<std::string>();
             int pin = outputConfig.at("pin").get<int>();
+
+            std::cout << "[EziIOJsonLoader]   Mapping output: " << name << " -> Pin " << pin << std::endl;
+
             device->MapOutputPinName(name, pin);
             outputMappingCount++;
           }
         }
 
-        if (inputMappingCount > 0 || outputMappingCount > 0) {
-          std::cout << "[EziIOJsonLoader] Applied pin mappings to " << deviceName
-            << ": " << inputMappingCount << " inputs, "
-            << outputMappingCount << " outputs" << std::endl;
-        }
+        std::cout << "[EziIOJsonLoader] ✓ Applied " << inputMappingCount << " input + "
+          << outputMappingCount << " output mappings to " << deviceName << std::endl;
 
         return; // Found and processed the device
       }
 
+      std::cerr << "[EziIOJsonLoader] WARNING: Device " << deviceName << " not found in JSON!" << std::endl;
+
     }
     catch (const json::exception& e) {
-      std::cerr << "[EziIOJsonLoader] Error applying pin mappings for "
+      std::cerr << "[EziIOJsonLoader] ERROR applying pin mappings for "
         << deviceName << ": " << e.what() << std::endl;
     }
     catch (const std::exception& e) {
-      std::cerr << "[EziIOJsonLoader] Error: " << e.what() << std::endl;
+      std::cerr << "[EziIOJsonLoader] ERROR: " << e.what() << std::endl;
     }
   }
+
+
 
   /**
    * @brief Save current device configurations to JSON file
