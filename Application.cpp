@@ -2,10 +2,12 @@
 #include "Application.h"
 #include "MainWindow.h"
 #include "CameraManager.h"
-#include "LogManager.h"  // ✅ NEW
-#include "TcpClientManager.h" // ← NEW
+#include "LogManager.h"
+#include "TcpClientManager.h"
+#include "EziIO_JsonLoader.h"
 #include <QApplication>
 #include <iostream>
+#include <fstream>
 #include "nlohmann/json.hpp"
 
 using json = nlohmann::json;
@@ -91,9 +93,10 @@ void Application::initializeManagers()
     initializeDataStore();
     initializeTcpClientManager();
     initializeCameraManager();
-    initializeMotionManager();  // ← Add this line
+    initializeMotionManager();
+    initializeIOManager();  // Add IO manager initialization
 
-		// Optional: run test commands to verify motion manager
+    // Optional: run test commands to verify motion manager
     //testMotionCommands();
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
@@ -124,7 +127,6 @@ void Application::initializeDataStore()
 
 void Application::initializeTcpClientManager()
 {
-  // FIXED: Pass nullptr as parent (or this if Application inherits QObject)
   m_tcpClientManager = std::make_unique<TcpClientManager>(m_dataStore.get(), nullptr);
   m_context.tcpClientManager = m_tcpClientManager.get();
 
@@ -151,7 +153,6 @@ void Application::initializeTcpClientManager()
   }
 }
 
-
 void Application::initializeCameraManager()
 {
   m_cameraManager = std::make_unique<CameraManager>();
@@ -159,51 +160,8 @@ void Application::initializeCameraManager()
   m_logManager->Info("CameraManager initialized", "Application");
 }
 
-
-void Application::shutdownManagers()
+void Application::initializeMotionManager()
 {
-  std::cout << "[Application] Shutting down managers..." << std::endl;
-
-  if (m_motionManager) {
-    m_motionManager->DisconnectAll();  // Disconnect before shutdown
-  }
-
-
-  // ✅ CRITICAL FIX: Clear UI callback FIRST before any logging
-  if (m_logManager) {
-    m_logManager->ClearUICallback();  // ← ADD THIS LINE
-    m_logManager->Info("Bobcat Engine shutting down...", "Application");
-  }
-
-  m_context = ApplicationContext();
-
-  m_cameraManager.reset();
-  m_tcpClientManager.reset();
-  m_dataStore.reset();
-  m_logManager.reset();
-
-  std::cout << "[Application] All managers shut down" << std::endl;
-}
-
-
-
-void Application::createMainWindow()
-{
-  std::cout << "[Application] Creating main window..." << std::endl;
-
-  m_mainWindow = std::make_unique<MainWindow>(&m_context);
-  m_mainWindow->setWindowTitle(QString::fromStdString(
-    getApplicationName() + " v" + getVersion()));
-  m_mainWindow->show();
-
-  std::cout << "[Application] Main window created" << std::endl;
-
-  if (m_logManager) {
-    m_logManager->Info("Main window created", "Application");
-  }
-}
-
-void Application::initializeMotionManager() {
   std::cout << "[Application] Initializing motion manager..." << std::endl;
 
   try {
@@ -289,10 +247,125 @@ void Application::initializeMotionManager() {
   }
 }
 
+void Application::initializeIOManager()
+{
+  std::cout << "[Application] Initializing IO manager..." << std::endl;
 
+  try {
+    // 1. Create EziIOManager
+    m_ioManager = std::make_unique<EziIOManager>();
+    m_context.ioManager = m_ioManager.get();
+    m_logManager->Info("EziIOManager created", "Application");
 
-// In Application.cpp after initializeMotionManager()
-void Application::testMotionCommands() {
+    // 2. Initialize the manager
+    if (!m_ioManager->Initialize()) {
+      m_logManager->Error("Failed to initialize EziIOManager", "Application");
+      return;
+    }
+
+    // 3. Load JSON config - try local first, then default
+    std::string configPath;
+    int loadedCount = 0;
+
+    // Try local config first (not in git)
+    loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.local.json");
+    if (loadedCount > 0) {
+      configPath = "config/io_devices.local.json";
+      m_logManager->Info("Loading IO config from LOCAL file", "Application");
+    }
+    else {
+      // Fall back to default config
+      loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.json");
+      if (loadedCount > 0) {
+        configPath = "config/io_devices.json";
+        m_logManager->Info("Loading IO config from DEFAULT file", "Application");
+      }
+      else {
+        m_logManager->Warning("No IO config found - IO control not configured", "Application");
+        return;
+      }
+    }
+
+    m_logManager->Info(
+      "Loaded " + std::to_string(loadedCount) + " IO devices from " + configPath,
+      "Application"
+    );
+
+    // 4. Auto-connect enabled devices
+    int connectedCount = m_ioManager->ConnectEnabledDevices();
+    m_logManager->Info(
+      "Connected " + std::to_string(connectedCount) + " IO devices",
+      "Application"
+    );
+
+    // 5. Start automatic polling (100ms interval)
+    m_ioManager->StartPolling(100);
+    m_logManager->Info("IO polling started (100ms interval)", "Application");
+
+    m_logManager->Info("IO manager initialized successfully", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("IO manager initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without IO control
+  }
+}
+
+void Application::shutdownManagers()
+{
+  std::cout << "[Application] Shutting down managers..." << std::endl;
+
+  // Disconnect motion manager
+  if (m_motionManager) {
+    m_motionManager->DisconnectAll();
+  }
+
+  // Shutdown IO manager
+  if (m_ioManager) {
+    m_ioManager->StopPolling();
+    m_ioManager->DisconnectAll();
+    m_ioManager->Shutdown();
+    m_logManager->Info("IO manager shut down", "Application");
+  }
+
+  // Clear UI callback FIRST before any logging
+  if (m_logManager) {
+    m_logManager->ClearUICallback();
+    m_logManager->Info("Bobcat Engine shutting down...", "Application");
+  }
+
+  m_context = ApplicationContext();
+
+  m_ioManager.reset();
+  m_motionManager.reset();
+  m_cameraManager.reset();
+  m_tcpClientManager.reset();
+  m_dataStore.reset();
+  m_logManager.reset();
+
+  std::cout << "[Application] All managers shut down" << std::endl;
+}
+
+void Application::createMainWindow()
+{
+  std::cout << "[Application] Creating main window..." << std::endl;
+
+  m_mainWindow = std::make_unique<MainWindow>(&m_context);
+  m_mainWindow->setWindowTitle(QString::fromStdString(
+    getApplicationName() + " v" + getVersion()));
+  m_mainWindow->show();
+
+  std::cout << "[Application] Main window created" << std::endl;
+
+  if (m_logManager) {
+    m_logManager->Info("Main window created", "Application");
+  }
+}
+
+void Application::testMotionCommands()
+{
   if (!m_motionManager) return;
 
   m_logManager->Info("Testing motion commands...", "Application");

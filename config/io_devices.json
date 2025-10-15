@@ -1,0 +1,20 @@
+{
+  "eziio": [
+    {
+      "ip": "192.168.0.3",
+      "deviceId": 0,
+      "inputCount": 16,
+      "outputCount": 16,
+      "ioConfig": {},
+      "name": "IOBottom"
+    },
+    {
+      "ip": "192.168.0.5",
+      "deviceId": 1,
+      "inputCount": 8,
+      "outputCount": 8,
+      "ioConfig": {},
+      "name": "IOTop"
+    }
+  ]
+}

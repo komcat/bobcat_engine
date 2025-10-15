@@ -5,15 +5,15 @@
 #include <memory>
 #include <string>
 #include "ApplicationContext.h"
-#include "unified_motion_manager.h"  // Add include for UnifiedMotionManager
-
+#include "unified_motion_manager.h"
+#include "EziIOManager.h"  // Add EziIO include
 
 class QApplication;
 class MainWindow;
 class CameraManager;
 class LogManager;
-class DataStore;              // ← NEW
-class TcpClientManager; // ← NEW
+class DataStore;
+class TcpClientManager;
 
 class Application : public QObject
 {
@@ -37,15 +37,14 @@ private:
   void createMainWindow();
   void initializeManagers();
 
-	//declare initialization methods for each manager
+  // Declare initialization methods for each manager
   void initializeCameraManager();
-	void initializeLogManager();
-	void initializeDataStore();
-	void initializeTcpClientManager();
-  void initializeMotionManager();  // Add declaration
-	void testMotionCommands(); // Add test method
-
-
+  void initializeLogManager();
+  void initializeDataStore();
+  void initializeTcpClientManager();
+  void initializeMotionManager();
+  void initializeIOManager();  // Add IO manager initialization
+  void testMotionCommands();   // Test method
 
   void shutdownManagers();
 
@@ -53,11 +52,11 @@ private:
   std::unique_ptr<MainWindow> m_mainWindow;
 
   std::unique_ptr<CameraManager> m_cameraManager;
-  std::unique_ptr<LogManager> m_logManager;  // ✅ NEW
-  std::unique_ptr<DataStore> m_dataStore;              // ← NEW
-  std::unique_ptr<TcpClientManager> m_tcpClientManager; // ← NEW
-  std::unique_ptr<UnifiedMotionManager> m_motionManager;  // Add member
-
+  std::unique_ptr<LogManager> m_logManager;
+  std::unique_ptr<DataStore> m_dataStore;
+  std::unique_ptr<TcpClientManager> m_tcpClientManager;
+  std::unique_ptr<UnifiedMotionManager> m_motionManager;
+  std::unique_ptr<EziIOManager> m_ioManager;  // Add IO manager
 
   ApplicationContext m_context;
 

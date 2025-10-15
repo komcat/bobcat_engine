@@ -166,6 +166,42 @@ else()
 endif()
 
 # ============================================================================
+# EziIO SDK Configuration
+# ============================================================================
+set(EZIIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/eziio")
+set(EZIIO_INCLUDE_DIR_x86 "${EZIIO_DIR}/Include_x86_CPP")
+set(EZIIO_INCLUDE_DIR_x64 "${EZIIO_DIR}/Include_x64_CPP")
+
+# Handle different platforms for EziIO library files
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # 64-bit build
+        set(EZIIO_INCLUDE_DIR "${EZIIO_INCLUDE_DIR_x64}")
+        set(EZIIO_LIBRARY "${EZIIO_INCLUDE_DIR_x64}/EziMOTIONPlusE.lib")
+        set(EZIIO_DLL "${EZIIO_INCLUDE_DIR_x64}/EziMOTIONPlusE.dll")
+    else()
+        # 32-bit build
+        set(EZIIO_INCLUDE_DIR "${EZIIO_INCLUDE_DIR_x86}")
+        set(EZIIO_LIBRARY "${EZIIO_INCLUDE_DIR_x86}/EziMOTIONPlusE.lib")
+        set(EZIIO_DLL "${EZIIO_INCLUDE_DIR_x86}/EziMOTIONPlusE.dll")
+    endif()
+endif()
+
+# Check if EziIO installation exists
+if(NOT EXISTS ${EZIIO_INCLUDE_DIR})
+    message(WARNING "EziIO SDK not found at ${EZIIO_DIR}. EziIO features will be disabled.")
+    set(EZIIO_FOUND FALSE)
+else()
+    message(STATUS "EziIO SDK found at: ${EZIIO_DIR}")
+    message(STATUS "  - Include directory: ${EZIIO_INCLUDE_DIR}")
+    message(STATUS "  - Library: ${EZIIO_LIBRARY}")
+    if(WIN32)
+        message(STATUS "  - DLL: ${EZIIO_DLL}")
+    endif()
+    set(EZIIO_FOUND TRUE)
+endif()
+
+# ============================================================================
 # Include Directories
 # ============================================================================
 include_directories(
@@ -180,6 +216,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/data
     ${CMAKE_SOURCE_DIR}/include/motions
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
+    ${CMAKE_SOURCE_DIR}/include/IO
 )
 
 # Add nlohmann json include directory if found
@@ -205,6 +242,11 @@ endif()
 # Add IDS uEye include directory if found
 if(IDS_UEYE_FOUND)
     include_directories(${IDS_UEYE_INCLUDE_DIR})
+endif()
+
+# Add EziIO include directory if found
+if(EZIIO_FOUND)
+    include_directories(${EZIIO_INCLUDE_DIR})
 endif()
 
 # ============================================================================
@@ -239,7 +281,10 @@ set(SOURCES
     include/AppUI/Forms/CameraFormWidget.cpp
     include/AppUI/Forms/SavedPositionsFormWidget.cpp
     include/AppUI/Forms/MotorDeviceFormWidget.cpp        
- "include/AppUI/MotionPages/MotionControllerPageBase.cpp" "include/AppUI/MotionPages/PIControllerPage.cpp" "include/AppUI/MotionPages/ACSControllerPage.cpp")
+    include/AppUI/MotionPages/MotionControllerPageBase.cpp
+    include/AppUI/MotionPages/PIControllerPage.cpp
+    include/AppUI/MotionPages/ACSControllerPage.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -276,7 +321,11 @@ set(HEADERS
     include/AppUI/Forms/MotorDeviceFormWidget.h 
     include/motions/MotionTypes.h
     include/logger/ILogger.h
- "include/motions/interfaces/IMotionControllerManager.h" "include/AppUI/MotionPages/MotionControllerPageBase.h" "include/AppUI/MotionPages/PIControllerPage.h" "include/AppUI/MotionPages/ACSControllerPage.h")
+    include/motions/interfaces/IMotionControllerManager.h
+    include/AppUI/MotionPages/MotionControllerPageBase.h
+    include/AppUI/MotionPages/PIControllerPage.h
+    include/AppUI/MotionPages/ACSControllerPage.h
+)
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)
@@ -355,6 +404,24 @@ else()
     message(STATUS "IDS Camera support disabled - SDK not found")
 endif()
 
+# Conditionally add EziIO files if library is found
+if(EZIIO_FOUND)
+    list(APPEND SOURCES
+        include/IO/EziIODevice.cpp
+        include/IO/EziIOManager.cpp
+    )
+    list(APPEND HEADERS
+        include/IO/EziIO_Types.h
+        include/IO/IEziIODevice.h
+        include/IO/EziIODevice.h
+        include/IO/EziIOManager.h
+        include/IO/EziIO_JsonLoader.h
+    )
+    message(STATUS "EziIO support enabled")
+else()
+    message(STATUS "EziIO support disabled - library not found")
+endif()
+
 # ============================================================================
 # Create Executable
 # ============================================================================
@@ -413,6 +480,21 @@ if(IDS_UEYE_FOUND)
                 ${IDS_UEYE_DLL}
                 $<TARGET_FILE_DIR:bobcat_engine>
             COMMENT "Copying IDS uEye DLL to output directory"
+        )
+    endif()
+endif()
+
+# Link EziIO SDK if found
+if(EZIIO_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${EZIIO_LIBRARY})
+    
+    # On Windows, copy the DLL to the output directory
+    if(WIN32 AND EXISTS ${EZIIO_DLL})
+        add_custom_command(TARGET bobcat_engine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${EZIIO_DLL}
+                $<TARGET_FILE_DIR:bobcat_engine>
+            COMMENT "Copying EziIO DLL to output directory"
         )
     endif()
 endif()
