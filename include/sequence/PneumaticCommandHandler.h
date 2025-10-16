@@ -1,0 +1,18 @@
+// PneumaticCommandHandler.h
+#pragma once
+
+#include "ICommandHandler.h"
+
+class PneumaticCommandHandler : public ICommandHandler
+{
+public:
+  bool ExecuteCommand(
+    void* manager,
+    const std::string& deviceName,
+    const std::string& methodName,
+    const std::map<std::string, std::string>& params,
+    std::string& errorMessage
+  ) override;
+
+  std::string GetManagerType() const override { return "pneumatic"; }
+};

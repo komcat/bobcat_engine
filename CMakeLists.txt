@@ -220,6 +220,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
+    ${CMAKE_SOURCE_DIR}/include/sequence
 )
 
 # Add nlohmann json include directory if found
@@ -290,7 +291,7 @@ set(SOURCES
     include/AppUI/IOPage/IOControllerPage.cpp
     include/pneumatics/PneumaticSlide.cpp
     include/pneumatics/PneumaticManager.cpp
- "include/AppUI/Forms/PneumaticSlidesFormWidget.cpp" "include/AppUI/Forms/IODevicesFormWidget.cpp")
+ "include/AppUI/Forms/PneumaticSlidesFormWidget.cpp" "include/AppUI/Forms/IODevicesFormWidget.cpp" "include/sequence/SequenceEngine.cpp" "include/sequence/MotionCommandHandler.cpp" "include/sequence/IOCommandHandler.cpp" "include/sequence/PneumaticCommandHandler.cpp" "include/sequence/CameraCommandHandler.cpp" "include/sequence/CommandDispatcher.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -337,7 +338,7 @@ set(HEADERS
     include/pneumatics/PneumaticSlide.h
     include/pneumatics/PneumaticManager.h
     include/pneumatics/PneumaticJsonLoader.h
- "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp" "include/AppUI/Forms/PneumaticSlidesFormWidget.h" "include/AppUI/Forms/IODevicesFormWidget.h")
+ "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp" "include/AppUI/Forms/PneumaticSlidesFormWidget.h" "include/AppUI/Forms/IODevicesFormWidget.h" "include/sequence/SequenceEngine.h" "include/sequence/ICommandHandler.h" "include/sequence/MotionCommandHandler.h" "include/sequence/IOCommandHandler.h" "include/sequence/PneumaticCommandHandler.h" "include/sequence/CameraCommandHandler.h" "include/sequence/CommandDispatcher.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

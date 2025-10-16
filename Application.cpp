@@ -107,12 +107,15 @@ void Application::initializeManagers()
     initializeMotionManager();
     initializeIOManager();  // Add IO manager initialization
 		initializePneumaticManager();  // ✅ ADD THIS
+    initializeSequenceEngine();  // ✅ ADD THIS LAST
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
     //testIOCommands();  // Test IO with Vacuum_Base
     
 		//testPneumaticCommands();  // ✅ TEST PNEUMATICS
+
+		testSequenceEngine();  // ✅ TEST SEQUENCE ENGINE
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -482,6 +485,8 @@ void Application::shutdownManagers()
   m_dataStore.reset();
   m_logManager.reset();
 
+  m_sequenceEngine.reset();  // ✅ ADD THIS
+
   std::cout << "[Application] All managers shut down" << std::endl;
 }
 
@@ -697,4 +702,80 @@ void Application::testPneumaticCommands()
   m_logManager->Info("======================================", "Pneumatic Test");
   m_logManager->Info("Pneumatic Test completed!", "Pneumatic Test");
   m_logManager->Info("======================================", "Pneumatic Test");
+}
+
+
+
+// ✅ ADD THIS FUNCTION
+void Application::initializeSequenceEngine()
+{
+  std::cout << "[Application] Initializing Sequence Engine..." << std::endl;
+
+  try {
+    // Create SequenceEngine
+    m_sequenceEngine = std::make_unique<SequenceEngine>(&m_context);
+    m_context.sequenceEngine = m_sequenceEngine.get();  // ✅ ADD THIS
+
+    // Set logger
+    m_sequenceEngine->SetLogger(m_logManager.get());
+
+    // Build device registry AFTER all managers are loaded
+    m_sequenceEngine->BuildDeviceRegistry();
+
+    m_logManager->Info("SequenceEngine initialized", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Sequence engine initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without sequence engine
+  }
+}
+
+// ✅ ADD THIS FUNCTION (OPTIONAL TEST)
+void Application::testSequenceEngine()
+{
+  if (!m_sequenceEngine) {
+    m_logManager->Warning("SequenceEngine not available for testing", "Application");
+    return;
+  }
+
+  m_logManager->Info("======================================", "Sequence Test");
+  m_logManager->Info("Testing Sequence Engine - Gripper Test", "Sequence Test");
+  m_logManager->Info("======================================", "Sequence Test");
+
+  auto* seq = m_sequenceEngine->CreateSequence("GripperTest");
+
+  // Build simple gripper test sequence
+  m_logManager->Info("Building gripper test sequence...", "Sequence Test");
+
+  // Open L_Gripper
+  seq->AddAction("IOBottom", "SetOutput", { {"pinName", "L_Gripper"}, {"state", "true"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "1000"} });  // Wait 1 second
+  seq->AddAction("IOBottom", "SetOutput", { {"pinName", "L_Gripper"}, {"state", "false"} });
+
+  // Open R_Gripper
+  seq->AddAction("IOBottom", "SetOutput", { {"pinName", "R_Gripper"}, {"state", "true"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "1000"} });  // Wait 1 second
+  seq->AddAction("IOBottom", "SetOutput", { {"pinName", "R_Gripper"}, {"state", "false"} });
+
+  // Validate and execute
+  std::vector<std::string> errors;
+  if (m_sequenceEngine->ValidateSequence(seq, errors)) {
+    m_logManager->Info("Sequence validation passed, executing...", "Sequence Test");
+    m_sequenceEngine->ExecuteSequence(seq);
+  }
+  else {
+    m_logManager->Error("Sequence validation failed:", "Sequence Test");
+    for (const auto& err : errors) {
+      m_logManager->Error("  - " + err, "Sequence Test");
+    }
+  }
+
+  delete seq;
+
+  m_logManager->Info("======================================", "Sequence Test");
+  m_logManager->Info("Gripper Test completed!", "Sequence Test");
+  m_logManager->Info("======================================", "Sequence Test");
 }
