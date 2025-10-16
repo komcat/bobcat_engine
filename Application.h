@@ -7,6 +7,7 @@
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "EziIOManager.h"  // Add EziIO include
+#include "PneumaticManager.h"  // ✅ ADD THIS
 
 class QApplication;
 class MainWindow;
@@ -44,8 +45,11 @@ private:
   void initializeTcpClientManager();
   void initializeMotionManager();
   void initializeIOManager();  // Add IO manager initialization
+  void initializePneumaticManager();
+
   void testMotionCommands();   // Test method
   void testIOCommands();       // Test IO method
+  void testPneumaticCommands();  // ✅ TEST PNEUMATICS
 
   void shutdownManagers();
 
@@ -58,6 +62,7 @@ private:
   std::unique_ptr<TcpClientManager> m_tcpClientManager;
   std::unique_ptr<UnifiedMotionManager> m_motionManager;
   std::unique_ptr<EziIOManager> m_ioManager;  // Add IO manager
+  std::unique_ptr<PneumaticManager> m_pneumaticManager;  // ✅ ADD THIS
 
   ApplicationContext m_context;
 

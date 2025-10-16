@@ -2,21 +2,20 @@
 #pragma once
 
 class CameraManager;
-class LogManager;  // ✅ NEW
-class DataStore;           // ← NEW
-class TcpClientManager;    // ← NEW
-class UnifiedMotionManager;  // Add this
-class EziIOManager;  // Add IO manager
+class LogManager;
+class DataStore;
+class TcpClientManager;
+class UnifiedMotionManager;
+class EziIOManager;
+class PneumaticManager;  // ✅ ADD THIS
 
-struct ApplicationContext {
+struct ApplicationContext
+{
   CameraManager* cameraManager = nullptr;
-  LogManager* logManager = nullptr;  // ✅ NEW
-  DataStore* dataStore = nullptr;              // ← NEW
-  TcpClientManager* tcpClientManager = nullptr; // ← NEW
-  UnifiedMotionManager* motionManager = nullptr;  // Add this
-  EziIOManager* ioManager = nullptr;  // Add IO manager
-
-  bool isValid() const {
-    return cameraManager != nullptr && logManager != nullptr;
-  }
+  LogManager* logManager = nullptr;
+  DataStore* dataStore = nullptr;
+  TcpClientManager* tcpClientManager = nullptr;
+  UnifiedMotionManager* motionManager = nullptr;
+  EziIOManager* ioManager = nullptr;
+  PneumaticManager* pneumaticManager = nullptr;  // ✅ ADD THIS
 };

@@ -5,6 +5,7 @@
 #include "LogManager.h"
 #include "TcpClientManager.h"
 #include "EziIO_JsonLoader.h"
+#include "PneumaticJsonLoader.h"  // ✅ ADD THIS
 #include <QApplication>
 #include <iostream>
 #include <fstream>
@@ -105,10 +106,13 @@ void Application::initializeManagers()
     initializeCameraManager();
     initializeMotionManager();
     initializeIOManager();  // Add IO manager initialization
+		initializePneumaticManager();  // ✅ ADD THIS
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
     testIOCommands();  // Test IO with Vacuum_Base
+    
+		testPneumaticCommands();  // ✅ TEST PNEUMATICS
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -448,6 +452,12 @@ void Application::shutdownManagers()
     m_motionManager->DisconnectAll();
   }
 
+  // Shutdown pneumatic manager (stops all slides)
+  if (m_pneumaticManager) {
+    m_pneumaticManager->StopAll();
+    m_logManager->Info("Pneumatic manager shut down", "Application");
+  }
+
   // Shutdown IO manager
   if (m_ioManager) {
     m_ioManager->StopPolling();
@@ -464,6 +474,7 @@ void Application::shutdownManagers()
 
   m_context = ApplicationContext();
 
+  m_pneumaticManager.reset();  // ✅ ADD THIS
   m_ioManager.reset();
   m_motionManager.reset();
   m_cameraManager.reset();
@@ -473,6 +484,8 @@ void Application::shutdownManagers()
 
   std::cout << "[Application] All managers shut down" << std::endl;
 }
+
+
 
 void Application::createMainWindow()
 {
@@ -513,4 +526,175 @@ void Application::testMotionCommands()
   m_logManager->Info("Hex-left position: X=" + std::to_string(hexPos.x) +
     " Y=" + std::to_string(hexPos.y) +
     " Z=" + std::to_string(hexPos.z), "Motion");
+}
+
+void Application::initializePneumaticManager()
+{
+  std::cout << "[Application] Initializing Pneumatic manager..." << std::endl;
+
+  try {
+    // IMPORTANT: Pneumatic manager requires IO manager to be initialized first!
+    if (!m_ioManager) {
+      m_logManager->Error("Cannot initialize Pneumatic manager - IO manager not available", "Application");
+      return;
+    }
+
+    // 1. Create PneumaticManager (pass IO manager)
+    m_pneumaticManager = std::make_unique<PneumaticManager>(m_ioManager.get());
+    m_context.pneumaticManager = m_pneumaticManager.get();
+    m_logManager->Info("PneumaticManager created", "Application");
+
+    // 2. Load JSON config - try local first, then default
+    std::string configPath;
+    int loadedCount = 0;
+
+    // Try local config first (not in git)
+    loadedCount = PneumaticJsonLoader::LoadFromFile(*m_pneumaticManager, "config/pneumatic_slides.local.json");
+    if (loadedCount > 0) {
+      configPath = "config/pneumatic_slides.local.json";
+      m_logManager->Info("Loading Pneumatic config from LOCAL file", "Application");
+    }
+    else {
+      // Fall back to default config
+      loadedCount = PneumaticJsonLoader::LoadFromFile(*m_pneumaticManager, "config/pneumatic_slides.json");
+      if (loadedCount > 0) {
+        configPath = "config/pneumatic_slides.json";
+        m_logManager->Info("Loading Pneumatic config from DEFAULT file", "Application");
+      }
+      else {
+        m_logManager->Warning("No Pneumatic config found - pneumatic control not configured", "Application");
+        return;
+      }
+    }
+
+    m_logManager->Info(
+      "Loaded " + std::to_string(loadedCount) + " pneumatic slides from " + configPath,
+      "Application"
+    );
+
+    // 3. Set up global callbacks for logging
+    m_pneumaticManager->SetGlobalPositionCallback(
+      [this](const std::string& slideName, PneumaticPosition oldPos, PneumaticPosition newPos) {
+      std::string message = slideName + ": " +
+        GetPositionString(oldPos) + " → " + GetPositionString(newPos);
+      m_logManager->Info(message, "Pneumatic");
+    }
+    );
+
+    m_pneumaticManager->SetGlobalErrorCallback(
+      [this](const std::string& slideName, PneumaticError error, const std::string& message) {
+      std::string errorMsg = slideName + ": " +
+        GetPneumaticErrorString(error) + " - " + message;
+      m_logManager->Error(errorMsg, "Pneumatic");
+    }
+    );
+
+    m_logManager->Info("Pneumatic manager initialized successfully", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Pneumatic manager initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without pneumatic control
+  }
+}
+
+
+void Application::testPneumaticCommands()
+{
+  if (!m_pneumaticManager) {
+    m_logManager->Warning("Pneumatic Manager not available for testing", "Application");
+    return;
+  }
+
+  m_logManager->Info("======================================", "Pneumatic Test");
+  m_logManager->Info("Testing Pneumatic Commands", "Pneumatic Test");
+  m_logManager->Info("======================================", "Pneumatic Test");
+
+  // Test 1: Check initial positions
+  m_logManager->Info("Test 1: Reading initial positions...", "Pneumatic Test");
+
+  auto slideNames = m_pneumaticManager->GetAllSlideNames();
+  for (const auto& name : slideNames) {
+    PneumaticPosition pos = m_pneumaticManager->GetPosition(name);
+    m_logManager->Info(
+      name + " position: " + GetPositionString(pos),
+      "Pneumatic Test"
+    );
+  }
+
+  // Test 2: Extend ALL slides (blocking with wait)
+  m_logManager->Info("Test 2: Extending all slides...", "Pneumatic Test");
+
+  for (const auto& name : slideNames) {
+    m_logManager->Info("Extending " + name + "...", "Pneumatic Test");
+    PneumaticError result = m_pneumaticManager->ExtendAndWait(name, 50);
+
+    if (result == PneumaticError::SUCCESS) {
+      m_logManager->Info("✓ " + name + " extended successfully!", "Pneumatic Test");
+    }
+    else {
+      m_logManager->Error(
+        "✗ Failed to extend " + name + ": " + GetPneumaticErrorString(result),
+        "Pneumatic Test"
+      );
+    }
+
+    // Small delay between slides
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+
+  // Test 3: Wait a bit, then check all positions
+  m_logManager->Info("Test 3: Waiting 2 seconds then checking positions...", "Pneumatic Test");
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  for (const auto& name : slideNames) {
+    PneumaticStatus status = m_pneumaticManager->GetStatus(name);
+
+    std::string statusMsg = name + ": " + GetPositionString(status.Position) +
+      " | Output: " + (status.OutputActive ? "ON" : "OFF") +
+      " | Extended sensor: " + (status.ExtendedSensorActive ? "ON" : "OFF") +
+      " | Retracted sensor: " + (status.RetractedSensorActive ? "ON" : "OFF");
+
+    m_logManager->Info(statusMsg, "Pneumatic Test");
+  }
+
+  // Test 4: Retract ALL slides (blocking with wait)
+  m_logManager->Info("Test 4: Retracting all slides...", "Pneumatic Test");
+
+  for (const auto& name : slideNames) {
+    m_logManager->Info("Retracting " + name + "...", "Pneumatic Test");
+    PneumaticError result = m_pneumaticManager->RetractAndWait(name, 50);
+
+    if (result == PneumaticError::SUCCESS) {
+      m_logManager->Info("✓ " + name + " retracted successfully!", "Pneumatic Test");
+    }
+    else {
+      m_logManager->Error(
+        "✗ Failed to retract " + name + ": " + GetPneumaticErrorString(result),
+        "Pneumatic Test"
+      );
+    }
+
+    // Small delay between slides
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+
+  // Test 5: Final status
+  m_logManager->Info("Test 5: Final status of all slides...", "Pneumatic Test");
+  for (const auto& name : slideNames) {
+    PneumaticStatus status = m_pneumaticManager->GetStatus(name);
+
+    std::string statusMsg = name + ": " + GetPositionString(status.Position) +
+      " | Output: " + (status.OutputActive ? "ON" : "OFF") +
+      " | Extended sensor: " + (status.ExtendedSensorActive ? "ON" : "OFF") +
+      " | Retracted sensor: " + (status.RetractedSensorActive ? "ON" : "OFF");
+
+    m_logManager->Info(statusMsg, "Pneumatic Test");
+  }
+
+  m_logManager->Info("======================================", "Pneumatic Test");
+  m_logManager->Info("Pneumatic Test completed!", "Pneumatic Test");
+  m_logManager->Info("======================================", "Pneumatic Test");
 }

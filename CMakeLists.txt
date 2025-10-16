@@ -218,6 +218,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/motions
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
     ${CMAKE_SOURCE_DIR}/include/IO
+    ${CMAKE_SOURCE_DIR}/include/pneumatics
 )
 
 # Add nlohmann json include directory if found
@@ -285,7 +286,10 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControllerPageBase.cpp
     include/AppUI/MotionPages/PIControllerPage.cpp
     include/AppUI/MotionPages/ACSControllerPage.cpp
- "include/AppUI/IOPage/IOControllerPage.cpp")
+    include/AppUI/IOPage/IOControllerPage.cpp
+    include/pneumatics/PneumaticSlide.cpp
+    include/pneumatics/PneumaticManager.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -326,7 +330,13 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControllerPageBase.h
     include/AppUI/MotionPages/PIControllerPage.h
     include/AppUI/MotionPages/ACSControllerPage.h
- "include/AppUI/IOPage/IOControllerPage.h")
+    include/AppUI/IOPage/IOControllerPage.h
+    include/pneumatics/Pneumatic_Types.h
+    include/pneumatics/IPneumaticSlide.h
+    include/pneumatics/PneumaticSlide.h
+    include/pneumatics/PneumaticManager.h
+    include/pneumatics/PneumaticJsonLoader.h
+)
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

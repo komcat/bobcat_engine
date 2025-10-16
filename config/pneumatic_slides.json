@@ -1,0 +1,52 @@
+{
+  "pneumaticSlides": [
+    {
+      "name": "UV_Head",
+      "output": {
+        "deviceName": "IOBottom",
+        "pinName": "UV_Head"
+      },
+      "extendedInput": {
+        "deviceName": "IOTop",
+        "pinName": "UV_Head_Down"
+      },
+      "retractedInput": {
+        "deviceName": "IOTop",
+        "pinName": "UV_Head_Up"
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "Dispenser_Head",
+      "output": {
+        "deviceName": "IOBottom",
+        "pinName": "Dispenser_Head"
+      },
+      "extendedInput": {
+        "deviceName": "IOTop",
+        "pinName": "Dispenser_Head_Down"
+      },
+      "retractedInput": {
+        "deviceName": "IOTop",
+        "pinName": "Dispenser_Head_Up"
+      },
+      "timeoutMs": 5000
+    },
+    {
+      "name": "Pick_Up_Tool",
+      "output": {
+        "deviceName": "IOBottom",
+        "pinName": "Pick_Up_Tool"
+      },
+      "extendedInput": {
+        "deviceName": "IOTop",
+        "pinName": "Pick_Up_Tool_Down"
+      },
+      "retractedInput": {
+        "deviceName": "IOTop",
+        "pinName": "Pick_Up_Tool_Up"
+      },
+      "timeoutMs": 10000
+    }
+  ]
+}
