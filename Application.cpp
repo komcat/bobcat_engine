@@ -115,7 +115,8 @@ void Application::initializeManagers()
     
 		//testPneumaticCommands();  // ✅ TEST PNEUMATICS
 
-		testSequenceEngine();  // ✅ TEST SEQUENCE ENGINE
+		//testSequenceEngine();  // ✅ TEST SEQUENCE ENGINE
+		//testPneumaticSequence();	// ✅ TEST PNEUMATIC SEQUENCE
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -778,4 +779,93 @@ void Application::testSequenceEngine()
   m_logManager->Info("======================================", "Sequence Test");
   m_logManager->Info("Gripper Test completed!", "Sequence Test");
   m_logManager->Info("======================================", "Sequence Test");
+}
+
+// ✅ ADD THIS FUNCTION
+void Application::testPneumaticSequence()
+{
+  if (!m_sequenceEngine) {
+    m_logManager->Warning("SequenceEngine not available for testing", "Application");
+    return;
+  }
+
+  m_logManager->Info("======================================", "Pneumatic Sequence Test");
+  m_logManager->Info("Testing Pneumatic Sequence Operations", "Pneumatic Sequence Test");
+  m_logManager->Info("======================================", "Pneumatic Sequence Test");
+
+  auto* seq = m_sequenceEngine->CreateSequence("PneumaticSequenceTest");
+
+  // Build pneumatic test sequence
+  m_logManager->Info("Building pneumatic test sequence...", "Pneumatic Sequence Test");
+
+  // Test 1: Check initial status of all pneumatic slides
+  m_logManager->Info("Test 1: Checking initial status", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "GetStatus", {});
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "500"} });
+
+  // Test 2: Extend UV_Head (blocking - waits for sensor)
+  m_logManager->Info("Test 2: Extending UV_Head", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "Extend", { {"blocking", "true"}, {"pollInterval", "50"} });
+  seq->AddAction("UV_Head", "GetStatus", {});
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "1000"} });
+
+  // Test 3: Retract UV_Head (blocking)
+  m_logManager->Info("Test 3: Retracting UV_Head", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "Retract", { {"blocking", "true"}, {"pollInterval", "50"} });
+  seq->AddAction("UV_Head", "GetStatus", {});
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "1000"} });
+
+  // Test 4: Non-blocking extend with manual wait
+  m_logManager->Info("Test 4: Non-blocking extend with wait", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "Extend", { {"blocking", "false"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "200"} });
+  seq->AddAction("UV_Head", "WaitForExtended", { {"timeout", "3000"}, {"pollInterval", "50"} });
+  seq->AddAction("UV_Head", "GetStatus", {});
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "500"} });
+
+  // Test 5: Quick retract
+  m_logManager->Info("Test 5: Quick retract", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "Retract", { {"blocking", "true"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "500"} });
+
+  // Test 6: Cycle test - extend and retract multiple times
+  m_logManager->Info("Test 6: Cycle test (3 times)", "Pneumatic Sequence Test");
+  seq->BeginLoop(3);
+  seq->AddAction("UV_Head", "Extend", { {"blocking", "true"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "500"} });
+  seq->AddAction("UV_Head", "Retract", { {"blocking", "true"} });
+  seq->AddAction("IOBottom", "Delay", { {"milliseconds", "500"} });
+  seq->EndLoop();
+
+  // Test 7: Final status check
+  m_logManager->Info("Test 7: Final status check", "Pneumatic Sequence Test");
+  seq->AddAction("UV_Head", "GetStatus", {});
+
+  // Validate and execute
+  m_logManager->Info("Validating sequence...", "Pneumatic Sequence Test");
+  std::vector<std::string> errors;
+
+  if (m_sequenceEngine->ValidateSequence(seq, errors)) {
+    m_logManager->Info("✓ Sequence validation passed!", "Pneumatic Sequence Test");
+    m_logManager->Info("Executing sequence...", "Pneumatic Sequence Test");
+
+    if (m_sequenceEngine->ExecuteSequence(seq)) {
+      m_logManager->Info("✓ Sequence execution completed successfully!", "Pneumatic Sequence Test");
+    }
+    else {
+      m_logManager->Error("✗ Sequence execution failed!", "Pneumatic Sequence Test");
+    }
+  }
+  else {
+    m_logManager->Error("✗ Sequence validation failed:", "Pneumatic Sequence Test");
+    for (const auto& err : errors) {
+      m_logManager->Error("  - " + err, "Pneumatic Sequence Test");
+    }
+  }
+
+  delete seq;
+
+  m_logManager->Info("======================================", "Pneumatic Sequence Test");
+  m_logManager->Info("Pneumatic Sequence Test completed!", "Pneumatic Sequence Test");
+  m_logManager->Info("======================================", "Pneumatic Sequence Test");
 }
