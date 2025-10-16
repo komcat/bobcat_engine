@@ -110,9 +110,9 @@ void Application::initializeManagers()
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
-    testIOCommands();  // Test IO with Vacuum_Base
+    //testIOCommands();  // Test IO with Vacuum_Base
     
-		testPneumaticCommands();  // ✅ TEST PNEUMATICS
+		//testPneumaticCommands();  // ✅ TEST PNEUMATICS
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
