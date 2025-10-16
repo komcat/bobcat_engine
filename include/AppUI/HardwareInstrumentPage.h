@@ -12,7 +12,8 @@ class TcpClientWidget;
 class DataStoreWidget;
 class PIControllerPage;
 class ACSControllerPage;
-class IOControllerPage;  // ADD
+class IOControllerPage;
+class PneumaticControlPage;  // ✅ ADD
 
 /**
  * @brief Hardware & Instrument page
@@ -33,7 +34,8 @@ private slots:
   void showCamera();
   void showPIHexapod();
   void showACS();
-  void showIO();        // ADD
+  void showIO();
+  void showPneumatic();  // ✅ ADD
   void showDataView();
   void showTCPClient();
   void showLaserTEC();
@@ -57,7 +59,8 @@ private:
   QPushButton* m_cameraButton;
   QPushButton* m_piButton;
   QPushButton* m_acsButton;
-  QPushButton* m_ioButton;       // ADD
+  QPushButton* m_ioButton;
+  QPushButton* m_pneumaticButton;  // ✅ ADD
   QPushButton* m_dataViewButton;
   QPushButton* m_tcpClientButton;
   QPushButton* m_laserTECButton;
@@ -70,7 +73,8 @@ private:
   DataStoreWidget* m_dataStoreWidget;
   PIControllerPage* m_piControllerPage;
   ACSControllerPage* m_acsControllerPage;
-  IOControllerPage* m_ioControllerPage;  // ADD
+  IOControllerPage* m_ioControllerPage;
+  PneumaticControlPage* m_pneumaticControlPage;  // ✅ ADD
 
   // Track current selection
   QPushButton* m_currentButton;

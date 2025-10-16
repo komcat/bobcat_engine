@@ -212,6 +212,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
     ${CMAKE_SOURCE_DIR}/include/AppUI/IOPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/PneumaticPage  # ✅ ADD THIS
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -336,7 +337,7 @@ set(HEADERS
     include/pneumatics/PneumaticSlide.h
     include/pneumatics/PneumaticManager.h
     include/pneumatics/PneumaticJsonLoader.h
-)
+ "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

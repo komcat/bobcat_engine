@@ -67,6 +67,7 @@ private:
   PneumaticPosition m_currentPosition;
   PneumaticPosition m_targetPosition;
   std::chrono::steady_clock::time_point m_moveStartTime;
+  uint32_t m_lastCompletedMoveTimeMs;  // Stores final time when movement completes
 
   // Callbacks
   PneumaticPositionCallback m_positionCallback;

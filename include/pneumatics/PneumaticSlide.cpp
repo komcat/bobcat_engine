@@ -9,6 +9,8 @@ PneumaticSlide::PneumaticSlide(const PneumaticConfig& config, EziIOManager* ioMa
   , m_ioManager(ioManager)
   , m_currentPosition(PneumaticPosition::UNKNOWN)
   , m_targetPosition(PneumaticPosition::UNKNOWN)
+  , m_moveStartTime(std::chrono::steady_clock::now())
+  , m_lastCompletedMoveTimeMs(0)
 {
   std::cout << "[PneumaticSlide] Created: " << m_config.Name << std::endl;
 
@@ -29,7 +31,7 @@ PneumaticError PneumaticSlide::Extend() {
 
   std::cout << "[PneumaticSlide] " << m_config.Name << " - Extend()" << std::endl;
 
-  // Check if already extended - use internal version (no lock)
+  // Check if already extended
   UpdatePositionInternal();
   if (m_currentPosition == PneumaticPosition::EXTENDED) {
     std::cout << "[PneumaticSlide] " << m_config.Name << " - Already extended" << std::endl;
@@ -42,9 +44,10 @@ PneumaticError PneumaticSlide::Extend() {
     return result;
   }
 
-  // Update state
+  // Update state and restart timer
   m_targetPosition = PneumaticPosition::EXTENDED;
   m_moveStartTime = std::chrono::steady_clock::now();
+  m_lastCompletedMoveTimeMs = 0;  // Clear previous time
 
   PneumaticPosition oldPosition = m_currentPosition;
   m_currentPosition = PneumaticPosition::EXTENDING;
@@ -58,7 +61,7 @@ PneumaticError PneumaticSlide::Retract() {
 
   std::cout << "[PneumaticSlide] " << m_config.Name << " - Retract()" << std::endl;
 
-  // Check if already retracted - use internal version (no lock)
+  // Check if already retracted
   UpdatePositionInternal();
   if (m_currentPosition == PneumaticPosition::RETRACTED) {
     std::cout << "[PneumaticSlide] " << m_config.Name << " - Already retracted" << std::endl;
@@ -71,9 +74,10 @@ PneumaticError PneumaticSlide::Retract() {
     return result;
   }
 
-  // Update state
+  // Update state and restart timer
   m_targetPosition = PneumaticPosition::RETRACTED;
   m_moveStartTime = std::chrono::steady_clock::now();
+  m_lastCompletedMoveTimeMs = 0;  // Clear previous time
 
   PneumaticPosition oldPosition = m_currentPosition;
   m_currentPosition = PneumaticPosition::RETRACTING;
@@ -129,44 +133,83 @@ PneumaticError PneumaticSlide::RetractAndWait(uint32_t pollIntervalMs) {
 // STATUS & MONITORING
 // ============================================================================
 
-// Public version WITH lock
 PneumaticPosition PneumaticSlide::UpdatePosition() {
   std::lock_guard<std::mutex> lock(m_mutex);
   return UpdatePositionInternal();
 }
 
-// Internal version WITHOUT lock (called when already holding lock)
 PneumaticPosition PneumaticSlide::UpdatePositionInternal() {
   bool extended = ReadExtendedSensor();
   bool retracted = ReadRetractedSensor();
 
   PneumaticPosition newPosition = DeterminePosition(extended, retracted);
 
-  // Check for timeout during movement - use internal version (no lock)
+  // Check for timeout during movement
   if (IsMovingInternal() && GetElapsedMs() > m_config.TimeoutMs) {
     std::cerr << "[PneumaticSlide] " << m_config.Name << " - TIMEOUT!" << std::endl;
     newPosition = PneumaticPosition::TIMEOUT;
     NotifyError(PneumaticError::TIMEOUT, "Movement timeout occurred");
+
+    // Save final time and clear target
+    m_lastCompletedMoveTimeMs = GetElapsedMs();
+    m_targetPosition = PneumaticPosition::UNKNOWN;
   }
 
-  // Notify if position changed
+  // Notify and update position FIRST (if changed)
   if (newPosition != m_currentPosition) {
     PneumaticPosition oldPosition = m_currentPosition;
-    m_currentPosition = newPosition;
+    m_currentPosition = newPosition;  // ✅ UPDATE POSITION FIRST
     NotifyPositionChange(newPosition);
+  }
+
+  // ✅ NOW check if we just reached the target position (AFTER position is updated)
+  if (m_currentPosition == PneumaticPosition::EXTENDED && m_targetPosition == PneumaticPosition::EXTENDED) {
+    // Just reached extended - save time and clear target to stop timer
+    m_lastCompletedMoveTimeMs = GetElapsedMs();
+    m_targetPosition = PneumaticPosition::UNKNOWN;
+    std::cout << "[PneumaticSlide] " << m_config.Name
+      << " - Reached Extended in " << m_lastCompletedMoveTimeMs << " ms" << std::endl;
+  }
+  else if (m_currentPosition == PneumaticPosition::RETRACTED && m_targetPosition == PneumaticPosition::RETRACTED) {
+    // Just reached retracted - save time and clear target to stop timer
+    m_lastCompletedMoveTimeMs = GetElapsedMs();
+    m_targetPosition = PneumaticPosition::UNKNOWN;
+    std::cout << "[PneumaticSlide] " << m_config.Name
+      << " - Reached Retracted in " << m_lastCompletedMoveTimeMs << " ms" << std::endl;
   }
 
   return m_currentPosition;
 }
 
+
 PneumaticStatus PneumaticSlide::GetStatus() const {
   std::lock_guard<std::mutex> lock(m_mutex);
+
+  // ✅ UPDATE POSITION FIRST (use const_cast since this is logically const)
+  const_cast<PneumaticSlide*>(this)->UpdatePositionInternal();
 
   PneumaticStatus status;
   status.Position = m_currentPosition;
   status.ExtendedSensorActive = const_cast<PneumaticSlide*>(this)->ReadExtendedSensor();
   status.RetractedSensorActive = const_cast<PneumaticSlide*>(this)->ReadRetractedSensor();
-  status.LastMoveTimeMs = GetElapsedMs();
+
+  // Return live time while moving, stored final time when done
+  if (m_currentPosition == PneumaticPosition::EXTENDING ||
+    m_currentPosition == PneumaticPosition::RETRACTING) {
+    // Currently moving - show live elapsed time
+    status.LastMoveTimeMs = GetElapsedMs();
+  }
+  else if (m_currentPosition == PneumaticPosition::EXTENDED ||
+    m_currentPosition == PneumaticPosition::RETRACTED ||
+    m_currentPosition == PneumaticPosition::TIMEOUT) {
+    // Movement finished - show stored final time (frozen)
+    status.LastMoveTimeMs = m_lastCompletedMoveTimeMs;
+  }
+  else {
+    // Unknown/idle - no time to show
+    status.LastMoveTimeMs = 0;
+  }
+
   status.Valid = true;
 
   // Get output state
@@ -188,13 +231,13 @@ PneumaticStatus PneumaticSlide::GetStatus() const {
   return status;
 }
 
-// Internal version WITHOUT lock (called when already holding lock)
+
+
 bool PneumaticSlide::IsMovingInternal() const {
   return (m_currentPosition == PneumaticPosition::EXTENDING ||
     m_currentPosition == PneumaticPosition::RETRACTING);
 }
 
-// Public version WITH lock
 bool PneumaticSlide::IsMoving() const {
   std::lock_guard<std::mutex> lock(m_mutex);
   return IsMovingInternal();

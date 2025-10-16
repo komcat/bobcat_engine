@@ -6,7 +6,8 @@
 #include "DataStoreWidget.h"
 #include "PIControllerPage.h"
 #include "ACSControllerPage.h"
-#include "IOControllerPage.h"  // ADD
+#include "IOControllerPage.h"
+#include "PneumaticControlPage.h"  // ✅ ADD
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -22,7 +23,8 @@ HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWid
   , m_dataStoreWidget(nullptr)
   , m_piControllerPage(nullptr)
   , m_acsControllerPage(nullptr)
-  , m_ioControllerPage(nullptr)  // ADD
+  , m_ioControllerPage(nullptr)
+  , m_pneumaticControlPage(nullptr)  // ✅ ADD
   , m_currentButton(nullptr)
 {
   setupUI();
@@ -85,10 +87,14 @@ void HardwareInstrumentPage::createSidebar()
   connect(m_acsButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showACS);
   sidebarLayout->addWidget(m_acsButton);
 
-  // ADD IO BUTTON
   m_ioButton = createSidebarButton("IO");
   connect(m_ioButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showIO);
   sidebarLayout->addWidget(m_ioButton);
+
+  // ✅ ADD PNEUMATIC BUTTON
+  m_pneumaticButton = createSidebarButton("Pneumatic");
+  connect(m_pneumaticButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showPneumatic);
+  sidebarLayout->addWidget(m_pneumaticButton);
 
   m_dataViewButton = createSidebarButton("Data View");
   connect(m_dataViewButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showDataView);
@@ -129,31 +135,35 @@ void HardwareInstrumentPage::createContentArea()
   m_acsControllerPage = new ACSControllerPage(m_context);
   m_contentStack->addWidget(m_acsControllerPage);
 
-  // Index 3: IO - NEW PAGE
+  // Index 3: IO
   m_ioControllerPage = new IOControllerPage(m_context);
   m_contentStack->addWidget(m_ioControllerPage);
 
-  // Index 4: Data View
+  // Index 4: Pneumatic - ✅ NEW PAGE
+  m_pneumaticControlPage = new PneumaticControlPage(m_context);
+  m_contentStack->addWidget(m_pneumaticControlPage);
+
+  // Index 5: Data View
   m_dataStoreWidget = new DataStoreWidget(m_context);
   m_contentStack->addWidget(m_dataStoreWidget);
 
-  // Index 5: TCP Client
+  // Index 6: TCP Client
   m_tcpClientWidget = new TcpClientWidget(m_context);
   m_contentStack->addWidget(m_tcpClientWidget);
 
-  // Index 6: Laser/TEC placeholder
+  // Index 7: Laser/TEC placeholder
   QLabel* laserTECPlaceholder = new QLabel("Laser/TEC\n(Coming Soon)");
   laserTECPlaceholder->setAlignment(Qt::AlignCenter);
   laserTECPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
   m_contentStack->addWidget(laserTECPlaceholder);
 
-  // Index 7: Power Supply placeholder
+  // Index 8: Power Supply placeholder
   QLabel* powerSupplyPlaceholder = new QLabel("Power Supply\n(Coming Soon)");
   powerSupplyPlaceholder->setAlignment(Qt::AlignCenter);
   powerSupplyPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
   m_contentStack->addWidget(powerSupplyPlaceholder);
 
-  // Index 8: SMU placeholder
+  // Index 9: SMU placeholder
   QLabel* smuPlaceholder = new QLabel("SMU\n(Coming Soon)");
   smuPlaceholder->setAlignment(Qt::AlignCenter);
   smuPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
@@ -211,7 +221,6 @@ void HardwareInstrumentPage::showACS()
   std::cout << "[HardwareInstrumentPage] Showing ACS page" << std::endl;
 }
 
-// ADD NEW SLOT
 void HardwareInstrumentPage::showIO()
 {
   m_contentStack->setCurrentIndex(3);
@@ -221,9 +230,19 @@ void HardwareInstrumentPage::showIO()
   std::cout << "[HardwareInstrumentPage] Showing IO page" << std::endl;
 }
 
-void HardwareInstrumentPage::showDataView()
+// ✅ ADD NEW SLOT
+void HardwareInstrumentPage::showPneumatic()
 {
   m_contentStack->setCurrentIndex(4);
+  if (m_currentButton) m_currentButton->setChecked(false);
+  m_pneumaticButton->setChecked(true);
+  m_currentButton = m_pneumaticButton;
+  std::cout << "[HardwareInstrumentPage] Showing Pneumatic page" << std::endl;
+}
+
+void HardwareInstrumentPage::showDataView()
+{
+  m_contentStack->setCurrentIndex(5);  // ✅ UPDATED INDEX
   if (m_currentButton) m_currentButton->setChecked(false);
   m_dataViewButton->setChecked(true);
   m_currentButton = m_dataViewButton;
@@ -232,7 +251,7 @@ void HardwareInstrumentPage::showDataView()
 
 void HardwareInstrumentPage::showTCPClient()
 {
-  m_contentStack->setCurrentIndex(5);
+  m_contentStack->setCurrentIndex(6);  // ✅ UPDATED INDEX
   if (m_currentButton) m_currentButton->setChecked(false);
   m_tcpClientButton->setChecked(true);
   m_currentButton = m_tcpClientButton;
@@ -241,7 +260,7 @@ void HardwareInstrumentPage::showTCPClient()
 
 void HardwareInstrumentPage::showLaserTEC()
 {
-  m_contentStack->setCurrentIndex(6);
+  m_contentStack->setCurrentIndex(7);  // ✅ UPDATED INDEX
   if (m_currentButton) m_currentButton->setChecked(false);
   m_laserTECButton->setChecked(true);
   m_currentButton = m_laserTECButton;
@@ -250,7 +269,7 @@ void HardwareInstrumentPage::showLaserTEC()
 
 void HardwareInstrumentPage::showPowerSupply()
 {
-  m_contentStack->setCurrentIndex(7);
+  m_contentStack->setCurrentIndex(8);  // ✅ UPDATED INDEX
   if (m_currentButton) m_currentButton->setChecked(false);
   m_powerSupplyButton->setChecked(true);
   m_currentButton = m_powerSupplyButton;
@@ -259,7 +278,7 @@ void HardwareInstrumentPage::showPowerSupply()
 
 void HardwareInstrumentPage::showSMU()
 {
-  m_contentStack->setCurrentIndex(8);
+  m_contentStack->setCurrentIndex(9);  // ✅ UPDATED INDEX
   if (m_currentButton) m_currentButton->setChecked(false);
   m_smuButton->setChecked(true);
   m_currentButton = m_smuButton;
