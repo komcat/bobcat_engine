@@ -1,4 +1,4 @@
-// ConfigEditorPage.h - Config editor with left panel list + right panel forms
+﻿// ConfigEditorPage.h - Config editor with left panel list + right panel forms
 #pragma once
 
 #include <QWidget>
@@ -13,6 +13,7 @@ class TcpClientFormWidget;
 class CameraFormWidget;
 class MotorDeviceFormWidget;
 class SavedPositionsFormWidget;
+class PneumaticSlidesFormWidget;  // ← Add this
 
 /**
  * @brief Config file editor page
@@ -57,6 +58,7 @@ private:
   CameraFormWidget* m_cameraForm;
   MotorDeviceFormWidget* m_motorDeviceForm;
   SavedPositionsFormWidget* m_savedPositionsForm;
+  PneumaticSlidesFormWidget* m_pneumaticSlidesForm;  // ← Add this
   QWidget* m_emptyForm;
 
   QString m_currentConfigFile;

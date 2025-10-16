@@ -290,7 +290,7 @@ set(SOURCES
     include/AppUI/IOPage/IOControllerPage.cpp
     include/pneumatics/PneumaticSlide.cpp
     include/pneumatics/PneumaticManager.cpp
-)
+ "include/AppUI/Forms/PneumaticSlidesFormWidget.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -337,7 +337,7 @@ set(HEADERS
     include/pneumatics/PneumaticSlide.h
     include/pneumatics/PneumaticManager.h
     include/pneumatics/PneumaticJsonLoader.h
- "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp")
+ "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp" "include/AppUI/Forms/PneumaticSlidesFormWidget.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

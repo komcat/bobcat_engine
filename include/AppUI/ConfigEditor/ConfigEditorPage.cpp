@@ -4,6 +4,7 @@
 #include "CameraFormWidget.h"
 #include "MotorDeviceFormWidget.h"
 #include "SavedPositionsFormWidget.h"
+#include "PneumaticSlidesFormWidget.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include <QVBoxLayout>
@@ -118,6 +119,10 @@ void ConfigEditorPage::setupUI()
   m_savedPositionsForm = new SavedPositionsFormWidget();
   m_formStack->addWidget(m_savedPositionsForm);
 
+  // ✅ ADD THIS
+  m_pneumaticSlidesForm = new PneumaticSlidesFormWidget();
+  m_formStack->addWidget(m_pneumaticSlidesForm);
+
   rightLayout->addWidget(m_formStack);
 
   // Add panels to splitter
@@ -215,9 +220,15 @@ void ConfigEditorPage::loadConfigFile(const QString& filename)
     m_savedPositionsForm->loadFromJson(m_currentConfig);
     m_formStack->setCurrentWidget(m_savedPositionsForm);
   }
+  // ✅ ADD THIS
+  else if (filename.contains("pneumatic_slides")) {
+    m_pneumaticSlidesForm->loadFromJson(m_currentConfig);
+    m_formStack->setCurrentWidget(m_pneumaticSlidesForm);
+  }
   else {
     m_formStack->setCurrentWidget(m_emptyForm);
   }
+
 
   m_context->logManager->Info("Loaded config: " + filename.toStdString(), "ConfigEditor");
 }
@@ -248,6 +259,10 @@ void ConfigEditorPage::saveConfigFile(const QString& filename)
   }
   else if (filename.contains("saved_position")) {
     docToSave = m_savedPositionsForm->collectToJson();
+  }
+  // ✅ ADD THIS
+  else if (filename.contains("pneumatic_slides")) {
+    docToSave = m_pneumaticSlidesForm->collectToJson();
   }
   else {
     QMessageBox::warning(this, "Error", "Unknown config type");
