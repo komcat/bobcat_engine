@@ -4,6 +4,7 @@
 #include "EziIOManager.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QGroupBox>
 #include <QHeaderView>
 #include <QCheckBox>
 #include <iostream>
@@ -17,7 +18,8 @@ IOControllerPage::IOControllerPage(ApplicationContext* context, QWidget* parent)
   , m_ioPinPanel(nullptr)
   , m_deviceNameLabel(nullptr)
   , m_connectionStatusLabel(nullptr)
-  , m_ioPinTable(nullptr)
+  , m_inputPinsTable(nullptr)
+  , m_outputPinsTable(nullptr)
   , m_pollTimer(nullptr)
 {
   setupUI();
@@ -112,7 +114,9 @@ void IOControllerPage::createIOPinPanel()
   layout->setContentsMargins(20, 20, 20, 20);
   layout->setSpacing(15);
 
-  // Device info header
+  // ============================================================================
+  // HEADER
+  // ============================================================================
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_deviceNameLabel = new QLabel("No device selected");
@@ -127,12 +131,30 @@ void IOControllerPage::createIOPinPanel()
 
   layout->addLayout(headerLayout);
 
-  // IO pin table
-  m_ioPinTable = new QTableWidget();
-  m_ioPinTable->setColumnCount(5);
-  m_ioPinTable->setHorizontalHeaderLabels({ "Pin #", "Name", "Type", "Status", "Control" });
+  // ============================================================================
+  // PIN TABLES - TWO COLUMNS
+  // ============================================================================
+  QHBoxLayout* tablesLayout = new QHBoxLayout();
+  tablesLayout->setSpacing(10);
 
-  m_ioPinTable->setStyleSheet(
+  QString groupBoxStyle =
+    "QGroupBox { "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  color: #2c3e50; "
+    "  background-color: white; "
+    "  border: 2px solid #bdc3c7; "
+    "  border-radius: 5px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}";
+
+  QString tableStyle =
     "QTableWidget { "
     "  background-color: white; "
     "  color: #2c3e50; "
@@ -152,22 +174,64 @@ void IOControllerPage::createIOPinPanel()
     "  padding: 10px; "
     "  border: 1px solid #bdc3c7; "
     "  font-weight: bold; "
-    "}");
+    "}";
 
-  m_ioPinTable->horizontalHeader()->setSectionResizeMode(COL_PIN_NUMBER, QHeaderView::ResizeToContents);
-  m_ioPinTable->horizontalHeader()->setSectionResizeMode(COL_PIN_NAME, QHeaderView::Stretch);
-  m_ioPinTable->horizontalHeader()->setSectionResizeMode(COL_TYPE, QHeaderView::ResizeToContents);
-  m_ioPinTable->horizontalHeader()->setSectionResizeMode(COL_STATUS, QHeaderView::ResizeToContents);
-  m_ioPinTable->horizontalHeader()->setSectionResizeMode(COL_TOGGLE, QHeaderView::ResizeToContents);
+  // ============================================================================
+  // COLUMN 1: INPUT PINS
+  // ============================================================================
+  QGroupBox* inputGroup = new QGroupBox("Input Pins");
+  inputGroup->setStyleSheet(groupBoxStyle);
 
-  m_ioPinTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_ioPinTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_ioPinTable->setSelectionMode(QAbstractItemView::SingleSelection);
+  QVBoxLayout* inputLayout = new QVBoxLayout(inputGroup);
 
-  m_ioPinTable->verticalHeader()->setDefaultSectionSize(40);
-  m_ioPinTable->verticalHeader()->setMinimumSectionSize(40);
+  m_inputPinsTable = new QTableWidget();
+  m_inputPinsTable->setColumnCount(4);
+  m_inputPinsTable->setHorizontalHeaderLabels({ "Pin #", "Name", "Type", "Status" });
 
-  layout->addWidget(m_ioPinTable);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+
+  m_inputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_inputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_inputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_inputPinsTable->verticalHeader()->setDefaultSectionSize(40);
+  m_inputPinsTable->verticalHeader()->setMinimumSectionSize(40);
+  m_inputPinsTable->setStyleSheet(tableStyle);
+
+  inputLayout->addWidget(m_inputPinsTable);
+  tablesLayout->addWidget(inputGroup, 1);
+
+  // ============================================================================
+  // COLUMN 2: OUTPUT PINS (with control)
+  // ============================================================================
+  QGroupBox* outputGroup = new QGroupBox("Output Pins");
+  outputGroup->setStyleSheet(groupBoxStyle);
+
+  QVBoxLayout* outputLayout = new QVBoxLayout(outputGroup);
+
+  m_outputPinsTable = new QTableWidget();
+  m_outputPinsTable->setColumnCount(5);
+  m_outputPinsTable->setHorizontalHeaderLabels({ "Pin #", "Name", "Type", "Status", "Control" });
+
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+
+  m_outputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_outputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_outputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_outputPinsTable->verticalHeader()->setDefaultSectionSize(40);
+  m_outputPinsTable->verticalHeader()->setMinimumSectionSize(40);
+  m_outputPinsTable->setStyleSheet(tableStyle);
+
+  outputLayout->addWidget(m_outputPinsTable);
+  tablesLayout->addWidget(outputGroup, 1);
+
+  layout->addLayout(tablesLayout);
 }
 
 void IOControllerPage::showEvent(QShowEvent* event)
@@ -220,7 +284,8 @@ void IOControllerPage::onDeviceSelected()
     m_selectedDevice = "";
     m_deviceNameLabel->setText("No device selected");
     m_connectionStatusLabel->setText("⚪ Disconnected");
-    m_ioPinTable->setRowCount(0);
+    m_inputPinsTable->setRowCount(0);
+    m_outputPinsTable->setRowCount(0);
     return;
   }
 
@@ -249,9 +314,6 @@ void IOControllerPage::onDeviceSelected()
   refreshIOPinTable();
 }
 
-// IOControllerPage.cpp
-// Find refreshIOPinTable() method (around line 235) and update it:
-
 void IOControllerPage::refreshIOPinTable()
 {
   if (m_selectedDevice.empty()) {
@@ -270,50 +332,50 @@ void IOControllerPage::refreshIOPinTable()
   std::cout << "[IOControllerPage] Refreshing IO table: "
     << inputCount << " inputs, " << outputCount << " outputs" << std::endl;
 
-  m_ioPinTable->setRowCount(0);
+  // Clear tables
+  m_inputPinsTable->setRowCount(0);
+  m_outputPinsTable->setRowCount(0);
 
   // Add input pins
   for (int i = 0; i < inputCount; ++i) {
-    std::string pinName = device->GetInputPinName(i);  // ✅ FIXED: Get actual name
-    int row = m_ioPinTable->rowCount();
-    m_ioPinTable->insertRow(row);
-    updatePinRow(row, i, pinName, false, false);
+    std::string pinName = device->GetInputPinName(i);
+    int row = m_inputPinsTable->rowCount();
+    m_inputPinsTable->insertRow(row);
+    updatePinRow(m_inputPinsTable, row, i, pinName, false, false);
   }
 
   // Add output pins  
   for (int i = 0; i < outputCount; ++i) {
-    std::string pinName = device->GetOutputPinName(i);  // ✅ FIXED: Get actual name
-    int row = m_ioPinTable->rowCount();
-    m_ioPinTable->insertRow(row);
-    updatePinRow(row, i, pinName, true, false);
+    std::string pinName = device->GetOutputPinName(i);
+    int row = m_outputPinsTable->rowCount();
+    m_outputPinsTable->insertRow(row);
+    updatePinRow(m_outputPinsTable, row, i, pinName, true, false);
   }
 }
 
-
-
-void IOControllerPage::updatePinRow(int row, int pinNumber, const std::string& pinName,
-  bool isOutput, bool currentState)
+void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
+  const std::string& pinName, bool isOutput, bool currentState)
 {
   // Pin number
   QTableWidgetItem* pinNumItem = new QTableWidgetItem(QString::number(pinNumber));
   pinNumItem->setTextAlignment(Qt::AlignCenter);
-  m_ioPinTable->setItem(row, COL_PIN_NUMBER, pinNumItem);
+  table->setItem(row, 0, pinNumItem);
 
   // Pin name
   QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(pinName));
   nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-  m_ioPinTable->setItem(row, COL_PIN_NAME, nameItem);
+  table->setItem(row, 1, nameItem);
 
   // Type
   QTableWidgetItem* typeItem = new QTableWidgetItem(isOutput ? "Output" : "Input");
   typeItem->setTextAlignment(Qt::AlignCenter);
   typeItem->setForeground(isOutput ? QColor("#e67e22") : QColor("#3498db"));
-  m_ioPinTable->setItem(row, COL_TYPE, typeItem);
+  table->setItem(row, 2, typeItem);
 
   // Status (will be updated by polling)
   QTableWidgetItem* statusItem = new QTableWidgetItem("--");
   statusItem->setTextAlignment(Qt::AlignCenter);
-  m_ioPinTable->setItem(row, COL_STATUS, statusItem);
+  table->setItem(row, 3, statusItem);
 
   // Toggle button (only for outputs)
   if (isOutput) {
@@ -335,13 +397,12 @@ void IOControllerPage::updatePinRow(int row, int pinNumber, const std::string& p
       "  border-color: #7f8c8d; "
       "}");
 
-    connect(toggleButton, &QCheckBox::toggled, this, [this, pinName, isOutput](bool checked) {
+    connect(toggleButton, &QCheckBox::toggled, this, [this, pinName](bool checked) {
       EziIOManager* ioMgr = getIOManager();
       if (ioMgr && !m_selectedDevice.empty()) {
         std::cout << "[IOControllerPage] Toggle " << pinName << " -> "
           << (checked ? "ON" : "OFF") << std::endl;
 
-        // Try to set output by name first, fall back to pin number
         EziIOError result = ioMgr->SetOutputByName(m_selectedDevice, pinName, checked);
 
         if (result != EziIOError::SUCCESS) {
@@ -357,14 +418,7 @@ void IOControllerPage::updatePinRow(int row, int pinNumber, const std::string& p
     toggleLayout->setAlignment(Qt::AlignCenter);
     toggleLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_ioPinTable->setCellWidget(row, COL_TOGGLE, toggleWidget);
-  }
-  else {
-    // Input - no toggle
-    QTableWidgetItem* noToggle = new QTableWidgetItem("--");
-    noToggle->setTextAlignment(Qt::AlignCenter);
-    noToggle->setForeground(QColor("#95a5a6"));
-    m_ioPinTable->setItem(row, COL_TOGGLE, noToggle);
+    table->setCellWidget(row, 4, toggleWidget);
   }
 }
 
@@ -386,10 +440,10 @@ void IOControllerPage::updateIOStatus()
   uint32_t inputs = 0, latch = 0;
   if (device->ReadInputs(inputs, latch) == EziIOError::SUCCESS) {
     int inputCount = device->GetInputCount();
-    for (int i = 0; i < inputCount && i < m_ioPinTable->rowCount(); ++i) {
-      bool state = (inputs & (1U << i)) != 0;  // Inputs use bits 0-7 or 0-15
+    for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
+      bool state = (inputs & (1U << i)) != 0;
 
-      QTableWidgetItem* statusItem = m_ioPinTable->item(i, COL_STATUS);
+      QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 3);
       if (statusItem) {
         statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
         statusItem->setForeground(state ? QColor("#27ae60") : QColor("#95a5a6"));
@@ -400,29 +454,26 @@ void IOControllerPage::updateIOStatus()
   // Read outputs
   uint32_t outputs = 0, status = 0;
   if (device->ReadOutputs(outputs, status) == EziIOError::SUCCESS) {
-    int inputCount = device->GetInputCount();
     int outputCount = device->GetOutputCount();
 
-    // ✅ FIXED: Use proper output pin masks
     // Outputs use bits 8-15 for 8-pin, or bits 16-31 for 16-pin devices
     bool is16Pin = (outputCount > 8);
     int bitOffset = is16Pin ? 16 : 8;
 
     for (int i = 0; i < outputCount; ++i) {
-      int row = inputCount + i;
-      if (row >= m_ioPinTable->rowCount()) break;
+      int row = i;
+      if (row >= m_outputPinsTable->rowCount()) break;
 
-      // ✅ FIXED: Check the correct bit position
       bool state = (outputs & (1U << (bitOffset + i))) != 0;
 
-      QTableWidgetItem* statusItem = m_ioPinTable->item(row, COL_STATUS);
+      QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 3);
       if (statusItem) {
         statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
         statusItem->setForeground(state ? QColor("#27ae60") : QColor("#95a5a6"));
       }
 
       // Update toggle button to match actual state
-      QWidget* toggleWidget = m_ioPinTable->cellWidget(row, COL_TOGGLE);
+      QWidget* toggleWidget = m_outputPinsTable->cellWidget(row, 4);
       if (toggleWidget) {
         QCheckBox* toggleButton = toggleWidget->findChild<QCheckBox*>();
         if (toggleButton && toggleButton->isChecked() != state) {
@@ -434,8 +485,6 @@ void IOControllerPage::updateIOStatus()
     }
   }
 }
-
-
 
 void IOControllerPage::onRefreshClicked()
 {

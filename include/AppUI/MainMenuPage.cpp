@@ -22,17 +22,17 @@ void MainMenuPage::setupUI()
   titleLabel->setAlignment(Qt::AlignCenter);
   titleLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 36px; "
+    "  font-size: 24px; "
     "  font-weight: bold; "
     "  color: #ffffff; "
-    "  padding: 20px; "
+    "  padding: 10px; "
     "}");
   mainLayout->addWidget(titleLabel);
 
   // Add stretch to center buttons vertically
   mainLayout->addStretch();
 
-  // Button grid (3x2 - 3 columns, 2 rows)  ✅ Changed comment
+  // Button grid (3x2 - 3 columns, 2 rows)
   QGridLayout* buttonGrid = new QGridLayout();
   buttonGrid->setSpacing(30);
 
@@ -44,16 +44,16 @@ void MainMenuPage::setupUI()
   m_editConfigButton = createMenuButton("Edit Config", "assets/icons/config.png");
   m_futureUpdateButton = createMenuButton("(future update)", "assets/icons/future.png");
 
-  // ✅ Add to grid (3 columns, 2 rows)
+  // Add to grid (3 columns, 2 rows)
   buttonGrid->addWidget(m_processButton, 0, 0);
   buttonGrid->addWidget(m_recipeButton, 0, 1);
-  buttonGrid->addWidget(m_motionButton, 0, 2);         // ✅ Moved to row 0, col 2
-  buttonGrid->addWidget(m_hardwareButton, 1, 0);       // ✅ Moved to row 1, col 0
-  buttonGrid->addWidget(m_editConfigButton, 1, 1);     // ✅ Moved to row 1, col 1
-  buttonGrid->addWidget(m_futureUpdateButton, 1, 2);   // ✅ Moved to row 1, col 2
+  buttonGrid->addWidget(m_motionButton, 0, 2);
+  buttonGrid->addWidget(m_hardwareButton, 1, 0);
+  buttonGrid->addWidget(m_editConfigButton, 1, 1);
+  buttonGrid->addWidget(m_futureUpdateButton, 1, 2);
 
   mainLayout->addLayout(buttonGrid);
-  mainLayout->addStretch();  // ✅ Pushes buttons up, leaves space for status bar
+  mainLayout->addStretch();
 
   // Connect signals
   connect(m_processButton, &QToolButton::clicked, this, &MainMenuPage::processClicked);
@@ -63,16 +63,16 @@ void MainMenuPage::setupUI()
   connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);
   connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);
 
-  // Set dark background
-  setStyleSheet("QWidget { background-color: #2b2b2b; }");
+  // Set dark blue background
+  setStyleSheet("QWidget { background-color: #1a1f2e; }");
 }
 
 QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& iconPath)
 {
   QToolButton* button = new QToolButton();
   button->setMinimumSize(200, 180);
-  button->setMaximumSize(400, 250);  // ✅ Lower max height (was 300)
-  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);  // ✅ Changed vertical policy
+  button->setMaximumSize(400, 250);
+  button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
   // Load icon if path provided
   if (!iconPath.isEmpty()) {
@@ -98,20 +98,20 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
   // Button styling
   button->setStyleSheet(
     "QToolButton { "
-    "  background-color: #3a3a3a; "
+    "  background-color: #2d3e5f; "
     "  color: white; "
-    "  border: 2px solid #555555; "
+    "  border: 2px solid #3d5a8c; "
     "  border-radius: 10px; "
     "  font-size: 18px; "
     "  font-weight: bold; "
     "  padding: 20px; "
     "} "
     "QToolButton:hover { "
-    "  background-color: #4a4a4a; "
-    "  border-color: #00aaff; "
+    "  background-color: #3d5a8c; "
+    "  border-color: #5a8fd6; "
     "} "
     "QToolButton:pressed { "
-    "  background-color: #2a2a2a; "
+    "  background-color: #1d2e4f; "
     "}");
 
   return button;
