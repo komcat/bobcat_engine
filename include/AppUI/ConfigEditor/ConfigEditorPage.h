@@ -14,6 +14,7 @@ class CameraFormWidget;
 class MotorDeviceFormWidget;
 class SavedPositionsFormWidget;
 class PneumaticSlidesFormWidget;  // ← Add this
+class IODevicesFormWidget;  // ← Add this
 
 /**
  * @brief Config file editor page
@@ -59,6 +60,9 @@ private:
   MotorDeviceFormWidget* m_motorDeviceForm;
   SavedPositionsFormWidget* m_savedPositionsForm;
   PneumaticSlidesFormWidget* m_pneumaticSlidesForm;  // ← Add this
+  IODevicesFormWidget* m_ioDevicesForm;  // ← Add this
+
+
   QWidget* m_emptyForm;
 
   QString m_currentConfigFile;

@@ -5,6 +5,7 @@
 #include "MotorDeviceFormWidget.h"
 #include "SavedPositionsFormWidget.h"
 #include "PneumaticSlidesFormWidget.h"
+#include "IODevicesFormWidget.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include <QVBoxLayout>
@@ -122,6 +123,10 @@ void ConfigEditorPage::setupUI()
   // ✅ ADD THIS
   m_pneumaticSlidesForm = new PneumaticSlidesFormWidget();
   m_formStack->addWidget(m_pneumaticSlidesForm);
+  // ✅ ADD THIS
+  m_ioDevicesForm = new IODevicesFormWidget();
+  m_formStack->addWidget(m_ioDevicesForm);
+
 
   rightLayout->addWidget(m_formStack);
 
@@ -225,6 +230,11 @@ void ConfigEditorPage::loadConfigFile(const QString& filename)
     m_pneumaticSlidesForm->loadFromJson(m_currentConfig);
     m_formStack->setCurrentWidget(m_pneumaticSlidesForm);
   }
+  // ✅ ADD THIS
+  else if (filename.contains("io_devices")) {
+    m_ioDevicesForm->loadFromJson(m_currentConfig);
+    m_formStack->setCurrentWidget(m_ioDevicesForm);
+  }
   else {
     m_formStack->setCurrentWidget(m_emptyForm);
   }
@@ -263,6 +273,10 @@ void ConfigEditorPage::saveConfigFile(const QString& filename)
   // ✅ ADD THIS
   else if (filename.contains("pneumatic_slides")) {
     docToSave = m_pneumaticSlidesForm->collectToJson();
+  }
+  // ✅ ADD THIS
+  else if (filename.contains("io_devices")) {
+    docToSave = m_ioDevicesForm->collectToJson();
   }
   else {
     QMessageBox::warning(this, "Error", "Unknown config type");
