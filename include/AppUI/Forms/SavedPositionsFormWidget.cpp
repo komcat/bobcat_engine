@@ -30,9 +30,16 @@ void SavedPositionsFormWidget::setupUI()
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // Title - smaller and more compact
+  // Title - minimal and compact with fixed height
   QLabel* title = new QLabel("Saved Positions Configuration");
-  title->setStyleSheet("QLabel { color: white; font-size: 16px; font-weight: bold; padding: 5px 10px; }");
+  title->setStyleSheet(
+    "QLabel { "
+    "  color: white; "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  padding: 3px 8px; "
+    "  max-height: 25px; "
+    "}");
   mainLayout->addWidget(title);
 
   // 3-column layout with splitters
