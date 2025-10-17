@@ -1,4 +1,4 @@
-// unified_motion_manager.h (Refactored with Interface)
+﻿// unified_motion_manager.h (Refactored with Interface)
 #pragma once
 
 #include "IMotionControllerManager.h"
@@ -22,15 +22,24 @@ public:
   UnifiedMotionManager();
   ~UnifiedMotionManager();
 
+  // ============================================================================
+  // DEVICE MANAGEMENT
+  // ============================================================================
+
   // Device management - automatically routes to correct manager based on Type
   void AddDevice(const MotionDevice& device);
   void RemoveDevice(const std::string& deviceName);
   bool HasDevice(const std::string& deviceName) const;
 
-  // Get device type
+  // Get device type and configuration
   std::string GetDeviceType(const std::string& deviceName) const;
+  bool GetDeviceConfig(const std::string& deviceName, MotionDevice& outDevice) const;
+  std::string GetInstalledAxes(const std::string& deviceName) const;
 
-  // Connection management
+  // ============================================================================
+  // CONNECTION MANAGEMENT
+  // ============================================================================
+
   bool ConnectAll();
   void DisconnectAll();
   bool ConnectDevice(const std::string& deviceName);
@@ -55,8 +64,10 @@ public:
     bool blocking = true);
 
   // Move to named position
+// Move to named position
   bool MoveToNamedPosition(const std::string& deviceName,
-    const std::string& positionName);
+    const std::string& positionName,
+    bool blocking = false);  // ✅ ADD blocking parameter with default false
 
   // Move relative (single axis)
   bool MoveRelative(const std::string& deviceName,
@@ -94,15 +105,26 @@ public:
     bool enable);
 
   // ============================================================================
-  // CONTROLLER ACCESS (Type-safe methods)
+  // NAMED POSITION MANAGEMENT
   // ============================================================================
 
-  // Type-safe controller access
-  ACSController* GetACSController(const std::string& deviceName);
-  PIController* GetPIController(const std::string& deviceName);
+  void AddNamedPosition(const std::string& deviceName,
+    const std::string& positionName,
+    const PositionStruct& position);
 
-  // Generic controller access - check type first
-  void* GetController(const std::string& deviceName, std::string& outType);
+  void AddNamedPosition(const std::string& deviceName,
+    const std::string& positionName,
+    double x, double y, double z,
+    double u = 0.0, double v = 0.0, double w = 0.0);
+
+  bool RemoveNamedPosition(const std::string& deviceName,
+    const std::string& positionName);
+
+  bool GetNamedPosition(const std::string& deviceName,
+    const std::string& positionName,
+    PositionStruct& outPosition) const;
+
+  std::vector<std::string> GetNamedPositionList(const std::string& deviceName) const;
 
   // ============================================================================
   // DEVICE QUERIES
@@ -122,6 +144,17 @@ public:
   std::vector<std::string> GetSupportedControllerTypes() const;
 
   // ============================================================================
+  // CONTROLLER ACCESS (Type-safe methods)
+  // ============================================================================
+
+  // Type-safe controller access
+  ACSController* GetACSController(const std::string& deviceName);
+  PIController* GetPIController(const std::string& deviceName);
+
+  // Generic controller access - check type first
+  void* GetController(const std::string& deviceName, std::string& outType);
+
+  // ============================================================================
   // MANAGER ACCESS (for advanced usage)
   // ============================================================================
 
@@ -132,12 +165,25 @@ public:
   ACSControllerManager* GetACSManager();
   PIControllerManager* GetPIManager();
 
+
+  // Reload all named positions from config file
+  bool ReloadNamedPositions(const std::string& configPath);
+
+  // Clear all named positions for a device
+  void ClearNamedPositions(const std::string& deviceName);
+
 private:
   // Map of controller type to manager
   std::map<std::string, std::unique_ptr<IMotionControllerManager>> m_managers;
 
   // Track device types for routing
   std::map<std::string, std::string> m_deviceTypes;  // deviceName -> type
+
+  // Store full device configurations
+  std::map<std::string, MotionDevice> m_deviceConfigs;  // deviceName -> MotionDevice
+
+  // Named positions storage: deviceName -> (positionName -> PositionStruct)
+  std::map<std::string, std::map<std::string, PositionStruct>> m_namedPositions;
 
   // Helper method to get manager for a device
   IMotionControllerManager* GetManagerForDevice(const std::string& deviceName);

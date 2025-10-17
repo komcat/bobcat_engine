@@ -33,14 +33,14 @@ public:
   double getW() const;
 
 private slots:
-  void onOkClicked();
-  void onCancelClicked();
-  void validateInput();
+  void onCreateClicked();
 
 private:
   void setupUI();
+  QDoubleSpinBox* createSpinBox(double value);
 
   QString m_deviceName;
+  double m_x, m_y, m_z, m_u, m_v, m_w;
 
   QLineEdit* m_nameEdit;
   QDoubleSpinBox* m_xSpin;
@@ -49,9 +49,4 @@ private:
   QDoubleSpinBox* m_uSpin;
   QDoubleSpinBox* m_vSpin;
   QDoubleSpinBox* m_wSpin;
-
-  QPushButton* m_okButton;
-  QPushButton* m_cancelButton;
-
-  QLabel* m_errorLabel;
 };

@@ -1,5 +1,6 @@
-// unified_motion_manager.cpp - Complete Implementation
+﻿// unified_motion_manager.cpp - Complete Implementation
 #include "unified_motion_manager.h"
+#include "MotionJsonLoader.h"
 #include <iostream>
 #include <algorithm>
 
@@ -69,6 +70,9 @@ void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
   std::cout << "[INFO] UnifiedMotionManager: Adding device " << device.Name
     << " (Type: " << device.TypeController << ")" << std::endl;
 
+  // Store full device configuration
+  m_deviceConfigs[device.Name] = device;
+
   // Store device type for routing
   m_deviceTypes[device.Name] = device.TypeController;
 
@@ -92,6 +96,7 @@ void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
   }
 }
 
+
 void UnifiedMotionManager::RemoveDevice(const std::string& deviceName) {
   IMotionControllerManager* manager = GetManagerForDevice(deviceName);
   if (!manager) {
@@ -106,8 +111,29 @@ void UnifiedMotionManager::RemoveDevice(const std::string& deviceName) {
 
   manager->RemoveDevice(deviceName);
   m_deviceTypes.erase(deviceName);
+  m_deviceConfigs.erase(deviceName);  // Remove config
+  m_namedPositions.erase(deviceName); // Remove named positions
 
   std::cout << "[INFO] UnifiedMotionManager: Removed device " << deviceName << std::endl;
+}
+
+
+bool UnifiedMotionManager::GetDeviceConfig(const std::string& deviceName,
+  MotionDevice& outDevice) const {
+  auto it = m_deviceConfigs.find(deviceName);
+  if (it != m_deviceConfigs.end()) {
+    outDevice = it->second;
+    return true;
+  }
+  return false;
+}
+
+std::string UnifiedMotionManager::GetInstalledAxes(const std::string& deviceName) const {
+  auto it = m_deviceConfigs.find(deviceName);
+  if (it != m_deviceConfigs.end()) {
+    return it->second.InstalledAxes;
+  }
+  return "";
 }
 
 bool UnifiedMotionManager::HasDevice(const std::string& deviceName) const {
@@ -259,30 +285,106 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
 }
 
 bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
-  const std::string& positionName) {
-  std::string type = GetDeviceType(deviceName);
-  if (type.empty()) {
+  const std::string& positionName,
+  bool blocking) {
+  // Check if device exists
+  if (!HasDevice(deviceName)) {
     std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
       << " not found" << std::endl;
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: MoveToNamedPosition on " << deviceName
-    << " to position " << positionName << std::endl;
+  // Find the named position
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt == m_namedPositions.end()) {
+    std::cout << "[ERROR] UnifiedMotionManager: No named positions defined for device "
+      << deviceName << std::endl;
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    std::cout << "[ERROR] UnifiedMotionManager: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
+
+    // List available positions
+    std::vector<std::string> available = GetNamedPositionList(deviceName);
+    if (!available.empty()) {
+      std::cout << "[INFO] Available positions: ";
+      for (const auto& name : available) {
+        std::cout << "'" << name << "' ";
+      }
+      std::cout << std::endl;
+    }
+    return false;
+  }
+
+  // Get the position and device config
+  PositionStruct pos = posIt->second;
+  std::string installedAxes = GetInstalledAxes(deviceName);
+
+  std::cout << "[INFO] UnifiedMotionManager: Moving " << deviceName
+    << " to named position '" << positionName << "'"
+    << (blocking ? " (blocking)" : " (non-blocking)") << std::endl;
+  std::cout << "[INFO] Target position: X=" << pos.x << " Y=" << pos.y
+    << " Z=" << pos.z << " U=" << pos.u << " V=" << pos.v << " W=" << pos.w << std::endl;
+
+  // Get device type to determine how to move
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager: Cannot determine device type" << std::endl;
+    return false;
+  }
+
+  bool success = true;
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
-    return controller->MoveToNamedPosition(deviceName, positionName);
+
+    // Move XYZ axes first
+    success = controller->MoveToAbsolutePosition(pos.x, pos.y, pos.z, 100.0, blocking);
+
+    // Move UVW axes individually if they exist
+    if (installedAxes.find('U') != std::string::npos) {
+      success &= controller->MoveToPosition("U", pos.u, blocking);
+    }
+    if (installedAxes.find('V') != std::string::npos) {
+      success &= controller->MoveToPosition("V", pos.v, blocking);
+    }
+    if (installedAxes.find('W') != std::string::npos) {
+      success &= controller->MoveToPosition("W", pos.w, blocking);
+    }
+
   }
   else if (NormalizeType(type) == "PI") {
     PIController* controller = GetPIController(deviceName);
     if (!controller) return false;
-    return controller->MoveToNamedPosition(deviceName, positionName);
+
+    // PI moves all 6 axes at once using MoveToPositionAll
+    success = controller->MoveToPositionAll(pos.x, pos.y, pos.z,
+      pos.u, pos.v, pos.w,
+      blocking);  // ✅ Use blocking parameter
+  }
+  else {
+    std::cout << "[ERROR] UnifiedMotionManager: Unsupported controller type '"
+      << type << "' for MoveToNamedPosition" << std::endl;
+    return false;
   }
 
-  return false;
+  if (success) {
+    std::cout << "[INFO] UnifiedMotionManager: Successfully "
+      << (blocking ? "moved" : "started moving")
+      << " to position '" << positionName << "'" << std::endl;
+  }
+  else {
+    std::cout << "[ERROR] UnifiedMotionManager: Failed to move to position '"
+      << positionName << "'" << std::endl;
+  }
+
+  return success;
 }
+
 
 bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   const std::string& axis,
@@ -682,4 +784,98 @@ void* UnifiedMotionManager::GetController(const std::string& deviceName, std::st
   }
 
   return nullptr;
+}
+
+// ============================================================================
+// NAMED POSITION MANAGEMENT
+// ============================================================================
+
+void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
+  const std::string& positionName,
+  const PositionStruct& position) {
+  m_namedPositions[deviceName][positionName] = position;
+  std::cout << "[INFO] UnifiedMotionManager: Added named position '" << positionName
+    << "' for device " << deviceName
+    << " -> (" << position.x << ", " << position.y << ", " << position.z << ")"
+    << std::endl;
+}
+
+void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
+  const std::string& positionName,
+  double x, double y, double z,
+  double u, double v, double w) {
+  PositionStruct pos = { x, y, z, u, v, w };
+  AddNamedPosition(deviceName, positionName, pos);
+}
+
+bool UnifiedMotionManager::RemoveNamedPosition(const std::string& deviceName,
+  const std::string& positionName) {
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt == m_namedPositions.end()) {
+    std::cout << "[WARNING] UnifiedMotionManager: No named positions for device "
+      << deviceName << std::endl;
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    std::cout << "[WARNING] UnifiedMotionManager: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
+    return false;
+  }
+
+  deviceIt->second.erase(posIt);
+  std::cout << "[INFO] UnifiedMotionManager: Removed named position '" << positionName
+    << "' from device " << deviceName << std::endl;
+  return true;
+}
+
+bool UnifiedMotionManager::GetNamedPosition(const std::string& deviceName,
+  const std::string& positionName,
+  PositionStruct& outPosition) const {
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt == m_namedPositions.end()) {
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    return false;
+  }
+
+  outPosition = posIt->second;
+  return true;
+}
+
+std::vector<std::string> UnifiedMotionManager::GetNamedPositionList(const std::string& deviceName) const {
+  std::vector<std::string> names;
+
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt != m_namedPositions.end()) {
+    for (const auto& [name, pos] : deviceIt->second) {
+      names.push_back(name);
+    }
+  }
+
+  return names;
+}
+
+// In unified_motion_manager.cpp
+bool UnifiedMotionManager::ReloadNamedPositions(const std::string& configPath) {
+  std::cout << "[INFO] UnifiedMotionManager: Reloading named positions from "
+    << configPath << std::endl;
+
+  // Clear existing positions
+  m_namedPositions.clear();
+
+  // Reload using MotionJsonLoader
+  return MotionJsonLoader::LoadFromFile(*this, configPath) > 0;
+}
+
+void UnifiedMotionManager::ClearNamedPositions(const std::string& deviceName) {
+  auto it = m_namedPositions.find(deviceName);
+  if (it != m_namedPositions.end()) {
+    m_namedPositions.erase(it);
+    std::cout << "[INFO] Cleared named positions for " << deviceName << std::endl;
+  }
 }

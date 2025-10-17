@@ -161,34 +161,37 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 {
   m_currentPositions.clear();
 
-  // Try multiple possible paths
+  // Try multiple possible paths for motor_devices.json
   QStringList possiblePaths = {
-      "saved_positions.json",
-      "../saved_positions.json",
-      "config/saved_positions.json",
-      "../config/saved_positions.json"
+      "config/motor_devices.local.json",
+      "motor_devices.local.json",
+      "config/motor_devices.json",
+      "motor_devices.json",
+      "../config/motor_devices.json"
   };
 
   QFile file;
   bool fileFound = false;
+  QString filePath;
 
   for (const QString& path : possiblePaths) {
     file.setFileName(path);
     if (file.exists()) {
-      qDebug() << "Found positions file at:" << path;
+      qDebug() << "Found motor config file at:" << path;
+      filePath = path;
       fileFound = true;
       break;
     }
   }
 
   if (!fileFound) {
-    qWarning() << "Could not find saved_positions.json in any location";
+    qWarning() << "Could not find motor_devices.json in any location";
     m_graphicsView->clearPositions();
     return;
   }
 
   if (!file.open(QIODevice::ReadOnly)) {
-    qWarning() << "Could not open saved_positions.json";
+    qWarning() << "Could not open motor_devices.json";
     m_graphicsView->clearPositions();
     return;
   }
@@ -198,25 +201,33 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 
   QJsonDocument doc = QJsonDocument::fromJson(data);
   if (!doc.isObject()) {
-    qWarning() << "Invalid JSON format in saved_positions.json";
+    qWarning() << "Invalid JSON format in motor_devices.json";
     m_graphicsView->clearPositions();
     return;
   }
 
   QJsonObject root = doc.object();
-  QJsonObject positions = root["positions"].toObject();
 
-  if (!positions.contains(deviceName)) {
+  // Check if named_positions section exists
+  if (!root.contains("named_positions")) {
+    qWarning() << "No 'named_positions' section found in motor_devices.json";
+    m_graphicsView->clearPositions();
+    return;
+  }
+
+  QJsonObject namedPositions = root["named_positions"].toObject();
+
+  if (!namedPositions.contains(deviceName)) {
     qWarning() << "No positions found for device:" << deviceName;
     m_graphicsView->clearPositions();
     return;
   }
 
-  QJsonObject devicePositions = positions[deviceName].toObject();
+  QJsonObject devicePositions = namedPositions[deviceName].toObject();
 
   qDebug() << "Loading positions for device:" << deviceName;
 
-  // NEW - Transform positions to global coordinates
+  // Transform positions to global coordinates
   for (auto it = devicePositions.begin(); it != devicePositions.end(); ++it) {
     QString posName = it.key();
     QJsonObject pos = it.value().toObject();
@@ -247,11 +258,12 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
   // Update graphics view
   m_graphicsView->updatePositions(m_currentPositions);
 
-  // NEW - Auto-fit and center view
+  // Auto-fit and center view
   m_graphicsView->resetZoom();
 
   qDebug() << "Successfully loaded" << m_currentPositions.size() << "positions for" << deviceName;
 }
+
 
 
 
@@ -482,12 +494,13 @@ bool MotionPage::savePositionToFile(const QString& deviceName, const QString& po
   double x, double y, double z,
   double u, double v, double w)
 {
-  // Try multiple possible paths
+  // Try multiple possible paths for motor_devices.json
   QStringList possiblePaths = {
-      "saved_positions.json",
-      "../saved_positions.json",
-      "config/saved_positions.json",
-      "../config/saved_positions.json"
+      "config/motor_devices.local.json",
+      "motor_devices.local.json",
+      "config/motor_devices.json",
+      "motor_devices.json",
+      "../config/motor_devices.json"
   };
 
   QString filePath;
@@ -497,18 +510,17 @@ bool MotionPage::savePositionToFile(const QString& deviceName, const QString& po
     if (QFile::exists(path)) {
       filePath = path;
       fileFound = true;
-      qDebug() << "Found positions file at:" << path;
+      qDebug() << "Found motor config file at:" << path;
       break;
     }
   }
 
   if (!fileFound) {
-    qWarning() << "Could not find saved_positions.json in any location";
+    qWarning() << "Could not find motor_devices.json in any location";
     qWarning() << "Tried paths:" << possiblePaths;
 
-    // Show error to user
     QMessageBox::critical(this, "File Not Found",
-      QString("Could not find saved_positions.json.\nTried:\n%1")
+      QString("Could not find motor_devices.json.\nTried:\n%1")
       .arg(possiblePaths.join("\n")));
     return false;
   }
@@ -547,18 +559,18 @@ bool MotionPage::savePositionToFile(const QString& deviceName, const QString& po
 
   QJsonObject root = doc.object();
 
-  // Ensure "positions" key exists
-  if (!root.contains("positions")) {
-    qWarning() << "JSON does not contain 'positions' key";
-    root["positions"] = QJsonObject();
+  // Ensure "named_positions" key exists
+  if (!root.contains("named_positions")) {
+    qWarning() << "JSON does not contain 'named_positions' key, creating it";
+    root["named_positions"] = QJsonObject();
   }
 
-  QJsonObject positions = root["positions"].toObject();
+  QJsonObject namedPositions = root["named_positions"].toObject();
 
   // Get or create device positions object
   QJsonObject devicePositions;
-  if (positions.contains(deviceName)) {
-    devicePositions = positions[deviceName].toObject();
+  if (namedPositions.contains(deviceName)) {
+    devicePositions = namedPositions[deviceName].toObject();
   }
   else {
     qDebug() << "Creating new positions object for device:" << deviceName;
@@ -575,8 +587,8 @@ bool MotionPage::savePositionToFile(const QString& deviceName, const QString& po
   newPos["w"] = w;
 
   devicePositions[posName] = newPos;
-  positions[deviceName] = devicePositions;
-  root["positions"] = positions;
+  namedPositions[deviceName] = devicePositions;
+  root["named_positions"] = namedPositions;
 
   // Write back to file
   doc.setObject(root);
@@ -600,11 +612,16 @@ bool MotionPage::savePositionToFile(const QString& deviceName, const QString& po
     return false;
   }
 
+  // Reload positions from file
+  m_motionManager->ReloadNamedPositions(filePath.toStdString());
+
+
   qDebug() << "Successfully saved position" << posName << "for device" << deviceName;
   qDebug() << "  Position:" << x << y << z << u << v << w;
 
   return true;
 }
+
 
 
 bool MotionPage::updatePositionInFile(const QString& deviceName, const QString& posName,
@@ -640,7 +657,6 @@ void MotionPage::onUpdateLivePosition()
 }
 
 
-// NEW - Implement move to position handler
 void MotionPage::onMoveToPositionClicked()
 {
   if (m_selectedPositionName.isEmpty()) {
@@ -655,37 +671,28 @@ void MotionPage::onMoveToPositionClicked()
     return;
   }
 
-  // Confirm with user
-  QMessageBox::StandardButton reply = QMessageBox::question(
-    this,
-    "Move to Position",
-    QString("Move device '%1' to position '%2'?")
-    .arg(m_currentDevice)
-    .arg(m_selectedPositionName),
-    QMessageBox::Yes | QMessageBox::No
+  // Move to the named position immediately (NON-BLOCKING)
+  std::cout << "[MotionPage] Moving device '" << m_currentDevice.toStdString()
+    << "' to position '" << m_selectedPositionName.toStdString() << "'" << std::endl;
+
+  bool success = m_motionManager->MoveToNamedPosition(
+    m_currentDevice.toStdString(),
+    m_selectedPositionName.toStdString(),
+    false  // ✅ NON-BLOCKING - UI stays responsive, marker updates live
   );
 
-  if (reply == QMessageBox::Yes) {
-    // Move to the named position
-    bool success = m_motionManager->MoveToNamedPosition(
-      m_currentDevice.toStdString(),
-      m_selectedPositionName.toStdString()
-    );
-
-    if (success) {
-      QMessageBox::information(this, "Success",
-        QString("Device '%1' is moving to position '%2'")
-        .arg(m_currentDevice)
-        .arg(m_selectedPositionName));
-    }
-    else {
-      QMessageBox::critical(this, "Error",
-        QString("Failed to move device '%1' to position '%2'")
-        .arg(m_currentDevice)
-        .arg(m_selectedPositionName));
-    }
+  if (!success) {
+    // Only show error if something went wrong
+    QMessageBox::critical(this, "Error",
+      QString("Failed to start moving device '%1' to position '%2'")
+      .arg(m_currentDevice)
+      .arg(m_selectedPositionName));
   }
+  // Silent success - user sees live marker moving on map via timer
 }
+
+
+
 
 /*
 

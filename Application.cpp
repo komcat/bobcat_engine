@@ -6,6 +6,7 @@
 #include "TcpClientManager.h"
 #include "EziIO_JsonLoader.h"
 #include "PneumaticJsonLoader.h"  // ✅ ADD THIS
+#include "MotionJsonLoader.h"
 #include <QApplication>
 #include <iostream>
 #include <fstream>
@@ -189,21 +190,20 @@ void Application::initializeMotionManager()
     m_context.motionManager = m_motionManager.get();
     m_logManager->Info("UnifiedMotionManager created", "Application");
 
-    // 2. Load JSON config - try local first, then default
+    // 2. Load config using MotionJsonLoader - try local first, then default
+    int loadedCount = 0;
     std::string configPath;
-    std::ifstream file;
 
     // Try local config first (not in git)
-    file.open("config/motor_devices.local.json");
-    if (file.good()) {
+    loadedCount = MotionJsonLoader::LoadFromFile(*m_motionManager, "config/motor_devices.local.json");
+    if (loadedCount > 0) {
       configPath = "config/motor_devices.local.json";
       m_logManager->Info("Loading motion config from LOCAL file", "Application");
     }
     else {
       // Fall back to default config
-      file.close();
-      file.open("config/motor_devices.json");
-      if (file.good()) {
+      loadedCount = MotionJsonLoader::LoadFromFile(*m_motionManager, "config/motor_devices.json");
+      if (loadedCount > 0) {
         configPath = "config/motor_devices.json";
         m_logManager->Info("Loading motion config from DEFAULT file", "Application");
       }
@@ -213,47 +213,17 @@ void Application::initializeMotionManager()
       }
     }
 
-    // Parse JSON
-    nlohmann::json config = nlohmann::json::parse(file);
-    file.close();
+    m_logManager->Info(
+      "Loaded " + std::to_string(loadedCount) + " motion devices from " + configPath,
+      "Application"
+    );
 
-    if (config.contains("motion_devices")) {
-      int deviceCount = 0;
-
-      for (const auto& deviceJson : config["motion_devices"]) {
-        // Parse JSON to MotionDevice struct
-        MotionDevice device;
-        device.Name = deviceJson.value("name", "");
-        device.TypeController = deviceJson.value("controller_type", "");
-        device.IpAddress = deviceJson.value("ip_address", "");
-        device.Port = deviceJson.value("port", 0);
-        device.InstalledAxes = deviceJson.value("axes", "");
-        device.Enabled = deviceJson.value("enabled", false);
-
-        // Add device to UnifiedMotionManager
-        m_motionManager->AddDevice(device);
-        deviceCount++;
-
-        m_logManager->Info(
-          "Added device: " + device.Name +
-          " (Type: " + device.TypeController +
-          ", Enabled: " + (device.Enabled ? "Yes" : "No") + ")",
-          "MotionManager"
-        );
-      }
-
-      m_logManager->Info(
-        "Loaded " + std::to_string(deviceCount) + " motion devices from " + configPath,
-        "Application"
-      );
-
-      // Auto-connect enabled devices
-      int connectedCount = m_motionManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " devices",
-        "Application"
-      );
-    }
+    // 3. Auto-connect enabled devices
+    int connectedCount = m_motionManager->ConnectEnabledDevices();
+    m_logManager->Info(
+      "Connected " + std::to_string(connectedCount) + " devices",
+      "Application"
+    );
 
     m_logManager->Info("Motion manager initialized successfully", "Application");
   }
@@ -265,7 +235,6 @@ void Application::initializeMotionManager()
     // Don't throw - allow app to continue without motion control
   }
 }
-
 void Application::initializeIOManager()
 {
   std::cout << "[Application] Initializing IO manager..." << std::endl;

@@ -2,8 +2,8 @@
 #include "NewPositionDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QFormLayout>
-#include <QGroupBox>
+#include <QGridLayout>
+#include <QLabel>
 #include <QMessageBox>
 
 NewPositionDialog::NewPositionDialog(const QString& deviceName,
@@ -12,232 +12,246 @@ NewPositionDialog::NewPositionDialog(const QString& deviceName,
   QWidget* parent)
   : QDialog(parent)
   , m_deviceName(deviceName)
+  , m_x(x), m_y(y), m_z(z)
+  , m_u(u), m_v(v), m_w(w)
 {
-  setWindowTitle("Create New Position");
-  setMinimumWidth(400);
-
   setupUI();
-
-  // Set current values
-  m_xSpin->setValue(x);
-  m_ySpin->setValue(y);
-  m_zSpin->setValue(z);
-  m_uSpin->setValue(u);
-  m_vSpin->setValue(v);
-  m_wSpin->setValue(w);
 }
 
 void NewPositionDialog::setupUI()
 {
+  setWindowTitle("Create New Position");
+  setMinimumWidth(400);
+  setMaximumWidth(500);
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
+  mainLayout->setContentsMargins(20, 20, 20, 20);
   mainLayout->setSpacing(15);
 
-  // === Device Info ===
-  QLabel* deviceLabel = new QLabel(QString("Device: <b>%1</b>").arg(m_deviceName));
-  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; }");
+  // Title
+  QLabel* titleLabel = new QLabel("Create New Position");
+  titleLabel->setStyleSheet(
+    "QLabel {"
+    "  font-size: 18px;"
+    "  font-weight: bold;"
+    "  color: #2c3e50;"
+    "  margin-bottom: 5px;"
+    "}"
+  );
+  mainLayout->addWidget(titleLabel);
+
+  // Device info
+  QLabel* deviceLabel = new QLabel(QString("Device: %1").arg(m_deviceName));
+  deviceLabel->setStyleSheet(
+    "QLabel {"
+    "  font-size: 13px;"
+    "  color: #7f8c8d;"
+    "  margin-bottom: 10px;"
+    "}"
+  );
   mainLayout->addWidget(deviceLabel);
 
-  // === Position Name ===
-  QGroupBox* nameGroup = new QGroupBox("Position Name");
-  QVBoxLayout* nameLayout = new QVBoxLayout(nameGroup);
+  // Position Name
+  QLabel* nameLabel = new QLabel("Position Name");
+  nameLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 13px;");
+  mainLayout->addWidget(nameLabel);
 
   m_nameEdit = new QLineEdit();
-  m_nameEdit->setPlaceholderText("Enter position name (e.g., 'approach_lens')");
-  m_nameEdit->setMinimumHeight(35);
-  nameLayout->addWidget(m_nameEdit);
-
-  mainLayout->addWidget(nameGroup);
-
-  // === Position Values ===
-  QGroupBox* valuesGroup = new QGroupBox("Position Values");
-  QFormLayout* formLayout = new QFormLayout(valuesGroup);
-  formLayout->setSpacing(10);
-
-  // Create spin boxes
-  m_xSpin = new QDoubleSpinBox();
-  m_ySpin = new QDoubleSpinBox();
-  m_zSpin = new QDoubleSpinBox();
-  m_uSpin = new QDoubleSpinBox();
-  m_vSpin = new QDoubleSpinBox();
-  m_wSpin = new QDoubleSpinBox();
-
-  QList<QDoubleSpinBox*> spinBoxes = { m_xSpin, m_ySpin, m_zSpin,
-                                      m_uSpin, m_vSpin, m_wSpin };
-
-  for (auto* spin : spinBoxes) {
-    spin->setDecimals(6);
-    spin->setRange(-1000.0, 1000.0);
-    spin->setSingleStep(0.1);
-    spin->setMinimumHeight(30);
-  }
-
-  formLayout->addRow("X:", m_xSpin);
-  formLayout->addRow("Y:", m_ySpin);
-  formLayout->addRow("Z:", m_zSpin);
-  formLayout->addRow("U:", m_uSpin);
-  formLayout->addRow("V:", m_vSpin);
-  formLayout->addRow("W:", m_wSpin);
-
-  mainLayout->addWidget(valuesGroup);
-
-  // === Error Label ===
-  m_errorLabel = new QLabel();
-  m_errorLabel->setStyleSheet("QLabel { color: #ff6b6b; font-weight: bold; }");
-  m_errorLabel->setVisible(false);
-  mainLayout->addWidget(m_errorLabel);
-
-  // === Buttons ===
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-  buttonLayout->addStretch();
-
-  m_cancelButton = new QPushButton("Cancel");
-  m_cancelButton->setMinimumSize(100, 35);
-  buttonLayout->addWidget(m_cancelButton);
-
-  m_okButton = new QPushButton("Create");
-  m_okButton->setMinimumSize(100, 35);
-  m_okButton->setDefault(true);
-  buttonLayout->addWidget(m_okButton);
-
-  mainLayout->addLayout(buttonLayout);
-
-  // === Styling ===
-  setStyleSheet(
-    "QDialog {"
-    "  background-color: #1a1f2e;"
-    "}"
-    "QGroupBox {"
-    "  background-color: #2d3e5f;"
-    "  border: 2px solid #3d5a8c;"
-    "  border-radius: 8px;"
-    "  margin-top: 10px;"
-    "  padding-top: 15px;"
-    "  color: #ffffff;"
-    "  font-weight: bold;"
-    "}"
-    "QGroupBox::title {"
-    "  subcontrol-origin: margin;"
-    "  left: 10px;"
-    "  padding: 0 5px;"
-    "}"
+  m_nameEdit->setPlaceholderText("Enter position name...");
+  m_nameEdit->setStyleSheet(
     "QLineEdit {"
-    "  background-color: #1d2e4f;"
-    "  color: white;"
-    "  border: 2px solid #3d5a8c;"
-    "  border-radius: 5px;"
     "  padding: 8px;"
+    "  border: 2px solid #bdc3c7;"
+    "  border-radius: 4px;"
+    "  background-color: white;"
     "  font-size: 13px;"
     "}"
     "QLineEdit:focus {"
-    "  border-color: #5a8fd6;"
+    "  border: 2px solid #3498db;"
     "}"
+  );
+  mainLayout->addWidget(m_nameEdit);
+
+  // Position Values
+  QLabel* valuesLabel = new QLabel("Position Values");
+  valuesLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 13px; margin-top: 5px;");
+  mainLayout->addWidget(valuesLabel);
+
+  // Create compact grid for XYZ and UVW
+  QGridLayout* gridLayout = new QGridLayout();
+  gridLayout->setSpacing(8);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
+
+  // Style for labels and spinboxes
+  QString labelStyle = "QLabel { color: #34495e; font-weight: bold; font-size: 12px; }";
+  QString spinBoxStyle =
     "QDoubleSpinBox {"
-    "  background-color: #1d2e4f;"
-    "  color: white;"
-    "  border: 2px solid #3d5a8c;"
-    "  border-radius: 5px;"
-    "  padding: 5px;"
-    "  font-size: 13px;"
+    "  padding: 6px;"
+    "  border: 2px solid #bdc3c7;"
+    "  border-radius: 4px;"
+    "  background-color: white;"
+    "  font-size: 12px;"
     "}"
     "QDoubleSpinBox:focus {"
-    "  border-color: #5a8fd6;"
+    "  border: 2px solid #3498db;"
     "}"
     "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {"
-    "  background-color: #3d5a8c;"
+    "  background-color: #ecf0f1;"
     "  border: none;"
-    "  width: 20px;"
+    "  width: 16px;"
     "}"
     "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {"
-    "  background-color: #4d6a9c;"
-    "}"
+    "  background-color: #bdc3c7;"
+    "}";
+
+  // Create spinboxes
+  m_xSpin = createSpinBox(m_x);
+  m_ySpin = createSpinBox(m_y);
+  m_zSpin = createSpinBox(m_z);
+  m_uSpin = createSpinBox(m_u);
+  m_vSpin = createSpinBox(m_v);
+  m_wSpin = createSpinBox(m_w);
+
+  // Apply styles
+  m_xSpin->setStyleSheet(spinBoxStyle);
+  m_ySpin->setStyleSheet(spinBoxStyle);
+  m_zSpin->setStyleSheet(spinBoxStyle);
+  m_uSpin->setStyleSheet(spinBoxStyle);
+  m_vSpin->setStyleSheet(spinBoxStyle);
+  m_wSpin->setStyleSheet(spinBoxStyle);
+
+  // Add to grid (2 columns: XYZ | UVW)
+  // Left column - XYZ
+  QLabel* xLabel = new QLabel("X:");
+  xLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(xLabel, 0, 0);
+  gridLayout->addWidget(m_xSpin, 0, 1);
+
+  QLabel* yLabel = new QLabel("Y:");
+  yLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(yLabel, 1, 0);
+  gridLayout->addWidget(m_ySpin, 1, 1);
+
+  QLabel* zLabel = new QLabel("Z:");
+  zLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(zLabel, 2, 0);
+  gridLayout->addWidget(m_zSpin, 2, 1);
+
+  // Right column - UVW
+  QLabel* uLabel = new QLabel("U:");
+  uLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(uLabel, 0, 2);
+  gridLayout->addWidget(m_uSpin, 0, 3);
+
+  QLabel* vLabel = new QLabel("V:");
+  vLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(vLabel, 1, 2);
+  gridLayout->addWidget(m_vSpin, 1, 3);
+
+  QLabel* wLabel = new QLabel("W:");
+  wLabel->setStyleSheet(labelStyle);
+  gridLayout->addWidget(wLabel, 2, 2);
+  gridLayout->addWidget(m_wSpin, 2, 3);
+
+  // Set column stretch to make both columns equal width
+  gridLayout->setColumnStretch(1, 1);
+  gridLayout->setColumnStretch(3, 1);
+
+  mainLayout->addLayout(gridLayout);
+
+  // Spacer
+  mainLayout->addStretch();
+
+  // Buttons
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->setSpacing(10);
+
+  QPushButton* cancelButton = new QPushButton("Cancel");
+  cancelButton->setFixedHeight(36);
+  cancelButton->setCursor(Qt::PointingHandCursor);
+  cancelButton->setStyleSheet(
     "QPushButton {"
-    "  background-color: #3d5a8c;"
+    "  background-color: #95a5a6;"
     "  color: white;"
-    "  border: 2px solid #5a8fd6;"
-    "  border-radius: 5px;"
+    "  border: none;"
+    "  border-radius: 4px;"
     "  font-size: 13px;"
     "  font-weight: bold;"
-    "  padding: 8px;"
+    "  padding: 8px 24px;"
     "}"
     "QPushButton:hover {"
-    "  background-color: #4d6a9c;"
+    "  background-color: #7f8c8d;"
     "}"
     "QPushButton:pressed {"
-    "  background-color: #2d4a7c;"
-    "}"
-    "QLabel {"
-    "  color: #ffffff;"
+    "  background-color: #6c7a89;"
     "}"
   );
 
-  // === Connect Signals ===
-  connect(m_okButton, &QPushButton::clicked, this, &NewPositionDialog::onOkClicked);
-  connect(m_cancelButton, &QPushButton::clicked, this, &NewPositionDialog::onCancelClicked);
-  connect(m_nameEdit, &QLineEdit::textChanged, this, &NewPositionDialog::validateInput);
+  QPushButton* createButton = new QPushButton("Create");
+  createButton->setFixedHeight(36);
+  createButton->setCursor(Qt::PointingHandCursor);
+  createButton->setStyleSheet(
+    "QPushButton {"
+    "  background-color: #27ae60;"
+    "  color: white;"
+    "  border: none;"
+    "  border-radius: 4px;"
+    "  font-size: 13px;"
+    "  font-weight: bold;"
+    "  padding: 8px 24px;"
+    "}"
+    "QPushButton:hover {"
+    "  background-color: #229954;"
+    "}"
+    "QPushButton:pressed {"
+    "  background-color: #1e8449;"
+    "}"
+  );
+
+  buttonLayout->addStretch();
+  buttonLayout->addWidget(cancelButton);
+  buttonLayout->addWidget(createButton);
+
+  mainLayout->addLayout(buttonLayout);
+
+  // Connections
+  connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+  connect(createButton, &QPushButton::clicked, this, &NewPositionDialog::onCreateClicked);
+
+  // Set dialog background
+  setStyleSheet(
+    "QDialog {"
+    "  background-color: #ecf0f1;"
+    "}"
+  );
 }
 
-void NewPositionDialog::onOkClicked()
+QDoubleSpinBox* NewPositionDialog::createSpinBox(double value)
 {
-  // Validate position name
-  QString name = m_nameEdit->text().trimmed();
+  QDoubleSpinBox* spinBox = new QDoubleSpinBox();
+  spinBox->setRange(-10000.0, 10000.0);
+  spinBox->setDecimals(6);
+  spinBox->setValue(value);
+  spinBox->setMinimumWidth(120);
+  spinBox->setFixedHeight(32);  // Compact height
+  return spinBox;
+}
 
-  if (name.isEmpty()) {
-    m_errorLabel->setText("Error: Position name cannot be empty");
-    m_errorLabel->setVisible(true);
-    return;
-  }
-
-  // Check for invalid characters
-  if (name.contains(' ')) {
-    m_errorLabel->setText("Error: Position name cannot contain spaces (use underscore)");
-    m_errorLabel->setVisible(true);
+void NewPositionDialog::onCreateClicked()
+{
+  if (m_nameEdit->text().trimmed().isEmpty()) {
+    QMessageBox::warning(this, "Invalid Name",
+      "Please enter a position name.");
     return;
   }
 
   accept();
 }
 
-void NewPositionDialog::onCancelClicked()
-{
-  reject();
-}
-
-void NewPositionDialog::validateInput()
-{
-  m_errorLabel->setVisible(false);
-}
-
-QString NewPositionDialog::getPositionName() const
-{
-  return m_nameEdit->text().trimmed();
-}
-
-double NewPositionDialog::getX() const
-{
-  return m_xSpin->value();
-}
-
-double NewPositionDialog::getY() const
-{
-  return m_ySpin->value();
-}
-
-double NewPositionDialog::getZ() const
-{
-  return m_zSpin->value();
-}
-
-double NewPositionDialog::getU() const
-{
-  return m_uSpin->value();
-}
-
-double NewPositionDialog::getV() const
-{
-  return m_vSpin->value();
-}
-
-double NewPositionDialog::getW() const
-{
-  return m_wSpin->value();
-}
+QString NewPositionDialog::getPositionName() const { return m_nameEdit->text().trimmed(); }
+double NewPositionDialog::getX() const { return m_xSpin->value(); }
+double NewPositionDialog::getY() const { return m_ySpin->value(); }
+double NewPositionDialog::getZ() const { return m_zSpin->value(); }
+double NewPositionDialog::getU() const { return m_uSpin->value(); }
+double NewPositionDialog::getV() const { return m_vSpin->value(); }
+double NewPositionDialog::getW() const { return m_wSpin->value(); }
