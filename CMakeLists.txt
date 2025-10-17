@@ -306,7 +306,12 @@ set(SOURCES
     include/motions/CoordinateTransformer.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogKeyBindingHandler.cpp
-)
+    include/AppUI/MotionPages/PositionDot.cpp
+    include/AppUI/MotionPages/MotionGraphicsView.cpp
+    include/AppUI/MotionPages/MotionControlPanel.cpp
+    include/AppUI/MotionPages/NewPositionDialog.cpp
+    include/AppUI/MotionPages/MotionPage.cpp
+ "include/AppUI/MotionPages/DevicePositionMarker.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -368,7 +373,12 @@ set(HEADERS
     include/motions/CoordinateTransformer.h
     include/AppUI/JogWindow/JogPanelWindow.h
     include/AppUI/JogWindow/JogKeyBindingHandler.h
-)
+    include/AppUI/MotionPages/PositionDot.h 
+    include/AppUI/MotionPages/MotionGraphicsView.h
+    include/AppUI/MotionPages/MotionControlPanel.h
+    include/AppUI/MotionPages/NewPositionDialog.h
+    include/AppUI/MotionPages/MotionPage.h
+ "include/AppUI/MotionPages/DevicePositionMarker.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

@@ -20,8 +20,8 @@ signals:
   void recipeClicked();
   void motionClicked();
   void hardwareClicked();
-  void editConfigClicked();      // NEW
-  void futureUpdateClicked();    // NEW
+  void editConfigClicked();
+  void futureUpdateClicked();
 
 private:
   void setupUI();
@@ -31,6 +31,6 @@ private:
   QToolButton* m_recipeButton;
   QToolButton* m_motionButton;
   QToolButton* m_hardwareButton;
-  QToolButton* m_editConfigButton;      // NEW
-  QToolButton* m_futureUpdateButton;    // NEW
+  QToolButton* m_editConfigButton;
+  QToolButton* m_futureUpdateButton;
 };

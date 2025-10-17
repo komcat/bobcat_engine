@@ -445,7 +445,7 @@ bool UnifiedMotionManager::GetPosition(const std::string& deviceName,
 
 PositionStruct UnifiedMotionManager::GetCurrentPosition(const std::string& deviceName) {
   std::string type = GetDeviceType(deviceName);
-  PositionStruct defaultPos = { 0.0, 0.0, 0.0 };
+  PositionStruct defaultPos = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };  // All 6 axes
 
   if (type.empty()) return defaultPos;
 

@@ -3,17 +3,18 @@
 
 #include <QMainWindow>
 #include <QStackedWidget>
-#include <QPushButton>  // ADD THIS
+#include <QPushButton>
 
 struct ApplicationContext;
 class MainMenuPage;
 class HardwareInstrumentPage;
-class ConfigEditorPage;       // NEW
+class ConfigEditorPage;
+class MotionPage;              // NEW - Add this
 class LogStatusBar;
 class LogViewerPage;
-class JogPanelWindow;  // ADD THIS
-class JogKeyBindingHandler;  // ADD THIS
-class TransformationMatrixLoader;  // ADD THIS
+class JogPanelWindow;
+class JogKeyBindingHandler;
+class TransformationMatrixLoader;
 
 class MainWindow : public QMainWindow
 {
@@ -28,18 +29,17 @@ private slots:
   void onMainMenuRecipe();
   void onMainMenuMotion();
   void onMainMenuHardware();
-  void onMainMenuEditConfig();      // NEW
-  void onMainMenuFutureUpdate();    // NEW
+  void onMainMenuEditConfig();
+  void onMainMenuFutureUpdate();
   void onBackToMainMenu();
   void onOpenLogViewer();
-  void onToggleJogPanel();  // ADD THIS
-
+  void onToggleJogPanel();
 
 private:
   void setupUI();
   void createPages();
   void setupLogging();
-  void setupJogPanel();  // ADD THIS
+  void setupJogPanel();
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
@@ -48,10 +48,9 @@ private:
 
   MainMenuPage* m_mainMenuPage;
   HardwareInstrumentPage* m_hardwarePage;
+  ConfigEditorPage* m_configEditorPage;
+  MotionPage* m_motionPage;      // NEW - Add this
 
-  ConfigEditorPage* m_configEditorPage;  // NEW
-
-  // ADD THESE:
   QPushButton* m_jogButton;
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;
