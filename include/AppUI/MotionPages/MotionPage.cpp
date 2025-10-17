@@ -1,6 +1,7 @@
 ﻿// MotionPage.cpp
 #include "MotionPage.h"
 #include "NewPositionDialog.h"
+#include "WaypointEditorDialog.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -235,6 +236,9 @@ void MotionPage::setupUI()
 
 	connect(m_controlPanel, &MotionControlPanel::deletePositionClicked,
 		this, &MotionPage::onDeletePositionClicked);
+
+	connect(m_controlPanel, &MotionControlPanel::editWaypointsClicked,
+		this, &MotionPage::onEditWaypointsClicked);
 
 	connect(m_controlPanel, &MotionControlPanel::homeClicked,
 		this, &MotionPage::onHomeClicked);
@@ -521,19 +525,12 @@ void MotionPage::onMoveToPositionClicked()
 	std::cout << "[MotionPage] Moving device '" << m_currentDevice.toStdString()
 		<< "' to position '" << m_selectedPositionName.toStdString() << "'" << std::endl;
 
-	bool success = m_motionManager->MoveToNamedPosition(
-		m_currentDevice.toStdString(),
-		m_selectedPositionName.toStdString(),
-		false  // Non-blocking
-	);
-
-	if (!success) {
-		QMessageBox::critical(this, "Error",
-			QString("Failed to start moving device '%1' to position '%2'")
-			.arg(m_currentDevice)
-			.arg(m_selectedPositionName));
+	// ✅ Use waypoint system instead of direct move
+	if (!moveWithWaypoints(m_selectedPositionName)) {
+		// Error already shown in moveWithWaypoints
 	}
 }
+
 
 void MotionPage::onUpdatePositionClicked()
 {
@@ -710,17 +707,30 @@ void MotionPage::onStopClicked()
 
 }
 
+// In MotionPage.cpp, update this method:
 void MotionPage::onPositionSelected(const QString& name, double x, double y, double z)
 {
 	m_selectedPositionName = name;
 
 	if (m_currentPositions.contains(name)) {
 		QVector<double> pos = m_currentPositions[name];
+
+		// ✅ Get waypoints from motion manager
+		PositionStruct fullPos;
+		std::vector<std::string> waypoints;
+		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			name.toStdString(),
+			fullPos)) {
+			waypoints = fullPos.waypoints;
+		}
+
 		m_controlPanel->setSelectedPosition(name,
 			pos[0], pos[1], pos[2],
-			pos[3], pos[4], pos[5]);
+			pos[3], pos[4], pos[5],
+			waypoints);  // ✅ Pass waypoints
 	}
 }
+
 
 void MotionPage::onPositionDeselected()
 {
@@ -853,4 +863,121 @@ void MotionPage::onLabelOffsetChanged(const QString& name, double offsetX, doubl
 	m_labelOffsets[name] = QPointF(offsetX, offsetY);
 	saveLabelOffsets();
 	qDebug() << "Label offset changed:" << name << "(" << offsetX << "," << offsetY << ")";
+}
+
+// ============================================================================
+// WAYPOINT SYSTEM
+// ============================================================================
+
+bool MotionPage::moveWithWaypoints(const QString& targetPosition) {
+	if (!m_motionManager || m_currentDevice.isEmpty()) {
+		return false;
+	}
+
+	// Get position with waypoints
+	PositionStruct targetPos;
+	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+		targetPosition.toStdString(),
+		targetPos)) {
+		QMessageBox::critical(this, "Error",
+			QString("Position '%1' not found").arg(targetPosition));
+		return false;
+	}
+
+	// Check if position has waypoints
+	if (targetPos.waypoints.empty()) {
+		std::cout << "[MotionPage] No waypoints - moving directly to "
+			<< targetPosition.toStdString() << std::endl;
+
+		return m_motionManager->MoveToNamedPosition(
+			m_currentDevice.toStdString(),
+			targetPosition.toStdString(),
+			false  // Non-blocking
+		);
+	}
+
+	// Move through waypoints (blocking)
+	std::cout << "[MotionPage] Moving to " << targetPosition.toStdString()
+		<< " via waypoints: ";
+	for (const auto& wp : targetPos.waypoints) {
+		std::cout << wp << " ";
+	}
+	std::cout << std::endl;
+
+	for (const auto& waypoint : targetPos.waypoints) {
+		std::cout << "[MotionPage] Moving to waypoint: " << waypoint << std::endl;
+
+		bool success = m_motionManager->MoveToNamedPosition(
+			m_currentDevice.toStdString(),
+			waypoint,
+			true  // ✅ BLOCKING - wait at each waypoint
+		);
+
+		if (!success) {
+			QMessageBox::critical(this, "Waypoint Error",
+				QString("Failed to reach waypoint: %1\n\nMotion stopped for safety.")
+				.arg(QString::fromStdString(waypoint)));
+			return false;
+		}
+
+		std::cout << "[MotionPage] Reached waypoint: " << waypoint << std::endl;
+	}
+
+	// Finally move to target (non-blocking)
+	std::cout << "[MotionPage] Moving to final target: "
+		<< targetPosition.toStdString() << std::endl;
+
+	return m_motionManager->MoveToNamedPosition(
+		m_currentDevice.toStdString(),
+		targetPosition.toStdString(),
+		false
+	);
+}
+// Add this method to MotionPage.cpp:
+void MotionPage::onEditWaypointsClicked()
+{
+	if (m_selectedPositionName.isEmpty()) {
+		return;
+	}
+
+	// Get current position with waypoints
+	PositionStruct currentPos;
+	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+		m_selectedPositionName.toStdString(),
+		currentPos)) {
+		QMessageBox::critical(this, "Error", "Failed to get position data");
+		return;
+	}
+
+	// Get list of all available positions for this device
+	std::vector<std::string> availablePositions =
+		m_motionManager->GetNamedPositionList(m_currentDevice.toStdString());
+
+	// Open waypoint editor dialog
+	WaypointEditorDialog dialog(m_selectedPositionName,
+		currentPos.waypoints,
+		availablePositions,
+		this);
+
+	if (dialog.exec() == QDialog::Accepted) {
+		// Update waypoints
+		currentPos.waypoints = dialog.getWaypoints();
+
+		// Save updated position
+		m_motionManager->AddNamedPosition(m_currentDevice.toStdString(),
+			m_selectedPositionName.toStdString(),
+			currentPos);
+
+		// Auto-save to product
+		if (m_productManager->HasLoadedProduct()) {
+			m_productManager->ImportFromMotionManager(*m_motionManager);
+			m_productManager->SaveProduct();
+		}
+
+		// Refresh display
+		refreshPositionDisplay();
+
+		QMessageBox::information(this, "Success",
+			"Waypoints updated successfully!");
+	}
 }

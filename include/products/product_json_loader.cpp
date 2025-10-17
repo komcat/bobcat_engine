@@ -1,4 +1,4 @@
-// product_json_loader.cpp
+﻿// product_json_loader.cpp
 #include "product_json_loader.h"
 #include "product_position_manager.h"
 #include "MotionTypes.h"
@@ -38,7 +38,11 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
     // Parse structure:
     // {
     //   "device-name": {
-    //     "position-name": { "x": 1.0, "y": 2.0, "z": 3.0, ... }
+    //     "position-name": { 
+    //       "x": 1.0, "y": 2.0, "z": 3.0, 
+    //       "u": 0, "v": 0, "w": 0,
+    //       "waypoints": ["safe", "clearance"]  // ✅ NEW
+    //     }
     //   }
     // }
 
@@ -56,7 +60,7 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
           continue;
         }
 
-        // Parse position
+        // Parse position coordinates
         PositionStruct pos;
         pos.x = posData.value("x", 0.0);
         pos.y = posData.value("y", 0.0);
@@ -64,6 +68,24 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
         pos.u = posData.value("u", 0.0);
         pos.v = posData.value("v", 0.0);
         pos.w = posData.value("w", 0.0);
+
+        // ✅ NEW - Parse waypoints array
+        if (posData.contains("waypoints") && posData["waypoints"].is_array()) {
+          for (const auto& waypoint : posData["waypoints"]) {
+            if (waypoint.is_string()) {
+              pos.waypoints.push_back(waypoint.get<std::string>());
+            }
+          }
+
+          if (!pos.waypoints.empty()) {
+            std::cout << "[DEBUG] ProductJsonLoader: Position " << deviceName
+              << "." << posName << " has waypoints: ";
+            for (const auto& wp : pos.waypoints) {
+              std::cout << wp << " ";
+            }
+            std::cout << std::endl;
+          }
+        }
 
         // Add to manager
         manager.AddPosition(deviceName, posName, pos);
@@ -114,7 +136,7 @@ bool ProductJsonLoader::SaveToFile(const ProductPositionManager& manager,
         manager.GetAllPositions(deviceName);
 
       for (const auto& [posName, pos] : positions) {
-        deviceJson[posName] = {
+        json posJson = {
           {"x", pos.x},
           {"y", pos.y},
           {"z", pos.z},
@@ -122,6 +144,16 @@ bool ProductJsonLoader::SaveToFile(const ProductPositionManager& manager,
           {"v", pos.v},
           {"w", pos.w}
         };
+
+        // ✅ NEW - Save waypoints array
+        if (!pos.waypoints.empty()) {
+          posJson["waypoints"] = pos.waypoints;
+        }
+        else {
+          posJson["waypoints"] = json::array();  // Empty array
+        }
+
+        deviceJson[posName] = posJson;
       }
 
       j[deviceName] = deviceJson;
@@ -180,6 +212,11 @@ bool ProductJsonLoader::ValidateFile(const std::string& filePath) {
 
         // Check required fields
         if (!posData.contains("x") || !posData.contains("y") || !posData.contains("z")) {
+          return false;
+        }
+
+        // ✅ NEW - Validate waypoints if present
+        if (posData.contains("waypoints") && !posData["waypoints"].is_array()) {
           return false;
         }
       }

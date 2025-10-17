@@ -1,4 +1,4 @@
-// MotionPage.h
+﻿// MotionPage.h
 #pragma once
 #include <QWidget>
 #include <QHBoxLayout>
@@ -7,7 +7,7 @@
 #include "MotionControlPanel.h"
 #include "MotionGraphicsView.h"
 #include "unified_motion_manager.h"
-#include "product_position_manager.h"  // NEW
+#include "product_position_manager.h"
 #include "TransformationMatrixLoader.h"
 #include <QMap>
 #include <QVector>
@@ -19,7 +19,7 @@ class MotionPage : public QWidget
 
 public:
   explicit MotionPage(UnifiedMotionManager* motionManager,
-    ProductPositionManager* productManager,  // NEW
+    ProductPositionManager* productManager,
     TransformationMatrixLoader* matrixLoader,
     QWidget* parent = nullptr);
   ~MotionPage() = default;
@@ -32,14 +32,15 @@ private slots:
   void onMoveToPositionClicked();
   void onUpdatePositionClicked();
   void onCreatePositionClicked();
-  void onDeletePositionClicked();  // NEW
+  void onDeletePositionClicked();
+  void onEditWaypointsClicked();  // ✅ ADD THIS
   void onHomeClicked();
   void onStopClicked();
   void onPositionSelected(const QString& name, double x, double y, double z);
   void onPositionDeselected();
   void onUpdateLivePosition();
 
-  // NEW - Product management slots
+  // Product management slots
   void onLoadProductClicked();
   void onSaveProductClicked();
   void onSaveProductAsClicked();
@@ -48,7 +49,7 @@ private:
   void setupUI();
   void loadDevices();
   void loadPositionsForDevice(const QString& deviceName);
-  void refreshPositionDisplay();  // NEW
+  void refreshPositionDisplay();
 
   void transformLocalToGlobal(double localX, double localY, double localZ,
     double& globalX, double& globalY, double& globalZ);
@@ -56,20 +57,23 @@ private:
   bool getCurrentDevicePosition(double& x, double& y, double& z,
     double& u, double& v, double& w);
 
+  // ✅ NEW - Waypoint system
+  bool moveWithWaypoints(const QString& targetPosition);
+
   // Label offset methods
   void loadLabelOffsets();
   void saveLabelOffsets();
   void onLabelOffsetChanged(const QString& name, double offsetX, double offsetY);
 
   UnifiedMotionManager* m_motionManager;
-  ProductPositionManager* m_productManager;  // NEW
+  ProductPositionManager* m_productManager;
   TransformationMatrixLoader* m_matrixLoader;
 
   MotionControlPanel* m_controlPanel;
   MotionGraphicsView* m_graphicsView;
   QPushButton* m_backButton;
 
-  // NEW - Product control buttons
+  // Product control buttons
   QPushButton* m_loadProductBtn;
   QPushButton* m_saveProductBtn;
   QPushButton* m_saveProductAsBtn;

@@ -1,4 +1,4 @@
-// MotionTypes.h
+﻿// MotionTypes.h
 #pragma once
 #include <string>
 #include <vector>
@@ -13,6 +13,18 @@ struct PositionStruct {
   double u = 0.0;
   double v = 0.0;
   double w = 0.0;
+  std::vector<std::string> waypoints;  // ✅ NEW - waypoint path for this position
+
+  // Default constructor
+  PositionStruct()
+    : x(0), y(0), z(0), u(0), v(0), w(0), waypoints() {
+  }
+
+  // Constructor with coordinates
+  PositionStruct(double _x, double _y, double _z,
+    double _u = 0, double _v = 0, double _w = 0)
+    : x(_x), y(_y), z(_z), u(_u), v(_v), w(_w), waypoints() {
+  }
 };
 
 // Motion device representation
@@ -23,7 +35,7 @@ struct MotionDevice {
   int Id = 0;
   std::string Name;
   std::map<std::string, PositionStruct> Positions;
-  bool Enabled = true;  // <-- ADD THIS LINE
+  bool Enabled = true;
 
   // Controller configuration
   std::string TypeController = "PI";        // "ACS" or "PI" - REQUIRED FOR UNIFIED MANAGER

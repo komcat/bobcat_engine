@@ -428,7 +428,6 @@ void Application::shutdownManagers()
   // Shutdown pneumatic manager (stops all slides)
   if (m_pneumaticManager) {
     m_pneumaticManager->StopAll();
-    m_logManager->Info("Pneumatic manager shut down", "Application");
   }
 
   // Shutdown IO manager
@@ -436,30 +435,29 @@ void Application::shutdownManagers()
     m_ioManager->StopPolling();
     m_ioManager->DisconnectAll();
     m_ioManager->Shutdown();
-    m_logManager->Info("IO manager shut down", "Application");
   }
 
-  // Clear UI callback FIRST before any logging
+  // LOG BEFORE CLEARING UI CALLBACK
   if (m_logManager) {
-    m_logManager->ClearUICallback();
     m_logManager->Info("Bobcat Engine shutting down...", "Application");
+    m_logManager->Info("IO manager shut down", "Application");
+    m_logManager->Info("Pneumatic manager shut down", "Application");
+    m_logManager->ClearUICallback();  // Clear AFTER all logging
   }
 
   m_context = ApplicationContext();
 
-  m_pneumaticManager.reset();  // ✅ ADD THIS
+  m_pneumaticManager.reset();
   m_ioManager.reset();
   m_motionManager.reset();
   m_cameraManager.reset();
   m_tcpClientManager.reset();
   m_dataStore.reset();
+  m_sequenceEngine.reset();
   m_logManager.reset();
-
-  m_sequenceEngine.reset();  // ✅ ADD THIS
 
   std::cout << "[Application] All managers shut down" << std::endl;
 }
-
 
 
 void Application::createMainWindow()

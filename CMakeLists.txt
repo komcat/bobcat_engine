@@ -312,7 +312,7 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
- "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp" "include/products/product_position_manager.cpp" "include/products/product_json_loader.cpp")
+ "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp" "include/products/product_position_manager.cpp" "include/products/product_json_loader.cpp" "include/AppUI/MotionPages/WaypointEditorDialog.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -379,7 +379,7 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControlPanel.h
     include/AppUI/MotionPages/NewPositionDialog.h
     include/AppUI/MotionPages/MotionPage.h
- "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h" "include/products/product_position_manager.h" "include/products/product_json_loader.h")
+ "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h" "include/products/product_position_manager.h" "include/products/product_json_loader.h" "include/AppUI/MotionPages/WaypointEditorDialog.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

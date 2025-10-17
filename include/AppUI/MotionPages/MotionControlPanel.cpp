@@ -12,7 +12,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
   , m_updatePosButton(nullptr)
-  , m_deletePosButton(nullptr)  // ✅ NEW
+  , m_deletePosButton(nullptr)
   , m_createPosButton(nullptr)
   , m_homeButton(nullptr)
   , m_stopButton(nullptr)
@@ -61,11 +61,19 @@ void MotionControlPanel::setupUI()
   m_posVLabel = new QLabel("V: -");
   m_posWLabel = new QLabel("W: -");
 
+  // ✅ NEW - Waypoints label
+  m_waypointsLabel = new QLabel("Waypoints: -");
+  m_waypointsLabel->setWordWrap(true);
+  m_waypointsLabel->setStyleSheet("QLabel { color: #2980b9; font-size: 11px; font-weight: bold; }");
+
   // Compact label style
   QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
-                           m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel };
+                           m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
+                           m_waypointsLabel };  // ✅ Added waypoints label
   for (auto* label : labels) {
-    label->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; }");
+    if (label != m_waypointsLabel) {  // Don't override waypoint label style
+      label->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; }");
+    }
     posLayout->addWidget(label);
   }
 
@@ -94,7 +102,13 @@ void MotionControlPanel::setupUI()
   m_updatePosButton->setEnabled(false);
   mainLayout->addWidget(m_updatePosButton);
 
-  // ✅ DELETE POSITION BUTTON (NEW)
+  // ✅ NEW - Edit Waypoints button
+  m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
+  m_editWaypointsBtn->setMinimumHeight(34);
+  m_editWaypointsBtn->setEnabled(false);
+  mainLayout->addWidget(m_editWaypointsBtn);
+
+  // Delete Position button
   m_deletePosButton = new QPushButton("✕ Delete Position");
   m_deletePosButton->setMinimumHeight(34);
   m_deletePosButton->setEnabled(false);
@@ -189,7 +203,7 @@ void MotionControlPanel::setupUI()
     "  color: #95a5a6;"
     "  border-color: #bdc3c7;"
     "}"
-    // ✅ Delete button - Red
+    // Delete button - Red
     "QPushButton#deletePosButton {"
     "  background-color: #e74c3c;"
     "  border-color: #c0392b;"
@@ -209,7 +223,7 @@ void MotionControlPanel::setupUI()
 
   // Set object names for specific styling
   m_moveToButton->setObjectName("moveToButton");
-  m_deletePosButton->setObjectName("deletePosButton");  // ✅ NEW
+  m_deletePosButton->setObjectName("deletePosButton");
   m_stopButton->setObjectName("stopButton");
 
   // === Connect Signals ===
@@ -224,7 +238,10 @@ void MotionControlPanel::setupUI()
   connect(m_updatePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::updatePositionClicked);
 
-  // ✅ NEW - Connect delete button
+  // ✅ NEW - Connect edit waypoints button
+  connect(m_editWaypointsBtn, &QPushButton::clicked,
+    this, &MotionControlPanel::editWaypointsClicked);
+
   connect(m_deletePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::deletePositionClicked);
 
@@ -245,7 +262,8 @@ void MotionControlPanel::setDevices(const QStringList& devices)
 }
 
 void MotionControlPanel::setSelectedPosition(const QString& name, double x, double y, double z,
-  double u, double v, double w)
+  double u, double v, double w,
+  const std::vector<std::string>& waypoints)  // ✅ UPDATED - added waypoints parameter
 {
   m_selectedPositionName = name;
 
@@ -258,10 +276,26 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
   m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
   m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
 
-  // ✅ Enable all position-specific buttons
+  // ✅ NEW - Display waypoints
+  if (waypoints.empty()) {
+    m_waypointsLabel->setText("Waypoints: None");
+  }
+  else {
+    QString waypointStr = "Waypoints: ";
+    for (size_t i = 0; i < waypoints.size(); ++i) {
+      waypointStr += QString::fromStdString(waypoints[i]);
+      if (i < waypoints.size() - 1) {
+        waypointStr += " → ";
+      }
+    }
+    m_waypointsLabel->setText(waypointStr);
+  }
+
+  // Enable all position-specific buttons
   m_moveToButton->setEnabled(true);
   m_updatePosButton->setEnabled(true);
-  m_deletePosButton->setEnabled(true);  // NEW
+  m_editWaypointsBtn->setEnabled(true);  // ✅ NEW
+  m_deletePosButton->setEnabled(true);
 }
 
 void MotionControlPanel::clearSelectedPosition()
@@ -275,11 +309,13 @@ void MotionControlPanel::clearSelectedPosition()
   m_posULabel->setText("U: -");
   m_posVLabel->setText("V: -");
   m_posWLabel->setText("W: -");
+  m_waypointsLabel->setText("Waypoints: -");  // ✅ NEW
 
-  // ✅ Disable all position-specific buttons
+  // Disable all position-specific buttons
   m_moveToButton->setEnabled(false);
   m_updatePosButton->setEnabled(false);
-  m_deletePosButton->setEnabled(false);  // NEW
+  m_editWaypointsBtn->setEnabled(false);  // ✅ NEW
+  m_deletePosButton->setEnabled(false);
 }
 
 QString MotionControlPanel::getCurrentDevice() const
