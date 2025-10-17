@@ -1,4 +1,4 @@
-// PositionAnchor.cpp
+﻿// PositionAnchor.cpp - FIXED for proper zoom behavior
 #include "PositionAnchor.h"
 #include <QPen>
 #include <QBrush>
@@ -13,20 +13,23 @@ PositionAnchor::PositionAnchor(const QString& name, double x, double y, double z
   setRect(-ANCHOR_RADIUS, -ANCHOR_RADIUS, ANCHOR_RADIUS * 2, ANCHOR_RADIUS * 2);
   setPos(x, y);
 
+  // ✅ Keep anchor at fixed pixel size when zooming
+  setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+
   // Fixed visual style - small red dot
-  setPen(QPen(QColor(231, 76, 60), 2));  // Red outline
-  setBrush(QBrush(QColor(231, 76, 60, 200)));  // Semi-transparent red fill
+  QPen pen(QColor(231, 76, 60), 2);
+  setPen(pen);
+  setBrush(QBrush(QColor(231, 76, 60, 200)));
 
   // Cannot be moved or selected
   setFlag(QGraphicsItem::ItemIsMovable, false);
   setFlag(QGraphicsItem::ItemIsSelectable, false);
 
-  setZValue(5);  // Above grid, below labels
+  setZValue(5);
 }
 
 void PositionAnchor::updateColor(double zMin, double zMax)
 {
-  // Anchor color based on Z height (optional)
   if (zMax <= zMin) return;
 
   double normalized = (m_z - zMin) / (zMax - zMin);
@@ -35,6 +38,8 @@ void PositionAnchor::updateColor(double zMin, double zMax)
   int r = static_cast<int>(255 * normalized);
   int b = static_cast<int>(255 * (1.0 - normalized));
 
-  setPen(QPen(QColor(r, 100, b), 2));
+  QPen pen(QColor(r, 100, b), 2);
+  pen.setCosmetic(true);  // ✅ Keep pen width constant
+  setPen(pen);
   setBrush(QBrush(QColor(r, 100, b, 200)));
 }

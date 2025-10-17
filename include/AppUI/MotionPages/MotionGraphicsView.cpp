@@ -9,6 +9,7 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   : QGraphicsView(parent)
   , m_scene(nullptr)
   , m_liveMarker(nullptr)
+  , m_pathPreview(nullptr)  // ✅ NEW
   , m_zoomFactor(1.0)
   , m_zMin(0.0)
   , m_zMax(0.0)
@@ -29,6 +30,18 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   m_liveMarker = new DevicePositionMarker("");
   m_scene->addItem(m_liveMarker);
   m_liveMarker->setVisible(false);
+
+
+  // ✅ NEW - Initialize path preview
+  m_pathPreview = new PathPreview(m_scene);
+}
+
+// Destructor:
+// ✅ NEW - Implement destructor
+MotionGraphicsView::~MotionGraphicsView()
+{
+  delete m_pathPreview;
+  m_pathPreview = nullptr;
 }
 
 void MotionGraphicsView::setupScene()
@@ -78,10 +91,15 @@ void MotionGraphicsView::addPosition(const QString& name, double x, double y, do
 
 void MotionGraphicsView::clearPositions()
 {
-  // ✅ Block signals during cleanup to prevent crashes
+  // Block signals during cleanup
   if (m_scene) {
     m_scene->blockSignals(true);
     m_scene->clearSelection();
+  }
+
+  // Clear path preview
+  if (m_pathPreview) {
+    m_pathPreview->hidePath();
   }
 
   // Remove all anchors
@@ -371,4 +389,65 @@ void MotionGraphicsView::showLiveMarker(bool show)
   if (m_liveMarker) {
     m_liveMarker->setVisible(show);
   }
+}
+
+
+// Simplified path preview methods:
+void MotionGraphicsView::showPathPreview(const QString& targetPosition,
+  const std::vector<std::string>& waypoints)
+{
+  if (!m_pathPreview || !m_liveMarker || !m_liveMarker->isVisible()) {
+    return;
+  }
+
+  // Get current device position
+  QPointF currentPos(m_liveMarker->x(), m_liveMarker->y());
+
+  // Get target position
+  QPointF targetPos = getPositionPoint(targetPosition);
+  if (targetPos.isNull()) {
+    return;
+  }
+
+  // Get waypoint positions
+  std::vector<QPointF> waypointPositions;
+  for (const auto& waypoint : waypoints) {
+    QString waypointName = QString::fromStdString(waypoint);
+    QPointF waypointPos = getPositionPoint(waypointName);
+    if (!waypointPos.isNull()) {
+      waypointPositions.push_back(waypointPos);
+    }
+  }
+
+  // Show path
+  m_pathPreview->showPath(currentPos, targetPos, waypointPositions);
+}
+
+void MotionGraphicsView::hidePathPreview()
+{
+  if (m_pathPreview) {
+    m_pathPreview->hidePath();
+  }
+}
+
+// Add this method to MotionGraphicsView.cpp
+QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
+{
+  // Try to get from anchors first (actual position)
+  if (m_anchors.contains(positionName)) {
+    PositionAnchor* anchor = m_anchors[positionName];
+    if (anchor) {
+      return QPointF(anchor->getX(), anchor->getY());
+    }
+  }
+
+  // Fallback to labels
+  if (m_labels.contains(positionName)) {
+    PositionLabel* label = m_labels[positionName];
+    if (label) {
+      return label->pos();
+    }
+  }
+
+  return QPointF(); // Null point if not found
 }

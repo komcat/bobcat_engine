@@ -1,4 +1,4 @@
-// PositionLabel.cpp
+﻿// PositionLabel.cpp - FIXED for proper zoom behavior
 #include "PositionLabel.h"
 #include <QPen>
 #include <QBrush>
@@ -8,8 +8,8 @@
 
 PositionLabel::PositionLabel(const QString& name, double anchorX, double anchorY,
   double offsetX, double offsetY)
-  : QObject()  // Initialize QObject part
-  , QGraphicsEllipseItem()  // Initialize QGraphicsEllipseItem part
+  : QObject()
+  , QGraphicsEllipseItem()
   , m_name(name)
   , m_anchorX(anchorX)
   , m_anchorY(anchorY)
@@ -20,17 +20,21 @@ PositionLabel::PositionLabel(const QString& name, double anchorX, double anchorY
   // Create circle
   setRect(-LABEL_RADIUS, -LABEL_RADIUS, LABEL_RADIUS * 2, LABEL_RADIUS * 2);
 
-  // Position at offset from anchor
+  // ✅ Keep circle at fixed pixel size when zooming
+  setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+
+  // Position at offset from anchor IN SCENE COORDINATES
   setPos(anchorX + offsetX, anchorY + offsetY);
 
   // Visual style
-  setPen(QPen(QColor(52, 152, 219), 2));  // Blue outline
-  setBrush(QBrush(QColor(52, 152, 219, 150)));  // Semi-transparent blue
+  QPen pen(QColor(52, 152, 219), 2);
+  setPen(pen);
+  setBrush(QBrush(QColor(52, 152, 219, 150)));
 
   // Enable dragging and selection
   setFlag(QGraphicsItem::ItemIsMovable, true);
   setFlag(QGraphicsItem::ItemIsSelectable, true);
-  setFlag(QGraphicsItem::ItemSendsGeometryChanges, true);  // IMPORTANT!
+  setFlag(QGraphicsItem::ItemSendsGeometryChanges, true);
 
   setAcceptHoverEvents(true);
   setCursor(Qt::OpenHandCursor);
@@ -40,6 +44,7 @@ PositionLabel::PositionLabel(const QString& name, double anchorX, double anchorY
   // Create text label
   m_textItem = new QGraphicsTextItem(name, this);
   m_textItem->setDefaultTextColor(Qt::white);
+
   QFont font = m_textItem->font();
   font.setPointSize(9);
   font.setBold(true);
@@ -63,7 +68,7 @@ void PositionLabel::setSelected(bool selected)
   m_isSelected = selected;
 
   if (selected) {
-    setPen(QPen(QColor(46, 204, 113), 3));  // Green when selected
+    setPen(QPen(QColor(46, 204, 113), 3));
     setBrush(QBrush(QColor(46, 204, 113, 180)));
     setZValue(15);
   }
@@ -89,18 +94,15 @@ void PositionLabel::updateConnectionLine()
 
 void PositionLabel::updateTextPosition()
 {
+  // ✅ Center text within the circle (both parent and child ignore transforms)
   QRectF textRect = m_textItem->boundingRect();
   m_textItem->setPos(-textRect.width() / 2.0, -textRect.height() / 2.0);
 }
 
-// ADD THIS METHOD - This is the key!
 QVariant PositionLabel::itemChange(GraphicsItemChange change, const QVariant& value)
 {
   if (change == ItemPositionHasChanged) {
-    // Update connection line
     updateConnectionLine();
-
-    // Emit signal for saving
     emit positionChanged(m_name, getOffsetX(), getOffsetY());
   }
 
@@ -119,7 +121,6 @@ void PositionLabel::mousePressEvent(QGraphicsSceneMouseEvent* event)
 void PositionLabel::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
   QGraphicsEllipseItem::mouseMoveEvent(event);
-  // Connection line is updated automatically via itemChange
 }
 
 void PositionLabel::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)

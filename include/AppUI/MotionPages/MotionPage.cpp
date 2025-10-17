@@ -715,7 +715,7 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 	if (m_currentPositions.contains(name)) {
 		QVector<double> pos = m_currentPositions[name];
 
-		// ✅ Get waypoints from motion manager
+		// Get waypoints from motion manager
 		PositionStruct fullPos;
 		std::vector<std::string> waypoints;
 		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
@@ -727,15 +727,20 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 		m_controlPanel->setSelectedPosition(name,
 			pos[0], pos[1], pos[2],
 			pos[3], pos[4], pos[5],
-			waypoints);  // ✅ Pass waypoints
+			waypoints);
+
+		// ✅ ADD THIS - Show path preview
+		m_graphicsView->showPathPreview(name, waypoints);
 	}
 }
-
 
 void MotionPage::onPositionDeselected()
 {
 	m_selectedPositionName.clear();
 	m_controlPanel->clearSelectedPosition();
+
+	// ✅ ADD THIS - Hide path preview
+	m_graphicsView->hidePathPreview();
 }
 
 // ============================================================================
@@ -976,6 +981,9 @@ void MotionPage::onEditWaypointsClicked()
 
 		// Refresh display
 		refreshPositionDisplay();
+
+		// ✅ ADD THIS - Update path preview with new waypoints
+		m_graphicsView->showPathPreview(m_selectedPositionName, currentPos.waypoints);
 
 		QMessageBox::information(this, "Success",
 			"Waypoints updated successfully!");
