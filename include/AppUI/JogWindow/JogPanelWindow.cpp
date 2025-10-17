@@ -1,4 +1,4 @@
-// JogPanelWindow.cpp
+// JogPanelWindow.cpp - COMPLETE FINAL VERSION
 #include "JogPanelWindow.h"
 #include "TransformationMatrixLoader.h"
 #include "CoordinateTransformer.h"
@@ -10,7 +10,7 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QGroupBox>
-#include <QRadioButton>
+#include <QPushButton>
 #include <QCloseEvent>
 #include <algorithm>
 
@@ -130,25 +130,80 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
   m_deviceButtonGroup = new QButtonGroup(this);
   m_deviceButtonGroup->setExclusive(true);
 
-  // Get device list from matrix loader
-  if (m_matrixLoader) {
-    auto deviceIds = m_matrixLoader->GetDeviceIds();
+  // Get device list from UnifiedMotionManager
+  if (m_context && m_context->motionManager && m_matrixLoader) {
+    // Get ALL devices from motion manager (both PI and ACS)
+    std::vector<std::string> piDevices = m_context->motionManager->GetDeviceNamesByType("PI");
+    std::vector<std::string> acsDevices = m_context->motionManager->GetDeviceNamesByType("ACS");
 
-    for (const auto& deviceId : deviceIds) {
-      QRadioButton* radio = new QRadioButton(QString::fromStdString(deviceId));
-      m_deviceButtonGroup->addButton(radio);
-      groupLayout->addWidget(radio);
+    // Combine both lists
+    std::vector<std::string> allDevices;
+    allDevices.insert(allDevices.end(), piDevices.begin(), piDevices.end());
+    allDevices.insert(allDevices.end(), acsDevices.begin(), acsDevices.end());
 
-      connect(radio, &QRadioButton::toggled, this, &JogPanelWindow::onDeviceSelected);
+    // Only show devices that have transformation matrices
+    std::vector<std::string> validDevices;
+    for (const auto& deviceId : allDevices) {
+      if (m_matrixLoader->HasDevice(deviceId)) {
+        validDevices.push_back(deviceId);
+      }
+      else {
+        if (m_context->logManager) {
+          m_context->logManager->Warning(
+            "Device '" + deviceId + "' has no transformation matrix - skipping",
+            "JogPanel"
+          );
+        }
+      }
+    }
+
+    // Create push buttons for valid devices
+    for (const auto& deviceId : validDevices) {
+      QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
+      btn->setCheckable(true);
+      btn->setMinimumHeight(40);
+      btn->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #3a3a3a; "
+        "  color: white; "
+        "  border: 2px solid #555; "
+        "  border-radius: 5px; "
+        "  padding: 8px; "
+        "  font-size: 13px; "
+        "  font-weight: bold; "
+        "  text-align: left; "
+        "} "
+        "QPushButton:hover { "
+        "  background-color: #4a4a4a; "
+        "  border-color: #777; "
+        "} "
+        "QPushButton:checked { "
+        "  background-color: #f0ad4e; "  // Yellow/orange
+        "  color: #000000; "
+        "  border: 2px solid #ffcc00; "
+        "}"
+      );
+
+      m_deviceButtonGroup->addButton(btn);
+      groupLayout->addWidget(btn);
+
+      connect(btn, &QPushButton::clicked, this, &JogPanelWindow::onDeviceSelected);
     }
 
     // Select first device by default
-    if (!deviceIds.empty()) {
-      auto firstButton = qobject_cast<QRadioButton*>(m_deviceButtonGroup->buttons().first());
+    if (!validDevices.empty()) {
+      auto firstButton = qobject_cast<QPushButton*>(m_deviceButtonGroup->buttons().first());
       if (firstButton) {
         firstButton->setChecked(true);
-        m_selectedDevice = deviceIds[0];
+        m_selectedDevice = validDevices[0];
       }
+    }
+
+    if (m_context->logManager) {
+      m_context->logManager->Info(
+        "Jog panel loaded " + std::to_string(validDevices.size()) + " devices",
+        "JogPanel"
+      );
     }
   }
 
@@ -348,9 +403,9 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
 
 void JogPanelWindow::onDeviceSelected()
 {
-  QRadioButton* radio = qobject_cast<QRadioButton*>(sender());
-  if (radio && radio->isChecked()) {
-    m_selectedDevice = radio->text().toStdString();
+  QPushButton* btn = qobject_cast<QPushButton*>(sender());
+  if (btn && btn->isChecked()) {
+    m_selectedDevice = btn->text().toStdString();
 
     if (m_context && m_context->logManager) {
       m_context->logManager->Info(
