@@ -1,4 +1,4 @@
-// MotionControlPanel.h
+﻿// MotionControlPanel.h
 #pragma once
 
 #include <QWidget>
@@ -12,8 +12,9 @@
  * @brief Left control panel for motion operations
  * - Device selection
  * - Position info display
- * - Move to saved position button (NEW)
+ * - Move to saved position button
  * - Update saved position button
+ * - Delete position button
  * - Create new position button
  */
 class MotionControlPanel : public QWidget
@@ -37,8 +38,9 @@ public:
 
 signals:
   void deviceChanged(const QString& deviceName);
-  void moveToPositionClicked();     // NEW
+  void moveToPositionClicked();
   void updatePositionClicked();
+  void deletePositionClicked();  // ✅ NEW
   void createPositionClicked();
   void homeClicked();
   void stopClicked();
@@ -57,8 +59,9 @@ private:
   QLabel* m_posVLabel;
   QLabel* m_posWLabel;
 
-  QPushButton* m_moveToButton;      // NEW
+  QPushButton* m_moveToButton;
   QPushButton* m_updatePosButton;
+  QPushButton* m_deletePosButton;  // ✅ NEW
   QPushButton* m_createPosButton;
   QPushButton* m_homeButton;
   QPushButton* m_stopButton;

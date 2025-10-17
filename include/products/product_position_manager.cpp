@@ -1,0 +1,343 @@
+﻿// product_position_manager.cpp
+#include "product_position_manager.h"
+#include "product_json_loader.h"
+#include "unified_motion_manager.h"
+#include <iostream>
+#include <algorithm>
+#include <filesystem>  // ✅ For directory creation
+
+namespace fs = std::filesystem;
+
+ProductPositionManager::ProductPositionManager()
+  : m_currentProductName("")
+  , m_currentProductPath("")
+{
+  std::cout << "[INFO] ProductPositionManager: Initialized" << std::endl;
+}
+
+ProductPositionManager::~ProductPositionManager() {
+  std::cout << "[INFO] ProductPositionManager: Shutdown" << std::endl;
+}
+
+// ============================================================================
+// PRODUCT FILE MANAGEMENT
+// ============================================================================
+
+bool ProductPositionManager::LoadProduct(const std::string& productFilePath) {
+  std::cout << "[INFO] ProductPositionManager: Loading product from "
+    << productFilePath << std::endl;
+
+  // Clear existing positions
+  m_positions.clear();
+
+  // Load using ProductJsonLoader
+  int count = ProductJsonLoader::LoadFromFile(*this, productFilePath);
+
+  if (count < 0) {
+    std::cout << "[ERROR] ProductPositionManager: Failed to load product" << std::endl;
+    return false;
+  }
+
+  m_currentProductPath = productFilePath;
+  m_currentProductName = ExtractProductName(productFilePath);
+
+  std::cout << "[INFO] ProductPositionManager: Loaded product '"
+    << m_currentProductName << "' with " << count << " positions" << std::endl;
+
+  return true;
+}
+
+bool ProductPositionManager::SaveProduct() {
+  if (m_currentProductPath.empty()) {
+    std::cout << "[ERROR] ProductPositionManager: No product file loaded" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] ProductPositionManager: Saving product to "
+    << m_currentProductPath << std::endl;
+
+  return ProductJsonLoader::SaveToFile(*this, m_currentProductPath);
+}
+
+bool ProductPositionManager::SaveProductAs(const std::string& productName) {
+  // ✅ Create product directory structure: config/productName/
+  std::string productDir = "config/" + productName;
+  std::string filePath = productDir + "/positions.json";
+
+  std::cout << "[INFO] ProductPositionManager: Saving product as "
+    << filePath << std::endl;
+
+  // ✅ Create directory if it doesn't exist
+  try {
+    if (!fs::exists(productDir)) {
+      fs::create_directories(productDir);
+      std::cout << "[INFO] ProductPositionManager: Created directory " << productDir << std::endl;
+    }
+  }
+  catch (const std::exception& e) {
+    std::cout << "[ERROR] ProductPositionManager: Failed to create directory: "
+      << e.what() << std::endl;
+    return false;
+  }
+
+  // ✅ Save positions file
+  if (ProductJsonLoader::SaveToFile(*this, filePath)) {
+    m_currentProductPath = filePath;
+    m_currentProductName = productName;
+    return true;
+  }
+
+  return false;
+}
+
+std::string ProductPositionManager::ExtractProductName(const std::string& filePath) const {
+  // Extract product name from path like "config/product1/positions.json"
+
+  // Find the last directory separator
+  size_t lastSlash = filePath.find_last_of("/\\");
+  if (lastSlash == std::string::npos) {
+    return "unknown";
+  }
+
+  // Find the second-to-last directory separator
+  size_t secondLastSlash = filePath.find_last_of("/\\", lastSlash - 1);
+  if (secondLastSlash == std::string::npos) {
+    // No parent directory, might be direct path
+    return "unknown";
+  }
+
+  // Extract product name (directory name between the two slashes)
+  std::string productName = filePath.substr(secondLastSlash + 1, lastSlash - secondLastSlash - 1);
+
+  std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
+    << productName << "' from path: " << filePath << std::endl;
+
+  return productName;
+}
+
+// ============================================================================
+// POSITION MANAGEMENT
+// ============================================================================
+
+void ProductPositionManager::AddPosition(const std::string& deviceName,
+  const std::string& positionName,
+  const PositionStruct& position) {
+  m_positions[deviceName][positionName] = position;
+
+  std::cout << "[INFO] ProductPositionManager: Added/Updated position '"
+    << positionName << "' for device " << deviceName
+    << " -> (" << position.x << ", " << position.y << ", "
+    << position.z << ")" << std::endl;
+}
+
+void ProductPositionManager::AddPosition(const std::string& deviceName,
+  const std::string& positionName,
+  double x, double y, double z,
+  double u, double v, double w) {
+  PositionStruct pos = { x, y, z, u, v, w };
+  AddPosition(deviceName, positionName, pos);
+}
+
+bool ProductPositionManager::UpdatePosition(const std::string& deviceName,
+  const std::string& positionName,
+  const PositionStruct& position) {
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt == m_positions.end()) {
+    std::cout << "[WARNING] ProductPositionManager: Device " << deviceName
+      << " not found" << std::endl;
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    std::cout << "[WARNING] ProductPositionManager: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
+    return false;
+  }
+
+  deviceIt->second[positionName] = position;
+
+  std::cout << "[INFO] ProductPositionManager: Updated position '"
+    << positionName << "' for device " << deviceName << std::endl;
+
+  return true;
+}
+
+bool ProductPositionManager::RemovePosition(const std::string& deviceName,
+  const std::string& positionName) {
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt == m_positions.end()) {
+    std::cout << "[WARNING] ProductPositionManager: Device " << deviceName
+      << " not found" << std::endl;
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    std::cout << "[WARNING] ProductPositionManager: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
+    return false;
+  }
+
+  deviceIt->second.erase(posIt);
+
+  // Remove device entry if no positions left
+  if (deviceIt->second.empty()) {
+    m_positions.erase(deviceIt);
+  }
+
+  std::cout << "[INFO] ProductPositionManager: Removed position '"
+    << positionName << "' from device " << deviceName << std::endl;
+
+  return true;
+}
+
+bool ProductPositionManager::GetPosition(const std::string& deviceName,
+  const std::string& positionName,
+  PositionStruct& outPosition) const {
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt == m_positions.end()) {
+    return false;
+  }
+
+  auto posIt = deviceIt->second.find(positionName);
+  if (posIt == deviceIt->second.end()) {
+    return false;
+  }
+
+  outPosition = posIt->second;
+  return true;
+}
+
+std::vector<std::string> ProductPositionManager::GetPositionList(
+  const std::string& deviceName) const {
+  std::vector<std::string> positions;
+
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt != m_positions.end()) {
+    for (const auto& [posName, pos] : deviceIt->second) {
+      positions.push_back(posName);
+    }
+  }
+
+  return positions;
+}
+
+std::vector<std::string> ProductPositionManager::GetAllDeviceNames() const {
+  std::vector<std::string> devices;
+
+  for (const auto& [deviceName, positions] : m_positions) {
+    devices.push_back(deviceName);
+  }
+
+  return devices;
+}
+
+std::map<std::string, PositionStruct> ProductPositionManager::GetAllPositions(
+  const std::string& deviceName) const {
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt != m_positions.end()) {
+    return deviceIt->second;
+  }
+
+  return std::map<std::string, PositionStruct>();
+}
+
+bool ProductPositionManager::HasDevice(const std::string& deviceName) const {
+  return m_positions.find(deviceName) != m_positions.end();
+}
+
+bool ProductPositionManager::HasPosition(const std::string& deviceName,
+  const std::string& positionName) const {
+  auto deviceIt = m_positions.find(deviceName);
+  if (deviceIt == m_positions.end()) {
+    return false;
+  }
+
+  return deviceIt->second.find(positionName) != deviceIt->second.end();
+}
+
+// ============================================================================
+// BULK OPERATIONS
+// ============================================================================
+
+void ProductPositionManager::ClearAllPositions() {
+  std::cout << "[INFO] ProductPositionManager: Clearing all positions" << std::endl;
+  m_positions.clear();
+}
+
+void ProductPositionManager::ClearDevicePositions(const std::string& deviceName) {
+  auto it = m_positions.find(deviceName);
+  if (it != m_positions.end()) {
+    m_positions.erase(it);
+    std::cout << "[INFO] ProductPositionManager: Cleared positions for device "
+      << deviceName << std::endl;
+  }
+}
+
+size_t ProductPositionManager::GetTotalPositionCount() const {
+  size_t count = 0;
+  for (const auto& [device, positions] : m_positions) {
+    count += positions.size();
+  }
+  return count;
+}
+
+size_t ProductPositionManager::GetPositionCount(const std::string& deviceName) const {
+  auto it = m_positions.find(deviceName);
+  if (it != m_positions.end()) {
+    return it->second.size();
+  }
+  return 0;
+}
+
+// ============================================================================
+// INTEGRATION WITH MOTION MANAGER
+// ============================================================================
+
+void ProductPositionManager::ExportToMotionManager(UnifiedMotionManager& manager) const {
+  std::cout << "[INFO] ProductPositionManager: Exporting positions to motion manager"
+    << std::endl;
+
+  // Clear existing positions in motion manager
+  for (const auto& deviceName : manager.GetAllDeviceNames()) {
+    manager.ClearNamedPositions(deviceName);
+  }
+
+  // Export all positions
+  int count = 0;
+  for (const auto& [deviceName, positions] : m_positions) {
+    for (const auto& [posName, pos] : positions) {
+      manager.AddNamedPosition(deviceName, posName, pos);
+      count++;
+    }
+  }
+
+  std::cout << "[INFO] ProductPositionManager: Exported " << count
+    << " positions to motion manager" << std::endl;
+}
+
+void ProductPositionManager::ImportFromMotionManager(const UnifiedMotionManager& manager) {
+  std::cout << "[INFO] ProductPositionManager: Importing positions from motion manager"
+    << std::endl;
+
+  // Clear current positions
+  m_positions.clear();
+
+  // Import positions from each device
+  int count = 0;
+  for (const auto& deviceName : manager.GetAllDeviceNames()) {
+    std::vector<std::string> positionNames = manager.GetNamedPositionList(deviceName);
+
+    for (const auto& posName : positionNames) {
+      PositionStruct pos;
+      if (manager.GetNamedPosition(deviceName, posName, pos)) {
+        AddPosition(deviceName, posName, pos);
+        count++;
+      }
+    }
+  }
+
+  std::cout << "[INFO] ProductPositionManager: Imported " << count
+    << " positions from motion manager" << std::endl;
+}

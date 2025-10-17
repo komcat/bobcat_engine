@@ -9,6 +9,7 @@ class UnifiedMotionManager;
 class EziIOManager;
 class PneumaticManager;  // ✅ ADD THIS
 class SequenceEngine;  // ✅ ADD THIS
+class ProductPositionManager;
 
 struct ApplicationContext
 {
@@ -20,4 +21,5 @@ struct ApplicationContext
   EziIOManager* ioManager = nullptr;
   PneumaticManager* pneumaticManager = nullptr;  // ✅ ADD THIS
   SequenceEngine* sequenceEngine = nullptr;  // ✅ ADD THIS
+  ProductPositionManager* productManager;  // ✅ Add this
 };

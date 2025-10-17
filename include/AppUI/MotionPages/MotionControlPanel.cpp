@@ -12,6 +12,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
   , m_updatePosButton(nullptr)
+  , m_deletePosButton(nullptr)  // ✅ NEW
   , m_createPosButton(nullptr)
   , m_homeButton(nullptr)
   , m_stopButton(nullptr)
@@ -93,6 +94,12 @@ void MotionControlPanel::setupUI()
   m_updatePosButton->setEnabled(false);
   mainLayout->addWidget(m_updatePosButton);
 
+  // ✅ DELETE POSITION BUTTON (NEW)
+  m_deletePosButton = new QPushButton("✕ Delete Position");
+  m_deletePosButton->setMinimumHeight(34);
+  m_deletePosButton->setEnabled(false);
+  mainLayout->addWidget(m_deletePosButton);
+
   // Create New Position
   m_createPosButton = new QPushButton("+ Create Position");
   m_createPosButton->setMinimumHeight(34);
@@ -151,7 +158,7 @@ void MotionControlPanel::setupUI()
     "  border: 1px solid #bdc3c7;"
     "}"
     // Move to Position - Green primary
-    "QPushButton#moveToButton, QPushButton:enabled:!pressed {"
+    "QPushButton#moveToButton {"
     "  background-color: #27ae60;"
     "  color: white;"
     "  border: 1px solid #229954;"
@@ -182,18 +189,27 @@ void MotionControlPanel::setupUI()
     "  color: #95a5a6;"
     "  border-color: #bdc3c7;"
     "}"
-    // Stop button - Red
-    "QPushButton#stopButton {"
+    // ✅ Delete button - Red
+    "QPushButton#deletePosButton {"
     "  background-color: #e74c3c;"
     "  border-color: #c0392b;"
     "}"
-    "QPushButton#stopButton:hover {"
+    "QPushButton#deletePosButton:hover {"
     "  background-color: #c0392b;"
+    "}"
+    // Stop button - Dark Red
+    "QPushButton#stopButton {"
+    "  background-color: #c0392b;"
+    "  border-color: #a93226;"
+    "}"
+    "QPushButton#stopButton:hover {"
+    "  background-color: #a93226;"
     "}"
   );
 
   // Set object names for specific styling
   m_moveToButton->setObjectName("moveToButton");
+  m_deletePosButton->setObjectName("deletePosButton");  // ✅ NEW
   m_stopButton->setObjectName("stopButton");
 
   // === Connect Signals ===
@@ -207,6 +223,10 @@ void MotionControlPanel::setupUI()
 
   connect(m_updatePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::updatePositionClicked);
+
+  // ✅ NEW - Connect delete button
+  connect(m_deletePosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::deletePositionClicked);
 
   connect(m_createPosButton, &QPushButton::clicked,
     this, &MotionControlPanel::createPositionClicked);
@@ -238,9 +258,10 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
   m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
   m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
 
-  // Enable buttons
+  // ✅ Enable all position-specific buttons
   m_moveToButton->setEnabled(true);
   m_updatePosButton->setEnabled(true);
+  m_deletePosButton->setEnabled(true);  // NEW
 }
 
 void MotionControlPanel::clearSelectedPosition()
@@ -255,9 +276,10 @@ void MotionControlPanel::clearSelectedPosition()
   m_posVLabel->setText("V: -");
   m_posWLabel->setText("W: -");
 
-  // Disable buttons
+  // ✅ Disable all position-specific buttons
   m_moveToButton->setEnabled(false);
   m_updatePosButton->setEnabled(false);
+  m_deletePosButton->setEnabled(false);  // NEW
 }
 
 QString MotionControlPanel::getCurrentDevice() const

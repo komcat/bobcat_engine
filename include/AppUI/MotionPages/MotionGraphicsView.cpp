@@ -1,4 +1,4 @@
-// MotionGraphicsView.cpp
+﻿// MotionGraphicsView.cpp
 #include "MotionGraphicsView.h"
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -76,30 +76,45 @@ void MotionGraphicsView::addPosition(const QString& name, double x, double y, do
   updateColors();
 }
 
-
-
 void MotionGraphicsView::clearPositions()
 {
+  // ✅ Block signals during cleanup to prevent crashes
+  if (m_scene) {
+    m_scene->blockSignals(true);
+    m_scene->clearSelection();
+  }
+
   // Remove all anchors
   for (auto* anchor : m_anchors) {
-    m_scene->removeItem(anchor);
-    delete anchor;
+    if (anchor && m_scene) {
+      m_scene->removeItem(anchor);
+      delete anchor;
+    }
   }
   m_anchors.clear();
 
   // Remove all labels
   for (auto* label : m_labels) {
-    m_scene->removeItem(label);
-    delete label;
+    if (label && m_scene) {
+      m_scene->removeItem(label);
+      delete label;
+    }
   }
   m_labels.clear();
 
   // Remove all lines
   for (auto* line : m_connectionLines) {
-    m_scene->removeItem(line);
-    delete line;
+    if (line && m_scene) {
+      m_scene->removeItem(line);
+      delete line;
+    }
   }
   m_connectionLines.clear();
+
+  // ✅ Unblock signals after cleanup
+  if (m_scene) {
+    m_scene->blockSignals(false);
+  }
 }
 
 void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& positions,
@@ -165,18 +180,26 @@ void MotionGraphicsView::calculateZRange()
 void MotionGraphicsView::updateColors()
 {
   for (auto* anchor : m_anchors) {
-    anchor->updateColor(m_zMin, m_zMax);
+    if (anchor) {  // ✅ Safety check
+      anchor->updateColor(m_zMin, m_zMax);
+    }
   }
 }
 
-
 void MotionGraphicsView::onSelectionChanged()
 {
+  // ✅ Safety check - don't process if scene is invalid
+  if (!m_scene) {
+    return;
+  }
+
   QList<QGraphicsItem*> selected = m_scene->selectedItems();
 
   // Deselect all labels first
   for (auto* label : m_labels) {
-    label->setSelected(false);
+    if (label) {  // ✅ Safety check
+      label->setSelected(false);
+    }
   }
 
   if (selected.isEmpty()) {
@@ -193,14 +216,12 @@ void MotionGraphicsView::onSelectionChanged()
     QString name = selectedLabel->getName();
     if (m_anchors.contains(name)) {
       PositionAnchor* anchor = m_anchors[name];
-      emit positionSelected(name, anchor->getX(), anchor->getY(), anchor->getZ());
+      if (anchor) {  // ✅ Safety check
+        emit positionSelected(name, anchor->getX(), anchor->getY(), anchor->getZ());
+      }
     }
   }
 }
-
-// Keep existing methods: drawBackground, drawGrid, calculateGridSpacing, 
-// wheel/mouse events, zoom methods, live marker methods...
-// (They remain the same as before)
 
 void MotionGraphicsView::drawBackground(QPainter* painter, const QRectF& rect)
 {

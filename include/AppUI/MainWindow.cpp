@@ -24,14 +24,17 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_mainMenuPage(nullptr)
   , m_hardwarePage(nullptr)
   , m_configEditorPage(nullptr)
-  , m_motionPage(nullptr)        // NEW - Add this
+  , m_motionPage(nullptr)
   , m_jogButton(nullptr)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
 {
+  // ✅ CREATE PRODUCT MANAGER FIRST - BEFORE createPages()!
+  m_context->productManager = new ProductPositionManager();
+
   setupUI();
-  createPages();
+  createPages();          // Now MotionPage can use productManager
   setupLogging();
   setupJogPanel();
 
@@ -43,6 +46,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
     m_context->logManager->Info("Main window ready", "MainWindow");
   }
 }
+
 
 void MainWindow::setupUI()
 {
@@ -124,24 +128,19 @@ void MainWindow::createPages()
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_configEditorPage);
 
-  // Motion page
-  m_motionPage = new MotionPage(m_context->motionManager, m_matrixLoader, this);
-
-  // NEW - Connect back button
+  // Motion page - ✅ UPDATED with ProductPositionManager
+  m_motionPage = new MotionPage(
+    m_context->motionManager,
+    m_context->productManager,  // ✅ Add product manager
+    m_matrixLoader,
+    this
+  );
   connect(m_motionPage, &MotionPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
-
   m_pageStack->addWidget(m_motionPage);
 
-  // Log viewer page
-  m_logViewerPage = new LogViewerPage(m_context->logManager, this);
-  connect(m_logViewerPage, &LogViewerPage::backRequested,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_logViewerPage);
-
-  std::cout << "[MainWindow] Pages created" << std::endl;
+  std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
-
 
 void MainWindow::setupLogging()
 {
