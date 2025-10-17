@@ -311,7 +311,7 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
- "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp")
+ "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -378,7 +378,7 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControlPanel.h
     include/AppUI/MotionPages/NewPositionDialog.h
     include/AppUI/MotionPages/MotionPage.h
- "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h")
+ "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

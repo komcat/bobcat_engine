@@ -14,19 +14,25 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
   QWidget* parent)
   : QWidget(parent)
   , m_motionManager(motionManager)
-  , m_matrixLoader(matrixLoader)  // NEW
+  , m_matrixLoader(matrixLoader)
   , m_controlPanel(nullptr)
   , m_graphicsView(nullptr)
   , m_livePositionTimer(nullptr)
+  , m_labelOffsetsFilePath("config/position_labels.json")  // ADD THIS
 {
   setupUI();
   loadDevices();
+  loadLabelOffsets();  // ADD THIS
 
   // Setup live position polling timer
   m_livePositionTimer = new QTimer(this);
   m_livePositionTimer->setInterval(100);
   connect(m_livePositionTimer, &QTimer::timeout, this, &MotionPage::onUpdateLivePosition);
   m_livePositionTimer->start();
+
+  // Connect label offset changes to save
+  connect(m_graphicsView, &MotionGraphicsView::labelOffsetChanged,
+    this, &MotionPage::onLabelOffsetChanged);  // ADD THIS
 }
 
 
@@ -159,6 +165,7 @@ void MotionPage::loadDevices()
 
 void MotionPage::loadPositionsForDevice(const QString& deviceName)
 {
+  m_currentDevice = deviceName;
   m_currentPositions.clear();
 
   // Try multiple possible paths for motor_devices.json
@@ -255,15 +262,18 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
       << "-> Global:" << globalX << globalY << globalZ;
   }
 
-  // Update graphics view
-  m_graphicsView->updatePositions(m_currentPositions);
+  // Load label offsets for this device
+  loadLabelOffsets();
+
+  // Update graphics view with positions AND label offsets
+  m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
 
   // Auto-fit and center view
   m_graphicsView->resetZoom();
 
-  qDebug() << "Successfully loaded" << m_currentPositions.size() << "positions for" << deviceName;
+  qDebug() << "Successfully loaded" << m_currentPositions.size()
+    << "positions for" << deviceName;
 }
-
 
 
 
@@ -692,28 +702,93 @@ void MotionPage::onMoveToPositionClicked()
 }
 
 
+// Add loadLabelOffsets method:
+void MotionPage::loadLabelOffsets()
+{
+  m_labelOffsets.clear();
 
+  QFile file(m_labelOffsetsFilePath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    qDebug() << "No label offsets file found, using defaults";
+    return;
+  }
 
-/*
+  QByteArray data = file.readAll();
+  file.close();
 
-```
+  QJsonDocument doc = QJsonDocument::fromJson(data);
+  if (!doc.isObject()) {
+    qWarning() << "Invalid label offsets JSON format";
+    return;
+  }
 
--- -
+  QJsonObject root = doc.object();
 
-## Summary of Architecture :
-```
-MotionPage(Main Container)
-├── MotionControlPanel(Left 20 %)
-│   ├── Device selector
-│   ├── Position info display
-│   └── Action buttons
-│
-└── MotionGraphicsView(Right 80 %)
-├── QGraphicsScene
-└── PositionDot items
+  // Load offsets for current device
+  if (root.contains(m_currentDevice)) {
+    QJsonObject deviceObj = root[m_currentDevice].toObject();
 
-NewPositionDialog(Popup)
-└── Create new position form
+    for (auto it = deviceObj.begin(); it != deviceObj.end(); ++it) {
+      QString posName = it.key();
+      QJsonObject offsetObj = it.value().toObject();
 
+      double offsetX = offsetObj["offsetX"].toDouble();
+      double offsetY = offsetObj["offsetY"].toDouble();
 
-*/
+      m_labelOffsets[posName] = QPointF(offsetX, offsetY);
+    }
+  }
+
+  qDebug() << "Loaded" << m_labelOffsets.size() << "label offsets for" << m_currentDevice;
+}
+
+// Add saveLabelOffsets method:
+void MotionPage::saveLabelOffsets()
+{
+  // Read existing file (to preserve other devices' offsets)
+  QJsonObject root;
+  QFile readFile(m_labelOffsetsFilePath);
+  if (readFile.open(QIODevice::ReadOnly)) {
+    QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
+    if (doc.isObject()) {
+      root = doc.object();
+    }
+    readFile.close();
+  }
+
+  // Update offsets for current device
+  QJsonObject deviceObj;
+  for (auto it = m_labelOffsets.begin(); it != m_labelOffsets.end(); ++it) {
+    QJsonObject offsetObj;
+    offsetObj["offsetX"] = it.value().x();
+    offsetObj["offsetY"] = it.value().y();
+    deviceObj[it.key()] = offsetObj;
+  }
+
+  root[m_currentDevice] = deviceObj;
+
+  // Write back to file
+  QJsonDocument doc(root);
+  QFile writeFile(m_labelOffsetsFilePath);
+  if (!writeFile.open(QIODevice::WriteOnly)) {
+    qWarning() << "Could not open" << m_labelOffsetsFilePath << "for writing";
+    return;
+  }
+
+  writeFile.write(doc.toJson(QJsonDocument::Indented));
+  writeFile.close();
+
+  qDebug() << "Saved" << m_labelOffsets.size() << "label offsets for" << m_currentDevice;
+}
+
+// Add onLabelOffsetChanged slot:
+void MotionPage::onLabelOffsetChanged(const QString& name, double offsetX, double offsetY)
+{
+  // Update in-memory offsets
+  m_labelOffsets[name] = QPointF(offsetX, offsetY);
+
+  // Save to file
+  saveLabelOffsets();
+
+  qDebug() << "Label offset changed:" << name << "(" << offsetX << "," << offsetY << ")";
+}

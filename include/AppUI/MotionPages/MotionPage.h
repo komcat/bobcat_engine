@@ -68,4 +68,12 @@ private:
   QString m_selectedPositionName;
 
   QMap<QString, QVector<double>> m_currentPositions;
+
+  void loadLabelOffsets();
+  void saveLabelOffsets();
+  void onLabelOffsetChanged(const QString& name, double offsetX, double offsetY);
+
+  // Add member variable
+  QMap<QString, QPointF> m_labelOffsets;  // positionName -> offset
+  QString m_labelOffsetsFilePath;  // Path to position_labels.json
 };

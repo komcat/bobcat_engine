@@ -3,8 +3,9 @@
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QWheelEvent>
-#include "PositionDot.h"
-#include "DevicePositionMarker.h"  // NEW
+#include "PositionAnchor.h"      // NEW
+#include "PositionLabel.h"       // NEW
+#include "DevicePositionMarker.h"
 #include <QMap>
 #include <QGraphicsLineItem>
 #include <QList>
@@ -18,11 +19,16 @@ public:
   ~MotionGraphicsView() = default;
 
   // Add/remove positions
-  void addPosition(const QString& name, double x, double y, double z);
+  void addPosition(const QString& name, double x, double y, double z,
+    double labelOffsetX = 0.0, double labelOffsetY = 0.0);  // UPDATED
   void clearPositions();
-  void updatePositions(const QMap<QString, QVector<double>>& positions);
+  void updatePositions(const QMap<QString, QVector<double>>& positions,
+    const QMap<QString, QPointF>& labelOffsets);  // UPDATED
 
-  // NEW - Live marker control
+  // Get label offsets (for saving)
+  QMap<QString, QPointF> getLabelOffsets() const;  // NEW
+
+  // Live marker control
   void updateLiveMarker(const QString& deviceName, double x, double y);
   void showLiveMarker(bool show);
 
@@ -34,6 +40,7 @@ public:
 signals:
   void positionSelected(const QString& name, double x, double y, double z);
   void positionDeselected();
+  void labelOffsetChanged(const QString& name, double offsetX, double offsetY);  // NEW
 
 protected:
   void wheelEvent(QWheelEvent* event) override;
@@ -45,10 +52,20 @@ protected:
 private slots:
   void onSelectionChanged();
 
+
 private:
   QGraphicsScene* m_scene;
-  QMap<QString, PositionDot*> m_dots;
-  DevicePositionMarker* m_liveMarker;  // NEW
+
+  // Position anchors (fixed dots)
+  QMap<QString, PositionAnchor*> m_anchors;  // NEW
+
+  // Position labels (draggable)
+  QMap<QString, PositionLabel*> m_labels;  // NEW
+
+  // Connection lines
+  QMap<QString, QGraphicsLineItem*> m_connectionLines;  // NEW
+
+  DevicePositionMarker* m_liveMarker;
 
   double m_zoomFactor;
   double m_zMin, m_zMax;
@@ -58,7 +75,7 @@ private:
 
   void setupScene();
   void calculateZRange();
-  void updateDotColors();
+  void updateColors();
   void drawGrid(QPainter* painter, const QRectF& rect);
   double calculateGridSpacing(double viewScale);
 };
