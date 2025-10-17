@@ -1,0 +1,97 @@
+// JogPanelWindow.h
+#pragma once
+
+#include <QWidget>
+#include <QPushButton>
+#include <QLabel>
+#include <QButtonGroup>
+#include <vector>
+#include <string>
+
+class TransformationMatrixLoader;
+class CoordinateTransformer;
+struct ApplicationContext;
+
+class JogPanelWindow : public QWidget
+{
+  Q_OBJECT
+
+public:
+  explicit JogPanelWindow(
+    ApplicationContext* context,
+    TransformationMatrixLoader* matrixLoader,
+    QWidget* parent = nullptr
+  );
+  ~JogPanelWindow();
+
+  // Show/hide window
+  void showPanel();
+  void hidePanel();
+  bool isPanelVisible() const;
+
+  // Get currently selected device
+  std::string getSelectedDevice() const;
+
+  // Get current step size in microns
+  double getCurrentStepSize() const;
+
+  // Public methods for keyboard control
+  void jogX(double direction);  // direction: +1.0 or -1.0
+  void jogY(double direction);
+  void jogZ(double direction);
+  void jogU(double direction);
+  void jogV(double direction);
+  void jogW(double direction);
+  void cycleStepSizeUp();
+  void cycleStepSizeDown();
+
+signals:
+  void visibilityChanged(bool visible);
+
+protected:
+  void closeEvent(QCloseEvent* event) override;
+
+private slots:
+  void onDeviceSelected();
+  void onStepSizeSelected();
+
+private:
+  void setupUI();
+  void createDevicePanel(QWidget* parent);
+  void createStepSizePanel(QWidget* parent);
+  void createMovementPanel(QWidget* parent);
+
+  void sendJogCommand(const std::string& axis, double direction);
+  void updateStepSizeDisplay();
+
+  ApplicationContext* m_context;
+  TransformationMatrixLoader* m_matrixLoader;
+
+  // UI Components
+  QButtonGroup* m_deviceButtonGroup;
+  QButtonGroup* m_stepSizeButtonGroup;
+  QLabel* m_currentStepLabel;
+
+  // Movement buttons
+  QPushButton* m_btnXPlus;
+  QPushButton* m_btnXMinus;
+  QPushButton* m_btnYPlus;
+  QPushButton* m_btnYMinus;
+  QPushButton* m_btnZPlus;
+  QPushButton* m_btnZMinus;
+  QPushButton* m_btnUPlus;
+  QPushButton* m_btnUMinus;
+  QPushButton* m_btnVPlus;
+  QPushButton* m_btnVMinus;
+  QPushButton* m_btnWPlus;
+  QPushButton* m_btnWMinus;
+
+  // State
+  std::string m_selectedDevice;
+  double m_currentStepSize; // in microns
+
+  // Step sizes in microns
+  const std::vector<double> m_stepSizes = {
+    1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0
+  };
+};

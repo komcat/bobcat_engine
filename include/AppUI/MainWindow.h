@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QStackedWidget>
+#include <QPushButton>  // ADD THIS
 
 struct ApplicationContext;
 class MainMenuPage;
@@ -10,6 +11,9 @@ class HardwareInstrumentPage;
 class ConfigEditorPage;       // NEW
 class LogStatusBar;
 class LogViewerPage;
+class JogPanelWindow;  // ADD THIS
+class JogKeyBindingHandler;  // ADD THIS
+class TransformationMatrixLoader;  // ADD THIS
 
 class MainWindow : public QMainWindow
 {
@@ -28,12 +32,14 @@ private slots:
   void onMainMenuFutureUpdate();    // NEW
   void onBackToMainMenu();
   void onOpenLogViewer();
+  void onToggleJogPanel();  // ADD THIS
 
 
 private:
   void setupUI();
   void createPages();
   void setupLogging();
+  void setupJogPanel();  // ADD THIS
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
@@ -44,4 +50,10 @@ private:
   HardwareInstrumentPage* m_hardwarePage;
 
   ConfigEditorPage* m_configEditorPage;  // NEW
+
+  // ADD THESE:
+  QPushButton* m_jogButton;
+  JogPanelWindow* m_jogPanel;
+  JogKeyBindingHandler* m_jogKeyHandler;
+  TransformationMatrixLoader* m_matrixLoader;
 };

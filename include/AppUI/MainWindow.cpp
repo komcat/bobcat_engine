@@ -7,6 +7,10 @@
 #include "LogViewerPage.h"     // ✅ NEW
 #include "LogManager.h"        // ✅ NEW
 #include "ConfigEditorPage.h"     // NEW - Add this include
+// ADD THESE:
+#include "JogPanelWindow.h"
+#include "JogKeyBindingHandler.h"
+#include "TransformationMatrixLoader.h"
 
 #include <QVBoxLayout>
 #include <iostream>
@@ -19,10 +23,15 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_logViewerPage(nullptr)
   , m_mainMenuPage(nullptr)
   , m_hardwarePage(nullptr)
+  , m_jogButton(nullptr)  // ADD THIS
+  , m_jogPanel(nullptr)  // ADD THIS
+  , m_jogKeyHandler(nullptr)  // ADD THIS
+  , m_matrixLoader(nullptr)  // ADD THIS
 {
   setupUI();
   createPages();
   setupLogging();  // ✅ NEW - Setup logging AFTER pages are created
+  setupJogPanel();  // ADD THIS - Setup jog panel AFTER pages are created
 
   // Show main menu first
   m_pageStack->setCurrentWidget(m_mainMenuPage);
@@ -43,13 +52,38 @@ void MainWindow::setupUI()
 
   // Page stack (main content area)
   m_pageStack = new QStackedWidget();
-  mainLayout->addWidget(m_pageStack, 1);  // Stretch factor 1 (takes remaining space)
+  mainLayout->addWidget(m_pageStack, 1);
 
-  // ✅ Log status bar at bottom (always visible)
+  // Log status bar at bottom (always visible)
   m_logStatusBar = new LogStatusBar(m_context->logManager, this);
   connect(m_logStatusBar, &LogStatusBar::openFullLogViewer,
     this, &MainWindow::onOpenLogViewer);
-  mainLayout->addWidget(m_logStatusBar, 0);  // No stretch (fixed size)
+  mainLayout->addWidget(m_logStatusBar, 0);
+
+  // ADD THIS: Create orange JOG button (floating, top-right)
+  m_jogButton = new QPushButton("JOG", this);
+  m_jogButton->setFixedSize(80, 40);
+  m_jogButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #ff8c00; "  // Dark orange
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #ff9d2e; "  // Lighter orange on hover
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #e67e00; "  // Darker orange when pressed
+    "}");
+
+  connect(m_jogButton, &QPushButton::clicked, this, &MainWindow::onToggleJogPanel);
+
+  // Position button at top-right corner
+  m_jogButton->move(this->width() - 90, 10);
+  m_jogButton->raise();  // Ensure it's on top
 
   setCentralWidget(centralWidget);
   resize(800, 600);
@@ -186,3 +220,78 @@ void MainWindow::onMainMenuFutureUpdate()
   std::cout << "[MainWindow] Future Update clicked (not implemented)" << std::endl;
   m_context->logManager->Info("Future update button clicked", "MainWindow");
 }
+
+
+void MainWindow::setupJogPanel()
+{
+  std::cout << "[MainWindow] Setting up jog panel..." << std::endl;
+
+  // Load transformation matrices
+  m_matrixLoader = new TransformationMatrixLoader();
+
+  // Try to load from config directory
+  std::string matrixPath = "config/transformation_matrix.json";
+  std::cout << "[MainWindow] Loading matrix from: " << matrixPath << std::endl;
+
+  if (!m_matrixLoader->LoadFromFile(matrixPath)) {
+    std::cerr << "[MainWindow] Failed to load transformation matrix from: " << matrixPath << std::endl;
+
+    if (m_context->logManager) {
+      m_context->logManager->Error(
+        "Failed to load transformation matrix. Jog panel will not be available.",
+        "MainWindow"
+      );
+    }
+
+    // Disable JOG button
+    if (m_jogButton) {
+      m_jogButton->setEnabled(false);
+      m_jogButton->setToolTip("Jog panel unavailable - transformation matrix not found");
+    }
+
+    delete m_matrixLoader;
+    m_matrixLoader = nullptr;
+    return;  // EARLY EXIT
+  }
+
+  std::cout << "[MainWindow] Matrix loaded successfully" << std::endl;
+
+  // Create jog panel
+  m_jogPanel = new JogPanelWindow(m_context, m_matrixLoader, this);
+  std::cout << "[MainWindow] Jog panel created" << std::endl;
+
+  // Create key binding handler
+  m_jogKeyHandler = new JogKeyBindingHandler(m_jogPanel, this);
+  m_jogKeyHandler->installOn(m_jogPanel);
+  std::cout << "[MainWindow] Key handler installed" << std::endl;
+
+  // Connect visibility to key bindings
+  connect(m_jogPanel, &JogPanelWindow::visibilityChanged,
+    m_jogKeyHandler, &JogKeyBindingHandler::setEnabled);
+
+  std::cout << "[MainWindow] Jog panel setup complete!" << std::endl;
+
+  if (m_context->logManager) {
+    m_context->logManager->Info("Jog panel initialized successfully", "MainWindow");
+  }
+}
+
+
+void MainWindow::onToggleJogPanel()
+{
+  if (!m_jogPanel) {
+    std::cerr << "[MainWindow] Jog panel not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_jogPanel->isPanelVisible()) {
+    m_jogPanel->hidePanel();
+    std::cout << "[MainWindow] Jog panel hidden" << std::endl;
+  }
+  else {
+    m_jogPanel->showPanel();
+    std::cout << "[MainWindow] Jog panel shown" << std::endl;
+  }
+}
+
+

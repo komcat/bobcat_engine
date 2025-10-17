@@ -212,11 +212,14 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
     ${CMAKE_SOURCE_DIR}/include/AppUI/IOPage
-    ${CMAKE_SOURCE_DIR}/include/AppUI/PneumaticPage  # ✅ ADD THIS
+    ${CMAKE_SOURCE_DIR}/include/AppUI/PneumaticPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/JogWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
     ${CMAKE_SOURCE_DIR}/include/motions
+    ${CMAKE_SOURCE_DIR}/include/motions/PI
+    ${CMAKE_SOURCE_DIR}/include/motions/ACS
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
@@ -291,7 +294,19 @@ set(SOURCES
     include/AppUI/IOPage/IOControllerPage.cpp
     include/pneumatics/PneumaticSlide.cpp
     include/pneumatics/PneumaticManager.cpp
- "include/AppUI/Forms/PneumaticSlidesFormWidget.cpp" "include/AppUI/Forms/IODevicesFormWidget.cpp" "include/sequence/SequenceEngine.cpp" "include/sequence/MotionCommandHandler.cpp" "include/sequence/IOCommandHandler.cpp" "include/sequence/PneumaticCommandHandler.cpp" "include/sequence/CameraCommandHandler.cpp" "include/sequence/CommandDispatcher.cpp")
+    include/AppUI/Forms/PneumaticSlidesFormWidget.cpp
+    include/AppUI/Forms/IODevicesFormWidget.cpp
+    include/sequence/SequenceEngine.cpp
+    include/sequence/MotionCommandHandler.cpp
+    include/sequence/IOCommandHandler.cpp
+    include/sequence/PneumaticCommandHandler.cpp
+    include/sequence/CameraCommandHandler.cpp
+    include/sequence/CommandDispatcher.cpp
+    include/motions/TransformationMatrixLoader.cpp
+    include/motions/CoordinateTransformer.cpp
+    include/AppUI/JogWindow/JogPanelWindow.cpp
+    include/AppUI/JogWindow/JogKeyBindingHandler.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -338,19 +353,34 @@ set(HEADERS
     include/pneumatics/PneumaticSlide.h
     include/pneumatics/PneumaticManager.h
     include/pneumatics/PneumaticJsonLoader.h
- "include/AppUI/PneumaticPage/PneumaticControlPage.h" "include/AppUI/PneumaticPage/PneumaticControlPage.cpp" "include/AppUI/Forms/PneumaticSlidesFormWidget.h" "include/AppUI/Forms/IODevicesFormWidget.h" "include/sequence/SequenceEngine.h" "include/sequence/ICommandHandler.h" "include/sequence/MotionCommandHandler.h" "include/sequence/IOCommandHandler.h" "include/sequence/PneumaticCommandHandler.h" "include/sequence/CameraCommandHandler.h" "include/sequence/CommandDispatcher.h")
+    include/AppUI/PneumaticPage/PneumaticControlPage.h
+    include/AppUI/PneumaticPage/PneumaticControlPage.cpp
+    include/AppUI/Forms/PneumaticSlidesFormWidget.h
+    include/AppUI/Forms/IODevicesFormWidget.h
+    include/sequence/SequenceEngine.h
+    include/sequence/ICommandHandler.h
+    include/sequence/MotionCommandHandler.h
+    include/sequence/IOCommandHandler.h
+    include/sequence/PneumaticCommandHandler.h
+    include/sequence/CameraCommandHandler.h
+    include/sequence/CommandDispatcher.h
+    include/motions/TransformationMatrixLoader.h
+    include/motions/CoordinateTransformer.h
+    include/AppUI/JogWindow/JogPanelWindow.h
+    include/AppUI/JogWindow/JogKeyBindingHandler.h
+)
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)
     list(APPEND SOURCES
-        include/motions/acs_controller_manager.cpp
-        include/motions/acs_controller.cpp
+        include/motions/ACS/acs_controller_manager.cpp
+        include/motions/ACS/acs_controller.cpp
     )
     list(APPEND HEADERS
-        include/motions/acs_controller_manager.h
-        include/motions/acs_controller.h
-        include/motions/ACSC.h
-        include/motions/ACSC_wrapper.h
+        include/motions/ACS/acs_controller_manager.h
+        include/motions/ACS/acs_controller.h
+        include/motions/ACS/ACSC.h
+        include/motions/ACS/ACSC_wrapper.h
     )
     message(STATUS "ACS Controller support enabled")
 else()
@@ -360,13 +390,13 @@ endif()
 # Conditionally add PI controller files if library is found
 if(PI_FOUND)
     list(APPEND SOURCES
-        include/motions/pi_controller_manager.cpp
-        include/motions/pi_controller.cpp
+        include/motions/PI/pi_controller_manager.cpp
+        include/motions/PI/pi_controller.cpp
     )
     list(APPEND HEADERS
-        include/motions/pi_controller_manager.h
-        include/motions/pi_controller.h
-        include/motions/PI_GCS2_DLL.h
+        include/motions/PI/pi_controller_manager.h
+        include/motions/PI/pi_controller.h
+        include/motions/PI/PI_GCS2_DLL.h
     )
     message(STATUS "PI Controller support enabled")
 else()
