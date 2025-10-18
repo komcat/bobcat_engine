@@ -87,4 +87,8 @@ private:
   QMap<QString, QVector<double>> m_currentPositions;
   QMap<QString, QPointF> m_labelOffsets;
   QString m_labelOffsetsFilePath;
+
+
+  QString m_lastPosition;  // ✅ NEW - Track last position for exit waypoints
+
 };

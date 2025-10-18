@@ -25,9 +25,21 @@ using json = nlohmann::json;
  *   ],
  *   "named_positions": {
  *     "gantry-main": {
- *       "home": { "x": 0, "y": 0, "z": 0, "u": 0, "v": 0, "w": 0 },
- *       "safe": { "x": 100, "y": 100, "z": 50, "u": 0, "v": 0, "w": 0 },
- *       "seepic": { "x": 180.708, "y": 81.238, "z": 16.345, "u": 0, "v": 0, "w": 0 }
+ *       "home": {
+ *         "x": 0, "y": 0, "z": 0, "u": 0, "v": 0, "w": 0,
+ *         "waypoints": [],
+ *         "exit_waypoints": []
+ *       },
+ *       "safe": {
+ *         "x": 100, "y": 100, "z": 50, "u": 0, "v": 0, "w": 0,
+ *         "waypoints": [],
+ *         "exit_waypoints": []
+ *       },
+ *       "seepic": {
+ *         "x": 180.708, "y": 81.238, "z": 16.345, "u": 0, "v": 0, "w": 0,
+ *         "waypoints": ["safe"],
+ *         "exit_waypoints": ["safe"]
+ *       }
  *     }
  *   }
  * }
@@ -49,7 +61,7 @@ private:
   static void LoadDevices(UnifiedMotionManager& manager, const nlohmann::json& config);
 
   /**
-   * @brief Load named positions from JSON config
+   * @brief Load named positions from JSON config (with waypoints support)
    */
   static void LoadNamedPositions(UnifiedMotionManager& manager, const nlohmann::json& config);
 };

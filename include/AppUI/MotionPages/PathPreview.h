@@ -1,4 +1,4 @@
-// PathPreview.h
+﻿// PathPreview.h
 #pragma once
 
 #include <QGraphicsItem>
@@ -16,30 +16,32 @@ public:
   PathPreview(QGraphicsScene* scene);
   ~PathPreview();
 
-  // Show path from current position through waypoints to target
+  // Show path with separate entry and exit waypoints
   void showPath(const QPointF& currentPosition,
     const QPointF& targetPosition,
-    const std::vector<QPointF>& waypointPositions);
+    const std::vector<QPointF>& entryWaypointPositions,
+    const std::vector<QPointF>& exitWaypointPositions);
 
   // Hide and clear all path elements
   void hidePath();
 
   // Update path styling
   void setPathColor(const QColor& color);
+  void setExitPathColor(const QColor& color);
   void setPathWidth(int width);
-  void setPathStyle(Qt::PenStyle style);
 
 private:
   void clearPathElements();
-  void createPathLine(const QPointF& start, const QPointF& end);
-  void createWaypointMarker(const QPointF& position);
+  void createPathLine(const QPointF& start, const QPointF& end,
+    const QColor& color, Qt::PenStyle style);
+  void createWaypointMarker(const QPointF& position, const QColor& color);
 
   QGraphicsScene* m_scene;
   QList<QGraphicsItem*> m_pathElements;
 
   // Styling
-  QColor m_pathColor;
+  QColor m_pathColor;        // Entry waypoint color (yellow)
+  QColor m_exitPathColor;    // Exit waypoint color (orange)
   int m_pathWidth;
-  Qt::PenStyle m_pathStyle;
   int m_zValue;
 };

@@ -6,7 +6,7 @@
 #include "PositionAnchor.h"
 #include "PositionLabel.h"
 #include "DevicePositionMarker.h"
-#include "PathPreview.h"  // ✅ NEW
+#include "PathPreview.h"
 #include <QMap>
 #include <QGraphicsLineItem>
 #include <QList>
@@ -36,8 +36,11 @@ public:
   void showLiveMarker(bool show);
 
   // Path preview
-  void showPathPreview(const QString& targetPosition,
-    const std::vector<std::string>& waypoints);
+  // ✅ UPDATED - Add exit waypoints parameter
+  void showPathPreview(const QString& targetPositionName,
+    const std::vector<std::string>& entryWaypoints,
+    const std::vector<std::string>& exitWaypoints);  // ✅ NEW
+
   void hidePathPreview();
 
   // Zoom controls
@@ -72,8 +75,11 @@ private:
   // Connection lines
   QMap<QString, QGraphicsLineItem*> m_connectionLines;
 
+  // ✅ NEW - Store positions for waypoint lookup
+  QMap<QString, QVector<double>> m_positions;
+
   DevicePositionMarker* m_liveMarker;
-  PathPreview* m_pathPreview;  // ✅ NEW
+  PathPreview* m_pathPreview;
 
   double m_zoomFactor;
   double m_zMin, m_zMax;

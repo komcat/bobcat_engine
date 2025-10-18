@@ -1,8 +1,7 @@
-// MotionJsonLoader.cpp
+﻿// MotionJsonLoader.cpp
 #include "MotionJsonLoader.h"
 #include <fstream>
 #include <iostream>
-
 
 int MotionJsonLoader::LoadFromFile(UnifiedMotionManager& manager, const std::string& filepath) {
   std::cout << "[MotionJsonLoader] Loading from: " << filepath << std::endl;
@@ -92,19 +91,60 @@ void MotionJsonLoader::LoadNamedPositions(UnifiedMotionManager& manager, const j
       std::string posName = posEntry.key();
       const auto& pos = posEntry.value();
 
-      manager.AddNamedPosition(
-        deviceName,
-        posName,
-        pos.value("x", 0.0),
-        pos.value("y", 0.0),
-        pos.value("z", 0.0),
-        pos.value("u", 0.0),
-        pos.value("v", 0.0),
-        pos.value("w", 0.0)
-      );
+      // Create PositionStruct with coordinates
+      PositionStruct position;
+      position.x = pos.value("x", 0.0);
+      position.y = pos.value("y", 0.0);
+      position.z = pos.value("z", 0.0);
+      position.u = pos.value("u", 0.0);
+      position.v = pos.value("v", 0.0);
+      position.w = pos.value("w", 0.0);
+
+      // ✅ NEW - Load entry waypoints
+      if (pos.contains("waypoints") && pos["waypoints"].is_array()) {
+        for (const auto& waypoint : pos["waypoints"]) {
+          if (waypoint.is_string()) {
+            position.waypoints.push_back(waypoint.get<std::string>());
+          }
+        }
+      }
+
+      // ✅ NEW - Load exit waypoints
+      if (pos.contains("exit_waypoints") && pos["exit_waypoints"].is_array()) {
+        for (const auto& exitWaypoint : pos["exit_waypoints"]) {
+          if (exitWaypoint.is_string()) {
+            position.exit_waypoints.push_back(exitWaypoint.get<std::string>());
+          }
+        }
+      }
+
+      // Add position with waypoints to manager
+      manager.AddNamedPosition(deviceName, posName, position);
 
       devicePositionCount++;
       totalPositions++;
+
+      // ✅ NEW - Log waypoint info
+      if (!position.waypoints.empty() || !position.exit_waypoints.empty()) {
+        std::cout << "[MotionJsonLoader]   Position '" << posName << "' waypoints: ";
+        if (!position.waypoints.empty()) {
+          std::cout << "entry=[";
+          for (size_t i = 0; i < position.waypoints.size(); ++i) {
+            std::cout << position.waypoints[i];
+            if (i < position.waypoints.size() - 1) std::cout << ", ";
+          }
+          std::cout << "] ";
+        }
+        if (!position.exit_waypoints.empty()) {
+          std::cout << "exit=[";
+          for (size_t i = 0; i < position.exit_waypoints.size(); ++i) {
+            std::cout << position.exit_waypoints[i];
+            if (i < position.exit_waypoints.size() - 1) std::cout << ", ";
+          }
+          std::cout << "]";
+        }
+        std::cout << std::endl;
+      }
     }
 
     std::cout << "[MotionJsonLoader] Loaded " << devicePositionCount

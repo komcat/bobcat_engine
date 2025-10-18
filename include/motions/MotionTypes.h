@@ -13,17 +13,18 @@ struct PositionStruct {
   double u = 0.0;
   double v = 0.0;
   double w = 0.0;
-  std::vector<std::string> waypoints;  // ✅ NEW - waypoint path for this position
+  std::vector<std::string> waypoints;       // ✅ Entry waypoints (to reach this position)
+  std::vector<std::string> exit_waypoints;  // ✅ NEW - Exit waypoints (when leaving this position)
 
   // Default constructor
   PositionStruct()
-    : x(0), y(0), z(0), u(0), v(0), w(0), waypoints() {
+    : x(0), y(0), z(0), u(0), v(0), w(0), waypoints(), exit_waypoints() {
   }
 
   // Constructor with coordinates
   PositionStruct(double _x, double _y, double _z,
     double _u = 0, double _v = 0, double _w = 0)
-    : x(_x), y(_y), z(_z), u(_u), v(_v), w(_w), waypoints() {
+    : x(_x), y(_y), z(_z), u(_u), v(_v), w(_w), waypoints(), exit_waypoints() {
   }
 };
 

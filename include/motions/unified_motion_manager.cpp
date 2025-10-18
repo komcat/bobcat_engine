@@ -790,23 +790,37 @@ void* UnifiedMotionManager::GetController(const std::string& deviceName, std::st
 // NAMED POSITION MANAGEMENT
 // ============================================================================
 
+
 void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
   const std::string& positionName,
   const PositionStruct& position) {
   m_namedPositions[deviceName][positionName] = position;
+
+  // ✅ UPDATED - Log waypoints if present
   std::cout << "[INFO] UnifiedMotionManager: Added named position '" << positionName
     << "' for device " << deviceName
-    << " -> (" << position.x << ", " << position.y << ", " << position.z << ")"
-    << std::endl;
+    << " -> (" << position.x << ", " << position.y << ", " << position.z << ")";
+
+  if (!position.waypoints.empty()) {
+    std::cout << " with " << position.waypoints.size() << " entry waypoint(s)";
+  }
+  if (!position.exit_waypoints.empty()) {
+    std::cout << " with " << position.exit_waypoints.size() << " exit waypoint(s)";
+  }
+  std::cout << std::endl;
 }
 
 void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
   const std::string& positionName,
   double x, double y, double z,
   double u, double v, double w) {
+  // ✅ IMPORTANT - This overload creates position WITHOUT waypoints
+  // If you need to preserve existing waypoints when updating coordinates only,
+  // use the PositionStruct overload instead
   PositionStruct pos = { x, y, z, u, v, w };
   AddNamedPosition(deviceName, positionName, pos);
 }
+
 
 bool UnifiedMotionManager::RemoveNamedPosition(const std::string& deviceName,
   const std::string& positionName) {
@@ -860,7 +874,6 @@ std::vector<std::string> UnifiedMotionManager::GetNamedPositionList(const std::s
   return names;
 }
 
-// In unified_motion_manager.cpp
 bool UnifiedMotionManager::ReloadNamedPositions(const std::string& configPath) {
   std::cout << "[INFO] UnifiedMotionManager: Reloading named positions from "
     << configPath << std::endl;

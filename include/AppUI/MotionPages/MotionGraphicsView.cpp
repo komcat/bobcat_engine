@@ -124,6 +124,9 @@ void MotionGraphicsView::clearPositions()
   }
   m_connectionLines.clear();
 
+  // ✅ NEW - Clear stored positions
+  m_positions.clear();
+
   if (m_scene) {
     m_scene->blockSignals(false);
   }
@@ -133,6 +136,9 @@ void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& p
   const QMap<QString, QPointF>& labelOffsets)
 {
   clearPositions();
+
+  // ✅ NEW - Store positions for waypoint lookup
+  m_positions = positions;
 
   for (auto it = positions.begin(); it != positions.end(); ++it) {
     const QString& name = it.key();
@@ -378,30 +384,57 @@ void MotionGraphicsView::showLiveMarker(bool show)
   }
 }
 
-void MotionGraphicsView::showPathPreview(const QString& targetPosition,
-  const std::vector<std::string>& waypoints)
+// ✅ UPDATED - showPathPreview with entry and exit waypoints
+void MotionGraphicsView::showPathPreview(const QString& targetPositionName,
+  const std::vector<std::string>& entryWaypoints,
+  const std::vector<std::string>& exitWaypoints)
 {
-  if (!m_pathPreview || !m_liveMarker || !m_liveMarker->isVisible()) {
+  if (!m_pathPreview) {
     return;
   }
 
-  QPointF currentPos(m_liveMarker->x(), m_liveMarker->y());
-  QPointF targetPos = getPositionPoint(targetPosition);
+  // Get current device position from live marker
+  QPointF currentPos = m_liveMarker && m_liveMarker->isVisible()
+    ? m_liveMarker->pos()
+    : QPointF(0, 0);
 
-  if (targetPos.isNull()) {
+  // Get target position coordinates from stored positions
+  auto targetIt = m_positions.find(targetPositionName);
+  if (targetIt == m_positions.end()) {
+    qWarning() << "Target position not found:" << targetPositionName;
     return;
   }
 
-  std::vector<QPointF> waypointPositions;
-  for (const auto& waypoint : waypoints) {
-    QString waypointName = QString::fromStdString(waypoint);
-    QPointF waypointPos = getPositionPoint(waypointName);
-    if (!waypointPos.isNull()) {
-      waypointPositions.push_back(waypointPos);
+  QPointF targetPos(targetIt.value()[0], targetIt.value()[1]);
+
+  // ✅ Convert exit waypoint names to positions
+  std::vector<QPointF> exitWaypointPositions;
+  for (const auto& waypointName : exitWaypoints) {
+    QString qName = QString::fromStdString(waypointName);
+    auto wIt = m_positions.find(qName);
+    if (wIt != m_positions.end()) {
+      exitWaypointPositions.push_back(QPointF(wIt.value()[0], wIt.value()[1]));
+    }
+    else {
+      qWarning() << "Exit waypoint position not found:" << qName;
     }
   }
 
-  m_pathPreview->showPath(currentPos, targetPos, waypointPositions);
+  // ✅ Convert entry waypoint names to positions
+  std::vector<QPointF> entryWaypointPositions;
+  for (const auto& waypointName : entryWaypoints) {
+    QString qName = QString::fromStdString(waypointName);
+    auto wIt = m_positions.find(qName);
+    if (wIt != m_positions.end()) {
+      entryWaypointPositions.push_back(QPointF(wIt.value()[0], wIt.value()[1]));
+    }
+    else {
+      qWarning() << "Entry waypoint position not found:" << qName;
+    }
+  }
+
+  // ✅ Show path with both entry and exit waypoints
+  m_pathPreview->showPath(currentPos, targetPos, entryWaypointPositions, exitWaypointPositions);
 }
 
 void MotionGraphicsView::hidePathPreview()
