@@ -1,4 +1,4 @@
-// PathPreview.cpp
+﻿// PathPreview.cpp - FIXED for proper zoom behavior
 #include "PathPreview.h"
 #include <QPen>
 #include <QBrush>
@@ -81,6 +81,7 @@ void PathPreview::clearPathElements()
 
 void PathPreview::createPathLine(const QPointF& start, const QPointF& end)
 {
+  // ✅ Use cosmetic pen to keep line width constant at all zoom levels
   QPen pathPen(m_pathColor, m_pathWidth, m_pathStyle);
   pathPen.setCosmetic(true);
 
@@ -97,13 +98,16 @@ void PathPreview::createPathLine(const QPointF& start, const QPointF& end)
 
 void PathPreview::createWaypointMarker(const QPointF& position)
 {
+  // ✅ Create marker that ignores transformations to stay fixed size
+  QGraphicsEllipseItem* marker = new QGraphicsEllipseItem(-4, -4, 8, 8);
+
+  // ✅ Position in scene coordinates
+  marker->setPos(position);
+
+  // ✅ Keep marker at fixed pixel size when zooming
+  marker->setFlag(QGraphicsItem::ItemIgnoresTransformations, true);
+
   QPen markerPen(m_pathColor, 2);
-  markerPen.setCosmetic(true);
-
-  QGraphicsEllipseItem* marker = new QGraphicsEllipseItem(
-    position.x() - 4, position.y() - 4, 8, 8
-  );
-
   marker->setPen(markerPen);
   marker->setBrush(QBrush(QColor(m_pathColor.red(), m_pathColor.green(),
     m_pathColor.blue(), 150)));

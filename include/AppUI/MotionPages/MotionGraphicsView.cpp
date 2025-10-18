@@ -1,4 +1,4 @@
-﻿// MotionGraphicsView.cpp
+﻿// MotionGraphicsView.cpp - FIXED connection lines for zoom
 #include "MotionGraphicsView.h"
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -9,7 +9,7 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   : QGraphicsView(parent)
   , m_scene(nullptr)
   , m_liveMarker(nullptr)
-  , m_pathPreview(nullptr)  // ✅ NEW
+  , m_pathPreview(nullptr)
   , m_zoomFactor(1.0)
   , m_zMin(0.0)
   , m_zMax(0.0)
@@ -31,13 +31,9 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   m_scene->addItem(m_liveMarker);
   m_liveMarker->setVisible(false);
 
-
-  // ✅ NEW - Initialize path preview
   m_pathPreview = new PathPreview(m_scene);
 }
 
-// Destructor:
-// ✅ NEW - Implement destructor
 MotionGraphicsView::~MotionGraphicsView()
 {
   delete m_pathPreview;
@@ -55,7 +51,6 @@ void MotionGraphicsView::setupScene()
 void MotionGraphicsView::addPosition(const QString& name, double x, double y, double z,
   double labelOffsetX, double labelOffsetY)
 {
-  // Check if position already exists
   if (m_anchors.contains(name)) {
     return;
   }
@@ -67,8 +62,13 @@ void MotionGraphicsView::addPosition(const QString& name, double x, double y, do
 
   // Create connection line
   QGraphicsLineItem* line = new QGraphicsLineItem();
-  line->setPen(QPen(QColor(149, 165, 166, 150), 1, Qt::DashLine));  // Gray dashed line
-  line->setZValue(1);  // Below everything except grid
+
+  // ✅ FIXED: Use cosmetic pen to keep line width constant
+  QPen linePen(QColor(149, 165, 166, 150), 1, Qt::DashLine);
+  linePen.setCosmetic(true);
+  line->setPen(linePen);
+
+  line->setZValue(1);
   m_scene->addItem(line);
   m_connectionLines[name] = line;
 
@@ -91,18 +91,15 @@ void MotionGraphicsView::addPosition(const QString& name, double x, double y, do
 
 void MotionGraphicsView::clearPositions()
 {
-  // Block signals during cleanup
   if (m_scene) {
     m_scene->blockSignals(true);
     m_scene->clearSelection();
   }
 
-  // Clear path preview
   if (m_pathPreview) {
     m_pathPreview->hidePath();
   }
 
-  // Remove all anchors
   for (auto* anchor : m_anchors) {
     if (anchor && m_scene) {
       m_scene->removeItem(anchor);
@@ -111,7 +108,6 @@ void MotionGraphicsView::clearPositions()
   }
   m_anchors.clear();
 
-  // Remove all labels
   for (auto* label : m_labels) {
     if (label && m_scene) {
       m_scene->removeItem(label);
@@ -120,7 +116,6 @@ void MotionGraphicsView::clearPositions()
   }
   m_labels.clear();
 
-  // Remove all lines
   for (auto* line : m_connectionLines) {
     if (line && m_scene) {
       m_scene->removeItem(line);
@@ -129,7 +124,6 @@ void MotionGraphicsView::clearPositions()
   }
   m_connectionLines.clear();
 
-  // ✅ Unblock signals after cleanup
   if (m_scene) {
     m_scene->blockSignals(false);
   }
@@ -140,7 +134,6 @@ void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& p
 {
   clearPositions();
 
-  // Add all positions with their label offsets
   for (auto it = positions.begin(); it != positions.end(); ++it) {
     const QString& name = it.key();
     const QVector<double>& pos = it.value();
@@ -151,7 +144,6 @@ void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& p
     }
   }
 
-  // Fit view to show all positions
   if (!m_anchors.isEmpty()) {
     fitInView(m_scene->itemsBoundingRect().adjusted(-20, -20, 20, 20), Qt::KeepAspectRatio);
     m_zoomFactor = transform().m11();
@@ -168,7 +160,6 @@ QMap<QString, QPointF> MotionGraphicsView::getLabelOffsets() const
 
     QPointF offset(label->getOffsetX(), label->getOffsetY());
 
-    // Only save non-zero offsets
     if (offset.x() != 0.0 || offset.y() != 0.0) {
       offsets[name] = offset;
     }
@@ -198,7 +189,7 @@ void MotionGraphicsView::calculateZRange()
 void MotionGraphicsView::updateColors()
 {
   for (auto* anchor : m_anchors) {
-    if (anchor) {  // ✅ Safety check
+    if (anchor) {
       anchor->updateColor(m_zMin, m_zMax);
     }
   }
@@ -206,16 +197,14 @@ void MotionGraphicsView::updateColors()
 
 void MotionGraphicsView::onSelectionChanged()
 {
-  // ✅ Safety check - don't process if scene is invalid
   if (!m_scene) {
     return;
   }
 
   QList<QGraphicsItem*> selected = m_scene->selectedItems();
 
-  // Deselect all labels first
   for (auto* label : m_labels) {
-    if (label) {  // ✅ Safety check
+    if (label) {
       label->setSelected(false);
     }
   }
@@ -225,16 +214,14 @@ void MotionGraphicsView::onSelectionChanged()
     return;
   }
 
-  // Check if a label was selected
   PositionLabel* selectedLabel = dynamic_cast<PositionLabel*>(selected.first());
   if (selectedLabel) {
     selectedLabel->setSelected(true);
 
-    // Find corresponding anchor to get actual position
     QString name = selectedLabel->getName();
     if (m_anchors.contains(name)) {
       PositionAnchor* anchor = m_anchors[name];
-      if (anchor) {  // ✅ Safety check
+      if (anchor) {
         emit positionSelected(name, anchor->getX(), anchor->getY(), anchor->getZ());
       }
     }
@@ -391,8 +378,6 @@ void MotionGraphicsView::showLiveMarker(bool show)
   }
 }
 
-
-// Simplified path preview methods:
 void MotionGraphicsView::showPathPreview(const QString& targetPosition,
   const std::vector<std::string>& waypoints)
 {
@@ -400,16 +385,13 @@ void MotionGraphicsView::showPathPreview(const QString& targetPosition,
     return;
   }
 
-  // Get current device position
   QPointF currentPos(m_liveMarker->x(), m_liveMarker->y());
-
-  // Get target position
   QPointF targetPos = getPositionPoint(targetPosition);
+
   if (targetPos.isNull()) {
     return;
   }
 
-  // Get waypoint positions
   std::vector<QPointF> waypointPositions;
   for (const auto& waypoint : waypoints) {
     QString waypointName = QString::fromStdString(waypoint);
@@ -419,7 +401,6 @@ void MotionGraphicsView::showPathPreview(const QString& targetPosition,
     }
   }
 
-  // Show path
   m_pathPreview->showPath(currentPos, targetPos, waypointPositions);
 }
 
@@ -430,10 +411,8 @@ void MotionGraphicsView::hidePathPreview()
   }
 }
 
-// Add this method to MotionGraphicsView.cpp
 QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
 {
-  // Try to get from anchors first (actual position)
   if (m_anchors.contains(positionName)) {
     PositionAnchor* anchor = m_anchors[positionName];
     if (anchor) {
@@ -441,7 +420,6 @@ QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
     }
   }
 
-  // Fallback to labels
   if (m_labels.contains(positionName)) {
     PositionLabel* label = m_labels[positionName];
     if (label) {
@@ -449,5 +427,5 @@ QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
     }
   }
 
-  return QPointF(); // Null point if not found
+  return QPointF();
 }
