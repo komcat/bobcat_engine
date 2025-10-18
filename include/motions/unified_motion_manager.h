@@ -10,6 +10,7 @@
 #include <map>
 #include <vector>
 #include <memory>
+#include <queue>
 
 /**
  * @brief Unified Motion Manager - Manages multiple controller brands
@@ -172,6 +173,39 @@ public:
   // Clear all named positions for a device
   void ClearNamedPositions(const std::string& deviceName);
 
+  // ============================================================================
+  // ✅ NEW - WAYPOINT SYSTEM (Non-blocking with automatic entry/exit handling)
+  // ============================================================================
+
+  /**
+   * @brief Update waypoint state machines - MUST be called periodically (~100ms)
+   * Call this from a QTimer in your UI to process waypoint sequences
+   */
+  void Update();
+
+  /**
+   * @brief Get current position name (where device is located)
+   * Returns empty string if not at any known position
+   */
+  std::string GetCurrentPositionName(const std::string& deviceName) const;
+
+  /**
+   * @brief Manually set current position name
+   * Use this after manual jogging or homing to inform the system where device is
+   */
+  void SetCurrentPositionName(const std::string& deviceName,
+    const std::string& positionName);
+
+  /**
+   * @brief Check if waypoint system is active for a device
+   */
+  bool IsWaypointSystemActive(const std::string& deviceName) const;
+
+  /**
+   * @brief Cancel ongoing waypoint sequence
+   */
+  void CancelWaypointSequence(const std::string& deviceName);
+
 private:
   // Map of controller type to manager
   std::map<std::string, std::unique_ptr<IMotionControllerManager>> m_managers;
@@ -193,4 +227,44 @@ private:
 
   // Register a new controller manager
   void RegisterManager(const std::string& type, std::unique_ptr<IMotionControllerManager> manager);
+
+
+  // ============================================================================
+  // ✅ NEW - WAYPOINT STATE MACHINE
+  // ============================================================================
+
+  enum class WaypointState {
+    Idle,
+    MovingThroughExitWaypoints,
+    MovingThroughEntryWaypoints,
+    MovingToFinalTarget
+  };
+
+  struct DeviceWaypointState {
+    WaypointState state = WaypointState::Idle;
+    std::string currentPositionName;  // Where device is now
+    std::string targetPositionName;   // Where we're going
+
+    // Waypoint queue
+    std::queue<std::string> waypointQueue;
+    size_t exitWaypointCount = 0;
+    size_t exitWaypointsProcessed = 0;
+  };
+
+  // Waypoint state for each device: deviceName -> state
+  std::map<std::string, DeviceWaypointState> m_waypointStates;
+
+  // Internal waypoint methods
+  bool startWaypointSequence(const std::string& deviceName);
+  void updateDeviceWaypoints(const std::string& deviceName);
+  void stopWaypointSequence(const std::string& deviceName);
+
+  // Position detection
+  std::string detectCurrentPositionName(const std::string& deviceName,
+    double tolerance = 0.5);
+
+  // Execute low-level move (used internally by waypoint system)
+  bool executeMoveToPosition(const std::string& deviceName,
+    const std::string& positionName,
+    bool blocking);
 };

@@ -284,106 +284,6 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
   return false;
 }
 
-bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
-  const std::string& positionName,
-  bool blocking) {
-  // Check if device exists
-  if (!HasDevice(deviceName)) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
-    return false;
-  }
-
-  // Find the named position
-  auto deviceIt = m_namedPositions.find(deviceName);
-  if (deviceIt == m_namedPositions.end()) {
-    std::cout << "[ERROR] UnifiedMotionManager: No named positions defined for device "
-      << deviceName << std::endl;
-    return false;
-  }
-
-  auto posIt = deviceIt->second.find(positionName);
-  if (posIt == deviceIt->second.end()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Position '" << positionName
-      << "' not found for device " << deviceName << std::endl;
-
-    // List available positions
-    std::vector<std::string> available = GetNamedPositionList(deviceName);
-    if (!available.empty()) {
-      std::cout << "[INFO] Available positions: ";
-      for (const auto& name : available) {
-        std::cout << "'" << name << "' ";
-      }
-      std::cout << std::endl;
-    }
-    return false;
-  }
-
-  // Get the position and device config
-  PositionStruct pos = posIt->second;
-  std::string installedAxes = GetInstalledAxes(deviceName);
-
-  std::cout << "[INFO] UnifiedMotionManager: Moving " << deviceName
-    << " to named position '" << positionName << "'"
-    << (blocking ? " (blocking)" : " (non-blocking)") << std::endl;
-  std::cout << "[INFO] Target position: X=" << pos.x << " Y=" << pos.y
-    << " Z=" << pos.z << " U=" << pos.u << " V=" << pos.v << " W=" << pos.w << std::endl;
-
-  // Get device type to determine how to move
-  std::string type = GetDeviceType(deviceName);
-  if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Cannot determine device type" << std::endl;
-    return false;
-  }
-
-  bool success = true;
-
-  if (NormalizeType(type) == "ACS") {
-    ACSController* controller = GetACSController(deviceName);
-    if (!controller) return false;
-
-    // Move XYZ axes first
-    success = controller->MoveToAbsolutePosition(pos.x, pos.y, pos.z, 100.0, blocking);
-
-    // Move UVW axes individually if they exist
-    if (installedAxes.find('U') != std::string::npos) {
-      success &= controller->MoveToPosition("U", pos.u, blocking);
-    }
-    if (installedAxes.find('V') != std::string::npos) {
-      success &= controller->MoveToPosition("V", pos.v, blocking);
-    }
-    if (installedAxes.find('W') != std::string::npos) {
-      success &= controller->MoveToPosition("W", pos.w, blocking);
-    }
-
-  }
-  else if (NormalizeType(type) == "PI") {
-    PIController* controller = GetPIController(deviceName);
-    if (!controller) return false;
-
-    // PI moves all 6 axes at once using MoveToPositionAll
-    success = controller->MoveToPositionAll(pos.x, pos.y, pos.z,
-      pos.u, pos.v, pos.w,
-      blocking);  // ✅ Use blocking parameter
-  }
-  else {
-    std::cout << "[ERROR] UnifiedMotionManager: Unsupported controller type '"
-      << type << "' for MoveToNamedPosition" << std::endl;
-    return false;
-  }
-
-  if (success) {
-    std::cout << "[INFO] UnifiedMotionManager: Successfully "
-      << (blocking ? "moved" : "started moving")
-      << " to position '" << positionName << "'" << std::endl;
-  }
-  else {
-    std::cout << "[ERROR] UnifiedMotionManager: Failed to move to position '"
-      << positionName << "'" << std::endl;
-  }
-
-  return success;
-}
 
 
 bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
@@ -891,4 +791,355 @@ void UnifiedMotionManager::ClearNamedPositions(const std::string& deviceName) {
     m_namedPositions.erase(it);
     std::cout << "[INFO] Cleared named positions for " << deviceName << std::endl;
   }
+}
+
+
+// unified_motion_manager.cpp
+// ✅ ADD THESE IMPLEMENTATIONS AT THE END OF YOUR FILE
+
+// ============================================================================
+// WAYPOINT SYSTEM IMPLEMENTATION
+// ============================================================================
+
+// REPLACE the existing MoveToNamedPosition() with this version:
+
+bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
+  const std::string& positionName,
+  bool blocking) {
+  // Check if device exists
+  if (!HasDevice(deviceName)) {
+    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
+      << " not found" << std::endl;
+    return false;
+  }
+
+  // Check if position exists
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt == m_namedPositions.end() ||
+    deviceIt->second.find(positionName) == deviceIt->second.end()) {
+    std::cout << "[ERROR] UnifiedMotionManager: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
+    return false;
+  }
+
+  // ✅ BLOCKING MODE - Use old direct implementation
+  if (blocking) {
+    std::cout << "[INFO] UnifiedMotionManager: Blocking move - executing directly" << std::endl;
+    return executeMoveToPosition(deviceName, positionName, true);
+  }
+
+  // ✅ NON-BLOCKING MODE - Use waypoint system
+  std::cout << "[INFO] UnifiedMotionManager: Non-blocking move - using waypoint system" << std::endl;
+
+  // Initialize waypoint state for this device if needed
+  if (m_waypointStates.find(deviceName) == m_waypointStates.end()) {
+    m_waypointStates[deviceName] = DeviceWaypointState();
+  }
+
+  DeviceWaypointState& state = m_waypointStates[deviceName];
+
+  // Don't allow new movement if already in motion
+  if (state.state != WaypointState::Idle) {
+    std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
+      << " already in waypoint motion" << std::endl;
+    return false;
+  }
+
+  // Clear any existing waypoints
+  while (!state.waypointQueue.empty()) {
+    state.waypointQueue.pop();
+  }
+  state.exitWaypointCount = 0;
+  state.exitWaypointsProcessed = 0;
+
+  // Get target position
+  PositionStruct targetPos = deviceIt->second[positionName];
+  state.targetPositionName = positionName;
+
+  // Auto-detect current position if not set
+  if (state.currentPositionName.empty()) {
+    state.currentPositionName = detectCurrentPositionName(deviceName);
+    if (!state.currentPositionName.empty()) {
+      std::cout << "[INFO] UnifiedMotionManager: Auto-detected current position: "
+        << state.currentPositionName << std::endl;
+    }
+  }
+
+  bool hasExitWaypoints = false;
+  bool hasEntryWaypoints = !targetPos.waypoints.empty();
+
+  // Queue exit waypoints from current position
+  if (!state.currentPositionName.empty() &&
+    state.currentPositionName != positionName) {
+    PositionStruct currentPos;
+    if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
+      if (!currentPos.exit_waypoints.empty()) {
+        std::cout << "[INFO] UnifiedMotionManager: Queueing "
+          << currentPos.exit_waypoints.size()
+          << " exit waypoints from " << state.currentPositionName << std::endl;
+
+        for (const auto& wp : currentPos.exit_waypoints) {
+          state.waypointQueue.push(wp);
+        }
+        state.exitWaypointCount = currentPos.exit_waypoints.size();
+        hasExitWaypoints = true;
+      }
+    }
+  }
+
+  // Queue entry waypoints to target
+  if (hasEntryWaypoints) {
+    std::cout << "[INFO] UnifiedMotionManager: Queueing "
+      << targetPos.waypoints.size()
+      << " entry waypoints to " << positionName << std::endl;
+
+    for (const auto& wp : targetPos.waypoints) {
+      state.waypointQueue.push(wp);
+    }
+  }
+
+  // Determine initial state and start
+  if (hasExitWaypoints) {
+    state.state = WaypointState::MovingThroughExitWaypoints;
+    return startWaypointSequence(deviceName);
+  }
+  else if (hasEntryWaypoints) {
+    state.state = WaypointState::MovingThroughEntryWaypoints;
+    return startWaypointSequence(deviceName);
+  }
+  else {
+    // No waypoints - move directly to target
+    state.state = WaypointState::MovingToFinalTarget;
+    bool success = executeMoveToPosition(deviceName, positionName, false);
+    if (success) {
+      state.currentPositionName = positionName;
+    }
+    return success;
+  }
+}
+
+bool UnifiedMotionManager::startWaypointSequence(const std::string& deviceName) {
+  auto it = m_waypointStates.find(deviceName);
+  if (it == m_waypointStates.end()) {
+    return false;
+  }
+
+  DeviceWaypointState& state = it->second;
+
+  if (state.waypointQueue.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager: startWaypointSequence called with empty queue"
+      << std::endl;
+    state.state = WaypointState::Idle;
+    return false;
+  }
+
+  // Get next waypoint
+  std::string nextWaypoint = state.waypointQueue.front();
+  state.waypointQueue.pop();
+
+  std::cout << "[INFO] UnifiedMotionManager: Moving to waypoint: " << nextWaypoint << std::endl;
+
+  // Execute move
+  bool success = executeMoveToPosition(deviceName, nextWaypoint, false);
+
+  if (!success) {
+    std::cout << "[ERROR] UnifiedMotionManager: Failed to move to waypoint: "
+      << nextWaypoint << std::endl;
+    stopWaypointSequence(deviceName);
+    return false;
+  }
+
+  return true;
+}
+
+void UnifiedMotionManager::Update() {
+  // Update all device waypoint state machines
+  for (auto& [deviceName, state] : m_waypointStates) {
+    if (state.state != WaypointState::Idle) {
+      updateDeviceWaypoints(deviceName);
+    }
+  }
+}
+
+void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) {
+  auto it = m_waypointStates.find(deviceName);
+  if (it == m_waypointStates.end()) {
+    return;
+  }
+
+  DeviceWaypointState& state = it->second;
+
+  // Check if device is still moving
+  if (IsDeviceInMotion(deviceName)) {
+    return;  // Still moving, wait
+  }
+
+  // Movement complete - process next state
+  switch (state.state) {
+
+  case WaypointState::MovingThroughExitWaypoints:
+    std::cout << "[INFO] UnifiedMotionManager: Exit waypoint reached" << std::endl;
+    state.exitWaypointsProcessed++;
+
+    if (state.exitWaypointsProcessed >= state.exitWaypointCount) {
+      std::cout << "[INFO] UnifiedMotionManager: All exit waypoints complete" << std::endl;
+
+      if (state.waypointQueue.empty()) {
+        // No entry waypoints - go to final target
+        state.state = WaypointState::MovingToFinalTarget;
+        executeMoveToPosition(deviceName, state.targetPositionName, false);
+      }
+      else {
+        // Switch to entry waypoints
+        state.state = WaypointState::MovingThroughEntryWaypoints;
+        startWaypointSequence(deviceName);
+      }
+    }
+    else {
+      // More exit waypoints
+      startWaypointSequence(deviceName);
+    }
+    break;
+
+  case WaypointState::MovingThroughEntryWaypoints:
+    std::cout << "[INFO] UnifiedMotionManager: Entry waypoint reached" << std::endl;
+
+    if (state.waypointQueue.empty()) {
+      // All entry waypoints done - move to final target
+      std::cout << "[INFO] UnifiedMotionManager: Moving to final target: "
+        << state.targetPositionName << std::endl;
+      state.state = WaypointState::MovingToFinalTarget;
+      executeMoveToPosition(deviceName, state.targetPositionName, false);
+    }
+    else {
+      // More entry waypoints
+      startWaypointSequence(deviceName);
+    }
+    break;
+
+  case WaypointState::MovingToFinalTarget:
+    std::cout << "[INFO] UnifiedMotionManager: Final target reached: "
+      << state.targetPositionName << std::endl;
+    state.currentPositionName = state.targetPositionName;
+    state.state = WaypointState::Idle;
+    break;
+
+  case WaypointState::Idle:
+    break;
+  }
+}
+
+void UnifiedMotionManager::stopWaypointSequence(const std::string& deviceName) {
+  auto it = m_waypointStates.find(deviceName);
+  if (it == m_waypointStates.end()) {
+    return;
+  }
+
+  DeviceWaypointState& state = it->second;
+
+  std::cout << "[INFO] UnifiedMotionManager: Stopping waypoint sequence for "
+    << deviceName << std::endl;
+
+  // Clear queue
+  while (!state.waypointQueue.empty()) {
+    state.waypointQueue.pop();
+  }
+
+  state.state = WaypointState::Idle;
+}
+
+bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
+  const std::string& positionName,
+  bool blocking) {
+  // This is your ORIGINAL MoveToNamedPosition logic
+  // Get position
+  PositionStruct pos;
+  if (!GetNamedPosition(deviceName, positionName, pos)) {
+    return false;
+  }
+
+  std::string installedAxes = GetInstalledAxes(deviceName);
+  std::string type = GetDeviceType(deviceName);
+  bool success = true;
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) return false;
+
+    success = controller->MoveToAbsolutePosition(pos.x, pos.y, pos.z, 100.0, blocking);
+
+    if (installedAxes.find('U') != std::string::npos) {
+      success &= controller->MoveToPosition("U", pos.u, blocking);
+    }
+    if (installedAxes.find('V') != std::string::npos) {
+      success &= controller->MoveToPosition("V", pos.v, blocking);
+    }
+    if (installedAxes.find('W') != std::string::npos) {
+      success &= controller->MoveToPosition("W", pos.w, blocking);
+    }
+  }
+  else if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) return false;
+
+    success = controller->MoveToPositionAll(pos.x, pos.y, pos.z,
+      pos.u, pos.v, pos.w,
+      blocking);
+  }
+
+  return success;
+}
+
+std::string UnifiedMotionManager::detectCurrentPositionName(const std::string& deviceName,
+  double tolerance) {
+  PositionStruct currentPos = GetCurrentPosition(deviceName);
+
+  // Check all saved positions
+  auto deviceIt = m_namedPositions.find(deviceName);
+  if (deviceIt == m_namedPositions.end()) {
+    return "";
+  }
+
+  for (const auto& [posName, pos] : deviceIt->second) {
+    double dx = std::abs(currentPos.x - pos.x);
+    double dy = std::abs(currentPos.y - pos.y);
+    double dz = std::abs(currentPos.z - pos.z);
+
+    if (dx < tolerance && dy < tolerance && dz < tolerance) {
+      return posName;
+    }
+  }
+
+  return "";  // Not at any known position
+}
+
+std::string UnifiedMotionManager::GetCurrentPositionName(const std::string& deviceName) const {
+  auto it = m_waypointStates.find(deviceName);
+  if (it != m_waypointStates.end()) {
+    return it->second.currentPositionName;
+  }
+  return "";
+}
+
+void UnifiedMotionManager::SetCurrentPositionName(const std::string& deviceName,
+  const std::string& positionName) {
+  if (m_waypointStates.find(deviceName) == m_waypointStates.end()) {
+    m_waypointStates[deviceName] = DeviceWaypointState();
+  }
+  m_waypointStates[deviceName].currentPositionName = positionName;
+  std::cout << "[INFO] UnifiedMotionManager: Set current position of "
+    << deviceName << " to " << positionName << std::endl;
+}
+
+bool UnifiedMotionManager::IsWaypointSystemActive(const std::string& deviceName) const {
+  auto it = m_waypointStates.find(deviceName);
+  if (it != m_waypointStates.end()) {
+    return it->second.state != WaypointState::Idle;
+  }
+  return false;
+}
+
+void UnifiedMotionManager::CancelWaypointSequence(const std::string& deviceName) {
+  stopWaypointSequence(deviceName);
+  EmergencyStop(deviceName);
 }

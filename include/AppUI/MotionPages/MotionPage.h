@@ -12,8 +12,6 @@
 #include <QMap>
 #include <QVector>
 #include <array>
-#include <queue>
-#include <cmath>  // ✅ ADD THIS LINE for std::abs
 
 class MotionPage : public QWidget
 {
@@ -47,9 +45,6 @@ private slots:
   void onSaveProductClicked();
   void onSaveProductAsClicked();
 
-  // ✅ NEW - Waypoint state machine
-  void onWaypointTimerTick();
-
 private:
   void setupUI();
   void loadDevices();
@@ -61,16 +56,6 @@ private:
 
   bool getCurrentDevicePosition(double& x, double& y, double& z,
     double& u, double& v, double& w);
-
-
-  // ✅ UPDATED - Non-blocking waypoint system
-  bool moveWithWaypoints(const QString& targetPosition);
-  void startWaypointSequence();
-  void stopWaypointSequence(bool showError = false, const QString& errorMsg = "");
-
-  // ✅ ADD THIS NEW METHOD:
-  QString detectCurrentPositionName();
-
 
   // Label offset methods
   void loadLabelOffsets();
@@ -92,6 +77,7 @@ private:
   QLabel* m_currentProductLabel;
 
   QTimer* m_livePositionTimer;
+  QTimer* m_motionUpdateTimer;  // ✅ For updating UnifiedMotionManager
 
   QString m_currentDevice;
   QString m_selectedPositionName;
@@ -99,21 +85,4 @@ private:
   QMap<QString, QVector<double>> m_currentPositions;
   QMap<QString, QPointF> m_labelOffsets;
   QString m_labelOffsetsFilePath;
-
-  QString m_lastPosition;
-
-  // ✅ NEW - Waypoint state machine members
-  enum class WaypointState {
-    Idle,
-    MovingThroughExitWaypoints,
-    MovingThroughEntryWaypoints,
-    MovingToFinalTarget
-  };
-
-  WaypointState m_waypointState;
-  QTimer* m_waypointTimer;
-  std::queue<std::string> m_waypointQueue;
-  QString m_targetPosition;
-  size_t m_exitWaypointCount;       // ✅ ADD THIS LINE
-  size_t m_exitWaypointsProcessed;  // ✅ ADD THIS LINE
 };
