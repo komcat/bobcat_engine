@@ -22,7 +22,7 @@ class MainWindow : public QMainWindow
 
 public:
   explicit MainWindow(ApplicationContext* context, QWidget* parent = nullptr);
-  ~MainWindow() = default;
+  ~MainWindow();  // ✅ ADD THIS
 
 private slots:
   void onMainMenuProcess();

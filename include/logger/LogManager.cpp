@@ -62,7 +62,7 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
   entry.timestamp = GetTimestamp();
   entry.source = source;
 
-  // ✅ FIX: Copy callback outside the lock to avoid deadlock
+  // ✅ Copy callback BEFORE locking
   LogCallback callbackCopy;
 
   {
@@ -93,17 +93,16 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
       WriteToFile(entry);
     }
 
-    // ✅ Copy callback while locked
+    // ✅ Copy callback while still locked
     callbackCopy = m_uiCallback;
   }
-  // ✅ Mutex is now unlocked
+  // ✅ Mutex is NOW unlocked - safe to call callback
 
-  // ✅ Call UI callback OUTSIDE the lock to prevent deadlock
+  // ✅ Call UI callback OUTSIDE the lock
   if (callbackCopy) {
     callbackCopy(entry);
   }
 }
-
 
 void LogManager::EnableFileOutput(bool enable, const std::string& filePath)
 {

@@ -48,6 +48,18 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
 }
 
 
+// MainWindow.cpp - Add destructor implementation
+MainWindow::~MainWindow()
+{
+  // ✅ Clear the UI callback before MainWindow is destroyed
+  if (m_context && m_context->logManager) {
+    m_context->logManager->ClearUICallback();
+  }
+
+  std::cout << "[MainWindow] Destroyed" << std::endl;
+}
+
+
 void MainWindow::setupUI()
 {
   // Create central widget with layout
@@ -127,6 +139,13 @@ void MainWindow::createPages()
   connect(m_configEditorPage, &ConfigEditorPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_configEditorPage);
+
+
+  // ✅ ADD THIS - Log Viewer Page
+  m_logViewerPage = new LogViewerPage(m_context->logManager, this);
+  connect(m_logViewerPage, &LogViewerPage::backRequested,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_logViewerPage);
 
   // Motion page - ✅ UPDATED with ProductPositionManager
   m_motionPage = new MotionPage(
