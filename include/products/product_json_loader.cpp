@@ -41,7 +41,8 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
     //     "position-name": { 
     //       "x": 1.0, "y": 2.0, "z": 3.0, 
     //       "u": 0, "v": 0, "w": 0,
-    //       "waypoints": ["safe", "clearance"]  // ✅ NEW
+    //       "waypoints": ["safe", "clearance"],
+    //       "exit_waypoints": ["clearance", "safe"]  // ✅ NEW
     //     }
     //   }
     // }
@@ -69,7 +70,7 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
         pos.v = posData.value("v", 0.0);
         pos.w = posData.value("w", 0.0);
 
-        // ✅ NEW - Parse waypoints array
+        // ✅ Parse entry waypoints array
         if (posData.contains("waypoints") && posData["waypoints"].is_array()) {
           for (const auto& waypoint : posData["waypoints"]) {
             if (waypoint.is_string()) {
@@ -79,8 +80,26 @@ int ProductJsonLoader::LoadFromFile(ProductPositionManager& manager,
 
           if (!pos.waypoints.empty()) {
             std::cout << "[DEBUG] ProductJsonLoader: Position " << deviceName
-              << "." << posName << " has waypoints: ";
+              << "." << posName << " has entry waypoints: ";
             for (const auto& wp : pos.waypoints) {
+              std::cout << wp << " ";
+            }
+            std::cout << std::endl;
+          }
+        }
+
+        // ✅ NEW - Parse exit waypoints array
+        if (posData.contains("exit_waypoints") && posData["exit_waypoints"].is_array()) {
+          for (const auto& waypoint : posData["exit_waypoints"]) {
+            if (waypoint.is_string()) {
+              pos.exit_waypoints.push_back(waypoint.get<std::string>());
+            }
+          }
+
+          if (!pos.exit_waypoints.empty()) {
+            std::cout << "[DEBUG] ProductJsonLoader: Position " << deviceName
+              << "." << posName << " has exit waypoints: ";
+            for (const auto& wp : pos.exit_waypoints) {
               std::cout << wp << " ";
             }
             std::cout << std::endl;
@@ -145,12 +164,27 @@ bool ProductJsonLoader::SaveToFile(const ProductPositionManager& manager,
           {"w", pos.w}
         };
 
-        // ✅ NEW - Save waypoints array
+        // ✅ Save entry waypoints array
         if (!pos.waypoints.empty()) {
           posJson["waypoints"] = pos.waypoints;
         }
         else {
           posJson["waypoints"] = json::array();  // Empty array
+        }
+
+        // ✅ NEW - Save exit waypoints array
+        if (!pos.exit_waypoints.empty()) {
+          posJson["exit_waypoints"] = pos.exit_waypoints;
+
+          std::cout << "[DEBUG] ProductJsonLoader: Saving exit waypoints for "
+            << deviceName << "." << posName << ": ";
+          for (const auto& wp : pos.exit_waypoints) {
+            std::cout << wp << " ";
+          }
+          std::cout << std::endl;
+        }
+        else {
+          posJson["exit_waypoints"] = json::array();  // Empty array
         }
 
         deviceJson[posName] = posJson;
@@ -215,8 +249,13 @@ bool ProductJsonLoader::ValidateFile(const std::string& filePath) {
           return false;
         }
 
-        // ✅ NEW - Validate waypoints if present
+        // ✅ Validate entry waypoints if present
         if (posData.contains("waypoints") && !posData["waypoints"].is_array()) {
+          return false;
+        }
+
+        // ✅ NEW - Validate exit waypoints if present
+        if (posData.contains("exit_waypoints") && !posData["exit_waypoints"].is_array()) {
           return false;
         }
       }

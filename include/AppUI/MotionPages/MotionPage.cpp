@@ -25,6 +25,10 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
 	, m_livePositionTimer(nullptr)
+	, m_waypointTimer(nullptr)
+	, m_waypointState(WaypointState::Idle)
+	, m_exitWaypointCount(0)         // ✅ ADD THIS LINE
+	, m_exitWaypointsProcessed(0)    // ✅ ADD THIS LINE
 	, m_labelOffsetsFilePath("config/position_labels.json")
 {
 
@@ -71,6 +75,12 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	m_livePositionTimer->setInterval(100);
 	connect(m_livePositionTimer, &QTimer::timeout, this, &MotionPage::onUpdateLivePosition);
 	m_livePositionTimer->start();
+
+	// ✅ NEW - Setup waypoint state machine timer
+	m_waypointTimer = new QTimer(this);
+	m_waypointTimer->setInterval(100);  // Check every 100ms
+	connect(m_waypointTimer, &QTimer::timeout, this, &MotionPage::onWaypointTimerTick);
+
 
 	// Connect label offset changes to save
 	connect(m_graphicsView, &MotionGraphicsView::labelOffsetChanged,
@@ -727,16 +737,141 @@ void MotionPage::onHomeClicked()
 	}
 }
 
+
+
+// MotionPage.cpp - REPLACE the entire moveWithWaypoints() function:
+
+bool MotionPage::moveWithWaypoints(const QString& targetPosition) {
+	if (!m_motionManager || m_currentDevice.isEmpty()) {
+		return false;
+	}
+
+	// Don't allow new movement if already in motion
+	if (m_waypointState != WaypointState::Idle) {
+		QMessageBox::warning(this, "Motion In Progress",
+			"Please wait for current motion to complete.");
+		return false;
+	}
+
+	// ✅ Clear any existing waypoints in queue
+	while (!m_waypointQueue.empty()) {
+		m_waypointQueue.pop();
+	}
+
+	// ✅ Reset counters
+	m_exitWaypointCount = 0;
+	m_exitWaypointsProcessed = 0;
+
+	// Get target position
+	PositionStruct targetPos;
+	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+		targetPosition.toStdString(),
+		targetPos)) {
+		QMessageBox::critical(this, "Error",
+			QString("Position '%1' not found").arg(targetPosition));
+		return false;
+	}
+
+	m_targetPosition = targetPosition;
+
+	bool hasExitWaypoints = false;
+	bool hasEntryWaypoints = !targetPos.waypoints.empty();
+
+	// ✅ Step 1: Queue exit waypoints from last position
+	if (!m_lastPosition.isEmpty() && m_lastPosition != targetPosition) {
+		PositionStruct lastPos;
+		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			m_lastPosition.toStdString(),
+			lastPos)) {
+
+			if (!lastPos.exit_waypoints.empty()) {
+				std::cout << "[MotionPage] Queueing exit waypoints from "
+					<< m_lastPosition.toStdString() << ": ";
+
+				// Queue exit waypoints
+				for (const auto& wp : lastPos.exit_waypoints) {
+					m_waypointQueue.push(wp);
+					std::cout << wp << " ";
+				}
+				std::cout << std::endl;
+
+				m_exitWaypointCount = lastPos.exit_waypoints.size();  // ✅ Track count
+				hasExitWaypoints = true;
+			}
+		}
+	}
+
+	// ✅ Step 2: Queue entry waypoints to target (ALWAYS, even if we have exit waypoints)
+	if (hasEntryWaypoints) {
+		std::cout << "[MotionPage] Queueing entry waypoints to "
+			<< targetPosition.toStdString() << ": ";
+
+		for (const auto& wp : targetPos.waypoints) {
+			m_waypointQueue.push(wp);
+			std::cout << wp << " ";
+		}
+		std::cout << std::endl;
+	}
+
+	// ✅ Step 3: Determine initial state and start sequence
+	if (hasExitWaypoints) {
+		// We have exit waypoints, so start in that state
+		m_waypointState = WaypointState::MovingThroughExitWaypoints;
+		startWaypointSequence();
+		return true;
+	}
+	else if (hasEntryWaypoints) {
+		// No exit waypoints, but we have entry waypoints
+		m_waypointState = WaypointState::MovingThroughEntryWaypoints;
+		startWaypointSequence();
+		return true;
+	}
+	else {
+		// No waypoints at all - move directly to target
+		std::cout << "[MotionPage] No waypoints - moving directly to "
+			<< targetPosition.toStdString() << std::endl;
+
+		m_waypointState = WaypointState::MovingToFinalTarget;
+
+		bool success = m_motionManager->MoveToNamedPosition(
+			m_currentDevice.toStdString(),
+			targetPosition.toStdString(),
+			false  // Non-blocking
+		);
+
+		if (success) {
+			m_lastPosition = targetPosition;
+			m_waypointTimer->start();  // Monitor completion
+		}
+		else {
+			m_waypointState = WaypointState::Idle;
+		}
+
+		return success;
+	}
+}
+
+
+
 void MotionPage::onStopClicked()
 {
+	// Stop waypoint sequence
+	stopWaypointSequence(false);
 
+	// Emergency stop all devices
 	m_motionManager->EmergencyStopAll();
-	QMessageBox::information(this, "Stopped", "All devices have been stopped.");
 
+	QMessageBox::information(this, "Stopped", "All devices have been stopped.");
 }
 
 // In MotionPage.cpp, update this method:
 // In MotionPage.cpp - Update onPositionSelected to pass exit waypoints
+
+// MotionPage.cpp - REPLACE onPositionSelected() function:
+
+// MotionPage.cpp - REPLACE onPositionSelected() function:
+
+// MotionPage.cpp - REPLACE the entire onPositionSelected() function:
 
 void MotionPage::onPositionSelected(const QString& name, double x, double y, double z)
 {
@@ -745,27 +880,62 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 	if (m_currentPositions.contains(name)) {
 		QVector<double> pos = m_currentPositions[name];
 
-		// Get waypoints from motion manager
-		PositionStruct fullPos;
-		std::vector<std::string> waypoints;
-		std::vector<std::string> exitWaypoints;  // ✅ NEW
-
-		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
-			name.toStdString(),
-			fullPos)) {
-			waypoints = fullPos.waypoints;
-			exitWaypoints = fullPos.exit_waypoints;  // ✅ NEW
+		// ✅ AUTO-DETECT current position if not already set
+		if (m_lastPosition.isEmpty()) {
+			m_lastPosition = detectCurrentPositionName();
+			if (!m_lastPosition.isEmpty()) {
+				std::cout << "[MotionPage] Auto-detected current position: "
+					<< m_lastPosition.toStdString() << std::endl;
+			}
+			else {
+				std::cout << "[MotionPage] Device not at any known position" << std::endl;
+			}
 		}
 
+		// Get entry and exit waypoints for the SELECTED position
+		std::vector<std::string> entryWaypoints;
+		std::vector<std::string> exitWaypoints;
+
+		PositionStruct selectedPos;
+		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			name.toStdString(),
+			selectedPos)) {
+
+			entryWaypoints = selectedPos.waypoints;
+			exitWaypoints = selectedPos.exit_waypoints;
+		}
+
+		// ✅ Get exit waypoints from CURRENT position (if we have one)
+		std::vector<std::string> currentExitWaypoints;
+		if (!m_lastPosition.isEmpty() && m_lastPosition != name) {
+			PositionStruct currentPos;
+			if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+				m_lastPosition.toStdString(),
+				currentPos)) {
+				currentExitWaypoints = currentPos.exit_waypoints;
+
+				std::cout << "[MotionPage] Current position '" << m_lastPosition.toStdString()
+					<< "' has " << currentExitWaypoints.size()
+					<< " exit waypoints" << std::endl;
+			}
+		}
+
+		// Update control panel (shows entry waypoints of selected position)
 		m_controlPanel->setSelectedPosition(name,
 			pos[0], pos[1], pos[2],
 			pos[3], pos[4], pos[5],
-			waypoints);
+			entryWaypoints);
 
-		// ✅ UPDATED - Show path preview with both entry and exit waypoints
-		m_graphicsView->showPathPreview(name, waypoints, exitWaypoints);
+		// ✅ Show path preview with exit waypoints from CURRENT position
+		m_graphicsView->showPathPreview(name,
+			entryWaypoints,           // Entry waypoints TO target (yellow)
+			currentExitWaypoints);    // Exit waypoints FROM current position (orange)
 	}
 }
+
+
+
+
 
 
 void MotionPage::onPositionDeselected()
@@ -910,120 +1080,38 @@ void MotionPage::onLabelOffsetChanged(const QString& name, double offsetX, doubl
 
 // In MotionPage.cpp - Update moveWithWaypoints()
 
-bool MotionPage::moveWithWaypoints(const QString& targetPosition) {
-	if (!m_motionManager || m_currentDevice.isEmpty()) {
-		return false;
+
+void MotionPage::startWaypointSequence() {
+	if (m_waypointQueue.empty()) {
+		std::cout << "[MotionPage] ERROR: startWaypointSequence called with empty queue" << std::endl;
+		m_waypointState = WaypointState::Idle;
+		return;
 	}
 
-	// ✅ NEW - Handle exit waypoints from last position
-	if (!m_lastPosition.isEmpty() && m_lastPosition != targetPosition) {
-		PositionStruct lastPos;
-		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
-			m_lastPosition.toStdString(),
-			lastPos)) {
+	// Start moving to first waypoint
+	std::string nextWaypoint = m_waypointQueue.front();
+	m_waypointQueue.pop();
 
-			// Execute exit waypoints if they exist
-			if (!lastPos.exit_waypoints.empty()) {
-				std::cout << "[MotionPage] Executing exit waypoints from "
-					<< m_lastPosition.toStdString() << ": ";
-				for (const auto& wp : lastPos.exit_waypoints) {
-					std::cout << wp << " ";
-				}
-				std::cout << std::endl;
-
-				for (const auto& waypoint : lastPos.exit_waypoints) {
-					std::cout << "[MotionPage] Moving to exit waypoint: " << waypoint << std::endl;
-
-					bool success = m_motionManager->MoveToNamedPosition(
-						m_currentDevice.toStdString(),
-						waypoint,
-						true  // BLOCKING - wait at each exit waypoint
-					);
-
-					if (!success) {
-						QMessageBox::critical(this, "Exit Waypoint Error",
-							QString("Failed to reach exit waypoint: %1\n\nMotion stopped for safety.")
-							.arg(QString::fromStdString(waypoint)));
-						return false;
-					}
-
-					std::cout << "[MotionPage] Reached exit waypoint: " << waypoint << std::endl;
-				}
-			}
-		}
-	}
-
-	// Get target position with entry waypoints
-	PositionStruct targetPos;
-	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
-		targetPosition.toStdString(),
-		targetPos)) {
-		QMessageBox::critical(this, "Error",
-			QString("Position '%1' not found").arg(targetPosition));
-		return false;
-	}
-
-	// Execute entry waypoints
-	if (targetPos.waypoints.empty()) {
-		std::cout << "[MotionPage] No entry waypoints - moving directly to "
-			<< targetPosition.toStdString() << std::endl;
-
-		bool success = m_motionManager->MoveToNamedPosition(
-			m_currentDevice.toStdString(),
-			targetPosition.toStdString(),
-			false  // Non-blocking
-		);
-
-		if (success) {
-			m_lastPosition = targetPosition;  // ✅ NEW - Track current position
-		}
-
-		return success;
-	}
-
-	// Move through entry waypoints (blocking)
-	std::cout << "[MotionPage] Moving to " << targetPosition.toStdString()
-		<< " via entry waypoints: ";
-	for (const auto& wp : targetPos.waypoints) {
-		std::cout << wp << " ";
-	}
-	std::cout << std::endl;
-
-	for (const auto& waypoint : targetPos.waypoints) {
-		std::cout << "[MotionPage] Moving to entry waypoint: " << waypoint << std::endl;
-
-		bool success = m_motionManager->MoveToNamedPosition(
-			m_currentDevice.toStdString(),
-			waypoint,
-			true  // BLOCKING - wait at each waypoint
-		);
-
-		if (!success) {
-			QMessageBox::critical(this, "Entry Waypoint Error",
-				QString("Failed to reach entry waypoint: %1\n\nMotion stopped for safety.")
-				.arg(QString::fromStdString(waypoint)));
-			return false;
-		}
-
-		std::cout << "[MotionPage] Reached entry waypoint: " << waypoint << std::endl;
-	}
-
-	// Finally move to target (non-blocking)
-	std::cout << "[MotionPage] Moving to final target: "
-		<< targetPosition.toStdString() << std::endl;
+	std::cout << "[MotionPage] Starting movement to waypoint: " << nextWaypoint << std::endl;
 
 	bool success = m_motionManager->MoveToNamedPosition(
 		m_currentDevice.toStdString(),
-		targetPosition.toStdString(),
-		false
+		nextWaypoint,
+		false  // ✅ Non-blocking!
 	);
 
-	if (success) {
-		m_lastPosition = targetPosition;  // ✅ NEW - Track current position
+	if (!success) {
+		stopWaypointSequence(true,
+			QString("Failed to start movement to waypoint: %1")
+			.arg(QString::fromStdString(nextWaypoint)));
+		return;
 	}
 
-	return success;
+	// Start timer to monitor progress
+	m_waypointTimer->start();
 }
+
+
 
 
 
@@ -1082,4 +1170,159 @@ void MotionPage::onEditWaypointsClicked()
 		QMessageBox::information(this, "Success",
 			"Waypoints updated successfully!");
 	}
+}
+
+
+
+// MotionPage.cpp - REPLACE the entire onWaypointTimerTick() function:
+
+void MotionPage::onWaypointTimerTick() {
+	if (m_waypointState == WaypointState::Idle) {
+		m_waypointTimer->stop();
+		return;
+	}
+
+	// Check if device is still in motion
+	bool inMotion = m_motionManager->IsDeviceInMotion(m_currentDevice.toStdString());
+
+	if (inMotion) {
+		// Still moving - keep waiting
+		return;
+	}
+
+	// Movement complete - determine next action based on state
+	switch (m_waypointState) {
+
+	case WaypointState::MovingThroughExitWaypoints:
+		std::cout << "[MotionPage] Exit waypoint reached" << std::endl;
+
+		m_exitWaypointsProcessed++;  // ✅ Increment counter
+
+		// ✅ Check if we've processed all exit waypoints
+		if (m_exitWaypointsProcessed >= m_exitWaypointCount) {
+			std::cout << "[MotionPage] All " << m_exitWaypointCount
+				<< " exit waypoints complete" << std::endl;
+
+			// Switch to entry waypoint mode (or final target if no entry waypoints)
+			if (m_waypointQueue.empty()) {
+				// No entry waypoints - go directly to target
+				std::cout << "[MotionPage] No entry waypoints, moving to final target" << std::endl;
+				m_waypointState = WaypointState::MovingToFinalTarget;
+				m_motionManager->MoveToNamedPosition(
+					m_currentDevice.toStdString(),
+					m_targetPosition.toStdString(),
+					false
+				);
+			}
+			else {
+				// We have entry waypoints queued
+				std::cout << "[MotionPage] Switching to entry waypoint mode" << std::endl;
+				m_waypointState = WaypointState::MovingThroughEntryWaypoints;
+				startWaypointSequence();
+			}
+		}
+		else {
+			// More exit waypoints to process
+			std::cout << "[MotionPage] Exit waypoint " << m_exitWaypointsProcessed
+				<< "/" << m_exitWaypointCount << " complete" << std::endl;
+			startWaypointSequence();
+		}
+		break;
+
+	case WaypointState::MovingThroughEntryWaypoints:
+		std::cout << "[MotionPage] Entry waypoint reached" << std::endl;
+
+		if (m_waypointQueue.empty()) {
+			// All entry waypoints done - move to final target
+			std::cout << "[MotionPage] Moving to final target: "
+				<< m_targetPosition.toStdString() << std::endl;
+
+			m_waypointState = WaypointState::MovingToFinalTarget;
+			m_motionManager->MoveToNamedPosition(
+				m_currentDevice.toStdString(),
+				m_targetPosition.toStdString(),
+				false
+			);
+		}
+		else {
+			// More entry waypoints to go
+			startWaypointSequence();
+		}
+		break;
+
+	case WaypointState::MovingToFinalTarget:
+		std::cout << "[MotionPage] Final target reached: "
+			<< m_targetPosition.toStdString() << std::endl;
+
+		m_lastPosition = m_targetPosition;
+		m_waypointState = WaypointState::Idle;
+		m_waypointTimer->stop();
+
+		QMessageBox::information(this, "Motion Complete",
+			QString("Reached position: %1").arg(m_targetPosition));
+		break;
+
+	case WaypointState::Idle:
+		// Should not happen
+		m_waypointTimer->stop();
+		break;
+	}
+}
+
+
+
+void MotionPage::stopWaypointSequence(bool showError, const QString& errorMsg) {
+	std::cout << "[MotionPage] Stopping waypoint sequence" << std::endl;
+
+	// Clear queue
+	while (!m_waypointQueue.empty()) {
+		m_waypointQueue.pop();
+	}
+
+	m_waypointState = WaypointState::Idle;
+	m_waypointTimer->stop();
+
+	if (showError) {
+		QMessageBox::critical(this, "Waypoint Error",
+			errorMsg + "\n\nMotion stopped for safety.");
+	}
+}
+
+
+
+QString MotionPage::detectCurrentPositionName() {
+	if (!m_motionManager || m_currentDevice.isEmpty()) {
+		return "";
+	}
+
+	// Get current device position
+	double currentX, currentY, currentZ, u, v, w;
+	if (!getCurrentDevicePosition(currentX, currentY, currentZ, u, v, w)) {
+		return "";
+	}
+
+	// Check all saved positions to see if we're at one
+	const double tolerance = 0.5; // 0.5mm tolerance
+
+	std::vector<std::string> positionNames =
+		m_motionManager->GetNamedPositionList(m_currentDevice.toStdString());
+
+	for (const auto& posName : positionNames) {
+		PositionStruct pos;
+		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			posName, pos)) {
+			// Check if current position matches saved position
+			double dx = std::abs(currentX - pos.x);
+			double dy = std::abs(currentY - pos.y);
+			double dz = std::abs(currentZ - pos.z);
+
+			if (dx < tolerance && dy < tolerance && dz < tolerance) {
+				std::cout << "[MotionPage] Device detected at position: "
+					<< posName << std::endl;
+				return QString::fromStdString(posName);
+			}
+		}
+	}
+
+	return ""; // Not at any known position
 }
