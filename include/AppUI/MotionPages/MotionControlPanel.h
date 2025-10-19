@@ -43,6 +43,7 @@ public:
 signals:
   void deviceChanged(const QString& deviceName);
   void moveToPositionClicked();
+  void moveWithOffsetClicked();  // ✅ NEW
   void updatePositionClicked();
   void deletePositionClicked();
   void createPositionClicked();
@@ -66,6 +67,7 @@ private:
   QLabel* m_waypointsLabel;  // ✅ NEW
 
   QPushButton* m_moveToButton;
+  QPushButton* m_moveOffsetButton;  // ✅ NEW
   QPushButton* m_updatePosButton;
   QPushButton* m_deletePosButton;
   QPushButton* m_editWaypointsBtn;  // ✅ NEW

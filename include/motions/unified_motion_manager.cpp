@@ -813,10 +813,9 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     return false;
   }
 
-  // Check if position exists
-  auto deviceIt = m_namedPositions.find(deviceName);
-  if (deviceIt == m_namedPositions.end() ||
-    deviceIt->second.find(positionName) == deviceIt->second.end()) {
+  // ✅ FIX: Check if position exists OR can be calculated
+  PositionStruct testPos;
+  if (!GetPositionWithCalculation(deviceName, positionName, testPos)) {
     std::cout << "[ERROR] UnifiedMotionManager: Position '" << positionName
       << "' not found for device " << deviceName << std::endl;
     return false;
@@ -852,8 +851,13 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   state.exitWaypointCount = 0;
   state.exitWaypointsProcessed = 0;
 
-  // Get target position
-  PositionStruct targetPos = deviceIt->second[positionName];
+  // ✅ Get target position (may be calculated)
+  PositionStruct targetPos;
+  if (!GetPositionWithCalculation(deviceName, positionName, targetPos)) {
+    std::cout << "[ERROR] UnifiedMotionManager: Failed to get position" << std::endl;
+    return false;
+  }
+
   state.targetPositionName = positionName;
 
   // Auto-detect current position if not set
@@ -866,28 +870,38 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   }
 
   bool hasExitWaypoints = false;
-  bool hasEntryWaypoints = !targetPos.waypoints.empty();
+  bool hasEntryWaypoints = !targetPos.waypoints.empty();  // ✅ Calculated positions have no waypoints
 
-  // Queue exit waypoints from current position
+  // Queue exit waypoints from current position (only if current is NOT calculated)
   if (!state.currentPositionName.empty() &&
     state.currentPositionName != positionName) {
-    PositionStruct currentPos;
-    if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
-      if (!currentPos.exit_waypoints.empty()) {
-        std::cout << "[INFO] UnifiedMotionManager: Queueing "
-          << currentPos.exit_waypoints.size()
-          << " exit waypoints from " << state.currentPositionName << std::endl;
 
-        for (const auto& wp : currentPos.exit_waypoints) {
-          state.waypointQueue.push(wp);
+    // ✅ Only get exit waypoints if current position is NOT a calculated one
+    std::string baseName;
+    double ox, oy, oz;
+    if (!ParseCalculatedPosition(state.currentPositionName, baseName, ox, oy, oz)) {
+      // Current position is not calculated, can have exit waypoints
+      PositionStruct currentPos;
+      if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
+        if (!currentPos.exit_waypoints.empty()) {
+          std::cout << "[INFO] UnifiedMotionManager: Queueing "
+            << currentPos.exit_waypoints.size()
+            << " exit waypoints from " << state.currentPositionName << std::endl;
+
+          for (const auto& wp : currentPos.exit_waypoints) {
+            state.waypointQueue.push(wp);
+          }
+          state.exitWaypointCount = currentPos.exit_waypoints.size();
+          hasExitWaypoints = true;
         }
-        state.exitWaypointCount = currentPos.exit_waypoints.size();
-        hasExitWaypoints = true;
       }
+    }
+    else {
+      std::cout << "[INFO] UnifiedMotionManager: Current position is calculated, skipping exit waypoints" << std::endl;
     }
   }
 
-  // Queue entry waypoints to target
+  // Queue entry waypoints to target (calculated positions won't have any)
   if (hasEntryWaypoints) {
     std::cout << "[INFO] UnifiedMotionManager: Queueing "
       << targetPos.waypoints.size()
@@ -909,6 +923,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   }
   else {
     // No waypoints - move directly to target
+    std::cout << "[INFO] UnifiedMotionManager: No waypoints, moving directly to target" << std::endl;
     state.state = WaypointState::MovingToFinalTarget;
     bool success = executeMoveToPosition(deviceName, positionName, false);
     if (success) {
@@ -917,6 +932,8 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     return success;
   }
 }
+
+
 
 bool UnifiedMotionManager::startWaypointSequence(const std::string& deviceName) {
   auto it = m_waypointStates.find(deviceName);
@@ -1051,10 +1068,11 @@ void UnifiedMotionManager::stopWaypointSequence(const std::string& deviceName) {
 bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
   const std::string& positionName,
   bool blocking) {
-  // This is your ORIGINAL MoveToNamedPosition logic
-  // Get position
+  // ✅ Use GetPositionWithCalculation instead of GetNamedPosition
   PositionStruct pos;
-  if (!GetNamedPosition(deviceName, positionName, pos)) {
+  if (!GetPositionWithCalculation(deviceName, positionName, pos)) {
+    std::cout << "[ERROR] executeMoveToPosition: Position '" << positionName
+      << "' not found for device " << deviceName << std::endl;
     return false;
   }
 
@@ -1089,6 +1107,7 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
 
   return success;
 }
+
 
 std::string UnifiedMotionManager::detectCurrentPositionName(const std::string& deviceName,
   double tolerance) {
@@ -1142,4 +1161,136 @@ bool UnifiedMotionManager::IsWaypointSystemActive(const std::string& deviceName)
 void UnifiedMotionManager::CancelWaypointSequence(const std::string& deviceName) {
   stopWaypointSequence(deviceName);
   EmergencyStop(deviceName);
+}
+
+// ============================================================================
+// CALCULATED POSITIONS IMPLEMENTATION
+// ============================================================================
+
+bool UnifiedMotionManager::ParseCalculatedPosition(const std::string& positionName,
+  std::string& baseName,
+  double& offsetX,
+  double& offsetY,
+  double& offsetZ) {
+  // Check for '+' character indicating offset
+  size_t plusPos = positionName.find('+');
+  if (plusPos == std::string::npos) {
+    return false;  // Not a calculated position
+  }
+
+  // Extract base name
+  baseName = positionName.substr(0, plusPos);
+
+  // Initialize offsets
+  offsetX = 0.0;
+  offsetY = 0.0;
+  offsetZ = 0.0;
+
+  // Parse offset string (e.g. "+Y1" or "+X-2+Z5.5" or "+Y-1.00")
+  std::string remaining = positionName.substr(plusPos);
+
+  size_t pos = 0;
+  while (pos < remaining.length()) {
+    // Skip '+' at start of new offset
+    if (remaining[pos] == '+') {
+      pos++;
+    }
+
+    // Get axis (X, Y, or Z)
+    if (pos >= remaining.length()) break;
+
+    char axis = std::toupper(remaining[pos]);
+    if (axis != 'X' && axis != 'Y' && axis != 'Z') {
+      std::cout << "[ERROR] ParseCalculatedPosition: Invalid axis '" << axis
+        << "' in position name: " << positionName << std::endl;
+      return false;
+    }
+    pos++;
+
+    // ✅ FIX: Get value - find next '+' that's not part of the number
+    // We need to handle cases like "+Y-1.00+Z2" correctly
+    size_t nextPlus = pos;
+
+    // Skip the first character if it's a minus sign (part of the value)
+    if (nextPlus < remaining.length() && remaining[nextPlus] == '-') {
+      nextPlus++;
+    }
+
+    // Find the next '+' after any leading minus sign
+    while (nextPlus < remaining.length() && remaining[nextPlus] != '+') {
+      nextPlus++;
+    }
+
+    std::string valueStr;
+    if (nextPlus < remaining.length()) {
+      valueStr = remaining.substr(pos, nextPlus - pos);
+    }
+    else {
+      valueStr = remaining.substr(pos);  // Rest of string
+    }
+
+    try {
+      double value = std::stod(valueStr);
+
+      if (axis == 'X') offsetX = value;
+      else if (axis == 'Y') offsetY = value;
+      else if (axis == 'Z') offsetZ = value;
+
+    }
+    catch (const std::exception& e) {
+      std::cout << "[ERROR] ParseCalculatedPosition: Invalid value '" << valueStr
+        << "' for axis " << axis << " in: " << positionName << std::endl;
+      return false;
+    }
+
+    if (nextPlus >= remaining.length()) break;
+    pos = nextPlus;  // Move to next '+' position
+  }
+
+  std::cout << "[DEBUG] ParseCalculatedPosition: '" << positionName
+    << "' -> base='" << baseName << "' offsets=("
+    << offsetX << ", " << offsetY << ", " << offsetZ << ")" << std::endl;
+
+  return true;
+}
+
+
+bool UnifiedMotionManager::GetPositionWithCalculation(const std::string& deviceName,
+  const std::string& positionName,
+  PositionStruct& outPosition) {
+  std::string baseName;
+  double offsetX, offsetY, offsetZ;
+
+  // Check if this is a calculated position
+  if (ParseCalculatedPosition(positionName, baseName, offsetX, offsetY, offsetZ)) {
+    // Get base position
+    PositionStruct basePos;
+    if (!GetNamedPosition(deviceName, baseName, basePos)) {
+      std::cout << "[ERROR] GetPositionWithCalculation: Base position '"
+        << baseName << "' not found for device " << deviceName << std::endl;
+      return false;
+    }
+
+    // Calculate offset position
+    outPosition = basePos;
+    outPosition.x += offsetX;
+    outPosition.y += offsetY;
+    outPosition.z += offsetZ;
+
+    // ✅ IMPORTANT: Clear waypoints for calculated positions
+    // Calculated positions shouldn't inherit waypoints from base
+    outPosition.waypoints.clear();
+    outPosition.exit_waypoints.clear();
+
+    std::cout << "[INFO] GetPositionWithCalculation: Calculated position '"
+      << positionName << "' from base '" << baseName << "'"
+      << " with offset (" << offsetX << ", " << offsetY << ", " << offsetZ << ")"
+      << " -> (" << outPosition.x << ", " << outPosition.y << ", " << outPosition.z << ")"
+      << std::endl;
+
+    return true;
+  }
+
+  // Not a calculated position, get normally
+  return GetNamedPosition(deviceName, positionName, outPosition);
 }

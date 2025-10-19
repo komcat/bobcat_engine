@@ -30,6 +30,7 @@ signals:
 private slots:
   void onDeviceChanged(const QString& deviceName);
   void onMoveToPositionClicked();
+  void onMoveWithOffsetClicked();  // ✅ NEW
   void onUpdatePositionClicked();
   void onCreatePositionClicked();
   void onDeletePositionClicked();

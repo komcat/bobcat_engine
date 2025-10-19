@@ -96,6 +96,12 @@ void MotionControlPanel::setupUI()
   m_moveToButton->setEnabled(false);
   mainLayout->addWidget(m_moveToButton);
 
+  // ✅ NEW - Move with Offset button
+  m_moveOffsetButton = new QPushButton("⇄ Move with Offset");
+  m_moveOffsetButton->setMinimumHeight(38);
+  m_moveOffsetButton->setEnabled(false);
+  mainLayout->addWidget(m_moveOffsetButton);
+
   // Update Position
   m_updatePosButton = new QPushButton("↻ Update Position");
   m_updatePosButton->setMinimumHeight(34);
@@ -183,6 +189,19 @@ void MotionControlPanel::setupUI()
     "QPushButton#moveToButton:hover {"
     "  background-color: #229954;"
     "}"
+
+    // Move with Offset - Orange
+    "QPushButton#moveOffsetButton {"
+    "  background-color: #f39c12;"
+    "  color: white;"
+    "  border: 1px solid #e67e22;"
+    "  border-radius: 4px;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "}"
+    "QPushButton#moveOffsetButton:hover {"
+    "  background-color: #e67e22;"
+    "}"
     // Regular buttons - Blue
     "QPushButton {"
     "  background-color: #3498db;"
@@ -223,6 +242,7 @@ void MotionControlPanel::setupUI()
 
   // Set object names for specific styling
   m_moveToButton->setObjectName("moveToButton");
+  m_moveOffsetButton->setObjectName("moveOffsetButton");  // ✅ NEW
   m_deletePosButton->setObjectName("deletePosButton");
   m_stopButton->setObjectName("stopButton");
 
@@ -234,6 +254,10 @@ void MotionControlPanel::setupUI()
 
   connect(m_moveToButton, &QPushButton::clicked,
     this, &MotionControlPanel::moveToPositionClicked);
+
+  // ✅ NEW
+  connect(m_moveOffsetButton, &QPushButton::clicked,
+    this, &MotionControlPanel::moveWithOffsetClicked);
 
   connect(m_updatePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::updatePositionClicked);
@@ -293,6 +317,7 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
 
   // Enable all position-specific buttons
   m_moveToButton->setEnabled(true);
+  m_moveOffsetButton->setEnabled(true);  // ✅ NEW
   m_updatePosButton->setEnabled(true);
   m_editWaypointsBtn->setEnabled(true);  // ✅ NEW
   m_deletePosButton->setEnabled(true);
@@ -313,6 +338,7 @@ void MotionControlPanel::clearSelectedPosition()
 
   // Disable all position-specific buttons
   m_moveToButton->setEnabled(false);
+  m_moveOffsetButton->setEnabled(false);  // ✅ NEW
   m_updatePosButton->setEnabled(false);
   m_editWaypointsBtn->setEnabled(false);  // ✅ NEW
   m_deletePosButton->setEnabled(false);

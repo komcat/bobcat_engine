@@ -2,6 +2,7 @@
 #include "MotionPage.h"
 #include "NewPositionDialog.h"
 #include "WaypointEditorDialog.h"
+#include "OffsetMoveDialog.h"  // ✅ Add at top
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -232,6 +233,10 @@ void MotionPage::setupUI()
 
 	connect(m_controlPanel, &MotionControlPanel::moveToPositionClicked,
 		this, &MotionPage::onMoveToPositionClicked);
+
+	// ✅ NEW
+	connect(m_controlPanel, &MotionControlPanel::moveWithOffsetClicked,
+		this, &MotionPage::onMoveWithOffsetClicked);
 
 	connect(m_controlPanel, &MotionControlPanel::updatePositionClicked,
 		this, &MotionPage::onUpdatePositionClicked);
@@ -940,5 +945,49 @@ void MotionPage::onEditWaypointsClicked()
 
 		QMessageBox::information(this, "Success",
 			"Waypoints updated successfully!");
+	}
+}
+
+void MotionPage::onMoveWithOffsetClicked()
+{
+	if (m_selectedPositionName.isEmpty()) {
+		QMessageBox::warning(this, "No Selection",
+			"Please select a position from the map first.");
+		return;
+	}
+
+	if (m_currentDevice.isEmpty()) {
+		QMessageBox::warning(this, "No Device", "No device selected.");
+		return;
+	}
+
+	// Get position values for dialog
+	if (!m_currentPositions.contains(m_selectedPositionName)) {
+		QMessageBox::critical(this, "Error", "Position data not found.");
+		return;
+	}
+
+	QVector<double> pos = m_currentPositions[m_selectedPositionName];
+
+	// Show offset dialog
+	OffsetMoveDialog dialog(m_selectedPositionName, pos[0], pos[1], pos[2], this);
+
+	if (dialog.exec() == QDialog::Accepted) {
+		QString offsetPosName = dialog.getOffsetPositionName();
+
+		std::cout << "[MotionPage] Moving device '" << m_currentDevice.toStdString()
+			<< "' to calculated position '" << offsetPosName.toStdString() << "'" << std::endl;
+
+		// ✅ Move using calculated position name
+		bool success = m_motionManager->MoveToNamedPosition(
+			m_currentDevice.toStdString(),
+			offsetPosName.toStdString(),
+			false  // Non-blocking
+		);
+
+		if (!success) {
+			QMessageBox::critical(this, "Motion Error",
+				"Failed to start motion to offset position");
+		}
 	}
 }
