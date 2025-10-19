@@ -3,6 +3,7 @@
 #include "NewPositionDialog.h"
 #include "WaypointEditorDialog.h"
 #include "OffsetMoveDialog.h"  // ✅ Add at top
+#include "ScanControlPanel.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -18,13 +19,17 @@
 MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	ProductPositionManager* productManager,
 	TransformationMatrixLoader* matrixLoader,
+	DataStore* dataStore,  // ✅ ADD THIS PARAMETER
 	QWidget* parent)
 	: QWidget(parent)
 	, m_motionManager(motionManager)
 	, m_productManager(productManager)
 	, m_matrixLoader(matrixLoader)
+	, m_dataStore(dataStore)  // ✅ ADD THIS
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
+	, m_scanPanel(nullptr)
+	, m_scanController(nullptr)  // ✅ ADD THIS
 	, m_livePositionTimer(nullptr)
 	, m_motionUpdateTimer(nullptr)
 	, m_labelOffsetsFilePath("config/position_labels.json")
@@ -203,21 +208,29 @@ void MotionPage::setupUI()
 
 	mainLayout->addWidget(topBar);
 
-	// Content area with left panel and graphics view
+	// ============================================================================
+	// ✅ UPDATED CONTENT AREA - Three panels: Left | Middle | Right
+	// ============================================================================
 	QWidget* contentWidget = new QWidget();
 	QHBoxLayout* contentLayout = new QHBoxLayout(contentWidget);
 	contentLayout->setContentsMargins(0, 0, 0, 0);
 	contentLayout->setSpacing(0);
 
-	// Left Panel (20%)
+	// Left Panel - Motion Control (20%)
 	m_controlPanel = new MotionControlPanel();
 	m_controlPanel->setMinimumWidth(250);
 	m_controlPanel->setMaximumWidth(400);
 	contentLayout->addWidget(m_controlPanel, 2);
 
-	// Right Panel (80%)
+	// Middle Panel - Graphics View (60%)
 	m_graphicsView = new MotionGraphicsView();
-	contentLayout->addWidget(m_graphicsView, 8);
+	contentLayout->addWidget(m_graphicsView, 6);
+
+	// ✅ NEW - Right Panel - Scan Control (20%)
+	m_scanPanel = new ScanControlPanel();
+	m_scanPanel->setMinimumWidth(250);
+	m_scanPanel->setMaximumWidth(400);
+	contentLayout->addWidget(m_scanPanel, 2);
 
 	mainLayout->addWidget(contentWidget);
 
@@ -262,7 +275,30 @@ void MotionPage::setupUI()
 	connect(m_graphicsView, &MotionGraphicsView::positionDeselected,
 		this, &MotionPage::onPositionDeselected);
 
+	// New scan panel connections
+	connect(m_scanPanel, &ScanControlPanel::deviceChanged,
+		this, &MotionPage::onScanDeviceChanged);
+
+	connect(m_scanPanel, &ScanControlPanel::presetChanged,
+		this, &MotionPage::onScanPresetChanged);
+
+	connect(m_scanPanel, &ScanControlPanel::startScanClicked,
+		this, &MotionPage::onStartScanClicked);
+
+	connect(m_scanPanel, &ScanControlPanel::stopScanClicked,
+		this, &MotionPage::onStopScanClicked);
+
+	connect(m_scanPanel, &ScanControlPanel::dataChannelChanged,
+		this, &MotionPage::onScanDataChannelChanged);
+
+
 	setStyleSheet("QWidget { background-color: #ecf0f1; }");
+
+
+	// ✅ ADD THIS - Get initial preset value
+	m_scanPreset = m_scanPanel->getCurrentPreset();
+
+
 }
 
 // ============================================================================
@@ -385,6 +421,11 @@ void MotionPage::onSaveProductAsClicked()
 // DEVICE AND POSITION MANAGEMENT
 // ============================================================================
 
+
+
+// ============================================================================
+// 2. Update loadDevices() - Populate data channels
+// ============================================================================
 void MotionPage::loadDevices()
 {
 	if (!m_motionManager) {
@@ -399,9 +440,26 @@ void MotionPage::loadDevices()
 	}
 
 	m_controlPanel->setDevices(devices);
+	m_scanPanel->setDevices(devices);
+
+	// ✅ NEW - Populate data channels from DataStore
+	if (m_dataStore) {
+		auto channels = m_dataStore->GetAllKeys();
+		QStringList channelList;
+		for (const auto& channel : channels) {
+			channelList << QString::fromStdString(channel);
+		}
+		m_scanPanel->setDataChannels(channelList);
+
+		if (!channelList.isEmpty()) {
+			m_scanDataChannel = channelList.first();  // Set default
+		}
+	}
 
 	if (!devices.isEmpty()) {
 		m_currentDevice = devices.first();
+		m_scanDevice = devices.first();
+		m_scanPreset = "Coarse";  // Initialize default preset
 		refreshPositionDisplay();
 	}
 }
@@ -990,4 +1048,347 @@ void MotionPage::onMoveWithOffsetClicked()
 				"Failed to start motion to offset position");
 		}
 	}
+}
+
+
+
+// ============================================================================
+// 5. ADD NEW SCAN CONTROL SLOT IMPLEMENTATIONS
+// ============================================================================
+
+
+// ============================================================================
+// CREATE SCAN CONTROLLER
+// ============================================================================
+void MotionPage::createScanController()
+{
+	if (m_scanDevice.isEmpty()) {
+		QMessageBox::warning(this, "No Device", "Please select a device for scanning.");
+		return;
+	}
+
+	// Create controller
+	m_scanController = std::make_unique<AdaptiveScanController>(
+		*m_motionManager,
+		*m_dataStore,
+		m_scanDevice.toStdString(),
+		m_scanDataChannel.toStdString()  // ✅ Use selected channel
+	);
+
+	// Set up callbacks
+	m_scanController->SetProgressCallback(
+		[this](const ScanProgressEvent& event) {
+		QMetaObject::invokeMethod(this, [this, event]() {
+			onScanProgress(event);
+		}, Qt::QueuedConnection);
+	}
+	);
+
+	m_scanController->SetDataPointCallback(
+		[this](const ScanDataPoint& dataPoint) {
+		QMetaObject::invokeMethod(this, [this, dataPoint]() {
+			onScanDataPoint(dataPoint);
+		}, Qt::QueuedConnection);
+	}
+	);
+
+	m_scanController->SetPeakFoundCallback(
+		[this](const PeakInfo& peak) {
+		QMetaObject::invokeMethod(this, [this, peak]() {
+			onScanPeakFound(peak);
+		}, Qt::QueuedConnection);
+	}
+	);
+
+	m_scanController->SetCompletionCallback(
+		[this](const ScanResults& results) {
+		QMetaObject::invokeMethod(this, [this, results]() {
+			onScanCompleted(results);
+		}, Qt::QueuedConnection);
+	}
+	);
+
+	m_scanController->SetErrorCallback(
+		[this](const ScanError& error) {
+		QMetaObject::invokeMethod(this, [this, error]() {
+			onScanError(error);
+		}, Qt::QueuedConnection);
+	}
+	);
+}
+
+// ============================================================================
+// CREATE SCAN PARAMETERS BASED ON PRESET
+// ============================================================================
+ScanParameters MotionPage::createScanParameters(const QString& preset)
+{
+	ScanParameters params;
+
+	if (preset == "Coarse") {
+		// Coarse scan - larger steps, faster
+		params.axesToScan = { "Z", "X", "Y" };
+		params.stepSizes = { 0.010, 0.020 };  // 10, 20 microns
+		params.motionSettleTimeMs = 300;
+		params.velocityPercent = 60.0;
+		params.consecutiveDecreasesLimit = 3;
+		params.significantDecreaseThreshold = 0.10;  // 10%
+		params.maxTotalDistance = 5.0;  // mm
+		params.improvementThreshold = 0.02;  // 2%
+		params.averagingCount = 3;
+	}
+	else if (preset == "Fine") {
+		// Fine scan - smaller steps, more precise
+		params.axesToScan = { "Z", "X", "Y" };
+		params.stepSizes = { 0.001, 0.005, 0.010 };  // 1, 5, 10 microns
+		params.motionSettleTimeMs = 400;
+		params.velocityPercent = 50.0;
+		params.consecutiveDecreasesLimit = 3;
+		params.significantDecreaseThreshold = 0.05;  // 5%
+		params.maxTotalDistance = 3.0;  // mm
+		params.improvementThreshold = 0.01;  // 1%
+		params.averagingCount = 5;
+	}
+	else {
+		// Default to fine
+		params.axesToScan = { "Z", "X", "Y" };
+		params.stepSizes = { 0.001, 0.005, 0.010 };
+		params.motionSettleTimeMs = 400;
+		params.velocityPercent = 50.0;
+		params.consecutiveDecreasesLimit = 3;
+		params.significantDecreaseThreshold = 0.05;
+		params.maxTotalDistance = 3.0;
+		params.improvementThreshold = 0.01;
+		params.averagingCount = 5;
+	}
+
+	return params;
+}
+
+
+
+void MotionPage::onScanDeviceChanged(const QString& deviceName)
+{
+	m_scanDevice = deviceName;
+	qDebug() << "Scan device changed to:" << deviceName;
+}
+
+void MotionPage::onScanPresetChanged(const QString& preset)
+{
+	m_scanPreset = preset;
+	qDebug() << "Scan preset changed to:" << preset;
+}
+
+// ============================================================================
+// START SCAN - REPLACE PLACEHOLDER
+// ============================================================================
+void MotionPage::onStartScanClicked()
+{
+	if (m_scanDevice.isEmpty()) {
+		QMessageBox::warning(this, "No Device", "Please select a device for scanning.");
+		return;
+	}
+
+	if (m_scanPreset.isEmpty()) {
+		QMessageBox::warning(this, "No Preset", "Please select a scan preset.");
+		return;
+	}
+
+	// Check if device is in motion
+	if (m_motionManager->IsDeviceInMotion(m_scanDevice.toStdString())) {
+		QMessageBox::warning(this, "Device Busy",
+			"Device is currently in motion. Please wait or stop the motion first.");
+		return;
+	}
+
+	qDebug() << "Starting" << m_scanPreset << "scan on device:" << m_scanDevice;
+
+	// Create scan controller if needed
+	if (!m_scanController) {
+		createScanController();
+	}
+
+	// Create scan parameters based on preset
+	ScanParameters params = createScanParameters(m_scanPreset);
+
+	// Validate parameters
+	std::string validationError;
+	if (!params.Validate(validationError)) {
+		QMessageBox::critical(this, "Invalid Parameters",
+			QString("Scan parameters are invalid:\n%1")
+			.arg(QString::fromStdString(validationError)));
+		return;
+	}
+
+	// Start the scan
+	bool success = m_scanController->StartScan(params);
+
+	if (success) {
+		m_scanPanel->setScanActive(true);
+		m_scanPanel->setStatus("Initializing...");
+		m_scanPanel->setProgress(0.0);
+
+		qDebug() << "Scan started successfully";
+	}
+	else {
+		QMessageBox::critical(this, "Scan Failed",
+			"Failed to start scan. Check that device is ready and not already scanning.");
+
+		m_scanPanel->setStatus("Failed to start");
+	}
+}
+
+
+
+// ============================================================================
+// STOP SCAN - REPLACE PLACEHOLDER
+// ============================================================================
+void MotionPage::onStopScanClicked()
+{
+	qDebug() << "Stopping scan...";
+
+	if (m_scanController) {
+		m_scanController->HaltScan();
+	}
+
+	m_scanPanel->setScanActive(false);
+	m_scanPanel->setStatus("Stopped");
+	m_scanPanel->setProgress(-1);
+}
+
+
+
+// ============================================================================
+// SCAN CALLBACK IMPLEMENTATIONS
+// ============================================================================
+
+void MotionPage::onScanProgress(const ScanProgressEvent& event)
+{
+	m_scanPanel->setProgress(event.progress);
+	m_scanPanel->setStatus(QString::fromStdString(event.message));
+
+	qDebug() << "Scan progress:" << (event.progress * 100) << "%"
+		<< "-" << QString::fromStdString(event.message);
+}
+
+void MotionPage::onScanDataPoint(const ScanDataPoint& dataPoint)
+{
+	// Optional: Visualize data points on the graphics view
+	qDebug() << "Data point:" << dataPoint.value
+		<< "at (" << dataPoint.position.x << ","
+		<< dataPoint.position.y << "," << dataPoint.position.z << ")";
+}
+
+void MotionPage::onScanPeakFound(const PeakInfo& peak)
+{
+	qDebug() << "New peak found! Value:" << peak.value
+		<< "at (" << peak.position.x << ","
+		<< peak.position.y << "," << peak.position.z << ")";
+
+	m_scanPanel->setStatus(QString("Peak: %1").arg(peak.value, 0, 'f', 6));
+}
+
+void MotionPage::onScanCompleted(const ScanResults& results)
+{
+	qDebug() << "Scan completed!";
+	qDebug() << "  Total measurements:" << results.totalMeasurements;
+	qDebug() << "  Peak value:" << results.globalPeak.value;
+	qDebug() << "  Peak position: ("
+		<< results.globalPeak.position.x << ","
+		<< results.globalPeak.position.y << ","
+		<< results.globalPeak.position.z << ")";
+
+	m_scanPanel->setScanActive(false);
+	m_scanPanel->setStatus("Completed");
+	m_scanPanel->setProgress(1.0);
+
+	// Show results dialog
+	QString message = QString(
+		"Scan completed successfully!\n\n"
+		"Total measurements: %1\n"
+		"Peak value: %2\n"
+		"Peak position:\n"
+		"  X: %3 mm\n"
+		"  Y: %4 mm\n"
+		"  Z: %5 mm\n\n"
+		"Results saved to logs/scanning/"
+	).arg(results.totalMeasurements)
+		.arg(results.globalPeak.value, 0, 'f', 6)
+		.arg(results.globalPeak.position.x, 0, 'f', 3)
+		.arg(results.globalPeak.position.y, 0, 'f', 3)
+		.arg(results.globalPeak.position.z, 0, 'f', 3);
+
+	QMessageBox::information(this, "Scan Complete", message);
+
+	// Ask if user wants to save peak as position
+	QMessageBox::StandardButton reply = QMessageBox::question(
+		this,
+		"Save Peak Position",
+		"Would you like to save the peak position as a named position?",
+		QMessageBox::Yes | QMessageBox::No
+	);
+
+	if (reply == QMessageBox::Yes) {
+		bool ok;
+		QString name = QInputDialog::getText(
+			this,
+			"Save Peak Position",
+			"Enter position name:",
+			QLineEdit::Normal,
+			QString("peak_%1").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")),
+			&ok
+		);
+
+		if (ok && !name.isEmpty()) {
+			PositionStruct pos;
+			pos.x = results.globalPeak.position.x;
+			pos.y = results.globalPeak.position.y;
+			pos.z = results.globalPeak.position.z;
+			pos.u = 0.0;
+			pos.v = 0.0;
+			pos.w = 0.0;
+
+			m_motionManager->AddNamedPosition(
+				m_scanDevice.toStdString(),
+				name.toStdString(),
+				pos
+			);
+
+			refreshPositionDisplay();
+
+			QMessageBox::information(this, "Saved",
+				QString("Peak position saved as '%1'").arg(name));
+		}
+	}
+
+	// Reset status after delay
+	QTimer::singleShot(3000, this, [this]() {
+		m_scanPanel->setStatus("Idle");
+		m_scanPanel->setProgress(-1);
+	});
+}
+
+void MotionPage::onScanError(const ScanError& error)
+{
+	qDebug() << "Scan error:" << QString::fromStdString(error.message);
+
+	m_scanPanel->setScanActive(false);
+	m_scanPanel->setStatus("Error");
+	m_scanPanel->setProgress(-1);
+
+	QMessageBox::critical(this, "Scan Error",
+		QString("Scan failed:\n%1").arg(QString::fromStdString(error.message)));
+
+	// Reset status after delay
+	QTimer::singleShot(3000, this, [this]() {
+		m_scanPanel->setStatus("Idle");
+	});
+}
+
+// ============================================================================
+// 3. Add new slot implementation
+// ============================================================================
+void MotionPage::onScanDataChannelChanged(const QString& channel)
+{
+	m_scanDataChannel = channel;
+	qDebug() << "Scan data channel changed to:" << channel;
 }

@@ -24,6 +24,39 @@ LogManager::~LogManager()
   std::cout << "[LogManager] Shutdown" << std::endl;
 }
 
+// ============================================================================
+// ILogger Interface Implementation
+// ============================================================================
+
+void LogManager::LogDebug(const std::string& message, const std::string& source)
+{
+  Debug(message, source);
+}
+
+void LogManager::LogInfo(const std::string& message, const std::string& source)
+{
+  Info(message, source);
+}
+
+void LogManager::LogWarning(const std::string& message, const std::string& source)
+{
+  Warning(message, source);
+}
+
+void LogManager::LogError(const std::string& message, const std::string& source)
+{
+  Error(message, source);
+}
+
+void LogManager::LogCritical(const std::string& message, const std::string& source)
+{
+  Critical(message, source);
+}
+
+// ============================================================================
+// Original Methods (for backward compatibility)
+// ============================================================================
+
 void LogManager::Debug(const std::string& message, const std::string& source)
 {
   Log(Level::DEBUG, message, source);
@@ -49,7 +82,10 @@ void LogManager::Critical(const std::string& message, const std::string& source)
   Log(Level::CRITICAL, message, source);
 }
 
-// LogManager.cpp - FIXED VERSION
+// ============================================================================
+// Core Logging
+// ============================================================================
+
 void LogManager::Log(Level level, const std::string& message, const std::string& source)
 {
   if (level < m_minimumLevel) {
@@ -62,7 +98,7 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
   entry.timestamp = GetTimestamp();
   entry.source = source;
 
-  // ✅ Copy callback BEFORE locking
+  // Copy callback BEFORE locking
   LogCallback callbackCopy;
 
   {
@@ -93,12 +129,12 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
       WriteToFile(entry);
     }
 
-    // ✅ Copy callback while still locked
+    // Copy callback while still locked
     callbackCopy = m_uiCallback;
   }
-  // ✅ Mutex is NOW unlocked - safe to call callback
+  // Mutex is NOW unlocked - safe to call callback
 
-  // ✅ Call UI callback OUTSIDE the lock
+  // Call UI callback OUTSIDE the lock
   if (callbackCopy) {
     callbackCopy(entry);
   }
@@ -194,7 +230,7 @@ std::string LogManager::LevelToString(Level level)
   case Level::DEBUG:    return "DEBUG";
   case Level::INFO:     return "INFO";
   case Level::WARNING:  return "WARNING";
-  case Level::FAILURE:    return "ERROR";
+  case Level::FAILURE:  return "ERROR";
   case Level::CRITICAL: return "CRITICAL";
   default:              return "UNKNOWN";
   }
@@ -206,7 +242,7 @@ std::string LogManager::LevelToColorCode(Level level)
   case Level::DEBUG:    return "#888888";  // Gray
   case Level::INFO:     return "#00ff00";  // Green
   case Level::WARNING:  return "#ffaa00";  // Orange
-  case Level::FAILURE:    return "#ff4444";  // Red
+  case Level::FAILURE:  return "#ff4444";  // Red
   case Level::CRITICAL: return "#ff0000";  // Bright Red
   default:              return "#ffffff";  // White
   }

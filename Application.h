@@ -9,6 +9,8 @@
 #include "EziIOManager.h"  // Add EziIO include
 #include "PneumaticManager.h"  
 #include "SequenceEngine.h"  
+#include "AdaptiveScanController.h"  // ✅ ADD THIS
+
 
 class QApplication;
 class MainWindow;
@@ -48,12 +50,16 @@ private:
   void initializeIOManager();  
   void initializePneumaticManager();
   void initializeSequenceEngine();  
+  void initializeScanController();      // ✅ ADD THIS
+
 
   void testMotionCommands();   
   void testIOCommands();      
   void testPneumaticCommands();  
   void testSequenceEngine();  
   void testPneumaticSequence();  
+  void testScanController();            // ✅ ADD THIS (optional)
+
 
   void shutdownManagers();
 
@@ -68,6 +74,8 @@ private:
   std::unique_ptr<EziIOManager> m_ioManager;  // Add IO manager
   std::unique_ptr<PneumaticManager> m_pneumaticManager;  
   std::unique_ptr<SequenceEngine> m_sequenceEngine;  
+  std::unique_ptr<AdaptiveScanController> m_scanController;  // ✅ ADD THIS
+
 
   ApplicationContext m_context;
 

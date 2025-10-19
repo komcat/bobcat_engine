@@ -152,6 +152,7 @@ void MainWindow::createPages()
     m_context->motionManager,
     m_context->productManager,  // ✅ Add product manager
     m_matrixLoader,
+    m_context->dataStore,  // ✅ ADD THIS LINE
     this
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,

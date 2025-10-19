@@ -1,6 +1,7 @@
 ﻿// LogManager.h - Thread-safe logging system
 #pragma once
 
+#include "ILogger.h"  // ✅ ADD THIS
 #include <string>
 #include <vector>
 #include <mutex>
@@ -16,8 +17,9 @@
  * - Thread-safe
  * - Multiple outputs (console, file, UI)
  * - History management
+ * - Implements ILogger interface
  */
-class LogManager
+class LogManager : public ILogger  // ✅ ADD INHERITANCE
 {
 public:
   enum class Level {
@@ -26,21 +28,28 @@ public:
     WARNING,
     FAILURE,
     CRITICAL
-  };  // ✅ Make sure semicolon is here
+  };
 
   struct LogEntry {
     Level level;
     std::string message;
     std::string timestamp;
     std::string source;  // Optional: which component logged this
-  };  // ✅ Make sure semicolon is here
+  };
 
   using LogCallback = std::function<void(const LogEntry&)>;
 
   LogManager();
   ~LogManager();
 
-  // Main logging methods
+  // ✅ ILogger interface implementation
+  void LogDebug(const std::string& message, const std::string& source = "") override;
+  void LogInfo(const std::string& message, const std::string& source = "") override;
+  void LogWarning(const std::string& message, const std::string& source = "") override;
+  void LogError(const std::string& message, const std::string& source = "") override;
+  void LogCritical(const std::string& message, const std::string& source = "") override;
+
+  // Original logging methods (kept for backward compatibility)
   void Debug(const std::string& message, const std::string& source = "");
   void Info(const std::string& message, const std::string& source = "");
   void Warning(const std::string& message, const std::string& source = "");
@@ -91,4 +100,4 @@ private:
   size_t m_maxHistorySize;
   size_t m_errorCount;
   size_t m_warningCount;
-};  // ✅ Make sure semicolon is here at the end of class
+};

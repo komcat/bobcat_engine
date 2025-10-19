@@ -12,6 +12,7 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include <sstream>
 #include "nlohmann/json.hpp"
 
 using json = nlohmann::json;
@@ -109,6 +110,8 @@ void Application::initializeManagers()
     initializeIOManager();  // Add IO manager initialization
 		initializePneumaticManager();  // ✅ ADD THIS
     initializeSequenceEngine();  // ✅ ADD THIS LAST
+    initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
+
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -118,6 +121,10 @@ void Application::initializeManagers()
 
 		//testSequenceEngine();  // ✅ TEST SEQUENCE ENGINE
 		//testPneumaticSequence();	// ✅ TEST PNEUMATIC SEQUENCE
+
+     // Optional: run test commands
+    // testScanController();  // ✅ UNCOMMENT TO TEST
+
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -224,6 +231,13 @@ void Application::initializeMotionManager()
       "Connected " + std::to_string(connectedCount) + " devices",
       "Application"
     );
+
+		/*
+		TODO: Set logger for motion manager if needed
+    ILogger* logger = m_logManager.get();
+		m_motionManager->SetLogger(logger);
+    
+    */
 
     m_logManager->Info("Motion manager initialized successfully", "Application");
   }
@@ -448,6 +462,7 @@ void Application::shutdownManagers()
   m_context = ApplicationContext();
 
   m_pneumaticManager.reset();
+  m_scanController.reset();   // ✅ ADD THIS
   m_ioManager.reset();
   m_motionManager.reset();
   m_cameraManager.reset();
@@ -835,4 +850,153 @@ void Application::testPneumaticSequence()
   m_logManager->Info("======================================", "Pneumatic Sequence Test");
   m_logManager->Info("Pneumatic Sequence Test completed!", "Pneumatic Sequence Test");
   m_logManager->Info("======================================", "Pneumatic Sequence Test");
+}
+
+
+void Application::initializeScanController()
+{
+  std::cout << "[Application] Initializing Scan Controller..." << std::endl;
+
+  try {
+    // Check prerequisites
+    if (!m_motionManager) {
+      m_logManager->Error("Cannot initialize ScanController - MotionManager not available", "Application");
+      return;
+    }
+
+    if (!m_dataStore) {
+      m_logManager->Error("Cannot initialize ScanController - DataStore not available", "Application");
+      return;
+    }
+
+    // Create scan controller
+    // Parameters: motionManager, dataStore, deviceName, dataChannel
+    m_scanController = std::make_unique<AdaptiveScanController>(
+      *m_motionManager,
+      *m_dataStore,
+      "FiberAlign",        // ⚠️ CHANGE TO YOUR DEVICE NAME
+      "PowerMeter.Power"   // ⚠️ CHANGE TO YOUR DATA CHANNEL
+    );
+
+    m_context.scanController = m_scanController.get();
+
+    // Set up callbacks for logging
+    m_scanController->SetProgressCallback(
+      [this](const ScanProgressEvent& event) {
+      std::string msg = "[" + std::to_string(static_cast<int>(event.progress * 100)) + "%] " + event.message;
+      m_logManager->Info(msg, "Scan");
+    });
+
+    m_scanController->SetPeakFoundCallback(
+      [this](const PeakInfo& peak) {
+      std::stringstream ss;
+      ss << "New peak found: " << std::fixed << std::setprecision(6) << peak.value
+        << " at (" << peak.position.x << ", " << peak.position.y << ", " << peak.position.z << ")";
+      m_logManager->Info(ss.str(), "Scan");
+    });
+
+    m_scanController->SetStateChangedCallback(
+      [this](ScanState oldState, ScanState newState) {
+      std::string msg = "State: " + ToString(oldState) + " → " + ToString(newState);
+      m_logManager->Info(msg, "Scan");
+    });
+
+    m_scanController->SetCompletionCallback(
+      [this](const ScanResults& results) {
+      std::stringstream ss;
+      ss << "Scan completed! Measurements: " << results.totalMeasurements
+        << ", Peak: " << std::fixed << std::setprecision(6) << results.globalPeak.value;
+      m_logManager->Info(ss.str(), "Scan");
+    });
+
+    m_scanController->SetErrorCallback(
+      [this](const ScanError& error) {
+      m_logManager->Error("Scan error: " + error.message, "Scan");
+    });
+
+    m_logManager->Info("ScanController initialized successfully", "Application");
+
+		ILogger* logger = m_logManager.get();
+		m_context.scanController->SetLogger(logger);
+
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Scan controller initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without scan controller
+  }
+}
+
+// ============================================================================
+// STEP 5: Add test function (OPTIONAL)
+// ============================================================================
+
+void Application::testScanController()
+{
+  if (!m_scanController) {
+    m_logManager->Warning("ScanController not available for testing", "Application");
+    return;
+  }
+
+  m_logManager->Info("======================================", "Scan Test");
+  m_logManager->Info("Testing Adaptive Scan Controller", "Scan Test");
+  m_logManager->Info("======================================", "Scan Test");
+
+  // Configure scan parameters
+  ScanParameters params;
+  params.axesToScan = { "Z", "X", "Y" };  // Scan order
+  params.stepSizes = { 0.001, 0.005, 0.010 };  // 1, 5, 10 microns
+  params.motionSettleTimeMs = 400;
+  params.consecutiveDecreasesLimit = 3;
+  params.maxTotalDistance = 5.0;  // mm
+  params.improvementThreshold = 0.01;  // 1%
+  params.velocityPercent = 50.0;
+
+  // Validate parameters
+  std::string validationError;
+  if (!params.Validate(validationError)) {
+    m_logManager->Error("Invalid scan parameters: " + validationError, "Scan Test");
+    return;
+  }
+
+  m_logManager->Info("Starting scan with CoarseToFine strategy...", "Scan Test");
+
+  // Start scan (uses default CoarseToFine strategy)
+  if (m_scanController->StartScan(params)) {
+    m_logManager->Info("Scan started successfully", "Scan Test");
+
+    // Monitor scan in background
+    while (m_scanController->IsScanActive()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      // Optional: Display progress
+      double progress = m_scanController->GetProgress();
+      if (static_cast<int>(progress * 100) % 10 == 0) {
+        PeakInfo peak = m_scanController->GetGlobalPeak();
+        m_logManager->Info(
+          "Progress: " + std::to_string(static_cast<int>(progress * 100)) +
+          "%, Best: " + std::to_string(peak.value),
+          "Scan Test"
+        );
+      }
+    }
+
+    // Get final results
+    ScanResults results = m_scanController->GetResults();
+
+    m_logManager->Info("Scan completed!", "Scan Test");
+    m_logManager->Info("Total measurements: " + std::to_string(results.totalMeasurements), "Scan Test");
+    m_logManager->Info("Peak value: " + std::to_string(results.globalPeak.value), "Scan Test");
+    m_logManager->Info("Results saved to: logs/scanning/", "Scan Test");
+
+  }
+  else {
+    m_logManager->Error("Failed to start scan", "Scan Test");
+  }
+
+  m_logManager->Info("======================================", "Scan Test");
+  m_logManager->Info("Scan Test completed!", "Scan Test");
+  m_logManager->Info("======================================", "Scan Test");
 }

@@ -1,4 +1,4 @@
-// DataStore.cpp
+﻿// DataStore.cpp
 #include "DataStore.h"
 #include <iostream>
 #include <algorithm>
@@ -75,6 +75,12 @@ std::vector<std::string> DataStore::GetAvailableChannels() const
   }
 
   return channels;
+}
+
+// ✅ NEW - Alias for GetAvailableChannels()
+std::vector<std::string> DataStore::GetAllKeys() const
+{
+  return GetAvailableChannels();
 }
 
 void DataStore::ClearChannel(const std::string& channelId)

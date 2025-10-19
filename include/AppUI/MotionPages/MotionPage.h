@@ -6,12 +6,16 @@
 #include <QPushButton>
 #include "MotionControlPanel.h"
 #include "MotionGraphicsView.h"
+#include "ScanControlPanel.h"
+#include "AdaptiveScanController.h"
+#include "DataStore.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
 #include "TransformationMatrixLoader.h"
 #include <QMap>
 #include <QVector>
 #include <array>
+#include <memory>
 
 class MotionPage : public QWidget
 {
@@ -21,6 +25,7 @@ public:
   explicit MotionPage(UnifiedMotionManager* motionManager,
     ProductPositionManager* productManager,
     TransformationMatrixLoader* matrixLoader,
+    DataStore* dataStore,
     QWidget* parent = nullptr);
   ~MotionPage() = default;
 
@@ -28,9 +33,10 @@ signals:
   void backToMainMenu();
 
 private slots:
+  // Motion control slots
   void onDeviceChanged(const QString& deviceName);
   void onMoveToPositionClicked();
-  void onMoveWithOffsetClicked();  // ✅ NEW
+  void onMoveWithOffsetClicked();
   void onUpdatePositionClicked();
   void onCreatePositionClicked();
   void onDeletePositionClicked();
@@ -45,6 +51,13 @@ private slots:
   void onLoadProductClicked();
   void onSaveProductClicked();
   void onSaveProductAsClicked();
+
+  // Scan control slots
+  void onScanDeviceChanged(const QString& deviceName);
+  void onScanPresetChanged(const QString& preset);
+  void onScanDataChannelChanged(const QString& channel);
+  void onStartScanClicked();
+  void onStopScanClicked();
 
 private:
   void setupUI();
@@ -63,12 +76,23 @@ private:
   void saveLabelOffsets();
   void onLabelOffsetChanged(const QString& name, double offsetX, double offsetY);
 
+  // Scan helper methods
+  void createScanController();
+  ScanParameters createScanParameters(const QString& preset);
+  void onScanProgress(const ScanProgressEvent& event);
+  void onScanDataPoint(const ScanDataPoint& dataPoint);
+  void onScanPeakFound(const PeakInfo& peak);
+  void onScanCompleted(const ScanResults& results);
+  void onScanError(const ScanError& error);
+
   UnifiedMotionManager* m_motionManager;
   ProductPositionManager* m_productManager;
   TransformationMatrixLoader* m_matrixLoader;
+  DataStore* m_dataStore;
 
   MotionControlPanel* m_controlPanel;
   MotionGraphicsView* m_graphicsView;
+  ScanControlPanel* m_scanPanel;
   QPushButton* m_backButton;
 
   // Product control buttons
@@ -78,10 +102,16 @@ private:
   QLabel* m_currentProductLabel;
 
   QTimer* m_livePositionTimer;
-  QTimer* m_motionUpdateTimer;  // ✅ For updating UnifiedMotionManager
+  QTimer* m_motionUpdateTimer;
 
   QString m_currentDevice;
   QString m_selectedPositionName;
+
+  // Scan state
+  QString m_scanDevice;
+  QString m_scanPreset;
+  QString m_scanDataChannel;  // ✅ ADD THIS - was missing!
+  std::unique_ptr<AdaptiveScanController> m_scanController;
 
   QMap<QString, QVector<double>> m_currentPositions;
   QMap<QString, QPointF> m_labelOffsets;

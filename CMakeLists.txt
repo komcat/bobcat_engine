@@ -221,6 +221,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/motions/PI
     ${CMAKE_SOURCE_DIR}/include/motions/ACS
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
+    ${CMAKE_SOURCE_DIR}/include/motions/scanning
     ${CMAKE_SOURCE_DIR}/include/products
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
@@ -312,7 +313,7 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
- "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp" "include/products/product_position_manager.cpp" "include/products/product_json_loader.cpp" "include/AppUI/MotionPages/WaypointEditorDialog.cpp" "include/AppUI/MotionPages/PathPreview.cpp" "include/AppUI/MotionPages/OffsetMoveDialog.cpp")
+ "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp" "include/products/product_position_manager.cpp" "include/products/product_json_loader.cpp" "include/AppUI/MotionPages/WaypointEditorDialog.cpp" "include/AppUI/MotionPages/PathPreview.cpp" "include/AppUI/MotionPages/OffsetMoveDialog.cpp" "include/motions/scanning/AdaptiveScanController.cpp" "include/motions/scanning/ScanContext.cpp" "include/motions/scanning/ScanDataCollector.cpp" "include/motions/scanning/CoarseToFineStrategy.cpp" "include/logger/ILogger.cpp" "include/AppUI/MotionPages/ScanControlPanel.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -379,7 +380,7 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControlPanel.h
     include/AppUI/MotionPages/NewPositionDialog.h
     include/AppUI/MotionPages/MotionPage.h
- "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h" "include/products/product_position_manager.h" "include/products/product_json_loader.h" "include/AppUI/MotionPages/WaypointEditorDialog.h" "include/AppUI/MotionPages/PathPreview.h" "include/AppUI/MotionPages/OffsetMoveDialog.h")
+ "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h" "include/products/product_position_manager.h" "include/products/product_json_loader.h" "include/AppUI/MotionPages/WaypointEditorDialog.h" "include/AppUI/MotionPages/PathPreview.h" "include/AppUI/MotionPages/OffsetMoveDialog.h" "include/motions/scanning/AdaptiveScanController.h" "include/motions/scanning/ScanTypes.h" "include/motions/scanning/ScanStrategy.h" "include/motions/scanning/ScanStateMachine.h" "include/motions/scanning/ScanContext.h" "include/motions/scanning/ScanDataCollector.h" "include/AppUI/MotionPages/ScanControlPanel.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

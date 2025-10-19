@@ -1,4 +1,4 @@
-// DataStore.h - Thread-safe data cache for real-time values
+﻿// DataStore.h - Thread-safe data cache for real-time values
 #pragma once
 
 #include <string>
@@ -28,6 +28,7 @@ public:
   bool TryGetValue(const std::string& channelId, float& outValue) const;
 
   std::vector<std::string> GetAvailableChannels() const;
+  std::vector<std::string> GetAllKeys() const;  // ✅ ADD THIS - Alias for GetAvailableChannels
   void ClearChannel(const std::string& channelId);
   void ClearAll();
 
