@@ -9,7 +9,8 @@ struct ApplicationContext;
 class MainMenuPage;
 class HardwareInstrumentPage;
 class ConfigEditorPage;
-class MotionPage;              // NEW - Add this
+class MotionPage;
+class RecipePage;              // ✅ ADD THIS
 class LogStatusBar;
 class LogViewerPage;
 class JogPanelWindow;
@@ -22,7 +23,7 @@ class MainWindow : public QMainWindow
 
 public:
   explicit MainWindow(ApplicationContext* context, QWidget* parent = nullptr);
-  ~MainWindow();  // ✅ ADD THIS
+  ~MainWindow();
 
 private slots:
   void onMainMenuProcess();
@@ -49,7 +50,8 @@ private:
   MainMenuPage* m_mainMenuPage;
   HardwareInstrumentPage* m_hardwarePage;
   ConfigEditorPage* m_configEditorPage;
-  MotionPage* m_motionPage;      // NEW - Add this
+  MotionPage* m_motionPage;
+  RecipePage* m_recipePage;      // ✅ ADD THIS
 
   QPushButton* m_jogButton;
   JogPanelWindow* m_jogPanel;

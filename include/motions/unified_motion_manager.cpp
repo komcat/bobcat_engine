@@ -1294,3 +1294,8 @@ bool UnifiedMotionManager::GetPositionWithCalculation(const std::string& deviceN
   // Not a calculated position, get normally
   return GetNamedPosition(deviceName, positionName, outPosition);
 }
+
+std::vector<std::string> UnifiedMotionManager::GetAllNodeNames(const std::string& deviceName) const {
+  // Return all named positions for this device
+  return GetNamedPositionList(deviceName);
+}

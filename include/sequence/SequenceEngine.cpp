@@ -5,7 +5,7 @@
 #include "EziIOManager.h"
 #include "PneumaticManager.h"
 #include "CameraManager.h"
-// ✅ ADD THESE
+#include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
@@ -16,23 +16,26 @@
 // SEQUENCE ENGINE IMPLEMENTATION
 //=============================================================================
 
-
 SequenceEngine::SequenceEngine(ApplicationContext* context)
   : m_context(context)
   , m_logger(nullptr)
+  , m_systemHandler(nullptr)
 {
   if (!m_context) {
     throw std::runtime_error("SequenceEngine: ApplicationContext is null");
   }
 
-  // ✅ ADD THIS - Register all command handlers
+  // Register all command handlers
   m_dispatcher.RegisterHandler("motion", std::make_unique<MotionCommandHandler>());
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
+
+  // Register system handler
+  auto systemHandler = std::make_unique<SystemCommandHandler>();
+  m_systemHandler = systemHandler.get();
+  m_dispatcher.RegisterHandler("system", std::move(systemHandler));
 }
-
-
 
 SequenceEngine::~SequenceEngine()
 {
@@ -42,7 +45,7 @@ SequenceEngine::~SequenceEngine()
 void SequenceEngine::SetLogger(LogManager* logger)
 {
   m_logger = logger;
-  m_dispatcher.SetLogger(logger);  // ✅ ADD THIS LINE
+  m_dispatcher.SetLogger(logger);
   LogInfo("Logger configured");
 }
 
@@ -90,6 +93,11 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered camera manager");
   }
 
+  // Register system as virtual device (no manager needed)
+  m_deviceToManagerMap["system"] = nullptr;
+  m_deviceToTypeMap["system"] = "system";
+  LogInfo("Registered system handler");
+
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 
@@ -108,6 +116,13 @@ std::string SequenceEngine::ResolveManagerType(const std::string& deviceName)
 {
   auto it = m_deviceToTypeMap.find(deviceName);
   return (it != m_deviceToTypeMap.end()) ? it->second : "";
+}
+
+void SequenceEngine::SetUserPromptCallback(UserPromptCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetUserPromptCallback(callback);
+  }
 }
 
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
@@ -143,14 +158,22 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
   case ISequenceStep::Type::ACTION: {
     Action* action = static_cast<Action*>(step);
 
-    // Check if device exists in registry
-    void* manager = ResolveManager(action->deviceName);
-    if (!manager) {
+    // Check if device type exists in registry
+    std::string managerType = ResolveManagerType(action->deviceName);
+    if (managerType.empty()) {
       errors.push_back("Device not found: " + action->deviceName);
       return false;
     }
 
-    // TODO: Validate method exists (more complex, implement later)
+    // System commands don't need a manager, others do
+    if (managerType != "system") {
+      void* manager = ResolveManager(action->deviceName);
+      if (!manager) {
+        errors.push_back("Manager not found for device: " + action->deviceName);
+        return false;
+      }
+    }
+
     break;
   }
 
@@ -174,11 +197,19 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
   case ISequenceStep::Type::CONDITIONAL: {
     ConditionalBlock* cond = static_cast<ConditionalBlock*>(step);
 
-    // Validate condition device
-    void* manager = ResolveManager(cond->conditionDevice);
-    if (!manager) {
+    // Validate condition device (allow system for conditions too)
+    std::string managerType = ResolveManagerType(cond->conditionDevice);
+    if (managerType.empty()) {
       errors.push_back("Condition device not found: " + cond->conditionDevice);
       return false;
+    }
+
+    if (managerType != "system") {
+      void* manager = ResolveManager(cond->conditionDevice);
+      if (!manager) {
+        errors.push_back("Manager not found for condition device: " + cond->conditionDevice);
+        return false;
+      }
     }
 
     // Validate then branch
@@ -241,84 +272,89 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
   if (!step) return false;
 
   switch (step->GetType()) {
-    case ISequenceStep::Type::ACTION: {
-      Action* action = static_cast<Action*>(step);
+  case ISequenceStep::Type::ACTION: {
+    Action* action = static_cast<Action*>(step);
 
-      LogInfo("Executing: " + action->deviceName + "." + action->methodName);
+    LogInfo("Executing: " + action->deviceName + "." + action->methodName);
 
-      // Get manager
-      void* manager = ResolveManager(action->deviceName);
-      std::string managerType = ResolveManagerType(action->deviceName);
+    // Get manager and type
+    void* manager = ResolveManager(action->deviceName);
+    std::string managerType = ResolveManagerType(action->deviceName);
 
-      if (!manager) {
-        LogError("Manager not found for device: " + action->deviceName);
-        return false;
-      }
-
-      // ✅ REPLACE ALL THE NESTED IFs WITH THIS SIMPLE DISPATCH
-      std::string errorMessage;
-      if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
-        action->methodName, action->params, errorMessage)) {
-        LogError("Command failed: " + errorMessage);
-        return false;
-      }
-
-      break;
+    if (managerType.empty()) {
+      LogError("Unknown device type for: " + action->deviceName);
+      return false;
     }
 
-    case ISequenceStep::Type::LOOP: {
-      LoopBlock* loop = static_cast<LoopBlock*>(step);
-
-      LogInfo("Starting loop: " + std::to_string(loop->count) + " iterations");
-
-      for (int i = 0; i < loop->count; i++) {
-        LogInfo("  Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
-
-        for (const auto& action : loop->actions) {
-          if (!ExecuteStep(action.get())) {
-            return false;
-          }
-        }
-      }
-
-      LogInfo("Loop completed");
-      break;
+    // System commands can have nullptr manager, others cannot
+    if (managerType != "system" && !manager) {
+      LogError("Manager not found for device: " + action->deviceName);
+      return false;
     }
 
-    case ISequenceStep::Type::CONDITIONAL: {
-      ConditionalBlock* cond = static_cast<ConditionalBlock*>(step);
-
-      LogInfo("Evaluating condition: " + cond->conditionDevice + "." + cond->conditionMethod);
-
-      // TODO: Actually call condition method and get boolean result
-      bool conditionResult = false;  // Placeholder
-
-      LogInfo("Condition result: " + std::string(conditionResult ? "TRUE" : "FALSE"));
-
-      if (conditionResult) {
-        LogInfo("Executing THEN branch");
-        for (const auto& action : cond->thenActions) {
-          if (!ExecuteStep(action.get())) {
-            return false;
-          }
-        }
-      }
-      else {
-        LogInfo("Executing ELSE branch");
-        for (const auto& action : cond->elseActions) {
-          if (!ExecuteStep(action.get())) {
-            return false;
-          }
-        }
-      }
-
-      break;
+    // Execute command via dispatcher
+    std::string errorMessage;
+    if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
+      action->methodName, action->params, errorMessage)) {
+      LogError("Command failed: " + errorMessage);
+      return false;
     }
+
+    break;
+  }
+
+  case ISequenceStep::Type::LOOP: {
+    LoopBlock* loop = static_cast<LoopBlock*>(step);
+
+    LogInfo("Starting loop: " + std::to_string(loop->count) + " iterations");
+
+    for (int i = 0; i < loop->count; i++) {
+      LogInfo("  Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
+
+      for (const auto& action : loop->actions) {
+        if (!ExecuteStep(action.get())) {
+          return false;
+        }
+      }
+    }
+
+    LogInfo("Loop completed");
+    break;
+  }
+
+  case ISequenceStep::Type::CONDITIONAL: {
+    ConditionalBlock* cond = static_cast<ConditionalBlock*>(step);
+
+    LogInfo("Evaluating condition: " + cond->conditionDevice + "." + cond->conditionMethod);
+
+    // TODO: Actually call condition method and get boolean result
+    bool conditionResult = false;  // Placeholder
+
+    LogInfo("Condition result: " + std::string(conditionResult ? "TRUE" : "FALSE"));
+
+    if (conditionResult) {
+      LogInfo("Executing THEN branch");
+      for (const auto& action : cond->thenActions) {
+        if (!ExecuteStep(action.get())) {
+          return false;
+        }
+      }
+    }
+    else {
+      LogInfo("Executing ELSE branch");
+      for (const auto& action : cond->elseActions) {
+        if (!ExecuteStep(action.get())) {
+          return false;
+        }
+      }
+    }
+
+    break;
+  }
   }
 
   return true;
 }
-
 
 //=============================================================================
 // LOGGING HELPERS

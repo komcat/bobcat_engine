@@ -51,6 +51,7 @@ private:
   void initializePneumaticManager();
   void initializeSequenceEngine();  
   void initializeScanController();      // ✅ ADD THIS
+	void initializeProductPositionManager();  // ✅ ADD THIS
 
 
   void testMotionCommands();   
@@ -75,6 +76,7 @@ private:
   std::unique_ptr<PneumaticManager> m_pneumaticManager;  
   std::unique_ptr<SequenceEngine> m_sequenceEngine;  
   std::unique_ptr<AdaptiveScanController> m_scanController;  // ✅ ADD THIS
+  std::unique_ptr<ProductPositionManager> m_productPositionManager;  // ✅ ADD THIS
 
 
   ApplicationContext m_context;

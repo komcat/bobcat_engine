@@ -11,7 +11,7 @@
 #include "JogPanelWindow.h"
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
-
+#include "RecipePage.h"           // ✅ ADD THIS
 #include <QVBoxLayout>
 #include <iostream>
 
@@ -25,6 +25,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_hardwarePage(nullptr)
   , m_configEditorPage(nullptr)
   , m_motionPage(nullptr)
+  , m_recipePage(nullptr)        // ✅ ADD THIS
   , m_jogButton(nullptr)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
@@ -140,27 +141,33 @@ void MainWindow::createPages()
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_configEditorPage);
 
-
-  // ✅ ADD THIS - Log Viewer Page
+  // Log Viewer Page
   m_logViewerPage = new LogViewerPage(m_context->logManager, this);
   connect(m_logViewerPage, &LogViewerPage::backRequested,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_logViewerPage);
 
-  // Motion page - ✅ UPDATED with ProductPositionManager
+  // Motion page
   m_motionPage = new MotionPage(
     m_context->motionManager,
-    m_context->productManager,  // ✅ Add product manager
+    m_context->productManager,
     m_matrixLoader,
-    m_context->dataStore,  // ✅ ADD THIS LINE
+    m_context->dataStore,
     this
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_motionPage);
 
+  // ✅ ADD THIS - Recipe page
+  m_recipePage = new RecipePage(m_context, this);
+  connect(m_recipePage, &RecipePage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_recipePage);
+
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
+
 
 void MainWindow::setupLogging()
 {
@@ -239,8 +246,9 @@ void MainWindow::onMainMenuProcess()
 
 void MainWindow::onMainMenuRecipe()
 {
-  std::cout << "[MainWindow] Recipe clicked (not implemented)" << std::endl;
-  m_context->logManager->Warning("Recipe page not implemented yet", "MainWindow");
+  std::cout << "[MainWindow] Recipe clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Recipe page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_recipePage);  // ✅ CHANGED FROM WARNING
 }
 
 void MainWindow::onMainMenuMotion()

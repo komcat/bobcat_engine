@@ -11,6 +11,7 @@ class PneumaticManager;  // ✅ ADD THIS
 class SequenceEngine;  // ✅ ADD THIS
 class ProductPositionManager;
 class AdaptiveScanController;  // ✅ ADD THIS
+class ProductPositionManager;  // ✅ ADD THIS
 
 
 struct ApplicationContext
@@ -25,5 +26,6 @@ struct ApplicationContext
   SequenceEngine* sequenceEngine = nullptr;  // ✅ ADD THIS
   ProductPositionManager* productManager;  // ✅ Add this
   AdaptiveScanController* scanController = nullptr;  // ✅ ADD THIS
+  ProductPositionManager* productPositionManager = nullptr;  // ✅ ADD THIS
 
 };

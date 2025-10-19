@@ -1,7 +1,9 @@
-// MotionCommandHandler.cpp
+﻿// MotionCommandHandler.cpp
 #include "MotionCommandHandler.h"
 #include "unified_motion_manager.h"
 #include "LogManager.h"
+#include <chrono>
+#include <thread>
 
 bool MotionCommandHandler::ExecuteCommand(
   void* manager,
@@ -286,6 +288,50 @@ bool MotionCommandHandler::ExecuteCommand(
 
     return true;
   }
+
+  else if (methodName == "WaitForMotionComplete") {
+    int timeoutMs = 30000;
+    auto timeoutIt = params.find("timeout_ms");
+    if (timeoutIt != params.end()) {
+      timeoutMs = std::stoi(timeoutIt->second);
+    }
+
+    if (m_logger) {
+      m_logger->Info("Waiting for motion complete on: " + deviceName, "MotionHandler");
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+      // ✅ Check BOTH motion state AND waypoint system
+      bool isMoving = motionManager->IsDeviceInMotion(deviceName);
+      bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
+
+      if (!isMoving && !waypointActive) {
+        if (m_logger) {
+          m_logger->Info("Motion complete for: " + deviceName, "MotionHandler");
+        }
+        return true;
+      }
+
+      // Check timeout
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime
+      ).count();
+
+      if (elapsed > timeoutMs) {
+        errorMessage = "Timeout waiting for motion complete on: " + deviceName;
+        if (m_logger) {
+          m_logger->Error(errorMessage, "MotionHandler");
+        }
+        return false;
+      }
+
+      // Sleep briefly to avoid busy-waiting
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    }
+
 
   // ============================================================================
   // UNKNOWN METHOD

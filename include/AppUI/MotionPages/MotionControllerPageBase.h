@@ -80,7 +80,7 @@ protected:
 
   // Helper to get action column index
   int getActionColumnIndex() const {
-    return COL_AXIS_START + getAxisNames().size();
+    return COL_AXIS_START + static_cast<int>(getAxisNames().size());
   }
 
   // Settings

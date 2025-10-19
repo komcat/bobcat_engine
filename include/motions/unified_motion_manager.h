@@ -206,6 +206,13 @@ public:
 	 */
 	void CancelWaypointSequence(const std::string& deviceName);
 
+	/**
+ * @brief Get all node names for a specific device
+ * @param deviceName Name of the motion device
+ * @return Vector of all saved position names for that device
+ */
+	std::vector<std::string> GetAllNodeNames(const std::string& deviceName) const;
+
 private:
 	// Map of controller type to manager
 	std::map<std::string, std::unique_ptr<IMotionControllerManager>> m_managers;

@@ -214,6 +214,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/IOPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/PneumaticPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/JogWindow
+    ${CMAKE_SOURCE_DIR}/include/AppUI/RecipePage
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -225,6 +226,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/products
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
+    ${CMAKE_SOURCE_DIR}/include/recipe
     ${CMAKE_SOURCE_DIR}/include/sequence
 )
 
@@ -313,7 +315,29 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
- "include/AppUI/MotionPages/DevicePositionMarker.cpp" "include/motions/MotionJsonLoader.cpp" "include/AppUI/MotionPages/PositionAnchor.cpp" "include/AppUI/MotionPages/PositionLabel.cpp" "include/products/product_position_manager.cpp" "include/products/product_json_loader.cpp" "include/AppUI/MotionPages/WaypointEditorDialog.cpp" "include/AppUI/MotionPages/PathPreview.cpp" "include/AppUI/MotionPages/OffsetMoveDialog.cpp" "include/motions/scanning/AdaptiveScanController.cpp" "include/motions/scanning/ScanContext.cpp" "include/motions/scanning/ScanDataCollector.cpp" "include/motions/scanning/CoarseToFineStrategy.cpp" "include/logger/ILogger.cpp" "include/AppUI/MotionPages/ScanControlPanel.cpp")
+    include/AppUI/MotionPages/DevicePositionMarker.cpp
+    include/motions/MotionJsonLoader.cpp
+    include/AppUI/MotionPages/PositionAnchor.cpp
+    include/AppUI/MotionPages/PositionLabel.cpp
+    include/products/product_position_manager.cpp
+    include/products/product_json_loader.cpp
+    include/AppUI/MotionPages/WaypointEditorDialog.cpp
+    include/AppUI/MotionPages/PathPreview.cpp
+    include/AppUI/MotionPages/OffsetMoveDialog.cpp
+    include/motions/scanning/AdaptiveScanController.cpp
+    include/motions/scanning/ScanContext.cpp
+    include/motions/scanning/ScanDataCollector.cpp
+    include/motions/scanning/CoarseToFineStrategy.cpp
+    include/logger/ILogger.cpp
+    include/AppUI/MotionPages/ScanControlPanel.cpp
+    include/sequence/SystemCommandHandler.cpp
+    include/sequence/SequencePromptDialog.cpp
+    include/sequence/GripperSequenceHelpers.cpp
+    include/AppUI/RecipePage/RecipePage.cpp
+ "include/recipe/RecipeManager.cpp"
+ "include/recipe/ProcessSequenceFactory.cpp"
+ "include/AppUI/RecipePage/ProcessConfigWidget.cpp"
+ "include/AppUI/RecipePage/DeviceSelectorWidgets.cpp" "include/recipe/RecipeWorker.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -380,7 +404,30 @@ set(HEADERS
     include/AppUI/MotionPages/MotionControlPanel.h
     include/AppUI/MotionPages/NewPositionDialog.h
     include/AppUI/MotionPages/MotionPage.h
- "include/AppUI/MotionPages/DevicePositionMarker.h" "include/motions/MotionJsonLoader.h" "include/AppUI/MotionPages/PositionAnchor.h" "include/AppUI/MotionPages/PositionLabel.h" "include/products/product_position_manager.h" "include/products/product_json_loader.h" "include/AppUI/MotionPages/WaypointEditorDialog.h" "include/AppUI/MotionPages/PathPreview.h" "include/AppUI/MotionPages/OffsetMoveDialog.h" "include/motions/scanning/AdaptiveScanController.h" "include/motions/scanning/ScanTypes.h" "include/motions/scanning/ScanStrategy.h" "include/motions/scanning/ScanStateMachine.h" "include/motions/scanning/ScanContext.h" "include/motions/scanning/ScanDataCollector.h" "include/AppUI/MotionPages/ScanControlPanel.h")
+    include/AppUI/MotionPages/DevicePositionMarker.h
+    include/motions/MotionJsonLoader.h 
+    include/AppUI/MotionPages/PositionAnchor.h
+    include/AppUI/MotionPages/PositionLabel.h 
+    include/products/product_position_manager.h 
+    include/products/product_json_loader.h
+    include/AppUI/MotionPages/WaypointEditorDialog.h
+    include/AppUI/MotionPages/PathPreview.h 
+    include/AppUI/MotionPages/OffsetMoveDialog.h
+    include/motions/scanning/AdaptiveScanController.h
+    include/motions/scanning/ScanTypes.h
+    include/motions/scanning/ScanStrategy.h 
+    include/motions/scanning/ScanStateMachine.h
+    include/motions/scanning/ScanContext.h
+    include/motions/scanning/ScanDataCollector.h
+    include/AppUI/MotionPages/ScanControlPanel.h 
+    include/sequence/SystemCommandHandler.h
+    include/sequence/SequencePromptDialog.h
+    include/sequence/GripperSequenceHelpers.h 
+    include/AppUI/RecipePage/RecipePage.h
+ "include/recipe/RecipeManager.h"
+ "include/recipe/ProcessSequenceFactory.h" 
+ "include/AppUI/RecipePage/ProcessConfigWidget.h"
+ "include/AppUI/RecipePage/DeviceSelectorWidgets.h" "include/recipe/RecipeWorker.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

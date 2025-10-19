@@ -6,6 +6,7 @@
 #include "TcpClientManager.h"
 #include "EziIO_JsonLoader.h"
 #include "PneumaticJsonLoader.h"  // ✅ ADD THIS
+#include "product_position_manager.h"
 #include "MotionJsonLoader.h"
 #include <QApplication>
 #include <iostream>
@@ -111,7 +112,7 @@ void Application::initializeManagers()
 		initializePneumaticManager();  // ✅ ADD THIS
     initializeSequenceEngine();  // ✅ ADD THIS LAST
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
-
+		initializeProductPositionManager();	// ✅ ADD THIS
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -461,6 +462,7 @@ void Application::shutdownManagers()
 
   m_context = ApplicationContext();
 
+  m_productPositionManager.reset();  // ✅ ADD THIS
   m_pneumaticManager.reset();
   m_scanController.reset();   // ✅ ADD THIS
   m_ioManager.reset();
@@ -999,4 +1001,15 @@ void Application::testScanController()
   m_logManager->Info("======================================", "Scan Test");
   m_logManager->Info("Scan Test completed!", "Scan Test");
   m_logManager->Info("======================================", "Scan Test");
+}
+
+
+void Application::initializeProductPositionManager()
+{
+  // ✅ ADD THIS - Initialize product position manager
+  std::cout << "[Application] Initializing ProductPositionManager..." << std::endl;
+  m_productPositionManager = std::make_unique<ProductPositionManager>();
+  m_context.productPositionManager = m_productPositionManager.get();
+  std::cout << "[Application] ProductPositionManager initialized" << std::endl;
+
 }

@@ -1,0 +1,350 @@
+// RecipeManager.cpp
+#include "RecipeManager.h"
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFile>
+
+RecipeManager::RecipeManager()
+  : m_currentFilePath("")
+{
+  std::cout << "[RecipeManager] Created" << std::endl;
+}
+
+RecipeManager::~RecipeManager()
+{
+  std::cout << "[RecipeManager] Destroyed" << std::endl;
+}
+
+void RecipeManager::newRecipe()
+{
+  m_currentRecipe = Recipe();
+  m_currentFilePath.clear();
+  std::cout << "[RecipeManager] New recipe created" << std::endl;
+}
+
+void RecipeManager::addStep(const std::string& processType)
+{
+  std::string uniqueId = generateUniqueId(processType);
+  std::string nickname = processType + " " + std::to_string(m_currentRecipe.steps.size() + 1);
+
+  auto instance = std::make_unique<ProcessInstance>(processType, nickname, uniqueId);
+  instance->parameters = getDefaultParameters(processType);
+
+  m_currentRecipe.steps.push_back(std::move(instance));
+
+  std::cout << "[RecipeManager] Added step: " << processType
+    << " (ID: " << uniqueId << ")" << std::endl;
+}
+
+void RecipeManager::removeStep(int index)
+{
+  if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {
+    std::cerr << "[RecipeManager] Invalid index for removeStep: " << index << std::endl;
+    return;
+  }
+
+  std::string removedId = m_currentRecipe.steps[index]->uniqueId;
+  m_currentRecipe.steps.erase(m_currentRecipe.steps.begin() + index);
+
+  std::cout << "[RecipeManager] Removed step at index " << index
+    << " (ID: " << removedId << ")" << std::endl;
+}
+
+bool RecipeManager::moveStepUp(int index)
+{
+  if (index <= 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {
+    return false;
+  }
+
+  std::swap(m_currentRecipe.steps[index], m_currentRecipe.steps[index - 1]);
+  std::cout << "[RecipeManager] Moved step " << index << " up" << std::endl;
+  return true;
+}
+
+bool RecipeManager::moveStepDown(int index)
+{
+  if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size()) - 1) {
+    return false;
+  }
+
+  std::swap(m_currentRecipe.steps[index], m_currentRecipe.steps[index + 1]);
+  std::cout << "[RecipeManager] Moved step " << index << " down" << std::endl;
+  return true;
+}
+
+ProcessInstance* RecipeManager::getStep(int index)
+{
+  if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {
+    return nullptr;
+  }
+  return m_currentRecipe.steps[index].get();
+}
+
+const ProcessInstance* RecipeManager::getStep(int index) const
+{
+  if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {
+    return nullptr;
+  }
+  return m_currentRecipe.steps[index].get();
+}
+
+void RecipeManager::setStepNickname(int index, const std::string& nickname)
+{
+  ProcessInstance* step = getStep(index);
+  if (step) {
+    step->userNickname = nickname;
+  }
+}
+
+void RecipeManager::setStepEnabled(int index, bool enabled)
+{
+  ProcessInstance* step = getStep(index);
+  if (step) {
+    step->enabled = enabled;
+  }
+}
+
+void RecipeManager::setStepParameter(int index, const std::string& key, const std::string& value)
+{
+  ProcessInstance* step = getStep(index);
+  if (step) {
+    step->parameters[key] = value;
+  }
+}
+
+#include <random>
+#include <sstream>
+#include <iomanip>
+
+std::string RecipeManager::generateUniqueId(const std::string& processType)
+{
+  // Generate random alphanumeric ID: 3 letters + 3 digits + 1 letter
+  // Example: XKJ515D, ABC123Z, etc.
+
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> letter_dist(0, 25);  // A-Z
+  static std::uniform_int_distribution<> digit_dist(0, 9);    // 0-9
+
+  std::stringstream ss;
+
+  // 3 random uppercase letters
+  for (int i = 0; i < 3; i++) {
+    ss << static_cast<char>('A' + letter_dist(gen));
+  }
+
+  // 3 random digits
+  for (int i = 0; i < 3; i++) {
+    ss << digit_dist(gen);
+  }
+
+  // 1 random uppercase letter
+  ss << static_cast<char>('A' + letter_dist(gen));
+
+  std::string id = ss.str();
+
+  // Optional: Check if ID already exists (very unlikely with this format)
+  for (const auto& step : m_currentRecipe.steps) {
+    if (step->uniqueId == id) {
+      // Regenerate if duplicate (recursive call)
+      return generateUniqueId(processType);
+    }
+  }
+
+  return id;
+}
+
+
+std::vector<std::string> RecipeManager::getAvailableProcessTypes()
+{
+  return {
+    "Pick",
+    "Place",
+    "Pick and Place"
+  };
+}
+
+std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std::string& processType)
+{
+  std::map<std::string, std::string> params;
+
+  if (processType == "Pick") {
+    params["gripper_device"] = "hex-left";
+    params["camera_device"] = "gantry-main";
+    params["io_device"] = "IOBottom";
+    params["gripper_pin"] = "0";
+    params["pick_node"] = "node_5647";
+    params["view_node"] = "node_4186";
+    params["release_wait_ms"] = "1500";
+    params["regrip_wait_ms"] = "500";
+    params["lens_name"] = "lens";
+  }
+  else if (processType == "Place") {
+    params["gripper_device"] = "hex-left";
+    params["camera_device"] = "gantry-main";
+    params["io_device"] = "IOBottom";
+    params["gripper_pin"] = "0";
+    params["place_node"] = "node_5662";
+    params["view_node"] = "node_4137";
+    params["lens_name"] = "lens";
+  }
+  else if (processType == "Pick and Place") {
+    params["gripper_device"] = "hex-left";
+    params["camera_device"] = "gantry-main";
+    params["io_device"] = "IOBottom";
+    params["gripper_pin"] = "0";
+    params["pick_node"] = "node_5647";
+    params["pick_view_node"] = "node_4186";
+    params["place_node"] = "node_5662";
+    params["place_view_node"] = "node_4137";
+    params["release_wait_ms"] = "1500";
+    params["regrip_wait_ms"] = "500";
+    params["lens_name"] = "lens";
+  }
+
+  return params;
+}
+
+bool RecipeManager::validateRecipe(std::vector<std::string>& errors) const
+{
+  errors.clear();
+
+  if (m_currentRecipe.steps.empty()) {
+    errors.push_back("Recipe has no steps");
+  }
+
+  // Check for duplicate IDs
+  std::map<std::string, int> idCount;
+  for (const auto& step : m_currentRecipe.steps) {
+    idCount[step->uniqueId]++;
+  }
+
+  for (const auto& [id, count] : idCount) {
+    if (count > 1) {
+      errors.push_back("Duplicate ID found: " + id);
+    }
+  }
+
+  // TODO: Add more validation (e.g., check if nodes exist in motion manager)
+
+  return errors.empty();
+}
+
+bool RecipeManager::loadRecipe(const std::string& filename)
+{
+  return loadFromJson(filename);
+}
+
+bool RecipeManager::saveRecipe(const std::string& filename)
+{
+  if (saveToJson(filename)) {
+    m_currentFilePath = filename;
+    return true;
+  }
+  return false;
+}
+
+bool RecipeManager::saveToJson(const std::string& filename) const
+{
+  QJsonObject root;
+  root["version"] = QString::fromStdString(m_currentRecipe.version);
+  root["recipe_name"] = QString::fromStdString(m_currentRecipe.name);
+  root["next_id_counter"] = m_currentRecipe.nextIdCounter;
+
+  QJsonArray stepsArray;
+  for (const auto& step : m_currentRecipe.steps) {
+    QJsonObject stepObj;
+    stepObj["id"] = QString::fromStdString(step->uniqueId);
+    stepObj["type"] = QString::fromStdString(step->processType);
+    stepObj["nickname"] = QString::fromStdString(step->userNickname);
+    stepObj["enabled"] = step->enabled;
+
+    QJsonObject paramsObj;
+    for (const auto& [key, value] : step->parameters) {
+      paramsObj[QString::fromStdString(key)] = QString::fromStdString(value);
+    }
+    stepObj["parameters"] = paramsObj;
+
+    stepsArray.append(stepObj);
+  }
+
+  root["steps"] = stepsArray;
+
+  QJsonDocument doc(root);
+
+  QFile file(QString::fromStdString(filename));
+  if (!file.open(QIODevice::WriteOnly)) {
+    std::cerr << "[RecipeManager] Failed to write file: " << filename << std::endl;
+    return false;
+  }
+
+  file.write(doc.toJson(QJsonDocument::Indented));
+  file.close();
+
+  std::cout << "[RecipeManager] Saved recipe '" << m_currentRecipe.name
+    << "' with " << m_currentRecipe.steps.size() << " steps to "
+    << filename << std::endl;
+
+  return true;
+}
+
+bool RecipeManager::loadFromJson(const std::string& filename)
+{
+  QFile file(QString::fromStdString(filename));
+  if (!file.open(QIODevice::ReadOnly)) {
+    std::cerr << "[RecipeManager] Failed to open file: " << filename << std::endl;
+    return false;
+  }
+
+  QByteArray data = file.readAll();
+  file.close();
+
+  QJsonDocument doc = QJsonDocument::fromJson(data);
+  if (!doc.isObject()) {
+    std::cerr << "[RecipeManager] Invalid JSON format" << std::endl;
+    return false;
+  }
+
+  QJsonObject root = doc.object();
+
+  // Create new recipe
+  Recipe newRecipe;
+  newRecipe.version = root["version"].toString("1.0").toStdString();
+  newRecipe.name = root["recipe_name"].toString("Untitled Recipe").toStdString();
+  newRecipe.nextIdCounter = root["next_id_counter"].toInt(1);
+
+  QJsonArray stepsArray = root["steps"].toArray();
+
+  for (const QJsonValue& val : stepsArray) {
+    QJsonObject stepObj = val.toObject();
+
+    std::string id = stepObj["id"].toString().toStdString();
+    std::string type = stepObj["type"].toString().toStdString();
+    std::string nickname = stepObj["nickname"].toString().toStdString();
+
+    auto instance = std::make_unique<ProcessInstance>(type, nickname, id);
+    instance->enabled = stepObj["enabled"].toBool(true);
+
+    QJsonObject paramsObj = stepObj["parameters"].toObject();
+    for (const QString& key : paramsObj.keys()) {
+      instance->parameters[key.toStdString()] =
+        paramsObj[key].toString().toStdString();
+    }
+
+    newRecipe.steps.push_back(std::move(instance));
+  }
+
+  // Replace current recipe
+  m_currentRecipe = std::move(newRecipe);
+  m_currentFilePath = filename;
+
+  std::cout << "[RecipeManager] Loaded recipe '" << m_currentRecipe.name
+    << "' with " << m_currentRecipe.steps.size() << " steps from "
+    << filename << std::endl;
+
+  return true;
+}

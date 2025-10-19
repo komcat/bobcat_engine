@@ -2,7 +2,7 @@
 #pragma once
 
 #include "ApplicationContext.h"
-#include "CommandDispatcher.h"  // ✅ ADD THIS
+#include "CommandDispatcher.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -12,7 +12,11 @@
 // Forward declarations
 class SequenceBuilder;
 struct ISequenceStep;
+class SystemCommandHandler;
 class LogManager;
+
+// Callback type for user prompts - returns true if user confirmed, false if cancelled
+using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
 
 //=============================================================================
 // SEQUENCE STEP INTERFACE
@@ -79,23 +83,27 @@ struct ConditionalBlock : public ISequenceStep
 //=============================================================================
 // SEQUENCE ENGINE
 //=============================================================================
-
 class SequenceEngine
 {
 public:
   explicit SequenceEngine(ApplicationContext* context);
   ~SequenceEngine();
 
+  // Configuration
   void SetLogger(LogManager* logger);
   void BuildDeviceRegistry();
+  void SetUserPromptCallback(UserPromptCallback callback);
 
+  // Sequence creation and execution
   SequenceBuilder* CreateSequence(const std::string& name);
   bool ExecuteSequence(SequenceBuilder* sequence);
   bool ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors);
 
+  // Logging
   const std::vector<std::string>& GetExecutionLog() const { return m_executionLog; }
   void ClearLog() { m_executionLog.clear(); }
 
+  // Device resolution (used by validator)
   void* ResolveManager(const std::string& deviceName);
   std::string ResolveManagerType(const std::string& deviceName);
 
@@ -104,7 +112,8 @@ private:
   LogManager* m_logger;
   std::vector<std::string> m_executionLog;
 
-  CommandDispatcher m_dispatcher;  // ✅ ADD THIS
+  CommandDispatcher m_dispatcher;
+  SystemCommandHandler* m_systemHandler;  // Non-owning pointer
 
   std::map<std::string, void*> m_deviceToManagerMap;
   std::map<std::string, std::string> m_deviceToTypeMap;
