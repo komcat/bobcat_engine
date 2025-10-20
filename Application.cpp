@@ -8,6 +8,7 @@
 #include "PneumaticJsonLoader.h"  // ✅ ADD THIS
 #include "product_position_manager.h"
 #include "MotionJsonLoader.h"
+#include "SequenceBuilder.h"
 #include <QApplication>
 #include <iostream>
 #include <fstream>

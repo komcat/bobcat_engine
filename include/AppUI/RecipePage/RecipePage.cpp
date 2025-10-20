@@ -5,9 +5,10 @@
 #include "SequenceEngine.h"
 #include "GripperSequenceHelpers.h"
 #include "ProcessSequenceFactory.h"
-#include "ProcessConfigWidget.h"  // ✅ NEW: Include custom widgets
+#include "ProcessConfigWidget.h"
 #include "product_position_manager.h"
 #include "RecipeWorker.h"
+#include "RecipeProgressWidget.h"  // ✅ NEW
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
 #include <QSplitter>
@@ -18,6 +19,7 @@
 #include <QFrame>
 #include <QMetaObject>
 #include <QThread>
+#include <QTimer>  // ✅ NEW
 #include <QApplication>
 #include <iostream>
 
@@ -28,15 +30,15 @@ RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
   , m_sequenceEngine(nullptr)
   , m_processFactory(new ProcessSequenceFactory())
   , m_selectedStepIndex(-1)
-  , m_currentConfigWidget(nullptr)  // ✅ NEW: Initialize widget pointer
-  , m_recipeWorker(nullptr)  // ✅ ADD THIS LINE
-  , m_loadedProductLabel(nullptr)  // ✅ Add this
+  , m_currentConfigWidget(nullptr)
+  , m_recipeWorker(nullptr)
+  , m_loadedProductLabel(nullptr)
+  , m_progressWidget(nullptr)  // ✅ NEW
 {
   setupUI();
   setupSequenceEngine();
 
-
-  // ✅ NEW: Check if product already loaded
+  // Check if product already loaded
   if (m_context->productPositionManager &&
     m_context->productPositionManager->HasLoadedProduct()) {
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
@@ -50,7 +52,7 @@ RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
 
 RecipePage::~RecipePage()
 {
-  // ✅ ADD: Clean up worker thread
+  // Clean up worker thread
   if (m_recipeWorker) {
     m_recipeWorker->quit();
     m_recipeWorker->wait();
@@ -101,7 +103,6 @@ void RecipePage::setupUI()
   titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   titleLayout->addWidget(titleLabel);
 
-  // ✅ NEW: Add product loader button and status
   m_productStatusLabel = new QLabel("No product loaded");
   m_productStatusLabel->setStyleSheet(
     "font-size: 11px; "
@@ -214,8 +215,6 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   nameLayout->addWidget(m_recipeNameEdit);
   layout->addLayout(nameLayout);
 
-
-  // ✅ NEW: Add product info label
   m_loadedProductLabel = new QLabel("Product: None");
   m_loadedProductLabel->setStyleSheet(
     "font-size: 11px; "
@@ -227,7 +226,6 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   );
   m_loadedProductLabel->setWordWrap(true);
   layout->addWidget(m_loadedProductLabel);
-
 
   m_recipeList = new QListWidget();
   m_recipeList->setStyleSheet(
@@ -292,7 +290,6 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
   layout->addWidget(title);
 
-  // ✅ SIMPLIFIED: Just a scroll area, widget gets swapped dynamically
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
   m_configScrollArea->setStyleSheet(
@@ -301,7 +298,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
 
   layout->addWidget(m_configScrollArea);
 
-  clearConfigurationForm();  // Show placeholder initially
+  clearConfigurationForm();
 }
 
 void RecipePage::onNewRecipe()
@@ -334,7 +331,7 @@ void RecipePage::onLoadRecipe()
     refreshRecipeList();
     clearConfigurationForm();
 
-    // ✅ Auto-load associated product file
+    // Auto-load associated product file
     std::string productFile = m_recipeManager->getProductFile();
     if (!productFile.empty()) {
       if (m_context->productPositionManager) {
@@ -343,7 +340,6 @@ void RecipePage::onLoadRecipe()
 
           std::string productName = m_context->productPositionManager->GetCurrentProductName();
 
-          // ✅ Update both labels
           m_productStatusLabel->setText(QString("Product: %1")
             .arg(QString::fromStdString(productName)));
           m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
@@ -369,7 +365,6 @@ void RecipePage::onLoadRecipe()
             .arg(QString::fromStdString(productName)));
         }
         else {
-          // ✅ Show warning in label
           m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
             .arg(QString::fromStdString(productFile)));
           m_loadedProductLabel->setStyleSheet(
@@ -388,7 +383,6 @@ void RecipePage::onLoadRecipe()
       }
     }
     else {
-      // ✅ No product file in recipe
       m_loadedProductLabel->setText("Product: None");
       m_loadedProductLabel->setStyleSheet(
         "font-size: 11px; "
@@ -406,7 +400,6 @@ void RecipePage::onLoadRecipe()
     QMessageBox::critical(this, "Error", "Failed to load recipe file.");
   }
 }
-
 
 void RecipePage::onSaveRecipe()
 {
@@ -477,9 +470,17 @@ void RecipePage::onMoveStepDown()
 
 void RecipePage::onRecipeStepSelected(int index)
 {
-  // ✅ FIX: Don't reload if same step is selected
+  // ✅ NEW: If progress widget is showing, switch to config panel
+  if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
+    std::cout << "[RecipePage] User selected step, switching from progress to config" << std::endl;
+  }
+
   if (m_selectedStepIndex == index) {
-    return;  // Already showing this step's config
+    // ✅ Even if same step, if showing progress, switch to config
+    if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
+      updateConfigurationForm();
+    }
+    return;
   }
 
   m_selectedStepIndex = index;
@@ -489,15 +490,16 @@ void RecipePage::onRecipeStepSelected(int index)
     return;
   }
 
+  // ✅ This will automatically switch from progress to config
   updateConfigurationForm();
 }
+
 
 void RecipePage::onRecipeNameChanged(const QString& name)
 {
   m_recipeManager->setRecipeName(name.toStdString());
 }
 
-// ✅ SIMPLIFIED: Single slot receives nickname from custom widget
 void RecipePage::onNicknameChanged(const QString& nickname)
 {
   if (m_selectedStepIndex < 0) return;
@@ -505,7 +507,6 @@ void RecipePage::onNicknameChanged(const QString& nickname)
 
   m_recipeManager->setStepNickname(m_selectedStepIndex, nickname.toStdString());
 
-  // ✅ FIX: Only update the specific item text, don't rebuild entire list
   if (m_selectedStepIndex < m_recipeList->count()) {
     QListWidgetItem* item = m_recipeList->item(m_selectedStepIndex);
     if (item) {
@@ -519,11 +520,8 @@ void RecipePage::onNicknameChanged(const QString& nickname)
       }
     }
   }
-
-  // Don't call refreshRecipeList() or setCurrentRow() here!
 }
 
-// ✅ SIMPLIFIED: Single slot receives enabled state from custom widget
 void RecipePage::onEnabledChanged(bool enabled)
 {
   if (m_selectedStepIndex < 0) return;
@@ -533,7 +531,6 @@ void RecipePage::onEnabledChanged(bool enabled)
   m_recipeList->setCurrentRow(m_selectedStepIndex);
 }
 
-// ✅ SIMPLIFIED: Single slot receives all parameters from custom widget
 void RecipePage::onParameterChanged()
 {
   if (m_selectedStepIndex < 0 || !m_currentConfigWidget) return;
@@ -572,8 +569,6 @@ void RecipePage::refreshRecipeList()
   }
 }
 
-// ✅ COMPLETELY NEW: Create appropriate custom widget based on process type
-// ✅ COMPLETELY NEW: Create appropriate custom widget based on process type
 void RecipePage::updateConfigurationForm()
 {
   const ProcessInstance* instance = m_recipeManager->getStep(m_selectedStepIndex);
@@ -582,14 +577,14 @@ void RecipePage::updateConfigurationForm()
     return;
   }
 
-  // Delete old widget if exists
+  // ✅ FIX: Safe widget cleanup
   if (m_currentConfigWidget) {
-    m_currentConfigWidget->deleteLater();
+    m_configScrollArea->takeWidget();  // Remove from scroll area first
+    delete m_currentConfigWidget;      // Delete immediately, not later
     m_currentConfigWidget = nullptr;
   }
 
   // Create appropriate widget based on process type
-  // ✅ FIX: Pass m_context to all widget constructors
   if (instance->processType == "Pick") {
     m_currentConfigWidget = new PickConfigWidget(m_context);
   }
@@ -599,7 +594,6 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Pick and Place") {
     m_currentConfigWidget = new PickAndPlaceConfigWidget(m_context);
   }
-  // ✅ ADD THESE:
   else if (instance->processType == "Move to Position") {
     m_currentConfigWidget = new MoveToPositionConfigWidget(m_context);
   }
@@ -634,11 +628,12 @@ void RecipePage::updateConfigurationForm()
 }
 
 
-// ✅ SIMPLIFIED: Just show placeholder
 void RecipePage::clearConfigurationForm()
 {
+  // ✅ FIX: Safe widget cleanup
   if (m_currentConfigWidget) {
-    m_currentConfigWidget->deleteLater();
+    m_configScrollArea->takeWidget();  // Remove from scroll area
+    delete m_currentConfigWidget;      // Delete immediately
     m_currentConfigWidget = nullptr;
   }
 
@@ -654,7 +649,7 @@ void RecipePage::clearConfigurationForm()
 }
 
 // ============================================================================
-// SEQUENCE ENGINE SETUP AND EXECUTION (UNCHANGED)
+// SEQUENCE ENGINE SETUP
 // ============================================================================
 
 void RecipePage::setupSequenceEngine()
@@ -665,13 +660,11 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine->SetLogger(m_context->logManager);
   m_sequenceEngine->BuildDeviceRegistry();
 
-  // ✅ NEW: Thread-safe callback using QEventLoop
   m_sequenceEngine->SetUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     bool result = false;
     QEventLoop loop;
 
-    // Post to main thread
     QMetaObject::invokeMethod(this, [&]() {
       result = SequencePromptDialog::ShowPrompt(
         QString::fromStdString(title),
@@ -681,7 +674,6 @@ void RecipePage::setupSequenceEngine()
       loop.quit();
     }, Qt::QueuedConnection);
 
-    // Wait for result
     loop.exec();
     return result;
   }
@@ -689,6 +681,10 @@ void RecipePage::setupSequenceEngine()
 
   std::cout << "[RecipePage] SequenceEngine ready" << std::endl;
 }
+
+// ============================================================================
+// RECIPE EXECUTION
+// ============================================================================
 
 void RecipePage::onRunRecipe()
 {
@@ -724,6 +720,9 @@ void RecipePage::onRunRecipe()
   std::cout << "[RecipePage] Starting recipe execution: "
     << recipeName.toStdString() << std::endl;
 
+  // ✅ SWITCH TO PROGRESS PANEL
+  showProgressPanel();
+
   // Disable run button while executing
   m_runRecipeButton->setEnabled(false);
   m_runRecipeButton->setText("⏳ Recipe Running...");
@@ -736,11 +735,22 @@ void RecipePage::onRunRecipe()
     this
   );
 
-  // Connect signals
-  connect(m_recipeWorker, &RecipeWorker::progressUpdate,
-    this, &RecipePage::onRecipeProgress);
-  connect(m_recipeWorker, &RecipeWorker::finished,
-    this, &RecipePage::onRecipeFinished);
+  // ✅ Connect RAW DATA signals to UI interpreters
+  connect(m_recipeWorker, &RecipeWorker::executionStarted,
+    this, &RecipePage::onExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildStarted,
+    this, &RecipePage::onStepBuildStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildCompleted,
+    this, &RecipePage::onStepBuildCompleted);
+  connect(m_recipeWorker, &RecipeWorker::sequenceExecutionStarted,
+    this, &RecipePage::onSequenceExecutionStarted);
+
+  connect(m_recipeWorker, &RecipeWorker::executionCompleted,
+    this, &RecipePage::onExecutionCompleted);
+  connect(m_recipeWorker, &RecipeWorker::executionStopped,
+    this, &RecipePage::onExecutionStopped);
+  connect(m_recipeWorker, &RecipeWorker::logMessage,
+    this, &RecipePage::onWorkerLogMessage);
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
@@ -748,36 +758,17 @@ void RecipePage::onRunRecipe()
   m_recipeWorker->start();
 }
 
+// Legacy slots (kept for compatibility but not used with new system)
 void RecipePage::onRecipeProgress(const QString& message)
 {
   std::cout << "[RecipePage] Progress: " << message.toStdString() << std::endl;
-
-  // Optional: Update status bar or progress label if you add one
-  // m_statusLabel->setText(message);
 }
 
 void RecipePage::onRecipeFinished(bool success, const QString& message)
 {
   std::cout << "[RecipePage] Recipe finished: " << message.toStdString() << std::endl;
-
-  // Re-enable run button
-  m_runRecipeButton->setEnabled(true);
-  m_runRecipeButton->setText("▶ Run Recipe");
-
-  // Show result to user
-  if (success) {
-    QMessageBox::information(this, "Success", message);
-    m_context->logManager->Info(message.toStdString(), "RecipePage");
-  }
-  else {
-    QMessageBox::critical(this, "Execution Error", message);
-    m_context->logManager->Error(message.toStdString(), "RecipePage");
-  }
-
-  // Worker will be deleted automatically via deleteLater
   m_recipeWorker = nullptr;
 }
-
 
 bool RecipePage::executeRecipe()
 {
@@ -830,6 +821,184 @@ void RecipePage::buildSequenceFromRecipe(SequenceBuilder* sequence)
     << totalCount << " total steps" << std::endl;
 }
 
+// ============================================================================
+// ✅ UI INTERPRETERS - Convert raw data to UI updates
+// ============================================================================
+
+void RecipePage::onExecutionStarted(int totalEnabledSteps)
+{
+  if (m_progressWidget) {
+    m_progressWidget->setTotalSteps(totalEnabledSteps);
+    m_progressWidget->setCurrentStep(0, "Preparing...");  // Start at 0
+    m_progressWidget->setStatusText(QString("Building sequence with %1 step(s)...")
+      .arg(totalEnabledSteps));
+  }
+  std::cout << "[RecipePage] Execution started: " << totalEnabledSteps << " steps" << std::endl;
+}
+
+
+void RecipePage::onStepBuildStarted(int stepIndex, QString stepName, QString stepType)
+{
+  // ✅ During build phase: Don't update progress bar yet, just status
+  if (m_progressWidget) {
+    m_progressWidget->setStatusText(QString("Building: %1").arg(stepName));
+  }
+
+  std::cout << "[RecipePage] Building step " << (stepIndex + 1)
+    << ": " << stepName.toStdString()
+    << " (" << stepType.toStdString() << ")" << std::endl;
+}
+
+
+void RecipePage::onStepBuildCompleted(int stepIndex)
+{
+  std::cout << "[RecipePage] Step " << (stepIndex + 1) << " built" << std::endl;
+}
+
+
+void RecipePage::onSequenceExecutionStarted()
+{
+  if (m_progressWidget) {
+    // ✅ Now show that execution is happening (indeterminate progress)
+    m_progressWidget->setCurrentStep(1, "Executing all steps...");
+    m_progressWidget->setStatusText("Running sequence - please wait...");
+  }
+  std::cout << "[RecipePage] Sequence execution started" << std::endl;
+}
+
+
+
+
+
+
+void RecipePage::onExecutionCompleted(bool success, QString message)
+{
+  std::cout << "[RecipePage] Execution completed: " << message.toStdString() << std::endl;
+
+  if (m_progressWidget) {
+    m_progressWidget->stopTimer();
+
+    // Show final state
+    int totalSteps = m_progressWidget->property("totalSteps").toInt();
+    m_progressWidget->setCurrentStep(totalSteps, "Complete");
+    m_progressWidget->setStatusText(success ? "✓ Completed!" : "✗ Failed");
+  }
+
+  m_runRecipeButton->setEnabled(true);
+  m_runRecipeButton->setText("▶ Run Recipe");
+
+  // Show result dialog
+  if (success) {
+    QMessageBox::information(this, "Success", message);
+    m_context->logManager->Info(message.toStdString(), "RecipePage");
+  }
+  else {
+    QMessageBox::critical(this, "Execution Error", message);
+    m_context->logManager->Error(message.toStdString(), "RecipePage");
+  }
+
+  // ❌ REMOVE AUTO-SWITCH - Keep progress visible
+  // QTimer::singleShot(2000, this, [this]() {
+  //   showConfigPanel();
+  // });
+
+  m_recipeWorker = nullptr;
+}
+
+
+void RecipePage::onExecutionStopped()
+{
+  if (m_progressWidget) {
+    m_progressWidget->setStatusText("⏹ Stopped by user");
+  }
+  std::cout << "[RecipePage] Execution stopped" << std::endl;
+}
+
+void RecipePage::onWorkerLogMessage(QString message)
+{
+  if (m_progressWidget) {
+    m_progressWidget->setStatusText(message);
+  }
+}
+
+void RecipePage::onStopRecipeRequested()
+{
+  if (!m_recipeWorker || !m_recipeWorker->isRunning()) {
+    return;
+  }
+
+  QMessageBox::StandardButton reply = QMessageBox::question(
+    this, "Stop Recipe",
+    "Stop recipe execution after current step?",
+    QMessageBox::Yes | QMessageBox::No
+  );
+
+  if (reply == QMessageBox::Yes) {
+    m_recipeWorker->requestStop();
+    if (m_progressWidget) {
+      m_progressWidget->setStatusText("Stopping...");
+    }
+  }
+}
+
+// ============================================================================
+// ✅ PANEL SWITCHING
+// ============================================================================
+
+void RecipePage::showProgressPanel()
+{
+  // ✅ ULTRA SAFE: Clear everything first
+  if (m_currentConfigWidget) {
+    m_configScrollArea->takeWidget();
+    m_currentConfigWidget->deleteLater();
+    m_currentConfigWidget = nullptr;
+  }
+
+  // ✅ ULTRA SAFE: Clear scroll area completely
+  QWidget* oldWidget = m_configScrollArea->takeWidget();
+  if (oldWidget) {
+    oldWidget->deleteLater();
+  }
+
+  // Reset pointer regardless
+  m_progressWidget = nullptr;
+
+  // Create fresh widget
+  m_progressWidget = new RecipeProgressWidget();
+  connect(m_progressWidget, &RecipeProgressWidget::stopRequested,
+    this, &RecipePage::onStopRecipeRequested);
+
+  m_progressWidget->resetTimer();
+  m_progressWidget->setStatusText("Initializing recipe execution...");
+  m_progressWidget->startTimer();
+
+  m_configScrollArea->setWidget(m_progressWidget);
+}
+
+
+void RecipePage::showConfigPanel()
+{
+  // ✅ ULTRA SAFE: Clear scroll area completely
+  QWidget* oldWidget = m_configScrollArea->takeWidget();
+  if (oldWidget) {
+    oldWidget->deleteLater();
+  }
+
+  // Reset pointer
+  m_progressWidget = nullptr;
+
+  // Show config
+  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
+    updateConfigurationForm();
+  }
+  else {
+    clearConfigurationForm();
+  }
+}
+
+// ============================================================================
+// PRODUCT LOADING
+// ============================================================================
 
 void RecipePage::onLoadProductClicked()
 {
@@ -854,12 +1023,10 @@ void RecipePage::onLoadProductClicked()
 
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
 
-    // ✅ Update BOTH labels (top right and middle panel)
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
     m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
 
-    // ✅ Update middle panel label with full path
     m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
       .arg(QString::fromStdString(productName))
       .arg(filePath));
@@ -873,11 +1040,9 @@ void RecipePage::onLoadProductClicked()
       "background-color: #e8f5e9;"
     );
 
-    // ✅ Save product file path in recipe
     m_recipeManager->setProductFile(filePath.toStdString());
 
     std::cout << "[RecipePage] Loaded product from: " << filePath.toStdString() << std::endl;
-    std::cout << "[RecipePage] Product file saved to recipe: " << filePath.toStdString() << std::endl;
 
     QMessageBox::information(this, "Success",
       QString("Product '%1' loaded successfully!\n\nThis product will be auto-loaded with this recipe.")

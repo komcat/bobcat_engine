@@ -19,7 +19,7 @@ class ProcessSequenceFactory;
 class SequenceBuilder;
 class ProcessConfigWidget;
 class RecipeWorker;
-
+class RecipeProgressWidget;  // ✅ NEW
 
 class RecipePage : public QWidget
 {
@@ -33,6 +33,7 @@ signals:
   void backToMainMenu();
 
 private slots:
+  // Legacy progress (kept for compatibility)
   void onRecipeProgress(const QString& message);
   void onRecipeFinished(bool success, const QString& message);
 
@@ -45,28 +46,44 @@ private slots:
   void onMoveStepDown();
   void onRemoveStep();
   void onRunRecipe();
-  void onLoadProductClicked();  // ✅ ADD THIS
+  void onLoadProductClicked();
+
   // Middle panel actions
   void onAddProcess();
   void onProcessTemplateSelected(QListWidgetItem* item);
 
-  // Right panel actions - now from custom widgets
+  // Right panel actions - from custom widgets
   void onParameterChanged();
   void onNicknameChanged(const QString& nickname);
   void onEnabledChanged(bool enabled);
   void onRecipeNameChanged(const QString& name);
 
+  // ✅ NEW: Raw data interpreters (UI layer)
+  void onExecutionStarted(int totalEnabledSteps);
+  void onStepBuildStarted(int stepIndex, QString stepName, QString stepType);
+  void onStepBuildCompleted(int stepIndex);
+  void onSequenceExecutionStarted();
+  void onExecutionCompleted(bool success, QString message);
+  void onExecutionStopped();
+  void onWorkerLogMessage(QString message);
+  void onStopRecipeRequested();
+
+
+
 private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
-  void createRightPanel(QWidget* rightPanel);  
-
+  void createRightPanel(QWidget* rightPanel);
 
   // UI refresh
   void refreshRecipeList();
-  void updateConfigurationForm();  // ✅ UPDATED: Now creates custom widget
+  void updateConfigurationForm();
   void clearConfigurationForm();
+
+  // ✅ NEW: Panel switching
+  void showProgressPanel();
+  void showConfigPanel();
 
   // Recipe execution
   void setupSequenceEngine();
@@ -90,21 +107,20 @@ private:
   QPushButton* m_moveDownButton;
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
-  QLabel* m_loadedProductLabel;  // ✅ Add this
+  QLabel* m_loadedProductLabel;
 
   // Middle panel widgets
   QListWidget* m_processTemplateList;
   QPushButton* m_addButton;
 
-  // Right panel widgets - SIMPLIFIED!
+  // Right panel widgets
   QScrollArea* m_configScrollArea;
-  ProcessConfigWidget* m_currentConfigWidget;  // ✅ NEW: Single widget pointer
+  ProcessConfigWidget* m_currentConfigWidget;  // Config widget
+  RecipeProgressWidget* m_progressWidget;       // ✅ NEW: Progress widget
 
   QPushButton* m_backButton;
-
   RecipeWorker* m_recipeWorker;
 
-
-  QPushButton* m_loadProductButton;  // ✅ ADD THIS
-  QLabel* m_productStatusLabel;      // ✅ ADD THIS
+  QPushButton* m_loadProductButton;
+  QLabel* m_productStatusLabel;
 };

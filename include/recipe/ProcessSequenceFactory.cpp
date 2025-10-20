@@ -1,6 +1,7 @@
 // ProcessSequenceFactory.cpp
 #include "ProcessSequenceFactory.h"
 #include "GripperSequenceHelpers.h"
+#include "SequenceBuilder.h"
 #include <iostream>
 
 ProcessSequenceFactory::ProcessSequenceFactory()

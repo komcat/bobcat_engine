@@ -337,7 +337,7 @@ set(SOURCES
  "include/recipe/RecipeManager.cpp"
  "include/recipe/ProcessSequenceFactory.cpp"
  "include/AppUI/RecipePage/ProcessConfigWidget.cpp"
- "include/AppUI/RecipePage/DeviceSelectorWidgets.cpp" "include/recipe/RecipeWorker.cpp")
+ "include/AppUI/RecipePage/DeviceSelectorWidgets.cpp" "include/recipe/RecipeWorker.cpp" "include/AppUI/RecipePage/RecipeProgressWidget.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -427,7 +427,7 @@ set(HEADERS
  "include/recipe/RecipeManager.h"
  "include/recipe/ProcessSequenceFactory.h" 
  "include/AppUI/RecipePage/ProcessConfigWidget.h"
- "include/AppUI/RecipePage/DeviceSelectorWidgets.h" "include/recipe/RecipeWorker.h")
+ "include/AppUI/RecipePage/DeviceSelectorWidgets.h" "include/recipe/RecipeWorker.h" "include/AppUI/RecipePage/RecipeProgressWidget.h" "include/sequence/SequenceBuilder.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

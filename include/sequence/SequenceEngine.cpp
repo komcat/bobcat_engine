@@ -10,6 +10,7 @@
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
+#include "SequenceBuilder.h"
 #include <iostream>
 
 //=============================================================================

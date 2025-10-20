@@ -1,0 +1,58 @@
+// SequenceBuilder.h
+#pragma once
+
+#include "ApplicationContext.h"
+#include "CommandDispatcher.h"
+#include <string>
+#include <vector>
+#include <map>
+#include <memory>
+#include <functional>
+
+
+//=============================================================================
+// SEQUENCE BUILDER
+//=============================================================================
+class SequenceBuilder
+{
+public:
+  SequenceBuilder(const std::string& name, SequenceEngine* engine);
+  ~SequenceBuilder();
+
+  // Add simple action
+  void AddAction(
+    const std::string& deviceName,
+    const std::string& methodName,
+    const std::map<std::string, std::string>& params = {}
+  );
+
+  // Loop control
+  void BeginLoop(int count);
+  void EndLoop();
+
+  // Conditional control
+  void BeginIf(const std::string& conditionDevice,
+    const std::string& conditionMethod);
+  void Else();
+  void EndIf();
+
+  // Getters
+  std::string GetName() const { return m_name; }
+  const std::vector<std::shared_ptr<ISequenceStep>>& GetSteps() const { return m_steps; }
+
+private:
+  std::string m_name;
+  SequenceEngine* m_engine;
+  std::vector<std::shared_ptr<ISequenceStep>> m_steps;
+
+  // Stack to track nested blocks (for loops/conditionals)
+  enum class BlockType { LOOP, CONDITIONAL_THEN, CONDITIONAL_ELSE };
+  struct BlockContext {
+    BlockType type;
+    std::shared_ptr<ISequenceStep> block;
+  };
+  std::vector<BlockContext> m_blockStack;
+
+  // Helper to get current active step list
+  std::vector<std::shared_ptr<ISequenceStep>>* GetActiveStepList();
+};

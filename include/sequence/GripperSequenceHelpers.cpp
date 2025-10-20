@@ -1,5 +1,6 @@
 // GripperSequenceHelpers.cpp
 #include "GripperSequenceHelpers.h"
+#include "SequenceBuilder.h"
 
 namespace GripperSequenceHelpers {
 
