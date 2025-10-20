@@ -60,7 +60,8 @@ private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
-  void createRightPanel(QWidget* rightPanel);
+  void createRightPanel(QWidget* rightPanel);  
+
 
   // UI refresh
   void refreshRecipeList();
@@ -89,6 +90,7 @@ private:
   QPushButton* m_moveDownButton;
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
+  QLabel* m_loadedProductLabel;  // ✅ Add this
 
   // Middle panel widgets
   QListWidget* m_processTemplateList;

@@ -59,8 +59,14 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   // Nickname field
   m_nicknameEdit = new QLineEdit(QString::fromStdString(instance->userNickname));
   m_nicknameEdit->setStyleSheet("font-weight: bold;");
+
+  // ✅ FIX: Disconnect any old connections first
+  disconnect(m_nicknameEdit, &QLineEdit::textChanged, this, nullptr);
+
+  // Use queued connection to prevent crash
   connect(m_nicknameEdit, &QLineEdit::textChanged,
-    this, &ProcessConfigWidget::nicknameChanged);
+    this, &ProcessConfigWidget::nicknameChanged, Qt::QueuedConnection);
+
   m_formLayout->addRow("Process Name:", m_nicknameEdit);
 
   // Read-only fields
@@ -416,4 +422,87 @@ void PickAndPlaceConfigWidget::createParameterFields(const ProcessInstance* inst
 
   addParameterField("regrip_wait_ms", "Regrip Wait (ms)", params.at("regrip_wait_ms"));
   addParameterField("release_wait_ms", "Release Wait (ms)", params.at("release_wait_ms"));
+}
+
+// ============================================================================
+// MOVE TO POSITION CONFIG WIDGET
+// ============================================================================
+
+MoveToPositionConfigWidget::MoveToPositionConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void MoveToPositionConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Motion Device",
+    params.at("device"),
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  addNodeSelector("target_position", "Target Position",
+    params.at("target_position"),
+    params.at("device"));
+}
+
+// ============================================================================
+// MOVE RELATIVE CONFIG WIDGET
+// ============================================================================
+
+MoveRelativeConfigWidget::MoveRelativeConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void MoveRelativeConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Motion Device",
+    params.at("device"),
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  // Add spacing
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* moveLabel = new QLabel("Movement Parameters:");
+  moveLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(moveLabel);
+
+  addParameterField("axis", "Axis (X/Y/Z/U/V/W)", params.at("axis"));
+  addParameterField("distance", "Distance (mm)", params.at("distance"));
+}
+
+// ============================================================================
+// SET OUTPUT CONFIG WIDGET
+// ============================================================================
+
+SetOutputConfigWidget::SetOutputConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void SetOutputConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* ioLabel = new QLabel("IO Configuration:");
+  ioLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(ioLabel);
+
+  addDeviceSelector("io_device", "IO Device",
+    params.at("io_device"),
+    static_cast<int>(DeviceComboBox::DeviceType::IO));
+
+  addParameterField("pin", "Pin Number", params.at("pin"));
+  addParameterField("state", "State (true/false)", params.at("state"));
 }

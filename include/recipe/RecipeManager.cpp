@@ -161,7 +161,10 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
   return {
     "Pick",
     "Place",
-    "Pick and Place"
+    "Pick and Place",
+    "Move to Position",   // ✅ Add
+    "Move Relative",      // ✅ Add
+    "Set Output"          // ✅ Add
   };
 }
 
@@ -201,6 +204,20 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["release_wait_ms"] = "1500";
     params["regrip_wait_ms"] = "500";
     params["lens_name"] = "lens";
+  }
+  else if (processType == "Move to Position") {
+    params["device"] = "gantry-main";
+    params["target_position"] = "safe";
+  }
+  else if (processType == "Move Relative") {
+    params["device"] = "gantry-main";
+    params["axis"] = "Z";
+    params["distance"] = "10.0";
+  }
+  else if (processType == "Set Output") {
+    params["io_device"] = "IOBottom";
+    params["pin"] = "0";
+    params["state"] = "true";  // "true" for ON, "false" for OFF
   }
 
   return params;
@@ -249,7 +266,10 @@ bool RecipeManager::saveToJson(const std::string& filename) const
   root["version"] = QString::fromStdString(m_currentRecipe.version);
   root["recipe_name"] = QString::fromStdString(m_currentRecipe.name);
   root["next_id_counter"] = m_currentRecipe.nextIdCounter;
-  root["product_file"] = QString::fromStdString(m_currentRecipe.productFile);  // ✅ Added
+  root["product_file"] = QString::fromStdString(m_currentRecipe.productFile);
+
+  // ✅ Debug output
+  std::cout << "[RecipeManager] Saving product_file: '" << m_currentRecipe.productFile << "'" << std::endl;
 
   QJsonArray stepsArray;
   for (const auto& step : m_currentRecipe.steps) {
@@ -287,6 +307,21 @@ bool RecipeManager::saveToJson(const std::string& filename) const
 
   return true;
 }
+
+
+
+//```
+//
+//The key additions are :
+//1. Line 5 : `root["product_file"] = QString::fromStdString(m_currentRecipe.productFile); `
+//2. Lines 7 - 8: Debug output to show what's being saved
+//
+//Now when you save, check the console.It should print something like :
+//```
+//[RecipeManager] Saving product_file : 'config/lens1/positions.json'
+
+
+
 
 bool RecipeManager::loadFromJson(const std::string& filename)
 {

@@ -111,3 +111,45 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+/**
+ * @brief Configuration widget for Move to Position process
+ */
+class MoveToPositionConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit MoveToPositionConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Move Relative process
+ */
+class MoveRelativeConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit MoveRelativeConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Set Output process
+ */
+class SetOutputConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit SetOutputConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

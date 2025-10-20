@@ -50,7 +50,17 @@ int Application::run()
 
   std::cout << "[Application] Starting " << getApplicationName() << "..." << std::endl;
 
+  std::cout << "[Application] About to call exec()..." << std::endl;
+  std::cout << "[Application] m_qApplication pointer: " << m_qApplication << std::endl;
+
+  if (!m_qApplication) {
+    std::cerr << "[Application] ERROR: m_qApplication is NULL!" << std::endl;
+    return -1;
+  }
+
+  std::cout << "[Application] Calling exec()..." << std::endl;
   int result = m_qApplication->exec();
+  std::cout << "[Application] exec() returned: " << result << std::endl;
 
   std::cout << "[Application] Exited with code: " << result << std::endl;
   return result;

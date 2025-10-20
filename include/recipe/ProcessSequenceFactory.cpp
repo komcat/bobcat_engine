@@ -88,6 +88,60 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << std::endl;
   });
 
+
+  // ============================================================================
+  // REGISTER MOVE TO POSITION PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Move to Position", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    sequence->AddAction(params.at("device"), "MoveToNamedPosition", {
+      {"positionName", params.at("target_position")}
+      });
+    sequence->AddAction(params.at("device"), "WaitForMotionComplete", {});
+
+    std::cout << "[ProcessSequenceFactory] Built Move to Position sequence for: "
+      << step->userNickname << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER MOVE RELATIVE PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Move Relative", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string axis = params.at("axis");
+    std::string distance = params.at("distance");
+
+    sequence->AddAction(device, "MoveRelative", {
+      {"axis", axis},
+      {"distance", distance}
+      });
+    sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    std::cout << "[ProcessSequenceFactory] Built Move Relative sequence for: "
+      << step->userNickname << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER SET OUTPUT PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Set Output", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    sequence->AddAction(params.at("io_device"), "SetOutputPin", {
+      {"pin", params.at("pin")},
+      {"state", params.at("state")}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built Set Output sequence for: "
+      << step->userNickname << std::endl;
+  });
+
+
+
+
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;
 }

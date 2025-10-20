@@ -30,6 +30,7 @@ RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
   , m_selectedStepIndex(-1)
   , m_currentConfigWidget(nullptr)  // ✅ NEW: Initialize widget pointer
   , m_recipeWorker(nullptr)  // ✅ ADD THIS LINE
+  , m_loadedProductLabel(nullptr)  // ✅ Add this
 {
   setupUI();
   setupSequenceEngine();
@@ -213,6 +214,21 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   nameLayout->addWidget(m_recipeNameEdit);
   layout->addLayout(nameLayout);
 
+
+  // ✅ NEW: Add product info label
+  m_loadedProductLabel = new QLabel("Product: None");
+  m_loadedProductLabel->setStyleSheet(
+    "font-size: 11px; "
+    "color: #666; "
+    "padding: 5px; "
+    "border: 1px solid #ddd; "
+    "border-radius: 3px; "
+    "background-color: #f9f9f9;"
+  );
+  m_loadedProductLabel->setWordWrap(true);
+  layout->addWidget(m_loadedProductLabel);
+
+
   m_recipeList = new QListWidget();
   m_recipeList->setStyleSheet(
     "QListWidget { background-color: white; border: 1px solid #c0c0c0; "
@@ -317,12 +333,80 @@ void RecipePage::onLoadRecipe()
     m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
     refreshRecipeList();
     clearConfigurationForm();
-    QMessageBox::information(this, "Success", "Recipe loaded successfully!");
+
+    // ✅ Auto-load associated product file
+    std::string productFile = m_recipeManager->getProductFile();
+    if (!productFile.empty()) {
+      if (m_context->productPositionManager) {
+        if (m_context->productPositionManager->LoadProduct(productFile)) {
+          m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+
+          std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+          // ✅ Update both labels
+          m_productStatusLabel->setText(QString("Product: %1")
+            .arg(QString::fromStdString(productName)));
+          m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+
+          m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+            .arg(QString::fromStdString(productName))
+            .arg(QString::fromStdString(productFile)));
+          m_loadedProductLabel->setStyleSheet(
+            "font-size: 11px; "
+            "color: #27ae60; "
+            "font-weight: bold; "
+            "padding: 5px; "
+            "border: 1px solid #27ae60; "
+            "border-radius: 3px; "
+            "background-color: #e8f5e9;"
+          );
+
+          std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
+
+          QMessageBox::information(this, "Recipe Loaded",
+            QString("Recipe '%1' loaded successfully!\n\nAuto-loaded product: %2")
+            .arg(QString::fromStdString(m_recipeManager->getRecipeName()))
+            .arg(QString::fromStdString(productName)));
+        }
+        else {
+          // ✅ Show warning in label
+          m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
+            .arg(QString::fromStdString(productFile)));
+          m_loadedProductLabel->setStyleSheet(
+            "font-size: 11px; "
+            "color: #d32f2f; "
+            "padding: 5px; "
+            "border: 1px solid #d32f2f; "
+            "border-radius: 3px; "
+            "background-color: #ffebee;"
+          );
+
+          QMessageBox::warning(this, "Product Not Found",
+            QString("Recipe loaded, but associated product file not found:\n%1\n\nPlease load the product manually.")
+            .arg(QString::fromStdString(productFile)));
+        }
+      }
+    }
+    else {
+      // ✅ No product file in recipe
+      m_loadedProductLabel->setText("Product: None");
+      m_loadedProductLabel->setStyleSheet(
+        "font-size: 11px; "
+        "color: #666; "
+        "padding: 5px; "
+        "border: 1px solid #ddd; "
+        "border-radius: 3px; "
+        "background-color: #f9f9f9;"
+      );
+
+      QMessageBox::information(this, "Success", "Recipe loaded successfully!");
+    }
   }
   else {
     QMessageBox::critical(this, "Error", "Failed to load recipe file.");
   }
 }
+
 
 void RecipePage::onSaveRecipe()
 {
@@ -393,6 +477,11 @@ void RecipePage::onMoveStepDown()
 
 void RecipePage::onRecipeStepSelected(int index)
 {
+  // ✅ FIX: Don't reload if same step is selected
+  if (m_selectedStepIndex == index) {
+    return;  // Already showing this step's config
+  }
+
   m_selectedStepIndex = index;
 
   if (index < 0 || index >= m_recipeManager->getStepCount()) {
@@ -412,10 +501,26 @@ void RecipePage::onRecipeNameChanged(const QString& name)
 void RecipePage::onNicknameChanged(const QString& nickname)
 {
   if (m_selectedStepIndex < 0) return;
+  if (!m_recipeManager) return;
 
   m_recipeManager->setStepNickname(m_selectedStepIndex, nickname.toStdString());
-  refreshRecipeList();
-  m_recipeList->setCurrentRow(m_selectedStepIndex);
+
+  // ✅ FIX: Only update the specific item text, don't rebuild entire list
+  if (m_selectedStepIndex < m_recipeList->count()) {
+    QListWidgetItem* item = m_recipeList->item(m_selectedStepIndex);
+    if (item) {
+      const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
+      if (step) {
+        QString displayText = QString::fromStdString(step->userNickname);
+        if (!step->enabled) {
+          displayText = "[DISABLED] " + displayText;
+        }
+        item->setText(displayText);
+      }
+    }
+  }
+
+  // Don't call refreshRecipeList() or setCurrentRow() here!
 }
 
 // ✅ SIMPLIFIED: Single slot receives enabled state from custom widget
@@ -493,6 +598,16 @@ void RecipePage::updateConfigurationForm()
   }
   else if (instance->processType == "Pick and Place") {
     m_currentConfigWidget = new PickAndPlaceConfigWidget(m_context);
+  }
+  // ✅ ADD THESE:
+  else if (instance->processType == "Move to Position") {
+    m_currentConfigWidget = new MoveToPositionConfigWidget(m_context);
+  }
+  else if (instance->processType == "Move Relative") {
+    m_currentConfigWidget = new MoveRelativeConfigWidget(m_context);
+  }
+  else if (instance->processType == "Set Output") {
+    m_currentConfigWidget = new SetOutputConfigWidget(m_context);
   }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
@@ -723,33 +838,49 @@ void RecipePage::onLoadProductClicked()
     return;
   }
 
-  // Open file dialog
   QString filePath = QFileDialog::getOpenFileName(
     this,
     "Select Product Positions File",
-    "./config",  // Start in config directory
+    "./config",
     "Position Files (positions.json);;All Files (*.*)"
   );
 
   if (filePath.isEmpty()) {
-    return;  // User cancelled
+    return;
   }
 
-  // Load the product
   if (m_context->productPositionManager->LoadProduct(filePath.toStdString())) {
-    // Export to motion manager so recipes can use the positions
     m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
 
-    // Update status label
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+    // ✅ Update BOTH labels (top right and middle panel)
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
     m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
 
+    // ✅ Update middle panel label with full path
+    m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+      .arg(QString::fromStdString(productName))
+      .arg(filePath));
+    m_loadedProductLabel->setStyleSheet(
+      "font-size: 11px; "
+      "color: #27ae60; "
+      "font-weight: bold; "
+      "padding: 5px; "
+      "border: 1px solid #27ae60; "
+      "border-radius: 3px; "
+      "background-color: #e8f5e9;"
+    );
+
+    // ✅ Save product file path in recipe
+    m_recipeManager->setProductFile(filePath.toStdString());
+
     std::cout << "[RecipePage] Loaded product from: " << filePath.toStdString() << std::endl;
+    std::cout << "[RecipePage] Product file saved to recipe: " << filePath.toStdString() << std::endl;
 
     QMessageBox::information(this, "Success",
-      QString("Product '%1' loaded successfully!\n\nPositions are now available in node selectors.")
+      QString("Product '%1' loaded successfully!\n\nThis product will be auto-loaded with this recipe.")
       .arg(QString::fromStdString(productName)));
   }
   else {
@@ -757,4 +888,3 @@ void RecipePage::onLoadProductClicked()
       "Failed to load positions from:\n" + filePath);
   }
 }
-
