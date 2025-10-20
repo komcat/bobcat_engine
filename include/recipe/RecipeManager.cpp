@@ -1,8 +1,10 @@
-// RecipeManager.cpp
+﻿// RecipeManager.cpp
 #include "RecipeManager.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <random>
+#include <iomanip>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -116,10 +118,6 @@ void RecipeManager::setStepParameter(int index, const std::string& key, const st
   }
 }
 
-#include <random>
-#include <sstream>
-#include <iomanip>
-
 std::string RecipeManager::generateUniqueId(const std::string& processType)
 {
   // Generate random alphanumeric ID: 3 letters + 3 digits + 1 letter
@@ -157,7 +155,6 @@ std::string RecipeManager::generateUniqueId(const std::string& processType)
 
   return id;
 }
-
 
 std::vector<std::string> RecipeManager::getAvailableProcessTypes()
 {
@@ -229,8 +226,6 @@ bool RecipeManager::validateRecipe(std::vector<std::string>& errors) const
     }
   }
 
-  // TODO: Add more validation (e.g., check if nodes exist in motion manager)
-
   return errors.empty();
 }
 
@@ -254,6 +249,7 @@ bool RecipeManager::saveToJson(const std::string& filename) const
   root["version"] = QString::fromStdString(m_currentRecipe.version);
   root["recipe_name"] = QString::fromStdString(m_currentRecipe.name);
   root["next_id_counter"] = m_currentRecipe.nextIdCounter;
+  root["product_file"] = QString::fromStdString(m_currentRecipe.productFile);  // ✅ Added
 
   QJsonArray stepsArray;
   for (const auto& step : m_currentRecipe.steps) {
@@ -316,6 +312,7 @@ bool RecipeManager::loadFromJson(const std::string& filename)
   newRecipe.version = root["version"].toString("1.0").toStdString();
   newRecipe.name = root["recipe_name"].toString("Untitled Recipe").toStdString();
   newRecipe.nextIdCounter = root["next_id_counter"].toInt(1);
+  newRecipe.productFile = root["product_file"].toString("").toStdString();  // ✅ Added
 
   QJsonArray stepsArray = root["steps"].toArray();
 

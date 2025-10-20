@@ -1,4 +1,4 @@
-// RecipeManager.h
+﻿// RecipeManager.h
 #pragma once
 
 #include <string>
@@ -31,8 +31,9 @@ struct Recipe {
   std::string version;
   std::vector<std::unique_ptr<ProcessInstance>> steps;
   int nextIdCounter;
+  std::string productFile;  // ✅ Added
 
-  Recipe() : name("Untitled Recipe"), version("1.0"), nextIdCounter(1) {}
+  Recipe() : name("Untitled Recipe"), version("1.0"), nextIdCounter(1), productFile("") {}
 };
 
 /**
@@ -85,6 +86,10 @@ public:
 
   // Validation
   bool validateRecipe(std::vector<std::string>& errors) const;
+
+  // ✅ Product file management
+  std::string getProductFile() const { return m_currentRecipe.productFile; }
+  void setProductFile(const std::string& file) { m_currentRecipe.productFile = file; }
 
 private:
   Recipe m_currentRecipe;
