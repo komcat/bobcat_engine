@@ -167,7 +167,9 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Set Output",
     "Wait",                              // ✅ NEW
     "Move Relative Multi-Axis",          // ✅ NEW
-    "Move to Position with Offset"       // ✅ NEW
+    "Move to Position with Offset",       // ✅ NEW
+    "Slide Extend",        // ✅ NEW
+    "Slide Retract"        // ✅ NEW
   };
 }
 
@@ -237,6 +239,20 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["offset_x"] = "0";
     params["offset_y"] = "0";
     params["offset_z"] = "0";
+  }
+  else if (processType == "Slide Extend") {
+    //params["device"] = "pneumatic";  // ✅ Make sure this line exists
+    params["slide_name"] = "UV_Head";
+    params["inbounce_delay_ms"] = "300";
+    params["timeout_ms"] = "10000";
+    params["debounce_delay_ms"] = "300";
+  }
+  else if (processType == "Slide Retract") {
+    //params["device"] = "pneumatic";  // ✅ Make sure this line exists
+    params["slide_name"] = "UV_Head";
+    params["inbounce_delay_ms"] = "300";
+    params["timeout_ms"] = "10000";
+    params["debounce_delay_ms"] = "300";
   }
 
   return params;

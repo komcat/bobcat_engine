@@ -2,6 +2,8 @@
 #include "ProcessConfigWidget.h"
 #include "DeviceSelectorWidgets.h"
 #include "ApplicationContext.h"
+#include "PneumaticSlideSelectorDialog.h"  // Add this include at top
+
 #include "RecipeManager.h"
 #include <QLabel>
 #include <QFrame>
@@ -553,4 +555,132 @@ void MoveToPositionWithOffsetConfigWidget::createParameterFields(const ProcessIn
   addParameterField("offset_x", "X Offset (mm, 0=no offset)", params.at("offset_x"));
   addParameterField("offset_y", "Y Offset (mm, 0=no offset)", params.at("offset_y"));
   addParameterField("offset_z", "Z Offset (mm, 0=no offset)", params.at("offset_z"));
+}
+
+// ============================================================================
+// SLIDE EXTEND CONFIG WIDGET
+// ============================================================================
+
+SlideExtendConfigWidget::SlideExtendConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+
+void SlideExtendConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  // ✅ ADD THIS SECTION:
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Device",
+    params.count("device") ? params.at("device") : "pneumatic",  // ← Handle missing key
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  m_formLayout->addRow(new QLabel(""));
+  // ✅ END NEW SECTION
+
+  QLabel* slideLabel = new QLabel("Pneumatic Slide:");
+  slideLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(slideLabel);
+
+  // ✅ Use new slide selector with browse button
+  addSlideSelector("slide_name", "Slide Name", params.at("slide_name"));
+
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* timingLabel = new QLabel("Timing Parameters:");
+  timingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(timingLabel);
+
+  addParameterField("inbounce_delay_ms", "Inbounce Delay (ms, before action)", params.at("inbounce_delay_ms"));
+  addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
+  addParameterField("debounce_delay_ms", "Debounce Delay (ms, after action)", params.at("debounce_delay_ms"));
+}
+// ============================================================================
+// SLIDE RETRACT CONFIG WIDGET
+// ============================================================================
+
+SlideRetractConfigWidget::SlideRetractConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void SlideRetractConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  // ✅ ADD DEVICE CONFIGURATION SECTION:
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Device",
+    params.count("device") ? params.at("device") : "pneumatic",
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  m_formLayout->addRow(new QLabel(""));
+  // ✅ END NEW SECTION
+
+  QLabel* slideLabel = new QLabel("Pneumatic Slide:");
+  slideLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(slideLabel);
+
+  // ✅ Use new slide selector with browse button
+  addSlideSelector("slide_name", "Slide Name", params.at("slide_name"));
+
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* timingLabel = new QLabel("Timing Parameters:");
+  timingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(timingLabel);
+
+  addParameterField("inbounce_delay_ms", "Inbounce Delay (ms, before action)", params.at("inbounce_delay_ms"));
+  addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
+  addParameterField("debounce_delay_ms", "Debounce Delay (ms, after action)", params.at("debounce_delay_ms"));
+}
+
+// Add this method implementation:
+void ProcessConfigWidget::addSlideSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet("padding: 5px;");
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    std::string currentSlide = edit->text().toStdString();
+    std::string selected = PneumaticSlideSelectorDialog::SelectSlide(
+      m_context, currentSlide, this
+    );
+    edit->setText(QString::fromStdString(selected));
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
 }

@@ -617,11 +617,21 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Move to Position with Offset") {
     m_currentConfigWidget = new MoveToPositionWithOffsetConfigWidget(m_context);
   }
+  // ============================================================================
+  // ✅ PNEUMATIC PROCESSES
+  // ============================================================================
+  else if (instance->processType == "Slide Extend") {
+    m_currentConfigWidget = new SlideExtendConfigWidget(m_context);
+  }
+  else if (instance->processType == "Slide Retract") {
+    m_currentConfigWidget = new SlideRetractConfigWidget(m_context);
+  }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
     clearConfigurationForm();
     return;
   }
+
 
   // Connect signals from the custom widget
   connect(m_currentConfigWidget, &ProcessConfigWidget::parameterChanged,
@@ -733,7 +743,14 @@ void RecipePage::onRunRecipe()
   std::cout << "[RecipePage] Starting recipe execution: "
     << recipeName.toStdString() << std::endl;
 
-  // ✅ SWITCH TO PROGRESS PANEL
+  // ✅ CRITICAL: Rebuild device registry before execution
+  // This ensures all pneumatic slides and other devices are registered
+  if (m_sequenceEngine) {
+    std::cout << "[RecipePage] Rebuilding device registry..." << std::endl;
+    m_sequenceEngine->BuildDeviceRegistry();
+  }
+
+  // Switch to progress panel
   showProgressPanel();
 
   // Disable run button while executing
@@ -748,7 +765,7 @@ void RecipePage::onRunRecipe()
     this
   );
 
-  // ✅ Connect RAW DATA signals to UI interpreters
+  // Connect RAW DATA signals to UI interpreters
   connect(m_recipeWorker, &RecipeWorker::executionStarted,
     this, &RecipePage::onExecutionStarted);
   connect(m_recipeWorker, &RecipeWorker::stepBuildStarted,
@@ -770,6 +787,7 @@ void RecipePage::onRunRecipe()
   // Start execution
   m_recipeWorker->start();
 }
+
 
 // Legacy slots (kept for compatibility but not used with new system)
 void RecipePage::onRecipeProgress(const QString& message)

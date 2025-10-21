@@ -1,4 +1,4 @@
-// ProcessSequenceFactory.cpp
+﻿// ProcessSequenceFactory.cpp
 #include "ProcessSequenceFactory.h"
 #include "GripperSequenceHelpers.h"
 #include "SequenceBuilder.h"
@@ -239,6 +239,76 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::cout << "[ProcessSequenceFactory] Built Move to Position with Offset sequence for: "
       << step->userNickname << " -> " << calculatedPosition << std::endl;
   });
+
+
+  // ============================================================================
+  // REGISTER PNEUMATIC SLIDE EXTEND PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Slide Extend", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string slideName = params.at("slide_name");
+    std::string inbounceDelay = params.at("inbounce_delay_ms");
+    std::string timeout = params.at("timeout_ms");
+    std::string debounceDelay = params.at("debounce_delay_ms");
+
+    // Inbounce delay (wait before action)
+    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", inbounceDelay}  // ✅ Changed from "duration_ms"
+        });
+    }
+
+    // Extend the slide (blocking - waits for completion or timeout)
+    sequence->AddAction(slideName, "Extend", {
+      {"timeout_ms", timeout}
+      });
+
+    // Debounce delay (wait after action completed)
+    if (debounceDelay != "0" && !debounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", debounceDelay}  // ✅ Changed from "duration_ms"
+        });
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Slide Extend sequence for: "
+      << step->userNickname << " (Slide: " << slideName << ")" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER PNEUMATIC SLIDE RETRACT PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Slide Retract", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string slideName = params.at("slide_name");
+    std::string inbounceDelay = params.at("inbounce_delay_ms");
+    std::string timeout = params.at("timeout_ms");
+    std::string debounceDelay = params.at("debounce_delay_ms");
+
+    // Inbounce delay (wait before action)
+    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", inbounceDelay}  // ✅ Changed from "duration_ms"
+        });
+    }
+
+    // Retract the slide (blocking - waits for completion or timeout)
+    sequence->AddAction(slideName, "Retract", {
+      {"timeout_ms", timeout}
+      });
+
+    // Debounce delay (wait after action completed)
+    if (debounceDelay != "0" && !debounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", debounceDelay}  // ✅ Changed from "duration_ms"
+        });
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Slide Retract sequence for: "
+      << step->userNickname << " (Slide: " << slideName << ")" << std::endl;
+  });
+
 
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;

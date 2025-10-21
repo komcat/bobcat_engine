@@ -1,4 +1,4 @@
-// ProcessConfigWidget.h
+﻿// ProcessConfigWidget.h
 #pragma once
 
 #include <QWidget>
@@ -48,6 +48,10 @@ signals:
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;
+
+  // Helper to add pneumatic slide selector (with browse button)
+  void addSlideSelector(const std::string& key, const std::string& label,
+    const std::string& value);
 
   // Helper to add a parameter field
   void addParameterField(const std::string& key, const std::string& label,
@@ -195,6 +199,34 @@ class MoveToPositionWithOffsetConfigWidget : public ProcessConfigWidget
 
 public:
   explicit MoveToPositionWithOffsetConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Slide Extend process
+ */
+class SlideExtendConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit SlideExtendConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Slide Retract process
+ */
+class SlideRetractConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit SlideRetractConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
 
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
