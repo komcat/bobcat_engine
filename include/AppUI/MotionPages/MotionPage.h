@@ -37,6 +37,8 @@ private slots:
   void onDeviceChanged(const QString& deviceName);
   void onMoveToPositionClicked();
   void onMoveWithOffsetClicked();
+  void onEditPositionClicked();  // ✅ ADD THIS LINE
+
   void onUpdatePositionClicked();
   void onCreatePositionClicked();
   void onDeletePositionClicked();

@@ -153,3 +153,49 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+// ============================================================================
+// NEW PROCESS WIDGETS
+// ============================================================================
+
+/**
+ * @brief Configuration widget for Wait process
+ */
+class WaitConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit WaitConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Move Relative Multi-Axis process
+ */
+class MoveRelativeMultiAxisConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit MoveRelativeMultiAxisConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Move to Position with Offset process
+ */
+class MoveToPositionWithOffsetConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit MoveToPositionWithOffsetConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

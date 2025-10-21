@@ -162,9 +162,12 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Pick",
     "Place",
     "Pick and Place",
-    "Move to Position",   // ✅ Add
-    "Move Relative",      // ✅ Add
-    "Set Output"          // ✅ Add
+    "Move to Position",
+    "Move Relative",
+    "Set Output",
+    "Wait",                              // ✅ NEW
+    "Move Relative Multi-Axis",          // ✅ NEW
+    "Move to Position with Offset"       // ✅ NEW
   };
 }
 
@@ -218,6 +221,22 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["io_device"] = "IOBottom";
     params["pin"] = "0";
     params["state"] = "true";  // "true" for ON, "false" for OFF
+  }
+  else if (processType == "Wait") {
+    params["duration_ms"] = "1000";  // Default 1 second
+  }
+  else if (processType == "Move Relative Multi-Axis") {
+    params["device"] = "gantry-main";
+    params["distance_x"] = "0";
+    params["distance_y"] = "0";
+    params["distance_z"] = "0";
+  }
+  else if (processType == "Move to Position with Offset") {
+    params["device"] = "gantry-main";
+    params["base_position"] = "safe";
+    params["offset_x"] = "0";
+    params["offset_y"] = "0";
+    params["offset_z"] = "0";
   }
 
   return params;

@@ -3,6 +3,7 @@
 #include "NewPositionDialog.h"
 #include "WaypointEditorDialog.h"
 #include "OffsetMoveDialog.h"  // ✅ Add at top
+#include "EditPositionDialog.h"
 #include "ScanControlPanel.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -247,6 +248,9 @@ void MotionPage::setupUI()
 	connect(m_controlPanel, &MotionControlPanel::moveToPositionClicked,
 		this, &MotionPage::onMoveToPositionClicked);
 
+	// ✅ ADD THIS LINE
+	connect(m_controlPanel, &MotionControlPanel::editPositionClicked,
+		this, &MotionPage::onEditPositionClicked);
 	// ✅ NEW
 	connect(m_controlPanel, &MotionControlPanel::moveWithOffsetClicked,
 		this, &MotionPage::onMoveWithOffsetClicked);
@@ -1391,4 +1395,63 @@ void MotionPage::onScanDataChannelChanged(const QString& channel)
 {
 	m_scanDataChannel = channel;
 	qDebug() << "Scan data channel changed to:" << channel;
+}
+
+
+
+// Add this slot implementation (put it near onUpdatePositionClicked):
+
+void MotionPage::onEditPositionClicked()
+{
+	if (m_selectedPositionName.isEmpty()) {
+		QMessageBox::warning(this, "No Selection",
+			"Please select a position from the map first.");
+		return;
+	}
+
+	if (!m_currentPositions.contains(m_selectedPositionName)) {
+		QMessageBox::critical(this, "Error", "Position data not found.");
+		return;
+	}
+
+	QVector<double> pos = m_currentPositions[m_selectedPositionName];
+
+	// Show edit dialog
+	EditPositionDialog dialog(m_selectedPositionName,
+		pos[0], pos[1], pos[2],  // X, Y, Z
+		pos[3], pos[4], pos[5],  // U, V, W
+		this);
+
+	if (dialog.exec() == QDialog::Accepted) {
+		// Get the position structure to preserve waypoints
+		PositionStruct existingPos;
+		if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			m_selectedPositionName.toStdString(),
+			existingPos)) {
+			existingPos = PositionStruct();
+		}
+
+		// Update only XYZ UVW values
+		existingPos.x = dialog.getX();
+		existingPos.y = dialog.getY();
+		existingPos.z = dialog.getZ();
+		existingPos.u = dialog.getU();
+		existingPos.v = dialog.getV();
+		existingPos.w = dialog.getW();
+
+		// Save back to motion manager
+		m_motionManager->AddNamedPosition(m_currentDevice.toStdString(),
+			m_selectedPositionName.toStdString(),
+			existingPos);
+
+		QMessageBox::information(this, "Success",
+			"Position values updated successfully!\n\nRemember to save the product file.");
+
+		// Refresh display
+		refreshPositionDisplay();
+
+		// Re-select to update panel display
+		onPositionSelected(m_selectedPositionName,
+			existingPos.x, existingPos.y, existingPos.z);
+	}
 }

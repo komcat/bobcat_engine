@@ -15,6 +15,7 @@
  * - Device selection
  * - Position info display
  * - Move to saved position button
+ * - Edit position values button
  * - Update saved position button
  * - Delete position button
  * - Edit waypoints button
@@ -34,7 +35,7 @@ public:
   // Update position info display
   void setSelectedPosition(const QString& name, double x, double y, double z,
     double u, double v, double w,
-    const std::vector<std::string>& waypoints = {});  // ✅ UPDATED - added waypoints parameter
+    const std::vector<std::string>& waypoints = {});
   void clearSelectedPosition();
 
   // Get current selected device
@@ -43,11 +44,12 @@ public:
 signals:
   void deviceChanged(const QString& deviceName);
   void moveToPositionClicked();
-  void moveWithOffsetClicked();  // ✅ NEW
+  void moveWithOffsetClicked();
+  void editPositionClicked();  // NEW
   void updatePositionClicked();
   void deletePositionClicked();
   void createPositionClicked();
-  void editWaypointsClicked();  // ✅ NEW
+  void editWaypointsClicked();
   void homeClicked();
   void stopClicked();
 
@@ -64,13 +66,14 @@ private:
   QLabel* m_posULabel;
   QLabel* m_posVLabel;
   QLabel* m_posWLabel;
-  QLabel* m_waypointsLabel;  // ✅ NEW
+  QLabel* m_waypointsLabel;
 
   QPushButton* m_moveToButton;
-  QPushButton* m_moveOffsetButton;  // ✅ NEW
+  QPushButton* m_moveOffsetButton;
+  QPushButton* m_editPosButton;  // NEW
   QPushButton* m_updatePosButton;
   QPushButton* m_deletePosButton;
-  QPushButton* m_editWaypointsBtn;  // ✅ NEW
+  QPushButton* m_editWaypointsBtn;
   QPushButton* m_createPosButton;
   QPushButton* m_homeButton;
   QPushButton* m_stopButton;

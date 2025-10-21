@@ -11,6 +11,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   , m_deviceCombo(nullptr)
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
+  , m_editPosButton(nullptr)
   , m_updatePosButton(nullptr)
   , m_deletePosButton(nullptr)
   , m_createPosButton(nullptr)
@@ -23,35 +24,35 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
 void MotionControlPanel::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(8, 8, 8, 8);
-  mainLayout->setSpacing(8);
+  mainLayout->setContentsMargins(6, 6, 6, 6);
+  mainLayout->setSpacing(6);
 
-  // === Device Selection (Compact) ===
+  // === Device Selection ===
   QLabel* deviceLabel = new QLabel("Device");
-  deviceLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  deviceLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
   mainLayout->addWidget(deviceLabel);
 
   m_deviceCombo = new QComboBox();
-  m_deviceCombo->setMinimumHeight(32);
+  m_deviceCombo->setMinimumHeight(28);
   mainLayout->addWidget(m_deviceCombo);
 
   // Separator
   QFrame* line1 = new QFrame();
   line1->setFrameShape(QFrame::HLine);
-  line1->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line1->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
   mainLayout->addWidget(line1);
 
-  // === Selected Position (Compact Grid) ===
+  // === Selected Position ===
   QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  posLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
   mainLayout->addWidget(posLabel);
 
   // Compact info widget
   QWidget* posWidget = new QWidget();
-  posWidget->setStyleSheet("QWidget { background-color: #f8f9fa; border-radius: 4px; }");
+  posWidget->setStyleSheet("QWidget { background-color: #f8f9fa; }");
   QVBoxLayout* posLayout = new QVBoxLayout(posWidget);
-  posLayout->setContentsMargins(8, 8, 8, 8);
-  posLayout->setSpacing(4);
+  posLayout->setContentsMargins(6, 6, 6, 6);
+  posLayout->setSpacing(3);
 
   m_posNameLabel = new QLabel("-");
   m_posXLabel = new QLabel("X: -");
@@ -60,19 +61,16 @@ void MotionControlPanel::setupUI()
   m_posULabel = new QLabel("U: -");
   m_posVLabel = new QLabel("V: -");
   m_posWLabel = new QLabel("W: -");
-
-  // ✅ NEW - Waypoints label
   m_waypointsLabel = new QLabel("Waypoints: -");
   m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #2980b9; font-size: 11px; font-weight: bold; }");
+  m_waypointsLabel->setStyleSheet("QLabel { color: #2980b9; font-size: 9px; font-weight: bold; }");
 
-  // Compact label style
   QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
                            m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
-                           m_waypointsLabel };  // ✅ Added waypoints label
+                           m_waypointsLabel };
   for (auto* label : labels) {
-    if (label != m_waypointsLabel) {  // Don't override waypoint label style
-      label->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; }");
+    if (label != m_waypointsLabel) {
+      label->setStyleSheet("QLabel { color: #2c3e50; font-size: 9px; }");
     }
     posLayout->addWidget(label);
   }
@@ -82,69 +80,75 @@ void MotionControlPanel::setupUI()
   // Separator
   QFrame* line2 = new QFrame();
   line2->setFrameShape(QFrame::HLine);
-  line2->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line2->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
   mainLayout->addWidget(line2);
 
-  // === Actions (Compact) ===
+  // === Actions ===
   QLabel* actionsLabel = new QLabel("Actions");
-  actionsLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  actionsLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
   mainLayout->addWidget(actionsLabel);
 
-  // Move to Position (Primary action)
+  // Move to Position
   m_moveToButton = new QPushButton("→ Move to Position");
-  m_moveToButton->setMinimumHeight(38);
+  m_moveToButton->setMinimumHeight(30);
   m_moveToButton->setEnabled(false);
   mainLayout->addWidget(m_moveToButton);
 
-  // ✅ NEW - Move with Offset button
+  // Move with Offset
   m_moveOffsetButton = new QPushButton("⇄ Move with Offset");
-  m_moveOffsetButton->setMinimumHeight(38);
+  m_moveOffsetButton->setMinimumHeight(30);
   m_moveOffsetButton->setEnabled(false);
   mainLayout->addWidget(m_moveOffsetButton);
 
+  // Edit Position - NEW
+  m_editPosButton = new QPushButton("✎ Edit Position");
+  m_editPosButton->setMinimumHeight(28);
+  m_editPosButton->setEnabled(false);
+  mainLayout->addWidget(m_editPosButton);
+
   // Update Position
   m_updatePosButton = new QPushButton("↻ Update Position");
-  m_updatePosButton->setMinimumHeight(34);
+  m_updatePosButton->setMinimumHeight(28);
   m_updatePosButton->setEnabled(false);
   mainLayout->addWidget(m_updatePosButton);
 
-  // ✅ NEW - Edit Waypoints button
+  // Edit Waypoints
   m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
-  m_editWaypointsBtn->setMinimumHeight(34);
+  m_editWaypointsBtn->setMinimumHeight(28);
   m_editWaypointsBtn->setEnabled(false);
   mainLayout->addWidget(m_editWaypointsBtn);
 
-  // Delete Position button
+  // Delete Position
   m_deletePosButton = new QPushButton("✕ Delete Position");
-  m_deletePosButton->setMinimumHeight(34);
+  m_deletePosButton->setMinimumHeight(28);
   m_deletePosButton->setEnabled(false);
   mainLayout->addWidget(m_deletePosButton);
 
   // Create New Position
   m_createPosButton = new QPushButton("+ Create Position");
-  m_createPosButton->setMinimumHeight(34);
+  m_createPosButton->setMinimumHeight(28);
   mainLayout->addWidget(m_createPosButton);
 
-  // Thin separator
+  // Separator
   QFrame* line3 = new QFrame();
   line3->setFrameShape(QFrame::HLine);
-  line3->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line3->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
   mainLayout->addWidget(line3);
 
   // Home Button
   m_homeButton = new QPushButton("⌂ Home");
-  m_homeButton->setMinimumHeight(34);
+  m_homeButton->setMinimumHeight(28);
   mainLayout->addWidget(m_homeButton);
 
   // Emergency Stop
   m_stopButton = new QPushButton("⚠ STOP");
-  m_stopButton->setMinimumHeight(34);
+  m_stopButton->setMinimumHeight(28);
   mainLayout->addWidget(m_stopButton);
 
   // Push everything to top
   mainLayout->addStretch();
 
-  // === Compact Styling ===
+  // === Compact Styling - No rounded corners ===
   setStyleSheet(
     "QWidget {"
     "  background-color: white;"
@@ -153,23 +157,22 @@ void MotionControlPanel::setupUI()
     "  background-color: white;"
     "  color: #2c3e50;"
     "  border: 1px solid #bdc3c7;"
-    "  border-radius: 4px;"
-    "  padding: 6px;"
-    "  font-size: 12px;"
+    "  padding: 4px;"
+    "  font-size: 10px;"
     "}"
     "QComboBox:hover {"
     "  border-color: #3498db;"
     "}"
     "QComboBox::drop-down {"
     "  border: none;"
-    "  width: 20px;"
+    "  width: 18px;"
     "}"
     "QComboBox::down-arrow {"
     "  image: none;"
-    "  border-left: 4px solid transparent;"
-    "  border-right: 4px solid transparent;"
-    "  border-top: 5px solid #2c3e50;"
-    "  margin-right: 6px;"
+    "  border-left: 3px solid transparent;"
+    "  border-right: 3px solid transparent;"
+    "  border-top: 4px solid #2c3e50;"
+    "  margin-right: 5px;"
     "}"
     "QComboBox QAbstractItemView {"
     "  background-color: white;"
@@ -177,26 +180,23 @@ void MotionControlPanel::setupUI()
     "  selection-background-color: #3498db;"
     "  border: 1px solid #bdc3c7;"
     "}"
-    // Move to Position - Green primary
+    // Move to Position - Green
     "QPushButton#moveToButton {"
     "  background-color: #27ae60;"
     "  color: white;"
     "  border: 1px solid #229954;"
-    "  border-radius: 4px;"
-    "  font-size: 12px;"
+    "  font-size: 10px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveToButton:hover {"
     "  background-color: #229954;"
     "}"
-
     // Move with Offset - Orange
     "QPushButton#moveOffsetButton {"
     "  background-color: #f39c12;"
     "  color: white;"
     "  border: 1px solid #e67e22;"
-    "  border-radius: 4px;"
-    "  font-size: 12px;"
+    "  font-size: 10px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveOffsetButton:hover {"
@@ -207,8 +207,7 @@ void MotionControlPanel::setupUI()
     "  background-color: #3498db;"
     "  color: white;"
     "  border: 1px solid #2980b9;"
-    "  border-radius: 4px;"
-    "  font-size: 11px;"
+    "  font-size: 9px;"
     "  font-weight: 600;"
     "}"
     "QPushButton:hover {"
@@ -242,7 +241,7 @@ void MotionControlPanel::setupUI()
 
   // Set object names for specific styling
   m_moveToButton->setObjectName("moveToButton");
-  m_moveOffsetButton->setObjectName("moveOffsetButton");  // ✅ NEW
+  m_moveOffsetButton->setObjectName("moveOffsetButton");
   m_deletePosButton->setObjectName("deletePosButton");
   m_stopButton->setObjectName("stopButton");
 
@@ -255,14 +254,16 @@ void MotionControlPanel::setupUI()
   connect(m_moveToButton, &QPushButton::clicked,
     this, &MotionControlPanel::moveToPositionClicked);
 
-  // ✅ NEW
   connect(m_moveOffsetButton, &QPushButton::clicked,
     this, &MotionControlPanel::moveWithOffsetClicked);
+
+  // NEW - Edit Position
+  connect(m_editPosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::editPositionClicked);
 
   connect(m_updatePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::updatePositionClicked);
 
-  // ✅ NEW - Connect edit waypoints button
   connect(m_editWaypointsBtn, &QPushButton::clicked,
     this, &MotionControlPanel::editWaypointsClicked);
 
@@ -287,11 +288,10 @@ void MotionControlPanel::setDevices(const QStringList& devices)
 
 void MotionControlPanel::setSelectedPosition(const QString& name, double x, double y, double z,
   double u, double v, double w,
-  const std::vector<std::string>& waypoints)  // ✅ UPDATED - added waypoints parameter
+  const std::vector<std::string>& waypoints)
 {
   m_selectedPositionName = name;
 
-  // Compact format
   m_posNameLabel->setText(QString("<b>%1</b>").arg(name));
   m_posXLabel->setText(QString("X: %1").arg(x, 0, 'f', 3));
   m_posYLabel->setText(QString("Y: %1").arg(y, 0, 'f', 3));
@@ -300,7 +300,6 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
   m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
   m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
 
-  // ✅ NEW - Display waypoints
   if (waypoints.empty()) {
     m_waypointsLabel->setText("Waypoints: None");
   }
@@ -317,9 +316,10 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
 
   // Enable all position-specific buttons
   m_moveToButton->setEnabled(true);
-  m_moveOffsetButton->setEnabled(true);  // ✅ NEW
+  m_moveOffsetButton->setEnabled(true);
+  m_editPosButton->setEnabled(true);  // NEW
   m_updatePosButton->setEnabled(true);
-  m_editWaypointsBtn->setEnabled(true);  // ✅ NEW
+  m_editWaypointsBtn->setEnabled(true);
   m_deletePosButton->setEnabled(true);
 }
 
@@ -334,13 +334,14 @@ void MotionControlPanel::clearSelectedPosition()
   m_posULabel->setText("U: -");
   m_posVLabel->setText("V: -");
   m_posWLabel->setText("W: -");
-  m_waypointsLabel->setText("Waypoints: -");  // ✅ NEW
+  m_waypointsLabel->setText("Waypoints: -");
 
   // Disable all position-specific buttons
   m_moveToButton->setEnabled(false);
-  m_moveOffsetButton->setEnabled(false);  // ✅ NEW
+  m_moveOffsetButton->setEnabled(false);
+  m_editPosButton->setEnabled(false);  // NEW
   m_updatePosButton->setEnabled(false);
-  m_editWaypointsBtn->setEnabled(false);  // ✅ NEW
+  m_editWaypointsBtn->setEnabled(false);
   m_deletePosButton->setEnabled(false);
 }
 

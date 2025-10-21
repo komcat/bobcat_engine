@@ -89,7 +89,6 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << std::endl;
   });
 
-
   // ============================================================================
   // REGISTER MOVE TO POSITION PROCESS
   // ============================================================================
@@ -106,7 +105,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   });
 
   // ============================================================================
-  // REGISTER MOVE RELATIVE PROCESS
+  // REGISTER MOVE RELATIVE PROCESS (SINGLE AXIS)
   // ============================================================================
   RegisterProcessBuilder("Move Relative", [](SequenceBuilder* sequence, const ProcessInstance* step) {
     const auto& params = step->parameters;
@@ -140,8 +139,106 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << std::endl;
   });
 
+  // ============================================================================
+  // REGISTER WAIT PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Wait", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
 
+    sequence->AddAction("", "Wait", {
+      {"duration_ms", params.at("duration_ms")}
+      });
 
+    std::cout << "[ProcessSequenceFactory] Built Wait sequence for: "
+      << step->userNickname << " (" << params.at("duration_ms") << " ms)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER MOVE RELATIVE (MULTI-AXIS) PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Move Relative Multi-Axis", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+
+    // Move each axis that has a non-zero distance
+    std::string distX = params.at("distance_x");
+    std::string distY = params.at("distance_y");
+    std::string distZ = params.at("distance_z");
+
+    bool hasMoves = false;
+
+    if (distX != "0" && distX != "0.0" && !distX.empty()) {
+      sequence->AddAction(device, "MoveRelative", {
+        {"axis", "X"},
+        {"distance", distX}
+        });
+      hasMoves = true;
+    }
+
+    if (distY != "0" && distY != "0.0" && !distY.empty()) {
+      sequence->AddAction(device, "MoveRelative", {
+        {"axis", "Y"},
+        {"distance", distY}
+        });
+      hasMoves = true;
+    }
+
+    if (distZ != "0" && distZ != "0.0" && !distZ.empty()) {
+      sequence->AddAction(device, "MoveRelative", {
+        {"axis", "Z"},
+        {"distance", distZ}
+        });
+      hasMoves = true;
+    }
+
+    // Wait for motion complete if any moves were added
+    if (hasMoves) {
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Move Relative Multi-Axis sequence for: "
+      << step->userNickname << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER MOVE TO POSITION WITH OFFSET PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Move to Position with Offset", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    // Build the calculated position name (e.g. "base+X1+Y-2+Z0.5")
+    std::string basePosition = params.at("base_position");
+    std::string offsetX = params.at("offset_x");
+    std::string offsetY = params.at("offset_y");
+    std::string offsetZ = params.at("offset_z");
+
+    // Build position name with offsets
+    std::string calculatedPosition = basePosition;
+
+    // Add X offset if non-zero
+    if (offsetX != "0" && offsetX != "0.0" && !offsetX.empty()) {
+      calculatedPosition += "+X" + offsetX;
+    }
+
+    // Add Y offset if non-zero
+    if (offsetY != "0" && offsetY != "0.0" && !offsetY.empty()) {
+      calculatedPosition += "+Y" + offsetY;
+    }
+
+    // Add Z offset if non-zero
+    if (offsetZ != "0" && offsetZ != "0.0" && !offsetZ.empty()) {
+      calculatedPosition += "+Z" + offsetZ;
+    }
+
+    sequence->AddAction(params.at("device"), "MoveToNamedPosition", {
+      {"positionName", calculatedPosition}
+      });
+    sequence->AddAction(params.at("device"), "WaitForMotionComplete", {});
+
+    std::cout << "[ProcessSequenceFactory] Built Move to Position with Offset sequence for: "
+      << step->userNickname << " -> " << calculatedPosition << std::endl;
+  });
 
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;

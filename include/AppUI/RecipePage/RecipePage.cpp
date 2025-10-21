@@ -569,6 +569,8 @@ void RecipePage::refreshRecipeList()
   }
 }
 
+
+
 void RecipePage::updateConfigurationForm()
 {
   const ProcessInstance* instance = m_recipeManager->getStep(m_selectedStepIndex);
@@ -577,10 +579,10 @@ void RecipePage::updateConfigurationForm()
     return;
   }
 
-  // ✅ FIX: Safe widget cleanup
+  // Safe widget cleanup
   if (m_currentConfigWidget) {
-    m_configScrollArea->takeWidget();  // Remove from scroll area first
-    delete m_currentConfigWidget;      // Delete immediately, not later
+    m_configScrollArea->takeWidget();
+    delete m_currentConfigWidget;
     m_currentConfigWidget = nullptr;
   }
 
@@ -602,6 +604,18 @@ void RecipePage::updateConfigurationForm()
   }
   else if (instance->processType == "Set Output") {
     m_currentConfigWidget = new SetOutputConfigWidget(m_context);
+  }
+  // ============================================================================
+  // ✅ NEW PROCESS WIDGETS
+  // ============================================================================
+  else if (instance->processType == "Wait") {
+    m_currentConfigWidget = new WaitConfigWidget(m_context);
+  }
+  else if (instance->processType == "Move Relative Multi-Axis") {
+    m_currentConfigWidget = new MoveRelativeMultiAxisConfigWidget(m_context);
+  }
+  else if (instance->processType == "Move to Position with Offset") {
+    m_currentConfigWidget = new MoveToPositionWithOffsetConfigWidget(m_context);
   }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
@@ -626,7 +640,6 @@ void RecipePage::updateConfigurationForm()
   std::cout << "[RecipePage] Created " << instance->processType
     << " config widget for: " << instance->userNickname << std::endl;
 }
-
 
 void RecipePage::clearConfigurationForm()
 {

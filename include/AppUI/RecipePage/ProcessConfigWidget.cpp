@@ -60,10 +60,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   m_nicknameEdit = new QLineEdit(QString::fromStdString(instance->userNickname));
   m_nicknameEdit->setStyleSheet("font-weight: bold;");
 
-  // ✅ FIX: Disconnect any old connections first
   disconnect(m_nicknameEdit, &QLineEdit::textChanged, this, nullptr);
-
-  // Use queued connection to prevent crash
   connect(m_nicknameEdit, &QLineEdit::textChanged,
     this, &ProcessConfigWidget::nicknameChanged, Qt::QueuedConnection);
 
@@ -130,7 +127,6 @@ void ProcessConfigWidget::addNodeSelector(const std::string& key,
   const std::string& value,
   const std::string& deviceName)
 {
-  // Create a horizontal layout with line edit + browse button
   QWidget* container = new QWidget();
   QHBoxLayout* layout = new QHBoxLayout(container);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -172,12 +168,10 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 {
   std::map<std::string, std::string> params;
 
-  // Get values from text fields
   for (const auto& [key, edit] : m_parameterEdits) {
     params[key] = edit->text().toStdString();
   }
 
-  // Get values from device combo boxes
   for (const auto& [key, combo] : m_deviceCombos) {
     params[key] = combo->getSelectedDevice();
   }
@@ -208,9 +202,6 @@ void PickConfigWidget::createParameterFields(const ProcessInstance* instance)
 {
   const auto& params = instance->parameters;
 
-  // ============================================================================
-  // CAMERA SECTION
-  // ============================================================================
   QLabel* cameraLabel = new QLabel("Camera Configuration:");
   cameraLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(cameraLabel);
@@ -225,12 +216,8 @@ void PickConfigWidget::createParameterFields(const ProcessInstance* instance)
     params.at("view_node"),
     params.at("camera_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // GRIPPER SECTION
-  // ============================================================================
   QLabel* gripperLabel = new QLabel("Gripper Configuration:");
   gripperLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(gripperLabel);
@@ -243,12 +230,8 @@ void PickConfigWidget::createParameterFields(const ProcessInstance* instance)
     params.at("pick_node"),
     params.at("gripper_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // IO SECTION
-  // ============================================================================
   QLabel* ioLabel = new QLabel("IO Configuration:");
   ioLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(ioLabel);
@@ -259,12 +242,8 @@ void PickConfigWidget::createParameterFields(const ProcessInstance* instance)
 
   addParameterField("gripper_pin", "Gripper Pin", params.at("gripper_pin"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // TIMING SECTION
-  // ============================================================================
   QLabel* timingLabel = new QLabel("Timing:");
   timingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(timingLabel);
@@ -286,9 +265,6 @@ void PlaceConfigWidget::createParameterFields(const ProcessInstance* instance)
 {
   const auto& params = instance->parameters;
 
-  // ============================================================================
-  // CAMERA SECTION
-  // ============================================================================
   QLabel* cameraLabel = new QLabel("Camera Configuration:");
   cameraLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(cameraLabel);
@@ -303,12 +279,8 @@ void PlaceConfigWidget::createParameterFields(const ProcessInstance* instance)
     params.at("view_node"),
     params.at("camera_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // GRIPPER SECTION
-  // ============================================================================
   QLabel* gripperLabel = new QLabel("Gripper Configuration:");
   gripperLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(gripperLabel);
@@ -321,12 +293,8 @@ void PlaceConfigWidget::createParameterFields(const ProcessInstance* instance)
     params.at("place_node"),
     params.at("gripper_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // IO SECTION
-  // ============================================================================
   QLabel* ioLabel = new QLabel("IO Configuration:");
   ioLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(ioLabel);
@@ -351,9 +319,6 @@ void PickAndPlaceConfigWidget::createParameterFields(const ProcessInstance* inst
 {
   const auto& params = instance->parameters;
 
-  // ============================================================================
-  // CAMERA SECTION
-  // ============================================================================
   QLabel* cameraLabel = new QLabel("Camera Configuration:");
   cameraLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(cameraLabel);
@@ -372,12 +337,8 @@ void PickAndPlaceConfigWidget::createParameterFields(const ProcessInstance* inst
     params.at("place_view_node"),
     params.at("camera_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // GRIPPER SECTION
-  // ============================================================================
   QLabel* gripperLabel = new QLabel("Gripper Configuration:");
   gripperLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(gripperLabel);
@@ -394,12 +355,8 @@ void PickAndPlaceConfigWidget::createParameterFields(const ProcessInstance* inst
     params.at("place_node"),
     params.at("gripper_device"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // IO SECTION
-  // ============================================================================
   QLabel* ioLabel = new QLabel("IO Configuration:");
   ioLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(ioLabel);
@@ -410,12 +367,8 @@ void PickAndPlaceConfigWidget::createParameterFields(const ProcessInstance* inst
 
   addParameterField("gripper_pin", "Gripper Pin", params.at("gripper_pin"));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
-  // ============================================================================
-  // TIMING SECTION
-  // ============================================================================
   QLabel* timingLabel = new QLabel("Timing:");
   timingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(timingLabel);
@@ -471,7 +424,6 @@ void MoveRelativeConfigWidget::createParameterFields(const ProcessInstance* inst
     params.at("device"),
     static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
-  // Add spacing
   m_formLayout->addRow(new QLabel(""));
 
   QLabel* moveLabel = new QLabel("Movement Parameters:");
@@ -505,4 +457,100 @@ void SetOutputConfigWidget::createParameterFields(const ProcessInstance* instanc
 
   addParameterField("pin", "Pin Number", params.at("pin"));
   addParameterField("state", "State (true/false)", params.at("state"));
+}
+
+// ============================================================================
+// WAIT CONFIG WIDGET
+// ============================================================================
+
+WaitConfigWidget::WaitConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void WaitConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* timingLabel = new QLabel("Timing:");
+  timingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(timingLabel);
+
+  addParameterField("duration_ms", "Duration (milliseconds)", params.at("duration_ms"));
+}
+
+// ============================================================================
+// MOVE RELATIVE MULTI-AXIS CONFIG WIDGET
+// ============================================================================
+
+MoveRelativeMultiAxisConfigWidget::MoveRelativeMultiAxisConfigWidget(
+  ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void MoveRelativeMultiAxisConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Motion Device",
+    params.at("device"),
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* moveLabel = new QLabel("Movement Parameters:");
+  moveLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(moveLabel);
+
+  addParameterField("distance_x", "X Distance (mm, 0=no move)", params.at("distance_x"));
+  addParameterField("distance_y", "Y Distance (mm, 0=no move)", params.at("distance_y"));
+  addParameterField("distance_z", "Z Distance (mm, 0=no move)", params.at("distance_z"));
+}
+
+// ============================================================================
+// MOVE TO POSITION WITH OFFSET CONFIG WIDGET
+// ============================================================================
+
+MoveToPositionWithOffsetConfigWidget::MoveToPositionWithOffsetConfigWidget(
+  ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void MoveToPositionWithOffsetConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* deviceLabel = new QLabel("Device Configuration:");
+  deviceLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(deviceLabel);
+
+  addDeviceSelector("device", "Motion Device",
+    params.at("device"),
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* positionLabel = new QLabel("Base Position:");
+  positionLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(positionLabel);
+
+  addNodeSelector("base_position", "Base Position",
+    params.at("base_position"),
+    params.at("device"));
+
+  m_formLayout->addRow(new QLabel(""));
+
+  QLabel* offsetLabel = new QLabel("Offset Parameters:");
+  offsetLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(offsetLabel);
+
+  addParameterField("offset_x", "X Offset (mm, 0=no offset)", params.at("offset_x"));
+  addParameterField("offset_y", "Y Offset (mm, 0=no offset)", params.at("offset_y"));
+  addParameterField("offset_z", "Z Offset (mm, 0=no offset)", params.at("offset_z"));
 }
