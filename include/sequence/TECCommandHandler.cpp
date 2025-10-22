@@ -5,6 +5,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <iomanip>
 
 bool TECCommandHandler::ExecuteCommand(
   void* manager,
@@ -88,6 +89,10 @@ bool TECCommandHandler::ExecuteCommand(
   // READ TEMPERATURE
   // ============================================================================
   else if (methodName == "ReadTemperature") {
+    // Get optional log level parameter
+    auto logLevelIt = params.find("logLevel");
+    std::string logLevel = (logLevelIt != params.end()) ? logLevelIt->second : "Info";
+
     auto result = tecManager->ReadTemperature(deviceName);
 
     if (!result.Success) {
@@ -95,11 +100,23 @@ bool TECCommandHandler::ExecuteCommand(
       return false;
     }
 
+    // Format message with proper unit
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << deviceName << " Temperature = " << result.Value << " °C";
+    std::string message = oss.str();
+
+    // Log based on level
     if (m_logger) {
-      m_logger->Info(
-        deviceName + " temperature: " + std::to_string(result.Value) + " °C",
-        "TECHandler"
-      );
+      if (logLevel == "Debug") {
+        m_logger->Debug(message, "TEC");
+      }
+      else if (logLevel == "Warning") {
+        m_logger->Warning(message, "TEC");
+      }
+      else {
+        m_logger->Info(message, "TEC");
+      }
     }
 
     return true;
@@ -172,6 +189,10 @@ bool TECCommandHandler::ExecuteCommand(
   // READ LASER CURRENT
   // ============================================================================
   else if (methodName == "ReadLaserCurrent") {
+    // Get optional log level parameter
+    auto logLevelIt = params.find("logLevel");
+    std::string logLevel = (logLevelIt != params.end()) ? logLevelIt->second : "Info";
+
     auto result = tecManager->ReadLaserCurrent(deviceName);
 
     if (!result.Success) {
@@ -179,11 +200,23 @@ bool TECCommandHandler::ExecuteCommand(
       return false;
     }
 
+    // Format message with proper unit
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << deviceName << " Laser Current = " << result.Value << " mA";
+    std::string message = oss.str();
+
+    // Log based on level
     if (m_logger) {
-      m_logger->Info(
-        deviceName + " laser current: " + std::to_string(result.Value) + " mA",
-        "TECHandler"
-      );
+      if (logLevel == "Debug") {
+        m_logger->Debug(message, "TEC");
+      }
+      else if (logLevel == "Warning") {
+        m_logger->Warning(message, "TEC");
+      }
+      else {
+        m_logger->Info(message, "TEC");
+      }
     }
 
     return true;

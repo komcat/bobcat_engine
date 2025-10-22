@@ -274,3 +274,32 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+
+/**
+ * @brief Configuration widget for Read Temperature process
+ */
+class ReadTemperatureConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ReadTemperatureConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Read Laser Current process
+ */
+class ReadLaserCurrentConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ReadLaserCurrentConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

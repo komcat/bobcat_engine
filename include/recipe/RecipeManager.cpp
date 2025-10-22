@@ -172,7 +172,9 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Slide Retract",
     "Set TEC Temp",
     "Set Laser Current",
-    "Read DataStore"  // ← ADD THIS LINE
+    "Read DataStore",
+    "Read Temperature",      // ← ADD
+    "Read Laser Current"     // ← ADD
   };
 }
 
@@ -269,6 +271,14 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
   }
   else if (processType == "Read DataStore") {  // ← ADD THIS BLOCK
     params["channel_name"] = "GPIB-Current";
+    params["log_level"] = "Info";
+  }
+  else if (processType == "Read Temperature") {
+    params["tec_device"] = "TEC1";
+    params["log_level"] = "Info";
+  }
+  else if (processType == "Read Laser Current") {
+    params["tec_device"] = "TEC1";
     params["log_level"] = "Info";
   }
   return params;

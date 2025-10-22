@@ -4,6 +4,7 @@
 #include "ApplicationContext.h"
 #include "PneumaticSlideSelectorDialog.h"  // Add this include at top
 #include "DataStore.h"
+#include "TECManager.h"
 #include "RecipeManager.h"
 #include <QLabel>
 #include <QFrame>
@@ -793,6 +794,154 @@ void ReadDataStoreConfigWidget::createParameterFields(const ProcessInstance* ins
   // Add info label
   QLabel* infoLabel = new QLabel(
     "<i>Reads the specified channel from DataStore and logs its value.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+
+//=============================================================================
+// READ TEMPERATURE CONFIG WIDGET
+//=============================================================================
+ReadTemperatureConfigWidget::ReadTemperatureConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ReadTemperatureConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  if (!instance) return;
+  const auto& params = instance->parameters;
+
+  // TEC Device - dropdown
+  std::string tecDevice = params.count("tec_device") ? params.at("tec_device") : "TEC1";
+
+  // Create the line edit first (this is what gets saved)
+  QLineEdit* deviceEdit = new QLineEdit(QString::fromStdString(tecDevice));
+  m_parameterEdits["tec_device"] = deviceEdit;
+
+  // Create combo box
+  QComboBox* deviceCombo = new QComboBox();
+
+  // Populate with available TEC devices
+  if (m_context && m_context->tecManager) {
+    auto devices = m_context->tecManager->GetAllDeviceNames();
+    for (const auto& device : devices) {
+      deviceCombo->addItem(QString::fromStdString(device));
+    }
+    deviceCombo->setCurrentText(QString::fromStdString(tecDevice));
+  }
+  else {
+    deviceCombo->addItem(QString::fromStdString(tecDevice));
+  }
+
+  // Connect combo to line edit AND signal parameter changed
+  connect(deviceCombo, &QComboBox::currentTextChanged, [this, deviceEdit](const QString& text) {
+    deviceEdit->setText(text);
+    emit parameterChanged();  // ← THIS IS CRITICAL
+  });
+
+  m_formLayout->addRow("TEC Device:", deviceCombo);
+
+  // Log Level - dropdown
+  std::string logLevel = params.count("log_level") ? params.at("log_level") : "Info";
+
+  // Create the line edit first
+  QLineEdit* logLevelEdit = new QLineEdit(QString::fromStdString(logLevel));
+  m_parameterEdits["log_level"] = logLevelEdit;
+
+  QComboBox* logLevelCombo = new QComboBox();
+  logLevelCombo->addItem("Debug");
+  logLevelCombo->addItem("Info");
+  logLevelCombo->addItem("Warning");
+  logLevelCombo->setCurrentText(QString::fromStdString(logLevel));
+
+  connect(logLevelCombo, &QComboBox::currentTextChanged, [this, logLevelEdit](const QString& text) {
+    logLevelEdit->setText(text);
+    emit parameterChanged();  // ← THIS IS CRITICAL
+  });
+
+  m_formLayout->addRow("Log Level:", logLevelCombo);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Reads the current temperature from the selected TEC device and logs it.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+
+//=============================================================================
+// READ LASER CURRENT CONFIG WIDGET
+//=============================================================================
+
+ReadLaserCurrentConfigWidget::ReadLaserCurrentConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+
+void ReadLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  if (!instance) return;
+  const auto& params = instance->parameters;
+
+  // TEC Device - dropdown
+  std::string tecDevice = params.count("tec_device") ? params.at("tec_device") : "TEC1";
+
+  // Create the line edit first (this is what gets saved)
+  QLineEdit* deviceEdit = new QLineEdit(QString::fromStdString(tecDevice));
+  m_parameterEdits["tec_device"] = deviceEdit;
+
+  // Create combo box
+  QComboBox* deviceCombo = new QComboBox();
+
+  // Populate with available TEC devices
+  if (m_context && m_context->tecManager) {
+    auto devices = m_context->tecManager->GetAllDeviceNames();
+    for (const auto& device : devices) {
+      deviceCombo->addItem(QString::fromStdString(device));
+    }
+    deviceCombo->setCurrentText(QString::fromStdString(tecDevice));
+  }
+  else {
+    deviceCombo->addItem(QString::fromStdString(tecDevice));
+  }
+
+  // Connect combo to line edit AND signal parameter changed
+  connect(deviceCombo, &QComboBox::currentTextChanged, [this, deviceEdit](const QString& text) {
+    deviceEdit->setText(text);
+    emit parameterChanged();  // ← THIS IS CRITICAL
+  });
+
+  m_formLayout->addRow("TEC Device:", deviceCombo);
+
+  // Log Level - dropdown
+  std::string logLevel = params.count("log_level") ? params.at("log_level") : "Info";
+
+  // Create the line edit first
+  QLineEdit* logLevelEdit = new QLineEdit(QString::fromStdString(logLevel));
+  m_parameterEdits["log_level"] = logLevelEdit;
+
+  QComboBox* logLevelCombo = new QComboBox();
+  logLevelCombo->addItem("Debug");
+  logLevelCombo->addItem("Info");
+  logLevelCombo->addItem("Warning");
+  logLevelCombo->setCurrentText(QString::fromStdString(logLevel));
+
+  connect(logLevelCombo, &QComboBox::currentTextChanged, [this, logLevelEdit](const QString& text) {
+    logLevelEdit->setText(text);
+    emit parameterChanged();  // ← THIS IS CRITICAL
+  });
+
+  m_formLayout->addRow("Log Level:", logLevelCombo);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Reads the current laser current from the selected TEC device and logs it.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");

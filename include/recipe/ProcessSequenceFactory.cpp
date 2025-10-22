@@ -380,6 +380,46 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   });
 
 
+  // ============================================================================
+  // REGISTER READ TEMPERATURE PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Read Temperature", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string tecDevice = params.at("tec_device");
+    std::string logLevel = params.at("log_level");
+
+    sequence->AddAction(tecDevice, "ReadTemperature", {
+      {"logLevel", logLevel}  // ← ADD THIS
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built Read Temperature sequence for: "
+      << step->userNickname << " (Device: " << tecDevice << ")" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER READ LASER CURRENT PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Read Laser Current", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string tecDevice = params.at("tec_device");
+    std::string logLevel = params.at("log_level");
+
+    sequence->AddAction(tecDevice, "ReadLaserCurrent", {
+      {"logLevel", logLevel}  // ← ADD THIS
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built Read Laser Current sequence for: "
+      << step->userNickname << " (Device: " << tecDevice << ")" << std::endl;
+  });
+  
+  
+  
+  
+  
+  
+  
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;
 }

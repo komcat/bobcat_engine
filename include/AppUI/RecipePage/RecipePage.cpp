@@ -641,6 +641,15 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Read DataStore") {
     m_currentConfigWidget = new ReadDataStoreConfigWidget(m_context);
   }
+  // ============================================================================
+  // ✅ TEC READ PROCESSES
+  // ============================================================================
+  else if (instance->processType == "Read Temperature") {
+    m_currentConfigWidget = new ReadTemperatureConfigWidget(m_context);
+  }
+  else if (instance->processType == "Read Laser Current") {
+    m_currentConfigWidget = new ReadLaserCurrentConfigWidget(m_context);
+  }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
     clearConfigurationForm();
