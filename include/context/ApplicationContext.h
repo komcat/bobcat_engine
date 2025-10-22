@@ -7,12 +7,12 @@ class DataStore;
 class TcpClientManager;
 class UnifiedMotionManager;
 class EziIOManager;
-class PneumaticManager;  // ✅ ADD THIS
-class SequenceEngine;  // ✅ ADD THIS
+class PneumaticManager;  
+class SequenceEngine;  
 class ProductPositionManager;
-class AdaptiveScanController;  // ✅ ADD THIS
-class ProductPositionManager;  // ✅ ADD THIS
-
+class AdaptiveScanController;  
+class ProductPositionManager;  
+class TECManager;   
 
 struct ApplicationContext
 {
@@ -22,10 +22,11 @@ struct ApplicationContext
   TcpClientManager* tcpClientManager = nullptr;
   UnifiedMotionManager* motionManager = nullptr;
   EziIOManager* ioManager = nullptr;
-  PneumaticManager* pneumaticManager = nullptr;  // ✅ ADD THIS
-  SequenceEngine* sequenceEngine = nullptr;  // ✅ ADD THIS
-  ProductPositionManager* productManager;  // ✅ Add this
-  AdaptiveScanController* scanController = nullptr;  // ✅ ADD THIS
-  ProductPositionManager* productPositionManager = nullptr;  // ✅ ADD THIS
+  PneumaticManager* pneumaticManager = nullptr;  
+  SequenceEngine* sequenceEngine = nullptr;  
+  ProductPositionManager* productManager;  
+  AdaptiveScanController* scanController = nullptr;  
+  ProductPositionManager* productPositionManager = nullptr;  
+  TECManager* tecManager = nullptr;   
 
 };

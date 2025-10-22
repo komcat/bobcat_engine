@@ -228,6 +228,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/pneumatics
     ${CMAKE_SOURCE_DIR}/include/recipe
     ${CMAKE_SOURCE_DIR}/include/sequence
+    ${CMAKE_SOURCE_DIR}/include/TEC
 )
 
 # Add nlohmann json include directory if found
@@ -334,10 +335,15 @@ set(SOURCES
     include/sequence/SequencePromptDialog.cpp
     include/sequence/GripperSequenceHelpers.cpp
     include/AppUI/RecipePage/RecipePage.cpp
- "include/recipe/RecipeManager.cpp"
- "include/recipe/ProcessSequenceFactory.cpp"
- "include/AppUI/RecipePage/ProcessConfigWidget.cpp"
- "include/AppUI/RecipePage/DeviceSelectorWidgets.cpp" "include/recipe/RecipeWorker.cpp" "include/AppUI/RecipePage/RecipeProgressWidget.cpp" "include/AppUI/MotionPages/EditPositionDialog.cpp"   "include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp")
+    include/recipe/RecipeManager.cpp
+    include/recipe/ProcessSequenceFactory.cpp
+    include/AppUI/RecipePage/ProcessConfigWidget.cpp
+    include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
+    include/recipe/RecipeWorker.cpp
+    include/AppUI/RecipePage/RecipeProgressWidget.cpp
+    include/AppUI/MotionPages/EditPositionDialog.cpp
+    include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
+ "include/TEC/CLD101xAdapter.cpp" "include/TEC/TECManager.cpp" "include/TEC/TECJsonLoader.cpp" "include/sequence/TECCommandHandler.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -424,10 +430,16 @@ set(HEADERS
     include/sequence/SequencePromptDialog.h
     include/sequence/GripperSequenceHelpers.h 
     include/AppUI/RecipePage/RecipePage.h
- "include/recipe/RecipeManager.h"
- "include/recipe/ProcessSequenceFactory.h" 
- "include/AppUI/RecipePage/ProcessConfigWidget.h"
- "include/AppUI/RecipePage/DeviceSelectorWidgets.h" "include/recipe/RecipeWorker.h" "include/AppUI/RecipePage/RecipeProgressWidget.h" "include/sequence/SequenceBuilder.h" "include/AppUI/MotionPages/EditPositionDialog.h" "include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h")
+    include/recipe/RecipeManager.h
+    include/recipe/ProcessSequenceFactory.h 
+    include/AppUI/RecipePage/ProcessConfigWidget.h
+    include/AppUI/RecipePage/DeviceSelectorWidgets.h 
+    include/recipe/RecipeWorker.h
+    include/AppUI/RecipePage/RecipeProgressWidget.h
+    include/sequence/SequenceBuilder.h
+    include/AppUI/MotionPages/EditPositionDialog.h
+    include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
+ "include/TEC/TECTypes.h" "include/TEC/ITECDevice.h" "include/TEC/Cld101xadapter.h" "include/TEC/TECManager.h" "include/TEC/TECJsonLoader.h" "include/sequence/TECCommandHandler.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

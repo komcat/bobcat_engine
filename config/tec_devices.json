@@ -1,0 +1,22 @@
+{
+  "tec_devices": [
+    {
+      "name": "laser-main",
+      "controller_type": "CLD101x",
+      "ip_address": "127.0.0.88",
+      "port": 65432,
+      "enabled": true,
+      "default_temperature": 25.0,
+      "default_laser_current": 50.0
+    },
+    {
+      "name": "laser-backup",
+      "controller_type": "CLD101x",
+      "ip_address": "127.0.0.89",
+      "port": 65432,
+      "enabled": false,
+      "default_temperature": 25.0,
+      "default_laser_current": 30.0
+    }
+  ]
+}

@@ -7,6 +7,8 @@
 #include "CameraManager.h"
 #include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
+#include "TECCommandHandler.h"  // ✅ ADD THIS
+#include "TECManager.h"
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
@@ -31,6 +33,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
+  m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());  // ✅ ADD THIS
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();
@@ -92,6 +95,16 @@ void SequenceEngine::BuildDeviceRegistry()
     m_deviceToManagerMap["camera"] = m_context->cameraManager;
     m_deviceToTypeMap["camera"] = "camera";
     LogInfo("Registered camera manager");
+  }
+
+
+  if (m_context->tecManager) {
+    auto devices = m_context->tecManager->GetAllDeviceNames();
+    for (const auto& name : devices) {
+      m_deviceToManagerMap[name] = m_context->tecManager;
+      m_deviceToTypeMap[name] = "tec";
+    }
+    LogInfo("Registered " + std::to_string(devices.size()) + " TEC devices");
   }
 
   // Register system as virtual device (no manager needed)

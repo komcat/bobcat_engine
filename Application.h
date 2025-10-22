@@ -10,7 +10,7 @@
 #include "PneumaticManager.h"  
 #include "SequenceEngine.h"  
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
-
+#include "TECManager.h"    // ✅ ADD THIS
 
 class QApplication;
 class MainWindow;
@@ -52,7 +52,7 @@ private:
   void initializeSequenceEngine();  
   void initializeScanController();      // ✅ ADD THIS
 	void initializeProductPositionManager();  // ✅ ADD THIS
-
+  void initializeTECManager();  // ✅ ADD THIS LINE
 
   void testMotionCommands();   
   void testIOCommands();      
@@ -77,7 +77,7 @@ private:
   std::unique_ptr<SequenceEngine> m_sequenceEngine;  
   std::unique_ptr<AdaptiveScanController> m_scanController;  // ✅ ADD THIS
   std::unique_ptr<ProductPositionManager> m_productPositionManager;  // ✅ ADD THIS
-
+  std::unique_ptr<TECManager> m_tecManager;  // ✅ ADD THIS LINE
 
   ApplicationContext m_context;
 

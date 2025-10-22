@@ -9,6 +9,8 @@
 #include "product_position_manager.h"
 #include "MotionJsonLoader.h"
 #include "SequenceBuilder.h"
+#include "TECManager.h"
+#include "TECJsonLoader.h"  // ✅ ADD THIS
 #include <QApplication>
 #include <iostream>
 #include <fstream>
@@ -124,6 +126,7 @@ void Application::initializeManagers()
     initializeSequenceEngine();  // ✅ ADD THIS LAST
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
+		initializeTECManager();  // ✅ ADD THIS LINE
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -473,6 +476,7 @@ void Application::shutdownManagers()
 
   m_context = ApplicationContext();
 
+  m_tecManager.reset();  // ✅ ADD THIS LINE
   m_productPositionManager.reset();  // ✅ ADD THIS
   m_pneumaticManager.reset();
   m_scanController.reset();   // ✅ ADD THIS
@@ -1023,4 +1027,60 @@ void Application::initializeProductPositionManager()
   m_context.productPositionManager = m_productPositionManager.get();
   std::cout << "[Application] ProductPositionManager initialized" << std::endl;
 
+}
+
+void Application::initializeTECManager()
+{
+  std::cout << "[Application] Initializing TEC manager..." << std::endl;
+
+  try {
+    // 1. Create TECManager
+    m_tecManager = std::make_unique<TECManager>();
+    m_context.tecManager = m_tecManager.get();
+    m_logManager->Info("TECManager created", "Application");
+
+    // 2. Load JSON config - try local first, then default
+    std::string configPath;
+    int loadedCount = 0;
+
+    // Try local config first (not in git)
+    loadedCount = TECJsonLoader::LoadFromFile(*m_tecManager, "config/tec_devices.local.json");
+    if (loadedCount > 0) {
+      configPath = "config/tec_devices.local.json";
+      m_logManager->Info("Loading TEC config from LOCAL file", "Application");
+    }
+    else {
+      // Fall back to default config
+      loadedCount = TECJsonLoader::LoadFromFile(*m_tecManager, "config/tec_devices.json");
+      if (loadedCount > 0) {
+        configPath = "config/tec_devices.json";
+        m_logManager->Info("Loading TEC config from DEFAULT file", "Application");
+      }
+      else {
+        m_logManager->Warning("No TEC config found - TEC control not configured", "Application");
+        return;
+      }
+    }
+
+    m_logManager->Info(
+      "Loaded " + std::to_string(loadedCount) + " TEC devices from " + configPath,
+      "Application"
+    );
+
+    // 3. Auto-connect enabled devices
+    int connectedCount = m_tecManager->ConnectEnabledDevices();
+    m_logManager->Info(
+      "Connected " + std::to_string(connectedCount) + " TEC devices",
+      "Application"
+    );
+
+    m_logManager->Info("TEC manager initialized successfully", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("TEC manager initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without TEC control
+  }
 }
