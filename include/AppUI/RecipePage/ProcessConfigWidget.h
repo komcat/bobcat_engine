@@ -260,3 +260,17 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+/**
+ * @brief Configuration widget for Read DataStore process
+ */
+class ReadDataStoreConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ReadDataStoreConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

@@ -360,6 +360,26 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << " (" << currentMa << " mA, " << powerState << ")" << std::endl;
   });
 
+  // ============================================================================
+  // REGISTER READ DATASTORE PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Read DataStore", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string channelName = params.at("channel_name");
+    std::string logLevel = params.at("log_level");
+
+    // Add action to read from DataStore and log it
+    sequence->AddAction("datastore", "ReadAndLog", {
+      {"channelName", channelName},
+      {"logLevel", logLevel}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built Read DataStore sequence for: "
+      << step->userNickname << " (Channel: " << channelName << ")" << std::endl;
+  });
+
+
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;
 }
@@ -428,3 +448,4 @@ std::vector<std::string> ProcessSequenceFactory::GetSupportedProcessTypes() cons
 
   return types;
 }
+

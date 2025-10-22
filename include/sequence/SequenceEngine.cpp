@@ -8,6 +8,7 @@
 #include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
 #include "TECCommandHandler.h"  // ✅ ADD THIS
+#include "DataStoreCommandHandler.h"
 #include "TECManager.h"
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
@@ -33,7 +34,10 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
-  m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());  // ✅ ADD THIS
+  m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
+
+  // ✅ ADD THIS LINE:
+  m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();
@@ -105,6 +109,14 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToTypeMap[name] = "tec";
     }
     LogInfo("Registered " + std::to_string(devices.size()) + " TEC devices");
+  }
+
+  // ✅ ADD THIS BLOCK:
+// Register DataStore as virtual device
+  if (m_context->dataStore) {
+    m_deviceToManagerMap["datastore"] = m_context->dataStore;
+    m_deviceToTypeMap["datastore"] = "datastore";
+    LogInfo("Registered datastore");
   }
 
   // Register system as virtual device (no manager needed)

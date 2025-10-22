@@ -3,7 +3,7 @@
 #include "DeviceSelectorWidgets.h"
 #include "ApplicationContext.h"
 #include "PneumaticSlideSelectorDialog.h"  // Add this include at top
-
+#include "DataStore.h"
 #include "RecipeManager.h"
 #include <QLabel>
 #include <QFrame>
@@ -728,4 +728,73 @@ void SetLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* i
   addParameterField("device", "Device Name", params.at("device"));
   addParameterField("current_ma", "Laser Current (mA)", params.at("current_ma"));
   addParameterField("power_state", "Power State (on/off)", params.at("power_state"));
+}
+
+
+
+//=============================================================================
+// READ DATASTORE CONFIG WIDGET
+//=============================================================================
+
+ReadDataStoreConfigWidget::ReadDataStoreConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ReadDataStoreConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  if (!instance) return;
+
+  const auto& params = instance->parameters;
+
+  // Channel Name - text field with available channels hint
+  std::string channelName = params.count("channel_name") ? params.at("channel_name") : "Voltage";
+
+  QLineEdit* channelEdit = new QLineEdit(QString::fromStdString(channelName));
+  channelEdit->setPlaceholderText("e.g., Voltage, Current, Temperature");
+
+  // Show available channels as tooltip if DataStore exists
+  if (m_context && m_context->dataStore) {
+    auto availableChannels = m_context->dataStore->GetAvailableChannels();
+    if (!availableChannels.empty()) {
+      QString tooltip = "Available channels:\n";
+      for (const auto& ch : availableChannels) {
+        tooltip += "  • " + QString::fromStdString(ch) + "\n";
+      }
+      channelEdit->setToolTip(tooltip);
+    }
+  }
+
+  connect(channelEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Channel Name:", channelEdit);
+  m_parameterEdits["channel_name"] = channelEdit;
+
+  // Log Level - dropdown
+  std::string logLevel = params.count("log_level") ? params.at("log_level") : "Info";
+
+  QComboBox* logLevelCombo = new QComboBox();
+  logLevelCombo->addItem("Debug");
+  logLevelCombo->addItem("Info");
+  logLevelCombo->addItem("Warning");
+  logLevelCombo->setCurrentText(QString::fromStdString(logLevel));
+
+  connect(logLevelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Log Level:", logLevelCombo);
+
+  // Store in a hidden line edit so getParameters() works
+  QLineEdit* logLevelEdit = new QLineEdit(QString::fromStdString(logLevel));
+  logLevelEdit->setVisible(false);
+  connect(logLevelCombo, &QComboBox::currentTextChanged, [logLevelEdit](const QString& text) {
+    logLevelEdit->setText(text);
+  });
+  m_parameterEdits["log_level"] = logLevelEdit;
+
+  // Add info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Reads the specified channel from DataStore and logs its value.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
 }

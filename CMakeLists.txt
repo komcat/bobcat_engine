@@ -349,7 +349,7 @@ set(SOURCES
  "include/TEC/TECJsonLoader.cpp"
  "include/sequence/TECCommandHandler.cpp"
  "include/AppUI/TECPage/TECControlPage.cpp"
-)
+ "include/sequence/DataStoreCommandHandler.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -452,7 +452,7 @@ set(HEADERS
  "include/TEC/TECJsonLoader.h"
  "include/sequence/TECCommandHandler.h"
  "include/AppUI/TECPage/TECControlPage.h"
-)
+ "include/sequence/DataStoreCommandHandler.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)
