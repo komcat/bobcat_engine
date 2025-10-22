@@ -703,6 +703,7 @@ void SetTECTempConfigWidget::createParameterFields(const ProcessInstance* instan
   tempLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(tempLabel);
 
+  addParameterField("device", "Device Name", params.at("device"));
   addParameterField("temperature", "Set Temperature (°C)", params.at("temperature"));
   addParameterField("power_state", "Power State (on/off)", params.at("power_state"));
 }
@@ -724,6 +725,7 @@ void SetLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* i
   laserLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
   m_formLayout->addRow(laserLabel);
 
+  addParameterField("device", "Device Name", params.at("device"));
   addParameterField("current_ma", "Laser Current (mA)", params.at("current_ma"));
   addParameterField("power_state", "Power State (on/off)", params.at("power_state"));
 }

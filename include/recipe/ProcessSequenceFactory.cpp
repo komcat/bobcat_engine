@@ -316,18 +316,19 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   RegisterProcessBuilder("Set TEC Temp", [](SequenceBuilder* sequence, const ProcessInstance* step) {
     const auto& params = step->parameters;
 
+    std::string device = params.at("device");
     std::string temperature = params.at("temperature");
     std::string powerState = params.at("power_state");
 
-    sequence->AddAction("tec", "SetTemperature", {
+    sequence->AddAction(device, "SetTemperature", {
       {"temperature", temperature}
       });
 
     if (powerState == "on") {
-      sequence->AddAction("tec", "TurnOn", {});
+      sequence->AddAction(device, "TEC_On", {});
     }
     else if (powerState == "off") {
-      sequence->AddAction("tec", "TurnOff", {});
+      sequence->AddAction(device, "TEC_Off", {});
     }
 
     std::cout << "[ProcessSequenceFactory] Built Set TEC Temp sequence for: "
@@ -340,18 +341,19 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   RegisterProcessBuilder("Set Laser Current", [](SequenceBuilder* sequence, const ProcessInstance* step) {
     const auto& params = step->parameters;
 
+    std::string device = params.at("device");
     std::string currentMa = params.at("current_ma");
     std::string powerState = params.at("power_state");
 
-    sequence->AddAction("laser", "SetCurrent", {
-      {"current_ma", currentMa}
+    sequence->AddAction(device, "SetLaserCurrent", {
+      {"current", currentMa}
       });
 
     if (powerState == "on") {
-      sequence->AddAction("laser", "TurnOn", {});
+      sequence->AddAction(device, "Laser_On", {});
     }
     else if (powerState == "off") {
-      sequence->AddAction("laser", "TurnOff", {});
+      sequence->AddAction(device, "Laser_Off", {});
     }
 
     std::cout << "[ProcessSequenceFactory] Built Set Laser Current sequence for: "

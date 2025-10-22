@@ -22,9 +22,7 @@ void RecipeProgressWidget::setupUI()
   mainLayout->setContentsMargins(15, 15, 15, 15);
   mainLayout->setSpacing(15);
 
-  // ============================================================================
   // TITLE
-  // ============================================================================
   QLabel* titleLabel = new QLabel("Recipe Execution");
   titleLabel->setStyleSheet(
     "font-size: 16px; "
@@ -41,9 +39,7 @@ void RecipeProgressWidget::setupUI()
   line1->setStyleSheet("color: #ccc;");
   mainLayout->addWidget(line1);
 
-  // ============================================================================
   // PROGRESS BAR
-  // ============================================================================
   m_progressBar = new QProgressBar();
   m_progressBar->setMinimum(0);
   m_progressBar->setMaximum(100);
@@ -66,9 +62,7 @@ void RecipeProgressWidget::setupUI()
   );
   mainLayout->addWidget(m_progressBar);
 
-  // ============================================================================
   // STEP INFO
-  // ============================================================================
   m_stepLabel = new QLabel("Step 0/0");
   m_stepLabel->setStyleSheet(
     "font-size: 14px; "
@@ -92,9 +86,7 @@ void RecipeProgressWidget::setupUI()
   m_stepNameLabel->setAlignment(Qt::AlignCenter);
   mainLayout->addWidget(m_stepNameLabel);
 
-  // ============================================================================
   // ELAPSED TIME
-  // ============================================================================
   m_elapsedTimeLabel = new QLabel("Elapsed: 00:00:00");
   m_elapsedTimeLabel->setStyleSheet(
     "font-size: 14px; "
@@ -108,9 +100,7 @@ void RecipeProgressWidget::setupUI()
   m_elapsedTimeLabel->setAlignment(Qt::AlignCenter);
   mainLayout->addWidget(m_elapsedTimeLabel);
 
-  // ============================================================================
   // STATUS TEXT
-  // ============================================================================
   m_statusLabel = new QLabel("Initializing...");
   m_statusLabel->setStyleSheet(
     "font-size: 12px; "
@@ -129,9 +119,7 @@ void RecipeProgressWidget::setupUI()
   line2->setStyleSheet("color: #ccc;");
   mainLayout->addWidget(line2);
 
-  // ============================================================================
   // STOP BUTTON
-  // ============================================================================
   m_stopButton = new QPushButton("⏹ Stop Execution");
   m_stopButton->setMinimumHeight(50);
   m_stopButton->setStyleSheet(
@@ -184,31 +172,41 @@ void RecipeProgressWidget::setCurrentStep(int current, const QString& stepName)
 
 void RecipeProgressWidget::setStatusText(const QString& status)
 {
-  m_statusLabel->setText(status);
+  if (m_statusLabel) {
+    m_statusLabel->setText(status);
+  }
 }
 
 void RecipeProgressWidget::startTimer()
 {
   m_startTime = QTime::currentTime();
   m_elapsedSeconds = 0;
-  m_elapsedTimer->start(1000);  // Update every second
+  if (m_elapsedTimer) {
+    m_elapsedTimer->start(1000);  // Update every second
+  }
 }
 
 void RecipeProgressWidget::stopTimer()
 {
-  m_elapsedTimer->stop();
+  if (m_elapsedTimer) {
+    m_elapsedTimer->stop();
+  }
 }
 
 void RecipeProgressWidget::resetTimer()
 {
   m_elapsedSeconds = 0;
-  m_elapsedTimeLabel->setText("Elapsed: 00:00:00");
+  if (m_elapsedTimeLabel) {
+    m_elapsedTimeLabel->setText("Elapsed: 00:00:00");
+  }
 }
 
 void RecipeProgressWidget::updateElapsedTime()
 {
   m_elapsedSeconds++;
-  m_elapsedTimeLabel->setText(QString("Elapsed: %1").arg(formatElapsedTime(m_elapsedSeconds)));
+  if (m_elapsedTimeLabel) {
+    m_elapsedTimeLabel->setText(QString("Elapsed: %1").arg(formatElapsedTime(m_elapsedSeconds)));
+  }
 }
 
 QString RecipeProgressWidget::formatElapsedTime(int totalSeconds) const
@@ -223,33 +221,22 @@ QString RecipeProgressWidget::formatElapsedTime(int totalSeconds) const
     .arg(seconds, 2, 10, QChar('0'));
 }
 
-
-/*
-
-
-
-```
-
--- -
-
-## * *Visual Preview * *
-
-When recipe runs, the right panel will show :
-```
-┌─────────────────────────────────────┐
-│       Recipe Execution              │
-├─────────────────────────────────────┤
-│[████████████░░░░░░] 60 % │
-├─────────────────────────────────────┤
-│          Step 3 / 5                   │
-│                                     │
-│  Building step : Pick Left Lens     │
-│                                     │
-│    Elapsed : 00 : 01 : 23               │
-│                                     │
-│  Executing : Pick Left Lens         │
-├─────────────────────────────────────┤
-│     ⏹ Stop Execution               │
-└─────────────────────────────────────┘
-
-*/
+// ✅ NEW: Show completion hint
+void RecipeProgressWidget::showCompletionHint()
+{
+  // Disable stop button since execution is complete
+  if (m_stopButton) {
+    m_stopButton->setEnabled(false);
+    m_stopButton->setText("Execution Complete");
+    m_stopButton->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #888; "
+      "  color: white; "
+      "  border-radius: 5px; "
+      "  font-size: 14px; "
+      "  font-weight: bold; "
+      "  padding: 10px; "
+      "}"
+    );
+  }
+}

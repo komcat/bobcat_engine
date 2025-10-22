@@ -1,4 +1,4 @@
-// RecipeProgressWidget.h
+﻿// RecipeProgressWidget.h
 #pragma once
 
 #include <QWidget>
@@ -38,8 +38,10 @@ public:
   void stopTimer();
   void resetTimer();
 
+  void showCompletionHint();  // ✅ ADD THIS
+
 signals:
-  void stopRequested();  // User clicked stop button
+  void stopRequested();
 
 private slots:
   void updateElapsedTime();
@@ -50,10 +52,10 @@ private:
 
   // UI Components
   QProgressBar* m_progressBar;
-  QLabel* m_stepLabel;           // "Step 2/5"
-  QLabel* m_stepNameLabel;       // Current step name
-  QLabel* m_statusLabel;         // Status text
-  QLabel* m_elapsedTimeLabel;    // "Elapsed: 00:02:35"
+  QLabel* m_stepLabel;
+  QLabel* m_stepNameLabel;
+  QLabel* m_statusLabel;
+  QLabel* m_elapsedTimeLabel;
   QPushButton* m_stopButton;
 
   // Progress tracking

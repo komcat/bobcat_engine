@@ -922,6 +922,9 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
     int totalSteps = m_progressWidget->property("totalSteps").toInt();
     m_progressWidget->setCurrentStep(totalSteps, "Complete");
     m_progressWidget->setStatusText(success ? "✓ Completed!" : "✗ Failed");
+
+    // Show completion hint and disable stop button
+    m_progressWidget->showCompletionHint();
   }
 
   m_runRecipeButton->setEnabled(true);
@@ -937,10 +940,21 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
     m_context->logManager->Error(message.toStdString(), "RecipePage");
   }
 
-  // ❌ REMOVE AUTO-SWITCH - Keep progress visible
-  // QTimer::singleShot(2000, this, [this]() {
-  //   showConfigPanel();
-  // });
+  // ✅ NEW: Auto-dismiss progress panel after 3 seconds
+  QTimer::singleShot(3000, this, [this]() {
+    // Only switch if user hasn't manually selected a step
+    if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
+      std::cout << "[RecipePage] Auto-dismissing progress panel" << std::endl;
+
+      // Switch back to last selected config or placeholder
+      if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
+        updateConfigurationForm();
+      }
+      else {
+        clearConfigurationForm();
+      }
+    }
+  });
 
   m_recipeWorker = nullptr;
 }

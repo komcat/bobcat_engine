@@ -165,13 +165,13 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Move to Position",
     "Move Relative",
     "Set Output",
-    "Wait",                              
-    "Move Relative Multi-Axis",          
-    "Move to Position with Offset",       
-    "Slide Extend",        
+    "Wait",
+    "Move Relative Multi-Axis",
+    "Move to Position with Offset",
+    "Slide Extend",
     "Slide Retract",
     "Set TEC Temp",
-    "Set Laser Current"    
+    "Set Laser Current"
   };
 }
 
@@ -257,10 +257,12 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["debounce_delay_ms"] = "300";
   }
   else if (processType == "Set TEC Temp") {
+    params["device"] = "tec";        // Device name
     params["temperature"] = "25.0";  // Default 25°C
     params["power_state"] = "on";    // "on" or "off"
   }
   else if (processType == "Set Laser Current") {
+    params["device"] = "laser";      // Device name
     params["current_ma"] = "150";    // Default 100 mA
     params["power_state"] = "on";    // "on" or "off"
   }
