@@ -626,6 +626,15 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Slide Retract") {
     m_currentConfigWidget = new SlideRetractConfigWidget(m_context);
   }
+  // ============================================================================
+	// ✅ TEC and LASER PROCESSES
+  // ============================================================================
+  else if (instance->processType == "Set TEC Temp") {
+    m_currentConfigWidget = new SetTECTempConfigWidget(m_context);
+  }
+  else if (instance->processType == "Set Laser Current") {
+    m_currentConfigWidget = new SetLaserCurrentConfigWidget(m_context);
+  }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
     clearConfigurationForm();

@@ -684,3 +684,46 @@ void ProcessConfigWidget::addSlideSelector(const std::string& key,
   m_formLayout->addRow(QString::fromStdString(label) + ":", container);
   m_parameterEdits[key] = edit;
 }
+
+
+// ============================================================================
+// SET TEC TEMP CONFIG WIDGET
+// ============================================================================
+
+SetTECTempConfigWidget::SetTECTempConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void SetTECTempConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* tempLabel = new QLabel("Temperature Control:");
+  tempLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(tempLabel);
+
+  addParameterField("temperature", "Set Temperature (°C)", params.at("temperature"));
+  addParameterField("power_state", "Power State (on/off)", params.at("power_state"));
+}
+
+// ============================================================================
+// SET LASER CURRENT CONFIG WIDGET
+// ============================================================================
+
+SetLaserCurrentConfigWidget::SetLaserCurrentConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void SetLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* laserLabel = new QLabel("Laser Control:");
+  laserLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(laserLabel);
+
+  addParameterField("current_ma", "Laser Current (mA)", params.at("current_ma"));
+  addParameterField("power_state", "Power State (on/off)", params.at("power_state"));
+}

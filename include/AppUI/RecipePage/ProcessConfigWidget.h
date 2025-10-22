@@ -231,3 +231,32 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+
+/**
+ * @brief Configuration widget for Set TEC Temp process
+ */
+class SetTECTempConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit SetTECTempConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Set Laser Current process
+ */
+class SetLaserCurrentConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit SetLaserCurrentConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

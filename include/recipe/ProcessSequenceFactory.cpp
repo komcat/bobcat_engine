@@ -310,6 +310,54 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   });
 
 
+  // ============================================================================
+  // REGISTER SET TEC TEMP PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Set TEC Temp", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string temperature = params.at("temperature");
+    std::string powerState = params.at("power_state");
+
+    sequence->AddAction("tec", "SetTemperature", {
+      {"temperature", temperature}
+      });
+
+    if (powerState == "on") {
+      sequence->AddAction("tec", "TurnOn", {});
+    }
+    else if (powerState == "off") {
+      sequence->AddAction("tec", "TurnOff", {});
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Set TEC Temp sequence for: "
+      << step->userNickname << " (" << temperature << "°C, " << powerState << ")" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER SET LASER CURRENT PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Set Laser Current", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string currentMa = params.at("current_ma");
+    std::string powerState = params.at("power_state");
+
+    sequence->AddAction("laser", "SetCurrent", {
+      {"current_ma", currentMa}
+      });
+
+    if (powerState == "on") {
+      sequence->AddAction("laser", "TurnOn", {});
+    }
+    else if (powerState == "off") {
+      sequence->AddAction("laser", "TurnOff", {});
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Set Laser Current sequence for: "
+      << step->userNickname << " (" << currentMa << " mA, " << powerState << ")" << std::endl;
+  });
+
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;
 }
