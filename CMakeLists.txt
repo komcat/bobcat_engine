@@ -215,6 +215,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/PneumaticPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/JogWindow
     ${CMAKE_SOURCE_DIR}/include/AppUI/RecipePage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/TECPage
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
@@ -343,7 +344,12 @@ set(SOURCES
     include/AppUI/RecipePage/RecipeProgressWidget.cpp
     include/AppUI/MotionPages/EditPositionDialog.cpp
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
- "include/TEC/CLD101xAdapter.cpp" "include/TEC/TECManager.cpp" "include/TEC/TECJsonLoader.cpp" "include/sequence/TECCommandHandler.cpp")
+ "include/TEC/CLD101xAdapter.cpp"
+ "include/TEC/TECManager.cpp"
+ "include/TEC/TECJsonLoader.cpp"
+ "include/sequence/TECCommandHandler.cpp"
+ "include/AppUI/TECPage/TECControlPage.cpp"
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -439,7 +445,14 @@ set(HEADERS
     include/sequence/SequenceBuilder.h
     include/AppUI/MotionPages/EditPositionDialog.h
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
- "include/TEC/TECTypes.h" "include/TEC/ITECDevice.h" "include/TEC/Cld101xadapter.h" "include/TEC/TECManager.h" "include/TEC/TECJsonLoader.h" "include/sequence/TECCommandHandler.h")
+ "include/TEC/TECTypes.h"
+ "include/TEC/ITECDevice.h"
+ "include/TEC/Cld101xadapter.h"
+ "include/TEC/TECManager.h"
+ "include/TEC/TECJsonLoader.h"
+ "include/sequence/TECCommandHandler.h"
+ "include/AppUI/TECPage/TECControlPage.h"
+)
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

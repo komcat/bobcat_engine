@@ -8,6 +8,7 @@
 #include "ACSControllerPage.h"
 #include "IOControllerPage.h"
 #include "PneumaticControlPage.h"  // ✅ ADD
+#include "TECControlPage.h"  // Add include
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -20,6 +21,7 @@ HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWid
   , m_contentStack(nullptr)
   , m_cameraView(nullptr)
   , m_tcpClientWidget(nullptr)
+  , m_tecControlPage(nullptr)  // ✅ Initialize to nullptr
   , m_dataStoreWidget(nullptr)
   , m_piControllerPage(nullptr)
   , m_acsControllerPage(nullptr)
@@ -152,10 +154,8 @@ void HardwareInstrumentPage::createContentArea()
   m_contentStack->addWidget(m_tcpClientWidget);
 
   // Index 7: Laser/TEC placeholder
-  QLabel* laserTECPlaceholder = new QLabel("Laser/TEC\n(Coming Soon)");
-  laserTECPlaceholder->setAlignment(Qt::AlignCenter);
-  laserTECPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
-  m_contentStack->addWidget(laserTECPlaceholder);
+  m_tecControlPage = new TECControlPage(m_context);
+  m_contentStack->addWidget(m_tecControlPage);
 
   // Index 8: Power Supply placeholder
   QLabel* powerSupplyPlaceholder = new QLabel("Power Supply\n(Coming Soon)");
