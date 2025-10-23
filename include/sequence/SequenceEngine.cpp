@@ -159,6 +159,14 @@ void SequenceEngine::SetUserPromptCallback(UserPromptCallback callback)
   }
 }
 
+// ← ADD THIS METHOD:
+void SequenceEngine::SetUserNotificationCallback(UserNotificationCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetUserNotificationCallback(callback);
+  }
+}
+
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
 {
   if (!sequence) {

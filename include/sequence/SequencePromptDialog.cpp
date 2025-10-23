@@ -6,13 +6,20 @@
 
 SequencePromptDialog::SequencePromptDialog(const QString& title,
   const QString& message,
+  bool blocking,
   QWidget* parent)
   : QDialog(parent)
 {
   setWindowTitle(title);
-  setModal(true);
+  setModal(blocking);  // Only block if in blocking mode
   setMinimumWidth(450);
   setMinimumHeight(150);
+
+  // Set window flags for non-modal dialogs
+  if (!blocking) {
+    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+    setAttribute(Qt::WA_DeleteOnClose);  // Auto-delete when closed
+  }
 
   // Main layout
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -102,6 +109,16 @@ bool SequencePromptDialog::ShowPrompt(const QString& title,
   const QString& message,
   QWidget* parent)
 {
-  SequencePromptDialog dialog(title, message, parent);
+  SequencePromptDialog dialog(title, message, true, parent);  // blocking = true
   return dialog.exec() == QDialog::Accepted;
+}
+
+void SequencePromptDialog::ShowNotification(const QString& title,
+  const QString& message,
+  QWidget* parent)
+{
+  // Create non-modal dialog that stays on top and auto-deletes
+  SequencePromptDialog* dialog = new SequencePromptDialog(title, message, false, parent);
+  dialog->show();  // Non-blocking show (not exec)
+  // Dialog will auto-delete when closed due to WA_DeleteOnClose attribute
 }

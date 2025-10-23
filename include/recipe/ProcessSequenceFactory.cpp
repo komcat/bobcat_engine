@@ -110,6 +110,28 @@ ProcessSequenceFactory::ProcessSequenceFactory()
 
 
   // ============================================================================
+  // REGISTER ASK USER PROCESS BUILDER (System Command)
+  // ============================================================================
+  RegisterProcessBuilder("Ask User", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string title = params.at("title");
+    std::string message = params.at("message");
+    std::string blocking = params.at("blocking");
+
+    std::map<std::string, std::string> promptParams;
+    promptParams["title"] = title;
+    promptParams["message"] = message;
+    promptParams["blocking"] = blocking;
+
+    // Use "system" as device name - this will route to SystemCommandHandler
+    sequence->AddAction("system", "UserPrompt", promptParams);
+
+    std::cout << "[ProcessSequenceFactory] Built Ask User sequence for: "
+      << step->userNickname << " (blocking=" << blocking << ")" << std::endl;
+  });
+
+  // ============================================================================
   // REGISTER MOVE TO POSITION PROCESS
   // ============================================================================
   RegisterProcessBuilder("Move to Position", [](SequenceBuilder* sequence, const ProcessInstance* step) {

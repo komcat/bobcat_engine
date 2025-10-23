@@ -3,6 +3,7 @@
 
 #include "ApplicationContext.h"
 #include "CommandDispatcher.h"
+#include "SystemCommandHandler.h"  // For callback types
 #include <string>
 #include <vector>
 #include <map>
@@ -92,7 +93,9 @@ public:
   // Configuration
   void SetLogger(LogManager* logger);
   void BuildDeviceRegistry();
+  // ← ADD THESE TWO LINES:
   void SetUserPromptCallback(UserPromptCallback callback);
+  void SetUserNotificationCallback(UserNotificationCallback callback);
 
   // Sequence creation and execution
   SequenceBuilder* CreateSequence(const std::string& name);
@@ -106,6 +109,9 @@ public:
   // Device resolution (used by validator)
   void* ResolveManager(const std::string& deviceName);
   std::string ResolveManagerType(const std::string& deviceName);
+
+
+
 
 private:
   ApplicationContext* m_context;

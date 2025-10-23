@@ -37,11 +37,12 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
-  // USER PROMPT (blocking with Qt)
+  // USER PROMPT (configurable blocking/non-blocking)
   // ============================================================================
   else if (methodName == "UserPrompt") {
     auto titleIt = params.find("title");
     auto messageIt = params.find("message");
+    auto blockingIt = params.find("blocking");
 
     if (titleIt == params.end() || messageIt == params.end()) {
       errorMessage = "Missing required parameters: title, message";
@@ -50,29 +51,46 @@ bool SystemCommandHandler::ExecuteCommand(
 
     std::string title = titleIt->second;
     std::string message = messageIt->second;
+    bool blocking = (blockingIt != params.end() && blockingIt->second == "true");
 
     if (!m_userPromptCallback) {
       errorMessage = "UserPrompt callback not configured";
       return false;
     }
 
-    if (m_logger) {
-      m_logger->Info("Showing user prompt: " + title, "SystemHandler");
-    }
-
-    // Call the callback - this will be handled by Qt on the main thread
-    bool userConfirmed = m_userPromptCallback(title, message);
-
-    if (!userConfirmed) {
-      errorMessage = "User cancelled operation";
+    if (blocking) {
+      // Blocking mode - wait for user response
       if (m_logger) {
-        m_logger->Warning("User cancelled prompt: " + title, "SystemHandler");
+        m_logger->Info("Showing blocking user prompt: " + title, "SystemHandler");
       }
-      return false;
-    }
 
-    if (m_logger) {
-      m_logger->Info("User confirmed prompt: " + title, "SystemHandler");
+      // Call the callback - this will be handled by Qt on the main thread
+      bool userConfirmed = m_userPromptCallback(title, message);
+
+      if (!userConfirmed) {
+        errorMessage = "User cancelled operation";
+        if (m_logger) {
+          m_logger->Warning("User cancelled prompt: " + title, "SystemHandler");
+        }
+        return false;
+      }
+
+      if (m_logger) {
+        m_logger->Info("User confirmed prompt: " + title, "SystemHandler");
+      }
+    }
+    else {
+      // Non-blocking mode - just show message and continue
+      if (m_logger) {
+        m_logger->Info("Showing non-blocking notification: " + title, "SystemHandler");
+      }
+
+      // Still call the callback but ignore the result
+      m_userPromptCallback(title, message);
+
+      if (m_logger) {
+        m_logger->Info("Non-blocking notification shown", "SystemHandler");
+      }
     }
 
     return true;

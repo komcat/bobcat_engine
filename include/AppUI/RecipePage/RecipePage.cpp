@@ -611,6 +611,10 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Wait") {
     m_currentConfigWidget = new WaitConfigWidget(m_context);
   }
+  // ← ADD THIS:
+  else if (instance->processType == "Ask User") {
+    m_currentConfigWidget = new AskUserConfigWidget(m_context);
+  }
   else if (instance->processType == "Move Relative Multi-Axis") {
     m_currentConfigWidget = new MoveRelativeMultiAxisConfigWidget(m_context);
   }
@@ -707,22 +711,31 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine->SetLogger(m_context->logManager);
   m_sequenceEngine->BuildDeviceRegistry();
 
+  // Set blocking prompt callback
   m_sequenceEngine->SetUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     bool result = false;
-    QEventLoop loop;
-
-    QMetaObject::invokeMethod(this, [&]() {
+    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
       result = SequencePromptDialog::ShowPrompt(
         QString::fromStdString(title),
         QString::fromStdString(message),
         this
       );
-      loop.quit();
-    }, Qt::QueuedConnection);
-
-    loop.exec();
+    }, Qt::BlockingQueuedConnection);
     return result;
+  }
+  );
+
+  // Set non-blocking notification callback
+  m_sequenceEngine->SetUserNotificationCallback(
+    [this](const std::string& title, const std::string& message) {
+    QMetaObject::invokeMethod(this, [this, title, message]() {
+      SequencePromptDialog::ShowNotification(
+        QString::fromStdString(title),
+        QString::fromStdString(message),
+        this
+      );
+    }, Qt::QueuedConnection);  // Non-blocking!
   }
   );
 

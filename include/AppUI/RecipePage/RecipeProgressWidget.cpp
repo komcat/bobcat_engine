@@ -16,6 +16,14 @@ RecipeProgressWidget::RecipeProgressWidget(QWidget* parent)
   setupUI();
 }
 
+RecipeProgressWidget::~RecipeProgressWidget()
+{
+  if (m_elapsedTimer) {
+    m_elapsedTimer->stop();
+    m_elapsedTimer->deleteLater();
+  }
+}
+
 void RecipeProgressWidget::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -188,7 +196,7 @@ void RecipeProgressWidget::startTimer()
 
 void RecipeProgressWidget::stopTimer()
 {
-  if (m_elapsedTimer) {
+  if (m_elapsedTimer && m_elapsedTimer->isActive()) {
     m_elapsedTimer->stop();
   }
 }

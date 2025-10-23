@@ -166,6 +166,7 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Move Relative",
     "Set Output",
     "Wait",
+    "Ask User",
     "Move Relative Multi-Axis",
     "Move to Position with Offset",
     "Slide Extend",
@@ -231,6 +232,11 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
   }
   else if (processType == "Wait") {
     params["duration_ms"] = "1000";  // Default 1 second
+  }
+  else if (processType == "Ask User") {
+    params["title"] = "Confirmation Required";
+    params["message"] = "Please confirm to continue";
+    params["blocking"] = "true";  // "true" = wait for response, "false" = just show notification
   }
   else if (processType == "Move Relative Multi-Axis") {
     params["device"] = "gantry-main";

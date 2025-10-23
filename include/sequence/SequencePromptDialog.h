@@ -15,11 +15,15 @@ class SequencePromptDialog : public QDialog
 public:
   explicit SequencePromptDialog(const QString& title,
     const QString& message,
+    bool blocking = true,
     QWidget* parent = nullptr);
   ~SequencePromptDialog() = default;
 
-  // Static helper - returns true if user clicked Confirm, false if Cancel
+  // Static helper - returns true if user clicked Confirm, false if Cancel (blocking)
   static bool ShowPrompt(const QString& title, const QString& message, QWidget* parent = nullptr);
+
+  // Static helper for non-blocking notification (shows modeless dialog)
+  static void ShowNotification(const QString& title, const QString& message, QWidget* parent = nullptr);
 
 private:
   QLabel* m_messageLabel;

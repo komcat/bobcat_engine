@@ -44,6 +44,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   }
   m_parameterEdits.clear();
   m_deviceCombos.clear();
+  m_parameterCheckboxes.clear();  // ← ADD THIS LINE
 
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
@@ -177,6 +178,11 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 
   for (const auto& [key, combo] : m_deviceCombos) {
     params[key] = combo->getSelectedDevice();
+  }
+
+  // ← ADD THIS BLOCK:
+  for (const auto& [key, checkbox] : m_parameterCheckboxes) {
+    params[key] = checkbox->isChecked() ? "true" : "false";
   }
 
   return params;
@@ -480,6 +486,40 @@ void WaitConfigWidget::createParameterFields(const ProcessInstance* instance)
   m_formLayout->addRow(timingLabel);
 
   addParameterField("duration_ms", "Duration (milliseconds)", params.at("duration_ms"));
+}
+
+
+
+// ============================================================================
+// AskUserConfigWidget
+// ============================================================================
+AskUserConfigWidget::AskUserConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void AskUserConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  addParameterField("title", "Dialog Title",
+    instance->parameters.at("title"));
+
+  addParameterField("message", "Message Text",
+    instance->parameters.at("message"));
+
+  // Add checkbox for blocking mode
+  QCheckBox* blockingCheckbox = new QCheckBox("Wait for user response (blocking)");
+  blockingCheckbox->setChecked(instance->parameters.at("blocking") == "true");
+  blockingCheckbox->setToolTip("When checked: sequence pauses until user clicks Continue/Cancel.\n"
+    "When unchecked: dialog shows but sequence continues immediately.");
+
+  connect(blockingCheckbox, &QCheckBox::toggled, this, [this]() {
+    emit parameterChanged();
+  });
+
+  m_formLayout->addRow("Blocking Mode:", blockingCheckbox);
+
+  // ← ADD THIS LINE to store the checkbox:
+  m_parameterCheckboxes["blocking"] = blockingCheckbox;
 }
 
 // ============================================================================

@@ -72,6 +72,7 @@ protected:
 
   std::map<std::string, QLineEdit*> m_parameterEdits;
   std::map<std::string, DeviceComboBox*> m_deviceCombos;
+  std::map<std::string, QCheckBox*> m_parameterCheckboxes;  // ← ADD THIS LINE
 };
 
 /**
@@ -171,6 +172,22 @@ class WaitConfigWidget : public ProcessConfigWidget
 
 public:
   explicit WaitConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+
+// ← ADD THIS NEW CLASS HERE:
+/**
+ * @brief Configuration widget for Ask User process
+ */
+class AskUserConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit AskUserConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
 
 protected:
   void createParameterFields(const ProcessInstance* instance) override;

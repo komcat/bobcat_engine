@@ -26,7 +26,7 @@ class RecipeProgressWidget : public QWidget
 
 public:
   explicit RecipeProgressWidget(QWidget* parent = nullptr);
-  ~RecipeProgressWidget() = default;
+  ~RecipeProgressWidget();
 
   // Progress updates
   void setTotalSteps(int total);
