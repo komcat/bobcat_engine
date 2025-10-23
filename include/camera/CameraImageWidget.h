@@ -54,6 +54,9 @@ signals:
   void frameDisplayed();  // Emitted after frame is rendered
   void renderError(QString error);
 
+protected:
+  void resizeEvent(QResizeEvent* event) override;
+
 private:
   // UI Component
   QLabel* m_displayLabel;

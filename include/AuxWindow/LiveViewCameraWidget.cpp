@@ -46,13 +46,16 @@ LiveViewCameraWidget::~LiveViewCameraWidget()
 
 void LiveViewCameraWidget::setupUI()
 {
+  // Main layout for the widget
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(10, 10, 10, 10);
   mainLayout->setSpacing(10);
 
-  // Header with camera selector
+  // Header with camera selector (fixed height)
   QWidget* headerWidget = new QWidget();
   headerWidget->setStyleSheet("QWidget { background-color: #2d2d2d; border-radius: 6px; }");
+  headerWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
   QVBoxLayout* headerLayout = new QVBoxLayout(headerWidget);
   headerLayout->setContentsMargins(15, 10, 15, 10);
   headerLayout->setSpacing(8);
@@ -98,14 +101,18 @@ void LiveViewCameraWidget::setupUI()
   m_cameraInfoLabel->setStyleSheet("QLabel { color: #888888; font-size: 12px; background: transparent; }");
   headerLayout->addWidget(m_cameraInfoLabel);
 
+  // Add header (no stretch - fixed size)
   mainLayout->addWidget(headerWidget);
 
-  // Camera image display
+  // Camera image display - takes remaining space
   m_imageWidget = new CameraImageWidget();
-  m_imageWidget->setMinimumDisplaySize(640, 480);
   m_imageWidget->setBackgroundColor(QColor(30, 30, 30));
   m_imageWidget->setPlaceholderText("Select a camera to view live feed");
-  mainLayout->addWidget(m_imageWidget);
+  m_imageWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  m_imageWidget->setMinimumSize(320, 240);  // Minimum reasonable size
+
+  // Add with stretch factor to fill remaining space
+  mainLayout->addWidget(m_imageWidget, 1);
 }
 
 void LiveViewCameraWidget::onCameraSelected(int index)

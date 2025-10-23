@@ -8,16 +8,17 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   , m_zoomPercent(100)
   , m_scalingMode(ScalingMode::Fast)
 {
-  // Create layout
+  // Create layout with no margins or spacing
   QVBoxLayout* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
 
   // Create display label
   m_displayLabel = new QLabel("No camera feed");
   m_displayLabel->setAlignment(Qt::AlignCenter);
   m_displayLabel->setScaledContents(false);
 
-  // ✅ ADD: Make label expand to fill available space
+  // Make label expand to fill available space
   m_displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   m_displayLabel->setStyleSheet(
@@ -32,7 +33,6 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
 
   std::cout << "[CameraImageWidget] Created" << std::endl;
 }
-
 
 void CameraImageWidget::setFrame(const CameraFrameData& frameData)
 {
@@ -189,16 +189,29 @@ void CameraImageWidget::renderFrame(const QImage& image)
     ? Qt::FastTransformation
     : Qt::SmoothTransformation;
 
-  // ✅ FIX: Scale to the WIDGET size, not the label size
-  // The label size grows gradually, but the widget size is correct immediately
-  QSize targetSize = this->size();  // ← CHANGED from m_displayLabel->size()
+  // Get widget size for proper scaling
+  QSize widgetSize = this->size();
 
   // Make sure we have a valid size
-  if (targetSize.width() > 0 && targetSize.height() > 0) {
-    pixmap = pixmap.scaled(targetSize,
-      Qt::KeepAspectRatio,
-      transformMode);
+  if (widgetSize.width() > 0 && widgetSize.height() > 0) {
+    // Scale to 90% of widget size to add uniform padding on all sides
+    QSize targetSize(
+      static_cast<int>(widgetSize.width() * 0.9),
+      static_cast<int>(widgetSize.height() * 0.9)
+    );
+
+    pixmap = pixmap.scaled(targetSize, Qt::KeepAspectRatio, transformMode);
   }
 
   m_displayLabel->setPixmap(pixmap);
+}
+
+void CameraImageWidget::resizeEvent(QResizeEvent* event)
+{
+  QWidget::resizeEvent(event);
+
+  // Re-render current frame at new size
+  if (!m_reusableBuffer.isNull()) {
+    renderFrame(m_reusableBuffer);
+  }
 }

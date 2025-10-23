@@ -17,8 +17,12 @@ AuxViewWindow::AuxViewWindow(CameraManager* cameraManager, DataStore* dataStore,
   , m_tcpManager(tcpManager)
 {
   setWindowTitle("Auxiliary Display - Bobcat Engine");
-  setMinimumSize(1600, 900);
-  resize(1920, 1080);  // Default to Full HD
+
+  // Set smaller minimum size (was 1600x900, now 800x600)
+  setMinimumSize(400, 300);
+
+  // Default size remains Full HD for second monitor
+  resize(400, 300);
 
   setupUI();
 
@@ -51,6 +55,7 @@ void AuxViewWindow::setupLeftPanel()
 {
   m_leftPanel = new QWidget();
   m_leftPanel->setStyleSheet("QWidget { background-color: #252525; }");
+  m_leftPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
   leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -58,7 +63,8 @@ void AuxViewWindow::setupLeftPanel()
 
   // Live camera view widget
   m_liveViewWidget = new LiveViewCameraWidget(m_cameraManager);
-  leftLayout->addWidget(m_liveViewWidget);
+  m_liveViewWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  leftLayout->addWidget(m_liveViewWidget, 1);  // Stretch factor = 1
 
   // Add left panel to main layout (50% width)
   m_mainLayout->addWidget(m_leftPanel, 1);  // stretch factor = 1
@@ -68,6 +74,7 @@ void AuxViewWindow::setupRightPanel()
 {
   m_rightPanel = new QWidget();
   m_rightPanel->setStyleSheet("QWidget { background-color: #252525; }");
+  m_rightPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
   QVBoxLayout* rightLayout = new QVBoxLayout(m_rightPanel);
   rightLayout->setContentsMargins(0, 0, 0, 0);
@@ -76,13 +83,14 @@ void AuxViewWindow::setupRightPanel()
   // Live chart widget
   if (m_dataStore && m_tcpManager) {
     m_liveChartWidget = new LiveChartWidget(m_dataStore, m_tcpManager);
-    rightLayout->addWidget(m_liveChartWidget);
+    m_liveChartWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    rightLayout->addWidget(m_liveChartWidget, 1);  // Stretch factor = 1
   }
   else {
     QLabel* errorLabel = new QLabel("Live Chart\n(DataStore or TcpClientManager not available)");
     errorLabel->setAlignment(Qt::AlignCenter);
     errorLabel->setStyleSheet("QLabel { color: #ff4444; font-size: 18px; }");
-    rightLayout->addWidget(errorLabel);
+    rightLayout->addWidget(errorLabel, 1);
     std::cout << "[AuxViewWindow] ERROR: Cannot create LiveChartWidget - missing dependencies" << std::endl;
   }
 
