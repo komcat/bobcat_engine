@@ -13,6 +13,7 @@ class ProductPositionManager;
 class AdaptiveScanController;  
 class ProductPositionManager;  
 class TECManager;   
+class AuxWindowManager;  // ✅ ADD THIS
 
 struct ApplicationContext
 {
@@ -28,5 +29,5 @@ struct ApplicationContext
   AdaptiveScanController* scanController = nullptr;  
   ProductPositionManager* productPositionManager = nullptr;  
   TECManager* tecManager = nullptr;   
-
+  AuxWindowManager* auxWindowManager = nullptr;  // ✅ ADD THIS
 };

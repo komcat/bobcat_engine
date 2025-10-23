@@ -7,6 +7,7 @@
 #include "EziIO_JsonLoader.h"
 #include "PneumaticJsonLoader.h"  // ✅ ADD THIS
 #include "product_position_manager.h"
+#include "AuxWindowManager.h"
 #include "MotionJsonLoader.h"
 #include "SequenceBuilder.h"
 #include "TECManager.h"
@@ -127,6 +128,7 @@ void Application::initializeManagers()
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
 		initializeTECManager();  // ✅ ADD THIS LINE
+    initializeAuxWindowManager();  // ✅ ADD THIS LINE
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -199,6 +201,19 @@ void Application::initializeCameraManager()
 {
   m_cameraManager = std::make_unique<CameraManager>();
   m_context.cameraManager = m_cameraManager.get();
+
+  // ✅ Auto-discover all cameras
+  //m_cameraManager->DiscoverAndAddAllCameras();
+
+  // ✅ Initialize and connect
+  m_cameraManager->InitializeAllCameras();
+
+  // ✅ Start broadcast system (required!)
+  m_cameraManager->StartBroadcastSystem();
+
+  // ✅ Start grabbing on all cameras
+  m_cameraManager->StartGrabbingAll();
+
   m_logManager->Info("CameraManager initialized", "Application");
 }
 
@@ -448,6 +463,12 @@ void Application::testIOCommands()
 void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
+
+  // Shutdown in reverse order
+  if (m_auxWindowManager) {
+    m_auxWindowManager->shutdown();
+    m_auxWindowManager.reset();
+  }
 
   // Disconnect motion manager
   if (m_motionManager) {
@@ -1083,4 +1104,24 @@ void Application::initializeTECManager()
     );
     // Don't throw - allow app to continue without TEC control
   }
+}
+
+void Application::initializeAuxWindowManager()
+{
+  std::cout << "[Application] Initializing AuxWindowManager..." << std::endl;
+
+  m_auxWindowManager = std::make_unique<AuxWindowManager>();
+
+  // Set required dependencies
+  m_auxWindowManager->setCameraManager(m_cameraManager.get());
+  m_auxWindowManager->setDataStore(m_dataStore.get());
+  m_auxWindowManager->setTcpClientManager(m_tcpClientManager.get());
+
+  // Initialize and show the window
+  m_auxWindowManager->initialize();
+
+  // Add to context
+  m_context.auxWindowManager = m_auxWindowManager.get();
+
+  std::cout << "[Application] AuxWindowManager initialized successfully" << std::endl;
 }

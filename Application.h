@@ -11,6 +11,7 @@
 #include "SequenceEngine.h"  
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
 #include "TECManager.h"    // ✅ ADD THIS
+#include "AuxWindowManager.h"  // ✅ ADD THIS
 
 class QApplication;
 class MainWindow;
@@ -53,6 +54,7 @@ private:
   void initializeScanController();      // ✅ ADD THIS
 	void initializeProductPositionManager();  // ✅ ADD THIS
   void initializeTECManager();  // ✅ ADD THIS LINE
+  void initializeAuxWindowManager();  // ✅ ADD THIS
 
   void testMotionCommands();   
   void testIOCommands();      
@@ -78,6 +80,7 @@ private:
   std::unique_ptr<AdaptiveScanController> m_scanController;  // ✅ ADD THIS
   std::unique_ptr<ProductPositionManager> m_productPositionManager;  // ✅ ADD THIS
   std::unique_ptr<TECManager> m_tecManager;  // ✅ ADD THIS LINE
+  std::unique_ptr<AuxWindowManager> m_auxWindowManager;  // ✅ ADD THIS
 
   ApplicationContext m_context;
 
