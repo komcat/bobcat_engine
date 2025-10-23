@@ -135,6 +135,7 @@ public:
 
   bool InitializeAllCameras();
   bool ConnectCamera(const std::string& cameraId);
+  bool ConnectAllCameras();
   bool DisconnectCamera(const std::string& cameraId);
   bool StartGrabbingAll();
   bool StopGrabbingAll();

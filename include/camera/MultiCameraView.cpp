@@ -94,8 +94,9 @@ void MultiCameraView::loadCameraConfig()
 
   std::cout << "[MultiCameraView] Loading " << cameraConfigs.size() << " cameras from config" << std::endl;
 
-  // Initialize camera manager with all cameras (using context!)
-  m_configManager->InitializeCameraManager(*m_context->cameraManager);
+
+  // Note: Cameras already initialized in Application.cpp - just create UI views
+  // m_configManager->InitializeCameraManager(*m_context->cameraManager);  // REMOVED: Already done in Application
 
   // Create camera views
   for (const auto& camConfig : cameraConfigs) {

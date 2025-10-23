@@ -7,6 +7,7 @@
 #include "EziIO_JsonLoader.h"
 #include "PneumaticJsonLoader.h"  // ✅ ADD THIS
 #include "product_position_manager.h"
+#include "CameraConfigManager.h"
 #include "AuxWindowManager.h"
 #include "MotionJsonLoader.h"
 #include "SequenceBuilder.h"
@@ -202,16 +203,42 @@ void Application::initializeCameraManager()
   m_cameraManager = std::make_unique<CameraManager>();
   m_context.cameraManager = m_cameraManager.get();
 
-  // ✅ Auto-discover all cameras
-  //m_cameraManager->DiscoverAndAddAllCameras();
+  // Load cameras from JSON config - try local first, then default
+  bool configLoaded = false;
+  std::string configPath;
 
-  // ✅ Initialize and connect
-  m_cameraManager->InitializeAllCameras();
+  auto configManager = std::make_unique<CameraConfigManager>("config/camera_config.local.json");
+  if (configManager->LoadConfig()) {
+    configPath = "config/camera_config.local.json";
+    configLoaded = true;
+    m_logManager->Info("Camera configuration loaded from LOCAL file", "Application");
+  }
+  else {
+    configManager = std::make_unique<CameraConfigManager>("config/camera_config.json");
+    if (configManager->LoadConfig()) {
+      configPath = "config/camera_config.json";
+      configLoaded = true;
+      m_logManager->Info("Camera configuration loaded from DEFAULT file", "Application");
+    }
+    else {
+      m_logManager->Warning("No camera config found - no cameras loaded", "Application");
+    }
+  }
 
-  // ✅ Start broadcast system (required!)
+  if (configLoaded) {
+    if (configManager->InitializeCameraManager(*m_cameraManager)) {
+      m_logManager->Info("CameraManager initialized from: " + configPath, "Application");
+
+      // ✅ ADD THIS: Connect all cameras with delay
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      m_cameraManager->ConnectAllCameras();
+    }
+    else {
+      m_logManager->Warning("Failed to initialize CameraManager with config", "Application");
+    }
+  }
+
   m_cameraManager->StartBroadcastSystem();
-
-  // ✅ Start grabbing on all cameras
   m_cameraManager->StartGrabbingAll();
 
   m_logManager->Info("CameraManager initialized", "Application");
@@ -279,6 +306,8 @@ void Application::initializeMotionManager()
     // Don't throw - allow app to continue without motion control
   }
 }
+
+
 void Application::initializeIOManager()
 {
   std::cout << "[Application] Initializing IO manager..." << std::endl;

@@ -223,6 +223,12 @@ bool CameraManager::InitializeAllCameras() {
       if (!managedCamera->camera->Initialize()) {
         allSuccess = false;
         std::cout << "[ERROR] Failed to initialize camera: " << id << std::endl;
+        if (!managedCamera->camera->Connect())
+        {
+          std::cout << "[ERROR] Failed to connect camera: " << id << std::endl;
+        }
+        // Try to connect anyway for error reporting
+
       }
     }
   }
@@ -262,6 +268,35 @@ bool CameraManager::DisconnectCamera(const std::string& cameraId) {
     return camera->Disconnect();
   }
   return false;
+}
+
+bool CameraManager::ConnectAllCameras() {
+  // Get list of camera IDs first (without holding lock during connection)
+  std::vector<std::string> cameraIds;
+  {
+    std::lock_guard<std::mutex> lock(m_camerasMutex);
+    for (const auto& [id, managedCamera] : m_cameras) {
+      cameraIds.push_back(id);
+    }
+  }
+
+  bool allSuccess = true;
+  for (const auto& cameraId : cameraIds) {
+    std::cout << "[INFO] Connecting camera: " << cameraId << std::endl;
+
+    if (!ConnectCamera(cameraId)) {
+      allSuccess = false;
+      std::cout << "[ERROR] Failed to connect camera: " << cameraId << std::endl;
+    }
+    else {
+      std::cout << "[INFO] Successfully connected camera: " << cameraId << std::endl;
+    }
+
+    // Add 500ms delay between camera connections
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+
+  return allSuccess;
 }
 
 bool CameraManager::StartGrabbing(const std::string& cameraId) {
