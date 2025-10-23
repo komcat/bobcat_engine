@@ -90,6 +90,26 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   });
 
   // ============================================================================
+  // REGISTER WAIT PROCESS BUILDER (System Command)
+  // ============================================================================
+  RegisterProcessBuilder("Wait", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    // Get duration parameter (from RecipeManager: "duration_ms")
+    std::string durationStr = params.at("duration_ms");
+
+    std::map<std::string, std::string> waitParams;
+    waitParams["milliseconds"] = durationStr;  // Convert to what SystemCommandHandler expects
+
+    // Use "system" as device name - this will route to SystemCommandHandler
+    sequence->AddAction("system", "Wait", waitParams);
+
+    std::cout << "[ProcessSequenceFactory] Built Wait sequence for: "
+      << step->userNickname << " (" << durationStr << "ms)" << std::endl;
+  });
+
+
+  // ============================================================================
   // REGISTER MOVE TO POSITION PROCESS
   // ============================================================================
   RegisterProcessBuilder("Move to Position", [](SequenceBuilder* sequence, const ProcessInstance* step) {
@@ -139,19 +159,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << std::endl;
   });
 
-  // ============================================================================
-  // REGISTER WAIT PROCESS
-  // ============================================================================
-  RegisterProcessBuilder("Wait", [](SequenceBuilder* sequence, const ProcessInstance* step) {
-    const auto& params = step->parameters;
 
-    sequence->AddAction("", "Wait", {
-      {"duration_ms", params.at("duration_ms")}
-      });
-
-    std::cout << "[ProcessSequenceFactory] Built Wait sequence for: "
-      << step->userNickname << " (" << params.at("duration_ms") << " ms)" << std::endl;
-  });
 
   // ============================================================================
   // REGISTER MOVE RELATIVE (MULTI-AXIS) PROCESS

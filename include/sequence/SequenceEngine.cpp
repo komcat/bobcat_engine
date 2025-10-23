@@ -4,6 +4,7 @@
 #include "unified_motion_manager.h"
 #include "EziIOManager.h"
 #include "PneumaticManager.h"
+#include "SystemCommandHandler.h"
 #include "CameraManager.h"
 #include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
@@ -35,6 +36,8 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
+  m_dispatcher.RegisterHandler("system", std::make_unique<SystemCommandHandler>());
+
 
   // ✅ ADD THIS LINE:
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
@@ -102,6 +105,8 @@ void SequenceEngine::BuildDeviceRegistry()
   }
 
 
+
+
   if (m_context->tecManager) {
     auto devices = m_context->tecManager->GetAllDeviceNames();
     for (const auto& name : devices) {
@@ -119,10 +124,13 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered datastore");
   }
 
-  // Register system as virtual device (no manager needed)
+  // System commands (special case - no manager needed, nullptr is OK)
   m_deviceToManagerMap["system"] = nullptr;
   m_deviceToTypeMap["system"] = "system";
-  LogInfo("Registered system handler");
+  LogInfo("Registered system command handler");
+
+
+
 
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
