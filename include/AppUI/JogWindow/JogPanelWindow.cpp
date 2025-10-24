@@ -130,7 +130,7 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(320, 280);
+  setFixedSize(280, 380);
 }
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
