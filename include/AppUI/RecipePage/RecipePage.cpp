@@ -21,6 +21,10 @@
 #include <QThread>
 #include <QTimer>  // ✅ NEW
 #include <QApplication>
+#include <QHeaderView>
+#include <QCheckBox>
+#include <QListWidget>
+#include <QSet>
 #include <iostream>
 
 RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
@@ -154,18 +158,34 @@ void RecipePage::setupUI()
 
 void RecipePage::createLeftPanel(QWidget* leftPanel)
 {
-  QVBoxLayout* layout = new QVBoxLayout(leftPanel);
-  layout->setContentsMargins(5, 5, 5, 5);
+  QVBoxLayout* mainLayout = new QVBoxLayout(leftPanel);
+  mainLayout->setContentsMargins(5, 5, 5, 5);
+  mainLayout->setSpacing(5);
 
   QLabel* title = new QLabel("Available Processes");
   title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
-  layout->addWidget(title);
+  mainLayout->addWidget(title);
 
+  // ========== HORIZONTAL SPLIT: List on left, Button on right ==========
+  QHBoxLayout* contentLayout = new QHBoxLayout();
+  contentLayout->setSpacing(5);
+
+  // LEFT: Process list
   m_processTemplateList = new QListWidget();
   m_processTemplateList->setStyleSheet(
-    "QListWidget { background-color: white; border: 1px solid #c0c0c0; "
-    "border-radius: 4px; font-size: 12px; } "
-    "QListWidget::item:selected { background-color: #5a8fd6; color: white; }"
+    "QListWidget { "
+    "  background-color: white; "
+    "  border: 1px solid #c0c0c0; "
+    "  border-radius: 4px; "
+    "  font-size: 12px; "
+    "} "
+    "QListWidget::item { "
+    "  padding: 5px; "
+    "} "
+    "QListWidget::item:selected { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "}"
   );
 
   for (const auto& type : RecipeManager::getAvailableProcessTypes()) {
@@ -177,24 +197,33 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   connect(m_processTemplateList, &QListWidget::itemDoubleClicked,
     [this](QListWidgetItem*) { onAddProcess(); });
 
-  layout->addWidget(m_processTemplateList);
+  contentLayout->addWidget(m_processTemplateList);
 
-  m_addButton = new QPushButton("Add to Recipe →");
-  m_addButton->setMinimumHeight(40);
+  // RIGHT: Thin vertical button with >>
+  m_addButton = new QPushButton("»");
+  m_addButton->setFixedWidth(35);
+  m_addButton->setToolTip("Add selected process to recipe (or double-click item)");
   m_addButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #4CAF50; "
     "  color: white; "
     "  border-radius: 4px; "
-    "  padding: 10px; "
+    "  font-size: 20px; "
     "  font-weight: bold; "
+    "  padding: 5px; "
     "} "
     "QPushButton:hover { "
     "  background-color: #45a049; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d8b40; "
     "}"
   );
   connect(m_addButton, &QPushButton::clicked, this, &RecipePage::onAddProcess);
-  layout->addWidget(m_addButton);
+
+  contentLayout->addWidget(m_addButton);
+
+  mainLayout->addLayout(contentLayout);
 }
 
 void RecipePage::createMiddlePanel(QWidget* middlePanel)
@@ -227,56 +256,165 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_loadedProductLabel->setWordWrap(true);
   layout->addWidget(m_loadedProductLabel);
 
-  m_recipeList = new QListWidget();
-  m_recipeList->setStyleSheet(
-    "QListWidget { background-color: white; border: 1px solid #c0c0c0; "
-    "border-radius: 4px; font-size: 12px; } "
-    "QListWidget::item:selected { background-color: #5a8fd6; color: white; }"
-  );
-  connect(m_recipeList, &QListWidget::currentRowChanged,
-    this, &RecipePage::onRecipeStepSelected);
-  layout->addWidget(m_recipeList);
-
-  QHBoxLayout* fileButtons = new QHBoxLayout();
+  // ========== TOP BUTTON ROW ==========
+  QHBoxLayout* topButtons = new QHBoxLayout();
+  topButtons->setSpacing(5);
 
   m_newButton = new QPushButton("New");
+  m_newButton->setMinimumHeight(32);
+  m_newButton->setStyleSheet(
+    "QPushButton { background-color: #3498db; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #2980b9; }"
+  );
   connect(m_newButton, &QPushButton::clicked, this, &RecipePage::onNewRecipe);
-  fileButtons->addWidget(m_newButton);
+  topButtons->addWidget(m_newButton);
 
   m_loadButton = new QPushButton("Load");
+  m_loadButton->setMinimumHeight(32);
+  m_loadButton->setStyleSheet(
+    "QPushButton { background-color: #3498db; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #2980b9; }"
+  );
   connect(m_loadButton, &QPushButton::clicked, this, &RecipePage::onLoadRecipe);
-  fileButtons->addWidget(m_loadButton);
+  topButtons->addWidget(m_loadButton);
 
   m_saveButton = new QPushButton("Save");
+  m_saveButton->setMinimumHeight(32);
+  m_saveButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #229954; }"
+  );
   connect(m_saveButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipe);
-  fileButtons->addWidget(m_saveButton);
+  topButtons->addWidget(m_saveButton);
 
-  layout->addLayout(fileButtons);
+  topButtons->addSpacing(10);
 
-  QHBoxLayout* stepButtons = new QHBoxLayout();
-
-  m_moveUpButton = new QPushButton("↑");
-  m_moveUpButton->setFixedWidth(50);
+  m_moveUpButton = new QPushButton("↑ Up");
+  m_moveUpButton->setMinimumHeight(32);
+  m_moveUpButton->setStyleSheet(
+    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #7f8c8d; }"
+  );
   connect(m_moveUpButton, &QPushButton::clicked, this, &RecipePage::onMoveStepUp);
-  stepButtons->addWidget(m_moveUpButton);
+  topButtons->addWidget(m_moveUpButton);
 
-  m_moveDownButton = new QPushButton("↓");
-  m_moveDownButton->setFixedWidth(50);
+  m_moveDownButton = new QPushButton("↓ Down");
+  m_moveDownButton->setMinimumHeight(32);
+  m_moveDownButton->setStyleSheet(
+    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #7f8c8d; }"
+  );
   connect(m_moveDownButton, &QPushButton::clicked, this, &RecipePage::onMoveStepDown);
-  stepButtons->addWidget(m_moveDownButton);
+  topButtons->addWidget(m_moveDownButton);
 
-  stepButtons->addStretch();
+  topButtons->addSpacing(10);
 
   m_removeButton = new QPushButton("Remove");
-  m_removeButton->setStyleSheet("QPushButton { background-color: #f44336; color: white; }");
+  m_removeButton->setMinimumHeight(32);
+  m_removeButton->setStyleSheet(
+    "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #c0392b; }"
+  );
   connect(m_removeButton, &QPushButton::clicked, this, &RecipePage::onRemoveStep);
-  stepButtons->addWidget(m_removeButton);
+  topButtons->addWidget(m_removeButton);
 
-  layout->addLayout(stepButtons);
+  layout->addLayout(topButtons);
 
+  // ========== SELECT/DESELECT BUTTONS ==========
+  QHBoxLayout* selectionButtons = new QHBoxLayout();
+  selectionButtons->setSpacing(5);
+
+  m_selectAllButton = new QPushButton("☑ Select All");
+  m_selectAllButton->setMinimumHeight(28);
+  m_selectAllButton->setStyleSheet(
+    "QPushButton { background-color: #16a085; color: white; font-weight: bold; border-radius: 3px; font-size: 11px; }"
+    "QPushButton:hover { background-color: #1abc9c; }"
+  );
+  connect(m_selectAllButton, &QPushButton::clicked, this, &RecipePage::onSelectAllProcesses);
+  selectionButtons->addWidget(m_selectAllButton);
+
+  m_deselectAllButton = new QPushButton("☐ Deselect All");
+  m_deselectAllButton->setMinimumHeight(28);
+  m_deselectAllButton->setStyleSheet(
+    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; font-size: 11px; }"
+    "QPushButton:hover { background-color: #7f8c8d; }"
+  );
+  connect(m_deselectAllButton, &QPushButton::clicked, this, &RecipePage::onDeselectAllProcesses);
+  selectionButtons->addWidget(m_deselectAllButton);
+
+  m_toggleSelectedButton = new QPushButton("⇄ Toggle Selected");
+  m_toggleSelectedButton->setMinimumHeight(28);
+  m_toggleSelectedButton->setToolTip("Toggle Run checkboxes for currently selected (highlighted) rows");
+  m_toggleSelectedButton->setStyleSheet(
+    "QPushButton { background-color: #f39c12; color: white; font-weight: bold; border-radius: 3px; font-size: 11px; }"
+    "QPushButton:hover { background-color: #e67e22; }"
+  );
+  connect(m_toggleSelectedButton, &QPushButton::clicked, this, &RecipePage::onToggleSelectedProcesses);
+  selectionButtons->addWidget(m_toggleSelectedButton);
+
+  selectionButtons->addStretch();
+
+  layout->addLayout(selectionButtons);
+
+  // ========== TABLE VIEW ==========
+  m_recipeTable = new QTableWidget();
+  m_recipeTable->setColumnCount(3);
+  m_recipeTable->setHorizontalHeaderLabels({ "#", "Process Instance", "Run" });
+  m_recipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_recipeTable->setSelectionMode(QAbstractItemView::ExtendedSelection);  // ✅ Enable Shift+Click, Ctrl+Click
+  m_recipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_recipeTable->verticalHeader()->setVisible(false);
+  m_recipeTable->setShowGrid(true);
+
+  // Set column widths
+  m_recipeTable->setColumnWidth(0, 40);   // # column
+  m_recipeTable->setColumnWidth(2, 50);   // Run checkbox column
+  m_recipeTable->horizontalHeader()->setStretchLastSection(false);
+  m_recipeTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+
+  m_recipeTable->setStyleSheet(
+    "QTableWidget { "
+    "  background-color: white; "
+    "  border: 1px solid #c0c0c0; "
+    "  border-radius: 4px; "
+    "  font-size: 12px; "
+    "  gridline-color: #e0e0e0; "
+    "} "
+    "QTableWidget::item:selected { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "} "
+    "QHeaderView::section { "
+    "  background-color: #ecf0f1; "
+    "  padding: 5px; "
+    "  border: 1px solid #bdc3c7; "
+    "  font-weight: bold; "
+    "  font-size: 11px; "
+    "}"
+  );
+
+  connect(m_recipeTable, &QTableWidget::itemSelectionChanged,
+    this, &RecipePage::onRecipeStepSelected);
+  connect(m_recipeTable, &QTableWidget::cellChanged,
+    this, &RecipePage::onTableCellChanged);
+
+  layout->addWidget(m_recipeTable);
+
+  // ========== RUN BUTTON ==========
   m_runRecipeButton = new QPushButton("▶ Run Recipe");
-  m_runRecipeButton->setMinimumHeight(45);
-  m_runRecipeButton->setStyleSheet("QPushButton { background-color: #ff8c00; color: white; }");
+  m_runRecipeButton->setMinimumHeight(50);
+  m_runRecipeButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #ff8c00; "
+    "  color: white; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #ff7700; "
+    "}"
+  );
   connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
   layout->addWidget(m_runRecipeButton);
 }
@@ -432,7 +570,72 @@ void RecipePage::onAddProcess()
 
   m_recipeManager->addStep(item->text().toStdString());
   refreshRecipeList();
-  m_recipeList->setCurrentRow(m_recipeManager->getStepCount() - 1);
+  m_recipeTable->selectRow(m_recipeManager->getStepCount() - 1);
+}
+
+void RecipePage::onSelectAllProcesses()
+{
+  // Check all checkboxes in the "Run" column
+  for (int row = 0; row < m_recipeTable->rowCount(); ++row) {
+    m_recipeManager->setStepEnabled(row, true);
+  }
+  refreshRecipeList();
+
+  // Restore selection if there was one
+  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeTable->rowCount()) {
+    m_recipeTable->selectRow(m_selectedStepIndex);
+  }
+}
+
+void RecipePage::onDeselectAllProcesses()
+{
+  // Uncheck all checkboxes in the "Run" column
+  for (int row = 0; row < m_recipeTable->rowCount(); ++row) {
+    m_recipeManager->setStepEnabled(row, false);
+  }
+  refreshRecipeList();
+
+  // Restore selection if there was one
+  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeTable->rowCount()) {
+    m_recipeTable->selectRow(m_selectedStepIndex);
+  }
+}
+
+void RecipePage::onToggleSelectedProcesses()
+{
+  // Get all currently selected (highlighted) rows
+  QList<QTableWidgetItem*> selectedItems = m_recipeTable->selectedItems();
+
+  if (selectedItems.isEmpty()) {
+    QMessageBox::information(this, "No Selection",
+      "Please select one or more rows first.\n\n"
+      "Tip: Use Shift+Click to select a range, or Ctrl+Click to select multiple rows.");
+    return;
+  }
+
+  // Get unique row indices from selected items
+  QSet<int> selectedRows;
+  for (QTableWidgetItem* item : selectedItems) {
+    selectedRows.insert(item->row());
+  }
+
+  // Toggle the enabled state for each selected row
+  for (int row : selectedRows) {
+    if (row >= 0 && row < m_recipeManager->getStepCount()) {
+      const ProcessInstance* step = m_recipeManager->getStep(row);
+      if (step) {
+        // Toggle: if enabled, disable it; if disabled, enable it
+        m_recipeManager->setStepEnabled(row, !step->enabled);
+      }
+    }
+  }
+
+  refreshRecipeList();
+
+  // Restore the selection
+  for (int row : selectedRows) {
+    m_recipeTable->selectRow(row);
+  }
 }
 
 void RecipePage::onRemoveStep()
@@ -455,21 +658,25 @@ void RecipePage::onRemoveStep()
 void RecipePage::onMoveStepUp()
 {
   if (m_recipeManager->moveStepUp(m_selectedStepIndex)) {
+    m_selectedStepIndex--;  // Update index to follow the moved step
     refreshRecipeList();
-    m_recipeList->setCurrentRow(m_selectedStepIndex - 1);
+    m_recipeTable->selectRow(m_selectedStepIndex);
   }
 }
 
 void RecipePage::onMoveStepDown()
 {
   if (m_recipeManager->moveStepDown(m_selectedStepIndex)) {
+    m_selectedStepIndex++;  // Update index to follow the moved step
     refreshRecipeList();
-    m_recipeList->setCurrentRow(m_selectedStepIndex + 1);
+    m_recipeTable->selectRow(m_selectedStepIndex);
   }
 }
 
-void RecipePage::onRecipeStepSelected(int index)
+void RecipePage::onRecipeStepSelected()
 {
+  int index = m_recipeTable->currentRow();
+
   // ✅ NEW: If progress widget is showing, switch to config panel
   if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
     std::cout << "[RecipePage] User selected step, switching from progress to config" << std::endl;
@@ -494,6 +701,12 @@ void RecipePage::onRecipeStepSelected(int index)
   updateConfigurationForm();
 }
 
+void RecipePage::onTableCellChanged(int row, int column)
+{
+  // This slot is currently not used as checkboxes handle their own state
+  // Kept for future extensibility if needed
+}
+
 
 void RecipePage::onRecipeNameChanged(const QString& name)
 {
@@ -507,8 +720,8 @@ void RecipePage::onNicknameChanged(const QString& nickname)
 
   m_recipeManager->setStepNickname(m_selectedStepIndex, nickname.toStdString());
 
-  if (m_selectedStepIndex < m_recipeList->count()) {
-    QListWidgetItem* item = m_recipeList->item(m_selectedStepIndex);
+  if (m_selectedStepIndex < m_recipeTable->rowCount()) {
+    QTableWidgetItem* item = m_recipeTable->item(m_selectedStepIndex, 1);
     if (item) {
       const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
       if (step) {
@@ -528,7 +741,7 @@ void RecipePage::onEnabledChanged(bool enabled)
 
   m_recipeManager->setStepEnabled(m_selectedStepIndex, enabled);
   refreshRecipeList();
-  m_recipeList->setCurrentRow(m_selectedStepIndex);
+  m_recipeTable->selectRow(m_selectedStepIndex);
 }
 
 void RecipePage::onParameterChanged()
@@ -548,25 +761,62 @@ void RecipePage::onProcessTemplateSelected(QListWidgetItem* item)
 
 void RecipePage::refreshRecipeList()
 {
-  m_recipeList->clear();
+  // Block signals to prevent triggering cellChanged during population
+  m_recipeTable->blockSignals(true);
 
+  m_recipeTable->setRowCount(0);
+
+  int row = 0;
   for (const auto& step : m_recipeManager->getAllSteps()) {
+    m_recipeTable->insertRow(row);
+
+    // Column 0: Instance number
+    QTableWidgetItem* numItem = new QTableWidgetItem(QString::number(row + 1));
+    numItem->setTextAlignment(Qt::AlignCenter);
+    numItem->setFlags(numItem->flags() & ~Qt::ItemIsEditable);
+    m_recipeTable->setItem(row, 0, numItem);
+
+    // Column 1: Process instance name
     QString displayText = QString::fromStdString(step->userNickname);
     if (!step->enabled) {
       displayText = "[DISABLED] " + displayText;
     }
 
-    QListWidgetItem* item = new QListWidgetItem(displayText);
+    QTableWidgetItem* nameItem = new QTableWidgetItem(displayText);
+    nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
 
     if (!step->enabled) {
-      item->setForeground(QColor("#999999"));
-      QFont font = item->font();
+      nameItem->setForeground(QColor("#999999"));
+      QFont font = nameItem->font();
       font.setStrikeOut(true);
-      item->setFont(font);
+      nameItem->setFont(font);
     }
 
-    m_recipeList->addItem(item);
+    m_recipeTable->setItem(row, 1, nameItem);
+
+    // Column 2: Checkbox for run selection
+    QWidget* checkboxWidget = new QWidget();
+    QCheckBox* checkbox = new QCheckBox();
+    checkbox->setChecked(step->enabled);
+    checkbox->setProperty("row", row);  // Store row index for callback
+
+    QHBoxLayout* checkLayout = new QHBoxLayout(checkboxWidget);
+    checkLayout->addWidget(checkbox);
+    checkLayout->setAlignment(Qt::AlignCenter);
+    checkLayout->setContentsMargins(0, 0, 0, 0);
+
+    connect(checkbox, &QCheckBox::toggled, this, [this, row](bool checked) {
+      m_recipeManager->setStepEnabled(row, checked);
+      refreshRecipeList();
+      m_recipeTable->selectRow(m_selectedStepIndex);
+    });
+
+    m_recipeTable->setCellWidget(row, 2, checkboxWidget);
+
+    row++;
   }
+
+  m_recipeTable->blockSignals(false);
 }
 
 
@@ -631,7 +881,7 @@ void RecipePage::updateConfigurationForm()
     m_currentConfigWidget = new SlideRetractConfigWidget(m_context);
   }
   // ============================================================================
-	// ✅ TEC and LASER PROCESSES
+  // ✅ TEC and LASER PROCESSES
   // ============================================================================
   else if (instance->processType == "Set TEC Temp") {
     m_currentConfigWidget = new SetTECTempConfigWidget(m_context);
@@ -943,16 +1193,20 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
 {
   std::cout << "[RecipePage] Execution completed: " << message.toStdString() << std::endl;
 
-  if (m_progressWidget) {
-    m_progressWidget->stopTimer();
+  // ✅ Safer pointer check - verify widget still exists and is valid
+  if (m_progressWidget && !m_progressWidget->isHidden()) {
+    // Only access if widget is still the current widget
+    if (m_configScrollArea->widget() == m_progressWidget) {
+      m_progressWidget->stopTimer();
 
-    // Show final state
-    int totalSteps = m_progressWidget->property("totalSteps").toInt();
-    m_progressWidget->setCurrentStep(totalSteps, "Complete");
-    m_progressWidget->setStatusText(success ? "✓ Completed!" : "✗ Failed");
+      // Show final state
+      int totalSteps = m_progressWidget->property("totalSteps").toInt();
+      m_progressWidget->setCurrentStep(totalSteps, "Complete");
+      m_progressWidget->setStatusText(success ? "✓ Completed!" : "✗ Failed");
 
-    // Show completion hint and disable stop button
-    m_progressWidget->showCompletionHint();
+      // Show completion hint and disable stop button
+      m_progressWidget->showCompletionHint();
+    }
   }
 
   m_runRecipeButton->setEnabled(true);
@@ -1036,14 +1290,15 @@ void RecipePage::showProgressPanel()
     m_currentConfigWidget = nullptr;
   }
 
-  // ✅ ULTRA SAFE: Clear scroll area completely
+  // ✅ ULTRA SAFE: Clear scroll area completely and disconnect old progress widget
   QWidget* oldWidget = m_configScrollArea->takeWidget();
   if (oldWidget) {
+    // Disconnect any signals from old widget before deleting
+    oldWidget->disconnect();
     oldWidget->deleteLater();
   }
 
-  // Reset pointer regardless
-  m_progressWidget = nullptr;
+  // QPointer automatically nulls itself when widget is deleted, no manual reset needed
 
   // Create fresh widget
   m_progressWidget = new RecipeProgressWidget();
@@ -1063,11 +1318,11 @@ void RecipePage::showConfigPanel()
   // ✅ ULTRA SAFE: Clear scroll area completely
   QWidget* oldWidget = m_configScrollArea->takeWidget();
   if (oldWidget) {
+    oldWidget->disconnect();
     oldWidget->deleteLater();
   }
 
-  // Reset pointer
-  m_progressWidget = nullptr;
+  // QPointer automatically nulls itself, no manual reset needed
 
   // Show config
   if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {

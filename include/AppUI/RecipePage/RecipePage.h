@@ -2,7 +2,7 @@
 #pragma once
 
 #include <QWidget>
-#include <QListWidget>
+#include <QTableWidget>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QFormLayout>
@@ -10,6 +10,8 @@
 #include <QCheckBox>
 #include <QScrollArea>
 #include <QLabel>
+#include <QPointer>
+#include <QListWidget>
 #include <map>
 
 struct ApplicationContext;
@@ -41,12 +43,16 @@ private slots:
   void onNewRecipe();
   void onLoadRecipe();
   void onSaveRecipe();
-  void onRecipeStepSelected(int index);
+  void onRecipeStepSelected();
+  void onTableCellChanged(int row, int column);
   void onMoveStepUp();
   void onMoveStepDown();
   void onRemoveStep();
   void onRunRecipe();
   void onLoadProductClicked();
+  void onSelectAllProcesses();
+  void onDeselectAllProcesses();
+  void onToggleSelectedProcesses();
 
   // Middle panel actions
   void onAddProcess();
@@ -98,7 +104,7 @@ private:
   int m_selectedStepIndex;
 
   // Left panel widgets
-  QListWidget* m_recipeList;
+  QTableWidget* m_recipeTable;
   QLineEdit* m_recipeNameEdit;
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
@@ -107,6 +113,9 @@ private:
   QPushButton* m_moveDownButton;
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
+  QPushButton* m_selectAllButton;
+  QPushButton* m_deselectAllButton;
+  QPushButton* m_toggleSelectedButton;
   QLabel* m_loadedProductLabel;
 
   // Middle panel widgets
@@ -116,7 +125,7 @@ private:
   // Right panel widgets
   QScrollArea* m_configScrollArea;
   ProcessConfigWidget* m_currentConfigWidget;  // Config widget
-  RecipeProgressWidget* m_progressWidget;       // ✅ NEW: Progress widget
+  QPointer<RecipeProgressWidget> m_progressWidget;  // ✅ Safe pointer that auto-nulls when deleted
 
   QPushButton* m_backButton;
   RecipeWorker* m_recipeWorker;
