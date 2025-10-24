@@ -1,4 +1,4 @@
-﻿// HardwareInstrumentPage.cpp
+﻿// HardwareInstrumentPage.cpp - UPDATED with PowerSupplyControlPage
 #include "HardwareInstrumentPage.h"
 #include "ApplicationContext.h"
 #include "MultiCameraView.h"
@@ -7,8 +7,9 @@
 #include "PIControllerPage.h"
 #include "ACSControllerPage.h"
 #include "IOControllerPage.h"
-#include "PneumaticControlPage.h"  // ✅ ADD
-#include "TECControlPage.h"  // Add include
+#include "PneumaticControlPage.h"
+#include "TECControlPage.h"
+#include "PowerSupplyControlPage.h"  // ✅ ADD THIS
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -21,12 +22,12 @@ HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWid
   , m_contentStack(nullptr)
   , m_cameraView(nullptr)
   , m_tcpClientWidget(nullptr)
-  , m_tecControlPage(nullptr)  // ✅ Initialize to nullptr
+  , m_tecControlPage(nullptr)
   , m_dataStoreWidget(nullptr)
   , m_piControllerPage(nullptr)
   , m_acsControllerPage(nullptr)
   , m_ioControllerPage(nullptr)
-  , m_pneumaticControlPage(nullptr)  // ✅ ADD
+  , m_pneumaticControlPage(nullptr)
   , m_currentButton(nullptr)
 {
   setupUI();
@@ -93,7 +94,6 @@ void HardwareInstrumentPage::createSidebar()
   connect(m_ioButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showIO);
   sidebarLayout->addWidget(m_ioButton);
 
-  // ✅ ADD PNEUMATIC BUTTON
   m_pneumaticButton = createSidebarButton("Pneumatic");
   connect(m_pneumaticButton, &QPushButton::clicked, this, &HardwareInstrumentPage::showPneumatic);
   sidebarLayout->addWidget(m_pneumaticButton);
@@ -141,7 +141,7 @@ void HardwareInstrumentPage::createContentArea()
   m_ioControllerPage = new IOControllerPage(m_context);
   m_contentStack->addWidget(m_ioControllerPage);
 
-  // Index 4: Pneumatic - ✅ NEW PAGE
+  // Index 4: Pneumatic
   m_pneumaticControlPage = new PneumaticControlPage(m_context);
   m_contentStack->addWidget(m_pneumaticControlPage);
 
@@ -153,15 +153,13 @@ void HardwareInstrumentPage::createContentArea()
   m_tcpClientWidget = new TcpClientWidget(m_context);
   m_contentStack->addWidget(m_tcpClientWidget);
 
-  // Index 7: Laser/TEC placeholder
+  // Index 7: Laser/TEC
   m_tecControlPage = new TECControlPage(m_context);
   m_contentStack->addWidget(m_tecControlPage);
 
-  // Index 8: Power Supply placeholder
-  QLabel* powerSupplyPlaceholder = new QLabel("Power Supply\n(Coming Soon)");
-  powerSupplyPlaceholder->setAlignment(Qt::AlignCenter);
-  powerSupplyPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
-  m_contentStack->addWidget(powerSupplyPlaceholder);
+  // Index 8: Power Supply - ✅ UPDATED TO USE ACTUAL PAGE
+  PowerSupplyControlPage* powerSupplyPage = new PowerSupplyControlPage(m_context);
+  m_contentStack->addWidget(powerSupplyPage);
 
   // Index 9: SMU placeholder
   QLabel* smuPlaceholder = new QLabel("SMU\n(Coming Soon)");
@@ -230,7 +228,6 @@ void HardwareInstrumentPage::showIO()
   std::cout << "[HardwareInstrumentPage] Showing IO page" << std::endl;
 }
 
-// ✅ ADD NEW SLOT
 void HardwareInstrumentPage::showPneumatic()
 {
   m_contentStack->setCurrentIndex(4);
@@ -242,7 +239,7 @@ void HardwareInstrumentPage::showPneumatic()
 
 void HardwareInstrumentPage::showDataView()
 {
-  m_contentStack->setCurrentIndex(5);  // ✅ UPDATED INDEX
+  m_contentStack->setCurrentIndex(5);
   if (m_currentButton) m_currentButton->setChecked(false);
   m_dataViewButton->setChecked(true);
   m_currentButton = m_dataViewButton;
@@ -251,7 +248,7 @@ void HardwareInstrumentPage::showDataView()
 
 void HardwareInstrumentPage::showTCPClient()
 {
-  m_contentStack->setCurrentIndex(6);  // ✅ UPDATED INDEX
+  m_contentStack->setCurrentIndex(6);
   if (m_currentButton) m_currentButton->setChecked(false);
   m_tcpClientButton->setChecked(true);
   m_currentButton = m_tcpClientButton;
@@ -260,25 +257,25 @@ void HardwareInstrumentPage::showTCPClient()
 
 void HardwareInstrumentPage::showLaserTEC()
 {
-  m_contentStack->setCurrentIndex(7);  // ✅ UPDATED INDEX
+  m_contentStack->setCurrentIndex(7);
   if (m_currentButton) m_currentButton->setChecked(false);
   m_laserTECButton->setChecked(true);
   m_currentButton = m_laserTECButton;
-  std::cout << "[HardwareInstrumentPage] Showing Laser/TEC (placeholder)" << std::endl;
+  std::cout << "[HardwareInstrumentPage] Showing Laser/TEC" << std::endl;
 }
 
 void HardwareInstrumentPage::showPowerSupply()
 {
-  m_contentStack->setCurrentIndex(8);  // ✅ UPDATED INDEX
+  m_contentStack->setCurrentIndex(8);
   if (m_currentButton) m_currentButton->setChecked(false);
   m_powerSupplyButton->setChecked(true);
   m_currentButton = m_powerSupplyButton;
-  std::cout << "[HardwareInstrumentPage] Showing Power Supply (placeholder)" << std::endl;
+  std::cout << "[HardwareInstrumentPage] Showing Power Supply page" << std::endl;
 }
 
 void HardwareInstrumentPage::showSMU()
 {
-  m_contentStack->setCurrentIndex(9);  // ✅ UPDATED INDEX
+  m_contentStack->setCurrentIndex(9);
   if (m_currentButton) m_currentButton->setChecked(false);
   m_smuButton->setChecked(true);
   m_currentButton = m_smuButton;

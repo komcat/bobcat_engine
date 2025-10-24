@@ -55,6 +55,7 @@ private:
 	void initializeProductPositionManager();  // ✅ ADD THIS
   void initializeTECManager();  // ✅ ADD THIS LINE
   void initializeAuxWindowManager();  // ✅ ADD THIS
+  void initializePowerSupplySystem();
 
   void testMotionCommands();   
   void testIOCommands();      
@@ -81,7 +82,8 @@ private:
   std::unique_ptr<ProductPositionManager> m_productPositionManager;  // ✅ ADD THIS
   std::unique_ptr<TECManager> m_tecManager;  // ✅ ADD THIS LINE
   std::unique_ptr<AuxWindowManager> m_auxWindowManager;  // ✅ ADD THIS
-
+	std::unique_ptr<PowerSupplyManager> m_powerSupplyManager;
+  
   ApplicationContext m_context;
 
   bool m_initialized;

@@ -13,6 +13,8 @@
 #include "SequenceBuilder.h"
 #include "TECManager.h"
 #include "TECJsonLoader.h"  // ✅ ADD THIS
+#include "PowerSupplyManager.h"
+#include "PowerSupplyJsonLoader.h"
 #include <QApplication>
 #include <iostream>
 #include <fstream>
@@ -130,6 +132,7 @@ void Application::initializeManagers()
 		initializeProductPositionManager();	// ✅ ADD THIS
 		initializeTECManager();  // ✅ ADD THIS LINE
     initializeAuxWindowManager();  // ✅ ADD THIS LINE
+    initializePowerSupplySystem();
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -493,6 +496,13 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+
+  // Disconnect all PSU devices
+  if (m_context.powerSupplyManager) {
+    m_context.powerSupplyManager->disconnectAll();
+  }
+
+
   // Shutdown in reverse order
   if (m_auxWindowManager) {
     m_auxWindowManager->shutdown();
@@ -526,6 +536,7 @@ void Application::shutdownManagers()
 
   m_context = ApplicationContext();
 
+	m_powerSupplyManager.reset();
   m_tecManager.reset();  // ✅ ADD THIS LINE
   m_productPositionManager.reset();  // ✅ ADD THIS
   m_pneumaticManager.reset();
@@ -1153,4 +1164,48 @@ void Application::initializeAuxWindowManager()
   m_context.auxWindowManager = m_auxWindowManager.get();
 
   std::cout << "[Application] AuxWindowManager initialized successfully" << std::endl;
+}
+
+// In your Application constructor or initialization function:
+void Application::initializePowerSupplySystem()
+{
+  std::cout << "[Application] Initializing Power Supply system..." << std::endl;
+
+  // Create PowerSupplyManager using unique_ptr (matches your .h declaration)
+  m_powerSupplyManager = std::make_unique<PowerSupplyManager>(this);
+
+  // Assign to context for access by other components
+  m_context.powerSupplyManager = m_powerSupplyManager.get();
+
+  // Try local config first, then fall back to default
+  std::string localConfigPath = "config/power_supply_config.local.json";
+  std::string defaultConfigPath = "config/power_supply_config.json";
+
+  bool configLoaded = false;
+
+  // Try local config first
+  if (PowerSupplyJsonLoader::loadConfiguration(localConfigPath, m_context.powerSupplyManager)) {
+    std::cout << "[Application] Power Supply configuration loaded from "
+      << localConfigPath << std::endl;
+    configLoaded = true;
+  }
+  // Fall back to default config
+  else if (PowerSupplyJsonLoader::loadConfiguration(defaultConfigPath, m_context.powerSupplyManager)) {
+    std::cout << "[Application] Power Supply configuration loaded from "
+      << defaultConfigPath << std::endl;
+    configLoaded = true;
+  }
+
+  if (configLoaded) {
+    std::cout << "[Application] Power Supply system ready (use UI to connect)" << std::endl;
+
+    // ⚠️ DO NOT auto-connect at startup - it blocks the UI thread!
+    // Let users connect via the PowerSupplyControlPage UI instead
+    // m_context.powerSupplyManager->connectAll();
+  }
+  else {
+    std::cerr << "[Application] Warning: Failed to load Power Supply configuration" << std::endl;
+    std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
+    std::cerr << "[Application] Power Supply functionality will be limited" << std::endl;
+  }
 }
