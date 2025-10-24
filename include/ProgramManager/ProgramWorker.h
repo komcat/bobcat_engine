@@ -1,4 +1,4 @@
-// ProgramWorker.h
+﻿// ProgramWorker.h
 #pragma once
 
 #include <QThread>
@@ -17,7 +17,9 @@ class RecipeWorker;
  * @brief Worker thread for program execution
  *
  * Executes recipes sequentially by using RecipeWorker for each recipe.
- * This is a simple orchestrator - all recipe logic is in RecipeWorker.
+ * Supports two modes:
+ * - Run all enabled recipes (auto-run mode)
+ * - Run single selected recipe (single-shot mode)
  */
 class ProgramWorker : public QThread
 {
@@ -39,9 +41,13 @@ public:
   using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
   void setUserPromptCallback(UserPromptCallback callback);
 
+  // ✅ NEW: Configure execution mode
+  void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
+  void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
+
 signals:
   // Program-level signals
-  void programExecutionStarted(int totalEnabledRecipes);
+  void programExecutionStarted(int totalRecipes);
   void programExecutionCompleted(bool success, QString message);
   void programStopped();
 
@@ -71,4 +77,8 @@ private:
   UnifiedMotionManager* m_motionManager;
   std::atomic<bool> m_stopRequested;
   UserPromptCallback m_userPromptCallback;
+
+  // ✅ NEW: Execution mode
+  bool m_autoRunMode;        // true = all recipes, false = single recipe
+  int m_startRecipeIndex;    // Starting recipe index (for single mode)
 };

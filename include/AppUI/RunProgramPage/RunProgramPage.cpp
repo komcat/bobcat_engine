@@ -113,6 +113,23 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}");
   executeLayout->addWidget(m_executeButton);
 
+
+  // ✅ ADD THIS NEW CHECKBOX HERE:
+  m_autoRunNextCheckBox = new QCheckBox("Auto-run next recipe");
+  m_autoRunNextCheckBox->setChecked(false);  // Default: unchecked (single recipe mode)
+  m_autoRunNextCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  font-size: 12px; "
+    "  padding: 5px; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 18px; "
+    "  height: 18px; "
+    "}");
+  executeLayout->addWidget(m_autoRunNextCheckBox);
+
+
+
   m_progressBar = new QProgressBar();
   m_progressBar->setRange(0, 100);
   m_progressBar->setValue(0);
@@ -325,6 +342,21 @@ void RunProgramPage::onExecuteProgram()
     return;
   }
 
+  // ✅ CHECK EXECUTION MODE
+  bool autoRunMode = m_autoRunNextCheckBox->isChecked();
+  int selectedRecipeIndex = m_recipeListWidget->currentRow();
+
+  // Validate based on mode
+  if (!autoRunMode) {
+    // Single recipe mode - need a selection
+    if (selectedRecipeIndex < 0) {
+      QMessageBox::warning(this, "No Selection",
+        "Please select a recipe to execute.\n\n"
+        "Tip: Check 'Auto-run next recipe' to run all recipes.");
+      return;
+    }
+  }
+
   // Validate program
   std::vector<std::string> errors;
   if (!m_programManager->validateProgram(errors)) {
@@ -338,11 +370,41 @@ void RunProgramPage::onExecuteProgram()
 
   // Confirm execution
   QString programName = QString::fromStdString(m_programManager->getProgramName());
-  int recipeCount = m_programManager->getRecipeCount();
+  QString confirmMsg;
+
+  if (autoRunMode) {
+    // Auto-run mode - all enabled recipes
+    int enabledCount = 0;
+    for (const auto& recipe : m_programManager->getAllRecipes()) {
+      if (recipe->enabled) enabledCount++;
+    }
+    confirmMsg = QString("Execute all %1 enabled recipe(s) in program '%2'?")
+      .arg(enabledCount)
+      .arg(programName);
+  }
+  else {
+    // Single recipe mode
+    const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
+    if (!recipe) {
+      QMessageBox::critical(this, "Error", "Invalid recipe selection");
+      return;
+    }
+
+    if (!recipe->enabled) {
+      QMessageBox::warning(this, "Recipe Disabled",
+        QString("Recipe '%1' is disabled. Please enable it first or select a different recipe.")
+        .arg(QString::fromStdString(recipe->displayName)));
+      return;
+    }
+
+    confirmMsg = QString("Execute recipe '%1' only?\n\n"
+      "Tip: Check 'Auto-run next recipe' to run all recipes.")
+      .arg(QString::fromStdString(recipe->displayName));
+  }
 
   QMessageBox::StandardButton reply = QMessageBox::question(
     this, "Execute Program",
-    QString("Execute program '%1' with %2 recipe(s)?").arg(programName).arg(recipeCount),
+    confirmMsg,
     QMessageBox::Yes | QMessageBox::No
   );
 
@@ -362,6 +424,9 @@ void RunProgramPage::onExecuteProgram()
     "  font-weight: bold; "
     "}");
 
+  // Disable checkbox during execution
+  m_autoRunNextCheckBox->setEnabled(false);
+
   // Create and start worker
   m_programWorker = new ProgramWorker(
     m_context->sequenceEngine,
@@ -372,11 +437,16 @@ void RunProgramPage::onExecuteProgram()
     this
   );
 
-  // ✅ NEW: Set UserPrompt callback to show dialog
+  // ✅ CONFIGURE EXECUTION MODE
+  m_programWorker->setAutoRunMode(autoRunMode);
+  if (!autoRunMode) {
+    m_programWorker->setStartRecipeIndex(selectedRecipeIndex);
+  }
+
+  // ✅ Set UserPrompt callback to show dialog
   m_programWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     bool result = false;
-    // Must use BlockingQueuedConnection to wait for UI response
     QMetaObject::invokeMethod(this, [this, title, message, &result]() {
       QMessageBox msgBox(this);
       msgBox.setWindowTitle(QString::fromStdString(title));
@@ -449,10 +519,13 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   }
 }
 
+// In onProgramExecutionCompleted() method, add this to re-enable the checkbox:
+
 void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 {
   m_isExecuting = false;
 
+  // Re-enable execute button
   m_executeButton->setText("▶ Execute Program");
   m_executeButton->setStyleSheet(
     "QPushButton { "
@@ -460,24 +533,59 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
     "  color: white; "
     "  font-size: 16px; "
     "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #45a049; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #cccccc; "
     "}");
 
-  m_executionStatusLabel->setText(success ? "✓ Program completed successfully" : "✗ Program failed");
-  m_currentRecipeLabel->setText("Program finished");
+  // ✅ RE-ENABLE CHECKBOX
+  m_autoRunNextCheckBox->setEnabled(true);
 
-  QMessageBox msgBox;
-  msgBox.setWindowTitle(success ? "Success" : "Failed");
-  msgBox.setText(message);
-  msgBox.setIcon(success ? QMessageBox::Information : QMessageBox::Critical);
-  msgBox.exec();
+  // Show result
+  if (success) {
+    QMessageBox::information(this, "Success", message);
+  }
+  else {
+    QMessageBox::critical(this, "Execution Failed", message);
+  }
+
+  // Update UI...
+  // (rest of your existing code)
 }
 
+// Also add to onProgramStopped():
 void RunProgramPage::onProgramStopped()
 {
   m_isExecuting = false;
+
+  // Re-enable execute button
   m_executeButton->setText("▶ Execute Program");
-  m_executionStatusLabel->setText("Program stopped by user");
+  m_executeButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #4CAF50; "
+    "  color: white; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #45a049; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #cccccc; "
+    "}");
+
+  // ✅ RE-ENABLE CHECKBOX
+  m_autoRunNextCheckBox->setEnabled(true);
+
+  QMessageBox::information(this, "Stopped", "Program execution stopped by user.");
 }
+
+
 
 void RunProgramPage::onWorkerLogMessage(QString message)
 {

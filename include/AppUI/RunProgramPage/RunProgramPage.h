@@ -1,4 +1,4 @@
-// RunProgramPage.h
+﻿// RunProgramPage.h
 #pragma once
 
 #include <QWidget>
@@ -7,6 +7,7 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QLabel>
+#include <QCheckBox>  // ✅ NEW
 
 struct ApplicationContext;
 class ProgramManager;
@@ -76,6 +77,7 @@ private:
   QLabel* m_programNameLabel;
   QListWidget* m_recipeListWidget;
   QPushButton* m_backButton;
+  QCheckBox* m_autoRunNextCheckBox;  // ✅ NEW
 
   // Right panel
   QStackedWidget* m_rightStack;

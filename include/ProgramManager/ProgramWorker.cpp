@@ -20,6 +20,8 @@ ProgramWorker::ProgramWorker(
   , m_motionManager(motionManager)
   , m_stopRequested(false)
   , m_userPromptCallback(nullptr)
+  , m_autoRunMode(true)      // ✅ Default: run all recipes
+  , m_startRecipeIndex(0)     // ✅ Default: start from first
 {
 }
 
@@ -34,25 +36,62 @@ void ProgramWorker::setUserPromptCallback(UserPromptCallback callback)
   m_userPromptCallback = callback;
 }
 
+// ✅ NEW: Set execution mode
+void ProgramWorker::setAutoRunMode(bool autoRun)
+{
+  m_autoRunMode = autoRun;
+}
+
+// ✅ NEW: Set starting recipe index
+void ProgramWorker::setStartRecipeIndex(int index)
+{
+  m_startRecipeIndex = index;
+}
+
 void ProgramWorker::run()
 {
   try {
-    // Count total enabled recipes
+    const auto& allRecipes = m_programManager->getAllRecipes();
+
+    // ✅ DETERMINE WHICH RECIPES TO RUN
+    int startIndex = 0;
+    int endIndex = allRecipes.size();
+
+    if (!m_autoRunMode) {
+      // Single recipe mode - only run the selected recipe
+      startIndex = m_startRecipeIndex;
+      endIndex = m_startRecipeIndex + 1;
+
+      // Validate index
+      if (startIndex < 0 || startIndex >= static_cast<int>(allRecipes.size())) {
+        emit programExecutionCompleted(false, "Invalid recipe index");
+        return;
+      }
+
+      emit logMessage(QString("Single recipe mode: running recipe at index %1").arg(startIndex));
+    }
+    else {
+      // Auto-run mode - run all enabled recipes
+      emit logMessage("Auto-run mode: running all enabled recipes");
+    }
+
+    // Count enabled recipes in range
     int totalEnabledRecipes = 0;
-    for (const auto& recipe : m_programManager->getAllRecipes()) {
-      if (recipe->enabled) {
+    for (int i = startIndex; i < endIndex; i++) {
+      if (allRecipes[i]->enabled) {
         totalEnabledRecipes++;
       }
     }
 
     emit programExecutionStarted(totalEnabledRecipes);
-    emit logMessage(QString("Program has %1 enabled recipe(s)").arg(totalEnabledRecipes));
+    emit logMessage(QString("Program has %1 enabled recipe(s) to execute").arg(totalEnabledRecipes));
 
-    // Execute each enabled recipe sequentially
+    // Execute recipes in range
     int executedCount = 0;
-    int recipeIndex = 0;
 
-    for (const auto& recipeRef : m_programManager->getAllRecipes()) {
+    for (int recipeIndex = startIndex; recipeIndex < endIndex; recipeIndex++) {
+      const auto& recipeRef = allRecipes[recipeIndex];
+
       // Check for stop request
       if (m_stopRequested.load()) {
         emit logMessage("Program execution stopped by user");
@@ -65,7 +104,6 @@ void ProgramWorker::run()
         emit recipeSkipped(recipeIndex, QString::fromStdString(recipeRef->displayName));
         emit logMessage(QString("Skipping disabled recipe: %1")
           .arg(QString::fromStdString(recipeRef->displayName)));
-        recipeIndex++;
         continue;
       }
 
@@ -97,14 +135,17 @@ void ProgramWorker::run()
       }
 
       executedCount++;
-      recipeIndex++;
     }
 
     // All recipes completed successfully
-    emit programExecutionCompleted(true,
-      QString("Program '%1' completed successfully! Executed %2 recipe(s)")
+    QString completionMsg = m_autoRunMode
+      ? QString("Program '%1' completed successfully! Executed %2 recipe(s)")
       .arg(QString::fromStdString(m_programManager->getProgramName()))
-      .arg(executedCount));
+      .arg(executedCount)
+      : QString("Recipe '%1' completed successfully!")
+      .arg(QString::fromStdString(allRecipes[m_startRecipeIndex]->displayName));
+
+    emit programExecutionCompleted(true, completionMsg);
   }
   catch (const std::exception& e) {
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
@@ -149,7 +190,7 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   connect(recipeWorker, &RecipeWorker::logMessage,
     this, &ProgramWorker::logMessage);
 
-  // ✅ FIX: Use QEventLoop to properly wait for completion
+  // ✅ Use QEventLoop to properly wait for completion
   bool success = false;
   QString errorMessage;
   QEventLoop loop;
