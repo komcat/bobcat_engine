@@ -12,6 +12,7 @@
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
 #include "RecipePage.h"           // ✅ ADD THIS
+#include "RunProgramPage.h"
 #include <QVBoxLayout>
 #include <iostream>
 
@@ -26,6 +27,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_configEditorPage(nullptr)
   , m_motionPage(nullptr)
   , m_recipePage(nullptr)        // ✅ ADD THIS
+  , m_runProgramPage(nullptr)
   , m_jogButton(nullptr)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
@@ -159,11 +161,19 @@ void MainWindow::createPages()
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_motionPage);
 
-  // ✅ ADD THIS - Recipe page
+  //  Recipe page
   m_recipePage = new RecipePage(m_context, this);
   connect(m_recipePage, &RecipePage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_recipePage);
+
+
+  //  Run Program page
+  m_runProgramPage = new RunProgramPage(m_context, this);
+  connect(m_runProgramPage, &RunProgramPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_runProgramPage);
+
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
@@ -240,8 +250,9 @@ void MainWindow::setupJogPanel()
 
 void MainWindow::onMainMenuProcess()
 {
-  std::cout << "[MainWindow] Process clicked (not implemented)" << std::endl;
-  m_context->logManager->Warning("Process page not implemented yet", "MainWindow");
+  std::cout << "[MainWindow] Process clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Run Program page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_runProgramPage);  // ✅ CHANGED FROM WARNING
 }
 
 void MainWindow::onMainMenuRecipe()

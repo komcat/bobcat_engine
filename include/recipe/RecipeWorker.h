@@ -4,16 +4,26 @@
 #include <QThread>
 #include <QString>
 #include <atomic>
+#include <functional>
 
 class SequenceBuilder;
 class SequenceEngine;
 class RecipeManager;
 class ProcessSequenceFactory;
+class ProductPositionManager;
+class UnifiedMotionManager;
 
 /**
- * @brief Worker thread for recipe execution (Business Logic Only)
+ * @brief Worker thread for recipe execution (Self-contained)
  *
- * Emits raw execution data - no UI knowledge
+ * Handles EVERYTHING for executing a single recipe:
+ * - Loading recipe file
+ * - Loading product positions
+ * - Building device registry
+ * - UserPrompt callback setup
+ * - Building and executing sequence
+ *
+ * This is the CORE executor - ProgramWorker uses this internally
  */
 class RecipeWorker : public QThread
 {
@@ -22,34 +32,40 @@ class RecipeWorker : public QThread
 public:
   RecipeWorker(
     SequenceEngine* engine,
-    RecipeManager* recipeManager,
     ProcessSequenceFactory* factory,
+    ProductPositionManager* positionManager,
+    UnifiedMotionManager* motionManager,
+    const std::string& recipeFilePath,
     QObject* parent = nullptr
   );
 
   void requestStop();  // Request graceful stop
+
+  // Set callback for user prompts (optional - if not set, auto-accepts all)
+  using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
+  void setUserPromptCallback(UserPromptCallback callback);
 
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
   void stepBuildStarted(int stepIndex, QString stepName, QString stepType);
   void stepBuildCompleted(int stepIndex);
-  void allStepsBuilt();  // ✅ NEW: All steps built, now executing
-  void stepExecutionStarted(int stepIndex, QString stepName);  // ✅ NEW
-  void stepExecutionCompleted(int stepIndex, QString stepName);  // ✅ NEW
   void sequenceExecutionStarted();
   void executionCompleted(bool success, QString message);
   void executionStopped();
-  void logMessage(QString message);  // For debugging/logging only
+  void logMessage(QString message);
 
 protected:
   void run() override;
 
 private:
-  void buildSequenceFromRecipe(SequenceBuilder* sequence);
+  void buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager);
 
   SequenceEngine* m_engine;
-  RecipeManager* m_recipeManager;
   ProcessSequenceFactory* m_factory;
+  ProductPositionManager* m_positionManager;
+  UnifiedMotionManager* m_motionManager;
+  std::string m_recipeFilePath;
   std::atomic<bool> m_stopRequested;
+  UserPromptCallback m_userPromptCallback;
 };

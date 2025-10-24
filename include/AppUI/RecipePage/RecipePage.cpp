@@ -1027,15 +1027,44 @@ void RecipePage::onRunRecipe()
 
   if (reply != QMessageBox::Yes) return;
 
+  // ✅ STEP 1: Save recipe to file (if not saved or modified)
+  std::string recipeFilePath = m_recipeManager->getCurrentFilePath();
+
+  if (recipeFilePath.empty()) {
+    // Recipe not saved yet - prompt to save
+    QMessageBox::StandardButton saveReply = QMessageBox::question(
+      this, "Save Recipe",
+      "Recipe must be saved before execution. Save now?",
+      QMessageBox::Yes | QMessageBox::No
+    );
+
+    if (saveReply != QMessageBox::Yes) {
+      return;
+    }
+
+    // Trigger save dialog
+    onSaveRecipe();
+
+    // Check if saved successfully
+    recipeFilePath = m_recipeManager->getCurrentFilePath();
+    if (recipeFilePath.empty()) {
+      QMessageBox::warning(this, "Save Required",
+        "Recipe must be saved before execution.");
+      return;
+    }
+  }
+  else {
+    // Recipe already saved - save current state
+    if (!m_recipeManager->saveRecipe(recipeFilePath)) {
+      QMessageBox::critical(this, "Save Error",
+        "Failed to save recipe before execution.");
+      return;
+    }
+  }
+
   std::cout << "[RecipePage] Starting recipe execution: "
     << recipeName.toStdString() << std::endl;
-
-  // ✅ CRITICAL: Rebuild device registry before execution
-  // This ensures all pneumatic slides and other devices are registered
-  if (m_sequenceEngine) {
-    std::cout << "[RecipePage] Rebuilding device registry..." << std::endl;
-    m_sequenceEngine->BuildDeviceRegistry();
-  }
+  std::cout << "[RecipePage] Recipe file: " << recipeFilePath << std::endl;
 
   // Switch to progress panel
   showProgressPanel();
@@ -1044,12 +1073,29 @@ void RecipePage::onRunRecipe()
   m_runRecipeButton->setEnabled(false);
   m_runRecipeButton->setText("⏳ Recipe Running...");
 
-  // Create and start worker thread
+  // ✅ STEP 2: Create RecipeWorker with new signature
   m_recipeWorker = new RecipeWorker(
     m_sequenceEngine,
-    m_recipeManager,
     m_processFactory,
+    m_context->productPositionManager,
+    m_context->motionManager,
+    recipeFilePath,  // ✅ Pass file path instead of RecipeManager
     this
+  );
+
+  // ✅ STEP 3: Set UserPrompt callback
+  m_recipeWorker->setUserPromptCallback(
+    [this](const std::string& title, const std::string& message) -> bool {
+    bool result = false;
+    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
+      result = SequencePromptDialog::ShowPrompt(
+        QString::fromStdString(title),
+        QString::fromStdString(message),
+        this
+      );
+    }, Qt::BlockingQueuedConnection);
+    return result;
+  }
   );
 
   // Connect RAW DATA signals to UI interpreters
@@ -1074,7 +1120,6 @@ void RecipePage::onRunRecipe()
   // Start execution
   m_recipeWorker->start();
 }
-
 
 // Legacy slots (kept for compatibility but not used with new system)
 void RecipePage::onRecipeProgress(const QString& message)

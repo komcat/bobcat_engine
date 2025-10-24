@@ -217,6 +217,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/RecipePage
     ${CMAKE_SOURCE_DIR}/include/AppUI/TECPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/PowerSupplyControlPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -227,6 +228,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
     ${CMAKE_SOURCE_DIR}/include/motions/scanning
     ${CMAKE_SOURCE_DIR}/include/products
+    ${CMAKE_SOURCE_DIR}/include/ProgramManager
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
     ${CMAKE_SOURCE_DIR}/include/recipe
@@ -352,7 +354,7 @@ set(SOURCES
  "include/TEC/TECJsonLoader.cpp"
  "include/sequence/TECCommandHandler.cpp"
  "include/AppUI/TECPage/TECControlPage.cpp"
- "include/sequence/DataStoreCommandHandler.cpp" "include/AuxWindow/AuxWindowManager.cpp" "include/AuxWindow/AuxViewWindow.cpp" "include/AuxWindow/LiveChartWidget.cpp" "include/AuxWindow/LiveViewCameraWidget.cpp" "include/PSU/PowerSupplyManager.cpp" "include/PSU/PowerSupplyJsonLoader.cpp" "include/PSU/KeysightPSUAdapter.cpp" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp")
+ "include/sequence/DataStoreCommandHandler.cpp" "include/AuxWindow/AuxWindowManager.cpp" "include/AuxWindow/AuxViewWindow.cpp" "include/AuxWindow/LiveChartWidget.cpp" "include/AuxWindow/LiveViewCameraWidget.cpp" "include/PSU/PowerSupplyManager.cpp" "include/PSU/PowerSupplyJsonLoader.cpp" "include/PSU/KeysightPSUAdapter.cpp" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp" "include/ProgramManager/ProgramWorker.cpp" "include/ProgramManager/ProgramManager.cpp" "include/AppUI/RunProgramPage/RunProgramPage.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -455,7 +457,7 @@ set(HEADERS
  "include/TEC/TECJsonLoader.h"
  "include/sequence/TECCommandHandler.h"
  "include/AppUI/TECPage/TECControlPage.h"
- "include/sequence/DataStoreCommandHandler.h" "include/AuxWindow/AuxWindowManager.h" "include/AuxWindow/AuxViewWindow.h" "include/AuxWindow/LiveChartWidget.h" "include/AuxWindow/LiveViewCameraWidget.h" "include/PSU/IPowerSupply.h" "include/PSU/PowerSupplyManager.h" "include/PSU/PowerSupplyJsonLoader.h" "include/PSU/KeysightPSUAdapter.h" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h")
+ "include/sequence/DataStoreCommandHandler.h" "include/AuxWindow/AuxWindowManager.h" "include/AuxWindow/AuxViewWindow.h" "include/AuxWindow/LiveChartWidget.h" "include/AuxWindow/LiveViewCameraWidget.h" "include/PSU/IPowerSupply.h" "include/PSU/PowerSupplyManager.h" "include/PSU/PowerSupplyJsonLoader.h" "include/PSU/KeysightPSUAdapter.h" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h" "include/ProgramManager/ProgramWorker.h" "include/ProgramManager/ProgramManager.h" "include/AppUI/RunProgramPage/RunProgramPage.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

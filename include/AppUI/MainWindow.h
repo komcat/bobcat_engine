@@ -16,6 +16,7 @@ class LogViewerPage;
 class JogPanelWindow;
 class JogKeyBindingHandler;
 class TransformationMatrixLoader;
+class RunProgramPage;
 
 class MainWindow : public QMainWindow
 {
@@ -52,6 +53,7 @@ private:
   ConfigEditorPage* m_configEditorPage;
   MotionPage* m_motionPage;
   RecipePage* m_recipePage;      // ✅ ADD THIS
+  RunProgramPage* m_runProgramPage;
 
   QPushButton* m_jogButton;
   JogPanelWindow* m_jogPanel;
