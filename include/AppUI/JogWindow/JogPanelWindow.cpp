@@ -1,4 +1,4 @@
-// JogPanelWindow.cpp - COMPLETE FINAL VERSION
+﻿// JogPanelWindow.cpp - Compact Two-Column Design
 #include "JogPanelWindow.h"
 #include "TransformationMatrixLoader.h"
 #include "CoordinateTransformer.h"
@@ -12,7 +12,9 @@
 #include <QGroupBox>
 #include <QPushButton>
 #include <QCloseEvent>
+#include <QTimer>
 #include <algorithm>
+#include <QStyle>
 
 JogPanelWindow::JogPanelWindow(
   ApplicationContext* context,
@@ -21,10 +23,12 @@ JogPanelWindow::JogPanelWindow(
   : QWidget(parent)
   , m_context(context)
   , m_matrixLoader(matrixLoader)
+  , m_keyboardIndicator(nullptr)
   , m_deviceButtonGroup(nullptr)
   , m_stepSizeButtonGroup(nullptr)
   , m_currentStepLabel(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
+  , m_keyboardActive(false)
 {
   setWindowTitle("Jog Panel");
   setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
@@ -42,36 +46,50 @@ JogPanelWindow::~JogPanelWindow()
 void JogPanelWindow::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(10, 10, 10, 10);
-  mainLayout->setSpacing(10);
+  mainLayout->setContentsMargins(4, 8, 4, 8);
+  mainLayout->setSpacing(6);
 
-  // Title
-  QLabel* title = new QLabel("Global Jog Control");
-  title->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: white; }");
-  title->setAlignment(Qt::AlignCenter);
-  mainLayout->addWidget(title);
+  // Keyboard indicator banner at top
+  m_keyboardIndicator = new QLabel("⌨ Keyboard Control: INACTIVE");
+  m_keyboardIndicator->setAlignment(Qt::AlignCenter);
+  m_keyboardIndicator->setStyleSheet(
+    "QLabel { "
+    "  background-color: #555555; "
+    "  color: #888888; "
+    "  font-weight: bold; "
+    "  font-size: 11px; "
+    "  padding: 2px; "
+    "  border-radius: 2px; "
+    "}"
+  );
+  mainLayout->addWidget(m_keyboardIndicator);
 
-  // Three panels in horizontal layout
-  QHBoxLayout* panelsLayout = new QHBoxLayout();
+  // Two-column layout
+  QHBoxLayout* columnsLayout = new QHBoxLayout();
+  columnsLayout->setSpacing(8);
 
-  // Panel 1: Device Selection
-  QWidget* devicePanel = new QWidget();
-  createDevicePanel(devicePanel);
-  panelsLayout->addWidget(devicePanel);
+  // LEFT COLUMN: Device + Step Size
+  QWidget* leftColumn = new QWidget();
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+  leftLayout->setSpacing(6);
+  leftColumn->setMaximumWidth(140);
 
-  // Panel 2: Step Size Selection
-  QWidget* stepPanel = new QWidget();
-  createStepSizePanel(stepPanel);
-  panelsLayout->addWidget(stepPanel);
+  createDevicePanel(leftColumn);
+  createStepSizePanel(leftColumn);
 
-  // Panel 3: Movement Controls
-  QWidget* movePanel = new QWidget();
-  createMovementPanel(movePanel);
-  panelsLayout->addWidget(movePanel);
+  columnsLayout->addWidget(leftColumn);
 
-  mainLayout->addLayout(panelsLayout);
+  // RIGHT COLUMN: Movement Controls
+  QWidget* rightColumn = new QWidget();
+  createMovementPanel(rightColumn);
 
-  // Styling
+
+  columnsLayout->addWidget(rightColumn);
+
+  mainLayout->addLayout(columnsLayout);
+
+  // Global styling
   setStyleSheet(R"(
     QWidget {
       background-color: #2b2b2b;
@@ -81,12 +99,14 @@ void JogPanelWindow::setupUI()
       background-color: #3a3a3a;
       color: white;
       border: 1px solid #555;
-      padding: 8px;
-      font-size: 12px;
-      min-width: 60px;
+      padding: 4px;
+      font-size: 10px;
+      min-width: 40px;
+      min-height: 24px;
     }
     QPushButton:hover {
       background-color: #4a4a4a;
+      border-color: #777;
     }
     QPushButton:pressed {
       background-color: #2a2a2a;
@@ -95,53 +115,50 @@ void JogPanelWindow::setupUI()
       background-color: #0d7377;
       border: 2px solid #14ffec;
     }
-    QRadioButton {
-      color: white;
-      spacing: 5px;
-    }
-    QRadioButton::indicator {
-      width: 15px;
-      height: 15px;
-    }
     QGroupBox {
       border: 1px solid #555;
-      margin-top: 10px;
-      padding-top: 10px;
+      margin-top: 8px;
+      padding-top: 6px;
       font-weight: bold;
+      font-size: 11px;
     }
     QGroupBox::title {
       color: white;
       subcontrol-origin: margin;
-      left: 10px;
-      padding: 0 5px;
+      left: 8px;
+      padding: 0 4px;
     }
   )");
 
-  setMinimumSize(700, 400);
+  setFixedSize(320, 280);
 }
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
 {
-  QVBoxLayout* layout = new QVBoxLayout(parent);
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) {
+    layout = new QVBoxLayout(parent);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+  }
 
-  QGroupBox* groupBox = new QGroupBox("Device Selection");
+  QGroupBox* groupBox = new QGroupBox("Device");
   QVBoxLayout* groupLayout = new QVBoxLayout(groupBox);
+  groupLayout->setSpacing(3);
+  groupLayout->setContentsMargins(4, 8, 4, 4);
 
   m_deviceButtonGroup = new QButtonGroup(this);
   m_deviceButtonGroup->setExclusive(true);
 
   // Get device list from UnifiedMotionManager
   if (m_context && m_context->motionManager && m_matrixLoader) {
-    // Get ALL devices from motion manager (both PI and ACS)
     std::vector<std::string> piDevices = m_context->motionManager->GetDeviceNamesByType("PI");
     std::vector<std::string> acsDevices = m_context->motionManager->GetDeviceNamesByType("ACS");
 
-    // Combine both lists
     std::vector<std::string> allDevices;
     allDevices.insert(allDevices.end(), piDevices.begin(), piDevices.end());
     allDevices.insert(allDevices.end(), acsDevices.begin(), acsDevices.end());
 
-    // Only show devices that have transformation matrices
     std::vector<std::string> validDevices;
     for (const auto& deviceId : allDevices) {
       if (m_matrixLoader->HasDevice(deviceId)) {
@@ -157,19 +174,20 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
       }
     }
 
-    // Create push buttons for valid devices
+    // Create compact push buttons
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
-      btn->setMinimumHeight(40);
+      btn->setMinimumHeight(26);
+      btn->setMaximumHeight(26);
       btn->setStyleSheet(
         "QPushButton { "
         "  background-color: #3a3a3a; "
         "  color: white; "
-        "  border: 2px solid #555; "
-        "  border-radius: 5px; "
-        "  padding: 8px; "
-        "  font-size: 13px; "
+        "  border: 1px solid #555; "
+        "  border-radius: 3px; "
+        "  padding: 2px 2px; "
+        "  font-size: 10px; "
         "  font-weight: bold; "
         "  text-align: left; "
         "} "
@@ -178,7 +196,7 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
         "  border-color: #777; "
         "} "
         "QPushButton:checked { "
-        "  background-color: #f0ad4e; "  // Yellow/orange
+        "  background-color: #f0ad4e; "
         "  color: #000000; "
         "  border: 2px solid #ffcc00; "
         "}"
@@ -213,28 +231,41 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
 
 void JogPanelWindow::createStepSizePanel(QWidget* parent)
 {
-  QVBoxLayout* layout = new QVBoxLayout(parent);
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) {
+    layout = new QVBoxLayout(parent);
+  }
 
   QGroupBox* groupBox = new QGroupBox("Step Size");
   QVBoxLayout* groupLayout = new QVBoxLayout(groupBox);
+  groupLayout->setSpacing(3);
+  groupLayout->setContentsMargins(4, 8, 4, 4);
 
   // Current step display
   m_currentStepLabel = new QLabel();
-  m_currentStepLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #14ffec; }");
+  m_currentStepLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  color: #14ffec; "
+    "  padding: 2px; "
+    "}"
+  );
   m_currentStepLabel->setAlignment(Qt::AlignCenter);
   updateStepSizeDisplay();
   groupLayout->addWidget(m_currentStepLabel);
 
-  // Step size buttons
+  // Step size buttons in compact grid
   m_stepSizeButtonGroup = new QButtonGroup(this);
   m_stepSizeButtonGroup->setExclusive(true);
 
   QGridLayout* gridLayout = new QGridLayout();
-  gridLayout->setSpacing(5);
+  gridLayout->setSpacing(2);
+  gridLayout->setContentsMargins(0, 0, 0, 0);
 
   const std::vector<QString> labels = {
-    "1um", "2um", "5um", "10um", "20um", "50um",
-    "100um", "200um", "500um", "1mm", "2mm"
+    "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
+    "100µ", "200µ", "500µ", "1mm", "2mm"
   };
 
   int row = 0, col = 0;
@@ -242,6 +273,15 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
     QPushButton* btn = new QPushButton(labels[i]);
     btn->setCheckable(true);
     btn->setProperty("stepSize", m_stepSizes[i]);
+    btn->setMinimumHeight(22);
+    btn->setMaximumHeight(22);
+    btn->setStyleSheet(
+      "QPushButton { "
+      "  font-size: 9px; "
+      "  padding: 2px; "
+      "  min-width: 25px; "
+      "}"
+    );
 
     m_stepSizeButtonGroup->addButton(btn, i);
     gridLayout->addWidget(btn, row, col);
@@ -254,7 +294,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
     }
 
     col++;
-    if (col >= 3) {
+    if (col >= 2) {  // 2 columns instead of 3
       col = 0;
       row++;
     }
@@ -268,137 +308,202 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
 void JogPanelWindow::createMovementPanel(QWidget* parent)
 {
   QVBoxLayout* layout = new QVBoxLayout(parent);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(6);
 
   QGroupBox* groupBox = new QGroupBox("Movement Controls");
   QVBoxLayout* groupLayout = new QVBoxLayout(groupBox);
+  groupLayout->setSpacing(6);
+  groupLayout->setContentsMargins(4, 8, 4, 4);
 
-  // XYZ Controls - Grid layout
+  // XYZ Controls - Compact grid
   QLabel* xyzLabel = new QLabel("XYZ Axes");
-  xyzLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; }");
+  xyzLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
   groupLayout->addWidget(xyzLabel);
 
   QGridLayout* xyzGrid = new QGridLayout();
-  xyzGrid->setSpacing(10);
+  xyzGrid->setSpacing(4);
 
   // Y+ (top)
   m_btnYPlus = new QPushButton("Y+");
-  m_btnYPlus->setMinimumSize(80, 40);
+  m_btnYPlus->setMinimumSize(30, 28);
   xyzGrid->addWidget(m_btnYPlus, 0, 1);
   connect(m_btnYPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnYPlus);
     sendJogCommand("Y", 1.0);
   });
 
-  // X- (left), X+ (right)
+  // X-, X+
   m_btnXMinus = new QPushButton("X-");
-  m_btnXMinus->setMinimumSize(80, 40);
+  m_btnXMinus->setMinimumSize(30, 28);
   xyzGrid->addWidget(m_btnXMinus, 1, 0);
   connect(m_btnXMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnXMinus);
     sendJogCommand("X", -1.0);
   });
 
   m_btnXPlus = new QPushButton("X+");
-  m_btnXPlus->setMinimumSize(80, 40);
+  m_btnXPlus->setMinimumSize(30, 28);
   xyzGrid->addWidget(m_btnXPlus, 1, 2);
   connect(m_btnXPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnXPlus);
     sendJogCommand("X", 1.0);
   });
 
   // Y- (bottom)
   m_btnYMinus = new QPushButton("Y-");
-  m_btnYMinus->setMinimumSize(80, 40);
+  m_btnYMinus->setMinimumSize(30, 28);
   xyzGrid->addWidget(m_btnYMinus, 2, 1);
   connect(m_btnYMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnYMinus);
     sendJogCommand("Y", -1.0);
   });
 
-  groupLayout->addLayout(xyzGrid);
-
-  // Z controls (separate row)
+  // Z controls
   QHBoxLayout* zLayout = new QHBoxLayout();
-  zLayout->setSpacing(10);
-
-  m_btnZMinus = new QPushButton("Z-");
-  m_btnZMinus->setMinimumSize(80, 40);
-  connect(m_btnZMinus, &QPushButton::clicked, this, [this]() {
-    sendJogCommand("Z", -1.0);
-  });
+  zLayout->setSpacing(4);
 
   m_btnZPlus = new QPushButton("Z+");
-  m_btnZPlus->setMinimumSize(80, 40);
+  m_btnZPlus->setMinimumSize(30, 28);
   connect(m_btnZPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnZPlus);
     sendJogCommand("Z", 1.0);
+  });
+
+  m_btnZMinus = new QPushButton("Z-");
+  m_btnZMinus->setMinimumSize(30, 28);
+  connect(m_btnZMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnZMinus);
+    sendJogCommand("Z", -1.0);
   });
 
   zLayout->addWidget(m_btnZMinus);
   zLayout->addWidget(m_btnZPlus);
-  groupLayout->addLayout(zLayout);
+  xyzGrid->addLayout(zLayout, 1, 1);
 
-  // Separator
-  groupLayout->addSpacing(20);
+  groupLayout->addLayout(xyzGrid);
 
-  // UVW Controls
+  // UVW Controls - Compact grid
   QLabel* uvwLabel = new QLabel("UVW Axes");
-  uvwLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; }");
+  uvwLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
   groupLayout->addWidget(uvwLabel);
 
   QGridLayout* uvwGrid = new QGridLayout();
-  uvwGrid->setSpacing(10);
+  uvwGrid->setSpacing(4);
 
-  // V+ (top)
-  m_btnVPlus = new QPushButton("V+");
-  m_btnVPlus->setMinimumSize(80, 40);
-  uvwGrid->addWidget(m_btnVPlus, 0, 1);
-  connect(m_btnVPlus, &QPushButton::clicked, this, [this]() {
-    sendJogCommand("V", 1.0);
-  });
-
-  // U- (left), U+ (right)
+  // U controls
   m_btnUMinus = new QPushButton("U-");
-  m_btnUMinus->setMinimumSize(80, 40);
-  uvwGrid->addWidget(m_btnUMinus, 1, 0);
+  m_btnUMinus->setMinimumSize(30, 28);
   connect(m_btnUMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnUMinus);
     sendJogCommand("U", -1.0);
   });
 
   m_btnUPlus = new QPushButton("U+");
-  m_btnUPlus->setMinimumSize(80, 40);
-  uvwGrid->addWidget(m_btnUPlus, 1, 2);
+  m_btnUPlus->setMinimumSize(30, 28);
   connect(m_btnUPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnUPlus);
     sendJogCommand("U", 1.0);
   });
 
-  // V- (bottom)
+  uvwGrid->addWidget(m_btnUMinus, 0, 0);
+  uvwGrid->addWidget(m_btnUPlus, 0, 1);
+
+  // V controls
   m_btnVMinus = new QPushButton("V-");
-  m_btnVMinus->setMinimumSize(80, 40);
-  uvwGrid->addWidget(m_btnVMinus, 2, 1);
+  m_btnVMinus->setMinimumSize(30, 28);
   connect(m_btnVMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnVMinus);
     sendJogCommand("V", -1.0);
   });
 
-  groupLayout->addLayout(uvwGrid);
+  m_btnVPlus = new QPushButton("V+");
+  m_btnVPlus->setMinimumSize(30, 28);
+  connect(m_btnVPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnVPlus);
+    sendJogCommand("V", 1.0);
+  });
 
-  // W controls (separate row)
-  QHBoxLayout* wLayout = new QHBoxLayout();
-  wLayout->setSpacing(10);
+  uvwGrid->addWidget(m_btnVMinus, 1, 0);
+  uvwGrid->addWidget(m_btnVPlus, 1, 1);
 
+  // W controls
   m_btnWMinus = new QPushButton("W-");
-  m_btnWMinus->setMinimumSize(80, 40);
+  m_btnWMinus->setMinimumSize(30, 28);
   connect(m_btnWMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnWMinus);
     sendJogCommand("W", -1.0);
   });
 
   m_btnWPlus = new QPushButton("W+");
-  m_btnWPlus->setMinimumSize(80, 40);
+  m_btnWPlus->setMinimumSize(30, 28);
   connect(m_btnWPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnWPlus);
     sendJogCommand("W", 1.0);
   });
 
-  wLayout->addWidget(m_btnWMinus);
-  wLayout->addWidget(m_btnWPlus);
-  groupLayout->addLayout(wLayout);
+  uvwGrid->addWidget(m_btnWMinus, 2, 0);
+  uvwGrid->addWidget(m_btnWPlus, 2, 1);
 
+  groupLayout->addLayout(uvwGrid);
   groupLayout->addStretch();
+
   layout->addWidget(groupBox);
+}
+
+
+void JogPanelWindow::flashButton(QPushButton* button)
+{
+  if (!button) return;
+
+  // Flash green to indicate movement
+  button->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #28a745; "
+    "  color: white; "
+    "  border: 2px solid #5cb85c; "
+    "}"
+  );
+
+  // Reset after 150ms
+  QTimer::singleShot(150, this, [button]() {
+    button->setStyleSheet("");  // Clear inline style
+    button->style()->unpolish(button);  // Remove old style
+    button->style()->polish(button);    // Reapply global style
+    button->update();  // Force repaint
+  });
+}
+
+void JogPanelWindow::setKeyboardActive(bool active)
+{
+  m_keyboardActive = active;
+
+  if (active) {
+    m_keyboardIndicator->setText("⌨ Keyboard Control: ACTIVE");
+    m_keyboardIndicator->setStyleSheet(
+      "QLabel { "
+      "  background-color: #28a745; "
+      "  color: white; "
+      "  font-weight: bold; "
+      "  font-size: 11px; "
+      "  padding: 4px; "
+      "  border-radius: 3px; "
+      "}"
+    );
+  }
+  else {
+    m_keyboardIndicator->setText("⌨ Keyboard Control: INACTIVE");
+    m_keyboardIndicator->setStyleSheet(
+      "QLabel { "
+      "  background-color: #555555; "
+      "  color: #888888; "
+      "  font-weight: bold; "
+      "  font-size: 11px; "
+      "  padding: 4px; "
+      "  border-radius: 3px; "
+      "}"
+    );
+  }
 }
 
 void JogPanelWindow::onDeviceSelected()
@@ -441,10 +546,10 @@ void JogPanelWindow::updateStepSizeDisplay()
     text = QString::number(m_currentStepSize / 1000.0, 'f', 0) + " mm";
   }
   else {
-    text = QString::number(m_currentStepSize, 'f', 0) + " um";
+    text = QString::number(m_currentStepSize, 'f', 0) + " µm";
   }
 
-  m_currentStepLabel->setText("Current: " + text);
+  m_currentStepLabel->setText("⚙ " + text);
 }
 
 void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
@@ -495,10 +600,10 @@ void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
     return;
   }
 
-  // Transform to local coordinates (XYZ transformed, UVW pass through)
+  // Transform to local coordinates
   auto localMove = CoordinateTransformer::TransformGlobalToLocal(globalMove, *matrix);
 
-  // Convert microns to millimeters for motion manager
+  // Convert microns to millimeters
   double xMM = localMove.x / 1000.0;
   double yMM = localMove.y / 1000.0;
   double zMM = localMove.z / 1000.0;
@@ -531,9 +636,7 @@ void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
     if (success) {
       std::string dirStr = (direction > 0) ? "+" : "-";
       m_context->logManager->Info(
-        "Jog " + axis + dirStr + " " + std::to_string(m_currentStepSize) + "um -> Device local: [" +
-        std::to_string(xMM) + ", " + std::to_string(yMM) + ", " + std::to_string(zMM) + ", " +
-        std::to_string(uMM) + ", " + std::to_string(vMM) + ", " + std::to_string(wMM) + "] mm",
+        "Jog " + axis + dirStr + " " + std::to_string(m_currentStepSize) + "µm",
         "JogPanel"
       );
     }
@@ -580,40 +683,50 @@ void JogPanelWindow::closeEvent(QCloseEvent* event)
 
 void JogPanelWindow::jogX(double direction)
 {
+  if (direction > 0) flashButton(m_btnXPlus);
+  else flashButton(m_btnXMinus);
   sendJogCommand("X", direction);
 }
 
 void JogPanelWindow::jogY(double direction)
 {
+  if (direction > 0) flashButton(m_btnYPlus);
+  else flashButton(m_btnYMinus);
   sendJogCommand("Y", direction);
 }
 
 void JogPanelWindow::jogZ(double direction)
 {
+  if (direction > 0) flashButton(m_btnZPlus);
+  else flashButton(m_btnZMinus);
   sendJogCommand("Z", direction);
 }
 
 void JogPanelWindow::jogU(double direction)
 {
+  if (direction > 0) flashButton(m_btnUPlus);
+  else flashButton(m_btnUMinus);
   sendJogCommand("U", direction);
 }
 
 void JogPanelWindow::jogV(double direction)
 {
+  if (direction > 0) flashButton(m_btnVPlus);
+  else flashButton(m_btnVMinus);
   sendJogCommand("V", direction);
 }
 
 void JogPanelWindow::jogW(double direction)
 {
+  if (direction > 0) flashButton(m_btnWPlus);
+  else flashButton(m_btnWMinus);
   sendJogCommand("W", direction);
 }
 
 void JogPanelWindow::cycleStepSizeUp()
 {
-  // Find current step size index
   auto it = std::find(m_stepSizes.begin(), m_stepSizes.end(), m_currentStepSize);
   if (it != m_stepSizes.end()) {
-    // Move to next step size (wrap around)
     ++it;
     if (it == m_stepSizes.end()) {
       it = m_stepSizes.begin();
@@ -622,7 +735,6 @@ void JogPanelWindow::cycleStepSizeUp()
     size_t index = std::distance(m_stepSizes.begin(), it);
     m_currentStepSize = *it;
 
-    // Update button selection
     auto button = m_stepSizeButtonGroup->button(index);
     if (button) {
       button->setChecked(true);
@@ -632,7 +744,7 @@ void JogPanelWindow::cycleStepSizeUp()
 
     if (m_context && m_context->logManager) {
       m_context->logManager->Info(
-        "Step size: " + QString::number(m_currentStepSize).toStdString() + "um",
+        "Step size: " + QString::number(m_currentStepSize).toStdString() + "µm",
         "JogPanel"
       );
     }
@@ -641,10 +753,8 @@ void JogPanelWindow::cycleStepSizeUp()
 
 void JogPanelWindow::cycleStepSizeDown()
 {
-  // Find current step size index
   auto it = std::find(m_stepSizes.begin(), m_stepSizes.end(), m_currentStepSize);
   if (it != m_stepSizes.end()) {
-    // Move to previous step size (wrap around)
     if (it == m_stepSizes.begin()) {
       it = m_stepSizes.end();
     }
@@ -653,7 +763,6 @@ void JogPanelWindow::cycleStepSizeDown()
     size_t index = std::distance(m_stepSizes.begin(), it);
     m_currentStepSize = *it;
 
-    // Update button selection
     auto button = m_stepSizeButtonGroup->button(index);
     if (button) {
       button->setChecked(true);
@@ -663,7 +772,7 @@ void JogPanelWindow::cycleStepSizeDown()
 
     if (m_context && m_context->logManager) {
       m_context->logManager->Info(
-        "Step size: " + QString::number(m_currentStepSize).toStdString() + "um",
+        "Step size: " + QString::number(m_currentStepSize).toStdString() + "µm",
         "JogPanel"
       );
     }

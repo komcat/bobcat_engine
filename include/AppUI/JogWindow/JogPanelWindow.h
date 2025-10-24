@@ -1,20 +1,24 @@
-// JogPanelWindow.h
+// JogPanelWindow.h - Compact Two-Column Design
 #pragma once
 
 #include <QWidget>
 #include <QPushButton>
 #include <QLabel>
 #include <QButtonGroup>
+#include <QTimer>
 #include <vector>
 #include <string>
 
 class TransformationMatrixLoader;
 class CoordinateTransformer;
 struct ApplicationContext;
+class JogKeyBindingHandler;
 
 class JogPanelWindow : public QWidget
 {
   Q_OBJECT
+
+    friend class JogKeyBindingHandler;
 
 public:
   explicit JogPanelWindow(
@@ -34,6 +38,9 @@ public:
 
   // Get current step size in microns
   double getCurrentStepSize() const;
+
+  // Keyboard control indicator
+  void setKeyboardActive(bool active);
 
   // Public methods for keyboard control
   void jogX(double direction);  // direction: +1.0 or -1.0
@@ -63,11 +70,13 @@ private:
 
   void sendJogCommand(const std::string& axis, double direction);
   void updateStepSizeDisplay();
+  void flashButton(QPushButton* button);
 
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
 
   // UI Components
+  QLabel* m_keyboardIndicator;
   QButtonGroup* m_deviceButtonGroup;
   QButtonGroup* m_stepSizeButtonGroup;
   QLabel* m_currentStepLabel;
@@ -89,6 +98,7 @@ private:
   // State
   std::string m_selectedDevice;
   double m_currentStepSize; // in microns
+  bool m_keyboardActive;
 
   // Step sizes in microns
   const std::vector<double> m_stepSizes = {

@@ -39,6 +39,11 @@ void JogKeyBindingHandler::setEnabled(bool enabled)
 {
   m_enabled = enabled;
 
+  // Update panel indicator
+  if (m_jogPanel) {
+    m_jogPanel->setKeyboardActive(enabled);
+  }
+
   if (enabled) {
     std::cout << "[JogKeyBindingHandler] Key bindings ENABLED" << std::endl;
   }
