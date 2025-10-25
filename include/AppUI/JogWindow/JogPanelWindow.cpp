@@ -1,9 +1,13 @@
-﻿// JogPanelWindow.cpp - Compact Two-Column Design
+﻿// JogPanelWindow.cpp - Tabbed interface with Jog and Quick Output
 #include "JogPanelWindow.h"
+#include "QuickOutputWidget.h"
+#include "QuickOutputManager.h"
+#include "QuickOutput_JsonLoader.h"
 #include "TransformationMatrixLoader.h"
 #include "CoordinateTransformer.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "EziIOManager.h"
 #include "LogManager.h"
 
 #include <QVBoxLayout>
@@ -13,8 +17,10 @@
 #include <QPushButton>
 #include <QCloseEvent>
 #include <QTimer>
+#include <QTabWidget>
 #include <algorithm>
 #include <QStyle>
+#include <QFile>
 
 JogPanelWindow::JogPanelWindow(
   ApplicationContext* context,
@@ -23,15 +29,59 @@ JogPanelWindow::JogPanelWindow(
   : QWidget(parent)
   , m_context(context)
   , m_matrixLoader(matrixLoader)
+  , m_tabWidget(nullptr)
+  , m_jogWidget(nullptr)
   , m_keyboardIndicator(nullptr)
   , m_deviceButtonGroup(nullptr)
   , m_stepSizeButtonGroup(nullptr)
   , m_currentStepLabel(nullptr)
+  , m_quickOutputManager(nullptr)
+  , m_quickOutputWidget(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
   , m_keyboardActive(false)
 {
   setWindowTitle("Jog Panel");
   setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+
+  // Initialize Quick Output Manager
+  if (m_context && m_context->ioManager) {
+    m_quickOutputManager = new QuickOutputManager(m_context->ioManager);
+
+    // Load quick outputs from JSON configuration
+    // Try local file first, then fall back to default
+    std::string localConfigPath = "config/quick_outputs.local.json";
+    std::string defaultConfigPath = "config/quick_outputs.json";
+    std::string configPath;
+    bool loaded = false;
+
+    // Try local configuration first
+    if (QFile::exists(QString::fromStdString(localConfigPath))) {
+      configPath = localConfigPath;
+      loaded = QuickOutput_JsonLoader::LoadFromFile(configPath, m_quickOutputManager);
+      if (loaded && m_context->logManager) {
+        m_context->logManager->Info("Loaded quick output configuration from " + configPath + " (local)", "JogPanel");
+      }
+    }
+
+    // Fall back to default configuration if local not found or failed to load
+    if (!loaded && QFile::exists(QString::fromStdString(defaultConfigPath))) {
+      configPath = defaultConfigPath;
+      loaded = QuickOutput_JsonLoader::LoadFromFile(configPath, m_quickOutputManager);
+      if (loaded && m_context->logManager) {
+        m_context->logManager->Info("Loaded quick output configuration from " + configPath + " (default)", "JogPanel");
+      }
+    }
+
+    // Log warnings if loading failed
+    if (!loaded && m_context->logManager) {
+      if (QFile::exists(QString::fromStdString(localConfigPath)) || QFile::exists(QString::fromStdString(defaultConfigPath))) {
+        m_context->logManager->Warning("Failed to load quick output configuration", "JogPanel");
+      }
+      else {
+        m_context->logManager->Warning("No quick output config files found (checked: " + localConfigPath + ", " + defaultConfigPath + ")", "JogPanel");
+      }
+    }
+  }
 
   setupUI();
 
@@ -41,53 +91,48 @@ JogPanelWindow::JogPanelWindow(
 
 JogPanelWindow::~JogPanelWindow()
 {
+  if (m_quickOutputManager) {
+    delete m_quickOutputManager;
+    m_quickOutputManager = nullptr;
+  }
 }
 
 void JogPanelWindow::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(4, 8, 4, 8);
-  mainLayout->setSpacing(6);
+  mainLayout->setContentsMargins(4, 4, 4, 4);
+  mainLayout->setSpacing(4);
 
-  // Keyboard indicator banner at top
-  m_keyboardIndicator = new QLabel("⌨ Keyboard Control: INACTIVE");
-  m_keyboardIndicator->setAlignment(Qt::AlignCenter);
-  m_keyboardIndicator->setStyleSheet(
-    "QLabel { "
-    "  background-color: #555555; "
-    "  color: #888888; "
+  // Create tab widget
+  m_tabWidget = new QTabWidget(this);
+  m_tabWidget->setStyleSheet(
+    "QTabWidget::pane { "
+    "  border: 1px solid #555; "
+    "  background-color: #2b2b2b; "
+    "} "
+    "QTabBar::tab { "
+    "  background-color: #3a3a3a; "
+    "  color: white; "
+    "  border: 1px solid #555; "
+    "  padding: 8px 16px; "
+    "  margin-right: 2px; "
     "  font-weight: bold; "
     "  font-size: 11px; "
-    "  padding: 2px; "
-    "  border-radius: 2px; "
+    "} "
+    "QTabBar::tab:selected { "
+    "  background-color: #0d7377; "
+    "  border-bottom-color: #0d7377; "
+    "} "
+    "QTabBar::tab:hover { "
+    "  background-color: #4a4a4a; "
     "}"
   );
-  mainLayout->addWidget(m_keyboardIndicator);
 
-  // Two-column layout
-  QHBoxLayout* columnsLayout = new QHBoxLayout();
-  columnsLayout->setSpacing(8);
+  // Create tabs
+  createJogTab();
+  createQuickOutputTab();
 
-  // LEFT COLUMN: Device + Step Size
-  QWidget* leftColumn = new QWidget();
-  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
-  leftLayout->setContentsMargins(0, 0, 0, 0);
-  leftLayout->setSpacing(6);
-  leftColumn->setMaximumWidth(140);
-
-  createDevicePanel(leftColumn);
-  createStepSizePanel(leftColumn);
-
-  columnsLayout->addWidget(leftColumn);
-
-  // RIGHT COLUMN: Movement Controls
-  QWidget* rightColumn = new QWidget();
-  createMovementPanel(rightColumn);
-
-
-  columnsLayout->addWidget(rightColumn);
-
-  mainLayout->addLayout(columnsLayout);
+  mainLayout->addWidget(m_tabWidget);
 
   // Global styling
   setStyleSheet(R"(
@@ -130,7 +175,75 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(280, 380);
+  setFixedSize(400, 450);
+}
+
+void JogPanelWindow::createJogTab()
+{
+  m_jogWidget = new QWidget();
+  QVBoxLayout* jogLayout = new QVBoxLayout(m_jogWidget);
+  jogLayout->setContentsMargins(4, 8, 4, 8);
+  jogLayout->setSpacing(6);
+
+  // Keyboard indicator banner at top
+  m_keyboardIndicator = new QLabel("⌨ Keyboard Control: INACTIVE");
+  m_keyboardIndicator->setAlignment(Qt::AlignCenter);
+  m_keyboardIndicator->setStyleSheet(
+    "QLabel { "
+    "  background-color: #555555; "
+    "  color: #888888; "
+    "  font-weight: bold; "
+    "  font-size: 11px; "
+    "  padding: 2px; "
+    "  border-radius: 2px; "
+    "}"
+  );
+  jogLayout->addWidget(m_keyboardIndicator);
+
+  // Two-column layout
+  QHBoxLayout* columnsLayout = new QHBoxLayout();
+  columnsLayout->setSpacing(8);
+
+  // LEFT COLUMN: Device + Step Size
+  QWidget* leftColumn = new QWidget();
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+  leftLayout->setSpacing(6);
+  leftColumn->setMaximumWidth(140);
+
+  createDevicePanel(leftColumn);
+  createStepSizePanel(leftColumn);
+
+  columnsLayout->addWidget(leftColumn);
+
+  // RIGHT COLUMN: Movement Controls
+  QWidget* rightColumn = new QWidget();
+  createMovementPanel(rightColumn);
+
+  columnsLayout->addWidget(rightColumn);
+
+  jogLayout->addLayout(columnsLayout);
+
+  // Add to tab widget
+  m_tabWidget->addTab(m_jogWidget, "Jog");
+}
+
+void JogPanelWindow::createQuickOutputTab()
+{
+  if (m_quickOutputManager) {
+    m_quickOutputWidget = new QuickOutputWidget(m_quickOutputManager, this);
+    m_tabWidget->addTab(m_quickOutputWidget, "Quick Output");
+  }
+  else {
+    // Create placeholder if IO manager not available
+    QWidget* placeholder = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(placeholder);
+    QLabel* label = new QLabel("IO Manager not available.\n\nQuick Output requires EziIOManager.");
+    label->setAlignment(Qt::AlignCenter);
+    label->setStyleSheet("color: #888888; font-size: 11px;");
+    layout->addWidget(label);
+    m_tabWidget->addTab(placeholder, "Quick Output");
+  }
 }
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
@@ -283,7 +396,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
       "}"
     );
 
-    m_stepSizeButtonGroup->addButton(btn, i);
+    m_stepSizeButtonGroup->addButton(btn, static_cast<int>(i));
     gridLayout->addWidget(btn, row, col);
 
     connect(btn, &QPushButton::clicked, this, &JogPanelWindow::onStepSizeSelected);
@@ -735,7 +848,7 @@ void JogPanelWindow::cycleStepSizeUp()
     size_t index = std::distance(m_stepSizes.begin(), it);
     m_currentStepSize = *it;
 
-    auto button = m_stepSizeButtonGroup->button(index);
+    auto button = m_stepSizeButtonGroup->button(static_cast<int>(index));
     if (button) {
       button->setChecked(true);
     }
@@ -763,7 +876,7 @@ void JogPanelWindow::cycleStepSizeDown()
     size_t index = std::distance(m_stepSizes.begin(), it);
     m_currentStepSize = *it;
 
-    auto button = m_stepSizeButtonGroup->button(index);
+    auto button = m_stepSizeButtonGroup->button(static_cast<int>(index));
     if (button) {
       button->setChecked(true);
     }

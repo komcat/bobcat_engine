@@ -1,0 +1,25 @@
+{
+  "_comment": "Local Quick Output configuration (overrides quick_outputs.json)",
+  "_instructions": [
+    "1. Copy this file and rename it to 'quick_outputs.local.json'",
+    "2. Customize the outputs below for your specific setup",
+    "3. The local file will not be committed to version control"
+  ],
+  "quick_outputs": [
+    {
+      "device_name": "IOBottom",
+      "pin_number": 0,
+      "display_name": "My Custom Output 1"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 1,
+      "display_name": "My Custom Output 2"
+    },
+    {
+      "device_name": "IOTop",
+      "pin_name": "Output0",
+      "display_name": "Using Pin Name Example"
+    }
+  ]
+}

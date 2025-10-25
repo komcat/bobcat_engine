@@ -1,0 +1,45 @@
+{
+  "_comment": "Default Quick Output configuration. To customize, create 'quick_outputs.local.json' which will override this file.",
+  "quick_outputs": [
+    {
+      "device_name": "IOBottom",
+      "pin_number": 0,
+      "display_name": "L Gripper"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 2,
+      "display_name": "R Gripper"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 3,
+      "display_name": "R Safety"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 4,
+      "display_name": "UV Head"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 5,
+      "display_name": "Dispenser"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 6,
+      "display_name": "Pick Up Tool"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 10,
+      "display_name": "Vacuum Base"
+    },
+    {
+      "device_name": "IOBottom",
+      "pin_number": 15,
+      "display_name": "Dispenser Shot"
+    }
+  ]
+}

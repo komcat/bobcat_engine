@@ -1,4 +1,4 @@
-// JogPanelWindow.h - Compact Two-Column Design
+// JogPanelWindow.h - Tabbed interface with Jog and Quick Output
 #pragma once
 
 #include <QWidget>
@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QButtonGroup>
 #include <QTimer>
+#include <QTabWidget>
 #include <vector>
 #include <string>
 
@@ -13,6 +14,8 @@ class TransformationMatrixLoader;
 class CoordinateTransformer;
 struct ApplicationContext;
 class JogKeyBindingHandler;
+class QuickOutputWidget;
+class QuickOutputManager;
 
 class JogPanelWindow : public QWidget
 {
@@ -64,6 +67,8 @@ private slots:
 
 private:
   void setupUI();
+  void createJogTab();
+  void createQuickOutputTab();
   void createDevicePanel(QWidget* parent);
   void createStepSizePanel(QWidget* parent);
   void createMovementPanel(QWidget* parent);
@@ -75,7 +80,11 @@ private:
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
 
-  // UI Components
+  // Tab widget
+  QTabWidget* m_tabWidget;
+
+  // Jog tab widgets
+  QWidget* m_jogWidget;
   QLabel* m_keyboardIndicator;
   QButtonGroup* m_deviceButtonGroup;
   QButtonGroup* m_stepSizeButtonGroup;
@@ -94,6 +103,10 @@ private:
   QPushButton* m_btnVMinus;
   QPushButton* m_btnWPlus;
   QPushButton* m_btnWMinus;
+
+  // Quick Output tab
+  QuickOutputManager* m_quickOutputManager;
+  QuickOutputWidget* m_quickOutputWidget;
 
   // State
   std::string m_selectedDevice;

@@ -318,6 +318,7 @@ set(SOURCES
     include/motions/CoordinateTransformer.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogKeyBindingHandler.cpp
+    include/AppUI/JogWindow/QuickOutputWidget.cpp
     include/AppUI/MotionPages/PositionDot.cpp
     include/AppUI/MotionPages/MotionGraphicsView.cpp
     include/AppUI/MotionPages/MotionControlPanel.cpp
@@ -434,6 +435,7 @@ set(HEADERS
     include/motions/CoordinateTransformer.h
     include/AppUI/JogWindow/JogPanelWindow.h
     include/AppUI/JogWindow/JogKeyBindingHandler.h
+    include/AppUI/JogWindow/QuickOutputWidget.h
     include/AppUI/MotionPages/PositionDot.h 
     include/AppUI/MotionPages/MotionGraphicsView.h
     include/AppUI/MotionPages/MotionControlPanel.h
@@ -579,6 +581,8 @@ if(EZIIO_FOUND)
     list(APPEND SOURCES
         include/IO/EziIODevice.cpp
         include/IO/EziIOManager.cpp
+        include/IO/QuickOutputManager.cpp
+        include/IO/QuickOutput_JsonLoader.cpp
     )
     list(APPEND HEADERS
         include/IO/EziIO_Types.h
@@ -586,6 +590,8 @@ if(EZIIO_FOUND)
         include/IO/EziIODevice.h
         include/IO/EziIOManager.h
         include/IO/EziIO_JsonLoader.h
+        include/IO/QuickOutputManager.h
+        include/IO/QuickOutput_JsonLoader.h
     )
     message(STATUS "EziIO support enabled")
 else()

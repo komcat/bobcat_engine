@@ -362,3 +362,11 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
+# ============================================================================
+# Application-specific ignores
+# ============================================================================
+
+# Local configuration overrides (not committed to version control)
+config/*.local.json
+*.local.json
+
