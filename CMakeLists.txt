@@ -308,6 +308,8 @@ set(SOURCES
     include/pneumatics/PneumaticManager.cpp
     include/AppUI/Forms/PneumaticSlidesFormWidget.cpp
     include/AppUI/Forms/IODevicesFormWidget.cpp
+    include/AppUI/Forms/PowerSupplyFormWidget.cpp
+    include/AppUI/Forms/TECDevicesFormWidget.cpp
     include/sequence/SequenceEngine.cpp
     include/sequence/MotionCommandHandler.cpp
     include/sequence/IOCommandHandler.cpp
@@ -424,6 +426,8 @@ set(HEADERS
     include/AppUI/PneumaticPage/PneumaticControlPage.cpp
     include/AppUI/Forms/PneumaticSlidesFormWidget.h
     include/AppUI/Forms/IODevicesFormWidget.h
+    include/AppUI/Forms/PowerSupplyFormWidget.h
+    include/AppUI/Forms/TECDevicesFormWidget.h
     include/sequence/SequenceEngine.h
     include/sequence/ICommandHandler.h
     include/sequence/MotionCommandHandler.h

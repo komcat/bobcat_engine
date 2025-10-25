@@ -1,4 +1,4 @@
-﻿// ConfigEditorPage.cpp
+// ConfigEditorPage.cpp
 #include "ConfigEditorPage.h"
 #include "TcpClientFormWidget.h"
 #include "CameraFormWidget.h"
@@ -6,6 +6,8 @@
 #include "SavedPositionsFormWidget.h"
 #include "PneumaticSlidesFormWidget.h"
 #include "IODevicesFormWidget.h"
+#include "PowerSupplyFormWidget.h"
+#include "TECDevicesFormWidget.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include <QVBoxLayout>
@@ -25,6 +27,10 @@ ConfigEditorPage::ConfigEditorPage(ApplicationContext* context, QWidget* parent)
   , m_cameraForm(nullptr)
   , m_motorDeviceForm(nullptr)
   , m_savedPositionsForm(nullptr)
+  , m_pneumaticSlidesForm(nullptr)
+  , m_ioDevicesForm(nullptr)
+  , m_powerSupplyForm(nullptr)
+  , m_tecDevicesForm(nullptr)
   , m_emptyForm(nullptr)
 {
   setupUI();
@@ -120,12 +126,17 @@ void ConfigEditorPage::setupUI()
   m_savedPositionsForm = new SavedPositionsFormWidget();
   m_formStack->addWidget(m_savedPositionsForm);
 
-  // ✅ ADD THIS
   m_pneumaticSlidesForm = new PneumaticSlidesFormWidget();
   m_formStack->addWidget(m_pneumaticSlidesForm);
-  // ✅ ADD THIS
+
   m_ioDevicesForm = new IODevicesFormWidget();
   m_formStack->addWidget(m_ioDevicesForm);
+
+  m_powerSupplyForm = new PowerSupplyFormWidget();
+  m_formStack->addWidget(m_powerSupplyForm);
+
+  m_tecDevicesForm = new TECDevicesFormWidget();
+  m_formStack->addWidget(m_tecDevicesForm);
 
 
   rightLayout->addWidget(m_formStack);
@@ -225,15 +236,21 @@ void ConfigEditorPage::loadConfigFile(const QString& filename)
     m_savedPositionsForm->loadFromJson(m_currentConfig);
     m_formStack->setCurrentWidget(m_savedPositionsForm);
   }
-  // ✅ ADD THIS
   else if (filename.contains("pneumatic_slides")) {
     m_pneumaticSlidesForm->loadFromJson(m_currentConfig);
     m_formStack->setCurrentWidget(m_pneumaticSlidesForm);
   }
-  // ✅ ADD THIS
   else if (filename.contains("io_devices")) {
     m_ioDevicesForm->loadFromJson(m_currentConfig);
     m_formStack->setCurrentWidget(m_ioDevicesForm);
+  }
+  else if (filename.contains("power_supply")) {
+    m_powerSupplyForm->loadFromJson(m_currentConfig);
+    m_formStack->setCurrentWidget(m_powerSupplyForm);
+  }
+  else if (filename.contains("tec_devices")) {
+    m_tecDevicesForm->loadFromJson(m_currentConfig);
+    m_formStack->setCurrentWidget(m_tecDevicesForm);
   }
   else {
     m_formStack->setCurrentWidget(m_emptyForm);
@@ -270,13 +287,17 @@ void ConfigEditorPage::saveConfigFile(const QString& filename)
   else if (filename.contains("saved_position")) {
     docToSave = m_savedPositionsForm->collectToJson();
   }
-  // ✅ ADD THIS
   else if (filename.contains("pneumatic_slides")) {
     docToSave = m_pneumaticSlidesForm->collectToJson();
   }
-  // ✅ ADD THIS
   else if (filename.contains("io_devices")) {
     docToSave = m_ioDevicesForm->collectToJson();
+  }
+  else if (filename.contains("power_supply")) {
+    docToSave = m_powerSupplyForm->collectToJson();
+  }
+  else if (filename.contains("tec_devices")) {
+    docToSave = m_tecDevicesForm->collectToJson();
   }
   else {
     QMessageBox::warning(this, "Error", "Unknown config type");
