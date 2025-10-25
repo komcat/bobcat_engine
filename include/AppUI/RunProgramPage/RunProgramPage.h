@@ -84,6 +84,11 @@ private:
   void updateRecipeList();
   void updateExecuteButton();
 
+  // Settings persistence
+  void saveLastProgramToSettings(const QString& programPath);
+  void loadLastProgramFromSettings();
+  void saveRecentPrograms(const QString& programPath);
+
   ApplicationContext* m_context;
   ProgramManager* m_programManager;
   ProgramWorker* m_programWorker;

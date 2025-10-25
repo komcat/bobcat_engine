@@ -23,6 +23,8 @@
 #include <QMetaObject>
 #include <QHeaderView>
 #include <QTableWidgetItem>
+#include <QSettings>
+#include <QFile>
 #include <iostream>
 #include <cmath>
 
@@ -56,6 +58,9 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
   }
 
   setupUI();
+
+  // ✅ Auto-load last program from settings
+  loadLastProgramFromSettings();
 }
 
 RunProgramPage::~RunProgramPage()
@@ -537,6 +542,11 @@ void RunProgramPage::onLoadProgram()
   }
 
   m_currentProgramPath = filename;
+
+  // ✅ Save to settings for persistence
+  saveLastProgramToSettings(filename);
+  saveRecentPrograms(filename);
+
   updateProgramInfo();
   updateRecipeList();
 
@@ -1195,4 +1205,77 @@ void RunProgramPage::updateExecuteButton()
 {
   bool hasRecipes = m_programManager->getRecipeCount() > 0;
   m_executeButton->setEnabled(hasRecipes && !m_isExecuting);
+}
+
+// ============================================================================
+// SETTINGS PERSISTENCE
+// ============================================================================
+
+void RunProgramPage::saveLastProgramToSettings(const QString& programPath)
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("RunProgramPage/lastProgram", programPath);
+
+  std::cout << "[RunProgramPage] Saved last program to settings: "
+            << programPath.toStdString() << std::endl;
+}
+
+void RunProgramPage::saveRecentPrograms(const QString& programPath)
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+
+  // Get existing recent programs list
+  QStringList recentPrograms = settings.value("RunProgramPage/recentPrograms").toStringList();
+
+  // Remove path if it already exists (to avoid duplicates)
+  recentPrograms.removeAll(programPath);
+
+  // Add to front of list
+  recentPrograms.prepend(programPath);
+
+  // Keep only last 10 programs
+  if (recentPrograms.size() > 10) {
+    recentPrograms = recentPrograms.mid(0, 10);
+  }
+
+  // Save back to settings
+  settings.setValue("RunProgramPage/recentPrograms", recentPrograms);
+
+  std::cout << "[RunProgramPage] Updated recent programs list (size: "
+            << recentPrograms.size() << ")" << std::endl;
+}
+
+void RunProgramPage::loadLastProgramFromSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QString lastProgramPath = settings.value("RunProgramPage/lastProgram", "").toString();
+
+  if (lastProgramPath.isEmpty()) {
+    std::cout << "[RunProgramPage] No last program found in settings" << std::endl;
+    return;
+  }
+
+  // Check if file still exists
+  if (!QFile::exists(lastProgramPath)) {
+    std::cout << "[RunProgramPage] Last program file no longer exists: "
+              << lastProgramPath.toStdString() << std::endl;
+    return;
+  }
+
+  std::cout << "[RunProgramPage] Auto-loading last program: "
+            << lastProgramPath.toStdString() << std::endl;
+
+  // Load the program
+  if (!m_programManager->loadProgram(lastProgramPath.toStdString())) {
+    std::cout << "[RunProgramPage] Failed to auto-load last program" << std::endl;
+    return;
+  }
+
+  // Update UI
+  m_currentProgramPath = lastProgramPath;
+  updateProgramInfo();
+  updateRecipeList();
+
+  std::cout << "[RunProgramPage] Successfully auto-loaded: "
+            << m_programManager->getProgramName() << std::endl;
 }
