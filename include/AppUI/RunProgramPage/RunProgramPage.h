@@ -1,6 +1,6 @@
 ﻿// RunProgramPage.h
 #pragma once
-
+#include "DataStore.h"
 #include <QWidget>
 #include <QPushButton>
 #include <QProgressBar>
@@ -9,14 +9,14 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QTextEdit>
-#include <QComboBox>
 
 struct ApplicationContext;
 class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
 class UserPromptWidget;
-class AdaptiveScanController;
+class ScanControlWidget;
+class ScanExecutor;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -62,11 +62,12 @@ private slots:
   void onShowUserPrompt(QString title, QString message);
   void onPromptResponse(bool accepted);
 
-  // Scanning operations
-  void onLeftCoarseScan();
-  void onLeftFineScan();
-  void onRightCoarseScan();
-  void onRightFineScan();
+  // Scanning integration (refactored)
+  void onScanRequested(QString deviceName, bool isCoarse, QString channel);
+  void onScanLogMessage(QString message);
+  void onScanCompleted(QString deviceName, double peakValue, bool success);
+  void onScanError(QString errorMessage);
+  void onStopScanRequested();
 
 private:
   void setupUI();
@@ -116,14 +117,9 @@ private:
   QLabel* m_executionLogLabel;
   QTextEdit* m_logTextEdit;
 
-  // Scanning controls
-  QWidget* m_scanControlPanel;
-  QComboBox* m_scanChannelCombo;
-  QPushButton* m_leftCoarseButton;
-  QPushButton* m_leftFineButton;
-  QPushButton* m_rightCoarseButton;
-  QPushButton* m_rightFineButton;
-  AdaptiveScanController* m_scanController;  // Created on-demand
+  // Scanning controls (refactored)
+  ScanControlWidget* m_scanWidget;
+  ScanExecutor* m_scanExecutor;
 
   // Prompt system
   QStackedWidget* m_executionStack;  // Switch between log and prompt
@@ -148,8 +144,6 @@ private:
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
 
-  // Scanning helper methods
-  void createScanControlPanel();
-  void startScan(const QString& deviceName, bool isCoarse);
-  void cleanupScanController();
+  DataStore* m_dataStore;  // Add this
+  QString m_currentSubscribedChannel;  // Track subscription
 };

@@ -5,10 +5,11 @@
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
-#include "AdaptiveScanController.h"
-#include "ScanTypes.h"
+#include "ScanControlWidget.h"
+#include "ScanExecutor.h"
 #include "ILogger.h"
-#include "LogManager.h" 
+#include "LogManager.h"
+#include "DataStore.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -33,10 +34,21 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
   , m_promptWidget(nullptr)
   , m_promptEventLoop(nullptr)
   , m_promptResponse(false)
-  , m_scanController(nullptr)
+  , m_scanWidget(nullptr)
+  , m_scanExecutor(nullptr)
+  , m_dataStore(context->dataStore)  // Add this line
+  , m_currentSubscribedChannel("")   // Add this line
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
+
+  // Create ScanExecutor
+  m_scanExecutor = new ScanExecutor(this);
+  m_scanExecutor->setMotionManager(m_context->motionManager);
+  m_scanExecutor->setDataStore(m_context->dataStore);
+  if (m_context->logManager) {
+    m_scanExecutor->setLogger(m_context->logManager);
+  }
 
   setupUI();
 }
@@ -48,7 +60,7 @@ RunProgramPage::~RunProgramPage()
     m_programWorker->wait(3000);
   }
 
-  cleanupScanController();
+  // ScanExecutor cleanup is automatic via QObject parent-child relationship
 
   delete m_programManager;
   delete m_processFactory;
@@ -342,88 +354,34 @@ void RunProgramPage::createExecutionWidget()
 
   layout->addWidget(m_executionStack, 1);
 
-  // ✅ NEW: Scanning control panel (fixed height at bottom)
-  createScanControlPanel();
-  layout->addWidget(m_scanControlPanel);
-}
+  // === SCANNING CONTROLS (Refactored) ===
+  m_scanWidget = new ScanControlWidget();
 
-void RunProgramPage::createScanControlPanel()
-{
-  m_scanControlPanel = new QWidget();
-  m_scanControlPanel->setFixedHeight(150);
-
-  QVBoxLayout* mainLayout = new QVBoxLayout(m_scanControlPanel);
-  mainLayout->setContentsMargins(5, 5, 5, 5);
-
-  // Title
-  QLabel* title = new QLabel("Hexapod Scanning");
-  title->setStyleSheet("font-weight: bold; font-size: 11pt;");
-  mainLayout->addWidget(title);
-
-  // Data Channel selector
-  QHBoxLayout* controlsRow = new QHBoxLayout();
-
-  QLabel* channelLabel = new QLabel("Data Channel:");
-  controlsRow->addWidget(channelLabel);
-
-  m_scanChannelCombo = new QComboBox();
-  // Populate from DataStore
+  // Populate channels from DataStore
   if (m_context && m_context->dataStore) {
-    auto channels = m_context->dataStore->GetAllChannelNames();
-    for (const auto& channel : channels) {
-      m_scanChannelCombo->addItem(QString::fromStdString(channel));
+    QStringList channels;
+    auto channelNames = m_context->dataStore->GetAllChannelNames();
+    for (const auto& channel : channelNames) {
+      channels << QString::fromStdString(channel);
     }
+    m_scanWidget->setAvailableChannels(channels);
   }
-  controlsRow->addWidget(m_scanChannelCombo);
-  controlsRow->addStretch();
 
-  mainLayout->addLayout(controlsRow);
+  layout->addWidget(m_scanWidget);
 
-  // Info label
-  QLabel* infoLabel = new QLabel("Scans all axes: Z → Y → X");
-  infoLabel->setStyleSheet("color: #666; font-size: 10pt; font-style: italic;");
-  mainLayout->addWidget(infoLabel);
+  // Connect scan widget to this page
+  connect(m_scanWidget, &ScanControlWidget::scanRequested,
+    this, &RunProgramPage::onScanRequested);
+  connect(m_scanWidget, &ScanControlWidget::stopRequested,
+    this, &RunProgramPage::onStopScanRequested);
 
-  // Two columns for scan buttons
-  QHBoxLayout* columnsLayout = new QHBoxLayout();
-
-  // Left column
-  QGroupBox* leftGroup = new QGroupBox("Left Scanning");
-  QVBoxLayout* leftLayout = new QVBoxLayout(leftGroup);
-  leftLayout->setSpacing(5);
-
-  m_leftCoarseButton = new QPushButton("Left Coarse");
-  m_leftCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
-  leftLayout->addWidget(m_leftCoarseButton);
-
-  m_leftFineButton = new QPushButton("Left Fine");
-  m_leftFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
-  leftLayout->addWidget(m_leftFineButton);
-
-  columnsLayout->addWidget(leftGroup);
-
-  // Right column
-  QGroupBox* rightGroup = new QGroupBox("Right Scanning");
-  QVBoxLayout* rightLayout = new QVBoxLayout(rightGroup);
-  rightLayout->setSpacing(5);
-
-  m_rightCoarseButton = new QPushButton("Right Coarse");
-  m_rightCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
-  rightLayout->addWidget(m_rightCoarseButton);
-
-  m_rightFineButton = new QPushButton("Right Fine");
-  m_rightFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
-  rightLayout->addWidget(m_rightFineButton);
-
-  columnsLayout->addWidget(rightGroup);
-
-  mainLayout->addLayout(columnsLayout);
-
-  // Connect signals
-  connect(m_leftCoarseButton, &QPushButton::clicked, this, &RunProgramPage::onLeftCoarseScan);
-  connect(m_leftFineButton, &QPushButton::clicked, this, &RunProgramPage::onLeftFineScan);
-  connect(m_rightCoarseButton, &QPushButton::clicked, this, &RunProgramPage::onRightCoarseScan);
-  connect(m_rightFineButton, &QPushButton::clicked, this, &RunProgramPage::onRightFineScan);
+  // Connect executor signals to UI
+  connect(m_scanExecutor, &ScanExecutor::logMessage,
+    this, &RunProgramPage::onScanLogMessage);
+  connect(m_scanExecutor, &ScanExecutor::scanCompleted,
+    this, &RunProgramPage::onScanCompleted);
+  connect(m_scanExecutor, &ScanExecutor::scanError,
+    this, &RunProgramPage::onScanError);
 }
 
 void RunProgramPage::showEditWidget()
@@ -762,162 +720,83 @@ void RunProgramPage::onPromptResponse(bool accepted)
 }
 
 // ============================================================================
-// SCANNING OPERATIONS
+// SCANNING INTEGRATION (Refactored)
 // ============================================================================
 
-void RunProgramPage::onLeftCoarseScan()
+void RunProgramPage::onScanRequested(QString deviceName, bool isCoarse, QString channel)
 {
-  startScan("hex-left", true);
-}
-
-void RunProgramPage::onLeftFineScan()
-{
-  startScan("hex-left", false);
-}
-
-void RunProgramPage::onRightCoarseScan()
-{
-  startScan("hex-right", true);
-}
-
-void RunProgramPage::onRightFineScan()
-{
-  startScan("hex-right", false);
-}
-
-void RunProgramPage::startScan(const QString& deviceName, bool isCoarse)
-{
-  // Clean up any existing scan controller
-  cleanupScanController();
-
-  // Check if scan already active
-  if (m_scanController && m_scanController->IsScanActive()) {
-    QMessageBox::warning(this, "Scan Active", "A scan is already in progress");
-    return;
-  }
-
-  // Get selected data channel
-  QString channel = m_scanChannelCombo->currentText();
-
+  // Validation
   if (channel.isEmpty()) {
     QMessageBox::warning(this, "Scan Error", "Please select a data channel");
     return;
   }
 
-  // Validate required components
   if (!m_context || !m_context->motionManager || !m_context->dataStore) {
     QMessageBox::warning(this, "Scan Error", "Motion manager or data store not available");
     return;
   }
 
-  // ✅ CREATE SCAN CONTROLLER ON-DEMAND
-  m_scanController = new AdaptiveScanController(
-    *m_context->motionManager,
-    *m_context->dataStore,
-    deviceName.toStdString(),
-    channel.toStdString()
-  );
+  // Disable scan buttons, enable stop button
+  m_scanWidget->setScanButtonsEnabled(false);
+  m_scanWidget->setStopButtonEnabled(true);
 
-  // Set logger if available
-  if (m_context->logManager) {
-    m_scanController->SetLogger(m_context->logManager);
-  }
-
-  // Create scan parameters
-  ScanParameters params;
-
-  // ✅ HEXAPOD SCANNING: Scan all 3 axes (Z, Y, X) consecutively
-  params.axesToScan = { "Z", "Y", "X" };
-
-  // Set step sizes (convert µm to mm)
-  if (isCoarse) {
-    // Coarse: 10, 5, 2, 1 µm = 0.010, 0.005, 0.002, 0.001 mm
-    params.stepSizes = { 0.010, 0.005, 0.002, 0.001 };
-  }
-  else {
-    // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
-    params.stepSizes = { 0.002, 0.001, 0.0005 };
-  }
-
-  // Motion parameters
-  params.motionSettleTimeMs = 400;
-  params.velocityPercent = 50.0;
-
-  // Termination criteria (±100µm = 0.2mm total range)
-  params.consecutiveDecreasesLimit = 3;
-  params.significantDecreaseThreshold = 0.05;  // 5%
-  params.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
-
-  // Position optimization
-  params.improvementThreshold = 0.01;  // 1%
-
-  // Measurement parameters
-  params.averagingCount = 3;
-  params.measurementTimeout = std::chrono::seconds(5);
-  params.minValidValue = -1000.0;  // Adjust based on your sensor
-  params.maxValidValue = 1000.0;
-
-  // Safety limits
-  params.maxStepSize = 0.5;  // 500µm max
-  params.scanTimeout = std::chrono::minutes(10);
-
-  // Log to execution window
-  m_logTextEdit->append(QString("Starting %1 scan on %2")
-    .arg(isCoarse ? "COARSE" : "FINE")
-    .arg(deviceName));
-  m_logTextEdit->append(QString("  Scanning axes: Z, Y, X with steps: %1")
-    .arg(isCoarse ? "10→5→2→1 µm" : "2→1→0.5 µm"));
-  m_logTextEdit->append(QString("  Data channel: %1").arg(channel));
-
-  // Set up callbacks
-  m_scanController->SetProgressCallback(
-    [this](const ScanProgressEvent& event) {
-    QMetaObject::invokeMethod(this, [this, event]() {
-      m_logTextEdit->append(QString("Scan: %1% - %2")
-        .arg(event.progress * 100, 0, 'f', 1)
-        .arg(QString::fromStdString(event.message)));
-    }, Qt::QueuedConnection);
-  });
-
-  m_scanController->SetCompletionCallback(
-    [this, deviceName](const ScanResults& results) {
-    QMetaObject::invokeMethod(this, [this, deviceName, results]() {
-      if (results.globalPeak.valid) {
-        m_logTextEdit->append(QString("✓ Scan complete on %1 - Peak value: %2")
-          .arg(deviceName)
-          .arg(results.globalPeak.value, 0, 'f', 6));
-      }
-      else {
-        m_logTextEdit->append(QString("✗ Scan complete on %1 - No peak found")
-          .arg(deviceName));
-      }
-
-      // ✅ CLEANUP AFTER SCAN COMPLETES
-      cleanupScanController();
-    }, Qt::QueuedConnection);
-  });
-
-  m_scanController->SetErrorCallback(
-    [this](const ScanError& error) {
-    QMetaObject::invokeMethod(this, [this, error]() {
-      m_logTextEdit->append(QString("ERROR: %1")
-        .arg(QString::fromStdString(error.message)));
-      QMessageBox::critical(this, "Scan Error",
-        QString::fromStdString(error.message));
-
-      // ✅ CLEANUP AFTER ERROR
-      cleanupScanController();
-    }, Qt::QueuedConnection);
-  });
-
-  // Start the scan (uses default CoarseToFine strategy)
-  bool success = m_scanController->StartScan(params);
+  // Execute scan - all business logic handled by ScanExecutor
+  bool success = m_scanExecutor->executeScan(deviceName, isCoarse, channel);
 
   if (!success) {
-    m_logTextEdit->append("Failed to start scan");
-    QMessageBox::critical(this, "Scan Error", "Failed to start scan");
-    cleanupScanController();
+    // Re-enable controls if scan failed to start
+    m_scanWidget->setScanButtonsEnabled(true);
+    m_scanWidget->setStopButtonEnabled(false);
   }
+}
+
+void RunProgramPage::onScanLogMessage(QString message)
+{
+  // Forward log messages to execution log
+  m_logTextEdit->append(message);
+}
+
+void RunProgramPage::onScanCompleted(QString deviceName, double peakValue, bool success)
+{
+  // Re-enable scan controls, disable stop button
+  m_scanWidget->setScanButtonsEnabled(true);
+  m_scanWidget->setStopButtonEnabled(false);
+
+  // Show completion notification
+  if (success) {
+    QMessageBox::information(this, "Scan Complete",
+      QString("Scan completed on %1\nPeak value: %2")
+      .arg(deviceName)
+      .arg(peakValue, 0, 'f', 6));
+  }
+  else {
+    QMessageBox::warning(this, "Scan Complete",
+      QString("Scan completed on %1, but no peak found")
+      .arg(deviceName));
+  }
+}
+
+void RunProgramPage::onScanError(QString errorMessage)
+{
+  // Re-enable scan controls, disable stop button
+  m_scanWidget->setScanButtonsEnabled(true);
+  m_scanWidget->setStopButtonEnabled(false);
+
+  // Show error dialog
+  QMessageBox::critical(this, "Scan Error", errorMessage);
+}
+
+void RunProgramPage::onStopScanRequested()
+{
+  // Stop any active scan
+  m_scanExecutor->stopScan();
+
+  // Re-enable scan controls, disable stop button
+  m_scanWidget->setScanButtonsEnabled(true);
+  m_scanWidget->setStopButtonEnabled(false);
+
+  // Log the stop action
+  m_logTextEdit->append("Scan stopped by user");
 }
 
 // ============================================================================
@@ -1039,23 +918,4 @@ void RunProgramPage::updateExecuteButton()
 {
   bool hasRecipes = m_programManager->getRecipeCount() > 0;
   m_executeButton->setEnabled(hasRecipes && !m_isExecuting);
-}
-
-// ============================================================================
-// SCANNING CLEANUP
-// ============================================================================
-
-void RunProgramPage::cleanupScanController()
-{
-  if (m_scanController) {
-    // Stop any active scan
-    if (m_scanController->IsScanActive()) {
-      m_scanController->HaltScan();
-    }
-
-    delete m_scanController;
-    m_scanController = nullptr;
-
-    std::cout << "[RunProgramPage] Scan controller cleaned up" << std::endl;
-  }
 }
