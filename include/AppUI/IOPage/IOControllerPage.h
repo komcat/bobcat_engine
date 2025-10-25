@@ -3,10 +3,11 @@
 
 #include <QWidget>
 #include <QTableWidget>
-#include <QListWidget>
+#include <QButtonGroup>
 #include <QTimer>
 #include <QLabel>
 #include <QPushButton>
+#include <QVBoxLayout>
 #include <string>
 
 struct ApplicationContext;
@@ -17,8 +18,8 @@ class IEziIODevice;
  * @brief IO Controller page with device list and pin control
  *
  * Layout:
- * - Left panel (30%): List of IO devices
- * - Right panel (70%): Split into Input Pins (left) and Output Pins (right)
+ * - Left panel (5%): Vertical buttons for IO devices
+ * - Right panel (95%): Split into Input Pins (left) and Output Pins (right)
  */
 class IOControllerPage : public QWidget
 {
@@ -50,9 +51,10 @@ private:
 
   ApplicationContext* m_context;
 
-  // Left panel - device list
+  // Left panel - device buttons
   QWidget* m_deviceListPanel;
-  QListWidget* m_deviceList;
+  QVBoxLayout* m_deviceButtonLayout;
+  QButtonGroup* m_deviceButtonGroup;
   QPushButton* m_refreshButton;
 
   // Right panel - IO pins (split into two tables)

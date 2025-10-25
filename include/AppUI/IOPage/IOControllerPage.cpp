@@ -7,13 +7,15 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QCheckBox>
+#include <QFrame>
 #include <iostream>
 
 IOControllerPage::IOControllerPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_deviceListPanel(nullptr)
-  , m_deviceList(nullptr)
+  , m_deviceButtonLayout(nullptr)
+  , m_deviceButtonGroup(nullptr)
   , m_refreshButton(nullptr)
   , m_ioPinPanel(nullptr)
   , m_deviceNameLabel(nullptr)
@@ -42,30 +44,27 @@ void IOControllerPage::setupUI()
   mainLayout->setSpacing(0);
 
   createDeviceListPanel();
-  mainLayout->addWidget(m_deviceListPanel, 3);
+  mainLayout->addWidget(m_deviceListPanel, 1);  // 5% width
 
   createIOPinPanel();
-  mainLayout->addWidget(m_ioPinPanel, 7);
+  mainLayout->addWidget(m_ioPinPanel, 19);  // 95% width
 
-  setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  setStyleSheet("QWidget { background-color: #1e1e1e; }");  // Dark theme
 }
 
 void IOControllerPage::createDeviceListPanel()
 {
   m_deviceListPanel = new QWidget();
-  m_deviceListPanel->setStyleSheet("QWidget { background-color: #ecf0f1; }");
+  m_deviceListPanel->setStyleSheet("QWidget { background-color: #34495e; }");
+  m_deviceListPanel->setMaximumWidth(80);  // Constrain width for narrow column
 
   QVBoxLayout* layout = new QVBoxLayout(m_deviceListPanel);
-  layout->setContentsMargins(10, 10, 10, 10);
-  layout->setSpacing(10);
+  layout->setContentsMargins(5, 10, 5, 10);
+  layout->setSpacing(8);
 
-  // Title
-  QLabel* titleLabel = new QLabel("IO Devices");
-  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #2c3e50; }");
-  layout->addWidget(titleLabel);
-
-  // Refresh button
-  m_refreshButton = new QPushButton("🔄 Refresh");
+  // Refresh button (icon only)
+  m_refreshButton = new QPushButton("🔄");
+  m_refreshButton->setToolTip("Refresh device list");
   m_refreshButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #3498db; "
@@ -73,37 +72,32 @@ void IOControllerPage::createDeviceListPanel()
     "  border: none; "
     "  border-radius: 4px; "
     "  padding: 8px; "
-    "  font-size: 13px; "
-    "  font-weight: bold; "
+    "  font-size: 16px; "
+    "  min-height: 40px; "
     "} "
     "QPushButton:hover { background-color: #2980b9; }");
   connect(m_refreshButton, &QPushButton::clicked, this, &IOControllerPage::onRefreshClicked);
   layout->addWidget(m_refreshButton);
 
-  // Device list
-  m_deviceList = new QListWidget();
-  m_deviceList->setStyleSheet(
-    "QListWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #bdc3c7; "
-    "  border-radius: 4px; "
-    "  padding: 5px; "
-    "  font-size: 14px; "
-    "  color: #2c3e50; "
-    "} "
-    "QListWidget::item { "
-    "  padding: 10px; "
-    "  border-bottom: 1px solid #ecf0f1; "
-    "} "
-    "QListWidget::item:selected { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "} "
-    "QListWidget::item:hover { "
-    "  background-color: #dfe6e9; "
-    "}");
-  connect(m_deviceList, &QListWidget::itemSelectionChanged, this, &IOControllerPage::onDeviceSelected);
-  layout->addWidget(m_deviceList);
+  // Separator
+  QFrame* separator = new QFrame();
+  separator->setFrameShape(QFrame::HLine);
+  separator->setStyleSheet("QFrame { background-color: #7f8c8d; }");
+  layout->addWidget(separator);
+
+  // Device button container
+  m_deviceButtonLayout = new QVBoxLayout();
+  m_deviceButtonLayout->setContentsMargins(0, 0, 0, 0);
+  m_deviceButtonLayout->setSpacing(5);
+  layout->addLayout(m_deviceButtonLayout);
+
+  // Button group for exclusive selection
+  m_deviceButtonGroup = new QButtonGroup(this);
+  m_deviceButtonGroup->setExclusive(true);
+  connect(m_deviceButtonGroup, QOverload<QAbstractButton*>::of(&QButtonGroup::buttonClicked),
+    this, [this](QAbstractButton* button) { onDeviceSelected(); });
+
+  layout->addStretch();
 }
 
 void IOControllerPage::createIOPinPanel()
@@ -120,13 +114,13 @@ void IOControllerPage::createIOPinPanel()
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_deviceNameLabel = new QLabel("No device selected");
-  m_deviceNameLabel->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #2c3e50; }");
+  m_deviceNameLabel->setStyleSheet("QLabel { font-size: 22px; font-weight: bold; color: #ecf0f1; }");  // Larger, light color
   headerLayout->addWidget(m_deviceNameLabel);
 
   headerLayout->addStretch();
 
   m_connectionStatusLabel = new QLabel("⚪ Disconnected");
-  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; }");
+  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #95a5a6; }");  // Larger, bold
   headerLayout->addWidget(m_connectionStatusLabel);
 
   layout->addLayout(headerLayout);
@@ -139,11 +133,11 @@ void IOControllerPage::createIOPinPanel()
 
   QString groupBoxStyle =
     "QGroupBox { "
-    "  font-size: 14px; "
+    "  font-size: 16px; "  // Larger font
     "  font-weight: bold; "
-    "  color: #2c3e50; "
-    "  background-color: white; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: #ecf0f1; "  // Light color for dark theme
+    "  background-color: #2c3e50; "  // Dark background
+    "  border: 2px solid #34495e; "
     "  border-radius: 5px; "
     "  margin-top: 10px; "
     "  padding-top: 10px; "
@@ -156,24 +150,27 @@ void IOControllerPage::createIOPinPanel()
 
   QString tableStyle =
     "QTableWidget { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  gridline-color: #dcdde1; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #34495e; "  // Dark background
+    "  color: #ecf0f1; "  // Light text color
+    "  gridline-color: #4a5f7f; "
+    "  border: 1px solid #2c3e50; "
+    "  font-size: 14px; "  // Larger font
+    "  font-weight: bold; "  // Bold text
     "} "
     "QTableWidget::item { "
-    "  padding: 8px; "
-    "  border-bottom: 1px solid #ecf0f1; "
+    "  padding: 10px; "  // More padding for larger font
+    "  border-bottom: 1px solid #2c3e50; "
     "} "
     "QTableWidget::item:selected { "
-    "  background-color: #dfe6e9; "
+    "  background-color: #5d6d7e; "  // Darker selection
     "} "
     "QHeaderView::section { "
-    "  background-color: #ecf0f1; "
-    "  color: #2c3e50; "
-    "  padding: 10px; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #2c3e50; "  // Dark header
+    "  color: #ecf0f1; "  // Light text
+    "  padding: 12px; "  // More padding
+    "  border: 1px solid #34495e; "
     "  font-weight: bold; "
+    "  font-size: 14px; "  // Larger font
     "}";
 
   // ============================================================================
@@ -196,8 +193,8 @@ void IOControllerPage::createIOPinPanel()
   m_inputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_inputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_inputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_inputPinsTable->verticalHeader()->setDefaultSectionSize(40);
-  m_inputPinsTable->verticalHeader()->setMinimumSectionSize(40);
+  m_inputPinsTable->verticalHeader()->setDefaultSectionSize(50);  // Larger rows for bigger font
+  m_inputPinsTable->verticalHeader()->setMinimumSectionSize(50);
   m_inputPinsTable->setStyleSheet(tableStyle);
 
   inputLayout->addWidget(m_inputPinsTable);
@@ -213,19 +210,19 @@ void IOControllerPage::createIOPinPanel()
 
   m_outputPinsTable = new QTableWidget();
   m_outputPinsTable->setColumnCount(5);
-  m_outputPinsTable->setHorizontalHeaderLabels({ "Pin #", "Name", "Type", "Status", "Control" });
+  m_outputPinsTable->setHorizontalHeaderLabels({ "Control", "Pin #", "Name", "Type", "Status" });  // Control moved to left
 
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);  // Control
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);  // Pin #
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);           // Name
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);  // Type
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);  // Status
 
   m_outputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_outputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_outputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_outputPinsTable->verticalHeader()->setDefaultSectionSize(40);
-  m_outputPinsTable->verticalHeader()->setMinimumSectionSize(40);
+  m_outputPinsTable->verticalHeader()->setDefaultSectionSize(50);  // Larger rows for bigger font
+  m_outputPinsTable->verticalHeader()->setMinimumSectionSize(50);
   m_outputPinsTable->setStyleSheet(tableStyle);
 
   outputLayout->addWidget(m_outputPinsTable);
@@ -265,22 +262,60 @@ void IOControllerPage::refreshDeviceList()
 
   std::cout << "[IOControllerPage] Found " << deviceNames.size() << " IO devices" << std::endl;
 
-  m_deviceList->clear();
+  // Clear existing buttons
+  QList<QAbstractButton*> buttons = m_deviceButtonGroup->buttons();
+  for (QAbstractButton* btn : buttons) {
+    m_deviceButtonGroup->removeButton(btn);
+    m_deviceButtonLayout->removeWidget(btn);
+    btn->deleteLater();
+  }
+
+  // Create button for each device
+  QString buttonStyle =
+    "QPushButton { "
+    "  background-color: #2c3e50; "
+    "  color: white; "
+    "  border: 2px solid #34495e; "
+    "  border-radius: 4px; "
+    "  padding: 10px 5px; "
+    "  font-size: 11px; "
+    "  font-weight: bold; "
+    "  text-align: center; "
+    "  min-height: 50px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #34495e; "
+    "  border-color: #3498db; "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: #3498db; "
+    "  border-color: #2980b9; "
+    "}";
 
   for (const auto& name : deviceNames) {
-    QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(name));
-    m_deviceList->addItem(item);
+    QPushButton* deviceButton = new QPushButton(QString::fromStdString(name));
+    deviceButton->setCheckable(true);
+    deviceButton->setStyleSheet(buttonStyle);
+    deviceButton->setToolTip(QString::fromStdString(name));
+
+    m_deviceButtonLayout->addWidget(deviceButton);
+    m_deviceButtonGroup->addButton(deviceButton);
   }
 
   // Auto-select first device
   if (!deviceNames.empty()) {
-    m_deviceList->setCurrentRow(0);
+    QAbstractButton* firstButton = m_deviceButtonGroup->buttons().first();
+    if (firstButton) {
+      firstButton->setChecked(true);
+      onDeviceSelected();
+    }
   }
 }
 
 void IOControllerPage::onDeviceSelected()
 {
-  if (m_deviceList->selectedItems().isEmpty()) {
+  QAbstractButton* selectedButton = m_deviceButtonGroup->checkedButton();
+  if (!selectedButton) {
     m_selectedDevice = "";
     m_deviceNameLabel->setText("No device selected");
     m_connectionStatusLabel->setText("⚪ Disconnected");
@@ -289,7 +324,7 @@ void IOControllerPage::onDeviceSelected()
     return;
   }
 
-  m_selectedDevice = m_deviceList->currentItem()->text().toStdString();
+  m_selectedDevice = selectedButton->text().toStdString();
 
   std::cout << "[IOControllerPage] Device selected: " << m_selectedDevice << std::endl;
 
@@ -302,11 +337,11 @@ void IOControllerPage::onDeviceSelected()
     IEziIODevice* device = ioMgr->GetDevice(m_selectedDevice);
     if (device && device->IsConnected()) {
       m_connectionStatusLabel->setText("🟢 Connected");
-      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #27ae60; }");
+      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #2ecc71; }");
     }
     else {
       m_connectionStatusLabel->setText("🔴 Disconnected");
-      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #e74c3c; }");
+      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #e74c3c; }");
     }
   }
 
@@ -356,45 +391,29 @@ void IOControllerPage::refreshIOPinTable()
 void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
   const std::string& pinName, bool isOutput, bool currentState)
 {
-  // Pin number
-  QTableWidgetItem* pinNumItem = new QTableWidgetItem(QString::number(pinNumber));
-  pinNumItem->setTextAlignment(Qt::AlignCenter);
-  table->setItem(row, 0, pinNumItem);
+  // For outputs: Control, Pin #, Name, Type, Status (columns 0-4)
+  // For inputs: Pin #, Name, Type, Status (columns 0-3)
 
-  // Pin name
-  QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(pinName));
-  nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-  table->setItem(row, 1, nameItem);
+  int colOffset = isOutput ? 1 : 0;  // Offset by 1 for outputs (Control is in column 0)
 
-  // Type
-  QTableWidgetItem* typeItem = new QTableWidgetItem(isOutput ? "Output" : "Input");
-  typeItem->setTextAlignment(Qt::AlignCenter);
-  typeItem->setForeground(isOutput ? QColor("#e67e22") : QColor("#3498db"));
-  table->setItem(row, 2, typeItem);
-
-  // Status (will be updated by polling)
-  QTableWidgetItem* statusItem = new QTableWidgetItem("--");
-  statusItem->setTextAlignment(Qt::AlignCenter);
-  table->setItem(row, 3, statusItem);
-
-  // Toggle button (only for outputs)
+  // Toggle button FIRST for outputs (column 0)
   if (isOutput) {
     QCheckBox* toggleButton = new QCheckBox();
     toggleButton->setChecked(currentState);
     toggleButton->setStyleSheet(
       "QCheckBox::indicator { "
-      "  width: 30px; "
-      "  height: 30px; "
-      "  border: 2px solid #bdc3c7; "
-      "  border-radius: 4px; "
-      "  background-color: white; "
+      "  width: 35px; "  // Larger for easier clicking
+      "  height: 35px; "
+      "  border: 2px solid #7f8c8d; "
+      "  border-radius: 6px; "
+      "  background-color: #2c3e50; "  // Dark background
       "} "
       "QCheckBox::indicator:checked { "
       "  background-color: #27ae60; "
       "  border-color: #229954; "
       "} "
       "QCheckBox::indicator:hover { "
-      "  border-color: #7f8c8d; "
+      "  border-color: #3498db; "
       "}");
 
     connect(toggleButton, &QCheckBox::toggled, this, [this, pinName](bool checked) {
@@ -418,8 +437,29 @@ void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
     toggleLayout->setAlignment(Qt::AlignCenter);
     toggleLayout->setContentsMargins(0, 0, 0, 0);
 
-    table->setCellWidget(row, 4, toggleWidget);
+    table->setCellWidget(row, 0, toggleWidget);  // Column 0 for outputs
   }
+
+  // Pin number
+  QTableWidgetItem* pinNumItem = new QTableWidgetItem(QString::number(pinNumber));
+  pinNumItem->setTextAlignment(Qt::AlignCenter);
+  table->setItem(row, 0 + colOffset, pinNumItem);
+
+  // Pin name
+  QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(pinName));
+  nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  table->setItem(row, 1 + colOffset, nameItem);
+
+  // Type
+  QTableWidgetItem* typeItem = new QTableWidgetItem(isOutput ? "Output" : "Input");
+  typeItem->setTextAlignment(Qt::AlignCenter);
+  typeItem->setForeground(isOutput ? QColor("#f39c12") : QColor("#3498db"));  // Brighter colors for dark theme
+  table->setItem(row, 2 + colOffset, typeItem);
+
+  // Status (will be updated by polling)
+  QTableWidgetItem* statusItem = new QTableWidgetItem("--");
+  statusItem->setTextAlignment(Qt::AlignCenter);
+  table->setItem(row, 3 + colOffset, statusItem);
 }
 
 void IOControllerPage::updateIOStatus()
@@ -443,10 +483,26 @@ void IOControllerPage::updateIOStatus()
     for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
       bool state = (inputs & (1U << i)) != 0;
 
+      // Update status text (column 3 for inputs)
       QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 3);
       if (statusItem) {
         statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
-        statusItem->setForeground(state ? QColor("#27ae60") : QColor("#95a5a6"));
+        statusItem->setForeground(state ? QColor("#2ecc71") : QColor("#95a5a6"));
+      }
+
+      // Highlight entire row based on status
+      QColor rowColor = state ? QColor("#27ae60") : QColor("#34495e");  // Green for ON, dark gray for OFF
+      for (int col = 0; col < m_inputPinsTable->columnCount(); ++col) {
+        QTableWidgetItem* item = m_inputPinsTable->item(i, col);
+        if (item) {
+          item->setBackground(rowColor);
+          // Keep Type column color distinct, white for others
+          if (col == 2) {  // Type column
+            item->setForeground(QColor("#3498db"));  // Keep blue for Input
+          } else {
+            item->setForeground(QColor("#ecf0f1"));  // White for readable text
+          }
+        }
       }
     }
   }
@@ -466,20 +522,38 @@ void IOControllerPage::updateIOStatus()
 
       bool state = (outputs & (1U << (bitOffset + i))) != 0;
 
-      QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 3);
+      // Update status text (column 4 for outputs - new position)
+      QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 4);
       if (statusItem) {
         statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
-        statusItem->setForeground(state ? QColor("#27ae60") : QColor("#95a5a6"));
+        statusItem->setForeground(state ? QColor("#2ecc71") : QColor("#95a5a6"));
       }
 
-      // Update toggle button to match actual state
-      QWidget* toggleWidget = m_outputPinsTable->cellWidget(row, 4);
+      // Update toggle button to match actual state (column 0 - new position)
+      QWidget* toggleWidget = m_outputPinsTable->cellWidget(row, 0);
       if (toggleWidget) {
         QCheckBox* toggleButton = toggleWidget->findChild<QCheckBox*>();
         if (toggleButton && toggleButton->isChecked() != state) {
           toggleButton->blockSignals(true);
           toggleButton->setChecked(state);
           toggleButton->blockSignals(false);
+        }
+        // Also set background for toggle widget
+        toggleWidget->setStyleSheet(state ? "background-color: #27ae60;" : "background-color: #34495e;");
+      }
+
+      // Highlight entire row based on status (skip column 0 which has the toggle widget)
+      QColor rowColor = state ? QColor("#27ae60") : QColor("#34495e");  // Green for ON, dark gray for OFF
+      for (int col = 1; col < m_outputPinsTable->columnCount(); ++col) {  // Start from col 1 to skip Control column
+        QTableWidgetItem* item = m_outputPinsTable->item(row, col);
+        if (item) {
+          item->setBackground(rowColor);
+          // Keep Type column color distinct, white for others
+          if (col == 3) {  // Type column (col 3 in output table: Control, Pin#, Name, Type, Status)
+            item->setForeground(QColor("#f39c12"));  // Keep orange for Output
+          } else {
+            item->setForeground(QColor("#ecf0f1"));  // White for readable text
+          }
         }
       }
     }
