@@ -5,6 +5,11 @@
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
+#include "AdaptiveScanController.h"
+#include "ScanTypes.h"
+#include "ILogger.h"
+#include "LogManager.h" 
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -28,6 +33,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
   , m_promptWidget(nullptr)
   , m_promptEventLoop(nullptr)
   , m_promptResponse(false)
+  , m_scanController(nullptr)
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -41,6 +47,8 @@ RunProgramPage::~RunProgramPage()
     m_programWorker->requestStop();
     m_programWorker->wait(3000);
   }
+
+  cleanupScanController();
 
   delete m_programManager;
   delete m_processFactory;
@@ -119,10 +127,8 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}");
   executeLayout->addWidget(m_executeButton);
 
-
-  // ✅ ADD THIS NEW CHECKBOX HERE:
   m_autoRunNextCheckBox = new QCheckBox("Auto-run next recipe");
-  m_autoRunNextCheckBox->setChecked(false);  // Default: unchecked (single recipe mode)
+  m_autoRunNextCheckBox->setChecked(false);
   m_autoRunNextCheckBox->setStyleSheet(
     "QCheckBox { "
     "  font-size: 12px; "
@@ -133,8 +139,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "  height: 18px; "
     "}");
   executeLayout->addWidget(m_autoRunNextCheckBox);
-
-
 
   m_progressBar = new QProgressBar();
   m_progressBar->setRange(0, 100);
@@ -151,7 +155,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_recipeListWidget = new QListWidget();
   m_recipeListWidget->setAlternatingRowColors(true);
 
-  // ✅ Larger font and better spacing
   m_recipeListWidget->setStyleSheet(
     "QListWidget { "
     "  font-size: 14px; "
@@ -169,14 +172,13 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "  background-color: #e3f2fd; "
     "} "
     "QListWidget::item:selected:hover { "
-    "  background-color: #1976D2; "  // Darker blue on hover
-    "  color: white; "                // Keep white text
+    "  background-color: #1976D2; "
+    "  color: white; "
     "}");
-
 
   recipeLayout->addWidget(m_recipeListWidget);
 
-  leftLayout->addWidget(recipeGroup, 1); // Give it stretch factor
+  leftLayout->addWidget(recipeGroup, 1);
 
   // === BACK BUTTON ===
   m_backButton = new QPushButton("← Back to Main Menu");
@@ -207,10 +209,35 @@ void RunProgramPage::createEditWidget()
   QVBoxLayout* layout = new QVBoxLayout(m_editWidget);
   layout->setContentsMargins(20, 20, 20, 20);
 
-  // Title
+  // ✅ NEW: Top bar with Close button and Title
+  QHBoxLayout* topBarLayout = new QHBoxLayout();
+
+  QPushButton* closeButton = new QPushButton("← Close");
+  closeButton->setMinimumHeight(35);
+  closeButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #757575; "
+    "  color: white; "
+    "  font-size: 13px; "
+    "  font-weight: bold; "
+    "  padding: 5px 15px; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #616161; "
+    "}");
+
   QLabel* titleLabel = new QLabel("Edit Program");
   titleLabel->setStyleSheet("font-size: 18px; font-weight: bold;");
-  layout->addWidget(titleLabel);
+
+  topBarLayout->addWidget(closeButton);
+  topBarLayout->addWidget(titleLabel);
+  topBarLayout->addStretch();
+
+  layout->addLayout(topBarLayout);
+
+  // Connect close button
+  connect(closeButton, &QPushButton::clicked, this, &RunProgramPage::showExecutionWidget);
 
   // Add Recipe button
   m_addRecipeButton = new QPushButton("+ Add Recipe");
@@ -281,7 +308,7 @@ void RunProgramPage::createExecutionWidget()
 
   layout->addSpacing(20);
 
-  // ✅ NEW: Create stacked widget to switch between log and prompt
+  // Create stacked widget to switch between log and prompt
   m_executionStack = new QStackedWidget();
 
   // === LOG VIEW (Index 0) ===
@@ -298,7 +325,7 @@ void RunProgramPage::createExecutionWidget()
   m_logTextEdit->setStyleSheet("background-color: #f5f5f5; font-family: monospace;");
   logLayout->addWidget(m_logTextEdit, 1);
 
-  m_executionLogLabel = logLabel; // Store reference for updates
+  m_executionLogLabel = logLabel;
 
   // === PROMPT VIEW (Index 1) ===
   m_promptWidget = new UserPromptWidget();
@@ -314,12 +341,95 @@ void RunProgramPage::createExecutionWidget()
   m_executionStack->setCurrentIndex(0);         // Start with log
 
   layout->addWidget(m_executionStack, 1);
+
+  // ✅ NEW: Scanning control panel (fixed height at bottom)
+  createScanControlPanel();
+  layout->addWidget(m_scanControlPanel);
+}
+
+void RunProgramPage::createScanControlPanel()
+{
+  m_scanControlPanel = new QWidget();
+  m_scanControlPanel->setFixedHeight(150);
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(m_scanControlPanel);
+  mainLayout->setContentsMargins(5, 5, 5, 5);
+
+  // Title
+  QLabel* title = new QLabel("Hexapod Scanning");
+  title->setStyleSheet("font-weight: bold; font-size: 11pt;");
+  mainLayout->addWidget(title);
+
+  // Data Channel selector
+  QHBoxLayout* controlsRow = new QHBoxLayout();
+
+  QLabel* channelLabel = new QLabel("Data Channel:");
+  controlsRow->addWidget(channelLabel);
+
+  m_scanChannelCombo = new QComboBox();
+  // Populate from DataStore
+  if (m_context && m_context->dataStore) {
+    auto channels = m_context->dataStore->GetAllChannelNames();
+    for (const auto& channel : channels) {
+      m_scanChannelCombo->addItem(QString::fromStdString(channel));
+    }
+  }
+  controlsRow->addWidget(m_scanChannelCombo);
+  controlsRow->addStretch();
+
+  mainLayout->addLayout(controlsRow);
+
+  // Info label
+  QLabel* infoLabel = new QLabel("Scans all axes: Z → Y → X");
+  infoLabel->setStyleSheet("color: #666; font-size: 10pt; font-style: italic;");
+  mainLayout->addWidget(infoLabel);
+
+  // Two columns for scan buttons
+  QHBoxLayout* columnsLayout = new QHBoxLayout();
+
+  // Left column
+  QGroupBox* leftGroup = new QGroupBox("Left Scanning");
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftGroup);
+  leftLayout->setSpacing(5);
+
+  m_leftCoarseButton = new QPushButton("Left Coarse");
+  m_leftCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
+  leftLayout->addWidget(m_leftCoarseButton);
+
+  m_leftFineButton = new QPushButton("Left Fine");
+  m_leftFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
+  leftLayout->addWidget(m_leftFineButton);
+
+  columnsLayout->addWidget(leftGroup);
+
+  // Right column
+  QGroupBox* rightGroup = new QGroupBox("Right Scanning");
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightGroup);
+  rightLayout->setSpacing(5);
+
+  m_rightCoarseButton = new QPushButton("Right Coarse");
+  m_rightCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
+  rightLayout->addWidget(m_rightCoarseButton);
+
+  m_rightFineButton = new QPushButton("Right Fine");
+  m_rightFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
+  rightLayout->addWidget(m_rightFineButton);
+
+  columnsLayout->addWidget(rightGroup);
+
+  mainLayout->addLayout(columnsLayout);
+
+  // Connect signals
+  connect(m_leftCoarseButton, &QPushButton::clicked, this, &RunProgramPage::onLeftCoarseScan);
+  connect(m_leftFineButton, &QPushButton::clicked, this, &RunProgramPage::onLeftFineScan);
+  connect(m_rightCoarseButton, &QPushButton::clicked, this, &RunProgramPage::onRightCoarseScan);
+  connect(m_rightFineButton, &QPushButton::clicked, this, &RunProgramPage::onRightFineScan);
 }
 
 void RunProgramPage::showEditWidget()
 {
   m_rightStack->setCurrentWidget(m_editWidget);
-  updateRecipeList(); // Update edit list
+  updateRecipeList();
 }
 
 void RunProgramPage::showExecutionWidget()
@@ -394,13 +504,11 @@ void RunProgramPage::onExecuteProgram()
     return;
   }
 
-  // ✅ CHECK EXECUTION MODE
   bool autoRunMode = m_autoRunNextCheckBox->isChecked();
   int selectedRecipeIndex = m_recipeListWidget->currentRow();
 
   // Validate based on mode
   if (!autoRunMode) {
-    // Single recipe mode - need a selection
     if (selectedRecipeIndex < 0) {
       QMessageBox::warning(this, "No Selection",
         "Please select a recipe to execute.\n\n"
@@ -425,7 +533,6 @@ void RunProgramPage::onExecuteProgram()
   QString confirmMsg;
 
   if (autoRunMode) {
-    // Auto-run mode - all enabled recipes
     int enabledCount = 0;
     for (const auto& recipe : m_programManager->getAllRecipes()) {
       if (recipe->enabled) enabledCount++;
@@ -435,7 +542,6 @@ void RunProgramPage::onExecuteProgram()
       .arg(programName);
   }
   else {
-    // Single recipe mode
     const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
     if (!recipe) {
       QMessageBox::critical(this, "Error", "Invalid recipe selection");
@@ -476,7 +582,6 @@ void RunProgramPage::onExecuteProgram()
     "  font-weight: bold; "
     "}");
 
-  // Disable checkbox during execution
   m_autoRunNextCheckBox->setEnabled(false);
 
   // Create and start worker
@@ -489,30 +594,26 @@ void RunProgramPage::onExecuteProgram()
     this
   );
 
-  // ✅ CONFIGURE EXECUTION MODE
   m_programWorker->setAutoRunMode(autoRunMode);
   if (!autoRunMode) {
     m_programWorker->setStartRecipeIndex(selectedRecipeIndex);
   }
 
-  // ✅ Set UserPrompt callback to show inline widget
+  // Set UserPrompt callback
   connect(this, &RunProgramPage::showUserPrompt,
     this, &RunProgramPage::onShowUserPrompt);
 
   m_programWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
-    // Emit signal to show prompt in UI thread
     emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message));
 
-    // Create event loop to wait for response (makes callback blocking)
     QEventLoop loop;
     m_promptEventLoop = &loop;
-    loop.exec();  // Wait until user responds
+    loop.exec();
     m_promptEventLoop = nullptr;
 
     return m_promptResponse;
-  }
-  );
+  });
 
   // Connect signals
   connect(m_programWorker, &ProgramWorker::programExecutionStarted,
@@ -533,8 +634,6 @@ void RunProgramPage::onExecuteProgram()
   // Start execution
   m_programWorker->start();
 }
-
-
 
 void RunProgramPage::onStopProgram()
 {
@@ -560,7 +659,6 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
   m_executionStatusLabel->setText(QString("Recipe %1 of %2: %3")
     .arg(recipeIndex + 1).arg(m_totalRecipes).arg(recipeName));
 
-  // Update progress
   m_progressBar->setValue(recipeIndex);
 }
 
@@ -572,8 +670,6 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
     m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
   }
 }
-
-// In onProgramExecutionCompleted() method, add this to re-enable the checkbox:
 
 void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 {
@@ -596,7 +692,6 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
     "  background-color: #cccccc; "
     "}");
 
-  // ✅ RE-ENABLE CHECKBOX
   m_autoRunNextCheckBox->setEnabled(true);
 
   // Show result
@@ -606,12 +701,8 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   else {
     QMessageBox::critical(this, "Execution Failed", message);
   }
-
-  // Update UI...
-  // (rest of your existing code)
 }
 
-// Also add to onProgramStopped():
 void RunProgramPage::onProgramStopped()
 {
   m_isExecuting = false;
@@ -633,13 +724,10 @@ void RunProgramPage::onProgramStopped()
     "  background-color: #cccccc; "
     "}");
 
-  // ✅ RE-ENABLE CHECKBOX
   m_autoRunNextCheckBox->setEnabled(true);
 
   QMessageBox::information(this, "Stopped", "Program execution stopped by user.");
 }
-
-
 
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
@@ -674,6 +762,165 @@ void RunProgramPage::onPromptResponse(bool accepted)
 }
 
 // ============================================================================
+// SCANNING OPERATIONS
+// ============================================================================
+
+void RunProgramPage::onLeftCoarseScan()
+{
+  startScan("hex-left", true);
+}
+
+void RunProgramPage::onLeftFineScan()
+{
+  startScan("hex-left", false);
+}
+
+void RunProgramPage::onRightCoarseScan()
+{
+  startScan("hex-right", true);
+}
+
+void RunProgramPage::onRightFineScan()
+{
+  startScan("hex-right", false);
+}
+
+void RunProgramPage::startScan(const QString& deviceName, bool isCoarse)
+{
+  // Clean up any existing scan controller
+  cleanupScanController();
+
+  // Check if scan already active
+  if (m_scanController && m_scanController->IsScanActive()) {
+    QMessageBox::warning(this, "Scan Active", "A scan is already in progress");
+    return;
+  }
+
+  // Get selected data channel
+  QString channel = m_scanChannelCombo->currentText();
+
+  if (channel.isEmpty()) {
+    QMessageBox::warning(this, "Scan Error", "Please select a data channel");
+    return;
+  }
+
+  // Validate required components
+  if (!m_context || !m_context->motionManager || !m_context->dataStore) {
+    QMessageBox::warning(this, "Scan Error", "Motion manager or data store not available");
+    return;
+  }
+
+  // ✅ CREATE SCAN CONTROLLER ON-DEMAND
+  m_scanController = new AdaptiveScanController(
+    *m_context->motionManager,
+    *m_context->dataStore,
+    deviceName.toStdString(),
+    channel.toStdString()
+  );
+
+  // Set logger if available
+  if (m_context->logManager) {
+    m_scanController->SetLogger(m_context->logManager);
+  }
+
+  // Create scan parameters
+  ScanParameters params;
+
+  // ✅ HEXAPOD SCANNING: Scan all 3 axes (Z, Y, X) consecutively
+  params.axesToScan = { "Z", "Y", "X" };
+
+  // Set step sizes (convert µm to mm)
+  if (isCoarse) {
+    // Coarse: 10, 5, 2, 1 µm = 0.010, 0.005, 0.002, 0.001 mm
+    params.stepSizes = { 0.010, 0.005, 0.002, 0.001 };
+  }
+  else {
+    // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
+    params.stepSizes = { 0.002, 0.001, 0.0005 };
+  }
+
+  // Motion parameters
+  params.motionSettleTimeMs = 400;
+  params.velocityPercent = 50.0;
+
+  // Termination criteria (±100µm = 0.2mm total range)
+  params.consecutiveDecreasesLimit = 3;
+  params.significantDecreaseThreshold = 0.05;  // 5%
+  params.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
+
+  // Position optimization
+  params.improvementThreshold = 0.01;  // 1%
+
+  // Measurement parameters
+  params.averagingCount = 3;
+  params.measurementTimeout = std::chrono::seconds(5);
+  params.minValidValue = -1000.0;  // Adjust based on your sensor
+  params.maxValidValue = 1000.0;
+
+  // Safety limits
+  params.maxStepSize = 0.5;  // 500µm max
+  params.scanTimeout = std::chrono::minutes(10);
+
+  // Log to execution window
+  m_logTextEdit->append(QString("Starting %1 scan on %2")
+    .arg(isCoarse ? "COARSE" : "FINE")
+    .arg(deviceName));
+  m_logTextEdit->append(QString("  Scanning axes: Z, Y, X with steps: %1")
+    .arg(isCoarse ? "10→5→2→1 µm" : "2→1→0.5 µm"));
+  m_logTextEdit->append(QString("  Data channel: %1").arg(channel));
+
+  // Set up callbacks
+  m_scanController->SetProgressCallback(
+    [this](const ScanProgressEvent& event) {
+    QMetaObject::invokeMethod(this, [this, event]() {
+      m_logTextEdit->append(QString("Scan: %1% - %2")
+        .arg(event.progress * 100, 0, 'f', 1)
+        .arg(QString::fromStdString(event.message)));
+    }, Qt::QueuedConnection);
+  });
+
+  m_scanController->SetCompletionCallback(
+    [this, deviceName](const ScanResults& results) {
+    QMetaObject::invokeMethod(this, [this, deviceName, results]() {
+      if (results.globalPeak.valid) {
+        m_logTextEdit->append(QString("✓ Scan complete on %1 - Peak value: %2")
+          .arg(deviceName)
+          .arg(results.globalPeak.value, 0, 'f', 6));
+      }
+      else {
+        m_logTextEdit->append(QString("✗ Scan complete on %1 - No peak found")
+          .arg(deviceName));
+      }
+
+      // ✅ CLEANUP AFTER SCAN COMPLETES
+      cleanupScanController();
+    }, Qt::QueuedConnection);
+  });
+
+  m_scanController->SetErrorCallback(
+    [this](const ScanError& error) {
+    QMetaObject::invokeMethod(this, [this, error]() {
+      m_logTextEdit->append(QString("ERROR: %1")
+        .arg(QString::fromStdString(error.message)));
+      QMessageBox::critical(this, "Scan Error",
+        QString::fromStdString(error.message));
+
+      // ✅ CLEANUP AFTER ERROR
+      cleanupScanController();
+    }, Qt::QueuedConnection);
+  });
+
+  // Start the scan (uses default CoarseToFine strategy)
+  bool success = m_scanController->StartScan(params);
+
+  if (!success) {
+    m_logTextEdit->append("Failed to start scan");
+    QMessageBox::critical(this, "Scan Error", "Failed to start scan");
+    cleanupScanController();
+  }
+}
+
+// ============================================================================
 // EDIT OPERATIONS
 // ============================================================================
 
@@ -688,7 +935,6 @@ void RunProgramPage::onAddRecipe()
 
   if (filename.isEmpty()) return;
 
-  // Extract display name from filename
   QFileInfo fileInfo(filename);
   QString displayName = fileInfo.baseName();
 
@@ -756,20 +1002,16 @@ void RunProgramPage::updateProgramInfo()
 
 void RunProgramPage::updateRecipeList()
 {
-  // Update left panel list (read-only display)
   m_recipeListWidget->clear();
-
-  // Update edit list
   m_editRecipeList->clear();
 
   int recipeNumber = 1;
   for (const auto& recipe : m_programManager->getAllRecipes()) {
     QString displayText;
 
-    // ✅ Format: "1    Recipe Name" or "1    Recipe Name (disabled)"
     if (recipe->enabled) {
       displayText = QString("%1    %2")
-        .arg(recipeNumber, 2, 10, QChar('0'))  // Zero-padded number (01, 02, etc.)
+        .arg(recipeNumber, 2, 10, QChar('0'))
         .arg(QString::fromStdString(recipe->displayName));
     }
     else {
@@ -777,9 +1019,8 @@ void RunProgramPage::updateRecipeList()
         .arg(recipeNumber, 2, 10, QChar('0'))
         .arg(QString::fromStdString(recipe->displayName));
 
-      // Create item with gray color for disabled recipes
       QListWidgetItem* item = new QListWidgetItem(displayText);
-      item->setForeground(QColor(150, 150, 150));  // Gray text
+      item->setForeground(QColor(150, 150, 150));
       m_recipeListWidget->addItem(item);
       m_editRecipeList->addItem(QString::fromStdString(recipe->displayName));
       recipeNumber++;
@@ -798,4 +1039,23 @@ void RunProgramPage::updateExecuteButton()
 {
   bool hasRecipes = m_programManager->getRecipeCount() > 0;
   m_executeButton->setEnabled(hasRecipes && !m_isExecuting);
+}
+
+// ============================================================================
+// SCANNING CLEANUP
+// ============================================================================
+
+void RunProgramPage::cleanupScanController()
+{
+  if (m_scanController) {
+    // Stop any active scan
+    if (m_scanController->IsScanActive()) {
+      m_scanController->HaltScan();
+    }
+
+    delete m_scanController;
+    m_scanController = nullptr;
+
+    std::cout << "[RunProgramPage] Scan controller cleaned up" << std::endl;
+  }
 }

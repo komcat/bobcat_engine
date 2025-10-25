@@ -83,6 +83,11 @@ std::vector<std::string> DataStore::GetAllKeys() const
   return GetAvailableChannels();
 }
 
+std::vector<std::string> DataStore::GetAllChannelNames() const
+{
+  return GetAvailableChannels();
+}
+
 void DataStore::ClearChannel(const std::string& channelId)
 {
   std::lock_guard<std::mutex> lock(m_mutex);

@@ -9,12 +9,14 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QTextEdit>
+#include <QComboBox>
 
 struct ApplicationContext;
 class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
 class UserPromptWidget;
+class AdaptiveScanController;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -35,7 +37,7 @@ public:
 signals:
   void backToMainMenu();
 
-  // ✅ NEW: Signal to show prompt from worker thread
+  // User prompt signal
   void showUserPrompt(QString title, QString message);
 
 private slots:
@@ -56,9 +58,15 @@ private slots:
   void onProgramStopped();
   void onWorkerLogMessage(QString message);
 
-  // ✅ NEW: User prompt handling
+  // User prompt handling
   void onShowUserPrompt(QString title, QString message);
   void onPromptResponse(bool accepted);
+
+  // Scanning operations
+  void onLeftCoarseScan();
+  void onLeftFineScan();
+  void onRightCoarseScan();
+  void onRightFineScan();
 
 private:
   void setupUI();
@@ -94,7 +102,7 @@ private:
   QWidget* m_editWidget;
   QWidget* m_executionWidget;
 
-  // Edit widget components (created in createEditWidget)
+  // Edit widget components
   QPushButton* m_addRecipeButton;
   QListWidget* m_editRecipeList;
   QPushButton* m_removeRecipeButton;
@@ -106,9 +114,18 @@ private:
   QLabel* m_executionStatusLabel;
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
-  QTextEdit* m_logTextEdit;  // ✅ Store log widget
+  QTextEdit* m_logTextEdit;
 
-  // ✅ NEW: Prompt system
+  // Scanning controls
+  QWidget* m_scanControlPanel;
+  QComboBox* m_scanChannelCombo;
+  QPushButton* m_leftCoarseButton;
+  QPushButton* m_leftFineButton;
+  QPushButton* m_rightCoarseButton;
+  QPushButton* m_rightFineButton;
+  AdaptiveScanController* m_scanController;  // Created on-demand
+
+  // Prompt system
   QStackedWidget* m_executionStack;  // Switch between log and prompt
   UserPromptWidget* m_promptWidget;
   QEventLoop* m_promptEventLoop;     // For blocking until response
@@ -130,4 +147,9 @@ private:
   void onMoveRecipeDown();
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
+
+  // Scanning helper methods
+  void createScanControlPanel();
+  void startScan(const QString& deviceName, bool isCoarse);
+  void cleanupScanController();
 };

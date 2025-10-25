@@ -28,12 +28,15 @@ public:
   bool TryGetValue(const std::string& channelId, float& outValue) const;
 
   std::vector<std::string> GetAvailableChannels() const;
+  std::vector<std::string> GetAllChannelNames() const;
+  
   std::vector<std::string> GetAllKeys() const;  // ✅ ADD THIS - Alias for GetAvailableChannels
   void ClearChannel(const std::string& channelId);
   void ClearAll();
 
   // Statistics
   size_t GetChannelCount() const;
+
 
   // Subscription (optional - for reactive updates)
   using DataCallback = std::function<void(const std::string& channelId, float value)>;
