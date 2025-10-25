@@ -1,0 +1,214 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/config/SIPHOG101/positions.json",
+    "recipe_name": "Probe101",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "OCS773V",
+            "nickname": "Set Vac On",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "10",
+                "state": "true"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "UJQ156Y",
+            "nickname": "Left gripper move away",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "clear_vision"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "FAU555M",
+            "nickname": "Right gripper move away",
+            "parameters": {
+                "device": "hex-right",
+                "target_position": "clear_vision"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "HMQ824B",
+            "nickname": "Camera to see SLED",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "seesled"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "XRB556N",
+            "nickname": "Probe Sled confirm",
+            "parameters": {
+                "blocking": "true",
+                "message": "Probe SLED",
+                "title": "Confirmation Required"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "UOQ156X",
+            "nickname": "Camera to see PIC",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "seepic"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "TJX228O",
+            "nickname": "Confirm Probe PIC",
+            "parameters": {
+                "blocking": "true",
+                "message": "Probe PIC",
+                "title": "Confirmation Required"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "YLH452N",
+            "nickname": "Set TEC Temp 25C",
+            "parameters": {
+                "device": "laser-main",
+                "power_state": "on",
+                "temperature": "25.0"
+            },
+            "type": "Set TEC Temp"
+        },
+        {
+            "enabled": true,
+            "id": "FFQ079X",
+            "nickname": "wait 1sec",
+            "parameters": {
+                "duration_ms": "1000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "OVA477R",
+            "nickname": "Set Laser Current 150",
+            "parameters": {
+                "current_ma": "150",
+                "device": "laser-main",
+                "power_state": "on"
+            },
+            "type": "Set Laser Current"
+        },
+        {
+            "enabled": true,
+            "id": "UUR722N",
+            "nickname": "wait 1sec",
+            "parameters": {
+                "duration_ms": "1000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "WIW391N",
+            "nickname": "Wait 1s",
+            "parameters": {
+                "duration_ms": "1000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "EHL339I",
+            "nickname": "Read DataStore 5",
+            "parameters": {
+                "channel_name": "GPIB-Current",
+                "log_level": "Info"
+            },
+            "type": "Read DataStore"
+        },
+        {
+            "enabled": true,
+            "id": "QDY475Z",
+            "nickname": "Read Temperature 6",
+            "parameters": {
+                "log_level": "Info",
+                "tec_device": "laser-main"
+            },
+            "type": "Read Temperature"
+        },
+        {
+            "enabled": true,
+            "id": "FIT970M",
+            "nickname": "Read Laser Current 7",
+            "parameters": {
+                "log_level": "Info",
+                "tec_device": "laser-main"
+            },
+            "type": "Read Laser Current"
+        },
+        {
+            "enabled": true,
+            "id": "YGI019C",
+            "nickname": "move to see serial number",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "snviewing"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "WIN991U",
+            "nickname": "Confirm remove probes",
+            "parameters": {
+                "blocking": "true",
+                "message": "Remove probes",
+                "title": "Confirmation Required"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "FEM190I",
+            "nickname": "Off TEC",
+            "parameters": {
+                "device": "laser-main",
+                "power_state": "off",
+                "temperature": "25.0"
+            },
+            "type": "Set TEC Temp"
+        },
+        {
+            "enabled": true,
+            "id": "EJO083G",
+            "nickname": "Off laser",
+            "parameters": {
+                "current_ma": "150",
+                "device": "laser-main",
+                "power_state": "off"
+            },
+            "type": "Set Laser Current"
+        },
+        {
+            "enabled": true,
+            "id": "FKA550S",
+            "nickname": "Set Output 17",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "10",
+                "state": "false"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

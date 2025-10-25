@@ -1,0 +1,39 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/config/lens1/positions.json",
+    "recipe_name": "move to work",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "BZS657U",
+            "nickname": "gantry to see PIC",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "seepic"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "PYG211H",
+            "nickname": "hex left to lens grip",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "lensgrip"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "WIB582M",
+            "nickname": "Set Left Gripper Close",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "0",
+                "state": "true"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

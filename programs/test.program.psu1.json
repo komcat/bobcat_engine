@@ -1,0 +1,11 @@
+{
+    "program_name": "Untitled Program",
+    "recipes": [
+        {
+            "display_name": "test",
+            "enabled": true,
+            "recipe_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/recipes/test.psu.json"
+        }
+    ],
+    "version": "1.0"
+}

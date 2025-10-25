@@ -5,10 +5,12 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QListWidget>
+#include <QTableWidget>
 #include <QStackedWidget>
 #include <QLabel>
 #include <QCheckBox>
 #include <QTextEdit>
+#include <QLineEdit>
 
 struct ApplicationContext;
 class ProgramManager;
@@ -105,8 +107,10 @@ private:
   QWidget* m_executionWidget;
 
   // Edit widget components
+  QLineEdit* m_programNameEdit;
   QPushButton* m_addRecipeButton;
-  QListWidget* m_editRecipeList;
+  QTableWidget* m_editRecipeTable;
+  QTextEdit* m_recipePreviewText;
   QPushButton* m_removeRecipeButton;
   QPushButton* m_moveUpButton;
   QPushButton* m_moveDownButton;
@@ -144,6 +148,7 @@ private:
   void onMoveRecipeDown();
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
+  void loadRecipePreview(const std::string& recipeFilePath);
 
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription

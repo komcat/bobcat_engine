@@ -10,6 +10,7 @@
 #include "ILogger.h"
 #include "LogManager.h"
 #include "DataStore.h"
+#include "RecipeManager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -20,6 +21,8 @@
 #include <QTextEdit>
 #include <QEventLoop>
 #include <QMetaObject>
+#include <QHeaderView>
+#include <QTableWidgetItem>
 #include <iostream>
 #include <cmath>
 
@@ -102,6 +105,23 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 {
   leftLayout->setSpacing(10);
   leftLayout->setContentsMargins(10, 10, 10, 10);
+
+  // === BACK BUTTON (at the very top) ===
+  m_backButton = new QPushButton("← Back to Main Menu");
+  m_backButton->setMinimumHeight(35);
+  m_backButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3d5a8c; "
+    "  color: white; "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  padding: 5px 15px; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #5a8fd6; "
+    "}");
+  leftLayout->addWidget(m_backButton);
 
   // === TOP SECTION: File Operations ===
   QGroupBox* fileGroup = new QGroupBox("Program File");
@@ -199,10 +219,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   leftLayout->addWidget(recipeGroup, 1);
 
-  // === BACK BUTTON ===
-  m_backButton = new QPushButton("← Back to Main Menu");
-  leftLayout->addWidget(m_backButton);
-
   // Connect signals
   connect(m_loadButton, &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
   connect(m_saveButton, &QPushButton::clicked, this, &RunProgramPage::onSaveProgram);
@@ -258,15 +274,116 @@ void RunProgramPage::createEditWidget()
   // Connect close button
   connect(closeButton, &QPushButton::clicked, this, &RunProgramPage::showExecutionWidget);
 
+  // === PROGRAM NAME FIELD WITH SAVE BUTTON ===
+  QGroupBox* programNameGroup = new QGroupBox("Program Name");
+  QVBoxLayout* programNameLayout = new QVBoxLayout(programNameGroup);
+
+  // Horizontal layout for name field and save button
+  QHBoxLayout* nameAndSaveLayout = new QHBoxLayout();
+
+  m_programNameEdit = new QLineEdit();
+  m_programNameEdit->setPlaceholderText("Enter program name...");
+  m_programNameEdit->setMinimumHeight(35);
+  m_programNameEdit->setStyleSheet("font-size: 14px; padding: 5px;");
+  nameAndSaveLayout->addWidget(m_programNameEdit, 1);  // Stretch factor 1
+
+  // Save button next to name field
+  m_saveEditButton = new QPushButton("💾 Save");
+  m_saveEditButton->setMinimumHeight(35);
+  m_saveEditButton->setMinimumWidth(100);
+  m_saveEditButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #2196F3; "
+    "  color: white; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "  padding: 5px 15px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1976D2; "
+    "}");
+  nameAndSaveLayout->addWidget(m_saveEditButton);
+
+  programNameLayout->addLayout(nameAndSaveLayout);
+  layout->addWidget(programNameGroup);
+
   // Add Recipe button
   m_addRecipeButton = new QPushButton("+ Add Recipe");
   m_addRecipeButton->setMinimumHeight(40);
   layout->addWidget(m_addRecipeButton);
 
-  // Recipe list
-  m_editRecipeList = new QListWidget();
-  m_editRecipeList->setAlternatingRowColors(true);
-  layout->addWidget(m_editRecipeList, 1);
+  // === RECIPE TABLE AND PREVIEW (side by side) ===
+  QSplitter* recipeSplitter = new QSplitter(Qt::Horizontal);
+
+  // Left: Recipe Table
+  QWidget* tableContainer = new QWidget();
+  QVBoxLayout* tableLayout = new QVBoxLayout(tableContainer);
+  tableLayout->setContentsMargins(0, 0, 0, 0);
+
+  QLabel* tableLabel = new QLabel("Recipes in Program");
+  tableLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f;");
+  tableLayout->addWidget(tableLabel);
+
+  m_editRecipeTable = new QTableWidget();
+  m_editRecipeTable->setColumnCount(3);
+  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "Status"});
+  m_editRecipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_editRecipeTable->setSelectionMode(QAbstractItemView::SingleSelection);
+  m_editRecipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_editRecipeTable->setAlternatingRowColors(true);
+  m_editRecipeTable->verticalHeader()->setVisible(false);
+  m_editRecipeTable->horizontalHeader()->setStretchLastSection(false);
+  m_editRecipeTable->setColumnWidth(0, 40);   // # column
+  m_editRecipeTable->setColumnWidth(1, 250);  // Recipe Name
+  m_editRecipeTable->setColumnWidth(2, 80);   // Status
+  m_editRecipeTable->setStyleSheet(
+    "QTableWidget { "
+    "  gridline-color: #e0e0e0; "
+    "  font-size: 13px; "
+    "} "
+    "QTableWidget::item:selected { "
+    "  background-color: #2196F3; "
+    "  color: white; "
+    "} "
+    "QHeaderView::section { "
+    "  background-color: #f5f5f5; "
+    "  padding: 5px; "
+    "  border: 1px solid #ddd; "
+    "  font-weight: bold; "
+    "}");
+  tableLayout->addWidget(m_editRecipeTable);
+
+  recipeSplitter->addWidget(tableContainer);
+
+  // Right: Recipe Preview
+  QWidget* previewContainer = new QWidget();
+  QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
+  previewLayout->setContentsMargins(0, 0, 0, 0);
+
+  QLabel* previewLabel = new QLabel("Recipe Preview");
+  previewLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f;");
+  previewLayout->addWidget(previewLabel);
+
+  m_recipePreviewText = new QTextEdit();
+  m_recipePreviewText->setReadOnly(true);
+  m_recipePreviewText->setPlaceholderText("Select a recipe to see its steps...");
+  m_recipePreviewText->setStyleSheet(
+    "QTextEdit { "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
+    "  font-size: 12px; "
+    "  background-color: #f9f9f9; "
+    "  border: 1px solid #ddd; "
+    "}");
+  previewLayout->addWidget(m_recipePreviewText);
+
+  recipeSplitter->addWidget(previewContainer);
+
+  // Set splitter sizes (60% table, 40% preview)
+  recipeSplitter->setStretchFactor(0, 6);
+  recipeSplitter->setStretchFactor(1, 4);
+
+  layout->addWidget(recipeSplitter, 1);
 
   // Control buttons
   QHBoxLayout* controlLayout = new QHBoxLayout();
@@ -281,26 +398,13 @@ void RunProgramPage::createEditWidget()
 
   layout->addLayout(controlLayout);
 
-  // Save button
-  m_saveEditButton = new QPushButton("💾 Save Program");
-  m_saveEditButton->setMinimumHeight(40);
-  m_saveEditButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #2196F3; "
-    "  color: white; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-radius: 5px; "
-    "}");
-  layout->addWidget(m_saveEditButton);
-
   // Connect signals
   connect(m_addRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onAddRecipe);
   connect(m_removeRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onRemoveRecipe);
   connect(m_moveUpButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeUp);
   connect(m_moveDownButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeDown);
   connect(m_saveEditButton, &QPushButton::clicked, this, &RunProgramPage::onSaveEdit);
-  connect(m_editRecipeList, &QListWidget::itemSelectionChanged,
+  connect(m_editRecipeTable, &QTableWidget::itemSelectionChanged,
     this, &RunProgramPage::onEditRecipeSelectionChanged);
 }
 
@@ -402,6 +506,9 @@ void RunProgramPage::showEditWidget()
 {
   m_rightStack->setCurrentWidget(m_editWidget);
   updateRecipeList();
+
+  // Update program name field
+  m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 }
 
 void RunProgramPage::showExecutionWidget()
@@ -907,7 +1014,7 @@ void RunProgramPage::onAddRecipe()
 
 void RunProgramPage::onRemoveRecipe()
 {
-  int selectedRow = m_editRecipeList->currentRow();
+  int selectedRow = m_editRecipeTable->currentRow();
   if (selectedRow < 0) {
     QMessageBox::warning(this, "No Selection", "Please select a recipe to remove");
     return;
@@ -919,38 +1026,96 @@ void RunProgramPage::onRemoveRecipe()
 
 void RunProgramPage::onMoveRecipeUp()
 {
-  int selectedRow = m_editRecipeList->currentRow();
+  int selectedRow = m_editRecipeTable->currentRow();
   if (selectedRow <= 0) return;
 
   if (m_programManager->moveRecipeUp(selectedRow)) {
     updateRecipeList();
-    m_editRecipeList->setCurrentRow(selectedRow - 1);
+    m_editRecipeTable->selectRow(selectedRow - 1);
   }
 }
 
 void RunProgramPage::onMoveRecipeDown()
 {
-  int selectedRow = m_editRecipeList->currentRow();
+  int selectedRow = m_editRecipeTable->currentRow();
   if (selectedRow < 0 || selectedRow >= m_programManager->getRecipeCount() - 1) return;
 
   if (m_programManager->moveRecipeDown(selectedRow)) {
     updateRecipeList();
-    m_editRecipeList->setCurrentRow(selectedRow + 1);
+    m_editRecipeTable->selectRow(selectedRow + 1);
   }
 }
 
 void RunProgramPage::onSaveEdit()
 {
+  // Save program name from edit field
+  QString programName = m_programNameEdit->text().trimmed();
+  if (!programName.isEmpty()) {
+    m_programManager->setProgramName(programName.toStdString());
+  }
+
+  // Update the program name label
+  updateProgramInfo();
+
+  // Save the program
   onSaveProgram();
 }
 
 void RunProgramPage::onEditRecipeSelectionChanged()
 {
-  bool hasSelection = m_editRecipeList->currentRow() >= 0;
+  int currentRow = m_editRecipeTable->currentRow();
+  bool hasSelection = currentRow >= 0;
+
   m_removeRecipeButton->setEnabled(hasSelection);
-  m_moveUpButton->setEnabled(hasSelection && m_editRecipeList->currentRow() > 0);
-  m_moveDownButton->setEnabled(hasSelection &&
-    m_editRecipeList->currentRow() < m_programManager->getRecipeCount() - 1);
+  m_moveUpButton->setEnabled(hasSelection && currentRow > 0);
+  m_moveDownButton->setEnabled(hasSelection && currentRow < m_programManager->getRecipeCount() - 1);
+
+  // Load and display recipe preview
+  if (hasSelection) {
+    const RecipeReference* recipe = m_programManager->getRecipe(currentRow);
+    if (recipe) {
+      loadRecipePreview(recipe->recipeFilePath);
+    }
+  } else {
+    m_recipePreviewText->clear();
+    m_recipePreviewText->setPlaceholderText("Select a recipe to see its steps...");
+  }
+}
+
+void RunProgramPage::loadRecipePreview(const std::string& recipeFilePath)
+{
+  RecipeManager tempRecipeManager;
+
+  if (!tempRecipeManager.loadRecipe(recipeFilePath)) {
+    m_recipePreviewText->setPlainText("Error: Failed to load recipe file");
+    return;
+  }
+
+  // Build preview text
+  QString previewText;
+  previewText += QString("Recipe: %1\n").arg(QString::fromStdString(tempRecipeManager.getRecipeName()));
+  previewText += QString("Steps: %1\n").arg(tempRecipeManager.getStepCount());
+  previewText += QString("\n");
+  previewText += QString("═══════════════════════════════════════\n\n");
+
+  int stepNumber = 1;
+  for (const auto& step : tempRecipeManager.getAllSteps()) {
+    if (step->enabled) {
+      previewText += QString("%1. %2\n")
+        .arg(stepNumber, 2, 10, QChar('0'))
+        .arg(QString::fromStdString(step->userNickname));
+      previewText += QString("   Type: %1\n")
+        .arg(QString::fromStdString(step->processType));
+    } else {
+      previewText += QString("%1. %2 (DISABLED)\n")
+        .arg(stepNumber, 2, 10, QChar('0'))
+        .arg(QString::fromStdString(step->userNickname));
+    }
+    previewText += QString("\n");
+    stepNumber++;
+  }
+
+  m_recipePreviewText->setPlainText(previewText);
 }
 
 // ============================================================================
@@ -965,8 +1130,8 @@ void RunProgramPage::updateProgramInfo()
 
 void RunProgramPage::updateRecipeList()
 {
+  // Update left panel list widget
   m_recipeListWidget->clear();
-  m_editRecipeList->clear();
 
   int recipeNumber = 1;
   for (const auto& recipe : m_programManager->getAllRecipes()) {
@@ -985,14 +1150,42 @@ void RunProgramPage::updateRecipeList()
       QListWidgetItem* item = new QListWidgetItem(displayText);
       item->setForeground(QColor(150, 150, 150));
       m_recipeListWidget->addItem(item);
-      m_editRecipeList->addItem(QString::fromStdString(recipe->displayName));
       recipeNumber++;
       continue;
     }
 
     m_recipeListWidget->addItem(displayText);
-    m_editRecipeList->addItem(QString::fromStdString(recipe->displayName));
     recipeNumber++;
+  }
+
+  // Update edit widget table
+  m_editRecipeTable->setRowCount(0);  // Clear table
+
+  int rowIndex = 0;
+  for (const auto& recipe : m_programManager->getAllRecipes()) {
+    m_editRecipeTable->insertRow(rowIndex);
+
+    // Column 0: Recipe Number
+    QTableWidgetItem* numItem = new QTableWidgetItem(QString::number(rowIndex + 1));
+    numItem->setTextAlignment(Qt::AlignCenter);
+    m_editRecipeTable->setItem(rowIndex, 0, numItem);
+
+    // Column 1: Recipe Name
+    QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
+    m_editRecipeTable->setItem(rowIndex, 1, nameItem);
+
+    // Column 2: Status
+    QString status = recipe->enabled ? "Enabled" : "Disabled";
+    QTableWidgetItem* statusItem = new QTableWidgetItem(status);
+    statusItem->setTextAlignment(Qt::AlignCenter);
+    if (!recipe->enabled) {
+      statusItem->setForeground(QColor(150, 150, 150));
+      numItem->setForeground(QColor(150, 150, 150));
+      nameItem->setForeground(QColor(150, 150, 150));
+    }
+    m_editRecipeTable->setItem(rowIndex, 2, statusItem);
+
+    rowIndex++;
   }
 
   updateExecuteButton();

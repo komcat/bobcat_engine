@@ -1,0 +1,47 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/config/SIPHOG101/positions.json",
+    "recipe_name": "Siphog101, Pick Place Left Lens",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "CIK503Z",
+            "nickname": "left gripper Open",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "0",
+                "state": "false"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "DZA520K",
+            "nickname": "Wait 3",
+            "parameters": {
+                "duration_ms": "1000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "TYC986Z",
+            "nickname": "Pick and Place Left Lens",
+            "parameters": {
+                "camera_device": "gantry-main",
+                "gripper_device": "hex-left",
+                "gripper_pin": "0",
+                "io_device": "IOTop",
+                "lens_name": "Collimate Lens",
+                "pick_node": "lensgrip",
+                "pick_view_node": "seegripcolllens",
+                "place_node": "lensplace",
+                "place_view_node": "seecollimatelens",
+                "regrip_wait_ms": "1500",
+                "release_wait_ms": "1500"
+            },
+            "type": "Pick and Place"
+        }
+    ],
+    "version": "1.0"
+}

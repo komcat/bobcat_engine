@@ -1,0 +1,59 @@
+{
+    "next_id_counter": 1,
+    "product_file": "",
+    "recipe_name": "Read Voltage Test",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "RNT513S",
+            "nickname": "PSU Output On/Off 1",
+            "parameters": {
+                "output_state": "on",
+                "psu_device": "PSU1"
+            },
+            "type": "PSU Output On/Off"
+        },
+        {
+            "enabled": true,
+            "id": "TMF263X",
+            "nickname": "PSU Set Voltage 2",
+            "parameters": {
+                "psu_device": "PSU1",
+                "voltage": "3.3"
+            },
+            "type": "PSU Set Voltage"
+        },
+        {
+            "enabled": false,
+            "id": "FTM355O",
+            "nickname": "PSU Set Current 3",
+            "parameters": {
+                "current": "150",
+                "psu_device": "PSU1"
+            },
+            "type": "PSU Set Current"
+        },
+        {
+            "enabled": true,
+            "id": "VKX375T",
+            "nickname": "PSU Read Voltage 4",
+            "parameters": {
+                "delay_ms": "100",
+                "psu_device": "PSU1",
+                "read_count": "20"
+            },
+            "type": "PSU Read Voltage"
+        },
+        {
+            "enabled": true,
+            "id": "CZG919P",
+            "nickname": "PSU Output On/Off 5",
+            "parameters": {
+                "output_state": "off",
+                "psu_device": "PSU1"
+            },
+            "type": "PSU Output On/Off"
+        }
+    ],
+    "version": "1.0"
+}

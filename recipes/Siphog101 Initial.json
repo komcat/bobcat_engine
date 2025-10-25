@@ -1,0 +1,71 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/config/SIPHOG101/positions.json",
+    "recipe_name": "Siphog101 Initial",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "LES922E",
+            "nickname": "gripper left up 3mm",
+            "parameters": {
+                "axis": "X",
+                "device": "hex-left",
+                "distance": "3"
+            },
+            "type": "Move Relative"
+        },
+        {
+            "enabled": true,
+            "id": "KMJ794H",
+            "nickname": "gripper right up 3mm",
+            "parameters": {
+                "axis": "X",
+                "device": "hex-right",
+                "distance": "3"
+            },
+            "type": "Move Relative"
+        },
+        {
+            "enabled": true,
+            "id": "NFS399C",
+            "nickname": "Gripper left to home",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "KLQ825M",
+            "nickname": "Gripper right to home",
+            "parameters": {
+                "device": "hex-right",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "YEE556X",
+            "nickname": "gantry to safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "YSS013U",
+            "nickname": "Vacuum base off",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "10",
+                "state": "false"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

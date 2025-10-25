@@ -1,0 +1,16 @@
+{
+    "program_name": "Untitled Program",
+    "recipes": [
+        {
+            "display_name": "Siphog101 Initial",
+            "enabled": true,
+            "recipe_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/recipes/Siphog101 Initial.json"
+        },
+        {
+            "display_name": "Siphog101 measurement",
+            "enabled": true,
+            "recipe_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/recipes/Siphog101 measurement.json"
+        }
+    ],
+    "version": "1.0"
+}

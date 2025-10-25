@@ -1,0 +1,47 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug/config/SIPHOG101/positions.json",
+    "recipe_name": "Siphog101 Pick Place Right Lens",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "REB482S",
+            "nickname": "Right gripper open",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "2",
+                "state": "false"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "VNH140C",
+            "nickname": "Wait 3",
+            "parameters": {
+                "duration_ms": "1000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "DNF851L",
+            "nickname": "Pick and Place Right Lens",
+            "parameters": {
+                "camera_device": "gantry-main",
+                "gripper_device": "hex-right",
+                "gripper_pin": "2",
+                "io_device": "IOBottom",
+                "lens_name": "Focus Lens",
+                "pick_node": "lensgrip",
+                "pick_view_node": "seegripfocuslens",
+                "place_node": "lensplace",
+                "place_view_node": "seefocuslens",
+                "regrip_wait_ms": "1500",
+                "release_wait_ms": "1500"
+            },
+            "type": "Pick and Place"
+        }
+    ],
+    "version": "1.0"
+}

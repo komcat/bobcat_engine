@@ -1,0 +1,58 @@
+{
+    "next_id_counter": 1,
+    "recipe_name": "test 1",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "HGW333V",
+            "nickname": "Pick and Place 1",
+            "parameters": {
+                "camera_device": "gantry-main",
+                "gripper_device": "hex-left",
+                "gripper_pin": "0",
+                "io_device": "IOBottom",
+                "lens_name": "lens",
+                "pick_node": "node_5647",
+                "pick_view_node": "node_4186",
+                "place_node": "node_5662",
+                "place_view_node": "node_4137",
+                "regrip_wait_ms": "500",
+                "release_wait_ms": "1500"
+            },
+            "type": "Pick and Place"
+        },
+        {
+            "enabled": true,
+            "id": "ELH912A",
+            "nickname": "Pick 2",
+            "parameters": {
+                "camera_device": "gantry-main",
+                "gripper_device": "hex-left",
+                "gripper_pin": "0",
+                "io_device": "IOBottom",
+                "lens_name": "lens",
+                "pick_node": "node_5647",
+                "regrip_wait_ms": "500",
+                "release_wait_ms": "1500",
+                "view_node": "node_4186"
+            },
+            "type": "Pick"
+        },
+        {
+            "enabled": true,
+            "id": "QJF270D",
+            "nickname": "Place 3",
+            "parameters": {
+                "camera_device": "gantry-main",
+                "gripper_device": "hex-left",
+                "gripper_pin": "0",
+                "io_device": "IOBottom",
+                "lens_name": "lens",
+                "place_node": "node_5662",
+                "view_node": "node_4137"
+            },
+            "type": "Place"
+        }
+    ],
+    "version": "1.0"
+}

@@ -30,6 +30,27 @@ bool PSUCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // AUTO-CONNECT: Check connection status and connect if needed
+  // ============================================================================
+  if (!psu->isConnected()) {
+    if (m_logger) {
+      m_logger->Warning("PSU '" + deviceName + "' is not connected. Attempting to connect...", "PSUHandler");
+    }
+
+    if (psu->connect()) {
+      if (m_logger) {
+        m_logger->Info("Successfully connected to PSU '" + deviceName + "'", "PSUHandler");
+      }
+    } else {
+      errorMessage = "Failed to connect to PSU '" + deviceName + "': " + psu->getLastError();
+      if (m_logger) {
+        m_logger->Error(errorMessage, "PSUHandler");
+      }
+      return false;
+    }
+  }
+
+  // ============================================================================
   // SET OUTPUT ON
   // ============================================================================
   if (methodName == "SetOutputOn" || methodName == "OutputOn") {

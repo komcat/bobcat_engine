@@ -1,0 +1,50 @@
+{
+    "next_id_counter": 1,
+    "product_file": "",
+    "recipe_name": "Initial",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "UOF839X",
+            "nickname": "Set left gripper Open",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "0",
+                "state": "false"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "LOF943P",
+            "nickname": "Set right gripper Open",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "2",
+                "state": "false"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "MXC121A",
+            "nickname": "move to safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "XKX531X",
+            "nickname": "hex left home",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        }
+    ],
+    "version": "1.0"
+}
