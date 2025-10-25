@@ -7,14 +7,17 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QLabel>
-#include <QCheckBox>  // ✅ NEW
+#include <QCheckBox>
+#include <QTextEdit>
 
 struct ApplicationContext;
 class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
+class UserPromptWidget;
 class QVBoxLayout;
 class QHBoxLayout;
+class QEventLoop;
 
 /**
  * @brief Run Program Page - Execute programs (collections of recipes)
@@ -31,6 +34,9 @@ public:
 
 signals:
   void backToMainMenu();
+
+  // ✅ NEW: Signal to show prompt from worker thread
+  void showUserPrompt(QString title, QString message);
 
 private slots:
   // File operations
@@ -49,6 +55,10 @@ private slots:
   void onProgramExecutionCompleted(bool success, QString message);
   void onProgramStopped();
   void onWorkerLogMessage(QString message);
+
+  // ✅ NEW: User prompt handling
+  void onShowUserPrompt(QString title, QString message);
+  void onPromptResponse(bool accepted);
 
 private:
   void setupUI();
@@ -77,7 +87,7 @@ private:
   QLabel* m_programNameLabel;
   QListWidget* m_recipeListWidget;
   QPushButton* m_backButton;
-  QCheckBox* m_autoRunNextCheckBox;  // ✅ NEW
+  QCheckBox* m_autoRunNextCheckBox;
 
   // Right panel
   QStackedWidget* m_rightStack;
@@ -96,6 +106,13 @@ private:
   QLabel* m_executionStatusLabel;
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
+  QTextEdit* m_logTextEdit;  // ✅ Store log widget
+
+  // ✅ NEW: Prompt system
+  QStackedWidget* m_executionStack;  // Switch between log and prompt
+  UserPromptWidget* m_promptWidget;
+  QEventLoop* m_promptEventLoop;     // For blocking until response
+  bool m_promptResponse;             // Store user's response
 
   // State
   QString m_currentProgramPath;

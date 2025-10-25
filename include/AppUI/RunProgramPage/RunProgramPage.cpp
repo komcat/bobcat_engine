@@ -4,6 +4,7 @@
 #include "ProgramManager.h"
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
+#include "UserPromptWidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -11,6 +12,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QTextEdit>
+#include <QEventLoop>
 #include <iostream>
 
 RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
@@ -22,6 +24,10 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
   , m_isExecuting(false)
   , m_totalRecipes(0)
   , m_currentRecipeIndex(-1)
+  , m_executionStack(nullptr)
+  , m_promptWidget(nullptr)
+  , m_promptEventLoop(nullptr)
+  , m_promptResponse(false)
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -275,17 +281,39 @@ void RunProgramPage::createExecutionWidget()
 
   layout->addSpacing(20);
 
-  // Execution log
+  // ✅ NEW: Create stacked widget to switch between log and prompt
+  m_executionStack = new QStackedWidget();
+
+  // === LOG VIEW (Index 0) ===
+  QWidget* logWidget = new QWidget();
+  QVBoxLayout* logLayout = new QVBoxLayout(logWidget);
+  logLayout->setContentsMargins(0, 0, 0, 0);
+
   QLabel* logLabel = new QLabel("Execution Log:");
   logLabel->setStyleSheet("font-weight: bold;");
-  layout->addWidget(logLabel);
+  logLayout->addWidget(logLabel);
 
-  QTextEdit* logTextEdit = new QTextEdit();
-  logTextEdit->setReadOnly(true);
-  logTextEdit->setStyleSheet("background-color: #f5f5f5; font-family: monospace;");
-  layout->addWidget(logTextEdit, 1);
+  m_logTextEdit = new QTextEdit();
+  m_logTextEdit->setReadOnly(true);
+  m_logTextEdit->setStyleSheet("background-color: #f5f5f5; font-family: monospace;");
+  logLayout->addWidget(m_logTextEdit, 1);
 
   m_executionLogLabel = logLabel; // Store reference for updates
+
+  // === PROMPT VIEW (Index 1) ===
+  m_promptWidget = new UserPromptWidget();
+  m_promptWidget->setStyleSheet("background-color: #f5f5f5;");
+
+  // Connect prompt response
+  connect(m_promptWidget, &UserPromptWidget::responseReceived,
+    this, &RunProgramPage::onPromptResponse);
+
+  // Add both views to stack
+  m_executionStack->addWidget(logWidget);       // Index 0: Log
+  m_executionStack->addWidget(m_promptWidget);  // Index 1: Prompt
+  m_executionStack->setCurrentIndex(0);         // Start with log
+
+  layout->addWidget(m_executionStack, 1);
 }
 
 void RunProgramPage::showEditWidget()
@@ -467,20 +495,22 @@ void RunProgramPage::onExecuteProgram()
     m_programWorker->setStartRecipeIndex(selectedRecipeIndex);
   }
 
-  // ✅ Set UserPrompt callback to show dialog
+  // ✅ Set UserPrompt callback to show inline widget
+  connect(this, &RunProgramPage::showUserPrompt,
+    this, &RunProgramPage::onShowUserPrompt);
+
   m_programWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
-    bool result = false;
-    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
-      QMessageBox msgBox(this);
-      msgBox.setWindowTitle(QString::fromStdString(title));
-      msgBox.setText(QString::fromStdString(message));
-      msgBox.setIcon(QMessageBox::Question);
-      msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-      msgBox.setDefaultButton(QMessageBox::Yes);
-      result = (msgBox.exec() == QMessageBox::Yes);
-    }, Qt::BlockingQueuedConnection);
-    return result;
+    // Emit signal to show prompt in UI thread
+    emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message));
+
+    // Create event loop to wait for response (makes callback blocking)
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();  // Wait until user responds
+    m_promptEventLoop = nullptr;
+
+    return m_promptResponse;
   }
   );
 
@@ -614,6 +644,33 @@ void RunProgramPage::onProgramStopped()
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
   std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
+}
+
+// ============================================================================
+// USER PROMPT HANDLING
+// ============================================================================
+
+void RunProgramPage::onShowUserPrompt(QString title, QString message)
+{
+  // Switch from log view to prompt view
+  m_executionStack->setCurrentIndex(1);
+
+  // Show the prompt widget
+  m_promptWidget->showPrompt(title, message);
+}
+
+void RunProgramPage::onPromptResponse(bool accepted)
+{
+  // Store the response
+  m_promptResponse = accepted;
+
+  // Switch back to log view
+  m_executionStack->setCurrentIndex(0);
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
 }
 
 // ============================================================================
