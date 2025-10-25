@@ -443,13 +443,100 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::cout << "[ProcessSequenceFactory] Built Read Laser Current sequence for: "
       << step->userNickname << " (Device: " << tecDevice << ")" << std::endl;
   });
-  
-  
-  
-  
-  
-  
-  
+
+  // ============================================================================
+  // REGISTER PSU OUTPUT ON/OFF PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("PSU Output On/Off", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string psuDevice = params.at("psu_device");
+    std::string outputState = params.at("output_state");
+
+    // Add appropriate command based on state
+    if (outputState == "on") {
+      sequence->AddAction(psuDevice, "SetOutputOn", {});
+    }
+    else {
+      sequence->AddAction(psuDevice, "SetOutputOff", {});
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built PSU Output On/Off sequence for: "
+      << step->userNickname << " (Device: " << psuDevice << ", State: " << outputState << ")" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER PSU SET VOLTAGE PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("PSU Set Voltage", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string psuDevice = params.at("psu_device");
+    std::string voltage = params.at("voltage");
+
+    sequence->AddAction(psuDevice, "SetVoltage", {
+      {"voltage", voltage}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built PSU Set Voltage sequence for: "
+      << step->userNickname << " (Device: " << psuDevice << ", Voltage: " << voltage << "V)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER PSU SET CURRENT PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("PSU Set Current", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string psuDevice = params.at("psu_device");
+    std::string current = params.at("current");
+
+    sequence->AddAction(psuDevice, "SetCurrent", {
+      {"current", current}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built PSU Set Current sequence for: "
+      << step->userNickname << " (Device: " << psuDevice << ", Current: " << current << "mA)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER PSU READ VOLTAGE PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("PSU Read Voltage", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string psuDevice = params.at("psu_device");
+    std::string readCount = params.at("read_count");
+    std::string delayMs = params.at("delay_ms");
+
+    sequence->AddAction(psuDevice, "ReadVoltageMultiple", {
+      {"read_count", readCount},
+      {"delay_ms", delayMs}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built PSU Read Voltage sequence for: "
+      << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER PSU READ CURRENT PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("PSU Read Current", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string psuDevice = params.at("psu_device");
+    std::string readCount = params.at("read_count");
+    std::string delayMs = params.at("delay_ms");
+
+    sequence->AddAction(psuDevice, "ReadCurrentMultiple", {
+      {"read_count", readCount},
+      {"delay_ms", delayMs}
+      });
+
+    std::cout << "[ProcessSequenceFactory] Built PSU Read Current sequence for: "
+      << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;
+  });
+
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
     << " process builders" << std::endl;
 }

@@ -93,6 +93,7 @@ public:
 
   // Configuration
   void SetLogger(LogManager* logger);
+  LogManager* GetLogger() const { return m_logger; }
   void BuildDeviceRegistry();
   void SetUserPromptCallback(UserPromptCallback callback);
   void SetUserNotificationCallback(UserNotificationCallback callback);

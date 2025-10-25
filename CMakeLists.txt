@@ -354,7 +354,9 @@ set(SOURCES
  "include/TEC/TECJsonLoader.cpp"
  "include/sequence/TECCommandHandler.cpp"
  "include/AppUI/TECPage/TECControlPage.cpp"
- "include/sequence/DataStoreCommandHandler.cpp" "include/AuxWindow/AuxWindowManager.cpp" "include/AuxWindow/AuxViewWindow.cpp" "include/AuxWindow/LiveChartWidget.cpp" "include/AuxWindow/LiveViewCameraWidget.cpp" "include/PSU/PowerSupplyManager.cpp" "include/PSU/PowerSupplyJsonLoader.cpp" "include/PSU/KeysightPSUAdapter.cpp" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp" "include/ProgramManager/ProgramWorker.cpp" "include/ProgramManager/ProgramManager.cpp" "include/AppUI/RunProgramPage/RunProgramPage.cpp" "include/AppUI/RunProgramPage/UserPromptWidget.cpp" "include/motions/scanning/ScanExecutor.cpp")
+ "include/sequence/DataStoreCommandHandler.cpp"
+ "include/sequence/PSUCommandHandler.cpp"
+ "include/AuxWindow/AuxWindowManager.cpp" "include/AuxWindow/AuxViewWindow.cpp" "include/AuxWindow/LiveChartWidget.cpp" "include/AuxWindow/LiveViewCameraWidget.cpp" "include/PSU/PowerSupplyManager.cpp" "include/PSU/PowerSupplyJsonLoader.cpp" "include/PSU/KeysightPSUAdapter.cpp" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp" "include/ProgramManager/ProgramWorker.cpp" "include/ProgramManager/ProgramManager.cpp" "include/AppUI/RunProgramPage/RunProgramPage.cpp" "include/AppUI/RunProgramPage/UserPromptWidget.cpp" "include/motions/scanning/ScanExecutor.cpp")
 
 set(HEADERS
     bobcat_engine.h
@@ -457,7 +459,9 @@ set(HEADERS
  "include/TEC/TECJsonLoader.h"
  "include/sequence/TECCommandHandler.h"
  "include/AppUI/TECPage/TECControlPage.h"
- "include/sequence/DataStoreCommandHandler.h" "include/AuxWindow/AuxWindowManager.h" "include/AuxWindow/AuxViewWindow.h" "include/AuxWindow/LiveChartWidget.h" "include/AuxWindow/LiveViewCameraWidget.h" "include/PSU/IPowerSupply.h" "include/PSU/PowerSupplyManager.h" "include/PSU/PowerSupplyJsonLoader.h" "include/PSU/KeysightPSUAdapter.h" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h" "include/ProgramManager/ProgramWorker.h" "include/ProgramManager/ProgramManager.h" "include/AppUI/RunProgramPage/RunProgramPage.h" "include/AppUI/RunProgramPage/UserPromptWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.cpp" "include/motions/scanning/ScanExecutor.h")
+ "include/sequence/DataStoreCommandHandler.h"
+ "include/sequence/PSUCommandHandler.h"
+ "include/AuxWindow/AuxWindowManager.h" "include/AuxWindow/AuxViewWindow.h" "include/AuxWindow/LiveChartWidget.h" "include/AuxWindow/LiveViewCameraWidget.h" "include/PSU/IPowerSupply.h" "include/PSU/PowerSupplyManager.h" "include/PSU/PowerSupplyJsonLoader.h" "include/PSU/KeysightPSUAdapter.h" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h" "include/ProgramManager/ProgramWorker.h" "include/ProgramManager/ProgramManager.h" "include/AppUI/RunProgramPage/RunProgramPage.h" "include/AppUI/RunProgramPage/UserPromptWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.cpp" "include/motions/scanning/ScanExecutor.h")
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)

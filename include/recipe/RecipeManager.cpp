@@ -174,8 +174,13 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Set TEC Temp",
     "Set Laser Current",
     "Read DataStore",
-    "Read Temperature",      // ← ADD
-    "Read Laser Current"     // ← ADD
+    "Read Temperature",
+    "Read Laser Current",
+    "PSU Output On/Off",
+    "PSU Set Voltage",
+    "PSU Set Current",
+    "PSU Read Voltage",
+    "PSU Read Current"
   };
 }
 
@@ -286,6 +291,28 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
   else if (processType == "Read Laser Current") {
     params["tec_device"] = "TEC1";
     params["log_level"] = "Info";
+  }
+  else if (processType == "PSU Output On/Off") {
+    params["psu_device"] = "PSU1";
+    params["output_state"] = "on";  // "on" or "off"
+  }
+  else if (processType == "PSU Set Voltage") {
+    params["psu_device"] = "PSU1";
+    params["voltage"] = "3.0";  // Default 3V (CV mode)
+  }
+  else if (processType == "PSU Set Current") {
+    params["psu_device"] = "PSU1";
+    params["current"] = "150";  // Default 150mA (CC mode)
+  }
+  else if (processType == "PSU Read Voltage") {
+    params["psu_device"] = "PSU1";
+    params["read_count"] = "3";      // How many times to read
+    params["delay_ms"] = "100";      // Delay between reads in ms
+  }
+  else if (processType == "PSU Read Current") {
+    params["psu_device"] = "PSU1";
+    params["read_count"] = "3";      // How many times to read
+    params["delay_ms"] = "100";      // Delay between reads in ms
   }
   return params;
 }

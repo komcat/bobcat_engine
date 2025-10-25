@@ -6,6 +6,8 @@
 #include "SequenceBuilder.h"
 #include "product_position_manager.h"
 #include "unified_motion_manager.h"
+#include "LogManager.h"
+#include <QMetaObject>
 #include <iostream>
 
 RecipeWorker::RecipeWorker(
@@ -83,6 +85,28 @@ void RecipeWorker::run()
     m_engine->BuildDeviceRegistry();
     emit logMessage("Device registry built successfully");
 
+    // ✅ Step 3.5: Set up LogManager callback to forward command logs to execution log
+    LogManager* logger = m_engine->GetLogger();
+    if (logger) {
+      logger->SetUICallback([this](const LogManager::LogEntry& entry) {
+        // Forward log messages to execution log via signal
+        // Format: [Source] Message
+        QString logText;
+        if (!entry.source.empty()) {
+          logText = QString("[%1] %2")
+            .arg(QString::fromStdString(entry.source))
+            .arg(QString::fromStdString(entry.message));
+        } else {
+          logText = QString::fromStdString(entry.message);
+        }
+
+        // Emit in a thread-safe way
+        QMetaObject::invokeMethod(this, "logMessage", Qt::QueuedConnection,
+          Q_ARG(QString, logText));
+      });
+      emit logMessage("Log forwarding enabled for execution log");
+    }
+
     // ✅ Step 4: Set up UserPrompt callback
     if (m_userPromptCallback) {
       // User provided callback - use it
@@ -142,6 +166,12 @@ void RecipeWorker::run()
         ? QString("Recipe '%1' completed successfully!").arg(QString::fromStdString(recipeName))
         : "Recipe execution failed! Check logs for details.";
 
+      // ✅ Clear LogManager callback before exiting
+      LogManager* logger = m_engine->GetLogger();
+      if (logger) {
+        logger->ClearUICallback();
+      }
+
       emit executionCompleted(success, resultMsg);
     }
     catch (...) {
@@ -152,6 +182,12 @@ void RecipeWorker::run()
     }
   }
   catch (const std::exception& e) {
+    // ✅ Clear LogManager callback on error too
+    LogManager* logger = m_engine->GetLogger();
+    if (logger) {
+      logger->ClearUICallback();
+    }
+
     emit executionCompleted(false, QString("Exception: %1").arg(e.what()));
   }
 }

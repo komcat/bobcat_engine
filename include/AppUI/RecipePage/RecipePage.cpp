@@ -904,6 +904,24 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Read Laser Current") {
     m_currentConfigWidget = new ReadLaserCurrentConfigWidget(m_context);
   }
+  // ============================================================================
+  // ✅ PSU PROCESSES
+  // ============================================================================
+  else if (instance->processType == "PSU Output On/Off") {
+    m_currentConfigWidget = new PSUOutputConfigWidget(m_context);
+  }
+  else if (instance->processType == "PSU Set Voltage") {
+    m_currentConfigWidget = new PSUSetVoltageConfigWidget(m_context);
+  }
+  else if (instance->processType == "PSU Set Current") {
+    m_currentConfigWidget = new PSUSetCurrentConfigWidget(m_context);
+  }
+  else if (instance->processType == "PSU Read Voltage") {
+    m_currentConfigWidget = new PSUReadVoltageConfigWidget(m_context);
+  }
+  else if (instance->processType == "PSU Read Current") {
+    m_currentConfigWidget = new PSUReadCurrentConfigWidget(m_context);
+  }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
     clearConfigurationForm();

@@ -10,7 +10,9 @@
 #include "MotionCommandHandler.h"
 #include "TECCommandHandler.h"
 #include "DataStoreCommandHandler.h"
+#include "PSUCommandHandler.h"
 #include "TECManager.h"
+#include "PowerSupplyManager.h"
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
@@ -37,6 +39,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
+  m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
 
   // Register system handler
@@ -121,6 +124,16 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToTypeMap[name] = "tec";
     }
     LogInfo("Registered " + std::to_string(devices.size()) + " TEC devices");
+  }
+
+  // PSU devices
+  if (m_context->powerSupplyManager) {
+    auto devices = m_context->powerSupplyManager->getDeviceNames();
+    for (const auto& name : devices) {
+      m_deviceToManagerMap[name] = m_context->powerSupplyManager;
+      m_deviceToTypeMap[name] = "psu";
+    }
+    LogInfo("Registered " + std::to_string(devices.size()) + " PSU devices");
   }
 
   // Register DataStore as virtual device

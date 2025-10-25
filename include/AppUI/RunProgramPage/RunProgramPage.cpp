@@ -703,6 +703,10 @@ void RunProgramPage::onProgramStopped()
 
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
+  // Display in execution log
+  m_logTextEdit->append(message);
+
+  // Also print to console for debugging
   std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
 }
 

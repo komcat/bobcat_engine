@@ -320,3 +320,73 @@ public:
 protected:
   void createParameterFields(const ProcessInstance* instance) override;
 };
+
+/**
+ * @brief Configuration widget for PSU Output On/Off process
+ */
+class PSUOutputConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PSUOutputConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for PSU Set Voltage process
+ */
+class PSUSetVoltageConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PSUSetVoltageConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for PSU Set Current process
+ */
+class PSUSetCurrentConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PSUSetCurrentConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for PSU Read Voltage process
+ */
+class PSUReadVoltageConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PSUReadVoltageConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for PSU Read Current process
+ */
+class PSUReadCurrentConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PSUReadCurrentConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};

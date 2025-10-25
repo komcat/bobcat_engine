@@ -127,12 +127,12 @@ void Application::initializeManagers()
     initializeMotionManager();
     initializeIOManager();  // Add IO manager initialization
 		initializePneumaticManager();  // ✅ ADD THIS
-    initializeSequenceEngine();  // ✅ ADD THIS LAST
+		initializeTECManager();  // ✅ ADD THIS LINE
+    initializePowerSupplySystem();  // ✅ MOVED BEFORE SequenceEngine
+    initializeSequenceEngine();  // ✅ ADD THIS LAST (needs all managers initialized)
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
-		initializeTECManager();  // ✅ ADD THIS LINE
     initializeAuxWindowManager();  // ✅ ADD THIS LINE
-    initializePowerSupplySystem();
 
     // Optional: run test commands to verify managers
     //testMotionCommands();

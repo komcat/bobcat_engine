@@ -987,3 +987,178 @@ void ReadLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* 
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
   m_formLayout->addRow("", infoLabel);
 }
+
+// ============================================================================
+// PSU OUTPUT ON/OFF CONFIG WIDGET
+// ============================================================================
+
+PSUOutputConfigWidget::PSUOutputConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void PSUOutputConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* psuLabel = new QLabel("PSU Control:");
+  psuLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(psuLabel);
+
+  addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+
+  // Output State - dropdown
+  std::string outputState = params.at("output_state");
+  QLineEdit* stateEdit = new QLineEdit(QString::fromStdString(outputState));
+  m_parameterEdits["output_state"] = stateEdit;
+
+  QComboBox* stateCombo = new QComboBox();
+  stateCombo->addItem("on");
+  stateCombo->addItem("off");
+  stateCombo->setCurrentText(QString::fromStdString(outputState));
+
+  connect(stateCombo, &QComboBox::currentTextChanged, [this, stateEdit](const QString& text) {
+    stateEdit->setText(text);
+    emit parameterChanged();
+  });
+
+  m_formLayout->addRow("Output State:", stateCombo);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Turns the PSU output ON or OFF.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// PSU SET VOLTAGE CONFIG WIDGET
+// ============================================================================
+
+PSUSetVoltageConfigWidget::PSUSetVoltageConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void PSUSetVoltageConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* psuLabel = new QLabel("PSU Voltage Control (CV Mode):");
+  psuLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(psuLabel);
+
+  addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+  addParameterField("voltage", "Voltage (V)", params.at("voltage"));
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Sets the PSU voltage in Constant Voltage (CV) mode. Default: 3.0V</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// PSU SET CURRENT CONFIG WIDGET
+// ============================================================================
+
+PSUSetCurrentConfigWidget::PSUSetCurrentConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void PSUSetCurrentConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* psuLabel = new QLabel("PSU Current Control (CC Mode):");
+  psuLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(psuLabel);
+
+  addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+  addParameterField("current", "Current (mA)", params.at("current"));
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Sets the PSU current in Constant Current (CC) mode. Default: 150mA</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// PSU READ VOLTAGE CONFIG WIDGET
+// ============================================================================
+
+PSUReadVoltageConfigWidget::PSUReadVoltageConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void PSUReadVoltageConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* psuLabel = new QLabel("PSU Voltage Reading:");
+  psuLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(psuLabel);
+
+  addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+
+  QLabel* readingLabel = new QLabel("Reading Parameters:");
+  readingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 10px;");
+  m_formLayout->addRow(readingLabel);
+
+  addParameterField("read_count", "Number of Reads", params.at("read_count"));
+  addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Reads the PSU voltage multiple times with a delay between each read. "
+    "All readings are logged to LogManager. Default: 3 reads with 100ms delay.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// PSU READ CURRENT CONFIG WIDGET
+// ============================================================================
+
+PSUReadCurrentConfigWidget::PSUReadCurrentConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void PSUReadCurrentConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* psuLabel = new QLabel("PSU Current Reading:");
+  psuLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(psuLabel);
+
+  addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+
+  QLabel* readingLabel = new QLabel("Reading Parameters:");
+  readingLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 10px;");
+  m_formLayout->addRow(readingLabel);
+
+  addParameterField("read_count", "Number of Reads", params.at("read_count"));
+  addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Reads the PSU current multiple times with a delay between each read. "
+    "All readings are logged to LogManager. Default: 3 reads with 100ms delay.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
