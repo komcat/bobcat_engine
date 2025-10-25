@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <functional>
+#include <atomic>
 
 // Forward declarations
 class SequenceBuilder;
@@ -93,9 +94,13 @@ public:
   // Configuration
   void SetLogger(LogManager* logger);
   void BuildDeviceRegistry();
-  // ← ADD THESE TWO LINES:
   void SetUserPromptCallback(UserPromptCallback callback);
   void SetUserNotificationCallback(UserNotificationCallback callback);
+
+  // ✅ NEW: Stop control
+  void RequestStop();        // Request stop at next checkpoint
+  void ClearStopFlag();      // Reset stop flag before execution
+  bool IsStopRequested() const { return m_stopRequested.load(); }
 
   // Sequence creation and execution
   SequenceBuilder* CreateSequence(const std::string& name);
@@ -110,9 +115,6 @@ public:
   void* ResolveManager(const std::string& deviceName);
   std::string ResolveManagerType(const std::string& deviceName);
 
-
-
-
 private:
   ApplicationContext* m_context;
   LogManager* m_logger;
@@ -123,6 +125,9 @@ private:
 
   std::map<std::string, void*> m_deviceToManagerMap;
   std::map<std::string, std::string> m_deviceToTypeMap;
+
+  // ✅ NEW: Stop flag for graceful cancellation
+  std::atomic<bool> m_stopRequested;
 
   bool ExecuteStep(ISequenceStep* step);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);

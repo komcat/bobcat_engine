@@ -30,6 +30,12 @@ void RecipeWorker::requestStop()
 {
   m_stopRequested.store(true);
   emit logMessage("Recipe stop requested");
+
+  // ✅ CRITICAL: Forward stop to SequenceEngine
+  if (m_engine) {
+    m_engine->RequestStop();
+    emit logMessage("Stop forwarded to SequenceEngine");
+  }
 }
 
 void RecipeWorker::setUserPromptCallback(UserPromptCallback callback)
@@ -123,7 +129,7 @@ void RecipeWorker::run()
         return;
       }
 
-      // ✅ Step 6: Execute sequence
+      // ✅ Step 6: Execute sequence (SequenceEngine will check stop flag internally)
       emit sequenceExecutionStarted();
       emit logMessage("Executing sequence...");
 

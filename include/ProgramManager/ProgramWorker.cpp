@@ -3,6 +3,7 @@
 #include "ProgramManager.h"
 #include "RecipeWorker.h"
 #include <QEventLoop>
+#include <QMutexLocker>
 #include <iostream>
 
 ProgramWorker::ProgramWorker(
@@ -22,6 +23,7 @@ ProgramWorker::ProgramWorker(
   , m_userPromptCallback(nullptr)
   , m_autoRunMode(true)      // ✅ Default: run all recipes
   , m_startRecipeIndex(0)     // ✅ Default: start from first
+  , m_activeRecipeWorker(nullptr)  // ✅ No active worker initially
 {
 }
 
@@ -29,6 +31,13 @@ void ProgramWorker::requestStop()
 {
   m_stopRequested.store(true);
   emit logMessage("Program stop requested");
+
+  // ✅ CRITICAL FIX: Forward stop to active RecipeWorker
+  QMutexLocker locker(&m_activeWorkerMutex);
+  if (m_activeRecipeWorker) {
+    m_activeRecipeWorker->requestStop();
+    emit logMessage("Stop forwarded to active recipe");
+  }
 }
 
 void ProgramWorker::setUserPromptCallback(UserPromptCallback callback)
@@ -164,6 +173,12 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     nullptr  // No parent - we'll delete it manually
   );
 
+  // ✅ Register as active worker (thread-safe)
+  {
+    QMutexLocker locker(&m_activeWorkerMutex);
+    m_activeRecipeWorker = recipeWorker;
+  }
+
   // ✅ Set UserPrompt callback if available
   if (m_userPromptCallback) {
     recipeWorker->setUserPromptCallback(m_userPromptCallback);
@@ -212,6 +227,8 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 
   // Check for stop request before starting
   if (m_stopRequested.load()) {
+    QMutexLocker locker(&m_activeWorkerMutex);
+    m_activeRecipeWorker = nullptr;
     delete recipeWorker;
     return false;
   }
@@ -224,6 +241,12 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 
   // Wait for thread to actually finish
   recipeWorker->wait();
+
+  // ✅ Clear active worker (thread-safe)
+  {
+    QMutexLocker locker(&m_activeWorkerMutex);
+    m_activeRecipeWorker = nullptr;
+  }
 
   // Cleanup
   delete recipeWorker;

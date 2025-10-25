@@ -86,7 +86,7 @@ private:
   QTimer* m_channelRefreshTimer;
   bool m_isDirty;
 
-  static constexpr size_t MAX_POINTS = 1000;
-  static constexpr qint64 TIME_WINDOW_MS = 10000;  // 10 seconds
+  static constexpr size_t MAX_POINTS = 300;
+  static constexpr qint64 TIME_WINDOW_MS = 5000;  // 10 seconds
   static constexpr int CHART_UPDATE_INTERVAL_MS = 16;  // ~60 FPS
 };

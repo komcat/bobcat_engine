@@ -8,7 +8,7 @@
 #include "CameraManager.h"
 #include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
-#include "TECCommandHandler.h"  // ✅ ADD THIS
+#include "TECCommandHandler.h"
 #include "DataStoreCommandHandler.h"
 #include "TECManager.h"
 #include "IOCommandHandler.h"
@@ -25,6 +25,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   : m_context(context)
   , m_logger(nullptr)
   , m_systemHandler(nullptr)
+  , m_stopRequested(false)  // ✅ Initialize stop flag
 {
   if (!m_context) {
     throw std::runtime_error("SequenceEngine: ApplicationContext is null");
@@ -36,10 +37,6 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
-  m_dispatcher.RegisterHandler("system", std::make_unique<SystemCommandHandler>());
-
-
-  // ✅ ADD THIS LINE:
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
 
   // Register system handler
@@ -58,6 +55,18 @@ void SequenceEngine::SetLogger(LogManager* logger)
   m_logger = logger;
   m_dispatcher.SetLogger(logger);
   LogInfo("Logger configured");
+}
+
+// ✅ NEW: Stop control methods
+void SequenceEngine::RequestStop()
+{
+  m_stopRequested.store(true);
+  LogWarning("Stop requested - will halt at next checkpoint");
+}
+
+void SequenceEngine::ClearStopFlag()
+{
+  m_stopRequested.store(false);
 }
 
 void SequenceEngine::BuildDeviceRegistry()
@@ -104,9 +113,7 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered camera manager");
   }
 
-
-
-
+  // TEC devices
   if (m_context->tecManager) {
     auto devices = m_context->tecManager->GetAllDeviceNames();
     for (const auto& name : devices) {
@@ -116,8 +123,7 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered " + std::to_string(devices.size()) + " TEC devices");
   }
 
-  // ✅ ADD THIS BLOCK:
-// Register DataStore as virtual device
+  // Register DataStore as virtual device
   if (m_context->dataStore) {
     m_deviceToManagerMap["datastore"] = m_context->dataStore;
     m_deviceToTypeMap["datastore"] = "datastore";
@@ -128,9 +134,6 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToManagerMap["system"] = nullptr;
   m_deviceToTypeMap["system"] = "system";
   LogInfo("Registered system command handler");
-
-
-
 
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
@@ -159,7 +162,6 @@ void SequenceEngine::SetUserPromptCallback(UserPromptCallback callback)
   }
 }
 
-// ← ADD THIS METHOD:
 void SequenceEngine::SetUserNotificationCallback(UserNotificationCallback callback)
 {
   if (m_systemHandler) {
@@ -281,6 +283,9 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
     return false;
   }
 
+  // ✅ Clear stop flag before execution
+  ClearStopFlag();
+
   // Validate first
   std::vector<std::string> errors;
   if (!ValidateSequence(sequence, errors)) {
@@ -294,6 +299,12 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
 
   try {
     for (const auto& step : sequence->GetSteps()) {
+      // ✅ CHECK STOP FLAG BEFORE EACH STEP
+      if (m_stopRequested.load()) {
+        LogWarning("Sequence execution stopped by user request");
+        return false;
+      }
+
       if (!ExecuteStep(step.get())) {
         LogError("Step execution failed");
         return false;
@@ -312,6 +323,12 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
 bool SequenceEngine::ExecuteStep(ISequenceStep* step)
 {
   if (!step) return false;
+
+  // ✅ CHECK STOP FLAG AT START OF EACH STEP
+  if (m_stopRequested.load()) {
+    LogWarning("Step execution stopped by user request");
+    return false;
+  }
 
   switch (step->GetType()) {
   case ISequenceStep::Type::ACTION: {
@@ -351,6 +368,12 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
     LogInfo("Starting loop: " + std::to_string(loop->count) + " iterations");
 
     for (int i = 0; i < loop->count; i++) {
+      // ✅ CHECK STOP FLAG BEFORE EACH LOOP ITERATION
+      if (m_stopRequested.load()) {
+        LogWarning("Loop stopped by user request at iteration " + std::to_string(i + 1));
+        return false;
+      }
+
       LogInfo("  Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
 
       for (const auto& action : loop->actions) {

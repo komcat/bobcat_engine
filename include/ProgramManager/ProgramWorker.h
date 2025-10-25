@@ -3,6 +3,7 @@
 
 #include <QThread>
 #include <QString>
+#include <QMutex>
 #include <atomic>
 #include <functional>
 
@@ -81,4 +82,8 @@ private:
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe
   int m_startRecipeIndex;    // Starting recipe index (for single mode)
+
+  // ✅ Track active RecipeWorker for stop forwarding
+  RecipeWorker* m_activeRecipeWorker;
+  QMutex m_activeWorkerMutex;  // Protect access to m_activeRecipeWorker
 };

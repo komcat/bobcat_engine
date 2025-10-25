@@ -107,7 +107,7 @@ void MainWindow::setupUI()
   m_jogButton->raise();
 
   setCentralWidget(centralWidget);
-  resize(800, 600);
+  resize(480, 480);
 }
 
 // MainWindow.cpp - Update createPages()
