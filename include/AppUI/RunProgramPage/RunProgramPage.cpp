@@ -144,6 +144,30 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   m_recipeListWidget = new QListWidget();
   m_recipeListWidget->setAlternatingRowColors(true);
+
+  // ✅ Larger font and better spacing
+  m_recipeListWidget->setStyleSheet(
+    "QListWidget { "
+    "  font-size: 14px; "
+    "  padding: 2px; "
+    "} "
+    "QListWidget::item { "
+    "  padding: 10px 8px; "
+    "  border-bottom: 1px solid #e0e0e0; "
+    "} "
+    "QListWidget::item:selected { "
+    "  background-color: #2196F3; "
+    "  color: white; "
+    "} "
+    "QListWidget::item:hover { "
+    "  background-color: #e3f2fd; "
+    "} "
+    "QListWidget::item:selected:hover { "
+    "  background-color: #1976D2; "  // Darker blue on hover
+    "  color: white; "                // Keep white text
+    "}");
+
+
   recipeLayout->addWidget(m_recipeListWidget);
 
   leftLayout->addWidget(recipeGroup, 1); // Give it stretch factor
@@ -681,18 +705,33 @@ void RunProgramPage::updateRecipeList()
   // Update edit list
   m_editRecipeList->clear();
 
+  int recipeNumber = 1;
   for (const auto& recipe : m_programManager->getAllRecipes()) {
-    QString displayText = QString::fromStdString(recipe->displayName);
+    QString displayText;
 
-    if (!recipe->enabled) {
-      displayText = "🔘 " + displayText + " (disabled)";
+    // ✅ Format: "1    Recipe Name" or "1    Recipe Name (disabled)"
+    if (recipe->enabled) {
+      displayText = QString("%1    %2")
+        .arg(recipeNumber, 2, 10, QChar('0'))  // Zero-padded number (01, 02, etc.)
+        .arg(QString::fromStdString(recipe->displayName));
     }
     else {
-      displayText = "✓ " + displayText;
+      displayText = QString("%1    %2 (disabled)")
+        .arg(recipeNumber, 2, 10, QChar('0'))
+        .arg(QString::fromStdString(recipe->displayName));
+
+      // Create item with gray color for disabled recipes
+      QListWidgetItem* item = new QListWidgetItem(displayText);
+      item->setForeground(QColor(150, 150, 150));  // Gray text
+      m_recipeListWidget->addItem(item);
+      m_editRecipeList->addItem(QString::fromStdString(recipe->displayName));
+      recipeNumber++;
+      continue;
     }
 
     m_recipeListWidget->addItem(displayText);
     m_editRecipeList->addItem(QString::fromStdString(recipe->displayName));
+    recipeNumber++;
   }
 
   updateExecuteButton();
