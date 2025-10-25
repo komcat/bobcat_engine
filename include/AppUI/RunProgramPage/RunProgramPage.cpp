@@ -19,7 +19,9 @@
 #include <QMessageBox>
 #include <QTextEdit>
 #include <QEventLoop>
+#include <QMetaObject>
 #include <iostream>
+#include <cmath>
 
 RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -55,6 +57,11 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
 
 RunProgramPage::~RunProgramPage()
 {
+  // ✅ ADDED: Unsubscribe from DataStore
+  if (m_dataStore && !m_currentSubscribedChannel.isEmpty()) {
+    m_dataStore->Unsubscribe(m_currentSubscribedChannel.toStdString());
+  }
+
   if (m_programWorker && m_programWorker->isRunning()) {
     m_programWorker->requestStop();
     m_programWorker->wait(3000);
@@ -374,6 +381,13 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onScanRequested);
   connect(m_scanWidget, &ScanControlWidget::stopRequested,
     this, &RunProgramPage::onStopScanRequested);
+  connect(m_scanWidget, &ScanControlWidget::channelChanged,
+    this, &RunProgramPage::onChannelChanged);  // ✅ ADDED
+
+  // ✅ ADDED: Trigger subscription for initial channel
+  if (!m_scanWidget->currentChannel().isEmpty()) {
+    onChannelChanged(m_scanWidget->currentChannel());
+  }
 
   // Connect executor signals to UI
   connect(m_scanExecutor, &ScanExecutor::logMessage,
@@ -720,6 +734,39 @@ void RunProgramPage::onPromptResponse(bool accepted)
 }
 
 // ============================================================================
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+namespace {
+  // Format value with SI prefix (mA, μA, nA, etc.)
+  QString formatWithSIPrefix(double value) {
+    const double absValue = std::abs(value);
+
+    if (absValue == 0.0) {
+      return "0.000";
+    }
+
+    // SI prefixes and their thresholds
+    if (absValue >= 1.0) {
+      return QString("%1").arg(value, 0, 'f', 3);
+    }
+    else if (absValue >= 1e-3) {
+      return QString("%1 m").arg(value * 1e3, 0, 'f', 3);
+    }
+    else if (absValue >= 1e-6) {
+      return QString("%1 μ").arg(value * 1e6, 0, 'f', 3);
+    }
+    else if (absValue >= 1e-9) {
+      return QString("%1 n").arg(value * 1e9, 0, 'f', 3);
+    }
+    else {
+      return QString("%1 p").arg(value * 1e12, 0, 'f', 3);
+    }
+  }
+}
+
 // SCANNING INTEGRATION (Refactored)
 // ============================================================================
 
@@ -797,6 +844,39 @@ void RunProgramPage::onStopScanRequested()
 
   // Log the stop action
   m_logTextEdit->append("Scan stopped by user");
+}
+
+// ✅ ADDED: Handle channel change from scan widget
+void RunProgramPage::onChannelChanged(QString channel)
+{
+  if (!m_dataStore) return;
+
+  // Unsubscribe from old channel
+  if (!m_currentSubscribedChannel.isEmpty()) {
+    m_dataStore->Unsubscribe(m_currentSubscribedChannel.toStdString());
+  }
+
+  // Store new channel
+  m_currentSubscribedChannel = channel;
+
+  if (channel.isEmpty()) {
+    m_scanWidget->updateChannelValue(0.0, "--");
+    return;
+  }
+
+  // Subscribe to new channel
+  std::string channelStd = channel.toStdString();
+  m_dataStore->Subscribe(channelStd,
+    [this, channel](const std::string& channelId, float value) {
+    // Update widget on UI thread with SI formatted value
+    QMetaObject::invokeMethod(this, [this, value]() {
+      m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(value)));
+    }, Qt::QueuedConnection);
+  });
+
+  // Show current value immediately
+  float currentValue = m_dataStore->GetValue(channelStd);
+  m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(currentValue)));
 }
 
 // ============================================================================

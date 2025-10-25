@@ -43,11 +43,11 @@ void ScanControlWidget::setupUI()
     "  background-color: #E3F2FD; "
     "  border: 2px solid #2196F3; "
     "  border-radius: 4px; "
-    "  padding: 6px 12px; "
-    "  font-size: 11pt; "
+    "  padding: 8px 16px; "
+    "  font-size: 24pt; "
     "  font-weight: bold; "
     "  color: #1565C0; "
-    "  min-width: 120px; "
+    "  min-width: 180px; "
     "}");
   m_valueLabel->setAlignment(Qt::AlignCenter);
 
@@ -69,12 +69,12 @@ void ScanControlWidget::setupUI()
   leftColumn->addWidget(leftLabel);
 
   m_leftCoarseButton = new QPushButton("Coarse");
-  m_leftCoarseButton->setMinimumHeight(40);
+  m_leftCoarseButton->setMinimumHeight(32);
   m_leftCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
   leftColumn->addWidget(m_leftCoarseButton);
 
   m_leftFineButton = new QPushButton("Fine");
-  m_leftFineButton->setMinimumHeight(40);
+  m_leftFineButton->setMinimumHeight(32);
   m_leftFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   leftColumn->addWidget(m_leftFineButton);
 
@@ -89,12 +89,12 @@ void ScanControlWidget::setupUI()
   rightColumn->addWidget(rightLabel);
 
   m_rightCoarseButton = new QPushButton("Coarse");
-  m_rightCoarseButton->setMinimumHeight(40);
+  m_rightCoarseButton->setMinimumHeight(32);
   m_rightCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
   rightColumn->addWidget(m_rightCoarseButton);
 
   m_rightFineButton = new QPushButton("Fine");
-  m_rightFineButton->setMinimumHeight(40);
+  m_rightFineButton->setMinimumHeight(32);
   m_rightFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   rightColumn->addWidget(m_rightFineButton);
 
@@ -104,7 +104,7 @@ void ScanControlWidget::setupUI()
 
   // === STOP BUTTON ===
   m_stopButton = new QPushButton("■ STOP Scanning");
-  m_stopButton->setMinimumHeight(40);
+  m_stopButton->setMinimumHeight(35);
   m_stopButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #F44336; "
@@ -187,7 +187,19 @@ void ScanControlWidget::setCurrentChannel(const QString& channel)
 
 void ScanControlWidget::updateChannelValue(double value, const QString& unit)
 {
-  m_valueLabel->setText(QString("%1 %2").arg(value, 0, 'f', 3).arg(unit));
+  if (unit.isEmpty()) {
+    // If no unit provided, value is a raw number to format
+    m_valueLabel->setText(QString("%1").arg(value, 0, 'f', 3));
+  }
+  else {
+    // Legacy format with unit
+    m_valueLabel->setText(QString("%1 %2").arg(value, 0, 'f', 3).arg(unit));
+  }
+}
+
+void ScanControlWidget::setDisplayText(const QString& text)
+{
+  m_valueLabel->setText(text);
 }
 
 void ScanControlWidget::setEnabled(bool enabled)

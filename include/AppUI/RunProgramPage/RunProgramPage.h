@@ -68,6 +68,7 @@ private slots:
   void onScanCompleted(QString deviceName, double peakValue, bool success);
   void onScanError(QString errorMessage);
   void onStopScanRequested();
+  void onChannelChanged(QString channel);  // ✅ ADDED
 
 private:
   void setupUI();

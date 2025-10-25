@@ -32,7 +32,8 @@ public:
   void setCurrentChannel(const QString& channel);
 
   // Value display
-  void updateChannelValue(double value, const QString& unit);
+  void updateChannelValue(double value, const QString& unit = "");
+  void setDisplayText(const QString& text);
 
   // Enable/disable controls
   void setEnabled(bool enabled);
