@@ -11,6 +11,8 @@
 #include "RecipeProgressWidget.h"  // ✅ NEW
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
+#include "FileSelectorDialog.h"  // ✅ Custom file selector
+#include "RecipeSaveAsDialog.h"  // ✅ Custom save dialog
 #include <QSplitter>
 #include <QLabel>
 #include <QHBoxLayout>
@@ -292,6 +294,16 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   connect(m_saveButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipe);
   topButtons->addWidget(m_saveButton);
 
+  // ✅ NEW: Save As button
+  m_saveAsButton = new QPushButton("Save As...");
+  m_saveAsButton->setMinimumHeight(32);
+  m_saveAsButton->setStyleSheet(
+    "QPushButton { background-color: #16a085; color: white; font-weight: bold; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #1abc9c; }"
+  );
+  connect(m_saveAsButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipeAs);
+  topButtons->addWidget(m_saveAsButton);
+
   topButtons->addSpacing(10);
 
   m_moveUpButton = new QPushButton("↑ Up");
@@ -358,6 +370,17 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   selectionButtons->addWidget(m_toggleSelectedButton);
 
   selectionButtons->addStretch();
+
+  // ✅ NEW: Update Product File button
+  m_updateProductFileButton = new QPushButton("📦 Update Product File");
+  m_updateProductFileButton->setMinimumHeight(28);
+  m_updateProductFileButton->setToolTip("Update the product positions file reference in this recipe");
+  m_updateProductFileButton->setStyleSheet(
+    "QPushButton { background-color: #8e44ad; color: white; font-weight: bold; border-radius: 3px; font-size: 11px; }"
+    "QPushButton:hover { background-color: #9b59b6; }"
+  );
+  connect(m_updateProductFileButton, &QPushButton::clicked, this, &RecipePage::onUpdateProductFile);
+  selectionButtons->addWidget(m_updateProductFileButton);
 
   layout->addLayout(selectionButtons);
 
@@ -463,8 +486,13 @@ void RecipePage::onNewRecipe()
 
 void RecipePage::onLoadRecipe()
 {
-  QString filename = QFileDialog::getOpenFileName(
-    this, "Load Recipe", "recipes/", "Recipe Files (*.json)"
+  // ✅ Use FileSelectorDialog to restrict to recipes folder
+  QString filename = FileSelectorDialog::getOpenFileName(
+    this,
+    "recipes",  // Folder path
+    "*.json",  // File pattern
+    "Load Recipe",  // Dialog title
+    "recipe files"  // File type description
   );
 
   if (filename.isEmpty()) return;
@@ -554,14 +582,48 @@ void RecipePage::onSaveRecipe()
     return;
   }
 
-  QString filename = QFileDialog::getSaveFileName(
-    this, "Save Recipe", "recipes/", "Recipe Files (*.json)"
-  );
+  // ✅ Check if recipe already has a file path
+  std::string currentRecipePath = m_recipeManager->getCurrentFilePath();
+
+  if (currentRecipePath.empty()) {
+    // No path yet - prompt for save location (like Save As)
+    onSaveRecipeAs();
+    return;
+  }
+
+  // ✅ Recipe already has path - save directly without prompting
+  if (m_recipeManager->saveRecipe(currentRecipePath)) {
+    // Show brief success message in status bar or small notification
+    // Using information dialog but could be replaced with statusbar message
+    QMessageBox::information(this, "Saved",
+      QString("Recipe saved to:\n%1").arg(QString::fromStdString(currentRecipePath)));
+  }
+  else {
+    QMessageBox::critical(this, "Error", "Failed to save recipe file.");
+  }
+}
+
+void RecipePage::onSaveRecipeAs()
+{
+  if (m_recipeManager->getStepCount() == 0) {
+    QMessageBox::warning(this, "Empty Recipe", "Recipe is empty. Nothing to save.");
+    return;
+  }
+
+  // ✅ Get current recipe name for default
+  QString currentName = QString::fromStdString(m_recipeManager->getRecipeName());
+
+  // ✅ Use custom RecipeSaveAsDialog instead of QFileDialog
+  QString filename = RecipeSaveAsDialog::getSaveFileName(this, currentName);
 
   if (filename.isEmpty()) return;
 
   if (m_recipeManager->saveRecipe(filename.toStdString())) {
-    QMessageBox::information(this, "Success", "Recipe saved successfully!");
+    // ✅ Also save to QSettings as last loaded recipe
+    saveLastRecipeToSettings(filename);
+
+    QMessageBox::information(this, "Success",
+      QString("Recipe saved as:\n%1").arg(filename));
   }
   else {
     QMessageBox::critical(this, "Error", "Failed to save recipe file.");
@@ -643,6 +705,93 @@ void RecipePage::onToggleSelectedProcesses()
   // Restore the selection
   for (int row : selectedRows) {
     m_recipeTable->selectRow(row);
+  }
+}
+
+void RecipePage::onUpdateProductFile()
+{
+  // ✅ Step 1: Select new product file using FileSelectorDialog
+  QString filePath = FileSelectorDialog::getOpenFileName(
+    this,
+    "config",  // Folder path
+    "*positions.json",  // File pattern
+    "Select Product Positions File",  // Dialog title
+    "position files",  // File type description
+    true  // Recursive - search subdirectories
+  );
+
+  if (filePath.isEmpty()) {
+    return;  // User cancelled
+  }
+
+  // ✅ Step 2: Update recipe's product file reference
+  m_recipeManager->setProductFile(filePath.toStdString());
+
+  // ✅ Step 3: Auto-save the recipe
+  std::string currentRecipePath = m_recipeManager->getCurrentFilePath();
+
+  if (currentRecipePath.empty()) {
+    // Recipe hasn't been saved yet - prompt for save location
+    QString saveFileName = QFileDialog::getSaveFileName(
+      this, "Save Recipe", "recipes/", "Recipe Files (*.json)"
+    );
+
+    if (saveFileName.isEmpty()) {
+      QMessageBox::warning(this, "Save Required",
+        "Recipe must be saved to update the product file reference.\n"
+        "Product file reference was not updated.");
+      return;
+    }
+
+    if (!m_recipeManager->saveRecipe(saveFileName.toStdString())) {
+      QMessageBox::critical(this, "Error", "Failed to save recipe file.");
+      return;
+    }
+  } else {
+    // Recipe already has a path - save directly
+    if (!m_recipeManager->saveRecipe(currentRecipePath)) {
+      QMessageBox::critical(this, "Error", "Failed to save recipe file.");
+      return;
+    }
+  }
+
+  // ✅ Step 4: Load the product positions into ProductPositionManager
+  if (m_context->productPositionManager) {
+    if (m_context->productPositionManager->LoadProduct(filePath.toStdString())) {
+      m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+
+      std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+      // Update top status label
+      m_productStatusLabel->setText(QString("Product: %1")
+        .arg(QString::fromStdString(productName)));
+      m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+
+      // Update loaded product label in middle panel
+      m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+        .arg(QString::fromStdString(productName))
+        .arg(QString::fromStdString(m_recipeManager->getProductFile())));
+      m_loadedProductLabel->setStyleSheet(
+        "font-size: 11px; "
+        "color: #27ae60; "
+        "font-weight: bold; "
+        "padding: 5px; "
+        "border: 1px solid #27ae60; "
+        "border-radius: 3px; "
+        "background-color: #e8f5e9;"
+      );
+
+      QMessageBox::information(this, "Success",
+        QString("Product file updated to:\n%1\n\nRecipe saved successfully!")
+        .arg(QString::fromStdString(productName)));
+    } else {
+      QMessageBox::warning(this, "Warning",
+        "Product file reference updated in recipe, but failed to load product positions.\n"
+        "Recipe was saved successfully.");
+    }
+  } else {
+    QMessageBox::warning(this, "Warning",
+      "Product file reference updated and recipe saved, but Product Manager is not available.");
   }
 }
 
@@ -1415,11 +1564,14 @@ void RecipePage::onLoadProductClicked()
     return;
   }
 
-  QString filePath = QFileDialog::getOpenFileName(
+  // ✅ Use FileSelectorDialog with recursive search for subdirectories (SIPHOG, BOBCAT, etc.)
+  QString filePath = FileSelectorDialog::getOpenFileName(
     this,
-    "Select Product Positions File",
-    "./config",
-    "Position Files (positions.json);;All Files (*.*)"
+    "config",  // Folder path
+    "*positions.json",  // File pattern
+    "Select Product Positions File",  // Dialog title
+    "position files",  // File type description
+    true  // Recursive - search subdirectories
   );
 
   if (filePath.isEmpty()) {

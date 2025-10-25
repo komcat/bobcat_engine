@@ -43,6 +43,7 @@ private slots:
   void onNewRecipe();
   void onLoadRecipe();
   void onSaveRecipe();
+  void onSaveRecipeAs();  // ✅ NEW: Save As action
   void onRecipeStepSelected();
   void onTableCellChanged(int row, int column);
   void onMoveStepUp();
@@ -53,6 +54,7 @@ private slots:
   void onSelectAllProcesses();
   void onDeselectAllProcesses();
   void onToggleSelectedProcesses();
+  void onUpdateProductFile();  // ✅ NEW: Update product file in recipe
 
   // Middle panel actions
   void onAddProcess();
@@ -113,6 +115,7 @@ private:
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
+  QPushButton* m_saveAsButton;  // ✅ NEW: Save As button
   QPushButton* m_moveUpButton;
   QPushButton* m_moveDownButton;
   QPushButton* m_removeButton;
@@ -120,6 +123,7 @@ private:
   QPushButton* m_selectAllButton;
   QPushButton* m_deselectAllButton;
   QPushButton* m_toggleSelectedButton;
+  QPushButton* m_updateProductFileButton;  // ✅ NEW: Update product file reference
   QLabel* m_loadedProductLabel;
 
   // Middle panel widgets

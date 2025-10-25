@@ -62,7 +62,7 @@ bool ProductPositionManager::SaveProduct() {
 bool ProductPositionManager::SaveProductAs(const std::string& productName) {
   // ✅ Create product directory structure: config/productName/
   std::string productDir = "config/" + productName;
-  std::string filePath = productDir + "/positions.json";
+  std::string filePath = productDir + "/" + productName + ".positions.json";
 
   std::cout << "[INFO] ProductPositionManager: Saving product as "
     << filePath << std::endl;
@@ -91,7 +91,9 @@ bool ProductPositionManager::SaveProductAs(const std::string& productName) {
 }
 
 std::string ProductPositionManager::ExtractProductName(const std::string& filePath) const {
-  // Extract product name from path like "config/product1/positions.json"
+  // Extract product name from path like:
+  //   "config/SIPHOG/SIPHOG.positions.json" (new format)
+  //   "config/SIPHOG/positions.json" (legacy format)
 
   // Find the last directory separator
   size_t lastSlash = filePath.find_last_of("/\\");

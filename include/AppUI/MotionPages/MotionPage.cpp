@@ -5,6 +5,7 @@
 #include "OffsetMoveDialog.h"  // ✅ Add at top
 #include "EditPositionDialog.h"
 #include "ScanControlPanel.h"
+#include "FileSelectorDialog.h"  // ✅ Custom file selector
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -320,11 +321,14 @@ void MotionPage::onLoadProductClicked()
 		}
 	}
 
-	QString filePath = QFileDialog::getOpenFileName(
+	// ✅ Use FileSelectorDialog with recursive search for subdirectories (SIPHOG, BOBCAT, etc.)
+	QString filePath = FileSelectorDialog::getOpenFileName(
 		this,
-		"Select Product Positions File",
-		"./config",
-		"Position Files (positions.json);;All Files (*.*)"
+		"config",  // Folder path
+		"*positions.json",  // File pattern
+		"Select Product Positions File",  // Dialog title
+		"position files",  // File type description
+		true  // Recursive - search subdirectories
 	);
 
 	if (filePath.isEmpty()) {

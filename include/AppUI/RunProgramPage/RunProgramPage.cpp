@@ -11,6 +11,7 @@
 #include "LogManager.h"
 #include "DataStore.h"
 #include "RecipeManager.h"
+#include "FileSelectorDialog.h"  // ✅ Custom file selector
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -527,11 +528,13 @@ void RunProgramPage::showExecutionWidget()
 
 void RunProgramPage::onLoadProgram()
 {
-  QString filename = QFileDialog::getOpenFileName(
+  // ✅ Use FileSelectorDialog to restrict to programs folder
+  QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "Load Program",
-    "programs",
-    "Program Files (*.json)"
+    "programs",  // Folder path
+    "*.json",  // File pattern
+    "Load Program",  // Dialog title
+    "program files"  // File type description
   );
 
   if (filename.isEmpty()) return;
@@ -1006,11 +1009,13 @@ void RunProgramPage::onChannelChanged(QString channel)
 
 void RunProgramPage::onAddRecipe()
 {
-  QString filename = QFileDialog::getOpenFileName(
+  // ✅ Use FileSelectorDialog to restrict to recipes folder
+  QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "Add Recipe",
-    "recipes",
-    "Recipe Files (*.json)"
+    "recipes",  // Folder path
+    "*.json",  // File pattern
+    "Add Recipe",  // Dialog title
+    "recipe files"  // File type description
   );
 
   if (filename.isEmpty()) return;

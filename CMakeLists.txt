@@ -208,6 +208,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/camera
     ${CMAKE_SOURCE_DIR}/include/AppUI
+    ${CMAKE_SOURCE_DIR}/include/AppUI/Common
     ${CMAKE_SOURCE_DIR}/include/AppUI/ConfigEditor
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
@@ -227,7 +228,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/motions/ACS
     ${CMAKE_SOURCE_DIR}/include/motions/interfaces
     ${CMAKE_SOURCE_DIR}/include/motions/scanning
-    ${CMAKE_SOURCE_DIR}/include/products
+    ${CMAKE_SOURCE_DIR}/include/products    
     ${CMAKE_SOURCE_DIR}/include/ProgramManager
     ${CMAKE_SOURCE_DIR}/include/IO
     ${CMAKE_SOURCE_DIR}/include/pneumatics
@@ -349,14 +350,29 @@ set(SOURCES
     include/AppUI/RecipePage/RecipeProgressWidget.cpp
     include/AppUI/MotionPages/EditPositionDialog.cpp
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
- "include/TEC/CLD101xAdapter.cpp"
- "include/TEC/TECManager.cpp"
- "include/TEC/TECJsonLoader.cpp"
- "include/sequence/TECCommandHandler.cpp"
- "include/AppUI/TECPage/TECControlPage.cpp"
- "include/sequence/DataStoreCommandHandler.cpp"
- "include/sequence/PSUCommandHandler.cpp"
- "include/AuxWindow/AuxWindowManager.cpp" "include/AuxWindow/AuxViewWindow.cpp" "include/AuxWindow/LiveChartWidget.cpp" "include/AuxWindow/LiveViewCameraWidget.cpp" "include/PSU/PowerSupplyManager.cpp" "include/PSU/PowerSupplyJsonLoader.cpp" "include/PSU/KeysightPSUAdapter.cpp" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp" "include/ProgramManager/ProgramWorker.cpp" "include/ProgramManager/ProgramManager.cpp" "include/AppUI/RunProgramPage/RunProgramPage.cpp" "include/AppUI/RunProgramPage/UserPromptWidget.cpp" "include/motions/scanning/ScanExecutor.cpp")
+    include/TEC/CLD101xAdapter.cpp
+    include/TEC/TECManager.cpp
+    include/TEC/TECJsonLoader.cpp
+    include/sequence/TECCommandHandler.cpp
+    include/AppUI/TECPage/TECControlPage.cpp
+    include/sequence/DataStoreCommandHandler.cpp
+    include/sequence/PSUCommandHandler.cpp
+    include/AppUI/Common/FileSelectorDialog.cpp
+    include/AppUI/Common/RecipeSaveAsDialog.cpp
+    include/AuxWindow/AuxWindowManager.cpp 
+    include/AuxWindow/AuxViewWindow.cpp
+    include/AuxWindow/LiveChartWidget.cpp
+    include/AuxWindow/LiveViewCameraWidget.cpp
+    include/PSU/PowerSupplyManager.cpp
+    include/PSU/PowerSupplyJsonLoader.cpp
+    include/PSU/KeysightPSUAdapter.cpp
+    include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
+    include/ProgramManager/ProgramWorker.cpp
+    include/ProgramManager/ProgramManager.cpp
+    include/AppUI/RunProgramPage/RunProgramPage.cpp
+    include/AppUI/RunProgramPage/UserPromptWidget.cpp
+    include/motions/scanning/ScanExecutor.cpp
+)
 
 set(HEADERS
     bobcat_engine.h
@@ -452,16 +468,34 @@ set(HEADERS
     include/sequence/SequenceBuilder.h
     include/AppUI/MotionPages/EditPositionDialog.h
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
- "include/TEC/TECTypes.h"
- "include/TEC/ITECDevice.h"
- "include/TEC/Cld101xadapter.h"
- "include/TEC/TECManager.h"
- "include/TEC/TECJsonLoader.h"
- "include/sequence/TECCommandHandler.h"
- "include/AppUI/TECPage/TECControlPage.h"
- "include/sequence/DataStoreCommandHandler.h"
- "include/sequence/PSUCommandHandler.h"
- "include/AuxWindow/AuxWindowManager.h" "include/AuxWindow/AuxViewWindow.h" "include/AuxWindow/LiveChartWidget.h" "include/AuxWindow/LiveViewCameraWidget.h" "include/PSU/IPowerSupply.h" "include/PSU/PowerSupplyManager.h" "include/PSU/PowerSupplyJsonLoader.h" "include/PSU/KeysightPSUAdapter.h" "include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h" "include/ProgramManager/ProgramWorker.h" "include/ProgramManager/ProgramManager.h" "include/AppUI/RunProgramPage/RunProgramPage.h" "include/AppUI/RunProgramPage/UserPromptWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.h" "include/AppUI/RunProgramPage/ScanControlWidget.cpp" "include/motions/scanning/ScanExecutor.h")
+    include/TEC/TECTypes.h
+    include/TEC/ITECDevice.h
+    include/TEC/Cld101xadapter.h
+    include/TEC/TECManager.h
+    include/TEC/TECJsonLoader.h
+    include/sequence/TECCommandHandler.h
+    include/AppUI/TECPage/TECControlPage.h
+    include/sequence/DataStoreCommandHandler.h
+    include/sequence/PSUCommandHandler.h
+    include/AppUI/Common/FileSelectorDialog.h
+    include/AppUI/Common/RecipeSaveAsDialog.h
+    include/AuxWindow/AuxWindowManager.h
+    include/AuxWindow/AuxViewWindow.h
+    include/AuxWindow/LiveChartWidget.h
+    include/AuxWindow/LiveViewCameraWidget.h
+    include/PSU/IPowerSupply.h 
+    include/PSU/PowerSupplyManager.h
+    include/PSU/PowerSupplyJsonLoader.h 
+    include/PSU/KeysightPSUAdapter.h
+    include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h
+    include/ProgramManager/ProgramWorker.h
+    include/ProgramManager/ProgramManager.h
+    include/AppUI/RunProgramPage/RunProgramPage.h
+    include/AppUI/RunProgramPage/UserPromptWidget.h
+    include/AppUI/RunProgramPage/ScanControlWidget.h
+    include/AppUI/RunProgramPage/ScanControlWidget.cpp
+    include/motions/scanning/ScanExecutor.h
+)
 
 # Conditionally add ACS controller files if library is found
 if(ACSC_FOUND)
