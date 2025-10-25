@@ -25,6 +25,8 @@
 #include <QCheckBox>
 #include <QListWidget>
 #include <QSet>
+#include <QSettings>
+#include <QFile>
 #include <iostream>
 
 RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
@@ -41,6 +43,9 @@ RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
 {
   setupUI();
   setupSequenceEngine();
+
+  // ✅ Auto-load last recipe from settings
+  loadLastRecipeFromSettings();
 
   // Check if product already loaded
   if (m_context->productPositionManager &&
@@ -468,6 +473,9 @@ void RecipePage::onLoadRecipe()
     m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
     refreshRecipeList();
     clearConfigurationForm();
+
+    // ✅ Save to settings for persistence
+    saveLastRecipeToSettings(filename);
 
     // Auto-load associated product file
     std::string productFile = m_recipeManager->getProductFile();
@@ -1451,5 +1459,68 @@ void RecipePage::onLoadProductClicked()
   else {
     QMessageBox::critical(this, "Error",
       "Failed to load positions from:\n" + filePath);
+  }
+}
+
+// ============================================================================
+// SETTINGS PERSISTENCE
+// ============================================================================
+
+void RecipePage::saveLastRecipeToSettings(const QString& recipePath)
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("RecipePage/lastRecipe", recipePath);
+}
+
+void RecipePage::loadLastRecipeFromSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QString lastRecipePath = settings.value("RecipePage/lastRecipe", "").toString();
+
+  if (lastRecipePath.isEmpty()) {
+    return;
+  }
+
+  if (!QFile::exists(lastRecipePath)) {
+    return; // File was deleted
+  }
+
+  if (!m_recipeManager->loadRecipe(lastRecipePath.toStdString())) {
+    return; // Failed to load
+  }
+
+  m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
+  refreshRecipeList();
+  clearConfigurationForm();
+
+  // Auto-load associated product file
+  std::string productFile = m_recipeManager->getProductFile();
+  if (!productFile.empty()) {
+    if (m_context->productPositionManager) {
+      if (m_context->productPositionManager->LoadProduct(productFile)) {
+        m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+
+        std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+        m_productStatusLabel->setText(QString("Product: %1")
+          .arg(QString::fromStdString(productName)));
+        m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+
+        m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+          .arg(QString::fromStdString(productName))
+          .arg(QString::fromStdString(productFile)));
+        m_loadedProductLabel->setStyleSheet(
+          "font-size: 11px; "
+          "color: #27ae60; "
+          "font-weight: bold; "
+          "padding: 5px; "
+          "border: 1px solid #27ae60; "
+          "border-radius: 3px; "
+          "background-color: #e8f5e9;"
+        );
+
+        std::cout << "[RecipePage] Auto-loaded recipe and product on startup" << std::endl;
+      }
+    }
   }
 }

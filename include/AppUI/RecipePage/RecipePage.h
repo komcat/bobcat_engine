@@ -96,6 +96,10 @@ private:
   bool executeRecipe();
   void buildSequenceFromRecipe(SequenceBuilder* sequence);
 
+  // Settings persistence
+  void saveLastRecipeToSettings(const QString& recipePath);
+  void loadLastRecipeFromSettings();
+
   ApplicationContext* m_context;
   RecipeManager* m_recipeManager;
   SequenceEngine* m_sequenceEngine;

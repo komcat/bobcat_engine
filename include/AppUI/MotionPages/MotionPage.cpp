@@ -56,8 +56,8 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	loadLabelOffsets();
 
 	// Try to auto-load last used product
-	QSettings settings;
-	QString lastProduct = settings.value("lastProductFile").toString();
+	QSettings settings("Fabrinet", "BobcatEngine");
+	QString lastProduct = settings.value("MotionPage/lastProductFile").toString();
 	if (!lastProduct.isEmpty() && QFile::exists(lastProduct)) {
 		if (m_productManager->LoadProduct(lastProduct.toStdString())) {
 			m_productManager->ExportToMotionManager(*m_motionManager);
@@ -338,8 +338,8 @@ void MotionPage::onLoadProductClicked()
 			QString::fromStdString(m_productManager->GetCurrentProductName()));
 		m_saveProductBtn->setEnabled(true);
 
-		QSettings settings;
-		settings.setValue("lastProductFile", filePath);
+		QSettings settings("Fabrinet", "BobcatEngine");
+		settings.setValue("MotionPage/lastProductFile", filePath);
 
 		if (!m_currentDevice.isEmpty()) {
 			refreshPositionDisplay();
