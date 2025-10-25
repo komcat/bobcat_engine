@@ -119,6 +119,7 @@ private:
   QPushButton* m_removeRecipeButton;
   QPushButton* m_moveUpButton;
   QPushButton* m_moveDownButton;
+  QPushButton* m_toggleEnableButton;  // ✅ NEW: Toggle enable/disable
   QPushButton* m_saveEditButton;
 
   // Execution widget components
@@ -151,6 +152,7 @@ private:
   void onRemoveRecipe();
   void onMoveRecipeUp();
   void onMoveRecipeDown();
+  void onToggleRecipeEnabled();  // ✅ NEW: Toggle enable/disable for selected recipe
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
   void loadRecipePreview(const std::string& recipeFilePath);

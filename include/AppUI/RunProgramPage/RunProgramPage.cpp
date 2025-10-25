@@ -394,12 +394,40 @@ void RunProgramPage::createEditWidget()
   // Control buttons
   QHBoxLayout* controlLayout = new QHBoxLayout();
   m_removeRecipeButton = new QPushButton("Remove");
+  m_removeRecipeButton->setStyleSheet(
+    "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; border-radius: 3px; padding: 5px 15px; }"
+    "QPushButton:hover { background-color: #c0392b; }"
+    "QPushButton:disabled { background-color: #bdc3c7; }"
+  );
+
   m_moveUpButton = new QPushButton("↑ Move Up");
+  m_moveUpButton->setStyleSheet(
+    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; padding: 5px 15px; }"
+    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton:disabled { background-color: #bdc3c7; }"
+  );
+
   m_moveDownButton = new QPushButton("↓ Move Down");
+  m_moveDownButton->setStyleSheet(
+    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; padding: 5px 15px; }"
+    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton:disabled { background-color: #bdc3c7; }"
+  );
+
+  // ✅ NEW: Toggle Enable/Disable button
+  m_toggleEnableButton = new QPushButton("⇄ Toggle Enable/Disable");
+  m_toggleEnableButton->setStyleSheet(
+    "QPushButton { background-color: #f39c12; color: white; font-weight: bold; border-radius: 3px; padding: 5px 15px; }"
+    "QPushButton:hover { background-color: #e67e22; }"
+    "QPushButton:disabled { background-color: #bdc3c7; }"
+  );
+  m_toggleEnableButton->setEnabled(false);
 
   controlLayout->addWidget(m_removeRecipeButton);
   controlLayout->addWidget(m_moveUpButton);
   controlLayout->addWidget(m_moveDownButton);
+  controlLayout->addSpacing(10);
+  controlLayout->addWidget(m_toggleEnableButton);
   controlLayout->addStretch();
 
   layout->addLayout(controlLayout);
@@ -409,6 +437,7 @@ void RunProgramPage::createEditWidget()
   connect(m_removeRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onRemoveRecipe);
   connect(m_moveUpButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeUp);
   connect(m_moveDownButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeDown);
+  connect(m_toggleEnableButton, &QPushButton::clicked, this, &RunProgramPage::onToggleRecipeEnabled);  // ✅ NEW
   connect(m_saveEditButton, &QPushButton::clicked, this, &RunProgramPage::onSaveEdit);
   connect(m_editRecipeTable, &QTableWidget::itemSelectionChanged,
     this, &RunProgramPage::onEditRecipeSelectionChanged);
@@ -552,6 +581,9 @@ void RunProgramPage::onLoadProgram()
 
   updateProgramInfo();
   updateRecipeList();
+
+  // ✅ Update the program name edit field (for when user switches to edit mode)
+  m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
   QMessageBox::information(this, "Success",
     QString("Loaded program: %1")
@@ -1061,6 +1093,26 @@ void RunProgramPage::onMoveRecipeDown()
   }
 }
 
+void RunProgramPage::onToggleRecipeEnabled()
+{
+  int selectedRow = m_editRecipeTable->currentRow();
+  if (selectedRow < 0) return;
+
+  // Get current recipe
+  const RecipeReference* recipe = m_programManager->getRecipe(selectedRow);
+  if (!recipe) return;
+
+  // Toggle the enabled state
+  bool newState = !recipe->enabled;
+  m_programManager->setRecipeEnabled(selectedRow, newState);
+
+  // Update the display
+  updateRecipeList();
+
+  // Restore selection
+  m_editRecipeTable->selectRow(selectedRow);
+}
+
 void RunProgramPage::onSaveEdit()
 {
   // Save program name from edit field
@@ -1084,6 +1136,7 @@ void RunProgramPage::onEditRecipeSelectionChanged()
   m_removeRecipeButton->setEnabled(hasSelection);
   m_moveUpButton->setEnabled(hasSelection && currentRow > 0);
   m_moveDownButton->setEnabled(hasSelection && currentRow < m_programManager->getRecipeCount() - 1);
+  m_toggleEnableButton->setEnabled(hasSelection);  // ✅ NEW: Enable toggle button when recipe is selected
 
   // Load and display recipe preview
   if (hasSelection) {
@@ -1280,6 +1333,9 @@ void RunProgramPage::loadLastProgramFromSettings()
   m_currentProgramPath = lastProgramPath;
   updateProgramInfo();
   updateRecipeList();
+
+  // ✅ IMPORTANT: Also update the program name edit field in the edit widget
+  m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
   std::cout << "[RunProgramPage] Successfully auto-loaded: "
             << m_programManager->getProgramName() << std::endl;
