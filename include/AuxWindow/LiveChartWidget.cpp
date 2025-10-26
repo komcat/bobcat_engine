@@ -13,6 +13,8 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   , m_dataStore(dataStore)
   , m_tcpManager(tcpManager)
   , m_isDirty(false)
+  , m_latestValue(0.0f)
+  , m_hasNewValue(false)
 {
   setupUI();
 
@@ -24,6 +26,11 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   m_chartUpdateTimer = new QTimer(this);
   connect(m_chartUpdateTimer, &QTimer::timeout, this, &LiveChartWidget::onUpdateChart);
   m_chartUpdateTimer->start(CHART_UPDATE_INTERVAL_MS);
+
+  // Value label update timer - 500ms for readability (prevents flickering)
+  m_valueLabelUpdateTimer = new QTimer(this);
+  connect(m_valueLabelUpdateTimer, &QTimer::timeout, this, &LiveChartWidget::onUpdateValueLabel);
+  m_valueLabelUpdateTimer->start(VALUE_LABEL_UPDATE_INTERVAL_MS);
 
   // Auto-refresh channel list every 5 seconds
   m_channelRefreshTimer = new QTimer(this);
@@ -40,6 +47,9 @@ LiveChartWidget::~LiveChartWidget()
 {
   if (m_chartUpdateTimer) {
     m_chartUpdateTimer->stop();
+  }
+  if (m_valueLabelUpdateTimer) {
+    m_valueLabelUpdateTimer->stop();
   }
   if (m_channelRefreshTimer) {
     m_channelRefreshTimer->stop();
@@ -94,18 +104,18 @@ void LiveChartWidget::setupUI()
 
   selectorRow->addStretch();
 
-  // Current value display
+  headerLayout->addLayout(selectorRow);
+
+  // Current value display - centered below channel selector
   m_valueLabel = new QLabel("--");
+  m_valueLabel->setAlignment(Qt::AlignCenter);
   m_valueLabel->setStyleSheet(
     "QLabel { "
     "  color: #00d9ff; "
-    "  font-size: 20px; "
     "  font-weight: 600; "
     "  background: transparent; "
     "}");
-  selectorRow->addWidget(m_valueLabel);
-
-  headerLayout->addLayout(selectorRow);
+  headerLayout->addWidget(m_valueLabel);
 
   // Channel info label
   m_channelInfoLabel = new QLabel("No channel selected");
@@ -149,6 +159,9 @@ void LiveChartWidget::setupUI()
   m_chartView = new QChartView(m_chart);
   m_chartView->setRenderHint(QPainter::Antialiasing);
   mainLayout->addWidget(m_chartView);
+
+  // Set initial font size for value label
+  updateValueFontSize();
 }
 
 void LiveChartWidget::onDataReceived(const std::string& clientId, float value, qint64 timestamp)
@@ -168,8 +181,9 @@ void LiveChartWidget::onDataReceived(const std::string& clientId, float value, q
     m_dataBuffer.pop_front();
   }
 
-  // Update value label
-  m_valueLabel->setText(formatValueWithUnit(value, m_currentUnit));
+  // Store latest value for throttled label update
+  m_latestValue = value;
+  m_hasNewValue = true;
 
   // Mark as dirty for next chart update
   m_isDirty = true;
@@ -193,6 +207,8 @@ void LiveChartWidget::setChannel(const std::string& channelId)
   m_dataBuffer.clear();
   m_series->clear();
   m_valueLabel->setText("--");
+  m_latestValue = 0.0f;
+  m_hasNewValue = false;
 
   // Find client that owns this channel
   auto clientIds = m_tcpManager->GetClientIds();
@@ -239,6 +255,26 @@ void LiveChartWidget::onUpdateChart()
   if (m_isDirty) {
     updateChart();
     m_isDirty = false;
+  }
+}
+
+void LiveChartWidget::onUpdateValueLabel()
+{
+  // Only update label if there's a new value
+  if (m_hasNewValue) {
+    // Update text
+    m_valueLabel->setText(formatValueWithUnit(m_latestValue, m_currentUnit));
+
+    // Update color based on value magnitude
+    QColor valueColor = getValueColor(m_latestValue);
+    m_valueLabel->setStyleSheet(
+      QString("QLabel { "
+              "  color: %1; "
+              "  font-weight: 600; "
+              "  background: transparent; "
+              "}").arg(valueColor.name()));
+
+    m_hasNewValue = false;
   }
 }
 
@@ -408,4 +444,56 @@ QString LiveChartWidget::formatValueWithUnit(float value, const std::string& bas
     .arg(scaledValue, 0, 'f', 3)
     .arg(prefix)
     .arg(unitStr);
+}
+
+QColor LiveChartWidget::getValueColor(float value) const
+{
+  float absValue = std::abs(value);
+
+  // Color ranges based on absolute value magnitude
+  if (absValue >= 10e-3) {
+    // >= 10m: Purple
+    return QColor(200, 100, 255);  // Purple
+  }
+  else if (absValue >= 1e-3) {
+    // >= 1m: Orange
+    return QColor(255, 165, 0);  // Orange
+  }
+  else if (absValue >= 500e-6) {
+    // >= 500µ: Light blue
+    return QColor(0, 217, 255);  // Cyan/Light blue
+  }
+  else if (absValue >= 1e-6) {
+    // >= 1µ: Dark green
+    return QColor(0, 200, 0);  // Dark green
+  }
+  else {
+    // < 1µ: Gray
+    return QColor(150, 150, 150);  // Gray
+  }
+}
+
+void LiveChartWidget::resizeEvent(QResizeEvent* event)
+{
+  QWidget::resizeEvent(event);
+  updateValueFontSize();
+}
+
+void LiveChartWidget::updateValueFontSize()
+{
+  if (!m_valueLabel) return;
+
+  // Calculate font size as 10% of widget height
+  int widgetHeight = height();
+  int fontSize = static_cast<int>(widgetHeight * 0.10);
+
+  // Set minimum and maximum bounds for readability
+  if (fontSize < 12) fontSize = 12;  // Minimum
+  if (fontSize > 120) fontSize = 120;  // Maximum
+
+  QFont font = m_valueLabel->font();
+  font.setPointSize(fontSize);
+  m_valueLabel->setFont(font);
+
+  std::cout << "[LiveChartWidget] Font size updated to: " << fontSize << "pt (widget height: " << widgetHeight << "px)" << std::endl;
 }

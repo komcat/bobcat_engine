@@ -101,6 +101,55 @@ void LiveViewCameraWidget::setupUI()
   m_cameraInfoLabel->setStyleSheet("QLabel { color: #888888; font-size: 12px; background: transparent; }");
   headerLayout->addWidget(m_cameraInfoLabel);
 
+  // Crosshair and Zoom controls row
+  QHBoxLayout* controlsRow = new QHBoxLayout();
+
+  // Crosshair checkbox
+  m_crosshairCheckbox = new QCheckBox("Crosshair Overlay");
+  m_crosshairCheckbox->setStyleSheet("QCheckBox { color: #aaaaaa; font-size: 13px; background: transparent; }");
+  connect(m_crosshairCheckbox, &QCheckBox::toggled, this, &LiveViewCameraWidget::onCrosshairToggled);
+  controlsRow->addWidget(m_crosshairCheckbox);
+
+  controlsRow->addStretch();
+
+  // Zoom label
+  QLabel* zoomLabel = new QLabel("Zoom:");
+  zoomLabel->setStyleSheet("QLabel { color: #aaaaaa; font-size: 13px; background: transparent; }");
+  controlsRow->addWidget(zoomLabel);
+
+  // Zoom buttons
+  QString buttonStyle =
+    "QPushButton { "
+    "  background-color: #3d3d3d; "
+    "  color: white; "
+    "  padding: 4px 12px; "
+    "  border: 1px solid #505050; "
+    "  border-radius: 3px; "
+    "  font-size: 13px; "
+    "} "
+    "QPushButton:hover { background-color: #4d4d4d; } "
+    "QPushButton:pressed { background-color: #0078d4; }";
+
+  m_zoom1xButton = new QPushButton("1.0x");
+  m_zoom1xButton->setStyleSheet(buttonStyle);
+  m_zoom1xButton->setFixedWidth(50);
+  connect(m_zoom1xButton, &QPushButton::clicked, [this]() { onZoomChanged(100); });
+  controlsRow->addWidget(m_zoom1xButton);
+
+  m_zoom15xButton = new QPushButton("1.5x");
+  m_zoom15xButton->setStyleSheet(buttonStyle);
+  m_zoom15xButton->setFixedWidth(50);
+  connect(m_zoom15xButton, &QPushButton::clicked, [this]() { onZoomChanged(67); });  // 100/1.5 ≈ 67
+  controlsRow->addWidget(m_zoom15xButton);
+
+  m_zoom2xButton = new QPushButton("2.0x");
+  m_zoom2xButton->setStyleSheet(buttonStyle);
+  m_zoom2xButton->setFixedWidth(50);
+  connect(m_zoom2xButton, &QPushButton::clicked, [this]() { onZoomChanged(50); });  // 100/2 = 50
+  controlsRow->addWidget(m_zoom2xButton);
+
+  headerLayout->addLayout(controlsRow);
+
   // Add header (no stretch - fixed size)
   mainLayout->addWidget(headerWidget);
 
@@ -109,7 +158,7 @@ void LiveViewCameraWidget::setupUI()
   m_imageWidget->setBackgroundColor(QColor(30, 30, 30));
   m_imageWidget->setPlaceholderText("Select a camera to view live feed");
   m_imageWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  m_imageWidget->setMinimumSize(320, 240);  // Minimum reasonable size
+  // No minimum size - allow widget to shrink with window
 
   // Add with stretch factor to fill remaining space
   mainLayout->addWidget(m_imageWidget, 1);
@@ -255,4 +304,23 @@ std::string LiveViewCameraWidget::getCurrentCamera() const
     return "";
   }
   return m_cameraSelector->currentData().toString().toStdString();
+}
+
+void LiveViewCameraWidget::onCrosshairToggled(bool checked)
+{
+  if (m_imageWidget) {
+    m_imageWidget->setCrosshairEnabled(checked);
+    std::cout << "[LiveViewCameraWidget] Crosshair " << (checked ? "enabled" : "disabled") << std::endl;
+  }
+}
+
+void LiveViewCameraWidget::onZoomChanged(int zoomPercent)
+{
+  if (m_imageWidget) {
+    m_imageWidget->setZoomPercent(zoomPercent);
+
+    // Calculate actual zoom level for display
+    double zoomLevel = 100.0 / zoomPercent;
+    std::cout << "[LiveViewCameraWidget] Zoom set to " << zoomLevel << "x (percent: " << zoomPercent << ")" << std::endl;
+  }
 }

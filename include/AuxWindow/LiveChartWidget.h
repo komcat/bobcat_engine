@@ -51,11 +51,17 @@ private slots:
   void onChannelSelected(int index);
   void onUpdateChart();
   void onRefreshChannels();
+  void onUpdateValueLabel();
+
+protected:
+  void resizeEvent(QResizeEvent* event) override;
 
 private:
   void setupUI();
   void updateChart();
   void refreshChannelList();
+  void updateValueFontSize();
+  QColor getValueColor(float value) const;
   QString formatValueWithUnit(float value, const std::string& unit) const;
 
   struct DataPoint {
@@ -84,9 +90,13 @@ private:
 
   QTimer* m_chartUpdateTimer;
   QTimer* m_channelRefreshTimer;
+  QTimer* m_valueLabelUpdateTimer;
   bool m_isDirty;
+  float m_latestValue;
+  bool m_hasNewValue;
 
   static constexpr size_t MAX_POINTS = 300;
   static constexpr qint64 TIME_WINDOW_MS = 5000;  // 10 seconds
   static constexpr int CHART_UPDATE_INTERVAL_MS = 16;  // ~60 FPS
+  static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 500;  // 500ms for readability
 };

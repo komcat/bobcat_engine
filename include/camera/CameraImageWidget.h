@@ -38,6 +38,11 @@ public:
   void setZoomPercent(int percent);  // 100 = no zoom, 50 = 2x zoom, etc.
   int getZoomPercent() const { return m_zoomPercent.load(); }
 
+  // Crosshair overlay
+  void setCrosshairEnabled(bool enabled);
+  bool isCrosshairEnabled() const { return m_crosshairEnabled.load(); }
+  void setCrosshairColor(const QColor& color);
+
   // Display properties
   void setMinimumDisplaySize(int width, int height);
   void setBackgroundColor(const QColor& color);
@@ -65,6 +70,10 @@ private:
   QImage m_reusableBuffer;
   std::atomic<int> m_zoomPercent;
   ScalingMode m_scalingMode;
+
+  // Crosshair overlay
+  std::atomic<bool> m_crosshairEnabled;
+  QColor m_crosshairColor;
 
   // Helper methods
   QImage applyZoom(const QImage& source);

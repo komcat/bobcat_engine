@@ -1,12 +1,15 @@
 ﻿#include "CameraImageWidget.h"
 #include <cstring>
 #include <iostream>
+#include <QPainter>
 
 CameraImageWidget::CameraImageWidget(QWidget* parent)
   : QWidget(parent)
   , m_displayLabel(nullptr)
   , m_zoomPercent(100)
   , m_scalingMode(ScalingMode::Fast)
+  , m_crosshairEnabled(false)
+  , m_crosshairColor(Qt::green)
 {
   // Create layout with no margins or spacing
   QVBoxLayout* layout = new QVBoxLayout(this);
@@ -81,6 +84,21 @@ void CameraImageWidget::setZoomPercent(int percent)
   if (percent > 100) percent = 100;
 
   m_zoomPercent.store(percent);
+
+  // Re-render current frame with new zoom level
+  if (!m_reusableBuffer.isNull()) {
+    QImage displayImage;
+    int zoom = m_zoomPercent.load();
+
+    if (zoom < 100) {
+      displayImage = applyZoom(m_reusableBuffer);
+    }
+    else {
+      displayImage = m_reusableBuffer;
+    }
+
+    renderFrame(displayImage);
+  }
 }
 
 void CameraImageWidget::setMinimumDisplaySize(int width, int height)
@@ -110,6 +128,44 @@ void CameraImageWidget::setPlaceholderText(const QString& text)
 void CameraImageWidget::setScalingMode(ScalingMode mode)
 {
   m_scalingMode = mode;
+}
+
+void CameraImageWidget::setCrosshairEnabled(bool enabled)
+{
+  m_crosshairEnabled.store(enabled);
+  // Re-render current frame to show/hide crosshair
+  if (!m_reusableBuffer.isNull()) {
+    QImage displayImage;
+    int zoom = m_zoomPercent.load();
+
+    if (zoom < 100) {
+      displayImage = applyZoom(m_reusableBuffer);
+    }
+    else {
+      displayImage = m_reusableBuffer;
+    }
+
+    renderFrame(displayImage);
+  }
+}
+
+void CameraImageWidget::setCrosshairColor(const QColor& color)
+{
+  m_crosshairColor = color;
+  // Re-render current frame if crosshair is visible
+  if (m_crosshairEnabled.load() && !m_reusableBuffer.isNull()) {
+    QImage displayImage;
+    int zoom = m_zoomPercent.load();
+
+    if (zoom < 100) {
+      displayImage = applyZoom(m_reusableBuffer);
+    }
+    else {
+      displayImage = m_reusableBuffer;
+    }
+
+    renderFrame(displayImage);
+  }
 }
 
 // ============================================================================
@@ -201,6 +257,30 @@ void CameraImageWidget::renderFrame(const QImage& image)
     );
 
     pixmap = pixmap.scaled(targetSize, Qt::KeepAspectRatio, transformMode);
+  }
+
+  // Draw crosshair overlay on pixmap if enabled
+  if (m_crosshairEnabled.load() && !pixmap.isNull()) {
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, false);  // Sharp lines
+
+    // Set crosshair pen
+    QPen pen(m_crosshairColor);
+    pen.setWidth(2);  // Make it visible
+    pen.setStyle(Qt::SolidLine);
+    painter.setPen(pen);
+
+    // Get pixmap center
+    int centerX = pixmap.width() / 2;
+    int centerY = pixmap.height() / 2;
+
+    // Draw vertical line (full height)
+    painter.drawLine(centerX, 0, centerX, pixmap.height());
+
+    // Draw horizontal line (full width)
+    painter.drawLine(0, centerY, pixmap.width(), centerY);
+
+    painter.end();
   }
 
   m_displayLabel->setPixmap(pixmap);

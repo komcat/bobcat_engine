@@ -5,6 +5,8 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QPushButton>
 #include <QTimer>
 
 class CameraManager;
@@ -38,6 +40,9 @@ public:
   // Set which camera to display
   void setCamera(const std::string& cameraId);
 
+  // Access to image widget for external controls
+  CameraImageWidget* getImageWidget() { return m_imageWidget; }
+
 signals:
   void cameraChanged(const std::string& cameraId);
 
@@ -45,6 +50,8 @@ private slots:
   void onCameraSelected(int index);
   void onRefreshCameras();
   void onUpdateFrame();  // Poll for new frames
+  void onCrosshairToggled(bool checked);
+  void onZoomChanged(int zoomPercent);
 
 private:
   void setupUI();
@@ -58,6 +65,10 @@ private:
   QComboBox* m_cameraSelector;
   QLabel* m_cameraInfoLabel;
   CameraImageWidget* m_imageWidget;
+  QCheckBox* m_crosshairCheckbox;
+  QPushButton* m_zoom1xButton;
+  QPushButton* m_zoom15xButton;
+  QPushButton* m_zoom2xButton;
 
   // Frame update
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;  // Changed to shared_ptr
