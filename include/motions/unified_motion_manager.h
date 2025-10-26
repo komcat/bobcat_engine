@@ -100,6 +100,10 @@ public:
 		const std::string& axis,
 		double& velocity);
 
+	// System velocity control (for PI hexapods - applies to all axes)
+	bool SetSystemVelocity(const std::string& deviceName, double velocity);
+	bool GetSystemVelocity(const std::string& deviceName, double& velocity);
+
 	// Servo control
 	bool EnableServo(const std::string& deviceName,
 		const std::string& axis,

@@ -505,6 +505,43 @@ bool UnifiedMotionManager::GetVelocity(const std::string& deviceName,
   return false;
 }
 
+bool UnifiedMotionManager::SetSystemVelocity(const std::string& deviceName, double velocity) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::SetSystemVelocity: Device not found: "
+      << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) {
+      std::cout << "[ERROR] UnifiedMotionManager::SetSystemVelocity: PI controller not found for "
+        << deviceName << std::endl;
+      return false;
+    }
+    return controller->SetSystemVelocity(velocity);
+  }
+  else {
+    std::cout << "[WARNING] UnifiedMotionManager::SetSystemVelocity: System velocity only supported for PI controllers"
+      << std::endl;
+    return false;
+  }
+}
+
+bool UnifiedMotionManager::GetSystemVelocity(const std::string& deviceName, double& velocity) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) return false;
+
+  if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) return false;
+    return controller->GetSystemVelocity(velocity);
+  }
+
+  return false;
+}
+
 bool UnifiedMotionManager::EnableServo(const std::string& deviceName,
   const std::string& axis,
   bool enable) {

@@ -44,7 +44,7 @@ protected:
   void hideEvent(QHideEvent* event) override;
 
   // UI Setup
-  void setupUI();
+  virtual void setupUI();
   void createDeviceTable();
   void setupPolling();
 
