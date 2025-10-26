@@ -84,8 +84,18 @@ public:
   static std::vector<std::string> getAvailableProcessTypes();
   static std::map<std::string, std::string> getDefaultParameters(const std::string& processType);
 
+  // Category info (NEW)
+  static std::vector<std::string> getProcessCategories();
+  static std::string getProcessCategory(const std::string& processType);
+  static std::vector<std::string> getProcessesByCategory(const std::string& category);
+
   // Validation
   bool validateRecipe(std::vector<std::string>& errors) const;
+
+  // Indentation/hierarchy (NEW)
+  int getStepIndentLevel(int index) const;
+  static bool isBlockStart(const std::string& processType);
+  static bool isBlockEnd(const std::string& processType);
 
   // ✅ Product file management
   std::string getProductFile() const { return m_currentRecipe.productFile; }

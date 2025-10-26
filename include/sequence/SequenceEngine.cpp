@@ -606,6 +606,23 @@ void SequenceBuilder::BeginIf(const std::string& conditionDevice, const std::str
   m_blockStack.push_back(ctx);
 }
 
+// NEW: Context-based conditional
+void SequenceBuilder::BeginIf(const std::string& contextKey,
+                               ConditionalBlock::ComparisonType comparison,
+                               float threshold)
+{
+  auto cond = std::make_shared<ConditionalBlock>(contextKey, comparison, threshold);
+
+  // Add to current active list
+  GetActiveStepList()->push_back(cond);
+
+  // Push to stack (THEN branch)
+  BlockContext ctx;
+  ctx.type = BlockType::CONDITIONAL_THEN;
+  ctx.block = cond;
+  m_blockStack.push_back(ctx);
+}
+
 void SequenceBuilder::Else()
 {
   if (m_blockStack.empty() || m_blockStack.back().type != BlockType::CONDITIONAL_THEN) {

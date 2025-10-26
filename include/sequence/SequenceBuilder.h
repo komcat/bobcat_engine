@@ -9,6 +9,8 @@
 #include <memory>
 #include <functional>
 
+// Forward declarations
+struct ConditionalBlock;
 
 //=============================================================================
 // SEQUENCE BUILDER
@@ -30,9 +32,15 @@ public:
   void BeginLoop(int count);
   void EndLoop();
 
-  // Conditional control
+  // Conditional control (context-based - NEW)
+  void BeginIf(const std::string& contextKey,
+    ConditionalBlock::ComparisonType comparison,
+    float threshold = 0.0f);
+
+  // Conditional control (old device/method - kept for backward compatibility)
   void BeginIf(const std::string& conditionDevice,
     const std::string& conditionMethod);
+
   void Else();
   void EndIf();
 

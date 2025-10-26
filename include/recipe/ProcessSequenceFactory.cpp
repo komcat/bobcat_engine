@@ -2,6 +2,7 @@
 #include "ProcessSequenceFactory.h"
 #include "GripperSequenceHelpers.h"
 #include "SequenceBuilder.h"
+#include "SequenceEngine.h"
 #include <iostream>
 
 ProcessSequenceFactory::ProcessSequenceFactory()
@@ -129,6 +130,26 @@ ProcessSequenceFactory::ProcessSequenceFactory()
 
     std::cout << "[ProcessSequenceFactory] Built Ask User sequence for: "
       << step->userNickname << " (blocking=" << blocking << ")" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER LOG MESSAGE PROCESS BUILDER (System Command)
+  // ============================================================================
+  RegisterProcessBuilder("Log Message", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string message = params.at("message");
+    std::string logLevel = params.at("log_level");
+
+    std::map<std::string, std::string> logParams;
+    logParams["message"] = message;
+    logParams["log_level"] = logLevel;
+
+    // Use "system" as device name - this will route to SystemCommandHandler
+    sequence->AddAction("system", "LogMessage", logParams);
+
+    std::cout << "[ProcessSequenceFactory] Built Log Message sequence for: "
+      << step->userNickname << " (level=" << logLevel << ")" << std::endl;
   });
 
   // ============================================================================
@@ -571,6 +592,69 @@ ProcessSequenceFactory::ProcessSequenceFactory()
 
     std::cout << "[ProcessSequenceFactory] Built PSU Read Current sequence for: "
       << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER GROUP START PROCESS BUILDER (Organizational - No execution)
+  // ============================================================================
+  RegisterProcessBuilder("Group Start", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    // Groups are organizational only - they don't add sequence actions
+    std::cout << "[ProcessSequenceFactory] Group Start (organizational): "
+              << step->parameters.at("group_name") << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER GROUP END PROCESS BUILDER (Organizational - No execution)
+  // ============================================================================
+  RegisterProcessBuilder("Group End", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    // Groups are organizational only - they don't add sequence actions
+    std::cout << "[ProcessSequenceFactory] Group End (organizational)" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER CONDITIONAL IF PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Conditional If", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string contextKey = params.at("context_key");
+    std::string comparisonStr = params.at("comparison");
+    float threshold = std::stof(params.at("threshold"));
+
+    // Convert comparison string to enum
+    ConditionalBlock::ComparisonType comparison;
+    if (comparisonStr == ">") comparison = ConditionalBlock::ComparisonType::GREATER_THAN;
+    else if (comparisonStr == "<") comparison = ConditionalBlock::ComparisonType::LESS_THAN;
+    else if (comparisonStr == "==") comparison = ConditionalBlock::ComparisonType::EQUAL;
+    else if (comparisonStr == "!=") comparison = ConditionalBlock::ComparisonType::NOT_EQUAL;
+    else if (comparisonStr == ">=") comparison = ConditionalBlock::ComparisonType::GREATER_OR_EQUAL;
+    else if (comparisonStr == "<=") comparison = ConditionalBlock::ComparisonType::LESS_OR_EQUAL;
+    else if (comparisonStr == "IS_TRUE") comparison = ConditionalBlock::ComparisonType::IS_TRUE;
+    else if (comparisonStr == "IS_FALSE") comparison = ConditionalBlock::ComparisonType::IS_FALSE;
+    else if (comparisonStr == "EXISTS") comparison = ConditionalBlock::ComparisonType::EXISTS;
+    else if (comparisonStr == "NOT_EXISTS") comparison = ConditionalBlock::ComparisonType::NOT_EXISTS;
+    else comparison = ConditionalBlock::ComparisonType::GREATER_THAN; // default
+
+    sequence->BeginIf(contextKey, comparison, threshold);
+
+    std::cout << "[ProcessSequenceFactory] Built Conditional If: "
+              << contextKey << " " << comparisonStr << " " << threshold << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER CONDITIONAL ELSE PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Conditional Else", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    sequence->Else();
+    std::cout << "[ProcessSequenceFactory] Built Conditional Else" << std::endl;
+  });
+
+  // ============================================================================
+  // REGISTER CONDITIONAL END PROCESS BUILDER
+  // ============================================================================
+  RegisterProcessBuilder("Conditional End", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    sequence->EndIf();
+    std::cout << "[ProcessSequenceFactory] Built Conditional End" << std::endl;
   });
 
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()

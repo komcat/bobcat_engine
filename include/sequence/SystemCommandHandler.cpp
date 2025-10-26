@@ -102,6 +102,39 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // LOG MESSAGE
+  // ============================================================================
+  else if (methodName == "LogMessage" || methodName == "Log") {
+    auto messageIt = params.find("message");
+    auto logLevelIt = params.find("log_level");
+
+    if (messageIt == params.end()) {
+      errorMessage = "Missing required parameter: message";
+      return false;
+    }
+
+    std::string message = messageIt->second;
+    std::string logLevel = (logLevelIt != params.end()) ? logLevelIt->second : "Info";
+
+    if (m_logger) {
+      if (logLevel == "Debug") {
+        m_logger->Debug(message, "Recipe");
+      }
+      else if (logLevel == "Warning") {
+        m_logger->Warning(message, "Recipe");
+      }
+      else if (logLevel == "Error") {
+        m_logger->Error(message, "Recipe");
+      }
+      else {
+        m_logger->Info(message, "Recipe");
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

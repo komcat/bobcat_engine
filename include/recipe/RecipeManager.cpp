@@ -180,7 +180,13 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "PSU Set Voltage",
     "PSU Set Current",
     "PSU Read Voltage",
-    "PSU Read Current"
+    "PSU Read Current",
+    "Log Message",
+    "Group Start",
+    "Group End",
+    "Conditional If",
+    "Conditional Else",
+    "Conditional End"
   };
 }
 
@@ -313,6 +319,27 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["psu_device"] = "PSU1";
     params["read_count"] = "3";      // How many times to read
     params["delay_ms"] = "100";      // Delay between reads in ms
+  }
+  else if (processType == "Log Message") {
+    params["message"] = "Log message here...";
+    params["log_level"] = "Info";
+  }
+  else if (processType == "Group Start") {
+    params["group_name"] = "Process Group";
+  }
+  else if (processType == "Group End") {
+    // No parameters needed
+  }
+  else if (processType == "Conditional If") {
+    params["context_key"] = "MeasuredValue";
+    params["comparison"] = ">";
+    params["threshold"] = "0";
+  }
+  else if (processType == "Conditional Else") {
+    // No parameters needed
+  }
+  else if (processType == "Conditional End") {
+    // No parameters needed
   }
   return params;
 }
@@ -473,4 +500,135 @@ bool RecipeManager::loadFromJson(const std::string& filename)
     << filename << std::endl;
 
   return true;
+}
+
+// ============================================================================
+// PROCESS CATEGORIES (NEW)
+// ============================================================================
+
+std::vector<std::string> RecipeManager::getProcessCategories()
+{
+  return {
+    "Motion Control",
+    "I/O & Pneumatics",
+    "TEC & Laser",
+    "Power Supply",
+    "Data",
+    "System",
+    "Control Flow"
+  };
+}
+
+std::string RecipeManager::getProcessCategory(const std::string& processType)
+{
+  // Motion Control
+  if (processType == "Pick" || processType == "Place" || processType == "Pick and Place" ||
+      processType == "Move to Position" || processType == "Move Relative" ||
+      processType == "Move Relative Multi-Axis" || processType == "Move to Position with Offset") {
+    return "Motion Control";
+  }
+
+  // I/O & Pneumatics
+  if (processType == "Set Output" || processType == "Slide Extend" || processType == "Slide Retract") {
+    return "I/O & Pneumatics";
+  }
+
+  // TEC & Laser
+  if (processType == "Set TEC Temp" || processType == "Set Laser Current" ||
+      processType == "Read Temperature" || processType == "Read Laser Current") {
+    return "TEC & Laser";
+  }
+
+  // Power Supply
+  if (processType == "PSU Output On/Off" || processType == "PSU Set Voltage" ||
+      processType == "PSU Set Current" || processType == "PSU Read Voltage" ||
+      processType == "PSU Read Current") {
+    return "Power Supply";
+  }
+
+  // Data
+  if (processType == "Read DataStore") {
+    return "Data";
+  }
+
+  // System
+  if (processType == "Wait" || processType == "Ask User" || processType == "Log Message") {
+    return "System";
+  }
+
+  // Control Flow
+  if (processType == "Conditional If" || processType == "Conditional Else" ||
+      processType == "Conditional End" || processType == "Group Start" ||
+      processType == "Group End") {
+    return "Control Flow";
+  }
+
+  return "Uncategorized";
+}
+
+std::vector<std::string> RecipeManager::getProcessesByCategory(const std::string& category)
+{
+  std::vector<std::string> processes;
+  auto allProcesses = getAvailableProcessTypes();
+
+  for (const auto& processType : allProcesses) {
+    if (getProcessCategory(processType) == category) {
+      processes.push_back(processType);
+    }
+  }
+
+  return processes;
+}
+
+// ============================================================================
+// INDENTATION / HIERARCHY (NEW)
+// ============================================================================
+
+bool RecipeManager::isBlockStart(const std::string& processType)
+{
+  return processType == "Conditional If" || processType == "Group Start";
+}
+
+bool RecipeManager::isBlockEnd(const std::string& processType)
+{
+  return processType == "Conditional End" || processType == "Group End";
+}
+
+int RecipeManager::getStepIndentLevel(int index) const
+{
+  if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {
+    return 0;
+  }
+
+  int indentLevel = 0;
+
+  // Calculate indent by scanning all steps up to this index
+  for (int i = 0; i < index; ++i) {
+    const auto& step = m_currentRecipe.steps[i];
+
+    if (isBlockStart(step->processType)) {
+      indentLevel++;
+    }
+    else if (step->processType == "Conditional Else") {
+      // Else stays at same level as the If
+      // No change to indent
+    }
+    else if (isBlockEnd(step->processType)) {
+      indentLevel--;
+      if (indentLevel < 0) indentLevel = 0;
+    }
+  }
+
+  // Special handling for the current step
+  const auto& currentStep = m_currentRecipe.steps[index];
+
+  // "Conditional Else" and "Conditional End" and "Group End" should outdent
+  if (currentStep->processType == "Conditional Else" ||
+      currentStep->processType == "Conditional End" ||
+      currentStep->processType == "Group End") {
+    indentLevel--;
+    if (indentLevel < 0) indentLevel = 0;
+  }
+
+  return indentLevel;
 }

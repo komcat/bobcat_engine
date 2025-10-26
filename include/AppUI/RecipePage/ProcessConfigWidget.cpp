@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QComboBox>
 
 // ============================================================================
 // BASE CLASS: ProcessConfigWidget
@@ -520,6 +521,113 @@ void AskUserConfigWidget::createParameterFields(const ProcessInstance* instance)
 
   // ← ADD THIS LINE to store the checkbox:
   m_parameterCheckboxes["blocking"] = blockingCheckbox;
+}
+
+// ============================================================================
+// LOG MESSAGE CONFIG WIDGET
+// ============================================================================
+LogMessageConfigWidget::LogMessageConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void LogMessageConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* messageLabel = new QLabel("Message:");
+  messageLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(messageLabel);
+
+  // Message text field
+  std::string message = params.count("message") ? params.at("message") : "Log message here...";
+  QLineEdit* messageEdit = new QLineEdit(QString::fromStdString(message));
+  messageEdit->setPlaceholderText("Enter the message to log");
+  messageEdit->setStyleSheet("padding: 5px;");
+  connect(messageEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Message Text:", messageEdit);
+  m_parameterEdits["message"] = messageEdit;
+
+  // Log level dropdown
+  std::string logLevel = params.count("log_level") ? params.at("log_level") : "Info";
+  QLineEdit* levelEdit = new QLineEdit(QString::fromStdString(logLevel));
+  m_parameterEdits["log_level"] = levelEdit;
+
+  QComboBox* levelCombo = new QComboBox();
+  levelCombo->addItem("Info");
+  levelCombo->addItem("Debug");
+  levelCombo->addItem("Warning");
+  levelCombo->addItem("Error");
+  levelCombo->setCurrentText(QString::fromStdString(logLevel));
+
+  connect(levelCombo, &QComboBox::currentTextChanged, [this, levelEdit](const QString& text) {
+    levelEdit->setText(text);
+    emit parameterChanged();
+  });
+  m_formLayout->addRow("Log Level:", levelCombo);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Prints a message to the log. Useful for debugging and tracking execution flow in conditionals.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// GROUP START CONFIG WIDGET
+// ============================================================================
+GroupStartConfigWidget::GroupStartConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void GroupStartConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* groupLabel = new QLabel("Group Settings:");
+  groupLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(groupLabel);
+
+  // Group name field
+  std::string groupName = params.count("group_name") ? params.at("group_name") : "Process Group";
+  QLineEdit* nameEdit = new QLineEdit(QString::fromStdString(groupName));
+  nameEdit->setPlaceholderText("Enter group name");
+  nameEdit->setStyleSheet("padding: 5px;");
+  connect(nameEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Group Name:", nameEdit);
+  m_parameterEdits["group_name"] = nameEdit;
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i><b>Group Start</b><br>"
+    "Begins a collapsible group. All steps until the matching 'Group End' will be indented.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #2d3e5f; font-size: 11px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// GROUP END CONFIG WIDGET
+// ============================================================================
+GroupEndConfigWidget::GroupEndConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void GroupEndConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  // No parameters needed - just visual indicator
+  QLabel* infoLabel = new QLabel(
+    "<i><b>Group End</b><br>"
+    "Closes the current group. Steps after this will return to the previous indent level.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #2d3e5f; font-size: 11px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
 }
 
 // ============================================================================
@@ -1218,5 +1326,111 @@ void PSUReadCurrentConfigWidget::createParameterFields(const ProcessInstance* in
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// CONDITIONAL IF CONFIG WIDGET
+// ============================================================================
+
+ConditionalIfConfigWidget::ConditionalIfConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ConditionalIfConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  QLabel* condLabel = new QLabel("Condition:");
+  condLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 5px;");
+  m_formLayout->addRow(condLabel);
+
+  // Context key field
+  std::string contextKey = params.count("context_key") ? params.at("context_key") : "MeasuredValue";
+  QLineEdit* keyEdit = new QLineEdit(QString::fromStdString(contextKey));
+  keyEdit->setPlaceholderText("Variable name from context (e.g., MeasuredVoltage)");
+  keyEdit->setStyleSheet("padding: 5px;");
+  connect(keyEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Context Key:", keyEdit);
+  m_parameterEdits["context_key"] = keyEdit;
+
+  // Comparison dropdown
+  std::string comparison = params.count("comparison") ? params.at("comparison") : ">";
+  QLineEdit* compEdit = new QLineEdit(QString::fromStdString(comparison));
+  m_parameterEdits["comparison"] = compEdit;
+
+  QComboBox* compCombo = new QComboBox();
+  compCombo->addItem(">");
+  compCombo->addItem("<");
+  compCombo->addItem("==");
+  compCombo->addItem("!=");
+  compCombo->addItem(">=");
+  compCombo->addItem("<=");
+  compCombo->addItem("IS_TRUE");
+  compCombo->addItem("IS_FALSE");
+  compCombo->addItem("EXISTS");
+  compCombo->addItem("NOT_EXISTS");
+  compCombo->setCurrentText(QString::fromStdString(comparison));
+
+  connect(compCombo, &QComboBox::currentTextChanged, [this, compEdit](const QString& text) {
+    compEdit->setText(text);
+    emit parameterChanged();
+  });
+  m_formLayout->addRow("Comparison:", compCombo);
+
+  // Threshold field
+  std::string threshold = params.count("threshold") ? params.at("threshold") : "0";
+  addParameterField("threshold", "Threshold Value", threshold);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "<i>Evaluates the condition. If TRUE, executes steps until 'Conditional Else' or 'Conditional End'. "
+    "If FALSE, executes 'Conditional Else' branch if present.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// CONDITIONAL ELSE CONFIG WIDGET
+// ============================================================================
+
+ConditionalElseConfigWidget::ConditionalElseConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ConditionalElseConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  // No parameters needed - just visual indicator
+  QLabel* infoLabel = new QLabel(
+    "<i><b>ELSE Branch</b><br>"
+    "Steps after this will execute if the condition is FALSE.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #2d3e5f; font-size: 11px; margin-top: 8px;");
+  m_formLayout->addRow("", infoLabel);
+}
+
+// ============================================================================
+// CONDITIONAL END CONFIG WIDGET
+// ============================================================================
+
+ConditionalEndConfigWidget::ConditionalEndConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ConditionalEndConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  // No parameters needed - just visual indicator
+  QLabel* infoLabel = new QLabel(
+    "<i><b>END Conditional</b><br>"
+    "Marks the end of the conditional block.</i>"
+  );
+  infoLabel->setWordWrap(true);
+  infoLabel->setStyleSheet("color: #2d3e5f; font-size: 11px; margin-top: 8px;");
   m_formLayout->addRow("", infoLabel);
 }

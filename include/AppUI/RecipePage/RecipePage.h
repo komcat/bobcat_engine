@@ -2,7 +2,6 @@
 #pragma once
 
 #include <QWidget>
-#include <QTableWidget>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QFormLayout>
@@ -12,6 +11,7 @@
 #include <QLabel>
 #include <QPointer>
 #include <QListWidget>
+#include <QTreeWidget>
 #include <map>
 
 struct ApplicationContext;
@@ -45,7 +45,6 @@ private slots:
   void onSaveRecipe();
   void onSaveRecipeAs();  // ✅ NEW: Save As action
   void onRecipeStepSelected();
-  void onTableCellChanged(int row, int column);
   void onMoveStepUp();
   void onMoveStepDown();
   void onRemoveStep();
@@ -58,7 +57,7 @@ private slots:
 
   // Middle panel actions
   void onAddProcess();
-  void onProcessTemplateSelected(QListWidgetItem* item);
+  void onProcessTemplateSelected(QTreeWidgetItem* item, int column);
 
   // Right panel actions - from custom widgets
   void onParameterChanged();
@@ -88,6 +87,7 @@ private:
   void refreshRecipeList();
   void updateConfigurationForm();
   void clearConfigurationForm();
+  void selectStepByIndex(int index);
 
   // ✅ NEW: Panel switching
   void showProgressPanel();
@@ -110,7 +110,7 @@ private:
   int m_selectedStepIndex;
 
   // Left panel widgets
-  QTableWidget* m_recipeTable;
+  QTreeWidget* m_recipeTree;
   QLineEdit* m_recipeNameEdit;
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
@@ -127,7 +127,7 @@ private:
   QLabel* m_loadedProductLabel;
 
   // Middle panel widgets
-  QListWidget* m_processTemplateList;
+  QTreeWidget* m_processTemplateList;
   QPushButton* m_addButton;
 
   // Right panel widgets

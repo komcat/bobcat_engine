@@ -194,6 +194,20 @@ protected:
 };
 
 /**
+ * @brief Configuration widget for Log Message process
+ */
+class LogMessageConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit LogMessageConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
  * @brief Configuration widget for Move Relative Multi-Axis process
  */
 class MoveRelativeMultiAxisConfigWidget : public ProcessConfigWidget
@@ -386,6 +400,76 @@ class PSUReadCurrentConfigWidget : public ProcessConfigWidget
 
 public:
   explicit PSUReadCurrentConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Group Start process
+ */
+class GroupStartConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit GroupStartConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Group End process
+ */
+class GroupEndConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit GroupEndConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Conditional If process
+ */
+class ConditionalIfConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ConditionalIfConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Conditional Else process
+ */
+class ConditionalElseConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ConditionalElseConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
+ * @brief Configuration widget for Conditional End process
+ */
+class ConditionalEndConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ConditionalEndConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
 
 protected:
   void createParameterFields(const ProcessInstance* instance) override;

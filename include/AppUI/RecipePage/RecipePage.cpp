@@ -175,36 +175,72 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
   mainLayout->addWidget(title);
 
+  // Search box for filtering processes
+  QLineEdit* searchBox = new QLineEdit();
+  searchBox->setPlaceholderText("Search processes...");
+  searchBox->setStyleSheet("padding: 5px; border: 1px solid #c0c0c0; border-radius: 3px;");
+  mainLayout->addWidget(searchBox);
+
   // ========== HORIZONTAL SPLIT: List on left, Button on right ==========
   QHBoxLayout* contentLayout = new QHBoxLayout();
   contentLayout->setSpacing(5);
 
-  // LEFT: Process list
-  m_processTemplateList = new QListWidget();
+  // LEFT: Process tree (categorized)
+  m_processTemplateList = new QTreeWidget();
+  m_processTemplateList->setHeaderHidden(true);
   m_processTemplateList->setStyleSheet(
-    "QListWidget { "
+    "QTreeWidget { "
     "  background-color: white; "
     "  border: 1px solid #c0c0c0; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
     "} "
-    "QListWidget::item { "
+    "QTreeWidget::item { "
     "  padding: 5px; "
     "} "
-    "QListWidget::item:selected { "
+    "QTreeWidget::item:selected { "
     "  background-color: #5a8fd6; "
     "  color: white; "
+    "} "
+    "QTreeWidget::branch:has-children:!has-siblings:closed,"
+    "QTreeWidget::branch:closed:has-children:has-siblings { "
+    "  image: url(none); "
+    "} "
+    "QTreeWidget::branch:open:has-children:!has-siblings,"
+    "QTreeWidget::branch:open:has-children:has-siblings { "
+    "  image: url(none); "
     "}"
   );
 
-  for (const auto& type : RecipeManager::getAvailableProcessTypes()) {
-    m_processTemplateList->addItem(QString::fromStdString(type));
+  // Populate tree with categories
+  for (const auto& category : RecipeManager::getProcessCategories()) {
+    QTreeWidgetItem* categoryItem = new QTreeWidgetItem(m_processTemplateList);
+    categoryItem->setText(0, QString::fromStdString(category));
+    categoryItem->setFlags(categoryItem->flags() & ~Qt::ItemIsSelectable);
+
+    QFont font = categoryItem->font(0);
+    font.setBold(true);
+    categoryItem->setFont(0, font);
+    categoryItem->setBackground(0, QColor(240, 240, 240));
+
+    // Add processes for this category
+    for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
+      QTreeWidgetItem* processItem = new QTreeWidgetItem(categoryItem);
+      processItem->setText(0, QString::fromStdString(processType));
+      processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
+    }
+
+    categoryItem->setExpanded(true);
   }
 
-  connect(m_processTemplateList, &QListWidget::itemClicked,
+  connect(m_processTemplateList, &QTreeWidget::itemClicked,
     this, &RecipePage::onProcessTemplateSelected);
-  connect(m_processTemplateList, &QListWidget::itemDoubleClicked,
-    [this](QListWidgetItem*) { onAddProcess(); });
+  connect(m_processTemplateList, &QTreeWidget::itemDoubleClicked,
+    [this](QTreeWidgetItem* item, int) {
+      if (item && item->parent()) { // Only process items (not category headers)
+        onAddProcess();
+      }
+    });
 
   contentLayout->addWidget(m_processTemplateList);
 
@@ -233,6 +269,31 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   contentLayout->addWidget(m_addButton);
 
   mainLayout->addLayout(contentLayout);
+
+  // Connect search box to filter tree
+  connect(searchBox, &QLineEdit::textChanged, [this](const QString& searchText) {
+    QString lowerSearch = searchText.toLower();
+
+    for (int i = 0; i < m_processTemplateList->topLevelItemCount(); ++i) {
+      QTreeWidgetItem* categoryItem = m_processTemplateList->topLevelItem(i);
+      bool categoryHasVisibleChildren = false;
+
+      for (int j = 0; j < categoryItem->childCount(); ++j) {
+        QTreeWidgetItem* processItem = categoryItem->child(j);
+        QString processName = processItem->text(0).toLower();
+
+        bool matches = lowerSearch.isEmpty() || processName.contains(lowerSearch);
+        processItem->setHidden(!matches);
+
+        if (matches) {
+          categoryHasVisibleChildren = true;
+        }
+      }
+
+      // Hide category if no children are visible
+      categoryItem->setHidden(!categoryHasVisibleChildren);
+    }
+  });
 }
 
 void RecipePage::createMiddlePanel(QWidget* middlePanel)
@@ -386,31 +447,29 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   layout->addLayout(selectionButtons);
 
-  // ========== TABLE VIEW ==========
-  m_recipeTable = new QTableWidget();
-  m_recipeTable->setColumnCount(3);
-  m_recipeTable->setHorizontalHeaderLabels({ "#", "Process Instance", "Run" });
-  m_recipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_recipeTable->setSelectionMode(QAbstractItemView::ExtendedSelection);  // ✅ Enable Shift+Click, Ctrl+Click
-  m_recipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_recipeTable->verticalHeader()->setVisible(false);
-  m_recipeTable->setShowGrid(true);
+  // ========== TREE VIEW ==========
+  m_recipeTree = new QTreeWidget();
+  m_recipeTree->setColumnCount(3);
+  m_recipeTree->setHeaderLabels({ "#", "Process Instance", "Run" });
+  m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_recipeTree->setRootIsDecorated(true);  // Show expand/collapse triangles
+  m_recipeTree->setIndentation(20);        // Indent width for child items
 
   // Set column widths
-  m_recipeTable->setColumnWidth(0, 40);   // # column
-  m_recipeTable->setColumnWidth(2, 50);   // Run checkbox column
-  m_recipeTable->horizontalHeader()->setStretchLastSection(false);
-  m_recipeTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  m_recipeTree->setColumnWidth(0, 40);   // # column
+  m_recipeTree->setColumnWidth(2, 50);   // Run checkbox column
+  m_recipeTree->header()->setStretchLastSection(false);
+  m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
 
-  m_recipeTable->setStyleSheet(
-    "QTableWidget { "
+  m_recipeTree->setStyleSheet(
+    "QTreeWidget { "
     "  background-color: white; "
     "  border: 1px solid #c0c0c0; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
-    "  gridline-color: #e0e0e0; "
     "} "
-    "QTableWidget::item:selected { "
+    "QTreeWidget::item:selected { "
     "  background-color: #5a8fd6; "
     "  color: white; "
     "} "
@@ -423,12 +482,10 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "}"
   );
 
-  connect(m_recipeTable, &QTableWidget::itemSelectionChanged,
+  connect(m_recipeTree, &QTreeWidget::itemSelectionChanged,
     this, &RecipePage::onRecipeStepSelected);
-  connect(m_recipeTable, &QTableWidget::cellChanged,
-    this, &RecipePage::onTableCellChanged);
 
-  layout->addWidget(m_recipeTable);
+  layout->addWidget(m_recipeTree);
 
   // ========== RUN BUTTON ==========
   m_runRecipeButton = new QPushButton("▶ Run Recipe");
@@ -634,70 +691,77 @@ void RecipePage::onSaveRecipeAs()
 
 void RecipePage::onAddProcess()
 {
-  QListWidgetItem* item = m_processTemplateList->currentItem();
+  QTreeWidgetItem* item = m_processTemplateList->currentItem();
   if (!item) {
     QMessageBox::warning(this, "No Selection", "Please select a process template to add.");
     return;
   }
 
-  m_recipeManager->addStep(item->text().toStdString());
+  // Only add if it's a process item (not a category header)
+  if (!item->parent()) {
+    QMessageBox::warning(this, "Invalid Selection", "Please select a process, not a category.");
+    return;
+  }
+
+  m_recipeManager->addStep(item->text(0).toStdString());
   refreshRecipeList();
-  m_recipeTable->selectRow(m_recipeManager->getStepCount() - 1);
+  selectStepByIndex(m_recipeManager->getStepCount() - 1);
 }
 
 void RecipePage::onSelectAllProcesses()
 {
-  // Check all checkboxes in the "Run" column
-  for (int row = 0; row < m_recipeTable->rowCount(); ++row) {
-    m_recipeManager->setStepEnabled(row, true);
+  // Enable all steps
+  for (int i = 0; i < m_recipeManager->getStepCount(); ++i) {
+    m_recipeManager->setStepEnabled(i, true);
   }
   refreshRecipeList();
 
   // Restore selection if there was one
-  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeTable->rowCount()) {
-    m_recipeTable->selectRow(m_selectedStepIndex);
+  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
+    selectStepByIndex(m_selectedStepIndex);
   }
 }
 
 void RecipePage::onDeselectAllProcesses()
 {
-  // Uncheck all checkboxes in the "Run" column
-  for (int row = 0; row < m_recipeTable->rowCount(); ++row) {
-    m_recipeManager->setStepEnabled(row, false);
+  // Disable all steps
+  for (int i = 0; i < m_recipeManager->getStepCount(); ++i) {
+    m_recipeManager->setStepEnabled(i, false);
   }
   refreshRecipeList();
 
   // Restore selection if there was one
-  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeTable->rowCount()) {
-    m_recipeTable->selectRow(m_selectedStepIndex);
+  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
+    selectStepByIndex(m_selectedStepIndex);
   }
 }
 
 void RecipePage::onToggleSelectedProcesses()
 {
-  // Get all currently selected (highlighted) rows
-  QList<QTableWidgetItem*> selectedItems = m_recipeTable->selectedItems();
+  // Get all currently selected tree items
+  QList<QTreeWidgetItem*> selectedItems = m_recipeTree->selectedItems();
 
   if (selectedItems.isEmpty()) {
     QMessageBox::information(this, "No Selection",
-      "Please select one or more rows first.\n\n"
-      "Tip: Use Shift+Click to select a range, or Ctrl+Click to select multiple rows.");
+      "Please select one or more items first.\n\n"
+      "Tip: Use Shift+Click to select a range, or Ctrl+Click to select multiple items.");
     return;
   }
 
-  // Get unique row indices from selected items
-  QSet<int> selectedRows;
-  for (QTableWidgetItem* item : selectedItems) {
-    selectedRows.insert(item->row());
+  // Get step indices from selected items
+  QSet<int> selectedIndices;
+  for (QTreeWidgetItem* item : selectedItems) {
+    int stepIndex = item->data(0, Qt::UserRole).toInt();
+    selectedIndices.insert(stepIndex);
   }
 
-  // Toggle the enabled state for each selected row
-  for (int row : selectedRows) {
-    if (row >= 0 && row < m_recipeManager->getStepCount()) {
-      const ProcessInstance* step = m_recipeManager->getStep(row);
+  // Toggle the enabled state for each selected step
+  for (int stepIndex : selectedIndices) {
+    if (stepIndex >= 0 && stepIndex < m_recipeManager->getStepCount()) {
+      const ProcessInstance* step = m_recipeManager->getStep(stepIndex);
       if (step) {
         // Toggle: if enabled, disable it; if disabled, enable it
-        m_recipeManager->setStepEnabled(row, !step->enabled);
+        m_recipeManager->setStepEnabled(stepIndex, !step->enabled);
       }
     }
   }
@@ -705,8 +769,8 @@ void RecipePage::onToggleSelectedProcesses()
   refreshRecipeList();
 
   // Restore the selection
-  for (int row : selectedRows) {
-    m_recipeTable->selectRow(row);
+  for (int stepIndex : selectedIndices) {
+    selectStepByIndex(stepIndex);
   }
 }
 
@@ -819,7 +883,7 @@ void RecipePage::onMoveStepUp()
   if (m_recipeManager->moveStepUp(m_selectedStepIndex)) {
     m_selectedStepIndex--;  // Update index to follow the moved step
     refreshRecipeList();
-    m_recipeTable->selectRow(m_selectedStepIndex);
+    selectStepByIndex(m_selectedStepIndex);
   }
 }
 
@@ -828,13 +892,20 @@ void RecipePage::onMoveStepDown()
   if (m_recipeManager->moveStepDown(m_selectedStepIndex)) {
     m_selectedStepIndex++;  // Update index to follow the moved step
     refreshRecipeList();
-    m_recipeTable->selectRow(m_selectedStepIndex);
+    selectStepByIndex(m_selectedStepIndex);
   }
 }
 
 void RecipePage::onRecipeStepSelected()
 {
-  int index = m_recipeTable->currentRow();
+  QTreeWidgetItem* item = m_recipeTree->currentItem();
+  if (!item) {
+    clearConfigurationForm();
+    return;
+  }
+
+  // Get step index from item data
+  int index = item->data(0, Qt::UserRole).toInt();
 
   // ✅ NEW: If progress widget is showing, switch to config panel
   if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
@@ -860,13 +931,6 @@ void RecipePage::onRecipeStepSelected()
   updateConfigurationForm();
 }
 
-void RecipePage::onTableCellChanged(int row, int column)
-{
-  // This slot is currently not used as checkboxes handle their own state
-  // Kept for future extensibility if needed
-}
-
-
 void RecipePage::onRecipeNameChanged(const QString& name)
 {
   m_recipeManager->setRecipeName(name.toStdString());
@@ -879,17 +943,16 @@ void RecipePage::onNicknameChanged(const QString& nickname)
 
   m_recipeManager->setStepNickname(m_selectedStepIndex, nickname.toStdString());
 
-  if (m_selectedStepIndex < m_recipeTable->rowCount()) {
-    QTableWidgetItem* item = m_recipeTable->item(m_selectedStepIndex, 1);
-    if (item) {
-      const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
-      if (step) {
-        QString displayText = QString::fromStdString(step->userNickname);
-        if (!step->enabled) {
-          displayText = "[DISABLED] " + displayText;
-        }
-        item->setText(displayText);
+  // Update the tree item text directly
+  QTreeWidgetItem* currentItem = m_recipeTree->currentItem();
+  if (currentItem) {
+    const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
+    if (step) {
+      QString displayText = QString::fromStdString(step->userNickname);
+      if (!step->enabled) {
+        displayText = "[DISABLED] " + displayText;
       }
+      currentItem->setText(1, displayText);
     }
   }
 }
@@ -900,7 +963,7 @@ void RecipePage::onEnabledChanged(bool enabled)
 
   m_recipeManager->setStepEnabled(m_selectedStepIndex, enabled);
   refreshRecipeList();
-  m_recipeTable->selectRow(m_selectedStepIndex);
+  selectStepByIndex(m_selectedStepIndex);
 }
 
 void RecipePage::onParameterChanged()
@@ -913,72 +976,137 @@ void RecipePage::onParameterChanged()
   }
 }
 
-void RecipePage::onProcessTemplateSelected(QListWidgetItem* item)
+void RecipePage::onProcessTemplateSelected(QTreeWidgetItem* item, int column)
 {
-  std::cout << "[RecipePage] Selected template: " << item->text().toStdString() << std::endl;
+  (void)column; // Unused
+  if (item && item->parent()) { // Only process items (not category headers)
+    std::cout << "[RecipePage] Selected template: " << item->text(0).toStdString() << std::endl;
+  }
 }
 
 void RecipePage::refreshRecipeList()
 {
-  // Block signals to prevent triggering cellChanged during population
-  m_recipeTable->blockSignals(true);
+  // Block signals during refresh
+  m_recipeTree->blockSignals(true);
 
-  m_recipeTable->setRowCount(0);
+  // Store currently selected item index before clearing
+  int previousSelection = m_selectedStepIndex;
 
-  int row = 0;
+  // Clear tree
+  m_recipeTree->clear();
+
+  // Stack to track parent nodes for nesting
+  std::vector<QTreeWidgetItem*> parentStack;
+
+  int stepIndex = 0;
   for (const auto& step : m_recipeManager->getAllSteps()) {
-    m_recipeTable->insertRow(row);
+    QTreeWidgetItem* item = nullptr;
+    QTreeWidgetItem* currentParent = parentStack.empty() ? nullptr : parentStack.back();
 
-    // Column 0: Instance number
-    QTableWidgetItem* numItem = new QTableWidgetItem(QString::number(row + 1));
-    numItem->setTextAlignment(Qt::AlignCenter);
-    numItem->setFlags(numItem->flags() & ~Qt::ItemIsEditable);
-    m_recipeTable->setItem(row, 0, numItem);
+    // Determine if this step starts or ends a block
+    bool isBlockStart = RecipeManager::isBlockStart(step->processType);
+    bool isBlockEnd = RecipeManager::isBlockEnd(step->processType);
+    bool isElse = (step->processType == "Conditional Else");
 
-    // Column 1: Process instance name
+    // Create tree item
+    if (currentParent) {
+      item = new QTreeWidgetItem(currentParent);
+    } else {
+      item = new QTreeWidgetItem(m_recipeTree);
+    }
+
+    // Store step index in item data
+    item->setData(0, Qt::UserRole, stepIndex);
+
+    // Column 0: Step number
+    item->setText(0, QString::number(stepIndex + 1));
+    item->setTextAlignment(0, Qt::AlignCenter);
+
+    // Column 1: Process name
     QString displayText = QString::fromStdString(step->userNickname);
     if (!step->enabled) {
       displayText = "[DISABLED] " + displayText;
     }
+    item->setText(1, displayText);
 
-    QTableWidgetItem* nameItem = new QTableWidgetItem(displayText);
-    nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-
+    // Visual styling for disabled items
     if (!step->enabled) {
-      nameItem->setForeground(QColor("#999999"));
-      QFont font = nameItem->font();
+      item->setForeground(0, QColor("#999999"));
+      item->setForeground(1, QColor("#999999"));
+      QFont font = item->font(1);
       font.setStrikeOut(true);
-      nameItem->setFont(font);
+      item->setFont(1, font);
     }
 
-    m_recipeTable->setItem(row, 1, nameItem);
-
-    // Column 2: Checkbox for run selection
+    // Column 2: Checkbox widget
     QWidget* checkboxWidget = new QWidget();
     QCheckBox* checkbox = new QCheckBox();
     checkbox->setChecked(step->enabled);
-    checkbox->setProperty("row", row);  // Store row index for callback
+    checkbox->setProperty("stepIndex", stepIndex);
 
     QHBoxLayout* checkLayout = new QHBoxLayout(checkboxWidget);
     checkLayout->addWidget(checkbox);
     checkLayout->setAlignment(Qt::AlignCenter);
     checkLayout->setContentsMargins(0, 0, 0, 0);
 
-    connect(checkbox, &QCheckBox::toggled, this, [this, row](bool checked) {
-      m_recipeManager->setStepEnabled(row, checked);
+    connect(checkbox, &QCheckBox::toggled, this, [this, stepIndex](bool checked) {
+      m_recipeManager->setStepEnabled(stepIndex, checked);
       refreshRecipeList();
-      m_recipeTable->selectRow(m_selectedStepIndex);
+      // Restore selection
+      selectStepByIndex(m_selectedStepIndex);
     });
 
-    m_recipeTable->setCellWidget(row, 2, checkboxWidget);
+    m_recipeTree->setItemWidget(item, 2, checkboxWidget);
 
-    row++;
+    // Manage parent stack for nesting
+    if (isBlockStart) {
+      // This item becomes a parent for subsequent items
+      parentStack.push_back(item);
+      item->setExpanded(true);  // Auto-expand by default
+    }
+    else if (isElse) {
+      // Else is at the same level as If, so we stay with same parent
+      // But we need to pop the If's child container and stay at the If level
+      if (!parentStack.empty()) {
+        // We're inside an If block. The Else should be a sibling of the If's children
+        // Actually, the Else should close the Then branch and open the Else branch
+        // For now, keep it simple: Else appears at same level
+      }
+    }
+    else if (isBlockEnd) {
+      // Pop from stack
+      if (!parentStack.empty()) {
+        parentStack.pop_back();
+      }
+    }
+
+    stepIndex++;
   }
 
-  m_recipeTable->blockSignals(false);
+  // Restore selection
+  selectStepByIndex(previousSelection);
+
+  m_recipeTree->blockSignals(false);
 }
 
+void RecipePage::selectStepByIndex(int index)
+{
+  if (index < 0 || index >= m_recipeManager->getStepCount()) {
+    return;
+  }
 
+  // Find the tree item with matching step index
+  QTreeWidgetItemIterator it(m_recipeTree);
+  while (*it) {
+    int itemIndex = (*it)->data(0, Qt::UserRole).toInt();
+    if (itemIndex == index) {
+      m_recipeTree->setCurrentItem(*it);
+      m_recipeTree->scrollToItem(*it);
+      return;
+    }
+    ++it;
+  }
+}
 
 void RecipePage::updateConfigurationForm()
 {
@@ -1023,6 +1151,15 @@ void RecipePage::updateConfigurationForm()
   // ← ADD THIS:
   else if (instance->processType == "Ask User") {
     m_currentConfigWidget = new AskUserConfigWidget(m_context);
+  }
+  else if (instance->processType == "Log Message") {
+    m_currentConfigWidget = new LogMessageConfigWidget(m_context);
+  }
+  else if (instance->processType == "Group Start") {
+    m_currentConfigWidget = new GroupStartConfigWidget(m_context);
+  }
+  else if (instance->processType == "Group End") {
+    m_currentConfigWidget = new GroupEndConfigWidget(m_context);
   }
   else if (instance->processType == "Move Relative Multi-Axis") {
     m_currentConfigWidget = new MoveRelativeMultiAxisConfigWidget(m_context);
@@ -1080,6 +1217,18 @@ void RecipePage::updateConfigurationForm()
   }
   else if (instance->processType == "PSU Read Current") {
     m_currentConfigWidget = new PSUReadCurrentConfigWidget(m_context);
+  }
+  // ============================================================================
+  // ✅ CONDITIONAL PROCESSES
+  // ============================================================================
+  else if (instance->processType == "Conditional If") {
+    m_currentConfigWidget = new ConditionalIfConfigWidget(m_context);
+  }
+  else if (instance->processType == "Conditional Else") {
+    m_currentConfigWidget = new ConditionalElseConfigWidget(m_context);
+  }
+  else if (instance->processType == "Conditional End") {
+    m_currentConfigWidget = new ConditionalEndConfigWidget(m_context);
   }
   else {
     std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
