@@ -42,21 +42,20 @@ void ManualAdjustWidget::setupUI()
   container->setStyleSheet(
     "QWidget { "
     "  background-color: white; "
-    "  border: 2px solid #FF9800; "
-    "  border-radius: 8px; "
+    "  border: 1px solid #ccc; "
     "}");
 
   QVBoxLayout* containerLayout = new QVBoxLayout(container);
-  containerLayout->setContentsMargins(30, 25, 30, 25);
-  containerLayout->setSpacing(15);
+  containerLayout->setContentsMargins(20, 15, 20, 15);
+  containerLayout->setSpacing(10);
 
   // Title
   QLabel* titleLabel = new QLabel("Manual Adjustment Required");
   titleLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 20px; "
+    "  font-size: 16px; "
     "  font-weight: bold; "
-    "  color: #FF9800; "
+    "  color: #333; "
     "  background: transparent; "
     "  border: none; "
     "}");
@@ -66,11 +65,11 @@ void ManualAdjustWidget::setupUI()
   m_messageLabel = new QLabel("Please adjust the position as needed");
   m_messageLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 16px; "
-    "  color: #333333; "
+    "  font-size: 13px; "
+    "  color: #555; "
     "  background: transparent; "
     "  border: none; "
-    "  padding: 10px 0px; "
+    "  padding: 5px 0px; "
     "}");
   m_messageLabel->setWordWrap(true);
   containerLayout->addWidget(m_messageLabel);
@@ -81,22 +80,22 @@ void ManualAdjustWidget::setupUI()
   m_deviceLabel = new QLabel("Device: gantry-main");
   m_deviceLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 14px; "
+    "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #2196F3; "
+    "  color: #0066cc; "
     "  background: transparent; "
     "  border: none; "
     "}");
   infoLayout->addWidget(m_deviceLabel);
 
-  infoLayout->addSpacing(20);
+  infoLayout->addSpacing(15);
 
   m_stepSizeLabel = new QLabel("Step: 10 μm");
   m_stepSizeLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 14px; "
+    "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #4CAF50; "
+    "  color: #009933; "
     "  background: transparent; "
     "  border: none; "
     "}");
@@ -109,12 +108,11 @@ void ManualAdjustWidget::setupUI()
   m_positionLabel = new QLabel("Position: X: 0.000 | Y: 0.000 | Z: 0.000 mm");
   m_positionLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 14px; "
-    "  color: #666666; "
-    "  background: #f5f5f5; "
-    "  border: 1px solid #ddd; "
-    "  border-radius: 4px; "
-    "  padding: 8px; "
+    "  font-size: 12px; "
+    "  color: #333; "
+    "  background: #f0f0f0; "
+    "  border: 1px solid #ccc; "
+    "  padding: 5px; "
     "}");
   containerLayout->addWidget(m_positionLabel);
 
@@ -122,41 +120,41 @@ void ManualAdjustWidget::setupUI()
   QLabel* jogLabel = new QLabel("Jog Controls:");
   jogLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 13px; "
+    "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #555555; "
+    "  color: #333; "
     "  background: transparent; "
     "  border: none; "
-    "  margin-top: 5px; "
+    "  margin-top: 3px; "
     "}");
   containerLayout->addWidget(jogLabel);
 
   // Jog controls - Single row layout
   QHBoxLayout* jogLayout = new QHBoxLayout();
-  jogLayout->setSpacing(10);
+  jogLayout->setSpacing(5);
 
   // Minimal button style
   QString buttonStyle =
     "QPushButton { "
-    "  background-color: #2196F3; "
+    "  background-color: #007acc; "
     "  color: white; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border: none; "
-    "  border-radius: 4px; "
-    "  padding: 8px 12px; "
-    "  min-width: 70px; "
-    "  min-height: 40px; "
+    "  font-size: 12px; "
+    "  font-weight: normal; "
+    "  border: 1px solid #005a9e; "
+    "  padding: 5px 10px; "
+    "  min-width: 60px; "
+    "  min-height: 30px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #1976D2; "
+    "  background-color: #005a9e; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #0D47A1; "
+    "  background-color: #003d6b; "
     "} "
     "QPushButton:disabled { "
-    "  background-color: #CCCCCC; "
-    "  color: #888888; "
+    "  background-color: #ccc; "
+    "  color: #888; "
+    "  border: 1px solid #aaa; "
     "}";
 
   // Create jog buttons with minimal text
@@ -194,51 +192,49 @@ void ManualAdjustWidget::setupUI()
 
   containerLayout->addLayout(jogLayout);
 
-  containerLayout->addSpacing(15);
+  containerLayout->addSpacing(10);
 
   // OK / Cancel buttons
   QHBoxLayout* actionLayout = new QHBoxLayout();
-  actionLayout->setSpacing(20);  // ✅ More spacing between buttons
+  actionLayout->setSpacing(10);
 
   m_okButton = new QPushButton("✓ OK (Complete)");
-  m_okButton->setMinimumHeight(55);  // ✅ Slightly taller
-  m_okButton->setMinimumWidth(200);  // ✅ Wider
+  m_okButton->setMinimumHeight(35);
+  m_okButton->setMinimumWidth(150);
   m_okButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #4CAF50; "
+    "  background-color: #28a745; "
     "  color: white; "
-    "  font-size: 18px; "  // ✅ Larger font
-    "  font-weight: bold; "
-    "  border: none; "
-    "  border-radius: 8px; "  // ✅ More rounded
-    "  padding: 12px 30px; "  // ✅ More padding
+    "  font-size: 13px; "
+    "  font-weight: normal; "
+    "  border: 1px solid #1e7e34; "
+    "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #45a049; "
+    "  background-color: #218838; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #3d8b40; "
+    "  background-color: #1e7e34; "
     "}");
   connect(m_okButton, &QPushButton::clicked, this, &ManualAdjustWidget::onOkClicked);
 
   m_cancelButton = new QPushButton("✗ Cancel (Stop Sequence)");
-  m_cancelButton->setMinimumHeight(55);  // ✅ Slightly taller
-  m_cancelButton->setMinimumWidth(200);  // ✅ Wider
+  m_cancelButton->setMinimumHeight(35);
+  m_cancelButton->setMinimumWidth(150);
   m_cancelButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #f44336; "
+    "  background-color: #dc3545; "
     "  color: white; "
-    "  font-size: 18px; "  // ✅ Larger font
-    "  font-weight: bold; "
-    "  border: none; "
-    "  border-radius: 8px; "  // ✅ More rounded
-    "  padding: 12px 30px; "  // ✅ More padding
+    "  font-size: 13px; "
+    "  font-weight: normal; "
+    "  border: 1px solid #bd2130; "
+    "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #da190b; "
+    "  background-color: #c82333; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #c41c0c; "
+    "  background-color: #bd2130; "
     "}");
   connect(m_cancelButton, &QPushButton::clicked, this, &ManualAdjustWidget::onCancelClicked);
 
