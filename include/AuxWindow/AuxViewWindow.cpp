@@ -1,8 +1,9 @@
 // AuxViewWindow.cpp
 #include "AuxViewWindow.h"
-#include "LiveViewCameraWidget.h"
+#include "CameraClickToMoveWidget.h"
 #include "LiveChartWidget.h"
 #include "CameraManager.h"
+#include "unified_motion_manager.h"
 #include "DataStore.h"
 #include "TcpClientManager.h"
 #include <QCloseEvent>
@@ -10,9 +11,14 @@
 #include <QVBoxLayout>
 #include <iostream>
 
-AuxViewWindow::AuxViewWindow(CameraManager* cameraManager, DataStore* dataStore, TcpClientManager* tcpManager, QWidget* parent)
+AuxViewWindow::AuxViewWindow(CameraManager* cameraManager,
+                               UnifiedMotionManager* motionManager,
+                               DataStore* dataStore,
+                               TcpClientManager* tcpManager,
+                               QWidget* parent)
   : QMainWindow(parent)
   , m_cameraManager(cameraManager)
+  , m_motionManager(motionManager)
   , m_dataStore(dataStore)
   , m_tcpManager(tcpManager)
 {
@@ -26,7 +32,7 @@ AuxViewWindow::AuxViewWindow(CameraManager* cameraManager, DataStore* dataStore,
 
   setupUI();
 
-  std::cout << "[AuxViewWindow] Created" << std::endl;
+  std::cout << "[AuxViewWindow] Created with click-to-move feature" << std::endl;
 }
 
 AuxViewWindow::~AuxViewWindow()
@@ -61,10 +67,10 @@ void AuxViewWindow::setupLeftPanel()
   leftLayout->setContentsMargins(0, 0, 0, 0);
   leftLayout->setSpacing(0);
 
-  // Live camera view widget
-  m_liveViewWidget = new LiveViewCameraWidget(m_cameraManager);
-  m_liveViewWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  leftLayout->addWidget(m_liveViewWidget, 1);  // Stretch factor = 1
+  // Camera view with click-to-move widget
+  m_cameraClickToMoveWidget = new CameraClickToMoveWidget(m_cameraManager, m_motionManager);
+  m_cameraClickToMoveWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  leftLayout->addWidget(m_cameraClickToMoveWidget, 1);  // Stretch factor = 1
 
   // Add left panel to main layout (50% width)
   m_mainLayout->addWidget(m_leftPanel, 1);  // stretch factor = 1

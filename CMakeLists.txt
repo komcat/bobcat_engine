@@ -369,13 +369,15 @@ set(SOURCES
     include/sequence/PSUCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
-    include/AuxWindow/AuxWindowManager.cpp 
+    include/AuxWindow/AuxWindowManager.cpp
     include/AuxWindow/AuxViewWindow.cpp
     include/AuxWindow/LiveChartWidget.cpp
     include/AuxWindow/LiveViewCameraWidget.cpp
+    include/AuxWindow/CameraClickToMoveWidget.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp
+    include/PSU/KeysightE36103B.cpp
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp

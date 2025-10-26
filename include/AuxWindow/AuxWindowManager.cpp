@@ -6,6 +6,7 @@
 AuxWindowManager::AuxWindowManager(QObject* parent)
   : QObject(parent)
   , m_cameraManager(nullptr)
+  , m_motionManager(nullptr)
   , m_dataStore(nullptr)
   , m_tcpManager(nullptr)
   , m_initialized(false)
@@ -31,6 +32,11 @@ void AuxWindowManager::initialize()
     return;
   }
 
+  if (!m_motionManager) {
+    std::cout << "[AuxWindowManager] ERROR: UnifiedMotionManager not set!" << std::endl;
+    return;
+  }
+
   if (!m_dataStore) {
     std::cout << "[AuxWindowManager] ERROR: DataStore not set!" << std::endl;
     return;
@@ -41,10 +47,10 @@ void AuxWindowManager::initialize()
     return;
   }
 
-  std::cout << "[AuxWindowManager] Initializing auxiliary window..." << std::endl;
+  std::cout << "[AuxWindowManager] Initializing auxiliary window with click-to-move..." << std::endl;
 
   // Create the window with all required managers
-  m_window = std::make_unique<AuxViewWindow>(m_cameraManager, m_dataStore, m_tcpManager);
+  m_window = std::make_unique<AuxViewWindow>(m_cameraManager, m_motionManager, m_dataStore, m_tcpManager);
 
   m_initialized = true;
 
@@ -68,6 +74,12 @@ void AuxWindowManager::setCameraManager(CameraManager* manager)
 {
   m_cameraManager = manager;
   std::cout << "[AuxWindowManager] CameraManager set" << std::endl;
+}
+
+void AuxWindowManager::setMotionManager(UnifiedMotionManager* manager)
+{
+  m_motionManager = manager;
+  std::cout << "[AuxWindowManager] UnifiedMotionManager set" << std::endl;
 }
 
 void AuxWindowManager::setDataStore(DataStore* dataStore)

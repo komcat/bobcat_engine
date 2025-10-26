@@ -1185,6 +1185,7 @@ void Application::initializeAuxWindowManager()
 
   // Set required dependencies
   m_auxWindowManager->setCameraManager(m_cameraManager.get());
+  m_auxWindowManager->setMotionManager(m_context.motionManager);
   m_auxWindowManager->setDataStore(m_dataStore.get());
   m_auxWindowManager->setTcpClientManager(m_tcpClientManager.get());
 

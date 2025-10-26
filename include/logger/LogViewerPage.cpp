@@ -140,7 +140,7 @@ void LogViewerPage::setupUI()
     "QLabel { color: #333333; font-size: 12px; font-weight: bold; background-color: #f5f5f5; padding: 8px; border: 1px solid #cccccc; border-radius: 3px; }");
   mainLayout->addWidget(m_statsLabel);
 
-  // Log display
+  // Log display (increased font from 11px to 13px)
   m_logDisplay = new QTextEdit();
   m_logDisplay->setReadOnly(true);
   m_logDisplay->setStyleSheet(
@@ -149,7 +149,7 @@ void LogViewerPage::setupUI()
     "  color: #333333; "
     "  border: 1px solid #cccccc; "
     "  font-family: 'Consolas', 'Courier New', monospace; "
-    "  font-size: 11px; "
+    "  font-size: 13px; "
     "  padding: 5px; "
     "}");
   mainLayout->addWidget(m_logDisplay);

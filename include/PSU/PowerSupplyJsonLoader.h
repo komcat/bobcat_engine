@@ -8,7 +8,23 @@
 /**
  * @brief Loads power supply configuration from JSON file
  *
- * Expected JSON format:
+ * Supported device types:
+ * - "keysight_e36103b_direct" or "keysight_direct" - Direct TCP/IP control (no Python server)
+ * - "keysight_e36103b" or "keysight" - Server-based control (via Python server)
+ *
+ * Expected JSON format (DIRECT control - recommended):
+ * {
+ *   "devices": [
+ *     {
+ *       "name": "PSU1",
+ *       "type": "keysight_e36103b_direct",
+ *       "ip": "192.168.0.60",
+ *       "port": 5025
+ *     }
+ *   ]
+ * }
+ *
+ * Expected JSON format (SERVER-based control - legacy):
  * {
  *   "server": {
  *     "host": "127.0.0.60",

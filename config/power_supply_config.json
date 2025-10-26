@@ -1,12 +1,8 @@
 {
-  "server": {
-    "host": "127.0.0.60",
-    "port": 5000
-  },
   "devices": [
     {
       "name": "PSU1",
-      "type": "keysight_e36103b",
+      "type": "keysight_e36103b_direct",
       "ip": "192.168.0.60",
       "port": 5025
     }

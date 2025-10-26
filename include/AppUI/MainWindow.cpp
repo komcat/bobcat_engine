@@ -107,7 +107,13 @@ void MainWindow::setupUI()
   m_jogButton->raise();
 
   setCentralWidget(centralWidget);
-  resize(480, 480);
+
+  // Set initial window size (width x height)
+  resize(1024, 768);  // Reasonable desktop size
+
+  // Optional: Set size constraints
+  setMinimumSize(800, 600);   // Prevent too small
+  // setMaximumSize(1920, 1080); // Prevent too large (uncomment if needed)
 }
 
 // MainWindow.cpp - Update createPages()

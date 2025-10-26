@@ -7,28 +7,34 @@
 
 class CameraManager;
 class DataStore;
-class LiveViewCameraWidget;
+class CameraClickToMoveWidget;
 class LiveChartWidget;
 class TcpClientManager;
+class UnifiedMotionManager;
 
 /**
  * @brief Auxiliary display window with 50/50 split panels
  *
  * Window Configuration (hardcoded):
- * - Left Panel (50%): Live camera view
+ * - Left Panel (50%): Camera view with click-to-move
  * - Right Panel (50%): Live chart view
  *
  * Features:
  * - Prevents user from closing (hides instead)
  * - Always visible on startup
  * - Designed for second screen display
+ * - Click-to-move feature for gantry alignment (Camera_1 only)
  */
 class AuxViewWindow : public QMainWindow
 {
   Q_OBJECT
 
 public:
-  explicit AuxViewWindow(CameraManager* cameraManager, DataStore* dataStore, TcpClientManager* tcpManager, QWidget* parent = nullptr);
+  explicit AuxViewWindow(CameraManager* cameraManager,
+                          UnifiedMotionManager* motionManager,
+                          DataStore* dataStore,
+                          TcpClientManager* tcpManager,
+                          QWidget* parent = nullptr);
   ~AuxViewWindow();
 
 protected:
@@ -41,6 +47,7 @@ private:
   void setupRightPanel();  // Chart view
 
   CameraManager* m_cameraManager;
+  UnifiedMotionManager* m_motionManager;
   DataStore* m_dataStore;
   TcpClientManager* m_tcpManager;
 
@@ -53,6 +60,6 @@ private:
   QWidget* m_rightPanel;
 
   // Widgets
-  LiveViewCameraWidget* m_liveViewWidget;
+  CameraClickToMoveWidget* m_cameraClickToMoveWidget;
   LiveChartWidget* m_liveChartWidget;
 };

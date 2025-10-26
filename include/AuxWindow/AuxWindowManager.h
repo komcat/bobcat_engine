@@ -7,18 +7,19 @@
 class CameraManager;
 class DataStore;
 class TcpClientManager;
+class UnifiedMotionManager;
 class AuxViewWindow;
 
 /**
  * @brief Manager for auxiliary display window (business logic only)
  *
  * Responsibilities:
- * - Manages references to CameraManager and DataStore
+ * - Manages references to CameraManager, UnifiedMotionManager, and DataStore
  * - Controls auxiliary window lifecycle
  * - Provides interface for setting data sources
  *
  * Window Configuration (hardcoded):
- * - Left Panel: Live camera view
+ * - Left Panel: Camera view with click-to-move
  * - Right Panel: Live chart view
  */
 class AuxWindowManager : public QObject
@@ -37,6 +38,7 @@ public:
 
   // Set data sources (must be called before initialize)
   void setCameraManager(CameraManager* manager);
+  void setMotionManager(UnifiedMotionManager* manager);
   void setDataStore(DataStore* dataStore);
   void setTcpClientManager(TcpClientManager* tcpManager);
 
@@ -50,6 +52,7 @@ public:
 
 private:
   CameraManager* m_cameraManager;
+  UnifiedMotionManager* m_motionManager;
   DataStore* m_dataStore;
   TcpClientManager* m_tcpManager;
 

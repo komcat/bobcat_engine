@@ -1,5 +1,6 @@
 // PowerSupplyJsonLoader.cpp
 #include "PowerSupplyJsonLoader.h"
+#include "KeysightE36103B.h"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -25,16 +26,18 @@ bool PowerSupplyJsonLoader::loadConfiguration(const std::string& filePath, Power
     file >> config;
     file.close();
 
-    // Extract server configuration
-    if (!config.contains("server")) {
-      std::cerr << "[PowerSupplyJsonLoader] Missing 'server' section in config" << std::endl;
-      return false;
+    // Extract server configuration (optional - only needed for server-based devices)
+    std::string serverHost = "127.0.0.60";  // Default
+    int serverPort = 5000;                  // Default
+
+    if (config.contains("server")) {
+      serverHost = config["server"].value("host", "127.0.0.60");
+      serverPort = config["server"].value("port", 5000);
+      std::cout << "[PowerSupplyJsonLoader] Server configured: " << serverHost << ":" << serverPort << std::endl;
     }
-
-    std::string serverHost = config["server"].value("host", "127.0.0.60");
-    int serverPort = config["server"].value("port", 5000);
-
-    std::cout << "[PowerSupplyJsonLoader] Server: " << serverHost << ":" << serverPort << std::endl;
+    else {
+      std::cout << "[PowerSupplyJsonLoader] No server section - direct mode only" << std::endl;
+    }
 
     // Load devices
     if (!config.contains("devices") || !config["devices"].is_array()) {
@@ -90,9 +93,15 @@ PowerSupplyPtr PowerSupplyJsonLoader::createPowerSupply(const std::string& type,
   const std::string& deviceIP,
   int devicePort)
 {
-  // Currently only supports Keysight E36103B
-  // Can be extended to support other PSU types
+  // Direct TCP/IP control (connects directly to PSU)
+  if (type == "keysight_e36103b_direct" || type == "keysight_direct") {
+    std::cout << "[PowerSupplyJsonLoader] Creating DIRECT driver for " << name << std::endl;
+    return std::make_shared<KeysightE36103B>(deviceIP, devicePort, name);
+  }
+
+  // Server-based control (connects through Python server)
   if (type == "keysight_e36103b" || type == "keysight") {
+    std::cout << "[PowerSupplyJsonLoader] Creating SERVER-BASED driver for " << name << std::endl;
     return std::make_shared<KeysightPSUAdapter>(name, serverHost, serverPort, deviceIP, devicePort);
   }
 
