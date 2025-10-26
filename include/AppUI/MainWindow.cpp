@@ -155,6 +155,7 @@ void MainWindow::createPages()
     m_context->productManager,
     m_matrixLoader,
     m_context->dataStore,
+    m_context->coordinateSystemManager,
     this
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,

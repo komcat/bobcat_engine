@@ -16,6 +16,7 @@
 #include "TECJsonLoader.h"  // ✅ ADD THIS
 #include "PowerSupplyManager.h"
 #include "PowerSupplyJsonLoader.h"
+#include "CoordinateSystemManager.h"
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
@@ -160,6 +161,7 @@ void Application::initializeManagers()
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
     initializeAuxWindowManager();  // ✅ ADD THIS LINE
+    initializeCoordinateSystemManager();
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -1193,6 +1195,17 @@ void Application::initializeAuxWindowManager()
   m_context.auxWindowManager = m_auxWindowManager.get();
 
   std::cout << "[Application] AuxWindowManager initialized successfully" << std::endl;
+}
+
+void Application::initializeCoordinateSystemManager()
+{
+  std::cout << "[Application] Initializing CoordinateSystemManager..." << std::endl;
+
+  m_coordinateSystemManager = std::make_unique<CoordinateSystemManager>();
+  m_context.coordinateSystemManager = m_coordinateSystemManager.get();
+
+  m_logManager->Info("CoordinateSystemManager initialized", "Application");
+  std::cout << "[Application] CoordinateSystemManager initialized successfully" << std::endl;
 }
 
 // In your Application constructor or initialization function:

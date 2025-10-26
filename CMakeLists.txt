@@ -210,6 +210,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI
     ${CMAKE_SOURCE_DIR}/include/AppUI/Common
     ${CMAKE_SOURCE_DIR}/include/AppUI/ConfigEditor
+    ${CMAKE_SOURCE_DIR}/include/AppUI/CoordinateSystem
     ${CMAKE_SOURCE_DIR}/include/AppUI/Forms
     ${CMAKE_SOURCE_DIR}/include/AppUI/MotionPages
     ${CMAKE_SOURCE_DIR}/include/AppUI/IOPage
@@ -320,6 +321,7 @@ set(SOURCES
     include/sequence/CommandDispatcher.cpp
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
+    src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogKeyBindingHandler.cpp
     include/AppUI/JogWindow/QuickOutputWidget.cpp
@@ -328,6 +330,8 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
+    include/AppUI/CoordinateSystem/CreateSystemWidget.cpp
+    include/AppUI/CoordinateSystem/TestSystemWidget.cpp
     include/AppUI/MotionPages/DevicePositionMarker.cpp
     include/motions/MotionJsonLoader.cpp
     include/AppUI/MotionPages/PositionAnchor.cpp

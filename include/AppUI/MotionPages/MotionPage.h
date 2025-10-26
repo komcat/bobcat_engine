@@ -1,9 +1,10 @@
-﻿// MotionPage.h
+// MotionPage.h
 #pragma once
 #include <QWidget>
 #include <QHBoxLayout>
 #include <QTimer>
 #include <QPushButton>
+#include <QTabWidget>
 #include "MotionControlPanel.h"
 #include "MotionGraphicsView.h"
 #include "ScanControlPanel.h"
@@ -12,6 +13,7 @@
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
 #include "TransformationMatrixLoader.h"
+#include "CoordinateSystemManager.h"
 #include <QMap>
 #include <QVector>
 #include <array>
@@ -26,6 +28,7 @@ public:
     ProductPositionManager* productManager,
     TransformationMatrixLoader* matrixLoader,
     DataStore* dataStore,
+    CoordinateSystemManager* coordinateSystemManager,
     QWidget* parent = nullptr);
   ~MotionPage() = default;
 
@@ -91,7 +94,12 @@ private:
   ProductPositionManager* m_productManager;
   TransformationMatrixLoader* m_matrixLoader;
   DataStore* m_dataStore;
+  CoordinateSystemManager* m_coordinateSystemManager;
 
+  // Tab widget
+  QTabWidget* m_tabWidget;
+
+  // Motion control tab widgets
   MotionControlPanel* m_controlPanel;
   MotionGraphicsView* m_graphicsView;
   ScanControlPanel* m_scanPanel;

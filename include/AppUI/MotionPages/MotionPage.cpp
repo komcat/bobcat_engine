@@ -6,6 +6,8 @@
 #include "EditPositionDialog.h"
 #include "ScanControlPanel.h"
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
+#include "CreateSystemWidget.h"
+#include "TestSystemWidget.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -21,17 +23,20 @@
 MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	ProductPositionManager* productManager,
 	TransformationMatrixLoader* matrixLoader,
-	DataStore* dataStore,  // ✅ ADD THIS PARAMETER
+	DataStore* dataStore,
+	CoordinateSystemManager* coordinateSystemManager,
 	QWidget* parent)
 	: QWidget(parent)
 	, m_motionManager(motionManager)
 	, m_productManager(productManager)
 	, m_matrixLoader(matrixLoader)
-	, m_dataStore(dataStore)  // ✅ ADD THIS
+	, m_dataStore(dataStore)
+	, m_coordinateSystemManager(coordinateSystemManager)
+	, m_tabWidget(nullptr)
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
 	, m_scanPanel(nullptr)
-	, m_scanController(nullptr)  // ✅ ADD THIS
+	, m_scanController(nullptr)
 	, m_livePositionTimer(nullptr)
 	, m_motionUpdateTimer(nullptr)
 	, m_labelOffsetsFilePath("config/position_labels.json")
@@ -211,30 +216,113 @@ void MotionPage::setupUI()
 	mainLayout->addWidget(topBar);
 
 	// ============================================================================
-	// ✅ UPDATED CONTENT AREA - Three panels: Left | Middle | Right
+	// ✅ TAB WIDGET - Motion Control | Coordinate Systems
 	// ============================================================================
-	QWidget* contentWidget = new QWidget();
-	QHBoxLayout* contentLayout = new QHBoxLayout(contentWidget);
-	contentLayout->setContentsMargins(0, 0, 0, 0);
-	contentLayout->setSpacing(0);
+	m_tabWidget = new QTabWidget();
+	m_tabWidget->setStyleSheet(
+		"QTabWidget::pane {"
+		"  border: none;"
+		"}"
+		"QTabBar::tab {"
+		"  background-color: #ecf0f1;"
+		"  color: #2c3e50;"
+		"  padding: 10px 20px;"
+		"  margin-right: 2px;"
+		"  border-top-left-radius: 4px;"
+		"  border-top-right-radius: 4px;"
+		"  font-size: 14px;"
+		"  font-weight: bold;"
+		"}"
+		"QTabBar::tab:selected {"
+		"  background-color: white;"
+		"  color: #3498db;"
+		"}"
+		"QTabBar::tab:hover {"
+		"  background-color: #d5dbdb;"
+		"}"
+	);
+
+	// ============================================================================
+	// TAB 1: MOTION CONTROL
+	// ============================================================================
+	QWidget* motionControlTab = new QWidget();
+	QHBoxLayout* motionContentLayout = new QHBoxLayout(motionControlTab);
+	motionContentLayout->setContentsMargins(0, 0, 0, 0);
+	motionContentLayout->setSpacing(0);
 
 	// Left Panel - Motion Control (20%)
 	m_controlPanel = new MotionControlPanel();
 	m_controlPanel->setMinimumWidth(250);
 	m_controlPanel->setMaximumWidth(400);
-	contentLayout->addWidget(m_controlPanel, 2);
+	motionContentLayout->addWidget(m_controlPanel, 2);
 
 	// Middle Panel - Graphics View (60%)
 	m_graphicsView = new MotionGraphicsView();
-	contentLayout->addWidget(m_graphicsView, 6);
+	motionContentLayout->addWidget(m_graphicsView, 6);
 
-	// ✅ NEW - Right Panel - Scan Control (20%)
+	// Right Panel - Scan Control (20%)
 	m_scanPanel = new ScanControlPanel();
 	m_scanPanel->setMinimumWidth(250);
 	m_scanPanel->setMaximumWidth(400);
-	contentLayout->addWidget(m_scanPanel, 2);
+	motionContentLayout->addWidget(m_scanPanel, 2);
 
-	mainLayout->addWidget(contentWidget);
+	m_tabWidget->addTab(motionControlTab, "Motion Control");
+
+	// ============================================================================
+	// TAB 2: COORDINATE SYSTEMS
+	// ============================================================================
+	QWidget* coordinateSystemTab = new QWidget();
+	QVBoxLayout* coordTabLayout = new QVBoxLayout(coordinateSystemTab);
+	coordTabLayout->setContentsMargins(0, 0, 0, 0);
+
+	// Create sub-tabs for Create and Test
+	QTabWidget* coordSubTabs = new QTabWidget();
+	coordSubTabs->setStyleSheet(
+		"QTabWidget::pane {"
+		"  border: 1px solid #bdc3c7;"
+		"}"
+		"QTabBar::tab {"
+		"  background-color: #f8f9fa;"
+		"  color: #34495e;"
+		"  padding: 8px 16px;"
+		"  margin-right: 2px;"
+		"  font-size: 12px;"
+		"}"
+		"QTabBar::tab:selected {"
+		"  background-color: white;"
+		"  color: #2980b9;"
+		"  font-weight: bold;"
+		"}"
+	);
+
+	// Create System sub-tab
+	CreateSystemWidget* createSystemWidget = new CreateSystemWidget(
+		m_coordinateSystemManager,
+		m_motionManager,
+		coordinateSystemTab
+	);
+	coordSubTabs->addTab(createSystemWidget, "Create System");
+
+	// Test System sub-tab
+	TestSystemWidget* testSystemWidget = new TestSystemWidget(
+		m_coordinateSystemManager,
+		m_motionManager,
+		coordinateSystemTab
+	);
+	coordSubTabs->addTab(testSystemWidget, "Test System");
+
+	// Connect signal to refresh test widget when system is created
+	connect(createSystemWidget, &CreateSystemWidget::systemCreated,
+		[testSystemWidget](const QString&) {
+			// Refresh the system list in test widget when a new system is created
+			testSystemWidget->findChild<QPushButton*>("m_refreshButton", Qt::FindChildrenRecursively);
+		});
+
+	coordTabLayout->addWidget(coordSubTabs);
+
+	m_tabWidget->addTab(coordinateSystemTab, "Coordinate Systems");
+
+	mainLayout->addWidget(m_tabWidget);
 
 	// Connect signals
 	connect(m_backButton, &QPushButton::clicked, this, &MotionPage::backToMainMenu);

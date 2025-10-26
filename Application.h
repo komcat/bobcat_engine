@@ -12,6 +12,7 @@
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
 #include "TECManager.h"    // ✅ ADD THIS
 #include "AuxWindowManager.h"  // ✅ ADD THIS
+#include "CoordinateSystemManager.h"
 
 class QApplication;
 class MainWindow;
@@ -56,6 +57,7 @@ private:
   void initializeTECManager();  // ✅ ADD THIS LINE
   void initializeAuxWindowManager();  // ✅ ADD THIS
   void initializePowerSupplySystem();
+  void initializeCoordinateSystemManager();
 
   void testMotionCommands();   
   void testIOCommands();      
@@ -83,7 +85,8 @@ private:
   std::unique_ptr<TECManager> m_tecManager;  // ✅ ADD THIS LINE
   std::unique_ptr<AuxWindowManager> m_auxWindowManager;  // ✅ ADD THIS
 	std::unique_ptr<PowerSupplyManager> m_powerSupplyManager;
-  
+  std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
+
   ApplicationContext m_context;
 
   bool m_initialized;
