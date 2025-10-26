@@ -17,6 +17,8 @@
 #include "PowerSupplyManager.h"
 #include "PowerSupplyJsonLoader.h"
 #include <QApplication>
+#include <QFont>
+#include <QFontDatabase>
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -98,6 +100,30 @@ bool Application::initialize()
     m_qApplication = std::make_unique<QApplication>(m_argc, m_argv);
     m_qApplication->setApplicationName(QString::fromStdString(getApplicationName()));
     m_qApplication->setApplicationVersion(QString::fromStdString(getVersion()));
+
+    // Load and set custom font from assets folder
+    QString fontPath = "assets/Roboto-Regular.ttf";
+    int fontId = QFontDatabase::addApplicationFont(fontPath);
+
+    if (fontId != -1) {
+      QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
+      if (!fontFamilies.isEmpty()) {
+        QFont appFont(fontFamilies.at(0), 11);  // Use loaded Roboto font, size 9
+        m_qApplication->setFont(appFont);
+        std::cout << "[Application] Custom font loaded: " << fontFamilies.at(0).toStdString() << std::endl;
+      }
+      else {
+        std::cerr << "[Application] Warning: Could not get font family from " << fontPath.toStdString() << std::endl;
+        QFont fallbackFont("Segoe UI", 11);
+        m_qApplication->setFont(fallbackFont);
+      }
+    }
+    else {
+      std::cerr << "[Application] Warning: Could not load custom font from " << fontPath.toStdString() << std::endl;
+      std::cerr << "[Application] Using fallback font: Segoe UI" << std::endl;
+      QFont fallbackFont("Segoe UI", 9);
+      m_qApplication->setFont(fallbackFont);
+    }
 
     std::cout << "[Application] " << getApplicationName()
       << " v" << getVersion() << std::endl;
