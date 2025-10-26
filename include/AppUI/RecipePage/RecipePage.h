@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QPointer>
 #include <QListWidget>
+#include <QEventLoop>
 #include <QTreeWidget>
 #include <map>
 
@@ -22,17 +23,23 @@ class SequenceBuilder;
 class ProcessConfigWidget;
 class RecipeWorker;
 class RecipeProgressWidget;  // ✅ NEW
+class ManualAdjustWidget;    // ✅ Manual adjust widget
+class TransformationMatrixLoader;
 
 class RecipePage : public QWidget
 {
   Q_OBJECT
 
 public:
-  explicit RecipePage(ApplicationContext* context, QWidget* parent = nullptr);
+  explicit RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RecipePage();
 
 signals:
   void backToMainMenu();
+
+  // Manual adjust signal
+  void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                        bool enableX, bool enableY, bool enableZ);
 
 private slots:
   // Legacy progress (kept for compatibility)
@@ -75,6 +82,11 @@ private slots:
   void onWorkerLogMessage(QString message);
   void onStopRecipeRequested();
 
+  // Manual adjust handling
+  void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                          bool enableX, bool enableY, bool enableZ);
+  void onManualAdjustResponse(bool completed);
+
 
 
 private:
@@ -103,6 +115,7 @@ private:
   void loadLastRecipeFromSettings();
 
   ApplicationContext* m_context;
+  TransformationMatrixLoader* m_matrixLoader;
   RecipeManager* m_recipeManager;
   SequenceEngine* m_sequenceEngine;
   ProcessSequenceFactory* m_processFactory;
@@ -134,10 +147,14 @@ private:
   QScrollArea* m_configScrollArea;
   ProcessConfigWidget* m_currentConfigWidget;  // Config widget
   QPointer<RecipeProgressWidget> m_progressWidget;  // ✅ Safe pointer that auto-nulls when deleted
+  ManualAdjustWidget* m_manualAdjustWidget;         // ✅ Manual adjust widget
 
   QPushButton* m_backButton;
   RecipeWorker* m_recipeWorker;
 
   QPushButton* m_loadProductButton;
   QLabel* m_productStatusLabel;
+
+  QEventLoop* m_promptEventLoop;     // For blocking until response
+  bool m_manualAdjustResponse;       // Store manual adjust response
 };

@@ -12,6 +12,7 @@
 #include "product_position_manager.h"
 #include "RecipeWorker.h"
 #include "RecipeProgressWidget.h"  // ✅ NEW
+#include "ManualAdjustWidget.h"    // ✅ Manual adjust widget
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
@@ -25,6 +26,7 @@
 #include <QMetaObject>
 #include <QThread>
 #include <QTimer>  // ✅ NEW
+#include <QEventLoop>  // ✅ For blocking callbacks
 #include <QApplication>
 #include <QHeaderView>
 #include <QCheckBox>
@@ -35,9 +37,10 @@
 #include <iostream>
 #include <chrono>
 
-RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
+RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
+  , m_matrixLoader(matrixLoader)
   , m_recipeManager(new RecipeManager())
   , m_sequenceEngine(nullptr)
   , m_processFactory(new ProcessSequenceFactory())
@@ -46,6 +49,9 @@ RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
   , m_recipeWorker(nullptr)
   , m_loadedProductLabel(nullptr)
   , m_progressWidget(nullptr)  // ✅ NEW
+  , m_manualAdjustWidget(nullptr)  // ✅ Manual adjust widget
+  , m_promptEventLoop(nullptr)  // ✅ Event loop for blocking
+  , m_manualAdjustResponse(false)  // ✅ Initialize response flag
 {
   setupUI();
   setupSequenceEngine();
@@ -524,6 +530,17 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   );
 
   layout->addWidget(m_configScrollArea);
+
+  // Create manual adjust widget (will be shown when needed)
+  m_manualAdjustWidget = new ManualAdjustWidget(
+    m_context->motionManager,
+    m_matrixLoader
+  );
+  m_manualAdjustWidget->setStyleSheet("background-color: #f5f5f5;");
+
+  // Connect manual adjust response
+  connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
+    this, &RecipePage::onManualAdjustResponse);
 
   clearConfigurationForm();
 }
@@ -1328,6 +1345,27 @@ void RecipePage::onRunRecipe()
   }
   );
 
+  // ✅ STEP 4: Set ManualAdjust callback
+  connect(this, &RecipePage::showManualAdjust,
+    this, &RecipePage::onShowManualAdjust);
+
+  m_recipeWorker->setManualAdjustCallback(
+    [this](const std::string& message, const std::string& deviceName, double stepSizeUm,
+           bool enableX, bool enableY, bool enableZ) -> bool {
+    // Emit signal to UI thread to show manual adjust widget
+    emit showManualAdjust(QString::fromStdString(message), QString::fromStdString(deviceName),
+                          stepSizeUm, enableX, enableY, enableZ);
+
+    // Block until user responds using event loop
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_manualAdjustResponse;
+  }
+  );
+
   // Connect RAW DATA signals to UI interpreters
   connect(m_recipeWorker, &RecipeWorker::executionStarted,
     this, &RecipePage::onExecutionStarted);
@@ -1605,12 +1643,14 @@ void RecipePage::showProgressPanel()
     m_currentConfigWidget = nullptr;
   }
 
-  // ✅ ULTRA SAFE: Clear scroll area completely and disconnect old progress widget
+  // ✅ ULTRA SAFE: Clear scroll area completely and disconnect old widget
   QWidget* oldWidget = m_configScrollArea->takeWidget();
   if (oldWidget) {
-    // Disconnect any signals from old widget before deleting
-    oldWidget->disconnect();
-    oldWidget->deleteLater();
+    // DON'T delete reusable widgets (manual adjust widget)
+    if (oldWidget != m_manualAdjustWidget) {
+      oldWidget->disconnect();
+      oldWidget->deleteLater();
+    }
   }
 
   // QPointer automatically nulls itself when widget is deleted, no manual reset needed
@@ -1633,8 +1673,11 @@ void RecipePage::showConfigPanel()
   // ✅ ULTRA SAFE: Clear scroll area completely
   QWidget* oldWidget = m_configScrollArea->takeWidget();
   if (oldWidget) {
-    oldWidget->disconnect();
-    oldWidget->deleteLater();
+    // DON'T delete reusable widgets (manual adjust widget)
+    if (oldWidget != m_manualAdjustWidget) {
+      oldWidget->disconnect();
+      oldWidget->deleteLater();
+    }
   }
 
   // QPointer automatically nulls itself, no manual reset needed
@@ -1769,5 +1812,52 @@ void RecipePage::loadLastRecipeFromSettings()
         std::cout << "[RecipePage] Auto-loaded recipe and product on startup" << std::endl;
       }
     }
+  }
+}
+
+// ============================================================================
+// MANUAL ADJUST HANDLING
+// ============================================================================
+
+void RecipePage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                                    bool enableX, bool enableY, bool enableZ)
+{
+  // Switch from current view to manual adjust view in the scroll area
+  QWidget* oldWidget = m_configScrollArea->takeWidget();
+  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
+  // We'll just replace it in the scroll area
+
+  // Show the manual adjust widget in the scroll area
+  m_configScrollArea->setWidget(m_manualAdjustWidget);
+  m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
+
+  std::cout << "[RecipePage] Showing manual adjust widget" << std::endl;
+}
+
+void RecipePage::onManualAdjustResponse(bool completed)
+{
+  // Store the user's response
+  m_manualAdjustResponse = completed;
+
+  std::cout << "[RecipePage] Manual adjust response: " << (completed ? "OK" : "Cancel") << std::endl;
+
+  // Hide the manual adjust widget
+  m_manualAdjustWidget->hideAdjustment();
+
+  // Remove from scroll area
+  m_configScrollArea->takeWidget();
+
+  // Switch back to progress widget if it exists
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_configScrollArea->setWidget(m_progressWidget);
+    std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
+  }
+  else {
+    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
+  }
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
   }
 }

@@ -169,7 +169,7 @@ void MainWindow::createPages()
   m_pageStack->addWidget(m_motionPage);
 
   //  Recipe page
-  m_recipePage = new RecipePage(m_context, this);
+  m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
   connect(m_recipePage, &RecipePage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_recipePage);
