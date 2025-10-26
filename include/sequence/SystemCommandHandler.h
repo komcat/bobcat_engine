@@ -10,6 +10,16 @@ using UserPromptCallback = std::function<bool(const std::string& title, const st
 // Callback type for non-blocking notifications - just shows, doesn't wait for response
 using UserNotificationCallback = std::function<void(const std::string& title, const std::string& message)>;
 
+// Callback type for manual adjustment - returns true if user clicked OK, false if cancelled
+using ManualAdjustCallback = std::function<bool(
+  const std::string& message,
+  const std::string& deviceName,
+  double stepSizeUm,
+  bool enableX,
+  bool enableY,
+  bool enableZ
+)>;
+
 class SystemCommandHandler : public ICommandHandler
 {
 public:
@@ -34,7 +44,13 @@ public:
     m_userNotificationCallback = callback;
   }
 
+  // Set the UI callback for manual adjustment (must be called from main thread)
+  void SetManualAdjustCallback(ManualAdjustCallback callback) {
+    m_manualAdjustCallback = callback;
+  }
+
 private:
   UserPromptCallback m_userPromptCallback;
   UserNotificationCallback m_userNotificationCallback;
+  ManualAdjustCallback m_manualAdjustCallback;
 };

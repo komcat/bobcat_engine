@@ -191,6 +191,13 @@ void SequenceEngine::SetUserNotificationCallback(UserNotificationCallback callba
   }
 }
 
+void SequenceEngine::SetManualAdjustCallback(ManualAdjustCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetManualAdjustCallback(callback);
+  }
+}
+
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
 {
   if (!sequence) {

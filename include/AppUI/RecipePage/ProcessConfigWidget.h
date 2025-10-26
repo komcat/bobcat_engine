@@ -194,6 +194,20 @@ protected:
 };
 
 /**
+ * @brief Configuration widget for Manual Adjust process
+ */
+class ManualAdjustConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit ManualAdjustConfigWidget(ApplicationContext* context, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+};
+
+/**
  * @brief Configuration widget for Log Message process
  */
 class LogMessageConfigWidget : public ProcessConfigWidget

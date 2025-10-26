@@ -48,6 +48,11 @@ void RecipeWorker::setUserPromptCallback(UserPromptCallback callback)
   m_userPromptCallback = callback;
 }
 
+void RecipeWorker::setManualAdjustCallback(ManualAdjustCallback callback)
+{
+  m_manualAdjustCallback = callback;
+}
+
 void RecipeWorker::run()
 {
   try {
@@ -127,6 +132,26 @@ void RecipeWorker::run()
       }
       );
       emit logMessage("UserPrompt auto-accept mode enabled");
+    }
+
+    // ✅ Step 4.5: Set up ManualAdjust callback
+    if (m_manualAdjustCallback) {
+      // User provided callback - use it
+      m_engine->SetManualAdjustCallback(m_manualAdjustCallback);
+      emit logMessage("ManualAdjust callback configured");
+    }
+    else {
+      // No callback - auto-accept all adjustments for automated execution
+      m_engine->SetManualAdjustCallback(
+        [this](const std::string& message, const std::string& deviceName,
+               double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+        emit logMessage(QString("Auto-accepting manual adjust: %1 (device: %2)")
+          .arg(QString::fromStdString(message))
+          .arg(QString::fromStdString(deviceName)));
+        return true;  // Auto-accept
+      }
+      );
+      emit logMessage("ManualAdjust auto-accept mode enabled");
     }
 
     // Count enabled steps

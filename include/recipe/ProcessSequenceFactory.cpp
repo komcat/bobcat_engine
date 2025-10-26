@@ -133,6 +133,34 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   });
 
   // ============================================================================
+  // REGISTER MANUAL ADJUST PROCESS BUILDER (System Command)
+  // ============================================================================
+  RegisterProcessBuilder("Manual Adjust", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string message = params.at("message");
+    std::string deviceName = params.at("device_name");
+    std::string stepSizeUm = params.at("step_size_um");
+    std::string enableX = params.at("enable_x");
+    std::string enableY = params.at("enable_y");
+    std::string enableZ = params.at("enable_z");
+
+    std::map<std::string, std::string> adjustParams;
+    adjustParams["message"] = message;
+    adjustParams["device_name"] = deviceName;
+    adjustParams["step_size_um"] = stepSizeUm;
+    adjustParams["enable_x"] = enableX;
+    adjustParams["enable_y"] = enableY;
+    adjustParams["enable_z"] = enableZ;
+
+    // Use "system" as device name - this will route to SystemCommandHandler
+    sequence->AddAction("system", "ManualAdjust", adjustParams);
+
+    std::cout << "[ProcessSequenceFactory] Built Manual Adjust sequence for: "
+      << step->userNickname << " (device=" << deviceName << ", step=" << stepSizeUm << "um)" << std::endl;
+  });
+
+  // ============================================================================
   // REGISTER LOG MESSAGE PROCESS BUILDER (System Command)
   // ============================================================================
   RegisterProcessBuilder("Log Message", [](SequenceBuilder* sequence, const ProcessInstance* step) {

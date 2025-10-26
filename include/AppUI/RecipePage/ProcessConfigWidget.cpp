@@ -524,6 +524,62 @@ void AskUserConfigWidget::createParameterFields(const ProcessInstance* instance)
 }
 
 // ============================================================================
+// MANUAL ADJUST CONFIG WIDGET
+// ============================================================================
+ManualAdjustConfigWidget::ManualAdjustConfigWidget(ApplicationContext* context, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+{
+}
+
+void ManualAdjustConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  const auto& params = instance->parameters;
+
+  // Message field
+  addParameterField("message", "Instruction Message",
+    params.at("message"));
+
+  // Device name dropdown
+  addDeviceSelector("device_name", "Motor Device",
+    params.at("device_name"),
+    static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+  // Step size input
+  addParameterField("step_size_um", "Step Size (μm)",
+    params.at("step_size_um"));
+
+  // Enable X axis checkbox
+  QCheckBox* enableXCheckbox = new QCheckBox("Enable X axis movement");
+  enableXCheckbox->setChecked(params.at("enable_x") == "true");
+  enableXCheckbox->setToolTip("Allow user to jog in X direction (left/right)");
+  connect(enableXCheckbox, &QCheckBox::toggled, this, [this]() {
+    emit parameterChanged();
+  });
+  m_formLayout->addRow("X Axis:", enableXCheckbox);
+  m_parameterCheckboxes["enable_x"] = enableXCheckbox;
+
+  // Enable Y axis checkbox
+  QCheckBox* enableYCheckbox = new QCheckBox("Enable Y axis movement");
+  enableYCheckbox->setChecked(params.at("enable_y") == "true");
+  enableYCheckbox->setToolTip("Allow user to jog in Y direction (in/out)");
+  connect(enableYCheckbox, &QCheckBox::toggled, this, [this]() {
+    emit parameterChanged();
+  });
+  m_formLayout->addRow("Y Axis:", enableYCheckbox);
+  m_parameterCheckboxes["enable_y"] = enableYCheckbox;
+
+  // Enable Z axis checkbox
+  QCheckBox* enableZCheckbox = new QCheckBox("Enable Z axis movement");
+  enableZCheckbox->setChecked(params.at("enable_z") == "true");
+  enableZCheckbox->setToolTip("Allow user to jog in Z direction (up/down)");
+  connect(enableZCheckbox, &QCheckBox::toggled, this, [this]() {
+    emit parameterChanged();
+  });
+  m_formLayout->addRow("Z Axis:", enableZCheckbox);
+  m_parameterCheckboxes["enable_z"] = enableZCheckbox;
+}
+
+// ============================================================================
 // LOG MESSAGE CONFIG WIDGET
 // ============================================================================
 LogMessageConfigWidget::LogMessageConfigWidget(ApplicationContext* context, QWidget* parent)

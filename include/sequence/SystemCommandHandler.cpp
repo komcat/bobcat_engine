@@ -102,6 +102,56 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // MANUAL ADJUST (Manual position adjustment with jog controls)
+  // ============================================================================
+  else if (methodName == "ManualAdjust") {
+    auto messageIt = params.find("message");
+    auto deviceIt = params.find("device_name");
+    auto stepSizeIt = params.find("step_size_um");
+    auto enableXIt = params.find("enable_x");
+    auto enableYIt = params.find("enable_y");
+    auto enableZIt = params.find("enable_z");
+
+    if (messageIt == params.end() || deviceIt == params.end() || stepSizeIt == params.end()) {
+      errorMessage = "Missing required parameters: message, device_name, step_size_um";
+      return false;
+    }
+
+    std::string message = messageIt->second;
+    std::string deviceName = deviceIt->second;
+    double stepSizeUm = std::stod(stepSizeIt->second);
+    bool enableX = (enableXIt != params.end() && enableXIt->second == "true");
+    bool enableY = (enableYIt != params.end() && enableYIt->second == "true");
+    bool enableZ = (enableZIt != params.end() && enableZIt->second == "true");
+
+    if (!m_manualAdjustCallback) {
+      errorMessage = "ManualAdjust callback not configured";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Showing manual adjustment for device: " + deviceName, "SystemHandler");
+    }
+
+    // Call the callback - this will show the ManualAdjustWidget and wait for user
+    bool userCompleted = m_manualAdjustCallback(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
+
+    if (!userCompleted) {
+      errorMessage = "User cancelled manual adjustment";
+      if (m_logger) {
+        m_logger->Warning("User cancelled manual adjustment for: " + deviceName, "SystemHandler");
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("User completed manual adjustment for: " + deviceName, "SystemHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // LOG MESSAGE
   // ============================================================================
   else if (methodName == "LogMessage" || methodName == "Log") {

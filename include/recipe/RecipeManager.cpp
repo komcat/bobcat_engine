@@ -167,6 +167,7 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "Set Output",
     "Wait",
     "Ask User",
+    "Manual Adjust",
     "Move Relative Multi-Axis",
     "Move to Position with Offset",
     "Slide Extend",
@@ -248,6 +249,14 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["title"] = "Confirmation Required";
     params["message"] = "Please confirm to continue";
     params["blocking"] = "true";  // "true" = wait for response, "false" = just show notification
+  }
+  else if (processType == "Manual Adjust") {
+    params["message"] = "Please adjust the position as needed";
+    params["device_name"] = "gantry-main";
+    params["step_size_um"] = "10";  // 10 microns
+    params["enable_x"] = "true";
+    params["enable_y"] = "true";
+    params["enable_z"] = "true";
   }
   else if (processType == "Move Relative Multi-Axis") {
     params["device"] = "gantry-main";
@@ -552,7 +561,7 @@ std::string RecipeManager::getProcessCategory(const std::string& processType)
   }
 
   // System
-  if (processType == "Wait" || processType == "Ask User" || processType == "Log Message") {
+  if (processType == "Wait" || processType == "Ask User" || processType == "Manual Adjust" || processType == "Log Message") {
     return "System";
   }
 

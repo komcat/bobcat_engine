@@ -37,9 +37,9 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   m_context->productManager = new ProductPositionManager();
 
   setupUI();
+  setupJogPanel();        // ✅ MUST be before createPages() - RunProgramPage needs m_matrixLoader!
   createPages();          // Now MotionPage can use productManager
   setupLogging();
-  setupJogPanel();
 
   // Show main menu first
   m_pageStack->setCurrentWidget(m_mainMenuPage);
@@ -176,7 +176,7 @@ void MainWindow::createPages()
 
 
   //  Run Program page
-  m_runProgramPage = new RunProgramPage(m_context, this);
+  m_runProgramPage = new RunProgramPage(m_context, m_matrixLoader, this);
   connect(m_runProgramPage, &RunProgramPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_runProgramPage);

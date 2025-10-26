@@ -383,6 +383,7 @@ set(SOURCES
     include/ProgramManager/ProgramManager.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
+    include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
     include/motions/scanning/ScanExecutor.cpp
 )
 
@@ -509,6 +510,7 @@ set(HEADERS
     include/ProgramManager/ProgramManager.h
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
+    include/AppUI/RunProgramPage/ManualAdjustWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/motions/scanning/ScanExecutor.h

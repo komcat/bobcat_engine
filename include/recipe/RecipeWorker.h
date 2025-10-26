@@ -45,6 +45,17 @@ public:
   using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
   void setUserPromptCallback(UserPromptCallback callback);
 
+  // Set callback for manual adjust (optional - if not set, auto-accepts all)
+  using ManualAdjustCallback = std::function<bool(
+    const std::string& message,
+    const std::string& deviceName,
+    double stepSizeUm,
+    bool enableX,
+    bool enableY,
+    bool enableZ
+  )>;
+  void setManualAdjustCallback(ManualAdjustCallback callback);
+
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
@@ -68,4 +79,5 @@ private:
   std::string m_recipeFilePath;
   std::atomic<bool> m_stopRequested;
   UserPromptCallback m_userPromptCallback;
+  ManualAdjustCallback m_manualAdjustCallback;
 };

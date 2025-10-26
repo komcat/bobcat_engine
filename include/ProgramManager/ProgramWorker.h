@@ -42,6 +42,17 @@ public:
   using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
   void setUserPromptCallback(UserPromptCallback callback);
 
+  // Set callback for manual adjust (optional)
+  using ManualAdjustCallback = std::function<bool(
+    const std::string& message,
+    const std::string& deviceName,
+    double stepSizeUm,
+    bool enableX,
+    bool enableY,
+    bool enableZ
+  )>;
+  void setManualAdjustCallback(ManualAdjustCallback callback);
+
   // ✅ NEW: Configure execution mode
   void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
   void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
@@ -78,6 +89,7 @@ private:
   UnifiedMotionManager* m_motionManager;
   std::atomic<bool> m_stopRequested;
   UserPromptCallback m_userPromptCallback;
+  ManualAdjustCallback m_manualAdjustCallback;
 
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe

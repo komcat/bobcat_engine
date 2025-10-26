@@ -1152,6 +1152,9 @@ void RecipePage::updateConfigurationForm()
   else if (instance->processType == "Ask User") {
     m_currentConfigWidget = new AskUserConfigWidget(m_context);
   }
+  else if (instance->processType == "Manual Adjust") {
+    m_currentConfigWidget = new ManualAdjustConfigWidget(m_context);
+  }
   else if (instance->processType == "Log Message") {
     m_currentConfigWidget = new LogMessageConfigWidget(m_context);
   }

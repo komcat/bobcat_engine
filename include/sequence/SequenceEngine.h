@@ -119,6 +119,7 @@ public:
   void BuildDeviceRegistry();
   void SetUserPromptCallback(UserPromptCallback callback);
   void SetUserNotificationCallback(UserNotificationCallback callback);
+  void SetManualAdjustCallback(ManualAdjustCallback callback);
 
   // ✅ NEW: Stop control
   void RequestStop();        // Request stop at next checkpoint

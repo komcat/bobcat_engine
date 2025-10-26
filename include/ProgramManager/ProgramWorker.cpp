@@ -45,6 +45,11 @@ void ProgramWorker::setUserPromptCallback(UserPromptCallback callback)
   m_userPromptCallback = callback;
 }
 
+void ProgramWorker::setManualAdjustCallback(ManualAdjustCallback callback)
+{
+  m_manualAdjustCallback = callback;
+}
+
 // ✅ NEW: Set execution mode
 void ProgramWorker::setAutoRunMode(bool autoRun)
 {
@@ -182,6 +187,11 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // ✅ Set UserPrompt callback if available
   if (m_userPromptCallback) {
     recipeWorker->setUserPromptCallback(m_userPromptCallback);
+  }
+
+  // ✅ Set ManualAdjust callback if available
+  if (m_manualAdjustCallback) {
+    recipeWorker->setManualAdjustCallback(m_manualAdjustCallback);
   }
 
   // ✅ Connect RecipeWorker signals to ProgramWorker signals

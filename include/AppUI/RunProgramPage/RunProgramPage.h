@@ -17,8 +17,10 @@ class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
 class UserPromptWidget;
+class ManualAdjustWidget;
 class ScanControlWidget;
 class ScanExecutor;
+class TransformationMatrixLoader;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -33,7 +35,7 @@ class RunProgramPage : public QWidget
   Q_OBJECT
 
 public:
-  explicit RunProgramPage(ApplicationContext* context, QWidget* parent = nullptr);
+  explicit RunProgramPage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RunProgramPage();
 
 signals:
@@ -41,6 +43,10 @@ signals:
 
   // User prompt signal
   void showUserPrompt(QString title, QString message);
+
+  // Manual adjust signal
+  void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                        bool enableX, bool enableY, bool enableZ);
 
 private slots:
   // File operations
@@ -63,6 +69,11 @@ private slots:
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);
   void onPromptResponse(bool accepted);
+
+  // Manual adjust handling
+  void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                          bool enableX, bool enableY, bool enableZ);
+  void onManualAdjustResponse(bool completed);
 
   // Scanning integration (refactored)
   void onScanRequested(QString deviceName, bool isCoarse, QString channel);
@@ -90,6 +101,7 @@ private:
   void saveRecentPrograms(const QString& programPath);
 
   ApplicationContext* m_context;
+  TransformationMatrixLoader* m_matrixLoader;
   ProgramManager* m_programManager;
   ProgramWorker* m_programWorker;
   ProcessSequenceFactory* m_processFactory;
@@ -133,10 +145,12 @@ private:
   ScanExecutor* m_scanExecutor;
 
   // Prompt system
-  QStackedWidget* m_executionStack;  // Switch between log and prompt
+  QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust
   UserPromptWidget* m_promptWidget;
+  ManualAdjustWidget* m_manualAdjustWidget;
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_promptResponse;             // Store user's response
+  bool m_manualAdjustResponse;       // Store manual adjust response
 
   // State
   QString m_currentProgramPath;

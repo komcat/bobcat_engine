@@ -5,6 +5,7 @@
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
+#include "ManualAdjustWidget.h"
 #include "ScanControlWidget.h"
 #include "ScanExecutor.h"
 #include "ILogger.h"
@@ -29,9 +30,10 @@
 #include <iostream>
 #include <cmath>
 
-RunProgramPage::RunProgramPage(ApplicationContext* context, QWidget* parent)
+RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
+  , m_matrixLoader(matrixLoader)
   , m_programManager(new ProgramManager())
   , m_programWorker(nullptr)
   , m_processFactory(nullptr)
@@ -493,10 +495,21 @@ void RunProgramPage::createExecutionWidget()
   connect(m_promptWidget, &UserPromptWidget::responseReceived,
     this, &RunProgramPage::onPromptResponse);
 
-  // Add both views to stack
-  m_executionStack->addWidget(logWidget);       // Index 0: Log
-  m_executionStack->addWidget(m_promptWidget);  // Index 1: Prompt
-  m_executionStack->setCurrentIndex(0);         // Start with log
+  // === MANUAL ADJUST VIEW (Index 2) ===
+  m_manualAdjustWidget = new ManualAdjustWidget(
+    m_context->motionManager,
+    m_matrixLoader);
+  m_manualAdjustWidget->setStyleSheet("background-color: #f5f5f5;");
+
+  // Connect manual adjust response
+  connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
+    this, &RunProgramPage::onManualAdjustResponse);
+
+  // Add all views to stack
+  m_executionStack->addWidget(logWidget);              // Index 0: Log
+  m_executionStack->addWidget(m_promptWidget);         // Index 1: Prompt
+  m_executionStack->addWidget(m_manualAdjustWidget);  // Index 2: Manual Adjust
+  m_executionStack->setCurrentIndex(0);                // Start with log
 
   layout->addWidget(m_executionStack, 1);
 
@@ -739,6 +752,24 @@ void RunProgramPage::onExecuteProgram()
     return m_promptResponse;
   });
 
+  // Set ManualAdjust callback
+  connect(this, &RunProgramPage::showManualAdjust,
+    this, &RunProgramPage::onShowManualAdjust);
+
+  m_programWorker->setManualAdjustCallback(
+    [this](const std::string& message, const std::string& deviceName,
+           double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+    emit showManualAdjust(QString::fromStdString(message), QString::fromStdString(deviceName),
+                          stepSizeUm, enableX, enableY, enableZ);
+
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_manualAdjustResponse;
+  });
+
   // Connect signals
   connect(m_programWorker, &ProgramWorker::programExecutionStarted,
     this, &RunProgramPage::onProgramExecutionStarted);
@@ -879,6 +910,34 @@ void RunProgramPage::onPromptResponse(bool accepted)
 {
   // Store the response
   m_promptResponse = accepted;
+
+  // Switch back to log view
+  m_executionStack->setCurrentIndex(0);
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+// ============================================================================
+// MANUAL ADJUST HANDLING
+// ============================================================================
+
+void RunProgramPage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
+                                         bool enableX, bool enableY, bool enableZ)
+{
+  // Switch from log view to manual adjust view
+  m_executionStack->setCurrentIndex(2);
+
+  // Show the manual adjust widget
+  m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
+}
+
+void RunProgramPage::onManualAdjustResponse(bool completed)
+{
+  // Store the response
+  m_manualAdjustResponse = completed;
 
   // Switch back to log view
   m_executionStack->setCurrentIndex(0);
