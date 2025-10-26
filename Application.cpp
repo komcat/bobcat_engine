@@ -109,13 +109,13 @@ bool Application::initialize()
     if (fontId != -1) {
       QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
       if (!fontFamilies.isEmpty()) {
-        QFont appFont(fontFamilies.at(0), 11);  // Use loaded Roboto font, size 9
+        QFont appFont(fontFamilies.at(0), 14);  // Use loaded Roboto font, size 9
         m_qApplication->setFont(appFont);
         std::cout << "[Application] Custom font loaded: " << fontFamilies.at(0).toStdString() << std::endl;
       }
       else {
         std::cerr << "[Application] Warning: Could not get font family from " << fontPath.toStdString() << std::endl;
-        QFont fallbackFont("Segoe UI", 11);
+        QFont fallbackFont("Segoe UI", 14);
         m_qApplication->setFont(fallbackFont);
       }
     }

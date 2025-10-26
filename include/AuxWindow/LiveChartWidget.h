@@ -99,4 +99,8 @@ private:
   static constexpr qint64 TIME_WINDOW_MS = 5000;  // 10 seconds
   static constexpr int CHART_UPDATE_INTERVAL_MS = 16;  // ~60 FPS
   static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 500;  // 500ms for readability
+
+  // Y-axis hard limits to prevent unrealistic spike rescaling
+  static constexpr float Y_AXIS_MAX_LIMIT = 0.020f;  // 20 mA
+  static constexpr float Y_AXIS_MIN_LIMIT = -0.020f; // -20 mA
 };

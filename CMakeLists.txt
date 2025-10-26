@@ -330,6 +330,7 @@ set(SOURCES
     include/AppUI/MotionPages/MotionControlPanel.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
+    include/AppUI/MotionPages/CollapsiblePanel.cpp
     include/AppUI/CoordinateSystem/CreateSystemWidget.cpp
     include/AppUI/CoordinateSystem/TestSystemWidget.cpp
     include/AppUI/MotionPages/DevicePositionMarker.cpp

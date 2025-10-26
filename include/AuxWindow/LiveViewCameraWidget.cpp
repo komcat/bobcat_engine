@@ -10,13 +10,14 @@ LiveViewCameraWidget::LiveViewCameraWidget(CameraManager* cameraManager, QWidget
   : QWidget(parent)
   , m_cameraManager(cameraManager)
   , m_subscriber(nullptr)
+  , m_isPaused(false)
 {
   setupUI();
 
-  // Frame update timer - poll at 30 FPS
+  // Frame update timer - poll at 20 FPS (reduced from 30 for better performance)
   m_frameUpdateTimer = new QTimer(this);
   connect(m_frameUpdateTimer, &QTimer::timeout, this, &LiveViewCameraWidget::onUpdateFrame);
-  m_frameUpdateTimer->start(33);  // ~30 FPS
+  m_frameUpdateTimer->start(50);  // 20 FPS (was 33ms/30 FPS)
 
   // Auto-refresh camera list every 5 seconds
   m_refreshTimer = new QTimer(this);
@@ -26,7 +27,7 @@ LiveViewCameraWidget::LiveViewCameraWidget(CameraManager* cameraManager, QWidget
   // Initial camera list
   refreshCameraList();
 
-  std::cout << "[LiveViewCameraWidget] Created" << std::endl;
+  std::cout << "[LiveViewCameraWidget] Created (20 FPS mode)" << std::endl;
 }
 
 LiveViewCameraWidget::~LiveViewCameraWidget()
@@ -158,7 +159,7 @@ void LiveViewCameraWidget::setupUI()
   m_imageWidget->setBackgroundColor(QColor(30, 30, 30));
   m_imageWidget->setPlaceholderText("Select a camera to view live feed");
   m_imageWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  // No minimum size - allow widget to shrink with window
+  m_imageWidget->setMinimumSize(200, 200);  // Set minimum size for proper display
 
   // Add with stretch factor to fill remaining space
   mainLayout->addWidget(m_imageWidget, 1);
@@ -236,11 +237,28 @@ void LiveViewCameraWidget::onRefreshCameras()
 
 void LiveViewCameraWidget::onUpdateFrame()
 {
+  // Skip updates if paused (performance optimization)
+  if (m_isPaused) {
+    return;
+  }
+
   // Poll subscriber for new frames
   if (m_subscriber && m_subscriber->HasNewFrame()) {
     CameraFrameData frame = m_subscriber->GetLatestFrame();
     m_imageWidget->setFrame(frame);
     m_subscriber->MarkFrameConsumed();
+  }
+}
+
+void LiveViewCameraWidget::setPaused(bool paused)
+{
+  m_isPaused = paused;
+  std::cout << "[LiveViewCameraWidget] Camera updates "
+            << (paused ? "PAUSED" : "RESUMED") << std::endl;
+
+  // Clear display when paused to show it's not updating
+  if (paused && m_imageWidget) {
+    // Don't clear, just stop updating - keeps last frame visible
   }
 }
 

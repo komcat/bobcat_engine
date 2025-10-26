@@ -43,6 +43,10 @@ public:
   // Access to image widget for external controls
   CameraImageWidget* getImageWidget() { return m_imageWidget; }
 
+  // Pause/resume camera updates (for performance optimization)
+  void setPaused(bool paused);
+  bool isPaused() const { return m_isPaused; }
+
 signals:
   void cameraChanged(const std::string& cameraId);
 
@@ -76,4 +80,5 @@ private:
 
   std::string m_currentCameraId;
   QTimer* m_refreshTimer;
+  bool m_isPaused;
 };

@@ -308,14 +308,33 @@ void LiveChartWidget::updateChart()
   double timeRange = TIME_WINDOW_MS / 1000.0;
   m_axisX->setRange(-timeRange, 0);
 
-  // Y-axis with 10% margin
-  if (minValue < maxValue) {
-    float margin = (maxValue - minValue) * 0.1f;
-    m_axisY->setRange(minValue - margin, maxValue + margin);
+  // Y-axis with hard-coded limits to prevent unrealistic spike rescaling
+  // Clamp calculated values to prevent spike-induced rescaling (max: 20mA, min: -20mA)
+  float clampedMin = (std::max)(minValue, Y_AXIS_MIN_LIMIT);
+  float clampedMax = (std::min)(maxValue, Y_AXIS_MAX_LIMIT);
+
+  // Y-axis with 10% margin (within clamped range)
+  if (clampedMin < clampedMax) {
+    float margin = (clampedMax - clampedMin) * 0.1f;
+    float rangeMin = clampedMin - margin;
+    float rangeMax = clampedMax + margin;
+
+    // Ensure range stays within hard limits
+    rangeMin = (std::max)(rangeMin, Y_AXIS_MIN_LIMIT);
+    rangeMax = (std::min)(rangeMax, Y_AXIS_MAX_LIMIT);
+
+    m_axisY->setRange(rangeMin, rangeMax);
   }
   else {
-    // Single value case
-    m_axisY->setRange(minValue * 0.9, minValue * 1.1);
+    // Single value case - use symmetric range around value
+    float center = clampedMin;
+    float halfRange = std::abs(center) * 0.1f;
+    if (halfRange < 1e-9f) halfRange = 1e-9f; // Minimum range
+
+    float rangeMin = (std::max)(center - halfRange, Y_AXIS_MIN_LIMIT);
+    float rangeMax = (std::min)(center + halfRange, Y_AXIS_MAX_LIMIT);
+
+    m_axisY->setRange(rangeMin, rangeMax);
   }
 }
 

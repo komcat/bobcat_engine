@@ -11,6 +11,10 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   , m_crosshairEnabled(false)
   , m_crosshairColor(Qt::green)
 {
+  // Performance optimizations - reduce repaints and improve rendering
+  setAttribute(Qt::WA_OpaquePaintEvent, true);  // No need to erase background
+  setAttribute(Qt::WA_NoSystemBackground, true); // Skip system background paint
+
   // Create layout with no margins or spacing
   QVBoxLayout* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -20,6 +24,9 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   m_displayLabel = new QLabel("No camera feed");
   m_displayLabel->setAlignment(Qt::AlignCenter);
   m_displayLabel->setScaledContents(false);
+
+  // Performance optimizations for the label
+  m_displayLabel->setAttribute(Qt::WA_OpaquePaintEvent, true);
 
   // Make label expand to fill available space
   m_displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -34,7 +41,7 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   layout->addWidget(m_displayLabel);
   setLayout(layout);
 
-  std::cout << "[CameraImageWidget] Created" << std::endl;
+  std::cout << "[CameraImageWidget] Created with performance optimizations" << std::endl;
 }
 
 void CameraImageWidget::setFrame(const CameraFrameData& frameData)
