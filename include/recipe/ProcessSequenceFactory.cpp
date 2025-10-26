@@ -419,9 +419,18 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::string tecDevice = params.at("tec_device");
     std::string logLevel = params.at("log_level");
 
-    sequence->AddAction(tecDevice, "ReadTemperature", {
-      {"logLevel", logLevel}  // ← ADD THIS
-      });
+    // Build action parameters
+    std::map<std::string, std::string> actionParams = {
+      {"logLevel", logLevel}
+    };
+
+    // Add optional captureAs parameter if present
+    auto captureIt = params.find("captureAs");
+    if (captureIt != params.end() && !captureIt->second.empty()) {
+      actionParams["captureAs"] = captureIt->second;
+    }
+
+    sequence->AddAction(tecDevice, "ReadTemperature", actionParams);
 
     std::cout << "[ProcessSequenceFactory] Built Read Temperature sequence for: "
       << step->userNickname << " (Device: " << tecDevice << ")" << std::endl;
@@ -436,9 +445,18 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::string tecDevice = params.at("tec_device");
     std::string logLevel = params.at("log_level");
 
-    sequence->AddAction(tecDevice, "ReadLaserCurrent", {
-      {"logLevel", logLevel}  // ← ADD THIS
-      });
+    // Build action parameters
+    std::map<std::string, std::string> actionParams = {
+      {"logLevel", logLevel}
+    };
+
+    // Add optional captureAs parameter if present
+    auto captureIt = params.find("captureAs");
+    if (captureIt != params.end() && !captureIt->second.empty()) {
+      actionParams["captureAs"] = captureIt->second;
+    }
+
+    sequence->AddAction(tecDevice, "ReadLaserCurrent", actionParams);
 
     std::cout << "[ProcessSequenceFactory] Built Read Laser Current sequence for: "
       << step->userNickname << " (Device: " << tecDevice << ")" << std::endl;
@@ -509,10 +527,19 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::string readCount = params.at("read_count");
     std::string delayMs = params.at("delay_ms");
 
-    sequence->AddAction(psuDevice, "ReadVoltageMultiple", {
+    // Build action parameters
+    std::map<std::string, std::string> actionParams = {
       {"read_count", readCount},
       {"delay_ms", delayMs}
-      });
+    };
+
+    // Add optional captureAs parameter if present
+    auto captureIt = params.find("captureAs");
+    if (captureIt != params.end() && !captureIt->second.empty()) {
+      actionParams["captureAs"] = captureIt->second;
+    }
+
+    sequence->AddAction(psuDevice, "ReadVoltageMultiple", actionParams);
 
     std::cout << "[ProcessSequenceFactory] Built PSU Read Voltage sequence for: "
       << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;
@@ -528,10 +555,19 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::string readCount = params.at("read_count");
     std::string delayMs = params.at("delay_ms");
 
-    sequence->AddAction(psuDevice, "ReadCurrentMultiple", {
+    // Build action parameters
+    std::map<std::string, std::string> actionParams = {
       {"read_count", readCount},
       {"delay_ms", delayMs}
-      });
+    };
+
+    // Add optional captureAs parameter if present
+    auto captureIt = params.find("captureAs");
+    if (captureIt != params.end() && !captureIt->second.empty()) {
+      actionParams["captureAs"] = captureIt->second;
+    }
+
+    sequence->AddAction(psuDevice, "ReadCurrentMultiple", actionParams);
 
     std::cout << "[ProcessSequenceFactory] Built PSU Read Current sequence for: "
       << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;

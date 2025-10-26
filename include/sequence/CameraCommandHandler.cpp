@@ -8,7 +8,8 @@ bool CameraCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   // CameraManager* cameraManager = static_cast<CameraManager*>(manager);
 
@@ -17,6 +18,11 @@ bool CameraCommandHandler::ExecuteCommand(
       m_logger->Info("Camera capture - TODO: implement", "CameraHandler");
     }
     // TODO: Implement camera capture
+    // If captureAs parameter exists and context is valid, store result
+    // auto captureAsIt = params.find("captureAs");
+    // if (context && captureAsIt != params.end()) {
+    //   context->SetValue(captureAsIt->second, result, deviceName, methodName);
+    // }
     return true;
   }
   else if (methodName == "CheckPresent") {

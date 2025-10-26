@@ -21,7 +21,8 @@ bool CommandDispatcher::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   auto it = m_handlers.find(managerType);
   if (it == m_handlers.end()) {
@@ -29,7 +30,7 @@ bool CommandDispatcher::ExecuteCommand(
     return false;
   }
 
-  return it->second->ExecuteCommand(manager, deviceName, methodName, params, errorMessage);
+  return it->second->ExecuteCommand(manager, deviceName, methodName, params, errorMessage, context);
 }
 
 void CommandDispatcher::SetLogger(LogManager* logger)

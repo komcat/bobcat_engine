@@ -1,6 +1,7 @@
 // PSUCommandHandler.cpp
 #include "PSUCommandHandler.h"
 #include "PowerSupplyManager.h"
+#include "SequenceContext.h"
 #include "LogManager.h"
 #include <sstream>
 #include <iomanip>
@@ -12,7 +13,8 @@ bool PSUCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   PowerSupplyManager* psuManager = static_cast<PowerSupplyManager*>(manager);
 
@@ -28,6 +30,10 @@ bool PSUCommandHandler::ExecuteCommand(
     errorMessage = "Failed to get PSU device '" + deviceName + "'";
     return false;
   }
+
+  // Context can be used for capturing voltage, current, power measurements
+  // Example: MeasureVoltage, MeasureCurrent methods can capture values
+  auto captureAsIt = params.find("captureAs");
 
   // ============================================================================
   // AUTO-CONNECT: Check connection status and connect if needed
@@ -142,6 +148,16 @@ bool PSUCommandHandler::ExecuteCommand(
   else if (methodName == "ReadVoltage") {
     double voltage = psu->readVoltage();
 
+    // Auto-capture to context if requested
+    if (context && captureAsIt != params.end()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(voltage), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Measured " + std::to_string(voltage) + " V, stored as '" +
+                      captureAsIt->second + "'", "PSUHandler");
+      }
+    }
+
     // Format message
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
@@ -160,6 +176,16 @@ bool PSUCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "ReadCurrent") {
     double current = psu->readCurrent();
+
+    // Auto-capture to context if requested (store in Amps)
+    if (context && captureAsIt != params.end()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(current), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Measured " + std::to_string(current) + " A, stored as '" +
+                      captureAsIt->second + "'", "PSUHandler");
+      }
+    }
 
     // Convert A to mA for display
     double currentInMA = current * 1000.0;
@@ -214,8 +240,10 @@ bool PSUCommandHandler::ExecuteCommand(
     }
 
     // Perform multiple reads
+    double lastVoltage = 0.0;
     for (int i = 0; i < readCount; i++) {
       double voltage = psu->readVoltage();
+      lastVoltage = voltage;  // Track last reading for context capture
 
       // Format message
       std::ostringstream oss;
@@ -230,6 +258,16 @@ bool PSUCommandHandler::ExecuteCommand(
       // Delay before next read (except after last read)
       if (i < readCount - 1 && delayMs > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+      }
+    }
+
+    // Auto-capture the last voltage reading to context if requested
+    if (context && captureAsIt != params.end()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(lastVoltage), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Last voltage reading " + std::to_string(lastVoltage) + " V stored as '" +
+                      captureAsIt->second + "'", "PSUHandler");
       }
     }
 
@@ -273,8 +311,10 @@ bool PSUCommandHandler::ExecuteCommand(
     }
 
     // Perform multiple reads
+    double lastCurrent = 0.0;
     for (int i = 0; i < readCount; i++) {
       double current = psu->readCurrent();
+      lastCurrent = current;  // Track last reading for context capture
 
       // Convert A to mA for display
       double currentInMA = current * 1000.0;
@@ -292,6 +332,16 @@ bool PSUCommandHandler::ExecuteCommand(
       // Delay before next read (except after last read)
       if (i < readCount - 1 && delayMs > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+      }
+    }
+
+    // Auto-capture the last current reading to context if requested (store in Amps)
+    if (context && captureAsIt != params.end()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(lastCurrent), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Last current reading " + std::to_string(lastCurrent) + " A stored as '" +
+                      captureAsIt->second + "'", "PSUHandler");
       }
     }
 

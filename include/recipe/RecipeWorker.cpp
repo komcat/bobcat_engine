@@ -4,11 +4,14 @@
 #include "RecipeManager.h"
 #include "ProcessSequenceFactory.h"
 #include "SequenceBuilder.h"
+#include "SequenceContext.h"
 #include "product_position_manager.h"
 #include "unified_motion_manager.h"
 #include "LogManager.h"
 #include <QMetaObject>
+#include <QString>
 #include <iostream>
+#include <chrono>
 
 RecipeWorker::RecipeWorker(
   SequenceEngine* engine,
@@ -157,10 +160,56 @@ void RecipeWorker::run()
       emit sequenceExecutionStarted();
       emit logMessage("Executing sequence...");
 
-      bool success = m_engine->ExecuteSequence(sequence);
+      // Create execution context for value capture and conditionals
+      auto context = std::make_unique<SequenceContext>();
+      bool success = m_engine->ExecuteSequence(sequence, context.get());
 
       delete sequence;
       sequence = nullptr;
+
+      // ✅ Log execution context summary
+      if (context) {
+        auto summary = context->GetSummary();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          summary.endTime - summary.startTime).count();
+
+        emit logMessage("========================================");
+        emit logMessage("Execution Context Summary:");
+        emit logMessage(QString("  Duration: %1 ms").arg(static_cast<qulonglong>(duration)));
+        emit logMessage(QString("  Steps Executed: %1").arg(summary.totalSteps));
+        emit logMessage(QString("  Values Captured: %1").arg(static_cast<int>(summary.capturedValues.size())));
+
+        // Log all captured values
+        if (!summary.capturedValues.empty()) {
+          emit logMessage("  Captured Values:");
+          for (const auto& pair : summary.capturedValues) {
+            const std::string& key = pair.first;
+            const SequenceContext::Value& value = pair.second;
+
+            if (value.type == SequenceContext::ValueType::NUMERIC) {
+              emit logMessage(QString("    - %1 = %2")
+                .arg(QString::fromStdString(key))
+                .arg(value.numericValue));
+            } else if (value.type == SequenceContext::ValueType::STRING) {
+              emit logMessage(QString("    - %1 = \"%2\"")
+                .arg(QString::fromStdString(key))
+                .arg(QString::fromStdString(value.stringValue)));
+            } else if (value.type == SequenceContext::ValueType::BOOLEAN) {
+              emit logMessage(QString("    - %1 = %2")
+                .arg(QString::fromStdString(key))
+                .arg(value.booleanValue ? "true" : "false"));
+            }
+          }
+        }
+
+        // Save context to JSON file for debugging (in logs folder)
+        std::string timestamp = std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        std::string filename = "logs/context_" + recipeName + "_" + timestamp + ".json";
+        context->SaveToFile(filename);
+        emit logMessage(QString("  Context saved to: %1").arg(QString::fromStdString(filename)));
+
+        emit logMessage("========================================");
+      }
 
       QString resultMsg = success
         ? QString("Recipe '%1' completed successfully!").arg(QString::fromStdString(recipeName))

@@ -831,9 +831,19 @@ void ReadDataStoreConfigWidget::createParameterFields(const ProcessInstance* ins
   });
   m_parameterEdits["log_level"] = logLevelEdit;
 
+  // Context capture field (optional)
+  std::string captureAs = params.count("captureAs") ? params.at("captureAs") : "";
+  QLineEdit* captureEdit = new QLineEdit(QString::fromStdString(captureAs));
+  captureEdit->setPlaceholderText("Optional: Variable name to store DataStore value");
+  captureEdit->setStyleSheet("padding: 5px;");
+  connect(captureEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Capture As:", captureEdit);
+  m_parameterEdits["captureAs"] = captureEdit;
+
   // Add info label
   QLabel* infoLabel = new QLabel(
-    "<i>Reads the specified channel from DataStore and logs its value.</i>"
+    "<i>Reads the specified channel from DataStore and logs its value. "
+    "If 'Capture As' is set, the value will be stored in the execution context.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
@@ -904,9 +914,19 @@ void ReadTemperatureConfigWidget::createParameterFields(const ProcessInstance* i
 
   m_formLayout->addRow("Log Level:", logLevelCombo);
 
+  // Context capture field (optional)
+  std::string captureAs = params.count("captureAs") ? params.at("captureAs") : "";
+  QLineEdit* captureEdit = new QLineEdit(QString::fromStdString(captureAs));
+  captureEdit->setPlaceholderText("Optional: Variable name to store temperature");
+  captureEdit->setStyleSheet("padding: 5px;");
+  connect(captureEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Capture As:", captureEdit);
+  m_parameterEdits["captureAs"] = captureEdit;
+
   // Info label
   QLabel* infoLabel = new QLabel(
-    "<i>Reads the current temperature from the selected TEC device and logs it.</i>"
+    "<i>Reads the current temperature from the selected TEC device and logs it. "
+    "If 'Capture As' is set, the temperature will be stored in the execution context.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
@@ -979,9 +999,19 @@ void ReadLaserCurrentConfigWidget::createParameterFields(const ProcessInstance* 
 
   m_formLayout->addRow("Log Level:", logLevelCombo);
 
+  // Context capture field (optional)
+  std::string captureAs = params.count("captureAs") ? params.at("captureAs") : "";
+  QLineEdit* captureEdit = new QLineEdit(QString::fromStdString(captureAs));
+  captureEdit->setPlaceholderText("Optional: Variable name to store laser current");
+  captureEdit->setStyleSheet("padding: 5px;");
+  connect(captureEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Capture As:", captureEdit);
+  m_parameterEdits["captureAs"] = captureEdit;
+
   // Info label
   QLabel* infoLabel = new QLabel(
-    "<i>Reads the current laser current from the selected TEC device and logs it.</i>"
+    "<i>Reads the current laser current from the selected TEC device and logs it. "
+    "If 'Capture As' is set, the laser current will be stored in the execution context.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
@@ -1117,10 +1147,24 @@ void PSUReadVoltageConfigWidget::createParameterFields(const ProcessInstance* in
   addParameterField("read_count", "Number of Reads", params.at("read_count"));
   addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
 
+  // Context capture field (optional)
+  QLabel* captureLabel = new QLabel("Context Capture:");
+  captureLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 10px;");
+  m_formLayout->addRow(captureLabel);
+
+  std::string captureAs = params.count("captureAs") ? params.at("captureAs") : "";
+  QLineEdit* captureEdit = new QLineEdit(QString::fromStdString(captureAs));
+  captureEdit->setPlaceholderText("Optional: Variable name to store last voltage reading");
+  captureEdit->setStyleSheet("padding: 5px;");
+  connect(captureEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Capture As:", captureEdit);
+  m_parameterEdits["captureAs"] = captureEdit;
+
   // Info label
   QLabel* infoLabel = new QLabel(
     "<i>Reads the PSU voltage multiple times with a delay between each read. "
-    "All readings are logged to LogManager. Default: 3 reads with 100ms delay.</i>"
+    "All readings are logged to LogManager. If 'Capture As' is set, the last reading "
+    "will be stored in the execution context. Default: 3 reads with 100ms delay.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");
@@ -1153,10 +1197,24 @@ void PSUReadCurrentConfigWidget::createParameterFields(const ProcessInstance* in
   addParameterField("read_count", "Number of Reads", params.at("read_count"));
   addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
 
+  // Context capture field (optional)
+  QLabel* captureLabel = new QLabel("Context Capture:");
+  captureLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f; margin-top: 10px;");
+  m_formLayout->addRow(captureLabel);
+
+  std::string captureAs = params.count("captureAs") ? params.at("captureAs") : "";
+  QLineEdit* captureEdit = new QLineEdit(QString::fromStdString(captureAs));
+  captureEdit->setPlaceholderText("Optional: Variable name to store last current reading");
+  captureEdit->setStyleSheet("padding: 5px;");
+  connect(captureEdit, &QLineEdit::textChanged, this, &ProcessConfigWidget::parameterChanged);
+  m_formLayout->addRow("Capture As:", captureEdit);
+  m_parameterEdits["captureAs"] = captureEdit;
+
   // Info label
   QLabel* infoLabel = new QLabel(
     "<i>Reads the PSU current multiple times with a delay between each read. "
-    "All readings are logged to LogManager. Default: 3 reads with 100ms delay.</i>"
+    "All readings are logged to LogManager. If 'Capture As' is set, the last reading "
+    "will be stored in the execution context. Default: 3 reads with 100ms delay.</i>"
   );
   infoLabel->setWordWrap(true);
   infoLabel->setStyleSheet("color: #666; font-size: 10px; margin-top: 8px;");

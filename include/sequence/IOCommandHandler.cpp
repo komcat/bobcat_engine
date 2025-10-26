@@ -10,9 +10,15 @@ bool IOCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   EziIOManager* ioManager = static_cast<EziIOManager*>(manager);
+
+  // Context can be used for capturing input states
+  // Example: if (context && params.find("captureAs") != params.end()) {
+  //   context->SetValue(params.at("captureAs"), inputState, deviceName, methodName);
+  // }
 
   // ============================================================================
   // SET OUTPUT (by pin name)

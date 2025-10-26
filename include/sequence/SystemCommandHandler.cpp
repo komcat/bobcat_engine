@@ -9,11 +9,16 @@ bool SystemCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   // manager is unused for system commands (can be nullptr)
   (void)manager;
   (void)deviceName;
+
+  // Context can be used for capturing user responses, timing data, etc.
+  // Example: UserPrompt can store user's choice in context
+  auto captureAsIt = params.find("captureAs");
 
   // ============================================================================
   // WAIT / DELAY

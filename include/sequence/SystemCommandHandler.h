@@ -18,7 +18,8 @@ public:
     const std::string& deviceName,
     const std::string& methodName,
     const std::map<std::string, std::string>& params,
-    std::string& errorMessage
+    std::string& errorMessage,
+    SequenceContext* context
   ) override;
 
   std::string GetManagerType() const override { return "system"; }

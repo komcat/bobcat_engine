@@ -1,4 +1,4 @@
-﻿// SequenceEngine.cpp
+// SequenceEngine.cpp
 #include "SequenceEngine.h"
 #include "LogManager.h"
 #include "unified_motion_manager.h"
@@ -11,6 +11,8 @@
 #include "TECCommandHandler.h"
 #include "DataStoreCommandHandler.h"
 #include "PSUCommandHandler.h"
+#include "SequenceContextCommandHandler.h"
+#include "SequenceContext.h"
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
 #include "IOCommandHandler.h"
@@ -18,6 +20,7 @@
 #include "CameraCommandHandler.h"
 #include "SequenceBuilder.h"
 #include <iostream>
+#include <cmath>
 
 //=============================================================================
 // SEQUENCE ENGINE IMPLEMENTATION
@@ -41,6 +44,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
   m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
+  m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();
@@ -142,6 +146,11 @@ void SequenceEngine::BuildDeviceRegistry()
     m_deviceToTypeMap["datastore"] = "datastore";
     LogInfo("Registered datastore");
   }
+
+  // Register SequenceContext handler (special case - context passed at runtime)
+  m_deviceToManagerMap["context"] = nullptr;
+  m_deviceToTypeMap["context"] = "context";
+  LogInfo("Registered context command handler");
 
   // System commands (special case - no manager needed, nullptr is OK)
   m_deviceToManagerMap["system"] = nullptr;
@@ -254,20 +263,7 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
   case ISequenceStep::Type::CONDITIONAL: {
     ConditionalBlock* cond = static_cast<ConditionalBlock*>(step);
 
-    // Validate condition device (allow system for conditions too)
-    std::string managerType = ResolveManagerType(cond->conditionDevice);
-    if (managerType.empty()) {
-      errors.push_back("Condition device not found: " + cond->conditionDevice);
-      return false;
-    }
-
-    if (managerType != "system") {
-      void* manager = ResolveManager(cond->conditionDevice);
-      if (!manager) {
-        errors.push_back("Manager not found for condition device: " + cond->conditionDevice);
-        return false;
-      }
-    }
+    // Conditional now evaluates context keys, so just validate branches
 
     // Validate then branch
     for (const auto& action : cond->thenActions) {
@@ -289,12 +285,22 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
   return true;
 }
 
-bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
+bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext* context)
 {
   if (!sequence) {
     LogError("Sequence is null");
     return false;
   }
+
+  if (!context) {
+    LogError("SequenceContext is null");
+    return false;
+  }
+
+  // Initialize context
+  context->SetSequenceName(sequence->GetName());
+  context->SetExecutionStartTime();
+  context->ClearAll();
 
   // ✅ Clear stop flag before execution
   ClearStopFlag();
@@ -311,20 +317,25 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
   LogInfo("Executing sequence: " + sequence->GetName());
 
   try {
-    for (const auto& step : sequence->GetSteps()) {
+    for (size_t i = 0; i < sequence->GetSteps().size(); ++i) {
       // ✅ CHECK STOP FLAG BEFORE EACH STEP
       if (m_stopRequested.load()) {
         LogWarning("Sequence execution stopped by user request");
         return false;
       }
 
-      if (!ExecuteStep(step.get())) {
+      context->SetCurrentStep(static_cast<int>(i), "Step_" + std::to_string(i));
+      context->IncrementStepCount();
+
+      if (!ExecuteStep(sequence->GetSteps()[i].get(), context)) {
         LogError("Step execution failed");
         return false;
       }
     }
 
-    LogInfo("Sequence completed successfully");
+    context->SetExecutionEndTime();
+    LogInfo("Sequence completed in " +
+           std::to_string(context->GetExecutionDuration().count()) + " ms");
     return true;
   }
   catch (const std::exception& e) {
@@ -333,7 +344,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence)
   }
 }
 
-bool SequenceEngine::ExecuteStep(ISequenceStep* step)
+bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 {
   if (!step) return false;
 
@@ -358,16 +369,16 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
       return false;
     }
 
-    // System commands can have nullptr manager, others cannot
-    if (managerType != "system" && !manager) {
+    // System/context commands can have nullptr manager, others cannot
+    if (managerType != "system" && managerType != "context" && !manager) {
       LogError("Manager not found for device: " + action->deviceName);
       return false;
     }
 
-    // Execute command via dispatcher
+    // Execute command via dispatcher with context
     std::string errorMessage;
     if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
-      action->methodName, action->params, errorMessage)) {
+      action->methodName, action->params, errorMessage, context)) {
       LogError("Command failed: " + errorMessage);
       return false;
     }
@@ -387,13 +398,17 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
         return false;
       }
 
+      context->PushLoopIteration(i);
+
       LogInfo("  Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
 
       for (const auto& action : loop->actions) {
-        if (!ExecuteStep(action.get())) {
+        if (!ExecuteStep(action.get(), context)) {
           return false;
         }
       }
+
+      context->PopLoopIteration();
     }
 
     LogInfo("Loop completed");
@@ -403,17 +418,17 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
   case ISequenceStep::Type::CONDITIONAL: {
     ConditionalBlock* cond = static_cast<ConditionalBlock*>(step);
 
-    LogInfo("Evaluating condition: " + cond->conditionDevice + "." + cond->conditionMethod);
+    bool conditionResult = EvaluateCondition(cond, context);
 
-    // TODO: Actually call condition method and get boolean result
-    bool conditionResult = false;  // Placeholder
-
-    LogInfo("Condition result: " + std::string(conditionResult ? "TRUE" : "FALSE"));
+    LogInfo("Condition [" + cond->contextKey + " " +
+           ComparisonToString(cond->comparison) + " " +
+           std::to_string(cond->threshold) + "] = " +
+           (conditionResult ? "TRUE" : "FALSE"));
 
     if (conditionResult) {
       LogInfo("Executing THEN branch");
       for (const auto& action : cond->thenActions) {
-        if (!ExecuteStep(action.get())) {
+        if (!ExecuteStep(action.get(), context)) {
           return false;
         }
       }
@@ -421,7 +436,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
     else {
       LogInfo("Executing ELSE branch");
       for (const auto& action : cond->elseActions) {
-        if (!ExecuteStep(action.get())) {
+        if (!ExecuteStep(action.get(), context)) {
           return false;
         }
       }
@@ -432,6 +447,64 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step)
   }
 
   return true;
+}
+
+bool SequenceEngine::EvaluateCondition(const ConditionalBlock* cond, SequenceContext* context)
+{
+  if (!cond || !context) return false;
+
+  // Check if key exists
+  if (!context->HasValue(cond->contextKey)) {
+    if (cond->comparison == ConditionalBlock::ComparisonType::NOT_EXISTS) {
+      return true;
+    }
+    LogWarning("Context key not found: " + cond->contextKey + ", defaulting to FALSE");
+    return false;
+  }
+
+  if (cond->comparison == ConditionalBlock::ComparisonType::EXISTS) {
+    return true;
+  }
+
+  float value = context->GetNumeric(cond->contextKey, 0.0f);
+
+  switch (cond->comparison) {
+    case ConditionalBlock::ComparisonType::GREATER_THAN:
+      return value > cond->threshold;
+    case ConditionalBlock::ComparisonType::LESS_THAN:
+      return value < cond->threshold;
+    case ConditionalBlock::ComparisonType::EQUAL:
+      return std::abs(value - cond->threshold) < 0.0001f;
+    case ConditionalBlock::ComparisonType::NOT_EQUAL:
+      return std::abs(value - cond->threshold) >= 0.0001f;
+    case ConditionalBlock::ComparisonType::GREATER_OR_EQUAL:
+      return value >= cond->threshold;
+    case ConditionalBlock::ComparisonType::LESS_OR_EQUAL:
+      return value <= cond->threshold;
+    case ConditionalBlock::ComparisonType::IS_TRUE:
+      return context->GetBoolean(cond->contextKey, false);
+    case ConditionalBlock::ComparisonType::IS_FALSE:
+      return !context->GetBoolean(cond->contextKey, true);
+    default:
+      return false;
+  }
+}
+
+std::string SequenceEngine::ComparisonToString(ConditionalBlock::ComparisonType comp) const
+{
+  switch (comp) {
+    case ConditionalBlock::ComparisonType::GREATER_THAN: return ">";
+    case ConditionalBlock::ComparisonType::LESS_THAN: return "<";
+    case ConditionalBlock::ComparisonType::EQUAL: return "==";
+    case ConditionalBlock::ComparisonType::NOT_EQUAL: return "!=";
+    case ConditionalBlock::ComparisonType::GREATER_OR_EQUAL: return ">=";
+    case ConditionalBlock::ComparisonType::LESS_OR_EQUAL: return "<=";
+    case ConditionalBlock::ComparisonType::IS_TRUE: return "is true";
+    case ConditionalBlock::ComparisonType::IS_FALSE: return "is false";
+    case ConditionalBlock::ComparisonType::EXISTS: return "exists";
+    case ConditionalBlock::ComparisonType::NOT_EXISTS: return "not exists";
+    default: return "unknown";
+  }
 }
 
 //=============================================================================

@@ -3,6 +3,7 @@
 #include "RecipeManager.h"
 #include "ApplicationContext.h"
 #include "SequenceEngine.h"
+#include "SequenceContext.h"
 #include "GripperSequenceHelpers.h"
 #include "ProcessSequenceFactory.h"
 #include "ProcessConfigWidget.h"
@@ -30,6 +31,7 @@
 #include <QSettings>
 #include <QFile>
 #include <iostream>
+#include <chrono>
 
 RecipePage::RecipePage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -1320,7 +1322,47 @@ bool RecipePage::executeRecipe()
 
   buildSequenceFromRecipe(sequence);
 
-  bool success = m_sequenceEngine->ExecuteSequence(sequence);
+  // Create execution context for value capture and conditionals
+  auto context = std::make_unique<SequenceContext>();
+  bool success = m_sequenceEngine->ExecuteSequence(sequence, context.get());
+
+  // Log execution context summary
+  if (context && m_context->logManager) {
+    auto summary = context->GetSummary();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      summary.endTime - summary.startTime).count();
+
+    m_context->logManager->Info("========================================", "RecipePage");
+    m_context->logManager->Info("Execution Context Summary:", "RecipePage");
+    m_context->logManager->Info("  Duration: " + std::to_string(duration) + " ms", "RecipePage");
+    m_context->logManager->Info("  Steps Executed: " + std::to_string(summary.totalSteps), "RecipePage");
+    m_context->logManager->Info("  Values Captured: " + std::to_string(summary.capturedValues.size()), "RecipePage");
+
+    // Log all captured values
+    if (!summary.capturedValues.empty()) {
+      m_context->logManager->Info("  Captured Values:", "RecipePage");
+      for (const auto& pair : summary.capturedValues) {
+        const std::string& key = pair.first;
+        const SequenceContext::Value& value = pair.second;
+
+        if (value.type == SequenceContext::ValueType::NUMERIC) {
+          m_context->logManager->Info("    - " + key + " = " + std::to_string(value.numericValue), "RecipePage");
+        } else if (value.type == SequenceContext::ValueType::STRING) {
+          m_context->logManager->Info("    - " + key + " = \"" + value.stringValue + "\"", "RecipePage");
+        } else if (value.type == SequenceContext::ValueType::BOOLEAN) {
+          m_context->logManager->Info("    - " + key + " = " + (value.booleanValue ? "true" : "false"), "RecipePage");
+        }
+      }
+    }
+
+    // Save context to JSON file for debugging (in logs folder)
+    std::string timestamp = std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+    std::string filename = "logs/context_" + recipeName + "_" + timestamp + ".json";
+    context->SaveToFile(filename);
+    m_context->logManager->Info("  Context saved to: " + filename, "RecipePage");
+
+    m_context->logManager->Info("========================================", "RecipePage");
+  }
 
   delete sequence;
 

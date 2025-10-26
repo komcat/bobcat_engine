@@ -1,4 +1,4 @@
-﻿// SequenceEngine.h
+// SequenceEngine.h
 #pragma once
 
 #include "ApplicationContext.h"
@@ -16,6 +16,7 @@ class SequenceBuilder;
 struct ISequenceStep;
 class SystemCommandHandler;
 class LogManager;
+class SequenceContext;
 
 // Callback type for user prompts - returns true if user confirmed, false if cancelled
 using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
@@ -70,13 +71,34 @@ struct LoopBlock : public ISequenceStep
 //=============================================================================
 struct ConditionalBlock : public ISequenceStep
 {
-  std::string conditionDevice;
-  std::string conditionMethod;
+  enum class ComparisonType {
+    GREATER_THAN,      // >
+    LESS_THAN,         // <
+    EQUAL,             // ==
+    NOT_EQUAL,         // !=
+    GREATER_OR_EQUAL,  // >=
+    LESS_OR_EQUAL,     // <=
+    IS_TRUE,           // Boolean true
+    IS_FALSE,          // Boolean false
+    EXISTS,            // Key exists in context
+    NOT_EXISTS         // Key does not exist in context
+  };
+
+  std::string contextKey;        // Key in SequenceContext to evaluate
+  ComparisonType comparison;
+  float threshold;
+
   std::vector<std::shared_ptr<ISequenceStep>> thenActions;
   std::vector<std::shared_ptr<ISequenceStep>> elseActions;
 
+  // New constructor for context-based conditionals
+  ConditionalBlock(const std::string& key, ComparisonType comp, float thresh = 0.0f)
+    : contextKey(key), comparison(comp), threshold(thresh) {
+  }
+
+  // Old constructor for backward compatibility (deprecated)
   ConditionalBlock(const std::string& device, const std::string& method)
-    : conditionDevice(device), conditionMethod(method) {
+    : contextKey(device + "." + method), comparison(ComparisonType::IS_TRUE), threshold(0.0f) {
   }
 
   Type GetType() const override { return Type::CONDITIONAL; }
@@ -105,7 +127,11 @@ public:
 
   // Sequence creation and execution
   SequenceBuilder* CreateSequence(const std::string& name);
-  bool ExecuteSequence(SequenceBuilder* sequence);
+
+  // Execute with context
+  bool ExecuteSequence(SequenceBuilder* sequence, SequenceContext* context);
+
+  // Validate sequence
   bool ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors);
 
   // Logging
@@ -130,8 +156,10 @@ private:
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
 
-  bool ExecuteStep(ISequenceStep* step);
+  bool ExecuteStep(ISequenceStep* step, SequenceContext* context);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);
+  bool EvaluateCondition(const ConditionalBlock* cond, SequenceContext* context);
+  std::string ComparisonToString(ConditionalBlock::ComparisonType comp) const;
 
   void LogInfo(const std::string& message);
   void LogWarning(const std::string& message);

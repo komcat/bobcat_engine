@@ -10,9 +10,15 @@ bool MotionCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   UnifiedMotionManager* motionManager = static_cast<UnifiedMotionManager*>(manager);
+
+  // Context can be used for capturing positions, velocities, etc.
+  // Example: if (context && params.find("captureAs") != params.end()) {
+  //   context->SetValue(params.at("captureAs"), value, deviceName, methodName);
+  // }
 
   // ============================================================================
   // SINGLE AXIS ABSOLUTE MOVE

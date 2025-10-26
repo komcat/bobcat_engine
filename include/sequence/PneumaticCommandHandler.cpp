@@ -10,9 +10,15 @@ bool PneumaticCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   PneumaticManager* pneumaticManager = static_cast<PneumaticManager*>(manager);
+
+  // Context can be used for capturing pneumatic state
+  // Example: if (context && params.find("captureAs") != params.end()) {
+  //   context->SetValue(params.at("captureAs"), isExtended, deviceName, methodName);
+  // }
 
   // ============================================================================
   // EXTEND (with optional blocking)

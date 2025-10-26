@@ -6,6 +6,8 @@
 #include <memory>
 #include "ICommandHandler.h"
 
+class SequenceContext;
+
 class CommandDispatcher
 {
 public:
@@ -15,14 +17,15 @@ public:
   // Register a command handler for a manager type
   void RegisterHandler(const std::string& managerType, std::unique_ptr<ICommandHandler> handler);
 
-  // Execute a command
+  // Execute a command with execution context
   bool ExecuteCommand(
     const std::string& managerType,
     void* manager,
     const std::string& deviceName,
     const std::string& methodName,
     const std::map<std::string, std::string>& params,
-    std::string& errorMessage
+    std::string& errorMessage,
+    SequenceContext* context = nullptr
   );
 
   // Set logger for all handlers

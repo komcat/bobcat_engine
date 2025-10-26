@@ -1,6 +1,7 @@
 // TECCommandHandler.cpp
 #include "TECCommandHandler.h"
 #include "TECManager.h"
+#include "SequenceContext.h"
 #include "LogManager.h"
 #include <sstream>
 #include <thread>
@@ -12,7 +13,8 @@ bool TECCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
   TECManager* tecManager = static_cast<TECManager*>(manager);
 
@@ -21,6 +23,10 @@ bool TECCommandHandler::ExecuteCommand(
     errorMessage = "TEC device '" + deviceName + "' not found";
     return false;
   }
+
+  // Context can be used for capturing temperature, current, power, etc.
+  // Example: GetTemperature, GetCurrent methods can capture values
+  auto captureAsIt = params.find("captureAs");
 
   // ============================================================================
   // SET TEMPERATURE
@@ -34,7 +40,7 @@ bool TECCommandHandler::ExecuteCommand(
 
     if (m_logger) {
       m_logger->Info(
-        "Setting " + deviceName + " temperature to " + std::to_string(temperature) + " °C",
+        "Setting " + deviceName + " temperature to " + std::to_string(temperature) + " ï¿½C",
         "TECHandler"
       );
     }
@@ -100,10 +106,21 @@ bool TECCommandHandler::ExecuteCommand(
       return false;
     }
 
+    // Auto-capture to context if requested
+    auto captureAsIt = params.find("captureAs");
+    if (context && captureAsIt != params.end() && !captureAsIt->second.empty()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(result.Value), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Temperature " + std::to_string(result.Value) + " ï¿½C stored as '" +
+                      captureAsIt->second + "'", "TECHandler");
+      }
+    }
+
     // Format message with proper unit
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
-    oss << deviceName << " Temperature = " << result.Value << " °C";
+    oss << deviceName << " Temperature = " << result.Value << " ï¿½C";
     std::string message = oss.str();
 
     // Log based on level
@@ -200,6 +217,17 @@ bool TECCommandHandler::ExecuteCommand(
       return false;
     }
 
+    // Auto-capture to context if requested
+    auto captureAsIt = params.find("captureAs");
+    if (context && captureAsIt != params.end() && !captureAsIt->second.empty()) {
+      context->SetValue(captureAsIt->second, static_cast<float>(result.Value), deviceName, methodName);
+
+      if (m_logger) {
+        m_logger->Info("Laser Current " + std::to_string(result.Value) + " mA stored as '" +
+                      captureAsIt->second + "'", "TECHandler");
+      }
+    }
+
     // Format message with proper unit
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
@@ -234,7 +262,7 @@ bool TECCommandHandler::ExecuteCommand(
       oss << "  Connected: " << (status.Connected ? "Yes" : "No") << "\n";
       oss << "  TEC: " << (status.TECOn ? "ON" : "OFF") << "\n";
       oss << "  Laser: " << (status.LaserOn ? "ON" : "OFF") << "\n";
-      oss << "  Temperature: " << status.CurrentTemperature << " °C (SP: "
+      oss << "  Temperature: " << status.CurrentTemperature << " ï¿½C (SP: "
         << status.SetpointTemperature << ")\n";
       oss << "  Laser Current: " << status.CurrentLaserCurrent << " mA (SP: "
         << status.SetpointLaserCurrent << ")";
@@ -251,7 +279,7 @@ bool TECCommandHandler::ExecuteCommand(
     auto toleranceIt = params.find("tolerance");
     auto timeoutIt = params.find("timeout");
 
-    double tolerance = 0.5;  // Default ±0.5°C
+    double tolerance = 0.5;  // Default ï¿½0.5ï¿½C
     int timeoutMs = 30000;   // Default 30 seconds
 
     if (toleranceIt != params.end()) {
@@ -264,8 +292,8 @@ bool TECCommandHandler::ExecuteCommand(
 
     if (m_logger) {
       m_logger->Info(
-        "Waiting for " + deviceName + " temperature to stabilize (tolerance: ±" +
-        std::to_string(tolerance) + " °C, timeout: " + std::to_string(timeoutMs) + "ms)",
+        "Waiting for " + deviceName + " temperature to stabilize (tolerance: ï¿½" +
+        std::to_string(tolerance) + " ï¿½C, timeout: " + std::to_string(timeoutMs) + "ms)",
         "TECHandler"
       );
     }
@@ -301,7 +329,7 @@ bool TECCommandHandler::ExecuteCommand(
         if (m_logger) {
           m_logger->Info(
             "Temperature stabilized at " + std::to_string(currentTemp) +
-            " °C after " + std::to_string(elapsed) + "ms",
+            " ï¿½C after " + std::to_string(elapsed) + "ms",
             "TECHandler"
           );
         }
@@ -355,7 +383,7 @@ bool TECCommandHandler::ParseTemperature(
   try {
     outTemp = std::stod(it->second);
 
-    // Sanity check: typical range -50 to 100°C
+    // Sanity check: typical range -50 to 100ï¿½C
     if (outTemp < -50.0 || outTemp > 100.0) {
       return false;
     }

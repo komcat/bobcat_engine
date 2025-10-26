@@ -11,6 +11,7 @@
 #include "AuxWindowManager.h"
 #include "MotionJsonLoader.h"
 #include "SequenceBuilder.h"
+#include "SequenceContext.h"
 #include "TECManager.h"
 #include "TECJsonLoader.h"  // ✅ ADD THIS
 #include "PowerSupplyManager.h"
@@ -825,7 +826,8 @@ void Application::testSequenceEngine()
   std::vector<std::string> errors;
   if (m_sequenceEngine->ValidateSequence(seq, errors)) {
     m_logManager->Info("Sequence validation passed, executing...", "Sequence Test");
-    m_sequenceEngine->ExecuteSequence(seq);
+    auto context = std::make_unique<SequenceContext>();
+    m_sequenceEngine->ExecuteSequence(seq, context.get());
   }
   else {
     m_logManager->Error("Sequence validation failed:", "Sequence Test");
@@ -909,7 +911,8 @@ void Application::testPneumaticSequence()
     m_logManager->Info("✓ Sequence validation passed!", "Pneumatic Sequence Test");
     m_logManager->Info("Executing sequence...", "Pneumatic Sequence Test");
 
-    if (m_sequenceEngine->ExecuteSequence(seq)) {
+    auto context = std::make_unique<SequenceContext>();
+    if (m_sequenceEngine->ExecuteSequence(seq, context.get())) {
       m_logManager->Info("✓ Sequence execution completed successfully!", "Pneumatic Sequence Test");
     }
     else {

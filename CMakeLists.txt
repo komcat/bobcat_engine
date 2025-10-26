@@ -311,6 +311,8 @@ set(SOURCES
     include/AppUI/Forms/PowerSupplyFormWidget.cpp
     include/AppUI/Forms/TECDevicesFormWidget.cpp
     include/sequence/SequenceEngine.cpp
+    include/sequence/SequenceContext.cpp
+    include/sequence/SequenceContextCommandHandler.cpp
     include/sequence/MotionCommandHandler.cpp
     include/sequence/IOCommandHandler.cpp
     include/sequence/PneumaticCommandHandler.cpp
@@ -429,6 +431,8 @@ set(HEADERS
     include/AppUI/Forms/PowerSupplyFormWidget.h
     include/AppUI/Forms/TECDevicesFormWidget.h
     include/sequence/SequenceEngine.h
+    include/sequence/SequenceContext.h
+    include/sequence/SequenceContextCommandHandler.h
     include/sequence/ICommandHandler.h
     include/sequence/MotionCommandHandler.h
     include/sequence/IOCommandHandler.h

@@ -40,7 +40,8 @@
             "parameters": {
                 "delay_ms": "100",
                 "psu_device": "PSU1",
-                "read_count": "20"
+                "read_count": "20",
+                "captureAs": "MeasuredVoltage"
             },
             "type": "PSU Read Voltage"
         },

@@ -17,8 +17,11 @@ bool DataStoreCommandHandler::ExecuteCommand(
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
-  std::string& errorMessage)
+  std::string& errorMessage,
+  SequenceContext* context)
 {
+  // Context is available but DataStore is the primary target
+  // Could use context to track which values were logged, etc.
   if (methodName == "ReadAndLog") {
     auto channelIt = params.find("channelName");
     auto logLevelIt = params.find("logLevel");
