@@ -45,9 +45,12 @@ public:
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+
+    // Convert parameter name from UI format to SystemCommandHandler format
     std::map<std::string, std::string> waitParams = {
-      {"duration_ms", params.at("duration_ms")}
+      {"milliseconds", params.at("duration_ms")}  // duration_ms (UI) → milliseconds (handler)
     };
+
     sequence->AddAction("system", "Wait", waitParams);
   }
 };
@@ -169,6 +172,130 @@ public:
 };
 
 //=============================================================================
+// ASK USER PLUGIN
+//=============================================================================
+
+class AskUserPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Ask User";
+  }
+
+  std::string GetCategory() const override {
+    return "System";
+  }
+
+  std::string GetDescription() const override {
+    return "Prompt the user with a message and wait for response";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"title", "Confirmation Required"},
+      {"message", "Please confirm to continue"},
+      {"blocking", "true"}  // "true" = wait for response, "false" = notification only
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addParameterField("title", "Dialog Title", params.at("title"));
+    widget->addParameterField("message", "Message Text", params.at("message"));
+    widget->addCheckboxParameter("blocking", "Wait for user response (blocking)",
+      params.at("blocking"), "If checked, sequence pauses until user responds");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> promptParams = {
+      {"title", params.at("title")},
+      {"message", params.at("message")},
+      {"blocking", params.at("blocking")}
+    };
+
+    sequence->AddAction("system", "UserPrompt", promptParams);
+  }
+};
+
+//=============================================================================
+// GROUP START PLUGIN (Organizational - no sequence action)
+//=============================================================================
+
+class GroupStartPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Group Start";
+  }
+
+  std::string GetCategory() const override {
+    return "Control Flow";
+  }
+
+  std::string GetDescription() const override {
+    return "Organizational marker to start a group of related steps";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"group_name", "Process Group"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("group_name", "Group Name", params.at("group_name"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    // Groups are organizational only - they don't add sequence actions
+    std::cout << "[SystemProcesses] Group Start (organizational): "
+              << step->parameters.at("group_name") << std::endl;
+    (void)sequence;  // Unused
+  }
+};
+
+//=============================================================================
+// GROUP END PLUGIN (Organizational - no sequence action)
+//=============================================================================
+
+class GroupEndPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Group End";
+  }
+
+  std::string GetCategory() const override {
+    return "Control Flow";
+  }
+
+  std::string GetDescription() const override {
+    return "Organizational marker to end a group of related steps";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};  // No parameters
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // No parameters - widget will show empty form or info message
+    (void)widget;
+    (void)instance;
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    // Groups are organizational only - they don't add sequence actions
+    std::cout << "[SystemProcesses] Group End (organizational)" << std::endl;
+    (void)sequence;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -180,8 +307,11 @@ namespace {
       registry.RegisterPlugin(std::make_unique<WaitPlugin>());
       registry.RegisterPlugin(std::make_unique<LogMessagePlugin>());
       registry.RegisterPlugin(std::make_unique<ManualAdjustPlugin>());
+      registry.RegisterPlugin(std::make_unique<AskUserPlugin>());
+      registry.RegisterPlugin(std::make_unique<GroupStartPlugin>());
+      registry.RegisterPlugin(std::make_unique<GroupEndPlugin>());
 
-      std::cout << "[SystemProcesses] Registered 3 system process plugins" << std::endl;
+      std::cout << "[SystemProcesses] Registered 6 system process plugins" << std::endl;
     }
   };
 

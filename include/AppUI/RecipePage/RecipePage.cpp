@@ -7,6 +7,7 @@
 #include "GripperSequenceHelpers.h"
 #include "ProcessSequenceFactory.h"
 #include "ProcessConfigWidget.h"
+#include "ProcessPluginRegistry.h"  // ✅ Plugin system
 #include "product_position_manager.h"
 #include "RecipeWorker.h"
 #include "RecipeProgressWidget.h"  // ✅ NEW
@@ -1123,8 +1124,19 @@ void RecipePage::updateConfigurationForm()
     m_currentConfigWidget = nullptr;
   }
 
-  // Create appropriate widget based on process type
-  if (instance->processType == "Pick") {
+  // ============================================================================
+  // Check plugin registry FIRST
+  // ============================================================================
+  auto& registry = ProcessPluginRegistry::Instance();
+  if (registry.HasPlugin(instance->processType)) {
+    m_currentConfigWidget = new PluginBasedConfigWidget(m_context, instance->processType);
+    std::cout << "[RecipePage] Using PluginBasedConfigWidget for: "
+              << instance->processType << std::endl;
+  }
+  // ============================================================================
+  // Fall back to old hardcoded widget creation
+  // ============================================================================
+  else if (instance->processType == "Pick") {
     m_currentConfigWidget = new PickConfigWidget(m_context);
   }
   else if (instance->processType == "Place") {

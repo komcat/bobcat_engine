@@ -356,6 +356,12 @@ set(SOURCES
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
+    include/recipe/processes/MotionProcesses.cpp
+    include/recipe/processes/IOProcesses.cpp
+    include/recipe/processes/TECProcesses.cpp
+    include/recipe/processes/PSUProcesses.cpp
+    include/recipe/processes/DataStoreProcesses.cpp
+    include/recipe/processes/ConditionalProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp

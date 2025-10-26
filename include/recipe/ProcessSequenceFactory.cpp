@@ -1,5 +1,6 @@
 ﻿// ProcessSequenceFactory.cpp
 #include "ProcessSequenceFactory.h"
+#include "ProcessPluginRegistry.h"
 #include "GripperSequenceHelpers.h"
 #include "SequenceBuilder.h"
 #include "SequenceEngine.h"
@@ -707,7 +708,24 @@ bool ProcessSequenceFactory::BuildStep(
     return false;
   }
 
-  // Check if builder exists
+  // Check plugin registry first
+  auto& registry = ProcessPluginRegistry::Instance();
+  if (registry.HasPlugin(step->processType)) {
+    IProcessPlugin* plugin = registry.GetPlugin(step->processType);
+    if (plugin) {
+      try {
+        plugin->BuildSequence(sequence, step);
+        return true;
+      }
+      catch (const std::exception& e) {
+        errorMsg = std::string("Plugin build failed: ") + e.what();
+        std::cerr << "[ProcessSequenceFactory] " << errorMsg << std::endl;
+        return false;
+      }
+    }
+  }
+
+  // Fall back to old builder system
   auto it = m_builders.find(step->processType);
   if (it == m_builders.end()) {
     errorMsg = "No builder registered for process type: " + step->processType;

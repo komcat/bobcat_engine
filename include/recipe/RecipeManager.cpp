@@ -1,5 +1,6 @@
 ﻿// RecipeManager.cpp
 #include "RecipeManager.h"
+#include "ProcessPluginRegistry.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -158,16 +159,20 @@ std::string RecipeManager::generateUniqueId(const std::string& processType)
 
 std::vector<std::string> RecipeManager::getAvailableProcessTypes()
 {
-  return {
+  // Get plugin-based process types from registry
+  auto& registry = ProcessPluginRegistry::Instance();
+  std::vector<std::string> types = registry.GetAllProcessTypes();
+
+  // Add old hardcoded process types (excluding ones migrated to plugins)
+  // Plugins: Wait, Log Message, Manual Adjust
+  std::vector<std::string> oldTypes = {
     "Pick",
     "Place",
     "Pick and Place",
     "Move to Position",
     "Move Relative",
     "Set Output",
-    "Wait",
     "Ask User",
-    "Manual Adjust",
     "Move Relative Multi-Axis",
     "Move to Position with Offset",
     "Slide Extend",
@@ -182,17 +187,28 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
     "PSU Set Current",
     "PSU Read Voltage",
     "PSU Read Current",
-    "Log Message",
     "Group Start",
     "Group End",
     "Conditional If",
     "Conditional Else",
     "Conditional End"
   };
+
+  // Merge old types into plugin types
+  types.insert(types.end(), oldTypes.begin(), oldTypes.end());
+
+  return types;
 }
 
 std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std::string& processType)
 {
+  // Check plugin registry first
+  auto& registry = ProcessPluginRegistry::Instance();
+  if (registry.HasPlugin(processType)) {
+    return registry.GetDefaultParameters(processType);
+  }
+
+  // Fall back to old hardcoded defaults
   std::map<std::string, std::string> params;
 
   if (processType == "Pick") {
@@ -242,22 +258,13 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["pin"] = "0";
     params["state"] = "true";  // "true" for ON, "false" for OFF
   }
-  else if (processType == "Wait") {
-    params["duration_ms"] = "1000";  // Default 1 second
-  }
+  // Wait - now handled by plugin
   else if (processType == "Ask User") {
     params["title"] = "Confirmation Required";
     params["message"] = "Please confirm to continue";
     params["blocking"] = "true";  // "true" = wait for response, "false" = just show notification
   }
-  else if (processType == "Manual Adjust") {
-    params["message"] = "Please adjust the position as needed";
-    params["device_name"] = "gantry-main";
-    params["step_size_um"] = "10";  // 10 microns
-    params["enable_x"] = "true";
-    params["enable_y"] = "true";
-    params["enable_z"] = "true";
-  }
+  // Manual Adjust - now handled by plugin
   else if (processType == "Move Relative Multi-Axis") {
     params["device"] = "gantry-main";
     params["distance_x"] = "0";
@@ -329,10 +336,7 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["read_count"] = "3";      // How many times to read
     params["delay_ms"] = "100";      // Delay between reads in ms
   }
-  else if (processType == "Log Message") {
-    params["message"] = "Log message here...";
-    params["log_level"] = "Info";
-  }
+  // Log Message - now handled by plugin
   else if (processType == "Group Start") {
     params["group_name"] = "Process Group";
   }
@@ -530,6 +534,13 @@ std::vector<std::string> RecipeManager::getProcessCategories()
 
 std::string RecipeManager::getProcessCategory(const std::string& processType)
 {
+  // Check plugin registry first
+  auto& registry = ProcessPluginRegistry::Instance();
+  if (registry.HasPlugin(processType)) {
+    return registry.GetProcessCategory(processType);
+  }
+
+  // Fall back to old hardcoded categories
   // Motion Control
   if (processType == "Pick" || processType == "Place" || processType == "Pick and Place" ||
       processType == "Move to Position" || processType == "Move Relative" ||
@@ -560,8 +571,8 @@ std::string RecipeManager::getProcessCategory(const std::string& processType)
     return "Data";
   }
 
-  // System
-  if (processType == "Wait" || processType == "Ask User" || processType == "Manual Adjust" || processType == "Log Message") {
+  // System (Wait, Log Message, Manual Adjust now handled by plugins)
+  if (processType == "Ask User") {
     return "System";
   }
 
