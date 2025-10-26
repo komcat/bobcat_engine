@@ -354,6 +354,8 @@ set(SOURCES
     include/AppUI/RecipePage/RecipePage.cpp
     include/recipe/RecipeManager.cpp
     include/recipe/ProcessSequenceFactory.cpp
+    include/recipe/ProcessPluginRegistry.cpp
+    include/recipe/processes/SystemProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp
@@ -478,7 +480,9 @@ set(HEADERS
     include/sequence/GripperSequenceHelpers.h 
     include/AppUI/RecipePage/RecipePage.h
     include/recipe/RecipeManager.h
-    include/recipe/ProcessSequenceFactory.h 
+    include/recipe/ProcessSequenceFactory.h
+    include/recipe/IProcessPlugin.h
+    include/recipe/ProcessPluginRegistry.h 
     include/AppUI/RecipePage/ProcessConfigWidget.h
     include/AppUI/RecipePage/DeviceSelectorWidgets.h 
     include/recipe/RecipeWorker.h

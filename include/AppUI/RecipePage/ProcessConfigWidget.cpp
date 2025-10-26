@@ -6,12 +6,14 @@
 #include "DataStore.h"
 #include "TECManager.h"
 #include "RecipeManager.h"
+#include "ProcessPluginRegistry.h"
 #include <QLabel>
 #include <QFrame>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QComboBox>
+#include <iostream>
 
 // ============================================================================
 // BASE CLASS: ProcessConfigWidget
@@ -169,6 +171,26 @@ void ProcessConfigWidget::addNodeSelector(const std::string& key,
   m_parameterEdits[key] = edit;
 }
 
+void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& tooltip)
+{
+  QCheckBox* checkbox = new QCheckBox(QString::fromStdString(label));
+  checkbox->setChecked(value == "true" || value == "1");
+
+  if (!tooltip.empty()) {
+    checkbox->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  connect(checkbox, &QCheckBox::toggled, this, [this]() {
+    emit parameterChanged();
+  });
+
+  m_formLayout->addRow("", checkbox);
+  m_parameterCheckboxes[key] = checkbox;
+}
+
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 {
   std::map<std::string, std::string> params;
@@ -197,6 +219,29 @@ std::string ProcessConfigWidget::getNickname() const
 bool ProcessConfigWidget::isEnabled() const
 {
   return m_enabledCheckBox ? m_enabledCheckBox->isChecked() : true;
+}
+
+// ============================================================================
+// PLUGIN-BASED CONFIG WIDGET
+// ============================================================================
+
+PluginBasedConfigWidget::PluginBasedConfigWidget(ApplicationContext* context, const std::string& processType, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+  , m_processType(processType)
+{
+}
+
+void PluginBasedConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  auto& registry = ProcessPluginRegistry::Instance();
+  IProcessPlugin* plugin = registry.GetPlugin(m_processType);
+
+  if (plugin) {
+    plugin->CreateConfigUI(this, instance);
+  }
+  else {
+    std::cerr << "[PluginBasedConfigWidget] No plugin found for process type: " << m_processType << std::endl;
+  }
 }
 
 // ============================================================================

@@ -17,6 +17,7 @@
 #include "PowerSupplyManager.h"
 #include "PowerSupplyJsonLoader.h"
 #include "CoordinateSystemManager.h"
+#include "ProcessPluginRegistry.h"  // ✅ ADD THIS - Force plugin system initialization
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
@@ -60,6 +61,11 @@ int Application::run()
   }
 
   std::cout << "[Application] Starting " << getApplicationName() << "..." << std::endl;
+
+  // Initialize plugin registry (triggers static registration in plugin files)
+  auto& pluginRegistry = ProcessPluginRegistry::Instance();
+  std::cout << "[Application] Plugin registry initialized with "
+            << pluginRegistry.GetAllProcessTypes().size() << " plugins" << std::endl;
 
   std::cout << "[Application] About to call exec()..." << std::endl;
   std::cout << "[Application] m_qApplication pointer: " << m_qApplication << std::endl;

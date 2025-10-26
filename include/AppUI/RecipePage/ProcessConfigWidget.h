@@ -45,9 +45,8 @@ signals:
   void nicknameChanged(const QString& nickname);
   void enabledChanged(bool enabled);
 
-protected:
-  // Override this to create custom parameter fields
-  virtual void createParameterFields(const ProcessInstance* instance) = 0;
+public:
+  // Helper methods for creating UI (used by plugins and derived classes)
 
   // Helper to add pneumatic slide selector (with browse button)
   void addSlideSelector(const std::string& key, const std::string& label,
@@ -65,6 +64,14 @@ protected:
   void addNodeSelector(const std::string& key, const std::string& label,
     const std::string& value, const std::string& deviceName);
 
+  // Helper to add checkbox parameter
+  void addCheckboxParameter(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& tooltip = "");
+
+protected:
+  // Override this to create custom parameter fields
+  virtual void createParameterFields(const ProcessInstance* instance) = 0;
+
   ApplicationContext* m_context;
   QFormLayout* m_formLayout;
   QCheckBox* m_enabledCheckBox;
@@ -73,6 +80,26 @@ protected:
   std::map<std::string, QLineEdit*> m_parameterEdits;
   std::map<std::string, DeviceComboBox*> m_deviceCombos;
   std::map<std::string, QCheckBox*> m_parameterCheckboxes;  // ← ADD THIS LINE
+};
+
+/**
+ * @brief Generic configuration widget that uses process plugins
+ *
+ * This widget delegates UI creation to the process plugin, enabling
+ * a plugin architecture where each process type controls its own UI.
+ */
+class PluginBasedConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit PluginBasedConfigWidget(ApplicationContext* context, const std::string& processType, QWidget* parent = nullptr);
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+
+private:
+  std::string m_processType;
 };
 
 /**

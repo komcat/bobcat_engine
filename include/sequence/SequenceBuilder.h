@@ -3,14 +3,12 @@
 
 #include "ApplicationContext.h"
 #include "CommandDispatcher.h"
+#include "SequenceEngine.h"  // Need full definition for ConditionalBlock::ComparisonType
 #include <string>
 #include <vector>
 #include <map>
 #include <memory>
 #include <functional>
-
-// Forward declarations
-struct ConditionalBlock;
 
 //=============================================================================
 // SEQUENCE BUILDER
