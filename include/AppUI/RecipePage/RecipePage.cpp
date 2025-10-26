@@ -3,6 +3,7 @@
 #include "RecipeManager.h"
 #include "ApplicationContext.h"
 #include "SequenceEngine.h"
+#include "SequenceBuilder.h"  // Full definition needed for delete
 #include "SequenceContext.h"
 #include "GripperSequenceHelpers.h"
 #include "ProcessSequenceFactory.h"
@@ -1125,128 +1126,16 @@ void RecipePage::updateConfigurationForm()
   }
 
   // ============================================================================
-  // Check plugin registry FIRST
+  // Create configuration widget using plugin architecture
   // ============================================================================
   auto& registry = ProcessPluginRegistry::Instance();
   if (registry.HasPlugin(instance->processType)) {
     m_currentConfigWidget = new PluginBasedConfigWidget(m_context, instance->processType);
-    std::cout << "[RecipePage] Using PluginBasedConfigWidget for: "
+    std::cout << "[RecipePage] Created PluginBasedConfigWidget for: "
               << instance->processType << std::endl;
   }
-  // ============================================================================
-  // Fall back to old hardcoded widget creation
-  // ============================================================================
-  else if (instance->processType == "Pick") {
-    m_currentConfigWidget = new PickConfigWidget(m_context);
-  }
-  else if (instance->processType == "Place") {
-    m_currentConfigWidget = new PlaceConfigWidget(m_context);
-  }
-  else if (instance->processType == "Pick and Place") {
-    m_currentConfigWidget = new PickAndPlaceConfigWidget(m_context);
-  }
-  else if (instance->processType == "Move to Position") {
-    m_currentConfigWidget = new MoveToPositionConfigWidget(m_context);
-  }
-  else if (instance->processType == "Move Relative") {
-    m_currentConfigWidget = new MoveRelativeConfigWidget(m_context);
-  }
-  else if (instance->processType == "Set Output") {
-    m_currentConfigWidget = new SetOutputConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ NEW PROCESS WIDGETS
-  // ============================================================================
-  else if (instance->processType == "Wait") {
-    m_currentConfigWidget = new WaitConfigWidget(m_context);
-  }
-  // ← ADD THIS:
-  else if (instance->processType == "Ask User") {
-    m_currentConfigWidget = new AskUserConfigWidget(m_context);
-  }
-  else if (instance->processType == "Manual Adjust") {
-    m_currentConfigWidget = new ManualAdjustConfigWidget(m_context);
-  }
-  else if (instance->processType == "Log Message") {
-    m_currentConfigWidget = new LogMessageConfigWidget(m_context);
-  }
-  else if (instance->processType == "Group Start") {
-    m_currentConfigWidget = new GroupStartConfigWidget(m_context);
-  }
-  else if (instance->processType == "Group End") {
-    m_currentConfigWidget = new GroupEndConfigWidget(m_context);
-  }
-  else if (instance->processType == "Move Relative Multi-Axis") {
-    m_currentConfigWidget = new MoveRelativeMultiAxisConfigWidget(m_context);
-  }
-  else if (instance->processType == "Move to Position with Offset") {
-    m_currentConfigWidget = new MoveToPositionWithOffsetConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ PNEUMATIC PROCESSES
-  // ============================================================================
-  else if (instance->processType == "Slide Extend") {
-    m_currentConfigWidget = new SlideExtendConfigWidget(m_context);
-  }
-  else if (instance->processType == "Slide Retract") {
-    m_currentConfigWidget = new SlideRetractConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ TEC and LASER PROCESSES
-  // ============================================================================
-  else if (instance->processType == "Set TEC Temp") {
-    m_currentConfigWidget = new SetTECTempConfigWidget(m_context);
-  }
-  else if (instance->processType == "Set Laser Current") {
-    m_currentConfigWidget = new SetLaserCurrentConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ DATASTORE PROCESS
-  // ============================================================================
-  else if (instance->processType == "Read DataStore") {
-    m_currentConfigWidget = new ReadDataStoreConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ TEC READ PROCESSES
-  // ============================================================================
-  else if (instance->processType == "Read Temperature") {
-    m_currentConfigWidget = new ReadTemperatureConfigWidget(m_context);
-  }
-  else if (instance->processType == "Read Laser Current") {
-    m_currentConfigWidget = new ReadLaserCurrentConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ PSU PROCESSES
-  // ============================================================================
-  else if (instance->processType == "PSU Output On/Off") {
-    m_currentConfigWidget = new PSUOutputConfigWidget(m_context);
-  }
-  else if (instance->processType == "PSU Set Voltage") {
-    m_currentConfigWidget = new PSUSetVoltageConfigWidget(m_context);
-  }
-  else if (instance->processType == "PSU Set Current") {
-    m_currentConfigWidget = new PSUSetCurrentConfigWidget(m_context);
-  }
-  else if (instance->processType == "PSU Read Voltage") {
-    m_currentConfigWidget = new PSUReadVoltageConfigWidget(m_context);
-  }
-  else if (instance->processType == "PSU Read Current") {
-    m_currentConfigWidget = new PSUReadCurrentConfigWidget(m_context);
-  }
-  // ============================================================================
-  // ✅ CONDITIONAL PROCESSES
-  // ============================================================================
-  else if (instance->processType == "Conditional If") {
-    m_currentConfigWidget = new ConditionalIfConfigWidget(m_context);
-  }
-  else if (instance->processType == "Conditional Else") {
-    m_currentConfigWidget = new ConditionalElseConfigWidget(m_context);
-  }
-  else if (instance->processType == "Conditional End") {
-    m_currentConfigWidget = new ConditionalEndConfigWidget(m_context);
-  }
   else {
-    std::cerr << "[RecipePage] Unknown process type: " << instance->processType << std::endl;
+    std::cerr << "[RecipePage] No plugin found for process type: " << instance->processType << std::endl;
     clearConfigurationForm();
     return;
   }
