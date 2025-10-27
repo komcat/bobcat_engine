@@ -24,7 +24,7 @@ public:
   }
 
   std::string GetCategory() const override {
-    return "Data & Storage";
+    return "Data";
   }
 
   std::string GetDescription() const override {

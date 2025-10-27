@@ -12,6 +12,7 @@
 #include "DataStoreCommandHandler.h"
 #include "PSUCommandHandler.h"
 #include "SequenceContextCommandHandler.h"
+#include "CalibrationCommandHandler.h"
 #include "SequenceContext.h"
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
@@ -45,6 +46,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
+  m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();

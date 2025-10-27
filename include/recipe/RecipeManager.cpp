@@ -163,39 +163,17 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
   auto& registry = ProcessPluginRegistry::Instance();
   std::vector<std::string> types = registry.GetAllProcessTypes();
 
-  // Add old hardcoded process types (excluding ones migrated to plugins)
-  // Plugins: Wait, Log Message, Manual Adjust
-  std::vector<std::string> oldTypes = {
-    "Pick",
-    "Place",
-    "Pick and Place",
-    "Move to Position",
-    "Move Relative",
-    "Set Output",
-    "Ask User",
-    "Move Relative Multi-Axis",
-    "Move to Position with Offset",
-    "Slide Extend",
-    "Slide Retract",
-    "Set TEC Temp",
-    "Set Laser Current",
-    "Read DataStore",
-    "Read Temperature",
-    "Read Laser Current",
-    "PSU Output On/Off",
-    "PSU Set Voltage",
-    "PSU Set Current",
-    "PSU Read Voltage",
-    "PSU Read Current",
-    "Group Start",
-    "Group End",
-    "Conditional If",
-    "Conditional Else",
-    "Conditional End"
-  };
-
-  // Merge old types into plugin types
-  types.insert(types.end(), oldTypes.begin(), oldTypes.end());
+  // All process types have been migrated to plugins
+  // No hardcoded types needed anymore
+  // Plugin files:
+  //   - MotionProcesses.cpp: Pick, Place, Pick and Place, Move to Position, Move Relative, etc.
+  //   - IOProcesses.cpp: Set Output, Slide Extend, Slide Retract
+  //   - SystemProcesses.cpp: Wait, Ask User, Manual Adjust, Log Message, Group Start, Group End
+  //   - TECProcesses.cpp: Set TEC Temp, Set Laser Current, Read Temperature, Read Laser Current
+  //   - PSUProcesses.cpp: PSU Output On/Off, PSU Set Voltage, PSU Set Current, PSU Read Voltage, PSU Read Current
+  //   - DataStoreProcesses.cpp: Read DataStore
+  //   - ConditionalProcesses.cpp: Conditional If, Conditional Else, Conditional End
+  //   - CalibrationProcesses.cpp: Calibrate Needle Z
 
   return types;
 }
@@ -336,6 +314,7 @@ std::map<std::string, std::string> RecipeManager::getDefaultParameters(const std
     params["read_count"] = "3";      // How many times to read
     params["delay_ms"] = "100";      // Delay between reads in ms
   }
+  // Calibrate Needle Z - now handled by plugin
   // Log Message - now handled by plugin
   else if (processType == "Group Start") {
     params["group_name"] = "Process Group";

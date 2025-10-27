@@ -623,6 +623,8 @@ ProcessSequenceFactory::ProcessSequenceFactory()
       << step->userNickname << " (Device: " << psuDevice << ", Reads: " << readCount << ", Delay: " << delayMs << "ms)" << std::endl;
   });
 
+  // Calibrate Needle Z - now handled by CalibrationProcesses plugin
+
   // ============================================================================
   // REGISTER GROUP START PROCESS BUILDER (Organizational - No execution)
   // ============================================================================

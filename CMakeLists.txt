@@ -318,6 +318,7 @@ set(SOURCES
     include/sequence/IOCommandHandler.cpp
     include/sequence/PneumaticCommandHandler.cpp
     include/sequence/CameraCommandHandler.cpp
+    include/sequence/CalibrationCommandHandler.cpp
     include/sequence/CommandDispatcher.cpp
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
@@ -362,6 +363,7 @@ set(SOURCES
     include/recipe/processes/PSUProcesses.cpp
     include/recipe/processes/DataStoreProcesses.cpp
     include/recipe/processes/ConditionalProcesses.cpp
+    include/recipe/processes/CalibrationProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp
@@ -454,6 +456,7 @@ set(HEADERS
     include/sequence/IOCommandHandler.h
     include/sequence/PneumaticCommandHandler.h
     include/sequence/CameraCommandHandler.h
+    include/sequence/CalibrationCommandHandler.h
     include/sequence/CommandDispatcher.h
     include/motions/TransformationMatrixLoader.h
     include/motions/CoordinateTransformer.h
