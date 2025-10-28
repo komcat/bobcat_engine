@@ -126,6 +126,15 @@ public:
     void ExportAllToDataStore(DataStore* dataStore, const std::string& prefix = "");
 
     // ======================================================================
+    // EXECUTION CONTROL
+    // ======================================================================
+
+    // Request sequence to stop at next checkpoint
+    void RequestStop() { m_stopRequested = true; }
+    bool IsStopRequested() const { return m_stopRequested; }
+    void ClearStopFlag() { m_stopRequested = false; }
+
+    // ======================================================================
     // RESULT COLLECTION
     // ======================================================================
 
@@ -160,4 +169,7 @@ private:
 
     // Loop tracking stack
     std::vector<int> m_loopIterationStack;
+
+    // Execution control
+    bool m_stopRequested = false;
 };

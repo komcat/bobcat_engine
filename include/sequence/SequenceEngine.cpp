@@ -332,8 +332,8 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
 
   try {
     for (size_t i = 0; i < sequence->GetSteps().size(); ++i) {
-      // ✅ CHECK STOP FLAG BEFORE EACH STEP
-      if (m_stopRequested.load()) {
+      // ✅ CHECK STOP FLAG BEFORE EACH STEP (check both engine and context flags)
+      if (m_stopRequested.load() || context->IsStopRequested()) {
         LogWarning("Sequence execution stopped by user request");
         return false;
       }
@@ -362,8 +362,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 {
   if (!step) return false;
 
-  // ✅ CHECK STOP FLAG AT START OF EACH STEP
-  if (m_stopRequested.load()) {
+  // ✅ CHECK STOP FLAG AT START OF EACH STEP (check both engine and context flags)
+  if (m_stopRequested.load() || context->IsStopRequested()) {
     LogWarning("Step execution stopped by user request");
     return false;
   }
@@ -406,8 +406,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     LogInfo("Starting loop: " + std::to_string(loop->count) + " iterations");
 
     for (int i = 0; i < loop->count; i++) {
-      // ✅ CHECK STOP FLAG BEFORE EACH LOOP ITERATION
-      if (m_stopRequested.load()) {
+      // ✅ CHECK STOP FLAG BEFORE EACH LOOP ITERATION (check both engine and context flags)
+      if (m_stopRequested.load() || context->IsStopRequested()) {
         LogWarning("Loop stopped by user request at iteration " + std::to_string(i + 1));
         return false;
       }

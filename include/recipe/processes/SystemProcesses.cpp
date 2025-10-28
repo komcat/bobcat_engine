@@ -296,6 +296,42 @@ public:
 };
 
 //=============================================================================
+// STOP SEQUENCE PLUGIN
+//=============================================================================
+
+class StopSequencePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Stop Sequence";
+  }
+
+  std::string GetCategory() const override {
+    return "Control Flow";
+  }
+
+  std::string GetDescription() const override {
+    return "Immediately stop recipe execution (often used inside conditional blocks)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};  // No parameters
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // No parameters - widget will show empty form or info message
+    (void)widget;
+    (void)instance;
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    sequence->AddAction("system", "StopSequence", {});
+    std::cout << "[SystemProcesses] Built Stop Sequence command" << std::endl;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -310,8 +346,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<AskUserPlugin>());
       registry.RegisterPlugin(std::make_unique<GroupStartPlugin>());
       registry.RegisterPlugin(std::make_unique<GroupEndPlugin>());
+      registry.RegisterPlugin(std::make_unique<StopSequencePlugin>());
 
-      std::cout << "[SystemProcesses] Registered 6 system process plugins" << std::endl;
+      std::cout << "[SystemProcesses] Registered 7 system process plugins" << std::endl;
     }
   };
 

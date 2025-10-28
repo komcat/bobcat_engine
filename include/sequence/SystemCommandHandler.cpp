@@ -4,6 +4,7 @@
 #include "LogManager.h"
 #include <thread>
 #include <chrono>
+#include <iostream>
 
 bool SystemCommandHandler::ExecuteCommand(
   void* manager,
@@ -198,6 +199,28 @@ bool SystemCommandHandler::ExecuteCommand(
       else {
         m_logger->Info(message, "Recipe");
       }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // STOP SEQUENCE
+  // ============================================================================
+  else if (methodName == "StopSequence") {
+    // Request sequence to stop at next checkpoint
+    if (context) {
+      context->RequestStop();
+
+      if (m_logger) {
+        m_logger->Warning("Sequence stop requested by recipe command", "Recipe");
+      }
+
+      std::cout << "[SystemCommandHandler] Sequence stop requested" << std::endl;
+    }
+    else {
+      errorMessage = "No execution context available for StopSequence";
+      return false;
     }
 
     return true;
