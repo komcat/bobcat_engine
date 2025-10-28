@@ -5,6 +5,7 @@
 #include <QGroupBox>
 #include <QFormLayout>
 #include <QMessageBox>
+#include <QLayout>
 #include <QSettings>
 
 CreateSystemWidget::CreateSystemWidget(
@@ -14,295 +15,661 @@ CreateSystemWidget::CreateSystemWidget(
     : QWidget(parent)
     , m_coordinateSystemManager(coordinateSystemManager)
     , m_motionManager(motionManager)
+    , m_currentStep(0)
+    , m_totalSteps(4)
     , m_point1Captured(false)
     , m_point2Captured(false)
-    , m_point3ACaptured(false)
-    , m_point3BCaptured(false)
-    , m_point3CCaptured(false)
+    , m_point3Captured(false)
 {
     setupUI();
+    updateStepIndicator();
 }
 
 void CreateSystemWidget::setupUI()
 {
-    QVBoxLayout* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(20, 20, 20, 20);
-    mainLayout->setSpacing(15);
+    QHBoxLayout* mainLayout = new QHBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
 
-    // Title
-    QLabel* titleLabel = new QLabel("Create Coordinate System");
-    titleLabel->setStyleSheet(
-        "QLabel {"
-        "  font-size: 18px;"
+    // ============================================================================
+    // LEFT PANEL - Step Indicator
+    // ============================================================================
+    setupStepPanel();
+    mainLayout->addWidget(m_stepPanel);
+
+    // ============================================================================
+    // RIGHT PANEL - Content Area + Navigation
+    // ============================================================================
+    QWidget* rightPanel = new QWidget();
+    QVBoxLayout* rightLayout = new QVBoxLayout(rightPanel);
+    rightLayout->setContentsMargins(30, 30, 30, 30);
+    rightLayout->setSpacing(20);
+
+    // Content stack
+    m_contentStack = new QStackedWidget();
+    setupStepPages();
+    rightLayout->addWidget(m_contentStack, 1);
+
+    // Navigation buttons at bottom
+    QHBoxLayout* navLayout = new QHBoxLayout();
+    navLayout->setSpacing(15);
+
+    m_cancelButton = new QPushButton("Cancel");
+    m_cancelButton->setMinimumHeight(45);
+    m_cancelButton->setMinimumWidth(120);
+    m_cancelButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #95a5a6;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  font-size: 14px;"
         "  font-weight: bold;"
-        "  color: #2c3e50;"
         "  padding: 10px;"
         "}"
+        "QPushButton:hover {"
+        "  background-color: #7f8c8d;"
+        "}"
     );
-    mainLayout->addWidget(titleLabel);
+    navLayout->addWidget(m_cancelButton);
+    navLayout->addStretch();
 
-    // System Configuration Group
-    QGroupBox* configGroup = new QGroupBox("System Configuration");
-    QFormLayout* configLayout = new QFormLayout(configGroup);
+    m_previousButton = new QPushButton("← Previous");
+    m_previousButton->setMinimumHeight(45);
+    m_previousButton->setMinimumWidth(120);
+    m_previousButton->setEnabled(false);
+    m_previousButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #3498db;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  font-size: 14px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+        "QPushButton:hover:enabled {"
+        "  background-color: #2980b9;"
+        "}"
+        "QPushButton:disabled {"
+        "  background-color: #bdc3c7;"
+        "}"
+    );
+    navLayout->addWidget(m_previousButton);
 
+    m_nextButton = new QPushButton("Next →");
+    m_nextButton->setMinimumHeight(45);
+    m_nextButton->setMinimumWidth(120);
+    m_nextButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #27ae60;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  font-size: 14px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+        "QPushButton:hover:enabled {"
+        "  background-color: #229954;"
+        "}"
+        "QPushButton:disabled {"
+        "  background-color: #bdc3c7;"
+        "}"
+    );
+    navLayout->addWidget(m_nextButton);
+
+    rightLayout->addLayout(navLayout);
+
+    mainLayout->addWidget(rightPanel, 1);
+
+    // Connections
+    connect(m_previousButton, &QPushButton::clicked, this, &CreateSystemWidget::onPreviousClicked);
+    connect(m_nextButton, &QPushButton::clicked, this, &CreateSystemWidget::onNextClicked);
+    connect(m_cancelButton, &QPushButton::clicked, this, &CreateSystemWidget::onCancelClicked);
+}
+
+void CreateSystemWidget::setupStepPanel()
+{
+    m_stepPanel = new QWidget();
+    m_stepPanel->setFixedWidth(250);
+    m_stepPanel->setStyleSheet(
+        "QWidget {"
+        "  background-color: #2c3e50;"
+        "  border-right: 2px solid #34495e;"
+        "}"
+    );
+
+    QVBoxLayout* stepLayout = new QVBoxLayout(m_stepPanel);
+    stepLayout->setContentsMargins(20, 40, 20, 40);
+    stepLayout->setSpacing(30);
+
+    // Title
+    QLabel* titleLabel = new QLabel("Create System");
+    titleLabel->setStyleSheet(
+        "QLabel {"
+        "  color: white;"
+        "  font-size: 20px;"
+        "  font-weight: bold;"
+        "  padding-bottom: 20px;"
+        "}"
+    );
+    stepLayout->addWidget(titleLabel);
+
+    // Step indicators
+    QStringList stepNames;
+    stepNames << "Configuration" << "Capture Point 1" << "Capture Point 2" << "Parameters & Create";
+
+    for (int i = 0; i < stepNames.size(); ++i) {
+        QWidget* stepItem = new QWidget();
+        QHBoxLayout* itemLayout = new QHBoxLayout(stepItem);
+        itemLayout->setContentsMargins(0, 0, 0, 0);
+        itemLayout->setSpacing(15);
+
+        // Step number circle
+        QLabel* numberLabel = new QLabel(QString::number(i + 1));
+        numberLabel->setFixedSize(40, 40);
+        numberLabel->setAlignment(Qt::AlignCenter);
+        numberLabel->setStyleSheet(
+            "QLabel {"
+            "  background-color: #34495e;"
+            "  color: #95a5a6;"
+            "  border-radius: 20px;"
+            "  font-size: 18px;"
+            "  font-weight: bold;"
+            "}"
+        );
+        itemLayout->addWidget(numberLabel);
+        m_stepNumbers.append(numberLabel);
+
+        // Step name
+        QLabel* nameLabel = new QLabel(stepNames[i]);
+        nameLabel->setWordWrap(true);
+        nameLabel->setStyleSheet(
+            "QLabel {"
+            "  color: #95a5a6;"
+            "  font-size: 14px;"
+            "}"
+        );
+        itemLayout->addWidget(nameLabel, 1);
+        m_stepLabels.append(nameLabel);
+
+        stepLayout->addWidget(stepItem);
+    }
+
+    stepLayout->addStretch();
+}
+
+void CreateSystemWidget::setupStepPages()
+{
+    m_contentStack->addWidget(createConfigurationPage());
+    m_contentStack->addWidget(createCapturePoint1Page());
+    m_contentStack->addWidget(createCapturePoint2Page());
+    m_contentStack->addWidget(createParametersPage());
+}
+
+QWidget* CreateSystemWidget::createConfigurationPage()
+{
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setSpacing(20);
+
+    // Title
+    QLabel* title = new QLabel("Step 1: System Configuration");
+    title->setStyleSheet(
+        "QLabel {"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #2c3e50;"
+        "  padding-bottom: 10px;"
+        "}"
+    );
+    layout->addWidget(title);
+
+    // Description
+    QLabel* desc = new QLabel("Enter the basic information for your coordinate system.");
+    desc->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; padding-bottom: 20px; }");
+    layout->addWidget(desc);
+
+    // Form
+    QGroupBox* formGroup = new QGroupBox();
+    formGroup->setStyleSheet(
+        "QGroupBox {"
+        "  border: 2px solid #ecf0f1;"
+        "  border-radius: 8px;"
+        "  margin-top: 10px;"
+        "  padding: 20px;"
+        "}"
+    );
+    QFormLayout* formLayout = new QFormLayout(formGroup);
+    formLayout->setSpacing(20);
+    formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    // System name
     m_systemNameEdit = new QLineEdit();
-    m_systemNameEdit->setPlaceholderText("Enter system name (e.g., PartA_System)");
-    configLayout->addRow("System Name:", m_systemNameEdit);
+    m_systemNameEdit->setPlaceholderText("e.g., PartA_System");
+    m_systemNameEdit->setMinimumHeight(40);
+    m_systemNameEdit->setStyleSheet(
+        "QLineEdit {"
+        "  font-size: 14px;"
+        "  padding: 8px;"
+        "  border: 2px solid #bdc3c7;"
+        "  border-radius: 4px;"
+        "}"
+        "QLineEdit:focus {"
+        "  border: 2px solid #3498db;"
+        "}"
+    );
+    QLabel* nameLabel = new QLabel("System Name:");
+    nameLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
+    formLayout->addRow(nameLabel, m_systemNameEdit);
 
+    // Device selector
     m_deviceSelector = new QComboBox();
-    // Populate with ACS devices only
+    m_deviceSelector->setMinimumHeight(40);
+    m_deviceSelector->setStyleSheet(
+        "QComboBox {"
+        "  font-size: 14px;"
+        "  padding: 8px;"
+        "  border: 2px solid #bdc3c7;"
+        "  border-radius: 4px;"
+        "}"
+    );
     if (m_motionManager) {
         std::vector<std::string> devices = m_motionManager->GetDeviceNamesByType("ACS");
         for (const auto& device : devices) {
             m_deviceSelector->addItem(QString::fromStdString(device));
         }
     }
-    configLayout->addRow("Device:", m_deviceSelector);
+    QLabel* deviceLabel = new QLabel("Device:");
+    deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
+    formLayout->addRow(deviceLabel, m_deviceSelector);
 
+    // Method selector
     m_methodSelector = new QComboBox();
-    m_methodSelector->addItem("2-Point + Offset Method");
-    m_methodSelector->addItem("3-Point Rectangle Method");
-    configLayout->addRow("Creation Method:", m_methodSelector);
+    m_methodSelector->addItem("2-Point + Offset Method", 2);
+    m_methodSelector->addItem("3-Point Rectangle Method", 3);
+    m_methodSelector->setMinimumHeight(40);
+    m_methodSelector->setStyleSheet(
+        "QComboBox {"
+        "  font-size: 14px;"
+        "  padding: 8px;"
+        "  border: 2px solid #bdc3c7;"
+        "  border-radius: 4px;"
+        "}"
+    );
+    QLabel* methodLabel = new QLabel("Creation Method:");
+    methodLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
+    formLayout->addRow(methodLabel, m_methodSelector);
 
-    mainLayout->addWidget(configGroup);
+    layout->addWidget(formGroup);
+    layout->addStretch();
 
-    // Method-specific UI (stacked widget)
-    m_methodStack = new QStackedWidget();
+    connect(m_methodSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &CreateSystemWidget::onMethodChanged);
 
-    setupTwoPointMethod();
-    setupThreePointMethod();
+    return page;
+}
 
-    m_methodStack->addWidget(m_twoPointWidget);
-    m_methodStack->addWidget(m_threePointWidget);
+QWidget* CreateSystemWidget::createCapturePoint1Page()
+{
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setSpacing(20);
 
-    mainLayout->addWidget(m_methodStack);
-
-    // Status Label
-    m_statusLabel = new QLabel();
-    m_statusLabel->setStyleSheet(
+    // Title
+    QLabel* title = new QLabel("Step 2: Capture Point 1");
+    title->setStyleSheet(
         "QLabel {"
-        "  padding: 10px;"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #2c3e50;"
+        "  padding-bottom: 10px;"
+        "}"
+    );
+    layout->addWidget(title);
+
+    // Description
+    QLabel* desc = new QLabel("Jog the device to the first point and click 'Capture' to record its position.");
+    desc->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; padding-bottom: 20px; }");
+    desc->setWordWrap(true);
+    layout->addWidget(desc);
+
+    // Capture area
+    QWidget* captureArea = new QWidget();
+    captureArea->setStyleSheet(
+        "QWidget {"
         "  background-color: #ecf0f1;"
-        "  border-radius: 4px;"
-        "  color: #34495e;"
+        "  border-radius: 8px;"
+        "  padding: 40px;"
         "}"
     );
-    m_statusLabel->setWordWrap(true);
-    mainLayout->addWidget(m_statusLabel);
+    QVBoxLayout* captureLayout = new QVBoxLayout(captureArea);
+    captureLayout->setSpacing(20);
+    captureLayout->setAlignment(Qt::AlignCenter);
 
-    // Buttons
-    QHBoxLayout* buttonLayout = new QHBoxLayout();
-    buttonLayout->addStretch();
-
-    m_resetButton = new QPushButton("Reset");
-    m_resetButton->setFixedHeight(40);
-    m_resetButton->setStyleSheet(
+    QPushButton* captureBtn = new QPushButton("📍 Capture Point 1");
+    captureBtn->setMinimumHeight(60);
+    captureBtn->setMinimumWidth(250);
+    captureBtn->setStyleSheet(
         "QPushButton {"
-        "  background-color: #95a5a6;"
+        "  background-color: #3498db;"
         "  color: white;"
         "  border: none;"
-        "  border-radius: 4px;"
-        "  padding: 10px 20px;"
-        "  font-size: 14px;"
-        "}"
-        "QPushButton:hover {"
-        "  background-color: #7f8c8d;"
-        "}"
-    );
-    buttonLayout->addWidget(m_resetButton);
-
-    m_createButton = new QPushButton("Create System");
-    m_createButton->setEnabled(false);
-    m_createButton->setFixedHeight(40);
-    m_createButton->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #27ae60;"
-        "  color: white;"
-        "  border: none;"
-        "  border-radius: 4px;"
-        "  padding: 10px 30px;"
-        "  font-size: 14px;"
+        "  border-radius: 8px;"
+        "  font-size: 16px;"
         "  font-weight: bold;"
         "}"
         "QPushButton:hover {"
-        "  background-color: #229954;"
-        "}"
-        "QPushButton:disabled {"
-        "  background-color: #95a5a6;"
+        "  background-color: #2980b9;"
         "}"
     );
-    buttonLayout->addWidget(m_createButton);
+    captureLayout->addWidget(captureBtn, 0, Qt::AlignCenter);
 
-    mainLayout->addLayout(buttonLayout);
-    mainLayout->addStretch();
+    m_point1Label = new QLabel("Not captured");
+    m_point1Label->setAlignment(Qt::AlignCenter);
+    m_point1Label->setMinimumHeight(40);
+    m_point1Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
+    captureLayout->addWidget(m_point1Label);
 
-    // Connections
-    connect(m_methodSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &CreateSystemWidget::onMethodChanged);
-    connect(m_createButton, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCreateSystemClicked);
-    connect(m_resetButton, &QPushButton::clicked,
-            this, &CreateSystemWidget::onResetClicked);
+    layout->addWidget(captureArea);
+    layout->addStretch();
 
-    // Initialize
-    updateStepStatus();
+    connect(captureBtn, &QPushButton::clicked, this, &CreateSystemWidget::onCapturePoint1Clicked);
+
+    return page;
 }
 
-void CreateSystemWidget::setupTwoPointMethod()
+QWidget* CreateSystemWidget::createCapturePoint2Page()
 {
-    m_twoPointWidget = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(m_twoPointWidget);
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setSpacing(20);
 
-    QGroupBox* instructionsGroup = new QGroupBox("Instructions");
-    QVBoxLayout* instrLayout = new QVBoxLayout(instructionsGroup);
-    QLabel* instrLabel = new QLabel(
-        "1. Jog to first point and click 'Capture Point 1'\n"
-        "2. Jog to second point and click 'Capture Point 2'\n"
-        "3. Program will find midpoint and offset perpendicular\n"
-        "4. Select which axis the line(P1-P2) represents"
+    // Title
+    QLabel* title = new QLabel("Step 3: Capture Point 2");
+    title->setStyleSheet(
+        "QLabel {"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #2c3e50;"
+        "  padding-bottom: 10px;"
+        "}"
     );
-    instrLabel->setWordWrap(true);
-    instrLayout->addWidget(instrLabel);
-    layout->addWidget(instructionsGroup);
+    layout->addWidget(title);
 
-    // Point capture group
-    QGroupBox* captureGroup = new QGroupBox("Point Capture");
-    QVBoxLayout* captureLayout = new QVBoxLayout(captureGroup);
+    // Description
+    QLabel* desc = new QLabel("Jog the device to the second point and click 'Capture' to record its position.");
+    desc->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; padding-bottom: 20px; }");
+    desc->setWordWrap(true);
+    layout->addWidget(desc);
 
-    // Point 1
-    QHBoxLayout* p1Layout = new QHBoxLayout();
-    m_capturePoint1Btn = new QPushButton("Capture Point 1");
-    m_capturePoint1Btn->setFixedHeight(35);
-    m_point1Label = new QLabel("Not captured");
-    m_point1Label->setStyleSheet("QLabel { color: #e74c3c; }");
-    p1Layout->addWidget(m_capturePoint1Btn);
-    p1Layout->addWidget(m_point1Label);
-    p1Layout->addStretch();
-    captureLayout->addLayout(p1Layout);
+    // Capture area
+    QWidget* captureArea = new QWidget();
+    captureArea->setStyleSheet(
+        "QWidget {"
+        "  background-color: #ecf0f1;"
+        "  border-radius: 8px;"
+        "  padding: 40px;"
+        "}"
+    );
+    QVBoxLayout* captureLayout = new QVBoxLayout(captureArea);
+    captureLayout->setSpacing(20);
+    captureLayout->setAlignment(Qt::AlignCenter);
 
-    // Point 2
-    QHBoxLayout* p2Layout = new QHBoxLayout();
-    m_capturePoint2Btn = new QPushButton("Capture Point 2");
-    m_capturePoint2Btn->setFixedHeight(35);
-    m_capturePoint2Btn->setEnabled(false);
+    QPushButton* captureBtn = new QPushButton("📍 Capture Point 2");
+    captureBtn->setMinimumHeight(60);
+    captureBtn->setMinimumWidth(250);
+    captureBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #3498db;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 8px;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #2980b9;"
+        "}"
+    );
+    captureLayout->addWidget(captureBtn, 0, Qt::AlignCenter);
+
     m_point2Label = new QLabel("Not captured");
-    m_point2Label->setStyleSheet("QLabel { color: #e74c3c; }");
-    p2Layout->addWidget(m_capturePoint2Btn);
-    p2Layout->addWidget(m_point2Label);
-    p2Layout->addStretch();
-    captureLayout->addLayout(p2Layout);
+    m_point2Label->setAlignment(Qt::AlignCenter);
+    m_point2Label->setMinimumHeight(40);
+    m_point2Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
+    captureLayout->addWidget(m_point2Label);
 
-    layout->addWidget(captureGroup);
+    layout->addWidget(captureArea);
+    layout->addStretch();
 
-    // Parameters group
-    QGroupBox* paramGroup = new QGroupBox("Parameters");
-    QFormLayout* paramLayout = new QFormLayout(paramGroup);
+    connect(captureBtn, &QPushButton::clicked, this, &CreateSystemWidget::onCapturePoint2Clicked);
 
+    return page;
+}
+
+QWidget* CreateSystemWidget::createCapturePoint3Page()
+{
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setSpacing(20);
+
+    // Title
+    QLabel* title = new QLabel("Step 3: Capture Point 3");
+    title->setStyleSheet(
+        "QLabel {"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #2c3e50;"
+        "  padding-bottom: 10px;"
+        "}"
+    );
+    layout->addWidget(title);
+
+    // Description
+    QLabel* desc = new QLabel("Jog the device to the third point and click 'Capture' to record its position.");
+    desc->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; padding-bottom: 20px; }");
+    desc->setWordWrap(true);
+    layout->addWidget(desc);
+
+    // Capture area
+    QWidget* captureArea = new QWidget();
+    captureArea->setStyleSheet(
+        "QWidget {"
+        "  background-color: #ecf0f1;"
+        "  border-radius: 8px;"
+        "  padding: 40px;"
+        "}"
+    );
+    QVBoxLayout* captureLayout = new QVBoxLayout(captureArea);
+    captureLayout->setSpacing(20);
+    captureLayout->setAlignment(Qt::AlignCenter);
+
+    QPushButton* captureBtn = new QPushButton("📍 Capture Point 3");
+    captureBtn->setMinimumHeight(60);
+    captureBtn->setMinimumWidth(250);
+    captureBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #3498db;"
+        "  color: white;"
+        "  border: none;"
+        "  border-radius: 8px;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #2980b9;"
+        "}"
+    );
+    captureLayout->addWidget(captureBtn, 0, Qt::AlignCenter);
+
+    m_point3Label = new QLabel("Not captured");
+    m_point3Label->setAlignment(Qt::AlignCenter);
+    m_point3Label->setMinimumHeight(40);
+    m_point3Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
+    captureLayout->addWidget(m_point3Label);
+
+    layout->addWidget(captureArea);
+    layout->addStretch();
+
+    connect(captureBtn, &QPushButton::clicked, this, &CreateSystemWidget::onCapturePoint3Clicked);
+
+    return page;
+}
+
+QWidget* CreateSystemWidget::createParametersPage()
+{
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setSpacing(20);
+
+    // Title
+    QLabel* title = new QLabel("Step 4: Set Parameters");
+    title->setStyleSheet(
+        "QLabel {"
+        "  font-size: 24px;"
+        "  font-weight: bold;"
+        "  color: #2c3e50;"
+        "  padding-bottom: 10px;"
+        "}"
+    );
+    layout->addWidget(title);
+
+    // Description
+    QLabel* desc = new QLabel("Configure the final parameters for your coordinate system.");
+    desc->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; padding-bottom: 20px; }");
+    layout->addWidget(desc);
+
+    // Form
+    QGroupBox* formGroup = new QGroupBox();
+    formGroup->setStyleSheet(
+        "QGroupBox {"
+        "  border: 2px solid #ecf0f1;"
+        "  border-radius: 8px;"
+        "  margin-top: 10px;"
+        "  padding: 20px;"
+        "}"
+    );
+    QFormLayout* formLayout = new QFormLayout(formGroup);
+    formLayout->setSpacing(20);
+    formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    // Offset (for 2-point method)
     m_offsetSpinBox = new QDoubleSpinBox();
     m_offsetSpinBox->setRange(-1000.0, 1000.0);
     m_offsetSpinBox->setValue(0.0);
     m_offsetSpinBox->setSuffix(" mm");
     m_offsetSpinBox->setDecimals(3);
-    paramLayout->addRow("Perpendicular Offset:", m_offsetSpinBox);
-
-    m_axisSelector2Point = new QComboBox();
-    m_axisSelector2Point->addItem("X (line P1-P2 is X-axis)");
-    m_axisSelector2Point->addItem("Y (line P1-P2 is Y-axis)");
-    paramLayout->addRow("Axis Selection:", m_axisSelector2Point);
-
-    layout->addWidget(paramGroup);
-    layout->addStretch();
-
-    // Connections
-    connect(m_capturePoint1Btn, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCapturePoint1Clicked);
-    connect(m_capturePoint2Btn, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCapturePoint2Clicked);
-}
-
-void CreateSystemWidget::setupThreePointMethod()
-{
-    m_threePointWidget = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(m_threePointWidget);
-
-    QGroupBox* instructionsGroup = new QGroupBox("Instructions");
-    QVBoxLayout* instrLayout = new QVBoxLayout(instructionsGroup);
-    QLabel* instrLabel = new QLabel(
-        "1. Jog to first corner and click 'Capture Point A'\n"
-        "2. Jog to second corner and click 'Capture Point B'\n"
-        "3. Jog to third corner and click 'Capture Point C'\n"
-        "4. Program will calculate rectangle center as origin\n"
-        "5. Select which edge should be the X-axis"
+    m_offsetSpinBox->setMinimumHeight(40);
+    m_offsetSpinBox->setStyleSheet(
+        "QDoubleSpinBox {"
+        "  font-size: 14px;"
+        "  padding: 8px;"
+        "  border: 2px solid #bdc3c7;"
+        "  border-radius: 4px;"
+        "}"
     );
-    instrLabel->setWordWrap(true);
-    instrLayout->addWidget(instrLabel);
-    layout->addWidget(instructionsGroup);
+    QLabel* offsetLabel = new QLabel("Perpendicular Offset:");
+    offsetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
+    formLayout->addRow(offsetLabel, m_offsetSpinBox);
 
-    // Point capture group
-    QGroupBox* captureGroup = new QGroupBox("Point Capture");
-    QVBoxLayout* captureLayout = new QVBoxLayout(captureGroup);
+    // Axis selector
+    m_axisSelector = new QComboBox();
+    m_axisSelector->addItem("X (line P1-P2 is X-axis)");
+    m_axisSelector->addItem("Y (line P1-P2 is Y-axis)");
+    m_axisSelector->setMinimumHeight(40);
+    m_axisSelector->setStyleSheet(
+        "QComboBox {"
+        "  font-size: 14px;"
+        "  padding: 8px;"
+        "  border: 2px solid #bdc3c7;"
+        "  border-radius: 4px;"
+        "}"
+    );
+    QLabel* axisLabel = new QLabel("Axis Selection:");
+    axisLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
+    formLayout->addRow(axisLabel, m_axisSelector);
 
-    // Point A
-    QHBoxLayout* paLayout = new QHBoxLayout();
-    m_capturePoint3ABtn = new QPushButton("Capture Point A");
-    m_capturePoint3ABtn->setFixedHeight(35);
-    m_point3ALabel = new QLabel("Not captured");
-    m_point3ALabel->setStyleSheet("QLabel { color: #e74c3c; }");
-    paLayout->addWidget(m_capturePoint3ABtn);
-    paLayout->addWidget(m_point3ALabel);
-    paLayout->addStretch();
-    captureLayout->addLayout(paLayout);
-
-    // Point B
-    QHBoxLayout* pbLayout = new QHBoxLayout();
-    m_capturePoint3BBtn = new QPushButton("Capture Point B");
-    m_capturePoint3BBtn->setFixedHeight(35);
-    m_capturePoint3BBtn->setEnabled(false);
-    m_point3BLabel = new QLabel("Not captured");
-    m_point3BLabel->setStyleSheet("QLabel { color: #e74c3c; }");
-    pbLayout->addWidget(m_capturePoint3BBtn);
-    pbLayout->addWidget(m_point3BLabel);
-    pbLayout->addStretch();
-    captureLayout->addLayout(pbLayout);
-
-    // Point C
-    QHBoxLayout* pcLayout = new QHBoxLayout();
-    m_capturePoint3CBtn = new QPushButton("Capture Point C");
-    m_capturePoint3CBtn->setFixedHeight(35);
-    m_capturePoint3CBtn->setEnabled(false);
-    m_point3CLabel = new QLabel("Not captured");
-    m_point3CLabel->setStyleSheet("QLabel { color: #e74c3c; }");
-    pcLayout->addWidget(m_capturePoint3CBtn);
-    pcLayout->addWidget(m_point3CLabel);
-    pcLayout->addStretch();
-    captureLayout->addLayout(pcLayout);
-
-    layout->addWidget(captureGroup);
-
-    // Parameters group
-    QGroupBox* paramGroup = new QGroupBox("Parameters");
-    QFormLayout* paramLayout = new QFormLayout(paramGroup);
-
-    m_axisSelector3Point = new QComboBox();
-    m_axisSelector3Point->addItem("X (edge A-B is X-axis)");
-    m_axisSelector3Point->addItem("Y (edge A-B is Y-axis)");
-    paramLayout->addRow("Axis Selection:", m_axisSelector3Point);
-
-    layout->addWidget(paramGroup);
+    layout->addWidget(formGroup);
     layout->addStretch();
 
-    // Connections
-    connect(m_capturePoint3ABtn, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCapturePoint3Clicked);
-    connect(m_capturePoint3BBtn, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCapturePoint3Clicked);
-    connect(m_capturePoint3CBtn, &QPushButton::clicked,
-            this, &CreateSystemWidget::onCapturePoint3Clicked);
+    return page;
 }
 
 void CreateSystemWidget::onMethodChanged(int index)
 {
-    m_methodStack->setCurrentIndex(index);
+    int method = m_methodSelector->itemData(index).toInt();
+
+    // Update total steps and step labels
+    if (method == 2) {
+        // 2-Point method: Config, Point1, Point2, Parameters
+        m_totalSteps = 4;
+        if (m_stepLabels.size() >= 4) {
+            m_stepLabels[1]->setText("Capture Point 1");
+            m_stepLabels[2]->setText("Capture Point 2");
+            m_stepLabels[3]->setText("Parameters & Create");
+        }
+        // Hide/show appropriate pages
+        if (m_contentStack->count() == 5) {
+            m_contentStack->removeWidget(m_contentStack->widget(3)); // Remove Point 3 page
+        }
+        m_offsetSpinBox->setVisible(true);
+        QFormLayout* formLayout = qobject_cast<QFormLayout*>(m_offsetSpinBox->parentWidget()->layout());
+        if (formLayout) {
+            QWidget* label = formLayout->labelForField(m_offsetSpinBox);
+            if (label) label->setVisible(true);
+        }
+    } else {
+        // 3-Point method: Config, Point1, Point2, Point3, Parameters
+        m_totalSteps = 5;
+        if (m_stepLabels.size() >= 4) {
+            m_stepLabels[1]->setText("Capture Point A");
+            m_stepLabels[2]->setText("Capture Point B");
+            m_stepLabels[3]->setText("Capture Point C");
+        }
+        // Add Point 3 page if not present
+        if (m_contentStack->count() == 4) {
+            m_contentStack->insertWidget(3, createCapturePoint3Page());
+        }
+        m_offsetSpinBox->setVisible(false);
+        QFormLayout* formLayout = qobject_cast<QFormLayout*>(m_offsetSpinBox->parentWidget()->layout());
+        if (formLayout) {
+            QWidget* label = formLayout->labelForField(m_offsetSpinBox);
+            if (label) label->setVisible(false);
+        }
+    }
+
+    // Update axis selector text
+    if (method == 2) {
+        m_axisSelector->setItemText(0, "X (line P1-P2 is X-axis)");
+        m_axisSelector->setItemText(1, "Y (line P1-P2 is Y-axis)");
+    } else {
+        m_axisSelector->setItemText(0, "X (edge A-B is X-axis)");
+        m_axisSelector->setItemText(1, "Y (edge A-B is Y-axis)");
+    }
+
     resetAll();
 }
 
@@ -310,13 +677,18 @@ void CreateSystemWidget::onCapturePoint1Clicked()
 {
     if (captureCurrentPosition(m_point1)) {
         m_point1Captured = true;
-        m_point1Label->setText(QString("X:% Y:%2 Z:%3")
+        m_point1Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
             .arg(m_point1.x, 0, 'f', 3)
             .arg(m_point1.y, 0, 'f', 3)
             .arg(m_point1.z, 0, 'f', 3));
-        m_point1Label->setStyleSheet("QLabel { color: #27ae60; }");
-        m_capturePoint2Btn->setEnabled(true);
-        updateStepStatus();
+        m_point1Label->setStyleSheet(
+            "QLabel {"
+            "  color: #27ae60;"
+            "  font-size: 16px;"
+            "  font-weight: bold;"
+            "  padding: 10px;"
+            "}"
+        );
     }
 }
 
@@ -324,59 +696,45 @@ void CreateSystemWidget::onCapturePoint2Clicked()
 {
     if (captureCurrentPosition(m_point2)) {
         m_point2Captured = true;
-        m_point2Label->setText(QString("X:%1 Y:%2 Z:%3")
+        m_point2Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
             .arg(m_point2.x, 0, 'f', 3)
             .arg(m_point2.y, 0, 'f', 3)
             .arg(m_point2.z, 0, 'f', 3));
-        m_point2Label->setStyleSheet("QLabel { color: #27ae60; }");
-        updateStepStatus();
+        m_point2Label->setStyleSheet(
+            "QLabel {"
+            "  color: #27ae60;"
+            "  font-size: 16px;"
+            "  font-weight: bold;"
+            "  padding: 10px;"
+            "}"
+        );
     }
 }
 
 void CreateSystemWidget::onCapturePoint3Clicked()
 {
-    QPushButton* sender = qobject_cast<QPushButton*>(QObject::sender());
-
-    if (sender == m_capturePoint3ABtn) {
-        if (captureCurrentPosition(m_point3A)) {
-            m_point3ACaptured = true;
-            m_point3ALabel->setText(QString("X:%1 Y:%2 Z:%3")
-                .arg(m_point3A.x, 0, 'f', 3)
-                .arg(m_point3A.y, 0, 'f', 3)
-                .arg(m_point3A.z, 0, 'f', 3));
-            m_point3ALabel->setStyleSheet("QLabel { color: #27ae60; }");
-            m_capturePoint3BBtn->setEnabled(true);
-        }
+    if (captureCurrentPosition(m_point3)) {
+        m_point3Captured = true;
+        m_point3Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
+            .arg(m_point3.x, 0, 'f', 3)
+            .arg(m_point3.y, 0, 'f', 3)
+            .arg(m_point3.z, 0, 'f', 3));
+        m_point3Label->setStyleSheet(
+            "QLabel {"
+            "  color: #27ae60;"
+            "  font-size: 16px;"
+            "  font-weight: bold;"
+            "  padding: 10px;"
+            "}"
+        );
     }
-    else if (sender == m_capturePoint3BBtn) {
-        if (captureCurrentPosition(m_point3B)) {
-            m_point3BCaptured = true;
-            m_point3BLabel->setText(QString("X:%1 Y:%2 Z:%3")
-                .arg(m_point3B.x, 0, 'f', 3)
-                .arg(m_point3B.y, 0, 'f', 3)
-                .arg(m_point3B.z, 0, 'f', 3));
-            m_point3BLabel->setStyleSheet("QLabel { color: #27ae60; }");
-            m_capturePoint3CBtn->setEnabled(true);
-        }
-    }
-    else if (sender == m_capturePoint3CBtn) {
-        if (captureCurrentPosition(m_point3C)) {
-            m_point3CCaptured = true;
-            m_point3CLabel->setText(QString("X:%1 Y:%2 Z:%3")
-                .arg(m_point3C.x, 0, 'f', 3)
-                .arg(m_point3C.y, 0, 'f', 3)
-                .arg(m_point3C.z, 0, 'f', 3));
-            m_point3CLabel->setStyleSheet("QLabel { color: #27ae60; }");
-        }
-    }
-
-    updateStepStatus();
 }
 
 void CreateSystemWidget::onCreateSystemClicked()
 {
     QString systemName = m_systemNameEdit->text().trimmed();
     QString deviceName = m_deviceSelector->currentText();
+    int method = m_methodSelector->currentData().toInt();
 
     if (systemName.isEmpty()) {
         QMessageBox::warning(this, "Invalid Input", "Please enter a system name.");
@@ -389,12 +747,11 @@ void CreateSystemWidget::onCreateSystemClicked()
     }
 
     bool success = false;
-    int method = m_methodSelector->currentIndex();
 
-    if (method == 0) {
+    if (method == 2) {
         // 2-Point method
         double offset = m_offsetSpinBox->value();
-        QString axis = m_axisSelector2Point->currentIndex() == 0 ? "X" : "Y";
+        QString axis = m_axisSelector->currentIndex() == 0 ? "X" : "Y";
 
         success = m_coordinateSystemManager->CreateSystemTwoPoint(
             systemName.toStdString(),
@@ -404,24 +761,21 @@ void CreateSystemWidget::onCreateSystemClicked()
             offset,
             axis.toStdString()
         );
-    }
-    else {
+    } else {
         // 3-Point method
-        QString axis = m_axisSelector3Point->currentIndex() == 0 ? "X" : "Y";
+        QString axis = m_axisSelector->currentIndex() == 0 ? "X" : "Y";
 
         success = m_coordinateSystemManager->CreateSystemThreePoint(
             systemName.toStdString(),
             deviceName.toStdString(),
-            m_point3A,
-            m_point3B,
-            m_point3C,
+            m_point1,
+            m_point2,
+            m_point3,
             axis.toStdString()
         );
     }
 
     if (success) {
-        // Save to file
-        // For now, save to a default product folder
         QString productName = "Default";
         m_coordinateSystemManager->SaveSystem(systemName.toStdString(), productName.toStdString());
 
@@ -430,16 +784,43 @@ void CreateSystemWidget::onCreateSystemClicked()
 
         emit systemCreated(systemName);
         resetAll();
-    }
-    else {
+    } else {
         QMessageBox::critical(this, "Error",
             "Failed to create coordinate system. Please check your inputs.");
     }
 }
 
-void CreateSystemWidget::onResetClicked()
+void CreateSystemWidget::onPreviousClicked()
 {
-    resetAll();
+    if (m_currentStep > 0) {
+        goToStep(m_currentStep - 1);
+    }
+}
+
+void CreateSystemWidget::onNextClicked()
+{
+    if (validateCurrentStep()) {
+        if (m_currentStep < m_totalSteps - 1) {
+            goToStep(m_currentStep + 1);
+        } else {
+            // Last step - create the system
+            onCreateSystemClicked();
+        }
+    }
+}
+
+void CreateSystemWidget::onCancelClicked()
+{
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        "Cancel",
+        "Are you sure you want to cancel? All progress will be lost.",
+        QMessageBox::Yes | QMessageBox::No
+    );
+
+    if (reply == QMessageBox::Yes) {
+        resetAll();
+    }
 }
 
 bool CreateSystemWidget::captureCurrentPosition(Point3D& point)
@@ -463,43 +844,118 @@ bool CreateSystemWidget::captureCurrentPosition(Point3D& point)
     return true;
 }
 
-void CreateSystemWidget::updateStepStatus()
+void CreateSystemWidget::updateStepIndicator()
 {
-    int method = m_methodSelector->currentIndex();
-
-    if (method == 0) {
-        // 2-Point method
-        if (!m_point1Captured) {
-            m_statusLabel->setText("Step 1: Jog to first point and capture it");
-            m_createButton->setEnabled(false);
-        }
-        else if (!m_point2Captured) {
-            m_statusLabel->setText("Step 2: Jog to second point and capture it");
-            m_createButton->setEnabled(false);
-        }
-        else {
-            m_statusLabel->setText("All points captured! Review parameters and click 'Create System'");
-            m_createButton->setEnabled(!m_systemNameEdit->text().trimmed().isEmpty());
+    for (int i = 0; i < m_stepNumbers.size(); ++i) {
+        if (i < m_currentStep) {
+            // Completed steps - green
+            m_stepNumbers[i]->setStyleSheet(
+                "QLabel {"
+                "  background-color: #27ae60;"
+                "  color: white;"
+                "  border-radius: 20px;"
+                "  font-size: 18px;"
+                "  font-weight: bold;"
+                "}"
+            );
+            m_stepLabels[i]->setStyleSheet(
+                "QLabel {"
+                "  color: #27ae60;"
+                "  font-size: 14px;"
+                "  font-weight: bold;"
+                "}"
+            );
+        } else if (i == m_currentStep) {
+            // Current step - blue
+            m_stepNumbers[i]->setStyleSheet(
+                "QLabel {"
+                "  background-color: #3498db;"
+                "  color: white;"
+                "  border-radius: 20px;"
+                "  font-size: 18px;"
+                "  font-weight: bold;"
+                "}"
+            );
+            m_stepLabels[i]->setStyleSheet(
+                "QLabel {"
+                "  color: white;"
+                "  font-size: 14px;"
+                "  font-weight: bold;"
+                "}"
+            );
+        } else {
+            // Future steps - gray
+            m_stepNumbers[i]->setStyleSheet(
+                "QLabel {"
+                "  background-color: #34495e;"
+                "  color: #95a5a6;"
+                "  border-radius: 20px;"
+                "  font-size: 18px;"
+                "  font-weight: bold;"
+                "}"
+            );
+            m_stepLabels[i]->setStyleSheet(
+                "QLabel {"
+                "  color: #95a5a6;"
+                "  font-size: 14px;"
+                "}"
+            );
         }
     }
-    else {
-        // 3-Point method
-        if (!m_point3ACaptured) {
-            m_statusLabel->setText("Step 1: Jog to point A and capture it");
-            m_createButton->setEnabled(false);
-        }
-        else if (!m_point3BCaptured) {
-            m_statusLabel->setText("Step 2: Jog to point B and capture it");
-            m_createButton->setEnabled(false);
-        }
-        else if (!m_point3CCaptured) {
-            m_statusLabel->setText("Step 3: Jog to point C and capture it");
-            m_createButton->setEnabled(false);
-        }
-        else {
-            m_statusLabel->setText("All points captured! Review parameters and click 'Create System'");
-            m_createButton->setEnabled(!m_systemNameEdit->text().trimmed().isEmpty());
-        }
+
+    // Update navigation buttons
+    m_previousButton->setEnabled(m_currentStep > 0);
+    m_nextButton->setText(m_currentStep == m_totalSteps - 1 ? "Create System" : "Next →");
+}
+
+void CreateSystemWidget::goToStep(int step)
+{
+    if (step < 0 || step >= m_totalSteps) return;
+
+    m_currentStep = step;
+    m_contentStack->setCurrentIndex(step);
+    updateStepIndicator();
+}
+
+bool CreateSystemWidget::validateCurrentStep()
+{
+    switch (m_currentStep) {
+        case 0: // Configuration
+            if (m_systemNameEdit->text().trimmed().isEmpty()) {
+                QMessageBox::warning(this, "Validation Error", "Please enter a system name.");
+                return false;
+            }
+            if (m_deviceSelector->currentText().isEmpty()) {
+                QMessageBox::warning(this, "Validation Error", "Please select a device.");
+                return false;
+            }
+            return true;
+
+        case 1: // Point 1
+            if (!m_point1Captured) {
+                QMessageBox::warning(this, "Validation Error", "Please capture Point 1 before proceeding.");
+                return false;
+            }
+            return true;
+
+        case 2: // Point 2
+            if (!m_point2Captured) {
+                QMessageBox::warning(this, "Validation Error", "Please capture Point 2 before proceeding.");
+                return false;
+            }
+            return true;
+
+        case 3: // Point 3 (for 3-point method) or Parameters (for 2-point method)
+            if (m_methodSelector->currentData().toInt() == 3) {
+                if (!m_point3Captured) {
+                    QMessageBox::warning(this, "Validation Error", "Please capture Point 3 before proceeding.");
+                    return false;
+                }
+            }
+            return true;
+
+        default:
+            return true;
     }
 }
 
@@ -507,27 +963,40 @@ void CreateSystemWidget::resetAll()
 {
     m_point1Captured = false;
     m_point2Captured = false;
-    m_point3ACaptured = false;
-    m_point3BCaptured = false;
-    m_point3CCaptured = false;
+    m_point3Captured = false;
 
     m_point1Label->setText("Not captured");
-    m_point1Label->setStyleSheet("QLabel { color: #e74c3c; }");
+    m_point1Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
+
     m_point2Label->setText("Not captured");
-    m_point2Label->setStyleSheet("QLabel { color: #e74c3c; }");
+    m_point2Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
 
-    m_point3ALabel->setText("Not captured");
-    m_point3ALabel->setStyleSheet("QLabel { color: #e74c3c; }");
-    m_point3BLabel->setText("Not captured");
-    m_point3BLabel->setStyleSheet("QLabel { color: #e74c3c; }");
-    m_point3CLabel->setText("Not captured");
-    m_point3CLabel->setStyleSheet("QLabel { color: #e74c3c; }");
-
-    m_capturePoint2Btn->setEnabled(false);
-    m_capturePoint3BBtn->setEnabled(false);
-    m_capturePoint3CBtn->setEnabled(false);
+    m_point3Label->setText("Not captured");
+    m_point3Label->setStyleSheet(
+        "QLabel {"
+        "  color: #e74c3c;"
+        "  font-size: 16px;"
+        "  font-weight: bold;"
+        "  padding: 10px;"
+        "}"
+    );
 
     m_offsetSpinBox->setValue(0.0);
+    m_systemNameEdit->clear();
 
-    updateStepStatus();
+    goToStep(0);
 }
