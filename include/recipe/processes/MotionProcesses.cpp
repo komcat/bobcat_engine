@@ -57,8 +57,8 @@ public:
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addParameterField("gripper_pin", "Gripper Pin", params.at("gripper_pin"));
-    widget->addNodeSelector("pick_node", "Pick Node", params.at("pick_node"), params.at("camera_device"));
-    widget->addNodeSelector("view_node", "View Node", params.at("view_node"), params.at("camera_device"));
+    widget->addNodeSelector("pick_node", "Pick Node", params.at("pick_node"), "camera_device");
+    widget->addNodeSelector("view_node", "View Node", params.at("view_node"), "camera_device");
     widget->addParameterField("release_wait_ms", "Release Wait (ms)", params.at("release_wait_ms"));
     widget->addParameterField("regrip_wait_ms", "Regrip Wait (ms)", params.at("regrip_wait_ms"));
     widget->addParameterField("lens_name", "Lens Name", params.at("lens_name"));
@@ -128,8 +128,8 @@ public:
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addParameterField("gripper_pin", "Gripper Pin", params.at("gripper_pin"));
-    widget->addNodeSelector("place_node", "Place Node", params.at("place_node"), params.at("camera_device"));
-    widget->addNodeSelector("view_node", "View Node", params.at("view_node"), params.at("camera_device"));
+    widget->addNodeSelector("place_node", "Place Node", params.at("place_node"), "camera_device");
+    widget->addNodeSelector("view_node", "View Node", params.at("view_node"), "camera_device");
     widget->addParameterField("lens_name", "Lens Name", params.at("lens_name"));
   }
 
@@ -199,10 +199,10 @@ public:
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addParameterField("gripper_pin", "Gripper Pin", params.at("gripper_pin"));
-    widget->addNodeSelector("pick_node", "Pick Node", params.at("pick_node"), params.at("camera_device"));
-    widget->addNodeSelector("pick_view_node", "Pick View Node", params.at("pick_view_node"), params.at("camera_device"));
-    widget->addNodeSelector("place_node", "Place Node", params.at("place_node"), params.at("camera_device"));
-    widget->addNodeSelector("place_view_node", "Place View Node", params.at("place_view_node"), params.at("camera_device"));
+    widget->addNodeSelector("pick_node", "Pick Node", params.at("pick_node"), "camera_device");
+    widget->addNodeSelector("pick_view_node", "Pick View Node", params.at("pick_view_node"), "camera_device");
+    widget->addNodeSelector("place_node", "Place Node", params.at("place_node"), "camera_device");
+    widget->addNodeSelector("place_view_node", "Place View Node", params.at("place_view_node"), "camera_device");
     widget->addParameterField("release_wait_ms", "Release Wait (ms)", params.at("release_wait_ms"));
     widget->addParameterField("regrip_wait_ms", "Regrip Wait (ms)", params.at("regrip_wait_ms"));
     widget->addParameterField("lens_name", "Lens Name", params.at("lens_name"));
@@ -267,7 +267,7 @@ public:
 
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
-    widget->addNodeSelector("target_position", "Target Position", params.at("target_position"), params.at("device"));
+    widget->addNodeSelector("target_position", "Target Position", params.at("target_position"), "device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -440,7 +440,7 @@ public:
 
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
-    widget->addNodeSelector("base_position", "Base Position", params.at("base_position"), params.at("device"));
+    widget->addNodeSelector("base_position", "Base Position", params.at("base_position"), "device");
     widget->addParameterField("offset_x", "X Offset (mm)", params.at("offset_x"));
     widget->addParameterField("offset_y", "Y Offset (mm)", params.at("offset_y"));
     widget->addParameterField("offset_z", "Z Offset (mm)", params.at("offset_z"));

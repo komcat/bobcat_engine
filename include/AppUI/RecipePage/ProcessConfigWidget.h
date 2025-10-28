@@ -62,8 +62,9 @@ public:
     const std::string& value, int deviceType);
 
   // Helper to add node selector (with browse button)
+  // deviceParamKey: the parameter key of the device selector (e.g., "device")
   void addNodeSelector(const std::string& key, const std::string& label,
-    const std::string& value, const std::string& deviceName);
+    const std::string& value, const std::string& deviceParamKey);
 
   // Helper to add checkbox parameter
   void addCheckboxParameter(const std::string& key, const std::string& label,

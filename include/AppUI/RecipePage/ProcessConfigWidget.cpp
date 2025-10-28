@@ -134,7 +134,7 @@ void ProcessConfigWidget::addDeviceSelector(const std::string& key,
 void ProcessConfigWidget::addNodeSelector(const std::string& key,
   const std::string& label,
   const std::string& value,
-  const std::string& deviceName)
+  const std::string& deviceParamKey)
 {
   QWidget* container = new QWidget();
   QHBoxLayout* layout = new QHBoxLayout(container);
@@ -159,7 +159,17 @@ void ProcessConfigWidget::addNodeSelector(const std::string& key,
     "QPushButton:hover { background-color: #4a7fc6; }"
   );
 
-  connect(browseBtn, &QPushButton::clicked, [this, edit, deviceName]() {
+  // ✅ Dynamically get device name from device combo when browse is clicked
+  connect(browseBtn, &QPushButton::clicked, [this, edit, deviceParamKey]() {
+    // Get current device value from the parameters (not the original one)
+    std::string deviceName = deviceParamKey;  // Default to parameter key if no device combo
+
+    // Try to get from device combo box
+    auto params = getParameters();
+    if (params.find(deviceParamKey) != params.end()) {
+      deviceName = params.at(deviceParamKey);
+    }
+
     std::string currentNode = edit->text().toStdString();
     std::string selected = NodeSelectorDialog::SelectNode(
       m_context, deviceName, currentNode, this
