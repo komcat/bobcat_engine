@@ -15,6 +15,7 @@
 struct ProcessInstance;
 struct ApplicationContext;
 class DeviceComboBox;
+class QDoubleSpinBox;
 
 /**
  * @brief Base class for process configuration widgets
@@ -68,6 +69,11 @@ public:
   void addCheckboxParameter(const std::string& key, const std::string& label,
     const std::string& value, const std::string& tooltip = "");
 
+  // Helper to add numeric parameter with validation (QDoubleSpinBox)
+  void addNumericParameter(const std::string& key, const std::string& label,
+    const std::string& value, double minValue, double maxValue,
+    double step = 1.0, int decimals = 1, const std::string& suffix = "");
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;
@@ -79,7 +85,8 @@ protected:
 
   std::map<std::string, QLineEdit*> m_parameterEdits;
   std::map<std::string, DeviceComboBox*> m_deviceCombos;
-  std::map<std::string, QCheckBox*> m_parameterCheckboxes;  // ← ADD THIS LINE
+  std::map<std::string, QCheckBox*> m_parameterCheckboxes;
+  std::map<std::string, QDoubleSpinBox*> m_parameterSpinBoxes;
 };
 
 /**

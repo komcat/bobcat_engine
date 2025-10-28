@@ -293,6 +293,35 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SET SYSTEM VELOCITY (PI hexapods)
+  // ============================================================================
+  else if (methodName == "SetSystemVelocity") {
+    auto velIt = params.find("velocity");
+
+    if (velIt == params.end()) {
+      errorMessage = "Missing required parameter: velocity";
+      return false;
+    }
+
+    double velocity = std::stod(velIt->second);
+
+    if (m_logger) {
+      m_logger->Info(
+        "Setting system velocity for " + deviceName +
+        " to " + std::to_string(velocity) + " mm/s",
+        "MotionHandler"
+      );
+    }
+
+    if (!motionManager->SetSystemVelocity(deviceName, velocity)) {
+      errorMessage = "SetSystemVelocity failed";
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // ENABLE/DISABLE SERVO
   // ============================================================================
   else if (methodName == "EnableServo") {

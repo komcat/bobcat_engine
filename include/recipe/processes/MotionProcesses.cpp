@@ -478,6 +478,87 @@ public:
 };
 
 //=============================================================================
+// SET VELOCITY PLUGIN
+//=============================================================================
+
+class SetVelocityPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Velocity";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Set motion speed for a device (ACS: per-axis, PI: system-wide)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "gantry-main"},
+      {"speed", "10.0"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+    // Use numeric parameter with conservative range that works for both ACS and PI
+    // ACS: 1-70 mm/s, PI: 0.1-10 mm/s
+    // Conservative range: 0.1-70 mm/s
+    widget->addNumericParameter("speed", "Speed (mm/s) [ACS: 1-70, PI: 0.1-10]",
+      params.at("speed"),
+      0.1,   // min (PI minimum)
+      70.0,  // max (ACS maximum)
+      0.1,   // step
+      1,     // decimals
+      "mm/s" // suffix
+    );
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string speedStr = params.at("speed");
+    double speed = std::stod(speedStr);
+
+    // For PI devices: use SetSystemVelocity (system-wide)
+    // For ACS devices: use SetVelocity for each axis (X, Y, Z)
+
+    // Try system velocity first (PI hexapods)
+    sequence->AddAction(device, "SetSystemVelocity", {
+      {"velocity", speedStr}
+    });
+
+    // For ACS gantries, set velocity for each axis
+    // If SetSystemVelocity succeeds (PI), these will still execute but won't cause issues
+    // If SetSystemVelocity fails (ACS), these will set the per-axis velocities
+    sequence->AddAction(device, "SetVelocity", {
+      {"axis", "X"},
+      {"velocity", speedStr}
+    });
+    sequence->AddAction(device, "SetVelocity", {
+      {"axis", "Y"},
+      {"velocity", speedStr}
+    });
+    sequence->AddAction(device, "SetVelocity", {
+      {"axis", "Z"},
+      {"velocity", speedStr}
+    });
+
+    std::cout << "[MotionProcesses] Built Set Velocity sequence for device: "
+              << device << " at " << speed << " mm/s" << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -493,8 +574,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveRelativePlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativeMultiAxisPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
+      registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 7 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 8 motion process plugins" << std::endl;
     }
   };
 

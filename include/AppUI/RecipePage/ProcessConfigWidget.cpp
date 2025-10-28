@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <iostream>
 
 // ============================================================================
@@ -48,6 +49,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   m_parameterEdits.clear();
   m_deviceCombos.clear();
   m_parameterCheckboxes.clear();
+  m_parameterSpinBoxes.clear();
 
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
@@ -234,6 +236,33 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
   m_parameterCheckboxes[key] = checkbox;
 }
 
+void ProcessConfigWidget::addNumericParameter(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  double minValue,
+  double maxValue,
+  double step,
+  int decimals,
+  const std::string& suffix)
+{
+  QDoubleSpinBox* spinBox = new QDoubleSpinBox();
+  spinBox->setRange(minValue, maxValue);
+  spinBox->setSingleStep(step);
+  spinBox->setDecimals(decimals);
+  spinBox->setValue(std::stod(value));
+  spinBox->setStyleSheet("padding: 5px;");
+
+  if (!suffix.empty()) {
+    spinBox->setSuffix(QString::fromStdString(" " + suffix));
+  }
+
+  connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", spinBox);
+  m_parameterSpinBoxes[key] = spinBox;
+}
+
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 {
   std::map<std::string, std::string> params;
@@ -248,6 +277,10 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 
   for (const auto& [key, checkbox] : m_parameterCheckboxes) {
     params[key] = checkbox->isChecked() ? "true" : "false";
+  }
+
+  for (const auto& [key, spinBox] : m_parameterSpinBoxes) {
+    params[key] = std::to_string(spinBox->value());
   }
 
   return params;
