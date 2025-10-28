@@ -1,5 +1,6 @@
 // SystemCommandHandler.cpp
 #include "SystemCommandHandler.h"
+#include "SequenceContext.h"
 #include "LogManager.h"
 #include <thread>
 #include <chrono>
@@ -48,6 +49,7 @@ bool SystemCommandHandler::ExecuteCommand(
     auto titleIt = params.find("title");
     auto messageIt = params.find("message");
     auto blockingIt = params.find("blocking");
+    auto allowCancelIt = params.find("allow_cancel");
 
     if (titleIt == params.end() || messageIt == params.end()) {
       errorMessage = "Missing required parameters: title, message";
@@ -57,6 +59,7 @@ bool SystemCommandHandler::ExecuteCommand(
     std::string title = titleIt->second;
     std::string message = messageIt->second;
     bool blocking = (blockingIt != params.end() && blockingIt->second == "true");
+    bool allowCancel = (allowCancelIt != params.end() && allowCancelIt->second == "true");
 
     if (!m_userPromptCallback) {
       errorMessage = "UserPrompt callback not configured";
@@ -72,12 +75,28 @@ bool SystemCommandHandler::ExecuteCommand(
       // Call the callback - this will be handled by Qt on the main thread
       bool userConfirmed = m_userPromptCallback(title, message);
 
+      // Store result in context if available
+      if (context) {
+        std::string result = userConfirmed ? "OK" : "Cancel";
+        context->SetValue("user_prompt_result", result, "system", "UserPrompt");
+        context->SetValue("user_confirmed", userConfirmed, "system", "UserPrompt");
+      }
+
       if (!userConfirmed) {
-        errorMessage = "User cancelled operation";
-        if (m_logger) {
-          m_logger->Warning("User cancelled prompt: " + title, "SystemHandler");
+        if (allowCancel) {
+          // Allow cancel mode - continue sequence even if user cancels
+          if (m_logger) {
+            m_logger->Info("User cancelled prompt (allowed): " + title, "SystemHandler");
+          }
+          return true;  // Continue sequence
+        } else {
+          // Traditional mode - stop sequence if user cancels
+          errorMessage = "User cancelled operation";
+          if (m_logger) {
+            m_logger->Warning("User cancelled prompt: " + title, "SystemHandler");
+          }
+          return false;  // Stop sequence
         }
-        return false;
       }
 
       if (m_logger) {

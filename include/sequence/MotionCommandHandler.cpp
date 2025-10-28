@@ -2,8 +2,36 @@
 #include "MotionCommandHandler.h"
 #include "unified_motion_manager.h"
 #include "LogManager.h"
+#include "SequenceContext.h"
 #include <chrono>
 #include <thread>
+
+// Helper to resolve context: references or parse direct values
+double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
+{
+  // Check if value is a context reference (e.g., "context:needle_target_x")
+  if (valueStr.find("context:") == 0) {
+    std::string refKey = valueStr.substr(8);  // Remove "context:" prefix
+    if (context) {
+      double value = static_cast<double>(context->GetNumeric(refKey, 0.0f));
+      if (m_logger) {
+        m_logger->Info("Resolved " + valueStr + " = " + std::to_string(value), "MotionHandler");
+      }
+      return value;
+    }
+    if (m_logger) {
+      m_logger->Warning("No context available to resolve " + valueStr + ", using 0.0", "MotionHandler");
+    }
+    return 0.0;  // Fallback if no context
+  } else {
+    // Parse as direct numeric value
+    double value = std::stod(valueStr);
+    if (m_logger) {
+      m_logger->Info("Parsed direct value " + valueStr + " = " + std::to_string(value), "MotionHandler");
+    }
+    return value;
+  }
+}
 
 bool MotionCommandHandler::ExecuteCommand(
   void* manager,
@@ -69,15 +97,15 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
 
-    double x = std::stod(xIt->second);
-    double y = std::stod(yIt->second);
-    double z = std::stod(zIt->second);
+    double x = ResolveNumericValue(xIt->second, context);
+    double y = ResolveNumericValue(yIt->second, context);
+    double z = ResolveNumericValue(zIt->second, context);
     double velocity = 100.0;  // Default velocity
     bool blocking = true;
 
     auto velIt = params.find("velocity");
     if (velIt != params.end()) {
-      velocity = std::stod(velIt->second);
+      velocity = ResolveNumericValue(velIt->second, context);
     }
 
     auto blockingIt = params.find("blocking");

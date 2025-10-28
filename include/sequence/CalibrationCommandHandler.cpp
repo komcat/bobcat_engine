@@ -19,9 +19,19 @@ CalibrationCommandHandler::CalibrationCommandHandler(ApplicationContext* context
 {
 }
 
-std::string CalibrationCommandHandler::GetCalibrationFilePath() const
+std::string CalibrationCommandHandler::GetNavigationFilePath(const std::string& uid) const
 {
-  return "config/calibration/CalibrateNeedleZ.json";
+  return "config/calibration/navigation_" + uid + ".json";
+}
+
+std::string CalibrationCommandHandler::GetNeedleZCalibrationFilePath() const
+{
+  return "config/calibration/needle_z_calibration.json";
+}
+
+std::string CalibrationCommandHandler::GetCameraToNeedleOffsetFilePath() const
+{
+  return "config/calibration/needleXYoffsetCamera.json";
 }
 
 std::string CalibrationCommandHandler::GetCurrentDateTime(bool dateOnly) const
@@ -67,13 +77,12 @@ bool CalibrationCommandHandler::EnsureCalibrationDirectoryExists(std::string& er
   }
 }
 
-bool CalibrationCommandHandler::LoadExistingCalibration(
-  double& oldNeedleHeight,
-  double& camX, double& camY, double& camZ,
-  double& offsetX, double& offsetY, double& offsetZ)
+bool CalibrationCommandHandler::LoadNavigationData(
+  const std::string& uid,
+  double& camX, double& camY, double& camZ)
 {
   try {
-    std::string filePath = GetCalibrationFilePath();
+    std::string filePath = GetNavigationFilePath(uid);
 
     if (!std::filesystem::exists(filePath)) {
       return false;  // File doesn't exist, first calibration
@@ -88,28 +97,17 @@ bool CalibrationCommandHandler::LoadExistingCalibration(
     file >> j;
     file.close();
 
-    // Load old needle height
-    if (j.contains("parameters") && j["parameters"].contains("needle_height")) {
-      oldNeedleHeight = j["parameters"]["needle_height"];
-    }
-
-    // Load camera position
+    // Load camera position only
     if (j.contains("camera_position")) {
       camX = j["camera_position"]["x"];
       camY = j["camera_position"]["y"];
       camZ = j["camera_position"]["z"];
     }
 
-    // Load offsets
-    if (j.contains("offsets")) {
-      offsetX = j["offsets"]["x"];
-      offsetY = j["offsets"]["y"];
-      offsetZ = j["offsets"]["z"];
-    }
-
     if (m_logger) {
       m_logger->Info(
-        "Loaded existing calibration: needle_height=" + std::to_string(oldNeedleHeight),
+        "Loaded navigation data for UID: " + uid + " - Camera: (" +
+        std::to_string(camX) + ", " + std::to_string(camY) + ", " + std::to_string(camZ) + ")",
         "CalibrationHandler"
       );
     }
@@ -119,7 +117,7 @@ bool CalibrationCommandHandler::LoadExistingCalibration(
   catch (const std::exception& e) {
     if (m_logger) {
       m_logger->Warning(
-        "Failed to load existing calibration: " + std::string(e.what()),
+        "Failed to load navigation data: " + std::string(e.what()),
         "CalibrationHandler"
       );
     }
@@ -127,11 +125,238 @@ bool CalibrationCommandHandler::LoadExistingCalibration(
   }
 }
 
-bool CalibrationCommandHandler::SaveNeedleZCalibration(
+bool CalibrationCommandHandler::LoadNeedleZCalibrationGlobal(
+  double& oldNeedleHeight)
+{
+  try {
+    std::string filePath = GetNeedleZCalibrationFilePath();
+
+    if (!std::filesystem::exists(filePath)) {
+      return false;  // File doesn't exist, first calibration
+    }
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+      return false;
+    }
+
+    json j;
+    file >> j;
+    file.close();
+
+    // Load old needle height from global file
+    if (j.contains("parameters") && j["parameters"].contains("needle_height")) {
+      oldNeedleHeight = j["parameters"]["needle_height"];
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "Loaded global needle Z calibration: needle_height=" + std::to_string(oldNeedleHeight),
+        "CalibrationHandler"
+      );
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    if (m_logger) {
+      m_logger->Warning(
+        "Failed to load global needle Z calibration: " + std::string(e.what()),
+        "CalibrationHandler"
+      );
+    }
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
+  double& offsetX, double& offsetY, double& offsetZ)
+{
+  try {
+    std::string filePath = GetCameraToNeedleOffsetFilePath();
+
+    if (!std::filesystem::exists(filePath)) {
+      return false;  // File doesn't exist
+    }
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+      return false;
+    }
+
+    json j;
+    file >> j;
+    file.close();
+
+    // Load XY offset values only (Z is always 0 from this file)
+    if (j.contains("offset")) {
+      offsetX = j["offset"]["x"];
+      offsetY = j["offset"]["y"];
+      offsetZ = 0.0;  // Z offset is handled by separate needle Z calibration
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "Loaded camera-to-needle XY offset: (" +
+        std::to_string(offsetX) + ", " +
+        std::to_string(offsetY) + ", Z=0)",
+        "CalibrationHandler"
+      );
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    if (m_logger) {
+      m_logger->Warning(
+        "Failed to load camera-to-needle XY offset: " + std::string(e.what()),
+        "CalibrationHandler"
+      );
+    }
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::SaveCameraToNeedleOffset(
   const std::string& deviceName,
   const std::string& pneumaticSlide,
+  double needleX, double needleY, double needleZ,
+  double cameraX, double cameraY, double cameraZ,
+  std::string& errorMessage,
+  std::string& resultMessage)
+{
+  try {
+    // Ensure directory exists
+    if (!EnsureCalibrationDirectoryExists(errorMessage)) {
+      return false;
+    }
+
+    // Calculate XY offset only (Z is calibrated separately)
+    double offsetX = needleX - cameraX;
+    double offsetY = needleY - cameraY;
+
+    // Build JSON structure
+    json j;
+
+    // Metadata
+    j["metadata"]["calibration_type"] = "Camera to Needle XY Offset";
+    j["metadata"]["device"] = deviceName;
+    j["metadata"]["last_calibrated_date"] = GetCurrentDateTime(true);
+    j["metadata"]["last_calibrated_time"] = GetCurrentDateTime(false);
+    j["metadata"]["pneumatic_slide"] = pneumaticSlide;
+    j["metadata"]["calibrated_by"] = "System";
+    j["metadata"]["description"] = "XY offset from camera center to needle tip (Z calibrated separately)";
+
+    // Offset values (XY only)
+    j["offset"]["x"] = offsetX;
+    j["offset"]["y"] = offsetY;
+
+    // Store original positions for reference
+    j["positions"]["needle_imprint"]["x"] = needleX;
+    j["positions"]["needle_imprint"]["y"] = needleY;
+    j["positions"]["needle_imprint"]["z"] = needleZ;
+    j["positions"]["camera_centered"]["x"] = cameraX;
+    j["positions"]["camera_centered"]["y"] = cameraY;
+    j["positions"]["camera_centered"]["z"] = cameraZ;
+
+    j["notes"] = "XY offset calculated from needle imprint to camera center. Z offset is handled by separate needle Z calibration.";
+
+    // Write to file
+    std::string filePath = GetCameraToNeedleOffsetFilePath();
+    std::ofstream file(filePath);
+
+    if (!file.is_open()) {
+      errorMessage = "Failed to open offset file for writing: " + filePath;
+      return false;
+    }
+
+    file << j.dump(2);  // Pretty print with 2-space indent
+    file.close();
+
+    // Build result message
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << "Camera-to-Needle XY Offset saved:\n";
+    oss << "X: " << offsetX << " mm\n";
+    oss << "Y: " << offsetY << " mm\n";
+    oss << "(Z calibration is separate)";
+    resultMessage = oss.str();
+
+    if (m_logger) {
+      m_logger->Info(
+        "Saved camera-to-needle XY offset: (" +
+        std::to_string(offsetX) + ", " +
+        std::to_string(offsetY) + ")",
+        "CalibrationHandler"
+      );
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    errorMessage = "Exception saving camera-to-needle XY offset: " + std::string(e.what());
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::SaveNavigationData(
+  const std::string& uid,
+  const std::string& deviceName,
   double camX, double camY, double camZ,
-  double offsetX, double offsetY, double offsetZ,
+  std::string& errorMessage)
+{
+  try {
+    // Ensure directory exists
+    if (!EnsureCalibrationDirectoryExists(errorMessage)) {
+      return false;
+    }
+
+    // Build JSON structure
+    json j;
+
+    // Metadata
+    j["metadata"]["uid"] = uid;
+    j["metadata"]["device"] = deviceName;
+    j["metadata"]["last_updated_date"] = GetCurrentDateTime(true);
+    j["metadata"]["last_updated_time"] = GetCurrentDateTime(false);
+    j["metadata"]["description"] = "Camera position for auto-navigation (product-specific)";
+
+    // Camera position only (offsets come from system-level file)
+    j["camera_position"]["x"] = camX;
+    j["camera_position"]["y"] = camY;
+    j["camera_position"]["z"] = camZ;
+
+    // Write to file
+    std::string filePath = GetNavigationFilePath(uid);
+    std::ofstream file(filePath);
+
+    if (!file.is_open()) {
+      errorMessage = "Failed to open navigation file for writing: " + filePath;
+      return false;
+    }
+
+    file << j.dump(2);  // Pretty print with 2-space indent
+    file.close();
+
+    if (m_logger) {
+      m_logger->Info(
+        "Saved navigation data for UID: " + uid + " - Camera: (" +
+        std::to_string(camX) + ", " + std::to_string(camY) + ", " + std::to_string(camZ) + ")",
+        "CalibrationHandler"
+      );
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    errorMessage = "Exception saving navigation data: " + std::string(e.what());
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::SaveNeedleZCalibrationGlobal(
+  const std::string& deviceName,
+  const std::string& pneumaticSlide,
   double needleX, double needleY, double needleZ,
   std::string& errorMessage,
   std::string& deltaMessage)
@@ -144,11 +369,7 @@ bool CalibrationCommandHandler::SaveNeedleZCalibration(
 
     // Load old calibration data for delta calculation
     double oldNeedleHeight = 0.0;
-    double oldCamX = 0.0, oldCamY = 0.0, oldCamZ = 0.0;
-    double oldOffsetX = 0.0, oldOffsetY = 0.0, oldOffsetZ = 0.0;
-    bool hadPreviousCalibration = LoadExistingCalibration(
-      oldNeedleHeight, oldCamX, oldCamY, oldCamZ, oldOffsetX, oldOffsetY, oldOffsetZ
-    );
+    bool hadPreviousCalibration = LoadNeedleZCalibrationGlobal(oldNeedleHeight);
 
     // Calculate delta
     double delta = 0.0;
@@ -160,21 +381,12 @@ bool CalibrationCommandHandler::SaveNeedleZCalibration(
     json j;
 
     // Metadata
-    j["metadata"]["calibration_type"] = "Needle Z Position";
+    j["metadata"]["calibration_type"] = "Needle Z Position (Global)";
     j["metadata"]["device"] = deviceName;
     j["metadata"]["calibrated_date"] = GetCurrentDateTime(true);
     j["metadata"]["calibrated_time"] = GetCurrentDateTime(false);
     j["metadata"]["pneumatic_slide"] = pneumaticSlide;
-
-    // Camera position
-    j["camera_position"]["x"] = camX;
-    j["camera_position"]["y"] = camY;
-    j["camera_position"]["z"] = camZ;
-
-    // Offsets
-    j["offsets"]["x"] = offsetX;
-    j["offsets"]["y"] = offsetY;
-    j["offsets"]["z"] = offsetZ;
+    j["metadata"]["description"] = "Global needle Z calibration - updated by any calibration process";
 
     // Needle touch position
     j["needle_touch_position"]["x"] = needleX;
@@ -189,12 +401,12 @@ bool CalibrationCommandHandler::SaveNeedleZCalibration(
       j["parameters"]["delta_from_previous"] = delta;
     }
 
-    // Write to file
-    std::string filePath = GetCalibrationFilePath();
+    // Write to global file
+    std::string filePath = GetNeedleZCalibrationFilePath();
     std::ofstream file(filePath);
 
     if (!file.is_open()) {
-      errorMessage = "Failed to open calibration file for writing: " + filePath;
+      errorMessage = "Failed to open global calibration file for writing: " + filePath;
       return false;
     }
 
@@ -219,7 +431,7 @@ bool CalibrationCommandHandler::SaveNeedleZCalibration(
 
     if (m_logger) {
       m_logger->Info(
-        "Saved needle Z calibration: Z=" + std::to_string(needleZ) + deltaMessage,
+        "Saved global needle Z calibration: Z=" + std::to_string(needleZ) + deltaMessage,
         "CalibrationHandler"
       );
     }
@@ -227,7 +439,7 @@ bool CalibrationCommandHandler::SaveNeedleZCalibration(
     return true;
   }
   catch (const std::exception& e) {
-    errorMessage = "Exception saving calibration: " + std::string(e.what());
+    errorMessage = "Exception saving global needle Z calibration: " + std::string(e.what());
     return false;
   }
 }
@@ -241,28 +453,29 @@ bool CalibrationCommandHandler::ExecuteCommand(
   SequenceContext* context)
 {
   // ============================================================================
-  // LOAD EXISTING CALIBRATION
+  // LOAD EXISTING NAVIGATION (camera position only)
   // ============================================================================
   if (methodName == "LoadExistingCalibration") {
-    double oldNeedleHeight = 0.0;
+    auto uidIt = params.find("uid");
+    if (uidIt == params.end()) {
+      errorMessage = "Missing required parameter: uid";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+
     double camX = 0.0, camY = 0.0, camZ = 0.0;
-    double offsetX = 0.0, offsetY = 0.0, offsetZ = 0.0;
 
-    bool exists = LoadExistingCalibration(
-      oldNeedleHeight, camX, camY, camZ, offsetX, offsetY, offsetZ
-    );
+    bool exists = LoadNavigationData(uid, camX, camY, camZ);
 
-    // Store in context
+    // Store in context (camera position only, offsets come from system file)
     if (context) {
-      context->SetValue("calibration_exists", exists, "calibration", "LoadExistingCalibration");
+      context->SetValue("navigation_exists", exists, "calibration", "LoadExistingCalibration");
 
       if (exists) {
         context->SetValue("camera_x", static_cast<float>(camX), "calibration", "LoadExistingCalibration");
         context->SetValue("camera_y", static_cast<float>(camY), "calibration", "LoadExistingCalibration");
         context->SetValue("camera_z", static_cast<float>(camZ), "calibration", "LoadExistingCalibration");
-        context->SetValue("offset_x", static_cast<float>(offsetX), "calibration", "LoadExistingCalibration");
-        context->SetValue("offset_y", static_cast<float>(offsetY), "calibration", "LoadExistingCalibration");
-        context->SetValue("offset_z", static_cast<float>(offsetZ), "calibration", "LoadExistingCalibration");
       }
     }
 
@@ -316,7 +529,39 @@ bool CalibrationCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
-  // SAVE NEEDLE Z CALIBRATION
+  // SAVE NAVIGATION DATA (camera position only)
+  // ============================================================================
+  else if (methodName == "SaveNavigationData") {
+    auto uidIt = params.find("uid");
+    auto deviceIt = params.find("device");
+
+    if (uidIt == params.end() || deviceIt == params.end()) {
+      errorMessage = "Missing required parameters: uid, device";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    std::string device = deviceIt->second;
+
+    // Get camera position from context (no offsets - those are system-level)
+    if (!context) {
+      errorMessage = "SequenceContext is required";
+      return false;
+    }
+
+    double camX = static_cast<double>(context->GetNumeric("camera_x", 0.0f));
+    double camY = static_cast<double>(context->GetNumeric("camera_y", 0.0f));
+    double camZ = static_cast<double>(context->GetNumeric("camera_z", 0.0f));
+
+    if (!SaveNavigationData(uid, device, camX, camY, camZ, errorMessage)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SAVE NEEDLE Z CALIBRATION (Global)
   // ============================================================================
   else if (methodName == "SaveNeedleZCalibration") {
     auto deviceIt = params.find("device");
@@ -336,24 +581,14 @@ bool CalibrationCommandHandler::ExecuteCommand(
       return false;
     }
 
-    double camX = static_cast<double>(context->GetNumeric("camera_x", 0.0f));
-    double camY = static_cast<double>(context->GetNumeric("camera_y", 0.0f));
-    double camZ = static_cast<double>(context->GetNumeric("camera_z", 0.0f));
-
-    double offsetX = static_cast<double>(context->GetNumeric("offset_x", 0.0f));
-    double offsetY = static_cast<double>(context->GetNumeric("offset_y", 0.0f));
-    double offsetZ = static_cast<double>(context->GetNumeric("offset_z", 0.0f));
-
     double needleX = static_cast<double>(context->GetNumeric("needle_x", 0.0f));
     double needleY = static_cast<double>(context->GetNumeric("needle_y", 0.0f));
     double needleZ = static_cast<double>(context->GetNumeric("needle_z", 0.0f));
 
     std::string deltaMessage;
 
-    if (!SaveNeedleZCalibration(
+    if (!SaveNeedleZCalibrationGlobal(
       device, pneumaticSlide,
-      camX, camY, camZ,
-      offsetX, offsetY, offsetZ,
       needleX, needleY, needleZ,
       errorMessage, deltaMessage)) {
       return false;
@@ -364,6 +599,109 @@ bool CalibrationCommandHandler::ExecuteCommand(
       context->SetValue("calibration_result",
         "Needle Z calibration saved: Z = " + std::to_string(needleZ) + " mm" + deltaMessage,
         "calibration", "SaveNeedleZCalibration");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // LOAD NEEDLE Z CALIBRATION
+  // ============================================================================
+  else if (methodName == "LoadNeedleZCalibration") {
+    double needleZ = 0.0;
+
+    bool exists = LoadNeedleZCalibrationGlobal(needleZ);
+
+    if (m_logger) {
+      if (exists) {
+        m_logger->Info(
+          "Loaded needle Z calibration: " + std::to_string(needleZ) + " mm",
+          "CalibrationHandler"
+        );
+      } else {
+        m_logger->Info(
+          "No previous needle Z calibration found",
+          "CalibrationHandler"
+        );
+      }
+    }
+
+    // Store in context
+    if (context) {
+      context->SetValue("needle_z_calibration_exists", exists, "calibration", "LoadNeedleZCalibration");
+
+      if (exists) {
+        context->SetValue("previous_needle_z", static_cast<float>(needleZ), "calibration", "LoadNeedleZCalibration");
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // LOAD CAMERA-TO-NEEDLE OFFSET
+  // ============================================================================
+  else if (methodName == "LoadCameraToNeedleOffset") {
+    double offsetX = 0.0, offsetY = 0.0, offsetZ = 0.0;
+
+    bool exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
+
+    // Store in context
+    if (context) {
+      context->SetValue("system_offset_exists", exists, "calibration", "LoadCameraToNeedleOffset");
+
+      if (exists) {
+        context->SetValue("system_offset_x", static_cast<float>(offsetX), "calibration", "LoadCameraToNeedleOffset");
+        context->SetValue("system_offset_y", static_cast<float>(offsetY), "calibration", "LoadCameraToNeedleOffset");
+        context->SetValue("system_offset_z", static_cast<float>(offsetZ), "calibration", "LoadCameraToNeedleOffset");
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SAVE CAMERA-TO-NEEDLE OFFSET
+  // ============================================================================
+  else if (methodName == "SaveCameraToNeedleOffset") {
+    auto deviceIt = params.find("device");
+    auto pneumaticSlideIt = params.find("pneumatic_slide");
+
+    if (deviceIt == params.end() || pneumaticSlideIt == params.end()) {
+      errorMessage = "Missing required parameters: device, pneumatic_slide";
+      return false;
+    }
+
+    std::string device = deviceIt->second;
+    std::string pneumaticSlide = pneumaticSlideIt->second;
+
+    // Get positions from context
+    if (!context) {
+      errorMessage = "SequenceContext is required";
+      return false;
+    }
+
+    double needleX = static_cast<double>(context->GetNumeric("needle_x", 0.0f));
+    double needleY = static_cast<double>(context->GetNumeric("needle_y", 0.0f));
+    double needleZ = static_cast<double>(context->GetNumeric("needle_z", 0.0f));
+
+    double cameraX = static_cast<double>(context->GetNumeric("camera_x", 0.0f));
+    double cameraY = static_cast<double>(context->GetNumeric("camera_y", 0.0f));
+    double cameraZ = static_cast<double>(context->GetNumeric("camera_z", 0.0f));
+
+    std::string resultMessage;
+
+    if (!SaveCameraToNeedleOffset(
+      device, pneumaticSlide,
+      needleX, needleY, needleZ,
+      cameraX, cameraY, cameraZ,
+      errorMessage, resultMessage)) {
+      return false;
+    }
+
+    // Store result message in context for notification
+    if (context) {
+      context->SetValue("offset_result", resultMessage, "calibration", "SaveCameraToNeedleOffset");
     }
 
     return true;

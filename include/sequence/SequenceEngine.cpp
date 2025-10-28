@@ -159,6 +159,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["system"] = "system";
   LogInfo("Registered system command handler");
 
+  // Calibration commands (special case - uses ApplicationContext, nullptr for manager)
+  m_deviceToManagerMap["calibration"] = nullptr;
+  m_deviceToTypeMap["calibration"] = "calibration";
+  LogInfo("Registered calibration command handler");
+
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 
@@ -240,8 +245,8 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
       return false;
     }
 
-    // System commands don't need a manager, others do
-    if (managerType != "system") {
+    // System, context, and calibration commands don't need a manager pointer, others do
+    if (managerType != "system" && managerType != "context" && managerType != "calibration") {
       void* manager = ResolveManager(action->deviceName);
       if (!manager) {
         errors.push_back("Manager not found for device: " + action->deviceName);
@@ -378,8 +383,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       return false;
     }
 
-    // System/context commands can have nullptr manager, others cannot
-    if (managerType != "system" && managerType != "context" && !manager) {
+    // System/context/calibration commands can have nullptr manager, others cannot
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && !manager) {
       LogError("Manager not found for device: " + action->deviceName);
       return false;
     }

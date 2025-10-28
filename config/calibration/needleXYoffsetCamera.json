@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "calibration_type": "Camera to Needle XY Offset",
+    "device": "gantry-main",
+    "last_calibrated_date": "Factory Default",
+    "last_calibrated_time": "00:00:00",
+    "pneumatic_slide": "Dispenser_Head",
+    "calibrated_by": "Factory",
+    "description": "XY offset from camera center to needle tip (Z calibrated separately)",
+    "note": "These are FACTORY DEFAULT values. Run 'Calibrate Camera-to-Needle Offset' process for accurate calibration."
+  },
+  "offset": {
+    "x": -101.85084,
+    "y": 13.4456
+  },
+  "positions": {
+    "needle_imprint": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "camera_centered": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    }
+  },
+  "notes": "XY offset calculated from needle imprint to camera center. Z offset is handled by separate needle Z calibration.",
+  "factory_default": true,
+  "warning": "These default values are approximations. For precise operation, perform system calibration using 'Calibrate Camera-to-Needle Offset' process."
+}

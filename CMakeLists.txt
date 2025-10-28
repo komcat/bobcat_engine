@@ -364,6 +364,7 @@ set(SOURCES
     include/recipe/processes/DataStoreProcesses.cpp
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
+    include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp

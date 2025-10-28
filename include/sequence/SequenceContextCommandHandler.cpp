@@ -57,6 +57,49 @@ bool SequenceContextCommandHandler::ExecuteCommand(
     }
 
     // =========================================================================
+    // SetNumeric - Store a numeric value, resolving context references
+    // =========================================================================
+    if (methodName == "SetNumeric") {
+        auto keyIt = params.find("key");
+        auto valueIt = params.find("value");
+
+        if (keyIt == params.end() || valueIt == params.end()) {
+            errorMessage = "Missing parameters: key, value";
+            return false;
+        }
+
+        std::string valueStr = valueIt->second;
+        float numValue = 0.0f;
+
+        // Check if value is a context reference (e.g., "context:camera_initial_z")
+        if (valueStr.find("context:") == 0) {
+            std::string refKey = valueStr.substr(8);  // Remove "context:" prefix
+            numValue = context->GetNumeric(refKey, 0.0f);
+
+            if (m_logger) {
+                m_logger->Info("Set context[" + keyIt->second + "] = context[" + refKey + "] = " + std::to_string(numValue),
+                              "SequenceContext");
+            }
+        } else {
+            // Parse as direct numeric value
+            try {
+                numValue = std::stof(valueStr);
+
+                if (m_logger) {
+                    m_logger->Info("Set context[" + keyIt->second + "] = " + std::to_string(numValue),
+                                  "SequenceContext");
+                }
+            } catch (...) {
+                errorMessage = "Invalid numeric value: " + valueStr;
+                return false;
+            }
+        }
+
+        context->SetValue(keyIt->second, numValue, "context", "SetNumeric");
+        return true;
+    }
+
+    // =========================================================================
     // LogValue - Log a value from context
     // =========================================================================
     if (methodName == "LogValue") {

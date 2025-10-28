@@ -507,7 +507,8 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "Power Supply",
     "Data",
     "System",
-    "Control Flow"
+    "Control Flow",
+    "Calibration"
   };
 }
 

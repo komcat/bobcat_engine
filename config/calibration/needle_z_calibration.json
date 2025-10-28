@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "calibration_type": "Needle Z Position (Global)",
+    "device": "gantry-main",
+    "calibrated_date": "2025-10-27",
+    "calibrated_time": "17:56:11",
+    "pneumatic_slide": "Dispenser_Head",
+    "description": "Global needle Z calibration - updated by any calibration process"
+  },
+  "needle_touch_position": {
+    "x": 88.65499114990234,
+    "y": 39.77272033691406,
+    "z": 36.83469772338867
+  },
+  "parameters": {
+    "needle_height": 36.83469772338867
+  }
+}

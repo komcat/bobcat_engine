@@ -16,4 +16,8 @@ public:
   ) override;
 
   std::string GetManagerType() const override { return "motion"; }
+
+private:
+  // Helper to resolve context: references or parse direct values
+  double ResolveNumericValue(const std::string& valueStr, SequenceContext* context);
 };

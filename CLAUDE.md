@@ -193,3 +193,4 @@ Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for run
 - `include/sequence/SequenceEngine.h` - Command execution engine
 - `include/recipe/RecipeManager.h` - Recipe data management
 - `config/*.json` - Hardware configuration files
+- i'll cmake build myself

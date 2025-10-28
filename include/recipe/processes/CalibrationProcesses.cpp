@@ -83,13 +83,56 @@ public:
     std::string settleTime = params.at("settle_time_ms");
     std::string zRetractHeight = params.at("z_retract_height");
 
-    // Step 0: Load existing calibration (if exists)
-    sequence->AddAction("calibration", "LoadExistingCalibration", {});
+    // Get the process instance UID for unique navigation/calibration files
+    std::string uid = step->uniqueId;
 
-    // Step 1: Check if calibration exists and navigate accordingly
-    sequence->BeginIf("calibration_exists", ConditionalBlock::ComparisonType::IS_TRUE);
+    // Step 0a: Load system-level camera-to-needle offset (if exists)
+    sequence->AddAction("calibration", "LoadCameraToNeedleOffset", {});
+
+    // Step 0b: Use system offset as default, or use configured offset
+    sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      // THEN: Calibration exists - auto-navigate to saved camera position
+      // Use system-calibrated offset values
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_x"},
+        {"value", "context:system_offset_x"}
+      });
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_y"},
+        {"value", "context:system_offset_y"}
+      });
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_z"},
+        {"value", "context:system_offset_z"}
+      });
+    }
+    sequence->Else();
+    {
+      // Use configured offset values from parameters
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_x"},
+        {"value", offsetX}
+      });
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_y"},
+        {"value", offsetY}
+      });
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "offset_z"},
+        {"value", offsetZ}
+      });
+    }
+    sequence->EndIf();
+
+    // Step 1: Load existing navigation data (if exists)
+    sequence->AddAction("calibration", "LoadExistingCalibration", {
+      {"uid", uid}
+    });
+
+    // Step 2: Check if navigation data exists and navigate accordingly
+    sequence->BeginIf("navigation_exists", ConditionalBlock::ComparisonType::IS_TRUE);
+    {
+      // THEN: Navigation exists - auto-navigate to saved camera position
       sequence->AddAction(device, "MoveToAbs", {
         {"x", "context:camera_x"},
         {"y", "context:camera_y"},
@@ -100,77 +143,89 @@ public:
     }
     sequence->Else();
     {
-      // ELSE: First calibration - ask user to position manually
-      sequence->AddAction("system", "UserPrompt", {
-        {"title", "Position Camera Over Calibration Surface"},
-        {"message", "Manually move " + device + " so the camera sees the flat calibration surface. Click OK when positioned."},
-        {"blocking", "true"}
+      // ELSE: First time - use ManualAdjust to position
+      sequence->AddAction("system", "ManualAdjust", {
+        {"message", "Position camera over flat calibration surface.\n\n"
+                    "Manually jog " + device + " to position.\n\n"
+                    "Click OK when positioned."},
+        {"device_name", device},
+        {"step_size_um", "100"},
+        {"enable_x", "true"},
+        {"enable_y", "true"},
+        {"enable_z", "true"}
       });
     }
     sequence->EndIf();
 
-    // Step 2: Capture camera position
+    // Step 3: Capture camera position
     sequence->AddAction("calibration", "CapturePosition", {
       {"device", device},
       {"key_prefix", "camera"}
     });
 
-    // Step 3: Store offsets in context
-    sequence->AddAction("context", "SetNumeric", {
-      {"key", "offset_x"},
-      {"value", offsetX}
-    });
-    sequence->AddAction("context", "SetNumeric", {
-      {"key", "offset_y"},
-      {"value", offsetY}
-    });
-    sequence->AddAction("context", "SetNumeric", {
-      {"key", "offset_z"},
-      {"value", offsetZ}
+    // Step 4: Save navigation data for future auto-navigation
+    sequence->AddAction("calibration", "SaveNavigationData", {
+      {"uid", uid},
+      {"device", device}
     });
 
-    // Step 4: Calculate needle position
+    // Step 5: Calculate needle XY position (where camera sees needle)
     sequence->AddAction("context", "Calculate", {
-      {"result_key", "needle_target_x"},
-      {"expression", "camera_x + offset_x"}
+      {"resultKey", "needle_target_x"},
+      {"key1", "camera_x"},
+      {"key2", "offset_x"},
+      {"operation", "+"}
     });
     sequence->AddAction("context", "Calculate", {
-      {"result_key", "needle_target_y"},
-      {"expression", "camera_y + offset_y"}
-    });
-    sequence->AddAction("context", "Calculate", {
-      {"result_key", "needle_target_z"},
-      {"expression", "camera_z + offset_z"}
+      {"resultKey", "needle_target_y"},
+      {"key1", "camera_y"},
+      {"key2", "offset_y"},
+      {"operation", "+"}
     });
 
-    // Step 5: Move to needle position
+    // Step 6: Move to needle XY position (keep Z at camera level for safety)
     sequence->AddAction(device, "MoveToAbs", {
       {"x", "context:needle_target_x"},
       {"y", "context:needle_target_y"},
-      {"z", "context:needle_target_z"},
+      {"z", "context:camera_z"},
       {"blocking", "true"}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});
 
-    // Step 6: Extend pneumatic dispenser head
+    // Step 7: Safety check - Allow user to verify position before extending slide
+    sequence->AddAction("system", "ManualAdjust", {
+      {"message", "⚠️ SAFETY CHECK: Verify needle position is safe before extending dispenser head.\n\n"
+                  "Adjust XYZ if needed, then click OK to extend " + pneumaticSlide + "."},
+      {"device_name", device},
+      {"step_size_um", "100"},
+      {"enable_x", "true"},
+      {"enable_y", "true"},
+      {"enable_z", "true"}
+    });
+
+    // Step 8: Extend pneumatic dispenser head
     sequence->AddAction(pneumaticSlide, "Extend", {
       {"debounce_delay_ms", "300"},
       {"timeout_ms", "10000"}
     });
 
-    // Step 7: Settling time
+    // Step 9: Settling time
     sequence->AddAction("system", "Wait", {
       {"milliseconds", settleTime}
     });
 
-    // Step 8: Ask user to move Z down close to surface
-    sequence->AddAction("system", "UserPrompt", {
-      {"title", "Move Z Down Close to Surface"},
-      {"message", "Manually move the Z axis down until the needle is just close to the flat surface (do not touch yet). Click OK when ready for fine adjustment."},
-      {"blocking", "true"}
+    // Step 10: Coarse Z positioning
+    sequence->AddAction("system", "ManualAdjust", {
+      {"message", "Move Z down until needle is close to surface (do not touch yet).\n\n"
+                  "Click OK when ready for fine adjustment."},
+      {"device_name", device},
+      {"step_size_um", "100"},
+      {"enable_x", "false"},
+      {"enable_y", "false"},
+      {"enable_z", "true"}
     });
 
-    // Step 9: Manual adjust for fine tuning
+    // Step 11: Manual adjust for fine tuning
     sequence->AddAction("system", "ManualAdjust", {
       {"message", "Fine adjust Z to touch the calibration surface"},
       {"device_name", device},
@@ -180,25 +235,25 @@ public:
       {"enable_z", "true"}
     });
 
-    // Step 10: Capture final needle position
+    // Step 12: Capture final needle position
     sequence->AddAction("calibration", "CapturePosition", {
       {"device", device},
       {"key_prefix", "needle"}
     });
 
-    // Step 11: Save calibration data
+    // Step 13: Save calibration data to global file
     sequence->AddAction("calibration", "SaveNeedleZCalibration", {
       {"device", device},
       {"pneumatic_slide", pneumaticSlide}
     });
 
-    // Step 12: Retract dispenser head
+    // Step 14: Retract dispenser head
     sequence->AddAction(pneumaticSlide, "Retract", {
       {"debounce_delay_ms", "300"},
       {"timeout_ms", "10000"}
     });
 
-    // Step 13: Move Z up to safe height
+    // Step 15: Move Z up to safe height
     sequence->AddAction(device, "MoveRelative", {
       {"axis", "Z"},
       {"distance", zRetractHeight},
@@ -206,7 +261,7 @@ public:
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});
 
-    // Step 14: Success notification with delta
+    // Step 16: Success notification with delta
     sequence->AddAction("system", "Notify", {
       {"title", "Calibration Complete"},
       {"message", "context:calibration_result"}

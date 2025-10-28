@@ -13,7 +13,8 @@
  * - Check existence of keys
  *
  * Supported methods:
- * - SetValue: Store a value in context
+ * - SetValue: Store a value in context (auto-detects numeric vs string)
+ * - SetNumeric: Store numeric value, resolving context: references
  * - GetValue: Retrieve a value from context (not typically needed in sequences)
  * - LogValue: Log a value from context
  * - Calculate: Perform arithmetic operations
