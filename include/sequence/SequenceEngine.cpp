@@ -319,6 +319,11 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
   // ✅ Clear stop flag before execution
   ClearStopFlag();
 
+  // ✅ Set engine stop callback in context for safety-critical stop detection
+  context->SetEngineStopCallback([this]() {
+    return m_stopRequested.load();
+  });
+
   // Validate first
   std::vector<std::string> errors;
   if (!ValidateSequence(sequence, errors)) {

@@ -1,0 +1,116 @@
+{
+    "gantry-main": {
+        "UV": {
+            "offsetX": -2.232421730790861,
+            "offsetY": 2.5152978089187314
+        },
+        "caldot": {
+            "offsetX": 18.103955336570493,
+            "offsetY": 4.388837657350425
+        },
+        "fiducial1": {
+            "offsetX": -0.7703632158948608,
+            "offsetY": 1.232934782544021
+        },
+        "fiducial2": {
+            "offsetX": 0.32413731843178084,
+            "offsetY": 1.2953362009177596
+        },
+        "fiducial3": {
+            "offsetX": 1.654841795207716,
+            "offsetY": 0.58111501345698
+        },
+        "home": {
+            "offsetX": 9.997136686560452,
+            "offsetY": -11.387284556823513
+        },
+        "safe": {
+            "offsetX": -4.065348844164674,
+            "offsetY": -1.523719815447393
+        },
+        "seecollimatelens": {
+            "offsetX": -1.0534887341329124,
+            "offsetY": 0.589947020334435
+        },
+        "seefocuslens": {
+            "offsetX": -1.1128219643549073,
+            "offsetY": 0.8302474874591894
+        },
+        "seegripcolllens": {
+            "offsetX": -0.5437104873614089,
+            "offsetY": 1.0037732074364527
+        },
+        "seegripfocuslens": {
+            "offsetX": 0.2927671855022993,
+            "offsetY": 1.0455970910796424
+        },
+        "seepic": {
+            "offsetX": 1.7093704324989574,
+            "offsetY": 1.1857516196196087
+        },
+        "seesled": {
+            "offsetX": -0.07033325532771073,
+            "offsetY": -1.0212121273394814
+        }
+    },
+    "hex-left": {
+        "approachlensgrip": {
+            "offsetX": -0.6542799756104731,
+            "offsetY": 1.8259389888827542
+        },
+        "approachlensplace": {
+            "offsetX": 1.384071464317991,
+            "offsetY": -1.5608140368186998
+        },
+        "home": {
+            "offsetX": 3.308472604513824,
+            "offsetY": 1.4781321963823721
+        },
+        "lensPlace2": {
+            "offsetX": 0.6590177280674254,
+            "offsetY": -2.9205343971284625
+        },
+        "lensgrip": {
+            "offsetX": -1.4153048651985989,
+            "offsetY": 1.26663525746127
+        },
+        "lensplace": {
+            "offsetX": -3.9927695459831947,
+            "offsetY": -2.77678279938496
+        }
+    },
+    "hex-right": {
+        "approachlensgrip": {
+            "offsetX": 0.2187041195199837,
+            "offsetY": -8.211345578341039
+        },
+        "approachlensplace": {
+            "offsetX": 2.7039782049742875,
+            "offsetY": 1.8490439195780084
+        },
+        "clear_vision": {
+            "offsetX": 2.1870411951997895,
+            "offsetY": -2.1870411951997966
+        },
+        "home": {
+            "offsetX": 2.863035746443366,
+            "offsetY": 1.1053279076573386
+        },
+        "lensPlace2": {
+            "offsetX": -3.495952213539062,
+            "offsetY": 1.5740069207877232
+        },
+        "lensgrip": {
+            "offsetX": -6.759945512435721,
+            "offsetY": -4.513257739185022
+        },
+        "lensplace": {
+            "offsetX": -1.5924054979817903,
+            "offsetY": 2.5773256179948563
+        },
+        "rejectlens": {
+            "offsetX": -2.5051562781379495,
+            "offsetY": -6.203244117293956
+        }
+    }
+}

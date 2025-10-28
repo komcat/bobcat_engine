@@ -7,6 +7,7 @@
 #include <mutex>
 #include <memory>
 #include <chrono>
+#include <functional>
 
 // Forward declaration
 class DataStore;
@@ -134,6 +135,18 @@ public:
     bool IsStopRequested() const { return m_stopRequested; }
     void ClearStopFlag() { m_stopRequested = false; }
 
+    // Callback to check engine stop flag (set by SequenceEngine)
+    // This allows command handlers to check stop during long-running operations
+    using StopFlagCallback = std::function<bool()>;
+    void SetEngineStopCallback(StopFlagCallback callback) { m_engineStopCallback = callback; }
+
+    // Check if stop requested from ANY source (context OR engine)
+    bool IsStopRequestedAny() const {
+        if (m_stopRequested) return true;
+        if (m_engineStopCallback && m_engineStopCallback()) return true;
+        return false;
+    }
+
     // ======================================================================
     // RESULT COLLECTION
     // ======================================================================
@@ -172,4 +185,5 @@ private:
 
     // Execution control
     bool m_stopRequested = false;
+    StopFlagCallback m_engineStopCallback;
 };

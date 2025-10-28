@@ -62,11 +62,12 @@ bool MotionCommandHandler::ExecuteCommand(
 
     std::string axis = axisIt->second;
     double position = std::stod(posIt->second);
-    bool blocking = true;  // Default to blocking
 
+    // Check if non-blocking mode requested explicitly
+    bool explicitNonBlocking = false;
     auto blockingIt = params.find("blocking");
-    if (blockingIt != params.end()) {
-      blocking = (blockingIt->second == "true");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
     }
 
     if (m_logger) {
@@ -76,8 +77,32 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    if (!motionManager->MoveToPosition(deviceName, axis, position, blocking)) {
-      errorMessage = "MoveToPosition failed";
+    // ✅ SAFETY: Always use non-blocking mode + stop checking (unless explicitly requested non-blocking)
+    if (!motionManager->MoveToPosition(deviceName, axis, position, false)) {
+      errorMessage = "MoveToPosition failed to start";
+      return false;
+    }
+
+    // If explicit non-blocking requested, return immediately
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // ✅ SAFETY: Wait for completion with stop flag monitoring and position verification
+    TargetPosition target;
+    if (axis == "X") {
+      target.hasX = true;
+      target.x = position;
+    } else if (axis == "Y") {
+      target.hasY = true;
+      target.y = position;
+    } else if (axis == "Z") {
+      target.hasZ = true;
+      target.z = position;
+    }
+
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
+      errorMessage = "Motion stopped, timeout, or position verification failed";
       return false;
     }
 
@@ -101,16 +126,17 @@ bool MotionCommandHandler::ExecuteCommand(
     double y = ResolveNumericValue(yIt->second, context);
     double z = ResolveNumericValue(zIt->second, context);
     double velocity = 100.0;  // Default velocity
-    bool blocking = true;
 
     auto velIt = params.find("velocity");
     if (velIt != params.end()) {
       velocity = ResolveNumericValue(velIt->second, context);
     }
 
+    // Check if non-blocking mode requested explicitly
+    bool explicitNonBlocking = false;
     auto blockingIt = params.find("blocking");
-    if (blockingIt != params.end()) {
-      blocking = (blockingIt->second == "true");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
     }
 
     if (m_logger) {
@@ -123,8 +149,28 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    if (!motionManager->MoveToAbs(deviceName, x, y, z, velocity, blocking)) {
-      errorMessage = "MoveToAbs failed";
+    // ✅ SAFETY: Always use non-blocking mode + stop checking
+    if (!motionManager->MoveToAbs(deviceName, x, y, z, velocity, false)) {
+      errorMessage = "MoveToAbs failed to start";
+      return false;
+    }
+
+    // If explicit non-blocking requested, return immediately
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // ✅ SAFETY: Wait for completion with stop flag monitoring and position verification
+    TargetPosition target;
+    target.hasX = true;
+    target.hasY = true;
+    target.hasZ = true;
+    target.x = x;
+    target.y = y;
+    target.z = z;
+
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
+      errorMessage = "Motion stopped, timeout, or position verification failed";
       return false;
     }
 
@@ -145,22 +191,57 @@ bool MotionCommandHandler::ExecuteCommand(
 
     std::string axis = axisIt->second;
     double distance = std::stod(distIt->second);
-    bool blocking = true;
 
+    // Check if non-blocking mode requested explicitly
+    bool explicitNonBlocking = false;
     auto blockingIt = params.find("blocking");
-    if (blockingIt != params.end()) {
-      blocking = (blockingIt->second == "true");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
     }
+
+    // Get current position to calculate expected final position
+    double currentPos = 0.0;
+    if (!motionManager->GetPosition(deviceName, axis, currentPos)) {
+      errorMessage = "Failed to get current position for relative move";
+      return false;
+    }
+
+    double targetPos = currentPos + distance;
 
     if (m_logger) {
       m_logger->Info(
-        "Moving " + deviceName + " axis " + axis + " by " + std::to_string(distance),
+        "Moving " + deviceName + " axis " + axis + " by " + std::to_string(distance) +
+        " (current: " + std::to_string(currentPos) + " -> target: " + std::to_string(targetPos) + ")",
         "MotionHandler"
       );
     }
 
-    if (!motionManager->MoveRelative(deviceName, axis, distance, blocking)) {
-      errorMessage = "MoveRelative failed";
+    // ✅ SAFETY: Always use non-blocking mode + stop checking
+    if (!motionManager->MoveRelative(deviceName, axis, distance, false)) {
+      errorMessage = "MoveRelative failed to start";
+      return false;
+    }
+
+    // If explicit non-blocking requested, return immediately
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // ✅ SAFETY: Wait for completion with stop flag monitoring and position verification
+    TargetPosition target;
+    if (axis == "X") {
+      target.hasX = true;
+      target.x = targetPos;
+    } else if (axis == "Y") {
+      target.hasY = true;
+      target.y = targetPos;
+    } else if (axis == "Z") {
+      target.hasZ = true;
+      target.z = targetPos;
+    }
+
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
+      errorMessage = "Motion stopped, timeout, or position verification failed";
       return false;
     }
 
@@ -187,11 +268,14 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    if (!motionManager->MoveToNamedPosition(deviceName, positionName)) {
-      errorMessage = "MoveToNamedPosition failed";
+    // ✅ SAFETY: Start motion in non-blocking mode (blocking=false is default)
+    // Recipe plugins typically follow this with WaitForMotionComplete for safety stop checking
+    if (!motionManager->MoveToNamedPosition(deviceName, positionName, false)) {
+      errorMessage = "MoveToNamedPosition failed to start";
       return false;
     }
 
+    // Return immediately - let WaitForMotionComplete handle the waiting with stop checking
     return true;
   }
 
@@ -363,36 +447,17 @@ bool MotionCommandHandler::ExecuteCommand(
       m_logger->Info("Waiting for motion complete on: " + deviceName, "MotionHandler");
     }
 
-    auto startTime = std::chrono::steady_clock::now();
-
-    while (true) {
-      // ✅ Check BOTH motion state AND waypoint system
-      bool isMoving = motionManager->IsDeviceInMotion(deviceName);
-      bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
-
-      if (!isMoving && !waypointActive) {
-        if (m_logger) {
-          m_logger->Info("Motion complete for: " + deviceName, "MotionHandler");
-        }
-        return true;
-      }
-
-      // Check timeout
-      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - startTime
-      ).count();
-
-      if (elapsed > timeoutMs) {
-        errorMessage = "Timeout waiting for motion complete on: " + deviceName;
-        if (m_logger) {
-          m_logger->Error(errorMessage, "MotionHandler");
-        }
-        return false;
-      }
-
-      // Sleep briefly to avoid busy-waiting
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // ✅ SAFETY: Use unified wait method with stop checking
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, timeoutMs)) {
+      errorMessage = "Motion stopped or timeout waiting for motion complete on: " + deviceName;
+      return false;
     }
+
+    if (m_logger) {
+      m_logger->Info("Motion complete for: " + deviceName, "MotionHandler");
+    }
+
+    return true;
     }
 
 
@@ -402,5 +467,128 @@ bool MotionCommandHandler::ExecuteCommand(
   else {
     errorMessage = "Unknown motion method: " + methodName;
     return false;
+  }
+}
+
+// =============================================================================
+// HELPER: Wait for motion complete with safety stop checking and position verification
+// =============================================================================
+bool MotionCommandHandler::WaitForMotionWithStopCheck(
+  void* manager,
+  const std::string& deviceName,
+  SequenceContext* context,
+  int timeoutMs,
+  const TargetPosition* targetPos)
+{
+  UnifiedMotionManager* motionManager = static_cast<UnifiedMotionManager*>(manager);
+  auto startTime = std::chrono::steady_clock::now();
+
+  // ✅ FIX: Small delay to ensure motion actually starts (avoid race condition)
+  // When non-blocking motion is initiated, there's a brief window where the command
+  // has been sent but the motor hasn't started moving yet
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  while (true) {
+    // ✅ SAFETY-CRITICAL: Check stop flags FIRST (before motion status)
+    if (context && context->IsStopRequestedAny()) {
+      if (m_logger) {
+        m_logger->Warning("SAFETY STOP: Stop requested during motion - triggering emergency stop", "MotionHandler");
+      }
+
+      // Emergency stop the device immediately
+      if (!motionManager->EmergencyStop(deviceName)) {
+        if (m_logger) {
+          m_logger->Error("Emergency stop failed for device: " + deviceName, "MotionHandler");
+        }
+      }
+
+      return false;  // Stop sequence execution
+    }
+
+    // Check motion status
+    bool isMoving = motionManager->IsDeviceInMotion(deviceName);
+    bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
+
+    if (!isMoving && !waypointActive) {
+      // Motion stopped - now verify position if target was provided
+      if (targetPos) {
+        const double TOLERANCE = 0.05;  // ±0.05mm tolerance
+
+        bool positionOK = true;
+        std::string errorDetail;
+
+        // Verify X axis if specified
+        if (targetPos->hasX) {
+          double actualX = 0.0;
+          if (motionManager->GetPosition(deviceName, "X", actualX)) {
+            double errorX = std::abs(actualX - targetPos->x);
+            if (errorX > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "X: target=" + std::to_string(targetPos->x) +
+                             ", actual=" + std::to_string(actualX) +
+                             ", error=" + std::to_string(errorX) + "mm; ";
+            }
+          }
+        }
+
+        // Verify Y axis if specified
+        if (targetPos->hasY) {
+          double actualY = 0.0;
+          if (motionManager->GetPosition(deviceName, "Y", actualY)) {
+            double errorY = std::abs(actualY - targetPos->y);
+            if (errorY > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "Y: target=" + std::to_string(targetPos->y) +
+                             ", actual=" + std::to_string(actualY) +
+                             ", error=" + std::to_string(errorY) + "mm; ";
+            }
+          }
+        }
+
+        // Verify Z axis if specified
+        if (targetPos->hasZ) {
+          double actualZ = 0.0;
+          if (motionManager->GetPosition(deviceName, "Z", actualZ)) {
+            double errorZ = std::abs(actualZ - targetPos->z);
+            if (errorZ > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "Z: target=" + std::to_string(targetPos->z) +
+                             ", actual=" + std::to_string(actualZ) +
+                             ", error=" + std::to_string(errorZ) + "mm; ";
+            }
+          }
+        }
+
+        if (!positionOK) {
+          if (m_logger) {
+            m_logger->Error("Position verification FAILED for " + deviceName + ": " + errorDetail, "MotionHandler");
+          }
+          return false;  // Position error exceeds tolerance
+        }
+
+        if (m_logger) {
+          m_logger->Info("Position verification OK for " + deviceName + " (tolerance ±" +
+                         std::to_string(TOLERANCE) + "mm)", "MotionHandler");
+        }
+      }
+
+      // Motion completed successfully (and position verified if required)
+      return true;
+    }
+
+    // Check timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime
+    ).count();
+
+    if (elapsed > timeoutMs) {
+      if (m_logger) {
+        m_logger->Error("Timeout waiting for motion complete on: " + deviceName, "MotionHandler");
+      }
+      return false;
+    }
+
+    // Sleep briefly to avoid busy-waiting (50ms polling rate)
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 }

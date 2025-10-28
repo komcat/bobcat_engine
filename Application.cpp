@@ -27,6 +27,7 @@
 #include <thread>
 #include <chrono>
 #include <sstream>
+#include <cstdlib>  // for std::getenv
 #include "nlohmann/json.hpp"
 
 using json = nlohmann::json;
@@ -191,6 +192,18 @@ bool Application::initialize()
 
     std::cout << "[Application] " << getApplicationName()
       << " v" << getVersion() << std::endl;
+
+    // ✅ Check BOBCAT_SIMULATION environment variable
+    const char* simEnv = std::getenv("BOBCAT_SIMULATION");
+    if (simEnv != nullptr) {
+      std::string simValue(simEnv);
+      m_context.simulationMode = (simValue == "1" || simValue == "true" || simValue == "TRUE");
+      std::cout << "[Application] BOBCAT_SIMULATION environment variable: " << simValue << std::endl;
+    } else {
+      // Default to false if environment variable not set
+      m_context.simulationMode = false;
+      std::cout << "[Application] BOBCAT_SIMULATION not set - defaulting to HARDWARE MODE" << std::endl;
+    }
 
     initializeManagers();
     createMainWindow();
