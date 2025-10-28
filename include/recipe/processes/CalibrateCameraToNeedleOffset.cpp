@@ -216,6 +216,20 @@ public:
     // Step 7: Load existing camera-to-needle offset (if exists)
     sequence->AddAction("calibration", "LoadCameraToNeedleOffset", {});
 
+    // Step 7a: Save old offset values for comparison later
+    sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_TRUE);
+    {
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "old_offset_x"},
+        {"value", "context:system_offset_x"}
+      });
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "old_offset_y"},
+        {"value", "context:system_offset_y"}
+      });
+    }
+    sequence->EndIf();
+
     // Step 8: Auto-calculate and move to needle position using saved offset
     sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
@@ -436,6 +450,24 @@ public:
       {"operation", "-"}
     });
 
+    // Step 23a: Calculate delta from previous calibration (if exists)
+    sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_TRUE);
+    {
+      sequence->AddAction("context", "Calculate", {
+        {"resultKey", "delta_x"},
+        {"key1", "offset_x"},
+        {"key2", "old_offset_x"},
+        {"operation", "-"}
+      });
+      sequence->AddAction("context", "Calculate", {
+        {"resultKey", "delta_y"},
+        {"key1", "offset_y"},
+        {"key2", "old_offset_y"},
+        {"operation", "-"}
+      });
+    }
+    sequence->EndIf();
+
     // Step 24: Save XY offset to file
     sequence->AddAction("calibration", "SaveCameraToNeedleOffset", {
       {"device", device},
@@ -448,17 +480,45 @@ public:
       {"pneumatic_slide", pneumaticSlide}
     });
 
-    // Step 26: Success notification with calculated offset values
-    sequence->AddAction("system", "UserPrompt", {
-      {"title", "✅ XY Offset Calibration Complete"},
-      {"message", "Camera-to-Needle XY offset has been calibrated and saved.\n\n"
-                  "Offset X: context:offset_x mm\n"
-                  "Offset Y: context:offset_y mm\n\n"
-                  "Needle Z also saved for next calibration.\n\n"
-                  "Files: config/calibration/needleXYoffsetCamera.json\n"
-                  "       config/calibration/needle_z_calibration.json"},
-      {"blocking", "false"}
-    });
+    // Step 26: Success notification with calculated offset values and comparison
+    sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_TRUE);
+    {
+      // Show comparison with previous calibration
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "✅ XY Offset Calibration Complete"},
+        {"message", "Camera-to-Needle XY offset has been calibrated and saved.\n\n"
+                    "NEW OFFSET:\n"
+                    "  X: context:offset_x mm\n"
+                    "  Y: context:offset_y mm\n\n"
+                    "PREVIOUS OFFSET:\n"
+                    "  X: context:old_offset_x mm\n"
+                    "  Y: context:old_offset_y mm\n\n"
+                    "CHANGE (Δ):\n"
+                    "  X: context:delta_x mm\n"
+                    "  Y: context:delta_y mm\n\n"
+                    "Needle Z also saved for next calibration.\n\n"
+                    "Files: config/calibration/needleXYoffsetCamera.json\n"
+                    "       config/calibration/needle_z_calibration.json"},
+        {"blocking", "false"}
+      });
+    }
+    sequence->Else();
+    {
+      // First calibration - no comparison
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "✅ XY Offset Calibration Complete"},
+        {"message", "Camera-to-Needle XY offset has been calibrated and saved.\n\n"
+                    "OFFSET:\n"
+                    "  X: context:offset_x mm\n"
+                    "  Y: context:offset_y mm\n\n"
+                    "(First calibration - no previous data to compare)\n\n"
+                    "Needle Z also saved for next calibration.\n\n"
+                    "Files: config/calibration/needleXYoffsetCamera.json\n"
+                    "       config/calibration/needle_z_calibration.json"},
+        {"blocking", "false"}
+      });
+    }
+    sequence->EndIf();
 
     std::cout << "[CalibrateCameraToNeedleOffsetPlugin] Built sequence for: "
       << step->userNickname << " (Device: " << device << ")" << std::endl;
