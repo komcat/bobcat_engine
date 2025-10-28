@@ -48,6 +48,11 @@ public:
   void zoomOut();
   void resetZoom();
 
+  // Auto-fit and pan controls
+  void fitAllPositions();      // Zoom to fit all positions in view
+  void centerOnDeviceMarker(); // Pan to device marker
+  void autoFitView();          // Smart fit: fit positions if exist, else center on marker
+
 signals:
   void positionSelected(const QString& name, double x, double y, double z);
   void positionDeselected();

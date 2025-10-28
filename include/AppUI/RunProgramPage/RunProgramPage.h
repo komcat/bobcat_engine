@@ -111,6 +111,7 @@ private:
 
   // Left panel widgets
   QWidget* m_leftPanel;
+  QLabel* m_currentProductLabel;  // Product display
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
   QPushButton* m_editButton;

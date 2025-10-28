@@ -311,6 +311,53 @@ void MotionGraphicsView::resetZoom()
   viewport()->update();
 }
 
+void MotionGraphicsView::fitAllPositions()
+{
+  if (m_anchors.isEmpty()) {
+    return;
+  }
+
+  // Get bounding rect of all position anchors
+  QRectF bounds;
+  for (auto* anchor : m_anchors) {
+    if (anchor) {
+      bounds = bounds.united(anchor->sceneBoundingRect());
+    }
+  }
+
+  // Add padding around the bounds
+  bounds = bounds.adjusted(-50, -50, 50, 50);
+
+  // Fit the view to show all positions
+  resetTransform();
+  fitInView(bounds, Qt::KeepAspectRatio);
+  m_zoomFactor = transform().m11();
+
+  viewport()->update();
+}
+
+void MotionGraphicsView::centerOnDeviceMarker()
+{
+  if (!m_liveMarker || !m_liveMarker->isVisible()) {
+    return;
+  }
+
+  // Center view on the device marker position
+  centerOn(m_liveMarker);
+  viewport()->update();
+}
+
+void MotionGraphicsView::autoFitView()
+{
+  if (!m_anchors.isEmpty()) {
+    // If positions exist, zoom to fit all positions
+    fitAllPositions();
+  } else if (m_liveMarker && m_liveMarker->isVisible()) {
+    // If no positions but device marker is visible, center on marker
+    centerOnDeviceMarker();
+  }
+}
+
 void MotionGraphicsView::wheelEvent(QWheelEvent* event)
 {
   bool zoomIn = event->angleDelta().y() > 0;

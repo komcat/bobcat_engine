@@ -64,6 +64,12 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
 
   setupUI();
 
+  // Update product display
+  if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+    m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
+  }
+
   // ✅ Auto-load last program from settings
   loadLastProgramFromSettings();
 }
@@ -132,6 +138,19 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "  background-color: #5a8fd6; "
     "}");
   leftLayout->addWidget(m_backButton);
+
+  // === Product Display ===
+  m_currentProductLabel = new QLabel("Product: None");
+  m_currentProductLabel->setStyleSheet(
+    "QLabel {"
+    "  color: #34495e;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  padding: 5px;"
+    "}"
+  );
+  m_currentProductLabel->setWordWrap(true);
+  leftLayout->addWidget(m_currentProductLabel);
 
   // === TOP SECTION: File Operations ===
   QGroupBox* fileGroup = new QGroupBox("Program File");
@@ -572,12 +591,24 @@ void RunProgramPage::showExecutionWidget()
 
 void RunProgramPage::onProductChanged()
 {
+  // Update product display
+  if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+    m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
+
+    std::cout << "[RunProgramPage] Product changed to: " << productName << std::endl;
+  } else {
+    m_currentProductLabel->setText("Product: None");
+    std::cout << "[RunProgramPage] No product loaded" << std::endl;
+  }
+
   // Product has changed - clear current program to avoid confusion
   // User should load a program from the new product folder
   if (m_programManager->getRecipeCount() > 0) {
     m_programManager->newProgram();
     m_currentProgramPath.clear();
     updateRecipeList();
+    updateProgramInfo();
 
     std::cout << "[RunProgramPage] Product changed - program cleared" << std::endl;
   }
@@ -1419,11 +1450,28 @@ void RunProgramPage::saveRecentPrograms(const QString& programPath)
 
 void RunProgramPage::loadLastProgramFromSettings()
 {
+  // ✅ Check if product is loaded first
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    std::cout << "[RunProgramPage] No product loaded - skipping auto-load of last program" << std::endl;
+    return;
+  }
+
   QSettings settings("Fabrinet", "BobcatEngine");
   QString lastProgramPath = settings.value("RunProgramPage/lastProgram", "").toString();
 
   if (lastProgramPath.isEmpty()) {
     std::cout << "[RunProgramPage] No last program found in settings" << std::endl;
+    return;
+  }
+
+  // ✅ Verify the program belongs to the current product
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString expectedPathPrefix = QString("config/%1/programs/").arg(productName);
+
+  if (!lastProgramPath.startsWith(expectedPathPrefix)) {
+    std::cout << "[RunProgramPage] Last program is from different product - skipping auto-load" << std::endl;
+    std::cout << "  Last program: " << lastProgramPath.toStdString() << std::endl;
+    std::cout << "  Current product: " << productName.toStdString() << std::endl;
     return;
   }
 

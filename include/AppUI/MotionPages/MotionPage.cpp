@@ -555,7 +555,7 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 	loadLabelOffsets();
 
 	m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
-	m_graphicsView->resetZoom();
+	m_graphicsView->autoFitView();  // Auto-fit: zoom to positions or center on device marker
 
 	qDebug() << "Successfully loaded" << m_currentPositions.size()
 		<< "positions for" << deviceName;
@@ -622,6 +622,9 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 	refreshPositionDisplay();
 	m_controlPanel->clearSelectedPosition();
 	m_selectedPositionName.clear();
+
+	// If no positions loaded, auto-fit will center on device marker
+	// (refreshPositionDisplay calls loadPositionsForDevice which calls autoFitView)
 }
 
 // ============================================================================

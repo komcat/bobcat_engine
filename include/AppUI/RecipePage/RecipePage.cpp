@@ -1837,10 +1837,27 @@ void RecipePage::saveLastRecipeToSettings(const QString& recipePath)
 
 void RecipePage::loadLastRecipeFromSettings()
 {
+  // ✅ Check if product is loaded first
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    std::cout << "[RecipePage] No product loaded - skipping auto-load of last recipe" << std::endl;
+    return;
+  }
+
   QSettings settings("Fabrinet", "BobcatEngine");
   QString lastRecipePath = settings.value("RecipePage/lastRecipe", "").toString();
 
   if (lastRecipePath.isEmpty()) {
+    return;
+  }
+
+  // ✅ Verify the recipe belongs to the current product
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString expectedPathPrefix = QString("config/%1/recipes/").arg(productName);
+
+  if (!lastRecipePath.startsWith(expectedPathPrefix)) {
+    std::cout << "[RecipePage] Last recipe is from different product - skipping auto-load" << std::endl;
+    std::cout << "  Last recipe: " << lastRecipePath.toStdString() << std::endl;
+    std::cout << "  Current product: " << productName.toStdString() << std::endl;
     return;
   }
 
@@ -1855,6 +1872,9 @@ void RecipePage::loadLastRecipeFromSettings()
   m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
   refreshRecipeList();
   clearConfigurationForm();
+
+  std::cout << "[RecipePage] Successfully auto-loaded recipe: "
+            << m_recipeManager->getRecipeName() << std::endl;
 
   // Auto-load associated product file
   std::string productFile = m_recipeManager->getProductFile();
