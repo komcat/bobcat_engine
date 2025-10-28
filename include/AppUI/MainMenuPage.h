@@ -3,6 +3,10 @@
 
 #include <QWidget>
 #include <QToolButton>
+#include <QPushButton>
+#include <QLabel>
+
+class ApplicationContext;
 
 /**
  * @brief Main menu page - 6 category buttons in 2x3 grid
@@ -12,7 +16,7 @@ class MainMenuPage : public QWidget
   Q_OBJECT
 
 public:
-  explicit MainMenuPage(QWidget* parent = nullptr);
+  explicit MainMenuPage(ApplicationContext* context, QWidget* parent = nullptr);
   ~MainMenuPage() = default;
 
 signals:
@@ -23,10 +27,25 @@ signals:
   void editConfigClicked();
   void futureUpdateClicked();
 
+private slots:
+  void onLoadProduct();
+  void onSaveProduct();
+  void onSaveProductAs();
+
 private:
   void setupUI();
   QToolButton* createMenuButton(const QString& text, const QString& icon = "");
+  void updateProductDisplay();
 
+  ApplicationContext* m_context;
+
+  // Product controls
+  QLabel* m_productLabel;
+  QPushButton* m_loadProductBtn;
+  QPushButton* m_saveProductBtn;
+  QPushButton* m_saveProductAsBtn;
+
+  // Menu buttons
   QToolButton* m_processButton;
   QToolButton* m_recipeButton;
   QToolButton* m_motionButton;

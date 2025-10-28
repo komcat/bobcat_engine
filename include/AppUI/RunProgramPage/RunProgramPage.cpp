@@ -12,6 +12,7 @@
 #include "LogManager.h"
 #include "DataStore.h"
 #include "RecipeManager.h"
+#include "product_position_manager.h"  // ✅ For product folder path
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
 
 #include <QVBoxLayout>
@@ -27,6 +28,7 @@
 #include <QTableWidgetItem>
 #include <QSettings>
 #include <QFile>
+#include <QDir>
 #include <iostream>
 #include <cmath>
 
@@ -570,10 +572,22 @@ void RunProgramPage::showExecutionWidget()
 
 void RunProgramPage::onLoadProgram()
 {
-  // ✅ Use FileSelectorDialog to restrict to programs folder
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before loading programs.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // ✅ Get product name and build path to product's programs folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString programsPath = QString("config/%1/programs").arg(productName);
+
+  // ✅ Use FileSelectorDialog to restrict to product's programs folder
   QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "programs",  // Folder path
+    programsPath,  // Folder path: config/[product]/programs/
     "*.json",  // File pattern
     "Load Program",  // Dialog title
     "program files"  // File type description
@@ -605,11 +619,26 @@ void RunProgramPage::onLoadProgram()
 
 void RunProgramPage::onSaveProgram()
 {
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before saving programs.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
   if (m_currentProgramPath.isEmpty()) {
+    // ✅ Get product name and build path to product's programs folder
+    QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+    QString programsPath = QString("config/%1/programs").arg(productName);
+
+    // ✅ Ensure programs folder exists
+    QDir().mkpath(programsPath);
+
     QString filename = QFileDialog::getSaveFileName(
       this,
       "Save Program",
-      "programs",
+      programsPath,  // Start in product's programs folder
       "Program Files (*.json)"
     );
 
@@ -622,7 +651,8 @@ void RunProgramPage::onSaveProgram()
     return;
   }
 
-  QMessageBox::information(this, "Success", "Program saved successfully");
+  QMessageBox::information(this, "Success",
+    QString("Program saved to:\n%1").arg(m_currentProgramPath));
 }
 
 void RunProgramPage::onEditProgram()
@@ -726,7 +756,7 @@ void RunProgramPage::onExecuteProgram()
     m_context->sequenceEngine,
     m_programManager,
     m_processFactory,
-    m_context->productManager,
+    m_context->productPositionManager,
     m_context->motionManager,
     this
   );
@@ -1100,10 +1130,22 @@ void RunProgramPage::onChannelChanged(QString channel)
 
 void RunProgramPage::onAddRecipe()
 {
-  // ✅ Use FileSelectorDialog to restrict to recipes folder
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before adding recipes.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // ✅ Get product name and build path to product's recipes folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString recipesPath = QString("config/%1/recipes").arg(productName);
+
+  // ✅ Use FileSelectorDialog to restrict to product's recipes folder
   QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "recipes",  // Folder path
+    recipesPath,  // Folder path: config/[product]/recipes/
     "*.json",  // File pattern
     "Add Recipe",  // Dialog title
     "recipe files"  // File type description

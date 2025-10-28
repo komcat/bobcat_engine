@@ -564,10 +564,22 @@ void RecipePage::onNewRecipe()
 
 void RecipePage::onLoadRecipe()
 {
-  // ✅ Use FileSelectorDialog to restrict to recipes folder
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before loading recipes.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // ✅ Get product name and build path to product's recipes folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString recipesPath = QString("config/%1/recipes").arg(productName);
+
+  // ✅ Use FileSelectorDialog to restrict to product's recipes folder
   QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "recipes",  // Folder path
+    recipesPath,  // Folder path: config/[product]/recipes/
     "*.json",  // File pattern
     "Load Recipe",  // Dialog title
     "recipe files"  // File type description
@@ -660,6 +672,14 @@ void RecipePage::onSaveRecipe()
     return;
   }
 
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before saving recipes.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
   // ✅ Check if recipe already has a file path
   std::string currentRecipePath = m_recipeManager->getCurrentFilePath();
 
@@ -688,11 +708,23 @@ void RecipePage::onSaveRecipeAs()
     return;
   }
 
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before saving recipes.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // ✅ Get product name and build path to product's recipes folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString recipesPath = QString("config/%1/recipes").arg(productName);
+
   // ✅ Get current recipe name for default
   QString currentName = QString::fromStdString(m_recipeManager->getRecipeName());
 
-  // ✅ Use custom RecipeSaveAsDialog instead of QFileDialog
-  QString filename = RecipeSaveAsDialog::getSaveFileName(this, currentName);
+  // ✅ Use custom RecipeSaveAsDialog with product folder path
+  QString filename = RecipeSaveAsDialog::getSaveFileName(this, recipesPath, currentName);
 
   if (filename.isEmpty()) return;
 

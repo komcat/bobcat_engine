@@ -5,7 +5,7 @@
 #include "LogManager.h"
 #include "TcpClientManager.h"
 #include "EziIO_JsonLoader.h"
-#include "PneumaticJsonLoader.h"  // ✅ ADD THIS
+#include "PneumaticJsonLoader.h"
 #include "product_position_manager.h"
 #include "CameraConfigManager.h"
 #include "AuxWindowManager.h"
@@ -13,14 +13,15 @@
 #include "SequenceBuilder.h"
 #include "SequenceContext.h"
 #include "TECManager.h"
-#include "TECJsonLoader.h"  // ✅ ADD THIS
+#include "TECJsonLoader.h"
 #include "PowerSupplyManager.h"
 #include "PowerSupplyJsonLoader.h"
 #include "CoordinateSystemManager.h"
-#include "ProcessPluginRegistry.h"  // ✅ ADD THIS - Force plugin system initialization
+#include "ProcessPluginRegistry.h"
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
+#include <QSettings>
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -1119,12 +1120,31 @@ void Application::testScanController()
 
 void Application::initializeProductPositionManager()
 {
-  // ✅ ADD THIS - Initialize product position manager
+  // Initialize product position manager
   std::cout << "[Application] Initializing ProductPositionManager..." << std::endl;
   m_productPositionManager = std::make_unique<ProductPositionManager>();
   m_context.productPositionManager = m_productPositionManager.get();
   std::cout << "[Application] ProductPositionManager initialized" << std::endl;
 
+  // Auto-load last used product from settings
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QString lastProductPath = settings.value("Application/lastProductFile", "").toString();
+  if (!lastProductPath.isEmpty()) {
+    std::cout << "[Application] Attempting to auto-load last product: "
+              << lastProductPath.toStdString() << std::endl;
+
+    if (m_productPositionManager->LoadProduct(lastProductPath.toStdString())) {
+      std::cout << "[Application] Product loaded successfully: "
+                << m_productPositionManager->GetCurrentProductName() << std::endl;
+
+      if (m_logManager) {
+        m_logManager->Info("Auto-loaded product: " + m_productPositionManager->GetCurrentProductName(),
+                           "Application");
+      }
+    } else {
+      std::cout << "[Application] Failed to auto-load product (file may not exist)" << std::endl;
+    }
+  }
 }
 
 void Application::initializeTECManager()

@@ -33,12 +33,11 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
 {
-  // ✅ CREATE PRODUCT MANAGER FIRST - BEFORE createPages()!
-  m_context->productManager = new ProductPositionManager();
+  // Note: ProductPositionManager is created in Application.cpp and available via context
 
   setupUI();
   setupJogPanel();        // ✅ MUST be before createPages() - RunProgramPage needs m_matrixLoader!
-  createPages();          // Now MotionPage can use productManager
+  createPages();          // Now pages can use productPositionManager from context
   setupLogging();
 
   // Show main menu first
@@ -122,7 +121,7 @@ void MainWindow::createPages()
   std::cout << "[MainWindow] Creating pages..." << std::endl;
 
   // Main menu page
-  m_mainMenuPage = new MainMenuPage(this);
+  m_mainMenuPage = new MainMenuPage(m_context, this);
   connect(m_mainMenuPage, &MainMenuPage::processClicked,
     this, &MainWindow::onMainMenuProcess);
   connect(m_mainMenuPage, &MainMenuPage::recipeClicked,
@@ -158,7 +157,7 @@ void MainWindow::createPages()
   // Motion page
   m_motionPage = new MotionPage(
     m_context->motionManager,
-    m_context->productManager,
+    m_context->productPositionManager,
     m_matrixLoader,
     m_context->dataStore,
     m_context->coordinateSystemManager,

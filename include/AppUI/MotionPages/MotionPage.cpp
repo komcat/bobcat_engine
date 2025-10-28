@@ -61,18 +61,18 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	loadDevices();
 	loadLabelOffsets();
 
-	// Try to auto-load last used product
-	QSettings settings("Fabrinet", "BobcatEngine");
-	QString lastProduct = settings.value("MotionPage/lastProductFile").toString();
-	if (!lastProduct.isEmpty() && QFile::exists(lastProduct)) {
-		if (m_productManager->LoadProduct(lastProduct.toStdString())) {
-			m_productManager->ExportToMotionManager(*m_motionManager);
-			m_currentProductLabel->setText("Product: " +
-				QString::fromStdString(m_productManager->GetCurrentProductName()));
+	// Product is already loaded at application level - just update UI
+	if (m_productManager && m_productManager->HasLoadedProduct()) {
+		// Export positions to motion manager
+		m_productManager->ExportToMotionManager(*m_motionManager);
 
-			if (!m_currentDevice.isEmpty()) {
-				refreshPositionDisplay();
-			}
+		// Update product label
+		m_currentProductLabel->setText("Product: " +
+			QString::fromStdString(m_productManager->GetCurrentProductName()));
+
+		// Refresh position display if device selected
+		if (!m_currentDevice.isEmpty()) {
+			refreshPositionDisplay();
 		}
 	}
 
@@ -156,7 +156,7 @@ void MotionPage::setupUI()
 	);
 	productLayout->addWidget(m_currentProductLabel);
 
-	m_loadProductBtn = new QPushButton("Load Product");
+	m_loadProductBtn = new QPushButton("Load Positions");
 	m_loadProductBtn->setFixedHeight(35);
 	m_loadProductBtn->setStyleSheet(
 		"QPushButton {"
@@ -173,7 +173,7 @@ void MotionPage::setupUI()
 	);
 	productLayout->addWidget(m_loadProductBtn);
 
-	m_saveProductBtn = new QPushButton("Save");
+	m_saveProductBtn = new QPushButton("Save Positions");
 	m_saveProductBtn->setFixedHeight(35);
 	m_saveProductBtn->setEnabled(false);
 	m_saveProductBtn->setStyleSheet(
@@ -194,7 +194,7 @@ void MotionPage::setupUI()
 	);
 	productLayout->addWidget(m_saveProductBtn);
 
-	m_saveProductAsBtn = new QPushButton("Save As...");
+	m_saveProductAsBtn = new QPushButton("Save As Positions...");
 	m_saveProductAsBtn->setFixedHeight(35);
 	m_saveProductAsBtn->setStyleSheet(
 		"QPushButton {"
@@ -299,6 +299,7 @@ void MotionPage::setupUI()
 	CreateSystemWidget* createSystemWidget = new CreateSystemWidget(
 		m_coordinateSystemManager,
 		m_motionManager,
+		m_productManager,
 		coordinateSystemTab
 	);
 	coordSubTabs->addTab(createSystemWidget, "Create System");
@@ -414,7 +415,7 @@ void MotionPage::onLoadProductClicked()
 		this,
 		"config",  // Folder path
 		"*positions.json",  // File pattern
-		"Select Product Positions File",  // Dialog title
+		"Load Positions File",  // Dialog title
 		"position files",  // File type description
 		true  // Recursive - search subdirectories
 	);
@@ -430,8 +431,9 @@ void MotionPage::onLoadProductClicked()
 			QString::fromStdString(m_productManager->GetCurrentProductName()));
 		m_saveProductBtn->setEnabled(true);
 
+		// Save to application-wide setting (shared across all pages)
 		QSettings settings("Fabrinet", "BobcatEngine");
-		settings.setValue("MotionPage/lastProductFile", filePath);
+		settings.setValue("Application/lastProductFile", filePath);
 
 		if (!m_currentDevice.isEmpty()) {
 			refreshPositionDisplay();
@@ -439,7 +441,7 @@ void MotionPage::onLoadProductClicked()
 
 		qDebug() << "Loaded product from:" << filePath;
 		QMessageBox::information(this, "Success",
-			"Product positions loaded successfully");
+			"Positions loaded successfully");
 	}
 	else {
 		QMessageBox::critical(this, "Error",
@@ -450,8 +452,8 @@ void MotionPage::onLoadProductClicked()
 void MotionPage::onSaveProductClicked()
 {
 	if (!m_productManager->HasLoadedProduct()) {
-		QMessageBox::warning(this, "No Product",
-			"No product loaded. Use 'Save As...' to create a new product file.");
+		QMessageBox::warning(this, "No Positions Loaded",
+			"No positions file loaded. Use 'Save As Positions...' to create a new positions file.");
 		return;
 	}
 
@@ -459,11 +461,11 @@ void MotionPage::onSaveProductClicked()
 
 	if (m_productManager->SaveProduct()) {
 		QMessageBox::information(this, "Success",
-			"Product saved successfully");
+			"Positions saved successfully");
 	}
 	else {
 		QMessageBox::critical(this, "Error",
-			"Failed to save product file");
+			"Failed to save positions file");
 	}
 }
 
@@ -477,8 +479,8 @@ void MotionPage::onSaveProductAsClicked()
 	bool ok;
 	QString productName = QInputDialog::getText(
 		this,
-		"Save Product As",
-		"Enter product name (without .json):",
+		"Save Positions As",
+		"Enter positions file name (without .json):",
 		QLineEdit::Normal,
 		m_productManager->HasLoadedProduct()
 		? QString::fromStdString(m_productManager->GetCurrentProductName())
@@ -500,16 +502,17 @@ void MotionPage::onSaveProductAsClicked()
 		m_currentProductLabel->setText("Product: " + productName);
 		m_saveProductBtn->setEnabled(true);
 
-		QSettings settings;
-		settings.setValue("lastProductFile",
+		// Save to application-wide setting (shared across all pages)
+		QSettings settings("Fabrinet", "BobcatEngine");
+		settings.setValue("Application/lastProductFile",
 			QString::fromStdString(m_productManager->GetCurrentProductPath()));
 
 		QMessageBox::information(this, "Success",
-			"Product saved as positions." + productName + ".json");
+			"Positions saved as: positions." + productName + ".json");
 	}
 	else {
 		QMessageBox::critical(this, "Error",
-			"Failed to save product file");
+			"Failed to save positions file");
 	}
 }
 

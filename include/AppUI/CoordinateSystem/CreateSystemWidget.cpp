@@ -11,10 +11,12 @@
 CreateSystemWidget::CreateSystemWidget(
     CoordinateSystemManager* coordinateSystemManager,
     UnifiedMotionManager* motionManager,
+    ProductPositionManager* productManager,
     QWidget* parent)
     : QWidget(parent)
     , m_coordinateSystemManager(coordinateSystemManager)
     , m_motionManager(motionManager)
+    , m_productManager(productManager)
     , m_currentStep(0)
     , m_totalSteps(4)
     , m_point1Captured(false)
@@ -151,10 +153,30 @@ void CreateSystemWidget::setupStepPanel()
         "  color: white;"
         "  font-size: 20px;"
         "  font-weight: bold;"
-        "  padding-bottom: 20px;"
+        "  padding-bottom: 10px;"
         "}"
     );
     stepLayout->addWidget(titleLabel);
+
+    // Current Product Display
+    QString productName = "No Product";
+    if (m_productManager && m_productManager->HasLoadedProduct()) {
+        productName = QString::fromStdString(m_productManager->GetCurrentProductName());
+    }
+    QLabel* productLabel = new QLabel("Product: " + productName);
+    productLabel->setStyleSheet(
+        "QLabel {"
+        "  color: #3498db;"
+        "  font-size: 13px;"
+        "  font-weight: bold;"
+        "  padding: 8px;"
+        "  background-color: #34495e;"
+        "  border-radius: 4px;"
+        "  margin-bottom: 10px;"
+        "}"
+    );
+    productLabel->setWordWrap(true);
+    stepLayout->addWidget(productLabel);
 
     // Step indicators
     QStringList stepNames;
@@ -776,14 +798,27 @@ void CreateSystemWidget::onCreateSystemClicked()
     }
 
     if (success) {
-        QString productName = "Default";
-        m_coordinateSystemManager->SaveSystem(systemName.toStdString(), productName.toStdString());
+        // Get current product name
+        if (!m_productManager || !m_productManager->HasLoadedProduct()) {
+            QMessageBox::critical(this, "Error", "No product loaded. Cannot save coordinate system.");
+            return;
+        }
 
-        QMessageBox::information(this, "Success",
-            QString("Coordinate system '%1' created successfully!").arg(systemName));
+        QString productName = QString::fromStdString(m_productManager->GetCurrentProductName());
+        bool saved = m_coordinateSystemManager->SaveSystem(systemName.toStdString(), productName.toStdString());
 
-        emit systemCreated(systemName);
-        resetAll();
+        if (saved) {
+            QMessageBox::information(this, "Success",
+                QString("Coordinate system '%1' created successfully!\n\nSaved to: config/%2/%1.system.json")
+                .arg(systemName)
+                .arg(productName));
+
+            emit systemCreated(systemName);
+            resetAll();
+        } else {
+            QMessageBox::critical(this, "Error",
+                QString("Failed to save coordinate system to product '%1'.").arg(productName));
+        }
     } else {
         QMessageBox::critical(this, "Error",
             "Failed to create coordinate system. Please check your inputs.");
@@ -921,6 +956,13 @@ bool CreateSystemWidget::validateCurrentStep()
 {
     switch (m_currentStep) {
         case 0: // Configuration
+            // Check if product is loaded
+            if (!m_productManager || !m_productManager->HasLoadedProduct()) {
+                QMessageBox::warning(this, "No Product Loaded",
+                    "Please load a product first before creating coordinate systems.\n\n"
+                    "Go to Motion Control tab and use 'Load Product' button.");
+                return false;
+            }
             if (m_systemNameEdit->text().trimmed().isEmpty()) {
                 QMessageBox::warning(this, "Validation Error", "Please enter a system name.");
                 return false;

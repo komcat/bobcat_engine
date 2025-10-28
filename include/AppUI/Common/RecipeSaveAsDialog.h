@@ -22,7 +22,7 @@ class RecipeSaveAsDialog : public QDialog
   Q_OBJECT
 
 public:
-  explicit RecipeSaveAsDialog(const QString& currentRecipeName = "", QWidget* parent = nullptr);
+  explicit RecipeSaveAsDialog(const QString& folderPath, const QString& currentRecipeName = "", QWidget* parent = nullptr);
 
   /**
    * @brief Get the selected save file path (absolute path)
@@ -33,10 +33,11 @@ public:
   /**
    * @brief Static convenience method - show dialog and return save path
    * @param parent Parent widget
+   * @param folderPath Folder to save in (e.g., "config/product1/recipes")
    * @param currentRecipeName Current recipe name (for default)
    * @return Full path to save file, or empty string if cancelled
    */
-  static QString getSaveFileName(QWidget* parent, const QString& currentRecipeName = "");
+  static QString getSaveFileName(QWidget* parent, const QString& folderPath, const QString& currentRecipeName = "");
 
 private slots:
   void onFileClicked(int row, int column);

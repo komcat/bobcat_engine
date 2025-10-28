@@ -12,11 +12,11 @@
 #include <QJsonObject>
 #include <QFile>
 
-RecipeSaveAsDialog::RecipeSaveAsDialog(const QString& currentRecipeName, QWidget* parent)
+RecipeSaveAsDialog::RecipeSaveAsDialog(const QString& folderPath, const QString& currentRecipeName, QWidget* parent)
   : QDialog(parent)
   , m_currentRecipeName(currentRecipeName)
   , m_saveFilePath("")
-  , m_folderPath("recipes")
+  , m_folderPath(folderPath)
 {
   setupUI();
   loadExistingRecipes();
@@ -28,9 +28,9 @@ RecipeSaveAsDialog::RecipeSaveAsDialog(const QString& currentRecipeName, QWidget
   }
 }
 
-QString RecipeSaveAsDialog::getSaveFileName(QWidget* parent, const QString& currentRecipeName)
+QString RecipeSaveAsDialog::getSaveFileName(QWidget* parent, const QString& folderPath, const QString& currentRecipeName)
 {
-  RecipeSaveAsDialog dialog(currentRecipeName, parent);
+  RecipeSaveAsDialog dialog(folderPath, currentRecipeName, parent);
 
   if (dialog.exec() == QDialog::Accepted) {
     return dialog.getSaveFilePath();
@@ -187,9 +187,13 @@ void RecipeSaveAsDialog::loadExistingRecipes()
 {
   m_existingRecipes.clear();
 
+  // ✅ Ensure the folder exists (create it if needed)
+  QDir().mkpath(m_folderPath);
+
   QDir dir(m_folderPath);
   if (!dir.exists()) {
-    dir.mkpath(".");
+    qWarning() << "Failed to create directory:" << m_folderPath;
+    return;
   }
 
   QStringList filters;

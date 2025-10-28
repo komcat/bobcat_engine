@@ -10,6 +10,7 @@
 #include <QDoubleSpinBox>
 #include "CoordinateSystemManager.h"
 #include "unified_motion_manager.h"
+#include "product_position_manager.h"
 
 /**
  * @brief Widget for creating coordinate systems with stepped wizard interface
@@ -26,6 +27,7 @@ public:
     explicit CreateSystemWidget(
         CoordinateSystemManager* coordinateSystemManager,
         UnifiedMotionManager* motionManager,
+        ProductPositionManager* productManager,
         QWidget* parent = nullptr);
     ~CreateSystemWidget() = default;
 
@@ -62,6 +64,7 @@ private:
 
     CoordinateSystemManager* m_coordinateSystemManager;
     UnifiedMotionManager* m_motionManager;
+    ProductPositionManager* m_productManager;
 
     // Wizard state
     int m_currentStep;

@@ -25,13 +25,12 @@ struct ApplicationContext
   TcpClientManager* tcpClientManager = nullptr;
   UnifiedMotionManager* motionManager = nullptr;
   EziIOManager* ioManager = nullptr;
-  PneumaticManager* pneumaticManager = nullptr;  
-  SequenceEngine* sequenceEngine = nullptr;  
-  ProductPositionManager* productManager;  
-  AdaptiveScanController* scanController = nullptr;  
-  ProductPositionManager* productPositionManager = nullptr;  
+  PneumaticManager* pneumaticManager = nullptr;
+  SequenceEngine* sequenceEngine = nullptr;
+  ProductPositionManager* productPositionManager = nullptr;  // Single instance
+  AdaptiveScanController* scanController = nullptr;
   TECManager* tecManager = nullptr;
-  AuxWindowManager* auxWindowManager = nullptr;  // ✅ ADD THIS
+  AuxWindowManager* auxWindowManager = nullptr;
   PowerSupplyManager* powerSupplyManager = nullptr;
   CoordinateSystemManager* coordinateSystemManager = nullptr;
 };
