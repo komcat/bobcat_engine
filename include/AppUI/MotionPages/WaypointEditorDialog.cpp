@@ -35,6 +35,9 @@ void WaypointEditorDialog::setupUI()
   setWindowTitle(QString("Edit Waypoints - %1").arg(m_positionName));
   setMinimumSize(600, 500);
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // Title

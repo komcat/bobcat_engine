@@ -32,6 +32,9 @@ public:
     QWidget* parent = nullptr);
   ~MotionPage() = default;
 
+public slots:
+  void onProductChanged();  // Called when product is loaded/created in MainMenu
+
 signals:
   void backToMainMenu();
 
@@ -55,7 +58,6 @@ private slots:
   // Product management slots
   void onLoadProductClicked();
   void onSaveProductClicked();
-  void onSaveProductAsClicked();
 
   // Scan control slots
   void onScanDeviceChanged(const QString& deviceName);
@@ -108,7 +110,6 @@ private:
   // Product control buttons
   QPushButton* m_loadProductBtn;
   QPushButton* m_saveProductBtn;
-  QPushButton* m_saveProductAsBtn;
   QLabel* m_currentProductLabel;
 
   QTimer* m_livePositionTimer;

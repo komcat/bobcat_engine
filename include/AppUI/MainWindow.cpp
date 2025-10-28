@@ -64,6 +64,20 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
+  // Set light theme for main window
+  setStyleSheet(
+    "QMainWindow { "
+    "  background-color: #f5f5f5; "
+    "} "
+    "QWidget { "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "} "
+    "QStackedWidget { "
+    "  background-color: white; "
+    "}"
+  );
+
   // Create central widget with layout
   QWidget* centralWidget = new QWidget(this);
   QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
@@ -165,12 +179,18 @@ void MainWindow::createPages()
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
+  // Connect product change notifications from MainMenu to MotionPage
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    m_motionPage, &MotionPage::onProductChanged);
   m_pageStack->addWidget(m_motionPage);
 
   //  Recipe page
   m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
   connect(m_recipePage, &RecipePage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
+  // Connect product change notifications from MainMenu to RecipePage
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    m_recipePage, &RecipePage::onProductChanged);
   m_pageStack->addWidget(m_recipePage);
 
 
@@ -178,6 +198,9 @@ void MainWindow::createPages()
   m_runProgramPage = new RunProgramPage(m_context, m_matrixLoader, this);
   connect(m_runProgramPage, &RunProgramPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
+  // Connect product change notifications from MainMenu to RunProgramPage
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    m_runProgramPage, &RunProgramPage::onProductChanged);
   m_pageStack->addWidget(m_runProgramPage);
 
 

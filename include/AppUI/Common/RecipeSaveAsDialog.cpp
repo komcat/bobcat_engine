@@ -45,6 +45,37 @@ void RecipeSaveAsDialog::setupUI()
   setMinimumSize(700, 550);
   resize(800, 650);
 
+  // Set comprehensive light theme for the entire dialog
+  setStyleSheet(
+    "QDialog { "
+    "  background-color: white; "
+    "} "
+    "QGroupBox { "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "  border: 1px solid #ddd; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "} "
+    "QLabel { "
+    "  background-color: transparent; "
+    "  color: #2c3e50; "
+    "} "
+    "QLineEdit { "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "  border: 1px solid #bdc3c7; "
+    "}"
+  );
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // ============================================================================

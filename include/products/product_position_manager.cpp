@@ -62,7 +62,8 @@ bool ProductPositionManager::SaveProduct() {
 bool ProductPositionManager::SaveProductAs(const std::string& productName) {
   // ✅ Create product directory structure: config/productName/
   std::string productDir = "config/" + productName;
-  std::string filePath = productDir + "/" + productName + ".positions.json";
+  // ✅ FIXED: Use correct format positions.[productName].json
+  std::string filePath = productDir + "/positions." + productName + ".json";
 
   std::cout << "[INFO] ProductPositionManager: Saving product as "
     << filePath << std::endl;
@@ -92,8 +93,9 @@ bool ProductPositionManager::SaveProductAs(const std::string& productName) {
 
 std::string ProductPositionManager::ExtractProductName(const std::string& filePath) const {
   // Extract product name from path like:
-  //   "config/SIPHOG/SIPHOG.positions.json" (new format)
-  //   "config/SIPHOG/positions.json" (legacy format)
+  //   "config/SIPHOG101/positions.SIPHOG101.json" (correct format)
+  //   "config/SIPHOG101/positions.json" (legacy format - folder name used)
+  //   "config/SIPHOG101/SIPHOG101.positions.json" (old wrong format)
 
   // Find the last directory separator
   size_t lastSlash = filePath.find_last_of("/\\");
@@ -101,18 +103,32 @@ std::string ProductPositionManager::ExtractProductName(const std::string& filePa
     return "unknown";
   }
 
-  // Find the second-to-last directory separator
+  // Get the filename
+  std::string filename = filePath.substr(lastSlash + 1);
+
+  // Try to extract from filename pattern "positions.[name].json"
+  if (filename.find("positions.") == 0 && filename.find(".json") != std::string::npos) {
+    // Extract name between "positions." and ".json"
+    size_t start = 10; // Length of "positions."
+    size_t end = filename.find(".json");
+    if (end > start) {
+      std::string productName = filename.substr(start, end - start);
+      std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
+        << productName << "' from filename: " << filename << std::endl;
+      return productName;
+    }
+  }
+
+  // Fallback: Use directory name (for legacy "positions.json" files)
   size_t secondLastSlash = filePath.find_last_of("/\\", lastSlash - 1);
   if (secondLastSlash == std::string::npos) {
-    // No parent directory, might be direct path
     return "unknown";
   }
 
-  // Extract product name (directory name between the two slashes)
   std::string productName = filePath.substr(secondLastSlash + 1, lastSlash - secondLastSlash - 1);
 
   std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
-    << productName << "' from path: " << filePath << std::endl;
+    << productName << "' from directory path: " << filePath << std::endl;
 
   return productName;
 }

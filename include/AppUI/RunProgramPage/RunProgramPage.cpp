@@ -570,6 +570,19 @@ void RunProgramPage::showExecutionWidget()
 // FILE OPERATIONS
 // ============================================================================
 
+void RunProgramPage::onProductChanged()
+{
+  // Product has changed - clear current program to avoid confusion
+  // User should load a program from the new product folder
+  if (m_programManager->getRecipeCount() > 0) {
+    m_programManager->newProgram();
+    m_currentProgramPath.clear();
+    updateRecipeList();
+
+    std::cout << "[RunProgramPage] Product changed - program cleared" << std::endl;
+  }
+}
+
 void RunProgramPage::onLoadProgram()
 {
   // ✅ Check if product is loaded

@@ -38,6 +38,10 @@ public:
   std::string getVersion() const { return "1.0.0"; }
   std::string getApplicationName() const { return "Bobcat Engine"; }
 
+  // Simulation mode control
+  void setSimulationMode(bool enable) { m_context.simulationMode = enable; }
+  bool isSimulationMode() const { return m_context.simulationMode; }
+
 private:
   bool initialize();
   void createMainWindow();

@@ -55,6 +55,37 @@ void FileSelectorDialog::setupUI()
   setMinimumSize(700, 500);
   resize(800, 600);
 
+  // Set comprehensive light theme for the entire dialog
+  setStyleSheet(
+    "QDialog { "
+    "  background-color: white; "
+    "} "
+    "QGroupBox { "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "  border: 1px solid #ddd; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "} "
+    "QLabel { "
+    "  background-color: transparent; "
+    "  color: #2c3e50; "
+    "} "
+    "QLineEdit { "
+    "  background-color: white; "
+    "  color: #2c3e50; "
+    "  border: 1px solid #bdc3c7; "
+    "}"
+  );
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // ============================================================================
@@ -295,6 +326,31 @@ void FileSelectorDialog::populateFileTable()
     QTableWidgetItem* sizeItem = new QTableWidgetItem(sizeStr);
     sizeItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_fileTable->setItem(i, colIndex++, sizeItem);
+  }
+
+  // Update folder label to show actual file location
+  if (m_recursive && !m_filteredFiles.isEmpty()) {
+    // Check if all files are in the same subdirectory
+    QString commonPath = m_filteredFiles.first().relativePath;
+    bool allSameFolder = true;
+
+    for (const FileInfo& file : m_filteredFiles) {
+      if (file.relativePath != commonPath) {
+        allSameFolder = false;
+        break;
+      }
+    }
+
+    if (allSameFolder && commonPath != ".") {
+      // All files in same subfolder - show the full path
+      m_folderLabel->setText(QString("📁 Folder: <b>%1/%2</b>").arg(m_folderPath).arg(commonPath));
+    } else if (!allSameFolder) {
+      // Files in multiple folders - indicate recursive search
+      m_folderLabel->setText(QString("📁 Folder: <b>%1</b> (+ subdirectories)").arg(m_folderPath));
+    } else {
+      // All files in root folder
+      m_folderLabel->setText(QString("📁 Folder: <b>%1</b>").arg(m_folderPath));
+    }
   }
 
   // Update file count label

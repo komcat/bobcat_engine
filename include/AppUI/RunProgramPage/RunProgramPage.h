@@ -38,6 +38,9 @@ public:
   explicit RunProgramPage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RunProgramPage();
 
+public slots:
+  void onProductChanged();  // Called when product is loaded/created in MainMenu
+
 signals:
   void backToMainMenu();
 

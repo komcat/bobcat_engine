@@ -133,6 +133,62 @@ bool Application::initialize()
       m_qApplication->setFont(fallbackFont);
     }
 
+    // Set global light theme stylesheet for all Qt widgets
+    m_qApplication->setStyleSheet(
+      /* All dialogs */
+      "QDialog { "
+      "  background-color: white; "
+      "  color: #2c3e50; "
+      "} "
+      /* Message boxes */
+      "QMessageBox { "
+      "  background-color: white; "
+      "  color: #2c3e50; "
+      "} "
+      "QMessageBox QLabel { "
+      "  background-color: transparent; "
+      "  color: #2c3e50; "
+      "} "
+      "QMessageBox QPushButton { "
+      "  background-color: #3498db; "
+      "  color: white; "
+      "  border: none; "
+      "  padding: 8px 16px; "
+      "  border-radius: 4px; "
+      "  min-width: 80px; "
+      "} "
+      "QMessageBox QPushButton:hover { "
+      "  background-color: #2980b9; "
+      "} "
+      "QMessageBox QPushButton:pressed { "
+      "  background-color: #21618c; "
+      "} "
+      /* Input dialogs */
+      "QInputDialog { "
+      "  background-color: white; "
+      "  color: #2c3e50; "
+      "} "
+      "QInputDialog QLabel { "
+      "  background-color: transparent; "
+      "  color: #2c3e50; "
+      "} "
+      "QInputDialog QLineEdit { "
+      "  background-color: white; "
+      "  color: #2c3e50; "
+      "  border: 1px solid #bdc3c7; "
+      "  padding: 5px; "
+      "} "
+      /* File dialogs */
+      "QFileDialog { "
+      "  background-color: white; "
+      "  color: #2c3e50; "
+      "} "
+      "QFileDialog QLabel { "
+      "  background-color: transparent; "
+      "  color: #2c3e50; "
+      "}"
+    );
+
     std::cout << "[Application] " << getApplicationName()
       << " v" << getVersion() << std::endl;
 
@@ -153,6 +209,15 @@ bool Application::initialize()
 void Application::initializeManagers()
 {
   std::cout << "[Application] Initializing managers..." << std::endl;
+
+  // Check for simulation mode
+  if (m_context.simulationMode) {
+    std::cout << "======================================" << std::endl;
+    std::cout << "  🔧 SIMULATION MODE ENABLED 🔧" << std::endl;
+    std::cout << "  Hardware connections will be SKIPPED" << std::endl;
+    std::cout << "  Use this mode for UI/file development" << std::endl;
+    std::cout << "======================================" << std::endl;
+  }
 
   try {
     initializeLogManager();
@@ -231,9 +296,11 @@ void Application::initializeTcpClientManager()
     m_logManager->Warning("No TCP client config found - using empty config", "Application");
   }
 
-  // Auto-connect if config was loaded
-  if (tcpConfigLoaded) {
+  // Auto-connect if config was loaded (skip in simulation mode)
+  if (tcpConfigLoaded && !m_context.simulationMode) {
     m_tcpClientManager->ConnectAutoClients();
+  } else if (m_context.simulationMode) {
+    m_logManager->Info("Simulation mode: Skipping TCP auto-connect", "Application");
   }
 }
 
@@ -268,17 +335,26 @@ void Application::initializeCameraManager()
     if (configManager->InitializeCameraManager(*m_cameraManager)) {
       m_logManager->Info("CameraManager initialized from: " + configPath, "Application");
 
-      // ✅ ADD THIS: Connect all cameras with delay
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      m_cameraManager->ConnectAllCameras();
+      // Connect all cameras with delay (skip in simulation mode)
+      if (!m_context.simulationMode) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        m_cameraManager->ConnectAllCameras();
+      } else {
+        m_logManager->Info("Simulation mode: Skipping camera connections", "Application");
+      }
     }
     else {
       m_logManager->Warning("Failed to initialize CameraManager with config", "Application");
     }
   }
 
-  m_cameraManager->StartBroadcastSystem();
-  m_cameraManager->StartGrabbingAll();
+  // Skip camera operations in simulation mode
+  if (!m_context.simulationMode) {
+    m_cameraManager->StartBroadcastSystem();
+    m_cameraManager->StartGrabbingAll();
+  } else {
+    m_logManager->Info("Simulation mode: Skipping camera broadcast and grabbing", "Application");
+  }
 
   m_logManager->Info("CameraManager initialized", "Application");
 }
@@ -321,12 +397,16 @@ void Application::initializeMotionManager()
       "Application"
     );
 
-    // 3. Auto-connect enabled devices
-    int connectedCount = m_motionManager->ConnectEnabledDevices();
-    m_logManager->Info(
-      "Connected " + std::to_string(connectedCount) + " devices",
-      "Application"
-    );
+    // 3. Auto-connect enabled devices (skip in simulation mode)
+    if (!m_context.simulationMode) {
+      int connectedCount = m_motionManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " devices",
+        "Application"
+      );
+    } else {
+      m_logManager->Info("Simulation mode: Skipping motion device connections", "Application");
+    }
 
 		/*
 		TODO: Set logger for motion manager if needed
@@ -451,16 +531,20 @@ void Application::initializeIOManager()
       "Application"
     );
 
-    // 4. Auto-connect enabled devices
-    int connectedCount = m_ioManager->ConnectEnabledDevices();
-    m_logManager->Info(
-      "Connected " + std::to_string(connectedCount) + " IO devices",
-      "Application"
-    );
+    // 4. Auto-connect enabled devices (skip in simulation mode)
+    if (!m_context.simulationMode) {
+      int connectedCount = m_ioManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " IO devices",
+        "Application"
+      );
 
-    // 5. Start automatic polling (100ms interval)
-    m_ioManager->StartPolling(100);
-    m_logManager->Info("IO polling started (100ms interval)", "Application");
+      // 5. Start automatic polling (100ms interval)
+      m_ioManager->StartPolling(100);
+      m_logManager->Info("IO polling started (100ms interval)", "Application");
+    } else {
+      m_logManager->Info("Simulation mode: Skipping IO device connections and polling", "Application");
+    }
 
     m_logManager->Info("IO manager initialized successfully", "Application");
   }
@@ -1185,12 +1269,16 @@ void Application::initializeTECManager()
       "Application"
     );
 
-    // 3. Auto-connect enabled devices
-    int connectedCount = m_tecManager->ConnectEnabledDevices();
-    m_logManager->Info(
-      "Connected " + std::to_string(connectedCount) + " TEC devices",
-      "Application"
-    );
+    // 3. Auto-connect enabled devices (skip in simulation mode)
+    if (!m_context.simulationMode) {
+      int connectedCount = m_tecManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " TEC devices",
+        "Application"
+      );
+    } else {
+      m_logManager->Info("Simulation mode: Skipping TEC device connections", "Application");
+    }
 
     m_logManager->Info("TEC manager initialized successfully", "Application");
   }

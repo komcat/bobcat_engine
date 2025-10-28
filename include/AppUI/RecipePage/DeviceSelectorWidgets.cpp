@@ -142,6 +142,9 @@ void NodeSelectorDialog::setupUI()
   setWindowTitle("Select Node");
   setMinimumSize(400, 500);
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // Info label

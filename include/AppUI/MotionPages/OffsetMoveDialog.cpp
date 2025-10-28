@@ -25,6 +25,9 @@ void OffsetMoveDialog::setupUI()
   setMinimumWidth(400);
   setMaximumHeight(600);  // ✅ ADD - Limit height
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setSpacing(8);  // ✅ CHANGED from 12
   mainLayout->setContentsMargins(10, 10, 10, 10);  // ✅ ADD

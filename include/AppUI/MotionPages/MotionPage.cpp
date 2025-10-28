@@ -19,6 +19,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QFile>
+#include <QFileInfo>
 
 MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	ProductPositionManager* productManager,
@@ -66,9 +67,16 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 		// Export positions to motion manager
 		m_productManager->ExportToMotionManager(*m_motionManager);
 
-		// Update product label
-		m_currentProductLabel->setText("Product: " +
-			QString::fromStdString(m_productManager->GetCurrentProductName()));
+		// Update product label to show name and filename
+		std::string productName = m_productManager->GetCurrentProductName();
+		std::string productPath = m_productManager->GetCurrentProductPath();
+		QString filename = QFileInfo(QString::fromStdString(productPath)).fileName();
+
+		m_currentProductLabel->setText(
+			QString("Product: %1 | File: %2")
+			.arg(QString::fromStdString(productName))
+			.arg(filename)
+		);
 
 		// Refresh position display if device selected
 		if (!m_currentDevice.isEmpty()) {
@@ -156,7 +164,7 @@ void MotionPage::setupUI()
 	);
 	productLayout->addWidget(m_currentProductLabel);
 
-	m_loadProductBtn = new QPushButton("Load Positions");
+	m_loadProductBtn = new QPushButton("Import Positions");
 	m_loadProductBtn->setFixedHeight(35);
 	m_loadProductBtn->setStyleSheet(
 		"QPushButton {"
@@ -193,23 +201,6 @@ void MotionPage::setupUI()
 		"}"
 	);
 	productLayout->addWidget(m_saveProductBtn);
-
-	m_saveProductAsBtn = new QPushButton("Save As Positions...");
-	m_saveProductAsBtn->setFixedHeight(35);
-	m_saveProductAsBtn->setStyleSheet(
-		"QPushButton {"
-		"  background-color: #16a085;"
-		"  color: white;"
-		"  border: none;"
-		"  border-radius: 4px;"
-		"  font-size: 12px;"
-		"  padding: 5px 15px;"
-		"}"
-		"QPushButton:hover {"
-		"  background-color: #138d75;"
-		"}"
-	);
-	productLayout->addWidget(m_saveProductAsBtn);
 
 	topLayout->addLayout(productLayout);
 
@@ -330,7 +321,6 @@ void MotionPage::setupUI()
 
 	connect(m_loadProductBtn, &QPushButton::clicked, this, &MotionPage::onLoadProductClicked);
 	connect(m_saveProductBtn, &QPushButton::clicked, this, &MotionPage::onSaveProductClicked);
-	connect(m_saveProductAsBtn, &QPushButton::clicked, this, &MotionPage::onSaveProductAsClicked);
 
 	connect(m_controlPanel, &MotionControlPanel::deviceChanged,
 		this, &MotionPage::onDeviceChanged);
@@ -410,14 +400,14 @@ void MotionPage::onLoadProductClicked()
 		}
 	}
 
-	// ✅ Use FileSelectorDialog with recursive search for subdirectories (SIPHOG, BOBCAT, etc.)
+	// ✅ Use FileSelectorDialog - searches recursively in config folder
 	QString filePath = FileSelectorDialog::getOpenFileName(
 		this,
-		"config",  // Folder path
-		"*positions.json",  // File pattern
+		"config",  // Folder path - base config folder
+		"positions.*.json",  // File pattern - matches positions.[name].json
 		"Load Positions File",  // Dialog title
 		"position files",  // File type description
-		true  // Recursive - search subdirectories
+		true  // Recursive - searches all product subdirectories (config/[product_name]/)
 	);
 
 	if (filePath.isEmpty()) {
@@ -427,8 +417,15 @@ void MotionPage::onLoadProductClicked()
 	if (m_productManager->LoadProduct(filePath.toStdString())) {
 		m_productManager->ExportToMotionManager(*m_motionManager);
 
-		m_currentProductLabel->setText("Product: " +
-			QString::fromStdString(m_productManager->GetCurrentProductName()));
+		// Update label to show product name and filename
+		std::string productName = m_productManager->GetCurrentProductName();
+		QString filename = QFileInfo(filePath).fileName();
+
+		m_currentProductLabel->setText(
+			QString("Product: %1 | File: %2")
+			.arg(QString::fromStdString(productName))
+			.arg(filename)
+		);
 		m_saveProductBtn->setEnabled(true);
 
 		// Save to application-wide setting (shared across all pages)
@@ -441,11 +438,11 @@ void MotionPage::onLoadProductClicked()
 
 		qDebug() << "Loaded product from:" << filePath;
 		QMessageBox::information(this, "Success",
-			"Positions loaded successfully");
+			"Positions imported successfully from:\n" + filename);
 	}
 	else {
 		QMessageBox::critical(this, "Error",
-			"Failed to load positions from:\n" + filePath);
+			"Failed to import positions from:\n" + filePath);
 	}
 }
 
@@ -462,53 +459,6 @@ void MotionPage::onSaveProductClicked()
 	if (m_productManager->SaveProduct()) {
 		QMessageBox::information(this, "Success",
 			"Positions saved successfully");
-	}
-	else {
-		QMessageBox::critical(this, "Error",
-			"Failed to save positions file");
-	}
-}
-
-void MotionPage::onSaveProductAsClicked()
-{
-	if (!m_productManager) {
-		QMessageBox::critical(this, "Error", "Product manager not initialized");
-		return;
-	}
-
-	bool ok;
-	QString productName = QInputDialog::getText(
-		this,
-		"Save Positions As",
-		"Enter positions file name (without .json):",
-		QLineEdit::Normal,
-		m_productManager->HasLoadedProduct()
-		? QString::fromStdString(m_productManager->GetCurrentProductName())
-		: "",
-		&ok
-	);
-
-	if (!ok || productName.isEmpty()) {
-		return;
-	}
-
-	if (productName.endsWith(".json")) {
-		productName = productName.left(productName.length() - 5);
-	}
-
-	m_productManager->ImportFromMotionManager(*m_motionManager);
-
-	if (m_productManager->SaveProductAs(productName.toStdString())) {
-		m_currentProductLabel->setText("Product: " + productName);
-		m_saveProductBtn->setEnabled(true);
-
-		// Save to application-wide setting (shared across all pages)
-		QSettings settings("Fabrinet", "BobcatEngine");
-		settings.setValue("Application/lastProductFile",
-			QString::fromStdString(m_productManager->GetCurrentProductPath()));
-
-		QMessageBox::information(this, "Success",
-			"Positions saved as: positions." + productName + ".json");
 	}
 	else {
 		QMessageBox::critical(this, "Error",
@@ -618,6 +568,27 @@ void MotionPage::refreshPositionDisplay()
 	}
 
 	loadPositionsForDevice(m_currentDevice);
+}
+
+void MotionPage::onProductChanged()
+{
+	// Update product label when product changes in MainMenu
+	if (m_productManager) {
+		std::string productName = m_productManager->GetCurrentProductName();
+		std::string productPath = m_productManager->GetCurrentProductPath();
+		QString filename = QFileInfo(QString::fromStdString(productPath)).fileName();
+
+		m_currentProductLabel->setText(
+			QString("Product: %1 | File: %2")
+			.arg(QString::fromStdString(productName))
+			.arg(filename)
+		);
+
+		// Reload positions for current device (if any)
+		if (!m_currentDevice.isEmpty()) {
+			loadPositionsForDevice(m_currentDevice);
+		}
+	}
 }
 
 void MotionPage::transformLocalToGlobal(double localX, double localY, double localZ,

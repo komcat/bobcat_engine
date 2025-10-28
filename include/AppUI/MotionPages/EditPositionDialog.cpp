@@ -23,6 +23,9 @@ void EditPositionDialog::setupUI()
   setMinimumWidth(400);
   setMaximumWidth(500);
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(20, 20, 20, 20);
   mainLayout->setSpacing(15);

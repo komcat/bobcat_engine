@@ -2,6 +2,7 @@
 #include "CalibrationCommandHandler.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "product_position_manager.h"
 #include "LogManager.h"
 #include "SequenceContext.h"
 #include <nlohmann/json.hpp>
@@ -21,16 +22,37 @@ CalibrationCommandHandler::CalibrationCommandHandler(ApplicationContext* context
 
 std::string CalibrationCommandHandler::GetNavigationFilePath(const std::string& uid) const
 {
+  // ✅ Use product-specific calibration folder
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+    return "config/" + productName + "/calibration/navigation_" + uid + ".json";
+  }
+  // Fallback to global folder if no product loaded
   return "config/calibration/navigation_" + uid + ".json";
 }
 
 std::string CalibrationCommandHandler::GetNeedleZCalibrationFilePath() const
 {
+  // ✅ Use product-specific calibration folder
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+    return "config/" + productName + "/calibration/needle_z_calibration.json";
+  }
+  // Fallback to global folder if no product loaded
   return "config/calibration/needle_z_calibration.json";
 }
 
 std::string CalibrationCommandHandler::GetCameraToNeedleOffsetFilePath() const
 {
+  // ✅ Use product-specific calibration folder
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+    return "config/" + productName + "/calibration/needleXYoffsetCamera.json";
+  }
+  // Fallback to global folder if no product loaded
   return "config/calibration/needleXYoffsetCamera.json";
 }
 
@@ -56,7 +78,19 @@ std::string CalibrationCommandHandler::GetCurrentDateTime(bool dateOnly) const
 bool CalibrationCommandHandler::EnsureCalibrationDirectoryExists(std::string& errorMessage)
 {
   try {
-    std::filesystem::path dirPath = "config/calibration";
+    // ✅ Use product-specific calibration folder if product is loaded
+    std::string dirPathStr;
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+      std::string productName = m_context->productPositionManager->GetCurrentProductName();
+      dirPathStr = "config/" + productName + "/calibration";
+    }
+    else {
+      // Fallback to global folder if no product loaded
+      dirPathStr = "config/calibration";
+    }
+
+    std::filesystem::path dirPath = dirPathStr;
 
     if (!std::filesystem::exists(dirPath)) {
       if (!std::filesystem::create_directories(dirPath)) {
@@ -65,7 +99,7 @@ bool CalibrationCommandHandler::EnsureCalibrationDirectoryExists(std::string& er
       }
 
       if (m_logger) {
-        m_logger->Info("Created calibration directory: config/calibration", "CalibrationHandler");
+        m_logger->Info("Created calibration directory: " + dirPathStr, "CalibrationHandler");
       }
     }
 

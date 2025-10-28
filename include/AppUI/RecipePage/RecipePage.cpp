@@ -562,6 +562,47 @@ void RecipePage::onNewRecipe()
   clearConfigurationForm();
 }
 
+void RecipePage::onProductChanged()
+{
+  // Product has changed - update product info and clear current recipe
+  if (!m_context || !m_context->productPositionManager) {
+    return;
+  }
+
+  // Get the newly loaded product information
+  std::string productName = m_context->productPositionManager->GetCurrentProductName();
+  std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
+
+  if (!productName.empty() && !productPath.empty()) {
+    // Update RecipeManager's product file
+    m_recipeManager->setProductFile(productPath);
+
+    // Update product status labels
+    m_productStatusLabel->setText(QString("Product: %1")
+      .arg(QString::fromStdString(productName)));
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+
+    m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+      .arg(QString::fromStdString(productName))
+      .arg(QString::fromStdString(productPath)));
+    m_loadedProductLabel->setStyleSheet(
+      "font-size: 11px; "
+      "color: #27ae60; "
+      "font-weight: bold;"
+    );
+
+    std::cout << "[RecipePage] Product changed to: " << productName << std::endl;
+  }
+
+  // Clear current recipe if any (user should load recipe from new product)
+  if (m_recipeManager->getStepCount() > 0) {
+    m_recipeManager->newRecipe();
+    m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
+    refreshRecipeList();
+    clearConfigurationForm();
+  }
+}
+
 void RecipePage::onLoadRecipe()
 {
   // ✅ Check if product is loaded

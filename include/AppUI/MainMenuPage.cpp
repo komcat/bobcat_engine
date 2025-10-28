@@ -3,6 +3,8 @@
 #include "ApplicationContext.h"
 #include "product_position_manager.h"
 #include "FileSelectorDialog.h"
+#include "CreateProductDialog.h"
+#include "ProductSelectorDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -12,11 +14,15 @@
 #include <QInputDialog>
 #include <QSettings>
 #include <QFrame>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 
 MainMenuPage::MainMenuPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_productLabel(nullptr)
+  , m_newProductBtn(nullptr)
   , m_loadProductBtn(nullptr)
   , m_saveProductBtn(nullptr)
   , m_saveProductAsBtn(nullptr)
@@ -77,6 +83,26 @@ void MainMenuPage::setupUI()
   // Buttons row
   QHBoxLayout* buttonLayout = new QHBoxLayout();
   buttonLayout->setSpacing(15);
+
+  m_newProductBtn = new QPushButton("New Product");
+  m_newProductBtn->setMinimumHeight(40);
+  m_newProductBtn->setStyleSheet(
+    "QPushButton {"
+    "  background-color: #9b59b6;"
+    "  color: white;"
+    "  border: none;"
+    "  border-radius: 5px;"
+    "  font-size: 14px;"
+    "  font-weight: bold;"
+    "  padding: 8px 20px;"
+    "}"
+    "QPushButton:hover {"
+    "  background-color: #8e44ad;"
+    "}"
+    "QPushButton:pressed {"
+    "  background-color: #7d3c98;"
+    "}"
+  );
 
   m_loadProductBtn = new QPushButton("Load Product");
   m_loadProductBtn->setMinimumHeight(40);
@@ -144,6 +170,7 @@ void MainMenuPage::setupUI()
   );
 
   buttonLayout->addStretch();
+  buttonLayout->addWidget(m_newProductBtn);
   buttonLayout->addWidget(m_loadProductBtn);
   buttonLayout->addWidget(m_saveProductBtn);
   buttonLayout->addWidget(m_saveProductAsBtn);
@@ -153,6 +180,7 @@ void MainMenuPage::setupUI()
   mainLayout->addWidget(productFrame);
 
   // Connect product button signals
+  connect(m_newProductBtn, &QPushButton::clicked, this, &MainMenuPage::onNewProduct);
   connect(m_loadProductBtn, &QPushButton::clicked, this, &MainMenuPage::onLoadProduct);
   connect(m_saveProductBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProduct);
   connect(m_saveProductAsBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProductAs);
@@ -249,6 +277,52 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
 // PRODUCT MANAGEMENT
 // ============================================================================
 
+void MainMenuPage::onNewProduct()
+{
+  if (!m_context || !m_context->productPositionManager) {
+    QMessageBox::critical(this, "Error", "Product manager not initialized");
+    return;
+  }
+
+  // Show create product dialog
+  QString productPath = CreateProductDialog::createNewProduct(this);
+
+  if (productPath.isEmpty()) {
+    // User cancelled
+    return;
+  }
+
+  // Load the newly created product
+  if (m_context->productPositionManager->LoadProduct(productPath.toStdString())) {
+    // Export positions to motion manager if available
+    if (m_context->motionManager) {
+      m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+    }
+
+    // Save to application-wide setting (shared across all pages)
+    QSettings settings("Fabrinet", "BobcatEngine");
+    settings.setValue("Application/lastProductFile", productPath);
+
+    updateProductDisplay();
+
+    // Notify other pages that product has changed
+    emit productChanged();
+
+    QMessageBox::information(this, "Product Ready",
+      QString("New product created and loaded successfully!\n\n"
+              "Product: %1\n\n"
+              "You can now:\n"
+              "• Add positions in Motion page\n"
+              "• Create recipes in Recipe page\n"
+              "• Create programs in Process page")
+        .arg(QString::fromStdString(m_context->productPositionManager->GetCurrentProductName())));
+  }
+  else {
+    QMessageBox::critical(this, "Error",
+      "Product folder was created, but failed to load the positions file.");
+  }
+}
+
 void MainMenuPage::updateProductDisplay()
 {
   if (!m_productLabel || !m_context || !m_context->productPositionManager) {
@@ -275,17 +349,41 @@ void MainMenuPage::onLoadProduct()
     return;
   }
 
-  // Use FileSelectorDialog with recursive search for subdirectories (SIPHOG, BOBCAT, etc.)
-  QString filePath = FileSelectorDialog::getOpenFileName(
-    this,
-    "config",  // Folder path
-    "*positions.json",  // File pattern
-    "Select Product Positions File",  // Dialog title
-    "position files",  // File type description
-    true  // Recursive - search subdirectories
-  );
+  // Get list of product folders in config directory
+  QDir configDir("config");
+  if (!configDir.exists()) {
+    QMessageBox::critical(this, "Error", "Config directory not found");
+    return;
+  }
 
-  if (filePath.isEmpty()) {
+  QStringList productFolders = configDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+
+  if (productFolders.isEmpty()) {
+    QMessageBox::warning(this, "No Products",
+      "No product folders found in config directory.\n\n"
+      "Create a new product using 'New Product' button.");
+    return;
+  }
+
+  // Show dialog to select product folder
+  QString selectedProduct = ProductSelectorDialog::selectProduct(productFolders, this);
+
+  if (selectedProduct.isEmpty()) {
+    return;
+  }
+
+  // Construct path to positions file: config/[product]/positions.[product].json
+  QString filePath = QString("config/%1/positions.%2.json")
+    .arg(selectedProduct)
+    .arg(selectedProduct);
+
+  // Check if file exists
+  if (!QFile::exists(filePath)) {
+    QMessageBox::critical(this, "Error",
+      QString("Positions file not found:\n%1\n\n"
+              "Expected format: positions.%2.json")
+        .arg(filePath)
+        .arg(selectedProduct));
     return;
   }
 
@@ -301,9 +399,14 @@ void MainMenuPage::onLoadProduct()
 
     updateProductDisplay();
 
+    // Notify other pages that product has changed
+    emit productChanged();
+
     QMessageBox::information(this, "Success",
-      "Product loaded successfully:\n" +
-      QString::fromStdString(m_context->productPositionManager->GetCurrentProductName()));
+      QString("Product loaded successfully!\n\n"
+              "Product: %1\nFile: %2")
+        .arg(selectedProduct)
+        .arg(QFileInfo(filePath).fileName()));
   }
   else {
     QMessageBox::critical(this, "Error",

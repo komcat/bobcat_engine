@@ -19,6 +19,7 @@ class CoordinateSystemManager;
 
 struct ApplicationContext
 {
+  // Hardware managers
   CameraManager* cameraManager = nullptr;
   LogManager* logManager = nullptr;
   DataStore* dataStore = nullptr;
@@ -33,4 +34,7 @@ struct ApplicationContext
   AuxWindowManager* auxWindowManager = nullptr;
   PowerSupplyManager* powerSupplyManager = nullptr;
   CoordinateSystemManager* coordinateSystemManager = nullptr;
+
+  // System configuration
+  bool simulationMode = false;  // When true, skip hardware connections
 };

@@ -15,6 +15,9 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
   setMinimumWidth(450);
   setMinimumHeight(150);
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   // Set window flags for non-modal dialogs
   if (!blocking) {
     setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);

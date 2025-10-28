@@ -26,8 +26,10 @@ signals:
   void hardwareClicked();
   void editConfigClicked();
   void futureUpdateClicked();
+  void productChanged();  // Emitted when product is loaded or created
 
 private slots:
+  void onNewProduct();
   void onLoadProduct();
   void onSaveProduct();
   void onSaveProductAs();
@@ -41,6 +43,7 @@ private:
 
   // Product controls
   QLabel* m_productLabel;
+  QPushButton* m_newProductBtn;
   QPushButton* m_loadProductBtn;
   QPushButton* m_saveProductBtn;
   QPushButton* m_saveProductAsBtn;

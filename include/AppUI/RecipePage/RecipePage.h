@@ -34,6 +34,9 @@ public:
   explicit RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RecipePage();
 
+public slots:
+  void onProductChanged();  // Called when product is loaded/created in MainMenu
+
 signals:
   void backToMainMenu();
 

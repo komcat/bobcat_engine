@@ -19,42 +19,80 @@
         },
         {
             "name": "x64-debug",
-            "displayName": "x64 Debug",
+            "displayName": "x64 Debug (Simulation)",
             "inherits": "windows-base",
             "architecture": {
                 "value": "x64",
                 "strategy": "external"
             },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BOBCAT_SIMULATION": "ON"
+            }
+        },
+        {
+            "name": "x64-debug-hardware",
+            "displayName": "x64 Debug (Hardware)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BOBCAT_SIMULATION": "OFF"
             }
         },
         {
             "name": "x64-release",
-            "displayName": "x64 Release",
-            "inherits": "x64-debug",
+            "displayName": "x64 Release (Hardware)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "BOBCAT_SIMULATION": "OFF"
             }
         },
         {
             "name": "x86-debug",
-            "displayName": "x86 Debug",
+            "displayName": "x86 Debug (Simulation)",
             "inherits": "windows-base",
             "architecture": {
                 "value": "x86",
                 "strategy": "external"
             },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BOBCAT_SIMULATION": "ON"
+            }
+        },
+        {
+            "name": "x86-debug-hardware",
+            "displayName": "x86 Debug (Hardware)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x86",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BOBCAT_SIMULATION": "OFF"
             }
         },
         {
             "name": "x86-release",
-            "displayName": "x86 Release",
-            "inherits": "x86-debug",
+            "displayName": "x86 Release (Hardware)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x86",
+                "strategy": "external"
+            },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "BOBCAT_SIMULATION": "OFF"
             }
         }
     ]

@@ -7,12 +7,30 @@ endif()
 
 project("bobcat_engine")
 
+# ============================================================================
+# Simulation Mode Configuration
+# ============================================================================
+# Option to enable simulation mode (default: ON for development safety)
+option(BOBCAT_SIMULATION "Enable simulation mode (skip hardware connections)" ON)
+
+if(BOBCAT_SIMULATION)
+    message(STATUS "========================================")
+    message(STATUS "  BOBCAT SIMULATION MODE: ENABLED")
+    message(STATUS "  Hardware connections will be skipped")
+    message(STATUS "========================================")
+else()
+    message(STATUS "========================================")
+    message(STATUS "  BOBCAT HARDWARE MODE: ENABLED")
+    message(STATUS "  Will connect to physical devices")
+    message(STATUS "========================================")
+endif()
+
 # Add this after your project() or set(CMAKE_CXX_STANDARD ...) line
 
 if(MSVC)
     # Suppress warning C4828 (disallowed character in source file)
     add_compile_options(/wd4828)
-    
+
     # If you also want to suppress C4566 (which you had before)
     add_compile_options(/wd4566)
 endif()
@@ -380,6 +398,8 @@ set(SOURCES
     include/sequence/PSUCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
+    include/AppUI/Common/CreateProductDialog.cpp
+    include/AppUI/Common/ProductSelectorDialog.cpp
     include/AuxWindow/AuxWindowManager.cpp
     include/AuxWindow/AuxViewWindow.cpp
     include/AuxWindow/LiveChartWidget.cpp
@@ -511,6 +531,8 @@ set(HEADERS
     include/sequence/PSUCommandHandler.h
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
+    include/AppUI/Common/CreateProductDialog.h
+    include/AppUI/Common/ProductSelectorDialog.h
     include/AuxWindow/AuxWindowManager.h
     include/AuxWindow/AuxViewWindow.h
     include/AuxWindow/LiveChartWidget.h
@@ -633,6 +655,22 @@ endif()
 # Create Executable
 # ============================================================================
 add_executable(bobcat_engine ${SOURCES} ${HEADERS})
+
+# ============================================================================
+# Set Debugger Environment for Visual Studio
+# ============================================================================
+# Configure simulation mode environment variable for Visual Studio debugger
+if(BOBCAT_SIMULATION)
+    set_target_properties(bobcat_engine PROPERTIES
+        VS_DEBUGGER_ENVIRONMENT "BOBCAT_SIMULATION=1"
+    )
+    message(STATUS "Visual Studio debugger environment: BOBCAT_SIMULATION=1")
+else()
+    set_target_properties(bobcat_engine PROPERTIES
+        VS_DEBUGGER_ENVIRONMENT "BOBCAT_SIMULATION=0"
+    )
+    message(STATUS "Visual Studio debugger environment: BOBCAT_SIMULATION=0")
+endif()
 
 # ============================================================================
 # Link Libraries

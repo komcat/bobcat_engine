@@ -37,6 +37,9 @@ void PneumaticSlideSelectorDialog::setupUI()
   setWindowTitle("Select Pneumatic Slide");
   setMinimumSize(450, 550);
 
+  // Set light background for the entire dialog
+  setStyleSheet("QDialog { background-color: white; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(15, 15, 15, 15);
   mainLayout->setSpacing(10);
