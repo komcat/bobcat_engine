@@ -8,6 +8,7 @@
 #include "MotionControlPanel.h"
 #include "MotionGraphicsView.h"
 #include "ScanControlPanel.h"
+#include "DeviceButtonStack.h"
 #include "AdaptiveScanController.h"
 #include "DataStore.h"
 #include "unified_motion_manager.h"
@@ -102,6 +103,7 @@ private:
   QTabWidget* m_tabWidget;
 
   // Motion control tab widgets
+  DeviceButtonStack* m_deviceButtonStack;
   MotionControlPanel* m_controlPanel;
   MotionGraphicsView* m_graphicsView;
   ScanControlPanel* m_scanPanel;

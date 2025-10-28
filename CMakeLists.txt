@@ -347,6 +347,7 @@ set(SOURCES
     include/AppUI/MotionPages/PositionDot.cpp
     include/AppUI/MotionPages/MotionGraphicsView.cpp
     include/AppUI/MotionPages/MotionControlPanel.cpp
+    include/AppUI/MotionPages/DeviceButtonStack.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
     include/AppUI/MotionPages/CollapsiblePanel.cpp
@@ -487,6 +488,7 @@ set(HEADERS
     include/AppUI/MotionPages/PositionDot.h 
     include/AppUI/MotionPages/MotionGraphicsView.h
     include/AppUI/MotionPages/MotionControlPanel.h
+    include/AppUI/MotionPages/DeviceButtonStack.h
     include/AppUI/MotionPages/NewPositionDialog.h
     include/AppUI/MotionPages/MotionPage.h
     include/AppUI/MotionPages/DevicePositionMarker.h

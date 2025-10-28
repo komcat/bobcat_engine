@@ -183,7 +183,7 @@ void MotionPage::setupUI()
 
 	m_saveProductBtn = new QPushButton("Save Positions");
 	m_saveProductBtn->setFixedHeight(35);
-	m_saveProductBtn->setEnabled(false);
+	m_saveProductBtn->setEnabled(true);  // ✅ Always enabled - will prompt for save location if needed
 	m_saveProductBtn->setStyleSheet(
 		"QPushButton {"
 		"  background-color: #27ae60;"
@@ -240,6 +240,10 @@ void MotionPage::setupUI()
 	QHBoxLayout* motionContentLayout = new QHBoxLayout(motionControlTab);
 	motionContentLayout->setContentsMargins(0, 0, 0, 0);
 	motionContentLayout->setSpacing(0);
+
+	// Far Left - Device Selection Buttons (fixed width)
+	m_deviceButtonStack = new DeviceButtonStack();
+	motionContentLayout->addWidget(m_deviceButtonStack);
 
 	// Left Panel - Motion Control (20%)
 	m_controlPanel = new MotionControlPanel();
@@ -322,6 +326,11 @@ void MotionPage::setupUI()
 	connect(m_loadProductBtn, &QPushButton::clicked, this, &MotionPage::onLoadProductClicked);
 	connect(m_saveProductBtn, &QPushButton::clicked, this, &MotionPage::onSaveProductClicked);
 
+	// Connect device button stack (primary device selector)
+	connect(m_deviceButtonStack, &DeviceButtonStack::deviceChanged,
+		this, &MotionPage::onDeviceChanged);
+
+	// Also connect control panel device selector for backward compatibility
 	connect(m_controlPanel, &MotionControlPanel::deviceChanged,
 		this, &MotionPage::onDeviceChanged);
 
@@ -448,21 +457,56 @@ void MotionPage::onLoadProductClicked()
 
 void MotionPage::onSaveProductClicked()
 {
-	if (!m_productManager->HasLoadedProduct()) {
-		QMessageBox::warning(this, "No Positions Loaded",
-			"No positions file loaded. Use 'Save As Positions...' to create a new positions file.");
-		return;
-	}
-
+	// Import current positions from motion manager
 	m_productManager->ImportFromMotionManager(*m_motionManager);
 
-	if (m_productManager->SaveProduct()) {
-		QMessageBox::information(this, "Success",
-			"Positions saved successfully");
+	// If no product loaded, prompt for product name
+	if (!m_productManager->HasLoadedProduct()) {
+		bool ok;
+		QString productName = QInputDialog::getText(
+			this,
+			"Create New Product",
+			"Enter product name:",
+			QLineEdit::Normal,
+			"",
+			&ok
+		);
+
+		if (!ok || productName.isEmpty()) {
+			return;  // User cancelled
+		}
+
+		// Save as new product (creates config/productName/positions.productName.json)
+		if (m_productManager->SaveProductAs(productName.toStdString())) {
+			QString filePath = QString::fromStdString(m_productManager->GetCurrentProductPath());
+
+			QMessageBox::information(this, "Success",
+				QString("Positions saved to: %1").arg(filePath));
+
+			// Update product label
+			m_currentProductLabel->setText(
+				QString("Product: %1").arg(productName)
+			);
+
+			// Save to application-wide setting
+			QSettings settings("Fabrinet", "BobcatEngine");
+			settings.setValue("Application/lastProductFile", filePath);
+		}
+		else {
+			QMessageBox::critical(this, "Error",
+				"Failed to save positions file");
+		}
 	}
 	else {
-		QMessageBox::critical(this, "Error",
-			"Failed to save positions file");
+		// Product already loaded, just save to existing file
+		if (m_productManager->SaveProduct()) {
+			QMessageBox::information(this, "Success",
+				"Positions saved successfully");
+		}
+		else {
+			QMessageBox::critical(this, "Error",
+				"Failed to save positions file");
+		}
 	}
 }
 
@@ -488,6 +532,10 @@ void MotionPage::loadDevices()
 		devices << QString::fromStdString(name);
 	}
 
+	// Populate device button stack (primary selector)
+	m_deviceButtonStack->setDevices(devices);
+
+	// Also populate control panel and scan panel
 	m_controlPanel->setDevices(devices);
 	m_scanPanel->setDevices(devices);
 
@@ -619,6 +667,16 @@ void MotionPage::transformLocalToGlobal(double localX, double localY, double loc
 void MotionPage::onDeviceChanged(const QString& deviceName)
 {
 	m_currentDevice = deviceName;
+
+	// Synchronize device selection across both widgets (avoid signal loops)
+	if (m_deviceButtonStack->getCurrentDevice() != deviceName) {
+		m_deviceButtonStack->blockSignals(true);
+		m_deviceButtonStack->setCurrentDevice(deviceName);
+		m_deviceButtonStack->blockSignals(false);
+	}
+
+	// Note: We don't need to sync m_controlPanel because we're hiding its device selector
+
 	refreshPositionDisplay();
 	m_controlPanel->clearSelectedPosition();
 	m_selectedPositionName.clear();
@@ -710,8 +768,27 @@ void MotionPage::onUpdatePositionClicked()
 			m_selectedPositionName.toStdString(),
 			existingPos);
 
-		QMessageBox::information(this, "Success",
-			"Position updated successfully!\n\nRemember to save the product file.");
+		// ✅ AUTO-SAVE: Automatically save positions after updating position
+		m_productManager->ImportFromMotionManager(*m_motionManager);
+
+		// If product is already loaded, save to existing file
+		if (m_productManager->HasLoadedProduct()) {
+			if (m_productManager->SaveProduct()) {
+				QMessageBox::information(this, "Success",
+					"Position updated and saved successfully!");
+			}
+			else {
+				QMessageBox::warning(this, "Position Updated",
+					"Position updated but failed to auto-save.\n"
+					"Please use 'Save Positions' button manually.");
+			}
+		}
+		else {
+			// No product loaded - show success but remind to save
+			QMessageBox::information(this, "Position Updated",
+				"Position updated successfully!\n\n"
+				"Click 'Save Positions' to save to a file.");
+		}
 
 		refreshPositionDisplay();
 	}
@@ -750,9 +827,27 @@ void MotionPage::onCreatePositionClicked()
 			name.toStdString(),
 			pos);
 
-		QMessageBox::information(this, "Success",
-			QString("Position '%1' created successfully!\n\n"
-				"Remember to save the product file.").arg(name));
+		// ✅ AUTO-SAVE: Automatically save positions after creating new position
+		m_productManager->ImportFromMotionManager(*m_motionManager);
+
+		// If product is already loaded, save to existing file
+		if (m_productManager->HasLoadedProduct()) {
+			if (m_productManager->SaveProduct()) {
+				QMessageBox::information(this, "Success",
+					QString("Position '%1' created and saved successfully!").arg(name));
+			}
+			else {
+				QMessageBox::warning(this, "Position Created",
+					QString("Position '%1' created but failed to auto-save.\n"
+						"Please use 'Save Positions' button manually.").arg(name));
+			}
+		}
+		else {
+			// No product loaded - show success but remind to save
+			QMessageBox::information(this, "Position Created",
+				QString("Position '%1' created successfully!\n\n"
+					"Click 'Save Positions' to save to a file.").arg(name));
+		}
 
 		refreshPositionDisplay();
 	}

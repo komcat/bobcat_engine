@@ -132,7 +132,7 @@ void RecipePage::setupUI()
   );
   titleLayout->addWidget(m_productStatusLabel);
 
-  m_loadProductButton = new QPushButton("📁 Load Product");
+  m_loadProductButton = new QPushButton("📁 Load Product's Position File");
   m_loadProductButton->setFixedHeight(28);
   m_loadProductButton->setStyleSheet(
     "QPushButton { "
@@ -605,25 +605,15 @@ void RecipePage::onProductChanged()
 
 void RecipePage::onLoadRecipe()
 {
-  // ✅ Check if product is loaded
-  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
-    QMessageBox::warning(this, "No Product Loaded",
-      "Please load a product first before loading recipes.\n\n"
-      "Use the 'Load Product' button in the main menu.");
-    return;
-  }
-
-  // ✅ Get product name and build path to product's recipes folder
-  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
-  QString recipesPath = QString("config/%1/recipes").arg(productName);
-
-  // ✅ Use FileSelectorDialog to restrict to product's recipes folder
+  // ✅ Browse all recipes in config folder recursively
+  // Recipe will auto-load its associated product positions file
   QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    recipesPath,  // Folder path: config/[product]/recipes/
+    "config",  // Start from config folder
     "*.json",  // File pattern
     "Load Recipe",  // Dialog title
-    "recipe files"  // File type description
+    "recipe files",  // File type description
+    true  // Recursive - search all product subfolders
   );
 
   if (filename.isEmpty()) return;
@@ -872,7 +862,7 @@ void RecipePage::onUpdateProductFile()
   QString filePath = FileSelectorDialog::getOpenFileName(
     this,
     "config",  // Folder path
-    "*positions.json",  // File pattern
+    "positions.*.json",  // File pattern: positions.[product_name].json
     "Select Product Positions File",  // Dialog title
     "position files",  // File type description
     true  // Recursive - search subdirectories
@@ -1775,11 +1765,19 @@ void RecipePage::onLoadProductClicked()
     return;
   }
 
-  // ✅ Use FileSelectorDialog with recursive search for subdirectories (SIPHOG, BOBCAT, etc.)
+  // ✅ Determine starting folder based on current product
+  QString startFolder = "config";
+  if (m_context->productPositionManager->HasLoadedProduct()) {
+    // Start in current product's folder
+    QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+    startFolder = QString("config/%1").arg(productName);
+  }
+
+  // ✅ Use FileSelectorDialog with recursive search for subdirectories
   QString filePath = FileSelectorDialog::getOpenFileName(
     this,
-    "config",  // Folder path
-    "*positions.json",  // File pattern
+    startFolder,  // Folder path: config/[product_name]/ or config/
+    "positions.*.json",  // File pattern: positions.[product_name].json
     "Select Product Positions File",  // Dialog title
     "position files",  // File type description
     true  // Recursive - search subdirectories
@@ -1837,27 +1835,10 @@ void RecipePage::saveLastRecipeToSettings(const QString& recipePath)
 
 void RecipePage::loadLastRecipeFromSettings()
 {
-  // ✅ Check if product is loaded first
-  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
-    std::cout << "[RecipePage] No product loaded - skipping auto-load of last recipe" << std::endl;
-    return;
-  }
-
   QSettings settings("Fabrinet", "BobcatEngine");
   QString lastRecipePath = settings.value("RecipePage/lastRecipe", "").toString();
 
   if (lastRecipePath.isEmpty()) {
-    return;
-  }
-
-  // ✅ Verify the recipe belongs to the current product
-  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
-  QString expectedPathPrefix = QString("config/%1/recipes/").arg(productName);
-
-  if (!lastRecipePath.startsWith(expectedPathPrefix)) {
-    std::cout << "[RecipePage] Last recipe is from different product - skipping auto-load" << std::endl;
-    std::cout << "  Last recipe: " << lastRecipePath.toStdString() << std::endl;
-    std::cout << "  Current product: " << productName.toStdString() << std::endl;
     return;
   }
 
@@ -1876,7 +1857,7 @@ void RecipePage::loadLastRecipeFromSettings()
   std::cout << "[RecipePage] Successfully auto-loaded recipe: "
             << m_recipeManager->getRecipeName() << std::endl;
 
-  // Auto-load associated product file
+  // ✅ Auto-load product positions file from recipe
   std::string productFile = m_recipeManager->getProductFile();
   if (!productFile.empty()) {
     if (m_context->productPositionManager) {
@@ -1902,9 +1883,40 @@ void RecipePage::loadLastRecipeFromSettings()
           "background-color: #e8f5e9;"
         );
 
-        std::cout << "[RecipePage] Auto-loaded recipe and product on startup" << std::endl;
+        std::cout << "[RecipePage] Auto-loaded product positions: " << productFile << std::endl;
+      }
+      else {
+        m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
+          .arg(QString::fromStdString(productFile)));
+        m_loadedProductLabel->setStyleSheet(
+          "font-size: 11px; "
+          "color: #d32f2f; "
+          "padding: 5px; "
+          "border: 1px solid #d32f2f; "
+          "border-radius: 3px; "
+          "background-color: #ffebee;"
+        );
+
+        std::cout << "[RecipePage] Warning: Product file not found: " << productFile << std::endl;
       }
     }
+  }
+  else {
+    // No product file associated with recipe
+    m_productStatusLabel->setText("Product: None");
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #666;");
+
+    m_loadedProductLabel->setText("Product: None");
+    m_loadedProductLabel->setStyleSheet(
+      "font-size: 11px; "
+      "color: #666; "
+      "padding: 5px; "
+      "border: 1px solid #ddd; "
+      "border-radius: 3px; "
+      "background-color: #f9f9f9;"
+    );
+
+    std::cout << "[RecipePage] No product file associated with recipe" << std::endl;
   }
 }
 

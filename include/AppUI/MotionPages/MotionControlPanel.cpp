@@ -28,12 +28,15 @@ void MotionControlPanel::setupUI()
   mainLayout->setSpacing(6);
 
   // === Device Selection ===
+  // ✅ HIDDEN - Device selection now handled by DeviceButtonStack on far left
   QLabel* deviceLabel = new QLabel("Device");
   deviceLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
+  deviceLabel->setVisible(false);  // Hide label
   mainLayout->addWidget(deviceLabel);
 
   m_deviceCombo = new QComboBox();
   m_deviceCombo->setMinimumHeight(28);
+  m_deviceCombo->setVisible(false);  // Hide combo box
   mainLayout->addWidget(m_deviceCombo);
 
   // Separator
