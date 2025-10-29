@@ -487,6 +487,31 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "  border: 1px solid #bdc3c7; "
     "  font-weight: bold; "
     "  font-size: 11px; "
+    "} "
+    "QCheckBox { "
+    "  spacing: 5px; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 18px; "
+    "  height: 18px; "
+    "  border: 2px solid #95a5a6; "
+    "  border-radius: 3px; "
+    "  background-color: white; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #3498db; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #27ae60; "
+    "  border-color: #27ae60; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #2ecc71; "
+    "  border-color: #2ecc71; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: white; "
+    "  border-color: #95a5a6; "
     "}"
   );
 
@@ -605,15 +630,25 @@ void RecipePage::onProductChanged()
 
 void RecipePage::onLoadRecipe()
 {
-  // ✅ Browse all recipes in config folder recursively
-  // Recipe will auto-load its associated product positions file
+  // ✅ Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before loading recipes.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // ✅ Get product name and build path to product's recipes folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString recipesPath = QString("config/%1/recipes").arg(productName);
+
+  // ✅ Use FileSelectorDialog to show only recipes from current product's recipes folder
   QString filename = FileSelectorDialog::getOpenFileName(
     this,
-    "config",  // Start from config folder
-    "*.json",  // File pattern
-    "Load Recipe",  // Dialog title
-    "recipe files",  // File type description
-    true  // Recursive - search all product subfolders
+    recipesPath,  // Folder path: config/[product]/recipes/
+    "*.json",     // File pattern
+    "Load Recipe", // Dialog title
+    "recipe files" // File type description
   );
 
   if (filename.isEmpty()) return;
@@ -1125,6 +1160,16 @@ void RecipePage::refreshRecipeList()
     QCheckBox* checkbox = new QCheckBox();
     checkbox->setChecked(step->enabled);
     checkbox->setProperty("stepIndex", stepIndex);
+
+    // ✅ Add checkmark text that appears when checked
+    checkbox->setText(step->enabled ? "✓" : "");
+    checkbox->setStyleSheet(
+      "QCheckBox { "
+      "  font-size: 16px; "
+      "  font-weight: bold; "
+      "  color: white; "
+      "}"
+    );
 
     QHBoxLayout* checkLayout = new QHBoxLayout(checkboxWidget);
     checkLayout->addWidget(checkbox);

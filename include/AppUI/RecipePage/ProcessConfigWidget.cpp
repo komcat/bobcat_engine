@@ -235,6 +235,36 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
   checkbox->setChecked(value == "true" || value == "1");
   checkbox->setFocusPolicy(Qt::StrongFocus);  // Ensure checkbox can receive focus
 
+  // ✅ Add visual styling to make checked state clear
+  checkbox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  font-size: 12px; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #95a5a6; "
+    "  border-radius: 3px; "
+    "  background-color: white; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #3498db; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #27ae60; "
+    "  border-color: #27ae60; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #2ecc71; "
+    "  border-color: #2ecc71; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: white; "
+    "  border-color: #95a5a6; "
+    "}"
+  );
+
   if (!tooltip.empty()) {
     checkbox->setToolTip(QString::fromStdString(tooltip));
   }
