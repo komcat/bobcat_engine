@@ -597,20 +597,22 @@ void RunProgramPage::onProductChanged()
     m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
 
     std::cout << "[RunProgramPage] Product changed to: " << productName << std::endl;
+
+    // ✅ Auto-load last program when product is loaded
+    loadLastProgramFromSettings();
   } else {
     m_currentProductLabel->setText("Product: None");
     std::cout << "[RunProgramPage] No product loaded" << std::endl;
-  }
 
-  // Product has changed - clear current program to avoid confusion
-  // User should load a program from the new product folder
-  if (m_programManager->getRecipeCount() > 0) {
-    m_programManager->newProgram();
-    m_currentProgramPath.clear();
-    updateRecipeList();
-    updateProgramInfo();
+    // Clear current program when no product loaded
+    if (m_programManager->getRecipeCount() > 0) {
+      m_programManager->newProgram();
+      m_currentProgramPath.clear();
+      updateRecipeList();
+      updateProgramInfo();
 
-    std::cout << "[RunProgramPage] Product changed - program cleared" << std::endl;
+      std::cout << "[RunProgramPage] No product - program cleared" << std::endl;
+    }
   }
 }
 

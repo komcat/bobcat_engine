@@ -1121,17 +1121,35 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
 
-    success = controller->MoveToAbsolutePosition(pos.x, pos.y, pos.z, 100.0, blocking);
+    // ✅ FIX: Move all axes together in coordinated motion
+    // Build list of axes and positions based on installed axes
+    std::vector<std::string> axes;
+    std::vector<double> positions;
 
+    // Always include X, Y, Z
+    axes.push_back("X");
+    axes.push_back("Y");
+    axes.push_back("Z");
+    positions.push_back(pos.x);
+    positions.push_back(pos.y);
+    positions.push_back(pos.z);
+
+    // Add U, V, W if installed
     if (installedAxes.find('U') != std::string::npos) {
-      success &= controller->MoveToPosition("U", pos.u, blocking);
+      axes.push_back("U");
+      positions.push_back(pos.u);
     }
     if (installedAxes.find('V') != std::string::npos) {
-      success &= controller->MoveToPosition("V", pos.v, blocking);
+      axes.push_back("V");
+      positions.push_back(pos.v);
     }
     if (installedAxes.find('W') != std::string::npos) {
-      success &= controller->MoveToPosition("W", pos.w, blocking);
+      axes.push_back("W");
+      positions.push_back(pos.w);
     }
+
+    // Move all axes together in coordinated motion
+    success = controller->MoveToPositionMultiAxis(axes, positions, blocking);
   }
   else if (NormalizeType(type) == "PI") {
     PIController* controller = GetPIController(deviceName);

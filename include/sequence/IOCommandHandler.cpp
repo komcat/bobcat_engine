@@ -53,6 +53,66 @@ bool IOCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SET OUTPUT NAME (turn ON by name)
+  // ============================================================================
+  else if (methodName == "SetOutputName") {
+    auto pinIt = params.find("pinName");
+
+    if (pinIt == params.end()) {
+      errorMessage = "Missing required parameter: pinName";
+      return false;
+    }
+
+    std::string pinName = pinIt->second;
+
+    if (m_logger) {
+      m_logger->Info(
+        "Setting " + deviceName + "." + pinName + " to ON",
+        "IOHandler"
+      );
+    }
+
+    EziIOError result = ioManager->SetOutputByName(deviceName, pinName, true);
+
+    if (result != EziIOError::SUCCESS) {
+      errorMessage = "SetOutputName failed: " + GetErrorString(result);
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // CLEAR OUTPUT NAME (turn OFF by name)
+  // ============================================================================
+  else if (methodName == "ClearOutputName") {
+    auto pinIt = params.find("pinName");
+
+    if (pinIt == params.end()) {
+      errorMessage = "Missing required parameter: pinName";
+      return false;
+    }
+
+    std::string pinName = pinIt->second;
+
+    if (m_logger) {
+      m_logger->Info(
+        "Setting " + deviceName + "." + pinName + " to OFF",
+        "IOHandler"
+      );
+    }
+
+    EziIOError result = ioManager->SetOutputByName(deviceName, pinName, false);
+
+    if (result != EziIOError::SUCCESS) {
+      errorMessage = "ClearOutputName failed: " + GetErrorString(result);
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // SET OUTPUT (by pin number)
   // ============================================================================
   else if (methodName == "SetOutputPin") {

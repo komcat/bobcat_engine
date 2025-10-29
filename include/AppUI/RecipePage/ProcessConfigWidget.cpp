@@ -233,6 +233,7 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
 {
   QCheckBox* checkbox = new QCheckBox(QString::fromStdString(label));
   checkbox->setChecked(value == "true" || value == "1");
+  checkbox->setFocusPolicy(Qt::StrongFocus);  // Ensure checkbox can receive focus
 
   if (!tooltip.empty()) {
     checkbox->setToolTip(QString::fromStdString(tooltip));
@@ -242,7 +243,8 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
     emit parameterChanged();
   });
 
-  m_formLayout->addRow("", checkbox);
+  // ✅ Add checkbox spanning both columns to avoid layout blocking
+  m_formLayout->addRow(checkbox);
   m_parameterCheckboxes[key] = checkbox;
 }
 

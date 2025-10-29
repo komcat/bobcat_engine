@@ -13,6 +13,7 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <algorithm>  // for std::transform
 
 //=============================================================================
 // PICK PLUGIN
@@ -529,32 +530,40 @@ public:
     std::string speedStr = params.at("speed");
     double speed = std::stod(speedStr);
 
-    // For PI devices: use SetSystemVelocity (system-wide)
-    // For ACS devices: use SetVelocity for each axis (X, Y, Z)
+    // ✅ Detect device type based on naming convention
+    // PI hexapods: device names contain "hex", "hexapod", "pi"
+    // ACS gantries: device names contain "gantry", "acs", or others
+    std::string deviceLower = device;
+    std::transform(deviceLower.begin(), deviceLower.end(), deviceLower.begin(), ::tolower);
 
-    // Try system velocity first (PI hexapods)
-    sequence->AddAction(device, "SetSystemVelocity", {
-      {"velocity", speedStr}
-    });
+    bool isPIDevice = (deviceLower.find("hex") != std::string::npos) ||
+                      (deviceLower.find("pi") != std::string::npos);
 
-    // For ACS gantries, set velocity for each axis
-    // If SetSystemVelocity succeeds (PI), these will still execute but won't cause issues
-    // If SetSystemVelocity fails (ACS), these will set the per-axis velocities
-    sequence->AddAction(device, "SetVelocity", {
-      {"axis", "X"},
-      {"velocity", speedStr}
-    });
-    sequence->AddAction(device, "SetVelocity", {
-      {"axis", "Y"},
-      {"velocity", speedStr}
-    });
-    sequence->AddAction(device, "SetVelocity", {
-      {"axis", "Z"},
-      {"velocity", speedStr}
-    });
-
-    std::cout << "[MotionProcesses] Built Set Velocity sequence for device: "
-              << device << " at " << speed << " mm/s" << std::endl;
+    if (isPIDevice) {
+      // PI hexapods: Use system-wide velocity
+      sequence->AddAction(device, "SetSystemVelocity", {
+        {"velocity", speedStr}
+      });
+      std::cout << "[MotionProcesses] Built Set Velocity (PI system) sequence for device: "
+                << device << " at " << speed << " mm/s" << std::endl;
+    }
+    else {
+      // ACS gantries: Use per-axis velocity
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "X"},
+        {"velocity", speedStr}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Y"},
+        {"velocity", speedStr}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Z"},
+        {"velocity", speedStr}
+      });
+      std::cout << "[MotionProcesses] Built Set Velocity (ACS per-axis) sequence for device: "
+                << device << " at " << speed << " mm/s" << std::endl;
+    }
   }
 };
 

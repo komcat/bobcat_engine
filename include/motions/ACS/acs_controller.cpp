@@ -262,21 +262,12 @@ bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double 
     return false;
   }
 
-  if (!MoveToPosition("X", x, false) ||
-    !MoveToPosition("Y", y, false) ||
-    !MoveToPosition("Z", z, false)) {
-    return false;
-  }
+  // ✅ FIX: Use coordinated multi-axis motion instead of sequential moves
+  // This ensures all axes start together and reach their destinations simultaneously
+  std::vector<std::string> axes = {"X", "Y", "Z"};
+  std::vector<double> positions = {x, y, z};
 
-  if (blocking) {
-    bool success = true;
-    success &= WaitForMotionCompletion("X");
-    success &= WaitForMotionCompletion("Y");
-    success &= WaitForMotionCompletion("Z");
-    return success;
-  }
-
-  return true;
+  return MoveToPositionMultiAxis(axes, positions, blocking);
 }
 
 bool ACSController::MoveToPosition(const std::string& axis, double position, bool blocking) {

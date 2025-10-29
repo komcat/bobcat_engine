@@ -63,6 +63,96 @@ public:
 };
 
 //=============================================================================
+// SET OUTPUT NAME PLUGIN (Turn ON by name)
+//=============================================================================
+
+class SetOutputNamePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Output Name";
+  }
+
+  std::string GetCategory() const override {
+    return "I/O & Pneumatics";
+  }
+
+  std::string GetDescription() const override {
+    return "Turn ON a digital output pin by its name";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"io_device", "IOBottom"},
+      {"pin_name", ""}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO));
+    widget->addParameterField("pin_name", "Output Pin Name", params.at("pin_name"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    sequence->AddAction(params.at("io_device"), "SetOutputName", {
+      {"pinName", params.at("pin_name")}
+    });
+
+    std::cout << "[IOProcesses] Built Set Output Name (ON) sequence for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// CLEAR OUTPUT NAME PLUGIN (Turn OFF by name)
+//=============================================================================
+
+class ClearOutputNamePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Clear Output Name";
+  }
+
+  std::string GetCategory() const override {
+    return "I/O & Pneumatics";
+  }
+
+  std::string GetDescription() const override {
+    return "Turn OFF a digital output pin by its name";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"io_device", "IOBottom"},
+      {"pin_name", ""}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO));
+    widget->addParameterField("pin_name", "Output Pin Name", params.at("pin_name"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    sequence->AddAction(params.at("io_device"), "ClearOutputName", {
+      {"pinName", params.at("pin_name")}
+    });
+
+    std::cout << "[IOProcesses] Built Clear Output Name (OFF) sequence for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
 // SLIDE EXTEND PLUGIN
 //=============================================================================
 
@@ -210,10 +300,12 @@ namespace {
       auto& registry = ProcessPluginRegistry::Instance();
 
       registry.RegisterPlugin(std::make_unique<SetOutputPlugin>());
+      registry.RegisterPlugin(std::make_unique<SetOutputNamePlugin>());
+      registry.RegisterPlugin(std::make_unique<ClearOutputNamePlugin>());
       registry.RegisterPlugin(std::make_unique<SlideExtendPlugin>());
       registry.RegisterPlugin(std::make_unique<SlideRetractPlugin>());
 
-      std::cout << "[IOProcesses] Registered 3 I/O process plugins" << std::endl;
+      std::cout << "[IOProcesses] Registered 5 I/O process plugins" << std::endl;
     }
   };
 
