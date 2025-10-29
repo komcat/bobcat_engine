@@ -2,6 +2,8 @@
 #include <cstring>
 #include <iostream>
 #include <QPainter>
+#include <QPaintEvent>
+#include <QShowEvent>
 
 CameraImageWidget::CameraImageWidget(QWidget* parent)
   : QWidget(parent)
@@ -31,6 +33,9 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   // Make label expand to fill available space
   m_displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
+  // Set minimum size to ensure the widget is visible
+  m_displayLabel->setMinimumSize(320, 240);
+
   m_displayLabel->setStyleSheet(
     "QLabel { "
     "  background-color: #2b2b2b; "
@@ -40,6 +45,9 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
 
   layout->addWidget(m_displayLabel);
   setLayout(layout);
+
+  // Set minimum size for the widget itself
+  setMinimumSize(320, 240);
 
   std::cout << "[CameraImageWidget] Created with performance optimizations" << std::endl;
 }
@@ -135,6 +143,21 @@ void CameraImageWidget::setPlaceholderText(const QString& text)
 void CameraImageWidget::setScalingMode(ScalingMode mode)
 {
   m_scalingMode = mode;
+}
+
+void CameraImageWidget::forceRefresh()
+{
+  // Force update of display label
+  if (m_displayLabel) {
+    m_displayLabel->update();
+    m_displayLabel->repaint();
+  }
+
+  // Force update of entire widget
+  update();
+  repaint();
+
+  std::cout << "[CameraImageWidget] Forced refresh" << std::endl;
 }
 
 void CameraImageWidget::setCrosshairEnabled(bool enabled)
@@ -301,4 +324,26 @@ void CameraImageWidget::resizeEvent(QResizeEvent* event)
   if (!m_reusableBuffer.isNull()) {
     renderFrame(m_reusableBuffer);
   }
+}
+
+void CameraImageWidget::paintEvent(QPaintEvent* event)
+{
+  // Since we have WA_OpaquePaintEvent set, we must paint the entire widget
+  // Fill background with dark color to prevent leftover pixels
+  QPainter painter(this);
+  painter.fillRect(rect(), QColor(45, 45, 48));  // #2d2d30
+
+  // Child widgets (m_displayLabel) will paint themselves on top
+  // No need to call QWidget::paintEvent when WA_OpaquePaintEvent is set
+}
+
+void CameraImageWidget::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Force repaint when widget becomes visible
+  update();
+  repaint();
+
+  std::cout << "[CameraImageWidget] Widget shown - forcing repaint" << std::endl;
 }

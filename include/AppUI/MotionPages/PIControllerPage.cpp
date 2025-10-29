@@ -60,8 +60,9 @@ void PIControllerPage::createVelocityControls()
     "QGroupBox { "
     "  font-size: 16px; "
     "  font-weight: bold; "
-    "  color: #2c3e50; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 8px; "
     "  margin-top: 10px; "
     "  padding-top: 15px; "
@@ -70,6 +71,7 @@ void PIControllerPage::createVelocityControls()
     "  subcontrol-origin: margin; "
     "  left: 10px; "
     "  padding: 0 5px; "
+    "  color: #ffffff; "
     "}");
 
   QVBoxLayout* groupLayout = new QVBoxLayout(velocityGroup);
@@ -78,18 +80,28 @@ void PIControllerPage::createVelocityControls()
   // Device selector row
   QHBoxLayout* deviceRow = new QHBoxLayout();
   QLabel* deviceLabel = new QLabel("Device:");
-  deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   deviceRow->addWidget(deviceLabel);
 
   m_deviceSelector = new QComboBox();
   m_deviceSelector->setMinimumWidth(200);
   m_deviceSelector->setStyleSheet(
     "QComboBox { "
-    "  background-color: white; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
     "  border-radius: 4px; "
     "  padding: 5px; "
     "  font-size: 14px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  border: 1px solid #3f3f46; "
     "}");
   connect(m_deviceSelector, &QComboBox::currentTextChanged, this, &PIControllerPage::onDeviceSelected);
   deviceRow->addWidget(m_deviceSelector);
@@ -101,7 +113,7 @@ void PIControllerPage::createVelocityControls()
   QHBoxLayout* velocityRow = new QHBoxLayout();
 
   QLabel* velocityLabel = new QLabel("System Velocity:");
-  velocityLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  velocityLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   velocityRow->addWidget(velocityLabel);
 
   m_systemVelocity = new QDoubleSpinBox();
@@ -109,7 +121,21 @@ void PIControllerPage::createVelocityControls()
   m_systemVelocity->setValue(5.0);
   m_systemVelocity->setSuffix(" mm/s");
   m_systemVelocity->setDecimals(1);
-  m_systemVelocity->setStyleSheet("QDoubleSpinBox { background-color: white; padding: 5px; }");
+  m_systemVelocity->setStyleSheet(
+    "QDoubleSpinBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "} "
+    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "}");
   velocityRow->addWidget(m_systemVelocity);
 
   velocityRow->addStretch();
@@ -120,7 +146,7 @@ void PIControllerPage::createVelocityControls()
   QHBoxLayout* buttonRow = new QHBoxLayout();
 
   QLabel* presetLabel = new QLabel("Quick Presets:");
-  presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   buttonRow->addWidget(presetLabel);
 
   m_turtleButton = new QPushButton("🐢 Turtle (5 mm/s)");

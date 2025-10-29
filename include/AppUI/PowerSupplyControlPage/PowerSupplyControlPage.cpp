@@ -27,20 +27,21 @@ PowerSupplyControlPage::PowerSupplyControlPage(ApplicationContext* context, QWid
 QString PowerSupplyControlPage::createStyleSheet()
 {
   return R"(
-        /* Main widget - Light theme */
+        /* Main widget - Dark theme */
         QWidget {
-            background-color: #f5f5f5;
-            color: #333333;
+            background-color: #2d2d30;
+            color: #d4d4d4;
             font-family: "Segoe UI", Arial, sans-serif;
         }
-        
+
         /* List widget */
         QListWidget {
-            background-color: white;
-            border: 1px solid #d0d0d0;
+            background-color: #1e1e1e;
+            border: 1px solid #3f3f46;
             border-radius: 4px;
             padding: 4px;
             font-size: 13px;
+            color: #d4d4d4;
         }
         QListWidget::item {
             padding: 8px;
@@ -48,53 +49,62 @@ QString PowerSupplyControlPage::createStyleSheet()
             margin: 2px 0px;
         }
         QListWidget::item:selected {
-            background-color: #0078d4;
+            background-color: #0e639c;
             color: white;
         }
         QListWidget::item:hover {
-            background-color: #e8e8e8;
+            background-color: #3c3c3c;
         }
-        
+
         /* Labels */
         QLabel {
-            color: #333333;
+            color: #d4d4d4;
             font-size: 13px;
         }
-        
+
         /* Group boxes */
         QGroupBox {
             font-weight: bold;
             font-size: 13px;
-            color: #333333;
-            border: 1px solid #d0d0d0;
+            color: #ffffff;
+            border: 2px solid #3f3f46;
             border-radius: 6px;
             margin-top: 12px;
             padding-top: 12px;
-            background-color: white;
+            background-color: #1e1e1e;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             subcontrol-position: top left;
             padding: 4px 10px;
-            background-color: white;
+            background-color: #1e1e1e;
+            color: #ffffff;
         }
-        
+
         /* Spin boxes */
         QDoubleSpinBox {
-            background-color: white;
-            border: 1px solid #d0d0d0;
+            background-color: #3c3c3c;
+            color: #d4d4d4;
+            border: 1px solid #555555;
             border-radius: 4px;
             padding: 6px;
             font-size: 13px;
             min-width: 100px;
         }
         QDoubleSpinBox:focus {
-            border: 2px solid #0078d4;
+            border: 2px solid #0e639c;
         }
-        
+        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+            background-color: #2d2d30;
+            border: 1px solid #555555;
+        }
+        QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+            background-color: #3c3c3c;
+        }
+
         /* Buttons - Primary */
         QPushButton {
-            background-color: #0078d4;
+            background-color: #0e639c;
             color: white;
             border: none;
             border-radius: 4px;
@@ -104,33 +114,33 @@ QString PowerSupplyControlPage::createStyleSheet()
             min-height: 32px;
         }
         QPushButton:hover {
-            background-color: #005a9e;
+            background-color: #1177bb;
         }
         QPushButton:pressed {
-            background-color: #004578;
+            background-color: #0c5280;
         }
         QPushButton:disabled {
-            background-color: #cccccc;
-            color: #888888;
+            background-color: #3c3c3c;
+            color: #666666;
         }
-        
+
         /* Status indicators */
         .status-connected {
-            color: #107c10;
+            color: #27ae60;
             font-weight: bold;
         }
         .status-disconnected {
-            color: #d13438;
+            color: #e74c3c;
             font-weight: bold;
         }
         .status-info {
-            color: #0078d4;
+            color: #0e639c;
         }
-        
+
         /* Frames */
         QFrame {
-            background-color: white;
-            border: 1px solid #d0d0d0;
+            background-color: #1e1e1e;
+            border: 1px solid #3f3f46;
             border-radius: 6px;
         }
     )";
@@ -176,7 +186,7 @@ void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
 
   // Title
   QLabel* titleLabel = new QLabel("Power Supply Units");
-  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #333333; padding: 8px;");
+  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff; padding: 8px;");
   layout->addWidget(titleLabel);
 
   // Device list
@@ -193,17 +203,17 @@ void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
 
   m_connectButton = new QPushButton("Connect");
   m_connectButton->setStyleSheet(
-    "QPushButton { background-color: #107c10; }"
-    "QPushButton:hover { background-color: #0e6b0e; }"
-    "QPushButton:pressed { background-color: #0c5a0c; }");
+    "QPushButton { background-color: #27ae60; }"
+    "QPushButton:hover { background-color: #2ecc71; }"
+    "QPushButton:pressed { background-color: #229954; }");
   connect(m_connectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onConnectClicked);
 
   m_disconnectButton = new QPushButton("Disconnect");
   m_disconnectButton->setEnabled(false);
   m_disconnectButton->setStyleSheet(
-    "QPushButton { background-color: #d13438; }"
-    "QPushButton:hover { background-color: #a72b2f; }"
-    "QPushButton:pressed { background-color: #8b2427; }");
+    "QPushButton { background-color: #e74c3c; }"
+    "QPushButton:hover { background-color: #c0392b; }"
+    "QPushButton:pressed { background-color: #a93226; }");
   connect(m_disconnectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onDisconnectClicked);
 
   buttonLayout->addWidget(m_connectButton);
@@ -212,13 +222,13 @@ void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
 
   // Connection status
   m_connectionStatus = new QLabel("● Disconnected");
-  m_connectionStatus->setStyleSheet("color: #d13438; font-size: 12px; font-weight: bold; padding: 4px;");
+  m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold; padding: 4px;");
   m_connectionStatus->setAlignment(Qt::AlignCenter);
   layout->addWidget(m_connectionStatus);
 
   // Status label at bottom
   m_statusLabel = new QLabel("Ready");
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #666666; padding: 4px;");
+  m_statusLabel->setStyleSheet("font-size: 11px; color: #888888; padding: 4px;");
   m_statusLabel->setWordWrap(true);
   layout->addWidget(m_statusLabel);
 }
@@ -252,17 +262,17 @@ void PowerSupplyControlPage::createControlSection(QVBoxLayout* layout)
   m_outputOnButton = new QPushButton("OUTPUT ON");
   m_outputOnButton->setMinimumHeight(45);
   m_outputOnButton->setStyleSheet(
-    "QPushButton { background-color: #107c10; font-size: 14px; font-weight: bold; }"
-    "QPushButton:hover { background-color: #0e6b0e; }"
-    "QPushButton:pressed { background-color: #0c5a0c; }");
+    "QPushButton { background-color: #27ae60; font-size: 14px; font-weight: bold; }"
+    "QPushButton:hover { background-color: #2ecc71; }"
+    "QPushButton:pressed { background-color: #229954; }");
   connect(m_outputOnButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onOutputOnClicked);
 
   m_outputOffButton = new QPushButton("OUTPUT OFF");
   m_outputOffButton->setMinimumHeight(45);
   m_outputOffButton->setStyleSheet(
-    "QPushButton { background-color: #d13438; font-size: 14px; font-weight: bold; }"
-    "QPushButton:hover { background-color: #a72b2f; }"
-    "QPushButton:pressed { background-color: #8b2427; }");
+    "QPushButton { background-color: #e74c3c; font-size: 14px; font-weight: bold; }"
+    "QPushButton:hover { background-color: #ec7063; }"
+    "QPushButton:pressed { background-color: #c0392b; }");
   connect(m_outputOffButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onOutputOffClicked);
 
   outputLayout->addWidget(m_outputOnButton);
@@ -325,8 +335,8 @@ void PowerSupplyControlPage::createControlSection(QVBoxLayout* layout)
   m_setOVPButton = new QPushButton("Set");
   m_setOVPButton->setMinimumWidth(80);
   m_setOVPButton->setStyleSheet(
-    "QPushButton { background-color: #ffa500; color: #333333; }"
-    "QPushButton:hover { background-color: #ff8c00; }");
+    "QPushButton { background-color: #f39c12; color: white; }"
+    "QPushButton:hover { background-color: #e67e22; }");
   connect(m_setOVPButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetOVPClicked);
 
   protectionLayout->addWidget(ovpLabel, 0, 0);
@@ -343,8 +353,8 @@ void PowerSupplyControlPage::createControlSection(QVBoxLayout* layout)
   m_setOCPButton = new QPushButton("Set");
   m_setOCPButton->setMinimumWidth(80);
   m_setOCPButton->setStyleSheet(
-    "QPushButton { background-color: #ffa500; color: #333333; }"
-    "QPushButton:hover { background-color: #ff8c00; }");
+    "QPushButton { background-color: #f39c12; color: white; }"
+    "QPushButton:hover { background-color: #e67e22; }");
   connect(m_setOCPButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetOCPClicked);
 
   protectionLayout->addWidget(ocpLabel, 1, 0);
@@ -363,19 +373,19 @@ void PowerSupplyControlPage::createMeasurementSection(QVBoxLayout* layout)
 
   // Voltage reading
   m_voltageReadLabel = new QLabel("Voltage: --- V");
-  m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #107c10; padding: 4px;");
+  m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #27ae60; padding: 4px;");
   measurementLayout->addWidget(m_voltageReadLabel);
 
   // Current reading
   m_currentReadLabel = new QLabel("Current: --- A");
-  m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0078d4; padding: 4px;");
+  m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0e639c; padding: 4px;");
   measurementLayout->addWidget(m_currentReadLabel);
 
   // Refresh button
   m_refreshButton = new QPushButton("🔄 Refresh Now");
   m_refreshButton->setStyleSheet(
-    "QPushButton { background-color: #0078d4; }"
-    "QPushButton:hover { background-color: #005a9e; }");
+    "QPushButton { background-color: #0e639c; }"
+    "QPushButton:hover { background-color: #1177bb; }");
   connect(m_refreshButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onRefreshClicked);
   measurementLayout->addWidget(m_refreshButton);
 
@@ -397,7 +407,7 @@ void PowerSupplyControlPage::loadDevices()
 
   if (m_deviceList->count() == 0) {
     m_statusLabel->setText("No PSU devices configured");
-    m_statusLabel->setStyleSheet("font-size: 11px; color: #d13438; padding: 4px;");
+    m_statusLabel->setStyleSheet("font-size: 11px; color: #e74c3c; padding: 4px;");
   }
   else {
     m_deviceList->setCurrentRow(0);
@@ -413,10 +423,10 @@ void PowerSupplyControlPage::updateDeviceList()
 
     auto psu = m_psuManager->getPowerSupply(deviceName.toStdString());
     if (psu && psu->isConnected()) {
-      item->setForeground(QColor("#107c10"));  // Green for connected
+      item->setForeground(QColor("#27ae60"));  // Green for connected
     }
     else {
-      item->setForeground(QColor("#333333"));  // Default for disconnected
+      item->setForeground(QColor("#888888"));  // Gray for disconnected
     }
   }
 }
@@ -580,7 +590,7 @@ void PowerSupplyControlPage::updateMeasurements()
   }
   else {
     m_voltageReadLabel->setText("Voltage: Error");
-    m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #d13438; padding: 4px;");
+    m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #e74c3c; padding: 4px;");
   }
 
   if (current >= 0) {
@@ -588,7 +598,7 @@ void PowerSupplyControlPage::updateMeasurements()
   }
   else {
     m_currentReadLabel->setText("Current: Error");
-    m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #d13438; padding: 4px;");
+    m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #e74c3c; padding: 4px;");
   }
 }
 
@@ -615,12 +625,12 @@ void PowerSupplyControlPage::updateConnectionStatus()
 
   if (connected) {
     m_connectionStatus->setText("● Connected");
-    m_connectionStatus->setStyleSheet("color: #107c10; font-size: 12px; font-weight: bold; padding: 4px;");
+    m_connectionStatus->setStyleSheet("color: #27ae60; font-size: 12px; font-weight: bold; padding: 4px;");
     m_controlPanel->setEnabled(true);
   }
   else {
     m_connectionStatus->setText("● Disconnected");
-    m_connectionStatus->setStyleSheet("color: #d13438; font-size: 12px; font-weight: bold; padding: 4px;");
+    m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold; padding: 4px;");
     m_controlPanel->setEnabled(false);
   }
 }
@@ -628,13 +638,13 @@ void PowerSupplyControlPage::updateConnectionStatus()
 void PowerSupplyControlPage::showError(const QString& message)
 {
   m_statusLabel->setText("❌ " + message);
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #d13438; font-weight: bold; padding: 4px;");
+  m_statusLabel->setStyleSheet("font-size: 11px; color: #e74c3c; font-weight: bold; padding: 4px;");
   std::cerr << "[PowerSupplyControlPage] " << message.toStdString() << std::endl;
 }
 
 void PowerSupplyControlPage::showSuccess(const QString& message)
 {
   m_statusLabel->setText("✓ " + message);
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #107c10; padding: 4px;");
+  m_statusLabel->setStyleSheet("font-size: 11px; color: #27ae60; padding: 4px;");
   std::cout << "[PowerSupplyControlPage] " << message.toStdString() << std::endl;
 }

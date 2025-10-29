@@ -46,25 +46,25 @@ void TECControlPage::createLeftPanel()
 {
   // Left panel (15%)
   QWidget* leftPanel = new QWidget();
-  leftPanel->setStyleSheet("QWidget { background-color: #f0f0f0; }");
+  leftPanel->setStyleSheet("QWidget { background-color: #1e1e1e; }");
   leftPanel->setMaximumWidth(200);
 
   QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
   leftLayout->setContentsMargins(10, 10, 10, 10);
 
   QLabel* titleLabel = new QLabel("TEC Devices");
-  titleLabel->setStyleSheet("QLabel { color: #333333; font-size: 14px; font-weight: bold; }");
+  titleLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; }");
   leftLayout->addWidget(titleLabel);
 
   m_deviceList = new QListWidget();
   m_deviceList->setStyleSheet(
     "QListWidget { "
-    "  background-color: white; "
-    "  color: #333333; "
-    "  border: 1px solid #cccccc; "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
     "} "
     "QListWidget::item:selected { "
-    "  background-color: #0078d7; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "}");
   connect(m_deviceList, &QListWidget::itemSelectionChanged, this, &TECControlPage::onDeviceSelected);
@@ -81,7 +81,7 @@ void TECControlPage::createRightPanel()
 {
   // Right panel (85%)
   QWidget* rightPanel = new QWidget();
-  rightPanel->setStyleSheet("QWidget { background-color: white; }");
+  rightPanel->setStyleSheet("QWidget { background-color: #2d2d30; }");
 
   QVBoxLayout* rightLayout = new QVBoxLayout(rightPanel);
   rightLayout->setContentsMargins(20, 20, 20, 20);
@@ -90,30 +90,30 @@ void TECControlPage::createRightPanel()
   // === CONNECTION GROUP ===
   QGroupBox* connectionGroup = new QGroupBox("Connection");
   connectionGroup->setStyleSheet(
-    "QGroupBox { color: #333333; font-weight: bold; border: 2px solid #cccccc; "
-    "border-radius: 5px; padding: 10px; margin-top: 10px; } "
-    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    "QGroupBox { color: #ffffff; font-weight: bold; border: 2px solid #3f3f46; "
+    "background-color: #1e1e1e; border-radius: 5px; padding: 10px; margin-top: 10px; } "
+    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #ffffff; }");
   QHBoxLayout* connectionLayout = new QHBoxLayout(connectionGroup);
 
   m_connectButton = new QPushButton("Connect");
   m_connectButton->setStyleSheet(
-    "QPushButton { background-color: #0078d7; color: white; padding: 8px 16px; "
+    "QPushButton { background-color: #27ae60; color: white; padding: 8px 16px; "
     "border: none; border-radius: 4px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #1084e0; }");
+    "QPushButton:hover { background-color: #2ecc71; }");
   connect(m_connectButton, &QPushButton::clicked, this, &TECControlPage::onConnectClicked);
   connectionLayout->addWidget(m_connectButton);
 
   m_disconnectButton = new QPushButton("Disconnect");
   m_disconnectButton->setStyleSheet(
-    "QPushButton { background-color: #d73c00; color: white; padding: 8px 16px; "
+    "QPushButton { background-color: #e74c3c; color: white; padding: 8px 16px; "
     "border: none; border-radius: 4px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #e04a10; }");
+    "QPushButton:hover { background-color: #c0392b; }");
   m_disconnectButton->setEnabled(false);
   connect(m_disconnectButton, &QPushButton::clicked, this, &TECControlPage::onDisconnectClicked);
   connectionLayout->addWidget(m_disconnectButton);
 
   m_connectionStatus = new QLabel("Not Connected");
-  m_connectionStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+  m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   connectionLayout->addWidget(m_connectionStatus);
   connectionLayout->addStretch();
 
@@ -122,9 +122,9 @@ void TECControlPage::createRightPanel()
   // === TEC CONTROL GROUP ===
   QGroupBox* tecGroup = new QGroupBox("TEC Control");
   tecGroup->setStyleSheet(
-    "QGroupBox { color: #333333; font-weight: bold; border: 2px solid #cccccc; "
-    "border-radius: 5px; padding: 10px; margin-top: 10px; } "
-    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    "QGroupBox { color: #ffffff; font-weight: bold; border: 2px solid #3f3f46; "
+    "background-color: #1e1e1e; border-radius: 5px; padding: 10px; margin-top: 10px; } "
+    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #ffffff; }");
   QFormLayout* tecLayout = new QFormLayout(tecGroup);
 
   // Temperature slider (20-35C)
@@ -134,40 +134,40 @@ void TECControlPage::createRightPanel()
   m_temperatureSlider->setSingleStep(1);
   m_temperatureSlider->setValue(25);
   m_temperatureSlider->setStyleSheet(
-    "QSlider::groove:horizontal { background: #e0e0e0; height: 8px; border-radius: 4px; } "
-    "QSlider::handle:horizontal { background: #0078d7; width: 18px; margin: -5px 0; border-radius: 9px; }");
+    "QSlider::groove:horizontal { background: #3c3c3c; height: 8px; border-radius: 4px; } "
+    "QSlider::handle:horizontal { background: #0e639c; width: 18px; margin: -5px 0; border-radius: 9px; }");
   connect(m_temperatureSlider, &QSlider::valueChanged, this, &TECControlPage::onTemperatureChanged);
   tempLayout->addWidget(m_temperatureSlider);
 
   m_temperatureValue = new QLabel("25 C");
-  m_temperatureValue->setStyleSheet("QLabel { color: #333333; font-weight: bold; min-width: 60px; }");
+  m_temperatureValue->setStyleSheet("QLabel { color: #d4d4d4; font-weight: bold; min-width: 60px; }");
   tempLayout->addWidget(m_temperatureValue);
 
   QLabel* setpointLabel = new QLabel("Setpoint:");
-  setpointLabel->setStyleSheet("QLabel { color: #666666; }");
+  setpointLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(setpointLabel, tempLayout);
 
   m_currentTemperature = new QLabel("-- C");
-  m_currentTemperature->setStyleSheet("QLabel { color: #0078d7; font-weight: bold; }");
+  m_currentTemperature->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; }");
   QLabel* currentTempLabel = new QLabel("Current Temp:");
-  currentTempLabel->setStyleSheet("QLabel { color: #666666; }");
+  currentTempLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(currentTempLabel, m_currentTemperature);
 
   m_tecToggle = new QPushButton("TEC OFF");
   m_tecToggle->setCheckable(true);
   m_tecToggle->setStyleSheet(
-    "QPushButton { background-color: #999999; color: white; padding: 10px; "
+    "QPushButton { background-color: #666666; color: white; padding: 10px; "
     "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:checked { background-color: #4caf50; }");
+    "QPushButton:checked { background-color: #27ae60; }");
   connect(m_tecToggle, &QPushButton::clicked, this, &TECControlPage::onTECToggled);
   QLabel* tecLabel = new QLabel("TEC:");
-  tecLabel->setStyleSheet("QLabel { color: #666666; }");
+  tecLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(tecLabel, m_tecToggle);
 
   m_tecStatus = new QLabel("OFF");
-  m_tecStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+  m_tecStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   QLabel* statusLabel = new QLabel("Status:");
-  statusLabel->setStyleSheet("QLabel { color: #666666; }");
+  statusLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(statusLabel, m_tecStatus);
 
   rightLayout->addWidget(tecGroup);
@@ -175,9 +175,9 @@ void TECControlPage::createRightPanel()
   // === LASER CONTROL GROUP ===
   QGroupBox* laserGroup = new QGroupBox("Laser Control");
   laserGroup->setStyleSheet(
-    "QGroupBox { color: #333333; font-weight: bold; border: 2px solid #cccccc; "
-    "border-radius: 5px; padding: 10px; margin-top: 10px; } "
-    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    "QGroupBox { color: #ffffff; font-weight: bold; border: 2px solid #3f3f46; "
+    "background-color: #1e1e1e; border-radius: 5px; padding: 10px; margin-top: 10px; } "
+    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #ffffff; }");
   QFormLayout* laserLayout = new QFormLayout(laserGroup);
 
   // Laser current slider (0-250mA)
@@ -187,40 +187,40 @@ void TECControlPage::createRightPanel()
   m_laserCurrentSlider->setSingleStep(1);
   m_laserCurrentSlider->setValue(150);
   m_laserCurrentSlider->setStyleSheet(
-    "QSlider::groove:horizontal { background: #e0e0e0; height: 8px; border-radius: 4px; } "
-    "QSlider::handle:horizontal { background: #ff9800; width: 18px; margin: -5px 0; border-radius: 9px; }");
+    "QSlider::groove:horizontal { background: #3c3c3c; height: 8px; border-radius: 4px; } "
+    "QSlider::handle:horizontal { background: #f39c12; width: 18px; margin: -5px 0; border-radius: 9px; }");
   connect(m_laserCurrentSlider, &QSlider::valueChanged, this, &TECControlPage::onLaserCurrentChanged);
   currentLayout->addWidget(m_laserCurrentSlider);
 
   m_laserCurrentValue = new QLabel("150 mA");
-  m_laserCurrentValue->setStyleSheet("QLabel { color: #333333; font-weight: bold; min-width: 70px; }");
+  m_laserCurrentValue->setStyleSheet("QLabel { color: #d4d4d4; font-weight: bold; min-width: 70px; }");
   currentLayout->addWidget(m_laserCurrentValue);
 
   QLabel* currentSetpointLabel = new QLabel("Setpoint:");
-  currentSetpointLabel->setStyleSheet("QLabel { color: #666666; }");
+  currentSetpointLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   laserLayout->addRow(currentSetpointLabel, currentLayout);
 
   m_actualLaserCurrent = new QLabel("-- mA");
-  m_actualLaserCurrent->setStyleSheet("QLabel { color: #0078d7; font-weight: bold; }");
+  m_actualLaserCurrent->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; }");
   QLabel* actualCurrentLabel = new QLabel("Actual Current:");
-  actualCurrentLabel->setStyleSheet("QLabel { color: #666666; }");
+  actualCurrentLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   laserLayout->addRow(actualCurrentLabel, m_actualLaserCurrent);
 
   m_laserToggle = new QPushButton("Laser OFF");
   m_laserToggle->setCheckable(true);
   m_laserToggle->setStyleSheet(
-    "QPushButton { background-color: #999999; color: white; padding: 10px; "
+    "QPushButton { background-color: #666666; color: white; padding: 10px; "
     "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:checked { background-color: #ff9800; }");
+    "QPushButton:checked { background-color: #f39c12; }");
   connect(m_laserToggle, &QPushButton::clicked, this, &TECControlPage::onLaserToggled);
   QLabel* laserLabel = new QLabel("Laser:");
-  laserLabel->setStyleSheet("QLabel { color: #666666; }");
+  laserLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   laserLayout->addRow(laserLabel, m_laserToggle);
 
   m_laserStatus = new QLabel("OFF");
-  m_laserStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+  m_laserStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   QLabel* laserStatusLabel = new QLabel("Status:");
-  laserStatusLabel->setStyleSheet("QLabel { color: #666666; }");
+  laserStatusLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   laserLayout->addRow(laserStatusLabel, m_laserStatus);
 
   rightLayout->addWidget(laserGroup);
@@ -228,24 +228,24 @@ void TECControlPage::createRightPanel()
   // === PRESETS GROUP ===
   QGroupBox* presetsGroup = new QGroupBox("Quick Presets");
   presetsGroup->setStyleSheet(
-    "QGroupBox { color: #333333; font-weight: bold; border: 2px solid #cccccc; "
-    "border-radius: 5px; padding: 10px; margin-top: 10px; } "
-    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    "QGroupBox { color: #ffffff; font-weight: bold; border: 2px solid #3f3f46; "
+    "background-color: #1e1e1e; border-radius: 5px; padding: 10px; margin-top: 10px; } "
+    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #ffffff; }");
   QHBoxLayout* presetsLayout = new QHBoxLayout(presetsGroup);
 
   m_preset1Button = new QPushButton("Preset 1\n25C, 150mA\nAll ON");
   m_preset1Button->setStyleSheet(
-    "QPushButton { background-color: #2196f3; color: white; padding: 15px; "
+    "QPushButton { background-color: #0e639c; color: white; padding: 15px; "
     "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:hover { background-color: #42a5f5; }");
+    "QPushButton:hover { background-color: #1177bb; }");
   connect(m_preset1Button, &QPushButton::clicked, this, &TECControlPage::onPreset1Clicked);
   presetsLayout->addWidget(m_preset1Button);
 
   m_preset2Button = new QPushButton("Preset 2\n25C, 250mA\nAll ON");
   m_preset2Button->setStyleSheet(
-    "QPushButton { background-color: #9c27b0; color: white; padding: 15px; "
+    "QPushButton { background-color: #8e44ad; color: white; padding: 15px; "
     "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:hover { background-color: #ab47bc; }");
+    "QPushButton:hover { background-color: #9b59b6; }");
   connect(m_preset2Button, &QPushButton::clicked, this, &TECControlPage::onPreset2Clicked);
   presetsLayout->addWidget(m_preset2Button);
 
@@ -318,13 +318,13 @@ void TECControlPage::onConnectClicked()
   if (success) {
     m_isConnected = true;
     m_connectionStatus->setText("Connected");
-    m_connectionStatus->setStyleSheet("QLabel { color: #4caf50; font-weight: bold; }");
+    m_connectionStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
     enableControls(true);
     std::cout << "[TECControlPage] Connected to " << device.toStdString() << std::endl;
   }
   else {
     m_connectionStatus->setText("Connection Failed");
-    m_connectionStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+    m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
 }
 
@@ -338,7 +338,7 @@ void TECControlPage::onDisconnectClicked()
   m_context->tecManager->DisconnectDevice(device.toStdString());
   m_isConnected = false;
   m_connectionStatus->setText("Disconnected");
-  m_connectionStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+  m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   enableControls(false);
   std::cout << "[TECControlPage] Disconnected from " << device.toStdString() << std::endl;
 }
@@ -487,11 +487,11 @@ void TECControlPage::updateControls()
   // Update connection status
   if (status.Connected) {
     m_connectionStatus->setText("Connected");
-    m_connectionStatus->setStyleSheet("QLabel { color: #4caf50; font-weight: bold; }");
+    m_connectionStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
   }
   else {
     m_connectionStatus->setText("Not Connected");
-    m_connectionStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+    m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
 
   // Update TEC toggle
@@ -530,21 +530,21 @@ void TECControlPage::updateStatusDisplay()
   // Update TEC status
   if (status.TECOn) {
     m_tecStatus->setText("ON");
-    m_tecStatus->setStyleSheet("QLabel { color: #4caf50; font-weight: bold; }");
+    m_tecStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
   }
   else {
     m_tecStatus->setText("OFF");
-    m_tecStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+    m_tecStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
 
   // Update laser status
   if (status.LaserOn) {
     m_laserStatus->setText("ON");
-    m_laserStatus->setStyleSheet("QLabel { color: #ff9800; font-weight: bold; }");
+    m_laserStatus->setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }");
   }
   else {
     m_laserStatus->setText("OFF");
-    m_laserStatus->setStyleSheet("QLabel { color: #d73c00; font-weight: bold; }");
+    m_laserStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
 }
 

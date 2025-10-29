@@ -55,12 +55,17 @@ public:
   };
   void setScalingMode(ScalingMode mode);
 
+  // Force refresh - useful when page is shown
+  void forceRefresh();
+
 signals:
   void frameDisplayed();  // Emitted after frame is rendered
   void renderError(QString error);
 
 protected:
   void resizeEvent(QResizeEvent* event) override;
+  void paintEvent(QPaintEvent* event) override;  // ✅ NEW - Ensure background is painted
+  void showEvent(QShowEvent* event) override;     // ✅ NEW - Force refresh on show
 
 private:
   // UI Component

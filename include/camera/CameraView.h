@@ -35,6 +35,9 @@ public:
   bool isConnected() const { return m_isConnected; }
   std::string getCameraId() const { return m_cameraId; }
 
+  // Check if camera is already connected in CameraManager and sync state
+  void syncWithManagerState();
+
 signals:
   void cameraConnected(QString cameraId);
   void cameraDisconnected(QString cameraId);
@@ -54,6 +57,9 @@ private slots:
   void onExposureSliderChanged(int value);
   void onGainSliderChanged(int value);
   void onSaveImageClicked();
+
+protected:
+  void showEvent(QShowEvent* event) override;  // ✅ NEW - Force refresh on show
 
 private:
   void setupUI();

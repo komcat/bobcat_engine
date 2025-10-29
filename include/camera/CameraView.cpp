@@ -10,6 +10,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QHBoxLayout>
+#include <QShowEvent>
 #include <iostream>
 
 CameraView::CameraView(ApplicationContext* context,
@@ -27,6 +28,10 @@ CameraView::CameraView(ApplicationContext* context,
   , m_lastTotalFrames(0)
 {
   setupUI();
+
+  // ✅ NEW - Check if camera is already connected in CameraManager
+  syncWithManagerState();
+
   std::cout << "[CameraView] Created for camera: " << m_cameraId << std::endl;
 }
 
@@ -38,6 +43,99 @@ CameraView::~CameraView()
 
 void CameraView::setupUI()
 {
+  // Set dark theme for the entire CameraView widget
+  setStyleSheet(
+    "CameraView { "
+    "  background-color: #2d2d30; "
+    "} "
+    "QWidget { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "} "
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  color: #ffffff; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 8px; "
+    "  padding: 10px; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "} "
+    "QCheckBox { "
+    "  color: #d4d4d4; "
+    "  spacing: 8px; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 16px; "
+    "  height: 16px; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #3c3c3c; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #0e639c; "
+    "  border-color: #0e639c; "
+    "} "
+    "QLabel { "
+    "  color: #d4d4d4; "
+    "} "
+    "QSlider::groove:horizontal { "
+    "  border: 1px solid #3f3f46; "
+    "  height: 6px; "
+    "  background-color: #3c3c3c; "
+    "  border-radius: 3px; "
+    "} "
+    "QSlider::handle:horizontal { "
+    "  background-color: #0e639c; "
+    "  border: 1px solid #0c5280; "
+    "  width: 16px; "
+    "  margin: -5px 0; "
+    "  border-radius: 8px; "
+    "} "
+    "QSlider::handle:horizontal:hover { "
+    "  background-color: #1177bb; "
+    "} "
+    "QSpinBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 4px; "
+    "} "
+    "QSpinBox::up-button, QSpinBox::down-button { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "} "
+    "QSpinBox::up-button:hover, QSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "} "
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: 1px solid #0c5280; "
+    "  border-radius: 4px; "
+    "  padding: 6px 12px; "
+    "  font-weight: 600; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1177bb; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0c5280; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #3c3c3c; "
+    "  color: #666666; "
+    "  border-color: #555555; "
+    "}"
+  );
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // Status label
@@ -635,5 +733,98 @@ void CameraView::updateConnectionStatus(bool connected)
       "QLabel { background-color: #ff4444; color: white; padding: 5px; font-weight: bold; }");
     m_connectButton->setEnabled(true);
     m_disconnectButton->setEnabled(false);
+  }
+}
+
+// ============================================================================
+// ✅ NEW - FORCE REFRESH ON SHOW
+// ============================================================================
+
+void CameraView::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Force repaint of the viewport when shown
+  if (m_viewport) {
+    m_viewport->forceRefresh();
+    std::cout << "[CameraView] Forcing viewport refresh on show" << std::endl;
+  }
+
+  // Force update of entire widget
+  update();
+  repaint();
+}
+
+// ============================================================================
+// ✅ NEW - SYNC WITH CAMERA MANAGER STATE
+// ============================================================================
+
+void CameraView::syncWithManagerState()
+{
+  if (!m_context || !m_context->cameraManager) {
+    std::cout << "[CameraView] Cannot sync - no CameraManager" << std::endl;
+    return;
+  }
+
+  // Get current camera status from CameraManager
+  auto status = m_context->cameraManager->GetCameraStatus(m_cameraId);
+
+  std::cout << "[CameraView] Syncing state for " << m_cameraId
+    << " - Connected: " << status.connected
+    << ", Grabbing: " << status.grabbing << std::endl;
+
+  // If camera is already connected and grabbing, set up the view accordingly
+  if (status.connected && status.grabbing) {
+    std::cout << "[CameraView] Camera already connected - setting up subscriber" << std::endl;
+
+    // Create subscriber to receive frames
+    m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
+    m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
+    m_context->cameraManager->SubscribeToFrames(m_subscriber);
+
+    std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
+
+    // Start display update timer
+    m_displayUpdateTimer = new QTimer(this);
+    connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
+    m_displayUpdateTimer->start(33);  // ~30 FPS
+
+    m_lastUpdateTime = std::chrono::steady_clock::now();
+    m_frameCounter = 0;
+    m_lastTotalFrames = 0;
+
+    // Update UI state
+    updateConnectionStatus(true);
+
+    // Enable controls
+    m_zoomSlider->setEnabled(true);
+    m_zoomSpinBox->setEnabled(true);
+    m_zoomResetButton->setEnabled(true);
+    m_autoExposureCheck->setEnabled(true);
+    m_autoGainCheck->setEnabled(true);
+    m_exposureSlider->setEnabled(true);
+    m_gainSlider->setEnabled(true);
+    m_saveImageButton->setEnabled(true);
+
+    // Load current camera settings
+    loadCurrentSettings();
+
+    // ✅ Force refresh viewport after sync
+    if (m_viewport) {
+      m_viewport->forceRefresh();
+      std::cout << "[CameraView] Forcing viewport refresh after sync (connected)" << std::endl;
+    }
+
+    emit cameraConnected(QString::fromStdString(m_cameraId));
+    std::cout << "[CameraView] Sync complete - camera is active" << std::endl;
+  }
+  else {
+    std::cout << "[CameraView] Camera not connected in manager - staying disconnected" << std::endl;
+
+    // ✅ Force refresh even when disconnected to show placeholder
+    if (m_viewport) {
+      m_viewport->forceRefresh();
+      std::cout << "[CameraView] Forcing viewport refresh after sync (disconnected)" << std::endl;
+    }
   }
 }

@@ -36,6 +36,36 @@ MultiCameraView::~MultiCameraView()
 
 void MultiCameraView::setupUI()
 {
+  // Set dark theme for the entire MultiCameraView widget
+  setStyleSheet(
+    "MultiCameraView { "
+    "  background-color: #2d2d30; "
+    "} "
+    "QWidget { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "} "
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: 1px solid #0c5280; "
+    "  border-radius: 4px; "
+    "  padding: 8px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1177bb; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0c5280; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #3c3c3c; "
+    "  color: #666666; "
+    "  border-color: #555555; "
+    "}"
+  );
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   m_statusSummary = new QLabel("Cameras: Loading configuration...");
@@ -45,12 +75,60 @@ void MultiCameraView::setupUI()
 
   m_tabWidget = new QTabWidget();
   m_tabWidget->setTabPosition(QTabWidget::North);
+  m_tabWidget->setStyleSheet(
+    "QTabWidget::pane { "
+    "  border: none; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QTabBar { "
+    "  background-color: #2d2d30; "
+    "  border: none; "
+    "} "
+    "QTabBar::tab { "
+    "  background-color: #1e1e1e; "
+    "  color: #888888; "
+    "  padding: 10px 20px; "
+    "  margin-right: 2px; "
+    "  border: none; "
+    "  border-top-left-radius: 4px; "
+    "  border-top-right-radius: 4px; "
+    "  font-size: 13px; "
+    "  font-weight: bold; "
+    "  border-bottom: 3px solid transparent; "
+    "} "
+    "QTabBar::tab:selected { "
+    "  background-color: #0e639c; "
+    "  color: #ffffff; "
+    "  border-bottom: 3px solid #0e639c; "
+    "} "
+    "QTabBar::tab:hover { "
+    "  background-color: #2a2d2e; "
+    "  color: #d4d4d4; "
+    "}"
+  );
   mainLayout->addWidget(m_tabWidget);
 
   QHBoxLayout* buttonLayout = new QHBoxLayout();
 
   m_connectEnabledButton = new QPushButton("Connect Enabled Cameras");
-  m_connectEnabledButton->setStyleSheet("QPushButton { background-color: #44aa44; color: white; padding: 8px; font-weight: bold; }");
+  m_connectEnabledButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  border: 1px solid #229954; "
+    "  border-radius: 4px; "
+    "  padding: 8px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #2ecc71; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #3c3c3c; "
+    "  color: #666666; "
+    "  border-color: #555555; "
+    "}"
+  );
   m_connectEnabledButton->setEnabled(false);
   connect(m_connectEnabledButton, &QPushButton::clicked, this, &MultiCameraView::onConnectEnabledClicked);
   buttonLayout->addWidget(m_connectEnabledButton);

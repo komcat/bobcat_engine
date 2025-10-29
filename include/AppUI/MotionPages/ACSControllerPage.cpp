@@ -63,8 +63,9 @@ void ACSControllerPage::createVelocityControls()
     "QGroupBox { "
     "  font-size: 16px; "
     "  font-weight: bold; "
-    "  color: #2c3e50; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 8px; "
     "  margin-top: 10px; "
     "  padding-top: 15px; "
@@ -73,6 +74,7 @@ void ACSControllerPage::createVelocityControls()
     "  subcontrol-origin: margin; "
     "  left: 10px; "
     "  padding: 0 5px; "
+    "  color: #ffffff; "
     "}");
 
   QVBoxLayout* groupLayout = new QVBoxLayout(velocityGroup);
@@ -81,18 +83,28 @@ void ACSControllerPage::createVelocityControls()
   // Device selector row
   QHBoxLayout* deviceRow = new QHBoxLayout();
   QLabel* deviceLabel = new QLabel("Device:");
-  deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   deviceRow->addWidget(deviceLabel);
 
   m_deviceSelector = new QComboBox();
   m_deviceSelector->setMinimumWidth(200);
   m_deviceSelector->setStyleSheet(
     "QComboBox { "
-    "  background-color: white; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
     "  border-radius: 4px; "
     "  padding: 5px; "
     "  font-size: 14px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  border: 1px solid #3f3f46; "
     "}");
   connect(m_deviceSelector, &QComboBox::currentTextChanged, this, &ACSControllerPage::onDeviceSelected);
   deviceRow->addWidget(m_deviceSelector);
@@ -103,9 +115,25 @@ void ACSControllerPage::createVelocityControls()
   // Velocity spinboxes row
   QHBoxLayout* velocityRow = new QHBoxLayout();
 
+  QString spinBoxStyle =
+    "QDoubleSpinBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "} "
+    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "}";
+
   // X axis
   QLabel* labelX = new QLabel("X Velocity:");
-  labelX->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  labelX->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   velocityRow->addWidget(labelX);
 
   m_velocityX = new QDoubleSpinBox();
@@ -113,14 +141,14 @@ void ACSControllerPage::createVelocityControls()
   m_velocityX->setValue(10.0);
   m_velocityX->setSuffix(" mm/s");
   m_velocityX->setDecimals(1);
-  m_velocityX->setStyleSheet("QDoubleSpinBox { background-color: white; padding: 5px; }");
+  m_velocityX->setStyleSheet(spinBoxStyle);
   velocityRow->addWidget(m_velocityX);
 
   velocityRow->addSpacing(20);
 
   // Y axis
   QLabel* labelY = new QLabel("Y Velocity:");
-  labelY->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  labelY->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   velocityRow->addWidget(labelY);
 
   m_velocityY = new QDoubleSpinBox();
@@ -128,14 +156,14 @@ void ACSControllerPage::createVelocityControls()
   m_velocityY->setValue(10.0);
   m_velocityY->setSuffix(" mm/s");
   m_velocityY->setDecimals(1);
-  m_velocityY->setStyleSheet("QDoubleSpinBox { background-color: white; padding: 5px; }");
+  m_velocityY->setStyleSheet(spinBoxStyle);
   velocityRow->addWidget(m_velocityY);
 
   velocityRow->addSpacing(20);
 
   // Z axis
   QLabel* labelZ = new QLabel("Z Velocity:");
-  labelZ->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  labelZ->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   velocityRow->addWidget(labelZ);
 
   m_velocityZ = new QDoubleSpinBox();
@@ -143,7 +171,7 @@ void ACSControllerPage::createVelocityControls()
   m_velocityZ->setValue(10.0);
   m_velocityZ->setSuffix(" mm/s");
   m_velocityZ->setDecimals(1);
-  m_velocityZ->setStyleSheet("QDoubleSpinBox { background-color: white; padding: 5px; }");
+  m_velocityZ->setStyleSheet(spinBoxStyle);
   velocityRow->addWidget(m_velocityZ);
 
   velocityRow->addStretch();
@@ -154,7 +182,7 @@ void ACSControllerPage::createVelocityControls()
   QHBoxLayout* buttonRow = new QHBoxLayout();
 
   QLabel* presetLabel = new QLabel("Quick Presets:");
-  presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; }");
+  presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   buttonRow->addWidget(presetLabel);
 
   m_turtleButton = new QPushButton("🐢 Turtle (10 mm/s)");

@@ -55,7 +55,7 @@ void MotionControllerPageBase::setupUI()
   QHBoxLayout* titleLayout = new QHBoxLayout();
 
   QLabel* titleLabel = new QLabel(getPageTitle());
-  titleLabel->setStyleSheet("QLabel { font-size: 20px; font-weight: bold; color: #2c3e50; }");
+  titleLabel->setStyleSheet("QLabel { font-size: 20px; font-weight: bold; color: #ffffff; }");
   titleLayout->addWidget(titleLabel);
 
   titleLayout->addStretch();
@@ -63,15 +63,15 @@ void MotionControllerPageBase::setupUI()
   m_refreshButton = new QPushButton("🔄 Refresh");
   m_refreshButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #ecf0f1; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: 1px solid #0c5280; "
     "  border-radius: 5px; "
     "  padding: 8px 15px; "
     "  font-size: 14px; "
     "  font-weight: bold; "
     "} "
-    "QPushButton:hover { background-color: #d5dbdb; }");
+    "QPushButton:hover { background-color: #1177bb; }");
   connect(m_refreshButton, &QPushButton::clicked, this, &MotionControllerPageBase::onRefreshClicked);
   titleLayout->addWidget(m_refreshButton);
 
@@ -81,8 +81,8 @@ void MotionControllerPageBase::setupUI()
   createDeviceTable();
   mainLayout->addWidget(m_deviceTable);
 
-  // Light background
-  setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  // Dark background
+  setStyleSheet("QWidget { background-color: #2d2d30; color: #d4d4d4; }");
 }
 
 void MotionControllerPageBase::createDeviceTable()
@@ -102,26 +102,27 @@ void MotionControllerPageBase::createDeviceTable()
   m_deviceTable->setColumnCount(headers.size());
   m_deviceTable->setHorizontalHeaderLabels(headers);
 
-  // Light theme style
+  // Dark theme style
   m_deviceTable->setStyleSheet(
     "QTableWidget { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  gridline-color: #dcdde1; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  gridline-color: #3f3f46; "
+    "  border: 1px solid #3f3f46; "
     "} "
     "QTableWidget::item { "
     "  padding: 8px; "
-    "  border-bottom: 1px solid #ecf0f1; "
+    "  border-bottom: 1px solid #3f3f46; "
     "} "
     "QTableWidget::item:selected { "
-    "  background-color: #dfe6e9; "
+    "  background-color: #0e639c; "
+    "  color: #ffffff; "
     "} "
     "QHeaderView::section { "
-    "  background-color: #ecf0f1; "
-    "  color: #2c3e50; "
+    "  background-color: #2d2d30; "
+    "  color: #ffffff; "
     "  padding: 10px; "
-    "  border: 1px solid #bdc3c7; "
+    "  border: 1px solid #3f3f46; "
     "  font-weight: bold; "
     "}");
 
@@ -201,7 +202,7 @@ void MotionControllerPageBase::updateDeviceRow(int row, const std::string& devic
   // Device name
   QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(deviceName));
   nameItem->setTextAlignment(Qt::AlignCenter);
-  nameItem->setForeground(QColor("#2c3e50"));
+  nameItem->setForeground(QColor("#d4d4d4"));
   m_deviceTable->setItem(row, COL_NAME, nameItem);
 
   // Enabled status (TODO: get from config)
@@ -223,7 +224,7 @@ void MotionControllerPageBase::updateDeviceRow(int row, const std::string& devic
   for (size_t i = 0; i < axisNames.size(); ++i) {
     QTableWidgetItem* posItem = new QTableWidgetItem("--");
     posItem->setTextAlignment(Qt::AlignCenter);
-    posItem->setForeground(QColor("#7f8c8d"));
+    posItem->setForeground(QColor("#888888"));
     m_deviceTable->setItem(row, COL_AXIS_START + i, posItem);
   }
 
@@ -278,7 +279,7 @@ void MotionControllerPageBase::updatePositions()
         QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + i);
         if (posItem) {
           posItem->setText("--");
-          posItem->setForeground(QColor("#95a5a6"));
+          posItem->setForeground(QColor("#666666"));
         }
       }
       continue;
@@ -293,11 +294,11 @@ void MotionControllerPageBase::updatePositions()
       if (posItem) {
         if (success) {
           posItem->setText(QString::number(position, 'f', 3));
-          posItem->setForeground(QColor("#2c3e50"));
+          posItem->setForeground(QColor("#d4d4d4"));
         }
         else {
           posItem->setText("--");
-          posItem->setForeground(QColor("#95a5a6"));
+          posItem->setForeground(QColor("#666666"));
         }
       }
     }
