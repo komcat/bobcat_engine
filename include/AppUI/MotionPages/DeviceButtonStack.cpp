@@ -23,11 +23,11 @@ void DeviceButtonStack::setupUI()
   // Set fixed width for the button stack
   setFixedWidth(120);
 
-  // Style for the container
+  // Style for the container - Dark Theme
   setStyleSheet(
     "DeviceButtonStack {"
-    "  background-color: #ecf0f1;"
-    "  border-right: 2px solid #bdc3c7;"
+    "  background-color: #1e1e1e;"
+    "  border-right: 2px solid #3f3f46;"
     "}"
   );
 }
@@ -44,12 +44,12 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
     btn->setMaximumHeight(80);
     btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    // Style for device buttons
+    // Style for device buttons - Dark Theme
     btn->setStyleSheet(
       "QPushButton {"
-      "  background-color: white;"
-      "  color: #2c3e50;"
-      "  border: 2px solid #bdc3c7;"
+      "  background-color: #2d2d30;"
+      "  color: #d4d4d4;"
+      "  border: 2px solid #3f3f46;"
       "  border-radius: 6px;"
       "  font-size: 12px;"
       "  font-weight: bold;"
@@ -57,16 +57,16 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  text-align: center;"
       "}"
       "QPushButton:hover {"
-      "  background-color: #d5dbdb;"
-      "  border-color: #95a5a6;"
+      "  background-color: #3c3c3c;"
+      "  border-color: #555555;"
       "}"
       "QPushButton:checked {"
-      "  background-color: #3498db;"
+      "  background-color: #0e639c;"
       "  color: white;"
-      "  border-color: #2980b9;"
+      "  border-color: #0e639c;"
       "}"
       "QPushButton:checked:hover {"
-      "  background-color: #2980b9;"
+      "  background-color: #1177bb;"
       "}"
     );
 

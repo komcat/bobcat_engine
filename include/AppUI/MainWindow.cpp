@@ -64,17 +64,17 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-  // Set light theme for main window
+  // Set dark theme for main window
   setStyleSheet(
     "QMainWindow { "
-    "  background-color: #f5f5f5; "
+    "  background-color: #2d2d30; "
     "} "
     "QWidget { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
     "} "
     "QStackedWidget { "
-    "  background-color: white; "
+    "  background-color: #2d2d30; "
     "}"
   );
 

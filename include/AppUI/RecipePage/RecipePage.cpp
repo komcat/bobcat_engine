@@ -65,7 +65,7 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
   }
 
   std::cout << "[RecipePage] Initialized" << std::endl;
@@ -88,8 +88,30 @@ RecipePage::~RecipePage()
 
 void RecipePage::setupUI()
 {
-  // Set light gray background for entire page
-  setStyleSheet("RecipePage { background-color: #f0f0f0; }");
+  // Set dark theme background for entire page
+  setStyleSheet(
+    "RecipePage { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "} "
+    "QLabel { "
+    "  color: #d4d4d4; "
+    "} "
+    "QLineEdit { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #0e639c; "
+    "} "
+    "QScrollArea { "
+    "  background-color: #2d2d30; "
+    "  border: none; "
+    "}"
+  );
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(5, 0, 5, 5);
@@ -119,7 +141,7 @@ void RecipePage::setupUI()
   titleLabel->setStyleSheet(
     "font-size: 15px; "
     "font-weight: bold; "
-    "color: #2d3e5f; "
+    "color: #ffffff; "
     "padding: 0px; "
     "margin: 0px;"
   );
@@ -130,7 +152,7 @@ void RecipePage::setupUI()
   m_productStatusLabel = new QLabel("No product loaded");
   m_productStatusLabel->setStyleSheet(
     "font-size: 11px; "
-    "color: #666; "
+    "color: #cccccc; "
     "padding: 4px;"
   );
   titleLayout->addWidget(m_productStatusLabel);
@@ -183,13 +205,19 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   mainLayout->setSpacing(5);
 
   QLabel* title = new QLabel("Available Processes");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
+  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
   mainLayout->addWidget(title);
 
   // Search box for filtering processes
   QLineEdit* searchBox = new QLineEdit();
   searchBox->setPlaceholderText("Search processes...");
-  searchBox->setStyleSheet("padding: 5px; border: 1px solid #c0c0c0; border-radius: 3px;");
+  searchBox->setStyleSheet(
+    "padding: 5px; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4;"
+  );
   mainLayout->addWidget(searchBox);
 
   // ========== HORIZONTAL SPLIT: List on left, Button on right ==========
@@ -201,18 +229,22 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   m_processTemplateList->setHeaderHidden(true);
   m_processTemplateList->setStyleSheet(
     "QTreeWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #c0c0c0; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
-    "  gridline-color: #d0d0d0; "
+    "  color: #d4d4d4; "
+    "  gridline-color: #3f3f46; "
     "} "
     "QTreeWidget::item { "
     "  padding: 5px; "
-    "  border-bottom: 1px solid #e8e8e8; "
+    "  border-bottom: 1px solid #3f3f46; "
+    "} "
+    "QTreeWidget::item:hover { "
+    "  background-color: #2a2d2e; "
     "} "
     "QTreeWidget::item:selected { "
-    "  background-color: #5a8fd6; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "} "
     "QTreeWidget::branch:has-children:!has-siblings:closed,"
@@ -315,12 +347,12 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   layout->setContentsMargins(5, 5, 5, 5);
 
   QLabel* title = new QLabel("Recipe Steps");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
+  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
   layout->addWidget(title);
 
   QHBoxLayout* nameLayout = new QHBoxLayout();
   QLabel* nameLabel = new QLabel("Name:");
-  nameLabel->setStyleSheet("font-weight: bold;");
+  nameLabel->setStyleSheet("font-weight: bold; color: #ffffff;");
   m_recipeNameEdit = new QLineEdit(QString::fromStdString(m_recipeManager->getRecipeName()));
   connect(m_recipeNameEdit, &QLineEdit::textChanged, this, &RecipePage::onRecipeNameChanged);
   nameLayout->addWidget(nameLabel);
@@ -330,11 +362,11 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_loadedProductLabel = new QLabel("Product: None");
   m_loadedProductLabel->setStyleSheet(
     "font-size: 11px; "
-    "color: #666; "
+    "color: #cccccc; "
     "padding: 5px; "
-    "border: 1px solid #ddd; "
+    "border: 1px solid #3f3f46; "
     "border-radius: 3px; "
-    "background-color: #f9f9f9;"
+    "background-color: #1e1e1e;"
   );
   m_loadedProductLabel->setWordWrap(true);
   layout->addWidget(m_loadedProductLabel);
@@ -477,40 +509,46 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   m_recipeTree->setStyleSheet(
     "QTreeWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #c0c0c0; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
-    "  gridline-color: #d0d0d0; "
+    "  color: #d4d4d4; "
+    "  gridline-color: #3f3f46; "
     "  show-decoration-selected: 1; "
     "} "
     "QTreeWidget::item { "
-    "  border-bottom: 1px solid #e0e0e0; "
+    "  border-bottom: 1px solid #3f3f46; "
     "  padding: 2px; "
     "} "
+    "QTreeWidget::item:hover { "
+    "  background-color: #2a2d2e; "
+    "} "
     "QTreeWidget::item:selected { "
-    "  background-color: #5a8fd6; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "} "
     "QHeaderView::section { "
-    "  background-color: #ecf0f1; "
+    "  background-color: #383838; "
     "  padding: 5px; "
-    "  border: 1px solid #bdc3c7; "
+    "  border: 1px solid #3f3f46; "
     "  font-weight: bold; "
     "  font-size: 11px; "
+    "  color: #d4d4d4; "
     "} "
     "QCheckBox { "
     "  spacing: 5px; "
+    "  color: #d4d4d4; "
     "} "
     "QCheckBox::indicator { "
     "  width: 18px; "
     "  height: 18px; "
-    "  border: 2px solid #95a5a6; "
+    "  border: 2px solid #555555; "
     "  border-radius: 3px; "
-    "  background-color: white; "
+    "  background-color: #2d2d30; "
     "} "
     "QCheckBox::indicator:hover { "
-    "  border-color: #3498db; "
+    "  border-color: #0e639c; "
     "} "
     "QCheckBox::indicator:checked { "
     "  background-color: #27ae60; "
@@ -521,8 +559,8 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "  border-color: #2ecc71; "
     "} "
     "QCheckBox::indicator:unchecked { "
-    "  background-color: white; "
-    "  border-color: #95a5a6; "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
     "}"
   );
 
@@ -556,13 +594,21 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   layout->setContentsMargins(5, 5, 5, 5);
 
   QLabel* title = new QLabel("Process Configuration");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3e5f;");
+  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
   layout->addWidget(title);
 
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
   m_configScrollArea->setStyleSheet(
-    "QScrollArea { background-color: white; border: 1px solid #c0c0c0; border-radius: 4px; }"
+    "QScrollArea { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "} "
+    "QWidget { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "}"
   );
 
   layout->addWidget(m_configScrollArea);
@@ -572,7 +618,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
     m_context->motionManager,
     m_matrixLoader
   );
-  m_manualAdjustWidget->setStyleSheet("background-color: #f5f5f5;");
+  m_manualAdjustWidget->setStyleSheet("background-color: #2d2d30;");
 
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
@@ -616,15 +662,19 @@ void RecipePage::onProductChanged()
     // Update product status labels
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
     m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
       .arg(QString::fromStdString(productName))
       .arg(QString::fromStdString(productPath)));
     m_loadedProductLabel->setStyleSheet(
       "font-size: 11px; "
-      "color: #27ae60; "
-      "font-weight: bold;"
+      "color: #4ec9b0; "
+      "font-weight: bold; "
+      "padding: 5px; "
+      "border: 1px solid #4ec9b0; "
+      "border-radius: 3px; "
+      "background-color: #1e3a32;"
     );
 
     std::cout << "[RecipePage] Product changed to: " << productName << std::endl;
@@ -683,19 +733,19 @@ void RecipePage::onLoadRecipe()
 
           m_productStatusLabel->setText(QString("Product: %1")
             .arg(QString::fromStdString(productName)));
-          m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+          m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
           m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
             .arg(QString::fromStdString(productName))
             .arg(QString::fromStdString(productFile)));
           m_loadedProductLabel->setStyleSheet(
             "font-size: 11px; "
-            "color: #27ae60; "
+            "color: #4ec9b0; "
             "font-weight: bold; "
             "padding: 5px; "
-            "border: 1px solid #27ae60; "
+            "border: 1px solid #4ec9b0; "
             "border-radius: 3px; "
-            "background-color: #e8f5e9;"
+            "background-color: #1e3a32;"
           );
 
           std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
@@ -710,11 +760,11 @@ void RecipePage::onLoadRecipe()
             .arg(QString::fromStdString(productFile)));
           m_loadedProductLabel->setStyleSheet(
             "font-size: 11px; "
-            "color: #d32f2f; "
+            "color: #f48771; "
             "padding: 5px; "
-            "border: 1px solid #d32f2f; "
+            "border: 1px solid #f48771; "
             "border-radius: 3px; "
-            "background-color: #ffebee;"
+            "background-color: #3d2121;"
           );
 
           QMessageBox::warning(this, "Product Not Found",
@@ -727,11 +777,11 @@ void RecipePage::onLoadRecipe()
       m_loadedProductLabel->setText("Product: None");
       m_loadedProductLabel->setStyleSheet(
         "font-size: 11px; "
-        "color: #666; "
+        "color: #888888; "
         "padding: 5px; "
-        "border: 1px solid #ddd; "
+        "border: 1px solid #3f3f46; "
         "border-radius: 3px; "
-        "background-color: #f9f9f9;"
+        "background-color: #1e1e1e;"
       );
 
       QMessageBox::information(this, "Success", "Recipe loaded successfully!");
@@ -959,7 +1009,7 @@ void RecipePage::onUpdateProductFile()
       // Update top status label
       m_productStatusLabel->setText(QString("Product: %1")
         .arg(QString::fromStdString(productName)));
-      m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+      m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
       // Update loaded product label in middle panel
       m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
@@ -1309,7 +1359,7 @@ void RecipePage::clearConfigurationForm()
 
   QLabel* label = new QLabel("Select a process step to configure");
   label->setAlignment(Qt::AlignCenter);
-  label->setStyleSheet("color: #888; font-size: 14px; padding: 50px;");
+  label->setStyleSheet("color: #888888; font-size: 14px; padding: 50px; background-color: #1e1e1e;");
 
   layout->addWidget(label);
   m_configScrollArea->setWidget(placeholder);
@@ -1850,7 +1900,7 @@ void RecipePage::onLoadProductClicked()
 
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
     m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
       .arg(QString::fromStdString(productName))
@@ -1924,7 +1974,7 @@ void RecipePage::loadLastRecipeFromSettings()
 
         m_productStatusLabel->setText(QString("Product: %1")
           .arg(QString::fromStdString(productName)));
-        m_productStatusLabel->setStyleSheet("font-size: 11px; color: #27ae60; font-weight: bold;");
+        m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
         m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
           .arg(QString::fromStdString(productName))
@@ -1960,7 +2010,7 @@ void RecipePage::loadLastRecipeFromSettings()
   else {
     // No product file associated with recipe
     m_productStatusLabel->setText("Product: None");
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #666;");
+    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #888888;");
 
     m_loadedProductLabel->setText("Product: None");
     m_loadedProductLabel->setStyleSheet(

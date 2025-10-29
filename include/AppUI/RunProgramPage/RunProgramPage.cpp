@@ -95,6 +95,30 @@ RunProgramPage::~RunProgramPage()
 
 void RunProgramPage::setupUI()
 {
+  // Set dark theme for entire page
+  setStyleSheet(
+    "RunProgramPage { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "} "
+    "QWidget { "
+    "  color: #d4d4d4; "
+    "} "
+    "QLabel { "
+    "  color: #d4d4d4; "
+    "} "
+    "QLineEdit { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #0e639c; "
+    "}"
+  );
+
   QHBoxLayout* mainLayout = new QHBoxLayout(this);
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
@@ -143,7 +167,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_currentProductLabel = new QLabel("Product: None");
   m_currentProductLabel->setStyleSheet(
     "QLabel {"
-    "  color: #34495e;"
+    "  color: #cccccc;"
     "  font-size: 12px;"
     "  font-weight: bold;"
     "  padding: 5px;"
@@ -154,6 +178,23 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   // === TOP SECTION: File Operations ===
   QGroupBox* fileGroup = new QGroupBox("Program File");
+  fileGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
   QVBoxLayout* fileLayout = new QVBoxLayout(fileGroup);
 
   m_programNameLabel = new QLabel("No program loaded");
@@ -163,8 +204,50 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   QHBoxLayout* fileButtonLayout = new QHBoxLayout();
   m_loadButton = new QPushButton("Load");
+  m_loadButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #0e639c; "
+    "}"
+  );
   m_saveButton = new QPushButton("Save");
+  m_saveButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #0e639c; "
+    "}"
+  );
   m_editButton = new QPushButton("Edit");
+  m_editButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #0e639c; "
+    "}"
+  );
 
   fileButtonLayout->addWidget(m_loadButton);
   fileButtonLayout->addWidget(m_saveButton);
@@ -175,6 +258,23 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   // === MIDDLE SECTION: Execute Controls ===
   QGroupBox* executeGroup = new QGroupBox("Execution");
+  executeGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
   QVBoxLayout* executeLayout = new QVBoxLayout(executeGroup);
 
   m_executeButton = new QPushButton("▶ Execute Program");
@@ -199,25 +299,76 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_autoRunNextCheckBox->setChecked(false);
   m_autoRunNextCheckBox->setStyleSheet(
     "QCheckBox { "
+    "  spacing: 8px; "
     "  font-size: 12px; "
     "  padding: 5px; "
+    "  color: #d4d4d4; "
     "} "
     "QCheckBox::indicator { "
-    "  width: 18px; "
-    "  height: 18px; "
-    "}");
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #27ae60; "
+    "  border-color: #27ae60; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #2ecc71; "
+    "  border-color: #2ecc71; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
+    "}"
+  );
   executeLayout->addWidget(m_autoRunNextCheckBox);
 
   m_progressBar = new QProgressBar();
   m_progressBar->setRange(0, 100);
   m_progressBar->setValue(0);
   m_progressBar->setTextVisible(true);
+  m_progressBar->setStyleSheet(
+    "QProgressBar { "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "  text-align: center; "
+    "  color: #d4d4d4; "
+    "} "
+    "QProgressBar::chunk { "
+    "  background-color: #4CAF50; "
+    "  border-radius: 2px; "
+    "}"
+  );
   executeLayout->addWidget(m_progressBar);
 
   leftLayout->addWidget(executeGroup);
 
   // === BOTTOM SECTION: Recipe List ===
   QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
+  recipeGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
   QVBoxLayout* recipeLayout = new QVBoxLayout(recipeGroup);
 
   m_recipeListWidget = new QListWidget();
@@ -225,24 +376,30 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   m_recipeListWidget->setStyleSheet(
     "QListWidget { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
     "  font-size: 14px; "
     "  padding: 2px; "
+    "  color: #d4d4d4; "
+    "  gridline-color: #3f3f46; "
     "} "
     "QListWidget::item { "
     "  padding: 10px 8px; "
-    "  border-bottom: 1px solid #e0e0e0; "
+    "  border-bottom: 1px solid #3f3f46; "
     "} "
     "QListWidget::item:selected { "
-    "  background-color: #2196F3; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "} "
     "QListWidget::item:hover { "
-    "  background-color: #e3f2fd; "
+    "  background-color: #2a2d2e; "
     "} "
     "QListWidget::item:selected:hover { "
-    "  background-color: #1976D2; "
+    "  background-color: #0e639c; "
     "  color: white; "
-    "}");
+    "}"
+  );
 
   recipeLayout->addWidget(m_recipeListWidget);
 
@@ -305,6 +462,23 @@ void RunProgramPage::createEditWidget()
 
   // === PROGRAM NAME FIELD WITH SAVE BUTTON ===
   QGroupBox* programNameGroup = new QGroupBox("Program Name");
+  programNameGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
   QVBoxLayout* programNameLayout = new QVBoxLayout(programNameGroup);
 
   // Horizontal layout for name field and save button
@@ -340,6 +514,18 @@ void RunProgramPage::createEditWidget()
   // Add Recipe button
   m_addRecipeButton = new QPushButton("+ Add Recipe");
   m_addRecipeButton->setMinimumHeight(40);
+  m_addRecipeButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "  font-size: 14px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #2ecc71; "
+    "}"
+  );
   layout->addWidget(m_addRecipeButton);
 
   // === RECIPE TABLE AND PREVIEW (side by side) ===
@@ -351,7 +537,7 @@ void RunProgramPage::createEditWidget()
   tableLayout->setContentsMargins(0, 0, 0, 0);
 
   QLabel* tableLabel = new QLabel("Recipes in Program");
-  tableLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f;");
+  tableLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;");
   tableLayout->addWidget(tableLabel);
 
   m_editRecipeTable = new QTableWidget();
@@ -368,19 +554,33 @@ void RunProgramPage::createEditWidget()
   m_editRecipeTable->setColumnWidth(2, 80);   // Status
   m_editRecipeTable->setStyleSheet(
     "QTableWidget { "
-    "  gridline-color: #e0e0e0; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  gridline-color: #3f3f46; "
     "  font-size: 13px; "
+    "  color: #d4d4d4; "
+    "  show-decoration-selected: 1; "
+    "} "
+    "QTableWidget::item { "
+    "  border-bottom: 1px solid #3f3f46; "
+    "  padding: 2px; "
+    "} "
+    "QTableWidget::item:hover { "
+    "  background-color: #2a2d2e; "
     "} "
     "QTableWidget::item:selected { "
-    "  background-color: #2196F3; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "} "
     "QHeaderView::section { "
-    "  background-color: #f5f5f5; "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
     "  padding: 5px; "
-    "  border: 1px solid #ddd; "
+    "  border: 1px solid #3f3f46; "
     "  font-weight: bold; "
-    "}");
+    "}"
+  );
   tableLayout->addWidget(m_editRecipeTable);
 
   recipeSplitter->addWidget(tableContainer);
@@ -391,7 +591,7 @@ void RunProgramPage::createEditWidget()
   previewLayout->setContentsMargins(0, 0, 0, 0);
 
   QLabel* previewLabel = new QLabel("Recipe Preview");
-  previewLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f;");
+  previewLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;");
   previewLayout->addWidget(previewLabel);
 
   m_recipePreviewText = new QTextEdit();
@@ -401,9 +601,12 @@ void RunProgramPage::createEditWidget()
     "QTextEdit { "
     "  font-family: 'Consolas', 'Courier New', monospace; "
     "  font-size: 12px; "
-    "  background-color: #f9f9f9; "
-    "  border: 1px solid #ddd; "
-    "}");
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "}"
+  );
   previewLayout->addWidget(m_recipePreviewText);
 
   recipeSplitter->addWidget(previewContainer);
@@ -474,17 +677,17 @@ void RunProgramPage::createExecutionWidget()
 
   // Title
   QLabel* titleLabel = new QLabel("Program Execution");
-  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold;");
+  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
   layout->addWidget(titleLabel);
 
   // Status
   m_executionStatusLabel = new QLabel("Ready to execute");
-  m_executionStatusLabel->setStyleSheet("font-size: 14px; color: #666;");
+  m_executionStatusLabel->setStyleSheet("font-size: 14px; color: #cccccc;");
   layout->addWidget(m_executionStatusLabel);
 
   // Current recipe
   m_currentRecipeLabel = new QLabel("Current Recipe: None");
-  m_currentRecipeLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #2196F3;");
+  m_currentRecipeLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0e639c;");
   layout->addWidget(m_currentRecipeLabel);
 
   layout->addSpacing(20);
@@ -498,19 +701,32 @@ void RunProgramPage::createExecutionWidget()
   logLayout->setContentsMargins(0, 0, 0, 0);
 
   QLabel* logLabel = new QLabel("Execution Log:");
-  logLabel->setStyleSheet("font-weight: bold;");
+  logLabel->setStyleSheet("font-weight: bold; color: #ffffff;");
   logLayout->addWidget(logLabel);
 
   m_logTextEdit = new QTextEdit();
   m_logTextEdit->setReadOnly(true);
-  m_logTextEdit->setStyleSheet("background-color: #f5f5f5; font-family: monospace;");
+  m_logTextEdit->setStyleSheet(
+    "QTextEdit { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
+    "  font-size: 12px; "
+    "}"
+  );
   logLayout->addWidget(m_logTextEdit, 1);
 
   m_executionLogLabel = logLabel;
 
   // === PROMPT VIEW (Index 1) ===
   m_promptWidget = new UserPromptWidget();
-  m_promptWidget->setStyleSheet("background-color: #f5f5f5;");
+  m_promptWidget->setStyleSheet(
+    "UserPromptWidget { "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
 
   // Connect prompt response
   connect(m_promptWidget, &UserPromptWidget::responseReceived,
@@ -520,7 +736,11 @@ void RunProgramPage::createExecutionWidget()
   m_manualAdjustWidget = new ManualAdjustWidget(
     m_context->motionManager,
     m_matrixLoader);
-  m_manualAdjustWidget->setStyleSheet("background-color: #f5f5f5;");
+  m_manualAdjustWidget->setStyleSheet(
+    "ManualAdjustWidget { "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
 
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,

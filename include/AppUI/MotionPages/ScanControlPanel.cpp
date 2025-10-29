@@ -4,6 +4,8 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QFrame>
+#include <QPalette>
+#include <QColor>
 
 ScanControlPanel::ScanControlPanel(QWidget* parent)
   : QWidget(parent)
@@ -20,6 +22,12 @@ ScanControlPanel::ScanControlPanel(QWidget* parent)
 
 void ScanControlPanel::setupUI()
 {
+  // Set dark background for the entire widget
+  setAutoFillBackground(true);
+  QPalette pal = palette();
+  pal.setColor(QPalette::Window, QColor(45, 45, 48));  // #2d2d30
+  setPalette(pal);
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(8, 8, 8, 8);
   mainLayout->setSpacing(8);
@@ -28,7 +36,7 @@ void ScanControlPanel::setupUI()
   QLabel* titleLabel = new QLabel("SCANNING CONTROL");
   titleLabel->setStyleSheet(
     "QLabel {"
-    "  color: #2c3e50;"
+    "  color: #ffffff;"
     "  font-size: 13px;"
     "  font-weight: bold;"
     "  padding: 4px;"
@@ -39,12 +47,12 @@ void ScanControlPanel::setupUI()
   // Separator
   QFrame* line1 = new QFrame();
   line1->setFrameShape(QFrame::HLine);
-  line1->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line1->setStyleSheet("QFrame { background-color: #3f3f46; margin: 4px 0; }");
   mainLayout->addWidget(line1);
 
   // === Device Selection ===
   QLabel* deviceLabel = new QLabel("Device");
-  deviceLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(deviceLabel);
 
   m_deviceCombo = new QComboBox();
@@ -54,12 +62,12 @@ void ScanControlPanel::setupUI()
   // Separator
   QFrame* line2 = new QFrame();
   line2->setFrameShape(QFrame::HLine);
-  line2->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 4px 0; }");
   mainLayout->addWidget(line2);
 
   // === Scan Preset ===
   QLabel* presetLabel = new QLabel("Scan Preset");
-  presetLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  presetLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(presetLabel);
 
   m_presetCombo = new QComboBox();
@@ -71,12 +79,12 @@ void ScanControlPanel::setupUI()
   // Separator
   QFrame* line3 = new QFrame();
   line3->setFrameShape(QFrame::HLine);
-  line3->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line3->setStyleSheet("QFrame { background-color: #3f3f46; margin: 4px 0; }");
   mainLayout->addWidget(line3);
 
   // === Data Channel Selection ===
   QLabel* channelLabel = new QLabel("Data Channel");
-  channelLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  channelLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(channelLabel);
 
   m_dataChannelCombo = new QComboBox();
@@ -86,7 +94,7 @@ void ScanControlPanel::setupUI()
   // Separator
   QFrame* line4 = new QFrame();
   line4->setFrameShape(QFrame::HLine);
-  line4->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line4->setStyleSheet("QFrame { background-color: #3f3f46; margin: 4px 0; }");
   mainLayout->addWidget(line4);
 
   // === Scan Control Buttons ===
@@ -105,17 +113,17 @@ void ScanControlPanel::setupUI()
   // Separator
   QFrame* line5 = new QFrame();
   line5->setFrameShape(QFrame::HLine);
-  line5->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 4px 0; }");
+  line5->setStyleSheet("QFrame { background-color: #3f3f46; margin: 4px 0; }");
   mainLayout->addWidget(line5);
 
   // === Status Display ===
   QLabel* statusTitleLabel = new QLabel("Status");
-  statusTitleLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; font-weight: bold; }");
+  statusTitleLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(statusTitleLabel);
 
   // Status widget with background
   QWidget* statusWidget = new QWidget();
-  statusWidget->setStyleSheet("QWidget { background-color: #f8f9fa; border-radius: 4px; }");
+  statusWidget->setStyleSheet("QWidget { background-color: #1e1e1e; border: 1px solid #3f3f46; border-radius: 4px; }");
   QVBoxLayout* statusLayout = new QVBoxLayout(statusWidget);
   statusLayout->setContentsMargins(8, 8, 8, 8);
   statusLayout->setSpacing(4);
@@ -125,7 +133,7 @@ void ScanControlPanel::setupUI()
   statusLayout->addWidget(m_statusLabel);
 
   m_progressLabel = new QLabel("Progress: -");
-  m_progressLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 11px; }");
+  m_progressLabel->setStyleSheet("QLabel { color: #d4d4d4; font-size: 11px; }");
   statusLayout->addWidget(m_progressLabel);
 
   mainLayout->addWidget(statusWidget);
@@ -133,21 +141,25 @@ void ScanControlPanel::setupUI()
   // Push everything to top
   mainLayout->addStretch();
 
-  // === Styling ===
+  // === Dark Theme Styling ===
   setStyleSheet(
+    "ScanControlPanel {"
+    "  background-color: #2d2d30;"
+    "}"
     "QWidget {"
-    "  background-color: white;"
+    "  background-color: #2d2d30;"
+    "  color: #d4d4d4;"
     "}"
     "QComboBox {"
-    "  background-color: white;"
-    "  color: #2c3e50;"
-    "  border: 1px solid #bdc3c7;"
+    "  background-color: #3c3c3c;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #555555;"
     "  border-radius: 4px;"
     "  padding: 6px;"
     "  font-size: 12px;"
     "}"
     "QComboBox:hover {"
-    "  border-color: #3498db;"
+    "  border-color: #0e639c;"
     "}"
     "QComboBox::drop-down {"
     "  border: none;"
@@ -157,14 +169,14 @@ void ScanControlPanel::setupUI()
     "  image: none;"
     "  border-left: 4px solid transparent;"
     "  border-right: 4px solid transparent;"
-    "  border-top: 5px solid #2c3e50;"
+    "  border-top: 5px solid #d4d4d4;"
     "  margin-right: 6px;"
     "}"
     "QComboBox QAbstractItemView {"
-    "  background-color: white;"
-    "  color: #2c3e50;"
-    "  selection-background-color: #3498db;"
-    "  border: 1px solid #bdc3c7;"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  selection-background-color: #0e639c;"
+    "  border: 1px solid #3f3f46;"
     "}"
     // Start Scan Button - Big Green
     "QPushButton#startScanButton {"
@@ -176,11 +188,12 @@ void ScanControlPanel::setupUI()
     "  font-weight: bold;"
     "}"
     "QPushButton#startScanButton:hover {"
-    "  background-color: #229954;"
+    "  background-color: #2ecc71;"
     "}"
     "QPushButton#startScanButton:disabled {"
-    "  background-color: #95a5a6;"
-    "  border-color: #7f8c8d;"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
     "}"
     // Stop Scan Button - Red
     "QPushButton#stopScanButton {"
@@ -195,9 +208,9 @@ void ScanControlPanel::setupUI()
     "  background-color: #c0392b;"
     "}"
     "QPushButton#stopScanButton:disabled {"
-    "  background-color: #ecf0f1;"
-    "  color: #95a5a6;"
-    "  border-color: #bdc3c7;"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
     "}"
   );
 

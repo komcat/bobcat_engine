@@ -105,13 +105,27 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 
 void MotionPage::setupUI()
 {
+	// Set dark theme for entire page
+	setStyleSheet(
+		"MotionPage { "
+		"  background-color: #2d2d30; "
+		"  color: #d4d4d4; "
+		"} "
+		"QWidget { "
+		"  color: #d4d4d4; "
+		"} "
+		"QLabel { "
+		"  color: #d4d4d4; "
+		"}"
+	);
+
 	QVBoxLayout* mainLayout = new QVBoxLayout(this);
 	mainLayout->setContentsMargins(0, 0, 0, 0);
 	mainLayout->setSpacing(0);
 
 	// Top bar with back button
 	QWidget* topBar = new QWidget();
-	topBar->setStyleSheet("QWidget { background-color: white; border-bottom: 2px solid #bdc3c7; }");
+	topBar->setStyleSheet("QWidget { background-color: #2d2d30; border-bottom: 2px solid #3f3f46; }");
 	topBar->setFixedHeight(60);
 
 	QHBoxLayout* topLayout = new QHBoxLayout(topBar);
@@ -122,19 +136,19 @@ void MotionPage::setupUI()
 	m_backButton->setFixedHeight(40);
 	m_backButton->setStyleSheet(
 		"QPushButton {"
-		"  background-color: #95a5a6;"
+		"  background-color: #3d5a8c;"
 		"  color: white;"
-		"  border: 2px solid #7f8c8d;"
-		"  border-radius: 6px;"
+		"  border: none;"
+		"  border-radius: 3px;"
 		"  font-size: 14px;"
 		"  font-weight: bold;"
 		"  padding: 8px 20px;"
 		"}"
 		"QPushButton:hover {"
-		"  background-color: #7f8c8d;"
+		"  background-color: #5a8fd6;"
 		"}"
 		"QPushButton:pressed {"
-		"  background-color: #6c7a89;"
+		"  background-color: #2d4a7c;"
 		"}"
 	);
 	topLayout->addWidget(m_backButton);
@@ -143,7 +157,7 @@ void MotionPage::setupUI()
 	QLabel* titleLabel = new QLabel("Motion Control");
 	titleLabel->setStyleSheet(
 		"QLabel {"
-		"  color: #2c3e50;"
+		"  color: #ffffff;"
 		"  font-size: 20px;"
 		"  font-weight: bold;"
 		"}"
@@ -156,7 +170,7 @@ void MotionPage::setupUI()
 	m_currentProductLabel = new QLabel("No product loaded");
 	m_currentProductLabel->setStyleSheet(
 		"QLabel {"
-		"  color: #34495e;"
+		"  color: #cccccc;"
 		"  font-size: 12px;"
 		"  font-weight: bold;"
 		"  padding: 5px;"
@@ -213,23 +227,32 @@ void MotionPage::setupUI()
 	m_tabWidget->setStyleSheet(
 		"QTabWidget::pane {"
 		"  border: none;"
+		"  background-color: #2d2d30;"
+		"}"
+		"QTabBar {"
+		"  background-color: #2d2d30;"
+		"  border: none;"
 		"}"
 		"QTabBar::tab {"
-		"  background-color: #ecf0f1;"
-		"  color: #2c3e50;"
+		"  background-color: #1e1e1e;"
+		"  color: #888888;"
 		"  padding: 10px 20px;"
 		"  margin-right: 2px;"
+		"  border: none;"
 		"  border-top-left-radius: 4px;"
 		"  border-top-right-radius: 4px;"
 		"  font-size: 14px;"
 		"  font-weight: bold;"
+		"  border-bottom: 3px solid transparent;"
 		"}"
 		"QTabBar::tab:selected {"
-		"  background-color: white;"
-		"  color: #3498db;"
+		"  background-color: #0e639c;"
+		"  color: #ffffff;"
+		"  border-bottom: 3px solid #0e639c;"
 		"}"
 		"QTabBar::tab:hover {"
-		"  background-color: #d5dbdb;"
+		"  background-color: #2a2d2e;"
+		"  color: #d4d4d4;"
 		"}"
 	);
 
@@ -237,6 +260,7 @@ void MotionPage::setupUI()
 	// TAB 1: MOTION CONTROL
 	// ============================================================================
 	QWidget* motionControlTab = new QWidget();
+	motionControlTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
 	QHBoxLayout* motionContentLayout = new QHBoxLayout(motionControlTab);
 	motionContentLayout->setContentsMargins(0, 0, 0, 0);
 	motionContentLayout->setSpacing(0);
@@ -267,6 +291,7 @@ void MotionPage::setupUI()
 	// TAB 2: COORDINATE SYSTEMS
 	// ============================================================================
 	QWidget* coordinateSystemTab = new QWidget();
+	coordinateSystemTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
 	QVBoxLayout* coordTabLayout = new QVBoxLayout(coordinateSystemTab);
 	coordTabLayout->setContentsMargins(0, 0, 0, 0);
 
@@ -274,19 +299,34 @@ void MotionPage::setupUI()
 	QTabWidget* coordSubTabs = new QTabWidget();
 	coordSubTabs->setStyleSheet(
 		"QTabWidget::pane {"
-		"  border: 1px solid #bdc3c7;"
+		"  border: 1px solid #3f3f46;"
+		"  background-color: #2d2d30;"
+		"}"
+		"QTabBar {"
+		"  background-color: #2d2d30;"
+		"  border: none;"
 		"}"
 		"QTabBar::tab {"
-		"  background-color: #f8f9fa;"
-		"  color: #34495e;"
+		"  background-color: #1e1e1e;"
+		"  color: #888888;"
 		"  padding: 8px 16px;"
 		"  margin-right: 2px;"
+		"  border: none;"
 		"  font-size: 12px;"
+		"  font-weight: bold;"
+		"  border-top-left-radius: 3px;"
+		"  border-top-right-radius: 3px;"
+		"  border-bottom: 3px solid transparent;"
 		"}"
 		"QTabBar::tab:selected {"
-		"  background-color: white;"
-		"  color: #2980b9;"
+		"  background-color: #0e639c;"
+		"  color: #ffffff;"
 		"  font-weight: bold;"
+		"  border-bottom: 3px solid #0e639c;"
+		"}"
+		"QTabBar::tab:hover {"
+		"  background-color: #2a2d2e;"
+		"  color: #d4d4d4;"
 		"}"
 	);
 

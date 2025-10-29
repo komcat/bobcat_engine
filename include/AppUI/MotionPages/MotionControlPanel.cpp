@@ -5,6 +5,8 @@
 #include <QGroupBox>
 #include <QFrame>
 #include <QScrollArea>
+#include <QPalette>
+#include <QColor>
 
 MotionControlPanel::MotionControlPanel(QWidget* parent)
   : QWidget(parent)
@@ -23,6 +25,12 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
 
 void MotionControlPanel::setupUI()
 {
+  // Set dark background for the entire widget
+  setAutoFillBackground(true);
+  QPalette pal = palette();
+  pal.setColor(QPalette::Window, QColor(45, 45, 48));  // #2d2d30
+  setPalette(pal);
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(6, 6, 6, 6);
   mainLayout->setSpacing(6);
@@ -30,7 +38,7 @@ void MotionControlPanel::setupUI()
   // === Device Selection ===
   // ✅ HIDDEN - Device selection now handled by DeviceButtonStack on far left
   QLabel* deviceLabel = new QLabel("Device");
-  deviceLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
+  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
   deviceLabel->setVisible(false);  // Hide label
   mainLayout->addWidget(deviceLabel);
 
@@ -42,17 +50,17 @@ void MotionControlPanel::setupUI()
   // Separator
   QFrame* line1 = new QFrame();
   line1->setFrameShape(QFrame::HLine);
-  line1->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
+  line1->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   mainLayout->addWidget(line1);
 
   // === Selected Position ===
   QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
+  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
   mainLayout->addWidget(posLabel);
 
   // Compact info widget
   QWidget* posWidget = new QWidget();
-  posWidget->setStyleSheet("QWidget { background-color: #f8f9fa; }");
+  posWidget->setStyleSheet("QWidget { background-color: #1e1e1e; border: 1px solid #3f3f46; border-radius: 4px; }");
   QVBoxLayout* posLayout = new QVBoxLayout(posWidget);
   posLayout->setContentsMargins(6, 6, 6, 6);
   posLayout->setSpacing(3);
@@ -66,14 +74,14 @@ void MotionControlPanel::setupUI()
   m_posWLabel = new QLabel("W: -");
   m_waypointsLabel = new QLabel("Waypoints: -");
   m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #2980b9; font-size: 9px; font-weight: bold; }");
+  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 9px; font-weight: bold; }");
 
   QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
                            m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
                            m_waypointsLabel };
   for (auto* label : labels) {
     if (label != m_waypointsLabel) {
-      label->setStyleSheet("QLabel { color: #2c3e50; font-size: 9px; }");
+      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 9px; }");
     }
     posLayout->addWidget(label);
   }
@@ -83,12 +91,12 @@ void MotionControlPanel::setupUI()
   // Separator
   QFrame* line2 = new QFrame();
   line2->setFrameShape(QFrame::HLine);
-  line2->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
+  line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   mainLayout->addWidget(line2);
 
   // === Actions ===
   QLabel* actionsLabel = new QLabel("Actions");
-  actionsLabel->setStyleSheet("QLabel { color: #2c3e50; font-size: 10px; font-weight: bold; }");
+  actionsLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
   mainLayout->addWidget(actionsLabel);
 
   // Move to Position
@@ -135,7 +143,7 @@ void MotionControlPanel::setupUI()
   // Separator
   QFrame* line3 = new QFrame();
   line3->setFrameShape(QFrame::HLine);
-  line3->setStyleSheet("QFrame { background-color: #bdc3c7; margin: 3px 0; }");
+  line3->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   mainLayout->addWidget(line3);
 
   // Home Button
@@ -151,20 +159,25 @@ void MotionControlPanel::setupUI()
   // Push everything to top
   mainLayout->addStretch();
 
-  // === Compact Styling - No rounded corners ===
+  // === Dark Theme Styling ===
   setStyleSheet(
+    "MotionControlPanel {"
+    "  background-color: #2d2d30;"
+    "}"
     "QWidget {"
-    "  background-color: white;"
+    "  background-color: #2d2d30;"
+    "  color: #d4d4d4;"
     "}"
     "QComboBox {"
-    "  background-color: white;"
-    "  color: #2c3e50;"
-    "  border: 1px solid #bdc3c7;"
+    "  background-color: #3c3c3c;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #555555;"
+    "  border-radius: 3px;"
     "  padding: 4px;"
     "  font-size: 10px;"
     "}"
     "QComboBox:hover {"
-    "  border-color: #3498db;"
+    "  border-color: #0e639c;"
     "}"
     "QComboBox::drop-down {"
     "  border: none;"
@@ -174,55 +187,68 @@ void MotionControlPanel::setupUI()
     "  image: none;"
     "  border-left: 3px solid transparent;"
     "  border-right: 3px solid transparent;"
-    "  border-top: 4px solid #2c3e50;"
+    "  border-top: 4px solid #d4d4d4;"
     "  margin-right: 5px;"
     "}"
     "QComboBox QAbstractItemView {"
-    "  background-color: white;"
-    "  color: #2c3e50;"
-    "  selection-background-color: #3498db;"
-    "  border: 1px solid #bdc3c7;"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  selection-background-color: #0e639c;"
+    "  border: 1px solid #3f3f46;"
     "}"
     // Move to Position - Green
     "QPushButton#moveToButton {"
     "  background-color: #27ae60;"
     "  color: white;"
     "  border: 1px solid #229954;"
+    "  border-radius: 3px;"
     "  font-size: 10px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveToButton:hover {"
-    "  background-color: #229954;"
+    "  background-color: #2ecc71;"
+    "}"
+    "QPushButton#moveToButton:disabled {"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
     "}"
     // Move with Offset - Orange
     "QPushButton#moveOffsetButton {"
     "  background-color: #f39c12;"
     "  color: white;"
     "  border: 1px solid #e67e22;"
+    "  border-radius: 3px;"
     "  font-size: 10px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveOffsetButton:hover {"
     "  background-color: #e67e22;"
     "}"
+    "QPushButton#moveOffsetButton:disabled {"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
+    "}"
     // Regular buttons - Blue
     "QPushButton {"
-    "  background-color: #3498db;"
+    "  background-color: #0e639c;"
     "  color: white;"
-    "  border: 1px solid #2980b9;"
+    "  border: 1px solid #0c5280;"
+    "  border-radius: 3px;"
     "  font-size: 9px;"
     "  font-weight: 600;"
     "}"
     "QPushButton:hover {"
-    "  background-color: #2980b9;"
+    "  background-color: #1177bb;"
     "}"
     "QPushButton:pressed {"
-    "  background-color: #21618c;"
+    "  background-color: #0c5280;"
     "}"
     "QPushButton:disabled {"
-    "  background-color: #ecf0f1;"
-    "  color: #95a5a6;"
-    "  border-color: #bdc3c7;"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
     "}"
     // Delete button - Red
     "QPushButton#deletePosButton {"
@@ -231,6 +257,11 @@ void MotionControlPanel::setupUI()
     "}"
     "QPushButton#deletePosButton:hover {"
     "  background-color: #c0392b;"
+    "}"
+    "QPushButton#deletePosButton:disabled {"
+    "  background-color: #3c3c3c;"
+    "  color: #666666;"
+    "  border-color: #555555;"
     "}"
     // Stop button - Dark Red
     "QPushButton#stopButton {"

@@ -67,7 +67,14 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
 
   // Nickname field
   m_nicknameEdit = new QLineEdit(QString::fromStdString(instance->userNickname));
-  m_nicknameEdit->setStyleSheet("font-weight: bold;");
+  m_nicknameEdit->setStyleSheet(
+    "font-weight: bold; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px; "
+    "padding: 5px;"
+  );
 
   disconnect(m_nicknameEdit, &QLineEdit::textChanged, this, nullptr);
   connect(m_nicknameEdit, &QLineEdit::textChanged,
@@ -78,12 +85,12 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   // Read-only fields
   QLineEdit* idEdit = new QLineEdit(QString::fromStdString(instance->uniqueId));
   idEdit->setReadOnly(true);
-  idEdit->setStyleSheet("background-color: #f0f0f0; color: #666;");
+  idEdit->setStyleSheet("background-color: #2d2d30; color: #888888; border: 1px solid #3f3f46;");
   m_formLayout->addRow("Unique ID:", idEdit);
 
   QLineEdit* typeEdit = new QLineEdit(QString::fromStdString(instance->processType));
   typeEdit->setReadOnly(true);
-  typeEdit->setStyleSheet("background-color: #f0f0f0; color: #666;");
+  typeEdit->setStyleSheet("background-color: #2d2d30; color: #888888; border: 1px solid #3f3f46;");
   m_formLayout->addRow("Process Type:", typeEdit);
 
   // Divider
@@ -94,7 +101,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
 
   // Add title for parameters section
   QLabel* paramLabel = new QLabel("Parameters:");
-  paramLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #2d3e5f;");
+  paramLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #d4d4d4;");
   m_formLayout->addRow(paramLabel);
 
   // Let derived class create specific parameter fields
@@ -106,7 +113,13 @@ void ProcessConfigWidget::addParameterField(const std::string& key,
   const std::string& value)
 {
   QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
-  edit->setStyleSheet("padding: 5px;");
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
   connect(edit, &QLineEdit::textChanged,
     this, &ProcessConfigWidget::parameterChanged);
 
@@ -142,7 +155,13 @@ void ProcessConfigWidget::addNodeSelector(const std::string& key,
   layout->setSpacing(5);
 
   QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
-  edit->setStyleSheet("padding: 5px;");
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
   connect(edit, &QLineEdit::textChanged,
     this, &ProcessConfigWidget::parameterChanged);
   layout->addWidget(edit);
@@ -193,7 +212,13 @@ void ProcessConfigWidget::addSlideSelector(const std::string& key,
   layout->setSpacing(5);
 
   QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
-  edit->setStyleSheet("padding: 5px;");
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
   connect(edit, &QLineEdit::textChanged,
     this, &ProcessConfigWidget::parameterChanged);
   layout->addWidget(edit);
@@ -244,12 +269,12 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
     "QCheckBox::indicator { "
     "  width: 20px; "
     "  height: 20px; "
-    "  border: 2px solid #95a5a6; "
+    "  border: 2px solid #555555; "
     "  border-radius: 3px; "
-    "  background-color: white; "
+    "  background-color: #2d2d30; "
     "} "
     "QCheckBox::indicator:hover { "
-    "  border-color: #3498db; "
+    "  border-color: #0e639c; "
     "} "
     "QCheckBox::indicator:checked { "
     "  background-color: #27ae60; "
@@ -260,8 +285,8 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
     "  border-color: #2ecc71; "
     "} "
     "QCheckBox::indicator:unchecked { "
-    "  background-color: white; "
-    "  border-color: #95a5a6; "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
     "}"
   );
 
@@ -292,7 +317,13 @@ void ProcessConfigWidget::addNumericParameter(const std::string& key,
   spinBox->setSingleStep(step);
   spinBox->setDecimals(decimals);
   spinBox->setValue(std::stod(value));
-  spinBox->setStyleSheet("padding: 5px;");
+  spinBox->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
 
   if (!suffix.empty()) {
     spinBox->setSuffix(QString::fromStdString(" " + suffix));

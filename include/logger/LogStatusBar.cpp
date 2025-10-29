@@ -30,6 +30,7 @@ void LogStatusBar::setupUI()
   // Collapsed status bar (always visible)
   QWidget* collapsedBar = new QWidget();
   collapsedBar->setFixedHeight(COLLAPSED_HEIGHT);
+  collapsedBar->setStyleSheet("QWidget { background-color: #2b2b2b; }");
   QHBoxLayout* barLayout = new QHBoxLayout(collapsedBar);
   barLayout->setContentsMargins(10, 0, 10, 0);
   barLayout->setSpacing(10);
