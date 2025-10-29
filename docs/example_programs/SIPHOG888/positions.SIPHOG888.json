@@ -1,0 +1,270 @@
+{
+    "gantry-main": {
+        "SN view": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 180.5,
+            "y": 84.232,
+            "z": 17.844
+        },
+        "See Collimate Lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 172.38703,
+            "y": 80.18,
+            "z": 17.244
+        },
+        "See Focus Lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 178.87,
+            "y": 80.0,
+            "z": 17.144
+        },
+        "See Grip Focus Lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 177.677,
+            "y": 87.718,
+            "z": 16.934
+        },
+        "See Grip collimate lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 172.553,
+            "y": 87.61,
+            "z": 17.094
+        },
+        "UV": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 142.213,
+            "y": 75.876,
+            "z": 47.674
+        },
+        "safe": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 143.19,
+            "y": 75.7,
+            "z": 8.244764
+        },
+        "seepic": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 179.2,
+            "y": 80.732,
+            "z": 17.344
+        },
+        "seesled": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 171.184,
+            "y": 78.98,
+            "z": 17.3477
+        }
+    },
+    "hex-left": {
+        "Reject Lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -5.359991,
+            "y": 6.000007,
+            "z": -1.999997
+        },
+        "approachlensgrip": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -2.18989805484,
+            "y": 2.9499978968,
+            "z": -1.15000050212
+        },
+        "approachlensplace": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -1.72998800956,
+            "y": -4.57997992892,
+            "z": -0.739997846918
+        },
+        "clear_vision": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 4.640003,
+            "y": 14.49999,
+            "z": 0.0
+        },
+        "home": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 4.64000973361,
+            "y": 1.00000040903,
+            "z": -1.9999974644
+        },
+        "lensPlace2": {
+            "exit_waypoints": [],
+            "u": -3.50001,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [
+                "approachlensplace"
+            ],
+            "x": -5.89095,
+            "y": -4.514714,
+            "z": -0.79606
+        },
+        "lensgrip": {
+            "exit_waypoints": [],
+            "u": -1.999995,
+            "v": 4e-06,
+            "w": 1e-06,
+            "waypoints": [],
+            "x": -6.1899,
+            "y": 2.95,
+            "z": -1.15
+        },
+        "lensplace": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -5.72998928822,
+            "y": -4.5699896446,
+            "z": -0.619997658472
+        }
+    },
+    "hex-right": {
+        "Reject Lens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -5.360002,
+            "y": -6.000003,
+            "z": -1.200001
+        },
+        "approachlensgrip": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -1.49,
+            "y": -1.539,
+            "z": -0.60499
+        },
+        "approachlensplace": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -1.49,
+            "y": 6.26,
+            "z": -0.60499
+        },
+        "clear_vision": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": 4.640001,
+            "y": -9.999,
+            "z": -1.2
+        },
+        "home": {
+            "exit_waypoints": [],
+            "u": 3.42387907228e-06,
+            "v": 1.87408049548e-08,
+            "w": -3.11023641614e-06,
+            "waypoints": [],
+            "x": 4.64000065912,
+            "y": 3.47536842903e-07,
+            "z": -1.20000006747
+        },
+        "lensPlace2": {
+            "exit_waypoints": [],
+            "u": -3.0,
+            "v": -1.2,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -5.17195,
+            "y": 5.58513,
+            "z": -0.88966
+        },
+        "lensgrip": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -5.31002197703,
+            "y": -1.43998445976,
+            "z": -0.39500150145
+        },
+        "lensplace": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -4.93500365942,
+            "y": 6.24500573791,
+            "z": -0.909990478153
+        },
+        "rejectlens": {
+            "exit_waypoints": [],
+            "u": 0.0,
+            "v": 0.0,
+            "w": 0.0,
+            "waypoints": [],
+            "x": -4.74,
+            "y": -4.6599,
+            "z": -3.2
+        }
+    }
+}

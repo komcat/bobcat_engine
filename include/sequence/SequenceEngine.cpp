@@ -38,7 +38,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   }
 
   // Register all command handlers
-  m_dispatcher.RegisterHandler("motion", std::make_unique<MotionCommandHandler>());
+  // ✅ UPDATED: Set DataStore on MotionCommandHandler for XCAN command
+  auto motionHandler = std::make_unique<MotionCommandHandler>();
+  motionHandler->SetDataStore(m_context->dataStore);
+  m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
+
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());

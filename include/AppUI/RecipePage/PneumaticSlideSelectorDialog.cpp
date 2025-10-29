@@ -37,8 +37,7 @@ void PneumaticSlideSelectorDialog::setupUI()
   setWindowTitle("Select Pneumatic Slide");
   setMinimumSize(450, 550);
 
-  // Set light background for the entire dialog
-  setStyleSheet("QDialog { background-color: white; }");
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(15, 15, 15, 15);
@@ -46,36 +45,20 @@ void PneumaticSlideSelectorDialog::setupUI()
 
   // Info label
   QLabel* infoLabel = new QLabel("Select a pneumatic slide:");
-  infoLabel->setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;");
+  infoLabel->setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;");  // ✅ Only custom styling
   mainLayout->addWidget(infoLabel);
 
   // Search box
   m_searchEdit = new QLineEdit();
   m_searchEdit->setPlaceholderText("Search slides...");
-  m_searchEdit->setStyleSheet("padding: 8px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px;");
+  m_searchEdit->setStyleSheet("padding: 8px; font-size: 12px;");  // ✅ Only custom padding/size
   connect(m_searchEdit, &QLineEdit::textChanged,
     this, &PneumaticSlideSelectorDialog::onSearchTextChanged);
   mainLayout->addWidget(m_searchEdit);
 
   // Slide list
   m_slideList = new QListWidget();
-  m_slideList->setStyleSheet(
-    "QListWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #c0c0c0; "
-    "  border-radius: 4px; "
-    "  font-size: 12px; "
-    "  padding: 5px; "
-    "} "
-    "QListWidget::item { "
-    "  padding: 10px; "
-    "  border-bottom: 1px solid #e0e0e0; "
-    "} "
-    "QListWidget::item:selected { "
-    "  background-color: #5a8fd6; "
-    "  color: white; "
-    "}"
-  );
+  m_slideList->setStyleSheet("font-size: 12px; padding: 5px;");  // ✅ Only custom sizing
   connect(m_slideList, &QListWidget::itemDoubleClicked,
     this, &PneumaticSlideSelectorDialog::onSlideDoubleClicked);
   mainLayout->addWidget(m_slideList);
@@ -84,7 +67,7 @@ void PneumaticSlideSelectorDialog::setupUI()
   QLabel* legendLabel = new QLabel(
     "Status: 🟢 Extended  |  🔴 Retracted  |  🟡 Moving  |  ⚪ Unknown"
   );
-  legendLabel->setStyleSheet("font-size: 11px; color: #666; padding: 5px;");
+  legendLabel->setStyleSheet("font-size: 11px; color: #a0a0a0; padding: 5px;");  // ✅ Lighter gray
   mainLayout->addWidget(legendLabel);
 
   // Buttons
@@ -92,16 +75,11 @@ void PneumaticSlideSelectorDialog::setupUI()
   buttonLayout->setSpacing(10);
 
   m_refreshButton = new QPushButton("🔄 Refresh Status");
+  m_refreshButton->setObjectName("refreshButton");  // ✅ Gray button
   m_refreshButton->setMinimumWidth(120);
   m_refreshButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #95a5a6; "
-    "  color: white; "
-    "  border-radius: 4px; "
-    "  font-size: 12px; "
-    "  padding: 8px; "
-    "} "
-    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton#refreshButton { background-color: #555555; font-size: 12px; padding: 8px; }"
+    "QPushButton#refreshButton:hover { background-color: #666666; }"
   );
   connect(m_refreshButton, &QPushButton::clicked, this, &PneumaticSlideSelectorDialog::refreshSlideStatus);
   buttonLayout->addWidget(m_refreshButton);
@@ -109,32 +87,21 @@ void PneumaticSlideSelectorDialog::setupUI()
   buttonLayout->addStretch();
 
   m_cancelButton = new QPushButton("Cancel");
+  m_cancelButton->setObjectName("cancelButton");  // ✅ Gray button
   m_cancelButton->setMinimumWidth(100);
   m_cancelButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #95a5a6; "
-    "  color: white; "
-    "  border-radius: 4px; "
-    "  font-size: 12px; "
-    "  padding: 8px; "
-    "} "
-    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton#cancelButton { background-color: #555555; font-size: 12px; padding: 8px; }"
+    "QPushButton#cancelButton:hover { background-color: #666666; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
   buttonLayout->addWidget(m_cancelButton);
 
   m_okButton = new QPushButton("Select");
+  m_okButton->setObjectName("selectButton");  // ✅ Green button
   m_okButton->setMinimumWidth(100);
   m_okButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  border-radius: 4px; "
-    "  font-size: 12px; "
-    "  padding: 8px; "
-    "} "
-    "QPushButton:hover { background-color: #45a049; }"
+    "QPushButton#selectButton { background-color: #27ae60; font-size: 12px; padding: 8px; }"
+    "QPushButton#selectButton:hover { background-color: #2ecc71; }"
   );
 
   connect(m_okButton, &QPushButton::clicked, [this]() {

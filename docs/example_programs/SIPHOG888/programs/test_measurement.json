@@ -1,0 +1,11 @@
+{
+    "program_name": "SIPHOG 888",
+    "recipes": [
+        {
+            "display_name": "Initial Machine",
+            "enabled": true,
+            "recipe_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug-hardware/config/SIPHOG888/recipes/Initial Machine.json"
+        }
+    ],
+    "version": "1.0"
+}

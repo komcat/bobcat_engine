@@ -103,6 +103,7 @@ private:
   void updateConfigurationForm();
   void clearConfigurationForm();
   void selectStepByIndex(int index);
+  void updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
 
   // ✅ NEW: Panel switching
   void showProgressPanel();
@@ -157,6 +158,7 @@ private:
 
   QPushButton* m_loadProductButton;
   QLabel* m_productStatusLabel;
+  QLabel* m_recipeFileLabel;  // ✅ NEW: Shows current recipe file name
 
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_manualAdjustResponse;       // Store manual adjust response

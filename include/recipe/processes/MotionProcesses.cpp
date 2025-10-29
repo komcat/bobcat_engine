@@ -568,6 +568,69 @@ public:
 };
 
 //=============================================================================
+// XCAN PLUGIN (Hexapod Adaptive Scanning)
+//=============================================================================
+
+class XCANPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "XCAN";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Hexapod adaptive scanning (coarse/fine) to find optimal alignment";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"mode", "coarse"},
+      {"channel", ""},
+      {"settling_time_ms", "300"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Hexapod Device (hex-*)", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("mode", "Scan Mode (coarse/fine)", params.at("mode"));
+    widget->addParameterField("channel", "Data Channel", params.at("channel"));
+    widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
+      params.at("settling_time_ms"),
+      50,     // min
+      2000,   // max
+      10,     // step
+      0,      // decimals (integer)
+      "ms"    // suffix
+    );
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+
+    // Add XCAN command to motion manager
+    sequence->AddAction(device, "XCAN", {
+      {"mode", params.at("mode")},
+      {"channel", params.at("channel")},
+      {"settling_time_ms", params.at("settling_time_ms")}
+    });
+
+    std::cout << "[MotionProcesses] Built XCAN sequence for: " << step->userNickname
+              << " (mode=" << params.at("mode") << ", channel=" << params.at("channel") << ")"
+              << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -584,8 +647,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveRelativeMultiAxisPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
+      registry.RegisterPlugin(std::make_unique<XCANPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 8 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 9 motion process plugins" << std::endl;
     }
   };
 

@@ -55,13 +55,13 @@ void PneumaticControlPage::setupUI()
   createControlPanel();
   mainLayout->addWidget(m_controlPanel, 7);
 
-  setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  setStyleSheet("QWidget { background-color: #2d2d30; }");
 }
 
 void PneumaticControlPage::createSlideListPanel()
 {
   m_slideListPanel = new QWidget();
-  m_slideListPanel->setStyleSheet("QWidget { background-color: #ecf0f1; }");
+  m_slideListPanel->setStyleSheet("QWidget { background-color: #1e1e1e; }");
 
   QVBoxLayout* layout = new QVBoxLayout(m_slideListPanel);
   layout->setContentsMargins(10, 10, 10, 10);
@@ -69,7 +69,7 @@ void PneumaticControlPage::createSlideListPanel()
 
   // Title
   QLabel* titleLabel = new QLabel("Pneumatic Slides");
-  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #2c3e50; }");
+  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #ffffff; }");
   layout->addWidget(titleLabel);
 
   // Refresh button
@@ -92,23 +92,23 @@ void PneumaticControlPage::createSlideListPanel()
   m_slideList = new QListWidget();
   m_slideList->setStyleSheet(
     "QListWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #2d2d2d; "
+    "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
     "  padding: 5px; "
     "  font-size: 14px; "
-    "  color: #2c3e50; "
+    "  color: #d4d4d4; "
     "} "
     "QListWidget::item { "
     "  padding: 10px; "
-    "  border-bottom: 1px solid #ecf0f1; "
+    "  border-bottom: 1px solid #3f3f46; "
     "} "
     "QListWidget::item:selected { "
-    "  background-color: #3498db; "
+    "  background-color: #0e639c; "
     "  color: white; "
     "} "
     "QListWidget::item:hover { "
-    "  background-color: #dfe6e9; "
+    "  background-color: #3c3c3c; "
     "}");
   connect(m_slideList, &QListWidget::itemSelectionChanged, this, &PneumaticControlPage::onSlideSelected);
   layout->addWidget(m_slideList);
@@ -128,7 +128,7 @@ void PneumaticControlPage::createControlPanel()
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_slideNameLabel = new QLabel("No slide selected");
-  m_slideNameLabel->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #2c3e50; }");
+  m_slideNameLabel->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
   headerLayout->addWidget(m_slideNameLabel);
 
   headerLayout->addStretch();
@@ -147,7 +147,9 @@ void PneumaticControlPage::createControlPanel()
     "QGroupBox { "
     "  font-size: 14px; "
     "  font-weight: bold; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 5px; "
     "  margin-top: 10px; "
     "  padding-top: 10px; "
@@ -156,6 +158,7 @@ void PneumaticControlPage::createControlPanel()
     "  subcontrol-origin: margin; "
     "  left: 10px; "
     "  padding: 0 5px; "
+    "  color: #ffffff; "
     "}");
 
   QGridLayout* statusLayout = new QGridLayout(statusGroup);
@@ -178,9 +181,9 @@ void PneumaticControlPage::createControlPanel()
   m_positionBar->setTextVisible(false);
   m_positionBar->setStyleSheet(
     "QProgressBar { "
-    "  border: 2px solid #bdc3c7; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 5px; "
-    "  background-color: #ecf0f1; "
+    "  background-color: #1e1e1e; "
     "  height: 30px; "
     "  text-align: center; "
     "} "
@@ -241,10 +244,18 @@ void PneumaticControlPage::createControlPanel()
     "QGroupBox { "
     "  font-size: 14px; "
     "  font-weight: bold; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 5px; "
     "  margin-top: 10px; "
     "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #ffffff; "
     "}");
 
   QHBoxLayout* controlLayout = new QHBoxLayout(controlGroup);
@@ -506,42 +517,42 @@ void PneumaticControlPage::updatePositionIndicator(const std::string& position)
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #27ae60; font-weight: bold; }");
     m_positionBar->setValue(100);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #27ae60; border-radius: 3px; }");
   }
   else if (position == "Retracted") {
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #e67e22; font-weight: bold; }");
     m_positionBar->setValue(0);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #e67e22; border-radius: 3px; }");
   }
   else if (position == "Extending") {
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #3498db; font-weight: bold; }");
     m_positionBar->setValue(50);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #3498db; border-radius: 3px; }");
   }
   else if (position == "Retracting") {
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #9b59b6; font-weight: bold; }");
     m_positionBar->setValue(50);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #9b59b6; border-radius: 3px; }");
   }
   else if (position == "Hardware Error" || position == "Timeout") {
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #e74c3c; font-weight: bold; }");
     m_positionBar->setValue(0);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #e74c3c; border-radius: 3px; }");
   }
   else {
     m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #7f8c8d; }");
     m_positionBar->setValue(0);
     m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #bdc3c7; border-radius: 5px; background-color: #ecf0f1; height: 25px; } "
+      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
       "QProgressBar::chunk { background-color: #95a5a6; border-radius: 3px; }");
   }
 }

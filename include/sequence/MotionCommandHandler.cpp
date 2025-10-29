@@ -3,8 +3,14 @@
 #include "unified_motion_manager.h"
 #include "LogManager.h"
 #include "SequenceContext.h"
+#include "AdaptiveScanController.h"  // ✅ NEW: For XCAN command
+#include "DataStore.h"                // ✅ NEW: For XCAN command
+#include "ScanTypes.h"                // ✅ NEW: For XCAN command
 #include <chrono>
 #include <thread>
+#include <regex>                      // ✅ NEW: For device name validation
+#include <atomic>                     // ✅ NEW: For scan completion flag
+#include <condition_variable>         // ✅ NEW: For scan completion signaling
 
 // Helper to resolve context: references or parse direct values
 double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
@@ -458,8 +464,191 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     return true;
+  }
+
+  // ============================================================================
+  // XCAN - HEXAPOD ADAPTIVE SCANNING
+  // ============================================================================
+  else if (methodName == "XCAN") {
+    // ✅ VALIDATE DEVICE NAME (must match hex-*)
+    std::regex hexPattern("^hex-.*");
+    if (!std::regex_match(deviceName, hexPattern)) {
+      errorMessage = "XCAN: Device must be a PI hexapod (hex-*), got: " + deviceName;
+      return false;
     }
 
+    // ✅ REQUIRED PARAMETER: mode (coarse/fine)
+    auto modeIt = params.find("mode");
+    if (modeIt == params.end()) {
+      errorMessage = "XCAN: Missing required parameter 'mode' (coarse/fine)";
+      return false;
+    }
+    std::string mode = modeIt->second;
+    bool isCoarse;
+    if (mode == "coarse") {
+      isCoarse = true;
+    } else if (mode == "fine") {
+      isCoarse = false;
+    } else {
+      errorMessage = "XCAN: Invalid mode '" + mode + "' (must be 'coarse' or 'fine')";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: channel (data channel to optimize)
+    auto channelIt = params.find("channel");
+    if (channelIt == params.end()) {
+      errorMessage = "XCAN: Missing required parameter 'channel'";
+      return false;
+    }
+    std::string channel = channelIt->second;
+
+    // ✅ OPTIONAL PARAMETER: settling_time_ms (default 300)
+    int settlingTimeMs = 300;
+    auto settlingIt = params.find("settling_time_ms");
+    if (settlingIt != params.end()) {
+      settlingTimeMs = std::stoi(settlingIt->second);
+    }
+
+    // ✅ GET DATA STORE
+    if (!m_dataStore) {
+      errorMessage = "XCAN: DataStore not available";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "XCAN: Starting " + mode + " scan on " + deviceName +
+        " for channel '" + channel + "' (settling=" + std::to_string(settlingTimeMs) + "ms)",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ CREATE SCAN PARAMETERS
+    ScanParameters scanParams;
+    scanParams.axesToScan = { "Z", "Y", "X" };  // Scan in ZYX order
+
+    // Set step sizes based on mode
+    if (isCoarse) {
+      // Coarse: 10, 5, 2, 1 µm = 0.010, 0.005, 0.002, 0.001 mm
+      scanParams.stepSizes = { 0.010, 0.005, 0.002, 0.001 };
+    } else {
+      // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
+      scanParams.stepSizes = { 0.002, 0.001, 0.0005 };
+    }
+
+    scanParams.motionSettleTimeMs = settlingTimeMs;
+    scanParams.velocityPercent = 50.0;
+
+    // Termination criteria
+    scanParams.consecutiveDecreasesLimit = 3;
+    scanParams.significantDecreaseThreshold = 0.05;  // 5%
+    scanParams.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
+
+    // Position optimization
+    scanParams.improvementThreshold = 0.01;  // 1%
+
+    // Measurement parameters
+    scanParams.averagingCount = 3;
+    scanParams.measurementTimeout = std::chrono::seconds(5);
+    scanParams.minValidValue = -1000.0;
+    scanParams.maxValidValue = 1000.0;
+
+    // Safety limits
+    scanParams.maxStepSize = 0.5;  // 500µm max
+    scanParams.scanTimeout = std::chrono::minutes(10);
+
+    // ✅ CREATE SCAN CONTROLLER
+    AdaptiveScanController scanController(
+      *motionManager,
+      *m_dataStore,
+      deviceName,
+      channel
+    );
+
+    if (m_logger) {
+      scanController.SetLogger(m_logger);
+    }
+
+    // ✅ SETUP COMPLETION TRACKING
+    std::atomic<bool> scanComplete(false);
+    std::atomic<bool> scanSuccess(false);
+    std::string scanErrorMsg;
+    std::mutex completionMutex;
+    std::condition_variable completionCV;
+
+    // Completion callback
+    scanController.SetCompletionCallback(
+      [&](const ScanResults& results) {
+        std::lock_guard<std::mutex> lock(completionMutex);
+        scanComplete = true;
+        scanSuccess = results.globalPeak.valid;
+        if (m_logger) {
+          if (results.globalPeak.valid) {
+            m_logger->Info(
+              "XCAN: Scan complete - Peak value: " + std::to_string(results.globalPeak.value),
+              "MotionHandler"
+            );
+          } else {
+            m_logger->Warning("XCAN: Scan complete - No peak found", "MotionHandler");
+          }
+        }
+        completionCV.notify_one();
+      }
+    );
+
+    // Error callback
+    scanController.SetErrorCallback(
+      [&](const ScanError& error) {
+        std::lock_guard<std::mutex> lock(completionMutex);
+        scanComplete = true;
+        scanSuccess = false;
+        scanErrorMsg = error.message;
+        if (m_logger) {
+          m_logger->Error("XCAN: Scan error - " + error.message, "MotionHandler");
+        }
+        completionCV.notify_one();
+      }
+    );
+
+    // ✅ START SCAN
+    if (!scanController.StartScan(scanParams)) {
+      errorMessage = "XCAN: Failed to start scan";
+      return false;
+    }
+
+    // ✅ WAIT FOR COMPLETION WITH STOP FLAG MONITORING
+    while (!scanComplete) {
+      // Check if stop was requested
+      if (context && context->IsStopRequestedAny()) {
+        if (m_logger) {
+          m_logger->Info("XCAN: Stop requested, halting scan", "MotionHandler");
+        }
+        scanController.HaltScan();
+        errorMessage = "XCAN: Scan stopped by user";
+        return false;
+      }
+
+      // Wait for 100ms before checking again
+      std::unique_lock<std::mutex> lock(completionMutex);
+      completionCV.wait_for(lock, std::chrono::milliseconds(100));
+    }
+
+    // ✅ CHECK FINAL RESULT
+    if (!scanSuccess) {
+      if (!scanErrorMsg.empty()) {
+        errorMessage = "XCAN: Scan failed - " + scanErrorMsg;
+      } else {
+        errorMessage = "XCAN: Scan completed but no peak found";
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("XCAN: Scan completed successfully", "MotionHandler");
+    }
+
+    return true;
+  }
 
   // ============================================================================
   // UNKNOWN METHOD

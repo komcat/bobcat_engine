@@ -1,0 +1,268 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug-hardware/config/SIPHOG888/positions.SIPHOG888.json",
+    "recipe_name": "Probe SLED and PIC",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "XBP992N",
+            "nickname": "Slide Retract 1 UV",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "UV_Head",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": true,
+            "id": "ECC000A",
+            "nickname": "Slide Retract 2 Dispenser",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "Dispenser_Head",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": true,
+            "id": "UNZ488J",
+            "nickname": "Slide Retract 3 PP tool",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "Pick_Up_Tool",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": false,
+            "id": "KRM456B",
+            "nickname": "v gantry=10",
+            "parameters": {
+                "device": "gantry-main",
+                "speed": "35.000000"
+            },
+            "type": "Set Velocity"
+        },
+        {
+            "enabled": false,
+            "id": "CCX228B",
+            "nickname": "v left =5",
+            "parameters": {
+                "device": "hex-left",
+                "speed": "5.000000"
+            },
+            "type": "Set Velocity"
+        },
+        {
+            "enabled": false,
+            "id": "BJJ675J",
+            "nickname": "v right =5",
+            "parameters": {
+                "device": "hex-right",
+                "speed": "5.000000"
+            },
+            "type": "Set Velocity"
+        },
+        {
+            "enabled": false,
+            "id": "BHC725D",
+            "nickname": "gantry safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": false,
+            "id": "PVZ271F",
+            "nickname": "left clear",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "clear_vision"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": false,
+            "id": "TKW645O",
+            "nickname": "right clear",
+            "parameters": {
+                "device": "hex-right",
+                "target_position": "clear_vision"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "JHP645K",
+            "nickname": "vac base ON",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "Vacuum_Base"
+            },
+            "type": "Set Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "VKB093A",
+            "nickname": "see Sled",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "seesled"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "YDD029E",
+            "nickname": "Probe SLED",
+            "parameters": {
+                "blocking": "true",
+                "message": "Please confirm to continue",
+                "title": "Probe SLED?"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "OAK400Y",
+            "nickname": "Set TEC Temp On 25C",
+            "parameters": {
+                "device": "laser-main",
+                "power_state": "on",
+                "temperature": "25.0"
+            },
+            "type": "Set TEC Temp"
+        },
+        {
+            "enabled": true,
+            "id": "PFW296G",
+            "nickname": "Set Laser Current 250mA",
+            "parameters": {
+                "current_ma": "250",
+                "device": "laser-main",
+                "power_state": "on"
+            },
+            "type": "Set Laser Current"
+        },
+        {
+            "enabled": true,
+            "id": "JVO900F",
+            "nickname": "see PIC",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "seepic"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "GGI997Q",
+            "nickname": "Probe PIC?",
+            "parameters": {
+                "blocking": "true",
+                "message": "Please confirm to continue",
+                "title": "Probe PIC"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "WSY236A",
+            "nickname": "Log Message 24",
+            "parameters": {
+                "message": "======== Read from Data Channel"
+            },
+            "type": "Log Message"
+        },
+        {
+            "enabled": true,
+            "id": "WIH708R",
+            "nickname": "Read DataStore 23",
+            "parameters": {
+                "channel_name": "GPIB-Current",
+                "log_level": "Warning"
+            },
+            "type": "Read DataStore"
+        },
+        {
+            "enabled": true,
+            "id": "NFL421D",
+            "nickname": "Log Message 25",
+            "parameters": {
+                "message": "=========== READ DONE"
+            },
+            "type": "Log Message"
+        },
+        {
+            "enabled": true,
+            "id": "MHN777M",
+            "nickname": "Wait 500",
+            "parameters": {
+                "duration_ms": "500"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "ANP798V",
+            "nickname": "see serial number",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "SN view"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": false,
+            "id": "WBB327G",
+            "nickname": "Ask User 17",
+            "parameters": {
+                "blocking": "true",
+                "message": "Please confirm to continue",
+                "title": "Record data and ok to end process."
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": false,
+            "id": "MMC866R",
+            "nickname": "Set Laser Current 12",
+            "parameters": {
+                "current_ma": "150",
+                "device": "laser-main",
+                "power_state": "off"
+            },
+            "type": "Set Laser Current"
+        },
+        {
+            "enabled": false,
+            "id": "QVG844C",
+            "nickname": "Set TEC Temp 13",
+            "parameters": {
+                "device": "laser-main",
+                "power_state": "off",
+                "temperature": "25.0"
+            },
+            "type": "Set TEC Temp"
+        },
+        {
+            "enabled": false,
+            "id": "VTV998N",
+            "nickname": "Clear Output Vacuum_Base",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "Vacuum_Base"
+            },
+            "type": "Clear Output Name"
+        }
+    ],
+    "version": "1.0"
+}

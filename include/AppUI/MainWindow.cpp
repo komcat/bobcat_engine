@@ -13,6 +13,7 @@
 #include "TransformationMatrixLoader.h"
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
+#include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
 #include <QVBoxLayout>
 #include <iostream>
 
@@ -64,19 +65,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-  // Set dark theme for main window
-  setStyleSheet(
-    "QMainWindow { "
-    "  background-color: #2d2d30; "
-    "} "
-    "QWidget { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "} "
-    "QStackedWidget { "
-    "  background-color: #2d2d30; "
-    "}"
-  );
+  // ✅ Apply centralized dark theme globally to all widgets
+  setStyleSheet(DarkTheme::getStyleSheet());
 
   // Create central widget with layout
   QWidget* centralWidget = new QWidget(this);

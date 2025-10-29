@@ -1,0 +1,193 @@
+================================================================================
+PNEUMATICCONTROLPAGE - DARK THEME CONVERSION SUMMARY
+================================================================================
+Date: 2025-10-29
+File: include/AppUI/PneumaticPage/PneumaticControlPage.cpp
+Status: ✅ COMPLETED
+
+================================================================================
+CHANGES MADE
+================================================================================
+
+Total setStyleSheet modifications: 15 blocks updated
+
+1. Main Widget Background (Line 58)
+   BEFORE: background-color: #f5f6fa (light gray)
+   AFTER:  background-color: #2d2d30 (dark gray)
+
+2. Slide List Panel Background (Line 64)
+   BEFORE: background-color: #ecf0f1 (light)
+   AFTER:  background-color: #1e1e1e (dark)
+
+3. Title Label Text Color (Line 72)
+   BEFORE: color: #2c3e50 (dark text)
+   AFTER:  color: #ffffff (white text)
+
+4. Slide List Widget (Lines 93-112)
+   BEFORE:
+   - background-color: white
+   - color: #2c3e50 (dark text)
+   - border: 1px solid #bdc3c7 (light border)
+   - item border-bottom: 1px solid #ecf0f1 (light)
+   - item:selected: background-color: #3498db
+   - item:hover: background-color: #dfe6e9 (light)
+
+   AFTER:
+   - background-color: #2d2d2d (dark)
+   - color: #d4d4d4 (light text)
+   - border: 1px solid #3f3f46 (dark border)
+   - item border-bottom: 1px solid #3f3f46 (dark)
+   - item:selected: background-color: #0e639c (updated blue)
+   - item:hover: background-color: #3c3c3c (dark)
+
+5. Slide Name Label (Line 131)
+   BEFORE: color: #2c3e50 (dark text)
+   AFTER:  color: #ffffff (white text)
+
+6. Status Group Box (Lines 146-162)
+   BEFORE:
+   - border: 2px solid #bdc3c7 (light border)
+   - No explicit background or text color
+
+   AFTER:
+   - border: 2px solid #3f3f46 (dark border)
+   - color: #ffffff
+   - background-color: #1e1e1e
+   - QGroupBox::title color: #ffffff
+
+7. Position Progress Bar - Initial (Lines 182-193)
+   BEFORE:
+   - border: 2px solid #bdc3c7 (light)
+   - background-color: #ecf0f1 (light)
+
+   AFTER:
+   - border: 2px solid #3f3f46 (dark)
+   - background-color: #1e1e1e (dark)
+
+8. Control Group Box (Lines 243-259)
+   BEFORE:
+   - border: 2px solid #bdc3c7 (light border)
+   - No explicit background or text color
+
+   AFTER:
+   - border: 2px solid #3f3f46 (dark border)
+   - color: #ffffff
+   - background-color: #1e1e1e
+   - QGroupBox::title color: #ffffff
+
+9. Progress Bar Updates in updatePositionIndicator() (Lines 519-556)
+   Updated ALL 6 position states:
+
+   a) Extended (Lines 519-521)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+   b) Retracted (Lines 526-528)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+   c) Extending (Lines 533-535)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+   d) Retracting (Lines 540-542)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+   e) Hardware Error / Timeout (Lines 547-549)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+   f) Unknown/Default (Lines 554-556)
+      BEFORE: border #bdc3c7, background #ecf0f1
+      AFTER:  border #3f3f46, background #1e1e1e
+
+================================================================================
+COLORS PRESERVED (Semantic Status Colors - Work on Dark Background)
+================================================================================
+
+✅ These colors were intentionally KEPT as they work well on dark backgrounds:
+
+Connection Status:
+- Connected: #27ae60 (green)
+- Disconnected: #e74c3c (red)
+
+Position States:
+- Extended: #27ae60 (green)
+- Retracted: #e67e22 (orange)
+- Extending: #3498db (blue)
+- Retracting: #9b59b6 (purple)
+- Error/Timeout: #e74c3c (red)
+- Unknown: #7f8c8d (gray)
+
+Button Colors:
+- Extend: #27ae60 (green)
+- Retract: #e67e22 (orange)
+- Stop: #e74c3c (red)
+- Refresh: #3498db (blue)
+
+Output/Sensor States:
+- ON: #27ae60 (green)
+- OFF: #95a5a6 (gray)
+
+Progress Bar Chunks (colored bars):
+- Extended: #27ae60 (green)
+- Retracted: #e67e22 (orange)
+- Extending: #3498db (blue)
+- Retracting: #9b59b6 (purple)
+- Error: #e74c3c (red)
+- Unknown: #95a5a6 (gray)
+
+================================================================================
+DARK THEME COLOR PALETTE USED
+================================================================================
+
+Backgrounds:
+- Main Widget: #2d2d30
+- Panels: #1e1e1e
+- List Items: #2d2d2d
+
+Text:
+- Primary: #ffffff
+- Secondary: #d4d4d4
+
+Borders:
+- Primary: #3f3f46
+- List Item Dividers: #3f3f46
+
+Selection/Hover:
+- Selected: #0e639c (blue)
+- Hover: #3c3c3c (dark gray)
+
+================================================================================
+RESULT
+================================================================================
+
+✅ PneumaticControlPage is now FULLY dark theme compatible
+✅ All text is now visible on dark backgrounds
+✅ All borders updated to dark theme colors
+✅ Semantic status colors preserved for functional clarity
+✅ Consistent with other HardwareInstrumentPage child components
+
+The page now matches the dark theme used throughout the rest of the application
+while maintaining its functional color coding for pneumatic slide states.
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+When testing, verify:
+1. Slide list is readable with white text on dark background
+2. Status group shows proper border and background
+3. Progress bar is visible on dark background
+4. All 6 position states display correctly with colored progress bars
+5. Control buttons (Extend/Retract/Stop) are clearly visible
+6. Connection status is readable
+7. Sensor status indicators are visible
+
+All status colors (green, red, blue, purple, orange) should provide good
+contrast against the dark background and be easily distinguishable.
+
+================================================================================
+END OF SUMMARY
+================================================================================

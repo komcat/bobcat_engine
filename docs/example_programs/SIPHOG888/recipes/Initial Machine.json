@@ -1,0 +1,85 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug-hardware/config/SIPHOG888/positions.SIPHOG888.json",
+    "recipe_name": "Initial Machine",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "XBP992N",
+            "nickname": "Slide Retract 1 UV",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "UV_Head",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": true,
+            "id": "ECC000A",
+            "nickname": "Slide Retract 2 Dispenser",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "Dispenser_Head",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": true,
+            "id": "UNZ488J",
+            "nickname": "Slide Retract 3 PP tool",
+            "parameters": {
+                "debounce_delay_ms": "100",
+                "inbounce_delay_ms": "100",
+                "slide_name": "Pick_Up_Tool",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Retract"
+        },
+        {
+            "enabled": true,
+            "id": "PVZ271F",
+            "nickname": "left home",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "TKW645O",
+            "nickname": "right home",
+            "parameters": {
+                "device": "hex-right",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "HWA031R",
+            "nickname": "gantry safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "PEB246Y",
+            "nickname": "Vacuum off",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "10",
+                "state": "false"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

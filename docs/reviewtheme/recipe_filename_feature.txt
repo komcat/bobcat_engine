@@ -1,0 +1,122 @@
+================================================================================
+RECIPE PAGE - RECIPE FILE NAME DISPLAY FEATURE
+================================================================================
+Date: 2025-10-29
+Feature: Display current recipe file name in Recipe Editor header
+
+================================================================================
+WHAT WAS IMPLEMENTED
+================================================================================
+
+Added a new label in the Recipe Editor header that clearly shows which recipe
+file is currently being worked on.
+
+Location: Between "Recipe Editor" title and "Product: xxx" label
+
+Display Format:
+- When no recipe loaded: "No recipe file" (gray, dim styling)
+- When recipe loaded: "Recipe: filename.json" (cyan/teal, highlighted styling)
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+1. RecipePage.h
+   - Added m_recipeFileLabel member variable (QLabel*)
+   - Added updateRecipeFileNameDisplay() method declaration
+
+2. RecipePage.cpp
+   - Added #include <QFileInfo> for file name extraction
+   - Created recipe file label in setupUI() method (line 152-162)
+   - Implemented updateRecipeFileNameDisplay() method (line 1311-1345)
+   - Added calls to updateRecipeFileNameDisplay() in:
+     * onLoadRecipe() - after successfully loading a recipe (line 734)
+     * onSaveRecipe() - after successfully saving (line 835)
+     * onSaveRecipeAs() - after successfully saving as (line 874)
+     * onNewRecipe() - when creating new recipe (line 658)
+     * loadLastRecipeFromSettings() - after auto-loading recipe (line 2015)
+
+================================================================================
+USER EXPERIENCE
+================================================================================
+
+Before:
+  [← Back]  Recipe Editor  Product: SIPH0G888  [📁 Load Product]
+
+After:
+  [← Back]  Recipe Editor  Recipe: my_recipe.json  Product: SIPH0G888  [📁 Load Product]
+
+When No Recipe:
+  [← Back]  Recipe Editor  No recipe file  Product: SIPH0G888  [📁 Load Product]
+
+================================================================================
+STYLING DETAILS
+================================================================================
+
+No Recipe File State:
+  - Text: "No recipe file"
+  - Color: #888888 (gray)
+  - Background: #1e1e1e (dark)
+  - Border: 1px solid #3f3f46
+  - Font size: 11px
+
+Recipe Loaded State:
+  - Text: "Recipe: {filename}"
+  - Color: #4ec9b0 (cyan/teal)
+  - Background: #1e3a32 (dark teal tint)
+  - Border: 1px solid #4ec9b0
+  - Font size: 11px
+  - Font weight: bold
+
+Matches the styling of the Product label for visual consistency.
+
+================================================================================
+IMPLEMENTATION DETAILS
+================================================================================
+
+updateRecipeFileNameDisplay() Method:
+1. Gets current recipe file path from RecipeManager
+2. If path is empty:
+   - Shows "No recipe file" with dim gray styling
+3. If path exists:
+   - Extracts just the filename using QFileInfo
+   - Shows "Recipe: {filename}" with highlighted cyan styling
+
+File Name Extraction:
+- Uses QFileInfo to extract filename from full path
+- Example: "config/SIPH0G888/recipes/my_recipe.json" → "my_recipe.json"
+- Only displays the filename, not the full path
+
+Update Triggers:
+- Loading a recipe (manual load or auto-load)
+- Saving a recipe (Save or Save As)
+- Creating a new recipe (clears to "No recipe file")
+- Auto-loading recipe on application start
+
+================================================================================
+BENEFITS
+================================================================================
+
+✅ Users can immediately see which recipe file they are editing
+✅ Prevents confusion when multiple recipes exist
+✅ Provides context for save operations
+✅ Visual confirmation after loading/saving
+✅ Matches the product label styling for consistency
+✅ Automatically updates in all scenarios
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+Test the following scenarios:
+1. ✅ Start application → Should show "No recipe file"
+2. ✅ Load a recipe → Should show "Recipe: filename.json" in cyan
+3. ✅ Save recipe → Label should remain showing correct filename
+4. ✅ Save As recipe → Label should update to new filename
+5. ✅ Create new recipe → Should revert to "No recipe file"
+6. ✅ Close and reopen application → Auto-loaded recipe should show filename
+7. ✅ Switch products → Label should update appropriately
+
+================================================================================
+END OF FEATURE DOCUMENTATION
+================================================================================

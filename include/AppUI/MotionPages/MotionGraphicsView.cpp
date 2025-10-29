@@ -4,6 +4,7 @@
 #include <QScrollBar>
 #include <QtMath>
 #include <QPainter>
+#include <QSettings>  // ✅ NEW: For view state persistence
 
 MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   : QGraphicsView(parent)
@@ -508,4 +509,64 @@ QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
   }
 
   return QPointF();
+}
+
+// ✅ NEW: Set device name for view state persistence
+void MotionGraphicsView::setDeviceName(const QString& deviceName)
+{
+  m_deviceName = deviceName;
+}
+
+// ✅ NEW: Save current zoom and pan state to QSettings
+void MotionGraphicsView::saveViewState()
+{
+  if (m_deviceName.isEmpty()) {
+    return;  // Can't save without a device name
+  }
+
+  QSettings settings;
+  QString prefix = QString("MotionPage/%1/").arg(m_deviceName);
+
+  // Save zoom factor
+  settings.setValue(prefix + "zoomFactor", m_zoomFactor);
+
+  // Save view center point (in scene coordinates)
+  QPointF centerPoint = mapToScene(viewport()->rect().center());
+  settings.setValue(prefix + "centerX", centerPoint.x());
+  settings.setValue(prefix + "centerY", centerPoint.y());
+}
+
+// ✅ NEW: Restore zoom and pan state from QSettings
+void MotionGraphicsView::restoreViewState()
+{
+  if (m_deviceName.isEmpty()) {
+    return;  // Can't restore without a device name
+  }
+
+  QSettings settings;
+  QString prefix = QString("MotionPage/%1/").arg(m_deviceName);
+
+  // Check if saved state exists
+  if (!settings.contains(prefix + "zoomFactor")) {
+    return;  // No saved state for this device
+  }
+
+  // Restore zoom factor
+  double savedZoomFactor = settings.value(prefix + "zoomFactor", 1.0).toDouble();
+  double savedCenterX = settings.value(prefix + "centerX", 0.0).toDouble();
+  double savedCenterY = settings.value(prefix + "centerY", 0.0).toDouble();
+
+  // Reset transform first
+  resetTransform();
+  m_zoomFactor = 1.0;
+
+  // Apply saved zoom
+  double scaleFactor = savedZoomFactor / m_zoomFactor;
+  scale(scaleFactor, scaleFactor);
+  m_zoomFactor = savedZoomFactor;
+
+  // Center on saved position
+  centerOn(QPointF(savedCenterX, savedCenterY));
+
+  viewport()->update();
 }

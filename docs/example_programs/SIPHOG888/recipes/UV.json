@@ -1,0 +1,91 @@
+{
+    "next_id_counter": 1,
+    "product_file": "",
+    "recipe_name": "UV",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "CCE606R",
+            "nickname": "Gantry Safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "IWJ639Q",
+            "nickname": "Gantry UV",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "UV"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "CXD780H",
+            "nickname": "Slide Extend UV",
+            "parameters": {
+                "debounce_delay_ms": "300",
+                "inbounce_delay_ms": "300",
+                "slide_name": "UV_Head",
+                "timeout_ms": "10000"
+            },
+            "type": "Slide Extend"
+        },
+        {
+            "enabled": true,
+            "id": "RZV871U",
+            "nickname": "Set Output 4",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "15",
+                "state": "false"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "TSZ243P",
+            "nickname": "Wait 5",
+            "parameters": {
+                "duration_ms": "100"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "HKW948X",
+            "nickname": "Set Output 6",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "15",
+                "state": "true"
+            },
+            "type": "Set Output"
+        },
+        {
+            "enabled": true,
+            "id": "HHP301Z",
+            "nickname": "Wait 7",
+            "parameters": {
+                "duration_ms": "100"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "MKH229Z",
+            "nickname": "Set Output 8",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "15",
+                "state": "false"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

@@ -1,0 +1,89 @@
+{
+    "next_id_counter": 1,
+    "product_file": "",
+    "recipe_name": "Unload Gripper",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "OVO381K",
+            "nickname": "Clear Output Name 1",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "L_Gripper"
+            },
+            "type": "Clear Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "ZVO730X",
+            "nickname": "Clear Output Name 2",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "R_Gripper"
+            },
+            "type": "Clear Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "FTE518P",
+            "nickname": "Wait 3",
+            "parameters": {
+                "duration_ms": "3000"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "DHJ880Q",
+            "nickname": "Left lift up 4mm",
+            "parameters": {
+                "axis": "X",
+                "device": "hex-left",
+                "distance": "4"
+            },
+            "type": "Move Relative"
+        },
+        {
+            "enabled": true,
+            "id": "RXI366A",
+            "nickname": "Right lift up 4mm",
+            "parameters": {
+                "axis": "X",
+                "device": "hex-right",
+                "distance": "4"
+            },
+            "type": "Move Relative"
+        },
+        {
+            "enabled": true,
+            "id": "OHT888G",
+            "nickname": "left home",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "TTA049Y",
+            "nickname": "right home",
+            "parameters": {
+                "device": "hex-right",
+                "target_position": "home"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "CIA204V",
+            "nickname": "Clear Output Name 8",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "Vacuum_Base"
+            },
+            "type": "Clear Output Name"
+        }
+    ],
+    "version": "1.0"
+}

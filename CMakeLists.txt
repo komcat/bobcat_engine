@@ -303,6 +303,7 @@ set(SOURCES
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
     include/AppUI/MainWindow.cpp
+    include/AppUI/DarkTheme.cpp
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
@@ -434,8 +435,9 @@ set(HEADERS
     include/camera/LiveVideoSubscriber.h
     include/camera/FrameConverter.h
     include/camera/CameraImageWidget.h
-    include/AppUI/MainMenuPage.h    
+    include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
+    include/AppUI/DarkTheme.h
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h
     include/context/ApplicationContext.h

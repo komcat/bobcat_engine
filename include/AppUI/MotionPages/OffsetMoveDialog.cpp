@@ -23,18 +23,17 @@ void OffsetMoveDialog::setupUI()
   setWindowTitle("Move with Offset");
   setModal(true);
   setMinimumWidth(400);
-  setMaximumHeight(600);  // ✅ ADD - Limit height
+  setMaximumHeight(600);
 
-  // Set light background for the entire dialog
-  setStyleSheet("QDialog { background-color: white; }");
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setSpacing(8);  // ✅ CHANGED from 12
-  mainLayout->setContentsMargins(10, 10, 10, 10);  // ✅ ADD
+  mainLayout->setSpacing(8);
+  mainLayout->setContentsMargins(10, 10, 10, 10);
 
   // Title
   QLabel* titleLabel = new QLabel(QString("Move to: <b>%1</b> with offset").arg(m_baseName));
-  titleLabel->setStyleSheet("QLabel { font-size: 13px; color: #2c3e50; }");  // ✅ Smaller font
+  titleLabel->setStyleSheet("font-size: 13px;");  // ✅ Only custom font size
   mainLayout->addWidget(titleLabel);
 
   // ✅ REMOVE or make base group smaller - it's not essential
@@ -97,19 +96,17 @@ void OffsetMoveDialog::setupUI()
 
   m_previewLabel = new QLabel();
   m_previewLabel->setStyleSheet(
-    "QLabel {"
-    "  color: #2980b9;"
-    "  font-family: monospace;"
-    "  font-size: 11px;"  // ✅ CHANGED from 12
-    "  padding: 6px;"  // ✅ CHANGED from 8
-    "  background-color: #ecf0f1;"
-    "  border-radius: 4px;"
-    "}"
+    "font-family: monospace; "
+    "font-size: 11px; "
+    "padding: 6px; "
+    "background-color: #1e1e1e; "  // ✅ Dark inset
+    "border: 1px solid #3f3f46; "
+    "border-radius: 4px;"
   );
   m_previewLabel->setWordWrap(true);
 
   m_resultLabel = new QLabel();
-  m_resultLabel->setStyleSheet("QLabel { color: #27ae60; font-size: 10px; margin-top: 2px; }");  // ✅ Smaller
+  m_resultLabel->setStyleSheet("color: #27ae60; font-size: 10px; margin-top: 2px;");  // ✅ Keep green color
 
   previewLayout->addWidget(m_previewLabel);
   previewLayout->addWidget(m_resultLabel);
@@ -134,48 +131,12 @@ void OffsetMoveDialog::setupUI()
 
   mainLayout->addLayout(buttonLayout);
 
-  // Styling
-  setStyleSheet(
-    "QGroupBox {"
-    "  font-weight: bold;"
-    "  border: 2px solid #bdc3c7;"
-    "  border-radius: 5px;"
-    "  margin-top: 10px;"
-    "  padding-top: 10px;"
-    "}"
-    "QGroupBox::title {"
-    "  subcontrol-origin: margin;"
-    "  left: 10px;"
-    "  padding: 0 5px;"
-    "}"
-    "QDoubleSpinBox {"
-    "  padding: 4px;"
-    "  border: 1px solid #bdc3c7;"
-    "  border-radius: 3px;"
-    "}"
-    "QPushButton {"
-    "  background-color: #3498db;"
-    "  color: white;"
-    "  border: none;"
-    "  border-radius: 4px;"
-    "  padding: 6px 12px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #2980b9;"
-    "}"
-    "QPushButton:pressed {"
-    "  background-color: #21618c;"
-    "}"
-    "QPushButton#okButton {"
-    "  background-color: #27ae60;"
-    "}"
-    "QPushButton#okButton:hover {"
-    "  background-color: #229954;"
-    "}"
+  // ✅ Minimal styling - only custom overrides
+  m_okButton->setObjectName("okButton");  // ✅ Green button
+  m_okButton->setStyleSheet(
+    "QPushButton#okButton { background-color: #27ae60; }"
+    "QPushButton#okButton:hover { background-color: #2ecc71; }"
   );
-
-  m_okButton->setObjectName("okButton");
 
   // Connections
   connect(m_xOffset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),

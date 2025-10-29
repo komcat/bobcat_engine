@@ -18,6 +18,7 @@
 #include "PowerSupplyJsonLoader.h"
 #include "CoordinateSystemManager.h"
 #include "ProcessPluginRegistry.h"
+#include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
@@ -134,61 +135,8 @@ bool Application::initialize()
       m_qApplication->setFont(fallbackFont);
     }
 
-    // Set global light theme stylesheet for all Qt widgets
-    m_qApplication->setStyleSheet(
-      /* All dialogs */
-      "QDialog { "
-      "  background-color: white; "
-      "  color: #2c3e50; "
-      "} "
-      /* Message boxes */
-      "QMessageBox { "
-      "  background-color: white; "
-      "  color: #2c3e50; "
-      "} "
-      "QMessageBox QLabel { "
-      "  background-color: transparent; "
-      "  color: #2c3e50; "
-      "} "
-      "QMessageBox QPushButton { "
-      "  background-color: #3498db; "
-      "  color: white; "
-      "  border: none; "
-      "  padding: 8px 16px; "
-      "  border-radius: 4px; "
-      "  min-width: 80px; "
-      "} "
-      "QMessageBox QPushButton:hover { "
-      "  background-color: #2980b9; "
-      "} "
-      "QMessageBox QPushButton:pressed { "
-      "  background-color: #21618c; "
-      "} "
-      /* Input dialogs */
-      "QInputDialog { "
-      "  background-color: white; "
-      "  color: #2c3e50; "
-      "} "
-      "QInputDialog QLabel { "
-      "  background-color: transparent; "
-      "  color: #2c3e50; "
-      "} "
-      "QInputDialog QLineEdit { "
-      "  background-color: white; "
-      "  color: #2c3e50; "
-      "  border: 1px solid #bdc3c7; "
-      "  padding: 5px; "
-      "} "
-      /* File dialogs */
-      "QFileDialog { "
-      "  background-color: white; "
-      "  color: #2c3e50; "
-      "} "
-      "QFileDialog QLabel { "
-      "  background-color: transparent; "
-      "  color: #2c3e50; "
-      "}"
-    );
+    // ✅ UPDATED: Apply centralized dark theme globally to all Qt widgets
+    m_qApplication->setStyleSheet(DarkTheme::getStyleSheet());
 
     std::cout << "[Application] " << getApplicationName()
       << " v" << getVersion() << std::endl;

@@ -50,6 +50,7 @@ signals:
   void deletePositionClicked();
   void createPositionClicked();
   void editWaypointsClicked();
+  void autoFitClicked();  // ✅ NEW: Auto-fit view to positions
   void homeClicked();
   void stopClicked();
 
@@ -75,6 +76,7 @@ private:
   QPushButton* m_deletePosButton;
   QPushButton* m_editWaypointsBtn;
   QPushButton* m_createPosButton;
+  QPushButton* m_autoFitButton;  // ✅ NEW: Auto-fit view button
   QPushButton* m_homeButton;
   QPushButton* m_stopButton;
 

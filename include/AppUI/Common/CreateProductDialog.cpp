@@ -34,41 +34,7 @@ void CreateProductDialog::setupUI()
   setMinimumSize(600, 500);
   resize(650, 550);
 
-  // Set comprehensive light theme for the entire dialog
-  setStyleSheet(
-    "QDialog { "
-    "  background-color: white; "
-    "} "
-    "QGroupBox { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #ddd; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "} "
-    "QLabel { "
-    "  background-color: transparent; "
-    "  color: #2c3e50; "
-    "} "
-    "QLineEdit { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #bdc3c7; "
-    "} "
-    "QTextEdit { "
-    "  background-color: #f8f9fa; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #ddd; "
-    "}"
-  );
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setSpacing(15);
@@ -77,12 +43,7 @@ void CreateProductDialog::setupUI()
   // Header section
   // ============================================================================
   QLabel* titleLabel = new QLabel("Create New Product");
-  titleLabel->setStyleSheet(
-    "font-size: 18px; "
-    "font-weight: bold; "
-    "color: #2c3e50; "
-    "padding: 10px;"
-  );
+  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;");  // ✅ Only custom sizing
   mainLayout->addWidget(titleLabel);
 
   QLabel* descLabel = new QLabel(
@@ -95,9 +56,10 @@ void CreateProductDialog::setupUI()
   );
   descLabel->setStyleSheet(
     "font-size: 11px; "
-    "color: #555; "
+    "color: #a0a0a0; "  // ✅ Lighter gray for dark theme
     "padding: 5px 10px; "
-    "background-color: #f0f0f0; "
+    "background-color: #1e1e1e; "  // ✅ Darker inset for dark theme
+    "border: 1px solid #3f3f46; "
     "border-radius: 4px;"
   );
   descLabel->setWordWrap(true);
@@ -107,25 +69,25 @@ void CreateProductDialog::setupUI()
   // Product name input section
   // ============================================================================
   QGroupBox* nameGroup = new QGroupBox("Product Name");
-  nameGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
+  nameGroup->setStyleSheet("QGroupBox { font-weight: bold; }");  // ✅ Only font weight
   QVBoxLayout* nameLayout = new QVBoxLayout(nameGroup);
 
   QHBoxLayout* inputLayout = new QHBoxLayout();
   QLabel* nameLabel = new QLabel("Name:");
   nameLabel->setFixedWidth(60);
-  nameLabel->setStyleSheet("font-size: 12px;");
+  nameLabel->setStyleSheet("font-size: 12px;");  // ✅ Only custom font size
   inputLayout->addWidget(nameLabel);
 
   m_nameEdit = new QLineEdit();
   m_nameEdit->setPlaceholderText("Enter product name (e.g., SIPHOG101, BOBCAT1)...");
-  m_nameEdit->setStyleSheet("padding: 8px; font-size: 12px;");
+  m_nameEdit->setStyleSheet("padding: 8px; font-size: 12px;");  // ✅ Only custom padding/size
   connect(m_nameEdit, &QLineEdit::textChanged, this, &CreateProductDialog::onNameTextChanged);
   inputLayout->addWidget(m_nameEdit);
 
   nameLayout->addLayout(inputLayout);
 
   m_previewLabel = new QLabel("Location: <i>not set</i>");
-  m_previewLabel->setStyleSheet("font-size: 10px; color: #666; padding: 3px;");
+  m_previewLabel->setStyleSheet("font-size: 10px; color: #a0a0a0; padding: 3px;");  // ✅ Lighter gray for dark theme
   nameLayout->addWidget(m_previewLabel);
 
   mainLayout->addWidget(nameGroup);
@@ -134,7 +96,7 @@ void CreateProductDialog::setupUI()
   // Structure preview
   // ============================================================================
   QLabel* structureLabel = new QLabel("Folder Structure Preview:");
-  structureLabel->setStyleSheet("font-size: 11px; font-weight: bold; color: #555;");
+  structureLabel->setStyleSheet("font-size: 11px; font-weight: bold;");  // ✅ Only custom styling
   mainLayout->addWidget(structureLabel);
 
   m_structurePreview = new QTextEdit();
@@ -170,10 +132,10 @@ void CreateProductDialog::setupUI()
   );
   warningLabel->setStyleSheet(
     "font-size: 10px; "
-    "color: #e67e22; "
+    "color: #f39c12; "  // ✅ Brighter orange for dark theme
     "padding: 8px; "
-    "background-color: #fff3cd; "
-    "border: 1px solid #e67e22; "
+    "background-color: #3c2a1a; "  // ✅ Dark orange tint
+    "border: 1px solid #f39c12; "
     "border-radius: 3px;"
   );
   warningLabel->setWordWrap(true);
@@ -188,23 +150,24 @@ void CreateProductDialog::setupUI()
   buttonLayout->addStretch();
 
   m_createButton = new QPushButton("✓ Create Product");
+  m_createButton->setObjectName("createButton");  // ✅ Green success button
   m_createButton->setMinimumHeight(40);
   m_createButton->setMinimumWidth(150);
   m_createButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; font-size: 13px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #229954; }"
-    "QPushButton:disabled { background-color: #bdc3c7; }"
+    "QPushButton#createButton { background-color: #27ae60; font-size: 13px; }"
+    "QPushButton#createButton:hover { background-color: #2ecc71; }"
   );
   m_createButton->setEnabled(false);
   connect(m_createButton, &QPushButton::clicked, this, &CreateProductDialog::onCreateClicked);
   buttonLayout->addWidget(m_createButton);
 
   m_cancelButton = new QPushButton("✗ Cancel");
+  m_cancelButton->setObjectName("cancelButton");  // ✅ Gray cancel button
   m_cancelButton->setMinimumHeight(40);
   m_cancelButton->setMinimumWidth(120);
   m_cancelButton->setStyleSheet(
-    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; font-size: 13px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton#cancelButton { background-color: #555555; font-size: 13px; }"
+    "QPushButton#cancelButton:hover { background-color: #666666; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &CreateProductDialog::onCancel);
   buttonLayout->addWidget(m_cancelButton);
@@ -351,7 +314,7 @@ void CreateProductDialog::onNameTextChanged(const QString& text)
 
   if (trimmed.isEmpty()) {
     m_previewLabel->setText("Location: <i>not set</i>");
-    m_previewLabel->setStyleSheet("font-size: 10px; color: #666; padding: 3px;");
+    m_previewLabel->setStyleSheet("font-size: 10px; color: #a0a0a0; padding: 3px;");  // ✅ Lighter gray
     m_createButton->setEnabled(false);
 
     m_structurePreview->setText(

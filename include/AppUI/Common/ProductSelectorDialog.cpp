@@ -29,60 +29,14 @@ void ProductSelectorDialog::setupUI()
   setMinimumSize(500, 400);
   resize(550, 450);
 
-  // Set light theme
-  setStyleSheet(
-    "QDialog { "
-    "  background-color: white; "
-    "} "
-    "QLabel { "
-    "  background-color: transparent; "
-    "  color: #2c3e50; "
-    "} "
-    "QListWidget { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #bdc3c7; "
-    "  border-radius: 4px; "
-    "} "
-    "QListWidget::item { "
-    "  padding: 8px; "
-    "  border-bottom: 1px solid #ecf0f1; "
-    "} "
-    "QListWidget::item:selected { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "} "
-    "QListWidget::item:hover { "
-    "  background-color: #e8f4f8; "
-    "} "
-    "QGroupBox { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #ddd; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "}"
-  );
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setSpacing(15);
 
   // Header
   QLabel* titleLabel = new QLabel("Select a Product to Load");
-  titleLabel->setStyleSheet(
-    "font-size: 16px; "
-    "font-weight: bold; "
-    "color: #2c3e50; "
-    "padding: 10px;"
-  );
+  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; padding: 10px;");  // ✅ Only custom sizing
   mainLayout->addWidget(titleLabel);
 
   // Product list
@@ -90,12 +44,7 @@ void ProductSelectorDialog::setupUI()
   QVBoxLayout* listLayout = new QVBoxLayout(listGroup);
 
   m_productList = new QListWidget();
-  m_productList->setStyleSheet(
-    "QListWidget { "
-    "  font-size: 14px; "
-    "  padding: 5px; "
-    "}"
-  );
+  m_productList->setStyleSheet("font-size: 14px; padding: 5px;");  // ✅ Only custom sizing
 
   // Add products to list
   for (const QString& product : m_products) {
@@ -121,47 +70,23 @@ void ProductSelectorDialog::setupUI()
   buttonLayout->addStretch();
 
   m_okButton = new QPushButton("OK");
+  m_okButton->setObjectName("okButton");  // ✅ Green success button
   m_okButton->setMinimumHeight(35);
   m_okButton->setMinimumWidth(100);
   m_okButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 4px; "
-    "  font-size: 13px; "
-    "  font-weight: bold; "
-    "  padding: 8px 20px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #2980b9; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #21618c; "
-    "}"
+    "QPushButton#okButton { background-color: #27ae60; font-size: 13px; }"
+    "QPushButton#okButton:hover { background-color: #2ecc71; }"
   );
   connect(m_okButton, &QPushButton::clicked, this, &ProductSelectorDialog::onOkClicked);
   buttonLayout->addWidget(m_okButton);
 
   m_cancelButton = new QPushButton("Cancel");
+  m_cancelButton->setObjectName("cancelButton");  // ✅ Gray neutral button
   m_cancelButton->setMinimumHeight(35);
   m_cancelButton->setMinimumWidth(100);
   m_cancelButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #95a5a6; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 4px; "
-    "  font-size: 13px; "
-    "  font-weight: bold; "
-    "  padding: 8px 20px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #7f8c8d; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #6c7a7b; "
-    "}"
+    "QPushButton#cancelButton { background-color: #555555; font-size: 13px; }"
+    "QPushButton#cancelButton:hover { background-color: #666666; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
   buttonLayout->addWidget(m_cancelButton);

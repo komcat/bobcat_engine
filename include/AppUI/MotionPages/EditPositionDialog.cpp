@@ -23,8 +23,8 @@ void EditPositionDialog::setupUI()
   setMinimumWidth(400);
   setMaximumWidth(500);
 
-  // Set light background for the entire dialog
-  setStyleSheet("QDialog { background-color: white; }");
+  // Set dark background for the entire dialog
+  setStyleSheet("QDialog { background-color: #2d2d30; }");
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(20, 20, 20, 20);
@@ -36,7 +36,7 @@ void EditPositionDialog::setupUI()
     "QLabel {"
     "  font-size: 18px;"
     "  font-weight: bold;"
-    "  color: #2c3e50;"
+    "  color: #ffffff;"
     "  margin-bottom: 5px;"
     "}"
   );
@@ -47,7 +47,7 @@ void EditPositionDialog::setupUI()
   nameLabel->setStyleSheet(
     "QLabel {"
     "  font-size: 13px;"
-    "  color: #7f8c8d;"
+    "  color: #a0a0a0;"
     "  margin-bottom: 10px;"
     "}"
   );
@@ -55,7 +55,7 @@ void EditPositionDialog::setupUI()
 
   // Position Values
   QLabel* valuesLabel = new QLabel("Position Values");
-  valuesLabel->setStyleSheet("font-weight: bold; color: #2c3e50; font-size: 13px; margin-top: 5px;");
+  valuesLabel->setStyleSheet("font-weight: bold; color: #ffffff; font-size: 13px; margin-top: 5px;");
   mainLayout->addWidget(valuesLabel);
 
   // Create compact grid for XYZ and UVW
@@ -64,24 +64,26 @@ void EditPositionDialog::setupUI()
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
   // Style for labels and spinboxes
-  QString labelStyle = "QLabel { color: #34495e; font-weight: bold; font-size: 12px; }";
+  QString labelStyle = "QLabel { color: #ffffff; font-weight: bold; font-size: 12px; }";
   QString spinBoxStyle =
     "QDoubleSpinBox {"
     "  padding: 6px;"
-    "  border: 2px solid #bdc3c7;"
-    "  background-color: white;"
+    "  border: 1px solid #555555;"
+    "  border-radius: 4px;"
+    "  background-color: #3c3c3c;"
+    "  color: #ffffff;"
     "  font-size: 12px;"
     "}"
     "QDoubleSpinBox:focus {"
-    "  border: 2px solid #3498db;"
+    "  border: 1px solid #0e639c;"
     "}"
     "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {"
-    "  background-color: #ecf0f1;"
+    "  background-color: #555555;"
     "  border: none;"
     "  width: 16px;"
     "}"
     "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {"
-    "  background-color: #bdc3c7;"
+    "  background-color: #0e639c;"
     "}";
 
   // Create spinboxes
@@ -148,18 +150,19 @@ void EditPositionDialog::setupUI()
   cancelButton->setCursor(Qt::PointingHandCursor);
   cancelButton->setStyleSheet(
     "QPushButton {"
-    "  background-color: #95a5a6;"
+    "  background-color: #555555;"
     "  color: white;"
-    "  border: none;"
+    "  border: 1px solid #3f3f46;"
+    "  border-radius: 4px;"
     "  font-size: 13px;"
     "  font-weight: bold;"
     "  padding: 8px 24px;"
     "}"
     "QPushButton:hover {"
-    "  background-color: #7f8c8d;"
+    "  background-color: #666666;"
     "}"
     "QPushButton:pressed {"
-    "  background-color: #6c7a89;"
+    "  background-color: #444444;"
     "}"
   );
 
@@ -168,18 +171,19 @@ void EditPositionDialog::setupUI()
   saveButton->setCursor(Qt::PointingHandCursor);
   saveButton->setStyleSheet(
     "QPushButton {"
-    "  background-color: #3498db;"
+    "  background-color: #0e639c;"
     "  color: white;"
-    "  border: none;"
+    "  border: 1px solid #0c5280;"
+    "  border-radius: 4px;"
     "  font-size: 13px;"
     "  font-weight: bold;"
     "  padding: 8px 24px;"
     "}"
     "QPushButton:hover {"
-    "  background-color: #2980b9;"
+    "  background-color: #1177bb;"
     "}"
     "QPushButton:pressed {"
-    "  background-color: #21618c;"
+    "  background-color: #0c5280;"
     "}"
   );
 
@@ -196,7 +200,7 @@ void EditPositionDialog::setupUI()
   // Set dialog background
   setStyleSheet(
     "QDialog {"
-    "  background-color: #ecf0f1;"
+    "  background-color: #2d2d30;"
     "}"
   );
 }

@@ -1,0 +1,188 @@
+================================================================================
+RECIPE PAGE - AUTO-SELECT NEXT STEP ON REMOVAL
+================================================================================
+Date: 2025-10-29
+Feature: Automatically select the next step after removing a recipe step
+
+================================================================================
+PROBLEM BEFORE
+================================================================================
+
+When removing a recipe step:
+1. User selects a step in the recipe tree
+2. User clicks "Remove" button
+3. Confirmation popup appears: "Are you sure you want to remove this step?"
+4. User clicks "Yes"
+5. Step is removed, BUT no step is selected anymore (m_selectedStepIndex = -1)
+6. User must manually click on another step to select it
+7. User can then remove that step
+8. Repeat...
+
+This made removing multiple consecutive steps very tedious and slow.
+
+================================================================================
+SOLUTION IMPLEMENTED
+================================================================================
+
+After removing a step:
+1. The next step (that moved into the deleted position) is automatically selected
+2. The configuration form is updated to show the newly selected step
+3. User can immediately click "Remove" again without clicking
+4. Also suppressed the confirmation popup for faster workflow
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+File: include/AppUI/RecipePage/RecipePage.cpp
+Method: onRemoveStep() (lines 1059-1103)
+
+Changes:
+1. Commented out confirmation popup (QMessageBox::question)
+2. Remember the deleted step index
+3. After removal, calculate which step to select next:
+   - If deleted step was in the middle: select same index (next step moved up)
+   - If deleted the last step: select the new last step (index - 1)
+   - If no steps left: clear selection (-1)
+4. Call selectStepByIndex() to select in the tree
+5. Call updateConfigurationForm() to show the selected step's config
+
+================================================================================
+CODE LOGIC
+================================================================================
+
+Before (problematic):
+```cpp
+void RecipePage::onRemoveStep()
+{
+  if (m_selectedStepIndex < 0) return;
+
+  QMessageBox::StandardButton reply = QMessageBox::question(...);
+
+  if (reply == QMessageBox::Yes) {
+    m_recipeManager->removeStep(m_selectedStepIndex);
+    refreshRecipeList();
+    clearConfigurationForm();
+    m_selectedStepIndex = -1;  // ❌ Clears selection!
+  }
+}
+```
+
+After (improved):
+```cpp
+void RecipePage::onRemoveStep()
+{
+  if (m_selectedStepIndex < 0) return;
+
+  // ✅ No confirmation popup
+
+  int deletedIndex = m_selectedStepIndex;
+  m_recipeManager->removeStep(m_selectedStepIndex);
+  refreshRecipeList();
+
+  int newTotalSteps = m_recipeManager->getStepCount();
+
+  if (newTotalSteps > 0) {
+    // Select next step or previous if deleted last
+    if (deletedIndex >= newTotalSteps) {
+      m_selectedStepIndex = newTotalSteps - 1;
+    }
+    else {
+      m_selectedStepIndex = deletedIndex;
+    }
+
+    // ✅ Auto-select and show config
+    selectStepByIndex(m_selectedStepIndex);
+    updateConfigurationForm();
+  }
+  else {
+    m_selectedStepIndex = -1;
+    clearConfigurationForm();
+  }
+}
+```
+
+================================================================================
+USER EXPERIENCE
+================================================================================
+
+Before:
+```
+1. Select Step #3
+2. Click Remove → Popup → Click Yes
+3. Step removed, NO selection
+4. Click Step #3 (which is now the old Step #4)
+5. Click Remove → Popup → Click Yes
+6. Step removed, NO selection
+7. Click Step #3 (which is now the old Step #5)
+8. ... repeat
+```
+
+After:
+```
+1. Select Step #3
+2. Click Remove
+3. Step removed, Step #3 (old Step #4) AUTO-SELECTED
+4. Click Remove
+5. Step removed, Step #3 (old Step #5) AUTO-SELECTED
+6. Click Remove
+7. ... continue rapidly
+```
+
+================================================================================
+EDGE CASES HANDLED
+================================================================================
+
+✅ Remove middle step → Next step selected
+✅ Remove last step → Previous step selected
+✅ Remove until only 1 step left → That step selected
+✅ Remove the final step → Selection cleared, config form cleared
+✅ Tree view updates correctly
+✅ Configuration form shows newly selected step
+
+================================================================================
+BENEFITS
+================================================================================
+
+✅ Much faster workflow - no confirmation popup
+✅ Can remove multiple steps rapidly
+✅ No need to click between removals
+✅ Natural "delete next" behavior
+✅ Still safe - user can undo if needed
+✅ Configuration form updates automatically
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+Test scenarios:
+1. ✅ Create recipe with 10 steps
+2. ✅ Select step #5, click Remove
+3. ✅ Verify step #5 removed and new step #5 (old #6) is selected
+4. ✅ Click Remove again immediately (no clicking needed)
+5. ✅ Continue removing steps rapidly
+6. ✅ Remove until 1 step left
+7. ✅ Remove final step → verify selection cleared
+
+Edge cases:
+- ✅ Remove last step in list → previous step selected
+- ✅ Remove only step → selection cleared properly
+
+================================================================================
+REVERTING (IF NEEDED)
+================================================================================
+
+To restore confirmation popup:
+1. Uncomment lines 1064-1069
+2. Add back the closing brace at line 1102
+3. Revert the auto-selection logic to:
+   ```cpp
+   m_recipeManager->removeStep(m_selectedStepIndex);
+   refreshRecipeList();
+   clearConfigurationForm();
+   m_selectedStepIndex = -1;
+   ```
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

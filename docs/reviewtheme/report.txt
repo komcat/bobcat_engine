@@ -1,0 +1,438 @@
+================================================================================
+HARDWARE INSTRUMENT PAGE - THEME REVIEW REPORT
+================================================================================
+Generated: 2025-10-29
+Scope: All UI components under HardwareInstrumentPage and child pages
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Total Components Analyzed: 11
+  - CRITICAL Issues Found: 1 (PneumaticControlPage uses light theme)
+  - Dark Theme Compatible: 10
+  - No Dialogs/Widgets Found: All pages are standalone
+
+Key Finding: PneumaticControlPage is the ONLY component using light theme colors
+and needs immediate attention for consistency with the rest of the application.
+
+================================================================================
+1. HARDWAREINSTRUMENTPAGE (Main Container)
+================================================================================
+
+File: include/AppUI/HardwareInstrumentPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+
+Analysis:
+  - setStyleSheet calls: 5
+  - Current theme: Dark (manually styled)
+  - Sidebar: #333333 background
+  - Back button: #555555
+  - Sidebar buttons: #3a3a3a with #00aaff accent
+  - Child pages managed via QStackedWidget
+
+Recommendation:
+  - Consider removing manual styling and inherit from global theme
+  - Only keep semantic button colors (#00aaff for selection)
+
+================================================================================
+2. MULTICAMERAVIEW
+================================================================================
+
+File: include/camera/MultiCameraView.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~8 blocks
+  - Current theme: Dark (#2d2d30, #1e1e1e)
+  - Status summary: Color-coded (#ff4444, #ffaa44, #44ff44)
+  - Tab widget: Custom dark styling with #0e639c accent
+  - Connect buttons: Green (#27ae60)
+
+Theme Colors Used:
+  - Background: #2d2d30 (main), #1e1e1e (tabs)
+  - Text: #d4d4d4, #ffffff
+  - Accent: #0e639c (selected tab)
+  - Success: #27ae60 (connect button)
+  - Error: #ff4444 (no cameras)
+
+Recommendation:
+  - Already well-themed for dark mode
+  - Consider minor cleanup to remove redundant styling
+  - Keep color-coded status indicators
+
+================================================================================
+3. PICONTROLLERPAGE
+================================================================================
+
+File: include/AppUI/MotionPages/PIControllerPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~6 blocks
+  - Current theme: Dark (#1e1e1e, #3c3c3c)
+  - Velocity controls: Dark themed spinboxes
+  - Preset buttons: Blue (#3498db) and Red (#e74c3c)
+  - Apply button: Green (#27ae60)
+
+Theme Colors Used:
+  - Background: #1e1e1e (group), #3c3c3c (inputs)
+  - Text: #ffffff, #d4d4d4
+  - Border: #3f3f46, #555555
+  - Accent: #0e639c (combobox hover)
+  - Turtle: #3498db (blue)
+  - Rabbit: #e74c3c (red)
+  - Apply: #27ae60 (green)
+
+Recommendation:
+  - Already well-themed for dark mode
+  - Semantic button colors are appropriate
+  - Keep as-is
+
+================================================================================
+4. ACSCONTROLLERPAGE
+================================================================================
+
+File: include/AppUI/MotionPages/ACSControllerPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~6 blocks
+  - Current theme: Dark (#1e1e1e, #3c3c3c)
+  - Per-axis velocity controls (X, Y, Z)
+  - Preset buttons: Blue (#3498db) and Red (#e74c3c)
+  - Apply button: Green (#27ae60)
+
+Theme Colors Used:
+  - Background: #1e1e1e (group), #3c3c3c (inputs)
+  - Text: #ffffff, #d4d4d4
+  - Border: #3f3f46, #555555
+  - Accent: #0e639c (combobox hover)
+  - Semantic colors: Same as PI page
+
+Recommendation:
+  - Already well-themed for dark mode
+  - Consistent with PIControllerPage styling
+  - Keep as-is
+
+================================================================================
+5. IOCONTROLLERPAGE
+================================================================================
+
+File: include/AppUI/IOPage/IOControllerPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~12 blocks (extensive custom styling)
+  - Current theme: Dark (#1e1e1e, #34495e)
+  - Device sidebar: #34495e
+  - Pin tables: Dark with live status highlighting
+  - Toggle checkboxes: Custom styled for dark theme
+  - Connection status: Color-coded (green/red)
+
+Theme Colors Used:
+  - Main background: #1e1e1e
+  - Sidebar: #34495e
+  - Tables: #34495e with #2c3e50 groups
+  - Text: #ecf0f1, #d4d4d4
+  - Grid lines: #4a5f7f, #2c3e50
+  - Status colors:
+    * Connected: #2ecc71 (green)
+    * Disconnected: #e74c3c (red)
+    * Input type: #3498db (blue)
+    * Output type: #f39c12 (orange)
+  - Row highlighting:
+    * ON: #27ae60 (green background)
+    * OFF: #34495e (dark gray)
+
+Recommendation:
+  - Excellent dark theme implementation
+  - Live status colors provide good visibility
+  - Keep custom styling for functional requirements
+  - This is a good example of proper dark theme styling
+
+================================================================================
+6. PNEUMATICCONTROLPAGE ⚠️ CRITICAL ISSUE
+================================================================================
+
+File: include/AppUI/PneumaticPage/PneumaticControlPage.cpp
+Status: ❌ LIGHT THEME (NEEDS UPDATE)
+Priority: CRITICAL
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~15 blocks
+  - Current theme: LIGHT (#f5f6fa, #ecf0f1, white)
+  - Background: #f5f6fa (light gray)
+  - Sidebar: #ecf0f1 (light)
+  - List widget: WHITE background
+  - Progress bars: #ecf0f1 (light) with #bdc3c7 borders
+  - Status colors are good (green/red/blue) but on light backgrounds
+
+Problem Areas (Line Numbers):
+  - Line 58: setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  - Line 64: m_slideListPanel->setStyleSheet("QWidget { background-color: #ecf0f1; }");
+  - Line 72: titleLabel->setStyleSheet("... color: #2c3e50; }"); (dark text)
+  - Lines 93-112: m_slideList with WHITE background and dark text
+  - Line 131: m_slideNameLabel with dark text (#2c3e50)
+  - Lines 146-159: Status group with light borders (#bdc3c7)
+  - Lines 179-190: Progress bar with light background (#ecf0f1)
+  - Lines 240-248: Control group with light borders
+
+Light Theme Colors Found:
+  - Background: #f5f6fa (main), #ecf0f1 (panels)
+  - Lists: white background
+  - Text: #2c3e50 (dark text on light)
+  - Borders: #bdc3c7 (light gray)
+  - Progress bars: #ecf0f1 background
+
+Required Changes:
+  - Line 58: Change #f5f6fa → #2d2d30 (or remove, inherit from global)
+  - Line 64: Change #ecf0f1 → #1e1e1e
+  - Line 72: Change color: #2c3e50 → #ffffff
+  - Line 95: Change white → #1e1e1e
+  - Line 100: Change color: #2c3e50 → #d4d4d4
+  - Line 131: Change color: #2c3e50 → #ffffff
+  - Line 150: Change #bdc3c7 → #3f3f46
+  - Line 183: Change #ecf0f1 → #1e1e1e
+  - Line 181: Change #bdc3c7 → #3f3f46
+  - Line 244: Change #bdc3c7 → #3f3f46
+
+Recommendation:
+  - CRITICAL: Update all light theme colors to dark theme
+  - Use same color palette as IOControllerPage for consistency
+  - Keep status colors (green/red/blue/purple/orange) as they work well
+  - Progress bar background: #ecf0f1 → #1e1e1e
+  - Progress bar border: #bdc3c7 → #3f3f46
+
+================================================================================
+7. DATASTOREWIDGET
+================================================================================
+
+File: include/data/DataStoreWidget.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~8 blocks
+  - Current theme: Dark (#1e1e1e, #2d2d2d)
+  - Chart cards: Dark with rounded borders
+  - Header: #1e1e1e with white text
+  - Value labels: Cyan (#00d9ff) for emphasis
+  - Charts: Dark background (#1e1e1e) with gray gridlines
+
+Theme Colors Used:
+  - Background: #2d2d2d (cards), #1e1e1e (header/charts)
+  - Text: #ffffff, #aaaaaa (secondary)
+  - Accent: #0078d4 (button)
+  - Data value: #00d9ff (cyan)
+  - Border: #404040
+  - Chart grid: #464646 (70,70,70)
+
+Recommendation:
+  - Excellent dark theme with good contrast
+  - Chart styling is well-designed
+  - Keep as-is
+
+================================================================================
+8. TCPCLIENTWIDGET
+================================================================================
+
+File: include/data/TcpClientWidget.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~10 blocks
+  - Current theme: Dark (#2d2d2d, #1e1e1e)
+  - Client cards: Dark with rounded borders
+  - Connect button: Green (#28a745)
+  - Disconnect button: Red (#dc3545)
+  - Value display: Cyan (#00d9ff) on dark inset
+
+Theme Colors Used:
+  - Background: #2d2d2d (cards), #1e1e1e (value inset)
+  - Text: #ffffff, #999999 (secondary)
+  - Border: #404040
+  - Connect: #28a745 (green)
+  - Disconnect: #dc3545 (red)
+  - Status connected: #28a745
+  - Status disconnected: #ff4444
+  - Value: #00d9ff (cyan)
+
+Recommendation:
+  - Well-themed for dark mode
+  - Good use of semantic colors
+  - Keep as-is
+
+================================================================================
+9. TECCONTROLPAGE
+================================================================================
+
+File: include/AppUI/TECPage/TECControlPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - setStyleSheet calls: ~15 blocks
+  - Current theme: Dark (#1e1e1e, #2d2d30)
+  - Left panel: #1e1e1e for device list
+  - Right panel: #2d2d30 for controls
+  - Connect button: Green (#27ae60)
+  - Disconnect button: Red (#e74c3c)
+  - TEC toggle: Green when ON (#27ae60)
+  - Laser toggle: Orange when ON (#f39c12)
+  - Sliders: Dark with custom styling
+
+Theme Colors Used:
+  - Background: #2d2d30 (main), #1e1e1e (panels/groups)
+  - Text: #ffffff, #d4d4d4
+  - Border: #3f3f46
+  - Controls: #3c3c3c (spinboxes/sliders)
+  - Connect: #27ae60 (green)
+  - Disconnect: #e74c3c (red)
+  - TEC: #27ae60 (green when ON)
+  - Laser: #f39c12 (orange when ON)
+  - Accent: #0e639c (values)
+  - Preset 1: #0e639c (blue)
+  - Preset 2: #8e44ad (purple)
+
+Recommendation:
+  - Well-designed dark theme
+  - Good semantic color usage
+  - Sliders have custom dark styling
+  - Keep as-is
+
+================================================================================
+10. POWERSUPPLYCONTROLPAGE
+================================================================================
+
+File: include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
+Status: ✅ DARK THEME COMPATIBLE
+Priority: LOW
+Child Dialogs: None found
+
+Analysis:
+  - Has createStyleSheet() method with comprehensive dark theme
+  - setStyleSheet calls: 1 (comprehensive stylesheet method)
+  - Current theme: Dark (#2d2d30, #1e1e1e)
+  - 2-panel layout with splitter
+  - List widget for devices
+  - Control panel with spinboxes
+  - Status indicators: Color-coded
+
+Theme Colors Used:
+  - Background: #2d2d30 (main), #1e1e1e (panels/groups)
+  - Text: #d4d4d4, #ffffff
+  - Border: #3f3f46
+  - Controls: #3c3c3c (spinboxes)
+  - Connect: #27ae60 (green)
+  - Disconnect: #e74c3c (red)
+  - Output ON: #27ae60 (green)
+  - Output OFF: #e74c3c (red)
+  - Protection: #f39c12 (orange)
+  - Values: #27ae60 (voltage), #0e639c (current)
+  - Error: #e74c3c
+  - Success: #27ae60
+
+Recommendation:
+  - Excellent example of centralized stylesheet
+  - Comprehensive dark theme implementation
+  - Good semantic color usage
+  - This is the BEST example in HardwareInstrumentPage
+  - Keep as-is and consider as reference for others
+
+================================================================================
+SUMMARY TABLE
+================================================================================
+
+Component                      | Theme Status | setStyleSheet | Priority | Child Dialogs
+-------------------------------|--------------|---------------|----------|---------------
+HardwareInstrumentPage         | Dark ✅      | 5             | LOW      | None
+MultiCameraView                | Dark ✅      | 8             | LOW      | None
+PIControllerPage               | Dark ✅      | 6             | LOW      | None
+ACSControllerPage              | Dark ✅      | 6             | LOW      | None
+IOControllerPage               | Dark ✅      | 12            | LOW      | None
+PneumaticControlPage           | LIGHT ❌     | 15            | CRITICAL | None
+DataStoreWidget                | Dark ✅      | 8             | LOW      | None
+TcpClientWidget                | Dark ✅      | 10            | LOW      | None
+TECControlPage                 | Dark ✅      | 15            | LOW      | None
+PowerSupplyControlPage         | Dark ✅      | 1 (method)    | LOW      | None
+
+Total setStyleSheet Calls: ~86 (excluding PneumaticControlPage)
+
+================================================================================
+RECOMMENDED ACTIONS
+================================================================================
+
+IMMEDIATE (CRITICAL):
+1. ✅ Fix PneumaticControlPage.cpp - Convert from light to dark theme
+   - Update all background colors: #f5f6fa → #2d2d30, #ecf0f1 → #1e1e1e
+   - Update all text colors: #2c3e50 → #ffffff/#d4d4d4
+   - Update all borders: #bdc3c7 → #3f3f46
+   - Update progress bars: Light → Dark backgrounds
+   - Keep status colors (they work on dark backgrounds)
+
+OPTIONAL (LOW PRIORITY):
+2. Consider cleanup for consistency:
+   - HardwareInstrumentPage: Remove custom sidebar styling
+   - MultiCameraView: Minor cleanup, mostly good
+   - All others: Keep as-is, well-designed
+
+REFERENCE IMPLEMENTATIONS:
+- PowerSupplyControlPage: Best example with centralized stylesheet
+- IOControllerPage: Good example of functional dark theme with status
+- TECControlPage: Good example of semantic colors on dark theme
+
+================================================================================
+COLOR PALETTE REFERENCE (Dark Theme)
+================================================================================
+
+Backgrounds:
+  - Main: #2d2d30
+  - Panels: #1e1e1e
+  - Inputs: #3c3c3c
+  - Sidebar: #34495e (alternative)
+
+Text:
+  - Primary: #ffffff
+  - Secondary: #d4d4d4
+  - Tertiary: #aaaaaa, #888888
+
+Borders:
+  - Primary: #3f3f46
+  - Secondary: #555555
+  - Sidebar: #404040
+
+Semantic Colors:
+  - Success/Connect: #27ae60 (green)
+  - Error/Disconnect: #e74c3c (red)
+  - Warning: #f39c12 (orange)
+  - Info/Accent: #0e639c (blue)
+  - Data/Cyan: #00d9ff
+  - Purple: #8e44ad, #9b59b6
+  - Turtle (slow): #3498db (blue)
+  - Rabbit (fast): #e74c3c (red)
+
+Status Indicators:
+  - Connected: #27ae60 (green)
+  - Disconnected: #e74c3c (red)
+  - Moving: #3498db (blue)
+  - Active: #27ae60 (green)
+  - Inactive: #95a5a6 (gray)
+
+================================================================================
+END OF REPORT
+================================================================================

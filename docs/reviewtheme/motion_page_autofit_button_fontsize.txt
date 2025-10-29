@@ -1,0 +1,321 @@
+================================================================================
+MOTION PAGE - AUTO FIT BUTTON & FONT SIZE IMPROVEMENTS
+================================================================================
+Date: 2025-10-29
+Features:
+1. Remove auto-fit on device switch, add manual "Auto Fit" button
+2. Enlarge font sizes for better readability (position labels and action buttons)
+
+================================================================================
+PROBLEM 1: AUTO-FIT ON DEVICE SWITCH CONFLICTS WITH PERSISTENCE
+================================================================================
+
+After implementing persistent zoom/pan per device, the auto-fit behavior when
+switching devices was problematic:
+
+1. User zooms/pans to specific area on Device A
+2. User switches to Device B
+3. System saves Device A's view state (correct)
+4. System loads Device B's positions and calls autoFitView() (PROBLEM!)
+5. This overwrites any previously saved view state for Device B
+6. User switches back to Device A
+7. Saved view is restored correctly for Device A
+8. But Device B's manually adjusted view is lost due to auto-fit
+
+Result: Persistent zoom/pan was partially broken by auto-fit on switch.
+
+================================================================================
+SOLUTION 1: MANUAL AUTO-FIT BUTTON
+================================================================================
+
+Changes:
+1. Removed automatic autoFitView() call when loading device positions
+2. Added new "⊡ Auto Fit View" button in MotionControlPanel
+3. User can now manually trigger auto-fit when desired
+4. Persistent zoom/pan works correctly without interference
+
+Benefits:
+✅ Persistent view state now works perfectly
+✅ User has explicit control over when to auto-fit
+✅ Manual auto-fit is still available when needed
+✅ Natural workflow: set your view once, it stays that way
+
+================================================================================
+PROBLEM 2: SMALL TEXT HARD TO READ
+================================================================================
+
+Previous font sizes were too small for comfortable viewing:
+- Position labels: 9px
+- Position name: 9px
+- Waypoints label: 9px
+- Action buttons: 9-10px
+
+Users had to lean in to read position values and button text clearly.
+
+================================================================================
+SOLUTION 2: INCREASED FONT SIZES
+================================================================================
+
+Changed font sizes for better readability:
+- Position labels (X, Y, Z, U, V, W): 9px → 12px
+- Position name label: 9px → 12px
+- Waypoints label: 9px → 11px
+- "Selected Position" header: 10px → 11px
+- Main action buttons (Move To, Move Offset): 10px → 12px
+- Regular action buttons: 9px → 11px
+
+Also increased padding/spacing:
+- Position info widget padding: 6px → 8px
+- Position info widget spacing: 3px → 4px
+
+Benefits:
+✅ Much easier to read position values at a glance
+✅ Button text is clearer
+✅ Better accessibility
+✅ More professional appearance
+✅ Reduced eye strain
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+1. MotionControlPanel.h
+   - Added autoFitClicked() signal (line 53)
+   - Added m_autoFitButton member variable (line 79)
+
+2. MotionControlPanel.cpp
+   - Initialized m_autoFitButton in constructor (line 20)
+   - Increased position label font sizes (lines 59-89)
+     * "Selected Position" header: 10px → 11px
+     * Position labels (X/Y/Z/U/V/W): 9px → 12px
+     * Waypoints label: 9px → 11px
+     * Increased padding and spacing
+   - Created "⊡ Auto Fit View" button (lines 152-154)
+   - Added separator after auto-fit button (lines 157-160)
+   - Increased button font sizes in stylesheet (lines 218, 235, 252)
+     * Move buttons: 10px → 12px
+     * Regular buttons: 9px → 11px
+   - Connected auto-fit button signal (lines 323-325)
+
+3. MotionPage.cpp
+   - Removed autoFitView() call from loadPositionsForDevice() (line 646-647)
+   - Added lambda to connect auto-fit button to graphics view (lines 399-405)
+
+================================================================================
+CODE CHANGES
+================================================================================
+
+MotionPage.cpp - Removed auto-fit on device switch:
+```cpp
+// BEFORE:
+m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
+m_graphicsView->autoFitView();  // Auto-fit: zoom to positions or center on device marker
+
+// AFTER:
+m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
+// ✅ REMOVED: Auto-fit on device switch - now using persistent zoom/pan
+// m_graphicsView->autoFitView();
+```
+
+MotionControlPanel.cpp - Increased font sizes:
+```cpp
+// Position labels - BEFORE:
+label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 9px; }");
+
+// Position labels - AFTER:
+label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; }");
+
+// Button stylesheet - BEFORE:
+"  font-size: 9px;"  // Regular buttons
+"  font-size: 10px;" // Move buttons
+
+// Button stylesheet - AFTER:
+"  font-size: 11px;"  // Regular buttons
+"  font-size: 12px;"  // Move buttons
+```
+
+MotionControlPanel.cpp - Added auto-fit button:
+```cpp
+// ✅ NEW: Auto Fit View Button
+m_autoFitButton = new QPushButton("⊡ Auto Fit View");
+m_autoFitButton->setMinimumHeight(28);
+mainLayout->addWidget(m_autoFitButton);
+
+// Separator
+QFrame* line4 = new QFrame();
+line4->setFrameShape(QFrame::HLine);
+line4->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+mainLayout->addWidget(line4);
+```
+
+MotionControlPanel.cpp - Connect signal:
+```cpp
+// ✅ NEW - Auto Fit View
+connect(m_autoFitButton, &QPushButton::clicked,
+  this, &MotionControlPanel::autoFitClicked);
+```
+
+MotionPage.cpp - Handle auto-fit button click:
+```cpp
+// ✅ NEW: Auto-fit view button
+connect(m_controlPanel, &MotionControlPanel::autoFitClicked,
+  this, [this]() {
+  if (m_graphicsView) {
+    m_graphicsView->autoFitView();
+  }
+});
+```
+
+================================================================================
+USER EXPERIENCE
+================================================================================
+
+BEFORE - Auto-fit behavior:
+```
+1. Select Device A, zoom in 5x to specific area
+2. Switch to Device B
+3. View auto-fits to all positions ❌ (loses any saved zoom for B)
+4. Manually adjust zoom for Device B
+5. Switch back to Device A
+6. View restores to 5x zoom ✅ (persistence works for A)
+7. Switch to Device B again
+8. View auto-fits again ❌ (loses manual adjustment from step 4)
+```
+
+AFTER - Manual auto-fit:
+```
+1. Select Device A, zoom in 5x to specific area
+2. Switch to Device B
+3. View restores previous zoom for B ✅ (or default if first time)
+4. Click "⊡ Auto Fit View" if desired
+5. Manually adjust zoom as needed
+6. Switch back to Device A
+7. View restores to 5x zoom ✅
+8. Switch to Device B again
+9. View restores to zoom from step 5 ✅ (persistence works!)
+```
+
+Font size improvements:
+```
+BEFORE:
+- Position values: Small text (9px), hard to read quickly
+- Button text: Small text (9-10px), requires focusing
+
+AFTER:
+- Position values: Clear text (12px), easy to read at a glance ✅
+- Button text: Clear text (11-12px), immediately readable ✅
+```
+
+================================================================================
+UI LAYOUT CHANGES
+================================================================================
+
+Button order in MotionControlPanel (after "Create Position"):
+
+BEFORE:
+```
+[+ Create Position]
+─────────────────────
+[⌂ Home]
+[⚠ STOP]
+```
+
+AFTER:
+```
+[+ Create Position]
+─────────────────────
+[⊡ Auto Fit View]     ← NEW BUTTON
+─────────────────────
+[⌂ Home]
+[⚠ STOP]
+```
+
+Position: Between "Create Position" and "Home" buttons
+Icon: ⊡ (square with corners)
+Style: Blue background (standard action button style)
+Height: 28px (matches other action buttons)
+
+================================================================================
+EDGE CASES HANDLED
+================================================================================
+
+✅ Auto-fit button available at all times (no enable/disable needed)
+✅ Graphics view null check before calling autoFitView()
+✅ Font sizes work with dark theme colors
+✅ Increased padding prevents text from touching borders
+✅ Persistent view state works correctly without auto-fit interference
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+Auto-fit button:
+1. ✅ Load positions for a device
+2. ✅ Zoom in/out and pan around manually
+3. ✅ Click "⊡ Auto Fit View" → Should zoom to fit all positions
+4. ✅ Switch to another device → View should NOT auto-fit
+5. ✅ Switch back → Previous zoom/pan should be restored
+6. ✅ Click "⊡ Auto Fit View" again → Should work correctly
+
+Font sizes:
+1. ✅ Select a position → Check position labels are readable (12px)
+2. ✅ Check position name is clear
+3. ✅ Check waypoints label is readable (11px)
+4. ✅ Check all button text is clear (11-12px)
+5. ✅ Verify padding looks good (not cramped)
+
+Combined test:
+1. ✅ Zoom/pan Device A to custom view
+2. ✅ Switch to Device B
+3. ✅ Verify Device B does NOT auto-fit
+4. ✅ Click "⊡ Auto Fit View" on Device B
+5. ✅ Switch back to Device A
+6. ✅ Verify Device A's custom view is restored
+7. ✅ Switch to Device B again
+8. ✅ Verify Device B shows the auto-fitted view (not custom)
+
+================================================================================
+BENEFITS SUMMARY
+================================================================================
+
+Auto-fit button:
+✅ Persistent zoom/pan now works perfectly
+✅ User has explicit control over view fitting
+✅ No unexpected view changes when switching devices
+✅ Still provides auto-fit functionality when needed
+✅ Cleaner, more predictable user experience
+
+Font size improvements:
+✅ Better readability for all text elements
+✅ Reduced eye strain
+✅ More professional appearance
+✅ Improved accessibility
+✅ Faster information scanning
+
+Combined:
+✅ More intuitive Motion Page workflow
+✅ Better visual clarity
+✅ Enhanced user control
+✅ Consistent behavior across sessions
+
+================================================================================
+REVERTING (IF NEEDED)
+================================================================================
+
+To restore auto-fit on device switch:
+1. Uncomment line 647 in MotionPage.cpp: m_graphicsView->autoFitView();
+2. Remove auto-fit button code from MotionControlPanel (lines 152-160)
+3. Remove signal connection in MotionPage.cpp (lines 399-405)
+
+To restore smaller font sizes:
+1. Revert MotionControlPanel.cpp line 86: font-size: 12px → 9px
+2. Revert MotionControlPanel.cpp line 78: font-size: 11px → 9px
+3. Revert MotionControlPanel.cpp line 218: font-size: 12px → 10px
+4. Revert MotionControlPanel.cpp line 235: font-size: 12px → 10px
+5. Revert MotionControlPanel.cpp line 252: font-size: 11px → 9px
+6. Revert padding from 8px back to 6px (line 66)
+7. Revert spacing from 4px back to 3px (line 67)
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

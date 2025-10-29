@@ -45,36 +45,7 @@ void RecipeSaveAsDialog::setupUI()
   setMinimumSize(700, 550);
   resize(800, 650);
 
-  // Set comprehensive light theme for the entire dialog
-  setStyleSheet(
-    "QDialog { "
-    "  background-color: white; "
-    "} "
-    "QGroupBox { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #ddd; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "} "
-    "QLabel { "
-    "  background-color: transparent; "
-    "  color: #2c3e50; "
-    "} "
-    "QLineEdit { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #bdc3c7; "
-    "}"
-  );
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
@@ -85,11 +56,11 @@ void RecipeSaveAsDialog::setupUI()
   QVBoxLayout* headerLayout = new QVBoxLayout(headerGroup);
 
   m_folderLabel = new QLabel(QString("📁 Save to: <b>%1</b>").arg(m_folderPath));
-  m_folderLabel->setStyleSheet("font-size: 12px; padding: 5px;");
+  m_folderLabel->setStyleSheet("font-size: 12px; padding: 5px;");  // ✅ Only custom sizing
   headerLayout->addWidget(m_folderLabel);
 
   m_fileCountLabel = new QLabel();
-  m_fileCountLabel->setStyleSheet("font-size: 11px; color: #666; padding: 2px 5px;");
+  m_fileCountLabel->setStyleSheet("font-size: 11px; color: #a0a0a0; padding: 2px 5px;");  // ✅ Lighter gray
   headerLayout->addWidget(m_fileCountLabel);
 
   mainLayout->addWidget(headerGroup);
@@ -108,16 +79,17 @@ void RecipeSaveAsDialog::setupUI()
 
   m_nameEdit = new QLineEdit();
   m_nameEdit->setPlaceholderText("Enter recipe name (without .json)...");
-  m_nameEdit->setStyleSheet("padding: 8px; font-size: 12px;");
+  m_nameEdit->setStyleSheet("padding: 8px; font-size: 12px;");  // ✅ Only custom padding/size
   connect(m_nameEdit, &QLineEdit::textChanged, this, &RecipeSaveAsDialog::onNameTextChanged);
   inputLayout->addWidget(m_nameEdit);
 
   m_refreshButton = new QPushButton("🔄");
+  m_refreshButton->setObjectName("refreshButton");  // ✅ Gray button
   m_refreshButton->setFixedSize(35, 35);
   m_refreshButton->setToolTip("Refresh recipe list");
   m_refreshButton->setStyleSheet(
-    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton#refreshButton { background-color: #555555; }"
+    "QPushButton#refreshButton:hover { background-color: #666666; }"
   );
   connect(m_refreshButton, &QPushButton::clicked, this, &RecipeSaveAsDialog::onRefresh);
   inputLayout->addWidget(m_refreshButton);
@@ -125,7 +97,7 @@ void RecipeSaveAsDialog::setupUI()
   nameLayout->addLayout(inputLayout);
 
   m_previewLabel = new QLabel("File will be saved as: <i>not set</i>");
-  m_previewLabel->setStyleSheet("font-size: 10px; color: #666; padding: 3px;");
+  m_previewLabel->setStyleSheet("font-size: 10px; color: #a0a0a0; padding: 3px;");  // ✅ Lighter gray
   nameLayout->addWidget(m_previewLabel);
 
   mainLayout->addWidget(nameGroup);
@@ -134,7 +106,7 @@ void RecipeSaveAsDialog::setupUI()
   // Existing recipes table
   // ============================================================================
   QLabel* existingLabel = new QLabel("Existing Recipes (click to use name):");
-  existingLabel->setStyleSheet("font-size: 11px; font-weight: bold; color: #555;");
+  existingLabel->setStyleSheet("font-size: 11px; font-weight: bold;");  // ✅ Only custom styling
   mainLayout->addWidget(existingLabel);
 
   m_recipeTable = new QTableWidget();
@@ -149,18 +121,7 @@ void RecipeSaveAsDialog::setupUI()
   m_recipeTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
   m_recipeTable->setAlternatingRowColors(true);
   m_recipeTable->setMaximumHeight(250);
-  m_recipeTable->setStyleSheet(
-    "QTableWidget { "
-    "  background-color: white; "
-    "  alternate-background-color: #f5f5f5; "
-    "  gridline-color: #ddd; "
-    "  font-size: 11px; "
-    "} "
-    "QTableWidget::item:selected { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "}"
-  );
+  m_recipeTable->setStyleSheet("font-size: 11px;");  // ✅ Only custom font size, rest from global theme
 
   connect(m_recipeTable, &QTableWidget::cellClicked, this, &RecipeSaveAsDialog::onFileClicked);
 
@@ -174,10 +135,10 @@ void RecipeSaveAsDialog::setupUI()
   );
   warningLabel->setStyleSheet(
     "font-size: 10px; "
-    "color: #e67e22; "
+    "color: #f39c12; "  // ✅ Brighter orange for dark theme
     "padding: 8px; "
-    "background-color: #fff3cd; "
-    "border: 1px solid #e67e22; "
+    "background-color: #3c2a1a; "  // ✅ Dark orange tint
+    "border: 1px solid #f39c12; "
     "border-radius: 3px;"
   );
   warningLabel->setWordWrap(true);
@@ -190,23 +151,24 @@ void RecipeSaveAsDialog::setupUI()
   buttonLayout->addStretch();
 
   m_saveButton = new QPushButton("💾 Save Recipe");
+  m_saveButton->setObjectName("saveButton");  // ✅ Green success button
   m_saveButton->setMinimumHeight(40);
   m_saveButton->setMinimumWidth(140);
   m_saveButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; font-size: 13px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #229954; }"
-    "QPushButton:disabled { background-color: #bdc3c7; }"
+    "QPushButton#saveButton { background-color: #27ae60; font-size: 13px; }"
+    "QPushButton#saveButton:hover { background-color: #2ecc71; }"
   );
   m_saveButton->setEnabled(false);
   connect(m_saveButton, &QPushButton::clicked, this, &RecipeSaveAsDialog::onSaveClicked);
   buttonLayout->addWidget(m_saveButton);
 
   m_cancelButton = new QPushButton("✗ Cancel");
+  m_cancelButton->setObjectName("cancelButton");  // ✅ Red cancel button
   m_cancelButton->setMinimumHeight(40);
   m_cancelButton->setMinimumWidth(120);
   m_cancelButton->setStyleSheet(
-    "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; font-size: 13px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #c0392b; }"
+    "QPushButton#cancelButton { background-color: #e74c3c; font-size: 13px; }"
+    "QPushButton#cancelButton:hover { background-color: #c0392b; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &RecipeSaveAsDialog::onCancel);
   buttonLayout->addWidget(m_cancelButton);

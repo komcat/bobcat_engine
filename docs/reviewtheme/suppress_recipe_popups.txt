@@ -1,0 +1,132 @@
+================================================================================
+RECIPE PAGE - POPUP SUPPRESSION
+================================================================================
+Date: 2025-10-29
+Feature: Suppress confirmation and success popups during recipe execution
+
+================================================================================
+WHAT WAS CHANGED
+================================================================================
+
+Suppressed two QMessageBox popups that interrupted recipe execution:
+
+1. Confirmation Popup (BEFORE execution)
+   - Previously asked: "Execute recipe 'xxx' with N step(s)?"
+   - Required user to click "Yes" to proceed
+   - NOW: Removed - execution starts immediately when Run button is clicked
+
+2. Success/Error Popup (AFTER execution)
+   - Previously showed: "Recipe 'xxx' completed successfully!" or error message
+   - Required user to click "OK" to dismiss
+   - NOW: Removed - status shown in progress widget, logged to LogManager
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+File: include/AppUI/RecipePage/RecipePage.cpp
+
+Change 1: Line 1491-1498 (Confirmation before execution)
+  BEFORE:
+    QMessageBox::StandardButton reply = QMessageBox::question(
+      this, "Run Recipe",
+      QString("Execute recipe '%1' with %2 step(s)?").arg(recipeName).arg(stepCount),
+      QMessageBox::Yes | QMessageBox::No
+    );
+    if (reply != QMessageBox::Yes) return;
+
+  AFTER:
+    // ✅ SUPPRESSED: Confirmation popup before execution
+    // (commented out)
+
+Change 2: Line 1791-1808 (Success/Error after execution)
+  BEFORE:
+    if (success) {
+      QMessageBox::information(this, "Success", message);
+      m_context->logManager->Info(message.toStdString(), "RecipePage");
+    }
+    else {
+      QMessageBox::critical(this, "Execution Error", message);
+      m_context->logManager->Error(message.toStdString(), "RecipePage");
+    }
+
+  AFTER:
+    // ✅ SUPPRESSED: Result popup after execution
+    // (commented out)
+
+    // ✅ Log to LogManager instead (no popup)
+    if (success) {
+      m_context->logManager->Info(message.toStdString(), "RecipePage");
+    }
+    else {
+      m_context->logManager->Error(message.toStdString(), "RecipePage");
+    }
+
+================================================================================
+USER EXPERIENCE CHANGES
+================================================================================
+
+BEFORE:
+  1. User clicks "▶ Run Recipe"
+  2. Popup appears: "Execute recipe 'xxx' with N step(s)?"
+  3. User must click "Yes"
+  4. Recipe executes
+  5. Popup appears: "Recipe 'xxx' completed successfully!"
+  6. User must click "OK"
+  7. Progress widget auto-dismisses after 3 seconds
+
+AFTER:
+  1. User clicks "▶ Run Recipe"
+  2. Recipe executes immediately (no popup)
+  3. Progress widget shows execution status in real-time
+  4. On completion, progress widget shows "✓ Completed!" or "✗ Failed"
+  5. Progress widget auto-dismisses after 3 seconds (no popup required)
+
+================================================================================
+BENEFITS
+================================================================================
+
+✅ Faster workflow - no need to confirm execution
+✅ No interruption - execution flows smoothly
+✅ Status still visible in progress widget
+✅ Errors still logged to LogManager for debugging
+✅ Consistent with automated/continuous operation scenarios
+✅ User can still see completion status before auto-dismiss
+
+================================================================================
+LOGGING PRESERVED
+================================================================================
+
+Important: Success and error messages are STILL logged to LogManager
+- Success: m_context->logManager->Info()
+- Error: m_context->logManager->Error()
+
+Users can view execution history in the LogManager/console output.
+
+Progress widget still shows real-time status:
+- "✓ Completed!" for success
+- "✗ Failed" for errors
+
+================================================================================
+REVERTING (IF NEEDED)
+================================================================================
+
+If popups need to be restored:
+1. Uncomment lines 1492-1498 (confirmation before execution)
+2. Uncomment lines 1793-1800 (success/error after execution)
+3. Comment out lines 1802-1808 (the replacement logging code)
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+Test scenarios:
+1. ✅ Click "Run Recipe" → Should start immediately without popup
+2. ✅ Recipe completes successfully → No popup, progress shows "✓ Completed!"
+3. ✅ Recipe fails → No popup, progress shows "✗ Failed"
+4. ✅ Check LogManager → Success/error messages should be logged
+5. ✅ Progress auto-dismiss → Should happen after 3 seconds
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

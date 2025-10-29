@@ -396,6 +396,14 @@ void MotionPage::setupUI()
 	connect(m_controlPanel, &MotionControlPanel::editWaypointsClicked,
 		this, &MotionPage::onEditWaypointsClicked);
 
+	// ✅ NEW: Auto-fit view button
+	connect(m_controlPanel, &MotionControlPanel::autoFitClicked,
+		this, [this]() {
+		if (m_graphicsView) {
+			m_graphicsView->autoFitView();
+		}
+	});
+
 	connect(m_controlPanel, &MotionControlPanel::homeClicked,
 		this, &MotionPage::onHomeClicked);
 
@@ -643,7 +651,8 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 	loadLabelOffsets();
 
 	m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
-	m_graphicsView->autoFitView();  // Auto-fit: zoom to positions or center on device marker
+	// ✅ REMOVED: Auto-fit on device switch - now using persistent zoom/pan
+	// m_graphicsView->autoFitView();
 
 	qDebug() << "Successfully loaded" << m_currentPositions.size()
 		<< "positions for" << deviceName;
@@ -706,6 +715,11 @@ void MotionPage::transformLocalToGlobal(double localX, double localY, double loc
 
 void MotionPage::onDeviceChanged(const QString& deviceName)
 {
+	// ✅ NEW: Save current device's view state before switching
+	if (!m_currentDevice.isEmpty() && m_graphicsView) {
+		m_graphicsView->saveViewState();
+	}
+
 	m_currentDevice = deviceName;
 
 	// Synchronize device selection across both widgets (avoid signal loops)
@@ -721,8 +735,11 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 	m_controlPanel->clearSelectedPosition();
 	m_selectedPositionName.clear();
 
-	// If no positions loaded, auto-fit will center on device marker
-	// (refreshPositionDisplay calls loadPositionsForDevice which calls autoFitView)
+	// ✅ NEW: Set device name and restore its saved view state
+	if (m_graphicsView) {
+		m_graphicsView->setDeviceName(m_currentDevice);
+		m_graphicsView->restoreViewState();
+	}
 }
 
 // ============================================================================

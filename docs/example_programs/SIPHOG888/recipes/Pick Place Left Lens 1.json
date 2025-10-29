@@ -1,0 +1,168 @@
+{
+    "next_id_counter": 1,
+    "product_file": "",
+    "recipe_name": "Pick and Place Left Lens",
+    "steps": [
+        {
+            "enabled": true,
+            "id": "NLB343G",
+            "nickname": "Gantry is safe",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "safe"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "WHG261I",
+            "nickname": "Clear gripper",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "L_Gripper"
+            },
+            "type": "Clear Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "RSY754F",
+            "nickname": "approach grip",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "approachlensgrip"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "XXR171B",
+            "nickname": "move to grip",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "lensgrip"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "BFV108H",
+            "nickname": "See Grip Lens",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "See Grip collimate lens"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "TRP038M",
+            "nickname": "Ask User To Grip",
+            "parameters": {
+                "blocking": "true",
+                "message": "Is lens in place, good to grip?",
+                "title": "Confirmation Required"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "WNN306F",
+            "nickname": "Gripper On",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "L_Gripper"
+            },
+            "type": "Set Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "FZY585E",
+            "nickname": "Wait 1.5sec",
+            "parameters": {
+                "duration_ms": "1500"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "FWV446T",
+            "nickname": "Gripper Off",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "L_Gripper"
+            },
+            "type": "Clear Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "TNO077S",
+            "nickname": "Wait 7",
+            "parameters": {
+                "duration_ms": "1500"
+            },
+            "type": "Wait"
+        },
+        {
+            "enabled": true,
+            "id": "WNZ537G",
+            "nickname": "Gripper On last",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin_name": "L_Gripper"
+            },
+            "type": "Set Output Name"
+        },
+        {
+            "enabled": true,
+            "id": "MAZ389Y",
+            "nickname": "Ask User Good to place?",
+            "parameters": {
+                "blocking": "true",
+                "message": "Lens are good after gripping?",
+                "title": "Confirmation Required"
+            },
+            "type": "Ask User"
+        },
+        {
+            "enabled": true,
+            "id": "ACU666T",
+            "nickname": "See lens place",
+            "parameters": {
+                "device": "gantry-main",
+                "target_position": "See Collimate Lens"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "QWP169L",
+            "nickname": "gripper approach lens grip",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "approachlensgrip"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "QRS500G",
+            "nickname": "gripper approach lens place",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "approachlensplace"
+            },
+            "type": "Move to Position"
+        },
+        {
+            "enabled": true,
+            "id": "MYF346H",
+            "nickname": "gripper approach place lens",
+            "parameters": {
+                "device": "hex-left",
+                "target_position": "lensplace"
+            },
+            "type": "Move to Position"
+        }
+    ],
+    "version": "1.0"
+}

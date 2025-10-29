@@ -53,6 +53,11 @@ public:
   void centerOnDeviceMarker(); // Pan to device marker
   void autoFitView();          // Smart fit: fit positions if exist, else center on marker
 
+  // ✅ NEW: View state persistence
+  void setDeviceName(const QString& deviceName);
+  void saveViewState();        // Save current zoom and pan to QSettings
+  void restoreViewState();     // Restore zoom and pan from QSettings
+
 signals:
   void positionSelected(const QString& name, double x, double y, double z);
   void positionDeselected();
@@ -91,6 +96,8 @@ private:
 
   bool m_isPanning;
   QPoint m_lastPanPoint;
+
+  QString m_deviceName;  // ✅ NEW: Current device name for persistence
 
   void setupScene();
   void calculateZRange();

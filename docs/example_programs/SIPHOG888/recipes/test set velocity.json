@@ -1,0 +1,39 @@
+{
+    "next_id_counter": 1,
+    "product_file": "C:/Users/Fabrinet/source/repos/komcat/komcat/bobcat_engine/out/build/x64-debug-hardware/config/SIPHOG888/positions.SIPHOG888.json",
+    "recipe_name": "test set velocity",
+    "steps": [
+        {
+            "enabled": false,
+            "id": "KNJ292O",
+            "nickname": "Set Velocity 1",
+            "parameters": {
+                "device": "hex-left",
+                "speed": "5.000000"
+            },
+            "type": "Set Velocity"
+        },
+        {
+            "enabled": true,
+            "id": "ZVQ782F",
+            "nickname": "Set Velocity 2",
+            "parameters": {
+                "device": "hex-left",
+                "speed": "5.000000"
+            },
+            "type": "Set Velocity"
+        },
+        {
+            "enabled": true,
+            "id": "XRL925I",
+            "nickname": "Set Output 3",
+            "parameters": {
+                "io_device": "IOBottom",
+                "pin": "0",
+                "state": "false"
+            },
+            "type": "Set Output"
+        }
+    ],
+    "version": "1.0"
+}

@@ -34,6 +34,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QFile>
+#include <QFileInfo>  // ✅ For extracting file name from path
 #include <iostream>
 #include <chrono>
 
@@ -148,6 +149,18 @@ void RecipePage::setupUI()
   titleLabel->setAlignment(Qt::AlignCenter);
   titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   titleLayout->addWidget(titleLabel);
+
+  // ✅ NEW: Recipe file name label
+  m_recipeFileLabel = new QLabel("No recipe loaded");
+  m_recipeFileLabel->setStyleSheet(
+    "font-size: 11px; "
+    "color: #d4d4d4; "
+    "padding: 4px; "
+    "background-color: #1e1e1e; "
+    "border: 1px solid #3f3f46; "
+    "border-radius: 3px;"
+  );
+  titleLayout->addWidget(m_recipeFileLabel);
 
   m_productStatusLabel = new QLabel("No product loaded");
   m_productStatusLabel->setStyleSheet(
@@ -642,6 +655,7 @@ void RecipePage::onNewRecipe()
   m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
   refreshRecipeList();
   clearConfigurationForm();
+  updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label (will show "No recipe file")
 }
 
 void RecipePage::onProductChanged()
@@ -718,6 +732,7 @@ void RecipePage::onLoadRecipe()
     m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
     refreshRecipeList();
     clearConfigurationForm();
+    updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
 
     // ✅ Save to settings for persistence
     saveLastRecipeToSettings(filename);
@@ -818,6 +833,7 @@ void RecipePage::onSaveRecipe()
 
   // ✅ Recipe already has path - save directly without prompting
   if (m_recipeManager->saveRecipe(currentRecipePath)) {
+    updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
     // Show brief success message in status bar or small notification
     // Using information dialog but could be replaced with statusbar message
     QMessageBox::information(this, "Saved",
@@ -856,6 +872,7 @@ void RecipePage::onSaveRecipeAs()
   if (filename.isEmpty()) return;
 
   if (m_recipeManager->saveRecipe(filename.toStdString())) {
+    updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
     // ✅ Also save to QSettings as last loaded recipe
     saveLastRecipeToSettings(filename);
 
@@ -1043,17 +1060,46 @@ void RecipePage::onRemoveStep()
 {
   if (m_selectedStepIndex < 0) return;
 
-  QMessageBox::StandardButton reply = QMessageBox::question(
-    this, "Remove Step", "Are you sure you want to remove this step?",
-    QMessageBox::Yes | QMessageBox::No
-  );
+  // ✅ SUPPRESSED: Confirmation popup for faster workflow
+  // QMessageBox::StandardButton reply = QMessageBox::question(
+  //   this, "Remove Step", "Are you sure you want to remove this step?",
+  //   QMessageBox::Yes | QMessageBox::No
+  // );
+  //
+  // if (reply == QMessageBox::Yes) {
 
-  if (reply == QMessageBox::Yes) {
-    m_recipeManager->removeStep(m_selectedStepIndex);
-    refreshRecipeList();
-    clearConfigurationForm();
-    m_selectedStepIndex = -1;
+  // Remember the index being deleted
+  int deletedIndex = m_selectedStepIndex;
+  int totalSteps = m_recipeManager->getStepCount();
+
+  // Remove the step
+  m_recipeManager->removeStep(m_selectedStepIndex);
+  refreshRecipeList();
+
+  // ✅ Auto-select the next step (or previous if deleted the last one)
+  int newTotalSteps = m_recipeManager->getStepCount();
+
+  if (newTotalSteps > 0) {
+    // If we deleted the last step, select the new last step
+    if (deletedIndex >= newTotalSteps) {
+      m_selectedStepIndex = newTotalSteps - 1;
+    }
+    else {
+      // Otherwise, select the step that moved into this position
+      m_selectedStepIndex = deletedIndex;
+    }
+
+    // Select the step in the tree and update the config form
+    selectStepByIndex(m_selectedStepIndex);
+    updateConfigurationForm();
   }
+  else {
+    // No steps left
+    m_selectedStepIndex = -1;
+    clearConfigurationForm();
+  }
+
+  // } // End of old if (reply == QMessageBox::Yes) block
 }
 
 void RecipePage::onMoveStepUp()
@@ -1296,6 +1342,42 @@ void RecipePage::selectStepByIndex(int index)
   }
 }
 
+void RecipePage::updateRecipeFileNameDisplay()
+{
+  // Get current recipe file path
+  std::string currentPath = m_recipeManager->getCurrentFilePath();
+
+  if (currentPath.empty()) {
+    // No file loaded yet
+    m_recipeFileLabel->setText("No recipe file");
+    m_recipeFileLabel->setStyleSheet(
+      "font-size: 11px; "
+      "color: #888888; "
+      "padding: 4px; "
+      "background-color: #1e1e1e; "
+      "border: 1px solid #3f3f46; "
+      "border-radius: 3px;"
+    );
+  }
+  else {
+    // Extract just the filename from full path
+    QString fullPath = QString::fromStdString(currentPath);
+    QFileInfo fileInfo(fullPath);
+    QString fileName = fileInfo.fileName();
+
+    m_recipeFileLabel->setText(QString("Recipe: %1").arg(fileName));
+    m_recipeFileLabel->setStyleSheet(
+      "font-size: 11px; "
+      "color: #4ec9b0; "
+      "font-weight: bold; "
+      "padding: 4px; "
+      "background-color: #1e3a32; "
+      "border: 1px solid #4ec9b0; "
+      "border-radius: 3px;"
+    );
+  }
+}
+
 void RecipePage::updateConfigurationForm()
 {
   const ProcessInstance* instance = m_recipeManager->getStep(m_selectedStepIndex);
@@ -1435,13 +1517,14 @@ void RecipePage::onRunRecipe()
   QString recipeName = QString::fromStdString(m_recipeManager->getRecipeName());
   int stepCount = m_recipeManager->getStepCount();
 
-  QMessageBox::StandardButton reply = QMessageBox::question(
-    this, "Run Recipe",
-    QString("Execute recipe '%1' with %2 step(s)?").arg(recipeName).arg(stepCount),
-    QMessageBox::Yes | QMessageBox::No
-  );
-
-  if (reply != QMessageBox::Yes) return;
+  // ✅ SUPPRESSED: Confirmation popup before execution
+  // QMessageBox::StandardButton reply = QMessageBox::question(
+  //   this, "Run Recipe",
+  //   QString("Execute recipe '%1' with %2 step(s)?").arg(recipeName).arg(stepCount),
+  //   QMessageBox::Yes | QMessageBox::No
+  // );
+  //
+  // if (reply != QMessageBox::Yes) return;
 
   // ✅ STEP 1: Save recipe to file (if not saved or modified)
   std::string recipeFilePath = m_recipeManager->getCurrentFilePath();
@@ -1734,13 +1817,22 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   m_runRecipeButton->setEnabled(true);
   m_runRecipeButton->setText("▶ Run Recipe");
 
+  // ✅ SUPPRESSED: Result popup after execution
   // Show result dialog
+  // if (success) {
+  //   QMessageBox::information(this, "Success", message);
+  //   m_context->logManager->Info(message.toStdString(), "RecipePage");
+  // }
+  // else {
+  //   QMessageBox::critical(this, "Execution Error", message);
+  //   m_context->logManager->Error(message.toStdString(), "RecipePage");
+  // }
+
+  // ✅ Log to LogManager instead (no popup)
   if (success) {
-    QMessageBox::information(this, "Success", message);
     m_context->logManager->Info(message.toStdString(), "RecipePage");
   }
   else {
-    QMessageBox::critical(this, "Execution Error", message);
     m_context->logManager->Error(message.toStdString(), "RecipePage");
   }
 
@@ -1959,6 +2051,7 @@ void RecipePage::loadLastRecipeFromSettings()
   m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
   refreshRecipeList();
   clearConfigurationForm();
+  updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
 
   std::cout << "[RecipePage] Successfully auto-loaded recipe: "
             << m_recipeManager->getRecipeName() << std::endl;

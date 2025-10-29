@@ -1,0 +1,434 @@
+================================================================================
+XCAN COMMAND IMPLEMENTATION - HEXAPOD ADAPTIVE SCANNING
+================================================================================
+Date: 2025-10-29
+Feature: New sequence command for automated hexapod scanning in recipes/programs
+
+================================================================================
+OVERVIEW
+================================================================================
+
+Created a new XCAN command in the motion category that brings the hexapod
+scanning functionality (previously UI-only) into the sequence/recipe system.
+
+This allows recipes and programs to perform automated adaptive scanning to
+find optimal alignment positions without manual intervention.
+
+================================================================================
+COMMAND SPECIFICATION
+================================================================================
+
+**Category:** Motion
+**Command Name:** XCAN
+**Device Restriction:** PI hexapods only (hex-* pattern)
+
+**Required Parameters:**
+- mode: "coarse" or "fine"
+- channel: Data channel name to optimize
+
+**Optional Parameters:**
+- settling_time_ms: Motion settling time (default: 300ms)
+
+================================================================================
+FEATURES IMPLEMENTED
+================================================================================
+
+✅ Device Validation
+   - Only accepts devices matching "hex-*" pattern
+   - Rejects non-hexapod devices with clear error message
+
+✅ Dual Mode Support
+   - Coarse mode: 10→5→2→1 µm step sizes (matches UI Coarse button)
+   - Fine mode: 2→1→0.5 µm step sizes (matches UI Fine button)
+
+✅ ZYX Axis Scanning
+   - Scans in Z→Y→X order
+   - Each axis optimized sequentially
+   - Positions device at global maximum
+
+✅ Synchronous Execution
+   - Command blocks until scan completes
+   - Integrates with sequence stop flag
+   - Uses callbacks and condition variables for coordination
+
+✅ Stop Flag Monitoring
+   - Checks context->stopRequested every 100ms
+   - Halts scan gracefully when stop requested
+   - Returns to best position found before stopping
+
+✅ Comprehensive Logging
+   - Logs start parameters
+   - Logs progress during scan
+   - Logs completion with peak value
+   - Logs errors with details
+
+✅ Error Handling
+   - Validates all parameters
+   - Checks DataStore availability
+   - Reports scan failures
+   - Handles "no peak found" cases
+
+================================================================================
+SCAN PARAMETERS (FIXED)
+================================================================================
+
+Motion Settings:
+- Velocity: 50% of max
+- Settling time: 300ms (default, configurable)
+- Axes scanned: Z, Y, X (in that order)
+
+Coarse Mode Step Sizes:
+- 10 µm (0.010 mm)
+- 5 µm (0.005 mm)
+- 2 µm (0.002 mm)
+- 1 µm (0.001 mm)
+
+Fine Mode Step Sizes:
+- 2 µm (0.002 mm)
+- 1 µm (0.001 mm)
+- 0.5 µm (0.0005 mm)
+
+Termination Criteria:
+- Consecutive decreases: 3
+- Significant decrease threshold: 5%
+- Max total distance: 0.2mm (200µm) per direction
+- Improvement threshold: 1%
+
+Measurement:
+- Averaging count: 3 samples
+- Measurement timeout: 5 seconds
+- Valid value range: -1000.0 to 1000.0
+
+Safety:
+- Max step size: 0.5mm (500µm)
+- Scan timeout: 10 minutes
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+1. MotionCommandHandler.cpp (lines 1-13, 469-651)
+   - Added includes: AdaptiveScanController.h, DataStore.h, ScanTypes.h
+   - Added includes: <regex>, <atomic>, <condition_variable>
+   - Implemented XCAN command handler (183 lines)
+   - Added device validation with regex
+   - Implemented synchronous scan execution
+   - Added completion tracking with callbacks
+
+================================================================================
+USAGE EXAMPLES
+================================================================================
+
+Basic Coarse Scan:
+```json
+{
+  "manager": "motion",
+  "device": "hex-left",
+  "method": "XCAN",
+  "params": {
+    "mode": "coarse",
+    "channel": "PD_Signal"
+  }
+}
+```
+
+Fine Scan with Custom Settling:
+```json
+{
+  "manager": "motion",
+  "device": "hex-right",
+  "method": "XCAN",
+  "params": {
+    "mode": "fine",
+    "channel": "OpticalPower",
+    "settling_time_ms": "400"
+  }
+}
+```
+
+Two-Stage Scan (Coarse → Fine):
+```json
+[
+  {
+    "manager": "motion",
+    "device": "hex-left",
+    "method": "XCAN",
+    "params": {
+      "mode": "coarse",
+      "channel": "PD_Signal"
+    }
+  },
+  {
+    "manager": "motion",
+    "device": "hex-left",
+    "method": "XCAN",
+    "params": {
+      "mode": "fine",
+      "channel": "PD_Signal"
+    }
+  }
+]
+```
+
+================================================================================
+TECHNICAL IMPLEMENTATION
+================================================================================
+
+Device Validation:
+```cpp
+std::regex hexPattern("^hex-.*");
+if (!std::regex_match(deviceName, hexPattern)) {
+  errorMessage = "XCAN: Device must be a PI hexapod (hex-*), got: " + deviceName;
+  return false;
+}
+```
+
+Mode Parsing:
+```cpp
+bool isCoarse;
+if (mode == "coarse") {
+  isCoarse = true;
+} else if (mode == "fine") {
+  isCoarse = false;
+} else {
+  errorMessage = "XCAN: Invalid mode '" + mode + "' (must be 'coarse' or 'fine')";
+  return false;
+}
+```
+
+Synchronous Execution Pattern:
+```cpp
+std::atomic<bool> scanComplete(false);
+std::atomic<bool> scanSuccess(false);
+std::mutex completionMutex;
+std::condition_variable completionCV;
+
+// Setup callbacks to signal completion
+scanController.SetCompletionCallback([&](const ScanResults& results) {
+  std::lock_guard<std::mutex> lock(completionMutex);
+  scanComplete = true;
+  scanSuccess = results.globalPeak.valid;
+  completionCV.notify_one();
+});
+
+// Start scan
+scanController.StartScan(scanParams);
+
+// Wait with stop flag monitoring
+while (!scanComplete) {
+  if (context && context->stopRequested.load()) {
+    scanController.HaltScan();
+    return false;
+  }
+  std::unique_lock<std::mutex> lock(completionMutex);
+  completionCV.wait_for(lock, std::chrono::milliseconds(100));
+}
+```
+
+================================================================================
+INTEGRATION POINTS
+================================================================================
+
+Recipe System:
+- Can be used in CustomSequence process type
+- Integrates with existing motion commands
+- Respects recipe stop button
+
+Program System:
+- Works in program execution flow
+- Logs to program execution log
+- Respects program stop button
+
+Sequence Engine:
+- Dispatched through MotionCommandHandler
+- Uses standard command execution pattern
+- Returns true/false for success/failure
+
+================================================================================
+ERROR MESSAGES
+================================================================================
+
+Device Validation:
+"XCAN: Device must be a PI hexapod (hex-*), got: {deviceName}"
+
+Parameter Validation:
+"XCAN: Missing required parameter 'mode' (coarse/fine)"
+"XCAN: Invalid mode '{mode}' (must be 'coarse' or 'fine')"
+"XCAN: Missing required parameter 'channel'"
+
+Runtime Errors:
+"XCAN: DataStore not available in context"
+"XCAN: Failed to start scan"
+"XCAN: Scan failed - {error details}"
+"XCAN: Scan completed but no peak found"
+
+Stop:
+"XCAN: Scan stopped by user"
+
+================================================================================
+LOGGING OUTPUT EXAMPLES
+================================================================================
+
+Start:
+```
+XCAN: Starting coarse scan on hex-left for channel 'PD_Signal' (settling=300ms)
+```
+
+Progress (from AdaptiveScanController):
+```
+Scan: 15.5% - Scanning Z axis, step 10µm
+Scan: 35.0% - Z axis complete, peak found at Z=0.523
+Scan: 50.0% - Scanning Y axis, step 5µm
+Scan: 75.0% - Scanning X axis, step 2µm
+```
+
+Success:
+```
+XCAN: Scan complete - Peak value: 0.856234
+XCAN: Scan completed successfully
+```
+
+No Peak:
+```
+XCAN: Scan complete - No peak found
+[Warning] XCAN: Scan completed but no peak found
+```
+
+Error:
+```
+XCAN: Scan error - Device not responding
+[Error] XCAN: Scan failed - Device not responding
+```
+
+Stop:
+```
+XCAN: Stop requested, halting scan
+```
+
+================================================================================
+COMPARISON: XCAN vs UI SCANNING
+================================================================================
+
+| Feature | XCAN Command | UI Scanning (ScanControlWidget) |
+|---------|--------------|----------------------------------|
+| Trigger | Automatic in sequence | Manual button press |
+| Device | From sequence | User selects L/R buttons |
+| Mode | Parameter | Separate buttons |
+| Channel | Parameter | Dropdown |
+| Blocking | Yes (waits) | No (async with signals) |
+| Stop | Sequence stop flag | UI stop button |
+| Logging | SequenceContext | LogManager + UI log widget |
+| Use Case | Automation | Manual operation |
+
+Both use the same underlying AdaptiveScanController!
+
+================================================================================
+DEPENDENCIES
+================================================================================
+
+Required:
+- UnifiedMotionManager (motion control)
+- DataStore (sensor data)
+- AdaptiveScanController (scan algorithm)
+- SequenceContext (stop flag, DataStore access)
+
+Optional:
+- ILogger (for logging)
+
+================================================================================
+BENEFITS
+================================================================================
+
+✅ Automation
+   - Recipes can perform scanning without user intervention
+   - Programs can include scanning in automated workflows
+
+✅ Consistency
+   - Same scan algorithm as UI (AdaptiveScanController)
+   - Same step sizes as UI buttons
+   - Predictable, repeatable results
+
+✅ Flexibility
+   - Can combine with other motion commands
+   - Can scan multiple devices sequentially
+   - Can do coarse→fine automatically
+
+✅ Safety
+   - Respects sequence stop flag
+   - Built-in timeouts
+   - Distance limits
+   - Device type validation
+
+✅ Observability
+   - Comprehensive logging
+   - Clear error messages
+   - Progress tracking
+
+================================================================================
+TESTING RECOMMENDATIONS
+================================================================================
+
+Basic Tests:
+1. ✅ Coarse scan on hex-left
+2. ✅ Fine scan on hex-right
+3. ✅ Two-stage scan (coarse→fine)
+4. ✅ Custom settling time
+5. ✅ Different data channels
+
+Error Cases:
+6. ✅ Invalid device (non-hexapod)
+7. ✅ Missing mode parameter
+8. ✅ Invalid mode value
+9. ✅ Missing channel parameter
+10. ✅ Non-existent channel
+
+Stop Behavior:
+11. ✅ Press stop during coarse scan
+12. ✅ Press stop during fine scan
+13. ✅ Verify returns to best position
+
+Edge Cases:
+14. ✅ Scan with no peak found
+15. ✅ Scan timeout (10 min limit)
+16. ✅ Device motion failure during scan
+
+Integration:
+17. ✅ Use in recipe CustomSequence
+18. ✅ Use in program
+19. ✅ Combine with other motion commands
+20. ✅ Check logging output
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+Potential improvements:
+1. Custom axis selection (e.g., "axes": ["Z", "X"])
+2. Custom step sizes override
+3. Result capture to context variables
+   - "captureAs": "scan_peak_value"
+   - "capturePosAs": "scan_peak_pos"
+4. Multi-channel optimization
+5. Custom velocity profiles
+6. Different scan strategies (spiral, raster, etc.)
+7. Progress callback integration
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+Created comprehensive guide:
+`docs/XCAN_COMMAND_GUIDE.md`
+
+Contains:
+- Complete parameter reference
+- Usage examples
+- Error message reference
+- Integration guide
+- Technical implementation details
+- Best practices
+- Comparison with UI scanning
+
+================================================================================
+END OF IMPLEMENTATION SUMMARY
+================================================================================

@@ -55,36 +55,7 @@ void FileSelectorDialog::setupUI()
   setMinimumSize(700, 500);
   resize(800, 600);
 
-  // Set comprehensive light theme for the entire dialog
-  setStyleSheet(
-    "QDialog { "
-    "  background-color: white; "
-    "} "
-    "QGroupBox { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #ddd; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "} "
-    "QLabel { "
-    "  background-color: transparent; "
-    "  color: #2c3e50; "
-    "} "
-    "QLineEdit { "
-    "  background-color: white; "
-    "  color: #2c3e50; "
-    "  border: 1px solid #bdc3c7; "
-    "}"
-  );
+  // ✅ No dialog stylesheet - inherits dark theme from MainWindow
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
@@ -95,11 +66,11 @@ void FileSelectorDialog::setupUI()
   QVBoxLayout* headerLayout = new QVBoxLayout(headerGroup);
 
   m_folderLabel = new QLabel(QString("📁 Folder: <b>%1</b>").arg(m_folderPath));
-  m_folderLabel->setStyleSheet("font-size: 12px; padding: 5px;");
+  m_folderLabel->setStyleSheet("font-size: 12px; padding: 5px;");  // ✅ Only custom font size
   headerLayout->addWidget(m_folderLabel);
 
   m_fileCountLabel = new QLabel();
-  m_fileCountLabel->setStyleSheet("font-size: 11px; color: #666; padding: 2px 5px;");
+  m_fileCountLabel->setStyleSheet("font-size: 11px; color: #a0a0a0; padding: 2px 5px;");  // ✅ Lighter gray for dark theme
   headerLayout->addWidget(m_fileCountLabel);
 
   mainLayout->addWidget(headerGroup);
@@ -109,19 +80,20 @@ void FileSelectorDialog::setupUI()
   // ============================================================================
   QHBoxLayout* searchLayout = new QHBoxLayout();
   QLabel* searchLabel = new QLabel("🔍 Search:");
-  searchLabel->setStyleSheet("font-size: 11px;");
+  searchLabel->setStyleSheet("font-size: 11px;");  // ✅ Only custom font size
   searchLayout->addWidget(searchLabel);
 
   m_searchEdit = new QLineEdit();
   m_searchEdit->setPlaceholderText("Type to filter files...");
-  m_searchEdit->setStyleSheet("padding: 5px; font-size: 11px;");
+  m_searchEdit->setStyleSheet("padding: 5px; font-size: 11px;");  // ✅ Only custom padding/size
   connect(m_searchEdit, &QLineEdit::textChanged, this, &FileSelectorDialog::onSearchTextChanged);
   searchLayout->addWidget(m_searchEdit);
 
   m_refreshButton = new QPushButton("🔄 Refresh");
+  m_refreshButton->setObjectName("refreshButton");  // ✅ Use object name for gray color
   m_refreshButton->setStyleSheet(
-    "QPushButton { background-color: #95a5a6; color: white; font-weight: bold; padding: 5px 15px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #7f8c8d; }"
+    "QPushButton#refreshButton { background-color: #555555; padding: 5px 15px; }"
+    "QPushButton#refreshButton:hover { background-color: #666666; }"
   );
   connect(m_refreshButton, &QPushButton::clicked, this, &FileSelectorDialog::onRefresh);
   searchLayout->addWidget(m_refreshButton);
@@ -158,18 +130,7 @@ void FileSelectorDialog::setupUI()
   }
 
   m_fileTable->setAlternatingRowColors(true);
-  m_fileTable->setStyleSheet(
-    "QTableWidget { "
-    "  background-color: white; "
-    "  alternate-background-color: #f5f5f5; "
-    "  gridline-color: #ddd; "
-    "  font-size: 11px; "
-    "} "
-    "QTableWidget::item:selected { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "}"
-  );
+  m_fileTable->setStyleSheet("font-size: 11px;");  // ✅ Only custom font size, rest from global theme
 
   connect(m_fileTable, &QTableWidget::cellDoubleClicked,
     this, &FileSelectorDialog::onFileDoubleClicked);
@@ -183,23 +144,24 @@ void FileSelectorDialog::setupUI()
   buttonLayout->addStretch();
 
   m_selectButton = new QPushButton("✓ Select File");
+  m_selectButton->setObjectName("selectButton");  // ✅ Green success button
   m_selectButton->setMinimumHeight(35);
   m_selectButton->setMinimumWidth(120);
   m_selectButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; font-size: 12px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #229954; }"
-    "QPushButton:disabled { background-color: #bdc3c7; }"
+    "QPushButton#selectButton { background-color: #27ae60; font-size: 12px; }"
+    "QPushButton#selectButton:hover { background-color: #2ecc71; }"
   );
   m_selectButton->setEnabled(false);
   connect(m_selectButton, &QPushButton::clicked, this, &FileSelectorDialog::onFileSelected);
   buttonLayout->addWidget(m_selectButton);
 
   m_cancelButton = new QPushButton("✗ Cancel");
+  m_cancelButton->setObjectName("cancelButton");  // ✅ Red cancel button
   m_cancelButton->setMinimumHeight(35);
   m_cancelButton->setMinimumWidth(120);
   m_cancelButton->setStyleSheet(
-    "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; font-size: 12px; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #c0392b; }"
+    "QPushButton#cancelButton { background-color: #e74c3c; font-size: 12px; }"
+    "QPushButton#cancelButton:hover { background-color: #c0392b; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &FileSelectorDialog::onCancel);
   buttonLayout->addWidget(m_cancelButton);
@@ -306,7 +268,7 @@ void FileSelectorDialog::populateFileTable()
         displayPath = "(root)";
       }
       QTableWidgetItem* locationItem = new QTableWidgetItem(displayPath);
-      locationItem->setForeground(QBrush(QColor("#666")));
+      locationItem->setForeground(QBrush(QColor("#a0a0a0")));  // ✅ Lighter gray for dark theme
       m_fileTable->setItem(i, colIndex++, locationItem);
     }
 

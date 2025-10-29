@@ -21,8 +21,8 @@ void UserPromptWidget::setupUI()
   container->setMaximumWidth(600);
   container->setStyleSheet(
     "QWidget { "
-    "  background-color: white; "
-    "  border: 2px solid #2196F3; "
+    "  background-color: #1e1e1e; "  // ✅ Dark background
+    "  border: 2px solid #0e639c; "  // ✅ Blue border for dark theme
     "  border-radius: 8px; "
     "}");
 
@@ -33,26 +33,21 @@ void UserPromptWidget::setupUI()
   // Title
   m_titleLabel = new QLabel("Confirmation Required");
   m_titleLabel->setStyleSheet(
-    "QLabel { "
-    "  font-size: 20px; "
-    "  font-weight: bold; "
-    "  color: #2196F3; "
-    "  background: transparent; "
-    "  border: none; "
-    "}");
+    "font-size: 20px; "
+    "font-weight: bold; "
+    "color: #0e639c; "  // ✅ Blue for dark theme
+    "background: transparent; "
+    "border: none;");
   m_titleLabel->setWordWrap(true);
   containerLayout->addWidget(m_titleLabel);
 
   // Message
   m_messageLabel = new QLabel("Please confirm to continue...");
   m_messageLabel->setStyleSheet(
-    "QLabel { "
-    "  font-size: 16px; "
-    "  color: #333333; "
-    "  background: transparent; "
-    "  border: none; "
-    "  padding: 10px 0px; "
-    "}");
+    "font-size: 16px; "
+    "background: transparent; "
+    "border: none; "
+    "padding: 10px 0px;");  // ✅ Color from global theme
   m_messageLabel->setWordWrap(true);
   m_messageLabel->setMinimumHeight(60);
   containerLayout->addWidget(m_messageLabel);
@@ -65,37 +60,28 @@ void UserPromptWidget::setupUI()
 
   // Yes button
   m_yesButton = new QPushButton("✓ Yes");
+  m_yesButton->setObjectName("yesButton");  // ✅ Green button
   m_yesButton->setMinimumHeight(50);
   m_yesButton->setMinimumWidth(120);
   m_yesButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
+    "QPushButton#yesButton { "
+    "  background-color: #27ae60; "
     "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border: none; "
-    "  border-radius: 5px; "
     "  padding: 10px 20px; "
     "} "
-    "QPushButton:hover { "
-    "  background-color: #45a049; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #3d8b40; "
+    "QPushButton#yesButton:hover { "
+    "  background-color: #2ecc71; "
     "}");
 
   // No button
   m_noButton = new QPushButton("✗ No");
+  m_noButton->setObjectName("noButton");  // ✅ Red button
   m_noButton->setMinimumHeight(50);
   m_noButton->setMinimumWidth(120);
   m_noButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #f44336; "
-    "  color: white; "
+    "QPushButton#noButton { "
+    "  background-color: #e74c3c; "
     "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border: none; "
-    "  border-radius: 5px; "
     "  padding: 10px 20px; "
     "} "
     "QPushButton:hover { "

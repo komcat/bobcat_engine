@@ -3,6 +3,9 @@
 
 #include "ICommandHandler.h"
 
+// Forward declaration
+class DataStore;
+
 class MotionCommandHandler : public ICommandHandler
 {
 public:
@@ -16,6 +19,9 @@ public:
   ) override;
 
   std::string GetManagerType() const override { return "motion"; }
+
+  // ✅ NEW: Set DataStore for XCAN command
+  void SetDataStore(DataStore* dataStore) { m_dataStore = dataStore; }
 
 private:
   // Helper to resolve context: references or parse direct values
@@ -40,4 +46,7 @@ private:
     SequenceContext* context,
     int timeoutMs = 30000,
     const TargetPosition* targetPos = nullptr);
+
+  // ✅ NEW: DataStore for XCAN command
+  DataStore* m_dataStore = nullptr;
 };

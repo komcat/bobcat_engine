@@ -17,6 +17,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   , m_updatePosButton(nullptr)
   , m_deletePosButton(nullptr)
   , m_createPosButton(nullptr)
+  , m_autoFitButton(nullptr)  // ✅ NEW
   , m_homeButton(nullptr)
   , m_stopButton(nullptr)
 {
@@ -55,15 +56,15 @@ void MotionControlPanel::setupUI()
 
   // === Selected Position ===
   QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
+  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
   mainLayout->addWidget(posLabel);
 
   // Compact info widget
   QWidget* posWidget = new QWidget();
   posWidget->setStyleSheet("QWidget { background-color: #1e1e1e; border: 1px solid #3f3f46; border-radius: 4px; }");
   QVBoxLayout* posLayout = new QVBoxLayout(posWidget);
-  posLayout->setContentsMargins(6, 6, 6, 6);
-  posLayout->setSpacing(3);
+  posLayout->setContentsMargins(8, 8, 8, 8);  // ✅ Increased padding
+  posLayout->setSpacing(4);  // ✅ Increased spacing
 
   m_posNameLabel = new QLabel("-");
   m_posXLabel = new QLabel("X: -");
@@ -74,14 +75,15 @@ void MotionControlPanel::setupUI()
   m_posWLabel = new QLabel("W: -");
   m_waypointsLabel = new QLabel("Waypoints: -");
   m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 9px; font-weight: bold; }");
+  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 11px; font-weight: bold; }");  // ✅ Increased font
 
   QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
                            m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
                            m_waypointsLabel };
   for (auto* label : labels) {
     if (label != m_waypointsLabel) {
-      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 9px; }");
+      // ✅ Increased font size from 9px to 12px
+      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; }");
     }
     posLayout->addWidget(label);
   }
@@ -146,6 +148,17 @@ void MotionControlPanel::setupUI()
   line3->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   mainLayout->addWidget(line3);
 
+  // ✅ NEW: Auto Fit View Button
+  m_autoFitButton = new QPushButton("⊡ Auto Fit View");
+  m_autoFitButton->setMinimumHeight(28);
+  mainLayout->addWidget(m_autoFitButton);
+
+  // Separator
+  QFrame* line4 = new QFrame();
+  line4->setFrameShape(QFrame::HLine);
+  line4->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+  mainLayout->addWidget(line4);
+
   // Home Button
   m_homeButton = new QPushButton("⌂ Home");
   m_homeButton->setMinimumHeight(28);
@@ -202,7 +215,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #229954;"
     "  border-radius: 3px;"
-    "  font-size: 10px;"
+    "  font-size: 12px;"  // ✅ Increased from 10px to 12px
     "  font-weight: bold;"
     "}"
     "QPushButton#moveToButton:hover {"
@@ -219,7 +232,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #e67e22;"
     "  border-radius: 3px;"
-    "  font-size: 10px;"
+    "  font-size: 12px;"  // ✅ Increased from 10px to 12px
     "  font-weight: bold;"
     "}"
     "QPushButton#moveOffsetButton:hover {"
@@ -236,7 +249,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #0c5280;"
     "  border-radius: 3px;"
-    "  font-size: 9px;"
+    "  font-size: 11px;"  // ✅ Increased from 9px to 11px
     "  font-weight: 600;"
     "}"
     "QPushButton:hover {"
@@ -306,6 +319,10 @@ void MotionControlPanel::setupUI()
 
   connect(m_createPosButton, &QPushButton::clicked,
     this, &MotionControlPanel::createPositionClicked);
+
+  // ✅ NEW - Auto Fit View
+  connect(m_autoFitButton, &QPushButton::clicked,
+    this, &MotionControlPanel::autoFitClicked);
 
   connect(m_homeButton, &QPushButton::clicked,
     this, &MotionControlPanel::homeClicked);
