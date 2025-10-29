@@ -88,6 +88,9 @@ RecipePage::~RecipePage()
 
 void RecipePage::setupUI()
 {
+  // Set light gray background for entire page
+  setStyleSheet("RecipePage { background-color: #f0f0f0; }");
+
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(5, 0, 5, 5);
   mainLayout->setSpacing(0);
@@ -202,9 +205,11 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "  border: 1px solid #c0c0c0; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
+    "  gridline-color: #d0d0d0; "
     "} "
     "QTreeWidget::item { "
     "  padding: 5px; "
+    "  border-bottom: 1px solid #e8e8e8; "
     "} "
     "QTreeWidget::item:selected { "
     "  background-color: #5a8fd6; "
@@ -476,6 +481,12 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "  border: 1px solid #c0c0c0; "
     "  border-radius: 4px; "
     "  font-size: 12px; "
+    "  gridline-color: #d0d0d0; "
+    "  show-decoration-selected: 1; "
+    "} "
+    "QTreeWidget::item { "
+    "  border-bottom: 1px solid #e0e0e0; "
+    "  padding: 2px; "
     "} "
     "QTreeWidget::item:selected { "
     "  background-color: #5a8fd6; "

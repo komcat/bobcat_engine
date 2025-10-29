@@ -33,6 +33,7 @@ private slots:
   void onLoadProduct();
   void onSaveProduct();
   void onSaveProductAs();
+  void onDeleteProduct();
 
 private:
   void setupUI();
@@ -47,6 +48,7 @@ private:
   QPushButton* m_loadProductBtn;
   QPushButton* m_saveProductBtn;
   QPushButton* m_saveProductAsBtn;
+  QPushButton* m_deleteProductBtn;
 
   // Menu buttons
   QToolButton* m_processButton;

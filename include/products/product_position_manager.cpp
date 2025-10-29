@@ -81,10 +81,59 @@ bool ProductPositionManager::SaveProductAs(const std::string& productName) {
     return false;
   }
 
-  // ✅ Save positions file
+  // ✅ Copy files from original product folder if one is loaded
+  if (HasLoadedProduct() && !m_currentProductName.empty()) {
+    std::string sourceDir = "config/" + m_currentProductName;
+
+    std::cout << "[INFO] ProductPositionManager: Copying files from "
+      << sourceDir << " to " << productDir << std::endl;
+
+    try {
+      // Copy all files and subdirectories from source to destination
+      if (fs::exists(sourceDir) && fs::is_directory(sourceDir)) {
+        for (const auto& entry : fs::recursive_directory_iterator(sourceDir)) {
+          // Get relative path from source directory
+          std::string relativePath = entry.path().string().substr(sourceDir.length() + 1);
+          std::string destPath = productDir + "/" + relativePath;
+
+          if (entry.is_directory()) {
+            // Create subdirectory in destination
+            fs::create_directories(destPath);
+            std::cout << "[INFO] ProductPositionManager: Created subdirectory "
+              << relativePath << std::endl;
+          }
+          else if (entry.is_regular_file()) {
+            // Check if this is the positions file that needs renaming
+            std::string filename = entry.path().filename().string();
+
+            if (filename == "positions." + m_currentProductName + ".json") {
+              // This is the old positions file - we'll save new one instead
+              std::cout << "[INFO] ProductPositionManager: Skipping old positions file "
+                << filename << " (will save new one)" << std::endl;
+              continue;
+            }
+
+            // Copy regular file
+            fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing);
+            std::cout << "[INFO] ProductPositionManager: Copied file "
+              << relativePath << std::endl;
+          }
+        }
+      }
+    }
+    catch (const std::exception& e) {
+      std::cout << "[WARNING] ProductPositionManager: Error copying files: "
+        << e.what() << std::endl;
+      // Continue anyway - we can still save the positions file
+    }
+  }
+
+  // ✅ Save positions file with new product name
   if (ProductJsonLoader::SaveToFile(*this, filePath)) {
     m_currentProductPath = filePath;
     m_currentProductName = productName;
+    std::cout << "[SUCCESS] ProductPositionManager: Product saved as '"
+      << productName << "'" << std::endl;
     return true;
   }
 

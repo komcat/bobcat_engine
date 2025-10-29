@@ -26,6 +26,7 @@ MainMenuPage::MainMenuPage(ApplicationContext* context, QWidget* parent)
   , m_loadProductBtn(nullptr)
   , m_saveProductBtn(nullptr)
   , m_saveProductAsBtn(nullptr)
+  , m_deleteProductBtn(nullptr)
 {
   setupUI();
   updateProductDisplay();
@@ -169,11 +170,37 @@ void MainMenuPage::setupUI()
     "}"
   );
 
+  m_deleteProductBtn = new QPushButton("Delete Product");
+  m_deleteProductBtn->setMinimumHeight(40);
+  m_deleteProductBtn->setEnabled(false);
+  m_deleteProductBtn->setStyleSheet(
+    "QPushButton {"
+    "  background-color: #e74c3c;"
+    "  color: white;"
+    "  border: none;"
+    "  border-radius: 5px;"
+    "  font-size: 14px;"
+    "  font-weight: bold;"
+    "  padding: 8px 20px;"
+    "}"
+    "QPushButton:hover {"
+    "  background-color: #c0392b;"
+    "}"
+    "QPushButton:pressed {"
+    "  background-color: #a93226;"
+    "}"
+    "QPushButton:disabled {"
+    "  background-color: #7f8c8d;"
+    "  color: #bdc3c7;"
+    "}"
+  );
+
   buttonLayout->addStretch();
   buttonLayout->addWidget(m_newProductBtn);
   buttonLayout->addWidget(m_loadProductBtn);
   buttonLayout->addWidget(m_saveProductBtn);
   buttonLayout->addWidget(m_saveProductAsBtn);
+  buttonLayout->addWidget(m_deleteProductBtn);
   buttonLayout->addStretch();
 
   productLayout->addLayout(buttonLayout);
@@ -184,6 +211,7 @@ void MainMenuPage::setupUI()
   connect(m_loadProductBtn, &QPushButton::clicked, this, &MainMenuPage::onLoadProduct);
   connect(m_saveProductBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProduct);
   connect(m_saveProductAsBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProductAs);
+  connect(m_deleteProductBtn, &QPushButton::clicked, this, &MainMenuPage::onDeleteProduct);
 
   // Add stretch to center buttons vertically
   mainLayout->addStretch();
@@ -274,13 +302,37 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
 }
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+namespace {
+  const QString DIALOG_STYLESHEET =
+    "QMessageBox { background-color: #f0f0f0; color: #000000; } "
+    "QInputDialog { background-color: #f0f0f0; } "
+    "QLabel { color: #000000; font-size: 12px; background-color: transparent; } "
+    "QLineEdit { background-color: white; color: #000000; border: 1px solid #999999; "
+    "border-radius: 3px; padding: 5px; font-size: 12px; } "
+    "QPushButton { background-color: #e0e0e0; color: #000000; border: 1px solid #999999; "
+    "border-radius: 4px; padding: 6px 20px; font-size: 12px; min-width: 80px; } "
+    "QPushButton:hover { background-color: #d0d0d0; border-color: #666666; } "
+    "QPushButton:pressed { background-color: #c0c0c0; } "
+    "QPushButton:default { background-color: #5a8fd6; color: white; border-color: #4a7fc6; } "
+    "QPushButton:default:hover { background-color: #4a7fc6; }";
+}
+
+// ============================================================================
 // PRODUCT MANAGEMENT
 // ============================================================================
 
 void MainMenuPage::onNewProduct()
 {
   if (!m_context || !m_context->productPositionManager) {
-    QMessageBox::critical(this, "Error", "Product manager not initialized");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product manager not initialized");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
@@ -308,18 +360,26 @@ void MainMenuPage::onNewProduct()
     // Notify other pages that product has changed
     emit productChanged();
 
-    QMessageBox::information(this, "Product Ready",
-      QString("New product created and loaded successfully!\n\n"
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle("Product Ready");
+    msgBox.setText(QString("New product created and loaded successfully!\n\n"
               "Product: %1\n\n"
               "You can now:\n"
               "• Add positions in Motion page\n"
               "• Create recipes in Recipe page\n"
               "• Create programs in Process page")
         .arg(QString::fromStdString(m_context->productPositionManager->GetCurrentProductName())));
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
   else {
-    QMessageBox::critical(this, "Error",
-      "Product folder was created, but failed to load the positions file.");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product folder was created, but failed to load the positions file.");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
 }
 
@@ -335,33 +395,49 @@ void MainMenuPage::updateProductDisplay()
     );
     m_productLabel->setText("Product: " + productName);
     m_saveProductBtn->setEnabled(true);
+    m_deleteProductBtn->setEnabled(true);
   }
   else {
     m_productLabel->setText("Product: None");
     m_saveProductBtn->setEnabled(false);
+    m_deleteProductBtn->setEnabled(false);
   }
 }
 
 void MainMenuPage::onLoadProduct()
 {
   if (!m_context || !m_context->productPositionManager) {
-    QMessageBox::critical(this, "Error", "Product manager not initialized");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product manager not initialized");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
   // Get list of product folders in config directory
   QDir configDir("config");
   if (!configDir.exists()) {
-    QMessageBox::critical(this, "Error", "Config directory not found");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Config directory not found");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
   QStringList productFolders = configDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
 
   if (productFolders.isEmpty()) {
-    QMessageBox::warning(this, "No Products",
-      "No product folders found in config directory.\n\n"
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setWindowTitle("No Products");
+    msgBox.setText("No product folders found in config directory.\n\n"
       "Create a new product using 'New Product' button.");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
@@ -379,11 +455,15 @@ void MainMenuPage::onLoadProduct()
 
   // Check if file exists
   if (!QFile::exists(filePath)) {
-    QMessageBox::critical(this, "Error",
-      QString("Positions file not found:\n%1\n\n"
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText(QString("Positions file not found:\n%1\n\n"
               "Expected format: positions.%2.json")
         .arg(filePath)
         .arg(selectedProduct));
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
@@ -402,28 +482,45 @@ void MainMenuPage::onLoadProduct()
     // Notify other pages that product has changed
     emit productChanged();
 
-    QMessageBox::information(this, "Success",
-      QString("Product loaded successfully!\n\n"
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle("Success");
+    msgBox.setText(QString("Product loaded successfully!\n\n"
               "Product: %1\nFile: %2")
         .arg(selectedProduct)
         .arg(QFileInfo(filePath).fileName()));
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
   else {
-    QMessageBox::critical(this, "Error",
-      "Failed to load product from:\n" + filePath);
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Failed to load product from:\n" + filePath);
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
 }
 
 void MainMenuPage::onSaveProduct()
 {
   if (!m_context || !m_context->productPositionManager) {
-    QMessageBox::critical(this, "Error", "Product manager not initialized");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product manager not initialized");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
   if (!m_context->productPositionManager->HasLoadedProduct()) {
-    QMessageBox::warning(this, "No Product",
-      "No product loaded. Use 'Save As...' to create a new product file.");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setWindowTitle("No Product");
+    msgBox.setText("No product loaded. Use 'Save As...' to create a new product file.");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
@@ -433,31 +530,46 @@ void MainMenuPage::onSaveProduct()
   }
 
   if (m_context->productPositionManager->SaveProduct()) {
-    QMessageBox::information(this, "Success", "Product saved successfully");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle("Success");
+    msgBox.setText("Product saved successfully");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
   else {
-    QMessageBox::critical(this, "Error", "Failed to save product file");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Failed to save product file");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
 }
 
 void MainMenuPage::onSaveProductAs()
 {
   if (!m_context || !m_context->productPositionManager) {
-    QMessageBox::critical(this, "Error", "Product manager not initialized");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product manager not initialized");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
     return;
   }
 
   bool ok;
-  QString productName = QInputDialog::getText(
-    this,
-    "Save Product As",
-    "Enter product name (without .json):",
-    QLineEdit::Normal,
-    m_context->productPositionManager->HasLoadedProduct()
+  QInputDialog inputDialog(this);
+  inputDialog.setWindowTitle("Save Product As");
+  inputDialog.setLabelText("Enter product name (without .json):");
+  inputDialog.setTextValue(m_context->productPositionManager->HasLoadedProduct()
       ? QString::fromStdString(m_context->productPositionManager->GetCurrentProductName())
-      : "",
-    &ok
-  );
+      : "");
+  inputDialog.setStyleSheet(DIALOG_STYLESHEET);
+
+  ok = inputDialog.exec() == QDialog::Accepted;
+  QString productName = inputDialog.textValue();
 
   if (!ok || productName.isEmpty()) {
     return;
@@ -480,10 +592,144 @@ void MainMenuPage::onSaveProductAs()
 
     updateProductDisplay();
 
-    QMessageBox::information(this, "Success",
-      "Product saved as: " + productName);
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle("Success");
+    msgBox.setText("Product saved as: " + productName);
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
   }
   else {
-    QMessageBox::critical(this, "Error", "Failed to save product file");
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Failed to save product file");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
+  }
+}
+
+void MainMenuPage::onDeleteProduct()
+{
+  if (!m_context || !m_context->productPositionManager) {
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error");
+    msgBox.setText("Product manager not initialized");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
+    return;
+  }
+
+  if (!m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setWindowTitle("No Product");
+    msgBox.setText("No product loaded to delete.");
+    msgBox.setStyleSheet(DIALOG_STYLESHEET);
+    msgBox.exec();
+    return;
+  }
+
+  QString productName = QString::fromStdString(
+    m_context->productPositionManager->GetCurrentProductName()
+  );
+
+  // Show warning message first
+  QMessageBox warningBox(this);
+  warningBox.setIcon(QMessageBox::Warning);
+  warningBox.setWindowTitle("Delete Product - WARNING");
+  warningBox.setText(QString("You are about to DELETE the entire product folder:\n\n"
+                             "Product: %1\n"
+                             "Folder: config/%1/\n\n"
+                             "This will permanently delete:\n"
+                             "• All positions\n"
+                             "• All recipes\n"
+                             "• All programs\n"
+                             "• All configuration files\n\n"
+                             "THIS CANNOT BE UNDONE!").arg(productName));
+  warningBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+  warningBox.setDefaultButton(QMessageBox::Cancel);
+  warningBox.setStyleSheet(DIALOG_STYLESHEET);
+
+  if (warningBox.exec() != QMessageBox::Ok) {
+    return;
+  }
+
+  // Require user to type exact phrase
+  bool ok;
+  QInputDialog confirmDialog(this);
+  confirmDialog.setWindowTitle("Confirm Deletion");
+  confirmDialog.setLabelText(QString("To confirm deletion of product '%1', please type exactly:\n\n"
+            "I want to delete everything and everything.\n\n"
+            "Type the confirmation phrase below:").arg(productName));
+  confirmDialog.setTextValue("");
+  confirmDialog.setStyleSheet(DIALOG_STYLESHEET);
+
+  ok = confirmDialog.exec() == QDialog::Accepted;
+  QString confirmText = confirmDialog.textValue();
+
+  if (!ok) {
+    return;
+  }
+
+  // Check if text matches exactly
+  if (confirmText != "I want to delete everything and everything.") {
+    QMessageBox errorBox(this);
+    errorBox.setIcon(QMessageBox::Critical);
+    errorBox.setWindowTitle("Deletion Cancelled");
+    errorBox.setText("The confirmation text did not match.\n\n"
+      "Expected: I want to delete everything and everything.\n"
+      "You typed: " + confirmText + "\n\n"
+      "Product deletion cancelled.");
+    errorBox.setStyleSheet(DIALOG_STYLESHEET);
+    errorBox.exec();
+    return;
+  }
+
+  // Perform deletion
+  std::string productDir = "config/" + productName.toStdString();
+
+  try {
+    if (std::filesystem::exists(productDir)) {
+      std::filesystem::remove_all(productDir);
+
+      // Clear product from manager
+      m_context->productPositionManager->ClearAllPositions();
+
+      // Clear application setting
+      QSettings settings("Fabrinet", "BobcatEngine");
+      settings.remove("Application/lastProductFile");
+
+      updateProductDisplay();
+
+      // Notify other pages that product has been deleted
+      emit productChanged();
+
+      QMessageBox successBox(this);
+      successBox.setIcon(QMessageBox::Information);
+      successBox.setWindowTitle("Product Deleted");
+      successBox.setText(QString("Product '%1' has been permanently deleted.").arg(productName));
+      successBox.setStyleSheet(DIALOG_STYLESHEET);
+      successBox.exec();
+    }
+    else {
+      QMessageBox errorBox(this);
+      errorBox.setIcon(QMessageBox::Critical);
+      errorBox.setWindowTitle("Error");
+      errorBox.setText(QString("Product folder not found:\n%1").arg(QString::fromStdString(productDir)));
+      errorBox.setStyleSheet(DIALOG_STYLESHEET);
+      errorBox.exec();
+    }
+  }
+  catch (const std::exception& e) {
+    QMessageBox errorBox(this);
+    errorBox.setIcon(QMessageBox::Critical);
+    errorBox.setWindowTitle("Error");
+    errorBox.setText(QString("Failed to delete product folder:\n%1\n\nError: %2")
+        .arg(QString::fromStdString(productDir))
+        .arg(e.what()));
+    errorBox.setStyleSheet(DIALOG_STYLESHEET);
+    errorBox.exec();
   }
 }
