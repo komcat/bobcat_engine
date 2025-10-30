@@ -1,5 +1,6 @@
 ﻿// WaypointEditorDialog.cpp
 #include "WaypointEditorDialog.h"
+#include "AppUI/DarkTheme.h"
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QTabWidget>
@@ -13,6 +14,9 @@ WaypointEditorDialog::WaypointEditorDialog(const QString& positionName,
   , m_positionName(positionName)
   , m_availablePositions(availablePositions)
 {
+  // ✅ TEST: Apply dark theme directly to this dialog
+  this->setStyleSheet(DarkTheme::getStyleSheet());
+
   setupUI();
   populateAvailablePositions();
 
@@ -35,14 +39,11 @@ void WaypointEditorDialog::setupUI()
   setWindowTitle(QString("Edit Waypoints - %1").arg(m_positionName));
   setMinimumSize(600, 500);
 
-  // Set dark background for the entire dialog
-  setStyleSheet("QDialog { background-color: #2d2d30; }");
-
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // Title
   QLabel* titleLabel = new QLabel(QString("Configure waypoint paths for position: <b>%1</b>").arg(m_positionName));
-  titleLabel->setStyleSheet("font-size: 13px; padding: 10px; background-color: #1e1e1e; color: #ffffff; border: 1px solid #3f3f46; border-radius: 4px;");
+  titleLabel->setStyleSheet("font-size: 13px; padding: 10px;");
   mainLayout->addWidget(titleLabel);
 
   // Info label
@@ -50,31 +51,11 @@ void WaypointEditorDialog::setupUI()
     "Entry waypoints: visited when moving TO this position<br>"
     "Exit waypoints: visited when moving FROM this position"
   );
-  infoLabel->setStyleSheet("color: #a0a0a0; font-size: 11px; padding: 5px;");
+  infoLabel->setStyleSheet("font-size: 11px; padding: 8px;");
   mainLayout->addWidget(infoLabel);
 
-  // ✅ NEW - Tab widget for entry/exit waypoints
+  // Tab widget for entry/exit waypoints
   QTabWidget* tabWidget = new QTabWidget();
-  tabWidget->setStyleSheet(
-    "QTabWidget::pane {"
-    "  border: 1px solid #555555;"
-    "  border-radius: 4px;"
-    "  background-color: #2d2d30;"
-    "}"
-    "QTabBar::tab {"
-    "  background-color: #3c3c3c;"
-    "  color: #d4d4d4;"
-    "  padding: 8px 20px;"
-    "  margin-right: 2px;"
-    "  border-top-left-radius: 4px;"
-    "  border-top-right-radius: 4px;"
-    "}"
-    "QTabBar::tab:selected {"
-    "  background-color: #0e639c;"
-    "  color: white;"
-    "  font-weight: bold;"
-    "}"
-  );
 
   // === ENTRY WAYPOINTS TAB ===
   QWidget* entryTab = new QWidget();
@@ -85,24 +66,6 @@ void WaypointEditorDialog::setupUI()
 
   m_waypointList = new QListWidget();
   m_waypointList->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_waypointList->setStyleSheet(
-    "QListWidget {"
-    "  background-color: #3c3c3c;"
-    "  color: #ffffff;"
-    "  border: 1px solid #555555;"
-    "  border-radius: 4px;"
-    "  padding: 5px;"
-    "  font-size: 12px;"
-    "}"
-    "QListWidget::item {"
-    "  padding: 8px;"
-    "  border-bottom: 1px solid #555555;"
-    "}"
-    "QListWidget::item:selected {"
-    "  background-color: #0e639c;"
-    "  color: white;"
-    "}"
-  );
   entryListLayout->addWidget(m_waypointList);
 
   // Entry order control buttons
@@ -131,41 +94,10 @@ void WaypointEditorDialog::setupUI()
   entryAddLayout->addWidget(m_positionCombo, 1);
 
   m_addBtn = new QPushButton("+ Add");
-  m_addBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #27ae60;"
-    "  color: white;"
-    "  border: 1px solid #229954;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #2ecc71;"
-    "}"
-  );
   entryAddLayout->addWidget(m_addBtn);
 
   m_removeBtn = new QPushButton("− Remove");
   m_removeBtn->setEnabled(false);
-  m_removeBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #e74c3c;"
-    "  color: white;"
-    "  border: 1px solid #c0392b;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #c0392b;"
-    "}"
-    "QPushButton:disabled {"
-    "  background-color: #555555;"
-    "  border-color: #3f3f46;"
-    "  color: #888888;"
-    "}"
-  );
   entryAddLayout->addWidget(m_removeBtn);
 
   entryLayout->addWidget(entryAddGroup);
@@ -179,24 +111,6 @@ void WaypointEditorDialog::setupUI()
 
   m_exitWaypointList = new QListWidget();
   m_exitWaypointList->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_exitWaypointList->setStyleSheet(
-    "QListWidget {"
-    "  background-color: #3c3c3c;"
-    "  color: #ffffff;"
-    "  border: 1px solid #555555;"
-    "  border-radius: 4px;"
-    "  padding: 5px;"
-    "  font-size: 12px;"
-    "}"
-    "QListWidget::item {"
-    "  padding: 8px;"
-    "  border-bottom: 1px solid #555555;"
-    "}"
-    "QListWidget::item:selected {"
-    "  background-color: #f39c12;"
-    "  color: white;"
-    "}"
-  );
   exitListLayout->addWidget(m_exitWaypointList);
 
   // Exit order control buttons
@@ -225,41 +139,10 @@ void WaypointEditorDialog::setupUI()
   exitAddLayout->addWidget(m_exitPositionCombo, 1);
 
   m_addExitBtn = new QPushButton("+ Add");
-  m_addExitBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #f39c12;"
-    "  color: white;"
-    "  border: 1px solid #e67e22;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #e67e22;"
-    "}"
-  );
   exitAddLayout->addWidget(m_addExitBtn);
 
   m_removeExitBtn = new QPushButton("− Remove");
   m_removeExitBtn->setEnabled(false);
-  m_removeExitBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #e74c3c;"
-    "  color: white;"
-    "  border: 1px solid #c0392b;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #c0392b;"
-    "}"
-    "QPushButton:disabled {"
-    "  background-color: #555555;"
-    "  border-color: #3f3f46;"
-    "  color: #888888;"
-    "}"
-  );
   exitAddLayout->addWidget(m_removeExitBtn);
 
   exitLayout->addWidget(exitAddGroup);
@@ -275,37 +158,11 @@ void WaypointEditorDialog::setupUI()
 
   m_cancelBtn = new QPushButton("Cancel");
   m_cancelBtn->setMinimumWidth(100);
-  m_cancelBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #555555;"
-    "  color: white;"
-    "  border: 1px solid #3f3f46;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #666666;"
-    "}"
-  );
   buttonLayout->addWidget(m_cancelBtn);
 
   m_okBtn = new QPushButton("OK");
   m_okBtn->setMinimumWidth(100);
   m_okBtn->setDefault(true);
-  m_okBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #0e639c;"
-    "  color: white;"
-    "  border: 1px solid #0c5280;"
-    "  border-radius: 4px;"
-    "  padding: 8px 20px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #1177bb;"
-    "}"
-  );
   buttonLayout->addWidget(m_okBtn);
 
   mainLayout->addLayout(buttonLayout);
@@ -329,75 +186,6 @@ void WaypointEditorDialog::setupUI()
 
   connect(m_okBtn, &QPushButton::clicked, this, &QDialog::accept);
   connect(m_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
-
-  setStyleSheet(
-    "QDialog {"
-    "  background-color: #2d2d30;"
-    "  color: #ffffff;"
-    "}"
-    "QGroupBox {"
-    "  font-weight: bold;"
-    "  color: #ffffff;"
-    "  border: 1px solid #555555;"
-    "  border-radius: 4px;"
-    "  margin-top: 10px;"
-    "  padding-top: 10px;"
-    "}"
-    "QGroupBox::title {"
-    "  subcontrol-origin: margin;"
-    "  left: 10px;"
-    "  padding: 0 5px;"
-    "  color: #ffffff;"
-    "}"
-    "QLabel {"
-    "  color: #ffffff;"
-    "}"
-    "QComboBox {"
-    "  background-color: #3c3c3c;"
-    "  color: #ffffff;"
-    "  border: 1px solid #555555;"
-    "  border-radius: 3px;"
-    "  padding: 4px;"
-    "  font-size: 12px;"
-    "}"
-    "QComboBox:hover {"
-    "  border-color: #0e639c;"
-    "}"
-    "QComboBox::drop-down {"
-    "  border: none;"
-    "  width: 18px;"
-    "}"
-    "QComboBox::down-arrow {"
-    "  image: none;"
-    "  border-left: 4px solid transparent;"
-    "  border-right: 4px solid transparent;"
-    "  border-top: 5px solid #ffffff;"
-    "  margin-right: 5px;"
-    "}"
-    "QComboBox QAbstractItemView {"
-    "  background-color: #1e1e1e;"
-    "  color: #ffffff;"
-    "  selection-background-color: #0e639c;"
-    "  border: 1px solid #555555;"
-    "}"
-    "QPushButton {"
-    "  background-color: #0e639c;"
-    "  color: white;"
-    "  border: 1px solid #0c5280;"
-    "  border-radius: 3px;"
-    "  padding: 6px 12px;"
-    "  font-size: 11px;"
-    "  font-weight: 600;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #1177bb;"
-    "}"
-    "QPushButton:disabled {"
-    "  background-color: #555555;"
-    "  color: #888888;"
-    "  border-color: #3f3f46;"
-    "}"
-  );
 }
 
 void WaypointEditorDialog::populateAvailablePositions()

@@ -135,6 +135,9 @@ bool Application::initialize()
       m_qApplication->setFont(fallbackFont);
     }
 
+    // ✅ Set Fusion style for better stylesheet support (prevents Windows native style interference)
+    m_qApplication->setStyle("Fusion");
+
     // ✅ UPDATED: Apply centralized dark theme globally to all Qt widgets
     m_qApplication->setStyleSheet(DarkTheme::getStyleSheet());
 

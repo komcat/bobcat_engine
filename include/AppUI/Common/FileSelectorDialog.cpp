@@ -1,5 +1,6 @@
 // FileSelectorDialog.cpp
 #include "FileSelectorDialog.h"
+#include "AppUI/DarkTheme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -27,6 +28,9 @@ FileSelectorDialog::FileSelectorDialog(
   , m_selectedFilePath("")
   , m_recursive(recursive)
 {
+  // ✅ Apply dark theme directly to this dialog
+  this->setStyleSheet(DarkTheme::getStyleSheet());
+
   setupUI();
   loadFiles();
   populateFileTable();

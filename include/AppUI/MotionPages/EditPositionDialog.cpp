@@ -1,5 +1,6 @@
 // EditPositionDialog.cpp
 #include "EditPositionDialog.h"
+#include "AppUI/DarkTheme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -14,6 +15,9 @@ EditPositionDialog::EditPositionDialog(const QString& positionName,
   , m_x(x), m_y(y), m_z(z)
   , m_u(u), m_v(v), m_w(w)
 {
+  // ✅ Apply dark theme directly to this dialog
+  this->setStyleSheet(DarkTheme::getStyleSheet());
+
   setupUI();
 }
 
@@ -23,68 +27,29 @@ void EditPositionDialog::setupUI()
   setMinimumWidth(400);
   setMaximumWidth(500);
 
-  // Set dark background for the entire dialog
-  setStyleSheet("QDialog { background-color: #2d2d30; }");
-
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(20, 20, 20, 20);
   mainLayout->setSpacing(15);
 
   // Title
   QLabel* titleLabel = new QLabel("Edit Position");
-  titleLabel->setStyleSheet(
-    "QLabel {"
-    "  font-size: 18px;"
-    "  font-weight: bold;"
-    "  color: #ffffff;"
-    "  margin-bottom: 5px;"
-    "}"
-  );
+  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 5px;");
   mainLayout->addWidget(titleLabel);
 
   // Position name (read-only)
   QLabel* nameLabel = new QLabel(QString("Position: %1").arg(m_positionName));
-  nameLabel->setStyleSheet(
-    "QLabel {"
-    "  font-size: 13px;"
-    "  color: #a0a0a0;"
-    "  margin-bottom: 10px;"
-    "}"
-  );
+  nameLabel->setStyleSheet("font-size: 13px; margin-bottom: 10px;");
   mainLayout->addWidget(nameLabel);
 
   // Position Values
   QLabel* valuesLabel = new QLabel("Position Values");
-  valuesLabel->setStyleSheet("font-weight: bold; color: #ffffff; font-size: 13px; margin-top: 5px;");
+  valuesLabel->setStyleSheet("font-weight: bold; font-size: 13px; margin-top: 5px;");
   mainLayout->addWidget(valuesLabel);
 
   // Create compact grid for XYZ and UVW
   QGridLayout* gridLayout = new QGridLayout();
   gridLayout->setSpacing(8);
   gridLayout->setContentsMargins(0, 0, 0, 0);
-
-  // Style for labels and spinboxes
-  QString labelStyle = "QLabel { color: #ffffff; font-weight: bold; font-size: 12px; }";
-  QString spinBoxStyle =
-    "QDoubleSpinBox {"
-    "  padding: 6px;"
-    "  border: 1px solid #555555;"
-    "  border-radius: 4px;"
-    "  background-color: #3c3c3c;"
-    "  color: #ffffff;"
-    "  font-size: 12px;"
-    "}"
-    "QDoubleSpinBox:focus {"
-    "  border: 1px solid #0e639c;"
-    "}"
-    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {"
-    "  background-color: #555555;"
-    "  border: none;"
-    "  width: 16px;"
-    "}"
-    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {"
-    "  background-color: #0e639c;"
-    "}";
 
   // Create spinboxes
   m_xSpin = createSpinBox(m_x);
@@ -94,42 +59,34 @@ void EditPositionDialog::setupUI()
   m_vSpin = createSpinBox(m_v);
   m_wSpin = createSpinBox(m_w);
 
-  // Apply styles
-  m_xSpin->setStyleSheet(spinBoxStyle);
-  m_ySpin->setStyleSheet(spinBoxStyle);
-  m_zSpin->setStyleSheet(spinBoxStyle);
-  m_uSpin->setStyleSheet(spinBoxStyle);
-  m_vSpin->setStyleSheet(spinBoxStyle);
-  m_wSpin->setStyleSheet(spinBoxStyle);
-
   // Add to grid (2 columns: XYZ | UVW)
   QLabel* xLabel = new QLabel("X:");
-  xLabel->setStyleSheet(labelStyle);
+  xLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(xLabel, 0, 0);
   gridLayout->addWidget(m_xSpin, 0, 1);
 
   QLabel* yLabel = new QLabel("Y:");
-  yLabel->setStyleSheet(labelStyle);
+  yLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(yLabel, 1, 0);
   gridLayout->addWidget(m_ySpin, 1, 1);
 
   QLabel* zLabel = new QLabel("Z:");
-  zLabel->setStyleSheet(labelStyle);
+  zLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(zLabel, 2, 0);
   gridLayout->addWidget(m_zSpin, 2, 1);
 
   QLabel* uLabel = new QLabel("U:");
-  uLabel->setStyleSheet(labelStyle);
+  uLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(uLabel, 0, 2);
   gridLayout->addWidget(m_uSpin, 0, 3);
 
   QLabel* vLabel = new QLabel("V:");
-  vLabel->setStyleSheet(labelStyle);
+  vLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(vLabel, 1, 2);
   gridLayout->addWidget(m_vSpin, 1, 3);
 
   QLabel* wLabel = new QLabel("W:");
-  wLabel->setStyleSheet(labelStyle);
+  wLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(wLabel, 2, 2);
   gridLayout->addWidget(m_wSpin, 2, 3);
 
@@ -148,44 +105,10 @@ void EditPositionDialog::setupUI()
   QPushButton* cancelButton = new QPushButton("Cancel");
   cancelButton->setFixedHeight(36);
   cancelButton->setCursor(Qt::PointingHandCursor);
-  cancelButton->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #555555;"
-    "  color: white;"
-    "  border: 1px solid #3f3f46;"
-    "  border-radius: 4px;"
-    "  font-size: 13px;"
-    "  font-weight: bold;"
-    "  padding: 8px 24px;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #666666;"
-    "}"
-    "QPushButton:pressed {"
-    "  background-color: #444444;"
-    "}"
-  );
 
   QPushButton* saveButton = new QPushButton("Save");
   saveButton->setFixedHeight(36);
   saveButton->setCursor(Qt::PointingHandCursor);
-  saveButton->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #0e639c;"
-    "  color: white;"
-    "  border: 1px solid #0c5280;"
-    "  border-radius: 4px;"
-    "  font-size: 13px;"
-    "  font-weight: bold;"
-    "  padding: 8px 24px;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #1177bb;"
-    "}"
-    "QPushButton:pressed {"
-    "  background-color: #0c5280;"
-    "}"
-  );
 
   buttonLayout->addStretch();
   buttonLayout->addWidget(cancelButton);
@@ -196,13 +119,6 @@ void EditPositionDialog::setupUI()
   // Connections
   connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
   connect(saveButton, &QPushButton::clicked, this, &EditPositionDialog::onSaveClicked);
-
-  // Set dialog background
-  setStyleSheet(
-    "QDialog {"
-    "  background-color: #2d2d30;"
-    "}"
-  );
 }
 
 QDoubleSpinBox* EditPositionDialog::createSpinBox(double value)

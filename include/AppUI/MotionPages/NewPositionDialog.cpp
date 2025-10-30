@@ -1,5 +1,6 @@
 // NewPositionDialog.cpp
 #include "NewPositionDialog.h"
+#include "AppUI/DarkTheme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -15,6 +16,9 @@ NewPositionDialog::NewPositionDialog(const QString& deviceName,
   , m_x(x), m_y(y), m_z(z)
   , m_u(u), m_v(v), m_w(w)
 {
+  // ✅ Apply dark theme directly to this dialog
+  this->setStyleSheet(DarkTheme::getStyleSheet());
+
   setupUI();
 }
 
@@ -24,35 +28,32 @@ void NewPositionDialog::setupUI()
   setMinimumWidth(400);
   setMaximumWidth(500);
 
-  // ✅ No need to set dialog stylesheet - inherited from MainWindow
-
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(20, 20, 20, 20);
   mainLayout->setSpacing(15);
 
   // Title
   QLabel* titleLabel = new QLabel("Create New Position");
-  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold;");  // ✅ Only custom styling
+  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold;");
   mainLayout->addWidget(titleLabel);
 
   // Device info
   QLabel* deviceLabel = new QLabel(QString("Device: %1").arg(m_deviceName));
-  deviceLabel->setStyleSheet("font-size: 13px; color: #a0a0a0;");  // ✅ Only custom color
+  deviceLabel->setStyleSheet("font-size: 13px;");
   mainLayout->addWidget(deviceLabel);
 
   // Position Name
   QLabel* nameLabel = new QLabel("Position Name");
-  nameLabel->setStyleSheet("font-weight: bold; font-size: 13px;");  // ✅ Only custom styling
+  nameLabel->setStyleSheet("font-weight: bold; font-size: 13px;");
   mainLayout->addWidget(nameLabel);
 
   m_nameEdit = new QLineEdit();
   m_nameEdit->setPlaceholderText("Enter position name...");
-  // ✅ No stylesheet needed - global theme handles it
   mainLayout->addWidget(m_nameEdit);
 
   // Position Values
   QLabel* valuesLabel = new QLabel("Position Values");
-  valuesLabel->setStyleSheet("font-weight: bold; font-size: 13px; margin-top: 5px;");  // ✅ Only custom styling
+  valuesLabel->setStyleSheet("font-weight: bold; font-size: 13px; margin-top: 5px;");
   mainLayout->addWidget(valuesLabel);
 
   // Create compact grid for XYZ and UVW
@@ -60,10 +61,7 @@ void NewPositionDialog::setupUI()
   gridLayout->setSpacing(8);
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
-  // ✅ Only override label font weight if needed
-  QString labelStyle = "font-weight: bold; font-size: 12px;";
-
-  // Create spinboxes - ✅ No stylesheet needed, global theme handles it
+  // Create spinboxes
   m_xSpin = createSpinBox(m_x);
   m_ySpin = createSpinBox(m_y);
   m_zSpin = createSpinBox(m_z);
@@ -72,39 +70,36 @@ void NewPositionDialog::setupUI()
   m_wSpin = createSpinBox(m_w);
 
   // Add to grid (2 columns: XYZ | UVW)
-  // Left column - XYZ
   QLabel* xLabel = new QLabel("X:");
-  xLabel->setStyleSheet(labelStyle);  // ✅ Only custom font styling
+  xLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(xLabel, 0, 0);
   gridLayout->addWidget(m_xSpin, 0, 1);
 
   QLabel* yLabel = new QLabel("Y:");
-  yLabel->setStyleSheet(labelStyle);
+  yLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(yLabel, 1, 0);
   gridLayout->addWidget(m_ySpin, 1, 1);
 
   QLabel* zLabel = new QLabel("Z:");
-  zLabel->setStyleSheet(labelStyle);
+  zLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(zLabel, 2, 0);
   gridLayout->addWidget(m_zSpin, 2, 1);
 
-  // Right column - UVW
   QLabel* uLabel = new QLabel("U:");
-  uLabel->setStyleSheet(labelStyle);
+  uLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(uLabel, 0, 2);
   gridLayout->addWidget(m_uSpin, 0, 3);
 
   QLabel* vLabel = new QLabel("V:");
-  vLabel->setStyleSheet(labelStyle);
+  vLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(vLabel, 1, 2);
   gridLayout->addWidget(m_vSpin, 1, 3);
 
   QLabel* wLabel = new QLabel("W:");
-  wLabel->setStyleSheet(labelStyle);
+  wLabel->setStyleSheet("font-weight: bold; font-size: 12px;");
   gridLayout->addWidget(wLabel, 2, 2);
   gridLayout->addWidget(m_wSpin, 2, 3);
 
-  // Set column stretch to make both columns equal width
   gridLayout->setColumnStretch(1, 1);
   gridLayout->setColumnStretch(3, 1);
 
@@ -117,39 +112,14 @@ void NewPositionDialog::setupUI()
   QHBoxLayout* buttonLayout = new QHBoxLayout();
   buttonLayout->setSpacing(10);
 
-  // ✅ Use object name to target buttons for color override
   QPushButton* cancelButton = new QPushButton("Cancel");
-  cancelButton->setObjectName("cancelButton");  // ✅ For gray color
   cancelButton->setFixedHeight(36);
   cancelButton->setCursor(Qt::PointingHandCursor);
-  cancelButton->setStyleSheet(
-    "QPushButton#cancelButton {"
-    "  background-color: #555555;"
-    "  border-color: #3f3f46;"
-    "  font-size: 13px;"
-    "  padding: 8px 24px;"
-    "}"
-    "QPushButton#cancelButton:hover {"
-    "  background-color: #666666;"
-    "}"
-  );
 
   QPushButton* createButton = new QPushButton("Create");
-  createButton->setObjectName("createButton");  // ✅ For green color
   createButton->setFixedHeight(36);
   createButton->setCursor(Qt::PointingHandCursor);
   createButton->setDefault(true);
-  createButton->setStyleSheet(
-    "QPushButton#createButton {"
-    "  background-color: #27ae60;"
-    "  border-color: #229954;"
-    "  font-size: 13px;"
-    "  padding: 8px 24px;"
-    "}"
-    "QPushButton#createButton:hover {"
-    "  background-color: #2ecc71;"
-    "}"
-  );
 
   buttonLayout->addStretch();
   buttonLayout->addWidget(cancelButton);

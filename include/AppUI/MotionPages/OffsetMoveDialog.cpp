@@ -33,16 +33,13 @@ void OffsetMoveDialog::setupUI()
 
   // Title
   QLabel* titleLabel = new QLabel(QString("Move to: <b>%1</b> with offset").arg(m_baseName));
-  titleLabel->setStyleSheet("font-size: 13px;");  // ✅ Only custom font size
+  titleLabel->setStyleSheet("font-size: 13px;");
   mainLayout->addWidget(titleLabel);
-
-  // ✅ REMOVE or make base group smaller - it's not essential
-  // Skip showing base position to save space
 
   // Offset inputs
   QGroupBox* offsetGroup = new QGroupBox("Offset (mm)");
   QFormLayout* offsetLayout = new QFormLayout(offsetGroup);
-  offsetLayout->setVerticalSpacing(6);  // ✅ ADD
+  offsetLayout->setVerticalSpacing(6);
 
   m_xOffset = new QDoubleSpinBox();
   m_xOffset->setRange(-100.0, 100.0);
@@ -89,24 +86,17 @@ void OffsetMoveDialog::setupUI()
 
   mainLayout->addWidget(presetGroup);
 
-  // Preview - more compact
+  // Preview
   QGroupBox* previewGroup = new QGroupBox("Preview");
   QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
-  previewLayout->setSpacing(4);  // ✅ ADD
+  previewLayout->setSpacing(4);
 
   m_previewLabel = new QLabel();
-  m_previewLabel->setStyleSheet(
-    "font-family: monospace; "
-    "font-size: 11px; "
-    "padding: 6px; "
-    "background-color: #1e1e1e; "  // ✅ Dark inset
-    "border: 1px solid #3f3f46; "
-    "border-radius: 4px;"
-  );
+  m_previewLabel->setStyleSheet("font-family: monospace; font-size: 11px; padding: 6px;");
   m_previewLabel->setWordWrap(true);
 
   m_resultLabel = new QLabel();
-  m_resultLabel->setStyleSheet("color: #27ae60; font-size: 10px; margin-top: 2px;");  // ✅ Keep green color
+  m_resultLabel->setStyleSheet("font-size: 10px; margin-top: 2px;");
 
   previewLayout->addWidget(m_previewLabel);
   previewLayout->addWidget(m_resultLabel);
@@ -118,8 +108,8 @@ void OffsetMoveDialog::setupUI()
   buttonLayout->addStretch();
 
   m_cancelButton = new QPushButton("Cancel");
-  m_cancelButton->setMinimumHeight(32);  // ✅ CHANGED from 36
-  m_cancelButton->setMinimumWidth(90);   // ✅ CHANGED from 100
+  m_cancelButton->setMinimumHeight(32);
+  m_cancelButton->setMinimumWidth(90);
 
   m_okButton = new QPushButton("Move");
   m_okButton->setMinimumHeight(32);
@@ -130,13 +120,6 @@ void OffsetMoveDialog::setupUI()
   buttonLayout->addWidget(m_okButton);
 
   mainLayout->addLayout(buttonLayout);
-
-  // ✅ Minimal styling - only custom overrides
-  m_okButton->setObjectName("okButton");  // ✅ Green button
-  m_okButton->setStyleSheet(
-    "QPushButton#okButton { background-color: #27ae60; }"
-    "QPushButton#okButton:hover { background-color: #2ecc71; }"
-  );
 
   // Connections
   connect(m_xOffset, QOverload<double>::of(&QDoubleSpinBox::valueChanged),

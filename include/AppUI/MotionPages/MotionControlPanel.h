@@ -7,19 +7,14 @@
 #include <QComboBox>
 #include <QGroupBox>
 #include <QVBoxLayout>
+#include <QTabWidget>
 #include <vector>
 #include <string>
 
 /**
- * @brief Left control panel for motion operations
- * - Device selection
- * - Position info display
- * - Move to saved position button
- * - Edit position values button
- * - Update saved position button
- * - Delete position button
- * - Edit waypoints button
- * - Create new position button
+ * @brief Left control panel for motion operations with tabbed interface
+ * - Actions tab: Motion control buttons
+ * - Graph tab: Nodes and Edges visualization (placeholder)
  */
 class MotionControlPanel : public QWidget
 {
@@ -56,8 +51,11 @@ signals:
 
 private:
   void setupUI();
+  void setupActionsTab();
+  void setupGraphTab();
 
   // Widgets
+  QTabWidget* m_tabWidget;
   QComboBox* m_deviceCombo;
 
   QLabel* m_posNameLabel;

@@ -1,5 +1,6 @@
 ﻿// MotionPage.cpp
 #include "MotionPage.h"
+#include "AppUI/DarkTheme.h"
 #include "NewPositionDialog.h"
 #include "WaypointEditorDialog.h"
 #include "OffsetMoveDialog.h"  // ✅ Add at top
@@ -275,15 +276,14 @@ void MotionPage::setupUI()
 	m_controlPanel->setMaximumWidth(400);
 	motionContentLayout->addWidget(m_controlPanel, 2);
 
-	// Middle Panel - Graphics View (60%)
+	// Middle Panel - Graphics View (expand to fill remaining space)
 	m_graphicsView = new MotionGraphicsView();
-	motionContentLayout->addWidget(m_graphicsView, 6);
+	motionContentLayout->addWidget(m_graphicsView, 1);
 
-	// Right Panel - Scan Control (20%)
+	// ✅ REMOVED: Right Panel - Scan Control
+	// Create scan panel but don't add to layout (keep for compatibility with existing code)
 	m_scanPanel = new ScanControlPanel();
-	m_scanPanel->setMinimumWidth(250);
-	m_scanPanel->setMaximumWidth(400);
-	motionContentLayout->addWidget(m_scanPanel, 2);
+	m_scanPanel->hide();
 
 	m_tabWidget->addTab(motionControlTab, "Motion Control");
 
@@ -416,28 +416,28 @@ void MotionPage::setupUI()
 	connect(m_graphicsView, &MotionGraphicsView::positionDeselected,
 		this, &MotionPage::onPositionDeselected);
 
-	// New scan panel connections
-	connect(m_scanPanel, &ScanControlPanel::deviceChanged,
-		this, &MotionPage::onScanDeviceChanged);
-
-	connect(m_scanPanel, &ScanControlPanel::presetChanged,
-		this, &MotionPage::onScanPresetChanged);
-
-	connect(m_scanPanel, &ScanControlPanel::startScanClicked,
-		this, &MotionPage::onStartScanClicked);
-
-	connect(m_scanPanel, &ScanControlPanel::stopScanClicked,
-		this, &MotionPage::onStopScanClicked);
-
-	connect(m_scanPanel, &ScanControlPanel::dataChannelChanged,
-		this, &MotionPage::onScanDataChannelChanged);
+	// ✅ REMOVED: Scan panel connections (scan panel is hidden)
+	// connect(m_scanPanel, &ScanControlPanel::deviceChanged,
+	// 	this, &MotionPage::onScanDeviceChanged);
+	//
+	// connect(m_scanPanel, &ScanControlPanel::presetChanged,
+	// 	this, &MotionPage::onScanPresetChanged);
+	//
+	// connect(m_scanPanel, &ScanControlPanel::startScanClicked,
+	// 	this, &MotionPage::onStartScanClicked);
+	//
+	// connect(m_scanPanel, &ScanControlPanel::stopScanClicked,
+	// 	this, &MotionPage::onStopScanClicked);
+	//
+	// connect(m_scanPanel, &ScanControlPanel::dataChannelChanged,
+	// 	this, &MotionPage::onScanDataChannelChanged);
 
 
 	setStyleSheet("QWidget { background-color: #ecf0f1; }");
 
 
-	// ✅ ADD THIS - Get initial preset value
-	m_scanPreset = m_scanPanel->getCurrentPreset();
+	// ✅ REMOVED: Scan panel preset initialization (scan panel is hidden)
+	// m_scanPreset = m_scanPanel->getCurrentPreset();
 
 
 }
@@ -494,12 +494,20 @@ void MotionPage::onLoadProductClicked()
 		}
 
 		qDebug() << "Loaded product from:" << filePath;
-		QMessageBox::information(this, "Success",
-			"Positions imported successfully from:\n" + filename);
+		QMessageBox msgBox(this);
+		msgBox.setWindowTitle("Success");
+		msgBox.setText("Positions imported successfully from:\n" + filename);
+		msgBox.setIcon(QMessageBox::Information);
+		msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+		msgBox.exec();
 	}
 	else {
-		QMessageBox::critical(this, "Error",
-			"Failed to import positions from:\n" + filePath);
+		QMessageBox msgBox(this);
+		msgBox.setWindowTitle("Error");
+		msgBox.setText("Failed to import positions from:\n" + filePath);
+		msgBox.setIcon(QMessageBox::Critical);
+		msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+		msgBox.exec();
 	}
 }
 
@@ -510,15 +518,15 @@ void MotionPage::onSaveProductClicked()
 
 	// If no product loaded, prompt for product name
 	if (!m_productManager->HasLoadedProduct()) {
-		bool ok;
-		QString productName = QInputDialog::getText(
-			this,
-			"Create New Product",
-			"Enter product name:",
-			QLineEdit::Normal,
-			"",
-			&ok
-		);
+		// ✅ Create custom QInputDialog to apply dark theme
+		QInputDialog inputDialog(this);
+		inputDialog.setWindowTitle("Create New Product");
+		inputDialog.setLabelText("Enter product name:");
+		inputDialog.setTextValue("");
+		inputDialog.setStyleSheet(DarkTheme::getStyleSheet());
+
+		bool ok = (inputDialog.exec() == QDialog::Accepted);
+		QString productName = inputDialog.textValue();
 
 		if (!ok || productName.isEmpty()) {
 			return;  // User cancelled
@@ -528,8 +536,12 @@ void MotionPage::onSaveProductClicked()
 		if (m_productManager->SaveProductAs(productName.toStdString())) {
 			QString filePath = QString::fromStdString(m_productManager->GetCurrentProductPath());
 
-			QMessageBox::information(this, "Success",
-				QString("Positions saved to: %1").arg(filePath));
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Success");
+			msgBox.setText(QString("Positions saved to: %1").arg(filePath));
+			msgBox.setIcon(QMessageBox::Information);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 
 			// Update product label
 			m_currentProductLabel->setText(
@@ -541,19 +553,31 @@ void MotionPage::onSaveProductClicked()
 			settings.setValue("Application/lastProductFile", filePath);
 		}
 		else {
-			QMessageBox::critical(this, "Error",
-				"Failed to save positions file");
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Error");
+			msgBox.setText("Failed to save positions file");
+			msgBox.setIcon(QMessageBox::Critical);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 	}
 	else {
 		// Product already loaded, just save to existing file
 		if (m_productManager->SaveProduct()) {
-			QMessageBox::information(this, "Success",
-				"Positions saved successfully");
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Success");
+			msgBox.setText("Positions saved successfully");
+			msgBox.setIcon(QMessageBox::Information);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 		else {
-			QMessageBox::critical(this, "Error",
-				"Failed to save positions file");
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Error");
+			msgBox.setText("Failed to save positions file");
+			msgBox.setIcon(QMessageBox::Critical);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 	}
 }
@@ -583,28 +607,29 @@ void MotionPage::loadDevices()
 	// Populate device button stack (primary selector)
 	m_deviceButtonStack->setDevices(devices);
 
-	// Also populate control panel and scan panel
+	// Also populate control panel
 	m_controlPanel->setDevices(devices);
-	m_scanPanel->setDevices(devices);
 
-	// ✅ NEW - Populate data channels from DataStore
-	if (m_dataStore) {
-		auto channels = m_dataStore->GetAllKeys();
-		QStringList channelList;
-		for (const auto& channel : channels) {
-			channelList << QString::fromStdString(channel);
-		}
-		m_scanPanel->setDataChannels(channelList);
-
-		if (!channelList.isEmpty()) {
-			m_scanDataChannel = channelList.first();  // Set default
-		}
-	}
+	// ✅ REMOVED: Scan panel device/channel initialization (scan panel is hidden)
+	// m_scanPanel->setDevices(devices);
+	//
+	// if (m_dataStore) {
+	// 	auto channels = m_dataStore->GetAllKeys();
+	// 	QStringList channelList;
+	// 	for (const auto& channel : channels) {
+	// 		channelList << QString::fromStdString(channel);
+	// 	}
+	// 	m_scanPanel->setDataChannels(channelList);
+	//
+	// 	if (!channelList.isEmpty()) {
+	// 		m_scanDataChannel = channelList.first();
+	// 	}
+	// }
 
 	if (!devices.isEmpty()) {
 		m_currentDevice = devices.first();
-		m_scanDevice = devices.first();
-		m_scanPreset = "Coarse";  // Initialize default preset
+		// m_scanDevice = devices.first();  // ✅ REMOVED: Scan device initialization
+		// m_scanPreset = "Coarse";  // ✅ REMOVED: Scan preset initialization
 		refreshPositionDisplay();
 	}
 }
@@ -733,6 +758,7 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 
 	refreshPositionDisplay();
 	m_controlPanel->clearSelectedPosition();
+	m_deviceButtonStack->clearSelectedPosition();
 	m_selectedPositionName.clear();
 
 	// ✅ NEW: Set device name and restore its saved view state
@@ -790,10 +816,10 @@ void MotionPage::onUpdatePositionClicked()
 		return;
 	}
 
-	QMessageBox::StandardButton reply = QMessageBox::question(
-		this,
-		"Update Position",
-		QString("Update saved position '%1' with current device position?\n\n"
+	// ✅ Create custom QMessageBox to apply dark theme
+	QMessageBox msgBox(this);
+	msgBox.setWindowTitle("Update Position");
+	msgBox.setText(QString("Update saved position '%1' with current device position?\n\n"
 			"Current: X=%2, Y=%3, Z=%4\n"
 			"         U=%5, V=%6, W=%7")
 		.arg(m_selectedPositionName)
@@ -802,9 +828,12 @@ void MotionPage::onUpdatePositionClicked()
 		.arg(z, 0, 'f', 3)
 		.arg(u, 0, 'f', 3)
 		.arg(v, 0, 'f', 3)
-		.arg(w, 0, 'f', 3),
-		QMessageBox::Yes | QMessageBox::No
-	);
+		.arg(w, 0, 'f', 3));
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+
+	QMessageBox::StandardButton reply = static_cast<QMessageBox::StandardButton>(msgBox.exec());
 
 	if (reply == QMessageBox::Yes) {
 		PositionStruct existingPos;
@@ -831,20 +860,32 @@ void MotionPage::onUpdatePositionClicked()
 		// If product is already loaded, save to existing file
 		if (m_productManager->HasLoadedProduct()) {
 			if (m_productManager->SaveProduct()) {
-				QMessageBox::information(this, "Success",
-					"Position updated and saved successfully!");
+				QMessageBox msgBox(this);
+				msgBox.setWindowTitle("Success");
+				msgBox.setText("Position updated and saved successfully!");
+				msgBox.setIcon(QMessageBox::Information);
+				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+				msgBox.exec();
 			}
 			else {
-				QMessageBox::warning(this, "Position Updated",
-					"Position updated but failed to auto-save.\n"
+				QMessageBox msgBox(this);
+				msgBox.setWindowTitle("Position Updated");
+				msgBox.setText("Position updated but failed to auto-save.\n"
 					"Please use 'Save Positions' button manually.");
+				msgBox.setIcon(QMessageBox::Warning);
+				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+				msgBox.exec();
 			}
 		}
 		else {
 			// No product loaded - show success but remind to save
-			QMessageBox::information(this, "Position Updated",
-				"Position updated successfully!\n\n"
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Position Updated");
+			msgBox.setText("Position updated successfully!\n\n"
 				"Click 'Save Positions' to save to a file.");
+			msgBox.setIcon(QMessageBox::Information);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 
 		refreshPositionDisplay();
@@ -866,9 +907,13 @@ void MotionPage::onCreatePositionClicked()
 		QString name = dialog.getPositionName();
 
 		if (m_currentPositions.contains(name)) {
-			QMessageBox::warning(this, "Position Exists",
-				QString("Position '%1' already exists. "
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Position Exists");
+			msgBox.setText(QString("Position '%1' already exists. "
 					"Please use a different name.").arg(name));
+			msgBox.setIcon(QMessageBox::Warning);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 			return;
 		}
 
@@ -890,20 +935,32 @@ void MotionPage::onCreatePositionClicked()
 		// If product is already loaded, save to existing file
 		if (m_productManager->HasLoadedProduct()) {
 			if (m_productManager->SaveProduct()) {
-				QMessageBox::information(this, "Success",
-					QString("Position '%1' created and saved successfully!").arg(name));
+				QMessageBox msgBox(this);
+				msgBox.setWindowTitle("Success");
+				msgBox.setText(QString("Position '%1' created and saved successfully!").arg(name));
+				msgBox.setIcon(QMessageBox::Information);
+				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+				msgBox.exec();
 			}
 			else {
-				QMessageBox::warning(this, "Position Created",
-					QString("Position '%1' created but failed to auto-save.\n"
+				QMessageBox msgBox(this);
+				msgBox.setWindowTitle("Position Created");
+				msgBox.setText(QString("Position '%1' created but failed to auto-save.\n"
 						"Please use 'Save Positions' button manually.").arg(name));
+				msgBox.setIcon(QMessageBox::Warning);
+				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+				msgBox.exec();
 			}
 		}
 		else {
 			// No product loaded - show success but remind to save
-			QMessageBox::information(this, "Position Created",
-				QString("Position '%1' created successfully!\n\n"
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Position Created");
+			msgBox.setText(QString("Position '%1' created successfully!\n\n"
 					"Click 'Save Positions' to save to a file.").arg(name));
+			msgBox.setIcon(QMessageBox::Information);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 
 		refreshPositionDisplay();
@@ -918,14 +975,17 @@ void MotionPage::onDeletePositionClicked()
 		return;
 	}
 
-	QMessageBox::StandardButton reply = QMessageBox::question(
-		this,
-		"Delete Position",
-		QString("Are you sure you want to delete position '%1'?\n\n"
+	// ✅ Create custom QMessageBox to apply dark theme
+	QMessageBox msgBox(this);
+	msgBox.setWindowTitle("Delete Position");
+	msgBox.setText(QString("Are you sure you want to delete position '%1'?\n\n"
 			"This will automatically save the product.")
-		.arg(m_selectedPositionName),
-		QMessageBox::Yes | QMessageBox::No
-	);
+		.arg(m_selectedPositionName));
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+
+	QMessageBox::StandardButton reply = static_cast<QMessageBox::StandardButton>(msgBox.exec());
 
 	if (reply == QMessageBox::Yes) {
 		if (m_motionManager->RemoveNamedPosition(m_currentDevice.toStdString(),
@@ -940,23 +1000,40 @@ void MotionPage::onDeletePositionClicked()
 				m_productManager->ImportFromMotionManager(*m_motionManager);
 
 				if (m_productManager->SaveProduct()) {
-					QMessageBox::information(this, "Success",
-						"Position deleted and product saved successfully!");
+					QMessageBox msgBox(this);
+					msgBox.setWindowTitle("Success");
+					msgBox.setText("Position deleted and product saved successfully!");
+					msgBox.setIcon(QMessageBox::Information);
+					msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+					msgBox.exec();
 				}
 				else {
-					QMessageBox::warning(this, "Partial Success",
-						"Position deleted but failed to save product file.\n"
+					QMessageBox msgBox(this);
+					msgBox.setWindowTitle("Partial Success");
+					msgBox.setText("Position deleted but failed to save product file.\n"
 						"Please save manually.");
+					msgBox.setIcon(QMessageBox::Warning);
+					msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+					msgBox.exec();
 				}
 			}
 			else {
-				QMessageBox::information(this, "Success",
-					"Position deleted successfully!\n\n"
+				QMessageBox msgBox(this);
+				msgBox.setWindowTitle("Success");
+				msgBox.setText("Position deleted successfully!\n\n"
 					"No product loaded - remember to save when ready.");
+				msgBox.setIcon(QMessageBox::Information);
+				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+				msgBox.exec();
 			}
 		}
 		else {
-			QMessageBox::critical(this, "Error", "Failed to delete position.");
+			QMessageBox msgBox(this);
+			msgBox.setWindowTitle("Error");
+			msgBox.setText("Failed to delete position.");
+			msgBox.setIcon(QMessageBox::Critical);
+			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+			msgBox.exec();
 		}
 	}
 }
@@ -967,12 +1044,15 @@ void MotionPage::onHomeClicked()
 		return;
 	}
 
-	QMessageBox::StandardButton reply = QMessageBox::question(
-		this,
-		"Home Device",
-		QString("Send device '%1' to home position?").arg(m_currentDevice),
-		QMessageBox::Yes | QMessageBox::No
-	);
+	// ✅ Create custom QMessageBox to apply dark theme
+	QMessageBox msgBox(this);
+	msgBox.setWindowTitle("Home Device");
+	msgBox.setText(QString("Send device '%1' to home position?").arg(m_currentDevice));
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+
+	QMessageBox::StandardButton reply = static_cast<QMessageBox::StandardButton>(msgBox.exec());
 
 	if (reply == QMessageBox::Yes) {
 		bool success = m_motionManager->MoveToNamedPosition(
@@ -1035,7 +1115,13 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 			}
 		}
 
+		// Update both control panel and device button stack with position info
 		m_controlPanel->setSelectedPosition(name,
+			pos[0], pos[1], pos[2],
+			pos[3], pos[4], pos[5],
+			entryWaypoints);
+
+		m_deviceButtonStack->setSelectedPosition(name,
 			pos[0], pos[1], pos[2],
 			pos[3], pos[4], pos[5],
 			entryWaypoints);
@@ -1050,6 +1136,7 @@ void MotionPage::onPositionDeselected()
 {
 	m_selectedPositionName.clear();
 	m_controlPanel->clearSelectedPosition();
+	m_deviceButtonStack->clearSelectedPosition();
 	m_graphicsView->hidePathPreview();
 }
 
@@ -1544,24 +1631,26 @@ void MotionPage::onScanCompleted(const ScanResults& results)
 
 	QMessageBox::information(this, "Scan Complete", message);
 
-	// Ask if user wants to save peak as position
-	QMessageBox::StandardButton reply = QMessageBox::question(
-		this,
-		"Save Peak Position",
-		"Would you like to save the peak position as a named position?",
-		QMessageBox::Yes | QMessageBox::No
-	);
+	// ✅ Create custom QMessageBox to apply dark theme
+	QMessageBox msgBox(this);
+	msgBox.setWindowTitle("Save Peak Position");
+	msgBox.setText("Would you like to save the peak position as a named position?");
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+
+	QMessageBox::StandardButton reply = static_cast<QMessageBox::StandardButton>(msgBox.exec());
 
 	if (reply == QMessageBox::Yes) {
-		bool ok;
-		QString name = QInputDialog::getText(
-			this,
-			"Save Peak Position",
-			"Enter position name:",
-			QLineEdit::Normal,
-			QString("peak_%1").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")),
-			&ok
-		);
+		// ✅ Create custom QInputDialog to apply dark theme
+		QInputDialog inputDialog(this);
+		inputDialog.setWindowTitle("Save Peak Position");
+		inputDialog.setLabelText("Enter position name:");
+		inputDialog.setTextValue(QString("peak_%1").arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")));
+		inputDialog.setStyleSheet(DarkTheme::getStyleSheet());
+
+		bool ok = (inputDialog.exec() == QDialog::Accepted);
+		QString name = inputDialog.textValue();
 
 		if (ok && !name.isEmpty()) {
 			PositionStruct pos;

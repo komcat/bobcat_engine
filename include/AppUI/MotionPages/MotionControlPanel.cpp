@@ -38,33 +38,12 @@ void MotionControlPanel::setupUI()
 
   // === Device Selection ===
   // ✅ HIDDEN - Device selection now handled by DeviceButtonStack on far left
-  QLabel* deviceLabel = new QLabel("Device");
-  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
-  deviceLabel->setVisible(false);  // Hide label
-  mainLayout->addWidget(deviceLabel);
-
   m_deviceCombo = new QComboBox();
   m_deviceCombo->setMinimumHeight(28);
   m_deviceCombo->setVisible(false);  // Hide combo box
-  mainLayout->addWidget(m_deviceCombo);
 
-  // Separator
-  QFrame* line1 = new QFrame();
-  line1->setFrameShape(QFrame::HLine);
-  line1->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  mainLayout->addWidget(line1);
-
-  // === Selected Position ===
-  QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 11px; font-weight: bold; }");
-  mainLayout->addWidget(posLabel);
-
-  // Compact info widget
-  QWidget* posWidget = new QWidget();
-  posWidget->setStyleSheet("QWidget { background-color: #1e1e1e; border: 1px solid #3f3f46; border-radius: 4px; }");
-  QVBoxLayout* posLayout = new QVBoxLayout(posWidget);
-  posLayout->setContentsMargins(8, 8, 8, 8);  // ✅ Increased padding
-  posLayout->setSpacing(4);  // ✅ Increased spacing
+  // ✅ REMOVED: Selected Position section - now shown in DeviceButtonStack (far left panel)
+  // The position info widgets are still created but hidden, so existing code that updates them won't break
 
   m_posNameLabel = new QLabel("-");
   m_posXLabel = new QLabel("X: -");
@@ -74,103 +53,52 @@ void MotionControlPanel::setupUI()
   m_posVLabel = new QLabel("V: -");
   m_posWLabel = new QLabel("W: -");
   m_waypointsLabel = new QLabel("Waypoints: -");
-  m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 11px; font-weight: bold; }");  // ✅ Increased font
 
-  QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
-                           m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
-                           m_waypointsLabel };
-  for (auto* label : labels) {
-    if (label != m_waypointsLabel) {
-      // ✅ Increased font size from 9px to 12px
-      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; }");
-    }
-    posLayout->addWidget(label);
-  }
+  // Hide all position labels (not added to layout)
+  m_posNameLabel->hide();
+  m_posXLabel->hide();
+  m_posYLabel->hide();
+  m_posZLabel->hide();
+  m_posULabel->hide();
+  m_posVLabel->hide();
+  m_posWLabel->hide();
+  m_waypointsLabel->hide();
 
-  mainLayout->addWidget(posWidget);
+  // === Tab Widget ===
+  m_tabWidget = new QTabWidget();
+  m_tabWidget->setStyleSheet(
+    "QTabWidget::pane {"
+    "  border: 1px solid #3f3f46;"
+    "  background-color: #2d2d30;"
+    "}"
+    "QTabBar::tab {"
+    "  background-color: #1e1e1e;"
+    "  color: #888888;"
+    "  padding: 8px 16px;"
+    "  margin-right: 2px;"
+    "  border: none;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  border-top-left-radius: 3px;"
+    "  border-top-right-radius: 3px;"
+    "  border-bottom: 3px solid transparent;"
+    "}"
+    "QTabBar::tab:selected {"
+    "  background-color: #0e639c;"
+    "  color: #ffffff;"
+    "  font-weight: bold;"
+    "  border-bottom: 3px solid #0e639c;"
+    "}"
+    "QTabBar::tab:hover:!selected {"
+    "  background-color: #2a2d2e;"
+    "  color: #d4d4d4;"
+    "}"
+  );
 
-  // Separator
-  QFrame* line2 = new QFrame();
-  line2->setFrameShape(QFrame::HLine);
-  line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  mainLayout->addWidget(line2);
+  setupActionsTab();
+  setupGraphTab();
 
-  // === Actions ===
-  QLabel* actionsLabel = new QLabel("Actions");
-  actionsLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
-  mainLayout->addWidget(actionsLabel);
-
-  // Move to Position
-  m_moveToButton = new QPushButton("→ Move to Position");
-  m_moveToButton->setMinimumHeight(30);
-  m_moveToButton->setEnabled(false);
-  mainLayout->addWidget(m_moveToButton);
-
-  // Move with Offset
-  m_moveOffsetButton = new QPushButton("⇄ Move with Offset");
-  m_moveOffsetButton->setMinimumHeight(30);
-  m_moveOffsetButton->setEnabled(false);
-  mainLayout->addWidget(m_moveOffsetButton);
-
-  // Edit Position - NEW
-  m_editPosButton = new QPushButton("✎ Edit Position");
-  m_editPosButton->setMinimumHeight(28);
-  m_editPosButton->setEnabled(false);
-  mainLayout->addWidget(m_editPosButton);
-
-  // Update Position
-  m_updatePosButton = new QPushButton("↻ Update Position");
-  m_updatePosButton->setMinimumHeight(28);
-  m_updatePosButton->setEnabled(false);
-  mainLayout->addWidget(m_updatePosButton);
-
-  // Edit Waypoints
-  m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
-  m_editWaypointsBtn->setMinimumHeight(28);
-  m_editWaypointsBtn->setEnabled(false);
-  mainLayout->addWidget(m_editWaypointsBtn);
-
-  // Delete Position
-  m_deletePosButton = new QPushButton("✕ Delete Position");
-  m_deletePosButton->setMinimumHeight(28);
-  m_deletePosButton->setEnabled(false);
-  mainLayout->addWidget(m_deletePosButton);
-
-  // Create New Position
-  m_createPosButton = new QPushButton("+ Create Position");
-  m_createPosButton->setMinimumHeight(28);
-  mainLayout->addWidget(m_createPosButton);
-
-  // Separator
-  QFrame* line3 = new QFrame();
-  line3->setFrameShape(QFrame::HLine);
-  line3->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  mainLayout->addWidget(line3);
-
-  // ✅ NEW: Auto Fit View Button
-  m_autoFitButton = new QPushButton("⊡ Auto Fit View");
-  m_autoFitButton->setMinimumHeight(28);
-  mainLayout->addWidget(m_autoFitButton);
-
-  // Separator
-  QFrame* line4 = new QFrame();
-  line4->setFrameShape(QFrame::HLine);
-  line4->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  mainLayout->addWidget(line4);
-
-  // Home Button
-  m_homeButton = new QPushButton("⌂ Home");
-  m_homeButton->setMinimumHeight(28);
-  mainLayout->addWidget(m_homeButton);
-
-  // Emergency Stop
-  m_stopButton = new QPushButton("⚠ STOP");
-  m_stopButton->setMinimumHeight(28);
-  mainLayout->addWidget(m_stopButton);
-
-  // Push everything to top
-  mainLayout->addStretch();
+  mainLayout->addWidget(m_tabWidget);
 
   // === Dark Theme Styling ===
   setStyleSheet(
@@ -215,7 +143,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #229954;"
     "  border-radius: 3px;"
-    "  font-size: 12px;"  // ✅ Increased from 10px to 12px
+    "  font-size: 12px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveToButton:hover {"
@@ -232,7 +160,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #e67e22;"
     "  border-radius: 3px;"
-    "  font-size: 12px;"  // ✅ Increased from 10px to 12px
+    "  font-size: 12px;"
     "  font-weight: bold;"
     "}"
     "QPushButton#moveOffsetButton:hover {"
@@ -249,7 +177,7 @@ void MotionControlPanel::setupUI()
     "  color: white;"
     "  border: 1px solid #0c5280;"
     "  border-radius: 3px;"
-    "  font-size: 11px;"  // ✅ Increased from 9px to 11px
+    "  font-size: 11px;"
     "  font-weight: 600;"
     "}"
     "QPushButton:hover {"
@@ -286,49 +214,11 @@ void MotionControlPanel::setupUI()
     "}"
   );
 
-  // Set object names for specific styling
-  m_moveToButton->setObjectName("moveToButton");
-  m_moveOffsetButton->setObjectName("moveOffsetButton");
-  m_deletePosButton->setObjectName("deletePosButton");
-  m_stopButton->setObjectName("stopButton");
-
-  // === Connect Signals ===
+  // === Connect Device Combo Signal ===
   connect(m_deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, [this]() {
     emit deviceChanged(m_deviceCombo->currentText());
   });
-
-  connect(m_moveToButton, &QPushButton::clicked,
-    this, &MotionControlPanel::moveToPositionClicked);
-
-  connect(m_moveOffsetButton, &QPushButton::clicked,
-    this, &MotionControlPanel::moveWithOffsetClicked);
-
-  // NEW - Edit Position
-  connect(m_editPosButton, &QPushButton::clicked,
-    this, &MotionControlPanel::editPositionClicked);
-
-  connect(m_updatePosButton, &QPushButton::clicked,
-    this, &MotionControlPanel::updatePositionClicked);
-
-  connect(m_editWaypointsBtn, &QPushButton::clicked,
-    this, &MotionControlPanel::editWaypointsClicked);
-
-  connect(m_deletePosButton, &QPushButton::clicked,
-    this, &MotionControlPanel::deletePositionClicked);
-
-  connect(m_createPosButton, &QPushButton::clicked,
-    this, &MotionControlPanel::createPositionClicked);
-
-  // ✅ NEW - Auto Fit View
-  connect(m_autoFitButton, &QPushButton::clicked,
-    this, &MotionControlPanel::autoFitClicked);
-
-  connect(m_homeButton, &QPushButton::clicked,
-    this, &MotionControlPanel::homeClicked);
-
-  connect(m_stopButton, &QPushButton::clicked,
-    this, &MotionControlPanel::stopClicked);
 }
 
 void MotionControlPanel::setDevices(const QStringList& devices)
@@ -394,6 +284,184 @@ void MotionControlPanel::clearSelectedPosition()
   m_updatePosButton->setEnabled(false);
   m_editWaypointsBtn->setEnabled(false);
   m_deletePosButton->setEnabled(false);
+}
+
+void MotionControlPanel::setupActionsTab()
+{
+  QWidget* actionsTab = new QWidget();
+  QVBoxLayout* actionsLayout = new QVBoxLayout(actionsTab);
+  actionsLayout->setContentsMargins(6, 6, 6, 6);
+  actionsLayout->setSpacing(6);
+
+  // Move to Position
+  m_moveToButton = new QPushButton("→ Move to Position");
+  m_moveToButton->setObjectName("moveToButton");  // For green styling
+  m_moveToButton->setMinimumHeight(30);
+  m_moveToButton->setEnabled(false);
+  actionsLayout->addWidget(m_moveToButton);
+
+  // Move with Offset
+  m_moveOffsetButton = new QPushButton("⇄ Move with Offset");
+  m_moveOffsetButton->setObjectName("moveOffsetButton");  // For orange styling
+  m_moveOffsetButton->setMinimumHeight(30);
+  m_moveOffsetButton->setEnabled(false);
+  actionsLayout->addWidget(m_moveOffsetButton);
+
+  // Edit Position
+  m_editPosButton = new QPushButton("✎ Edit Position");
+  m_editPosButton->setMinimumHeight(28);
+  m_editPosButton->setEnabled(false);
+  actionsLayout->addWidget(m_editPosButton);
+
+  // Update Position
+  m_updatePosButton = new QPushButton("↻ Update Position");
+  m_updatePosButton->setMinimumHeight(28);
+  m_updatePosButton->setEnabled(false);
+  actionsLayout->addWidget(m_updatePosButton);
+
+  // Edit Waypoints
+  m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
+  m_editWaypointsBtn->setMinimumHeight(28);
+  m_editWaypointsBtn->setEnabled(false);
+  actionsLayout->addWidget(m_editWaypointsBtn);
+
+  // Delete Position
+  m_deletePosButton = new QPushButton("✕ Delete Position");
+  m_deletePosButton->setObjectName("deletePosButton");  // For red styling
+  m_deletePosButton->setMinimumHeight(28);
+  m_deletePosButton->setEnabled(false);
+  actionsLayout->addWidget(m_deletePosButton);
+
+  // Create New Position
+  m_createPosButton = new QPushButton("+ Create Position");
+  m_createPosButton->setMinimumHeight(28);
+  actionsLayout->addWidget(m_createPosButton);
+
+  // Separator
+  QFrame* line1 = new QFrame();
+  line1->setFrameShape(QFrame::HLine);
+  line1->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+  actionsLayout->addWidget(line1);
+
+  // Auto Fit View Button
+  m_autoFitButton = new QPushButton("⊡ Auto Fit View");
+  m_autoFitButton->setMinimumHeight(28);
+  actionsLayout->addWidget(m_autoFitButton);
+
+  // Separator
+  QFrame* line2 = new QFrame();
+  line2->setFrameShape(QFrame::HLine);
+  line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+  actionsLayout->addWidget(line2);
+
+  // Home Button
+  m_homeButton = new QPushButton("⌂ Home");
+  m_homeButton->setMinimumHeight(28);
+  actionsLayout->addWidget(m_homeButton);
+
+  // Emergency Stop
+  m_stopButton = new QPushButton("⚠ STOP");
+  m_stopButton->setObjectName("stopButton");  // For dark red styling
+  m_stopButton->setMinimumHeight(28);
+  actionsLayout->addWidget(m_stopButton);
+
+  // Push everything to top
+  actionsLayout->addStretch();
+
+  m_tabWidget->addTab(actionsTab, "Actions");
+
+  // Connect signals
+  connect(m_moveToButton, &QPushButton::clicked,
+    this, &MotionControlPanel::moveToPositionClicked);
+
+  connect(m_moveOffsetButton, &QPushButton::clicked,
+    this, &MotionControlPanel::moveWithOffsetClicked);
+
+  connect(m_editPosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::editPositionClicked);
+
+  connect(m_updatePosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::updatePositionClicked);
+
+  connect(m_editWaypointsBtn, &QPushButton::clicked,
+    this, &MotionControlPanel::editWaypointsClicked);
+
+  connect(m_deletePosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::deletePositionClicked);
+
+  connect(m_createPosButton, &QPushButton::clicked,
+    this, &MotionControlPanel::createPositionClicked);
+
+  connect(m_autoFitButton, &QPushButton::clicked,
+    this, &MotionControlPanel::autoFitClicked);
+
+  connect(m_homeButton, &QPushButton::clicked,
+    this, &MotionControlPanel::homeClicked);
+
+  connect(m_stopButton, &QPushButton::clicked,
+    this, &MotionControlPanel::stopClicked);
+}
+
+void MotionControlPanel::setupGraphTab()
+{
+  QWidget* graphTab = new QWidget();
+  QVBoxLayout* graphLayout = new QVBoxLayout(graphTab);
+  graphLayout->setContentsMargins(0, 0, 0, 0);
+  graphLayout->setSpacing(0);
+
+  // Sub-tabs for Nodes and Edges
+  QTabWidget* graphSubTabs = new QTabWidget();
+  graphSubTabs->setStyleSheet(
+    "QTabWidget::pane {"
+    "  border: 1px solid #3f3f46;"
+    "  background-color: #2d2d30;"
+    "}"
+    "QTabBar::tab {"
+    "  background-color: #1e1e1e;"
+    "  color: #888888;"
+    "  padding: 6px 12px;"
+    "  margin-right: 2px;"
+    "  border: none;"
+    "  font-size: 11px;"
+    "  font-weight: bold;"
+    "  border-top-left-radius: 3px;"
+    "  border-top-right-radius: 3px;"
+    "}"
+    "QTabBar::tab:selected {"
+    "  background-color: #0e639c;"
+    "  color: #ffffff;"
+    "  font-weight: bold;"
+    "}"
+    "QTabBar::tab:hover:!selected {"
+    "  background-color: #2a2d2e;"
+    "  color: #d4d4d4;"
+    "}"
+  );
+
+  // Nodes tab (placeholder)
+  QWidget* nodesTab = new QWidget();
+  QVBoxLayout* nodesLayout = new QVBoxLayout(nodesTab);
+  nodesLayout->setContentsMargins(10, 10, 10, 10);
+  QLabel* nodesPlaceholder = new QLabel("Nodes (Placeholder)");
+  nodesPlaceholder->setStyleSheet("QLabel { color: #888888; font-size: 11px; }");
+  nodesLayout->addWidget(nodesPlaceholder);
+  nodesLayout->addStretch();
+
+  // Edges tab (placeholder)
+  QWidget* edgesTab = new QWidget();
+  QVBoxLayout* edgesLayout = new QVBoxLayout(edgesTab);
+  edgesLayout->setContentsMargins(10, 10, 10, 10);
+  QLabel* edgesPlaceholder = new QLabel("Edges (Placeholder)");
+  edgesPlaceholder->setStyleSheet("QLabel { color: #888888; font-size: 11px; }");
+  edgesLayout->addWidget(edgesPlaceholder);
+  edgesLayout->addStretch();
+
+  graphSubTabs->addTab(nodesTab, "Nodes");
+  graphSubTabs->addTab(edgesTab, "Edges");
+
+  graphLayout->addWidget(graphSubTabs);
+
+  m_tabWidget->addTab(graphTab, "Graph");
 }
 
 QString MotionControlPanel::getCurrentDevice() const

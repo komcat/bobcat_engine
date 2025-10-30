@@ -288,6 +288,7 @@ QTreeWidget::item:hover {
    ============================================ */
 QTableWidget, QTableView {
     background-color: #3c3c3c;
+    alternate-background-color: #454545;
     color: #ffffff;
     gridline-color: #555555;
     border: 1px solid #555555;
@@ -318,6 +319,7 @@ QHeaderView::section {
    GROUP BOXES
    ============================================ */
 QGroupBox {
+    background-color: #2d2d30;
     color: #ffffff;
     border: 1px solid #555555;
     border-radius: 4px;
