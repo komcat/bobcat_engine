@@ -43,6 +43,7 @@ public:
   // Camera selection
   void setCamera(const std::string& cameraId);
   std::string getCurrentCamera() const;
+  void selectFirstCameraDelayed();  // ✅ ADD: Public method to trigger delayed selection
 
   // Click-to-move settings
   void setPixelToMmFactorX(double factor);
@@ -67,6 +68,7 @@ protected:
   void mouseMoveEvent(QMouseEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
   void leaveEvent(QEvent* event) override;
+  void showEvent(QShowEvent* event) override;  // ✅ ADD: Delayed camera initialization
 
 private:
   void setupUI();
@@ -110,6 +112,9 @@ private:
   // Calibration factors (stored in QSettings)
   double m_pixelToMmFactorX;
   double m_pixelToMmFactorY;
+
+  // ✅ ADD: Track initial camera selection
+  bool m_initialCameraSelected;
 
   // Settings keys
   static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_X = "CameraClickToMove/PixelToMmFactorX";

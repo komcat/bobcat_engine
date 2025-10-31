@@ -196,7 +196,7 @@ void Application::initializeManagers()
     initializeSequenceEngine();  // ✅ ADD THIS LAST (needs all managers initialized)
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
-    initializeAuxWindowManager();  // ✅ ADD THIS LINE
+    // ✅ REMOVED: initializeAuxWindowManager() - moved to AFTER main window creation
     initializeCoordinateSystemManager();
 
     // Optional: run test commands to verify managers
@@ -647,6 +647,11 @@ void Application::createMainWindow()
   m_mainWindow->show();
 
   std::cout << "[Application] Main window created" << std::endl;
+
+  // ✅ MOVED HERE: Initialize AuxWindow AFTER main window is shown
+  std::cout << "[Application] Main window shown, now initializing AuxWindow..." << std::endl;
+  initializeAuxWindowManager();
+  std::cout << "[Application] AuxWindow initialization complete" << std::endl;
 
   if (m_logManager) {
     m_logManager->Info("Main window created", "Application");

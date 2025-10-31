@@ -1,6 +1,7 @@
 ﻿// LiveViewCameraWidget.cpp
 #include "LiveViewCameraWidget.h"
 #include "CameraManager.h"
+#include "ICameraHardware.h"  // ✅ ADD: For IsGrabbing() check
 #include "CameraImageWidget.h"
 #include "LiveVideoSubscriber.h"
 #include <QTimer>
@@ -202,6 +203,13 @@ void LiveViewCameraWidget::setCamera(const std::string& cameraId)
 void LiveViewCameraWidget::subscribeToCameraFeed(const std::string& cameraId)
 {
   if (!m_cameraManager || cameraId.empty()) return;
+
+  // ✅ FIX: Only start grabbing if not already running (avoid unnecessary camera restart)
+  ICameraHardware* camera = m_cameraManager->GetCameraHardware(cameraId);
+  if (camera && !camera->IsGrabbing()) {
+    std::cout << "[LiveViewCameraWidget] Camera not grabbing - starting now..." << std::endl;
+    m_cameraManager->StartGrabbing(cameraId);
+  }
 
   // Create a shared_ptr LiveVideoSubscriber (callback-based, not QObject)
   m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId);

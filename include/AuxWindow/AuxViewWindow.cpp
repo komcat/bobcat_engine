@@ -111,3 +111,14 @@ void AuxViewWindow::closeEvent(QCloseEvent* event)
   hide();
   std::cout << "[AuxViewWindow] Close prevented - window hidden instead" << std::endl;
 }
+
+void AuxViewWindow::initializeCameraSelection()
+{
+  // ✅ FIX: Trigger delayed camera selection after window is fully shown and initialized
+  if (m_cameraClickToMoveWidget) {
+    std::cout << "[AuxViewWindow] Triggering delayed camera selection..." << std::endl;
+    m_cameraClickToMoveWidget->selectFirstCameraDelayed();
+  } else {
+    std::cout << "[AuxViewWindow] ERROR: CameraClickToMoveWidget is null!" << std::endl;
+  }
+}

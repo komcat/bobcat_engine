@@ -37,6 +37,9 @@ public:
                           QWidget* parent = nullptr);
   ~AuxViewWindow();
 
+  // ✅ ADD: Trigger delayed camera selection after window is fully initialized
+  void initializeCameraSelection();
+
 protected:
   // Override close event to prevent closing (hide instead)
   void closeEvent(QCloseEvent* event) override;

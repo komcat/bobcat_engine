@@ -1,6 +1,7 @@
 // CameraClickToMoveWidget.cpp
 #include "CameraClickToMoveWidget.h"
 #include "CameraManager.h"
+#include "ICameraHardware.h"  // ✅ ADD: For IsGrabbing() check
 #include "LiveVideoSubscriber.h"
 #include "unified_motion_manager.h"
 #include "CameraFrameData.h"
@@ -8,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QShowEvent>  // ✅ ADD: For showEvent()
 #include <iostream>
 
 CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
@@ -23,6 +25,7 @@ CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
   , m_mouseOverImage(false)
   , m_pixelToMmFactorX(0.00248)
   , m_pixelToMmFactorY(0.00248)
+  , m_initialCameraSelected(false)  // ✅ ADD: Initialize flag
 {
   // Load saved settings
   loadSettingsFromQSettings();
@@ -39,8 +42,25 @@ CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
   connect(m_refreshTimer, &QTimer::timeout, this, &CameraClickToMoveWidget::onRefreshCameras);
   m_refreshTimer->start(5000);
 
-  // Initial camera list
-  refreshCameraList();
+  // ✅ CHANGED: Populate camera list but DON'T auto-select yet
+  // Camera will be selected in showEvent() after UI is fully rendered
+  if (m_cameraManager) {
+    m_cameraSelector->blockSignals(true);
+    auto cameraIds = m_cameraManager->GetCameraIds();
+
+    if (cameraIds.empty()) {
+      m_cameraSelector->addItem("No cameras available", QVariant(QString("")));
+    } else {
+      for (const auto& cameraId : cameraIds) {
+        m_cameraSelector->addItem(QString::fromStdString(cameraId), QVariant(QString::fromStdString(cameraId)));
+      }
+      // ✅ FIX: Set to no selection (-1) so delayed selection will properly trigger signal
+      m_cameraSelector->setCurrentIndex(-1);
+      std::cout << "[CameraClickToMoveWidget] Populated " << cameraIds.size() << " cameras (no selection, delayed)" << std::endl;
+    }
+
+    m_cameraSelector->blockSignals(false);
+  }
 
   // Enable mouse tracking for hover crosshair
   setMouseTracking(true);
@@ -290,6 +310,13 @@ void CameraClickToMoveWidget::subscribeToCameraFeed(const std::string& cameraId)
 {
   if (!m_cameraManager || cameraId.empty()) return;
 
+  // ✅ FIX: Only start grabbing if not already running (avoid unnecessary camera restart)
+  ICameraHardware* camera = m_cameraManager->GetCameraHardware(cameraId);
+  if (camera && !camera->IsGrabbing()) {
+    std::cout << "[CameraClickToMoveWidget] Camera not grabbing - starting now..." << std::endl;
+    m_cameraManager->StartGrabbing(cameraId);
+  }
+
   m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId);
   m_subscriber->InitializeStatusFromManager(m_cameraManager);
   m_cameraManager->SubscribeToFrames(m_subscriber);
@@ -348,18 +375,22 @@ void CameraClickToMoveWidget::refreshCameraList()
   if (currentIndex >= 0) {
     m_cameraSelector->setCurrentIndex(currentIndex);
   }
-  else if (m_cameraSelector->count() > 0) {
+  else if (m_cameraSelector->count() > 0 && m_initialCameraSelected) {
+    // ✅ CHANGED: Only auto-select if initial selection already happened
     m_cameraSelector->setCurrentIndex(0);
   }
 
   m_cameraSelector->blockSignals(false);
 
-  std::string newCamera = getCurrentCamera();
-  if (newCamera != currentCamera && !newCamera.empty()) {
-    setCamera(newCamera);
-  }
-  else if (currentCamera.empty() && !newCamera.empty()) {
-    setCamera(newCamera);
+  // ✅ CHANGED: Only trigger camera change if we've already done initial selection
+  if (m_initialCameraSelected) {
+    std::string newCamera = getCurrentCamera();
+    if (newCamera != currentCamera && !newCamera.empty()) {
+      setCamera(newCamera);
+    }
+    else if (currentCamera.empty() && !newCamera.empty()) {
+      setCamera(newCamera);
+    }
   }
 }
 
@@ -561,6 +592,83 @@ void CameraClickToMoveWidget::leaveEvent(QEvent* event)
   updateDisplay();
 
   QWidget::leaveEvent(event);
+}
+
+void CameraClickToMoveWidget::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+  // Note: Auto-selection is now handled via selectFirstCameraDelayed() called from AuxWindowManager
+}
+
+void CameraClickToMoveWidget::selectFirstCameraDelayed()
+{
+  // ✅ FIX: Public method called by AuxWindowManager after full initialization
+  if (!m_initialCameraSelected) {
+    std::cout << "[CameraClickToMoveWidget] selectFirstCameraDelayed called (camera count: "
+              << m_cameraSelector->count() << ")" << std::endl;
+
+    if (m_cameraSelector->count() > 0) {
+      std::cout << "[CameraClickToMoveWidget] Scheduling delayed camera selection in 800ms..." << std::endl;
+
+      // Use QTimer::singleShot to delay until event loop processes and UI is fully rendered
+      QTimer::singleShot(800, this, [this]() {
+        std::cout << "[CameraClickToMoveWidget] Timer fired! Camera count: " << m_cameraSelector->count()
+                  << ", Initial selected: " << m_initialCameraSelected << std::endl;
+
+        if (m_cameraSelector->count() > 0 && !m_initialCameraSelected) {
+          m_initialCameraSelected = true;
+
+          // ✅ DEBUG: Print all cameras in dropdown
+          std::cout << "[CameraClickToMoveWidget] ===== CAMERA DROPDOWN CONTENTS =====" << std::endl;
+          for (int i = 0; i < m_cameraSelector->count(); i++) {
+            QString displayText = m_cameraSelector->itemText(i);
+            QString cameraId = m_cameraSelector->itemData(i).toString();
+            std::cout << "[CameraClickToMoveWidget]   Index " << i << ": "
+                      << "Display='" << displayText.toStdString() << "', "
+                      << "Data='" << cameraId.toStdString() << "'" << std::endl;
+          }
+          std::cout << "[CameraClickToMoveWidget] ======================================" << std::endl;
+
+          // ✅ FIX: Search for "camera_1" by name instead of assuming index 0
+          int camera1Index = -1;
+          for (int i = 0; i < m_cameraSelector->count(); i++) {
+            QString cameraId = m_cameraSelector->itemData(i).toString();
+            std::cout << "[CameraClickToMoveWidget] Checking index " << i << ": '" << cameraId.toStdString()
+                      << "' == 'camera_1'? " << (cameraId == "camera_1" ? "YES" : "NO") << std::endl;
+            if (cameraId == "camera_1") {
+              camera1Index = i;
+              std::cout << "[CameraClickToMoveWidget] *** FOUND camera_1 at index " << i << " ***" << std::endl;
+              break;
+            }
+          }
+
+          if (camera1Index >= 0) {
+            QString cameraName = m_cameraSelector->itemData(camera1Index).toString();
+            std::cout << "[CameraClickToMoveWidget] ✓ Found camera_1 at index " << camera1Index
+                      << ", selecting now..." << std::endl;
+            std::cout << "[CameraClickToMoveWidget] About to call setCurrentIndex(" << camera1Index << ")" << std::endl;
+            m_cameraSelector->setCurrentIndex(camera1Index);
+            std::cout << "[CameraClickToMoveWidget] setCurrentIndex() called, camera selection triggered" << std::endl;
+          } else {
+            // Fallback to first camera if camera_1 not found
+            QString cameraName = m_cameraSelector->itemData(0).toString();
+            std::cout << "[CameraClickToMoveWidget] ✗ camera_1 NOT FOUND in dropdown!" << std::endl;
+            std::cout << "[CameraClickToMoveWidget] Falling back to first camera: "
+                      << cameraName.toStdString() << " (index 0)" << std::endl;
+            m_cameraSelector->setCurrentIndex(0);
+            std::cout << "[CameraClickToMoveWidget] Fallback camera selection triggered" << std::endl;
+          }
+        } else {
+          std::cout << "[CameraClickToMoveWidget] Skipping selection - count: " << m_cameraSelector->count()
+                    << ", already selected: " << m_initialCameraSelected << std::endl;
+        }
+      });
+    } else {
+      std::cout << "[CameraClickToMoveWidget] No cameras available for auto-selection" << std::endl;
+    }
+  } else {
+    std::cout << "[CameraClickToMoveWidget] selectFirstCameraDelayed called but camera already selected" << std::endl;
+  }
 }
 
 void CameraClickToMoveWidget::handleImageClick(const QPoint& pixmapClickPos)
