@@ -27,8 +27,9 @@ bool ProductPositionManager::LoadProduct(const std::string& productFilePath) {
   std::cout << "[INFO] ProductPositionManager: Loading product from "
     << productFilePath << std::endl;
 
-  // Clear existing positions
+  // Clear existing positions and graphs
   m_positions.clear();
+  m_graphManager.clearAll();  // ✅ NEW: Clear graphs
 
   // Load using ProductJsonLoader
   int count = ProductJsonLoader::LoadFromFile(*this, productFilePath);
@@ -407,4 +408,71 @@ void ProductPositionManager::ImportFromMotionManager(const UnifiedMotionManager&
 
   std::cout << "[INFO] ProductPositionManager: Imported " << count
     << " positions from motion manager" << std::endl;
+}
+
+// ============================================================================
+// GRAPH QUERY HELPERS (for UI components)
+// ============================================================================
+
+std::vector<std::string> ProductPositionManager::GetAllDevicesWithGraphs() const {
+  QList<QString> qDevices = m_graphManager.getAllDevices();
+  std::vector<std::string> devices;
+  devices.reserve(qDevices.size());
+
+  for (const QString& qDevice : qDevices) {
+    devices.push_back(qDevice.toStdString());
+  }
+
+  return devices;
+}
+
+std::vector<std::string> ProductPositionManager::GetGraphNamesForDevice(
+  const std::string& deviceName) const {
+
+  QString qDevice = QString::fromStdString(deviceName);
+  QList<QString> qGraphNames = m_graphManager.getGraphNames(qDevice);
+
+  std::vector<std::string> graphNames;
+  graphNames.reserve(qGraphNames.size());
+
+  for (const QString& qName : qGraphNames) {
+    graphNames.push_back(qName.toStdString());
+  }
+
+  return graphNames;
+}
+
+std::vector<std::string> ProductPositionManager::GetNodeNamesForGraph(
+  const std::string& deviceName,
+  const std::string& graphName) const {
+
+  QString qDevice = QString::fromStdString(deviceName);
+  QString qGraph = QString::fromStdString(graphName);
+
+  const MotionGraph* graph = m_graphManager.getGraph(qDevice, qGraph);
+
+  std::vector<std::string> nodeNames;
+
+  if (graph) {
+    QList<MotionNode> nodes = graph->getAllNodes();
+    nodeNames.reserve(nodes.size());
+
+    for (const MotionNode& node : nodes) {
+      nodeNames.push_back(node.position.toStdString());
+    }
+  }
+
+  return nodeNames;
+}
+
+bool ProductPositionManager::HasGraphsForDevice(const std::string& deviceName) const {
+  return m_graphManager.hasDevice(QString::fromStdString(deviceName));
+}
+
+bool ProductPositionManager::HasGraph(const std::string& deviceName,
+                                       const std::string& graphName) const {
+  return m_graphManager.hasGraph(
+    QString::fromStdString(deviceName),
+    QString::fromStdString(graphName)
+  );
 }

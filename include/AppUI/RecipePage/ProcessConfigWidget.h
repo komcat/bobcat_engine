@@ -75,6 +75,18 @@ public:
     const std::string& value, double minValue, double maxValue,
     double step = 1.0, int decimals = 1, const std::string& suffix = "");
 
+  // Helper to add graph selector dropdown (populates based on device)
+  // deviceParamKey: the parameter key of the device selector (e.g., "device")
+  void addGraphSelector(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& deviceParamKey);
+
+  // Helper to add graph node selector dropdown (populates based on device + graph)
+  // deviceParamKey: the parameter key of the device selector (e.g., "device")
+  // graphParamKey: the parameter key of the graph selector (e.g., "graphName")
+  void addGraphNodeSelector(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& deviceParamKey,
+    const std::string& graphParamKey);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;
@@ -88,6 +100,7 @@ protected:
   std::map<std::string, DeviceComboBox*> m_deviceCombos;
   std::map<std::string, QCheckBox*> m_parameterCheckboxes;
   std::map<std::string, QDoubleSpinBox*> m_parameterSpinBoxes;
+  std::map<std::string, QComboBox*> m_parameterCombos;  // For graph/node selectors
 };
 
 /**

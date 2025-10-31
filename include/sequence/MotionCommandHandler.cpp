@@ -6,11 +6,14 @@
 #include "AdaptiveScanController.h"  // ✅ NEW: For XCAN command
 #include "DataStore.h"                // ✅ NEW: For XCAN command
 #include "ScanTypes.h"                // ✅ NEW: For XCAN command
+#include "../graph/MotionGraphManager.h"  // ✅ NEW: For MoveToGraphNode command
+#include "../products/product_position_manager.h"  // ✅ NEW: For MoveToGraphNode command
 #include <chrono>
 #include <thread>
 #include <regex>                      // ✅ NEW: For device name validation
 #include <atomic>                     // ✅ NEW: For scan completion flag
 #include <condition_variable>         // ✅ NEW: For scan completion signaling
+#include <cmath>                      // ✅ NEW: For position distance calculation
 
 // Helper to resolve context: references or parse direct values
 double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
@@ -651,6 +654,264 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // MOVE TO GRAPH NODE - Execute graph-based path planning
+  // ============================================================================
+  else if (methodName == "MoveToGraphNode") {
+    // ✅ VALIDATE: ProductPositionManager must be set
+    if (!m_positionManager) {
+      errorMessage = "MoveToGraphNode: ProductPositionManager not available";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: graphName
+    auto graphNameIt = params.find("graphName");
+    if (graphNameIt == params.end()) {
+      errorMessage = "MoveToGraphNode: Missing required parameter 'graphName'";
+      return false;
+    }
+    std::string graphName = graphNameIt->second;
+
+    // ✅ REQUIRED PARAMETER: endNodeName
+    auto endNodeIt = params.find("endNodeName");
+    if (endNodeIt == params.end()) {
+      errorMessage = "MoveToGraphNode: Missing required parameter 'endNodeName'";
+      return false;
+    }
+    std::string endNodeName = endNodeIt->second;
+
+    if (m_logger) {
+      m_logger->Info("MoveToGraphNode: Device=" + deviceName + ", Graph=" + graphName + ", EndNode=" + endNodeName, "MotionHandler");
+    }
+
+    // ✅ GET GRAPH
+    MotionGraphManager& graphManager = m_positionManager->GetGraphManager();
+    const MotionGraph* graph = graphManager.getGraph(QString::fromStdString(deviceName), QString::fromStdString(graphName));
+
+    if (!graph) {
+      errorMessage = "MoveToGraphNode: Graph '" + graphName + "' not found for device '" + deviceName + "'";
+      return false;
+    }
+
+    // ✅ FIND END NODE IN GRAPH
+    const MotionNode* endNode = graph->getNodeByPosition(QString::fromStdString(endNodeName));
+    if (!endNode) {
+      errorMessage = "MoveToGraphNode: End node '" + endNodeName + "' not found in graph '" + graphName + "'";
+      return false;
+    }
+
+    // ✅ GET CURRENT PHYSICAL POSITION
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+    std::map<std::string, PositionStruct> allPositions = m_positionManager->GetAllPositions(deviceName);
+
+    if (m_logger) {
+      std::string startPosStr = "MoveToGraphNode: Starting position (" +
+                                std::to_string(currentPos.x) + ", " +
+                                std::to_string(currentPos.y) + ", " +
+                                std::to_string(currentPos.z) + ")";
+      m_logger->Info(startPosStr, "MotionHandler");
+    }
+
+    // ✅ FIND CURRENT POSITION IN GRAPH (within tolerance)
+    // Tolerance depends on device type:
+    // - Gantry systems: 0.2mm (allows for small mechanical errors)
+    // - Hexapods: 0.1mm (high precision)
+    const double HEXAPOD_TOLERANCE = 0.1;  // 0.1mm for hexapods
+    const double GANTRY_TOLERANCE = 0.2;   // 0.2mm for gantry systems
+    const double FALLBACK_TOLERANCE = 0.3; // 0.3mm max fallback distance
+
+    bool isGantry = (deviceName.find("gantry") != std::string::npos);
+    double positionTolerance = isGantry ? GANTRY_TOLERANCE : HEXAPOD_TOLERANCE;
+
+    std::string currentPosName;
+    std::string closestPosName;
+    double closestDistance = std::numeric_limits<double>::max();
+
+    // ✅ DEBUG: Log current position and all candidates
+    if (m_logger) {
+      std::string posStr = "MoveToGraphNode: Current position (" +
+                          std::to_string(currentPos.x) + ", " +
+                          std::to_string(currentPos.y) + ", " +
+                          std::to_string(currentPos.z) + ") checking " +
+                          std::to_string(allPositions.size()) + " positions";
+      m_logger->Info(posStr, "MotionHandler");
+    }
+
+    for (const auto& pair : allPositions) {
+      const std::string& posName = pair.first;
+      const PositionStruct& savedPos = pair.second;
+
+      double dx = currentPos.x - savedPos.x;
+      double dy = currentPos.y - savedPos.y;
+      double dz = currentPos.z - savedPos.z;
+      double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+      // ✅ DEBUG: Log each position distance
+      if (m_logger && distance < 10.0) {  // Only log if within 10mm
+        std::string distStr = "  - '" + posName + "': " + std::to_string(distance) + "mm";
+        m_logger->Info(distStr, "MotionHandler");
+      }
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestPosName = posName;
+
+        if (distance < positionTolerance) {
+          currentPosName = posName;
+          break;
+        }
+      }
+    }
+
+    // ✅ FALLBACK: If no exact match, use closest position if within reasonable distance
+    if (currentPosName.empty() && closestDistance < FALLBACK_TOLERANCE) {
+      currentPosName = closestPosName;
+      if (m_logger) {
+        m_logger->Warning(
+          "MoveToGraphNode: Using closest position '" + currentPosName +
+          "' (distance: " + std::to_string(closestDistance) + "mm) as fallback",
+          "MotionHandler"
+        );
+      }
+    }
+
+    if (currentPosName.empty()) {
+      errorMessage = "MoveToGraphNode: Current position not at any named position (closest: " + std::to_string(closestDistance) + "mm) - cannot find start node in graph";
+      return false;
+    }
+
+    // ✅ FIND START NODE IN GRAPH
+    const MotionNode* startNode = graph->getNodeByPosition(QString::fromStdString(currentPosName));
+    if (!startNode) {
+      errorMessage = "MoveToGraphNode: Current position '" + currentPosName + "' not found in graph '" + graphName + "'";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("MoveToGraphNode: Start node '" + currentPosName + "' (id: " + startNode->id.toStdString() + ")", "MotionHandler");
+      m_logger->Info("MoveToGraphNode: End node '" + endNodeName + "' (id: " + endNode->id.toStdString() + ")", "MotionHandler");
+    }
+
+    // ✅ SPECIAL CASE: Already at goal position
+    if (startNode->id == endNode->id) {
+      if (m_logger) {
+        m_logger->Info("MoveToGraphNode: Already at goal position '" + endNodeName + "', no movement needed", "MotionHandler");
+      }
+      return true;  // Success - we're already where we need to be
+    }
+
+    // ✅ CALCULATE PATH
+    GraphPath path = graphManager.findPath(
+      QString::fromStdString(deviceName),
+      QString::fromStdString(graphName),
+      startNode->id,
+      endNode->id
+    );
+
+    if (!path.isValid) {
+      errorMessage = "MoveToGraphNode: " + path.errorMessage.toStdString();
+      return false;
+    }
+
+    if (m_logger) {
+      std::string pathStr = "MoveToGraphNode: Path found (";
+      for (int i = 0; i < path.positionNames.size(); ++i) {
+        if (i > 0) pathStr += " → ";
+        pathStr += path.positionNames[i].toStdString();
+      }
+      pathStr += ") cost=" + std::to_string(path.totalDistance);
+      m_logger->Info(pathStr, "MotionHandler");
+    }
+
+    // ✅ EXECUTE PATH: Move through each waypoint
+    for (const QString& posName : path.positionNames) {
+      // Check if we're already at this position (skip if so)
+      if (allPositions.count(posName.toStdString()) > 0) {
+        const PositionStruct& targetPos = allPositions[posName.toStdString()];
+        double dx = currentPos.x - targetPos.x;
+        double dy = currentPos.y - targetPos.y;
+        double dz = currentPos.z - targetPos.z;
+        double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+        // ✅ Use device-appropriate tolerance (same as position detection)
+        if (distance < positionTolerance) {
+          if (m_logger) {
+            m_logger->Info("MoveToGraphNode: Already at '" + posName.toStdString() + "', skipping move", "MotionHandler");
+          }
+          // ✅ CRITICAL FIX: Still update currentPos even if we skip the move
+          // This ensures our position tracking stays accurate for the next waypoint
+          currentPos = targetPos;
+          continue;
+        }
+      }
+
+      // Move to waypoint
+      if (m_logger) {
+        m_logger->Info("MoveToGraphNode: Moving to waypoint '" + posName.toStdString() + "'", "MotionHandler");
+      }
+
+      if (!motionManager->MoveToNamedPosition(deviceName, posName.toStdString(), false)) {
+        errorMessage = "MoveToGraphNode: Failed to start move to '" + posName.toStdString() + "'";
+        return false;
+      }
+
+      // Wait for motion to complete
+      if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000)) {
+        errorMessage = "MoveToGraphNode: Motion to '" + posName.toStdString() + "' stopped or timed out";
+        return false;
+      }
+
+      // ✅ DEBUG: Read position immediately after motion completes
+      if (m_logger) {
+        PositionStruct preSettlePos = motionManager->GetCurrentPosition(deviceName);
+        std::string preSettleStr = "MoveToGraphNode: Position before settling (" +
+                                   std::to_string(preSettlePos.x) + ", " +
+                                   std::to_string(preSettlePos.y) + ", " +
+                                   std::to_string(preSettlePos.z) + ")";
+        m_logger->Info(preSettleStr, "MotionHandler");
+      }
+
+      // ✅ SETTLING TIME: Wait for controller to stabilize position
+      // Gantry systems need more settling time than hexapods
+      int settlingTimeMs = isGantry ? 200 : 50;
+      std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+      // Update current position for next iteration
+      currentPos = motionManager->GetCurrentPosition(deviceName);
+
+      if (m_logger) {
+        std::string afterSettleStr = "MoveToGraphNode: Position after settling (" +
+                                     std::to_string(currentPos.x) + ", " +
+                                     std::to_string(currentPos.y) + ", " +
+                                     std::to_string(currentPos.z) + ")";
+        m_logger->Info(afterSettleStr, "MotionHandler");
+        m_logger->Info("MoveToGraphNode: Reached waypoint '" + posName.toStdString() + "'", "MotionHandler");
+
+        // ✅ VERIFY: Check if we actually reached the target position
+        if (allPositions.count(posName.toStdString()) > 0) {
+          const PositionStruct& targetPos = allPositions[posName.toStdString()];
+          double dx = currentPos.x - targetPos.x;
+          double dy = currentPos.y - targetPos.y;
+          double dz = currentPos.z - targetPos.z;
+          double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+          std::string verifyStr = "MoveToGraphNode: Distance to target '" + posName.toStdString() + "': " +
+                                 std::to_string(distance) + "mm (target: " +
+                                 std::to_string(targetPos.x) + ", " +
+                                 std::to_string(targetPos.y) + ", " +
+                                 std::to_string(targetPos.z) + ")";
+          m_logger->Info(verifyStr, "MotionHandler");
+        }
+      }
+    }
+
+    if (m_logger) {
+      m_logger->Info("MoveToGraphNode: Path execution completed successfully", "MotionHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
@@ -699,7 +960,37 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
 
     if (!isMoving && !waypointActive) {
-      // Motion stopped - now verify position if target was provided
+      // ✅ CRITICAL FIX: Verify position is stable before declaring motion complete
+      // The controller might report "not moving" while the motor is still settling
+      // Read position twice with 100ms delay and ensure they're the same
+      PositionStruct pos1 = motionManager->GetCurrentPosition(deviceName);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      PositionStruct pos2 = motionManager->GetCurrentPosition(deviceName);
+
+      double dx = std::abs(pos2.x - pos1.x);
+      double dy = std::abs(pos2.y - pos1.y);
+      double dz = std::abs(pos2.z - pos1.z);
+      double posDrift = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+      if (posDrift > 0.05) {  // Position changed by more than 0.05mm - still settling
+        if (m_logger) {
+          std::string driftStr = "WaitForMotion: Position still drifting " + std::to_string(posDrift) +
+                                "mm (from [" + std::to_string(pos1.x) + "," + std::to_string(pos1.y) + "," + std::to_string(pos1.z) +
+                                "] to [" + std::to_string(pos2.x) + "," + std::to_string(pos2.y) + "," + std::to_string(pos2.z) + "]) - waiting for stability";
+          m_logger->Info(driftStr, "MotionHandler");
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        continue;  // Keep waiting
+      }
+
+      if (m_logger) {
+        std::string stableStr = "WaitForMotion: Position stable at [" +
+                               std::to_string(pos2.x) + "," + std::to_string(pos2.y) + "," + std::to_string(pos2.z) +
+                               "], drift=" + std::to_string(posDrift) + "mm";
+        m_logger->Info(stableStr, "MotionHandler");
+      }
+
+      // Motion stopped and position is stable - now verify position if target was provided
       if (targetPos) {
         const double TOLERANCE = 0.05;  // ±0.05mm tolerance
 

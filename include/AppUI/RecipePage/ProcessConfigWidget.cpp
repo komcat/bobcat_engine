@@ -2,11 +2,12 @@
 #include "ProcessConfigWidget.h"
 #include "DeviceSelectorWidgets.h"
 #include "ApplicationContext.h"
-#include "PneumaticSlideSelectorDialog.h"  // Add this include at top
+#include "PneumaticSlideSelectorDialog.h"
 #include "DataStore.h"
 #include "TECManager.h"
 #include "RecipeManager.h"
 #include "ProcessPluginRegistry.h"
+#include "products/product_position_manager.h"
 #include <QLabel>
 #include <QFrame>
 #include <QVBoxLayout>
@@ -50,6 +51,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   m_deviceCombos.clear();
   m_parameterCheckboxes.clear();
   m_parameterSpinBoxes.clear();
+  m_parameterCombos.clear();
 
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
@@ -336,6 +338,182 @@ void ProcessConfigWidget::addNumericParameter(const std::string& key,
   m_parameterSpinBoxes[key] = spinBox;
 }
 
+void ProcessConfigWidget::addGraphSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& deviceParamKey)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+
+  // Populate with graphs for the current device
+  auto params = getParameters();
+  if (params.find(deviceParamKey) != params.end()) {
+    std::string deviceName = params.at(deviceParamKey);
+
+    if (m_context && m_context->productPositionManager) {
+      std::vector<std::string> graphNames =
+        m_context->productPositionManager->GetGraphNamesForDevice(deviceName);
+
+      for (const std::string& graphName : graphNames) {
+        combo->addItem(QString::fromStdString(graphName));
+      }
+    }
+  }
+
+  // Set current value
+  int index = combo->findText(QString::fromStdString(value));
+  if (index >= 0) {
+    combo->setCurrentIndex(index);
+  }
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_parameterCombos[key] = combo;
+
+  // ✅ Watch device selector for changes and repopulate graph list
+  if (m_deviceCombos.find(deviceParamKey) != m_deviceCombos.end()) {
+    DeviceComboBox* deviceCombo = m_deviceCombos[deviceParamKey];
+
+    connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+      [this, combo, deviceParamKey]() {
+        std::string deviceName = getParameters().at(deviceParamKey);
+
+        // Save current selection
+        QString currentSelection = combo->currentText();
+
+        // Repopulate
+        combo->clear();
+        if (m_context && m_context->productPositionManager) {
+          std::vector<std::string> graphNames =
+            m_context->productPositionManager->GetGraphNamesForDevice(deviceName);
+
+          for (const std::string& graphName : graphNames) {
+            combo->addItem(QString::fromStdString(graphName));
+          }
+        }
+
+        // Try to restore selection
+        int index = combo->findText(currentSelection);
+        if (index >= 0) {
+          combo->setCurrentIndex(index);
+        }
+      });
+  }
+}
+
+void ProcessConfigWidget::addGraphNodeSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& deviceParamKey,
+  const std::string& graphParamKey)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+
+  // Populate with nodes for the current device + graph
+  auto params = getParameters();
+  if (params.find(deviceParamKey) != params.end() &&
+      params.find(graphParamKey) != params.end()) {
+    std::string deviceName = params.at(deviceParamKey);
+    std::string graphName = params.at(graphParamKey);
+
+    if (m_context && m_context->productPositionManager) {
+      std::vector<std::string> nodeNames =
+        m_context->productPositionManager->GetNodeNamesForGraph(deviceName, graphName);
+
+      for (const std::string& nodeName : nodeNames) {
+        combo->addItem(QString::fromStdString(nodeName));
+      }
+    }
+  }
+
+  // Set current value
+  int index = combo->findText(QString::fromStdString(value));
+  if (index >= 0) {
+    combo->setCurrentIndex(index);
+  }
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_parameterCombos[key] = combo;
+
+  // ✅ Watch graph selector for changes and repopulate node list
+  if (m_parameterCombos.find(graphParamKey) != m_parameterCombos.end()) {
+    QComboBox* graphCombo = m_parameterCombos[graphParamKey];
+
+    connect(graphCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+      [this, combo, deviceParamKey, graphParamKey]() {
+        auto params = getParameters();
+        std::string deviceName = params.at(deviceParamKey);
+        std::string graphName = params.at(graphParamKey);
+
+        // Save current selection
+        QString currentSelection = combo->currentText();
+
+        // Repopulate
+        combo->clear();
+        if (m_context && m_context->productPositionManager) {
+          std::vector<std::string> nodeNames =
+            m_context->productPositionManager->GetNodeNamesForGraph(deviceName, graphName);
+
+          for (const std::string& nodeName : nodeNames) {
+            combo->addItem(QString::fromStdString(nodeName));
+          }
+        }
+
+        // Try to restore selection
+        int index = combo->findText(currentSelection);
+        if (index >= 0) {
+          combo->setCurrentIndex(index);
+        }
+      });
+  }
+
+  // ✅ Also watch device selector for changes
+  if (m_deviceCombos.find(deviceParamKey) != m_deviceCombos.end()) {
+    DeviceComboBox* deviceCombo = m_deviceCombos[deviceParamKey];
+
+    connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+      [this, combo, deviceParamKey, graphParamKey]() {
+        auto params = getParameters();
+        if (params.find(graphParamKey) == params.end()) return;
+
+        std::string deviceName = params.at(deviceParamKey);
+        std::string graphName = params.at(graphParamKey);
+
+        // Repopulate
+        combo->clear();
+        if (m_context && m_context->productPositionManager) {
+          std::vector<std::string> nodeNames =
+            m_context->productPositionManager->GetNodeNamesForGraph(deviceName, graphName);
+
+          for (const std::string& nodeName : nodeNames) {
+            combo->addItem(QString::fromStdString(nodeName));
+          }
+        }
+      });
+  }
+}
+
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 {
   std::map<std::string, std::string> params;
@@ -354,6 +532,10 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 
   for (const auto& [key, spinBox] : m_parameterSpinBoxes) {
     params[key] = std::to_string(spinBox->value());
+  }
+
+  for (const auto& [key, combo] : m_parameterCombos) {
+    params[key] = combo->currentText().toStdString();
   }
 
   return params;

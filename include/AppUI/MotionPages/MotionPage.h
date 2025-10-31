@@ -9,6 +9,7 @@
 #include "MotionGraphicsView.h"
 #include "ScanControlPanel.h"
 #include "DeviceButtonStack.h"
+#include "GraphWidget.h"
 #include "AdaptiveScanController.h"
 #include "DataStore.h"
 #include "unified_motion_manager.h"
@@ -20,6 +21,8 @@
 #include <array>
 #include <memory>
 
+class SequenceEngine;
+
 class MotionPage : public QWidget
 {
   Q_OBJECT
@@ -30,6 +33,7 @@ public:
     TransformationMatrixLoader* matrixLoader,
     DataStore* dataStore,
     CoordinateSystemManager* coordinateSystemManager,
+    SequenceEngine* sequenceEngine,
     QWidget* parent = nullptr);
   ~MotionPage() = default;
 
@@ -98,6 +102,7 @@ private:
   TransformationMatrixLoader* m_matrixLoader;
   DataStore* m_dataStore;
   CoordinateSystemManager* m_coordinateSystemManager;
+  SequenceEngine* m_sequenceEngine;
 
   // Tab widget
   QTabWidget* m_tabWidget;
@@ -107,6 +112,7 @@ private:
   MotionControlPanel* m_controlPanel;
   MotionGraphicsView* m_graphicsView;
   ScanControlPanel* m_scanPanel;
+  GraphWidget* m_graphWidget;
   QPushButton* m_backButton;
 
   // Product control buttons

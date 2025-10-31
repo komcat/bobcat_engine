@@ -38,9 +38,10 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   }
 
   // Register all command handlers
-  // ✅ UPDATED: Set DataStore on MotionCommandHandler for XCAN command
+  // ✅ UPDATED: Set DataStore and ProductPositionManager on MotionCommandHandler
   auto motionHandler = std::make_unique<MotionCommandHandler>();
   motionHandler->SetDataStore(m_context->dataStore);
+  motionHandler->SetProductPositionManager(m_context->productPositionManager);
   m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
 
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());

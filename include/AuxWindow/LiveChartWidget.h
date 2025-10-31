@@ -96,9 +96,9 @@ private:
   bool m_hasNewValue;
 
   static constexpr size_t MAX_POINTS = 300;
-  static constexpr qint64 TIME_WINDOW_MS = 5000;  // 10 seconds
-  static constexpr int CHART_UPDATE_INTERVAL_MS = 16;  // ~60 FPS
-  static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 500;  // 500ms for readability
+  static constexpr qint64 TIME_WINDOW_MS = 5000;  // 5 seconds
+  static constexpr int CHART_UPDATE_INTERVAL_MS = 100;  // 10 Hz
+  static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 100;  // 10 Hz (reduced throttle)
 
   // Y-axis hard limits to prevent unrealistic spike rescaling
   static constexpr float Y_AXIS_MAX_LIMIT = 0.020f;  // 20 mA

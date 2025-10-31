@@ -22,12 +22,12 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   connect(m_tcpManager, &TcpClientManager::dataReceived,
     this, &LiveChartWidget::onDataReceived);
 
-  // Chart update timer - smooth ~60 FPS
+  // Chart update timer - 10 Hz
   m_chartUpdateTimer = new QTimer(this);
   connect(m_chartUpdateTimer, &QTimer::timeout, this, &LiveChartWidget::onUpdateChart);
   m_chartUpdateTimer->start(CHART_UPDATE_INTERVAL_MS);
 
-  // Value label update timer - 500ms for readability (prevents flickering)
+  // Value label update timer - 10 Hz for maximum visibility
   m_valueLabelUpdateTimer = new QTimer(this);
   connect(m_valueLabelUpdateTimer, &QTimer::timeout, this, &LiveChartWidget::onUpdateValueLabel);
   m_valueLabelUpdateTimer->start(VALUE_LABEL_UPDATE_INTERVAL_MS);
@@ -106,15 +106,26 @@ void LiveChartWidget::setupUI()
 
   headerLayout->addLayout(selectorRow);
 
-  // Current value display - centered below channel selector
+  // Current value display - VERY LARGE and centered below channel selector
   m_valueLabel = new QLabel("--");
   m_valueLabel->setAlignment(Qt::AlignCenter);
+
+  // Set initial font size explicitly
+  QFont initialFont = m_valueLabel->font();
+  initialFont.setPointSize(72);
+  initialFont.setBold(true);
+  m_valueLabel->setFont(initialFont);
+
   m_valueLabel->setStyleSheet(
     "QLabel { "
     "  color: #00d9ff; "
-    "  font-weight: 600; "
+    "  font-weight: bold; "
+    "  font-size: 72pt; "
     "  background: transparent; "
+    "  padding: 15px; "
     "}");
+  m_valueLabel->setMinimumHeight(120);  // Much larger minimum height (was 60)
+  m_valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   headerLayout->addWidget(m_valueLabel);
 
   // Channel info label
@@ -265,14 +276,25 @@ void LiveChartWidget::onUpdateValueLabel()
     // Update text
     m_valueLabel->setText(formatValueWithUnit(m_latestValue, m_currentUnit));
 
-    // Update color based on value magnitude
+    // Update color based on value magnitude (but preserve font size!)
     QColor valueColor = getValueColor(m_latestValue);
+
+    // Get current font size to preserve it in stylesheet
+    int currentFontSize = m_valueLabel->font().pointSize();
+
+    // Ensure valid font size (fallback to 72pt if not set yet)
+    if (currentFontSize <= 0) {
+      currentFontSize = 72;
+    }
+
     m_valueLabel->setStyleSheet(
       QString("QLabel { "
               "  color: %1; "
-              "  font-weight: 600; "
+              "  font-weight: bold; "
+              "  font-size: %2pt; "
               "  background: transparent; "
-              "}").arg(valueColor.name()));
+              "  padding: 15px; "
+              "}").arg(valueColor.name()).arg(currentFontSize));
 
     m_hasNewValue = false;
   }
@@ -502,16 +524,17 @@ void LiveChartWidget::updateValueFontSize()
 {
   if (!m_valueLabel) return;
 
-  // Calculate font size as 10% of widget height
+  // Calculate font size - MUCH larger for maximum visibility
   int widgetHeight = height();
-  int fontSize = static_cast<int>(widgetHeight * 0.10);
+  int fontSize = static_cast<int>(widgetHeight * 0.25);  // Increased to 25% of height
 
   // Set minimum and maximum bounds for readability
-  if (fontSize < 12) fontSize = 12;  // Minimum
-  if (fontSize > 120) fontSize = 120;  // Maximum
+  if (fontSize < 72) fontSize = 72;  // Very large minimum for visibility
+  if (fontSize > 200) fontSize = 200;  // Higher maximum
 
   QFont font = m_valueLabel->font();
   font.setPointSize(fontSize);
+  font.setBold(true);  // Make it bold for better visibility
   m_valueLabel->setFont(font);
 
   std::cout << "[LiveChartWidget] Font size updated to: " << fontSize << "pt (widget height: " << widgetHeight << "px)" << std::endl;

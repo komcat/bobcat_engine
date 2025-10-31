@@ -27,6 +27,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	TransformationMatrixLoader* matrixLoader,
 	DataStore* dataStore,
 	CoordinateSystemManager* coordinateSystemManager,
+	SequenceEngine* sequenceEngine,
 	QWidget* parent)
 	: QWidget(parent)
 	, m_motionManager(motionManager)
@@ -34,10 +35,12 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_matrixLoader(matrixLoader)
 	, m_dataStore(dataStore)
 	, m_coordinateSystemManager(coordinateSystemManager)
+	, m_sequenceEngine(sequenceEngine)
 	, m_tabWidget(nullptr)
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
 	, m_scanPanel(nullptr)
+	, m_graphWidget(nullptr)
 	, m_scanController(nullptr)
 	, m_livePositionTimer(nullptr)
 	, m_motionUpdateTimer(nullptr)
@@ -222,7 +225,18 @@ void MotionPage::setupUI()
 	mainLayout->addWidget(topBar);
 
 	// ============================================================================
-	// ✅ TAB WIDGET - Motion Control | Coordinate Systems
+	// MAIN CONTENT LAYOUT - Device Stack | Tab Widget
+	// ============================================================================
+	QHBoxLayout* contentLayout = new QHBoxLayout();
+	contentLayout->setContentsMargins(0, 0, 0, 0);
+	contentLayout->setSpacing(0);
+
+	// Far Left - Device Selection Buttons (controls all tabs)
+	m_deviceButtonStack = new DeviceButtonStack();
+	contentLayout->addWidget(m_deviceButtonStack);
+
+	// ============================================================================
+	// ✅ TAB WIDGET - Motion Control | Coordinate Systems | Graph
 	// ============================================================================
 	m_tabWidget = new QTabWidget();
 	m_tabWidget->setStyleSheet(
@@ -265,10 +279,6 @@ void MotionPage::setupUI()
 	QHBoxLayout* motionContentLayout = new QHBoxLayout(motionControlTab);
 	motionContentLayout->setContentsMargins(0, 0, 0, 0);
 	motionContentLayout->setSpacing(0);
-
-	// Far Left - Device Selection Buttons (fixed width)
-	m_deviceButtonStack = new DeviceButtonStack();
-	motionContentLayout->addWidget(m_deviceButtonStack);
 
 	// Left Panel - Motion Control (20%)
 	m_controlPanel = new MotionControlPanel();
@@ -358,7 +368,23 @@ void MotionPage::setupUI()
 
 	m_tabWidget->addTab(coordinateSystemTab, "Coordinate Systems");
 
-	mainLayout->addWidget(m_tabWidget);
+	// ============================================================================
+	// TAB 3: GRAPH
+	// ============================================================================
+	// Create placeholder - will be populated when device is selected
+	QWidget* graphTab = new QWidget();
+	graphTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* graphTabLayout = new QVBoxLayout(graphTab);
+	graphTabLayout->setContentsMargins(0, 0, 0, 0);
+
+	// GraphWidget will be created in onDeviceChanged() when device is selected
+	m_tabWidget->addTab(graphTab, "Graph");
+
+	// Add tab widget to content layout
+	contentLayout->addWidget(m_tabWidget, 1);
+
+	// Add content layout (device stack + tabs) to main layout
+	mainLayout->addLayout(contentLayout);
 
 	// Connect signals
 	connect(m_backButton, &QPushButton::clicked, this, &MotionPage::backToMainMenu);
@@ -515,6 +541,11 @@ void MotionPage::onSaveProductClicked()
 {
 	// Import current positions from motion manager
 	m_productManager->ImportFromMotionManager(*m_motionManager);
+
+	// Save current graph if GraphWidget exists
+	if (m_graphWidget) {
+		m_graphWidget->saveCurrentGraph();
+	}
 
 	// If no product loaded, prompt for product name
 	if (!m_productManager->HasLoadedProduct()) {
@@ -765,6 +796,30 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 	if (m_graphicsView) {
 		m_graphicsView->setDeviceName(m_currentDevice);
 		m_graphicsView->restoreViewState();
+	}
+
+	// Update GraphWidget for new device
+	// Find the Graph tab (index 2) and its layout
+	QWidget* graphTab = m_tabWidget->widget(2);  // Graph tab is the 3rd tab (index 2)
+	if (graphTab) {
+		QVBoxLayout* graphLayout = qobject_cast<QVBoxLayout*>(graphTab->layout());
+		if (graphLayout) {
+			// Delete existing GraphWidget if any
+			if (m_graphWidget) {
+				graphLayout->removeWidget(m_graphWidget);
+				m_graphWidget->cleanup();  // CRITICAL: Stop timer and save before deletion
+				m_graphWidget->deleteLater();  // Schedule deletion
+				m_graphWidget = nullptr;
+			}
+
+			// Create new GraphWidget for current device
+			if (!m_currentDevice.isEmpty() && m_productManager) {
+				m_graphWidget = new GraphWidget(m_currentDevice, m_productManager, graphTab);
+				m_graphWidget->setMotionManager(m_motionManager);  // ✅ Connect motion manager for path execution
+				m_graphWidget->setSequenceEngine(m_sequenceEngine);  // ✅ Connect sequence engine for multi-step paths
+				graphLayout->addWidget(m_graphWidget);
+			}
+		}
 	}
 }
 

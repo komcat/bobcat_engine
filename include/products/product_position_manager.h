@@ -2,6 +2,7 @@
 #pragma once
 
 #include "MotionTypes.h"
+#include "graph/MotionGraphManager.h"
 #include <string>
 #include <map>
 #include <vector>
@@ -168,9 +169,69 @@ public:
    */
   void ImportFromMotionManager(const UnifiedMotionManager& manager);
 
+  // ============================================================================
+  // GRAPH MANAGEMENT (v2.0 feature)
+  // ============================================================================
+
+  /**
+   * @brief Get the motion graph manager
+   */
+  MotionGraphManager& GetGraphManager() { return m_graphManager; }
+  const MotionGraphManager& GetGraphManager() const { return m_graphManager; }
+
+  /**
+   * @brief Set the graph manager (for loading)
+   */
+  void SetGraphManager(const MotionGraphManager& graphManager) {
+    m_graphManager = graphManager;
+  }
+
+  /**
+   * @brief Clear all graph data
+   */
+  void ClearGraphs() { m_graphManager.clearAll(); }
+
+  // ============================================================================
+  // GRAPH QUERY HELPERS (for UI components)
+  // ============================================================================
+
+  /**
+   * @brief Get list of all devices that have graphs
+   */
+  std::vector<std::string> GetAllDevicesWithGraphs() const;
+
+  /**
+   * @brief Get list of all graph names for a device
+   * @param deviceName Device name
+   * @return List of graph names (empty if device not found)
+   */
+  std::vector<std::string> GetGraphNamesForDevice(const std::string& deviceName) const;
+
+  /**
+   * @brief Get list of all node/position names in a graph
+   * @param deviceName Device name
+   * @param graphName Graph name
+   * @return List of position names from nodes (empty if graph not found)
+   */
+  std::vector<std::string> GetNodeNamesForGraph(const std::string& deviceName,
+                                                  const std::string& graphName) const;
+
+  /**
+   * @brief Check if device has any graphs
+   */
+  bool HasGraphsForDevice(const std::string& deviceName) const;
+
+  /**
+   * @brief Check if specific graph exists
+   */
+  bool HasGraph(const std::string& deviceName, const std::string& graphName) const;
+
 private:
   // Storage: deviceName -> (positionName -> PositionStruct)
   std::map<std::string, std::map<std::string, PositionStruct>> m_positions;
+
+  // ✅ NEW: Graph storage (v2.0)
+  MotionGraphManager m_graphManager;
 
   std::string m_currentProductName;
   std::string m_currentProductPath;

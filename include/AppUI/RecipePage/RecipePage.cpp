@@ -1131,15 +1131,28 @@ void RecipePage::onRecipeStepSelected()
   // Get step index from item data
   int index = item->data(0, Qt::UserRole).toInt();
 
-  // ✅ NEW: If progress widget is showing, switch to config panel
+  // ✅ FIX: Prevent switching away from progress panel during execution
   if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
+    // Check if execution is still in progress
+    if (m_recipeWorker && m_recipeWorker->isRunning()) {
+      std::cout << "[RecipePage] Execution in progress - ignoring step selection" << std::endl;
+      // Restore selection to prevent visual feedback
+      m_recipeTree->blockSignals(true);
+      if (m_selectedStepIndex >= 0) {
+        selectStepByIndex(m_selectedStepIndex);
+      }
+      m_recipeTree->blockSignals(false);
+      return;
+    }
     std::cout << "[RecipePage] User selected step, switching from progress to config" << std::endl;
   }
 
   if (m_selectedStepIndex == index) {
-    // ✅ Even if same step, if showing progress, switch to config
+    // ✅ Even if same step, if showing progress, switch to config (only if not running)
     if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
-      updateConfigurationForm();
+      if (!(m_recipeWorker && m_recipeWorker->isRunning())) {
+        updateConfigurationForm();
+      }
     }
     return;
   }
@@ -1838,6 +1851,12 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
 
   // ✅ NEW: Auto-dismiss progress panel after 3 seconds
   QTimer::singleShot(3000, this, [this]() {
+    // ✅ FIX: Only dismiss if no execution is running (prevents dismissing new execution)
+    if (m_recipeWorker && m_recipeWorker->isRunning()) {
+      std::cout << "[RecipePage] Skipping auto-dismiss - new execution is running" << std::endl;
+      return;
+    }
+
     // Only switch if user hasn't manually selected a step
     if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
       std::cout << "[RecipePage] Auto-dismissing progress panel" << std::endl;

@@ -333,6 +333,7 @@ set(SOURCES
     include/sequence/SequenceEngine.cpp
     include/sequence/SequenceContext.cpp
     include/sequence/SequenceContextCommandHandler.cpp
+    include/sequence/SequenceWorker.cpp
     include/sequence/MotionCommandHandler.cpp
     include/sequence/IOCommandHandler.cpp
     include/sequence/PneumaticCommandHandler.cpp
@@ -360,6 +361,13 @@ set(SOURCES
     include/AppUI/MotionPages/PositionLabel.cpp
     include/products/product_position_manager.cpp
     include/products/product_json_loader.cpp
+    include/graph/MotionNode.cpp
+    include/graph/MotionEdge.cpp
+    include/graph/MotionGraph.cpp
+    include/graph/MotionGraphManager.cpp
+    include/AppUI/MotionPages/MotionNodeItem.cpp
+    include/AppUI/MotionPages/MotionEdgeItem.cpp
+    include/AppUI/MotionPages/GraphWidget.cpp
     include/AppUI/MotionPages/WaypointEditorDialog.cpp
     include/AppUI/MotionPages/PathPreview.cpp
     include/AppUI/MotionPages/OffsetMoveDialog.cpp

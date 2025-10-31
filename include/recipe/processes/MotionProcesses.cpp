@@ -631,6 +631,63 @@ public:
 };
 
 //=============================================================================
+// MOVE TO GRAPH NODE PLUGIN
+//=============================================================================
+
+class MoveToGraphNodePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Move to Graph Node";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Execute graph-based path planning to move to a target node";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"graphName", "default"},
+      {"endNodeName", "home"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Device selector
+    widget->addDeviceSelector("device", "Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+    // Graph selector (populates based on selected device)
+    widget->addGraphSelector("graphName", "Graph Name", params.at("graphName"), "device");
+
+    // Node selector (populates based on selected device + graph)
+    widget->addGraphNodeSelector("endNodeName", "End Node Position", params.at("endNodeName"),
+      "device", "graphName");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    // Single command: MoveToGraphNode (does all the work)
+    sequence->AddAction(params.at("device"), "MoveToGraphNode", {
+      {"graphName", params.at("graphName")},
+      {"endNodeName", params.at("endNodeName")}
+    });
+
+    std::cout << "[MotionProcesses] Built Move to Graph Node sequence: "
+              << params.at("device") << " -> graph=" << params.at("graphName")
+              << ", endNode=" << params.at("endNodeName") << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -648,8 +705,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
       registry.RegisterPlugin(std::make_unique<XCANPlugin>());
+      registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
 
-      std::cout << "[MotionProcesses] Registered 9 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 10 motion process plugins" << std::endl;
     }
   };
 
