@@ -372,14 +372,14 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   QVBoxLayout* recipeLayout = new QVBoxLayout(recipeGroup);
 
   m_recipeListWidget = new QListWidget();
-  m_recipeListWidget->setAlternatingRowColors(true);
+  m_recipeListWidget->setAlternatingRowColors(false);  // Disabled for consistent dark theme
 
   m_recipeListWidget->setStyleSheet(
     "QListWidget { "
     "  background-color: #1e1e1e; "
     "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
-    "  font-size: 14px; "
+    "  font-size: 16px; "  // Increased from 14px to 16px for better readability
     "  padding: 2px; "
     "  color: #d4d4d4; "
     "  gridline-color: #3f3f46; "
@@ -387,6 +387,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "QListWidget::item { "
     "  padding: 10px 8px; "
     "  border-bottom: 1px solid #3f3f46; "
+    "  background-color: #1e1e1e; "
     "} "
     "QListWidget::item:selected { "
     "  background-color: #0e639c; "
@@ -558,13 +559,13 @@ void RunProgramPage::createEditWidget()
     "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
     "  gridline-color: #3f3f46; "
-    "  font-size: 13px; "
+    "  font-size: 16px; "  // Increased from 13px to 16px
     "  color: #d4d4d4; "
     "  show-decoration-selected: 1; "
     "} "
     "QTableWidget::item { "
     "  border-bottom: 1px solid #3f3f46; "
-    "  padding: 2px; "
+    "  padding: 10px 8px; "  // Increased from 2px to 10px vertical, 8px horizontal
     "} "
     "QTableWidget::item:hover { "
     "  background-color: #2a2d2e; "
@@ -576,11 +577,17 @@ void RunProgramPage::createEditWidget()
     "QHeaderView::section { "
     "  background-color: #2d2d30; "
     "  color: #d4d4d4; "
-    "  padding: 5px; "
+    "  padding: 8px; "  // Increased from 5px to 8px
     "  border: 1px solid #3f3f46; "
+    "  font-size: 15px; "  // Added explicit font size for headers
     "  font-weight: bold; "
     "}"
   );
+
+  // Set minimum row height for better readability
+  m_editRecipeTable->verticalHeader()->setDefaultSectionSize(42);
+  m_editRecipeTable->verticalHeader()->setMinimumSectionSize(38);
+
   tableLayout->addWidget(m_editRecipeTable);
 
   recipeSplitter->addWidget(tableContainer);

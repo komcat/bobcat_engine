@@ -1,22 +1,23 @@
 {
   "tec_devices": [
     {
+      "comment": "Direct VISA adapter - UPDATE visa_resource after running find_visa_devices.exe",
       "name": "laser-main",
-      "controller_type": "CLD101x",
-      "ip_address": "127.0.0.88",
-      "port": 65432,
+      "controller_type": "CLD101x_Direct",
+      "visa_resource": "USB0::0x1313::0x804F::M00930341::INSTR",
       "enabled": true,
       "default_temperature": 25.0,
       "default_laser_current": 50.0
     },
     {
+      "comment": "Legacy TCP adapter (kept for reference)",
       "name": "laser-backup",
       "controller_type": "CLD101x",
-      "ip_address": "127.0.0.89",
+      "ip_address": "127.0.0.88",
       "port": 65432,
       "enabled": false,
       "default_temperature": 25.0,
-      "default_laser_current": 30.0
+      "default_laser_current": 50.0
     }
   ]
 }
