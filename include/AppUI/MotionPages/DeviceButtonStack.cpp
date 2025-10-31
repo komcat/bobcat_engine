@@ -32,8 +32,8 @@ void DeviceButtonStack::setupUI()
   // Setup selected position info section
   setupPositionInfoSection();
 
-  // Set fixed width for the button stack (increased to accommodate position info)
-  setFixedWidth(200);
+  // Set fixed width for the button stack (increased to accommodate position info and larger fonts)
+  setFixedWidth(240);
 
   // Style for the container - Dark Theme
   setStyleSheet(
@@ -54,7 +54,7 @@ void DeviceButtonStack::setupPositionInfoSection()
 
   // === Selected Position Section ===
   QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
+  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; background-color: transparent; }");
   m_mainLayout->addWidget(posLabel);
 
   // Compact info widget
@@ -73,14 +73,14 @@ void DeviceButtonStack::setupPositionInfoSection()
   m_posWLabel = new QLabel("W: -");
   m_waypointsLabel = new QLabel("Waypoints: -");
   m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 9px; font-weight: bold; }");
+  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 11px; font-weight: bold; }");
 
   QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
                            m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
                            m_waypointsLabel };
   for (auto* label : labels) {
     if (label != m_waypointsLabel) {
-      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 10px; }");
+      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; }");
     }
     posLayout->addWidget(label);
   }
@@ -95,7 +95,7 @@ void DeviceButtonStack::setupPositionInfoSection()
 
   // Add label for device buttons section
   QLabel* deviceLabel = new QLabel("Devices");
-  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 10px; font-weight: bold; }");
+  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; background-color: transparent; }");
   m_mainLayout->addWidget(deviceLabel);
 }
 
@@ -118,7 +118,7 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  color: #d4d4d4;"
       "  border: 2px solid #3f3f46;"
       "  border-radius: 6px;"
-      "  font-size: 11px;"
+      "  font-size: 13px;"
       "  font-weight: bold;"
       "  padding: 6px;"
       "  text-align: center;"

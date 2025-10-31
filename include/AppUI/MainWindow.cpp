@@ -11,6 +11,7 @@
 #include "JogPanelWindow.h"
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
+#include "AuxWindowManager.h"
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
@@ -33,6 +34,16 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
+  , m_shortcutF1(nullptr)
+  , m_shortcutF2(nullptr)
+  , m_shortcutF3(nullptr)
+  , m_shortcutF4(nullptr)
+  , m_shortcutF5(nullptr)
+  , m_shortcutF6(nullptr)
+  , m_shortcutF7(nullptr)
+  , m_shortcutF8(nullptr)
+  , m_shortcutCtrlJ(nullptr)
+  , m_shortcutCtrlK(nullptr)
 {
   // Note: ProductPositionManager is created in Application.cpp and available via context
 
@@ -40,6 +51,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   setupJogPanel();        // ✅ MUST be before createPages() - RunProgramPage needs m_matrixLoader!
   createPages();          // Now pages can use productPositionManager from context
   setupLogging();
+  setupKeyboardShortcuts();  // ✅ NEW: Setup F1-F8 keyboard shortcuts
 
   // Show main menu first
   m_pageStack->setCurrentWidget(m_mainMenuPage);
@@ -268,6 +280,67 @@ void MainWindow::setupJogPanel()
   }
 }
 
+void MainWindow::setupKeyboardShortcuts()
+{
+  std::cout << "[MainWindow] Setting up keyboard shortcuts (F1-F8)..." << std::endl;
+
+  // F1 - Run Program Page
+  m_shortcutF1 = new QShortcut(QKeySequence(Qt::Key_F1), this);
+  connect(m_shortcutF1, &QShortcut::activated, this, &MainWindow::onMainMenuProcess);
+  std::cout << "[MainWindow]   F1 -> Run Program Page" << std::endl;
+
+  // F2 - Recipe Page
+  m_shortcutF2 = new QShortcut(QKeySequence(Qt::Key_F2), this);
+  connect(m_shortcutF2, &QShortcut::activated, this, &MainWindow::onMainMenuRecipe);
+  std::cout << "[MainWindow]   F2 -> Recipe Page" << std::endl;
+
+  // F3 - Motion Page
+  m_shortcutF3 = new QShortcut(QKeySequence(Qt::Key_F3), this);
+  connect(m_shortcutF3, &QShortcut::activated, this, &MainWindow::onMainMenuMotion);
+  std::cout << "[MainWindow]   F3 -> Motion Page" << std::endl;
+
+  // F4 - Hardware Page
+  m_shortcutF4 = new QShortcut(QKeySequence(Qt::Key_F4), this);
+  connect(m_shortcutF4, &QShortcut::activated, this, &MainWindow::onMainMenuHardware);
+  std::cout << "[MainWindow]   F4 -> Hardware Page" << std::endl;
+
+  // F5 - Config Editor Page
+  m_shortcutF5 = new QShortcut(QKeySequence(Qt::Key_F5), this);
+  connect(m_shortcutF5, &QShortcut::activated, this, &MainWindow::onMainMenuEditConfig);
+  std::cout << "[MainWindow]   F5 -> Config Editor Page" << std::endl;
+
+  // F6 - Reserved (Future Update)
+  m_shortcutF6 = new QShortcut(QKeySequence(Qt::Key_F6), this);
+  connect(m_shortcutF6, &QShortcut::activated, this, &MainWindow::onMainMenuFutureUpdate);
+  std::cout << "[MainWindow]   F6 -> Reserved (Future)" << std::endl;
+
+  // F7 - Reserved (not connected yet)
+  m_shortcutF7 = new QShortcut(QKeySequence(Qt::Key_F7), this);
+  m_shortcutF7->setEnabled(false);  // Disabled until implemented
+  std::cout << "[MainWindow]   F7 -> Reserved (Disabled)" << std::endl;
+
+  // F8 - Reserved (not connected yet)
+  m_shortcutF8 = new QShortcut(QKeySequence(Qt::Key_F8), this);
+  m_shortcutF8->setEnabled(false);  // Disabled until implemented
+  std::cout << "[MainWindow]   F8 -> Reserved (Disabled)" << std::endl;
+
+  // Ctrl+J - Toggle Jog Panel
+  m_shortcutCtrlJ = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_J), this);
+  connect(m_shortcutCtrlJ, &QShortcut::activated, this, &MainWindow::onToggleJogPanel);
+  std::cout << "[MainWindow]   Ctrl+J -> Toggle Jog Panel" << std::endl;
+
+  // Ctrl+K - Toggle Aux Window
+  m_shortcutCtrlK = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_K), this);
+  connect(m_shortcutCtrlK, &QShortcut::activated, this, &MainWindow::onToggleAuxWindow);
+  std::cout << "[MainWindow]   Ctrl+K -> Toggle Aux Window" << std::endl;
+
+  std::cout << "[MainWindow] Keyboard shortcuts setup complete!" << std::endl;
+
+  if (m_context->logManager) {
+    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K) registered", "MainWindow");
+  }
+}
+
 void MainWindow::onMainMenuProcess()
 {
   std::cout << "[MainWindow] Process clicked" << std::endl;
@@ -334,10 +407,33 @@ void MainWindow::onToggleJogPanel()
 
   if (m_jogPanel->isPanelVisible()) {
     m_jogPanel->hidePanel();
-    std::cout << "[MainWindow] Jog panel hidden" << std::endl;
+    std::cout << "[MainWindow] Jog panel hidden (Ctrl+J)" << std::endl;
   }
   else {
     m_jogPanel->showPanel();
-    std::cout << "[MainWindow] Jog panel shown" << std::endl;
+    std::cout << "[MainWindow] Jog panel shown (Ctrl+J)" << std::endl;
+  }
+}
+
+void MainWindow::onToggleAuxWindow()
+{
+  if (!m_context || !m_context->auxWindowManager) {
+    std::cerr << "[MainWindow] Aux window manager not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_context->auxWindowManager->isVisible()) {
+    m_context->auxWindowManager->hide();
+    std::cout << "[MainWindow] Aux window hidden (Ctrl+K)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Aux window hidden", "MainWindow");
+    }
+  }
+  else {
+    m_context->auxWindowManager->show();
+    std::cout << "[MainWindow] Aux window shown (Ctrl+K)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Aux window shown", "MainWindow");
+    }
   }
 }

@@ -184,6 +184,75 @@ else()
 endif()
 
 # ============================================================================
+# VISA SDK Configuration (Local)
+# ============================================================================
+set(VISA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/visa")
+set(VISA_INCLUDE_DIR "${VISA_DIR}/include")
+
+if(WIN32)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        # 64-bit build
+        set(VISA_LIB_DIR "${VISA_DIR}/Lib_x64")
+        set(VISA_LIBRARY "${VISA_LIB_DIR}/visa64.lib")
+    else()
+        # 32-bit build
+        set(VISA_LIB_DIR "${VISA_DIR}/lib")
+        set(VISA_LIBRARY "${VISA_LIB_DIR}/visa32.lib")
+    endif()
+endif()
+
+# Check if VISA installation exists
+if(NOT EXISTS ${VISA_INCLUDE_DIR})
+    message(WARNING "VISA SDK not found at ${VISA_DIR}. Direct VISA adapter will be disabled.")
+    set(VISA_FOUND FALSE)
+else()
+    message(STATUS "VISA SDK found at: ${VISA_DIR}")
+    message(STATUS "  - Include directory: ${VISA_INCLUDE_DIR}")
+    message(STATUS "  - Library: ${VISA_LIBRARY}")
+
+    # Verify library file exists
+    if(EXISTS ${VISA_LIBRARY})
+        set(VISA_FOUND TRUE)
+    else()
+        message(WARNING "VISA library not found at ${VISA_LIBRARY}. Direct VISA adapter will be disabled.")
+        set(VISA_FOUND FALSE)
+    endif()
+endif()
+
+# ============================================================================
+# VISA Device Scanner Utility
+# ============================================================================
+# Simple tool to find all connected VISA devices and their resource strings
+if(VISA_FOUND)
+    add_executable(find_visa_devices
+        find_visa_devices.cpp
+    )
+
+    target_include_directories(find_visa_devices PRIVATE
+        ${VISA_INCLUDE_DIR}
+    )
+
+    target_link_libraries(find_visa_devices PRIVATE
+        ${VISA_LIBRARY}
+    )
+
+    set_target_properties(find_visa_devices PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+
+    if(WIN32 AND MSVC)
+        set_target_properties(find_visa_devices PROPERTIES
+            LINK_FLAGS "/SUBSYSTEM:CONSOLE"
+        )
+    endif()
+
+    message(STATUS "VISA Device Scanner utility: 'find_visa_devices' - run to discover connected VISA instruments")
+else()
+    message(STATUS "VISA Device Scanner utility disabled - VISA SDK not found")
+endif()
+
+# ============================================================================
 # EziIO SDK Configuration
 # ============================================================================
 set(EZIIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/eziio")
@@ -280,6 +349,11 @@ endif()
 # Add IDS uEye include directory if found
 if(IDS_UEYE_FOUND)
     include_directories(${IDS_UEYE_INCLUDE_DIR})
+endif()
+
+# Add VISA include directory if found
+if(VISA_FOUND)
+    include_directories(${VISA_INCLUDE_DIR})
 endif()
 
 # Add EziIO include directory if found
@@ -663,6 +737,19 @@ else()
     message(STATUS "EziIO support disabled - library not found")
 endif()
 
+# Conditionally add CLD101x Direct VISA adapter if VISA is found
+if(VISA_FOUND)
+    list(APPEND SOURCES
+        include/TEC/CLD101xDirectAdapter.cpp
+    )
+    list(APPEND HEADERS
+        include/TEC/CLD101xDirectAdapter.h
+    )
+    message(STATUS "CLD101x Direct VISA adapter enabled")
+else()
+    message(STATUS "CLD101x Direct VISA adapter disabled - NI-VISA SDK not found")
+endif()
+
 # ============================================================================
 # Create Executable
 # ============================================================================
@@ -744,7 +831,7 @@ endif()
 # Link EziIO SDK if found
 if(EZIIO_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${EZIIO_LIBRARY})
-    
+
     # On Windows, copy the DLL to the output directory
     if(WIN32 AND EXISTS ${EZIIO_DLL})
         add_custom_command(TARGET bobcat_engine POST_BUILD
@@ -754,6 +841,12 @@ if(EZIIO_FOUND)
             COMMENT "Copying EziIO DLL to output directory"
         )
     endif()
+endif()
+
+# Link NI-VISA SDK if found
+if(VISA_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${VISA_LIBRARY})
+    message(STATUS "Linked NI-VISA library for CLD101x Direct adapter")
 endif()
 
 # ============================================================================

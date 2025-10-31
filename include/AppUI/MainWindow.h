@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QStackedWidget>
 #include <QPushButton>
+#include <QShortcut>
 
 struct ApplicationContext;
 class MainMenuPage;
@@ -36,12 +37,14 @@ private slots:
   void onBackToMainMenu();
   void onOpenLogViewer();
   void onToggleJogPanel();
+  void onToggleAuxWindow();  // ✅ NEW: Toggle aux window visibility
 
 private:
   void setupUI();
   void createPages();
   void setupLogging();
   void setupJogPanel();
+  void setupKeyboardShortcuts();  // ✅ NEW: Setup F1-F8 shortcuts
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
@@ -59,4 +62,18 @@ private:
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;
   TransformationMatrixLoader* m_matrixLoader;
+
+  // ✅ NEW: Keyboard shortcuts for page navigation
+  QShortcut* m_shortcutF1;  // Run Program Page
+  QShortcut* m_shortcutF2;  // Recipe Page
+  QShortcut* m_shortcutF3;  // Motion Page
+  QShortcut* m_shortcutF4;  // Hardware Page
+  QShortcut* m_shortcutF5;  // Config Editor Page
+  QShortcut* m_shortcutF6;  // Reserved
+  QShortcut* m_shortcutF7;  // Reserved
+  QShortcut* m_shortcutF8;  // Reserved
+
+  // ✅ NEW: Keyboard shortcuts for window toggles
+  QShortcut* m_shortcutCtrlJ;  // Toggle Jog Panel
+  QShortcut* m_shortcutCtrlK;  // Toggle Aux Window
 };

@@ -1,0 +1,1 @@
+python C:\Users\Fabrinet\source\repos\komcat\acs_solution_saa\acs_solution_saa\PythonServer\serverCLD101x_v2.py

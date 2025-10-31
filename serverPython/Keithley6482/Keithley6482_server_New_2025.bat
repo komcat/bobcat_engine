@@ -1,0 +1,1 @@
+python.exe c:/Users/Fabrinet/source/repos/komcat/komcat_CMakeProject2/serverPython/Keithley6482/main.py

@@ -77,13 +77,40 @@ void TECJsonLoader::LoadDevices(TECManager& manager, const json& config) {
         continue;
       }
 
-      if (deviceJson.contains("ip_address")) {
-        device.IpAddress = deviceJson["ip_address"].get<std::string>();
+      // Check controller type to determine required fields
+      bool isDirect = (device.TypeController == "CLD101x_Direct" ||
+                       device.TypeController == "cld101x_direct");
+
+      // For direct VISA adapters, require visa_resource
+      // For TCP-based adapters, require ip_address
+      if (isDirect) {
+        if (deviceJson.contains("visa_resource")) {
+          device.VISAResource = deviceJson["visa_resource"].get<std::string>();
+        }
+        else {
+          std::cerr << "[ERROR] TECJsonLoader: Device '" << device.Name
+            << "' (type: " << device.TypeController << ") missing 'visa_resource' field" << std::endl;
+          continue;
+        }
+        // IP address is optional for direct adapters
+        if (deviceJson.contains("ip_address")) {
+          device.IpAddress = deviceJson["ip_address"].get<std::string>();
+        }
       }
       else {
-        std::cerr << "[ERROR] TECJsonLoader: Device '" << device.Name
-          << "' missing 'ip_address' field" << std::endl;
-        continue;
+        // TCP-based adapter requires ip_address
+        if (deviceJson.contains("ip_address")) {
+          device.IpAddress = deviceJson["ip_address"].get<std::string>();
+        }
+        else {
+          std::cerr << "[ERROR] TECJsonLoader: Device '" << device.Name
+            << "' missing 'ip_address' field" << std::endl;
+          continue;
+        }
+        // VISA resource is optional for TCP adapters
+        if (deviceJson.contains("visa_resource")) {
+          device.VISAResource = deviceJson["visa_resource"].get<std::string>();
+        }
       }
 
       // Optional fields with defaults

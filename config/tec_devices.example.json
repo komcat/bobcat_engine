@@ -1,0 +1,58 @@
+{
+  "tec_devices": [
+    {
+      "comment": "Example 1: Direct VISA adapter (recommended - no Python server needed)",
+      "name": "laser-main",
+      "controller_type": "CLD101x_Direct",
+      "visa_resource": "USB0::0x1313::0x804F::M00930341::INSTR",
+      "enabled": true,
+      "default_temperature": 25.0,
+      "default_laser_current": 50.0
+    },
+    {
+      "comment": "Example 2: Legacy TCP-based adapter (requires Python server running)",
+      "name": "laser-backup",
+      "controller_type": "CLD101x",
+      "ip_address": "127.0.0.88",
+      "port": 65432,
+      "enabled": false,
+      "default_temperature": 25.0,
+      "default_laser_current": 30.0
+    },
+    {
+      "comment": "Example 3: Multiple direct VISA devices with different serial numbers",
+      "name": "laser-secondary",
+      "controller_type": "CLD101x_Direct",
+      "visa_resource": "USB0::0x1313::0x804F::M00987654::INSTR",
+      "enabled": false,
+      "default_temperature": 26.0,
+      "default_laser_current": 45.0
+    }
+  ],
+  "_notes": [
+    "Controller Types:",
+    "  - CLD101x_Direct: Direct VISA communication (requires NI-VISA runtime)",
+    "  - CLD101x: TCP-based communication (requires Python server)",
+    "",
+    "VISA Resource String Format:",
+    "  USB0::VendorID::ProductID::SerialNumber::INSTR",
+    "  - 0x1313: Thorlabs Vendor ID",
+    "  - 0x804F: CLD101x Product ID",
+    "  - SerialNumber: Unique to each device (check device label or use NI MAX)",
+    "",
+    "To find your VISA resource string:",
+    "  1. Install NI-VISA Runtime",
+    "  2. Run NI Measurement & Automation Explorer (NI MAX)",
+    "  3. Expand 'Devices and Interfaces' -> 'USB Devices'",
+    "  4. Find your CLD101x device and copy the VISA resource string",
+    "",
+    "Migration from TCP to Direct VISA:",
+    "  1. Install NI-VISA Runtime (if not already installed)",
+    "  2. Change controller_type from 'CLD101x' to 'CLD101x_Direct'",
+    "  3. Add visa_resource field with your device's VISA string",
+    "  4. Remove or comment out ip_address and port fields",
+    "  5. Stop the Python server (no longer needed)",
+    "",
+    "Both adapter types can coexist in the same configuration file"
+  ]
+}

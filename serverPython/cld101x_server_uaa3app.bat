@@ -1,0 +1,1 @@
+python C:\Users\Fabrinet\source\repos\komcat\komcat_CMakeProject2\serverPython\cld101x_server_v2.py --auto-start

@@ -1,0 +1,1 @@
+C:/Users/Fabrinet/AppData/Local/Programs/Python/Python312/python.exe c:/Users/Fabrinet/source/repos/komcat/komcat_CMakeProject2/serverPython/Keithley2400/main_Keithley2400.py

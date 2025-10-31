@@ -1,6 +1,7 @@
 // TECManager.cpp
 #include "TECManager.h"
 #include "CLD101xAdapter.h"
+#include "CLD101xDirectAdapter.h"
 #include <iostream>
 #include <algorithm>
 
@@ -333,7 +334,12 @@ std::unique_ptr<ITECDevice> TECManager::CreateDeviceAdapter(const TECDevice& con
   std::string normalizedType = NormalizeType(config.TypeController);
 
   if (normalizedType == "CLD101X") {
+    // Legacy TCP-based adapter (requires Python server)
     return std::make_unique<CLD101xAdapter>(config);
+  }
+  else if (normalizedType == "CLD101X_DIRECT") {
+    // Direct VISA adapter (no Python server required)
+    return std::make_unique<CLD101xDirectAdapter>(config);
   }
 
   // Add more device types here in the future:
