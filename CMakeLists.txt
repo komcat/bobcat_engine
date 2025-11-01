@@ -324,6 +324,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/sequence
     ${CMAKE_SOURCE_DIR}/include/PSU
     ${CMAKE_SOURCE_DIR}/include/TEC
+    ${CMAKE_SOURCE_DIR}/include/SMU
 )
 
 # Add nlohmann json include directory if found
@@ -494,6 +495,8 @@ set(SOURCES
     include/PSU/KeysightPSUAdapter.cpp
     include/PSU/KeysightE36103B.cpp
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
+    include/SMU/SMUManager.cpp
+    include/SMU/SMUJsonLoader.cpp
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
@@ -623,11 +626,15 @@ set(HEADERS
     include/AuxWindow/AuxViewWindow.h
     include/AuxWindow/LiveChartWidget.h
     include/AuxWindow/LiveViewCameraWidget.h
-    include/PSU/IPowerSupply.h 
+    include/PSU/IPowerSupply.h
     include/PSU/PowerSupplyManager.h
-    include/PSU/PowerSupplyJsonLoader.h 
+    include/PSU/PowerSupplyJsonLoader.h
     include/PSU/KeysightPSUAdapter.h
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h
+    include/SMU/ISMUDevice.h
+    include/SMU/SMUTypes.h
+    include/SMU/SMUManager.h
+    include/SMU/SMUJsonLoader.h
     include/ProgramManager/ProgramWorker.h
     include/ProgramManager/ProgramManager.h
     include/AppUI/RunProgramPage/RunProgramPage.h
@@ -748,6 +755,19 @@ if(VISA_FOUND)
     message(STATUS "CLD101x Direct VISA adapter enabled")
 else()
     message(STATUS "CLD101x Direct VISA adapter disabled - NI-VISA SDK not found")
+endif()
+
+# Conditionally add SMU system (Keithley adapters) if VISA is found
+if(VISA_FOUND)
+    list(APPEND SOURCES
+        include/SMU/Keithley6482Adapter.cpp
+    )
+    list(APPEND HEADERS
+        include/SMU/Keithley6482Adapter.h
+    )
+    message(STATUS "SMU system enabled (Keithley 6482 adapter)")
+else()
+    message(STATUS "SMU system disabled - NI-VISA SDK not found")
 endif()
 
 # ============================================================================

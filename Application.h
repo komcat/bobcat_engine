@@ -61,6 +61,7 @@ private:
   void initializeTECManager();  // ✅ ADD THIS LINE
   void initializeAuxWindowManager();  // ✅ ADD THIS
   void initializePowerSupplySystem();
+  void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
 
   void testMotionCommands();   
@@ -89,6 +90,7 @@ private:
   std::unique_ptr<TECManager> m_tecManager;  // ✅ ADD THIS LINE
   std::unique_ptr<AuxWindowManager> m_auxWindowManager;  // ✅ ADD THIS
 	std::unique_ptr<PowerSupplyManager> m_powerSupplyManager;
+  std::unique_ptr<SMUManager> m_smuManager;  // ✅ ADD SMU Manager
   std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
 
   ApplicationContext m_context;

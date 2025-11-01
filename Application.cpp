@@ -16,6 +16,9 @@
 #include "TECJsonLoader.h"
 #include "PowerSupplyManager.h"
 #include "PowerSupplyJsonLoader.h"
+#include "SMUManager.h"  // ✅ ADD SMU Manager
+#include "SMUJsonLoader.h"  // ✅ ADD SMU Config Loader
+#include "Keithley6482Adapter.h"  // ✅ For polling test and channel info
 #include "CoordinateSystemManager.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
@@ -28,6 +31,7 @@
 #include <thread>
 #include <chrono>
 #include <sstream>
+#include <iomanip>  // for std::setprecision
 #include <cstdlib>  // for std::getenv
 #include "nlohmann/json.hpp"
 
@@ -193,6 +197,7 @@ void Application::initializeManagers()
 		initializePneumaticManager();  // ✅ ADD THIS
 		initializeTECManager();  // ✅ ADD THIS LINE
     initializePowerSupplySystem();  // ✅ MOVED BEFORE SequenceEngine
+    initializeSMUSystem();  // ✅ ADD SMU System initialization
     initializeSequenceEngine();  // ✅ ADD THIS LAST (needs all managers initialized)
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
 		initializeProductPositionManager();	// ✅ ADD THIS
@@ -586,6 +591,11 @@ void Application::shutdownManagers()
     m_context.powerSupplyManager->disconnectAll();
   }
 
+  // Disconnect all SMU devices
+  if (m_context.smuManager) {
+    m_context.smuManager->DisconnectAll();
+  }
+
 
   // Shutdown in reverse order
   if (m_auxWindowManager) {
@@ -621,6 +631,7 @@ void Application::shutdownManagers()
   m_context = ApplicationContext();
 
 	m_powerSupplyManager.reset();
+  m_smuManager.reset();  // ✅ ADD SMU Manager cleanup
   m_tecManager.reset();  // ✅ ADD THIS LINE
   m_productPositionManager.reset();  // ✅ ADD THIS
   m_pneumaticManager.reset();
@@ -1333,5 +1344,214 @@ void Application::initializePowerSupplySystem()
     std::cerr << "[Application] Warning: Failed to load Power Supply configuration" << std::endl;
     std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
     std::cerr << "[Application] Power Supply functionality will be limited" << std::endl;
+  }
+}
+
+void Application::initializeSMUSystem()
+{
+  std::cout << "[Application] Initializing SMU system..." << std::endl;
+
+  // Create SMUManager
+  m_smuManager = std::make_unique<SMUManager>(this);
+
+  // Assign to context for access by other components
+  m_context.smuManager = m_smuManager.get();
+
+  // Try local config first, then fall back to default
+  std::string localConfigPath = "config/smu_devices.local.json";
+  std::string defaultConfigPath = "config/smu_devices.json";
+
+  bool configLoaded = false;
+
+  // Try local config first
+  if (SMUJsonLoader::LoadConfiguration(localConfigPath, m_context.smuManager)) {
+    std::cout << "[Application] SMU configuration loaded from "
+      << localConfigPath << std::endl;
+    configLoaded = true;
+  }
+  // Fall back to default config
+  else if (SMUJsonLoader::LoadConfiguration(defaultConfigPath, m_context.smuManager)) {
+    std::cout << "[Application] SMU configuration loaded from "
+      << defaultConfigPath << std::endl;
+    configLoaded = true;
+  }
+
+  if (configLoaded) {
+    std::cout << "[Application] SMU system ready" << std::endl;
+    std::cout << "[Application] Found " << m_context.smuManager->GetDeviceCount()
+              << " SMU device(s)" << std::endl;
+
+    // ========== Connection Test ==========
+    // Test connection to Keithley 6482 and read device ID
+    std::cout << "\n[Application] ===== SMU Connection Test =====" << std::endl;
+
+    auto deviceNames = m_context.smuManager->GetDeviceNames();
+    for (const auto& name : deviceNames) {
+      auto smu = m_context.smuManager->GetDevice(name);
+      if (!smu) {
+        std::cerr << "[Application] SMU device not found: " << name << std::endl;
+        continue;
+      }
+
+      std::cout << "[Application] Testing SMU device: " << name << std::endl;
+
+      // Attempt connection
+      if (smu->Connect()) {
+        std::cout << "[Application] ✅ Connected to SMU: " << name << std::endl;
+
+        // Read device ID
+        std::string deviceID = smu->GetDeviceID();
+        std::cout << "[Application] Device ID: " << deviceID << std::endl;
+
+        // Read supported mode
+        SMUMode mode = smu->GetSupportedMode();
+        std::string modeStr = (mode == SMUMode::MEASURE_ONLY) ? "MEASURE_ONLY" :
+                              (mode == SMUMode::VOLTAGE_SOURCE) ? "VOLTAGE_SOURCE" :
+                              (mode == SMUMode::CURRENT_SOURCE) ? "CURRENT_SOURCE" : "UNKNOWN";
+        std::cout << "[Application] Supported Mode: " << modeStr << std::endl;
+
+        // Display channel configuration
+        int channelCount = smu->GetChannelCount();
+        auto enabledChannels = smu->GetEnabledChannels();
+        std::cout << "[Application] Channel Count: " << channelCount << std::endl;
+        std::cout << "[Application] Enabled Channels: ";
+        for (size_t i = 0; i < enabledChannels.size(); ++i) {
+          std::cout << enabledChannels[i];
+          if (i < enabledChannels.size() - 1) std::cout << ", ";
+        }
+        std::cout << std::endl;
+
+        // For measurement devices, try a quick current reading
+        if (mode == SMUMode::MEASURE_ONLY) {
+          std::cout << "[Application] Performing test measurement..." << std::endl;
+
+          // Set integration time to fast for quick test
+          smu->SetIntegrationTime(1.0);  // 1 NPLC
+
+          // Enable auto-range for convenience
+          smu->SetMeasurementRange(0.0, true);  // Auto-range
+
+          // Read current (default channel)
+          double current = smu->ReadCurrent();
+          if (current != -999.0) {
+            std::cout << "[Application] ✅ Test measurement successful!" << std::endl;
+            std::cout << "[Application] Current reading (default): " << current << " A" << std::endl;
+          }
+          else {
+            std::cerr << "[Application] ❌ Test measurement failed: "
+                      << smu->GetLastError() << std::endl;
+          }
+
+          // Test reading individual channels
+          std::cout << "\n[Application] Testing individual channel reading..." << std::endl;
+          for (int ch : enabledChannels) {
+            double chCurrent = smu->ReadChannel(ch);
+            if (chCurrent != -999.0) {
+              std::cout << "[Application] ✅ Channel " << ch << ": " << chCurrent << " A" << std::endl;
+            }
+            else {
+              std::cerr << "[Application] ❌ Channel " << ch << " failed: "
+                        << smu->GetLastError() << std::endl;
+            }
+          }
+
+          // Test reading all channels at once
+          std::cout << "\n[Application] Testing read all channels..." << std::endl;
+          auto allChannels = smu->ReadAllChannels();
+          if (allChannels.size() == enabledChannels.size()) {
+            std::cout << "[Application] ✅ Read all channels successful!" << std::endl;
+            for (size_t i = 0; i < allChannels.size(); ++i) {
+              std::cout << "[Application]   Channel " << enabledChannels[i]
+                        << ": " << allChannels[i] << " A" << std::endl;
+            }
+          }
+          else {
+            std::cerr << "[Application] ❌ Read all channels returned wrong count" << std::endl;
+          }
+
+          // ========== Polling Test with Fast Mode ==========
+          // Cast to Keithley6482Adapter to access polling methods
+          auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(smu);
+          if (keithley) {
+            std::cout << "\n[Application] ===== Polling Test - FAST Mode (5 seconds) =====" << std::endl;
+
+            // Configure FAST mode (NPLC=0.1, ~80 Hz target)
+            std::cout << "[Application] Configuring FAST mode (NPLC=0.1, Python COARSE equivalent)..." << std::endl;
+            if (!keithley->ConfigureMeasurementMode(Keithley6482Adapter::MeasurementMode::FAST)) {
+              std::cerr << "[Application] ❌ Failed to configure FAST mode: "
+                        << smu->GetLastError() << std::endl;
+            }
+            else {
+              // Reset sample counter
+              keithley->ResetSampleCount();
+
+              // Start polling with 10ms interval (theoretical 100Hz)
+              std::cout << "[Application] Starting polling with 10ms interval..." << std::endl;
+              auto startTime = std::chrono::steady_clock::now();
+
+              if (keithley->StartPolling(10)) {
+                // Wait for 5 seconds while processing Qt events (required for QTimer)
+                auto targetTime = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (std::chrono::steady_clock::now() < targetTime) {
+                  QCoreApplication::processEvents();  // Process Qt events (including QTimer)
+                  std::this_thread::sleep_for(std::chrono::milliseconds(10));  // Small sleep to avoid busy-wait
+                }
+
+                // Stop polling
+                keithley->StopPolling();
+                auto endTime = std::chrono::steady_clock::now();
+
+                // Calculate elapsed time and Hz
+                double elapsedSeconds = std::chrono::duration<double>(endTime - startTime).count();
+                uint64_t samples = keithley->GetSampleCount();
+                double actualHz = samples / elapsedSeconds;
+
+                std::cout << "[Application] FAST mode polling test complete:" << std::endl;
+                std::cout << "[Application]   Samples acquired: " << samples << std::endl;
+                std::cout << "[Application]   Elapsed time: " << std::fixed << std::setprecision(3)
+                          << elapsedSeconds << " seconds" << std::endl;
+                std::cout << "[Application]   Actual sampling rate: " << std::fixed << std::setprecision(2)
+                          << actualHz << " Hz" << std::endl;
+                std::cout << "[Application]   Average period: " << std::fixed << std::setprecision(2)
+                          << (1000.0 / actualHz) << " ms" << std::endl;
+              }
+              else {
+                std::cerr << "[Application] ❌ Failed to start polling: "
+                          << smu->GetLastError() << std::endl;
+              }
+            }
+
+            std::cout << "[Application] ===== FAST Mode Test Complete =====\n" << std::endl;
+
+            // Optional: Test dual-channel reading
+            std::cout << "[Application] Testing dual-channel reading..." << std::endl;
+            auto [ch1, ch2] = keithley->ReadBothChannels();
+            if (ch1 != -999.0 && ch2 != -999.0) {
+              std::cout << "[Application] ✅ Dual-channel read successful!" << std::endl;
+              std::cout << "[Application]   Channel 1: " << ch1 << " A" << std::endl;
+              std::cout << "[Application]   Channel 2: " << ch2 << " A" << std::endl;
+            }
+            else {
+              std::cerr << "[Application] ❌ Dual-channel read failed: "
+                        << smu->GetLastError() << std::endl;
+            }
+          }
+        }
+
+        // Keep device connected for later use
+        std::cout << "[Application] SMU device '" << name << "' is ready for use" << std::endl;
+      }
+      else {
+        std::cerr << "[Application] ❌ Failed to connect to SMU: " << name << std::endl;
+        std::cerr << "[Application] Error: " << smu->GetLastError() << std::endl;
+      }
+    }
+
+    std::cout << "[Application] ===== SMU Connection Test Complete =====\n" << std::endl;
+  }
+  else {
+    std::cerr << "[Application] Warning: Failed to load SMU configuration" << std::endl;
+    std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
+    std::cerr << "[Application] SMU functionality will be unavailable" << std::endl;
   }
 }

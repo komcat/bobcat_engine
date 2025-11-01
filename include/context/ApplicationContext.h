@@ -12,9 +12,10 @@ class SequenceEngine;
 class ProductPositionManager;
 class AdaptiveScanController;  
 class ProductPositionManager;  
-class TECManager;   
+class TECManager;
 class AuxWindowManager;  // ✅ ADD THIS
 class PowerSupplyManager;
+class SMUManager;  // ✅ ADD SMU Manager
 class CoordinateSystemManager;
 
 struct ApplicationContext
@@ -33,6 +34,7 @@ struct ApplicationContext
   TECManager* tecManager = nullptr;
   AuxWindowManager* auxWindowManager = nullptr;
   PowerSupplyManager* powerSupplyManager = nullptr;
+  SMUManager* smuManager = nullptr;  // ✅ ADD SMU Manager
   CoordinateSystemManager* coordinateSystemManager = nullptr;
 
   // System configuration

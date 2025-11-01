@@ -1,0 +1,15 @@
+{
+  "devices": [
+    {
+      "name": "Keithley_6482",
+      "type": "keithley_6482",
+      "visa_resource": "GPIB0::1::INSTR",
+      "enabled": true,
+      "channel_count": 2,
+      "enabled_channels": [1, 2],
+      "measurement_nplc": 5,
+      "auto_range": true,
+      "fixed_range": 0.0
+    }
+  ]
+}
