@@ -15,6 +15,7 @@ class ACSControllerPage;
 class IOControllerPage;
 class PneumaticControlPage;  // ✅ ADD
 class TECControlPage;  // Add forward declaration
+class SMUControlPage;  // Add forward declaration for SMU
 
 /**
  * @brief Hardware & Instrument page
@@ -77,6 +78,7 @@ private:
   IOControllerPage* m_ioControllerPage;
   PneumaticControlPage* m_pneumaticControlPage;  // ✅ ADD
   TECControlPage* m_tecControlPage;  // Add member variable
+  SMUControlPage* m_smuControlPage;  // Add SMU page
 
   // Track current selection
   QPushButton* m_currentButton;

@@ -306,6 +306,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/RecipePage
     ${CMAKE_SOURCE_DIR}/include/AppUI/TECPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/PowerSupplyControlPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/SMUControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
@@ -495,6 +496,7 @@ set(SOURCES
     include/PSU/KeysightPSUAdapter.cpp
     include/PSU/KeysightE36103B.cpp
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
+    include/AppUI/SMUControlPage/SMUControlPage.cpp
     include/SMU/SMUManager.cpp
     include/SMU/SMUJsonLoader.cpp
     include/ProgramManager/ProgramWorker.cpp
@@ -631,6 +633,7 @@ set(HEADERS
     include/PSU/PowerSupplyJsonLoader.h
     include/PSU/KeysightPSUAdapter.h
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h
+    include/AppUI/SMUControlPage/SMUControlPage.h
     include/SMU/ISMUDevice.h
     include/SMU/SMUTypes.h
     include/SMU/SMUManager.h

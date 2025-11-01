@@ -10,6 +10,7 @@
 #include "PneumaticControlPage.h"
 #include "TECControlPage.h"
 #include "PowerSupplyControlPage.h"  // ✅ ADD THIS
+#include "SMUControlPage.h"  // ✅ ADD SMU PAGE
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -161,11 +162,9 @@ void HardwareInstrumentPage::createContentArea()
   PowerSupplyControlPage* powerSupplyPage = new PowerSupplyControlPage(m_context);
   m_contentStack->addWidget(powerSupplyPage);
 
-  // Index 9: SMU placeholder
-  QLabel* smuPlaceholder = new QLabel("SMU\n(Coming Soon)");
-  smuPlaceholder->setAlignment(Qt::AlignCenter);
-  smuPlaceholder->setStyleSheet("QLabel { font-size: 24px; color: #888888; background-color: #2b2b2b; }");
-  m_contentStack->addWidget(smuPlaceholder);
+  // Index 9: SMU - ✅ UPDATED TO USE ACTUAL PAGE
+  m_smuControlPage = new SMUControlPage(m_context);
+  m_contentStack->addWidget(m_smuControlPage);
 }
 
 QPushButton* HardwareInstrumentPage::createSidebarButton(const QString& text)
@@ -279,5 +278,5 @@ void HardwareInstrumentPage::showSMU()
   if (m_currentButton) m_currentButton->setChecked(false);
   m_smuButton->setChecked(true);
   m_currentButton = m_smuButton;
-  std::cout << "[HardwareInstrumentPage] Showing SMU (placeholder)" << std::endl;
+  std::cout << "[HardwareInstrumentPage] Showing SMU page" << std::endl;
 }
