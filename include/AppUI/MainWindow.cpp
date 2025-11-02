@@ -24,6 +24,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_pageStack(nullptr)
   , m_logStatusBar(nullptr)
   , m_logViewerPage(nullptr)
+  , m_previousPage(nullptr)
   , m_mainMenuPage(nullptr)
   , m_hardwarePage(nullptr)
   , m_configEditorPage(nullptr)
@@ -386,16 +387,37 @@ void MainWindow::onBackToMainMenu()
 {
   std::cout << "[MainWindow] Back to main menu" << std::endl;
   m_context->logManager->Debug("Returning to main menu", "MainWindow");
+
+  // Clear previous page tracker when going back to main menu
+  m_previousPage = nullptr;
+
   m_pageStack->setCurrentWidget(m_mainMenuPage);
 }
 
 void MainWindow::onOpenLogViewer()
 {
-  std::cout << "[MainWindow] Opening log viewer" << std::endl;
-  m_context->logManager->Info("Opening full log viewer", "MainWindow");
+  // Check if we're already on the log viewer page
+  if (m_pageStack->currentWidget() == m_logViewerPage) {
+    // Toggle back to previous page
+    std::cout << "[MainWindow] Closing log viewer, returning to previous page" << std::endl;
+    m_context->logManager->Debug("Closing log viewer", "MainWindow");
 
-  m_logViewerPage->RefreshLogs();
-  m_pageStack->setCurrentWidget(m_logViewerPage);
+    if (m_previousPage) {
+      m_pageStack->setCurrentWidget(m_previousPage);
+    } else {
+      // Fallback to main menu if no previous page tracked
+      m_pageStack->setCurrentWidget(m_mainMenuPage);
+    }
+    m_previousPage = nullptr;
+  } else {
+    // Open log viewer and save current page
+    std::cout << "[MainWindow] Opening log viewer" << std::endl;
+    m_context->logManager->Info("Opening full log viewer", "MainWindow");
+
+    m_previousPage = m_pageStack->currentWidget();
+    m_logViewerPage->RefreshLogs();
+    m_pageStack->setCurrentWidget(m_logViewerPage);
+  }
 }
 
 void MainWindow::onToggleJogPanel()

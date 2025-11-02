@@ -50,6 +50,7 @@ private:
   QStackedWidget* m_pageStack;
   LogStatusBar* m_logStatusBar;
   LogViewerPage* m_logViewerPage;
+  QWidget* m_previousPage;  // Track page before opening log viewer
 
   MainMenuPage* m_mainMenuPage;
   HardwareInstrumentPage* m_hardwarePage;
