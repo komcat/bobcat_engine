@@ -505,6 +505,7 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "I/O & Pneumatics",
     "TEC & Laser",
     "Power Supply",
+    "SMU Control",
     "Data",
     "System",
     "Control Flow",

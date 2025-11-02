@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QTextEdit>
 #include <QLineEdit>
+#include <QTimer>  // ✅ ADDED for periodic channel refresh
 
 struct ApplicationContext;
 class ProgramManager;
@@ -86,6 +87,9 @@ private slots:
   void onStopScanRequested();
   void onChannelChanged(QString channel);  // ✅ ADDED
 
+  // ✅ ADDED: Periodic channel list refresh
+  void refreshDataStoreChannels();
+
 private:
   void setupUI();
   void createLeftPanel(QVBoxLayout* leftLayout);
@@ -147,6 +151,7 @@ private:
   // Scanning controls (refactored)
   ScanControlWidget* m_scanWidget;
   ScanExecutor* m_scanExecutor;
+  QTimer* m_channelRefreshTimer;  // ✅ ADDED: Periodic refresh of DataStore channels
 
   // Prompt system
   QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust

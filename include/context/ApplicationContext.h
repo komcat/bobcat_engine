@@ -16,6 +16,7 @@ class TECManager;
 class AuxWindowManager;  // ✅ ADD THIS
 class PowerSupplyManager;
 class SMUManager;  // ✅ ADD SMU Manager
+class SMUPollingManager;  // ✅ ADD SMU Polling Manager
 class CoordinateSystemManager;
 
 struct ApplicationContext
@@ -35,6 +36,7 @@ struct ApplicationContext
   AuxWindowManager* auxWindowManager = nullptr;
   PowerSupplyManager* powerSupplyManager = nullptr;
   SMUManager* smuManager = nullptr;  // ✅ ADD SMU Manager
+  SMUPollingManager* smuPollingManager = nullptr;  // ✅ ADD SMU Polling Manager
   CoordinateSystemManager* coordinateSystemManager = nullptr;
 
   // System configuration

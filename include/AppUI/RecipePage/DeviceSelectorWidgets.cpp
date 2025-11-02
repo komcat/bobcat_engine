@@ -5,7 +5,10 @@
 #include "EziIOManager.h"
 #include "PneumaticManager.h"
 #include "CameraManager.h"
-#include "product_position_manager.h"  // ✅ ADD THIS
+#include "product_position_manager.h"
+#include "TECManager.h"
+#include "PowerSupplyManager.h"
+#include "SMUManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -36,6 +39,8 @@ void DeviceComboBox::populateDevices()
   }
 
   std::vector<std::string> devices;
+
+  std::cout << "[DeviceComboBox] populateDevices() called for type: " << static_cast<int>(m_deviceType) << std::endl;
 
   switch (m_deviceType) {
   case DeviceType::Motion:
@@ -75,16 +80,43 @@ void DeviceComboBox::populateDevices()
       devices.push_back("telephoto");
     }
     break;
+
+  case DeviceType::TEC:
+    if (m_context->tecManager) {
+      devices = m_context->tecManager->GetAllDeviceNames();
+    }
+    break;
+
+  case DeviceType::PSU:
+    if (m_context->powerSupplyManager) {
+      devices = m_context->powerSupplyManager->getDeviceNames();
+    }
+    break;
+
+  case DeviceType::SMU:
+    if (m_context->smuManager) {
+      devices = m_context->smuManager->GetDeviceNames();
+      std::cout << "[DeviceComboBox] SMU: Got " << devices.size() << " devices from smuManager" << std::endl;
+    }
+    else {
+      std::cout << "[DeviceComboBox] SMU: smuManager is NULL!" << std::endl;
+    }
+    break;
   }
 
   if (devices.empty()) {
+    std::cout << "[DeviceComboBox] No devices found, adding placeholder" << std::endl;
     addItem("No devices found");
   }
   else {
+    std::cout << "[DeviceComboBox] Adding " << devices.size() << " devices to combo" << std::endl;
     for (const auto& device : devices) {
       addItem(QString::fromStdString(device));
+      std::cout << "[DeviceComboBox]   - Added: " << device << std::endl;
     }
   }
+
+  std::cout << "[DeviceComboBox] populateDevices() complete. Total items: " << count() << std::endl;
 }
 
 void DeviceComboBox::refreshDevices()
@@ -101,14 +133,35 @@ void DeviceComboBox::refreshDevices()
 
 std::string DeviceComboBox::getSelectedDevice() const
 {
-  return currentText().toStdString();
+  std::string result = currentText().toStdString();
+  std::cout << "[DeviceComboBox] getSelectedDevice() returning: '" << result
+            << "' (currentIndex=" << currentIndex() << ", count=" << count() << ")" << std::endl;
+  return result;
 }
 
 void DeviceComboBox::setSelectedDevice(const std::string& deviceName)
 {
+  std::cout << "[DeviceComboBox] setSelectedDevice('" << deviceName << "')" << std::endl;
   int index = findText(QString::fromStdString(deviceName));
+  std::cout << "[DeviceComboBox]   findText returned index: " << index << std::endl;
+
   if (index >= 0) {
     setCurrentIndex(index);
+    std::cout << "[DeviceComboBox]   setCurrentIndex(" << index << ") - SUCCESS" << std::endl;
+  }
+  else {
+    std::cout << "[DeviceComboBox]   Device not found in list! Current items:" << std::endl;
+    for (int i = 0; i < count(); ++i) {
+      std::cout << "[DeviceComboBox]     [" << i << "] = " << itemText(i).toStdString() << std::endl;
+    }
+
+    // ✅ AUTO-SELECT FIX: If device name is empty and we have devices, auto-select the first one
+    if (deviceName.empty() && count() > 0 && itemText(0) != "No devices found") {
+      std::cout << "[DeviceComboBox]   Auto-selecting first device: " << itemText(0).toStdString() << std::endl;
+      setCurrentIndex(0);
+      // Emit the change signal to trigger parameterChanged so it gets saved
+      emit currentIndexChanged(0);
+    }
   }
 }
 

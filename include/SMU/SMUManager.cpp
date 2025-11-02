@@ -1,5 +1,6 @@
 // SMUManager.cpp - Implementation of SMU Manager
 #include "SMUManager.h"
+#include "Keithley6482Adapter.h"
 #include <iostream>
 #include <algorithm>
 
@@ -24,6 +25,9 @@ void SMUManager::AddDevice(const std::string& name, SMUDevicePtr device)
   m_devices[name] = device;
   std::cout << "[SMUManager] Added device: " << name << std::endl;
 
+  // Subscribe to device measurements
+  subscribeToDevice(device, name);
+
   emit deviceAdded(QString::fromStdString(name));
 }
 
@@ -31,6 +35,9 @@ void SMUManager::RemoveDevice(const std::string& name)
 {
   auto it = m_devices.find(name);
   if (it != m_devices.end()) {
+    // Unsubscribe from device
+    unsubscribeFromDevice(it->second);
+
     // Disconnect before removing
     if (it->second && it->second->IsConnected()) {
       it->second->Disconnect();
@@ -151,4 +158,43 @@ void SMUManager::OutputOffAll()
   }
 
   std::cout << "[SMUManager] All outputs turned off" << std::endl;
+}
+
+// ========== Auto-Subscription to Device Measurements ==========
+
+void SMUManager::subscribeToDevice(SMUDevicePtr device, const std::string& name)
+{
+  if (!device) return;
+
+  // Try to cast to Keithley6482Adapter (supports polling signals)
+  auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+  if (keithley) {
+    // Forward device measurements to manager's signal
+    connect(keithley.get(), &Keithley6482Adapter::measurementReady,
+            this, [this, name](QString deviceName, int channel, double current, QString timestamp) {
+      // Forward to manager's signal (use stored name to ensure consistency)
+      emit measurementReady(QString::fromStdString(name), channel, current, timestamp);
+    });
+
+    std::cout << "[SMUManager] Subscribed to measurements from: " << name << std::endl;
+  }
+
+  // Future: Add support for other SMU device types here
+  // auto otherSMU = std::dynamic_pointer_cast<OtherSMUAdapter>(device);
+  // if (otherSMU) { ... }
+}
+
+void SMUManager::unsubscribeFromDevice(SMUDevicePtr device)
+{
+  if (!device) return;
+
+  // Try to cast to Keithley6482Adapter
+  auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+  if (keithley) {
+    // Disconnect all signals from this device to the manager
+    disconnect(keithley.get(), nullptr, this, nullptr);
+    std::cout << "[SMUManager] Unsubscribed from device" << std::endl;
+  }
+
+  // Future: Add support for other SMU device types here
 }

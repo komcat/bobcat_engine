@@ -11,11 +11,13 @@
 #include "TECCommandHandler.h"
 #include "DataStoreCommandHandler.h"
 #include "PSUCommandHandler.h"
+#include "SMUCommandHandler.h"  // ✅ ADDED
 #include "SequenceContextCommandHandler.h"
 #include "CalibrationCommandHandler.h"
 #include "SequenceContext.h"
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
+#include "SMUManager.h"  // ✅ ADDED
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
@@ -49,6 +51,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
   m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
+
+  // ✅ UPDATED: Set context on SMU handler to access polling manager
+  auto smuHandler = std::make_unique<SMUCommandHandler>();
+  smuHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("smu", std::move(smuHandler));
+
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
   m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
@@ -145,6 +153,16 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToTypeMap[name] = "psu";
     }
     LogInfo("Registered " + std::to_string(devices.size()) + " PSU devices");
+  }
+
+  // SMU devices
+  if (m_context->smuManager) {
+    auto devices = m_context->smuManager->GetDeviceNames();
+    for (const auto& name : devices) {
+      m_deviceToManagerMap[name] = m_context->smuManager;
+      m_deviceToTypeMap[name] = "smu";
+    }
+    LogInfo("Registered " + std::to_string(devices.size()) + " SMU devices");
   }
 
   // Register DataStore as virtual device

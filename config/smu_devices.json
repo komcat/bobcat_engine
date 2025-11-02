@@ -10,6 +10,20 @@
       "measurement_nplc": 5,
       "auto_range": true,
       "fixed_range": 0.0
+    },
+    {
+      "name": "Keithley_2400",
+      "type": "keithley_2400",
+      "visa_resource": "GPIB1::24::INSTR",
+      "enabled": true,
+      "channel_count": 1,
+      "enabled_channels": [1],
+      "default_voltage": 0.0,
+      "default_current": 0.0,
+      "default_compliance": 0.001,
+      "measurement_nplc": 1.0,
+      "auto_range": true,
+      "fixed_range": 0.0
     }
   ]
 }

@@ -22,7 +22,10 @@ public:
     Camera,      // Camera devices
     IO,          // IO devices (IOBottom, etc.)
     Pneumatic,   // Pneumatic slides
-    Lens         // Camera lenses (from CameraManager)
+    Lens,        // Camera lenses (from CameraManager)
+    TEC,         // TEC devices (thermal controllers)
+    PSU,         // Power supply units
+    SMU          // SMU devices (Source Measure Units)
   };
 
   explicit DeviceComboBox(ApplicationContext* context, DeviceType type, QWidget* parent = nullptr);

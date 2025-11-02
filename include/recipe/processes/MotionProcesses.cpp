@@ -601,7 +601,8 @@ public:
     widget->addDeviceSelector("device", "Hexapod Device (hex-*)", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addParameterField("mode", "Scan Mode (coarse/fine)", params.at("mode"));
-    widget->addParameterField("channel", "Data Channel", params.at("channel"));
+    // ✅ UPDATED: Use data channel selector with auto-refresh instead of plain text field
+    widget->addDataChannelSelector("channel", "Data Channel (DataStore)", params.at("channel"));
     widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
       params.at("settling_time_ms"),
       50,     // min

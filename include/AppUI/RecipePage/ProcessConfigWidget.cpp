@@ -26,6 +26,7 @@ ProcessConfigWidget::ProcessConfigWidget(ApplicationContext* context, QWidget* p
   , m_context(context)
   , m_enabledCheckBox(nullptr)
   , m_nicknameEdit(nullptr)
+  , m_channelRefreshTimer(nullptr)  // ✅ ADDED: Initialize timer to nullptr
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(10, 10, 10, 10);
@@ -52,6 +53,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   m_parameterCheckboxes.clear();
   m_parameterSpinBoxes.clear();
   m_parameterCombos.clear();
+  m_dataChannelCombos.clear();  // ✅ ADDED: Clear data channel combos
 
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
@@ -138,12 +140,16 @@ void ProcessConfigWidget::addDeviceSelector(const std::string& key,
     m_context,
     static_cast<DeviceComboBox::DeviceType>(deviceType)
   );
-  combo->setSelectedDevice(value);
+
+  // Connect BEFORE setting the selected device so auto-select triggers parameterChanged
   connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &ProcessConfigWidget::parameterChanged);
 
   m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
   m_deviceCombos[key] = combo;
+
+  // Set selected device AFTER connection and storage
+  combo->setSelectedDevice(value);
 }
 
 void ProcessConfigWidget::addNodeSelector(const std::string& key,
@@ -514,6 +520,99 @@ void ProcessConfigWidget::addGraphNodeSelector(const std::string& key,
   }
 }
 
+// ✅ NEW: Add DataStore channel selector with auto-refresh
+void ProcessConfigWidget::addDataChannelSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  combo->setEditable(true);  // Allow typing custom channels if needed
+
+  // ✅ Populate with DataStore channels
+  if (m_context && m_context->dataStore) {
+    auto channelNames = m_context->dataStore->GetAllChannelNames();
+    for (const auto& channel : channelNames) {
+      combo->addItem(QString::fromStdString(channel));
+    }
+  }
+
+  // Set current value
+  if (!value.empty()) {
+    int index = combo->findText(QString::fromStdString(value));
+    if (index >= 0) {
+      combo->setCurrentIndex(index);
+    } else {
+      // If not in list, set as custom text
+      combo->setEditText(QString::fromStdString(value));
+    }
+  }
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+  connect(combo, &QComboBox::editTextChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_dataChannelCombos[key] = combo;
+
+  // ✅ Set up auto-refresh timer (only once, on first call)
+  if (!m_channelRefreshTimer) {
+    m_channelRefreshTimer = new QTimer(this);
+    connect(m_channelRefreshTimer, &QTimer::timeout,
+            this, &ProcessConfigWidget::refreshDataChannels);
+    m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
+    std::cout << "[ProcessConfigWidget] Data channel auto-refresh started" << std::endl;
+  }
+}
+
+// ✅ NEW: Refresh DataStore channels periodically
+void ProcessConfigWidget::refreshDataChannels()
+{
+  if (!m_context || !m_context->dataStore) return;
+
+  // Get current channels from DataStore
+  auto channelNames = m_context->dataStore->GetAllChannelNames();
+  QStringList newChannels;
+  for (const auto& channel : channelNames) {
+    newChannels << QString::fromStdString(channel);
+  }
+
+  // Update all data channel selectors
+  for (auto& [key, combo] : m_dataChannelCombos) {
+    // Save current selection
+    QString currentSelection = combo->currentText();
+
+    // Check if list has changed
+    QStringList currentItems;
+    for (int i = 0; i < combo->count(); ++i) {
+      currentItems << combo->itemText(i);
+    }
+
+    if (newChannels != currentItems) {
+      // Update combo box
+      combo->clear();
+      combo->addItems(newChannels);
+
+      // Restore selection if it exists
+      int index = combo->findText(currentSelection);
+      if (index >= 0) {
+        combo->setCurrentIndex(index);
+      } else if (!currentSelection.isEmpty()) {
+        // Restore as custom text if not in list
+        combo->setEditText(currentSelection);
+      }
+    }
+  }
+}
+
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
 {
   std::map<std::string, std::string> params;
@@ -535,6 +634,11 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
   }
 
   for (const auto& [key, combo] : m_parameterCombos) {
+    params[key] = combo->currentText().toStdString();
+  }
+
+  // ✅ ADDED: Include data channel selector values
+  for (const auto& [key, combo] : m_dataChannelCombos) {
     params[key] = combo->currentText().toStdString();
   }
 

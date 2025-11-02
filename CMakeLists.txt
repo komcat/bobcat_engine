@@ -469,6 +469,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
+    include/recipe/processes/SMUProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp
@@ -482,6 +483,7 @@ set(SOURCES
     include/AppUI/TECPage/TECControlPage.cpp
     include/sequence/DataStoreCommandHandler.cpp
     include/sequence/PSUCommandHandler.cpp
+    include/sequence/SMUCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
@@ -499,6 +501,7 @@ set(SOURCES
     include/AppUI/SMUControlPage/SMUControlPage.cpp
     include/SMU/SMUManager.cpp
     include/SMU/SMUJsonLoader.cpp
+    include/SMU/SMUPollingManager.cpp
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
@@ -620,6 +623,7 @@ set(HEADERS
     include/AppUI/TECPage/TECControlPage.h
     include/sequence/DataStoreCommandHandler.h
     include/sequence/PSUCommandHandler.h
+    include/sequence/SMUCommandHandler.h
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
     include/AppUI/Common/CreateProductDialog.h
@@ -638,6 +642,7 @@ set(HEADERS
     include/SMU/SMUTypes.h
     include/SMU/SMUManager.h
     include/SMU/SMUJsonLoader.h
+    include/SMU/SMUPollingManager.h
     include/ProgramManager/ProgramWorker.h
     include/ProgramManager/ProgramManager.h
     include/AppUI/RunProgramPage/RunProgramPage.h
@@ -764,11 +769,13 @@ endif()
 if(VISA_FOUND)
     list(APPEND SOURCES
         include/SMU/Keithley6482Adapter.cpp
+        include/SMU/KeithleySMUAdapter.cpp
     )
     list(APPEND HEADERS
         include/SMU/Keithley6482Adapter.h
+        include/SMU/KeithleySMUAdapter.h
     )
-    message(STATUS "SMU system enabled (Keithley 6482 adapter)")
+    message(STATUS "SMU system enabled (Keithley 6482 + Generic SMU adapters)")
 else()
     message(STATUS "SMU system disabled - NI-VISA SDK not found")
 endif()

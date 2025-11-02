@@ -63,8 +63,19 @@ signals:
   void deviceAdded(const QString& name);
   void deviceRemoved(const QString& name);
   void deviceConnectionChanged(const QString& name, bool connected);
-  void measurementReady(const QString& deviceName, double value);
+
+  /**
+   * @brief Emitted when any SMU device has a new measurement
+   * @param deviceName Name of the device
+   * @param channel Channel number (1-4)
+   * @param value Current value in amperes
+   * @param timestamp ISO timestamp string
+   */
+  void measurementReady(const QString& deviceName, int channel, double value, const QString& timestamp);
 
 private:
+  void subscribeToDevice(SMUDevicePtr device, const std::string& name);
+  void unsubscribeFromDevice(SMUDevicePtr device);
+
   std::map<std::string, SMUDevicePtr> m_devices;
 };

@@ -7,11 +7,12 @@
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "EziIOManager.h"  // Add EziIO include
-#include "PneumaticManager.h"  
-#include "SequenceEngine.h"  
+#include "PneumaticManager.h"
+#include "SequenceEngine.h"
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
 #include "TECManager.h"    // ✅ ADD THIS
 #include "AuxWindowManager.h"  // ✅ ADD THIS
+#include "SMU/SMUPollingManager.h"  // ✅ ADD SMU Polling Manager
 #include "CoordinateSystemManager.h"
 
 class QApplication;
@@ -91,6 +92,7 @@ private:
   std::unique_ptr<AuxWindowManager> m_auxWindowManager;  // ✅ ADD THIS
 	std::unique_ptr<PowerSupplyManager> m_powerSupplyManager;
   std::unique_ptr<SMUManager> m_smuManager;  // ✅ ADD SMU Manager
+  std::unique_ptr<SMUPollingManager> m_smuPollingManager;  // ✅ ADD SMU Polling Manager
   std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
 
   ApplicationContext m_context;

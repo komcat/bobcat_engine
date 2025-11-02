@@ -39,6 +39,14 @@ private slots:
   // Measurement mode
   void onModeChanged(int index);
 
+  // Measurement type selection
+  void onMeasurementTypeChanged(int index);
+
+  // Output control
+  void onOutputOnClicked();
+  void onOutputOffClicked();
+  void updateOutputState();
+
   // Polling control
   void onStartPollingClicked();
   void onStopPollingClicked();
@@ -55,6 +63,7 @@ private:
   void createLeftPanel(QWidget* leftPanel);
   void createRightPanel(QWidget* rightPanel);
   void createChannelSection(QVBoxLayout* layout);
+  void createOutputControlSection(QVBoxLayout* layout);
   void createMeasurementSection(QVBoxLayout* layout);
   void createPollingSection(QVBoxLayout* layout);
 
@@ -84,6 +93,14 @@ private:
 
   // Measurement mode
   QComboBox* m_modeComboBox;
+
+  // Measurement type (Current/Voltage)
+  QComboBox* m_measurementTypeComboBox;
+
+  // Output control
+  QPushButton* m_outputOnButton;
+  QPushButton* m_outputOffButton;
+  QLabel* m_outputStateLabel;
 
   // Measurements (per channel)
   std::vector<QLabel*> m_channelReadLabels;

@@ -1205,10 +1205,19 @@ void RecipePage::onEnabledChanged(bool enabled)
 
 void RecipePage::onParameterChanged()
 {
-  if (m_selectedStepIndex < 0 || !m_currentConfigWidget) return;
+  std::cout << "[RecipePage] onParameterChanged() called" << std::endl;
+
+  if (m_selectedStepIndex < 0 || !m_currentConfigWidget) {
+    std::cout << "[RecipePage]   Skipping - selectedIndex=" << m_selectedStepIndex
+              << ", hasWidget=" << (m_currentConfigWidget != nullptr) << std::endl;
+    return;
+  }
 
   auto params = m_currentConfigWidget->getParameters();
+  std::cout << "[RecipePage]   Updating " << params.size() << " parameters for step "
+            << m_selectedStepIndex << std::endl;
   for (const auto& [key, value] : params) {
+    std::cout << "[RecipePage]     " << key << " = '" << value << "'" << std::endl;
     m_recipeManager->setStepParameter(m_selectedStepIndex, key, value);
   }
 }

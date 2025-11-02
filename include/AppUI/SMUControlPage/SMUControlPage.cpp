@@ -4,6 +4,7 @@
 #include "SMUManager.h"
 #include "ISMUDevice.h"
 #include "Keithley6482Adapter.h"
+#include "SMUPollingManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -223,6 +224,9 @@ void SMUControlPage::createRightPanel(QWidget* rightPanel)
   // Channel section
   createChannelSection(layout);
 
+  // Output control section
+  createOutputControlSection(layout);
+
   // Measurement section
   createMeasurementSection(layout);
 
@@ -271,44 +275,152 @@ void SMUControlPage::createChannelSection(QVBoxLayout* layout)
   layout->addWidget(channelGroup);
 }
 
+void SMUControlPage::createOutputControlSection(QVBoxLayout* layout)
+{
+  QGroupBox* outputGroup = new QGroupBox("Output Control");
+  QHBoxLayout* groupLayout = new QHBoxLayout(outputGroup);
+  groupLayout->setSpacing(10);
+
+  // ========== LEFT COLUMN: Buttons ==========
+  QWidget* leftColumn = new QWidget();
+  QHBoxLayout* leftLayout = new QHBoxLayout(leftColumn);
+  leftLayout->setSpacing(8);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+
+  // Output ON button (compact)
+  m_outputOnButton = new QPushButton("ON");
+  m_outputOnButton->setMaximumWidth(80);
+  m_outputOnButton->setMinimumHeight(32);
+  m_outputOnButton->setStyleSheet("QPushButton { "
+                                  "background-color: #27ae60; "
+                                  "font-weight: bold; "
+                                  "} "
+                                  "QPushButton:hover { background-color: #2ecc71; } "
+                                  "QPushButton:pressed { background-color: #229954; }");
+  connect(m_outputOnButton, &QPushButton::clicked, this, &SMUControlPage::onOutputOnClicked);
+  leftLayout->addWidget(m_outputOnButton);
+
+  // Output OFF button (compact)
+  m_outputOffButton = new QPushButton("OFF");
+  m_outputOffButton->setMaximumWidth(80);
+  m_outputOffButton->setMinimumHeight(32);
+  m_outputOffButton->setStyleSheet("QPushButton { "
+                                   "background-color: #e74c3c; "
+                                   "font-weight: bold; "
+                                   "} "
+                                   "QPushButton:hover { background-color: #ec7063; } "
+                                   "QPushButton:pressed { background-color: #c0392b; }");
+  connect(m_outputOffButton, &QPushButton::clicked, this, &SMUControlPage::onOutputOffClicked);
+  leftLayout->addWidget(m_outputOffButton);
+
+  leftLayout->addStretch();
+  groupLayout->addWidget(leftColumn, 1);
+
+  // ========== RIGHT COLUMN: Output State ==========
+  QWidget* rightColumn = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightColumn);
+  rightLayout->setSpacing(5);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
+
+  QLabel* stateTitle = new QLabel("State:");
+  stateTitle->setStyleSheet("QLabel { font-size: 11px; color: #888888; }");
+  rightLayout->addWidget(stateTitle);
+
+  m_outputStateLabel = new QLabel("OFF");
+  m_outputStateLabel->setStyleSheet("QLabel { "
+    "font-size: 20px; "
+    "font-weight: bold; "
+    "color: #e74c3c; "
+    "background-color: #1e1e1e; "
+    "border: 2px solid #e74c3c; "
+    "border-radius: 4px; "
+    "padding: 8px; "
+    "}");
+  m_outputStateLabel->setAlignment(Qt::AlignCenter);
+  m_outputStateLabel->setMinimumHeight(50);
+  m_outputStateLabel->setMaximumHeight(50);
+  rightLayout->addWidget(m_outputStateLabel);
+
+  groupLayout->addWidget(rightColumn, 2);
+
+  layout->addWidget(outputGroup);
+}
+
 void SMUControlPage::createMeasurementSection(QVBoxLayout* layout)
 {
-  QGroupBox* measurementGroup = new QGroupBox("Current Measurements");
-  QVBoxLayout* groupLayout = new QVBoxLayout(measurementGroup);
+  QGroupBox* measurementGroup = new QGroupBox("Measurements");
+  QHBoxLayout* groupLayout = new QHBoxLayout(measurementGroup);
+  groupLayout->setSpacing(15);
+
+  // ========== LEFT COLUMN: Parameters and Controls ==========
+  QWidget* leftColumn = new QWidget();
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
+  leftLayout->setSpacing(10);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+
+  // Measurement type selector
+  QLabel* typeLabel = new QLabel("Measurement Type:");
+  typeLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  leftLayout->addWidget(typeLabel);
+
+  m_measurementTypeComboBox = new QComboBox();
+  m_measurementTypeComboBox->addItem("Current (A)");
+  m_measurementTypeComboBox->addItem("Voltage (V)");
+  m_measurementTypeComboBox->setCurrentIndex(0);  // Default: Current
+  connect(m_measurementTypeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &SMUControlPage::onMeasurementTypeChanged);
+  leftLayout->addWidget(m_measurementTypeComboBox);
+
+  leftLayout->addSpacing(15);
+
+  // Refresh button
+  m_refreshButton = new QPushButton("Refresh");
+  m_refreshButton->setMinimumHeight(40);
+  connect(m_refreshButton, &QPushButton::clicked, this, &SMUControlPage::onRefreshClicked);
+  leftLayout->addWidget(m_refreshButton);
+
+  leftLayout->addStretch();
+  groupLayout->addWidget(leftColumn, 1);
+
+  // ========== RIGHT COLUMN: Display Values ==========
+  QWidget* rightColumn = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightColumn);
+  rightLayout->setSpacing(10);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
 
   // Current channel reading (large display)
   QLabel* currentLabel = new QLabel("Selected Channel:");
-  groupLayout->addWidget(currentLabel);
+  currentLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  rightLayout->addWidget(currentLabel);
 
   m_currentChannelReadLabel = new QLabel("--- A");
   m_currentChannelReadLabel->setStyleSheet("QLabel { "
-    "font-size: 24px; "
+    "font-size: 28px; "
     "font-weight: bold; "
     "color: #27ae60; "
     "background-color: #1e1e1e; "
     "border: 2px solid #3f3f46; "
     "border-radius: 4px; "
-    "padding: 10px; "
+    "padding: 15px; "
     "}");
   m_currentChannelReadLabel->setAlignment(Qt::AlignCenter);
-  groupLayout->addWidget(m_currentChannelReadLabel);
+  m_currentChannelReadLabel->setMinimumHeight(80);
+  rightLayout->addWidget(m_currentChannelReadLabel);
 
   // All channels (smaller display)
   QLabel* allLabel = new QLabel("All Channels:");
-  allLabel->setStyleSheet("QLabel { margin-top: 10px; }");
-  groupLayout->addWidget(allLabel);
+  allLabel->setStyleSheet("QLabel { margin-top: 10px; font-weight: bold; }");
+  rightLayout->addWidget(allLabel);
 
   // Placeholder for channel labels (will be populated dynamically)
   QWidget* channelContainer = new QWidget();
   QVBoxLayout* channelLayout = new QVBoxLayout(channelContainer);
   channelLayout->setSpacing(5);
   channelLayout->setContentsMargins(0, 0, 0, 0);
-  groupLayout->addWidget(channelContainer);
+  rightLayout->addWidget(channelContainer);
 
-  // Refresh button
-  m_refreshButton = new QPushButton("Refresh");
-  connect(m_refreshButton, &QPushButton::clicked, this, &SMUControlPage::onRefreshClicked);
-  groupLayout->addWidget(m_refreshButton);
+  rightLayout->addStretch();
+  groupLayout->addWidget(rightColumn, 2);
 
   layout->addWidget(measurementGroup);
 }
@@ -316,48 +428,85 @@ void SMUControlPage::createMeasurementSection(QVBoxLayout* layout)
 void SMUControlPage::createPollingSection(QVBoxLayout* layout)
 {
   QGroupBox* pollingGroup = new QGroupBox("Continuous Polling");
-  QVBoxLayout* groupLayout = new QVBoxLayout(pollingGroup);
+  QHBoxLayout* groupLayout = new QHBoxLayout(pollingGroup);
+  groupLayout->setSpacing(15);
+
+  // ========== LEFT COLUMN: Controls and Status ==========
+  QWidget* leftColumn = new QWidget();
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
+  leftLayout->setSpacing(10);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
 
   // Polling status
-  m_pollingStatusLabel = new QLabel("Status: Stopped");
+  QLabel* statusTitle = new QLabel("Status:");
+  statusTitle->setStyleSheet("QLabel { font-weight: bold; }");
+  leftLayout->addWidget(statusTitle);
+
+  m_pollingStatusLabel = new QLabel("Stopped");
   m_pollingStatusLabel->setProperty("class", "status-disconnected");
-  groupLayout->addWidget(m_pollingStatusLabel);
+  m_pollingStatusLabel->setStyleSheet("QLabel { "
+    "font-size: 14px; "
+    "padding: 8px; "
+    "background-color: #1e1e1e; "
+    "border: 1px solid #3f3f46; "
+    "border-radius: 4px; "
+    "}");
+  leftLayout->addWidget(m_pollingStatusLabel);
+
+  leftLayout->addSpacing(15);
+
+  // Start/Stop buttons
+  m_startPollingButton = new QPushButton("Start Polling");
+  m_startPollingButton->setMinimumHeight(40);
+  connect(m_startPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStartPollingClicked);
+  leftLayout->addWidget(m_startPollingButton);
+
+  m_stopPollingButton = new QPushButton("Stop Polling");
+  m_stopPollingButton->setMinimumHeight(40);
+  m_stopPollingButton->setEnabled(false);
+  connect(m_stopPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStopPollingClicked);
+  leftLayout->addWidget(m_stopPollingButton);
+
+  leftLayout->addStretch();
+  groupLayout->addWidget(leftColumn, 1);
+
+  // ========== RIGHT COLUMN: Display Values ==========
+  QWidget* rightColumn = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightColumn);
+  rightLayout->setSpacing(10);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
 
   // Real-time polled value (large display)
-  QLabel* valueTitle = new QLabel("Current Value:");
-  groupLayout->addWidget(valueTitle);
+  QLabel* valueTitle = new QLabel("Polled Value:");
+  valueTitle->setStyleSheet("QLabel { font-weight: bold; }");
+  rightLayout->addWidget(valueTitle);
 
   m_pollingValueLabel = new QLabel("--- A");
   m_pollingValueLabel->setStyleSheet("QLabel { "
-    "font-size: 20px; "
+    "font-size: 28px; "
     "font-weight: bold; "
     "color: #3498db; "
     "background-color: #1e1e1e; "
     "border: 2px solid #3f3f46; "
     "border-radius: 4px; "
-    "padding: 8px; "
+    "padding: 15px; "
     "}");
   m_pollingValueLabel->setAlignment(Qt::AlignCenter);
-  groupLayout->addWidget(m_pollingValueLabel);
+  m_pollingValueLabel->setMinimumHeight(80);
+  rightLayout->addWidget(m_pollingValueLabel);
 
   // Sample count
   m_pollingSampleLabel = new QLabel("Samples: 0");
-  m_pollingSampleLabel->setStyleSheet("QLabel { font-size: 11px; color: #888888; }");
+  m_pollingSampleLabel->setStyleSheet("QLabel { "
+    "font-size: 11px; "
+    "color: #888888; "
+    "padding: 5px; "
+    "}");
   m_pollingSampleLabel->setAlignment(Qt::AlignCenter);
-  groupLayout->addWidget(m_pollingSampleLabel);
+  rightLayout->addWidget(m_pollingSampleLabel);
 
-  // Start/Stop buttons
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-  m_startPollingButton = new QPushButton("Start Polling");
-  m_stopPollingButton = new QPushButton("Stop Polling");
-  m_stopPollingButton->setEnabled(false);
-
-  connect(m_startPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStartPollingClicked);
-  connect(m_stopPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStopPollingClicked);
-
-  buttonLayout->addWidget(m_startPollingButton);
-  buttonLayout->addWidget(m_stopPollingButton);
-  groupLayout->addLayout(buttonLayout);
+  rightLayout->addStretch();
+  groupLayout->addWidget(rightColumn, 2);
 
   layout->addWidget(pollingGroup);
 }
@@ -390,6 +539,7 @@ void SMUControlPage::onDeviceSelected(int row)
 
   updateConnectionStatus();
   updateChannelList();
+  updateOutputState();
 }
 
 void SMUControlPage::onConnectClicked()
@@ -409,6 +559,7 @@ void SMUControlPage::onConnectClicked()
     showSuccess("Connected to " + m_currentDevice);
     updateConnectionStatus();
     updateChannelList();
+    updateOutputState();
   } else {
     showError(QString::fromStdString(smu->GetLastError()));
   }
@@ -423,6 +574,7 @@ void SMUControlPage::onDisconnectClicked()
     smu->Disconnect();
     showSuccess("Disconnected from " + m_currentDevice);
     updateConnectionStatus();
+    updateOutputState();
   }
 }
 
@@ -471,6 +623,110 @@ void SMUControlPage::onModeChanged(int index)
   }
 }
 
+// Measurement type changed
+void SMUControlPage::onMeasurementTypeChanged(int index)
+{
+  std::cout << "[SMUControlPage] Measurement type changed to: "
+            << (index == 0 ? "Current" : "Voltage") << std::endl;
+
+  // Update default display unit
+  QString unit = (index == 0) ? " A" : " V";
+  m_currentChannelReadLabel->setText("---" + unit);
+  m_pollingValueLabel->setText("---" + unit);
+
+  // Refresh measurements with new type
+  updateMeasurements();
+}
+
+// Output control
+void SMUControlPage::onOutputOnClicked()
+{
+  if (m_currentDevice.isEmpty()) {
+    showError("No device selected");
+    return;
+  }
+
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu || !smu->IsConnected()) {
+    showError("Device not connected");
+    return;
+  }
+
+  if (smu->SetOutputOn()) {
+    showSuccess("Output turned ON");
+    updateOutputState();
+  } else {
+    showError("Failed to turn output ON: " + QString::fromStdString(smu->GetLastError()));
+  }
+}
+
+void SMUControlPage::onOutputOffClicked()
+{
+  if (m_currentDevice.isEmpty()) {
+    showError("No device selected");
+    return;
+  }
+
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu || !smu->IsConnected()) {
+    showError("Device not connected");
+    return;
+  }
+
+  if (smu->SetOutputOff()) {
+    showSuccess("Output turned OFF");
+    updateOutputState();
+  } else {
+    showError("Failed to turn output OFF: " + QString::fromStdString(smu->GetLastError()));
+  }
+}
+
+void SMUControlPage::updateOutputState()
+{
+  if (m_currentDevice.isEmpty()) return;
+
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu || !smu->IsConnected()) {
+    m_outputStateLabel->setText("---");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #888888; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #3f3f46; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+    return;
+  }
+
+  bool isOn = smu->IsOutputOn();
+
+  if (isOn) {
+    m_outputStateLabel->setText("ON");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #27ae60; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #27ae60; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  } else {
+    m_outputStateLabel->setText("OFF");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #e74c3c; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #e74c3c; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  }
+}
+
 // Polling control
 void SMUControlPage::onStartPollingClicked()
 {
@@ -482,24 +738,42 @@ void SMUControlPage::onStartPollingClicked()
     return;
   }
 
-  auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(smu);
-  if (!keithley) return;
+  // Determine measurement type
+  bool isCurrent = (m_measurementTypeComboBox->currentIndex() == 0);
+  QString unit = isCurrent ? " A" : " V";
+  auto measurementType = isCurrent ?
+    SMUPollingManager::MeasurementType::CURRENT :
+    SMUPollingManager::MeasurementType::VOLTAGE;
 
-  // Connect to measurement signal
-  connect(keithley.get(), &Keithley6482Adapter::measurementReady,
+  // Connect to polling manager signal
+  connect(m_context->smuPollingManager, &SMUPollingManager::measurementReady,
           this, &SMUControlPage::onPollingMeasurement);
 
-  // Reset sample count
-  keithley->ResetSampleCount();
+  // Get current channel
+  int selectedChannel = m_channelComboBox->currentIndex() + 1;
 
-  if (keithley->StartPolling(100)) {  // 100ms = 10Hz update
-    m_pollingStatusLabel->setText("Status: Polling");
-    m_pollingStatusLabel->setProperty("class", "status-polling");
-    m_pollingValueLabel->setText("--- A");
+  // Start polling via SMUPollingManager
+  if (m_context->smuPollingManager->StartPolling(
+        m_currentDevice.toStdString(),
+        smu,
+        selectedChannel,
+        100,  // 100ms interval
+        measurementType)) {
+    m_pollingStatusLabel->setText("Polling (" + QString(isCurrent ? "Current" : "Voltage") + ")");
+    m_pollingStatusLabel->setStyleSheet("QLabel { "
+      "font-size: 14px; "
+      "padding: 8px; "
+      "background-color: #1e1e1e; "
+      "border: 1px solid #27ae60; "
+      "border-radius: 4px; "
+      "color: #27ae60; "
+      "font-weight: bold; "
+      "}");
+    m_pollingValueLabel->setText("---" + unit);
     m_pollingSampleLabel->setText("Samples: 0");
     m_startPollingButton->setEnabled(false);
     m_stopPollingButton->setEnabled(true);
-    showSuccess("Polling started");
+    showSuccess("Polling started (" + QString(isCurrent ? "Current" : "Voltage") + ")");
   } else {
     showError("Failed to start polling");
   }
@@ -509,56 +783,60 @@ void SMUControlPage::onStopPollingClicked()
 {
   if (m_currentDevice.isEmpty()) return;
 
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu) return;
+  // Disconnect from polling manager signal
+  disconnect(m_context->smuPollingManager, &SMUPollingManager::measurementReady,
+             this, &SMUControlPage::onPollingMeasurement);
 
-  auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(smu);
-  if (keithley) {
-    // Disconnect signal
-    disconnect(keithley.get(), &Keithley6482Adapter::measurementReady,
-               this, &SMUControlPage::onPollingMeasurement);
+  // Stop polling via SMUPollingManager
+  m_context->smuPollingManager->StopPolling(m_currentDevice.toStdString());
 
-    keithley->StopPolling();
+  uint64_t finalCount = m_context->smuPollingManager->GetSampleCount(m_currentDevice.toStdString());
 
-    uint64_t finalCount = keithley->GetSampleCount();
+  // Determine unit based on current selection
+  QString unit = (m_measurementTypeComboBox->currentIndex() == 0) ? " A" : " V";
 
-    m_pollingStatusLabel->setText("Status: Stopped");
-    m_pollingStatusLabel->setProperty("class", "status-disconnected");
-    m_pollingValueLabel->setText("--- A");
-    m_pollingSampleLabel->setText(QString("Samples: %1 (stopped)").arg(finalCount));
-    m_startPollingButton->setEnabled(true);
-    m_stopPollingButton->setEnabled(false);
-    showSuccess(QString("Polling stopped (%1 samples)").arg(finalCount));
-  }
+  m_pollingStatusLabel->setText("Stopped");
+  m_pollingStatusLabel->setStyleSheet("QLabel { "
+    "font-size: 14px; "
+    "padding: 8px; "
+    "background-color: #1e1e1e; "
+    "border: 1px solid #3f3f46; "
+    "border-radius: 4px; "
+    "color: #e74c3c; "
+    "font-weight: bold; "
+    "}");
+  m_pollingValueLabel->setText("---" + unit);
+  m_pollingSampleLabel->setText(QString("Samples: %1 (stopped)").arg(finalCount));
+  m_startPollingButton->setEnabled(true);
+  m_stopPollingButton->setEnabled(false);
+  showSuccess(QString("Polling stopped (%1 samples)").arg(finalCount));
 }
 
 // Polling measurement callback
-void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double current, QString timestamp)
+void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString timestamp)
 {
   // Only update if this is the current device
   if (deviceName != m_currentDevice) return;
 
-  // Update real-time value display
-  m_pollingValueLabel->setText(QString::number(current, 'e', 3) + " A");
+  // Determine unit based on current selection
+  QString unit = (m_measurementTypeComboBox->currentIndex() == 0) ? " A" : " V";
 
-  // Update sample count
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (smu) {
-    auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(smu);
-    if (keithley) {
-      uint64_t samples = keithley->GetSampleCount();
-      m_pollingSampleLabel->setText(QString("Samples: %1 | Ch%2 | %3")
-                                       .arg(samples)
-                                       .arg(channel)
-                                       .arg(timestamp));
-    }
-  }
+  // Update real-time value display
+  m_pollingValueLabel->setText(QString::number(value, 'e', 3) + unit);
+
+  // Update sample count from polling manager
+  uint64_t samples = m_context->smuPollingManager->GetSampleCount(m_currentDevice.toStdString());
+  m_pollingSampleLabel->setText(QString("Samples: %1 | Ch%2 | %3")
+                                   .arg(samples)
+                                   .arg(channel)
+                                   .arg(timestamp));
 }
 
 // Measurement update
 void SMUControlPage::onRefreshClicked()
 {
   updateMeasurements();
+  updateOutputState();
 }
 
 void SMUControlPage::updateMeasurements()
@@ -567,27 +845,49 @@ void SMUControlPage::updateMeasurements()
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
-    m_currentChannelReadLabel->setText("--- A");
+    QString unit = (m_measurementTypeComboBox->currentIndex() == 0) ? " A" : " V";
+    m_currentChannelReadLabel->setText("---" + unit);
     return;
   }
 
+  // Determine measurement type
+  bool isCurrent = (m_measurementTypeComboBox->currentIndex() == 0);
+  QString unit = isCurrent ? " A" : " V";
+
   // Read selected channel
   int selectedChannel = m_channelComboBox->currentIndex() + 1;
-  double current = smu->ReadChannel(selectedChannel);
+  double value;
 
-  if (current != -999.0) {
-    m_currentChannelReadLabel->setText(QString::number(current, 'e', 3) + " A");
+  if (isCurrent) {
+    value = smu->ReadChannel(selectedChannel);
+  } else {
+    value = smu->ReadVoltage();
+  }
+
+  if (value != -999.0) {
+    m_currentChannelReadLabel->setText(QString::number(value, 'e', 3) + unit);
   } else {
     m_currentChannelReadLabel->setText("Error");
   }
 
-  // Update all channel labels
-  auto allChannels = smu->ReadAllChannels();
-  for (size_t i = 0; i < allChannels.size() && i < m_channelReadLabels.size(); ++i) {
-    if (allChannels[i] != -999.0) {
-      m_channelReadLabels[i]->setText(QString("Ch%1: %2 A").arg(i + 1).arg(allChannels[i], 0, 'e', 2));
-    } else {
-      m_channelReadLabels[i]->setText(QString("Ch%1: Error").arg(i + 1));
+  // Update all channel labels (only for current, voltage is device-wide)
+  if (isCurrent) {
+    auto allChannels = smu->ReadAllChannels();
+    for (size_t i = 0; i < allChannels.size() && i < m_channelReadLabels.size(); ++i) {
+      if (allChannels[i] != -999.0) {
+        m_channelReadLabels[i]->setText(QString("Ch%1: %2 A").arg(i + 1).arg(allChannels[i], 0, 'e', 2));
+      } else {
+        m_channelReadLabels[i]->setText(QString("Ch%1: Error").arg(i + 1));
+      }
+    }
+  } else {
+    // For voltage, show same value for all (device-wide measurement)
+    for (size_t i = 0; i < m_channelReadLabels.size(); ++i) {
+      if (value != -999.0) {
+        m_channelReadLabels[i]->setText(QString("Ch%1: %2 V").arg(i + 1).arg(value, 0, 'e', 2));
+      } else {
+        m_channelReadLabels[i]->setText(QString("Ch%1: Error").arg(i + 1));
+      }
     }
   }
 }

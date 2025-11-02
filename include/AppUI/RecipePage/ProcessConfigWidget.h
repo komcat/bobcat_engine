@@ -9,6 +9,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QTimer>  // ✅ ADDED for periodic channel refresh
+#include <QComboBox>
 #include <map>
 #include <string>
 
@@ -87,6 +89,10 @@ public:
     const std::string& value, const std::string& deviceParamKey,
     const std::string& graphParamKey);
 
+  // ✅ NEW: Helper to add DataStore channel selector with auto-refresh
+  void addDataChannelSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;
@@ -101,6 +107,15 @@ protected:
   std::map<std::string, QCheckBox*> m_parameterCheckboxes;
   std::map<std::string, QDoubleSpinBox*> m_parameterSpinBoxes;
   std::map<std::string, QComboBox*> m_parameterCombos;  // For graph/node selectors
+
+private slots:
+  // ✅ NEW: Periodic refresh of DataStore channels
+  void refreshDataChannels();
+
+private:
+  // ✅ NEW: Track data channel selectors for auto-refresh
+  std::map<std::string, QComboBox*> m_dataChannelCombos;
+  QTimer* m_channelRefreshTimer;
 };
 
 /**

@@ -764,15 +764,14 @@ void RunProgramPage::createExecutionWidget()
   // === SCANNING CONTROLS (Refactored) ===
   m_scanWidget = new ScanControlWidget();
 
-  // Populate channels from DataStore
-  if (m_context && m_context->dataStore) {
-    QStringList channels;
-    auto channelNames = m_context->dataStore->GetAllChannelNames();
-    for (const auto& channel : channelNames) {
-      channels << QString::fromStdString(channel);
-    }
-    m_scanWidget->setAvailableChannels(channels);
-  }
+  // Populate channels from DataStore (initial load)
+  refreshDataStoreChannels();
+
+  // ✅ ADDED: Set up periodic channel refresh (every 3 seconds)
+  // This ensures new channels (e.g., SMU channels added when polling starts) appear in the dropdown
+  m_channelRefreshTimer = new QTimer(this);
+  connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
+  m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
 
   layout->addWidget(m_scanWidget);
 
@@ -1365,6 +1364,37 @@ void RunProgramPage::onStopScanRequested()
 }
 
 // ✅ ADDED: Handle channel change from scan widget
+// ✅ ADDED: Refresh DataStore channels in the dropdown
+void RunProgramPage::refreshDataStoreChannels()
+{
+  if (!m_context || !m_context->dataStore || !m_scanWidget) return;
+
+  // Get current selection to preserve it
+  QString currentSelection = m_scanWidget->currentChannel();
+
+  // Get all available channels from DataStore
+  QStringList channels;
+  auto channelNames = m_context->dataStore->GetAllChannelNames();
+  for (const auto& channel : channelNames) {
+    channels << QString::fromStdString(channel);
+  }
+
+  // Only update if the channel list has changed
+  static QStringList s_lastChannelList;
+  if (channels != s_lastChannelList) {
+    m_scanWidget->setAvailableChannels(channels);
+    s_lastChannelList = channels;
+
+    // ✅ Restore previous selection if it still exists
+    if (!currentSelection.isEmpty() && channels.contains(currentSelection)) {
+      m_scanWidget->setCurrentChannel(currentSelection);
+    }
+
+    std::cout << "[RunProgramPage] Channel list updated: " << channels.size()
+              << " channels available" << std::endl;
+  }
+}
+
 void RunProgramPage::onChannelChanged(QString channel)
 {
   if (!m_dataStore) return;

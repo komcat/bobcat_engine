@@ -1357,6 +1357,44 @@ void Application::initializeSMUSystem()
   // Assign to context for access by other components
   m_context.smuManager = m_smuManager.get();
 
+  // ✅ CREATE SMU POLLING MANAGER
+  m_smuPollingManager = std::make_unique<SMUPollingManager>(this);
+  m_context.smuPollingManager = m_smuPollingManager.get();
+
+  // ✅ CONNECT POLLING MANAGER TO DATASTORE
+  // This is the primary path for polling data (thread-safe architecture)
+  connect(m_smuPollingManager.get(), &SMUPollingManager::measurementReady,
+          this, [this](QString deviceName, int channel, double value, QString timestamp) {
+      QString channelName = QString("SMU_%1_Ch%2").arg(deviceName).arg(channel);
+      m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
+
+      static int debugCounter = 0;
+      if (debugCounter++ < 5 || debugCounter % 10 == 0) {
+        std::cout << "[SMU→DataStore] " << channelName.toStdString()
+                  << " = " << value << " A (count=" << debugCounter << ")" << std::endl;
+      }
+  });
+
+  std::cout << "[Application] SMU Polling Manager initialized" << std::endl;
+
+  // ========== Legacy: Direct SMU Manager connection (for non-polling measurements) ==========
+  // Note: This may be redundant now that polling uses SMUPollingManager
+  connect(m_smuManager.get(), &SMUManager::measurementReady,
+          this, [this](QString deviceName, int channel, double value, QString timestamp) {
+      // Add to DataStore with channel naming: "SMU_DeviceName_Ch1"
+      QString channelName = QString("SMU_%1_Ch%2").arg(deviceName).arg(channel);
+      m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
+
+      // ✅ TEMPORARY DEBUG: Re-enabled to diagnose XCAN timeout issue
+      static int debugCounter = 0;
+      if (debugCounter++ < 5 || debugCounter % 10 == 0) {  // Log first 5, then every 10th
+        std::cout << "[SMU→DataStore] " << channelName.toStdString()
+                  << " = " << value << " A (count=" << debugCounter << ")" << std::endl;
+      }
+  });
+
+  std::cout << "[Application] SMU measurements auto-subscribed to DataStore" << std::endl;
+
   // Try local config first, then fall back to default
   std::string localConfigPath = "config/smu_devices.local.json";
   std::string defaultConfigPath = "config/smu_devices.json";
@@ -1536,6 +1574,126 @@ void Application::initializeSMUSystem()
                         << smu->GetLastError() << std::endl;
             }
           }
+        }
+
+        // ========== Source-Measure Unit Tests (Keithley 2400, etc.) ==========
+        if (mode == SMUMode::VOLTAGE_SOURCE || mode == SMUMode::CURRENT_SOURCE) {
+          std::cout << "\n[Application] ===== Source-Measure Unit Tests =====" << std::endl;
+
+          // Declare variables at function scope
+          double voltage = 0.0;
+          double current = 0.0;
+
+          // Test 1: Voltage Source with Current Measurement
+          std::cout << "\n[Application] Test 1: Voltage Source Mode" << std::endl;
+          std::cout << "[Application] Setting voltage to 1.0V with 10mA compliance..." << std::endl;
+
+          if (smu->SetVoltage(1.0)) {
+            std::cout << "[Application] ✅ Voltage set successfully" << std::endl;
+          } else {
+            std::cerr << "[Application] ❌ Failed to set voltage: " << smu->GetLastError() << std::endl;
+          }
+
+          if (smu->SetCompliance(0.01)) {  // 10mA compliance
+            std::cout << "[Application] ✅ Compliance set successfully" << std::endl;
+          } else {
+            std::cerr << "[Application] ❌ Failed to set compliance: " << smu->GetLastError() << std::endl;
+          }
+
+          std::cout << "[Application] Turning output ON..." << std::endl;
+          if (smu->SetOutputOn()) {
+            std::cout << "[Application] ✅ Output ON" << std::endl;
+
+            // Wait a moment for output to settle
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            // Measure current
+            current = smu->ReadCurrent();
+            if (current != -999.0) {
+              std::cout << "[Application] ✅ Current measurement: " << std::scientific
+                        << std::setprecision(6) << current << " A" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to read current: " << smu->GetLastError() << std::endl;
+            }
+
+            // Measure voltage (should be close to 1.0V)
+            voltage = smu->ReadVoltage();
+            if (voltage != -999.0) {
+              std::cout << "[Application] ✅ Voltage measurement: " << std::fixed
+                        << std::setprecision(3) << voltage << " V" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to read voltage: " << smu->GetLastError() << std::endl;
+            }
+
+            // Turn output OFF
+            std::cout << "[Application] Turning output OFF..." << std::endl;
+            if (smu->SetOutputOff()) {
+              std::cout << "[Application] ✅ Output OFF" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to turn output off: " << smu->GetLastError() << std::endl;
+            }
+          } else {
+            std::cerr << "[Application] ❌ Failed to turn output on: " << smu->GetLastError() << std::endl;
+          }
+
+          // Test 2: Current Source with Voltage Measurement
+          std::cout << "\n[Application] Test 2: Current Source Mode" << std::endl;
+          std::cout << "[Application] Setting current to 1mA with 5V compliance..." << std::endl;
+
+          if (smu->SetCurrent(0.001)) {  // 1mA
+            std::cout << "[Application] ✅ Current set successfully" << std::endl;
+          } else {
+            std::cerr << "[Application] ❌ Failed to set current: " << smu->GetLastError() << std::endl;
+          }
+
+          if (smu->SetCompliance(5.0)) {  // 5V compliance
+            std::cout << "[Application] ✅ Compliance set successfully" << std::endl;
+          } else {
+            std::cerr << "[Application] ❌ Failed to set compliance: " << smu->GetLastError() << std::endl;
+          }
+
+          std::cout << "[Application] Turning output ON..." << std::endl;
+          if (smu->SetOutputOn()) {
+            std::cout << "[Application] ✅ Output ON" << std::endl;
+
+            // Wait a moment for output to settle
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            // Measure voltage
+            voltage = smu->ReadVoltage();
+            if (voltage != -999.0) {
+              std::cout << "[Application] ✅ Voltage measurement: " << std::fixed
+                        << std::setprecision(3) << voltage << " V" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to read voltage: " << smu->GetLastError() << std::endl;
+            }
+
+            // Measure current (should be close to 1mA)
+            current = smu->ReadCurrent();
+            if (current != -999.0) {
+              std::cout << "[Application] ✅ Current measurement: " << std::scientific
+                        << std::setprecision(6) << current << " A" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to read current: " << smu->GetLastError() << std::endl;
+            }
+
+            // Turn output OFF
+            std::cout << "[Application] Turning output OFF..." << std::endl;
+            if (smu->SetOutputOff()) {
+              std::cout << "[Application] ✅ Output OFF" << std::endl;
+            } else {
+              std::cerr << "[Application] ❌ Failed to turn output off: " << smu->GetLastError() << std::endl;
+            }
+          } else {
+            std::cerr << "[Application] ❌ Failed to turn output on: " << smu->GetLastError() << std::endl;
+          }
+
+          // Test 3: Output state query
+          std::cout << "\n[Application] Test 3: Output State Query" << std::endl;
+          bool outputState = smu->IsOutputOn();
+          std::cout << "[Application] Output state: " << (outputState ? "ON" : "OFF") << std::endl;
+
+          std::cout << "\n[Application] ===== Source-Measure Unit Tests Complete =====\n" << std::endl;
         }
 
         // Keep device connected for later use

@@ -105,8 +105,21 @@ void TcpDataClient::EnableAutoReconnect(bool enable, int intervalMs)
   m_reconnectInterval = intervalMs;
 
   if (enable && !wasEnabled && !m_connected.load()) {
+    // ✅ CRITICAL FIX: Join old thread before creating new one to prevent crash
+    // std::thread cannot be assigned to if it's already joinable (has an active thread)
+    if (m_reconnectThread.joinable()) {
+      m_reconnectThread.join();
+    }
+
     // Start reconnect thread
     m_reconnectThread = std::thread(&TcpDataClient::ReconnectThread, this);
+  }
+  else if (!enable && wasEnabled) {
+    // ✅ ADDED: When disabling auto-reconnect, wait for thread to finish
+    // The thread will check m_autoReconnect flag and exit
+    if (m_reconnectThread.joinable()) {
+      m_reconnectThread.join();
+    }
   }
 }
 

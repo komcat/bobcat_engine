@@ -1,6 +1,7 @@
 // SMUJsonLoader.cpp - Implementation of SMU JSON configuration loader
 #include "SMUJsonLoader.h"
 #include "Keithley6482Adapter.h"
+#include "KeithleySMUAdapter.h"  // ✅ ADD: Generic Keithley SMU adapter
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -124,10 +125,25 @@ SMUDevicePtr SMUJsonLoader::CreateSMUDevice(const std::string& type,
   if (normalizedType == "keithley6482" || normalizedType == "k6482") {
     return std::make_shared<Keithley6482Adapter>(visaResource, config);
   }
+  // ✅ ADD: Generic Keithley SMU adapter (2400/2600 series)
+  else if (normalizedType == "keithleysmu" || normalizedType == "ksmu" ||
+           normalizedType == "keithley2400" || normalizedType == "k2400" ||
+           normalizedType == "keithley2401" || normalizedType == "k2401" ||
+           normalizedType == "keithley2410" || normalizedType == "k2410" ||
+           normalizedType == "keithley2420" || normalizedType == "k2420" ||
+           normalizedType == "keithley2430" || normalizedType == "k2430" ||
+           normalizedType == "keithley2440" || normalizedType == "k2440" ||
+           normalizedType == "keithley2450" || normalizedType == "k2450" ||
+           normalizedType == "keithley2600" || normalizedType == "k2600" ||
+           normalizedType == "keithley2601b" || normalizedType == "k2601b" ||
+           normalizedType == "keithley2602b" || normalizedType == "k2602b" ||
+           normalizedType == "keithley2604b" || normalizedType == "k2604b" ||
+           normalizedType == "keithley2611b" || normalizedType == "k2611b" ||
+           normalizedType == "keithley2612b" || normalizedType == "k2612b" ||
+           normalizedType == "keithley2614b" || normalizedType == "k2614b") {
+    return std::make_shared<KeithleySMUAdapter>(visaResource, config);
+  }
   // Future adapters:
-  // else if (normalizedType == "keithley2400" || normalizedType == "k2400") {
-  //   return std::make_shared<Keithley2400Adapter>(visaResource, config);
-  // }
   // else if (normalizedType == "keysightb2900" || normalizedType == "b2900") {
   //   return std::make_shared<KeysightB2900Adapter>(visaResource, config);
   // }

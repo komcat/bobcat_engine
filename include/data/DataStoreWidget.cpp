@@ -9,17 +9,32 @@
 #include <algorithm>
 #include <cmath>
 
+// ✅ Register std::string as Qt meta-type for signal/slot connections
+Q_DECLARE_METATYPE(std::string)
+
 DataStoreWidget::DataStoreWidget(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_dataStore(context->dataStore)
   , m_tcpManager(context->tcpClientManager)
 {
+  // ✅ Register std::string for Qt queued connections
+  qRegisterMetaType<std::string>("std::string");
+
   setupUI();
 
-  // Connect to TcpClientManager signal for real-time updates
+  // Connect to TcpClientManager signal for real-time updates (TCP clients)
   connect(m_tcpManager, &TcpClientManager::dataReceived,
     this, &DataStoreWidget::onDataReceived);
+
+  // ✅ NEW: Subscribe to ALL DataStore value changes (includes SMU, TCP, etc.)
+  m_dataStore->SubscribeToAll([this](const std::string& channelId, float value) {
+    // Use Qt queued connection to ensure thread-safety
+    QMetaObject::invokeMethod(this, "onDataStoreValueChanged",
+                              Qt::QueuedConnection,
+                              Q_ARG(std::string, channelId),
+                              Q_ARG(float, value));
+  });
 
   // Auto-refresh channel list every 5 seconds to detect new channels
   m_refreshTimer = new QTimer(this);
@@ -34,7 +49,7 @@ DataStoreWidget::DataStoreWidget(ApplicationContext* context, QWidget* parent)
   // Initial channel list
   refreshChannelList();
 
-  std::cout << "[DataStoreWidget] Created" << std::endl;
+  std::cout << "[DataStoreWidget] Created and subscribed to DataStore" << std::endl;
 }
 
 DataStoreWidget::~DataStoreWidget()
@@ -117,7 +132,11 @@ void DataStoreWidget::createChannelCard(const std::string& channelId, const std:
   card.clientName = clientName;
 
   // Infer unit from channel name (can be extended)
-  if (channelId.find("Amp") != std::string::npos || channelId.find("Current") != std::string::npos) {
+  if (channelId.find("SMU_") == 0) {
+    // SMU channels measure current (amperes)
+    card.unit = "A";
+  }
+  else if (channelId.find("Amp") != std::string::npos || channelId.find("Current") != std::string::npos) {
     card.unit = "A";
   }
   else if (channelId.find("Volt") != std::string::npos) {
@@ -146,13 +165,25 @@ void DataStoreWidget::createChannelCard(const std::string& channelId, const std:
   cardLayout->setContentsMargins(20, 16, 20, 16);
   cardLayout->setSpacing(12);
 
-  // Header row: Client Name and current value
+  // Header row: Channel name and current value
   QHBoxLayout* headerRow = new QHBoxLayout();
 
-  // Display: "Client Name (Client ID)"
-  QString displayName = QString("%1 (%2)")
-    .arg(QString::fromStdString(clientName))
-    .arg(QString::fromStdString(clientId));
+  // ✅ UPDATED: Display SMU channels by their ID, TCP clients by name
+  QString displayName;
+  if (channelId.find("SMU_") == 0) {
+    // SMU channel - just show the channel ID (already descriptive)
+    displayName = QString::fromStdString(channelId);
+  }
+  else if (!clientName.empty()) {
+    // TCP client - show "Client Name (Client ID)"
+    displayName = QString("%1 (%2)")
+      .arg(QString::fromStdString(clientName))
+      .arg(QString::fromStdString(clientId));
+  }
+  else {
+    // Generic channel - just show channel ID
+    displayName = QString::fromStdString(channelId);
+  }
 
   card.nameLabel = new QLabel(displayName);
   card.nameLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 18px; font-weight: bold; background: transparent; }");
@@ -216,8 +247,13 @@ void DataStoreWidget::createChannelCard(const std::string& channelId, const std:
   // Store card
   m_channelCards[channelId] = card;
 
-  std::cout << "[DataStoreWidget] Created card for: " << clientName
-    << " (" << clientId << ")" << std::endl;
+  // ✅ UPDATED: Log message handles both TCP and non-TCP channels
+  if (!clientName.empty()) {
+    std::cout << "[DataStoreWidget] Created card for: " << clientName
+      << " (" << clientId << ")" << std::endl;
+  } else {
+    std::cout << "[DataStoreWidget] Created card for channel: " << channelId << std::endl;
+  }
 }
 
 void DataStoreWidget::onDataReceived(const std::string& clientId, float value, qint64 timestamp)
@@ -238,6 +274,37 @@ void DataStoreWidget::onDataReceived(const std::string& clientId, float value, q
   // Add data point to buffer
   DataPoint point;
   point.timestamp = timestamp;
+  point.value = value;
+  card.dataBuffer.push_back(point);
+
+  // Keep only last MAX_POINTS
+  if (card.dataBuffer.size() > MAX_POINTS) {
+    card.dataBuffer.pop_front();
+  }
+
+  // Update value label with SI prefix and unit
+  card.valueLabel->setText(formatValueWithUnit(value, card.unit));
+
+  // Mark channel as dirty for next chart update (throttled)
+  m_dirtyChannels.insert(channelId);
+}
+
+// ✅ NEW: Handle DataStore value changes (for SMU and other non-TCP sources)
+void DataStoreWidget::onDataStoreValueChanged(const std::string& channelId, float value)
+{
+  // Get or create card for this channel
+  auto it = m_channelCards.find(channelId);
+  if (it == m_channelCards.end()) {
+    // Create card with no client info (for non-TCP channels like SMU)
+    createChannelCard(channelId, "", "");
+    it = m_channelCards.find(channelId);
+  }
+
+  auto& card = it->second;
+
+  // Add data point to buffer with current timestamp
+  DataPoint point;
+  point.timestamp = QDateTime::currentMSecsSinceEpoch();
   point.value = value;
   card.dataBuffer.push_back(point);
 
@@ -318,17 +385,25 @@ void DataStoreWidget::refreshChannelList()
 
   auto channels = m_dataStore->GetAvailableChannels();
 
-  // Create cards for new channels by finding their corresponding clients
+  // ✅ UPDATED: Create cards for ALL channels (TCP, SMU, or other sources)
   for (const auto& channelId : channels) {
     if (m_channelCards.find(channelId) == m_channelCards.end()) {
-      // Find which client uses this channel
+      // Try to find TCP client for this channel
+      bool foundClient = false;
       auto clientIds = m_tcpManager->GetClientIds();
       for (const auto& clientId : clientIds) {
         auto config = m_tcpManager->GetClientConfig(clientId);
         if (config.dataStoreChannel == channelId) {
           createChannelCard(channelId, config.id, config.name);
+          foundClient = true;
           break;
         }
+      }
+
+      // ✅ NEW: If not a TCP channel, create card anyway (e.g., SMU channels)
+      if (!foundClient) {
+        createChannelCard(channelId, "", "");
+        std::cout << "[DataStoreWidget] Created card for non-TCP channel: " << channelId << std::endl;
       }
     }
   }

@@ -36,6 +36,7 @@ public:
 
 private slots:
   void onDataReceived(const std::string& clientId, float value, qint64 timestamp);
+  void onDataStoreValueChanged(const std::string& channelId, float value);  // ✅ NEW: Direct DataStore updates
   void onRefreshChannels();
   void onUpdateCharts();  // Periodic chart update at ~30 FPS
 

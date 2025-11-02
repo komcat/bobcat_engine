@@ -215,6 +215,42 @@ include/AppUI/SMUControlPage/SMUControlPage.h
 ╚═══════════════════════════════════════════════════════════════╝
 ```
 
+## Architecture - Loose Coupling with DataStore
+
+### Auto-Subscription Pattern
+
+All SMU measurements automatically flow to DataStore with **zero coupling** between components:
+
+```
+Keithley6482Adapter (device)
+    ↓ measurementReady signal
+SMUManager (broker)
+    ↓ measurementReady signal (forwarded)
+Application.cpp (subscriber)
+    ↓ addData()
+DataStore (storage)
+```
+
+**Key Benefits**:
+- ✅ **Loose coupling**: Devices don't know about DataStore
+- ✅ **Automatic subscription**: No manual connection needed
+- ✅ **Consistent naming**: `SMU_DeviceName_Ch1`, `SMU_DeviceName_Ch2`
+- ✅ **Extensible**: Easy to add more subscribers (UI, logging, etc.)
+- ✅ **Thread-safe**: Qt signals handle cross-thread communication
+
+**Implementation Details**:
+- `SMUManager::AddDevice()` auto-subscribes to device measurements
+- `Application::initializeSMUSystem()` auto-subscribes SMUManager to DataStore
+- UI subscribes to SMUManager for real-time display (optional)
+- No direct coupling between any components
+
+### DataStore Channel Naming
+
+Measurements are stored with the following naming convention:
+- Format: `SMU_{DeviceName}_Ch{ChannelNumber}`
+- Example: `SMU_Keithley_6482_Ch1`, `SMU_Keithley_6482_Ch2`
+- Includes timestamp from device measurement
+
 ## Design Decisions
 
 ### Why Simple?
