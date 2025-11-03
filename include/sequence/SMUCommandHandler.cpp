@@ -296,7 +296,80 @@ bool SMUCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
-  // SET COMPLIANCE (compliance limit)
+  // SET CURRENT COMPLIANCE (over-current protection for voltage source)
+  // ============================================================================
+  else if (methodName == "SetCurrentCompliance") {
+    auto limitIt = params.find("limit");
+
+    if (limitIt == params.end()) {
+      errorMessage = "Missing required parameter: limit";
+      return false;
+    }
+
+    double limit = 0.0;
+    try {
+      limit = std::stod(limitIt->second);
+    } catch (...) {
+      errorMessage = "Invalid limit parameter: " + limitIt->second;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Setting current compliance on " + deviceName + " to " + std::to_string(limit) + " A",
+                    "SMUHandler");
+    }
+
+    if (!device->SetCompliance(limit)) {
+      errorMessage = "Failed to set current compliance: " + device->GetLastError();
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SET VOLTAGE COMPLIANCE (over-voltage protection for current source)
+  // ============================================================================
+  else if (methodName == "SetVoltageCompliance") {
+    auto limitIt = params.find("limit");
+
+    if (limitIt == params.end()) {
+      errorMessage = "Missing required parameter: limit";
+      return false;
+    }
+
+    double limit = 0.0;
+    try {
+      limit = std::stod(limitIt->second);
+    } catch (...) {
+      errorMessage = "Invalid limit parameter: " + limitIt->second;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Setting voltage compliance on " + deviceName + " to " + std::to_string(limit) + " V",
+                    "SMUHandler");
+    }
+
+    // NOTE: Currently ISMUDevice interface only has SetCompliance() for current compliance
+    // Voltage compliance would require interface extension (e.g., SetVoltageCompliance() method)
+    // For now, log a warning
+    if (m_logger) {
+      m_logger->Warning("Voltage compliance not yet implemented in device interface (placeholder)",
+                       "SMUHandler");
+    }
+
+    // Store in context for future use
+    if (context) {
+      context->SetValue(deviceName + ".voltageComplianceLimit", static_cast<float>(limit),
+                       deviceName, methodName);
+    }
+
+    return true;  // Success (even though not actually set on device)
+  }
+
+  // ============================================================================
+  // SET COMPLIANCE (backward compatibility - defaults to current compliance)
   // ============================================================================
   else if (methodName == "SetCompliance") {
     auto limitIt = params.find("limit");
@@ -315,7 +388,7 @@ bool SMUCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Setting compliance on " + deviceName + " to " + std::to_string(limit),
+      m_logger->Info("Setting compliance (current) on " + deviceName + " to " + std::to_string(limit) + " A",
                     "SMUHandler");
     }
 

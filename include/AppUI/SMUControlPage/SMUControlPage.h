@@ -1,14 +1,16 @@
-// SMUControlPage.h - UI page for SMU control
+// SMUControlPage.h - UI page for SMU control (Tabbed Interface)
 #pragma once
 
 #include <QWidget>
 #include <QPushButton>
 #include <QComboBox>
 #include <QLabel>
-#include <QTimer>
 #include <QListWidget>
 #include <QFrame>
+#include <QGroupBox>
 #include <QVBoxLayout>
+#include <QTabWidget>
+#include <QDoubleSpinBox>
 #include <vector>
 
 struct ApplicationContext;
@@ -47,6 +49,12 @@ private slots:
   void onOutputOffClicked();
   void updateOutputState();
 
+  // Set voltage/current/compliance (NEW)
+  void onSetVoltageClicked();
+  void onSetCurrentClicked();
+  void onSetVoltageComplianceClicked();
+  void onSetCurrentComplianceClicked();
+
   // Polling control
   void onStartPollingClicked();
   void onStopPollingClicked();
@@ -60,17 +68,15 @@ private slots:
 
 private:
   void setupUI();
-  void createLeftPanel(QWidget* leftPanel);
-  void createRightPanel(QWidget* rightPanel);
-  void createChannelSection(QVBoxLayout* layout);
-  void createOutputControlSection(QVBoxLayout* layout);
-  void createMeasurementSection(QVBoxLayout* layout);
-  void createPollingSection(QVBoxLayout* layout);
+  void createConnectionTab();
+  void createSimpleTab();
+  void createPollingTab();
 
   void loadDevices();
   void updateConnectionStatus();
   void updateDeviceList();
   void updateChannelList();
+  void updateDeviceCapabilities();  // Update UI based on device mode (MEASURE_ONLY vs source-measure)
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
@@ -78,48 +84,53 @@ private:
   ApplicationContext* m_context;
   SMUManager* m_smuManager;
 
-  // Left Panel - Device List
+  // Main tab widget
+  QTabWidget* m_tabWidget;
+
+  // ===== CONNECTION TAB =====
   QListWidget* m_deviceList;
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
   QLabel* m_connectionStatus;
+  QLabel* m_deviceInfoLabel;
 
-  // Right Panel - Controls
-  QWidget* m_controlPanel;
-
+  // ===== SIMPLE TAB =====
   // Channel selection
   QComboBox* m_channelComboBox;
   QLabel* m_channelCountLabel;
 
-  // Measurement mode
-  QComboBox* m_modeComboBox;
-
-  // Measurement type (Current/Voltage)
-  QComboBox* m_measurementTypeComboBox;
-
   // Output control
+  QGroupBox* m_outputControlGroup;
   QPushButton* m_outputOnButton;
   QPushButton* m_outputOffButton;
   QLabel* m_outputStateLabel;
 
-  // Measurements (per channel)
-  std::vector<QLabel*> m_channelReadLabels;
-  QLabel* m_currentChannelReadLabel;  // Current selected channel
+  // Read measurements
+  QLabel* m_voltageReadLabel;
+  QLabel* m_currentReadLabel;
+  QPushButton* m_refreshButton;
 
-  // Polling control
+  // Set voltage/current (NEW)
+  QDoubleSpinBox* m_setVoltageSpinBox;
+  QPushButton* m_setVoltageButton;
+  QDoubleSpinBox* m_setCurrentSpinBox;
+  QPushButton* m_setCurrentButton;
+  QDoubleSpinBox* m_voltageComplianceSpinBox;
+  QPushButton* m_setVoltageComplianceButton;
+  QDoubleSpinBox* m_currentComplianceSpinBox;
+  QPushButton* m_setCurrentComplianceButton;
+
+  // ===== POLLING TAB =====
+  QComboBox* m_pollingChannelComboBox;
+  QComboBox* m_pollingModeComboBox;
+  QComboBox* m_pollingTypeComboBox;
   QPushButton* m_startPollingButton;
   QPushButton* m_stopPollingButton;
   QLabel* m_pollingStatusLabel;
-  QLabel* m_pollingValueLabel;     // Real-time polled value
-  QLabel* m_pollingSampleLabel;    // Sample count
+  QLabel* m_pollingValueLabel;
+  QLabel* m_pollingSampleLabel;
 
-  // Refresh
-  QPushButton* m_refreshButton;
-  QTimer* m_refreshTimer;
-
-  // Status
+  // ===== SHARED =====
   QLabel* m_statusLabel;
-
-  // Current device
   QString m_currentDevice;
 };

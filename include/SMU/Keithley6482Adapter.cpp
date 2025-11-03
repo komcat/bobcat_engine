@@ -1,4 +1,4 @@
-// Keithley6482Adapter.cpp - Implementation of Keithley 6482 Picoammeter Driver
+// Keithley6482Adapter.cpp - Implementation of Keithley 6482 Dual-Channel Picoammeter with Voltage Source
 #include "Keithley6482Adapter.h"
 #include <iostream>
 #include <sstream>
@@ -157,51 +157,151 @@ std::string Keithley6482Adapter::GetDeviceID() const
   return m_deviceID;
 }
 
-// ========== Output Control (Not Applicable for Picoammeter) ==========
+// ========== Output Control ==========
 
 bool Keithley6482Adapter::SetOutputOn()
 {
-  SetLastError("SetOutputOn: Not applicable for picoammeter (measurement-only device)");
-  return false;
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Turning output ON" << std::endl;
+
+  if (!WriteCommandInternal(":OUTP ON")) {
+    std::cerr << "[Keithley6482] Failed to turn output ON" << std::endl;
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Output ON successful" << std::endl;
+  return true;
 }
 
 bool Keithley6482Adapter::SetOutputOff()
 {
-  SetLastError("SetOutputOff: Not applicable for picoammeter (measurement-only device)");
-  return false;
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Turning output OFF" << std::endl;
+
+  if (!WriteCommandInternal(":OUTP OFF")) {
+    std::cerr << "[Keithley6482] Failed to turn output OFF" << std::endl;
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Output OFF successful" << std::endl;
+  return true;
 }
 
 bool Keithley6482Adapter::IsOutputOn()
 {
-  return false;  // Picoammeter has no output
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    return false;
+  }
+
+  std::string response;
+  if (!QueryCommandInternal(":OUTP?", response)) {
+    return false;
+  }
+
+  // Response is "1" for ON, "0" for OFF
+  return (response == "1" || response == "ON");
 }
 
-// ========== Source Control (Not Applicable for Picoammeter) ==========
+// ========== Source Control ==========
 
 bool Keithley6482Adapter::SetVoltage(double voltage)
 {
-  SetLastError("SetVoltage: Not applicable for picoammeter (measurement-only device)");
-  return false;
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Setting voltage to " << voltage << " V" << std::endl;
+
+  std::ostringstream cmd;
+  cmd << ":SOUR:VOLT " << voltage;
+
+  if (!WriteCommandInternal(cmd.str())) {
+    std::cerr << "[Keithley6482] Failed to set voltage" << std::endl;
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Voltage set successfully" << std::endl;
+  return true;
 }
 
 bool Keithley6482Adapter::SetCurrent(double current)
 {
-  SetLastError("SetCurrent: Not applicable for picoammeter (measurement-only device)");
+  SetLastError("SetCurrent: Not applicable for this device (voltage source only)");
   return false;
 }
 
 bool Keithley6482Adapter::SetCompliance(double limit)
 {
-  SetLastError("SetCompliance: Not applicable for picoammeter (measurement-only device)");
-  return false;
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  // NOTE: Keithley 6482 is primarily a picoammeter with voltage source capability
+  // for biasing. Unlike true SMU devices (e.g., Keithley 2400), the 6482 does NOT
+  // support user-configurable current compliance limits via SCPI commands.
+  //
+  // The device has built-in hardware current limits for the voltage source, but
+  // these are not user-adjustable. The current measurement range itself provides
+  // the protection mechanism.
+  //
+  // Commands like :SOUR:VOLT:ILIM are NOT supported and will generate SCPI error -113
+  // (Undefined header).
+  //
+  // For compatibility with the ISMUDevice interface, we accept the compliance
+  // value but do not send any SCPI commands to the device.
+
+  std::cout << "[Keithley6482] Compliance setting requested (" << limit
+            << " A) - NOTE: This device does not support user-configurable compliance. "
+            << "Built-in hardware limits apply." << std::endl;
+
+  return true;  // Return success since this is a no-op for this device
 }
 
 // ========== Measurement ==========
 
 double Keithley6482Adapter::ReadVoltage()
 {
-  SetLastError("ReadVoltage: Not applicable for picoammeter (current measurement only)");
-  return -999.0;
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return -999.0;
+  }
+
+  std::string response;
+  if (!QueryCommandInternal(":SOUR:VOLT?", response)) {
+    std::cerr << "[Keithley6482] Failed to read voltage" << std::endl;
+    return -999.0;
+  }
+
+  try {
+    double voltage = std::stod(response);
+    return voltage;
+  } catch (const std::exception& e) {
+    SetLastError("Failed to parse voltage response: " + response);
+    std::cerr << "[Keithley6482] " << m_lastError << std::endl;
+    return -999.0;
+  }
 }
 
 double Keithley6482Adapter::ReadCurrent()
@@ -624,6 +724,35 @@ bool Keithley6482Adapter::WriteCommand(const std::string& command)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   return WriteCommandInternal(command);
+}
+
+std::vector<std::string> Keithley6482Adapter::ReadErrorQueue()
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  std::vector<std::string> errors;
+
+  if (!m_connected) {
+    return errors;
+  }
+
+  // Read up to 10 errors from the queue
+  for (int i = 0; i < 10; ++i) {
+    std::string response;
+    if (!QueryCommandInternal(":SYST:ERR?", response)) {
+      break;
+    }
+
+    // Response format: "-113,Undefined header"
+    // If no errors, response is "0,No error"
+    if (response.find("0,") == 0 || response.find("+0,") == 0) {
+      break;  // No more errors
+    }
+
+    errors.push_back(response);
+    std::cerr << "[Keithley6482] SCPI Error: " << response << std::endl;
+  }
+
+  return errors;
 }
 
 // ========== Internal Methods (Assume Mutex Already Locked) ==========

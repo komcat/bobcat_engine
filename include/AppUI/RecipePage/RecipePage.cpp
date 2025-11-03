@@ -582,7 +582,8 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   layout->addWidget(m_recipeTree);
 
-  // ========== RUN BUTTON ==========
+  // ========== RUN BUTTONS ==========
+  // Run Recipe button (full recipe execution)
   m_runRecipeButton = new QPushButton("▶ Run Recipe");
   m_runRecipeButton->setMinimumHeight(50);
   m_runRecipeButton->setStyleSheet(
@@ -599,6 +600,28 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   );
   connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
   layout->addWidget(m_runRecipeButton);
+
+  // Run Selected Step button (single step execution for testing)
+  m_runSelectedStepButton = new QPushButton("▶ Run Selected Step");
+  m_runSelectedStepButton->setMinimumHeight(45);
+  m_runSelectedStepButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #4a90e2; "  // Blue color to differentiate from full recipe
+    "  color: white; "
+    "  font-size: 13px; "
+    "  font-weight: bold; "
+    "  border-radius: 5px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #5a9ff2; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #cccccc; "
+    "  color: #666666; "
+    "}"
+  );
+  connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
+  layout->addWidget(m_runSelectedStepButton);
 }
 
 void RecipePage::createRightPanel(QWidget* rightPanel)
@@ -1661,6 +1684,138 @@ void RecipePage::onRunRecipe()
 
   // Start execution
   m_recipeWorker->start();
+}
+
+// ✅ NEW: Run only the selected step (for quick testing)
+void RecipePage::onRunSelectedStep()
+{
+  // Check if a step is selected
+  QList<QTreeWidgetItem*> selectedItems = m_recipeTree->selectedItems();
+  if (selectedItems.isEmpty()) {
+    QMessageBox::warning(this, "No Step Selected",
+      "Please select a step to run.");
+    return;
+  }
+
+  // Get the selected step index
+  QTreeWidgetItem* selectedItem = selectedItems.first();
+  int stepIndex = m_recipeTree->indexOfTopLevelItem(selectedItem);
+
+  if (stepIndex < 0 || stepIndex >= m_recipeManager->getStepCount()) {
+    QMessageBox::warning(this, "Invalid Selection",
+      "Selected step index is invalid.");
+    return;
+  }
+
+  // Get the step
+  ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+  if (!step) {
+    QMessageBox::warning(this, "Error", "Failed to retrieve step.");
+    return;
+  }
+
+  // Check if step is enabled
+  if (!step->enabled) {
+    QMessageBox::warning(this, "Step Disabled",
+      QString("Step '%1' is disabled. Enable it first to run.")
+      .arg(QString::fromStdString(step->userNickname)));
+    return;
+  }
+
+  // Check if already running
+  if (m_recipeWorker && m_recipeWorker->isRunning()) {
+    QMessageBox::warning(this, "Execution Running",
+      "A recipe is already executing. Please wait for it to complete.");
+    return;
+  }
+
+  // Get step info for display
+  QString stepNickname = QString::fromStdString(step->userNickname);
+  QString stepType = QString::fromStdString(step->processType);
+
+  std::cout << "[RecipePage] Running single step: " << stepNickname.toStdString()
+            << " (type: " << stepType.toStdString() << ")" << std::endl;
+
+  // Build sequence for just this one step
+  if (!m_sequenceEngine) {
+    QMessageBox::critical(this, "Error", "Sequence engine not initialized!");
+    return;
+  }
+
+  // Create a temporary sequence for the single step
+  std::string sequenceName = "SingleStep_" + step->userNickname;
+  SequenceBuilder* sequence = m_sequenceEngine->CreateSequence(sequenceName);
+
+  try {
+    // Build the selected process into the sequence
+    std::string errorMsg;
+    if (!m_processFactory->BuildStep(sequence, step, errorMsg)) {
+      QMessageBox::critical(this, "Build Error",
+        QString("Failed to build step: %1").arg(QString::fromStdString(errorMsg)));
+      return;
+    }
+
+    std::cout << "[RecipePage] Built sequence for step: " << step->userNickname << std::endl;
+
+    // Switch to progress panel
+    showProgressPanel();
+
+    // Update progress widget with step info
+    if (m_progressWidget) {
+      m_progressWidget->setTotalSteps(1);  // 1 step total
+      m_progressWidget->setCurrentStep(1, stepNickname);
+      m_progressWidget->setStatusText("Executing step: " + stepNickname);
+      m_progressWidget->startTimer();
+    }
+
+    // Disable buttons during execution
+    m_runRecipeButton->setEnabled(false);
+    m_runSelectedStepButton->setEnabled(false);
+    m_runSelectedStepButton->setText("⏳ Running Step...");
+
+    // Execute the sequence directly (synchronous)
+    auto context = std::make_unique<SequenceContext>();
+    bool success = m_sequenceEngine->ExecuteSequence(sequence, context.get());
+
+    // Stop timer
+    if (m_progressWidget) {
+      m_progressWidget->stopTimer();
+    }
+
+    // Re-enable buttons
+    m_runRecipeButton->setEnabled(true);
+    m_runSelectedStepButton->setEnabled(true);
+    m_runSelectedStepButton->setText("▶ Run Selected Step");
+
+    // Show result
+    if (m_progressWidget) {
+      QString resultMsg = success ?
+        QString("✅ Step '%1' completed successfully").arg(stepNickname) :
+        QString("❌ Step '%1' failed").arg(stepNickname);
+      m_progressWidget->setStatusText(resultMsg);
+
+      if (success) {
+        m_progressWidget->showCompletionHint();
+      }
+    }
+
+    // Show completion message
+    if (success) {
+      QMessageBox::information(this, "Step Completed",
+        QString("Step '%1' executed successfully!").arg(stepNickname));
+    } else {
+      QMessageBox::critical(this, "Step Failed",
+        QString("Step '%1' execution failed.").arg(stepNickname));
+    }
+
+  } catch (const std::exception& e) {
+    m_runRecipeButton->setEnabled(true);
+    m_runSelectedStepButton->setEnabled(true);
+    m_runSelectedStepButton->setText("▶ Run Selected Step");
+
+    QMessageBox::critical(this, "Execution Error",
+      QString("Failed to execute step: %1").arg(e.what()));
+  }
 }
 
 // Legacy slots (kept for compatibility but not used with new system)

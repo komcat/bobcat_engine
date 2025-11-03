@@ -59,6 +59,7 @@ private slots:
   void onMoveStepDown();
   void onRemoveStep();
   void onRunRecipe();
+  void onRunSelectedStep();  // ✅ NEW: Run single selected step
   void onLoadProductClicked();
   void onSelectAllProcesses();
   void onDeselectAllProcesses();
@@ -137,6 +138,7 @@ private:
   QPushButton* m_moveDownButton;
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
+  QPushButton* m_runSelectedStepButton;  // ✅ NEW: Run single selected step
   QPushButton* m_selectAllButton;
   QPushButton* m_deselectAllButton;
   QPushButton* m_toggleSelectedButton;

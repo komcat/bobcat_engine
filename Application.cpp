@@ -1586,28 +1586,47 @@ void Application::initializeSMUSystem()
 
           // Test 1: Voltage Source with Current Measurement
           std::cout << "\n[Application] Test 1: Voltage Source Mode" << std::endl;
-          std::cout << "[Application] Setting voltage to 1.0V with 10mA compliance..." << std::endl;
+          std::cout << "[Application] Step 1: Setting voltage to 1.0V..." << std::endl;
 
           if (smu->SetVoltage(1.0)) {
-            std::cout << "[Application] ✅ Voltage set successfully" << std::endl;
+            std::cout << "[Application] ✅ Voltage set to 1.0V successfully" << std::endl;
           } else {
             std::cerr << "[Application] ❌ Failed to set voltage: " << smu->GetLastError() << std::endl;
           }
 
+          std::cout << "[Application] Step 2: Setting current compliance to 10mA..." << std::endl;
           if (smu->SetCompliance(0.01)) {  // 10mA compliance
-            std::cout << "[Application] ✅ Compliance set successfully" << std::endl;
+            std::cout << "[Application] ✅ Compliance set to 10mA successfully" << std::endl;
           } else {
             std::cerr << "[Application] ❌ Failed to set compliance: " << smu->GetLastError() << std::endl;
           }
 
-          std::cout << "[Application] Turning output ON..." << std::endl;
+          // Verify voltage setting before turning output on
+          std::cout << "[Application] Step 3: Verifying voltage setting (reading back)..." << std::endl;
+          voltage = smu->ReadVoltage();
+          if (voltage != -999.0) {
+            std::cout << "[Application] ✅ Voltage readback: " << std::fixed
+                      << std::setprecision(3) << voltage << " V (set to 1.0V)" << std::endl;
+          } else {
+            std::cerr << "[Application] ❌ Failed to read voltage setting: " << smu->GetLastError() << std::endl;
+          }
+
+          std::cout << "[Application] Step 4: Turning output ON..." << std::endl;
           if (smu->SetOutputOn()) {
-            std::cout << "[Application] ✅ Output ON" << std::endl;
+            std::cout << "[Application] ✅ Output ON command sent" << std::endl;
+
+            // Verify output state
+            if (smu->IsOutputOn()) {
+              std::cout << "[Application] ✅ Output state verified: ON - voltage source active" << std::endl;
+            } else {
+              std::cerr << "[Application] ⚠️ Warning: Output query returned OFF after turning on" << std::endl;
+            }
 
             // Wait a moment for output to settle
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
             // Measure current
+            std::cout << "[Application] Step 5: Measuring current with 1.0V applied..." << std::endl;
             current = smu->ReadCurrent();
             if (current != -999.0) {
               std::cout << "[Application] ✅ Current measurement: " << std::scientific
@@ -1617,18 +1636,26 @@ void Application::initializeSMUSystem()
             }
 
             // Measure voltage (should be close to 1.0V)
+            std::cout << "[Application] Step 6: Verifying output voltage..." << std::endl;
             voltage = smu->ReadVoltage();
             if (voltage != -999.0) {
-              std::cout << "[Application] ✅ Voltage measurement: " << std::fixed
-                        << std::setprecision(3) << voltage << " V" << std::endl;
+              std::cout << "[Application] ✅ Voltage readback: " << std::fixed
+                        << std::setprecision(3) << voltage << " V (expected: 1.0V)" << std::endl;
             } else {
               std::cerr << "[Application] ❌ Failed to read voltage: " << smu->GetLastError() << std::endl;
             }
 
             // Turn output OFF
-            std::cout << "[Application] Turning output OFF..." << std::endl;
+            std::cout << "[Application] Step 7: Turning output OFF..." << std::endl;
             if (smu->SetOutputOff()) {
-              std::cout << "[Application] ✅ Output OFF" << std::endl;
+              std::cout << "[Application] ✅ Output OFF command sent" << std::endl;
+
+              // Verify output state
+              if (!smu->IsOutputOn()) {
+                std::cout << "[Application] ✅ Output state verified: OFF - voltage source disabled" << std::endl;
+              } else {
+                std::cerr << "[Application] ⚠️ Warning: Output query returned ON after turning off" << std::endl;
+              }
             } else {
               std::cerr << "[Application] ❌ Failed to turn output off: " << smu->GetLastError() << std::endl;
             }
@@ -1694,6 +1721,21 @@ void Application::initializeSMUSystem()
           std::cout << "[Application] Output state: " << (outputState ? "ON" : "OFF") << std::endl;
 
           std::cout << "\n[Application] ===== Source-Measure Unit Tests Complete =====\n" << std::endl;
+        }
+
+        // Check for SCPI errors (Keithley 6482 specific)
+        auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(smu);
+        if (keithley6482) {
+          std::cout << "[Application] Checking SCPI error queue..." << std::endl;
+          auto errors = keithley6482->ReadErrorQueue();
+          if (errors.empty()) {
+            std::cout << "[Application] ✅ No SCPI errors detected" << std::endl;
+          } else {
+            std::cerr << "[Application] ⚠️ SCPI Errors detected (" << errors.size() << "):" << std::endl;
+            for (const auto& err : errors) {
+              std::cerr << "[Application]   " << err << std::endl;
+            }
+          }
         }
 
         // Keep device connected for later use

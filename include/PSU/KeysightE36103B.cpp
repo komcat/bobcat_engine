@@ -177,6 +177,7 @@ bool KeysightE36103B::writeInternal(const std::string& command)
 
     if (!m_connected || m_socket == INVALID_SOCKET) {
         m_lastError = "Not connected";
+        std::cerr << "[KeysightE36103B] Write failed - " << m_lastError << std::endl;
         return false;
     }
 
@@ -185,6 +186,8 @@ bool KeysightE36103B::writeInternal(const std::string& command)
     if (!cmd.empty() && cmd.back() != '\n') {
         cmd += '\n';
     }
+
+    std::cout << "[KeysightE36103B] Sending command: " << command << std::endl;
 
     // Send command
     int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
@@ -198,6 +201,7 @@ bool KeysightE36103B::writeInternal(const std::string& command)
         return false;
     }
 
+    std::cout << "[KeysightE36103B] Command sent successfully (" << bytesSent << " bytes)" << std::endl;
     return true;
 }
 
@@ -246,12 +250,26 @@ std::string KeysightE36103B::receiveResponse()
 
 bool KeysightE36103B::setOutputOn()
 {
-    return write("OUTP ON");
+    std::cout << "[KeysightE36103B] Setting output ON for device: " << m_deviceName << std::endl;
+    bool result = write("OUTP ON");
+    if (result) {
+        std::cout << "[KeysightE36103B] Output ON command sent successfully" << std::endl;
+    } else {
+        std::cerr << "[KeysightE36103B] Output ON command failed: " << m_lastError << std::endl;
+    }
+    return result;
 }
 
 bool KeysightE36103B::setOutputOff()
 {
-    return write("OUTP OFF");
+    std::cout << "[KeysightE36103B] Setting output OFF for device: " << m_deviceName << std::endl;
+    bool result = write("OUTP OFF");
+    if (result) {
+        std::cout << "[KeysightE36103B] Output OFF command sent successfully" << std::endl;
+    } else {
+        std::cerr << "[KeysightE36103B] Output OFF command failed: " << m_lastError << std::endl;
+    }
+    return result;
 }
 
 bool KeysightE36103B::setVoltage(double voltage)

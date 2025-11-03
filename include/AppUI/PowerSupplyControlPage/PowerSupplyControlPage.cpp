@@ -486,27 +486,57 @@ void PowerSupplyControlPage::onDisconnectClicked()
 
 void PowerSupplyControlPage::onOutputOnClicked()
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
+  std::cout << "[PowerSupplyControlPage] Output ON button clicked for device: " << m_currentDevice.toStdString() << std::endl;
 
+  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+  if (!psu) {
+    showError("Device not found");
+    std::cerr << "[PowerSupplyControlPage] PSU device not found!" << std::endl;
+    return;
+  }
+
+  if (!psu->isConnected()) {
+    showError("Device not connected");
+    std::cerr << "[PowerSupplyControlPage] PSU device not connected!" << std::endl;
+    return;
+  }
+
+  std::cout << "[PowerSupplyControlPage] Sending OUTPUT ON command..." << std::endl;
   if (psu->setOutputOn()) {
     showSuccess("Output turned ON");
+    std::cout << "[PowerSupplyControlPage] Output ON successful" << std::endl;
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
+    std::cerr << "[PowerSupplyControlPage] Output ON failed: " << psu->getLastError() << std::endl;
   }
 }
 
 void PowerSupplyControlPage::onOutputOffClicked()
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
+  std::cout << "[PowerSupplyControlPage] Output OFF button clicked for device: " << m_currentDevice.toStdString() << std::endl;
 
+  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+  if (!psu) {
+    showError("Device not found");
+    std::cerr << "[PowerSupplyControlPage] PSU device not found!" << std::endl;
+    return;
+  }
+
+  if (!psu->isConnected()) {
+    showError("Device not connected");
+    std::cerr << "[PowerSupplyControlPage] PSU device not connected!" << std::endl;
+    return;
+  }
+
+  std::cout << "[PowerSupplyControlPage] Sending OUTPUT OFF command..." << std::endl;
   if (psu->setOutputOff()) {
     showSuccess("Output turned OFF");
+    std::cout << "[PowerSupplyControlPage] Output OFF successful" << std::endl;
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
+    std::cerr << "[PowerSupplyControlPage] Output OFF failed: " << psu->getLastError() << std::endl;
   }
 }
 
@@ -647,4 +677,28 @@ void PowerSupplyControlPage::showSuccess(const QString& message)
   m_statusLabel->setText("✓ " + message);
   m_statusLabel->setStyleSheet("font-size: 11px; color: #27ae60; padding: 4px;");
   std::cout << "[PowerSupplyControlPage] " << message.toStdString() << std::endl;
+}
+
+// Visibility management - stop polling when hidden
+void PowerSupplyControlPage::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Resume auto-refresh if we have a connected device
+  if (!m_currentDevice.isEmpty()) {
+    auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+    if (psu && psu->isConnected()) {
+      m_refreshTimer->start(2000);
+      std::cout << "[PowerSupplyControlPage] Page shown - resuming auto-refresh" << std::endl;
+    }
+  }
+}
+
+void PowerSupplyControlPage::hideEvent(QHideEvent* event)
+{
+  QWidget::hideEvent(event);
+
+  // Stop auto-refresh to avoid unnecessary SCPI commands
+  m_refreshTimer->stop();
+  std::cout << "[PowerSupplyControlPage] Page hidden - stopped auto-refresh" << std::endl;
 }

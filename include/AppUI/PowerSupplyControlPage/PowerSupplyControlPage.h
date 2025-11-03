@@ -26,6 +26,10 @@ public:
   explicit PowerSupplyControlPage(ApplicationContext* context, QWidget* parent = nullptr);
   ~PowerSupplyControlPage() = default;
 
+protected:
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
+
 private slots:
   // Device management
   void onDeviceSelected(int row);

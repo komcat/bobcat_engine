@@ -11,13 +11,14 @@
 #include <atomic>
 
 /**
- * @brief Keithley 6482 Picoammeter Driver
+ * @brief Keithley 6482 Dual-Channel Picoammeter with Voltage Source
  *
- * The Keithley 6482 is a dual-channel picoammeter (measurement-only device).
- * It does NOT source voltage or current - it only measures current.
+ * The Keithley 6482 is a dual-channel picoammeter with voltage source capability.
+ * It can source voltage and measure ultra-low currents.
  *
  * Features:
  * - Dual channel current measurement
+ * - Voltage source capability
  * - Range: 2nA to 21mA full scale
  * - Resolution: 10fA (femtoamp)
  * - GPIB/VISA communication
@@ -30,6 +31,10 @@
  *
  * Common SCPI Commands:
  * - *IDN?                          - Get device identification
+ * - :SOUR:VOLT <value>             - Set voltage source level
+ * - :SOUR:VOLT?                    - Query voltage source level
+ * - :OUTP ON/OFF                   - Enable/disable voltage source output
+ * - :OUTP?                         - Query output state
  * - :SENS:CURR:RANG <range>        - Set current range (e.g., 2e-9 for 2nA)
  * - :SENS:CURR:RANG:AUTO ON/OFF    - Auto-range on/off
  * - :SENS:CURR:NPLC <value>        - Set integration time (0.01 to 10)
@@ -37,6 +42,9 @@
  * - :SYST:ZCH ON/OFF               - Zero check on/off
  * - :SYST:ZCOR:ACQ                 - Perform zero correction
  * - :SYST:ERR?                     - Read error queue
+ *
+ * NOTE: The 6482 does NOT support current compliance commands like :SOUR:VOLT:ILIM
+ *       Built-in hardware limits protect the voltage source.
  */
 class Keithley6482Adapter : public QObject, public ISMUDevice
 {
@@ -60,20 +68,20 @@ public:
   // Device Information
   std::string GetDeviceName() const override { return m_config.Name; }
   std::string GetDeviceID() const override;
-  SMUMode GetSupportedMode() const override { return SMUMode::MEASURE_ONLY; }
+  SMUMode GetSupportedMode() const override { return SMUMode::VOLTAGE_SOURCE; }  // Can source voltage and measure current
 
-  // Output Control (N/A for picoammeter - measurement only)
-  bool SetOutputOn() override;   // Not applicable, returns false
-  bool SetOutputOff() override;  // Not applicable, returns false
-  bool IsOutputOn() override;    // Not applicable, returns false
+  // Output Control
+  bool SetOutputOn() override;   // Enable voltage source output
+  bool SetOutputOff() override;  // Disable voltage source output
+  bool IsOutputOn() override;    // Query output state
 
-  // Source Control (N/A for picoammeter)
-  bool SetVoltage(double voltage) override;       // Not applicable, returns false
-  bool SetCurrent(double current) override;       // Not applicable, returns false
-  bool SetCompliance(double limit) override;      // Not applicable, returns false
+  // Source Control
+  bool SetVoltage(double voltage) override;       // Set voltage source level
+  bool SetCurrent(double current) override;       // Not applicable for this device, returns false
+  bool SetCompliance(double limit) override;      // NOTE: Not supported by hardware (no-op, returns true for compatibility)
 
   // Measurement (PRIMARY FUNCTIONALITY)
-  double ReadVoltage() override;                  // Not applicable, returns -999.0
+  double ReadVoltage() override;                  // Read back set voltage
   double ReadCurrent() override;                  // Reads current channel (backward compatible)
   SMUMeasurement MeasureCurrent() override;
   SMUMeasurement MeasureVoltage() override;       // Not applicable
@@ -140,6 +148,12 @@ public:
    * @return true if successful
    */
   bool WriteCommand(const std::string& command);
+
+  /**
+   * @brief Read and clear SCPI error queue
+   * @return Vector of error strings (empty if no errors)
+   */
+  std::vector<std::string> ReadErrorQueue();
 
   // ========== Polling Methods ==========
 

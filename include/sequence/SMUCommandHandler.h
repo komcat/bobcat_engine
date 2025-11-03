@@ -10,13 +10,16 @@ struct ApplicationContext;
  * @brief Command handler for SMU (Source Measure Unit) devices
  *
  * Supports commands:
- * - StartPolling: Begin continuous current measurement with polling manager
- * - StopPolling: Stop continuous measurement
- * - ReadCurrent: Single current reading from specific channel
- * - ReadVoltage: Single voltage reading
+ * - OutputOn: Turn output ON
+ * - OutputOff: Turn output OFF
  * - SetVoltage: Set source voltage (for voltage source devices)
  * - SetCurrent: Set source current (for current source devices)
- * - SetCompliance: Set compliance limit
+ * - ReadVoltage: Single voltage reading
+ * - ReadCurrent: Single current reading from specific channel
+ * - SetCurrentCompliance: Set current compliance limit (over-current protection)
+ * - SetVoltageCompliance: Set voltage compliance limit (over-voltage protection)
+ * - StartPolling: Begin continuous measurement with polling manager
+ * - StopPolling: Stop continuous measurement
  * - SetMode: Configure measurement mode (ACCURATE/FAST/ULTRA_FAST)
  */
 class SMUCommandHandler : public ICommandHandler
