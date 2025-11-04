@@ -312,6 +312,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
     ${CMAKE_SOURCE_DIR}/include/data
+    ${CMAKE_SOURCE_DIR}/include/dut
     ${CMAKE_SOURCE_DIR}/include/motions
     ${CMAKE_SOURCE_DIR}/include/motions/PI
     ${CMAKE_SOURCE_DIR}/include/motions/ACS
@@ -386,11 +387,12 @@ set(SOURCES
     include/logger/LogManager.cpp
     include/logger/LogStatusBar.cpp
     include/logger/LogViewerPage.cpp
-    include/data/DataStore.cpp 
-    include/data/TcpDataClient.cpp 
-    include/data/TcpClientManager.cpp 
+    include/data/DataStore.cpp
+    include/data/TcpDataClient.cpp
+    include/data/TcpClientManager.cpp
     include/data/TcpClientWidget.cpp
     include/data/DataStoreWidget.cpp
+    src/dut/DeviceUnderTest.cpp
     include/AppUI/ConfigEditor/ConfigEditorPage.cpp
     include/AppUI/Forms/TcpClientFormWidget.cpp
     include/AppUI/Forms/CameraFormWidget.cpp
@@ -466,6 +468,7 @@ set(SOURCES
     include/recipe/processes/TECProcesses.cpp
     include/recipe/processes/PSUProcesses.cpp
     include/recipe/processes/DataStoreProcesses.cpp
+    include/recipe/processes/DUTProcesses.cpp
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
@@ -482,6 +485,7 @@ set(SOURCES
     include/sequence/TECCommandHandler.cpp
     include/AppUI/TECPage/TECControlPage.cpp
     include/sequence/DataStoreCommandHandler.cpp
+    include/sequence/DUTCommandHandler.cpp
     include/sequence/PSUCommandHandler.cpp
     include/sequence/SMUCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
@@ -539,6 +543,7 @@ set(HEADERS
     include/data/TcpClientManager.h
     include/data/TcpClientWidget.h
     include/data/DataStoreWidget.h
+    include/dut/DeviceUnderTest.h
     include/AppUI/ConfigEditor/ConfigEditorPage.h 
     include/AppUI/Forms/TcpClientFormWidget.h 
     include/AppUI/Forms/CameraFormWidget.h
@@ -622,6 +627,7 @@ set(HEADERS
     include/sequence/TECCommandHandler.h
     include/AppUI/TECPage/TECControlPage.h
     include/sequence/DataStoreCommandHandler.h
+    include/sequence/DUTCommandHandler.h
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
     include/AppUI/Common/FileSelectorDialog.h
@@ -883,12 +889,37 @@ endif()
 # Copy Configuration Files
 # ============================================================================
 
-# Copy camera_config.json to output directory
+# Copy config files to output directory (EXCLUDING *.local.json to preserve user settings)
 add_custom_command(TARGET bobcat_engine POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/config
-        $<TARGET_FILE_DIR:bobcat_engine>/config
-    COMMENT "Copying config files to output directory"
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:bobcat_engine>/config
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/camera_config.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/camera_config.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/motor_devices.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/motor_devices.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/io_devices.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/io_devices.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/pneumatic_slides.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/pneumatic_slides.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/tec_devices.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/tec_devices.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/power_supply_config.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/power_supply_config.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/smu_devices.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/smu_devices.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/tcp_clients.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/tcp_clients.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/transformation_matrix.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/transformation_matrix.json
+    COMMENT "Copying config templates (preserving *.local.json files)"
 )
 
 # Copy assets folder (icons, images, etc.) to output directory

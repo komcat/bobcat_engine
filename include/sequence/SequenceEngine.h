@@ -120,6 +120,7 @@ public:
   void SetUserPromptCallback(UserPromptCallback callback);
   void SetUserNotificationCallback(UserNotificationCallback callback);
   void SetManualAdjustCallback(ManualAdjustCallback callback);
+  void SetUserInputCallback(UserInputCallback callback);
 
   // ✅ NEW: Stop control
   void RequestStop();        // Request stop at next checkpoint

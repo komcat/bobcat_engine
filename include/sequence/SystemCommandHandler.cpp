@@ -172,6 +172,63 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // ASK FOR INPUT (Text input dialog)
+  // ============================================================================
+  else if (methodName == "AskForInput") {
+    auto titleIt = params.find("title");
+    auto promptIt = params.find("prompt");
+    auto defaultValueIt = params.find("default_value");
+    auto contextKeyIt = params.find("context_key");
+
+    if (titleIt == params.end() || promptIt == params.end()) {
+      errorMessage = "Missing required parameters: title, prompt";
+      return false;
+    }
+
+    std::string title = titleIt->second;
+    std::string prompt = promptIt->second;
+    std::string defaultValue = (defaultValueIt != params.end()) ? defaultValueIt->second : "";
+    std::string contextKey = (contextKeyIt != params.end()) ? contextKeyIt->second : "user_input";
+
+    if (!m_userInputCallback) {
+      errorMessage = "UserInput callback not configured";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Showing text input dialog: " + title, "SystemHandler");
+    }
+
+    // Call the callback - this will show input dialog and wait for user
+    auto result = m_userInputCallback(title, prompt, defaultValue);
+    bool accepted = result.first;
+    std::string inputText = result.second;
+
+    if (!accepted) {
+      errorMessage = "User cancelled input";
+      if (m_logger) {
+        m_logger->Warning("User cancelled input dialog: " + title, "SystemHandler");
+      }
+      return false;
+    }
+
+    // Store result in context
+    if (context) {
+      context->SetValue(contextKey, inputText, "system", "AskForInput");
+
+      if (m_logger) {
+        m_logger->Info("User input stored in context[" + contextKey + "]: " + inputText, "SystemHandler");
+      }
+    }
+
+    if (m_logger) {
+      m_logger->Info("User provided input: " + inputText, "SystemHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // LOG MESSAGE
   // ============================================================================
   else if (methodName == "LogMessage" || methodName == "Log") {

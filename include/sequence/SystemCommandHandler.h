@@ -20,6 +20,13 @@ using ManualAdjustCallback = std::function<bool(
   bool enableZ
 )>;
 
+// Callback type for text input - returns pair<accepted, inputText>
+using UserInputCallback = std::function<std::pair<bool, std::string>(
+  const std::string& title,
+  const std::string& prompt,
+  const std::string& defaultValue
+)>;
+
 class SystemCommandHandler : public ICommandHandler
 {
 public:
@@ -49,8 +56,14 @@ public:
     m_manualAdjustCallback = callback;
   }
 
+  // Set the UI callback for text input (must be called from main thread)
+  void SetUserInputCallback(UserInputCallback callback) {
+    m_userInputCallback = callback;
+  }
+
 private:
   UserPromptCallback m_userPromptCallback;
   UserNotificationCallback m_userNotificationCallback;
   ManualAdjustCallback m_manualAdjustCallback;
+  UserInputCallback m_userInputCallback;
 };

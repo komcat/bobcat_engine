@@ -22,6 +22,7 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QFrame>
 #include <QMetaObject>
 #include <QThread>
@@ -1529,6 +1530,27 @@ void RecipePage::setupSequenceEngine()
         this
       );
     }, Qt::QueuedConnection);  // Non-blocking!
+  }
+  );
+
+  // Set text input callback
+  m_sequenceEngine->SetUserInputCallback(
+    [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+    std::pair<bool, std::string> result;
+    QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+      bool ok = false;
+      QString text = QInputDialog::getText(
+        this,
+        QString::fromStdString(title),
+        QString::fromStdString(prompt),
+        QLineEdit::Normal,
+        QString::fromStdString(defaultValue),
+        &ok
+      );
+      result.first = ok;
+      result.second = ok ? text.toStdString() : "";
+    }, Qt::BlockingQueuedConnection);
+    return result;
   }
   );
 

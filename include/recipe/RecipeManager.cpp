@@ -172,6 +172,7 @@ std::vector<std::string> RecipeManager::getAvailableProcessTypes()
   //   - TECProcesses.cpp: Set TEC Temp, Set Laser Current, Read Temperature, Read Laser Current
   //   - PSUProcesses.cpp: PSU Output On/Off, PSU Set Voltage, PSU Set Current, PSU Read Voltage, PSU Read Current
   //   - DataStoreProcesses.cpp: Read DataStore
+  //   - DUTProcesses.cpp: DUT Create, DUT Load, DUT Close, DUT Insert String, DUT Insert Double, DUT Insert Integer, DUT Insert from Context
   //   - ConditionalProcesses.cpp: Conditional If, Conditional Else, Conditional End
   //   - CalibrationProcesses.cpp: Calibrate Needle Z
 

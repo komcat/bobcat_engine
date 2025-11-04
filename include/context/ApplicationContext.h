@@ -18,6 +18,7 @@ class PowerSupplyManager;
 class SMUManager;  // ✅ ADD SMU Manager
 class SMUPollingManager;  // ✅ ADD SMU Polling Manager
 class CoordinateSystemManager;
+class DeviceUnderTest;
 
 struct ApplicationContext
 {
@@ -38,6 +39,7 @@ struct ApplicationContext
   SMUManager* smuManager = nullptr;  // ✅ ADD SMU Manager
   SMUPollingManager* smuPollingManager = nullptr;  // ✅ ADD SMU Polling Manager
   CoordinateSystemManager* coordinateSystemManager = nullptr;
+  DeviceUnderTest* currentDUT = nullptr;  // Current active Device Under Test
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

@@ -12,6 +12,7 @@
 #include "DataStoreCommandHandler.h"
 #include "PSUCommandHandler.h"
 #include "SMUCommandHandler.h"  // ✅ ADDED
+#include "DUTCommandHandler.h"
 #include "SequenceContextCommandHandler.h"
 #include "CalibrationCommandHandler.h"
 #include "SequenceContext.h"
@@ -58,6 +59,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("smu", std::move(smuHandler));
 
   m_dispatcher.RegisterHandler("datastore", std::make_unique<DataStoreCommandHandler>(m_context->dataStore));
+  m_dispatcher.RegisterHandler("dut", std::make_unique<DUTCommandHandler>(m_context));
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
   m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
 
@@ -187,6 +189,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["calibration"] = "calibration";
   LogInfo("Registered calibration command handler");
 
+  // DUT commands (special case - uses ApplicationContext, nullptr for manager)
+  m_deviceToManagerMap["dut"] = nullptr;
+  m_deviceToTypeMap["dut"] = "dut";
+  LogInfo("Registered DUT command handler");
+
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 
@@ -225,6 +232,13 @@ void SequenceEngine::SetManualAdjustCallback(ManualAdjustCallback callback)
 {
   if (m_systemHandler) {
     m_systemHandler->SetManualAdjustCallback(callback);
+  }
+}
+
+void SequenceEngine::SetUserInputCallback(UserInputCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetUserInputCallback(callback);
   }
 }
 
@@ -268,8 +282,8 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
       return false;
     }
 
-    // System, context, and calibration commands don't need a manager pointer, others do
-    if (managerType != "system" && managerType != "context" && managerType != "calibration") {
+    // System, context, calibration, and dut commands don't need a manager pointer, others do
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut") {
       void* manager = ResolveManager(action->deviceName);
       if (!manager) {
         errors.push_back("Manager not found for device: " + action->deviceName);
@@ -411,8 +425,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       return false;
     }
 
-    // System/context/calibration commands can have nullptr manager, others cannot
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && !manager) {
+    // System/context/calibration/dut commands can have nullptr manager, others cannot
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && !manager) {
       LogError("Manager not found for device: " + action->deviceName);
       return false;
     }

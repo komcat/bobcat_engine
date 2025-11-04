@@ -149,7 +149,8 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"tec_device", "TEC1"},
-      {"log_level", "Info"}
+      {"log_level", "Info"},
+      {"captureAs", ""}  // Optional - stores temperature in context
     };
   }
 
@@ -158,11 +159,7 @@ public:
 
     widget->addParameterField("tec_device", "TEC Device Name", params.at("tec_device"));
     widget->addParameterField("log_level", "Log Level (Info/Debug/Warning)", params.at("log_level"));
-
-    // Optional: Add captureAs field if exists
-    if (params.find("captureAs") != params.end()) {
-      widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
-    }
+    widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -210,7 +207,8 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"tec_device", "TEC1"},
-      {"log_level", "Info"}
+      {"log_level", "Info"},
+      {"captureAs", ""}  // Optional - stores laser current in context
     };
   }
 
@@ -219,11 +217,7 @@ public:
 
     widget->addParameterField("tec_device", "TEC Device Name", params.at("tec_device"));
     widget->addParameterField("log_level", "Log Level (Info/Debug/Warning)", params.at("log_level"));
-
-    // Optional: Add captureAs field if exists
-    if (params.find("captureAs") != params.end()) {
-      widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
-    }
+    widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
