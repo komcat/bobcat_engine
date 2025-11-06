@@ -385,12 +385,14 @@ public:
     });
 
     // Step 17: Retract Z to safe height
+    /*
     sequence->AddAction(device, "MoveRelative", {
       {"axis", "Z"},
       {"distance", zRetractHeight},
       {"blocking", "true"}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});
+    */
 
     // Step 18: Retract dispenser head
     sequence->AddAction(pneumaticSlide, "Retract", {
@@ -398,11 +400,17 @@ public:
       {"timeout_ms", "10000"}
     });
 
-    // Step 19: Automatically move back to initial camera XY position (so camera can see imprint)
+    // Step 18.1: Move only Z to camera_initial_z (safe height)
+    sequence->AddAction(device, "MoveToAbs", {
+      {"z", "context:camera_initial_z"},
+      {"blocking", "true"}
+    });
+    sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    // Step 18.2: Move only XY to camera_initial position
     sequence->AddAction(device, "MoveToAbs", {
       {"x", "context:camera_initial_x"},
       {"y", "context:camera_initial_y"},
-      {"z", "context:camera_initial_z"},  // Use current Z (already retracted to safe height)
       {"blocking", "true"}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});

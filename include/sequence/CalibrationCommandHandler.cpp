@@ -22,38 +22,20 @@ CalibrationCommandHandler::CalibrationCommandHandler(ApplicationContext* context
 
 std::string CalibrationCommandHandler::GetNavigationFilePath(const std::string& uid) const
 {
-  // ✅ Use product-specific calibration folder
-  if (m_context && m_context->productPositionManager &&
-      m_context->productPositionManager->HasLoadedProduct()) {
-    std::string productName = m_context->productPositionManager->GetCurrentProductName();
-    return "config/" + productName + "/calibration/navigation_" + uid + ".json";
-  }
-  // Fallback to global folder if no product loaded
-  return "config/calibration/navigation_" + uid + ".json";
+  // ✅ Use SYSTEM folder for all calibration data
+  return "config/SYSTEM/navigation_" + uid + ".json";
 }
 
 std::string CalibrationCommandHandler::GetNeedleZCalibrationFilePath() const
 {
-  // ✅ Use product-specific calibration folder
-  if (m_context && m_context->productPositionManager &&
-      m_context->productPositionManager->HasLoadedProduct()) {
-    std::string productName = m_context->productPositionManager->GetCurrentProductName();
-    return "config/" + productName + "/calibration/needle_z_calibration.json";
-  }
-  // Fallback to global folder if no product loaded
-  return "config/calibration/needle_z_calibration.json";
+  // ✅ Use SYSTEM folder for all calibration data
+  return "config/SYSTEM/needle_z_calibration.json";
 }
 
 std::string CalibrationCommandHandler::GetCameraToNeedleOffsetFilePath() const
 {
-  // ✅ Use product-specific calibration folder
-  if (m_context && m_context->productPositionManager &&
-      m_context->productPositionManager->HasLoadedProduct()) {
-    std::string productName = m_context->productPositionManager->GetCurrentProductName();
-    return "config/" + productName + "/calibration/needleXYoffsetCamera.json";
-  }
-  // Fallback to global folder if no product loaded
-  return "config/calibration/needleXYoffsetCamera.json";
+  // ✅ Use SYSTEM folder for factory offset (read-only reference)
+  return "config/SYSTEM/needlexyoffset.json";
 }
 
 std::string CalibrationCommandHandler::GetCurrentDateTime(bool dateOnly) const
@@ -78,35 +60,25 @@ std::string CalibrationCommandHandler::GetCurrentDateTime(bool dateOnly) const
 bool CalibrationCommandHandler::EnsureCalibrationDirectoryExists(std::string& errorMessage)
 {
   try {
-    // ✅ Use product-specific calibration folder if product is loaded
-    std::string dirPathStr;
-    if (m_context && m_context->productPositionManager &&
-        m_context->productPositionManager->HasLoadedProduct()) {
-      std::string productName = m_context->productPositionManager->GetCurrentProductName();
-      dirPathStr = "config/" + productName + "/calibration";
-    }
-    else {
-      // Fallback to global folder if no product loaded
-      dirPathStr = "config/calibration";
-    }
-
+    // ✅ Use SYSTEM folder for all calibration data
+    std::string dirPathStr = "config/SYSTEM";
     std::filesystem::path dirPath = dirPathStr;
 
     if (!std::filesystem::exists(dirPath)) {
       if (!std::filesystem::create_directories(dirPath)) {
-        errorMessage = "Failed to create calibration directory";
+        errorMessage = "Failed to create SYSTEM calibration directory";
         return false;
       }
 
       if (m_logger) {
-        m_logger->Info("Created calibration directory: " + dirPathStr, "CalibrationHandler");
+        m_logger->Info("Created SYSTEM calibration directory: " + dirPathStr, "CalibrationHandler");
       }
     }
 
     return true;
   }
   catch (const std::exception& e) {
-    errorMessage = "Exception creating calibration directory: " + std::string(e.what());
+    errorMessage = "Exception creating SYSTEM calibration directory: " + std::string(e.what());
     return false;
   }
 }
@@ -210,7 +182,7 @@ bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
     std::string filePath = GetCameraToNeedleOffsetFilePath();
 
     if (!std::filesystem::exists(filePath)) {
-      return false;  // File doesn't exist
+      return false;  // Factory offset file doesn't exist
     }
 
     std::ifstream file(filePath);
@@ -222,18 +194,18 @@ bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
     file >> j;
     file.close();
 
-    // Load XY offset values only (Z is always 0 from this file)
-    if (j.contains("offset")) {
-      offsetX = j["offset"]["x"];
-      offsetY = j["offset"]["y"];
-      offsetZ = 0.0;  // Z offset is handled by separate needle Z calibration
+    // Load factory XY offset values (Z is always 0)
+    if (j.contains("x") && j.contains("y")) {
+      offsetX = j["x"];
+      offsetY = j["y"];
+      offsetZ = 0.0;  // Z offset is not used in factory calibration
     }
 
     if (m_logger) {
       m_logger->Info(
-        "Loaded camera-to-needle XY offset: (" +
+        "Loaded factory needle XY offset: (" +
         std::to_string(offsetX) + ", " +
-        std::to_string(offsetY) + ", Z=0)",
+        std::to_string(offsetY) + ")",
         "CalibrationHandler"
       );
     }
@@ -243,7 +215,7 @@ bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
   catch (const std::exception& e) {
     if (m_logger) {
       m_logger->Warning(
-        "Failed to load camera-to-needle XY offset: " + std::string(e.what()),
+        "Failed to load factory needle XY offset: " + std::string(e.what()),
         "CalibrationHandler"
       );
     }
@@ -353,9 +325,9 @@ bool CalibrationCommandHandler::SaveNavigationData(
     j["metadata"]["device"] = deviceName;
     j["metadata"]["last_updated_date"] = GetCurrentDateTime(true);
     j["metadata"]["last_updated_time"] = GetCurrentDateTime(false);
-    j["metadata"]["description"] = "Camera position for auto-navigation (product-specific)";
+    j["metadata"]["description"] = "Camera position for auto-navigation (SYSTEM-wide)";
 
-    // Camera position only (offsets come from system-level file)
+    // Camera position only (offsets come from factory file)
     j["camera_position"]["x"] = camX;
     j["camera_position"]["y"] = camY;
     j["camera_position"]["z"] = camZ;
@@ -415,12 +387,12 @@ bool CalibrationCommandHandler::SaveNeedleZCalibrationGlobal(
     json j;
 
     // Metadata
-    j["metadata"]["calibration_type"] = "Needle Z Position (Global)";
+    j["metadata"]["calibration_type"] = "Needle Z Position (SYSTEM)";
     j["metadata"]["device"] = deviceName;
     j["metadata"]["calibrated_date"] = GetCurrentDateTime(true);
     j["metadata"]["calibrated_time"] = GetCurrentDateTime(false);
     j["metadata"]["pneumatic_slide"] = pneumaticSlide;
-    j["metadata"]["description"] = "Global needle Z calibration - updated by any calibration process";
+    j["metadata"]["description"] = "SYSTEM-wide needle Z calibration - latest calibration data";
 
     // Needle touch position
     j["needle_touch_position"]["x"] = needleX;
