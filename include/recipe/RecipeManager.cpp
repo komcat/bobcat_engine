@@ -510,7 +510,8 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "Data",
     "System",
     "Control Flow",
-    "Calibration"
+    "Calibration",
+    "Aux Window"
   };
 }
 
