@@ -276,6 +276,34 @@ std::string EziIODevice::GetOutputPinName(int pinNumber) const {
 }
 
 // ============================================================================
+// GET ALL PIN NAMES (for UI dropdowns)
+// ============================================================================
+
+std::vector<std::string> EziIODevice::GetAllInputPinNames() const {
+  std::vector<std::string> pinNames;
+  pinNames.reserve(m_inputPinNames.size());
+
+  // Collect all pin names from the map
+  for (const auto& pair : m_inputPinNames) {
+    pinNames.push_back(pair.first);  // pair.first is the pin name
+  }
+
+  return pinNames;
+}
+
+std::vector<std::string> EziIODevice::GetAllOutputPinNames() const {
+  std::vector<std::string> pinNames;
+  pinNames.reserve(m_outputPinNames.size());
+
+  // Collect all pin names from the map
+  for (const auto& pair : m_outputPinNames) {
+    pinNames.push_back(pair.first);  // pair.first is the pin name
+  }
+
+  return pinNames;
+}
+
+// ============================================================================
 // PRIVATE HELPERS
 // ============================================================================
 

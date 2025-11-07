@@ -3,6 +3,7 @@
 
 #include "EziIO_Types.h"
 #include <string>
+#include <vector>
 #include <cstdint>
 
 /**
@@ -57,4 +58,8 @@ public:
   // NEW: Reverse lookup - get name from pin number
   virtual std::string GetInputPinName(int pinNumber) const = 0;
   virtual std::string GetOutputPinName(int pinNumber) const = 0;
+
+  // NEW: Get all configured pin names (for UI dropdowns)
+  virtual std::vector<std::string> GetAllInputPinNames() const = 0;
+  virtual std::vector<std::string> GetAllOutputPinNames() const = 0;
 };

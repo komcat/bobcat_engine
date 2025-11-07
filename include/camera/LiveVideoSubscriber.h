@@ -22,8 +22,9 @@ public:
   /**
    * @brief Constructor
    * @param cameraId The ID of the camera to subscribe to
+   * @param componentName Optional unique name for this subscriber (e.g., "CameraView", "AuxWindow")
    */
-  explicit LiveVideoSubscriber(const std::string& cameraId);
+  explicit LiveVideoSubscriber(const std::string& cameraId, const std::string& componentName = "");
 
   /**
    * @brief Destructor
@@ -111,6 +112,7 @@ private:
   // Identification
   std::string m_subscriberId;
   std::string m_targetCameraId;
+  std::string m_componentName;
 
   // Frame data (protected by mutex)
   mutable std::mutex m_frameMutex;

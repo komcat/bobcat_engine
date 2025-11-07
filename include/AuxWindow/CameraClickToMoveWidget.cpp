@@ -249,6 +249,23 @@ void CameraClickToMoveWidget::setPixelToMmFactorY(double factor)
   saveSettingsToQSettings();
 }
 
+// ✅ NEW: Programmatic control methods for command handler
+void CameraClickToMoveWidget::setClickToMoveEnabled(bool enabled)
+{
+  if (m_clickToMoveCheckbox) {
+    m_clickToMoveCheckbox->setChecked(enabled);
+    // The onClickToMoveToggled slot will be called automatically
+  }
+}
+
+void CameraClickToMoveWidget::setCrosshairEnabled(bool enabled)
+{
+  if (m_crosshairCheckbox) {
+    m_crosshairCheckbox->setChecked(enabled);
+    // The onCrosshairToggled slot will be called automatically
+  }
+}
+
 void CameraClickToMoveWidget::onCameraSelected(int index)
 {
   if (index < 0) return;
@@ -317,7 +334,7 @@ void CameraClickToMoveWidget::subscribeToCameraFeed(const std::string& cameraId)
     m_cameraManager->StartGrabbing(cameraId);
   }
 
-  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId);
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId, "AuxWindow_ClickToMove");
   m_subscriber->InitializeStatusFromManager(m_cameraManager);
   m_cameraManager->SubscribeToFrames(m_subscriber);
 

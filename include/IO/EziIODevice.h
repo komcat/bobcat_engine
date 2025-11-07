@@ -5,6 +5,7 @@
 #include "EziIO_Types.h"
 #include "FAS_EziMOTIONPlusE.h"
 #include <string>
+#include <vector>
 #include <map>
 #include <mutex>
 #include <cstdint>
@@ -62,6 +63,10 @@ public:
   // NEW: Reverse lookup
   std::string GetInputPinName(int pinNumber) const override;
   std::string GetOutputPinName(int pinNumber) const override;
+
+  // NEW: Get all configured pin names (for UI dropdowns)
+  std::vector<std::string> GetAllInputPinNames() const override;
+  std::vector<std::string> GetAllOutputPinNames() const override;
 
 private:
   // Configuration

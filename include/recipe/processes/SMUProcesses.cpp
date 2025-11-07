@@ -42,8 +42,9 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    // SMU device name (plain text field like PSU/TEC)
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    // SMU device selector (dropdown with available devices)
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
 
     // Measurement mode dropdown
     widget->addParameterField("mode", "Mode (ACCURATE/FAST/ULTRA_FAST)", params.at("mode"));
@@ -127,8 +128,9 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    // SMU device name (plain text field like PSU/TEC)
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    // SMU device selector (dropdown with available devices)
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -181,8 +183,9 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    // SMU device name (plain text field like PSU/TEC)
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    // SMU device selector (dropdown with available devices)
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
 
     // Channel number
     widget->addNumericParameter("channel", "Channel",
@@ -254,7 +257,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
     widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
   }
 
@@ -296,7 +300,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
     widget->addNumericParameter("voltage", "Voltage (V)", params.at("voltage"), -100, 100, 0.1, 3, "V");
   }
 
@@ -333,7 +338,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
     widget->addNumericParameter("current", "Current (A)", params.at("current"), -1, 1, 0.001, 6, "A");
   }
 
@@ -370,7 +376,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
     widget->addNumericParameter("limit", "Compliance Limit", params.at("limit"), 0.001, 10, 0.01, 3, "");
   }
 
@@ -405,7 +412,8 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
@@ -436,7 +444,8 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addParameterField("device", "SMU Device Name", params.at("device"));
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {

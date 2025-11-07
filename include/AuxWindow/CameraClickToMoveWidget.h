@@ -51,6 +51,12 @@ public:
   double getPixelToMmFactorX() const { return m_pixelToMmFactorX; }
   double getPixelToMmFactorY() const { return m_pixelToMmFactorY; }
 
+  // ✅ NEW: Programmatic control of features (for command handler)
+  void setClickToMoveEnabled(bool enabled);
+  void setCrosshairEnabled(bool enabled);
+  bool isClickToMoveEnabled() const { return m_clickToMoveEnabled; }
+  bool isCrosshairEnabled() const { return m_centerCrosshairEnabled; }
+
 signals:
   void cameraChanged(const std::string& cameraId);
   void clickToMoveTriggered(double offsetX_mm, double offsetY_mm);

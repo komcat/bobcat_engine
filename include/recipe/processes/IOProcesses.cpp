@@ -45,7 +45,10 @@ public:
 
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-    widget->addParameterField("pin", "Output Pin", params.at("pin"));
+
+    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
+    widget->addIOPinSelector("pin", "Output Pin", params.at("pin"), "io_device", "output");
+
     widget->addCheckboxParameter("state", "Output State (ON/OFF)", params.at("state"),
       "Set to ON (checked) or OFF (unchecked)");
   }
@@ -93,7 +96,9 @@ public:
 
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-    widget->addParameterField("pin_name", "Output Pin Name", params.at("pin_name"));
+
+    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
+    widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -138,7 +143,9 @@ public:
 
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-    widget->addParameterField("pin_name", "Output Pin Name", params.at("pin_name"));
+
+    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
+    widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {

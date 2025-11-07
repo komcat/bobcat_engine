@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QComboBox>
+#include <QPushButton>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QChart>
@@ -74,6 +75,7 @@ private:
 
   // UI Components
   QComboBox* m_channelSelector;
+  QPushButton* m_refreshButton;
   QLabel* m_valueLabel;
   QLabel* m_channelInfoLabel;
   QChartView* m_chartView;
@@ -89,7 +91,6 @@ private:
   std::deque<DataPoint> m_dataBuffer;
 
   QTimer* m_chartUpdateTimer;
-  QTimer* m_channelRefreshTimer;
   QTimer* m_valueLabelUpdateTimer;
   bool m_isDirty;
   float m_latestValue;

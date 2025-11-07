@@ -148,7 +148,7 @@ void TECControlPage::createRightPanel()
   tecLayout->addRow(setpointLabel, tempLayout);
 
   m_currentTemperature = new QLabel("-- C");
-  m_currentTemperature->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; }");
+  m_currentTemperature->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; font-size: 24px; }");
   QLabel* currentTempLabel = new QLabel("Current Temp:");
   currentTempLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(currentTempLabel, m_currentTemperature);
@@ -201,7 +201,7 @@ void TECControlPage::createRightPanel()
   laserLayout->addRow(currentSetpointLabel, currentLayout);
 
   m_actualLaserCurrent = new QLabel("-- mA");
-  m_actualLaserCurrent->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; }");
+  m_actualLaserCurrent->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; font-size: 24px; }");
   QLabel* actualCurrentLabel = new QLabel("Actual Current:");
   actualCurrentLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   laserLayout->addRow(actualCurrentLabel, m_actualLaserCurrent);

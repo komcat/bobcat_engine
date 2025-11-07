@@ -177,7 +177,7 @@ void CameraLiveView::onConnectClicked()
   std::cout << "[CameraLiveView] Camera connected and grabbing started" << std::endl;
 
   // PUB-SUB SETUP
-  m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraLiveView");
   m_subscriber->InitializeStatusFromManager(m_cameraManager.get());
   m_cameraManager->SubscribeToFrames(m_subscriber);
 

@@ -93,6 +93,13 @@ public:
   void addDataChannelSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // ✅ NEW: Helper to add IO pin name selector (dropdown with pin names from IO device)
+  // ioDeviceParamKey: the parameter key of the IO device selector (e.g., "io_device")
+  // pinType: "output" or "input"
+  void addIOPinSelector(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& ioDeviceParamKey,
+    const std::string& pinType = "output");
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

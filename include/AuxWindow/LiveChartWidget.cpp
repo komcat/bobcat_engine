@@ -18,9 +18,23 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
 {
   setupUI();
 
-  // Connect to TcpClientManager for real-time data
+  // Connect to TcpClientManager for real-time data (TCP clients only)
   connect(m_tcpManager, &TcpClientManager::dataReceived,
     this, &LiveChartWidget::onDataReceived);
+
+  // ✅ NEW: Poll DataStore directly for all channels (SMU, TCP, etc.)
+  // This ensures we get data from ALL sources, not just TCP clients
+  QTimer* pollTimer = new QTimer(this);
+  connect(pollTimer, &QTimer::timeout, this, [this]() {
+    if (m_currentChannelId.empty() || !m_dataStore) return;
+
+    float value = 0.0f;
+    if (m_dataStore->TryGetValue(m_currentChannelId, value)) {
+      qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
+      onDataReceived(m_currentChannelId, value, timestamp);
+    }
+  });
+  pollTimer->start(100);  // Poll at 10 Hz
 
   // Chart update timer - 10 Hz
   m_chartUpdateTimer = new QTimer(this);
@@ -32,10 +46,10 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   connect(m_valueLabelUpdateTimer, &QTimer::timeout, this, &LiveChartWidget::onUpdateValueLabel);
   m_valueLabelUpdateTimer->start(VALUE_LABEL_UPDATE_INTERVAL_MS);
 
-  // Auto-refresh channel list every 5 seconds
-  m_channelRefreshTimer = new QTimer(this);
-  connect(m_channelRefreshTimer, &QTimer::timeout, this, &LiveChartWidget::onRefreshChannels);
-  m_channelRefreshTimer->start(5000);
+  // ✅ REMOVED: Auto-refresh timer (user will refresh manually with button)
+  // m_channelRefreshTimer = new QTimer(this);
+  // connect(m_channelRefreshTimer, &QTimer::timeout, this, &LiveChartWidget::onRefreshChannels);
+  // m_channelRefreshTimer->start(5000);
 
   // Initial channel list
   refreshChannelList();
@@ -51,9 +65,10 @@ LiveChartWidget::~LiveChartWidget()
   if (m_valueLabelUpdateTimer) {
     m_valueLabelUpdateTimer->stop();
   }
-  if (m_channelRefreshTimer) {
-    m_channelRefreshTimer->stop();
-  }
+  // ✅ REMOVED: Auto-refresh timer cleanup
+  // if (m_channelRefreshTimer) {
+  //   m_channelRefreshTimer->stop();
+  // }
   std::cout << "[LiveChartWidget] Destroyed" << std::endl;
 }
 
@@ -101,6 +116,29 @@ void LiveChartWidget::setupUI()
   connect(m_channelSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &LiveChartWidget::onChannelSelected);
   selectorRow->addWidget(m_channelSelector);
+
+  // ✅ NEW: Manual refresh button for channel list
+  m_refreshButton = new QPushButton("↻");
+  m_refreshButton->setToolTip("Refresh channel list from DataStore");
+  m_refreshButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 5px 12px; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1177bb; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0d5a8f; "
+    "}");
+  m_refreshButton->setFixedWidth(40);
+  connect(m_refreshButton, &QPushButton::clicked, this, &LiveChartWidget::onRefreshChannels);
+  selectorRow->addWidget(m_refreshButton);
 
   selectorRow->addStretch();
 
@@ -175,11 +213,21 @@ void LiveChartWidget::setupUI()
   updateValueFontSize();
 }
 
-void LiveChartWidget::onDataReceived(const std::string& clientId, float value, qint64 timestamp)
+void LiveChartWidget::onDataReceived(const std::string& channelOrClientId, float value, qint64 timestamp)
 {
   // Only process data for current channel
   if (m_currentChannelId.empty()) return;
-  if (clientId != m_currentClientId) return;
+
+  // ✅ FIXED: Accept data if it matches either the channel ID directly OR the client ID
+  // This supports both SMU channels (passed as channel ID) and TCP clients (passed as client ID)
+  if (channelOrClientId != m_currentChannelId && channelOrClientId != m_currentClientId) return;
+
+  // Debug output (only log occasionally to avoid spam)
+  static int debugCounter = 0;
+  if (debugCounter++ % 10 == 0) {  // Log every 10th data point
+    std::cout << "[LiveChartWidget] Data received for " << m_currentChannelId
+              << ": " << value << " " << m_currentUnit << std::endl;
+  }
 
   // Add data point to buffer
   DataPoint point;
@@ -221,44 +269,57 @@ void LiveChartWidget::setChannel(const std::string& channelId)
   m_latestValue = 0.0f;
   m_hasNewValue = false;
 
-  // Find client that owns this channel
+  // ✅ FIXED: Try to find TCP client that owns this channel, but handle non-TCP channels too
+  bool foundClient = false;
   auto clientIds = m_tcpManager->GetClientIds();
   for (const auto& clientId : clientIds) {
     auto config = m_tcpManager->GetClientConfig(clientId);
     if (config.dataStoreChannel == channelId) {
       m_currentClientId = config.id;
+      foundClient = true;
 
-      // Infer unit
-      if (channelId.find("Amp") != std::string::npos || channelId.find("Current") != std::string::npos) {
-        m_currentUnit = "A";
-      }
-      else if (channelId.find("Volt") != std::string::npos) {
-        m_currentUnit = "V";
-      }
-      else if (channelId.find("Watt") != std::string::npos || channelId.find("Power") != std::string::npos) {
-        m_currentUnit = "W";
-      }
-      else if (channelId.find("Ohm") != std::string::npos || channelId.find("Resistance") != std::string::npos) {
-        m_currentUnit = "Ω";
-      }
-      else {
-        m_currentUnit = "";
-      }
-
-      // Update Y-axis title
-      QString yAxisTitle = m_currentUnit.empty() ? "Value" : QString::fromStdString(m_currentUnit);
-      m_axisY->setTitleText(yAxisTitle);
-
-      // Update info label
+      // Update info label with TCP client name
       QString infoText = QString("%1 (%2)")
         .arg(QString::fromStdString(config.name))
         .arg(QString::fromStdString(clientId));
       m_channelInfoLabel->setText(infoText);
-
-      emit channelChanged(channelId);
       break;
     }
   }
+
+  // ✅ NEW: If no TCP client found (e.g., SMU channel), use channel ID directly
+  if (!foundClient) {
+    m_currentClientId = "";  // No client ID for non-TCP channels
+    m_channelInfoLabel->setText(QString("DataStore: %1").arg(QString::fromStdString(channelId)));
+  }
+
+  // ✅ IMPROVED: Infer unit from channel ID (works for both TCP and non-TCP channels)
+  if (channelId.find("Amp") != std::string::npos ||
+      channelId.find("Current") != std::string::npos ||
+      channelId.find("_Ch") != std::string::npos) {  // SMU channels often have "_Ch" in name
+    m_currentUnit = "A";
+  }
+  else if (channelId.find("Volt") != std::string::npos) {
+    m_currentUnit = "V";
+  }
+  else if (channelId.find("Watt") != std::string::npos || channelId.find("Power") != std::string::npos) {
+    m_currentUnit = "W";
+  }
+  else if (channelId.find("Ohm") != std::string::npos || channelId.find("Resistance") != std::string::npos) {
+    m_currentUnit = "Ω";
+  }
+  else {
+    m_currentUnit = "";
+  }
+
+  // Update Y-axis title
+  QString yAxisTitle = m_currentUnit.empty() ? "Value" : QString::fromStdString(m_currentUnit);
+  m_axisY->setTitleText(yAxisTitle);
+
+  emit channelChanged(channelId);
+
+  std::cout << "[LiveChartWidget] Channel set to: " << channelId
+            << " (Unit: " << m_currentUnit << ", Has TCP client: " << (foundClient ? "yes" : "no") << ")" << std::endl;
 }
 
 void LiveChartWidget::onUpdateChart()
@@ -367,7 +428,10 @@ void LiveChartWidget::onRefreshChannels()
 
 void LiveChartWidget::refreshChannelList()
 {
-  if (!m_dataStore) return;
+  if (!m_dataStore) {
+    std::cout << "[LiveChartWidget] ERROR: DataStore is null!" << std::endl;
+    return;
+  }
 
   // Store current selection
   std::string currentChannel = getCurrentChannel();
@@ -378,9 +442,15 @@ void LiveChartWidget::refreshChannelList()
 
   auto channels = m_dataStore->GetAvailableChannels();
 
+  std::cout << "[LiveChartWidget] Refreshing channel list - found " << channels.size() << " channels from DataStore" << std::endl;
+  for (const auto& ch : channels) {
+    std::cout << "[LiveChartWidget]   - Channel: " << ch << std::endl;
+  }
+
   if (channels.empty()) {
     m_channelSelector->addItem("No channels available", QVariant(QString("")));
     m_channelSelector->blockSignals(false);
+    std::cout << "[LiveChartWidget] No channels available in DataStore" << std::endl;
     return;
   }
 
@@ -388,23 +458,33 @@ void LiveChartWidget::refreshChannelList()
   int idx = 0;
 
   for (const auto& channelId : channels) {
-    // Find client info for display name
+    // ✅ FIXED: Try to find client info for display name, but add channel even if not found
+    QString displayName;
+    bool foundClient = false;
+
     auto clientIds = m_tcpManager->GetClientIds();
     for (const auto& clientId : clientIds) {
       auto config = m_tcpManager->GetClientConfig(clientId);
       if (config.dataStoreChannel == channelId) {
-        QString displayName = QString("%1 (%2)")
+        displayName = QString("%1 (%2)")
           .arg(QString::fromStdString(config.name))
           .arg(QString::fromStdString(channelId));
-        m_channelSelector->addItem(displayName, QVariant(QString::fromStdString(channelId)));
-
-        if (channelId == currentChannel) {
-          currentIndex = idx;
-        }
-        idx++;
+        foundClient = true;
         break;
       }
     }
+
+    // If no TCP client found, use channel ID as display name (e.g., SMU channels)
+    if (!foundClient) {
+      displayName = QString::fromStdString(channelId);
+    }
+
+    m_channelSelector->addItem(displayName, QVariant(QString::fromStdString(channelId)));
+
+    if (channelId == currentChannel) {
+      currentIndex = idx;
+    }
+    idx++;
   }
 
   // Restore selection or select first

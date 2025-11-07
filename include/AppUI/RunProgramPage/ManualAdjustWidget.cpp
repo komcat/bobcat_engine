@@ -41,8 +41,8 @@ void ManualAdjustWidget::setupUI()
   container->setMaximumWidth(900);
   container->setStyleSheet(
     "QWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #ccc; "
+    "  background-color: #1e1e1e; "  // ✅ Dark theme background
+    "  border: 2px solid #0e639c; "  // ✅ Dark theme border (blue accent)
     "}");
 
   QVBoxLayout* containerLayout = new QVBoxLayout(container);
@@ -55,7 +55,7 @@ void ManualAdjustWidget::setupUI()
     "QLabel { "
     "  font-size: 16px; "
     "  font-weight: bold; "
-    "  color: #333; "
+    "  color: #0e639c; "  // ✅ Dark theme blue accent
     "  background: transparent; "
     "  border: none; "
     "}");
@@ -66,7 +66,7 @@ void ManualAdjustWidget::setupUI()
   m_messageLabel->setStyleSheet(
     "QLabel { "
     "  font-size: 13px; "
-    "  color: #555; "
+    "  color: #d4d4d4; "  // ✅ Dark theme secondary text
     "  background: transparent; "
     "  border: none; "
     "  padding: 5px 0px; "
@@ -82,7 +82,7 @@ void ManualAdjustWidget::setupUI()
     "QLabel { "
     "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #0066cc; "
+    "  color: #1177bb; "  // ✅ Dark theme blue
     "  background: transparent; "
     "  border: none; "
     "}");
@@ -95,7 +95,7 @@ void ManualAdjustWidget::setupUI()
     "QLabel { "
     "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #009933; "
+    "  color: #27ae60; "  // ✅ Dark theme green
     "  background: transparent; "
     "  border: none; "
     "}");
@@ -109,9 +109,9 @@ void ManualAdjustWidget::setupUI()
   m_positionLabel->setStyleSheet(
     "QLabel { "
     "  font-size: 12px; "
-    "  color: #333; "
-    "  background: #f0f0f0; "
-    "  border: 1px solid #ccc; "
+    "  color: #ffffff; "  // ✅ Dark theme white text
+    "  background: #3c3c3c; "  // ✅ Dark theme input background
+    "  border: 1px solid #555555; "  // ✅ Dark theme border
     "  padding: 5px; "
     "}");
   containerLayout->addWidget(m_positionLabel);
@@ -122,7 +122,7 @@ void ManualAdjustWidget::setupUI()
     "QLabel { "
     "  font-size: 12px; "
     "  font-weight: bold; "
-    "  color: #333; "
+    "  color: #ffffff; "  // ✅ Dark theme white text
     "  background: transparent; "
     "  border: none; "
     "  margin-top: 3px; "
@@ -136,25 +136,25 @@ void ManualAdjustWidget::setupUI()
   // Minimal button style
   QString buttonStyle =
     "QPushButton { "
-    "  background-color: #007acc; "
+    "  background-color: #0e639c; "  // ✅ Dark theme primary blue
     "  color: white; "
     "  font-size: 12px; "
     "  font-weight: normal; "
-    "  border: 1px solid #005a9e; "
+    "  border: 1px solid #0c5280; "
     "  padding: 5px 10px; "
     "  min-width: 60px; "
     "  min-height: 30px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #005a9e; "
+    "  background-color: #1177bb; "  // ✅ Dark theme primary hover
     "} "
     "QPushButton:pressed { "
-    "  background-color: #003d6b; "
+    "  background-color: #005a9e; "  // ✅ Dark theme pressed
     "} "
     "QPushButton:disabled { "
-    "  background-color: #ccc; "
-    "  color: #888; "
-    "  border: 1px solid #aaa; "
+    "  background-color: #555555; "  // ✅ Dark theme disabled
+    "  color: #888888; "
+    "  border: 1px solid #444444; "
     "}";
 
   // Create jog buttons with minimal text
@@ -203,18 +203,18 @@ void ManualAdjustWidget::setupUI()
   m_okButton->setMinimumWidth(150);
   m_okButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #28a745; "
+    "  background-color: #27ae60; "  // ✅ Dark theme success green
     "  color: white; "
     "  font-size: 13px; "
     "  font-weight: normal; "
-    "  border: 1px solid #1e7e34; "
+    "  border: 1px solid #229954; "
     "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #218838; "
+    "  background-color: #2ecc71; "  // ✅ Dark theme success hover
     "} "
     "QPushButton:pressed { "
-    "  background-color: #1e7e34; "
+    "  background-color: #1e8449; "  // ✅ Dark theme success pressed
     "}");
   connect(m_okButton, &QPushButton::clicked, this, &ManualAdjustWidget::onOkClicked);
 
@@ -223,18 +223,18 @@ void ManualAdjustWidget::setupUI()
   m_cancelButton->setMinimumWidth(150);
   m_cancelButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #dc3545; "
+    "  background-color: #e74c3c; "  // ✅ Dark theme danger red
     "  color: white; "
     "  font-size: 13px; "
     "  font-weight: normal; "
-    "  border: 1px solid #bd2130; "
+    "  border: 1px solid #c0392b; "
     "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #c82333; "
+    "  background-color: #ec7063; "  // ✅ Dark theme danger hover
     "} "
     "QPushButton:pressed { "
-    "  background-color: #bd2130; "
+    "  background-color: #c0392b; "  // ✅ Dark theme danger pressed
     "}");
   connect(m_cancelButton, &QPushButton::clicked, this, &ManualAdjustWidget::onCancelClicked);
 

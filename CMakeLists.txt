@@ -473,6 +473,7 @@ set(SOURCES
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
     include/recipe/processes/SMUProcesses.cpp
+    include/recipe/processes/AuxWindowProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp
@@ -488,6 +489,7 @@ set(SOURCES
     include/sequence/DUTCommandHandler.cpp
     include/sequence/PSUCommandHandler.cpp
     include/sequence/SMUCommandHandler.cpp
+    include/sequence/AuxWindowCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
@@ -630,6 +632,7 @@ set(HEADERS
     include/sequence/DUTCommandHandler.h
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
+    include/sequence/AuxWindowCommandHandler.h
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
     include/AppUI/Common/CreateProductDialog.h
@@ -638,6 +641,7 @@ set(HEADERS
     include/AuxWindow/AuxViewWindow.h
     include/AuxWindow/LiveChartWidget.h
     include/AuxWindow/LiveViewCameraWidget.h
+    include/AuxWindow/CameraClickToMoveWidget.h
     include/PSU/IPowerSupply.h
     include/PSU/PowerSupplyManager.h
     include/PSU/PowerSupplyJsonLoader.h

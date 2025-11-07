@@ -315,6 +315,15 @@ void SMUControlPage::createSimpleTab()
   title->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
   layout->addWidget(title);
 
+  // ✅ NEW: Selected Device Indicator
+  m_simpleDeviceLabel = new QLabel("No device selected");
+  m_simpleDeviceLabel->setStyleSheet("QLabel { "
+    "font-size: 14px; font-weight: bold; color: #0e639c; "
+    "background-color: #1e1e1e; border: 2px solid #0e639c; "
+    "border-radius: 4px; padding: 10px; }");
+  m_simpleDeviceLabel->setAlignment(Qt::AlignCenter);
+  layout->addWidget(m_simpleDeviceLabel);
+
   // ========== CHANNEL SELECTION ==========
   QGroupBox* channelGroup = new QGroupBox("Channel Configuration");
   QGridLayout* channelGrid = new QGridLayout(channelGroup);
@@ -511,8 +520,17 @@ void SMUControlPage::createPollingTab()
   title->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
   layout->addWidget(title);
 
-  // ========== POLLING CONFIGURATION ==========
-  QGroupBox* configGroup = new QGroupBox("Polling Configuration");
+  // ✅ NEW: Selected Device Indicator
+  m_pollingDeviceLabel = new QLabel("No device selected");
+  m_pollingDeviceLabel->setStyleSheet("QLabel { "
+    "font-size: 14px; font-weight: bold; color: #0e639c; "
+    "background-color: #1e1e1e; border: 2px solid #0e639c; "
+    "border-radius: 4px; padding: 10px; }");
+  m_pollingDeviceLabel->setAlignment(Qt::AlignCenter);
+  layout->addWidget(m_pollingDeviceLabel);
+
+  // ========== ADD NEW POLLING SESSION ==========
+  QGroupBox* configGroup = new QGroupBox("Add New Polling Session");
   QGridLayout* configGrid = new QGridLayout(configGroup);
   configGrid->setSpacing(10);
 
@@ -542,45 +560,39 @@ void SMUControlPage::createPollingTab()
           this, &SMUControlPage::onMeasurementTypeChanged);
   configGrid->addWidget(m_pollingTypeComboBox, 2, 1);
 
+  // Add polling button
+  m_addPollingButton = new QPushButton("Add Polling Session");
+  m_addPollingButton->setMinimumHeight(45);
+  m_addPollingButton->setStyleSheet("QPushButton { background-color: #27ae60; font-weight: bold; font-size: 14px; }");
+  connect(m_addPollingButton, &QPushButton::clicked, this, &SMUControlPage::onAddPollingClicked);
+  configGrid->addWidget(m_addPollingButton, 3, 0, 1, 2);
+
   layout->addWidget(configGroup);
 
-  // ========== POLLING CONTROL ==========
-  QGroupBox* controlGroup = new QGroupBox("Control");
-  QHBoxLayout* controlLayout = new QHBoxLayout(controlGroup);
-  controlLayout->setSpacing(15);
+  // ========== ACTIVE POLLING SESSIONS ==========
+  QGroupBox* sessionsGroup = new QGroupBox("Active Polling Sessions");
+  QVBoxLayout* sessionsLayout = new QVBoxLayout(sessionsGroup);
+  sessionsLayout->setSpacing(10);
 
-  // Buttons
-  QVBoxLayout* buttonColumn = new QVBoxLayout();
-  m_startPollingButton = new QPushButton("Start Polling");
-  m_startPollingButton->setMinimumHeight(50);
-  m_startPollingButton->setStyleSheet("QPushButton { background-color: #27ae60; font-weight: bold; font-size: 14px; }");
-  connect(m_startPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStartPollingClicked);
-  buttonColumn->addWidget(m_startPollingButton);
+  m_activeSessionsList = new QListWidget();
+  m_activeSessionsList->setMinimumHeight(150);
+  m_activeSessionsList->setStyleSheet("QListWidget::item { padding: 5px; }");
+  sessionsLayout->addWidget(m_activeSessionsList);
 
-  m_stopPollingButton = new QPushButton("Stop Polling");
-  m_stopPollingButton->setMinimumHeight(50);
-  m_stopPollingButton->setStyleSheet("QPushButton { background-color: #e74c3c; font-weight: bold; font-size: 14px; }");
-  m_stopPollingButton->setEnabled(false);
-  connect(m_stopPollingButton, &QPushButton::clicked, this, &SMUControlPage::onStopPollingClicked);
-  buttonColumn->addWidget(m_stopPollingButton);
-  controlLayout->addLayout(buttonColumn, 1);
+  // Session control buttons
+  QHBoxLayout* sessionButtonsLayout = new QHBoxLayout();
+  m_stopSelectedSessionButton = new QPushButton("Stop Selected");
+  m_stopSelectedSessionButton->setStyleSheet("QPushButton { background-color: #e67e22; font-weight: bold; }");
+  connect(m_stopSelectedSessionButton, &QPushButton::clicked, this, &SMUControlPage::onStopSelectedSessionClicked);
+  sessionButtonsLayout->addWidget(m_stopSelectedSessionButton);
 
-  // Status display
-  QVBoxLayout* statusColumn = new QVBoxLayout();
-  QLabel* statusTitle = new QLabel("Status:");
-  statusTitle->setStyleSheet("QLabel { font-size: 12px; color: #888888; }");
-  statusColumn->addWidget(statusTitle);
+  m_stopAllSessionsButton = new QPushButton("Stop All");
+  m_stopAllSessionsButton->setStyleSheet("QPushButton { background-color: #e74c3c; font-weight: bold; }");
+  connect(m_stopAllSessionsButton, &QPushButton::clicked, this, &SMUControlPage::onStopAllSessionsClicked);
+  sessionButtonsLayout->addWidget(m_stopAllSessionsButton);
 
-  m_pollingStatusLabel = new QLabel("Stopped");
-  m_pollingStatusLabel->setStyleSheet("QLabel { "
-    "font-size: 16px; font-weight: bold; color: #e74c3c; "
-    "background-color: #1e1e1e; border: 2px solid #3f3f46; "
-    "border-radius: 4px; padding: 15px; }");
-  m_pollingStatusLabel->setAlignment(Qt::AlignCenter);
-  statusColumn->addWidget(m_pollingStatusLabel);
-  controlLayout->addLayout(statusColumn, 2);
-
-  layout->addWidget(controlGroup);
+  sessionsLayout->addLayout(sessionButtonsLayout);
+  layout->addWidget(sessionsGroup);
 
   // ========== POLLING DISPLAY ==========
   QGroupBox* displayGroup = new QGroupBox("Live Measurements");
@@ -647,6 +659,8 @@ void SMUControlPage::onDeviceSelected(int row)
   updateChannelList();
   updateOutputState();
   updateDeviceCapabilities();  // Update UI based on device capabilities
+  updateDeviceLabels();  // Update device name labels in Simple and Polling tabs
+  refreshActiveSessionsList();  // ✅ NEW: Refresh polling sessions list to highlight current device
 }
 
 void SMUControlPage::onConnectClicked()
@@ -667,6 +681,7 @@ void SMUControlPage::onConnectClicked()
     updateConnectionStatus();
     updateChannelList();
     updateOutputState();
+    updateDeviceLabels();  // ✅ NEW: Update device labels to show "Connected"
     updateDeviceCapabilities();  // Update UI based on device capabilities
   } else {
     showError(QString::fromStdString(smu->GetLastError()));
@@ -683,6 +698,7 @@ void SMUControlPage::onDisconnectClicked()
     showSuccess("Disconnected from " + m_currentDevice);
     updateConnectionStatus();
     updateOutputState();
+    updateDeviceLabels();  // ✅ NEW: Update device labels to show "Disconnected"
   }
 }
 
@@ -940,10 +956,13 @@ void SMUControlPage::onSetCurrentComplianceClicked()
   }
 }
 
-// Polling control
-void SMUControlPage::onStartPollingClicked()
+// Polling control - NEW multi-session support
+void SMUControlPage::onAddPollingClicked()
 {
-  if (m_currentDevice.isEmpty()) return;
+  if (m_currentDevice.isEmpty()) {
+    showError("No device selected");
+    return;
+  }
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
@@ -951,19 +970,28 @@ void SMUControlPage::onStartPollingClicked()
     return;
   }
 
-  // Determine measurement type from Polling tab
+  // Get selected channel
+  int selectedChannel = m_pollingChannelComboBox->currentIndex() + 1;
+
+  // Check if this channel is already polling
+  if (m_context->smuPollingManager->IsPollingChannel(m_currentDevice.toStdString(), selectedChannel)) {
+    showError(QString("Channel %1 is already polling").arg(selectedChannel));
+    return;
+  }
+
+  // Determine measurement type
   bool isCurrent = (m_pollingTypeComboBox->currentIndex() == 0);
-  QString unit = isCurrent ? " A" : " V";
   auto measurementType = isCurrent ?
     SMUPollingManager::MeasurementType::CURRENT :
     SMUPollingManager::MeasurementType::VOLTAGE;
 
-  // Connect to polling manager signal
-  connect(m_context->smuPollingManager, &SMUPollingManager::measurementReady,
-          this, &SMUControlPage::onPollingMeasurement);
-
-  // Get selected channel from Polling tab
-  int selectedChannel = m_pollingChannelComboBox->currentIndex() + 1;
+  // Connect to polling manager signal (only once)
+  static bool signalConnected = false;
+  if (!signalConnected) {
+    connect(m_context->smuPollingManager, &SMUPollingManager::measurementReady,
+            this, &SMUControlPage::onPollingMeasurement);
+    signalConnected = true;
+  }
 
   // Start polling via SMUPollingManager
   if (m_context->smuPollingManager->StartPolling(
@@ -972,77 +1000,98 @@ void SMUControlPage::onStartPollingClicked()
         selectedChannel,
         100,  // 100ms interval
         measurementType)) {
-    m_pollingStatusLabel->setText("Polling (" + QString(isCurrent ? "Current" : "Voltage") + ")");
-    m_pollingStatusLabel->setStyleSheet("QLabel { "
-      "font-size: 16px; "
-      "padding: 15px; "
-      "background-color: #1e1e1e; "
-      "border: 2px solid #27ae60; "
-      "border-radius: 4px; "
-      "color: #27ae60; "
-      "font-weight: bold; "
-      "}");
-    m_pollingValueLabel->setText("---" + unit);
-    m_pollingSampleLabel->setText("Samples: 0");
-    m_startPollingButton->setEnabled(false);
-    m_stopPollingButton->setEnabled(true);
-    showSuccess("Polling started (" + QString(isCurrent ? "Current" : "Voltage") + ")");
+    showSuccess(QString("Started polling Ch%1 (%2)")
+      .arg(selectedChannel)
+      .arg(isCurrent ? "Current" : "Voltage"));
+    refreshActiveSessionsList();
   } else {
     showError("Failed to start polling");
   }
 }
 
-void SMUControlPage::onStopPollingClicked()
+void SMUControlPage::onStopSelectedSessionClicked()
 {
-  if (m_currentDevice.isEmpty()) return;
+  QListWidgetItem* selectedItem = m_activeSessionsList->currentItem();
+  if (!selectedItem) {
+    showError("No session selected");
+    return;
+  }
 
-  // Disconnect from polling manager signal
-  disconnect(m_context->smuPollingManager, &SMUPollingManager::measurementReady,
-             this, &SMUControlPage::onPollingMeasurement);
+  // Session key format: "DeviceName_Ch1"
+  QString sessionKey = selectedItem->data(Qt::UserRole).toString();
+  QStringList parts = sessionKey.split("_Ch");
+  if (parts.size() != 2) return;
 
-  // Stop polling via SMUPollingManager
-  m_context->smuPollingManager->StopPolling(m_currentDevice.toStdString());
+  QString deviceName = parts[0];
+  int channel = parts[1].toInt();
 
-  uint64_t finalCount = m_context->smuPollingManager->GetSampleCount(m_currentDevice.toStdString());
+  m_context->smuPollingManager->StopPollingChannel(deviceName.toStdString(), channel);
 
-  // Determine unit based on current selection from Polling tab
-  QString unit = (m_pollingTypeComboBox->currentIndex() == 0) ? " A" : " V";
+  showSuccess(QString("Stopped polling %1 Ch%2").arg(deviceName).arg(channel));
+  refreshActiveSessionsList();
+}
 
-  m_pollingStatusLabel->setText("Stopped");
-  m_pollingStatusLabel->setStyleSheet("QLabel { "
-    "font-size: 16px; "
-    "padding: 15px; "
-    "background-color: #1e1e1e; "
-    "border: 2px solid #3f3f46; "
-    "border-radius: 4px; "
-    "color: #e74c3c; "
-    "font-weight: bold; "
-    "}");
-  m_pollingValueLabel->setText("---" + unit);
-  m_pollingSampleLabel->setText(QString("Samples: %1 (stopped)").arg(finalCount));
-  m_startPollingButton->setEnabled(true);
-  m_stopPollingButton->setEnabled(false);
-  showSuccess(QString("Polling stopped (%1 samples)").arg(finalCount));
+void SMUControlPage::onStopAllSessionsClicked()
+{
+  m_context->smuPollingManager->StopAllPolling();
+  showSuccess("All polling sessions stopped");
+  refreshActiveSessionsList();
+}
+
+void SMUControlPage::refreshActiveSessionsList()
+{
+  m_activeSessionsList->clear();
+
+  auto sessions = m_context->smuPollingManager->GetAllActiveSessions();
+
+  for (const auto& [sessionKey, sessionInfo] : sessions) {
+    auto [deviceName, channel, measurementType] = sessionInfo;
+
+    QString typeStr = (measurementType == SMUPollingManager::MeasurementType::CURRENT) ? "Current" : "Voltage";
+    uint64_t samples = m_context->smuPollingManager->GetSampleCount(deviceName, channel);
+
+    QString displayText = QString("%1 Ch%2 [%3] - %4 samples")
+      .arg(QString::fromStdString(deviceName))
+      .arg(channel)
+      .arg(typeStr)
+      .arg(samples);
+
+    QListWidgetItem* item = new QListWidgetItem(displayText);
+    item->setData(Qt::UserRole, QString::fromStdString(sessionKey));
+
+    // Highlight current device's sessions
+    if (deviceName == m_currentDevice.toStdString()) {
+      item->setBackground(QBrush(QColor(14, 99, 156, 50)));  // Semi-transparent blue
+    }
+
+    m_activeSessionsList->addItem(item);
+  }
+
+  m_pollingSampleLabel->setText(QString("Total active sessions: %1").arg(sessions.size()));
 }
 
 // Polling measurement callback
 void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString timestamp)
 {
-  // Only update if this is the current device
-  if (deviceName != m_currentDevice) return;
+  // Update live display for current device
+  if (deviceName == m_currentDevice) {
+    // Determine unit - check if current or voltage
+    bool isCurrent = (value < 1.0);  // Simple heuristic, or we could track measurement type
+    QString unit = isCurrent ? " A" : " V";
 
-  // Determine unit based on current selection from Polling tab
-  QString unit = (m_pollingTypeComboBox->currentIndex() == 0) ? " A" : " V";
+    // Update real-time value display
+    m_pollingValueLabel->setText(QString("%1: %2%3")
+      .arg(QString("Ch%1").arg(channel))
+      .arg(QString::number(value, 'e', 3))
+      .arg(unit));
+  }
 
-  // Update real-time value display
-  m_pollingValueLabel->setText(QString::number(value, 'e', 3) + unit);
-
-  // Update sample count from polling manager
-  uint64_t samples = m_context->smuPollingManager->GetSampleCount(m_currentDevice.toStdString());
-  m_pollingSampleLabel->setText(QString("Samples: %1 | Ch%2 | %3")
-                                   .arg(samples)
-                                   .arg(channel)
-                                   .arg(timestamp));
+  // Periodically refresh the active sessions list to update sample counts
+  static int updateCounter = 0;
+  if (++updateCounter >= 10) {  // Refresh every 10 measurements (~1 second at 100ms interval)
+    refreshActiveSessionsList();
+    updateCounter = 0;
+  }
 }
 
 // Measurement update
@@ -1181,6 +1230,52 @@ void SMUControlPage::updateDeviceCapabilities()
       std::cout << "[SMUControlPage] Added voltage polling option (device supports it)" << std::endl;
     }
   }
+}
+
+// ✅ NEW: Update device name labels in Simple and Polling tabs
+void SMUControlPage::updateDeviceLabels()
+{
+  if (m_currentDevice.isEmpty()) {
+    m_simpleDeviceLabel->setText("No device selected");
+    m_simpleDeviceLabel->setStyleSheet("QLabel { "
+      "font-size: 14px; font-weight: bold; color: #e74c3c; "
+      "background-color: #1e1e1e; border: 2px solid #e74c3c; "
+      "border-radius: 4px; padding: 10px; }");
+
+    m_pollingDeviceLabel->setText("No device selected");
+    m_pollingDeviceLabel->setStyleSheet("QLabel { "
+      "font-size: 14px; font-weight: bold; color: #e74c3c; "
+      "background-color: #1e1e1e; border: 2px solid #e74c3c; "
+      "border-radius: 4px; padding: 10px; }");
+    return;
+  }
+
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu) return;
+
+  // Get connection status
+  bool isConnected = smu->IsConnected();
+  QString statusColor = isConnected ? "#27ae60" : "#f39c12";  // Green if connected, orange if disconnected
+  QString statusText = isConnected ? "Connected" : "Disconnected";
+
+  // Create device label text
+  QString labelText = QString("Device: %1 [%2]")
+    .arg(m_currentDevice)
+    .arg(statusText);
+
+  // Update Simple tab label
+  m_simpleDeviceLabel->setText(labelText);
+  m_simpleDeviceLabel->setStyleSheet(QString("QLabel { "
+    "font-size: 14px; font-weight: bold; color: %1; "
+    "background-color: #1e1e1e; border: 2px solid %1; "
+    "border-radius: 4px; padding: 10px; }").arg(statusColor));
+
+  // Update Polling tab label
+  m_pollingDeviceLabel->setText(labelText);
+  m_pollingDeviceLabel->setStyleSheet(QString("QLabel { "
+    "font-size: 14px; font-weight: bold; color: %1; "
+    "background-color: #1e1e1e; border: 2px solid %1; "
+    "border-radius: 4px; padding: 10px; }").arg(statusColor));
 }
 
 void SMUControlPage::showError(const QString& message)

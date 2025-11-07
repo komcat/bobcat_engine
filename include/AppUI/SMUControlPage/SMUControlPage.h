@@ -56,8 +56,10 @@ private slots:
   void onSetCurrentComplianceClicked();
 
   // Polling control
-  void onStartPollingClicked();
-  void onStopPollingClicked();
+  void onAddPollingClicked();
+  void onStopSelectedSessionClicked();
+  void onStopAllSessionsClicked();
+  void refreshActiveSessionsList();
 
   // Measurement update
   void onRefreshClicked();
@@ -77,6 +79,7 @@ private:
   void updateDeviceList();
   void updateChannelList();
   void updateDeviceCapabilities();  // Update UI based on device mode (MEASURE_ONLY vs source-measure)
+  void updateDeviceLabels();  // Update device name labels in Simple and Polling tabs
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
@@ -95,6 +98,9 @@ private:
   QLabel* m_deviceInfoLabel;
 
   // ===== SIMPLE TAB =====
+  // Device indicator
+  QLabel* m_simpleDeviceLabel;
+
   // Channel selection
   QComboBox* m_channelComboBox;
   QLabel* m_channelCountLabel;
@@ -121,12 +127,21 @@ private:
   QPushButton* m_setCurrentComplianceButton;
 
   // ===== POLLING TAB =====
+  // Device indicator
+  QLabel* m_pollingDeviceLabel;
+
+  // Configuration for new polling session
   QComboBox* m_pollingChannelComboBox;
   QComboBox* m_pollingModeComboBox;
   QComboBox* m_pollingTypeComboBox;
-  QPushButton* m_startPollingButton;
-  QPushButton* m_stopPollingButton;
-  QLabel* m_pollingStatusLabel;
+  QPushButton* m_addPollingButton;
+
+  // Active polling sessions list
+  QListWidget* m_activeSessionsList;
+  QPushButton* m_stopSelectedSessionButton;
+  QPushButton* m_stopAllSessionsButton;
+
+  // Live measurements display (for all sessions)
   QLabel* m_pollingValueLabel;
   QLabel* m_pollingSampleLabel;
 

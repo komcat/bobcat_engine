@@ -212,7 +212,7 @@ void LiveViewCameraWidget::subscribeToCameraFeed(const std::string& cameraId)
   }
 
   // Create a shared_ptr LiveVideoSubscriber (callback-based, not QObject)
-  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId);
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId, "AuxWindow_LiveView");
 
   // Initialize status from camera manager if camera is already running
   m_subscriber->InitializeStatusFromManager(m_cameraManager);

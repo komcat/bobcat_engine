@@ -15,8 +15,8 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
   setMinimumWidth(450);
   setMinimumHeight(150);
 
-  // Set light background for the entire dialog
-  setStyleSheet("QDialog { background-color: white; }");
+  // ✅ Apply dark theme to dialog
+  setStyleSheet("QDialog { background-color: #2d2d30; color: #ffffff; }");
 
   // Set window flags for non-modal dialogs
   if (!blocking) {
@@ -42,6 +42,7 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
   // Message text
   m_messageLabel = new QLabel(message, this);
   m_messageLabel->setWordWrap(true);
+  m_messageLabel->setStyleSheet("QLabel { color: #ffffff; background-color: transparent; }");  // ✅ Dark theme
   QFont font = m_messageLabel->font();
   font.setPointSize(11);
   m_messageLabel->setFont(font);
@@ -60,17 +61,18 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
   m_cancelButton->setMinimumSize(100, 40);
   m_cancelButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #f0f0f0; "
-    "  border: 1px solid #c0c0c0; "
+    "  background-color: #3c3c3c; "  // ✅ Dark theme
+    "  color: #ffffff; "
+    "  border: 1px solid #555555; "
     "  border-radius: 4px; "
     "  padding: 8px; "
     "  font-size: 11pt; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #e0e0e0; "
+    "  background-color: #4a4a4a; "  // ✅ Dark theme
     "} "
     "QPushButton:pressed { "
-    "  background-color: #d0d0d0; "
+    "  background-color: #2d2d30; "  // ✅ Dark theme
     "}"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -84,7 +86,7 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
   m_confirmButton->setDefault(true);
   m_confirmButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #4CAF50; "
+    "  background-color: #27ae60; "  // ✅ Dark theme success color
     "  color: white; "
     "  border: none; "
     "  border-radius: 4px; "
@@ -93,10 +95,10 @@ SequencePromptDialog::SequencePromptDialog(const QString& title,
     "  font-weight: bold; "
     "} "
     "QPushButton:hover { "
-    "  background-color: #45a049; "
+    "  background-color: #2ecc71; "  // ✅ Dark theme success hover
     "} "
     "QPushButton:pressed { "
-    "  background-color: #3d8b40; "
+    "  background-color: #229954; "  // ✅ Dark theme success pressed
     "}"
   );
   connect(m_confirmButton, &QPushButton::clicked, this, &QDialog::accept);

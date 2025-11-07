@@ -76,8 +76,11 @@ public:
     widget->addDeviceSelector("io_device", "IO Device",
                               getParam("io_device"),
                               static_cast<int>(DeviceComboBox::DeviceType::IO));
-    widget->addParameterField("dispense_pin", "Dispenser Output Pin",
-                             getParam("dispense_pin"));
+
+    // ✅ IMPROVED: IO pin name selector (dropdown with pin names from IO device)
+    widget->addIOPinSelector("dispense_pin", "Dispenser Output Pin",
+                             getParam("dispense_pin"), "io_device", "output");
+
     widget->addParameterField("dispense_duration_ms", "Dispense Duration (ms)",
                              getParam("dispense_duration_ms"));
   }
@@ -400,17 +403,22 @@ public:
       {"timeout_ms", "10000"}
     });
 
-    // Step 18.1: Move only Z to camera_initial_z (safe height)
+    // Step 18.1: Move Z up to safe height (keep XY at needle position)
+    // ✅ FIXED: MoveToAbs requires all three coordinates
     sequence->AddAction(device, "MoveToAbs", {
+      {"x", "context:needle_x"},
+      {"y", "context:needle_y"},
       {"z", "context:camera_initial_z"},
       {"blocking", "true"}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});
 
-    // Step 18.2: Move only XY to camera_initial position
+    // Step 18.2: Move XY back to camera position (keep Z at safe height)
+    // ✅ FIXED: MoveToAbs requires all three coordinates
     sequence->AddAction(device, "MoveToAbs", {
       {"x", "context:camera_initial_x"},
       {"y", "context:camera_initial_y"},
+      {"z", "context:camera_initial_z"},
       {"blocking", "true"}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});

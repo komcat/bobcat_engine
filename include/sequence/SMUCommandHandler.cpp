@@ -146,14 +146,26 @@ bool SMUCommandHandler::ExecuteCommand(
       m_logger->Info("Stopping polling on " + deviceName, "SMUHandler");
     }
 
-    // ✅ NEW: Use polling manager
+    // ✅ Get total sample count BEFORE stopping (sum of all channels)
+    uint64_t totalSamples = 0;
+    if (context) {
+      auto pollingChannels = pollingManager->GetPollingChannels(deviceName);
+      for (int ch : pollingChannels) {
+        totalSamples += pollingManager->GetSampleCount(deviceName, ch);
+      }
+    }
+
+    // Stop polling on all channels for this device
     pollingManager->StopPolling(deviceName);
 
-    // Store sample count in context
+    // Store total sample count in context
     if (context) {
-      uint64_t samples = pollingManager->GetSampleCount(deviceName);
-      context->SetValue(deviceName + ".sampleCount", static_cast<float>(samples),
+      context->SetValue(deviceName + ".sampleCount", static_cast<float>(totalSamples),
                        deviceName, methodName);
+    }
+
+    if (m_logger) {
+      m_logger->Info("Stopped polling on " + deviceName + " (total samples: " + std::to_string(totalSamples) + ")", "SMUHandler");
     }
 
     return true;

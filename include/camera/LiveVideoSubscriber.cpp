@@ -5,8 +5,9 @@
 #include <iostream>
 #include <sstream>
 
-LiveVideoSubscriber::LiveVideoSubscriber(const std::string& cameraId)
-  : m_targetCameraId(cameraId) {
+LiveVideoSubscriber::LiveVideoSubscriber(const std::string& cameraId, const std::string& componentName)
+  : m_targetCameraId(cameraId)
+  , m_componentName(componentName) {
 
   UpdateSubscriberId();
   ResetState();
@@ -42,12 +43,13 @@ void LiveVideoSubscriber::OnNewFrame(const CameraFrameData& frameData) {
   m_totalFramesReceived.fetch_add(1);
   m_lastFrameTimestamp.store(frameData.timestamp);
 
-  // Enhanced debugging for first few frames and then periodically
+  // Enhanced debugging for first few frames and then periodically (DISABLED)
   //if (frameNumber <= 10 || frameNumber % 50 == 0) {
   //  std::cout << "[FRAME DEBUG] " << m_subscriberId << " received frame #" << frameNumber
   //    << " from " << frameData.cameraId
   //    << " (" << frameData.width << "x" << frameData.height << ")"
-  //    << " timestamp: " << frameData.timestamp << std::endl;
+  //    << " timestamp: " << frameData.timestamp
+  //    << " m_hasNewFrame=" << (m_hasNewFrame.load() ? "TRUE" : "FALSE") << std::endl;
   //}
 
   // Special logging for the critical first few frames
@@ -137,8 +139,16 @@ void LiveVideoSubscriber::ResetState() {
 }
 
 void LiveVideoSubscriber::UpdateSubscriberId() {
-  // Use a consistent ID format without pointer address for uniqueness
-  m_subscriberId = "UI_LiveVideo_" + m_targetCameraId;
+  // Create unique ID using camera ID and component name
+  if (m_componentName.empty()) {
+    // Fallback: use pointer address for uniqueness if no component name
+    std::ostringstream oss;
+    oss << "UI_LiveVideo_" << m_targetCameraId << "_" << (void*)this;
+    m_subscriberId = oss.str();
+  } else {
+    // Preferred: use component name for readable, unique ID
+    m_subscriberId = "UI_LiveVideo_" + m_targetCameraId + "_" + m_componentName;
+  }
 }
 
 

@@ -341,7 +341,7 @@ bool CameraView::connectCamera()
     return false;
   }
 
-  m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraView_" + m_cameraId);
   m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
   m_context->cameraManager->SubscribeToFrames(m_subscriber);
 
@@ -778,7 +778,7 @@ void CameraView::syncWithManagerState()
     std::cout << "[CameraView] Camera already connected - setting up subscriber" << std::endl;
 
     // Create subscriber to receive frames
-    m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId);
+    m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraView_" + m_cameraId);
     m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
     m_context->cameraManager->SubscribeToFrames(m_subscriber);
 

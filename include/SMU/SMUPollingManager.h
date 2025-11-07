@@ -9,6 +9,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
+#include <tuple>
 
 /**
  * @brief Centralized manager for SMU device polling
@@ -54,10 +56,17 @@ public:
                     MeasurementType measurementType = MeasurementType::CURRENT);
 
   /**
-   * @brief Stop polling on a specific device
+   * @brief Stop polling on a specific device (stops ALL channels on that device)
    * @param deviceName Name of the device to stop
    */
   void StopPolling(const std::string& deviceName);
+
+  /**
+   * @brief Stop polling on a specific device channel
+   * @param deviceName Name of the device
+   * @param channel Channel number to stop
+   */
+  void StopPollingChannel(const std::string& deviceName, int channel);
 
   /**
    * @brief Stop all active polling
@@ -65,24 +74,47 @@ public:
   void StopAllPolling();
 
   /**
-   * @brief Check if a device is currently polling
+   * @brief Check if a device is currently polling (any channel)
    * @param deviceName Device name
-   * @return true if polling is active
+   * @return true if polling is active on any channel
    */
   bool IsPolling(const std::string& deviceName) const;
 
   /**
-   * @brief Get sample count for a device
+   * @brief Check if a specific device channel is polling
    * @param deviceName Device name
-   * @return Number of samples collected
+   * @param channel Channel number
+   * @return true if this channel is polling
    */
-  uint64_t GetSampleCount(const std::string& deviceName) const;
+  bool IsPollingChannel(const std::string& deviceName, int channel) const;
 
   /**
-   * @brief Reset sample counter for a device
+   * @brief Get all polling channels for a device
    * @param deviceName Device name
+   * @return Vector of channel numbers currently polling
    */
-  void ResetSampleCount(const std::string& deviceName);
+  std::vector<int> GetPollingChannels(const std::string& deviceName) const;
+
+  /**
+   * @brief Get sample count for a device channel
+   * @param deviceName Device name
+   * @param channel Channel number
+   * @return Number of samples collected
+   */
+  uint64_t GetSampleCount(const std::string& deviceName, int channel) const;
+
+  /**
+   * @brief Reset sample counter for a device channel
+   * @param deviceName Device name
+   * @param channel Channel number
+   */
+  void ResetSampleCount(const std::string& deviceName, int channel);
+
+  /**
+   * @brief Get all active polling sessions
+   * @return Map of session keys to (deviceName, channel, measurementType)
+   */
+  std::map<std::string, std::tuple<std::string, int, MeasurementType>> GetAllActiveSessions() const;
 
 signals:
   /**
@@ -109,21 +141,30 @@ signals:
   void pollingError(QString deviceName, QString errorMessage);
 
 private:
+  struct ChannelConfig
+  {
+    int channel;
+    MeasurementType measurementType;
+    std::atomic<uint64_t> sampleCount{0};
+  };
+
   struct PollingWorker
   {
     std::string deviceName;
     SMUDevicePtr device;
-    int channel;
     int intervalMs;
-    MeasurementType measurementType;
+    std::map<int, ChannelConfig> channels;  // Map of channel -> config
     std::atomic<bool> stopRequested{false};
     std::atomic<bool> isRunning{false};
-    std::atomic<uint64_t> sampleCount{0};
     std::unique_ptr<std::thread> workerThread;
+    mutable std::mutex channelsMutex;
   };
 
-  std::map<std::string, std::unique_ptr<PollingWorker>> m_workers;
+  std::map<std::string, std::unique_ptr<PollingWorker>> m_workers;  // Key = deviceName
   mutable std::mutex m_workersMutex;
 
   void PollingThreadFunction(PollingWorker* worker);
+
+  // Helper to create session key: "DeviceName_Ch1"
+  static std::string MakeSessionKey(const std::string& deviceName, int channel);
 };

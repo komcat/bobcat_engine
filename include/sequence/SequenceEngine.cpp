@@ -15,7 +15,9 @@
 #include "DUTCommandHandler.h"
 #include "SequenceContextCommandHandler.h"
 #include "CalibrationCommandHandler.h"
+#include "AuxWindowCommandHandler.h"
 #include "SequenceContext.h"
+#include "AuxWindowManager.h"
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
 #include "SMUManager.h"  // ✅ ADDED
@@ -62,6 +64,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("dut", std::make_unique<DUTCommandHandler>(m_context));
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
   m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
+  m_dispatcher.RegisterHandler("auxwindow", std::make_unique<AuxWindowCommandHandler>(m_context->auxWindowManager));
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();
@@ -193,6 +196,13 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToManagerMap["dut"] = nullptr;
   m_deviceToTypeMap["dut"] = "dut";
   LogInfo("Registered DUT command handler");
+
+  // AuxWindow commands (special case - controls auxiliary display window)
+  if (m_context->auxWindowManager) {
+    m_deviceToManagerMap["auxwindow"] = m_context->auxWindowManager;
+    m_deviceToTypeMap["auxwindow"] = "auxwindow";
+    LogInfo("Registered auxiliary window command handler");
+  }
 
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }

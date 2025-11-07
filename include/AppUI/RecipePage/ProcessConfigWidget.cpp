@@ -5,6 +5,7 @@
 #include "PneumaticSlideSelectorDialog.h"
 #include "DataStore.h"
 #include "TECManager.h"
+#include "EziIOManager.h"  // ✅ ADDED: For IO pin selector
 #include "RecipeManager.h"
 #include "ProcessPluginRegistry.h"
 #include "products/product_position_manager.h"
@@ -611,6 +612,120 @@ void ProcessConfigWidget::refreshDataChannels()
       }
     }
   }
+}
+
+// ✅ NEW: Add IO pin name selector (dropdown with pin names from IO device)
+void ProcessConfigWidget::addIOPinSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& ioDeviceParamKey,
+  const std::string& pinType)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  combo->setEditable(true);  // Allow typing pin number if needed
+
+  // Lambda to populate pin names from IO device
+  auto populatePinNames = [this, combo, ioDeviceParamKey, pinType, value]() {
+    combo->clear();
+
+    // Get current IO device name from parameters
+    auto params = getParameters();
+    if (params.find(ioDeviceParamKey) == params.end()) {
+      combo->addItem("(No IO device selected)");
+      return;
+    }
+
+    std::string deviceName = params.at(ioDeviceParamKey);
+    if (deviceName.empty()) {
+      combo->addItem("(No IO device selected)");
+      return;
+    }
+
+    // Get IO device from manager
+    if (!m_context || !m_context->ioManager) {
+      combo->addItem("(IO Manager not available)");
+      return;
+    }
+
+    auto* ioDevice = m_context->ioManager->GetDevice(deviceName);
+    if (!ioDevice) {
+      combo->addItem("(Device not found)");
+      return;
+    }
+
+    // Get pin names based on type
+    std::vector<std::string> pinNames;
+    if (pinType == "input") {
+      pinNames = ioDevice->GetAllInputPinNames();
+    } else {  // default to output
+      pinNames = ioDevice->GetAllOutputPinNames();
+    }
+
+    if (pinNames.empty()) {
+      combo->addItem("(No pins configured)");
+      return;
+    }
+
+    // Add pin names to combo box
+    for (const auto& pinName : pinNames) {
+      combo->addItem(QString::fromStdString(pinName));
+    }
+
+    // Set current value (try to match pin name first)
+    if (!value.empty()) {
+      int index = combo->findText(QString::fromStdString(value));
+      if (index >= 0) {
+        combo->setCurrentIndex(index);
+      } else {
+        // If value is a number, try to find the pin name for that number
+        try {
+          int pinNumber = std::stoi(value);
+          std::string pinName = (pinType == "input") ?
+            ioDevice->GetInputPinName(pinNumber) :
+            ioDevice->GetOutputPinName(pinNumber);
+
+          index = combo->findText(QString::fromStdString(pinName));
+          if (index >= 0) {
+            combo->setCurrentIndex(index);
+          } else {
+            // Set as custom text (pin number)
+            combo->setEditText(QString::fromStdString(value));
+          }
+        } catch (...) {
+          // Not a number, just set as custom text
+          combo->setEditText(QString::fromStdString(value));
+        }
+      }
+    }
+  };
+
+  // Initial population
+  populatePinNames();
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+  connect(combo, &QComboBox::editTextChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+
+  // Watch IO device selector for changes and repopulate
+  if (m_deviceCombos.find(ioDeviceParamKey) != m_deviceCombos.end()) {
+    DeviceComboBox* deviceCombo = m_deviceCombos[ioDeviceParamKey];
+    connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+      [populatePinNames]() {
+        populatePinNames();
+      });
+  }
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_parameterCombos[key] = combo;
 }
 
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const

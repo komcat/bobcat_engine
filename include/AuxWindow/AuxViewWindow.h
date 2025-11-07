@@ -40,6 +40,10 @@ public:
   // ✅ ADD: Trigger delayed camera selection after window is fully initialized
   void initializeCameraSelection();
 
+  // Get widget pointers for command handler access
+  CameraClickToMoveWidget* getCameraWidget() const { return m_cameraClickToMoveWidget; }
+  LiveChartWidget* getChartWidget() const { return m_liveChartWidget; }
+
 protected:
   // Override close event to prevent closing (hide instead)
   void closeEvent(QCloseEvent* event) override;
