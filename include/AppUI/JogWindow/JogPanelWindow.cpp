@@ -141,24 +141,38 @@ void JogPanelWindow::setupUI()
       color: white;
     }
     QPushButton {
-      background-color: #3a3a3a;
+      background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a);
       color: white;
-      border: 1px solid #555;
       padding: 4px;
       font-size: 10px;
       min-width: 40px;
       min-height: 24px;
+      border-top: 2px solid rgba(255, 255, 255, 0.4);
+      border-left: 2px solid rgba(255, 255, 255, 0.4);
+      border-bottom: 2px solid rgba(0, 0, 0, 0.4);
+      border-right: 2px solid rgba(0, 0, 0, 0.4);
     }
     QPushButton:hover {
-      background-color: #4a4a4a;
-      border-color: #777;
+      background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a);
+      border-top: 2px solid rgba(255, 255, 255, 0.5);
+      border-left: 2px solid rgba(255, 255, 255, 0.5);
     }
     QPushButton:pressed {
       background-color: #2a2a2a;
+      border-top: 2px solid rgba(0, 0, 0, 0.5);
+      border-left: 2px solid rgba(0, 0, 0, 0.5);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+      border-right: 2px solid rgba(255, 255, 255, 0.3);
+      padding-top: 6px;
+      padding-left: 6px;
     }
     QPushButton:checked {
-      background-color: #0d7377;
+      background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1d8387, stop:1 #0d7377);
       border: 2px solid #14ffec;
+      border-top: 2px solid rgba(20, 255, 236, 0.6);
+      border-left: 2px solid rgba(20, 255, 236, 0.6);
+      border-bottom: 2px solid rgba(0, 0, 0, 0.5);
+      border-right: 2px solid rgba(0, 0, 0, 0.5);
     }
     QGroupBox {
       border: 1px solid #555;

@@ -76,15 +76,31 @@ void PneumaticControlPage::createSlideListPanel()
   m_refreshButton = new QPushButton("🔄 Refresh");
   m_refreshButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #3498db; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
     "  color: white; "
-    "  border: none; "
     "  border-radius: 4px; "
     "  padding: 8px; "
     "  font-size: 13px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
-    "QPushButton:hover { background-color: #2980b9; }");
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2874a6; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
+    "}");
   connect(m_refreshButton, &QPushButton::clicked, this, &PneumaticControlPage::onRefreshClicked);
   layout->addWidget(m_refreshButton);
 
@@ -267,15 +283,38 @@ void PneumaticControlPage::createControlPanel()
   m_extendButton->setMinimumHeight(50);
   m_extendButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #27ae60; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
     "  color: white; "
-    "  border: none; "
     "  border-radius: 5px; "
     "  font-size: 16px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
-    "QPushButton:hover { background-color: #229954; } "
-    "QPushButton:disabled { background-color: #95a5a6; }");
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d9041; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 2px; "
+    "  padding-left: 2px; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #7f8c8d; "
+    "  color: #bdc3c7; "
+    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "}");
   connect(m_extendButton, &QPushButton::clicked, this, &PneumaticControlPage::onExtendClicked);
   controlLayout->addWidget(m_extendButton);
 
@@ -285,15 +324,38 @@ void PneumaticControlPage::createControlPanel()
   m_retractButton->setMinimumHeight(50);
   m_retractButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #e67e22; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f39c50, stop:1 #e67e22); "
     "  color: white; "
-    "  border: none; "
     "  border-radius: 5px; "
     "  font-size: 16px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
-    "QPushButton:hover { background-color: #d35400; } "
-    "QPushButton:disabled { background-color: #95a5a6; }");
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffac60, stop:1 #f39c50); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #d35400; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 2px; "
+    "  padding-left: 2px; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #7f8c8d; "
+    "  color: #bdc3c7; "
+    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "}");
   connect(m_retractButton, &QPushButton::clicked, this, &PneumaticControlPage::onRetractClicked);
   controlLayout->addWidget(m_retractButton);
 
@@ -303,15 +365,38 @@ void PneumaticControlPage::createControlPanel()
   m_stopButton->setMinimumHeight(50);
   m_stopButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #e74c3c; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e85d5d, stop:1 #e74c3c); "
     "  color: white; "
-    "  border: none; "
     "  border-radius: 5px; "
     "  font-size: 16px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
-    "QPushButton:hover { background-color: #c0392b; } "
-    "QPushButton:disabled { background-color: #95a5a6; }");
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f86d6d, stop:1 #e85d5d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c0392b; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 2px; "
+    "  padding-left: 2px; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #7f8c8d; "
+    "  color: #bdc3c7; "
+    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "}");
   connect(m_stopButton, &QPushButton::clicked, this, &PneumaticControlPage::onStopClicked);
   controlLayout->addWidget(m_stopButton);
 

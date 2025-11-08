@@ -39,9 +39,29 @@ void LogViewerPage::setupUI()
   m_backButton->setFixedWidth(100);
   m_backButton->setStyleSheet(
     "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #656565, stop:1 #555555); "
+    "  color: white; "
     "  padding: 8px; "
     "  font-size: 14px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #656565); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #454545; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
     "}");
   connect(m_backButton, &QPushButton::clicked, this, &LogViewerPage::onBackClicked);
   headerLayout->addWidget(m_backButton);
@@ -94,21 +114,114 @@ void LogViewerPage::setupUI()
 
   // Buttons
   m_refreshButton = new QPushButton("🔄 Refresh");
+  m_refreshButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
+    "  color: white; "
+    "  padding: 5px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2a2a2a; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_refreshButton, &QPushButton::clicked, this, &LogViewerPage::onRefreshClicked);
   toolbarLayout->addWidget(m_refreshButton);
 
   m_copyButton = new QPushButton("📋 Copy");
+  m_copyButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
+    "  color: white; "
+    "  padding: 5px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2a2a2a; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_copyButton, &QPushButton::clicked, this, &LogViewerPage::onCopyClicked);
   toolbarLayout->addWidget(m_copyButton);
 
   m_saveButton = new QPushButton("💾 Save");
+  m_saveButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0077ee, stop:1 #0066cc); "
+    "  color: white; "
+    "  padding: 5px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0088ff, stop:1 #0077ee); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0055aa; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_saveButton, &QPushButton::clicked, this, &LogViewerPage::onSaveClicked);
   toolbarLayout->addWidget(m_saveButton);
 
   m_clearButton = new QPushButton("🗑 Clear");
   m_clearButton->setStyleSheet(
-    "QPushButton { background-color: #dc3545; border: 1px solid #c82333; }"
-    "QPushButton:hover { background-color: #c82333; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec5555, stop:1 #dc3545); "
+    "  color: white; "
+    "  padding: 5px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fc6565, stop:1 #ec5555); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c82333; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_clearButton, &QPushButton::clicked, this, &LogViewerPage::onClearClicked);
   toolbarLayout->addWidget(m_clearButton);
 

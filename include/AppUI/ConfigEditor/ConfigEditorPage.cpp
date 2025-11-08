@@ -53,9 +53,31 @@ void ConfigEditorPage::setupUI()
 
   m_backButton = new QPushButton("← Back to Main Menu");
   m_backButton->setStyleSheet(
-    "QPushButton { background-color: #555555; color: white; border: none; "
-    "padding: 10px 20px; font-size: 14px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #666666; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #656565, stop:1 #555555); "
+    "  color: white; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #656565); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #454545; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 12px; "
+    "  padding-left: 22px; "
+    "}");
   connect(m_backButton, &QPushButton::clicked, this, &ConfigEditorPage::onBackClicked);
 
   topBarLayout->addWidget(m_backButton);
@@ -64,18 +86,61 @@ void ConfigEditorPage::setupUI()
   // Reload button
   m_reloadButton = new QPushButton("↻ Reload");
   m_reloadButton->setStyleSheet(
-    "QPushButton { background-color: #555555; color: white; border: none; "
-    "padding: 10px 20px; font-size: 14px; } "
-    "QPushButton:hover { background-color: #666666; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #656565, stop:1 #555555); "
+    "  color: white; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #656565); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #454545; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 12px; "
+    "  padding-left: 22px; "
+    "}");
   connect(m_reloadButton, &QPushButton::clicked, this, &ConfigEditorPage::onReloadClicked);
   topBarLayout->addWidget(m_reloadButton);
 
   // Save button
   m_saveButton = new QPushButton("💾 Save");
   m_saveButton->setStyleSheet(
-    "QPushButton { background-color: #0066cc; color: white; border: none; "
-    "padding: 10px 20px; font-size: 14px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #0077ee; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0077ee, stop:1 #0066cc); "
+    "  color: white; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0088ff, stop:1 #0077ee); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0055aa; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 12px; "
+    "  padding-left: 22px; "
+    "}");
   connect(m_saveButton, &QPushButton::clicked, this, &ConfigEditorPage::onSaveClicked);
   topBarLayout->addWidget(m_saveButton);
 

@@ -63,14 +63,30 @@ void HardwareInstrumentPage::createSidebar()
   m_backButton = new QPushButton("← Back");
   m_backButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #555555; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #656565, stop:1 #555555); "
     "  color: white; "
-    "  border: none; "
     "  padding: 10px; "
     "  font-size: 14px; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
-    "QPushButton:hover { background-color: #666666; }");
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #656565); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #454545; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 12px; "
+    "  padding-left: 12px; "
+    "}");
   connect(m_backButton, &QPushButton::clicked, this, &HardwareInstrumentPage::backToMainMenu);
   sidebarLayout->addWidget(m_backButton);
 
@@ -173,19 +189,35 @@ QPushButton* HardwareInstrumentPage::createSidebarButton(const QString& text)
   button->setCheckable(true);
   button->setStyleSheet(
     "QPushButton { "
-    "  background-color: #3a3a3a; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
     "  color: white; "
-    "  border: none; "
     "  border-left: 3px solid transparent; "
     "  padding: 15px 10px; "
     "  font-size: 14px; "
     "  text-align: left; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
     "} "
-    "QPushButton:hover { background-color: #4a4a4a; } "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2a2a2a; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 17px; "
+    "  padding-left: 12px; "
+    "} "
     "QPushButton:checked { "
-    "  background-color: #2b2b2b; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b3b3b, stop:1 #2b2b2b); "
     "  border-left-color: #00aaff; "
     "  font-weight: bold; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.2); "
     "}");
 
   return button;

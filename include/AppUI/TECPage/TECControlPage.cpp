@@ -97,17 +97,69 @@ void TECControlPage::createRightPanel()
 
   m_connectButton = new QPushButton("Connect");
   m_connectButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; color: white; padding: 8px 16px; "
-    "border: none; border-radius: 4px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #2ecc71; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
+    "  color: white; "
+    "  padding: 8px 16px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d9041; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 18px; "
+    "}");
   connect(m_connectButton, &QPushButton::clicked, this, &TECControlPage::onConnectClicked);
   connectionLayout->addWidget(m_connectButton);
 
   m_disconnectButton = new QPushButton("Disconnect");
   m_disconnectButton->setStyleSheet(
-    "QPushButton { background-color: #e74c3c; color: white; padding: 8px 16px; "
-    "border: none; border-radius: 4px; font-weight: bold; } "
-    "QPushButton:hover { background-color: #c0392b; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e85d5d, stop:1 #e74c3c); "
+    "  color: white; "
+    "  padding: 8px 16px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f86d6d, stop:1 #e85d5d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c0392b; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 18px; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #7f8c8d; "
+    "  color: #bdc3c7; "
+    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "}");
   m_disconnectButton->setEnabled(false);
   connect(m_disconnectButton, &QPushButton::clicked, this, &TECControlPage::onDisconnectClicked);
   connectionLayout->addWidget(m_disconnectButton);
@@ -156,9 +208,34 @@ void TECControlPage::createRightPanel()
   m_tecToggle = new QPushButton("TEC OFF");
   m_tecToggle->setCheckable(true);
   m_tecToggle->setStyleSheet(
-    "QPushButton { background-color: #666666; color: white; padding: 10px; "
-    "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:checked { background-color: #27ae60; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7a7a7a, stop:1 #666666); "
+    "  color: white; "
+    "  padding: 10px; "
+    "  font-weight: bold; "
+    "  border-radius: 4px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8a8a8a, stop:1 #7a7a7a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:checked:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "}");
   connect(m_tecToggle, &QPushButton::clicked, this, &TECControlPage::onTECToggled);
   QLabel* tecLabel = new QLabel("TEC:");
   tecLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
@@ -209,9 +286,34 @@ void TECControlPage::createRightPanel()
   m_laserToggle = new QPushButton("Laser OFF");
   m_laserToggle->setCheckable(true);
   m_laserToggle->setStyleSheet(
-    "QPushButton { background-color: #666666; color: white; padding: 10px; "
-    "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:checked { background-color: #f39c12; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7a7a7a, stop:1 #666666); "
+    "  color: white; "
+    "  padding: 10px; "
+    "  font-weight: bold; "
+    "  border-radius: 4px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8a8a8a, stop:1 #7a7a7a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f39c50, stop:1 #f39c12); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:checked:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffac60, stop:1 #f39c50); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "}");
   connect(m_laserToggle, &QPushButton::clicked, this, &TECControlPage::onLaserToggled);
   QLabel* laserLabel = new QLabel("Laser:");
   laserLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
@@ -235,17 +337,61 @@ void TECControlPage::createRightPanel()
 
   m_preset1Button = new QPushButton("Preset 1\n25C, 150mA\nAll ON");
   m_preset1Button->setStyleSheet(
-    "QPushButton { background-color: #0e639c; color: white; padding: 15px; "
-    "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:hover { background-color: #1177bb; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e73ac, stop:1 #0e639c); "
+    "  color: white; "
+    "  padding: 15px; "
+    "  font-weight: bold; "
+    "  border-radius: 4px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2e83bc, stop:1 #1e73ac); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0c5280; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 17px; "
+    "  padding-left: 17px; "
+    "}");
   connect(m_preset1Button, &QPushButton::clicked, this, &TECControlPage::onPreset1Clicked);
   presetsLayout->addWidget(m_preset1Button);
 
   m_preset2Button = new QPushButton("Preset 2\n25C, 250mA\nAll ON");
   m_preset2Button->setStyleSheet(
-    "QPushButton { background-color: #8e44ad; color: white; padding: 15px; "
-    "font-weight: bold; border: none; border-radius: 4px; } "
-    "QPushButton:hover { background-color: #9b59b6; }");
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9e54bd, stop:1 #8e44ad); "
+    "  color: white; "
+    "  padding: 15px; "
+    "  font-weight: bold; "
+    "  border-radius: 4px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ae64cd, stop:1 #9e54bd); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #7d3493; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 17px; "
+    "  padding-left: 17px; "
+    "}");
   connect(m_preset2Button, &QPushButton::clicked, this, &TECControlPage::onPreset2Clicked);
   presetsLayout->addWidget(m_preset2Button);
 

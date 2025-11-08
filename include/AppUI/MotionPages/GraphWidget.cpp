@@ -313,14 +313,89 @@ void GraphWidget::setupToolbar()
 
   // Graph management
   m_btnNewGraph = new QPushButton("New Graph", this);
+  m_btnNewGraph->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2874a6; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnNewGraph, &QPushButton::clicked, this, &GraphWidget::onNewGraph);
   m_toolbar->addWidget(m_btnNewGraph);
 
   m_btnRenameGraph = new QPushButton("Rename", this);
+  m_btnRenameGraph->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2874a6; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnRenameGraph, &QPushButton::clicked, this, &GraphWidget::onRenameGraph);
   m_toolbar->addWidget(m_btnRenameGraph);
 
   m_btnDeleteGraph = new QPushButton("Delete Graph", this);
+  m_btnDeleteGraph->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e85d5d, stop:1 #e74c3c); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f86d6d, stop:1 #e85d5d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c0392b; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnDeleteGraph, &QPushButton::clicked, this, &GraphWidget::onDeleteGraph);
   m_toolbar->addWidget(m_btnDeleteGraph);
 
@@ -328,14 +403,89 @@ void GraphWidget::setupToolbar()
 
   // Node/Edge creation
   m_btnCreateNode = new QPushButton("Create Node", this);
+  m_btnCreateNode->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d9041; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnCreateNode, &QPushButton::clicked, this, &GraphWidget::onCreateNode);
   m_toolbar->addWidget(m_btnCreateNode);
 
   m_btnCreateEdge = new QPushButton("Create Edge", this);
+  m_btnCreateEdge->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d9041; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnCreateEdge, &QPushButton::clicked, this, &GraphWidget::onCreateEdge);
   m_toolbar->addWidget(m_btnCreateEdge);
 
   m_btnDeleteSelected = new QPushButton("Delete Selected", this);
+  m_btnDeleteSelected->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e85d5d, stop:1 #e74c3c); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f86d6d, stop:1 #e85d5d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c0392b; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnDeleteSelected, &QPushButton::clicked, this, &GraphWidget::onDeleteSelected);
   m_toolbar->addWidget(m_btnDeleteSelected);
 
@@ -343,14 +493,89 @@ void GraphWidget::setupToolbar()
 
   // Zoom controls
   m_btnZoomIn = new QPushButton("Zoom +", this);
+  m_btnZoomIn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7f8c8d, stop:1 #6c7a7b); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8f9c9d, stop:1 #7f8c8d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #5a6667; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnZoomIn, &QPushButton::clicked, this, &GraphWidget::onZoomIn);
   m_toolbar->addWidget(m_btnZoomIn);
 
   m_btnZoomOut = new QPushButton("Zoom -", this);
+  m_btnZoomOut->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7f8c8d, stop:1 #6c7a7b); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8f9c9d, stop:1 #7f8c8d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #5a6667; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnZoomOut, &QPushButton::clicked, this, &GraphWidget::onZoomOut);
   m_toolbar->addWidget(m_btnZoomOut);
 
   m_btnResetZoom = new QPushButton("Reset Zoom", this);
+  m_btnResetZoom->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #7f8c8d, stop:1 #6c7a7b); "
+    "  color: white; "
+    "  padding: 6px 12px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8f9c9d, stop:1 #7f8c8d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #5a6667; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 14px; "
+    "}");
   connect(m_btnResetZoom, &QPushButton::clicked, this, &GraphWidget::onResetZoom);
   m_toolbar->addWidget(m_btnResetZoom);
 
@@ -1181,7 +1406,31 @@ void GraphWidget::setupExecutionPanel()
 
   // Calculate path button
   m_btnCalculatePath = new QPushButton("Calculate Path");
-  m_btnCalculatePath->setStyleSheet(DarkTheme::getStyleSheet());
+  m_btnCalculatePath->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
+    "  color: white; "
+    "  padding: 8px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2874a6; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
+    "}");
   connect(m_btnCalculatePath, &QPushButton::clicked, this, &GraphWidget::onCalculatePath);
   layout->addWidget(m_btnCalculatePath);
 
@@ -1194,19 +1443,37 @@ void GraphWidget::setupExecutionPanel()
   // Execute button
   m_btnExecutePath = new QPushButton("Execute Movement");
   m_btnExecutePath->setStyleSheet(
-    "QPushButton {"
-    "  background-color: #27ae60;"
-    "  color: white;"
-    "  border: none;"
-    "  padding: 8px;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: #2ecc71;"
-    "}"
-    "QPushButton:disabled {"
-    "  background-color: #555;"
-    "  color: #888;"
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
+    "  color: white; "
+    "  padding: 8px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d9041; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #7f8c8d; "
+    "  color: #bdc3c7; "
+    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
+    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
     "}");
   m_btnExecutePath->setEnabled(false);
   connect(m_btnExecutePath, &QPushButton::clicked, this, &GraphWidget::onExecutePath);

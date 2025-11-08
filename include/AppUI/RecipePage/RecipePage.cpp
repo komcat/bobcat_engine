@@ -396,18 +396,32 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   buttonColumn->setSpacing(0);
   buttonColumn->setContentsMargins(0, 0, 0, 0);
 
-  // Button style without rounded corners
+  // 3D Windows-style button base
   QString buttonStyle =
     "QPushButton { "
     "  color: white; "
     "  font-weight: bold; "
-    "  border: none; "
     "  padding: 8px; "
     "  text-align: left; "
     "  min-height: 30px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
     "} "
     "QPushButton:hover { "
-    "  opacity: 0.8; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:pressed { "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
     "}";
 
   // Run buttons at top
@@ -415,15 +429,29 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_runRecipeButton->setMinimumHeight(50);
   m_runRecipeButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #ff8c00; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffa500, stop:1 #ff8c00); "
     "  color: white; "
     "  font-size: 14px; "
     "  font-weight: bold; "
-    "  border: none; "
     "  padding: 8px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
     "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffb52e, stop:1 #ff9d2e); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.7); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.7); "
+    "} "
+    "QPushButton:pressed { "
     "  background-color: #ff7700; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
     "}"
   );
   connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
@@ -433,19 +461,37 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_runSelectedStepButton->setMinimumHeight(45);
   m_runSelectedStepButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #4a90e2; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a9ff2, stop:1 #4a90e2); "
     "  color: white; "
     "  font-size: 13px; "
     "  font-weight: bold; "
-    "  border: none; "
     "  padding: 8px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
     "QPushButton:hover { "
-    "  background-color: #5a9ff2; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6aaff8, stop:1 #5a9ff2); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.7); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.7); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3a80d2; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 10px; "
+    "  padding-left: 10px; "
     "} "
     "QPushButton:disabled { "
     "  background-color: #cccccc; "
     "  color: #666666; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.2); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.2); "
     "}"
   );
   connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
@@ -455,63 +501,63 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   // File operations buttons
   m_newButton = new QPushButton("New");
-  m_newButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #3498db; }");
+  m_newButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4aa8e3, stop:1 #3498db); }");
   connect(m_newButton, &QPushButton::clicked, this, &RecipePage::onNewRecipe);
   buttonColumn->addWidget(m_newButton);
 
   m_loadButton = new QPushButton("Load");
-  m_loadButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #3498db; }");
+  m_loadButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4aa8e3, stop:1 #3498db); }");
   connect(m_loadButton, &QPushButton::clicked, this, &RecipePage::onLoadRecipe);
   buttonColumn->addWidget(m_loadButton);
 
   m_saveButton = new QPushButton("Save");
-  m_saveButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #27ae60; }");
+  m_saveButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #37be70, stop:1 #27ae60); }");
   connect(m_saveButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipe);
   buttonColumn->addWidget(m_saveButton);
 
   m_saveAsButton = new QPushButton("Save As...");
-  m_saveAsButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #16a085; }");
+  m_saveAsButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #26b095, stop:1 #16a085); }");
   connect(m_saveAsButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipeAs);
   buttonColumn->addWidget(m_saveAsButton);
 
   // Move operations
   m_moveUpButton = new QPushButton("↑ Up");
-  m_moveUpButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #95a5a6; }");
+  m_moveUpButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
   connect(m_moveUpButton, &QPushButton::clicked, this, &RecipePage::onMoveStepUp);
   buttonColumn->addWidget(m_moveUpButton);
 
   m_moveDownButton = new QPushButton("↓ Down");
-  m_moveDownButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #95a5a6; }");
+  m_moveDownButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
   connect(m_moveDownButton, &QPushButton::clicked, this, &RecipePage::onMoveStepDown);
   buttonColumn->addWidget(m_moveDownButton);
 
   // Delete operation
   m_removeButton = new QPushButton("Remove");
-  m_removeButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #e74c3c; }");
+  m_removeButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f75c4c, stop:1 #e74c3c); }");
   connect(m_removeButton, &QPushButton::clicked, this, &RecipePage::onRemoveStep);
   buttonColumn->addWidget(m_removeButton);
 
   // Selection operations
   m_selectAllButton = new QPushButton("☑ Select All");
-  m_selectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #16a085; }");
+  m_selectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #26b095, stop:1 #16a085); }");
   connect(m_selectAllButton, &QPushButton::clicked, this, &RecipePage::onSelectAllProcesses);
   buttonColumn->addWidget(m_selectAllButton);
 
   m_deselectAllButton = new QPushButton("☐ Deselect All");
-  m_deselectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #95a5a6; }");
+  m_deselectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
   connect(m_deselectAllButton, &QPushButton::clicked, this, &RecipePage::onDeselectAllProcesses);
   buttonColumn->addWidget(m_deselectAllButton);
 
   m_toggleSelectedButton = new QPushButton("⇄ Toggle Selected");
   m_toggleSelectedButton->setToolTip("Toggle Run checkboxes for currently selected (highlighted) rows");
-  m_toggleSelectedButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #f39c12; }");
+  m_toggleSelectedButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffac22, stop:1 #f39c12); }");
   connect(m_toggleSelectedButton, &QPushButton::clicked, this, &RecipePage::onToggleSelectedProcesses);
   buttonColumn->addWidget(m_toggleSelectedButton);
 
   // Product file update
   m_updateProductFileButton = new QPushButton("📦 Update Product File");
   m_updateProductFileButton->setToolTip("Update the product positions file reference in this recipe");
-  m_updateProductFileButton->setStyleSheet(buttonStyle + "QPushButton { background-color: #8e44ad; font-size: 10px; }");
+  m_updateProductFileButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9e54bd, stop:1 #8e44ad); font-size: 10px; }");
   connect(m_updateProductFileButton, &QPushButton::clicked, this, &RecipePage::onUpdateProductFile);
   buttonColumn->addWidget(m_updateProductFileButton);
 
