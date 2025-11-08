@@ -380,6 +380,7 @@ set(SOURCES
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
     include/AppUI/MainWindow.cpp
+    include/AppUI/TopBar.cpp
     include/AppUI/DarkTheme.cpp
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp

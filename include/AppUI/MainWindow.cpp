@@ -5,6 +5,7 @@
 #include "HardwareInstrumentPage.h"
 #include "ConfigEditorPage.h"
 #include "MotionPage.h"           // NEW - Add this include
+#include "TopBar.h"               // ✅ NEW: Fixed top bar
 #include "LogStatusBar.h"
 #include "LogViewerPage.h"
 #include "LogManager.h"
@@ -22,6 +23,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   : QMainWindow(parent)
   , m_context(context)
   , m_pageStack(nullptr)
+  , m_topBar(nullptr)
   , m_logStatusBar(nullptr)
   , m_logViewerPage(nullptr)
   , m_previousPage(nullptr)
@@ -31,7 +33,6 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_motionPage(nullptr)
   , m_recipePage(nullptr)        // ✅ ADD THIS
   , m_runProgramPage(nullptr)
-  , m_jogButton(nullptr)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -53,6 +54,9 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   createPages();          // Now pages can use productPositionManager from context
   setupLogging();
   setupKeyboardShortcuts();  // ✅ NEW: Setup F1-F8 keyboard shortcuts
+
+  // Update TopBar with current product info
+  updateProductInfo();
 
   // Show main menu first
   m_pageStack->setCurrentWidget(m_mainMenuPage);
@@ -87,6 +91,12 @@ void MainWindow::setupUI()
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
+  // ✅ NEW: Fixed top bar (height: 100px, always visible)
+  m_topBar = new TopBar(m_context, this);
+  connect(m_topBar, &TopBar::jogButtonClicked, this, &MainWindow::onToggleJogPanel);
+  connect(m_topBar, &TopBar::auxWindowButtonClicked, this, &MainWindow::onToggleAuxWindow);
+  mainLayout->addWidget(m_topBar, 0);
+
   // Page stack (main content area)
   m_pageStack = new QStackedWidget();
   mainLayout->addWidget(m_pageStack, 1);
@@ -96,31 +106,6 @@ void MainWindow::setupUI()
   connect(m_logStatusBar, &LogStatusBar::openFullLogViewer,
     this, &MainWindow::onOpenLogViewer);
   mainLayout->addWidget(m_logStatusBar, 0);
-
-  // Create orange JOG button (floating, top-right)
-  m_jogButton = new QPushButton("JOG", this);
-  m_jogButton->setFixedSize(80, 40);
-  m_jogButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #ff8c00; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #ff9d2e; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #e67e00; "
-    "}");
-
-  connect(m_jogButton, &QPushButton::clicked, this, &MainWindow::onToggleJogPanel);
-
-  // Position button at top-right corner
-  m_jogButton->move(this->width() - 90, 10);
-  m_jogButton->raise();
 
   setCentralWidget(centralWidget);
 
@@ -151,6 +136,8 @@ void MainWindow::createPages()
     this, &MainWindow::onMainMenuEditConfig);
   connect(m_mainMenuPage, &MainMenuPage::futureUpdateClicked,
     this, &MainWindow::onMainMenuFutureUpdate);
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    this, &MainWindow::updateProductInfo);
   m_pageStack->addWidget(m_mainMenuPage);
 
   // Hardware & Instrument page
@@ -252,9 +239,9 @@ void MainWindow::setupJogPanel()
       );
     }
 
-    if (m_jogButton) {
-      m_jogButton->setEnabled(false);
-      m_jogButton->setToolTip("Jog panel unavailable - transformation matrix not found");
+    if (m_topBar && m_topBar->getJogButton()) {
+      m_topBar->getJogButton()->setEnabled(false);
+      m_topBar->getJogButton()->setToolTip("Jog panel unavailable - transformation matrix not found");
     }
 
     delete m_matrixLoader;
@@ -339,6 +326,26 @@ void MainWindow::setupKeyboardShortcuts()
 
   if (m_context->logManager) {
     m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K) registered", "MainWindow");
+  }
+}
+
+void MainWindow::updateProductInfo()
+{
+  if (!m_topBar || !m_context || !m_context->productPositionManager) {
+    return;
+  }
+
+  if (m_context->productPositionManager->HasLoadedProduct()) {
+    QString productName = QString::fromStdString(
+      m_context->productPositionManager->GetCurrentProductName()
+    );
+    QString productPath = QString::fromStdString(
+      m_context->productPositionManager->GetCurrentProductPath()
+    );
+
+    m_topBar->setProductInfo(productName, productPath);
+  } else {
+    m_topBar->setProductInfo("", "");
   }
 }
 

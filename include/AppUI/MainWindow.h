@@ -18,6 +18,7 @@ class JogPanelWindow;
 class JogKeyBindingHandler;
 class TransformationMatrixLoader;
 class RunProgramPage;
+class TopBar;
 
 class MainWindow : public QMainWindow
 {
@@ -26,6 +27,11 @@ class MainWindow : public QMainWindow
 public:
   explicit MainWindow(ApplicationContext* context, QWidget* parent = nullptr);
   ~MainWindow();
+
+  /**
+   * @brief Update the TopBar with current product information
+   */
+  void updateProductInfo();
 
 private slots:
   void onMainMenuProcess();
@@ -48,6 +54,7 @@ private:
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
+  TopBar* m_topBar;
   LogStatusBar* m_logStatusBar;
   LogViewerPage* m_logViewerPage;
   QWidget* m_previousPage;  // Track page before opening log viewer
@@ -59,7 +66,6 @@ private:
   RecipePage* m_recipePage;      // ✅ ADD THIS
   RunProgramPage* m_runProgramPage;
 
-  QPushButton* m_jogButton;
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;
   TransformationMatrixLoader* m_matrixLoader;
