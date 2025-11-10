@@ -222,12 +222,12 @@ void LiveChartWidget::onDataReceived(const std::string& channelOrClientId, float
   // This supports both SMU channels (passed as channel ID) and TCP clients (passed as client ID)
   if (channelOrClientId != m_currentChannelId && channelOrClientId != m_currentClientId) return;
 
-  // Debug output (only log occasionally to avoid spam)
-  static int debugCounter = 0;
-  if (debugCounter++ % 10 == 0) {  // Log every 10th data point
-    std::cout << "[LiveChartWidget] Data received for " << m_currentChannelId
-              << ": " << value << " " << m_currentUnit << std::endl;
-  }
+  // Debug output (disabled - too verbose)
+  // static int debugCounter = 0;
+  // if (debugCounter++ % 10 == 0) {  // Log every 10th data point
+  //   std::cout << "[LiveChartWidget] Data received for " << m_currentChannelId
+  //             << ": " << value << " " << m_currentUnit << std::endl;
+  // }
 
   // Add data point to buffer
   DataPoint point;

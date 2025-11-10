@@ -13,6 +13,7 @@ class ProcessSequenceFactory;
 class ProductPositionManager;
 class UnifiedMotionManager;
 class RecipeWorker;
+class RecipeExecutionStateMachine;
 
 /**
  * @brief Worker thread for program execution
@@ -56,6 +57,10 @@ public:
   // ✅ NEW: Configure execution mode
   void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
   void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
+  void setUseDependencyGraph(bool useDependencies);  // true = use state machine, false = sequential
+
+  // ✅ Reset completion tracking (call when loading new program)
+  void resetCompletionTracking();
 
 signals:
   // Program-level signals
@@ -94,8 +99,17 @@ private:
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe
   int m_startRecipeIndex;    // Starting recipe index (for single mode)
+  bool m_useDependencyGraph; // true = use state machine for dependencies, false = sequential
 
   // ✅ Track active RecipeWorker for stop forwarding
   RecipeWorker* m_activeRecipeWorker;
   QMutex m_activeWorkerMutex;  // Protect access to m_activeRecipeWorker
+
+  // ✅ Track completed recipes in current session (for dependency validation)
+  std::vector<bool> m_completedRecipes;
+
+  // Helper methods for state machine execution
+  void runWithDependencies();
+  void runSequential();
+  bool checkPrerequisites(int recipeIndex, QString& errorMessage);
 };

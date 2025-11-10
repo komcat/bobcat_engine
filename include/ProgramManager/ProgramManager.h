@@ -9,9 +9,10 @@
  * @brief RecipeReference - Points to a recipe file
  */
 struct RecipeReference {
-  std::string recipeFilePath;     // Path to recipe JSON file
-  std::string displayName;        // Name shown in UI (extracted from recipe or filename)
-  bool enabled;                   // Can disable recipe without removing it
+  std::string recipeFilePath;        // Path to recipe JSON file
+  std::string displayName;           // Name shown in UI (extracted from recipe or filename)
+  bool enabled;                      // Can disable recipe without removing it
+  std::vector<int> predecessorIndices; // Recipe indices that must complete before this (for dependency graph)
 
   RecipeReference(const std::string& path, const std::string& name, bool enable = true)
     : recipeFilePath(path), displayName(name), enabled(enable) {
@@ -68,8 +69,16 @@ public:
   void setRecipeEnabled(int index, bool enabled);
   void setRecipeDisplayName(int index, const std::string& name);
 
+  // Dependency management
+  bool addRecipeDependency(int recipeIndex, int prerequisiteIndex);
+  void removeRecipeDependency(int recipeIndex, int prerequisiteIndex);
+  void clearRecipeDependencies(int recipeIndex);
+  std::vector<int> getRecipeDependencies(int recipeIndex) const;
+  bool hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const;
+
   // Validation
   bool validateProgram(std::vector<std::string>& errors) const;
+  bool validateDependencies(std::vector<std::string>& errors) const;
 
 private:
   Program m_currentProgram;

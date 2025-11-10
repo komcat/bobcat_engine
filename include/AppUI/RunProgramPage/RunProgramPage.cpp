@@ -19,6 +19,7 @@
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QGroupBox>
+#include <QScrollArea>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QTextEdit>
@@ -433,6 +434,41 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   );
   executeLayout->addWidget(m_autoRunNextCheckBox);
 
+  // ✅ NEW: Use dependencies checkbox
+  m_useDependenciesCheckBox = new QCheckBox("Use recipe dependencies (advanced)");
+  m_useDependenciesCheckBox->setChecked(false);
+  m_useDependenciesCheckBox->setToolTip("Enable dependency-based execution where recipes run based on prerequisites");
+  m_useDependenciesCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #9b59b6; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #9b59b6; "
+    "  border-color: #9b59b6; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #a06fbd; "
+    "  border-color: #a06fbd; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
+    "}"
+  );
+  executeLayout->addWidget(m_useDependenciesCheckBox);
+
   m_progressBar = new QProgressBar();
   m_progressBar->setRange(0, 100);
   m_progressBar->setValue(0);
@@ -696,8 +732,8 @@ void RunProgramPage::createEditWidget()
   tableLayout->addWidget(tableLabel);
 
   m_editRecipeTable = new QTableWidget();
-  m_editRecipeTable->setColumnCount(3);
-  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "Status"});
+  m_editRecipeTable->setColumnCount(4);
+  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "Dependencies", "Status"});
   m_editRecipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_editRecipeTable->setSelectionMode(QAbstractItemView::SingleSelection);
   m_editRecipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -706,7 +742,8 @@ void RunProgramPage::createEditWidget()
   m_editRecipeTable->horizontalHeader()->setStretchLastSection(false);
   m_editRecipeTable->setColumnWidth(0, 40);   // # column
   m_editRecipeTable->setColumnWidth(1, 250);  // Recipe Name
-  m_editRecipeTable->setColumnWidth(2, 80);   // Status
+  m_editRecipeTable->setColumnWidth(2, 180);  // Dependencies
+  m_editRecipeTable->setColumnWidth(3, 80);   // Status
   m_editRecipeTable->setStyleSheet(
     "QTableWidget { "
     "  background-color: #1e1e1e; "
@@ -926,11 +963,42 @@ void RunProgramPage::createEditWidget()
   );
   m_toggleEnableButton->setEnabled(false);
 
+  // ✅ NEW: Manage Dependencies button
+  QPushButton* manageDepsButton = new QPushButton("🔗 Manage Dependencies");
+  manageDepsButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8e44ad, stop:1 #9b59b6); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 5px 15px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9b59b6, stop:1 #a06fbd); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #7d3c98; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 17px; "
+    "}"
+  );
+  connect(manageDepsButton, &QPushButton::clicked, this, &RunProgramPage::onManageDependencies);
+
   controlLayout->addWidget(m_removeRecipeButton);
   controlLayout->addWidget(m_moveUpButton);
   controlLayout->addWidget(m_moveDownButton);
   controlLayout->addSpacing(10);
   controlLayout->addWidget(m_toggleEnableButton);
+  controlLayout->addWidget(manageDepsButton);
   controlLayout->addStretch();
 
   layout->addLayout(controlLayout);
@@ -1151,6 +1219,10 @@ void RunProgramPage::onLoadProgram()
   updateProgramInfo();
   updateRecipeList();
 
+  // ✅ Reset completion tracking when loading new program
+  m_completedRecipes.clear();
+  m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
+
   // ✅ Update the program name edit field (for when user switches to edit mode)
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
@@ -1237,6 +1309,49 @@ void RunProgramPage::onExecuteProgram()
     return;
   }
 
+  // ✅ Initialize completion tracking if needed
+  if (m_completedRecipes.empty() || m_completedRecipes.size() != static_cast<size_t>(m_programManager->getRecipeCount())) {
+    m_completedRecipes.clear();
+    m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
+  }
+
+  // ✅ Reset completion tracking in auto-run mode (fresh start for entire program)
+  if (autoRunMode) {
+    std::fill(m_completedRecipes.begin(), m_completedRecipes.end(), false);
+  }
+
+  // ✅ Check prerequisites in single-recipe mode with dependencies enabled
+  if (!autoRunMode && m_useDependenciesCheckBox->isChecked()) {
+    std::vector<int> dependencies = m_programManager->getRecipeDependencies(selectedRecipeIndex);
+
+    if (!dependencies.empty()) {
+      QStringList missingPrereqs;
+      for (int depIndex : dependencies) {
+        if (depIndex >= 0 && depIndex < static_cast<int>(m_completedRecipes.size())) {
+          if (!m_completedRecipes[depIndex]) {
+            const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
+            if (depRecipe) {
+              missingPrereqs << QString("• Recipe %1: %2")
+                .arg(depIndex + 1)
+                .arg(QString::fromStdString(depRecipe->displayName));
+            }
+          }
+        }
+      }
+
+      if (!missingPrereqs.isEmpty()) {
+        const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
+        QString recipeName = recipe ? QString::fromStdString(recipe->displayName) : QString("Recipe %1").arg(selectedRecipeIndex + 1);
+
+        QMessageBox::warning(this, "Prerequisites Not Met",
+          QString("Cannot run '%1'.\n\nThe following prerequisites have not been completed:\n%2\n\nPlease run the prerequisite recipe(s) first.")
+          .arg(recipeName)
+          .arg(missingPrereqs.join("\n")));
+        return;
+      }
+    }
+  }
+
   // Confirm execution
   QString programName = QString::fromStdString(m_programManager->getProgramName());
   QString confirmMsg;
@@ -1308,6 +1423,9 @@ void RunProgramPage::onExecuteProgram()
     m_programWorker->setStartRecipeIndex(selectedRecipeIndex);
   }
 
+  // ✅ Set dependency execution mode
+  m_programWorker->setUseDependencyGraph(m_useDependenciesCheckBox->isChecked());
+
   // Set UserPrompt callback
   connect(this, &RunProgramPage::showUserPrompt,
     this, &RunProgramPage::onShowUserPrompt);
@@ -1349,6 +1467,8 @@ void RunProgramPage::onExecuteProgram()
     this, &RunProgramPage::onRecipeStarted);
   connect(m_programWorker, &ProgramWorker::recipeCompleted,
     this, &RunProgramPage::onRecipeCompleted);
+  connect(m_programWorker, &ProgramWorker::recipeSkipped,
+    this, &RunProgramPage::onRecipeSkipped);
   connect(m_programWorker, &ProgramWorker::programExecutionCompleted,
     this, &RunProgramPage::onProgramExecutionCompleted);
   connect(m_programWorker, &ProgramWorker::programStopped,
@@ -1387,14 +1507,105 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
     .arg(recipeIndex + 1).arg(m_totalRecipes).arg(recipeName));
 
   m_progressBar->setValue(recipeIndex);
+
+  // Update list item to show running state
+  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  if (item) {
+    QString baseText = QString("%1    %2")
+      .arg(recipeIndex + 1, 2, 10, QChar('0'))
+      .arg(recipeName);
+
+    // Show dependencies if using dependency mode
+    if (m_useDependenciesCheckBox->isChecked()) {
+      std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+      if (!deps.empty()) {
+        QString depsStr = " [Deps: ";
+        for (size_t i = 0; i < deps.size(); ++i) {
+          if (i > 0) depsStr += ", ";
+          depsStr += QString::number(deps[i] + 1);
+        }
+        depsStr += "]";
+        baseText += depsStr;
+      }
+    }
+
+    item->setText("▶ " + baseText + "  [RUNNING]");
+    item->setForeground(QColor(52, 152, 219));  // Blue for running
+  }
 }
 
 void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString message)
 {
   m_progressBar->setValue(recipeIndex + 1);
 
+  // Update list item to show completed/failed state
+  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  if (item) {
+    const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
+    if (recipe) {
+      QString baseText = QString("%1    %2")
+        .arg(recipeIndex + 1, 2, 10, QChar('0'))
+        .arg(QString::fromStdString(recipe->displayName));
+
+      // Show dependencies if using dependency mode
+      if (m_useDependenciesCheckBox->isChecked()) {
+        std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+        if (!deps.empty()) {
+          QString depsStr = " [Deps: ";
+          for (size_t i = 0; i < deps.size(); ++i) {
+            if (i > 0) depsStr += ", ";
+            depsStr += QString::number(deps[i] + 1);
+          }
+          depsStr += "]";
+          baseText += depsStr;
+        }
+      }
+
+      if (success) {
+        item->setText("✓ " + baseText + "  [COMPLETED]");
+        item->setForeground(QColor(46, 204, 113));  // Green for success
+      } else {
+        item->setText("✗ " + baseText + "  [FAILED]");
+        item->setForeground(QColor(231, 76, 60));  // Red for failure
+      }
+    }
+  }
+
+  // ✅ Mark recipe as completed in tracking vector (for prerequisite validation)
+  if (success && recipeIndex >= 0 && recipeIndex < static_cast<int>(m_completedRecipes.size())) {
+    m_completedRecipes[recipeIndex] = true;
+  }
+
   if (!success) {
     m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
+  }
+}
+
+void RunProgramPage::onRecipeSkipped(int recipeIndex, QString recipeName)
+{
+  // Update list item to show skipped state
+  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  if (item) {
+    QString baseText = QString("%1    %2")
+      .arg(recipeIndex + 1, 2, 10, QChar('0'))
+      .arg(recipeName);
+
+    // Show dependencies if using dependency mode
+    if (m_useDependenciesCheckBox->isChecked()) {
+      std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+      if (!deps.empty()) {
+        QString depsStr = " [Deps: ";
+        for (size_t i = 0; i < deps.size(); ++i) {
+          if (i > 0) depsStr += ", ";
+          depsStr += QString::number(deps[i] + 1);
+        }
+        depsStr += "]";
+        baseText += depsStr;
+      }
+    }
+
+    item->setText("⊘ " + baseText + "  [SKIPPED]");
+    item->setForeground(QColor(149, 165, 166));  // Gray for skipped
   }
 }
 
@@ -1787,6 +1998,282 @@ void RunProgramPage::onToggleRecipeEnabled()
   m_editRecipeTable->selectRow(selectedRow);
 }
 
+void RunProgramPage::onManageDependencies()
+{
+  int recipeCount = m_programManager->getRecipeCount();
+  if (recipeCount == 0) {
+    QMessageBox::information(this, "No Recipes", "Please add recipes first before managing dependencies");
+    return;
+  }
+
+  // Create dialog
+  QDialog* dialog = new QDialog(this);
+  dialog->setWindowTitle("Manage Recipe Dependencies");
+  dialog->setMinimumSize(800, 600);
+  dialog->setStyleSheet("QDialog { background-color: #2b2b2b; }");
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(dialog);
+
+  // Title
+  QLabel* titleLabel = new QLabel("Recipe Dependency Management");
+  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: white; padding: 10px;");
+  mainLayout->addWidget(titleLabel);
+
+  // Info label
+  QLabel* infoLabel = new QLabel(
+    "Define which recipes must complete before others can start.\n"
+    "Select a recipe below, then check the recipes it depends on.");
+  infoLabel->setStyleSheet("color: #cccccc; padding: 5px;");
+  infoLabel->setWordWrap(true);
+  mainLayout->addWidget(infoLabel);
+
+  // Recipe selector
+  QGroupBox* recipeGroup = new QGroupBox("Select Recipe to Configure:");
+  recipeGroup->setStyleSheet(
+    "QGroupBox { "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}");
+  QVBoxLayout* recipeLayout = new QVBoxLayout(recipeGroup);
+
+  QComboBox* recipeCombo = new QComboBox();
+  recipeCombo->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  padding: 5px; "
+    "  font-size: 14px; "
+    "} "
+    "QComboBox:hover { border: 1px solid #1177bb; } "
+    "QComboBox::drop-down { "
+    "  border-left: 1px solid #3c3c3c; "
+    "  background: #3c3c3c; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  selection-background-color: #1177bb; "
+    "}");
+
+  for (int i = 0; i < recipeCount; ++i) {
+    const RecipeReference* recipe = m_programManager->getRecipe(i);
+    if (recipe) {
+      recipeCombo->addItem(QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
+    }
+  }
+  recipeLayout->addWidget(recipeCombo);
+  mainLayout->addWidget(recipeGroup);
+
+  // Dependencies group
+  QGroupBox* depsGroup = new QGroupBox("Dependencies (Prerequisites):");
+  depsGroup->setStyleSheet(
+    "QGroupBox { "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}");
+  QVBoxLayout* depsLayout = new QVBoxLayout(depsGroup);
+
+  // Scrollable area for checkboxes
+  QScrollArea* scrollArea = new QScrollArea();
+  scrollArea->setWidgetResizable(true);
+  scrollArea->setStyleSheet("QScrollArea { background-color: #1e1e1e; border: none; }");
+
+  QWidget* checkboxContainer = new QWidget();
+  checkboxContainer->setStyleSheet("QWidget { background-color: #1e1e1e; }");
+  QVBoxLayout* checkboxLayout = new QVBoxLayout(checkboxContainer);
+
+  // Create checkboxes for each recipe
+  std::vector<QCheckBox*> checkboxes;
+  for (int i = 0; i < recipeCount; ++i) {
+    const RecipeReference* recipe = m_programManager->getRecipe(i);
+    if (recipe) {
+      QCheckBox* cb = new QCheckBox(QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
+      cb->setProperty("recipeIndex", i);
+      cb->setStyleSheet(
+        "QCheckBox { "
+        "  color: white; "
+        "  padding: 5px; "
+        "} "
+        "QCheckBox::indicator { "
+        "  width: 18px; "
+        "  height: 18px; "
+        "  border: 2px solid #3c3c3c; "
+        "  border-radius: 3px; "
+        "  background-color: #2d2d30; "
+        "} "
+        "QCheckBox::indicator:checked { "
+        "  background-color: #27ae60; "
+        "  border-color: #27ae60; "
+        "}");
+      checkboxes.push_back(cb);
+      checkboxLayout->addWidget(cb);
+    }
+  }
+  checkboxLayout->addStretch();
+
+  scrollArea->setWidget(checkboxContainer);
+  depsLayout->addWidget(scrollArea);
+  mainLayout->addWidget(depsGroup);
+
+  // Temporary storage for all recipe dependencies as we edit
+  std::vector<std::vector<int>> tempDependencies(recipeCount);
+
+  // Initialize with current dependencies from ProgramManager
+  for (int i = 0; i < recipeCount; ++i) {
+    tempDependencies[i] = m_programManager->getRecipeDependencies(i);
+  }
+
+  // Function to save current recipe's checkboxes to temp storage
+  auto saveCurrentToTemp = [recipeCombo, &checkboxes, &tempDependencies]() {
+    int currentRecipe = recipeCombo->currentIndex();
+    tempDependencies[currentRecipe].clear();
+
+    for (QCheckBox* cb : checkboxes) {
+      if (cb->isChecked() && cb->isEnabled()) {
+        int depIndex = cb->property("recipeIndex").toInt();
+        tempDependencies[currentRecipe].push_back(depIndex);
+      }
+    }
+  };
+
+  // Function to update checkboxes based on selected recipe
+  auto updateCheckboxes = [this, recipeCombo, &checkboxes, &tempDependencies, saveCurrentToTemp]() {
+    // First, save the current recipe's state before switching
+    static int previousRecipe = -1;
+    if (previousRecipe >= 0) {
+      saveCurrentToTemp();
+    }
+    previousRecipe = recipeCombo->currentIndex();
+    int currentRecipe = recipeCombo->currentIndex();
+
+    // Get dependencies from temp storage
+    const std::vector<int>& deps = tempDependencies[currentRecipe];
+
+    // Update checkboxes
+    for (size_t i = 0; i < checkboxes.size(); ++i) {
+      int cbRecipeIndex = checkboxes[i]->property("recipeIndex").toInt();
+
+      // Disable self-dependency
+      if (cbRecipeIndex == currentRecipe) {
+        checkboxes[i]->setEnabled(false);
+        checkboxes[i]->setChecked(false);
+        checkboxes[i]->setText(checkboxes[i]->text().split(":")[0] + ": (Current Recipe)");
+      }
+      else {
+        checkboxes[i]->setEnabled(true);
+        // Restore original text
+        const RecipeReference* recipe = m_programManager->getRecipe(cbRecipeIndex);
+        if (recipe) {
+          checkboxes[i]->setText(QString("Recipe %1: %2").arg(cbRecipeIndex + 1)
+            .arg(QString::fromStdString(recipe->displayName)));
+        }
+
+        // Check if this is a dependency
+        bool isDep = std::find(deps.begin(), deps.end(), cbRecipeIndex) != deps.end();
+        checkboxes[i]->setChecked(isDep);
+      }
+    }
+  };
+
+  // Connect recipe selector change
+  connect(recipeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateCheckboxes);
+
+  // Initialize
+  updateCheckboxes();
+
+  // Buttons
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->addStretch();
+
+  QPushButton* cancelButton = new QPushButton("Cancel");
+  cancelButton->setMinimumWidth(100);
+  cancelButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: white; "
+    "  padding: 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { background-color: #4c4c4c; }");
+  connect(cancelButton, &QPushButton::clicked, dialog, &QDialog::reject);
+  buttonLayout->addWidget(cancelButton);
+
+  QPushButton* saveButton = new QPushButton("Save");
+  saveButton->setMinimumWidth(100);
+  saveButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { background-color: #2ecc71; }");
+  connect(saveButton, &QPushButton::clicked, [this, recipeCombo, &checkboxes, &tempDependencies, saveCurrentToTemp, dialog]() {
+    // Save current recipe's state to temp storage before saving
+    saveCurrentToTemp();
+
+    // Clear all existing dependencies
+    for (int recipeIdx = 0; recipeIdx < m_programManager->getRecipeCount(); ++recipeIdx) {
+      m_programManager->clearRecipeDependencies(recipeIdx);
+    }
+
+    // Apply all dependencies from temp storage
+    for (int recipeIdx = 0; recipeIdx < static_cast<int>(tempDependencies.size()); ++recipeIdx) {
+      for (int depIndex : tempDependencies[recipeIdx]) {
+        m_programManager->addRecipeDependency(recipeIdx, depIndex);
+      }
+    }
+
+    // Validate dependencies
+    std::vector<std::string> errors;
+    if (!m_programManager->validateDependencies(errors)) {
+      QString errorMsg = "Dependency validation failed:\n\n";
+      for (const auto& err : errors) {
+        errorMsg += "• " + QString::fromStdString(err) + "\n";
+      }
+      QMessageBox::critical(dialog, "Validation Error", errorMsg);
+      return;
+    }
+
+    QMessageBox::information(dialog, "Saved", "Dependencies have been saved.\n\nNote: Dependencies are saved with the program file.");
+    dialog->accept();
+  });
+  buttonLayout->addWidget(saveButton);
+
+  mainLayout->addLayout(buttonLayout);
+
+  int result = dialog->exec();
+  delete dialog;
+
+  // Refresh the recipe table to show updated dependencies
+  if (result == QDialog::Accepted) {
+    updateRecipeList();
+  }
+}
+
 void RunProgramPage::onSaveEdit()
 {
   // Save program name from edit field
@@ -1916,7 +2403,23 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
     m_editRecipeTable->setItem(rowIndex, 1, nameItem);
 
-    // Column 2: Status
+    // Column 2: Dependencies
+    std::vector<int> deps = m_programManager->getRecipeDependencies(rowIndex);
+    QString depsText;
+    if (deps.empty()) {
+      depsText = "—";  // No dependencies
+    } else {
+      for (size_t i = 0; i < deps.size(); ++i) {
+        if (i > 0) depsText += ", ";
+        depsText += QString::number(deps[i] + 1);  // Show 1-based index
+      }
+    }
+    QTableWidgetItem* depsItem = new QTableWidgetItem(depsText);
+    depsItem->setTextAlignment(Qt::AlignCenter);
+    depsItem->setForeground(QColor(155, 135, 245));  // Purple color for dependencies
+    m_editRecipeTable->setItem(rowIndex, 2, depsItem);
+
+    // Column 3: Status
     QString status = recipe->enabled ? "Enabled" : "Disabled";
     QTableWidgetItem* statusItem = new QTableWidgetItem(status);
     statusItem->setTextAlignment(Qt::AlignCenter);
@@ -1924,8 +2427,9 @@ void RunProgramPage::updateRecipeList()
       statusItem->setForeground(QColor(150, 150, 150));
       numItem->setForeground(QColor(150, 150, 150));
       nameItem->setForeground(QColor(150, 150, 150));
+      depsItem->setForeground(QColor(150, 150, 150));
     }
-    m_editRecipeTable->setItem(rowIndex, 2, statusItem);
+    m_editRecipeTable->setItem(rowIndex, 3, statusItem);
 
     rowIndex++;
   }

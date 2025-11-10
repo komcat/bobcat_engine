@@ -67,6 +67,7 @@ private slots:
   void onProgramExecutionStarted(int totalRecipes);
   void onRecipeStarted(int recipeIndex, QString recipeName);
   void onRecipeCompleted(int recipeIndex, bool success, QString message);
+  void onRecipeSkipped(int recipeIndex, QString recipeName);  // ✅ NEW: Handle skipped recipes
   void onProgramExecutionCompleted(bool success, QString message);
   void onProgramStopped();
   void onWorkerLogMessage(QString message);
@@ -127,6 +128,7 @@ private:
   QListWidget* m_recipeListWidget;
   QPushButton* m_backButton;
   QCheckBox* m_autoRunNextCheckBox;
+  QCheckBox* m_useDependenciesCheckBox;  // ✅ NEW: Enable dependency-based execution
 
   // Right panel
   QStackedWidget* m_rightStack;
@@ -168,6 +170,7 @@ private:
   bool m_isExecuting;
   int m_totalRecipes;
   int m_currentRecipeIndex;
+  std::vector<bool> m_completedRecipes;  // ✅ Track completed recipes (persists across executions)
 
   void createEditWidget();
   void createExecutionWidget();
@@ -178,6 +181,7 @@ private:
   void onMoveRecipeUp();
   void onMoveRecipeDown();
   void onToggleRecipeEnabled();  // ✅ NEW: Toggle enable/disable for selected recipe
+  void onManageDependencies();    // ✅ NEW: Open dependency management dialog
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
   void loadRecipePreview(const std::string& recipeFilePath);

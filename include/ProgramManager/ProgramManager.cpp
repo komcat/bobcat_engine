@@ -102,6 +102,97 @@ void ProgramManager::setRecipeDisplayName(int index, const std::string& name)
   }
 }
 
+// ============================================================================
+// DEPENDENCY MANAGEMENT
+// ============================================================================
+
+bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex)
+{
+  if (recipeIndex < 0 || recipeIndex >= getRecipeCount() ||
+      prerequisiteIndex < 0 || prerequisiteIndex >= getRecipeCount()) {
+    std::cerr << "[ProgramManager] Invalid indices for dependency" << std::endl;
+    return false;
+  }
+
+  if (recipeIndex == prerequisiteIndex) {
+    std::cerr << "[ProgramManager] Cannot add self-dependency" << std::endl;
+    return false;
+  }
+
+  RecipeReference* recipe = getRecipe(recipeIndex);
+  if (!recipe) return false;
+
+  // Check if dependency already exists
+  auto& deps = recipe->predecessorIndices;
+  if (std::find(deps.begin(), deps.end(), prerequisiteIndex) != deps.end()) {
+    return true;  // Already exists
+  }
+
+  // TODO: Add cycle detection before adding
+  deps.push_back(prerequisiteIndex);
+
+  std::cout << "[ProgramManager] Added dependency: Recipe " << recipeIndex
+            << " depends on Recipe " << prerequisiteIndex << std::endl;
+  return true;
+}
+
+void ProgramManager::removeRecipeDependency(int recipeIndex, int prerequisiteIndex)
+{
+  RecipeReference* recipe = getRecipe(recipeIndex);
+  if (!recipe) return;
+
+  auto& deps = recipe->predecessorIndices;
+  deps.erase(std::remove(deps.begin(), deps.end(), prerequisiteIndex), deps.end());
+
+  std::cout << "[ProgramManager] Removed dependency: Recipe " << recipeIndex
+            << " no longer depends on Recipe " << prerequisiteIndex << std::endl;
+}
+
+void ProgramManager::clearRecipeDependencies(int recipeIndex)
+{
+  RecipeReference* recipe = getRecipe(recipeIndex);
+  if (!recipe) return;
+
+  recipe->predecessorIndices.clear();
+  std::cout << "[ProgramManager] Cleared all dependencies for Recipe " << recipeIndex << std::endl;
+}
+
+std::vector<int> ProgramManager::getRecipeDependencies(int recipeIndex) const
+{
+  const RecipeReference* recipe = getRecipe(recipeIndex);
+  if (!recipe) return {};
+  return recipe->predecessorIndices;
+}
+
+bool ProgramManager::hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const
+{
+  const RecipeReference* recipe = getRecipe(recipeIndex);
+  if (!recipe) return false;
+
+  const auto& deps = recipe->predecessorIndices;
+  return std::find(deps.begin(), deps.end(), prerequisiteIndex) != deps.end();
+}
+
+bool ProgramManager::validateDependencies(std::vector<std::string>& errors) const
+{
+  errors.clear();
+
+  // Check that all dependency indices are valid
+  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
+    const auto& recipe = m_currentProgram.recipes[i];
+
+    for (int depIndex : recipe->predecessorIndices) {
+      if (depIndex < 0 || depIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
+        errors.push_back("Recipe " + std::to_string(i) + " has invalid dependency index: " + std::to_string(depIndex));
+      }
+    }
+  }
+
+  // TODO: Add cycle detection using RecipeExecutionStateMachine
+
+  return errors.empty();
+}
+
 bool ProgramManager::validateProgram(std::vector<std::string>& errors) const
 {
   errors.clear();
@@ -118,6 +209,12 @@ bool ProgramManager::validateProgram(std::vector<std::string>& errors) const
     if (!fileInfo.exists()) {
       errors.push_back("Recipe file not found: " + recipe->recipeFilePath);
     }
+  }
+
+  // Validate dependencies
+  std::vector<std::string> depErrors;
+  if (!validateDependencies(depErrors)) {
+    errors.insert(errors.end(), depErrors.begin(), depErrors.end());
   }
 
   return errors.empty();
@@ -149,6 +246,15 @@ bool ProgramManager::saveToJson(const std::string& filename) const
     recipeObj["recipe_file"] = QString::fromStdString(recipe->recipeFilePath);
     recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
     recipeObj["enabled"] = recipe->enabled;
+
+    // Save dependencies (predecessors)
+    if (!recipe->predecessorIndices.empty()) {
+      QJsonArray predecessorsArray;
+      for (int predIndex : recipe->predecessorIndices) {
+        predecessorsArray.append(predIndex);
+      }
+      recipeObj["predecessors"] = predecessorsArray;
+    }
 
     recipesArray.append(recipeObj);
   }
@@ -207,6 +313,15 @@ bool ProgramManager::loadFromJson(const std::string& filename)
     bool enabled = recipeObj["enabled"].toBool(true);
 
     auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
+
+    // Load dependencies (predecessors)
+    if (recipeObj.contains("predecessors")) {
+      QJsonArray predecessorsArray = recipeObj["predecessors"].toArray();
+      for (const QJsonValue& predVal : predecessorsArray) {
+        recipeRef->predecessorIndices.push_back(predVal.toInt());
+      }
+    }
+
     newProgram.recipes.push_back(std::move(recipeRef));
   }
 

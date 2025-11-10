@@ -511,6 +511,7 @@ set(SOURCES
     include/SMU/SMUPollingManager.cpp
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp
+    include/ProgramManager/RecipeExecutionStateMachine.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp

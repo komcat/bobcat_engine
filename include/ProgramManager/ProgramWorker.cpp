@@ -2,8 +2,10 @@
 #include "ProgramWorker.h"
 #include "ProgramManager.h"
 #include "RecipeWorker.h"
+#include "RecipeExecutionStateMachine.h"
 #include <QEventLoop>
 #include <QMutexLocker>
+#include <QStringList>
 #include <iostream>
 
 ProgramWorker::ProgramWorker(
@@ -23,6 +25,7 @@ ProgramWorker::ProgramWorker(
   , m_userPromptCallback(nullptr)
   , m_autoRunMode(true)      // ✅ Default: run all recipes
   , m_startRecipeIndex(0)     // ✅ Default: start from first
+  , m_useDependencyGraph(false)  // ✅ Default: sequential execution
   , m_activeRecipeWorker(nullptr)  // ✅ No active worker initially
 {
 }
@@ -62,10 +65,43 @@ void ProgramWorker::setStartRecipeIndex(int index)
   m_startRecipeIndex = index;
 }
 
+// ✅ NEW: Enable/disable dependency graph execution
+void ProgramWorker::setUseDependencyGraph(bool useDependencies)
+{
+  m_useDependencyGraph = useDependencies;
+}
+
+// ✅ NEW: Reset completion tracking
+void ProgramWorker::resetCompletionTracking()
+{
+  m_completedRecipes.clear();
+}
+
 void ProgramWorker::run()
 {
   try {
+    // Choose execution mode based on dependency graph setting
+    if (m_useDependencyGraph) {
+      runWithDependencies();
+    } else {
+      runSequential();
+    }
+  }
+  catch (const std::exception& e) {
+    emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
+  }
+}
+
+void ProgramWorker::runSequential()
+{
+  try {
     const auto& allRecipes = m_programManager->getAllRecipes();
+
+    // ✅ Initialize completion tracking (only if not already initialized or in auto-run mode)
+    if (m_completedRecipes.empty() || m_completedRecipes.size() != allRecipes.size() || m_autoRunMode) {
+      m_completedRecipes.clear();
+      m_completedRecipes.resize(allRecipes.size(), false);
+    }
 
     // ✅ DETERMINE WHICH RECIPES TO RUN
     int startIndex = 0;
@@ -80,6 +116,16 @@ void ProgramWorker::run()
       if (startIndex < 0 || startIndex >= static_cast<int>(allRecipes.size())) {
         emit programExecutionCompleted(false, "Invalid recipe index");
         return;
+      }
+
+      // ✅ Check prerequisites if using dependencies
+      if (m_useDependencyGraph) {
+        QString errorMessage;
+        if (!checkPrerequisites(startIndex, errorMessage)) {
+          emit programExecutionCompleted(false, errorMessage);
+          emit logMessage(QString("Cannot run recipe: %1").arg(errorMessage));
+          return;
+        }
       }
 
       emit logMessage(QString("Single recipe mode: running recipe at index %1").arg(startIndex));
@@ -131,6 +177,11 @@ void ProgramWorker::run()
       bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
 
       if (success) {
+        // ✅ Mark recipe as completed
+        if (recipeIndex >= 0 && recipeIndex < static_cast<int>(m_completedRecipes.size())) {
+          m_completedRecipes[recipeIndex] = true;
+        }
+
         emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
         emit logMessage(QString("Recipe '%1' completed successfully")
           .arg(QString::fromStdString(recipeRef->displayName)));
@@ -160,6 +211,223 @@ void ProgramWorker::run()
       .arg(QString::fromStdString(allRecipes[m_startRecipeIndex]->displayName));
 
     emit programExecutionCompleted(true, completionMsg);
+  }
+  catch (const std::exception& e) {
+    emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
+  }
+}
+
+void ProgramWorker::runWithDependencies()
+{
+  try {
+    const auto& allRecipes = m_programManager->getAllRecipes();
+
+    if (allRecipes.empty()) {
+      emit programExecutionCompleted(false, "No recipes in program");
+      return;
+    }
+
+    // ✅ Initialize completion tracking (only if not already initialized or in auto-run mode)
+    if (m_completedRecipes.empty() || m_completedRecipes.size() != allRecipes.size() || m_autoRunMode) {
+      m_completedRecipes.clear();
+      m_completedRecipes.resize(allRecipes.size(), false);
+    }
+
+    // ============================================================================
+    // STEP 1: CREATE AND INITIALIZE STATE MACHINE
+    // ============================================================================
+    RecipeExecutionStateMachine stateMachine;
+
+    // Build recipe names list
+    std::vector<std::string> recipeNames;
+    for (const auto& recipe : allRecipes) {
+      recipeNames.push_back(recipe->displayName);
+    }
+
+    stateMachine.initialize(allRecipes.size(), recipeNames);
+    emit logMessage("Initialized dependency state machine");
+
+    // ============================================================================
+    // STEP 2: IMPORT DEPENDENCIES FROM PROGRAM
+    // ============================================================================
+    for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
+      const auto& deps = m_programManager->getRecipeDependencies(i);
+
+      for (int predIndex : deps) {
+        if (!stateMachine.addDependency(i, predIndex)) {
+          emit programExecutionCompleted(false,
+            QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
+            .arg(i).arg(predIndex));
+          return;
+        }
+      }
+    }
+
+    // ============================================================================
+    // STEP 3: VALIDATE DEPENDENCY GRAPH
+    // ============================================================================
+    std::vector<std::string> errors;
+    if (!stateMachine.validateGraph(errors)) {
+      QString errorMsg = "Dependency graph validation failed:\n";
+      for (const auto& err : errors) {
+        errorMsg += "• " + QString::fromStdString(err) + "\n";
+      }
+      emit programExecutionCompleted(false, errorMsg);
+      return;
+    }
+
+    emit logMessage("Dependency graph validated successfully");
+
+    // ============================================================================
+    // STEP 4: MARK DISABLED RECIPES
+    // ============================================================================
+    for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
+      if (!allRecipes[i]->enabled) {
+        stateMachine.setRecipeDisabled(i);
+        emit logMessage(QString("Recipe %1 is disabled")
+          .arg(QString::fromStdString(allRecipes[i]->displayName)));
+      }
+    }
+
+    // ============================================================================
+    // STEP 5: RESET EXECUTION STATE
+    // ============================================================================
+    stateMachine.resetExecution();
+
+    // Count total recipes to execute (enabled only)
+    int totalToExecute = 0;
+    for (const auto& recipe : allRecipes) {
+      if (recipe->enabled) totalToExecute++;
+    }
+
+    emit programExecutionStarted(totalToExecute);
+    emit logMessage(QString("Starting dependency-based execution: %1 enabled recipes")
+      .arg(totalToExecute));
+    emit logMessage(stateMachine.getExecutionSummary().c_str());
+
+    // ============================================================================
+    // STEP 6: MAIN EXECUTION LOOP
+    // ============================================================================
+    int executedCount = 0;
+
+    while (!stateMachine.isExecutionComplete()) {
+      // Check for stop request
+      if (m_stopRequested.load()) {
+        emit logMessage("Program execution stopped by user");
+        emit programStopped();
+        emit programExecutionCompleted(false, "Program stopped by user");
+        return;
+      }
+
+      // Get all recipes that are ready to execute
+      std::vector<int> readyRecipes = stateMachine.getReadyRecipes();
+
+      if (readyRecipes.empty()) {
+        // No recipes ready but execution not complete
+        // This could mean all remaining recipes are pending with no way to proceed
+        int pending, ready, running, completed, failed, skipped;
+        stateMachine.getStateCounts(pending, ready, running, completed, failed, skipped);
+
+        if (pending > 0 && ready == 0 && running == 0) {
+          // Deadlock - recipes are waiting but nothing can proceed
+          emit programExecutionCompleted(false,
+            QString("Execution deadlock: %1 recipes pending but none ready").arg(pending));
+          return;
+        }
+
+        // All remaining recipes are disabled or skipped
+        break;
+      }
+
+      // Execute ready recipes (currently one at a time - could be parallelized in future)
+      for (int recipeIndex : readyRecipes) {
+        const auto& recipeRef = allRecipes[recipeIndex];
+
+        // Check stop again before starting recipe
+        if (m_stopRequested.load()) {
+          emit logMessage("Program execution stopped by user");
+          emit programStopped();
+          emit programExecutionCompleted(false, "Program stopped by user");
+          return;
+        }
+
+        // Mark recipe as started
+        stateMachine.markRecipeStarted(recipeIndex);
+
+        emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
+        emit logMessage(QString("[%1/%2] Starting: %3")
+          .arg(executedCount + 1)
+          .arg(totalToExecute)
+          .arg(QString::fromStdString(recipeRef->displayName)));
+
+        // Show dependencies info
+        auto predecessors = stateMachine.getPredecessors(recipeIndex);
+        if (!predecessors.empty()) {
+          QString depStr = "  Dependencies: ";
+          for (size_t i = 0; i < predecessors.size(); ++i) {
+            if (i > 0) depStr += ", ";
+            depStr += QString("Recipe %1").arg(predecessors[i] + 1);
+          }
+          emit logMessage(depStr);
+        }
+
+        // Execute the recipe
+        bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+
+        // Mark recipe as completed
+        if (success) {
+          // ✅ Mark in tracking
+          if (recipeIndex >= 0 && recipeIndex < static_cast<int>(m_completedRecipes.size())) {
+            m_completedRecipes[recipeIndex] = true;
+          }
+
+          stateMachine.markRecipeCompleted(recipeIndex, true);
+          emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
+          emit logMessage(QString("✓ Completed: %1")
+            .arg(QString::fromStdString(recipeRef->displayName)));
+        }
+        else {
+          stateMachine.markRecipeCompleted(recipeIndex, false, "Recipe execution failed");
+          emit recipeCompleted(recipeIndex, false, "Recipe failed");
+          emit logMessage(QString("✗ Failed: %1")
+            .arg(QString::fromStdString(recipeRef->displayName)));
+
+          // Get list of recipes that will be skipped
+          auto successors = stateMachine.getSuccessors(recipeIndex);
+          if (!successors.empty()) {
+            emit logMessage(QString("  %1 dependent recipe(s) will be skipped")
+              .arg(successors.size()));
+          }
+        }
+
+        emit logMessage(stateMachine.getExecutionSummary().c_str());
+        executedCount++;
+      }
+    }
+
+    // ============================================================================
+    // STEP 7: REPORT FINAL STATUS
+    // ============================================================================
+    int pending, ready, running, completed, failed, skipped;
+    stateMachine.getStateCounts(pending, ready, running, completed, failed, skipped);
+
+    emit logMessage(QString("\nExecution Summary:"));
+    emit logMessage(QString("  Completed: %1").arg(completed));
+    emit logMessage(QString("  Failed: %1").arg(failed));
+    emit logMessage(QString("  Skipped: %1").arg(skipped));
+
+    if (failed > 0) {
+      emit programExecutionCompleted(false,
+        QString("Program '%1' completed with %2 failure(s)")
+        .arg(QString::fromStdString(m_programManager->getProgramName()))
+        .arg(failed));
+    }
+    else {
+      emit programExecutionCompleted(true,
+        QString("Program '%1' completed successfully! Executed %2 recipe(s)")
+        .arg(QString::fromStdString(m_programManager->getProgramName()))
+        .arg(completed));
+    }
   }
   catch (const std::exception& e) {
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
@@ -262,4 +530,49 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   delete recipeWorker;
 
   return success;
+}
+
+bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
+{
+  // Get dependencies for this recipe
+  std::vector<int> dependencies = m_programManager->getRecipeDependencies(recipeIndex);
+
+  if (dependencies.empty()) {
+    // No prerequisites, can run
+    return true;
+  }
+
+  // Check if all prerequisites have been completed
+  QStringList missingPrereqs;
+  for (int depIndex : dependencies) {
+    if (depIndex < 0 || depIndex >= static_cast<int>(m_completedRecipes.size())) {
+      // Invalid dependency index
+      missingPrereqs << QString("Recipe %1 (invalid index)").arg(depIndex + 1);
+      continue;
+    }
+
+    if (!m_completedRecipes[depIndex]) {
+      // Prerequisite not completed
+      const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
+      if (depRecipe) {
+        missingPrereqs << QString("Recipe %1: %2")
+          .arg(depIndex + 1)
+          .arg(QString::fromStdString(depRecipe->displayName));
+      } else {
+        missingPrereqs << QString("Recipe %1").arg(depIndex + 1);
+      }
+    }
+  }
+
+  if (!missingPrereqs.isEmpty()) {
+    const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
+    QString recipeName = recipe ? QString::fromStdString(recipe->displayName) : QString("Recipe %1").arg(recipeIndex + 1);
+
+    errorMessage = QString("Cannot run '%1'.\n\nPrerequisites not completed:\n• %2\n\nPlease run the prerequisite recipe(s) first.")
+      .arg(recipeName)
+      .arg(missingPrereqs.join("\n• "));
+    return false;
+  }
+
+  return true;
 }
