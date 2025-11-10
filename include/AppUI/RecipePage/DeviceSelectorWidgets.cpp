@@ -195,21 +195,38 @@ void NodeSelectorDialog::setupUI()
   setWindowTitle("Select Node");
   setMinimumSize(400, 500);
 
-  // Set light background for the entire dialog
-  setStyleSheet("QDialog { background-color: white; }");
+  // Set dark background for the entire dialog
+  setStyleSheet("QDialog { background-color: #2b2b2b; }");
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
   // Info label
   QLabel* infoLabel = new QLabel(QString("Select a node for device: %1")
     .arg(QString::fromStdString(m_deviceName)));
-  infoLabel->setStyleSheet("font-weight: bold; padding: 5px;");
+  infoLabel->setStyleSheet(
+    "color: white; "
+    "font-weight: bold; "
+    "padding: 5px; "
+    "background-color: #1e1e1e; "
+    "border-radius: 4px;"
+  );
   mainLayout->addWidget(infoLabel);
 
   // Search box
   m_searchEdit = new QLineEdit();
   m_searchEdit->setPlaceholderText("Search nodes...");
-  m_searchEdit->setStyleSheet("padding: 8px;");
+  m_searchEdit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  padding: 8px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #1177bb; "
+    "}"
+  );
   connect(m_searchEdit, &QLineEdit::textChanged,
     this, &NodeSelectorDialog::onSearchTextChanged);
   mainLayout->addWidget(m_searchEdit);
@@ -218,17 +235,21 @@ void NodeSelectorDialog::setupUI()
   m_nodeList = new QListWidget();
   m_nodeList->setStyleSheet(
     "QListWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #c0c0c0; "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
     "  border-radius: 4px; "
     "  padding: 5px; "
     "} "
     "QListWidget::item { "
     "  padding: 8px; "
-    "  border-bottom: 1px solid #e0e0e0; "
+    "  border-bottom: 1px solid #3c3c3c; "
+    "} "
+    "QListWidget::item:hover { "
+    "  background-color: #2d2d30; "
     "} "
     "QListWidget::item:selected { "
-    "  background-color: #5a8fd6; "
+    "  background-color: #1177bb; "
     "  color: white; "
     "}"
   );
@@ -242,6 +263,17 @@ void NodeSelectorDialog::setupUI()
 
   m_cancelButton = new QPushButton("Cancel");
   m_cancelButton->setMinimumWidth(100);
+  m_cancelButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: white; "
+    "  padding: 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4c4c4c; "
+    "}"
+  );
   connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
   buttonLayout->addWidget(m_cancelButton);
 
@@ -249,12 +281,15 @@ void NodeSelectorDialog::setupUI()
   m_okButton->setMinimumWidth(100);
   m_okButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #4CAF50; "
+    "  background-color: #27ae60; "
     "  color: white; "
     "  font-weight: bold; "
     "  padding: 8px; "
+    "  border-radius: 4px; "
     "} "
-    "QPushButton:hover { background-color: #45a049; }"
+    "QPushButton:hover { "
+    "  background-color: #2ecc71; "
+    "}"
   );
   connect(m_okButton, &QPushButton::clicked, [this]() {
     if (m_nodeList->currentItem()) {

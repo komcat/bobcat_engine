@@ -33,16 +33,16 @@ void PneumaticSlidesFormWidget::setupUI()
 
   // Title
   QLabel* title = new QLabel("Pneumatic Slides Configuration");
-  title->setStyleSheet("QLabel { color: #2c3e50; font-size: 20px; font-weight: bold; padding: 10px; background-color: #ecf0f1; }");
+  title->setStyleSheet("QLabel { color: white; font-size: 20px; font-weight: bold; padding: 10px; background-color: #1e1e1e; }");
   mainLayout->addWidget(title);
 
   // Scroll area
   m_scrollArea = new QScrollArea();
   m_scrollArea->setWidgetResizable(true);
-  m_scrollArea->setStyleSheet("QScrollArea { border: none; background-color: #f5f6fa; }");
+  m_scrollArea->setStyleSheet("QScrollArea { border: none; background-color: #2b2b2b; }");
 
   m_formContent = new QWidget();
-  m_formContent->setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  m_formContent->setStyleSheet("QWidget { background-color: #2b2b2b; }");
   m_scrollArea->setWidget(m_formContent);
 
   mainLayout->addWidget(m_scrollArea);
@@ -69,9 +69,10 @@ QComboBox* PneumaticSlidesFormWidget::createDeviceComboBox()
   combo->addItems({ "IOTop", "IOBottom", "IOLeft", "IORight" });
   combo->setStyleSheet(
     "QComboBox { "
-    "  background-color: #3a3a3a; "
+    "  background-color: #2d2d30; "
     "  color: white; "
-    "  border: 1px solid #555555; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
     "  padding: 5px; "
     "  padding-right: 25px; "
     "  font-size: 14px; "
@@ -80,8 +81,8 @@ QComboBox* PneumaticSlidesFormWidget::createDeviceComboBox()
     "  subcontrol-origin: padding; "
     "  subcontrol-position: top right; "
     "  width: 20px; "
-    "  border-left: 1px solid #555555; "
-    "  background-color: #4a4a4a; "
+    "  border-left: 1px solid #3c3c3c; "
+    "  background-color: #3c3c3c; "
     "} "
     "QComboBox::down-arrow { "
     "  width: 0; "
@@ -91,10 +92,13 @@ QComboBox* PneumaticSlidesFormWidget::createDeviceComboBox()
     "  border-top: 5px solid white; "
     "} "
     "QComboBox:hover { "
-    "  border: 1px solid #0066cc; "
+    "  border: 1px solid #1177bb; "
+    "} "
+    "QComboBox:focus { "
+    "  border: 1px solid #1177bb; "
     "} "
     "QComboBox::drop-down:hover { "
-    "  background-color: #5a5a5a; "
+    "  background-color: #4c4c4c; "
     "}");
   return combo;
 }
@@ -107,15 +111,35 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   int index = static_cast<int>(m_fields.size());
 
   QString formStyle =
-    "QLineEdit, QSpinBox { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; "
-    "padding: 5px; font-size: 14px; }";
+    "QLineEdit, QSpinBox { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  padding: 5px; "
+    "  font-size: 14px; "
+    "} "
+    "QLineEdit:focus, QSpinBox:focus { "
+    "  border: 1px solid #1177bb; "
+    "}";
 
   QGroupBox* groupBox = new QGroupBox(QString("Pneumatic Slide #%1").arg(index + 1));
   groupBox->setStyleSheet(
-    "QGroupBox { color: #2c3e50; font-size: 16px; font-weight: bold; "
-    "background-color: white; "
-    "border: 2px solid #bdc3c7; border-radius: 5px; margin-top: 10px; padding-top: 10px; } "
-    "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    "QGroupBox { "
+    "  color: white; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3c3c3c; "
+    "  border-radius: 5px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}");
 
   QVBoxLayout* groupLayout = new QVBoxLayout();
 
@@ -128,7 +152,7 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   // ===== NAME =====
   fields.name = new QLineEdit(slide["name"].toString());
   fields.name->setStyleSheet(formStyle);
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>Name:</span>"), fields.name);
+  slideForm->addRow(new QLabel("<span style='color: white; font-weight: bold;'>Name:</span>"), fields.name);
 
   // ===== OUTPUT =====
   QLabel* outputHeader = new QLabel("<span style='color: #3498db; font-size: 15px; font-weight: bold;'>── Output ──</span>");
@@ -138,11 +162,11 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   if (!slide.isEmpty()) {
     fields.outputDevice->setCurrentText(slide["output"].toObject()["deviceName"].toString());
   }
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Device:</span>"), fields.outputDevice);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Device:</span>"), fields.outputDevice);
 
   fields.outputPin = new QLineEdit(slide.isEmpty() ? "" : slide["output"].toObject()["pinName"].toString());
   fields.outputPin->setStyleSheet(formStyle);
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Pin:</span>"), fields.outputPin);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Pin:</span>"), fields.outputPin);
 
   // ===== EXTENDED SENSOR =====
   QLabel* extendedHeader = new QLabel("<span style='color: #27ae60; font-size: 15px; font-weight: bold;'>── Extended Sensor ──</span>");
@@ -152,11 +176,11 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   if (!slide.isEmpty()) {
     fields.extendedDevice->setCurrentText(slide["extendedInput"].toObject()["deviceName"].toString());
   }
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Device:</span>"), fields.extendedDevice);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Device:</span>"), fields.extendedDevice);
 
   fields.extendedPin = new QLineEdit(slide.isEmpty() ? "" : slide["extendedInput"].toObject()["pinName"].toString());
   fields.extendedPin->setStyleSheet(formStyle);
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Pin:</span>"), fields.extendedPin);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Pin:</span>"), fields.extendedPin);
 
   // ===== RETRACTED SENSOR =====
   QLabel* retractedHeader = new QLabel("<span style='color: #e67e22; font-size: 15px; font-weight: bold;'>── Retracted Sensor ──</span>");
@@ -166,14 +190,14 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   if (!slide.isEmpty()) {
     fields.retractedDevice->setCurrentText(slide["retractedInput"].toObject()["deviceName"].toString());
   }
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Device:</span>"), fields.retractedDevice);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Device:</span>"), fields.retractedDevice);
 
   fields.retractedPin = new QLineEdit(slide.isEmpty() ? "" : slide["retractedInput"].toObject()["pinName"].toString());
   fields.retractedPin->setStyleSheet(formStyle);
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Pin:</span>"), fields.retractedPin);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Pin:</span>"), fields.retractedPin);
 
   // ===== TIMEOUT =====
-  QLabel* timeoutHeader = new QLabel("<span style='color: #7f8c8d; font-size: 15px; font-weight: bold;'>── Timeout ──</span>");
+  QLabel* timeoutHeader = new QLabel("<span style='color: #9e9e9e; font-size: 15px; font-weight: bold;'>── Timeout ──</span>");
   slideForm->addRow(timeoutHeader);
 
   fields.timeout = new QSpinBox();
@@ -182,7 +206,7 @@ void PneumaticSlidesFormWidget::addSlideGroup(const QJsonObject& slide)
   fields.timeout->setSuffix(" ms");
   fields.timeout->setValue(slide.isEmpty() ? 5000 : slide["timeoutMs"].toInt());
   fields.timeout->setStyleSheet(formStyle);
-  slideForm->addRow(new QLabel("<span style='color: #2c3e50;'>Timeout:</span>"), fields.timeout);
+  slideForm->addRow(new QLabel("<span style='color: white;'>Timeout:</span>"), fields.timeout);
 
   groupLayout->addLayout(slideForm);
 

@@ -34,14 +34,14 @@ void IODevicesFormWidget::setupUI()
 
   // Title
   QLabel* title = new QLabel("IO Devices Configuration");
-  title->setStyleSheet("QLabel { color: #2c3e50; font-size: 20px; font-weight: bold; padding: 10px; background-color: #ecf0f1; }");
+  title->setStyleSheet("QLabel { color: white; font-size: 20px; font-weight: bold; padding: 10px; background-color: #1e1e1e; }");
   title->setFixedHeight(50);  // ✅ Fixed height to prevent expansion
   title->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);  // ✅ Don't expand vertically
   mainLayout->addWidget(title);
 
   // Splitter for left/right panels
   QSplitter* splitter = new QSplitter(Qt::Horizontal);
-  splitter->setStyleSheet("QSplitter::handle { background-color: #bdc3c7; }");
+  splitter->setStyleSheet("QSplitter::handle { background-color: #3c3c3c; }");
 
   createLeftPanel();
   createRightPanel();
@@ -57,7 +57,7 @@ void IODevicesFormWidget::setupUI()
 void IODevicesFormWidget::createLeftPanel()
 {
   m_leftPanel = new QWidget();
-  m_leftPanel->setStyleSheet("QWidget { background-color: #ecf0f1; }");
+  m_leftPanel->setStyleSheet("QWidget { background-color: #2b2b2b; }");
 
   QVBoxLayout* layout = new QVBoxLayout(m_leftPanel);
   layout->setContentsMargins(10, 10, 10, 10);
@@ -65,30 +65,30 @@ void IODevicesFormWidget::createLeftPanel()
 
   // Title
   QLabel* titleLabel = new QLabel("IO Devices");
-  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #2c3e50; }");
+  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: white; }");
   layout->addWidget(titleLabel);
 
   // Device list
   m_deviceList = new QListWidget();
   m_deviceList->setStyleSheet(
     "QListWidget { "
-    "  background-color: white; "
-    "  border: 1px solid #bdc3c7; "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3c3c3c; "
     "  border-radius: 4px; "
     "  padding: 5px; "
     "  font-size: 14px; "
-    "  color: #2c3e50; "
+    "  color: white; "
     "} "
     "QListWidget::item { "
     "  padding: 10px; "
-    "  border-bottom: 1px solid #ecf0f1; "
+    "  border-bottom: 1px solid #3c3c3c; "
     "} "
     "QListWidget::item:selected { "
-    "  background-color: #3498db; "
+    "  background-color: #1177bb; "
     "  color: white; "
     "} "
     "QListWidget::item:hover { "
-    "  background-color: #dfe6e9; "
+    "  background-color: #2d2d30; "
     "}");
   connect(m_deviceList, &QListWidget::itemSelectionChanged, this, &IODevicesFormWidget::onDeviceSelected);
   layout->addWidget(m_deviceList);
@@ -118,7 +118,7 @@ void IODevicesFormWidget::createLeftPanel()
 void IODevicesFormWidget::createRightPanel()
 {
   m_rightPanel = new QWidget();
-  m_rightPanel->setStyleSheet("QWidget { background-color: #f5f6fa; }");
+  m_rightPanel->setStyleSheet("QWidget { background-color: #2b2b2b; }");
 
   QHBoxLayout* layout = new QHBoxLayout(m_rightPanel);
   layout->setContentsMargins(10, 10, 10, 10);
@@ -128,9 +128,9 @@ void IODevicesFormWidget::createRightPanel()
     "QGroupBox { "
     "  font-size: 14px; "
     "  font-weight: bold; "
-    "  color: #2c3e50; "
-    "  background-color: white; "
-    "  border: 2px solid #bdc3c7; "
+    "  color: white; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3c3c3c; "
     "  border-radius: 5px; "
     "  margin-top: 10px; "
     "  padding-top: 10px; "
@@ -142,8 +142,9 @@ void IODevicesFormWidget::createRightPanel()
     "}";
 
   QString formStyle =
-    "QLineEdit, QSpinBox { background-color: white; color: #2c3e50; border: 1px solid #bdc3c7; "
-    "padding: 5px; font-size: 14px; }";
+    "QLineEdit, QSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; "
+    "padding: 5px; font-size: 14px; } "
+    "QLineEdit:focus, QSpinBox:focus { border: 1px solid #1177bb; }";
 
   // ============================================================================
   // COLUMN 1: DEVICE INFORMATION
@@ -157,34 +158,34 @@ void IODevicesFormWidget::createRightPanel()
   // Name
   m_deviceName = new QLineEdit();
   m_deviceName->setStyleSheet(formStyle);
-  infoLayout->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>Name:</span>"), m_deviceName);
+  infoLayout->addRow(new QLabel("<span style='color: white; font-weight: bold;'>Name:</span>"), m_deviceName);
 
   // Device ID
   m_deviceId = new QSpinBox();
   m_deviceId->setRange(0, 255);
   m_deviceId->setStyleSheet(formStyle);
-  infoLayout->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>ID:</span>"), m_deviceId);
+  infoLayout->addRow(new QLabel("<span style='color: white; font-weight: bold;'>ID:</span>"), m_deviceId);
 
   // IP Address
   m_ipAddress = new QLineEdit();
   m_ipAddress->setStyleSheet(formStyle);
-  infoLayout->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>IP:</span>"), m_ipAddress);
+  infoLayout->addRow(new QLabel("<span style='color: white; font-weight: bold;'>IP:</span>"), m_ipAddress);
 
   // Input Count
   m_inputCount = new QSpinBox();
   m_inputCount->setRange(0, 64);
   m_inputCount->setStyleSheet(formStyle);
-  infoLayout->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>Inputs:</span>"), m_inputCount);
+  infoLayout->addRow(new QLabel("<span style='color: white; font-weight: bold;'>Inputs:</span>"), m_inputCount);
 
   // Output Count
   m_outputCount = new QSpinBox();
   m_outputCount->setRange(0, 64);
   m_outputCount->setStyleSheet(formStyle);
-  infoLayout->addRow(new QLabel("<span style='color: #2c3e50; font-weight: bold;'>Outputs:</span>"), m_outputCount);
+  infoLayout->addRow(new QLabel("<span style='color: white; font-weight: bold;'>Outputs:</span>"), m_outputCount);
 
   // Enabled
   m_enabled = new QCheckBox("Enabled");
-  m_enabled->setStyleSheet("QCheckBox { color: #2c3e50; font-weight: bold; }");
+  m_enabled->setStyleSheet("QCheckBox { color: white; font-weight: bold; }");
   infoLayout->addRow("", m_enabled);
 
   layout->addWidget(infoGroup, 1);  // 1 part width
@@ -205,8 +206,22 @@ void IODevicesFormWidget::createRightPanel()
   m_inputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
   m_inputPinsTable->setColumnWidth(1, 50);
   m_inputPinsTable->setStyleSheet(
-    "QTableWidget { background-color: white; border: 1px solid #bdc3c7; }"
-    "QHeaderView::section { background-color: #ecf0f1; color: #2c3e50; font-weight: bold; padding: 5px; border: 1px solid #bdc3c7; }");
+    "QTableWidget { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  gridline-color: #3c3c3c; "
+    "} "
+    "QTableWidget::item:selected { "
+    "  background-color: #1177bb; "
+    "} "
+    "QHeaderView::section { "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 5px; "
+    "  border: 1px solid #3c3c3c; "
+    "}");
   inputLayout->addWidget(m_inputPinsTable);
 
   QHBoxLayout* inputButtonLayout = new QHBoxLayout();

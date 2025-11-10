@@ -116,7 +116,7 @@ bool Application::initialize()
     m_qApplication->setApplicationVersion(QString::fromStdString(getVersion()));
 
     // Load and set custom font from assets folder
-    QString fontPath = "assets/fonts/Roboto-Regular.ttf";
+    QString fontPath = "assets/fonts/RobotoMono-Regular.ttf";
     int fontId = QFontDatabase::addApplicationFont(fontPath);
 
     if (fontId != -1) {

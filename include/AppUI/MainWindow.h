@@ -5,6 +5,7 @@
 #include <QStackedWidget>
 #include <QPushButton>
 #include <QShortcut>
+#include <QCloseEvent>
 
 struct ApplicationContext;
 class MainMenuPage;
@@ -32,6 +33,12 @@ public:
    * @brief Update the TopBar with current product information
    */
   void updateProductInfo();
+
+protected:
+  /**
+   * @brief Handle window close event to properly shutdown the application
+   */
+  void closeEvent(QCloseEvent* event) override;
 
 private slots:
   void onMainMenuProcess();

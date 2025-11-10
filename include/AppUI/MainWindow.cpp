@@ -17,6 +17,7 @@
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
 #include <QVBoxLayout>
+#include <QApplication>
 #include <iostream>
 
 MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
@@ -77,6 +78,17 @@ MainWindow::~MainWindow()
   }
 
   std::cout << "[MainWindow] Destroyed" << std::endl;
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+  std::cout << "[MainWindow] Close event triggered - shutting down application..." << std::endl;
+
+  // Accept the close event
+  event->accept();
+
+  // Signal the application to quit, which will trigger Application::shutdown()
+  QApplication::quit();
 }
 
 
