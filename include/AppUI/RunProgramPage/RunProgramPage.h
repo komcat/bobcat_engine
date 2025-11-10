@@ -12,6 +12,7 @@
 #include <QTextEdit>
 #include <QLineEdit>
 #include <QTimer>  // ✅ ADDED for periodic channel refresh
+#include <QTabWidget>  // ✅ ADDED for tab layout
 
 struct ApplicationContext;
 class ProgramManager;
@@ -115,6 +116,7 @@ private:
 
   // Left panel widgets
   QWidget* m_leftPanel;
+  QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;

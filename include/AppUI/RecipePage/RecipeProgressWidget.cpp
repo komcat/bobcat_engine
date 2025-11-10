@@ -33,7 +33,6 @@ void RecipeProgressWidget::setupUI()
   // TITLE
   QLabel* titleLabel = new QLabel("Recipe Execution");
   titleLabel->setStyleSheet(
-    "font-size: 16px; "
     "font-weight: bold; "
     "color: #2d3e5f; "
     "padding: 5px;"
@@ -73,7 +72,6 @@ void RecipeProgressWidget::setupUI()
   // STEP INFO
   m_stepLabel = new QLabel("Step 0/0");
   m_stepLabel->setStyleSheet(
-    "font-size: 14px; "
     "font-weight: bold; "
     "color: #2d3e5f; "
     "padding: 5px;"
@@ -83,7 +81,6 @@ void RecipeProgressWidget::setupUI()
 
   m_stepNameLabel = new QLabel("Waiting to start...");
   m_stepNameLabel->setStyleSheet(
-    "font-size: 13px; "
     "color: #555; "
     "padding: 8px; "
     "background-color: #f5f5f5; "
@@ -97,7 +94,6 @@ void RecipeProgressWidget::setupUI()
   // ELAPSED TIME
   m_elapsedTimeLabel = new QLabel("Elapsed: 00:00:00");
   m_elapsedTimeLabel->setStyleSheet(
-    "font-size: 14px; "
     "font-weight: bold; "
     "color: #ff8c00; "
     "padding: 8px; "
@@ -111,7 +107,6 @@ void RecipeProgressWidget::setupUI()
   // STATUS TEXT
   m_statusLabel = new QLabel("Initializing...");
   m_statusLabel->setStyleSheet(
-    "font-size: 12px; "
     "color: #666; "
     "padding: 8px; "
     "border: 1px solid #ddd; "
@@ -135,7 +130,6 @@ void RecipeProgressWidget::setupUI()
     "  background-color: #f44336; "
     "  color: white; "
     "  border-radius: 5px; "
-    "  font-size: 14px; "
     "  font-weight: bold; "
     "  padding: 10px; "
     "} "

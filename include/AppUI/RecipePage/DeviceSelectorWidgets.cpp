@@ -209,7 +209,7 @@ void NodeSelectorDialog::setupUI()
   // Search box
   m_searchEdit = new QLineEdit();
   m_searchEdit->setPlaceholderText("Search nodes...");
-  m_searchEdit->setStyleSheet("padding: 8px; font-size: 12px;");
+  m_searchEdit->setStyleSheet("padding: 8px;");
   connect(m_searchEdit, &QLineEdit::textChanged,
     this, &NodeSelectorDialog::onSearchTextChanged);
   mainLayout->addWidget(m_searchEdit);
@@ -221,7 +221,6 @@ void NodeSelectorDialog::setupUI()
     "  background-color: white; "
     "  border: 1px solid #c0c0c0; "
     "  border-radius: 4px; "
-    "  font-size: 12px; "
     "  padding: 5px; "
     "} "
     "QListWidget::item { "

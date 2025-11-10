@@ -45,20 +45,20 @@ void PneumaticSlideSelectorDialog::setupUI()
 
   // Info label
   QLabel* infoLabel = new QLabel("Select a pneumatic slide:");
-  infoLabel->setStyleSheet("font-weight: bold; font-size: 13px; padding: 5px;");  // ✅ Only custom styling
+  infoLabel->setStyleSheet("font-weight: bold; padding: 5px;");  // ✅ Only custom styling
   mainLayout->addWidget(infoLabel);
 
   // Search box
   m_searchEdit = new QLineEdit();
   m_searchEdit->setPlaceholderText("Search slides...");
-  m_searchEdit->setStyleSheet("padding: 8px; font-size: 12px;");  // ✅ Only custom padding/size
+  m_searchEdit->setStyleSheet("padding: 8px;");  // ✅ Only custom padding
   connect(m_searchEdit, &QLineEdit::textChanged,
     this, &PneumaticSlideSelectorDialog::onSearchTextChanged);
   mainLayout->addWidget(m_searchEdit);
 
   // Slide list
   m_slideList = new QListWidget();
-  m_slideList->setStyleSheet("font-size: 12px; padding: 5px;");  // ✅ Only custom sizing
+  m_slideList->setStyleSheet("padding: 5px;");  // ✅ Only custom padding
   connect(m_slideList, &QListWidget::itemDoubleClicked,
     this, &PneumaticSlideSelectorDialog::onSlideDoubleClicked);
   mainLayout->addWidget(m_slideList);
@@ -78,7 +78,7 @@ void PneumaticSlideSelectorDialog::setupUI()
   m_refreshButton->setObjectName("refreshButton");  // ✅ Gray button
   m_refreshButton->setMinimumWidth(120);
   m_refreshButton->setStyleSheet(
-    "QPushButton#refreshButton { background-color: #555555; font-size: 12px; padding: 8px; }"
+    "QPushButton#refreshButton { background-color: #555555; padding: 8px; }"
     "QPushButton#refreshButton:hover { background-color: #666666; }"
   );
   connect(m_refreshButton, &QPushButton::clicked, this, &PneumaticSlideSelectorDialog::refreshSlideStatus);
@@ -90,7 +90,7 @@ void PneumaticSlideSelectorDialog::setupUI()
   m_cancelButton->setObjectName("cancelButton");  // ✅ Gray button
   m_cancelButton->setMinimumWidth(100);
   m_cancelButton->setStyleSheet(
-    "QPushButton#cancelButton { background-color: #555555; font-size: 12px; padding: 8px; }"
+    "QPushButton#cancelButton { background-color: #555555; padding: 8px; }"
     "QPushButton#cancelButton:hover { background-color: #666666; }"
   );
   connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -100,7 +100,7 @@ void PneumaticSlideSelectorDialog::setupUI()
   m_okButton->setObjectName("selectButton");  // ✅ Green button
   m_okButton->setMinimumWidth(100);
   m_okButton->setStyleSheet(
-    "QPushButton#selectButton { background-color: #27ae60; font-size: 12px; padding: 8px; }"
+    "QPushButton#selectButton { background-color: #27ae60; padding: 8px; }"
     "QPushButton#selectButton:hover { background-color: #2ecc71; }"
   );
 

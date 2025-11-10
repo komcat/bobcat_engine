@@ -59,7 +59,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
   m_enabledCheckBox->setChecked(instance->enabled);
-  m_enabledCheckBox->setStyleSheet("font-weight: bold; font-size: 13px;");
+  m_enabledCheckBox->setStyleSheet("font-weight: bold;");
   connect(m_enabledCheckBox, &QCheckBox::toggled,
     this, &ProcessConfigWidget::enabledChanged);
   m_formLayout->addRow(m_enabledCheckBox);
@@ -106,7 +106,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
 
   // Add title for parameters section
   QLabel* paramLabel = new QLabel("Parameters:");
-  paramLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #d4d4d4;");
+  paramLabel->setStyleSheet("font-weight: bold; color: #d4d4d4;");
   m_formLayout->addRow(paramLabel);
 
   // Let derived class create specific parameter fields
@@ -273,7 +273,6 @@ void ProcessConfigWidget::addCheckboxParameter(const std::string& key,
   checkbox->setStyleSheet(
     "QCheckBox { "
     "  spacing: 8px; "
-    "  font-size: 12px; "
     "} "
     "QCheckBox::indicator { "
     "  width: 20px; "

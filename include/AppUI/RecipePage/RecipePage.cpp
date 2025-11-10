@@ -219,7 +219,7 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   mainLayout->setSpacing(5);
 
   QLabel* title = new QLabel("Available Processes");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
+  title->setStyleSheet("font-weight: bold; color: #ffffff;");
   mainLayout->addWidget(title);
 
   // Search box for filtering processes
@@ -246,7 +246,6 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "  background-color: #1e1e1e; "
     "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
-    "  font-size: 12px; "
     "  color: #d4d4d4; "
     "  gridline-color: #3f3f46; "
     "} "
@@ -312,7 +311,6 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "  background-color: #4CAF50; "
     "  color: white; "
     "  border-radius: 4px; "
-    "  font-size: 20px; "
     "  font-weight: bold; "
     "  padding: 5px; "
     "} "
@@ -362,7 +360,7 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   layout->setSpacing(5);
 
   QLabel* title = new QLabel("Recipe Steps");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
+  title->setStyleSheet("font-weight: bold; color: #ffffff;");
   layout->addWidget(title);
 
   QHBoxLayout* nameLayout = new QHBoxLayout();
@@ -431,7 +429,6 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "QPushButton { "
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffa500, stop:1 #ff8c00); "
     "  color: white; "
-    "  font-size: 14px; "
     "  font-weight: bold; "
     "  padding: 8px; "
     "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
@@ -463,7 +460,6 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "QPushButton { "
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a9ff2, stop:1 #4a90e2); "
     "  color: white; "
-    "  font-size: 13px; "
     "  font-weight: bold; "
     "  padding: 8px; "
     "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
@@ -557,7 +553,7 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   // Product file update
   m_updateProductFileButton = new QPushButton("📦 Update Product File");
   m_updateProductFileButton->setToolTip("Update the product positions file reference in this recipe");
-  m_updateProductFileButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9e54bd, stop:1 #8e44ad); font-size: 10px; }");
+  m_updateProductFileButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9e54bd, stop:1 #8e44ad); }");
   connect(m_updateProductFileButton, &QPushButton::clicked, this, &RecipePage::onUpdateProductFile);
   buttonColumn->addWidget(m_updateProductFileButton);
 
@@ -589,7 +585,6 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "QTreeWidget { "
     "  background-color: #1e1e1e; "
     "  border: 1px solid #3f3f46; "
-    "  font-size: 12px; "
     "  color: #d4d4d4; "
     "  gridline-color: #3f3f46; "
     "  show-decoration-selected: 1; "
@@ -659,7 +654,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   layout->setContentsMargins(5, 5, 5, 5);
 
   QLabel* title = new QLabel("Process Configuration");
-  title->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;");
+  title->setStyleSheet("font-weight: bold; color: #ffffff;");
   layout->addWidget(title);
 
   m_configScrollArea = new QScrollArea();

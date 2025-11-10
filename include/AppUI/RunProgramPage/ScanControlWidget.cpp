@@ -27,7 +27,7 @@ void ScanControlWidget::setupUI()
   // === GROUP BOX WRAPPER ===
   QGroupBox* scanGroup = new QGroupBox("Hexapod Scanning");
   QVBoxLayout* groupLayout = new QVBoxLayout(scanGroup);
-  groupLayout->setSpacing(8);
+  groupLayout->setSpacing(6);
 
   // === CHANNEL SELECTION + VALUE DISPLAY ===
   QHBoxLayout* channelLayout = new QHBoxLayout();
@@ -58,23 +58,23 @@ void ScanControlWidget::setupUI()
 
   // === SCAN BUTTONS - TWO COLUMNS ===
   QHBoxLayout* buttonsLayout = new QHBoxLayout();
-  buttonsLayout->setSpacing(10);
+  buttonsLayout->setSpacing(8);
 
   // LEFT COLUMN - Left Hexapod
   QVBoxLayout* leftColumn = new QVBoxLayout();
-  leftColumn->setSpacing(5);
+  leftColumn->setSpacing(4);
 
   QLabel* leftLabel = new QLabel("Left Hex:");
-  leftLabel->setStyleSheet("font-weight: bold; font-size: 10pt;");
+  leftLabel->setStyleSheet("font-weight: bold;");
   leftColumn->addWidget(leftLabel);
 
   m_leftCoarseButton = new QPushButton("Coarse");
-  m_leftCoarseButton->setMinimumHeight(32);
+  m_leftCoarseButton->setMinimumHeight(26);
   m_leftCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
   leftColumn->addWidget(m_leftCoarseButton);
 
   m_leftFineButton = new QPushButton("Fine");
-  m_leftFineButton->setMinimumHeight(32);
+  m_leftFineButton->setMinimumHeight(26);
   m_leftFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   leftColumn->addWidget(m_leftFineButton);
 
@@ -82,72 +82,114 @@ void ScanControlWidget::setupUI()
 
   // RIGHT COLUMN - Right Hexapod
   QVBoxLayout* rightColumn = new QVBoxLayout();
-  rightColumn->setSpacing(5);
+  rightColumn->setSpacing(4);
 
   QLabel* rightLabel = new QLabel("Right Hex:");
-  rightLabel->setStyleSheet("font-weight: bold; font-size: 10pt;");
+  rightLabel->setStyleSheet("font-weight: bold;");
   rightColumn->addWidget(rightLabel);
 
   m_rightCoarseButton = new QPushButton("Coarse");
-  m_rightCoarseButton->setMinimumHeight(32);
+  m_rightCoarseButton->setMinimumHeight(26);
   m_rightCoarseButton->setToolTip("Step sizes: 10, 5, 2, 1 µm");
   rightColumn->addWidget(m_rightCoarseButton);
 
   m_rightFineButton = new QPushButton("Fine");
-  m_rightFineButton->setMinimumHeight(32);
+  m_rightFineButton->setMinimumHeight(26);
   m_rightFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   rightColumn->addWidget(m_rightFineButton);
 
   buttonsLayout->addLayout(rightColumn);
 
-  groupLayout->addLayout(buttonsLayout);
+  // RIGHT COLUMN - Stop Button
+  QVBoxLayout* stopColumn = new QVBoxLayout();
+  stopColumn->setSpacing(4);
+
+  QLabel* stopLabel = new QLabel("Control:");
+  stopLabel->setStyleSheet("font-weight: bold;");
+  stopColumn->addWidget(stopLabel);
 
   // === STOP BUTTON ===
-  m_stopButton = new QPushButton("■ STOP Scanning");
-  m_stopButton->setMinimumHeight(35);
+  m_stopButton = new QPushButton("■ STOP\nScanning");
+  m_stopButton->setMinimumHeight(60);
   m_stopButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #F44336; "
     "  color: white; "
     "  font-weight: bold; "
-    "  font-size: 11pt; "
-    "  border-radius: 5px; "
-    "  padding: 8px; "
+    "  padding: 6px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
     "} "
     "QPushButton:hover { "
     "  background-color: #D32F2F; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
     "QPushButton:pressed { "
     "  background-color: #B71C1C; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 8px; "
     "} "
     "QPushButton:disabled { "
     "  background-color: #BDBDBD; "
     "  color: #757575; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.2); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.2); "
     "}");
   m_stopButton->setEnabled(false);  // Initially disabled
-  groupLayout->addWidget(m_stopButton);
+  stopColumn->addWidget(m_stopButton);
+
+  buttonsLayout->addLayout(stopColumn);
+
+  groupLayout->addLayout(buttonsLayout);
 
   mainLayout->addWidget(scanGroup);
 
-  // === STYLING FOR SCAN BUTTONS ===
+  // === STYLING FOR SCAN BUTTONS (3D Windows-style) ===
   QString buttonStyle =
     "QPushButton { "
     "  background-color: #2196F3; "
     "  color: white; "
     "  font-weight: bold; "
-    "  font-size: 11pt; "
-    "  border-radius: 5px; "
-    "  padding: 8px; "
+    "  padding: 6px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
     "} "
     "QPushButton:hover { "
     "  background-color: #1976D2; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
     "QPushButton:pressed { "
     "  background-color: #0D47A1; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 8px; "
+    "  padding-left: 8px; "
     "} "
     "QPushButton:disabled { "
     "  background-color: #BDBDBD; "
     "  color: #757575; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.2); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.2); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.2); "
     "}";
 
   m_leftCoarseButton->setStyleSheet(buttonStyle);

@@ -153,7 +153,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "QPushButton { "
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a8fd6, stop:1 #3d5a8c); "
     "  color: white; "
-    "  font-size: 12px; "
     "  font-weight: bold; "
     "  padding: 5px 15px; "
     "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
@@ -182,7 +181,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_currentProductLabel->setStyleSheet(
     "QLabel {"
     "  color: #cccccc;"
-    "  font-size: 12px;"
     "  font-weight: bold;"
     "  padding: 5px;"
     "}"
@@ -190,7 +188,37 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_currentProductLabel->setWordWrap(true);
   leftLayout->addWidget(m_currentProductLabel);
 
-  // === TOP SECTION: File Operations ===
+  // === TAB WIDGET ===
+  m_tabWidget = new QTabWidget();
+  m_tabWidget->setStyleSheet(
+    "QTabWidget::pane { "
+    "  border: 1px solid #3f3f46; "
+    "  background-color: #1e1e1e; "
+    "} "
+    "QTabBar::tab { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  padding: 8px 16px; "
+    "  margin-right: 2px; "
+    "  border-top-left-radius: 3px; "
+    "  border-top-right-radius: 3px; "
+    "} "
+    "QTabBar::tab:selected { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "} "
+    "QTabBar::tab:hover:!selected { "
+    "  background-color: #4a4a4a; "
+    "}"
+  );
+
+  // === FILE TAB ===
+  QWidget* fileTab = new QWidget();
+  QVBoxLayout* fileTabLayout = new QVBoxLayout(fileTab);
+  fileTabLayout->setContentsMargins(5, 10, 5, 5);
+  fileTabLayout->setSpacing(10);
+
   QGroupBox* fileGroup = new QGroupBox("Program File");
   fileGroup->setStyleSheet(
     "QGroupBox { "
@@ -304,9 +332,18 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   fileButtonLayout->addWidget(m_editButton);
   fileLayout->addLayout(fileButtonLayout);
 
-  leftLayout->addWidget(fileGroup);
+  fileTabLayout->addWidget(fileGroup);
+  fileTabLayout->addStretch();
 
-  // === MIDDLE SECTION: Execute Controls ===
+  m_tabWidget->addTab(fileTab, "File");
+
+  // === EXECUTE TAB ===
+  QWidget* executeTab = new QWidget();
+  QVBoxLayout* executeTabLayout = new QVBoxLayout(executeTab);
+  executeTabLayout->setContentsMargins(5, 10, 5, 5);
+  executeTabLayout->setSpacing(10);
+
+  // === Execute Controls ===
   QGroupBox* executeGroup = new QGroupBox("Execution");
   executeGroup->setStyleSheet(
     "QGroupBox { "
@@ -333,7 +370,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "QPushButton { "
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
     "  color: white; "
-    "  font-size: 16px; "
     "  font-weight: bold; "
     "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
     "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
@@ -369,7 +405,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_autoRunNextCheckBox->setStyleSheet(
     "QCheckBox { "
     "  spacing: 8px; "
-    "  font-size: 12px; "
     "  padding: 5px; "
     "  color: #d4d4d4; "
     "} "
@@ -417,9 +452,9 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   );
   executeLayout->addWidget(m_progressBar);
 
-  leftLayout->addWidget(executeGroup);
+  executeTabLayout->addWidget(executeGroup);
 
-  // === BOTTOM SECTION: Recipe List ===
+  // === Recipe List ===
   QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
   recipeGroup->setStyleSheet(
     "QGroupBox { "
@@ -473,7 +508,15 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   recipeLayout->addWidget(m_recipeListWidget);
 
-  leftLayout->addWidget(recipeGroup, 1);
+  executeTabLayout->addWidget(recipeGroup, 1);
+
+  m_tabWidget->addTab(executeTab, "Execute");
+
+  // Set Execute tab as default
+  m_tabWidget->setCurrentIndex(1);
+
+  // Add tab widget to left layout
+  leftLayout->addWidget(m_tabWidget, 1);
 
   // Connect signals
   connect(m_loadButton, &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
