@@ -163,7 +163,8 @@ void LiveChartWidget::setupUI()
     "  padding: 15px; "
     "}");
   m_valueLabel->setMinimumHeight(120);  // Much larger minimum height (was 60)
-  m_valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  m_valueLabel->setMaximumHeight(180);  // ✅ Limit maximum height to prevent excessive growth
+  m_valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);  // ✅ Fixed height policy
   headerLayout->addWidget(m_valueLabel);
 
   // Channel info label
@@ -171,7 +172,8 @@ void LiveChartWidget::setupUI()
   m_channelInfoLabel->setStyleSheet("QLabel { color: #888888; font-size: 12px; background: transparent; }");
   headerLayout->addWidget(m_channelInfoLabel);
 
-  mainLayout->addWidget(headerWidget);
+  // ✅ Add header with stretch factor 0 (don't expand)
+  mainLayout->addWidget(headerWidget, 0);
 
   // Chart
   m_series = new QLineSeries();
@@ -207,7 +209,9 @@ void LiveChartWidget::setupUI()
 
   m_chartView = new QChartView(m_chart);
   m_chartView->setRenderHint(QPainter::Antialiasing);
-  mainLayout->addWidget(m_chartView);
+
+  // ✅ Add chart with stretch factor 1 (takes remaining space, ~50% or more)
+  mainLayout->addWidget(m_chartView, 1);
 
   // Set initial font size for value label
   updateValueFontSize();

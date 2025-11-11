@@ -124,18 +124,54 @@ bool IOCommandHandler::ExecuteCommand(
       return false;
     }
 
-    int pin = std::stoi(pinIt->second);
     bool state = (stateIt->second == "true");
+    std::string pinValue = pinIt->second;
 
-    if (m_logger) {
-      m_logger->Info(
-        "Setting " + deviceName + " pin " + std::to_string(pin) +
-        " to " + (state ? "ON" : "OFF"),
-        "IOHandler"
-      );
+    // ✅ Check if pin is numeric or a name
+    // If it contains non-digit characters (except leading/trailing spaces), treat as name
+    bool isNumeric = true;
+    std::string trimmed = pinValue;
+    // Simple trim
+    size_t start = trimmed.find_first_not_of(" \t\n\r");
+    size_t end = trimmed.find_last_not_of(" \t\n\r");
+    if (start != std::string::npos && end != std::string::npos) {
+      trimmed = trimmed.substr(start, end - start + 1);
     }
 
-    EziIOError result = ioManager->SetOutput(deviceName, pin, state);
+    for (char c : trimmed) {
+      if (!std::isdigit(c)) {
+        isNumeric = false;
+        break;
+      }
+    }
+
+    EziIOError result;
+
+    if (isNumeric && !trimmed.empty()) {
+      // Numeric pin - use SetOutput(deviceName, pin, state)
+      int pin = std::stoi(trimmed);
+
+      if (m_logger) {
+        m_logger->Info(
+          "Setting " + deviceName + " pin " + std::to_string(pin) +
+          " to " + (state ? "ON" : "OFF"),
+          "IOHandler"
+        );
+      }
+
+      result = ioManager->SetOutput(deviceName, pin, state);
+    } else {
+      // Named pin - use SetOutputByName(deviceName, pinName, state)
+      if (m_logger) {
+        m_logger->Info(
+          "Setting " + deviceName + "." + pinValue +
+          " to " + (state ? "ON" : "OFF"),
+          "IOHandler"
+        );
+      }
+
+      result = ioManager->SetOutputByName(deviceName, pinValue, state);
+    }
 
     if (result != EziIOError::SUCCESS) {
       errorMessage = "SetOutputPin failed: " + GetErrorString(result);

@@ -72,6 +72,11 @@ private slots:
   void onProgramStopped();
   void onWorkerLogMessage(QString message);
 
+  // ✅ Step-level progress tracking (for progress bar)
+  void onStepBuildStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType);
+  void onStepBuildCompleted(int recipeIndex, int stepIndex);
+  void onSequenceExecutionStarted(int recipeIndex);
+
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);
   void onPromptResponse(bool accepted);
@@ -171,6 +176,10 @@ private:
   int m_totalRecipes;
   int m_currentRecipeIndex;
   std::vector<bool> m_completedRecipes;  // ✅ Track completed recipes (persists across executions)
+
+  // ✅ Step-level progress tracking
+  int m_currentRecipeTotalSteps;    // Total steps in current recipe
+  int m_currentRecipeCompletedSteps; // Completed steps in current recipe
 
   void createEditWidget();
   void createExecutionWidget();

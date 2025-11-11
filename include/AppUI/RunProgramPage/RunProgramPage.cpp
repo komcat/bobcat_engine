@@ -49,8 +49,10 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_promptResponse(false)
   , m_scanWidget(nullptr)
   , m_scanExecutor(nullptr)
-  , m_dataStore(context->dataStore)  // Add this line
-  , m_currentSubscribedChannel("")   // Add this line
+  , m_dataStore(context->dataStore)
+  , m_currentSubscribedChannel("")
+  , m_currentRecipeTotalSteps(0)      // ✅ Initialize step tracking
+  , m_currentRecipeCompletedSteps(0)  // ✅ Initialize step tracking
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -1478,6 +1480,14 @@ void RunProgramPage::onExecuteProgram()
   connect(m_programWorker, &ProgramWorker::finished,
     m_programWorker, &QObject::deleteLater);
 
+  // ✅ Connect step-level signals for progress tracking
+  connect(m_programWorker, &ProgramWorker::stepBuildStarted,
+    this, &RunProgramPage::onStepBuildStarted);
+  connect(m_programWorker, &ProgramWorker::stepBuildCompleted,
+    this, &RunProgramPage::onStepBuildCompleted);
+  connect(m_programWorker, &ProgramWorker::sequenceExecutionStarted,
+    this, &RunProgramPage::onSequenceExecutionStarted);
+
   // Start execution
   m_programWorker->start();
 }
@@ -1494,8 +1504,11 @@ void RunProgramPage::onProgramExecutionStarted(int totalRecipes)
 {
   m_totalRecipes = totalRecipes;
   m_currentRecipeIndex = 0;
-  m_progressBar->setRange(0, totalRecipes);
+
+  // ✅ Set progress bar to percentage mode (0-100) for step-level tracking
+  m_progressBar->setRange(0, 100);
   m_progressBar->setValue(0);
+
   m_executionStatusLabel->setText(QString("Executing program with %1 recipes").arg(totalRecipes));
 }
 
@@ -1506,7 +1519,10 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
   m_executionStatusLabel->setText(QString("Recipe %1 of %2: %3")
     .arg(recipeIndex + 1).arg(m_totalRecipes).arg(recipeName));
 
-  m_progressBar->setValue(recipeIndex);
+  // ✅ Reset step-level tracking for new recipe
+  m_currentRecipeTotalSteps = 0;
+  m_currentRecipeCompletedSteps = 0;
+  m_progressBar->setValue(0);
 
   // Update list item to show running state
   QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
@@ -1536,7 +1552,8 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
 
 void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString message)
 {
-  m_progressBar->setValue(recipeIndex + 1);
+  // ✅ Set progress to 100% when recipe completes
+  m_progressBar->setValue(100);
 
   // Update list item to show completed/failed state
   QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
@@ -1674,6 +1691,47 @@ void RunProgramPage::onWorkerLogMessage(QString message)
 
   // Also print to console for debugging
   std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
+}
+
+// ============================================================================
+// STEP-LEVEL PROGRESS TRACKING
+// ============================================================================
+
+void RunProgramPage::onStepBuildStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType)
+{
+  // Update total steps if this is a higher step index than we've seen
+  if (stepIndex + 1 > m_currentRecipeTotalSteps) {
+    m_currentRecipeTotalSteps = stepIndex + 1;
+  }
+
+  // Update progress bar based on step completion
+  // Progress = (completed steps / total steps) * 100
+  if (m_currentRecipeTotalSteps > 0) {
+    int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
+    m_progressBar->setValue(progress);
+  }
+}
+
+void RunProgramPage::onStepBuildCompleted(int recipeIndex, int stepIndex)
+{
+  // Increment completed steps
+  m_currentRecipeCompletedSteps++;
+
+  // Update progress bar
+  if (m_currentRecipeTotalSteps > 0) {
+    int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
+    m_progressBar->setValue(progress);
+  }
+}
+
+void RunProgramPage::onSequenceExecutionStarted(int recipeIndex)
+{
+  // All steps have been built, now executing
+  // Set progress to 100% (or keep at current build progress)
+  if (m_currentRecipeTotalSteps > 0) {
+    int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
+    m_progressBar->setValue(progress);
+  }
 }
 
 // ============================================================================

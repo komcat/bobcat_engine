@@ -56,8 +56,9 @@ public:
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
-    sequence->AddAction(params.at("io_device"), "SetOutputPin", {
-      {"pin", params.at("pin")},
+    // ✅ Use "SetOutput" command which accepts pinName (not SetOutputPin which expects numeric pin)
+    sequence->AddAction(params.at("io_device"), "SetOutput", {
+      {"pinName", params.at("pin")},
       {"state", params.at("state")}
     });
 
