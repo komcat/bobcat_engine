@@ -693,6 +693,8 @@ void ProcessConfigWidget::addIOPinSelector(const std::string& key,
           index = combo->findText(QString::fromStdString(pinName));
           if (index >= 0) {
             combo->setCurrentIndex(index);
+            // ✅ Trigger parameter changed to update stored value from "10" to "Vacuum_Base"
+            emit parameterChanged();
           } else {
             // Set as custom text (pin number)
             combo->setEditText(QString::fromStdString(value));

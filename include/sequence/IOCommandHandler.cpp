@@ -21,7 +21,7 @@ bool IOCommandHandler::ExecuteCommand(
   // }
 
   // ============================================================================
-  // SET OUTPUT (by pin name)
+  // SET OUTPUT (by pin name, with fallback to numeric pin)
   // ============================================================================
   if (methodName == "SetOutput") {
     auto pinIt = params.find("pinName");
@@ -32,21 +32,55 @@ bool IOCommandHandler::ExecuteCommand(
       return false;
     }
 
-    std::string pinName = pinIt->second;
+    std::string pinValue = pinIt->second;
     bool state = (stateIt->second == "true");
 
-    if (m_logger) {
-      m_logger->Info(
-        "Setting " + deviceName + "." + pinName + " to " + (state ? "ON" : "OFF"),
-        "IOHandler"
-      );
-    }
+    // ✅ First try by name
+    EziIOError result = ioManager->SetOutputByName(deviceName, pinValue, state);
 
-    EziIOError result = ioManager->SetOutputByName(deviceName, pinName, state);
+    // ✅ If failed and pinValue is numeric, try as numeric pin (for backward compatibility)
+    if (result != EziIOError::SUCCESS) {
+      // Check if pinValue is numeric
+      bool isNumeric = true;
+      std::string trimmed = pinValue;
+      size_t start = trimmed.find_first_not_of(" \t\n\r");
+      size_t end = trimmed.find_last_not_of(" \t\n\r");
+      if (start != std::string::npos && end != std::string::npos) {
+        trimmed = trimmed.substr(start, end - start + 1);
+      }
+
+      for (char c : trimmed) {
+        if (!std::isdigit(c)) {
+          isNumeric = false;
+          break;
+        }
+      }
+
+      if (isNumeric && !trimmed.empty()) {
+        // Try as numeric pin
+        int pin = std::stoi(trimmed);
+
+        if (m_logger) {
+          m_logger->Info(
+            "Pin name '" + pinValue + "' not found, trying as numeric pin " + std::to_string(pin),
+            "IOHandler"
+          );
+        }
+
+        result = ioManager->SetOutput(deviceName, pin, state);
+      }
+    }
 
     if (result != EziIOError::SUCCESS) {
       errorMessage = "SetOutput failed: " + GetErrorString(result);
       return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "Setting " + deviceName + "." + pinValue + " to " + (state ? "ON" : "OFF"),
+        "IOHandler"
+      );
     }
 
     return true;
