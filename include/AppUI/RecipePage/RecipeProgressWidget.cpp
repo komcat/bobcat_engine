@@ -104,6 +104,21 @@ void RecipeProgressWidget::setupUI()
   m_elapsedTimeLabel->setAlignment(Qt::AlignCenter);
   mainLayout->addWidget(m_elapsedTimeLabel);
 
+  // WAIT COUNTDOWN (initially hidden)
+  m_waitCountdownLabel = new QLabel("");
+  m_waitCountdownLabel->setStyleSheet(
+    "font-weight: bold; "
+    "color: #2196F3; "
+    "padding: 10px; "
+    "background-color: #e3f2fd; "
+    "border: 2px solid #2196F3; "
+    "border-radius: 6px; "
+    "font-size: 16px;"
+  );
+  m_waitCountdownLabel->setAlignment(Qt::AlignCenter);
+  m_waitCountdownLabel->setVisible(false);  // Hidden by default
+  mainLayout->addWidget(m_waitCountdownLabel);
+
   // STATUS TEXT
   m_statusLabel = new QLabel("Initializing...");
   m_statusLabel->setStyleSheet(
@@ -240,5 +255,48 @@ void RecipeProgressWidget::showCompletionHint()
       "  padding: 10px; "
       "}"
     );
+  }
+}
+
+// ✅ NEW: Set wait countdown display
+void RecipeProgressWidget::setWaitCountdown(int remainingMs, int totalMs)
+{
+  if (!m_waitCountdownLabel) return;
+
+  if (remainingMs <= 0) {
+    // Wait complete - hide countdown
+    m_waitCountdownLabel->setVisible(false);
+    return;
+  }
+
+  // Convert milliseconds to readable format
+  int totalSeconds = remainingMs / 1000;
+  int minutes = totalSeconds / 60;
+  int seconds = totalSeconds % 60;
+  int milliseconds = remainingMs % 1000;
+
+  // Calculate progress percentage
+  int progressPercent = 0;
+  if (totalMs > 0) {
+    progressPercent = ((totalMs - remainingMs) * 100) / totalMs;
+  }
+
+  // Format countdown text with progress bar effect
+  QString countdownText = QString("⏳ Waiting: %1:%2.%3 remaining (%4%)")
+    .arg(minutes, 2, 10, QChar('0'))
+    .arg(seconds, 2, 10, QChar('0'))
+    .arg(milliseconds / 100)  // Show deciseconds
+    .arg(progressPercent);
+
+  m_waitCountdownLabel->setText(countdownText);
+  m_waitCountdownLabel->setVisible(true);
+}
+
+// ✅ NEW: Clear wait countdown display
+void RecipeProgressWidget::clearWaitCountdown()
+{
+  if (m_waitCountdownLabel) {
+    m_waitCountdownLabel->setVisible(false);
+    m_waitCountdownLabel->setText("");
   }
 }

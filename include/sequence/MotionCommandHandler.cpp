@@ -939,6 +939,10 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   while (true) {
+    // ✅ CRITICAL: Update waypoint state machine before checking status
+    // This allows the waypoint system to transition from MovingToFinalTarget to Idle
+    motionManager->Update();
+
     // ✅ SAFETY-CRITICAL: Check stop flags FIRST (before motion status)
     if (context && context->IsStopRequestedAny()) {
       if (m_logger) {

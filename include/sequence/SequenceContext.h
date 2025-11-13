@@ -140,11 +140,24 @@ public:
     using StopFlagCallback = std::function<bool()>;
     void SetEngineStopCallback(StopFlagCallback callback) { m_engineStopCallback = callback; }
 
+    // Callback for wait progress updates (set by RecipeWorker/ProgramWorker)
+    // Called during Wait/Delay commands to show countdown
+    // Parameters: remainingMs, totalMs
+    using WaitProgressCallback = std::function<void(int, int)>;
+    void SetWaitProgressCallback(WaitProgressCallback callback) { m_waitProgressCallback = callback; }
+
     // Check if stop requested from ANY source (context OR engine)
     bool IsStopRequestedAny() const {
         if (m_stopRequested) return true;
         if (m_engineStopCallback && m_engineStopCallback()) return true;
         return false;
+    }
+
+    // Notify wait progress (used by SystemCommandHandler)
+    void NotifyWaitProgress(int remainingMs, int totalMs) const {
+        if (m_waitProgressCallback) {
+            m_waitProgressCallback(remainingMs, totalMs);
+        }
     }
 
     // ======================================================================
@@ -186,4 +199,5 @@ private:
     // Execution control
     bool m_stopRequested = false;
     StopFlagCallback m_engineStopCallback;
+    WaitProgressCallback m_waitProgressCallback;
 };

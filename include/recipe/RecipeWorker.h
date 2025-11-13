@@ -65,6 +65,7 @@ signals:
   void executionCompleted(bool success, QString message);
   void executionStopped();
   void logMessage(QString message);
+  void waitProgress(int remainingMs, int totalMs);  // Wait/Delay countdown
 
 protected:
   void run() override;

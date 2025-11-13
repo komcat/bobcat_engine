@@ -76,6 +76,7 @@ private slots:
   void onStepBuildStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType);
   void onStepBuildCompleted(int recipeIndex, int stepIndex);
   void onSequenceExecutionStarted(int recipeIndex);
+  void onWaitProgress(int remainingMs, int totalMs);
 
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);

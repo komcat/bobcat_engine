@@ -483,6 +483,10 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   connect(recipeWorker, &RecipeWorker::logMessage,
     this, &ProgramWorker::logMessage);
 
+  // Forward wait progress updates
+  connect(recipeWorker, &RecipeWorker::waitProgress,
+    this, &ProgramWorker::waitProgress);
+
   // ✅ Use QEventLoop to properly wait for completion
   bool success = false;
   QString errorMessage;

@@ -4,6 +4,7 @@
 #include "TcpClientManager.h"
 #include <QTimer>
 #include <QDateTime>
+#include <QFontMetrics>
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -144,28 +145,68 @@ void LiveChartWidget::setupUI()
 
   headerLayout->addLayout(selectorRow);
 
-  // Current value display - VERY LARGE and centered below channel selector
+  // ✅ Current value display - TWO ROWS (value on top, unit on bottom)
+  QVBoxLayout* valueLayout = new QVBoxLayout();
+  valueLayout->setSpacing(0);  // No spacing between value and unit
+  valueLayout->setAlignment(Qt::AlignCenter);
+
+  // Value label (numeric part only) - TOP ROW
   m_valueLabel = new QLabel("--");
   m_valueLabel->setAlignment(Qt::AlignCenter);
+  m_valueLabel->setWordWrap(false);
 
-  // Set initial font size explicitly
-  QFont initialFont = m_valueLabel->font();
-  initialFont.setPointSize(72);
-  initialFont.setBold(true);
-  m_valueLabel->setFont(initialFont);
+  QFont valueFont("Consolas", 72);
+  if (!valueFont.exactMatch()) {
+    valueFont.setFamily("Courier New");
+  }
+  valueFont.setBold(true);
+  m_valueLabel->setFont(valueFont);
 
   m_valueLabel->setStyleSheet(
     "QLabel { "
     "  color: #00d9ff; "
     "  font-weight: bold; "
     "  font-size: 72pt; "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
     "  background: transparent; "
-    "  padding: 15px; "
+    "  padding: 0px; "
+    "  white-space: nowrap; "
     "}");
-  m_valueLabel->setMinimumHeight(120);  // Much larger minimum height (was 60)
-  m_valueLabel->setMaximumHeight(180);  // ✅ Limit maximum height to prevent excessive growth
-  m_valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);  // ✅ Fixed height policy
-  headerLayout->addWidget(m_valueLabel);
+
+  m_valueLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_valueLabel->setMaximumHeight(90);  // Limit height for value
+
+  // Unit label - BOTTOM ROW
+  m_unitLabel = new QLabel("");
+  m_unitLabel->setAlignment(Qt::AlignCenter);
+  m_unitLabel->setWordWrap(false);
+
+  QFont unitFont("Consolas", 36);  // Smaller font for unit
+  if (!unitFont.exactMatch()) {
+    unitFont.setFamily("Courier New");
+  }
+  unitFont.setBold(true);
+  m_unitLabel->setFont(unitFont);
+
+  m_unitLabel->setStyleSheet(
+    "QLabel { "
+    "  color: #888888; "  // Dimmer color for unit
+    "  font-weight: bold; "
+    "  font-size: 36pt; "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
+    "  background: transparent; "
+    "  padding: 0px; "
+    "  white-space: nowrap; "
+    "}");
+
+  m_unitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_unitLabel->setMaximumHeight(50);  // Limit height for unit
+
+  // Add to vertical layout (value on top, unit on bottom)
+  valueLayout->addWidget(m_valueLabel);
+  valueLayout->addWidget(m_unitLabel);
+
+  headerLayout->addLayout(valueLayout);
 
   // Channel info label
   m_channelInfoLabel = new QLabel("No channel selected");
@@ -338,8 +379,19 @@ void LiveChartWidget::onUpdateValueLabel()
 {
   // Only update label if there's a new value
   if (m_hasNewValue) {
-    // Update text
-    m_valueLabel->setText(formatValueWithUnit(m_latestValue, m_currentUnit));
+    // ✅ Split value and unit into separate labels
+    QString fullText = formatValueWithUnit(m_latestValue, m_currentUnit);
+
+    // Parse the formatted string to split value and unit
+    // Format is like "-633.299 nA" or "1.278 µA"
+    QStringList parts = fullText.split(' ', Qt::SkipEmptyParts);
+    if (parts.size() == 2) {
+      m_valueLabel->setText(parts[0]);  // Numeric value
+      m_unitLabel->setText(parts[1]);   // Unit with prefix
+    } else {
+      m_valueLabel->setText(fullText);
+      m_unitLabel->setText("");
+    }
 
     // Update color based on value magnitude (but preserve font size!)
     QColor valueColor = getValueColor(m_latestValue);
@@ -606,20 +658,41 @@ void LiveChartWidget::resizeEvent(QResizeEvent* event)
 
 void LiveChartWidget::updateValueFontSize()
 {
-  if (!m_valueLabel) return;
+  if (!m_valueLabel || !m_unitLabel) return;
 
-  // Calculate font size - MUCH larger for maximum visibility
+  // Calculate font size based on widget height
   int widgetHeight = height();
-  int fontSize = static_cast<int>(widgetHeight * 0.25);  // Increased to 25% of height
+  int valueFontSize = static_cast<int>(widgetHeight * 0.20);  // 20% of height for value
 
   // Set minimum and maximum bounds for readability
-  if (fontSize < 72) fontSize = 72;  // Very large minimum for visibility
-  if (fontSize > 200) fontSize = 200;  // Higher maximum
+  if (valueFontSize < 72) valueFontSize = 72;
+  if (valueFontSize > 200) valueFontSize = 200;
 
-  QFont font = m_valueLabel->font();
-  font.setPointSize(fontSize);
-  font.setBold(true);  // Make it bold for better visibility
-  m_valueLabel->setFont(font);
+  // Update value label font
+  QFont valueFont = m_valueLabel->font();
+  valueFont.setPointSize(valueFontSize);
+  valueFont.setBold(true);
+  m_valueLabel->setFont(valueFont);
 
-  std::cout << "[LiveChartWidget] Font size updated to: " << fontSize << "pt (widget height: " << widgetHeight << "px)" << std::endl;
+  // Update max height for value label
+  QFontMetrics valueFm(valueFont);
+  int valueHeight = valueFm.height();
+  m_valueLabel->setMaximumHeight(valueHeight + 10);
+
+  // ✅ Update unit label font (smaller, proportional to value font)
+  int unitFontSize = static_cast<int>(valueFontSize * 0.5);  // Half of value font size
+  if (unitFontSize < 36) unitFontSize = 36;
+  if (unitFontSize > 100) unitFontSize = 100;
+
+  QFont unitFont = m_unitLabel->font();
+  unitFont.setPointSize(unitFontSize);
+  unitFont.setBold(true);
+  m_unitLabel->setFont(unitFont);
+
+  // Update max height for unit label
+  QFontMetrics unitFm(unitFont);
+  int unitHeight = unitFm.height();
+  m_unitLabel->setMaximumHeight(unitHeight + 10);
+
+  std::cout << "[LiveChartWidget] Font sizes updated - Value: " << valueFontSize << "pt (height: " << valueHeight << "px), Unit: " << unitFontSize << "pt (height: " << unitHeight << "px)" << std::endl;
 }

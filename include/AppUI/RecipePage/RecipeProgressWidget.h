@@ -33,6 +33,10 @@ public:
   void setCurrentStep(int current, const QString& stepName);
   void setStatusText(const QString& status);
 
+  // Wait countdown
+  void setWaitCountdown(int remainingMs, int totalMs);
+  void clearWaitCountdown();
+
   // Time tracking
   void startTimer();
   void stopTimer();
@@ -56,6 +60,7 @@ private:
   QLabel* m_stepNameLabel;
   QLabel* m_statusLabel;
   QLabel* m_elapsedTimeLabel;
+  QLabel* m_waitCountdownLabel;  // Wait/Delay countdown display
   QPushButton* m_stopButton;
 
   // Progress tracking

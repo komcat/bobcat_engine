@@ -33,13 +33,52 @@ bool SystemCommandHandler::ExecuteCommand(
       return false;
     }
 
-    int ms = std::stoi(msIt->second);
+    int totalMs = std::stoi(msIt->second);
 
     if (m_logger) {
-      m_logger->Info("Waiting for " + std::to_string(ms) + "ms", "SystemHandler");
+      m_logger->Info("Waiting for " + std::to_string(totalMs) + "ms", "SystemHandler");
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    // Use interruptible wait with progress updates
+    const int updateIntervalMs = 100;  // Update UI every 100ms
+    int remainingMs = totalMs;
+
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (remainingMs > 0) {
+      // Check stop flag - allow immediate cancellation
+      if (context && context->IsStopRequestedAny()) {
+        if (m_logger) {
+          m_logger->Warning("Wait interrupted by user stop request", "SystemHandler");
+        }
+        return false;  // Stop execution
+      }
+
+      // Notify progress callback for UI update
+      if (context) {
+        context->NotifyWaitProgress(remainingMs, totalMs);
+      }
+
+      // Sleep for the smaller of: remaining time or update interval
+      int sleepMs = (remainingMs < updateIntervalMs) ? remainingMs : updateIntervalMs;
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+
+      // Calculate actual remaining time (more accurate than just subtracting)
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime
+      ).count();
+      remainingMs = totalMs - static_cast<int>(elapsed);
+    }
+
+    // Final notification with 0 remaining
+    if (context) {
+      context->NotifyWaitProgress(0, totalMs);
+    }
+
+    if (m_logger) {
+      m_logger->Info("Wait completed", "SystemHandler");
+    }
+
     return true;
   }
 

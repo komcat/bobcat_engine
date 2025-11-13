@@ -1487,6 +1487,8 @@ void RunProgramPage::onExecuteProgram()
     this, &RunProgramPage::onStepBuildCompleted);
   connect(m_programWorker, &ProgramWorker::sequenceExecutionStarted,
     this, &RunProgramPage::onSequenceExecutionStarted);
+  connect(m_programWorker, &ProgramWorker::waitProgress,
+    this, &RunProgramPage::onWaitProgress);
 
   // Start execution
   m_programWorker->start();
@@ -1681,7 +1683,7 @@ void RunProgramPage::onProgramStopped()
 
   m_autoRunNextCheckBox->setEnabled(true);
 
-  QMessageBox::information(this, "Stopped", "Program execution stopped by user.");
+  // No confirmation dialog needed - stop button itself is the confirmation
 }
 
 void RunProgramPage::onWorkerLogMessage(QString message)
@@ -1732,6 +1734,36 @@ void RunProgramPage::onSequenceExecutionStarted(int recipeIndex)
     int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
     m_progressBar->setValue(progress);
   }
+}
+
+void RunProgramPage::onWaitProgress(int remainingMs, int totalMs)
+{
+  if (!m_executionLogLabel) return;
+
+  if (remainingMs <= 0) {
+    // Wait complete - clear countdown
+    m_executionLogLabel->setText("Execution Log");
+    return;
+  }
+
+  // Convert milliseconds to readable format
+  int totalSeconds = remainingMs / 1000;
+  int minutes = totalSeconds / 60;
+  int seconds = totalSeconds % 60;
+
+  // Calculate progress percentage
+  int progressPercent = 0;
+  if (totalMs > 0) {
+    progressPercent = ((totalMs - remainingMs) * 100) / totalMs;
+  }
+
+  // Update label with countdown
+  QString countdownText = QString("⏳ Waiting: %1:%2 remaining (%3%%)")
+    .arg(minutes, 2, 10, QChar('0'))
+    .arg(seconds, 2, 10, QChar('0'))
+    .arg(progressPercent);
+
+  m_executionLogLabel->setText(countdownText);
 }
 
 // ============================================================================

@@ -1724,6 +1724,8 @@ void RecipePage::onRunRecipe()
     this, &RecipePage::onExecutionStopped);
   connect(m_recipeWorker, &RecipeWorker::logMessage,
     this, &RecipePage::onWorkerLogMessage);
+  connect(m_recipeWorker, &RecipeWorker::waitProgress,
+    this, &RecipePage::onWaitProgress);
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
@@ -2099,23 +2101,23 @@ void RecipePage::onWorkerLogMessage(QString message)
   }
 }
 
+void RecipePage::onWaitProgress(int remainingMs, int totalMs)
+{
+  if (m_progressWidget) {
+    m_progressWidget->setWaitCountdown(remainingMs, totalMs);
+  }
+}
+
 void RecipePage::onStopRecipeRequested()
 {
   if (!m_recipeWorker || !m_recipeWorker->isRunning()) {
     return;
   }
 
-  QMessageBox::StandardButton reply = QMessageBox::question(
-    this, "Stop Recipe",
-    "Stop recipe execution after current step?",
-    QMessageBox::Yes | QMessageBox::No
-  );
-
-  if (reply == QMessageBox::Yes) {
-    m_recipeWorker->requestStop();
-    if (m_progressWidget) {
-      m_progressWidget->setStatusText("Stopping...");
-    }
+  // Stop immediately without confirmation (stop button itself is the confirmation)
+  m_recipeWorker->requestStop();
+  if (m_progressWidget) {
+    m_progressWidget->setStatusText("Stopping...");
   }
 }
 

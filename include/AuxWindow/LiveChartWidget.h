@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QChart>
 #include <QChartView>
 #include <QLineSeries>
@@ -77,6 +78,7 @@ private:
   QComboBox* m_channelSelector;
   QPushButton* m_refreshButton;
   QLabel* m_valueLabel;
+  QLabel* m_unitLabel;  // ✅ NEW: Separate label for unit
   QLabel* m_channelInfoLabel;
   QChartView* m_chartView;
   QChart* m_chart;

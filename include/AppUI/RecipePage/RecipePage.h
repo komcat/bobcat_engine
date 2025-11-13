@@ -84,6 +84,7 @@ private slots:
   void onExecutionCompleted(bool success, QString message);
   void onExecutionStopped();
   void onWorkerLogMessage(QString message);
+  void onWaitProgress(int remainingMs, int totalMs);
   void onStopRecipeRequested();
 
   // Manual adjust handling

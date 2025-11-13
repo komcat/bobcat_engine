@@ -62,6 +62,7 @@ void AuxViewWindow::setupLeftPanel()
   m_leftPanel = new QWidget();
   m_leftPanel->setStyleSheet("QWidget { background-color: #252525; }");
   m_leftPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  m_leftPanel->setMinimumWidth(200);  // ✅ Equal minimum width for 50/50 split
 
   QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
   leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -81,6 +82,7 @@ void AuxViewWindow::setupRightPanel()
   m_rightPanel = new QWidget();
   m_rightPanel->setStyleSheet("QWidget { background-color: #252525; }");
   m_rightPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  m_rightPanel->setMinimumWidth(200);  // ✅ Equal minimum width for 50/50 split
 
   QVBoxLayout* rightLayout = new QVBoxLayout(m_rightPanel);
   rightLayout->setContentsMargins(0, 0, 0, 0);

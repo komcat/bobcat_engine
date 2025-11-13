@@ -78,6 +78,9 @@ signals:
   void stepBuildCompleted(int recipeIndex, int stepIndex);
   void sequenceExecutionStarted(int recipeIndex);
 
+  // Wait progress (from current recipe)
+  void waitProgress(int remainingMs, int totalMs);
+
   // Logging
   void logMessage(QString message);
 

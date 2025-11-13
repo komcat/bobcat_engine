@@ -187,6 +187,14 @@ void RecipeWorker::run()
 
       // Create execution context for value capture and conditionals
       auto context = std::make_unique<SequenceContext>();
+
+      // Set up wait progress callback to emit countdown updates
+      context->SetWaitProgressCallback([this](int remainingMs, int totalMs) {
+        // Emit in a thread-safe way using Qt's queued connection
+        QMetaObject::invokeMethod(this, "waitProgress", Qt::QueuedConnection,
+          Q_ARG(int, remainingMs), Q_ARG(int, totalMs));
+      });
+
       bool success = m_engine->ExecuteSequence(sequence, context.get());
 
       delete sequence;
