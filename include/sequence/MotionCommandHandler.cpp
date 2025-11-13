@@ -199,7 +199,7 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     std::string axis = axisIt->second;
-    double distance = std::stod(distIt->second);
+    double distance = ResolveNumericValue(distIt->second, context);
 
     // Check if non-blocking mode requested explicitly
     bool explicitNonBlocking = false;
@@ -985,6 +985,41 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         continue;  // Keep waiting
+      }
+
+      // ✅ CRITICAL FIX: For slow velocities, drift might appear small but motor is still far from target
+      // If we have a target position, verify we're actually close to it before declaring stable
+      // This catches cases where motor moves at 0.2mm/s (only 0.02mm per 100ms) and appears stable
+      if (targetPos) {
+        double distanceFromTarget = 0.0;
+        PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+
+        if (targetPos->hasX) {
+          double dx = currentPos.x - targetPos->x;
+          distanceFromTarget += dx * dx;
+        }
+        if (targetPos->hasY) {
+          double dy = currentPos.y - targetPos->y;
+          distanceFromTarget += dy * dy;
+        }
+        if (targetPos->hasZ) {
+          double dz = currentPos.z - targetPos->z;
+          distanceFromTarget += dz * dz;
+        }
+
+        distanceFromTarget = std::sqrt(distanceFromTarget);
+
+        const double TARGET_THRESHOLD = 0.01;  // Must be within 0.01mm of target before declaring stable (tight tolerance for slow speed precision)
+        if (distanceFromTarget > TARGET_THRESHOLD) {
+          if (m_logger) {
+            std::string msg = "WaitForMotion: Position appears stable (drift=" + std::to_string(posDrift) +
+                             "mm) but still " + std::to_string(distanceFromTarget) +
+                             "mm from target - continuing to wait";
+            m_logger->Info(msg, "MotionHandler");
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          continue;  // Keep waiting until closer to target
+        }
       }
 
       if (m_logger) {

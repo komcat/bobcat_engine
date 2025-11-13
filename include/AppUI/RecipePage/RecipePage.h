@@ -44,6 +44,9 @@ signals:
   void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
                         bool enableX, bool enableY, bool enableZ);
 
+  // User prompt signal (for non-blocking prompts in execution area)
+  void showUserPrompt(QString title, QString message, bool allowCancel);
+
 private slots:
   // Legacy progress (kept for compatibility)
   void onRecipeProgress(const QString& message);
@@ -91,6 +94,10 @@ private slots:
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                           bool enableX, bool enableY, bool enableZ);
   void onManualAdjustResponse(bool completed);
+
+  // User prompt handling
+  void onShowUserPrompt(QString title, QString message, bool allowCancel);
+  void onUserPromptResponse(bool confirmed);
 
 
 
@@ -165,4 +172,5 @@ private:
 
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_manualAdjustResponse;       // Store manual adjust response
+  bool m_userPromptResponse;         // Store user prompt response
 };

@@ -64,9 +64,22 @@ private:
     double& offsetX, double& offsetY, double& offsetZ
   );
 
+  bool SaveDispenseZHeight(
+    const std::string& uid,
+    const std::string& deviceName,
+    double dispenseZ,
+    std::string& errorMessage
+  );
+
+  bool LoadDispenseZHeight(
+    const std::string& uid,
+    double& dispenseZ
+  );
+
   std::string GetNavigationFilePath(const std::string& uid) const;
   std::string GetNeedleZCalibrationFilePath() const;
   std::string GetCameraToNeedleOffsetFilePath() const;
+  std::string GetDispenseZFilePath(const std::string& uid) const;
   std::string GetCurrentDateTime(bool dateOnly = false) const;
   bool EnsureCalibrationDirectoryExists(std::string& errorMessage);
 };

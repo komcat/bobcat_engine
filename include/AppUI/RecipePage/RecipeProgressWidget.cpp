@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>
+#include <iostream>
 
 RecipeProgressWidget::RecipeProgressWidget(QWidget* parent)
   : QWidget(parent)
@@ -158,6 +159,90 @@ void RecipeProgressWidget::setupUI()
   connect(m_stopButton, &QPushButton::clicked, this, &RecipeProgressWidget::stopRequested);
   mainLayout->addWidget(m_stopButton);
 
+  // USER PROMPT AREA (initially hidden)
+  m_promptContainer = new QWidget();
+  QVBoxLayout* promptLayout = new QVBoxLayout(m_promptContainer);
+  promptLayout->setContentsMargins(0, 10, 0, 0);
+  promptLayout->setSpacing(10);
+
+  // Prompt title
+  m_promptTitleLabel = new QLabel();
+  m_promptTitleLabel->setStyleSheet(
+    "font-weight: bold; "
+    "color: #2d3e5f; "
+    "font-size: 16px; "
+    "padding: 8px; "
+    "background-color: #fff3cd; "
+    "border: 2px solid #ffc107; "
+    "border-radius: 4px;"
+  );
+  m_promptTitleLabel->setAlignment(Qt::AlignCenter);
+  m_promptTitleLabel->setWordWrap(true);
+  promptLayout->addWidget(m_promptTitleLabel);
+
+  // Prompt message
+  m_promptMessageLabel = new QLabel();
+  m_promptMessageLabel->setStyleSheet(
+    "color: #555; "
+    "padding: 12px; "
+    "background-color: white; "
+    "border: 1px solid #ddd; "
+    "border-radius: 4px;"
+  );
+  m_promptMessageLabel->setWordWrap(true);
+  promptLayout->addWidget(m_promptMessageLabel);
+
+  // Button row
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->setSpacing(10);
+
+  m_promptOkButton = new QPushButton("✔ OK");
+  m_promptOkButton->setMinimumHeight(45);
+  m_promptOkButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #4CAF50; "
+    "  color: white; "
+    "  border-radius: 5px; "
+    "  font-weight: bold; "
+    "  padding: 10px; "
+    "  font-size: 14px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #45a049; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3d8b40; "
+    "}"
+  );
+  connect(m_promptOkButton, &QPushButton::clicked, this, &RecipeProgressWidget::onPromptOkClicked);
+  buttonLayout->addWidget(m_promptOkButton);
+
+  m_promptCancelButton = new QPushButton("✖ Cancel");
+  m_promptCancelButton->setMinimumHeight(45);
+  m_promptCancelButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #f44336; "
+    "  color: white; "
+    "  border-radius: 5px; "
+    "  font-weight: bold; "
+    "  padding: 10px; "
+    "  font-size: 14px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #da190b; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #a91409; "
+    "}"
+  );
+  connect(m_promptCancelButton, &QPushButton::clicked, this, &RecipeProgressWidget::onPromptCancelClicked);
+  buttonLayout->addWidget(m_promptCancelButton);
+
+  promptLayout->addLayout(buttonLayout);
+
+  m_promptContainer->setVisible(false);  // Hidden by default
+  mainLayout->addWidget(m_promptContainer);
+
   mainLayout->addStretch();
 }
 
@@ -299,4 +384,47 @@ void RecipeProgressWidget::clearWaitCountdown()
     m_waitCountdownLabel->setVisible(false);
     m_waitCountdownLabel->setText("");
   }
+}
+
+// ============================================================================
+// USER PROMPT HANDLING
+// ============================================================================
+
+void RecipeProgressWidget::showUserPrompt(const QString& title, const QString& message, bool allowCancel)
+{
+  // Set prompt text
+  m_promptTitleLabel->setText(title);
+  m_promptMessageLabel->setText(message);
+
+  // Show/hide cancel button based on allowCancel
+  m_promptCancelButton->setVisible(allowCancel);
+
+  // Show the prompt container
+  m_promptContainer->setVisible(true);
+
+  std::cout << "[RecipeProgressWidget] Showing user prompt: " << title.toStdString() << std::endl;
+}
+
+void RecipeProgressWidget::clearUserPrompt()
+{
+  // Hide the prompt container
+  m_promptContainer->setVisible(false);
+
+  // Clear text
+  m_promptTitleLabel->setText("");
+  m_promptMessageLabel->setText("");
+
+  std::cout << "[RecipeProgressWidget] Cleared user prompt" << std::endl;
+}
+
+void RecipeProgressWidget::onPromptOkClicked()
+{
+  std::cout << "[RecipeProgressWidget] User clicked OK on prompt" << std::endl;
+  emit userPromptResponse(true);
+}
+
+void RecipeProgressWidget::onPromptCancelClicked()
+{
+  std::cout << "[RecipeProgressWidget] User clicked Cancel on prompt" << std::endl;
+  emit userPromptResponse(false);
 }

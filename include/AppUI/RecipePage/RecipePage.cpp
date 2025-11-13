@@ -1672,18 +1672,22 @@ void RecipePage::onRunRecipe()
     this
   );
 
-  // ✅ STEP 3: Set UserPrompt callback
+  // ✅ STEP 3: Set UserPrompt callback (using signal + QEventLoop pattern)
+  connect(this, &RecipePage::showUserPrompt,
+    this, &RecipePage::onShowUserPrompt);
+
   m_recipeWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
-    bool result = false;
-    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
-      result = SequencePromptDialog::ShowPrompt(
-        QString::fromStdString(title),
-        QString::fromStdString(message),
-        this
-      );
-    }, Qt::BlockingQueuedConnection);
-    return result;
+    // Emit signal to UI thread to show user prompt in execution area
+    emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message), true);
+
+    // Block until user responds using event loop
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_userPromptResponse;
   }
   );
 
@@ -2150,6 +2154,8 @@ void RecipePage::showProgressPanel()
   m_progressWidget = new RecipeProgressWidget();
   connect(m_progressWidget, &RecipeProgressWidget::stopRequested,
     this, &RecipePage::onStopRecipeRequested);
+  connect(m_progressWidget, &RecipeProgressWidget::userPromptResponse,
+    this, &RecipePage::onUserPromptResponse);
 
   m_progressWidget->resetTimer();
   m_progressWidget->setStatusText("Initializing recipe execution...");
@@ -2388,6 +2394,42 @@ void RecipePage::onManualAdjustResponse(bool completed)
   }
   else {
     std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
+  }
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+// ============================================================================
+// USER PROMPT HANDLING
+// ============================================================================
+
+void RecipePage::onShowUserPrompt(QString title, QString message, bool allowCancel)
+{
+  // Display the prompt in the progress widget (execution area)
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->showUserPrompt(title, message, allowCancel);
+    std::cout << "[RecipePage] Showing user prompt in progress widget: " << title.toStdString() << std::endl;
+  }
+  else {
+    std::cout << "[RecipePage] WARNING: No progress widget to show user prompt" << std::endl;
+    // Auto-accept if no progress widget available
+    onUserPromptResponse(true);
+  }
+}
+
+void RecipePage::onUserPromptResponse(bool confirmed)
+{
+  // Store the user's response
+  m_userPromptResponse = confirmed;
+
+  std::cout << "[RecipePage] User prompt response: " << (confirmed ? "OK" : "Cancel") << std::endl;
+
+  // Clear the prompt from progress widget
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->clearUserPrompt();
   }
 
   // Exit the event loop to unblock the callback

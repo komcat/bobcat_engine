@@ -37,6 +37,10 @@ public:
   void setWaitCountdown(int remainingMs, int totalMs);
   void clearWaitCountdown();
 
+  // User prompts
+  void showUserPrompt(const QString& title, const QString& message, bool allowCancel);
+  void clearUserPrompt();
+
   // Time tracking
   void startTimer();
   void stopTimer();
@@ -46,9 +50,12 @@ public:
 
 signals:
   void stopRequested();
+  void userPromptResponse(bool confirmed);
 
 private slots:
   void updateElapsedTime();
+  void onPromptOkClicked();
+  void onPromptCancelClicked();
 
 private:
   void setupUI();
@@ -62,6 +69,13 @@ private:
   QLabel* m_elapsedTimeLabel;
   QLabel* m_waitCountdownLabel;  // Wait/Delay countdown display
   QPushButton* m_stopButton;
+
+  // User prompt components
+  QLabel* m_promptTitleLabel;
+  QLabel* m_promptMessageLabel;
+  QPushButton* m_promptOkButton;
+  QPushButton* m_promptCancelButton;
+  QWidget* m_promptContainer;  // Container to show/hide prompt area
 
   // Progress tracking
   int m_totalSteps;

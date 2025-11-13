@@ -13,15 +13,17 @@ The Bobcat Engine uses a **plugin-based architecture** for recipe process types.
 
 ---
 
-## Quick Start: 5 Steps to Create a Plugin
+## Quick Start: Steps to Create a Plugin
 
 1. **Create plugin class** implementing `IProcessPlugin` interface
 2. **Define metadata** (name, category, description)
 3. **Specify parameters** with defaults
 4. **Create UI** for parameter configuration
 5. **Register plugin** in auto-registration section
+6. **⚠️ IMPORTANT: If using a NEW category**, add it to UI category list (see below)
+7. **Add plugin file** to CMakeLists.txt
 
-**That's it!** No need to touch RecipeManager, ProcessSequenceFactory, or RecipePage.
+**Note:** For existing categories, steps 1-5 are sufficient. For new categories, step 6 is required.
 
 ---
 
@@ -177,10 +179,89 @@ Organize your plugin into one of these categories:
 - `"I/O & Pneumatics"` - Digital I/O and pneumatic slides
 - `"TEC & Laser"` - Temperature control and laser operations
 - `"Power Supply"` - Power supply control
-- `"Data"` - DataStore operations
+- `"SMU Control"` - Source measure unit operations
+- `"Data"` - DataStore and DUT operations
 - `"System"` - Wait, prompts, logging, manual adjust
 - `"Control Flow"` - Conditionals, loops, groups
 - `"Calibration"` - Calibration procedures
+- `"Dispensing"` - Dispensing operations
+- `"Aux Window"` - Auxiliary window controls
+
+---
+
+## ⚠️ CRITICAL: Adding a New Category to UI
+
+If your plugin uses a **NEW category** (not listed above), you **MUST** update the UI category list, or your plugin **will not appear** in RecipePage!
+
+### Step-by-Step:
+
+**1. Open `include/recipe/RecipeManager.cpp`**
+
+**2. Find `getProcessCategories()` function** (around line 502)
+
+**3. Add your new category to the list:**
+
+```cpp
+std::vector<std::string> RecipeManager::getProcessCategories()
+{
+  return {
+    "Motion Control",
+    "I/O & Pneumatics",
+    "TEC & Laser",
+    "Power Supply",
+    "SMU Control",
+    "Data",
+    "System",
+    "Control Flow",
+    "Calibration",
+    "Dispensing",        // ← Your new category
+    "Aux Window"
+  };
+}
+```
+
+**4. Rebuild the project**
+
+```bash
+cmake --build out/build/x64-debug
+```
+
+**5. Verify in UI:**
+- Open RecipePage
+- Look for your new category in the Available Processes list
+- Expand it to see your plugin
+
+### Common Mistake: Category Mismatch
+
+❌ **Wrong - Plugin won't appear:**
+```cpp
+// In plugin:
+std::string GetCategory() const override {
+  return "My New Category";  // Not in RecipeManager list!
+}
+```
+
+✅ **Correct - Plugin appears:**
+```cpp
+// 1. In plugin:
+std::string GetCategory() const override {
+  return "My New Category";
+}
+
+// 2. In RecipeManager.cpp:
+std::vector<std::string> RecipeManager::getProcessCategories()
+{
+  return {
+    // ... existing categories ...
+    "My New Category",  // Added to UI list
+    // ... more categories ...
+  };
+}
+```
+
+### Why is this necessary?
+
+The plugin system registers your plugin automatically, but the **UI** uses a separate hardcoded list to display categories in RecipePage. This ensures categories appear in a specific order and prevents empty categories from showing up.
 
 ---
 
@@ -600,11 +681,24 @@ include/sequence/MyDeviceCommandHandler.cpp
 
 ### Plugin doesn't appear in action list
 
+**Most Common Cause:** New category not added to UI list!
+
+✅ **Solution:**
+1. Check console for registration message: `[YourPlugin] Registered Your Plugin plugin`
+2. If you see the registration message but plugin doesn't appear in UI:
+   - Open `include/recipe/RecipeManager.cpp`
+   - Find `getProcessCategories()` function (line ~502)
+   - Add your category to the list
+   - Rebuild project
+3. Clear search box in RecipePage and look for your category
+
+**Other checks:**
 - **Check:** Is plugin registered in auto-registration section?
 - **Check:** Does `GetName()` return unique name?
 - **Check:** Is file included in CMakeLists.txt?
 - **Check:** Did you rebuild after adding plugin?
 - **Check:** Console output for registration message
+- **Check:** Category name matches exactly (case-sensitive)
 
 ### Parameters not saving/loading
 

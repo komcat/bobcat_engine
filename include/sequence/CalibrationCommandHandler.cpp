@@ -5,6 +5,7 @@
 #include "product_position_manager.h"
 #include "LogManager.h"
 #include "SequenceContext.h"
+#include "dut/DeviceUnderTest.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <filesystem>
@@ -195,9 +196,9 @@ bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
     file.close();
 
     // Load factory XY offset values (Z is always 0)
-    if (j.contains("x") && j.contains("y")) {
-      offsetX = j["x"];
-      offsetY = j["y"];
+    if (j.contains("offset") && j["offset"].contains("x") && j["offset"].contains("y")) {
+      offsetX = j["offset"]["x"];
+      offsetY = j["offset"]["y"];
       offsetZ = 0.0;  // Z offset is not used in factory calibration
     }
 
@@ -649,8 +650,75 @@ bool CalibrationCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "LoadCameraToNeedleOffset") {
     double offsetX = 0.0, offsetY = 0.0, offsetZ = 0.0;
+    bool exists = false;
+    std::string source = "none";
 
-    bool exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
+    // Priority 1: Try product-specific offset if product is loaded
+    std::string productName = "";
+
+    // Try to get product name from ProductPositionManager first (most reliable)
+    if (m_context && m_context->productPositionManager) {
+      productName = m_context->productPositionManager->GetCurrentProductName();
+    }
+
+    // Fallback: Try to get from active DUT
+    if (productName.empty() && m_context && m_context->currentDUT) {
+      productName = m_context->currentDUT->getProductName();
+    }
+
+    if (!productName.empty()) {
+      std::string productOffsetPath = "config/" + productName + "/calibration/needleXYoffsetCamera.json";
+
+      if (std::filesystem::exists(productOffsetPath)) {
+        // Load product-specific offset
+        try {
+          std::ifstream file(productOffsetPath);
+          if (file.is_open()) {
+            json j;
+            file >> j;
+            file.close();
+
+            if (j.contains("offset") && j["offset"].contains("x") && j["offset"].contains("y")) {
+              offsetX = j["offset"]["x"];
+              offsetY = j["offset"]["y"];
+              offsetZ = 0.0;
+              exists = true;
+              source = "product-specific (" + productName + ")";
+            }
+          }
+        }
+        catch (const std::exception& e) {
+          if (m_logger) {
+            m_logger->Warning("Failed to load product-specific offset: " + std::string(e.what()), "CalibrationHandler");
+          }
+        }
+      } else {
+        if (m_logger) {
+          m_logger->Info("Product-specific offset not found: " + productOffsetPath, "CalibrationHandler");
+        }
+      }
+    } else {
+      if (m_logger) {
+        m_logger->Info("No product loaded - will try SYSTEM offset", "CalibrationHandler");
+      }
+    }
+
+    // Priority 2: Fallback to SYSTEM-level factory offset
+    if (!exists) {
+      exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
+      if (exists) {
+        source = "SYSTEM factory";
+      }
+    }
+
+    // Log which offset was loaded
+    if (m_logger && exists) {
+      m_logger->Info(
+        "Loaded " + source + " needle XY offset: (" +
+        std::to_string(offsetX) + ", " + std::to_string(offsetY) + ")",
+        "CalibrationHandler"
+      );
+    }
 
     // Store in context
     if (context) {
@@ -714,10 +782,169 @@ bool CalibrationCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // LOAD DISPENSE Z HEIGHT
+  // ============================================================================
+  else if (methodName == "LoadDispenseZHeight") {
+    auto uidIt = params.find("uid");
+    if (uidIt == params.end()) {
+      errorMessage = "LoadDispenseZHeight: Missing required parameter 'uid'";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    double dispenseZ = 0.0;
+
+    bool exists = LoadDispenseZHeight(uid, dispenseZ);
+
+    if (context) {
+      context->SetValue("dispense_z_exists", exists, "calibration", "LoadDispenseZHeight");
+      if (exists) {
+        context->SetValue("dispense_z", static_cast<float>(dispenseZ), "calibration", "LoadDispenseZHeight");
+
+        if (m_logger) {
+          m_logger->Info("Loaded dispense Z height: " + std::to_string(dispenseZ) + " mm for UID: " + uid,
+                        "CalibrationHandler");
+        }
+      } else {
+        if (m_logger) {
+          m_logger->Info("No saved dispense Z height found for UID: " + uid,
+                        "CalibrationHandler");
+        }
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SAVE DISPENSE Z HEIGHT
+  // ============================================================================
+  else if (methodName == "SaveDispenseZHeight") {
+    auto uidIt = params.find("uid");
+    auto deviceIt = params.find("device");
+
+    if (uidIt == params.end() || deviceIt == params.end()) {
+      errorMessage = "SaveDispenseZHeight: Missing required parameters 'uid' and 'device'";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    std::string device = deviceIt->second;
+
+    if (!context) {
+      errorMessage = "SaveDispenseZHeight: Context not available";
+      return false;
+    }
+
+    double dispenseZ = static_cast<double>(context->GetNumeric("dispense_z", 0.0f));
+
+    if (!SaveDispenseZHeight(uid, device, dispenseZ, errorMessage)) {
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Saved dispense Z height: " + std::to_string(dispenseZ) + " mm for UID: " + uid,
+                    "CalibrationHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
     errorMessage = "Unknown calibration method: " + methodName;
+    return false;
+  }
+}
+
+// =============================================================================
+// DISPENSE Z HEIGHT HELPER METHODS
+// =============================================================================
+
+std::string CalibrationCommandHandler::GetDispenseZFilePath(const std::string& uid) const
+{
+  // Use SYSTEM folder for dispense Z heights
+  return "config/SYSTEM/dispense_z_" + uid + ".json";
+}
+
+bool CalibrationCommandHandler::SaveDispenseZHeight(
+  const std::string& uid,
+  const std::string& deviceName,
+  double dispenseZ,
+  std::string& errorMessage)
+{
+  try {
+    // Ensure SYSTEM directory exists
+    if (!EnsureCalibrationDirectoryExists(errorMessage)) {
+      return false;
+    }
+
+    std::string filePath = GetDispenseZFilePath(uid);
+
+    // Create JSON structure
+    json data;
+    data["uid"] = uid;
+    data["device"] = deviceName;
+    data["dispense_z"] = dispenseZ;
+    data["timestamp"] = GetCurrentDateTime(false);
+    data["date"] = GetCurrentDateTime(true);
+
+    // Write to file
+    std::ofstream file(filePath);
+    if (!file.is_open()) {
+      errorMessage = "Failed to open file for writing: " + filePath;
+      return false;
+    }
+
+    file << data.dump(2);  // Pretty print with 2-space indentation
+    file.close();
+
+    if (m_logger) {
+      m_logger->Info("Saved dispense Z height to: " + filePath, "CalibrationHandler");
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    errorMessage = "Exception saving dispense Z height: " + std::string(e.what());
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::LoadDispenseZHeight(
+  const std::string& uid,
+  double& dispenseZ)
+{
+  try {
+    std::string filePath = GetDispenseZFilePath(uid);
+
+    if (!std::filesystem::exists(filePath)) {
+      return false;  // File doesn't exist
+    }
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+      return false;
+    }
+
+    json data;
+    file >> data;
+    file.close();
+
+    // Extract dispense Z height
+    if (data.contains("dispense_z")) {
+      dispenseZ = data["dispense_z"].get<double>();
+      return true;
+    }
+
+    return false;
+  }
+  catch (const std::exception& e) {
+    if (m_logger) {
+      m_logger->Error("Exception loading dispense Z height: " + std::string(e.what()), "CalibrationHandler");
+    }
     return false;
   }
 }
