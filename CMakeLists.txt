@@ -382,6 +382,7 @@ set(SOURCES
     include/AppUI/MainWindow.cpp
     include/AppUI/TopBar.cpp
     include/AppUI/DarkTheme.cpp
+    include/AppUI/ConnectionSplashScreen.cpp
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
@@ -537,6 +538,7 @@ set(HEADERS
     include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
     include/AppUI/DarkTheme.h
+    include/AppUI/ConnectionSplashScreen.h
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h
     include/context/ApplicationContext.h

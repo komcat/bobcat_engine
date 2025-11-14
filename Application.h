@@ -21,6 +21,7 @@ class CameraManager;
 class LogManager;
 class DataStore;
 class TcpClientManager;
+class ConnectionSplashScreen;  // ✅ NEW: Splash screen for hardware connection
 
 class Application : public QObject
 {
@@ -65,18 +66,21 @@ private:
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
 
-  void testMotionCommands();   
-  void testIOCommands();      
-  void testPneumaticCommands();  
-  void testSequenceEngine();  
-  void testPneumaticSequence();  
+  void testMotionCommands();
+  void testIOCommands();
+  void testPneumaticCommands();
+  void testSequenceEngine();
+  void testPneumaticSequence();
   void testScanController();            // ✅ ADD THIS (optional)
 
+  // ✅ NEW: Background hardware connection
+  void connectHardwareAsync();
 
   void shutdownManagers();
 
   std::unique_ptr<QApplication> m_qApplication;
   std::unique_ptr<MainWindow> m_mainWindow;
+  ConnectionSplashScreen* m_splashScreen;  // ✅ NEW: Connection progress splash
 
   std::unique_ptr<CameraManager> m_cameraManager;
   std::unique_ptr<LogManager> m_logManager;

@@ -22,10 +22,12 @@
 #include "CoordinateSystemManager.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
+#include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
 #include <QSettings>
+#include <QTimer>  // ✅ NEW: For deferred hardware connection
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -46,6 +48,7 @@ Application::Application(int argc, char* argv[])
   , m_initialized(false)
   , m_argc(argc)
   , m_argv(argv)
+  , m_splashScreen(nullptr)  // ✅ NEW: Initialize splash screen pointer
 {
 #ifdef _WIN32
   SetConsoleOutputCP(CP_UTF8);  // ← ADD HERE (inside constructor)
@@ -56,6 +59,12 @@ Application::Application(int argc, char* argv[])
 
 Application::~Application()
 {
+  // Clean up splash screen
+  if (m_splashScreen) {
+    delete m_splashScreen;
+    m_splashScreen = nullptr;
+  }
+
   shutdown();
   std::cout << "[Application] Bobcat Engine destroyed" << std::endl;
 }
@@ -163,8 +172,25 @@ bool Application::initialize()
     initializeManagers();
     createMainWindow();
 
+    // ✅ NEW: Show connection splash screen and connect hardware in background
+    if (!m_context.simulationMode) {
+      // Create and show splash screen
+      m_splashScreen = new ConnectionSplashScreen();
+      m_splashScreen->show();
+      m_splashScreen->raise();
+      m_splashScreen->activateWindow();
+
+      // Use QTimer to defer hardware connection until after event loop starts
+      QTimer::singleShot(100, [this]() {
+        connectHardwareAsync();
+      });
+      std::cout << "[Application] Hardware connections scheduled for background (with splash screen)" << std::endl;
+    } else {
+      std::cout << "[Application] Simulation mode: Hardware connections skipped" << std::endl;
+    }
+
     m_initialized = true;
-    std::cout << "[Application] Initialization complete" << std::endl;
+    std::cout << "[Application] Initialization complete (UI shown, hardware connecting in background)" << std::endl;
 
     return true;
   }
@@ -265,11 +291,9 @@ void Application::initializeTcpClientManager()
     m_logManager->Warning("No TCP client config found - using empty config", "Application");
   }
 
-  // Auto-connect if config was loaded (skip in simulation mode)
-  if (tcpConfigLoaded && !m_context.simulationMode) {
-    m_tcpClientManager->ConnectAutoClients();
-  } else if (m_context.simulationMode) {
-    m_logManager->Info("Simulation mode: Skipping TCP auto-connect", "Application");
+  // ✅ DEFERRED: TCP auto-connect moved to connectHardwareAsync()
+  if (tcpConfigLoaded) {
+    m_logManager->Info("TCP client connection deferred to background thread", "Application");
   }
 }
 
@@ -304,28 +328,15 @@ void Application::initializeCameraManager()
     if (configManager->InitializeCameraManager(*m_cameraManager)) {
       m_logManager->Info("CameraManager initialized from: " + configPath, "Application");
 
-      // Connect all cameras with delay (skip in simulation mode)
-      if (!m_context.simulationMode) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        m_cameraManager->ConnectAllCameras();
-      } else {
-        m_logManager->Info("Simulation mode: Skipping camera connections", "Application");
-      }
+      // ✅ DEFERRED: Camera connection moved to connectHardwareAsync()
+      m_logManager->Info("Camera connection deferred to background thread", "Application");
     }
     else {
       m_logManager->Warning("Failed to initialize CameraManager with config", "Application");
     }
   }
 
-  // Skip camera operations in simulation mode
-  if (!m_context.simulationMode) {
-    m_cameraManager->StartBroadcastSystem();
-    m_cameraManager->StartGrabbingAll();
-  } else {
-    m_logManager->Info("Simulation mode: Skipping camera broadcast and grabbing", "Application");
-  }
-
-  m_logManager->Info("CameraManager initialized", "Application");
+  m_logManager->Info("CameraManager initialized (connections deferred)", "Application");
 }
 
 void Application::initializeMotionManager()
@@ -366,25 +377,17 @@ void Application::initializeMotionManager()
       "Application"
     );
 
-    // 3. Auto-connect enabled devices (skip in simulation mode)
-    if (!m_context.simulationMode) {
-      int connectedCount = m_motionManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " devices",
-        "Application"
-      );
-    } else {
-      m_logManager->Info("Simulation mode: Skipping motion device connections", "Application");
-    }
+    // ✅ DEFERRED: Motion device connection moved to connectHardwareAsync()
+    m_logManager->Info("Motion device connection deferred to background thread", "Application");
 
 		/*
 		TODO: Set logger for motion manager if needed
     ILogger* logger = m_logManager.get();
 		m_motionManager->SetLogger(logger);
-    
+
     */
 
-    m_logManager->Info("Motion manager initialized successfully", "Application");
+    m_logManager->Info("Motion manager initialized (connections deferred)", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(
@@ -500,22 +503,10 @@ void Application::initializeIOManager()
       "Application"
     );
 
-    // 4. Auto-connect enabled devices (skip in simulation mode)
-    if (!m_context.simulationMode) {
-      int connectedCount = m_ioManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " IO devices",
-        "Application"
-      );
+    // ✅ DEFERRED: IO device connection and polling moved to connectHardwareAsync()
+    m_logManager->Info("IO device connection and polling deferred to background thread", "Application");
 
-      // 5. Start automatic polling (100ms interval)
-      m_ioManager->StartPolling(100);
-      m_logManager->Info("IO polling started (100ms interval)", "Application");
-    } else {
-      m_logManager->Info("Simulation mode: Skipping IO device connections and polling", "Application");
-    }
-
-    m_logManager->Info("IO manager initialized successfully", "Application");
+    m_logManager->Info("IO manager initialized (connections deferred)", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(
@@ -579,6 +570,104 @@ void Application::testIOCommands()
   m_logManager->Info("======================================", "IO Test");
   m_logManager->Info("IO Test completed!", "IO Test");
   m_logManager->Info("======================================", "IO Test");
+}
+
+// ============================================================================
+// BACKGROUND HARDWARE CONNECTION
+// ============================================================================
+
+void Application::connectHardwareAsync()
+{
+  std::cout << "\n[Application] ========================================" << std::endl;
+  std::cout << "[Application] BACKGROUND HARDWARE CONNECTION STARTING" << std::endl;
+  std::cout << "[Application] ========================================\n" << std::endl;
+
+  m_logManager->Info("Starting background hardware connections...", "Application");
+
+  try {
+    // 1. Connect TCP Clients
+    if (m_splashScreen) m_splashScreen->updateStatus("TCP Clients", "connecting");
+    if (m_tcpClientManager) {
+      m_logManager->Info("Connecting TCP clients...", "Application");
+      m_tcpClientManager->ConnectAutoClients();
+      if (m_splashScreen) m_splashScreen->updateStatus("TCP Clients", "success");
+    }
+
+    // 2. Connect Cameras
+    if (m_splashScreen) m_splashScreen->updateStatus("Cameras", "connecting");
+    if (m_cameraManager) {
+      m_logManager->Info("Connecting cameras...", "Application");
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      m_cameraManager->ConnectAllCameras();
+      m_cameraManager->StartBroadcastSystem();
+      m_cameraManager->StartGrabbingAll();
+      m_logManager->Info("Cameras connected and broadcasting", "Application");
+      if (m_splashScreen) m_splashScreen->updateStatus("Cameras", "success");
+    }
+
+    // 3. Connect Motion Devices
+    if (m_splashScreen) m_splashScreen->updateStatus("Motion Controllers", "connecting");
+    if (m_motionManager) {
+      m_logManager->Info("Connecting motion controllers...", "Application");
+      int connectedCount = m_motionManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " motion devices",
+        "Application"
+      );
+      if (m_splashScreen) m_splashScreen->updateStatus("Motion Controllers", "success");
+    }
+
+    // 4. Connect IO Devices
+    if (m_splashScreen) m_splashScreen->updateStatus("I/O Devices", "connecting");
+    if (m_ioManager) {
+      m_logManager->Info("Connecting I/O devices...", "Application");
+      int connectedCount = m_ioManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " I/O devices",
+        "Application"
+      );
+
+      // Start polling
+      m_ioManager->StartPolling(100);
+      m_logManager->Info("I/O polling started (100ms interval)", "Application");
+      if (m_splashScreen) m_splashScreen->updateStatus("I/O Devices", "success");
+    }
+
+    // 5. Connect TEC Devices
+    if (m_splashScreen) m_splashScreen->updateStatus("TEC Devices", "connecting");
+    if (m_tecManager) {
+      m_logManager->Info("Connecting TEC devices...", "Application");
+      int connectedCount = m_tecManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " TEC devices",
+        "Application"
+      );
+      if (m_splashScreen) m_splashScreen->updateStatus("TEC Devices", "success");
+    }
+
+    std::cout << "\n[Application] ========================================" << std::endl;
+    std::cout << "[Application] BACKGROUND HARDWARE CONNECTION COMPLETE" << std::endl;
+    std::cout << "[Application] ========================================\n" << std::endl;
+
+    m_logManager->Info("All hardware connections completed successfully", "Application");
+
+    // ✅ Notify splash screen that all connections are complete
+    if (m_splashScreen) {
+      m_splashScreen->onConnectionsComplete();
+    }
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Background hardware connection failed: ") + e.what(),
+      "Application"
+    );
+    std::cerr << "[Application] Background connection error: " << e.what() << std::endl;
+
+    // Close splash on error
+    if (m_splashScreen) {
+      m_splashScreen->close();
+    }
+  }
 }
 
 void Application::shutdownManagers()
@@ -1248,18 +1337,10 @@ void Application::initializeTECManager()
       "Application"
     );
 
-    // 3. Auto-connect enabled devices (skip in simulation mode)
-    if (!m_context.simulationMode) {
-      int connectedCount = m_tecManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " TEC devices",
-        "Application"
-      );
-    } else {
-      m_logManager->Info("Simulation mode: Skipping TEC device connections", "Application");
-    }
+    // ✅ DEFERRED: TEC device connection moved to connectHardwareAsync()
+    m_logManager->Info("TEC device connection deferred to background thread", "Application");
 
-    m_logManager->Info("TEC manager initialized successfully", "Application");
+    m_logManager->Info("TEC manager initialized (connections deferred)", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(
