@@ -10,8 +10,8 @@ project("bobcat_engine")
 # ============================================================================
 # Simulation Mode Configuration
 # ============================================================================
-# Option to enable simulation mode (default: ON for development safety)
-option(BOBCAT_SIMULATION "Enable simulation mode (skip hardware connections)" ON)
+# Option to enable simulation mode (default: OFF for hardware mode)
+option(BOBCAT_SIMULATION "Enable simulation mode (skip hardware connections)" OFF)
 
 if(BOBCAT_SIMULATION)
     message(STATUS "========================================")

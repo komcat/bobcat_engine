@@ -131,6 +131,7 @@ private:
   QPushButton* m_executeButton;
   QProgressBar* m_progressBar;
   QLabel* m_programNameLabel;
+  QLabel* m_programPathLabel;  // ✅ ADDED: Display program file path
   QListWidget* m_recipeListWidget;
   QPushButton* m_backButton;
   QCheckBox* m_autoRunNextCheckBox;

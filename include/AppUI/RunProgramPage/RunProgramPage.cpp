@@ -247,6 +247,13 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_programNameLabel->setStyleSheet("font-weight: bold; color: #2196F3;");
   fileLayout->addWidget(m_programNameLabel);
 
+  // ✅ ADD: Program file path label
+  m_programPathLabel = new QLabel("");
+  m_programPathLabel->setWordWrap(true);
+  m_programPathLabel->setStyleSheet("font-size: 9px; color: #888888; font-style: italic;");
+  m_programPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);  // Allow text selection
+  fileLayout->addWidget(m_programPathLabel);
+
   QHBoxLayout* fileButtonLayout = new QHBoxLayout();
   m_loadButton = new QPushButton("Load");
   m_loadButton->setStyleSheet(
@@ -2445,6 +2452,13 @@ void RunProgramPage::updateProgramInfo()
 {
   QString programName = QString::fromStdString(m_programManager->getProgramName());
   m_programNameLabel->setText(programName);
+
+  // ✅ UPDATE: Display program file path
+  if (!m_currentProgramPath.isEmpty()) {
+    m_programPathLabel->setText("Path: " + m_currentProgramPath);
+  } else {
+    m_programPathLabel->setText("");
+  }
 }
 
 void RunProgramPage::updateRecipeList()
@@ -2598,11 +2612,12 @@ void RunProgramPage::loadLastProgramFromSettings()
   }
 
   // ✅ Verify the program belongs to the current product
-  QString expectedPathPrefix = QString("config/%1/programs/").arg(productName);
+  // Support both relative paths (config/PRODUCT/programs/) and absolute paths (.../config/PRODUCT/programs/)
+  QString expectedPathPattern = QString("config/%1/programs/").arg(productName);
 
-  if (!lastProgramPath.startsWith(expectedPathPrefix)) {
+  if (!lastProgramPath.contains(expectedPathPattern)) {
     std::cout << "[RunProgramPage] ⚠️  Last program is from different product - skipping auto-load" << std::endl;
-    std::cout << "[RunProgramPage]   Expected prefix: " << expectedPathPrefix.toStdString() << std::endl;
+    std::cout << "[RunProgramPage]   Expected pattern: " << expectedPathPattern.toStdString() << std::endl;
     std::cout << "[RunProgramPage]   Actual path: " << lastProgramPath.toStdString() << std::endl;
     std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
