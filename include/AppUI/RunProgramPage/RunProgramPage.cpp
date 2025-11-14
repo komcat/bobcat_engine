@@ -6,6 +6,7 @@
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
 #include "ManualAdjustWidget.h"
+#include "UserInputWidget.h"
 #include "ScanControlWidget.h"
 #include "ScanExecutor.h"
 #include "ILogger.h"
@@ -49,8 +50,13 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_currentRecipeIndex(-1)
   , m_executionStack(nullptr)
   , m_promptWidget(nullptr)
+  , m_manualAdjustWidget(nullptr)
+  , m_userInputWidget(nullptr)
   , m_promptEventLoop(nullptr)
   , m_promptResponse(false)
+  , m_manualAdjustResponse(false)
+  , m_userInputAccepted(false)
+  , m_userInputText("")
   , m_scanWidget(nullptr)
   , m_scanExecutor(nullptr)
   , m_dataStore(context->dataStore)
@@ -1104,10 +1110,23 @@ void RunProgramPage::createExecutionWidget()
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RunProgramPage::onManualAdjustResponse);
 
+  // === USER INPUT VIEW (Index 3) ===
+  m_userInputWidget = new UserInputWidget();
+  m_userInputWidget->setStyleSheet(
+    "UserInputWidget { "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
+
+  // Connect user input response
+  connect(m_userInputWidget, &UserInputWidget::responseReceived,
+    this, &RunProgramPage::onUserInputResponse);
+
   // Add all views to stack
   m_executionStack->addWidget(logWidget);              // Index 0: Log
   m_executionStack->addWidget(m_promptWidget);         // Index 1: Prompt
   m_executionStack->addWidget(m_manualAdjustWidget);  // Index 2: Manual Adjust
+  m_executionStack->addWidget(m_userInputWidget);     // Index 3: User Input
   m_executionStack->setCurrentIndex(0);                // Start with log
 
   layout->addWidget(m_executionStack, 1);
@@ -1470,43 +1489,30 @@ void RunProgramPage::onExecuteProgram()
     return m_manualAdjustResponse;
   });
 
-  // Set UserInput callback
+  // Set UserInput callback - uses integrated UserInputWidget
   m_programWorker->setUserInputCallback(
     [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
-    std::pair<bool, std::string> result;
+    // Show the user input widget (must be called on UI thread)
+    QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue]() {
+      // Switch to user input view (Index 3)
+      m_executionStack->setCurrentIndex(3);
 
-    // Check if we're already on the UI thread
-    if (QThread::currentThread() == QApplication::instance()->thread()) {
-      // Already on UI thread - call directly to avoid deadlock
-      bool ok = false;
-      QString text = QInputDialog::getText(
-        this,
+      // Show the user input widget
+      m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
-        QLineEdit::Normal,
-        QString::fromStdString(defaultValue),
-        &ok
+        QString::fromStdString(defaultValue)
       );
-      result.first = ok;
-      result.second = ok ? text.toStdString() : "";
-    } else {
-      // Called from worker thread - use BlockingQueuedConnection
-      QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        bool ok = false;
-        QString text = QInputDialog::getText(
-          this,
-          QString::fromStdString(title),
-          QString::fromStdString(prompt),
-          QLineEdit::Normal,
-          QString::fromStdString(defaultValue),
-          &ok
-        );
-        result.first = ok;
-        result.second = ok ? text.toStdString() : "";
-      }, Qt::BlockingQueuedConnection);
-    }
+    }, Qt::QueuedConnection);
 
-    return result;
+    // Block until user responds (event loop pattern)
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    // Return the stored result
+    return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
   });
 
   // Connect signals
@@ -1858,6 +1864,21 @@ void RunProgramPage::onManualAdjustResponse(bool completed)
 {
   // Store the response
   m_manualAdjustResponse = completed;
+
+  // Switch back to log view
+  m_executionStack->setCurrentIndex(0);
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onUserInputResponse(bool accepted, QString inputText)
+{
+  // Store the response
+  m_userInputAccepted = accepted;
+  m_userInputText = inputText;
 
   // Switch back to log view
   m_executionStack->setCurrentIndex(0);

@@ -364,6 +364,178 @@ bool CameraCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SET EXPOSURE
+  // ============================================================================
+  else if (methodName == "SetExposure") {
+    auto valueIt = params.find("value");
+
+    if (valueIt == params.end()) {
+      errorMessage = "Missing required parameter: value";
+      return false;
+    }
+
+    double exposureValue = 0.0;
+    try {
+      exposureValue = std::stod(valueIt->second);
+    } catch (...) {
+      errorMessage = "Invalid exposure value (must be numeric): " + valueIt->second;
+      return false;
+    }
+
+    // Validate range (1 - 10000 microseconds)
+    if (exposureValue < 1.0 || exposureValue > 10000.0) {
+      errorMessage = "Exposure value out of range (1-10000 microseconds): " + std::to_string(exposureValue);
+      return false;
+    }
+
+    // Get current settings
+    auto settings = cameraManager->GetExposureSettings(deviceName);
+
+    // Automatically disable auto exposure when setting manual value
+    settings.auto_exposure = false;
+    settings.exposure_time = exposureValue;
+
+    // Apply settings
+    if (!cameraManager->ApplyExposureSettings(deviceName, settings)) {
+      errorMessage = "Failed to apply exposure settings to camera: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Disabled auto exposure and set exposure to " + std::to_string(exposureValue) + " μs on camera: " + deviceName, "CameraHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SET GAIN
+  // ============================================================================
+  else if (methodName == "SetGain") {
+    auto valueIt = params.find("value");
+
+    if (valueIt == params.end()) {
+      errorMessage = "Missing required parameter: value";
+      return false;
+    }
+
+    double gainValue = 0.0;
+    try {
+      gainValue = std::stod(valueIt->second);
+    } catch (...) {
+      errorMessage = "Invalid gain value (must be numeric): " + valueIt->second;
+      return false;
+    }
+
+    // Validate range (0.0 - 10.0)
+    if (gainValue < 0.0 || gainValue > 10.0) {
+      errorMessage = "Gain value out of range (0.0-10.0): " + std::to_string(gainValue);
+      return false;
+    }
+
+    // Get current settings
+    auto settings = cameraManager->GetExposureSettings(deviceName);
+
+    // Automatically disable auto gain when setting manual value
+    settings.auto_gain = false;
+    settings.gain = gainValue;
+
+    // Apply settings
+    if (!cameraManager->ApplyExposureSettings(deviceName, settings)) {
+      errorMessage = "Failed to apply gain settings to camera: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Disabled auto gain and set gain to " + std::to_string(gainValue) + " on camera: " + deviceName, "CameraHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SET AUTO EXPOSURE
+  // ============================================================================
+  else if (methodName == "SetAutoExposure") {
+    auto valueIt = params.find("value");
+
+    if (valueIt == params.end()) {
+      errorMessage = "Missing required parameter: value";
+      return false;
+    }
+
+    std::string valueStr = valueIt->second;
+    bool autoEnabled = false;
+
+    // Parse on/off, true/false, 1/0
+    if (valueStr == "on" || valueStr == "true" || valueStr == "1" || valueStr == "ON" || valueStr == "True") {
+      autoEnabled = true;
+    } else if (valueStr == "off" || valueStr == "false" || valueStr == "0" || valueStr == "OFF" || valueStr == "False") {
+      autoEnabled = false;
+    } else {
+      errorMessage = "Invalid auto exposure value (use on/off, true/false, or 1/0): " + valueStr;
+      return false;
+    }
+
+    // Get current settings
+    auto settings = cameraManager->GetExposureSettings(deviceName);
+    settings.auto_exposure = autoEnabled;
+
+    // Apply settings
+    if (!cameraManager->ApplyExposureSettings(deviceName, settings)) {
+      errorMessage = "Failed to apply auto exposure settings to camera: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Set auto exposure to " + std::string(autoEnabled ? "ON" : "OFF") + " on camera: " + deviceName, "CameraHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SET AUTO GAIN
+  // ============================================================================
+  else if (methodName == "SetAutoGain") {
+    auto valueIt = params.find("value");
+
+    if (valueIt == params.end()) {
+      errorMessage = "Missing required parameter: value";
+      return false;
+    }
+
+    std::string valueStr = valueIt->second;
+    bool autoEnabled = false;
+
+    // Parse on/off, true/false, 1/0
+    if (valueStr == "on" || valueStr == "true" || valueStr == "1" || valueStr == "ON" || valueStr == "True") {
+      autoEnabled = true;
+    } else if (valueStr == "off" || valueStr == "false" || valueStr == "0" || valueStr == "OFF" || valueStr == "False") {
+      autoEnabled = false;
+    } else {
+      errorMessage = "Invalid auto gain value (use on/off, true/false, or 1/0): " + valueStr;
+      return false;
+    }
+
+    // Get current settings
+    auto settings = cameraManager->GetExposureSettings(deviceName);
+    settings.auto_gain = autoEnabled;
+
+    // Apply settings
+    if (!cameraManager->ApplyExposureSettings(deviceName, settings)) {
+      errorMessage = "Failed to apply auto gain settings to camera: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Set auto gain to " + std::string(autoEnabled ? "ON" : "OFF") + " on camera: " + deviceName, "CameraHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // CHECK PRESENT
   // ============================================================================
   else if (methodName == "CheckPresent") {

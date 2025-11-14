@@ -13,6 +13,7 @@
 #include "RecipeWorker.h"
 #include "RecipeProgressWidget.h"  // ✅ NEW
 #include "ManualAdjustWidget.h"    // ✅ Manual adjust widget
+#include "../RunProgramPage/UserInputWidget.h"  // ✅ User input widget
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
@@ -52,8 +53,11 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_loadedProductLabel(nullptr)
   , m_progressWidget(nullptr)  // ✅ NEW
   , m_manualAdjustWidget(nullptr)  // ✅ Manual adjust widget
+  , m_userInputWidget(nullptr)     // ✅ User input widget
   , m_promptEventLoop(nullptr)  // ✅ Event loop for blocking
   , m_manualAdjustResponse(false)  // ✅ Initialize response flag
+  , m_userInputAccepted(false)     // ✅ User input accepted
+  , m_userInputText("")            // ✅ User input text
 {
   setupUI();
   setupSequenceEngine();
@@ -683,6 +687,14 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RecipePage::onManualAdjustResponse);
+
+  // Create user input widget (will be shown when needed)
+  m_userInputWidget = new UserInputWidget();
+  m_userInputWidget->setStyleSheet("background-color: #2d2d30;");
+
+  // Connect user input response
+  connect(m_userInputWidget, &UserInputWidget::responseReceived,
+    this, &RecipePage::onUserInputResponse);
 
   clearConfigurationForm();
 }
@@ -1569,7 +1581,7 @@ void RecipePage::setupSequenceEngine()
   }
   );
 
-  // Set text input callback
+  // Set text input callback - uses integrated UserInputWidget (thread-aware)
   m_sequenceEngine->SetUserInputCallback(
     [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
     std::pair<bool, std::string> result;
@@ -1577,31 +1589,52 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      bool ok = false;
-      QString text = QInputDialog::getText(
-        this,
+      // Take the current widget out of the scroll area
+      QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+      // Show the user input widget in the scroll area
+      m_configScrollArea->setWidget(m_userInputWidget);
+      m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
-        QLineEdit::Normal,
-        QString::fromStdString(defaultValue),
-        &ok
+        QString::fromStdString(defaultValue)
       );
-      result.first = ok;
-      result.second = ok ? text.toStdString() : "";
+
+      std::cout << "[RecipePage] Showing user input widget (UI thread)" << std::endl;
+
+      // Process pending events to ensure widget is displayed before blocking
+      QApplication::processEvents();
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        bool ok = false;
-        QString text = QInputDialog::getText(
-          this,
+        // Take the current widget out of the scroll area
+        QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+        // Show the user input widget in the scroll area
+        m_configScrollArea->setWidget(m_userInputWidget);
+        m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
-          QLineEdit::Normal,
-          QString::fromStdString(defaultValue),
-          &ok
+          QString::fromStdString(defaultValue)
         );
-        result.first = ok;
-        result.second = ok ? text.toStdString() : "";
+
+        std::cout << "[RecipePage] Showing user input widget (worker thread)" << std::endl;
+
+        // Block until user responds (event loop pattern)
+        QEventLoop loop;
+        m_promptEventLoop = &loop;
+        loop.exec();
+        m_promptEventLoop = nullptr;
+
+        result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
       }, Qt::BlockingQueuedConnection);
     }
 
@@ -1741,6 +1774,67 @@ void RecipePage::onRunRecipe()
     m_promptEventLoop = nullptr;
 
     return m_manualAdjustResponse;
+  }
+  );
+
+  // ✅ STEP 5: Set UserInput callback (for AskForInput commands like DUT serial number)
+  m_recipeWorker->setUserInputCallback(
+    [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+    std::pair<bool, std::string> result;
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
+      // Take the current widget out of the scroll area
+      QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+      // Show the user input widget in the scroll area
+      m_configScrollArea->setWidget(m_userInputWidget);
+      m_userInputWidget->showInput(
+        QString::fromStdString(title),
+        QString::fromStdString(prompt),
+        QString::fromStdString(defaultValue)
+      );
+
+      std::cout << "[RecipePage] Showing user input widget for RecipeWorker (UI thread)" << std::endl;
+
+      // Process pending events to ensure widget is displayed before blocking
+      QApplication::processEvents();
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+        // Take the current widget out of the scroll area
+        QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+        // Show the user input widget in the scroll area
+        m_configScrollArea->setWidget(m_userInputWidget);
+        m_userInputWidget->showInput(
+          QString::fromStdString(title),
+          QString::fromStdString(prompt),
+          QString::fromStdString(defaultValue)
+        );
+
+        std::cout << "[RecipePage] Showing user input widget for RecipeWorker (worker thread)" << std::endl;
+
+        // Block until user responds (event loop pattern)
+        QEventLoop loop;
+        m_promptEventLoop = &loop;
+        loop.exec();
+        m_promptEventLoop = nullptr;
+
+        result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+      }, Qt::BlockingQueuedConnection);
+    }
+
+    return result;
   }
   );
 
@@ -2426,6 +2520,32 @@ void RecipePage::onManualAdjustResponse(bool completed)
   }
   else {
     std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
+  }
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RecipePage::onUserInputResponse(bool accepted, QString inputText)
+{
+  // Store the user's response
+  m_userInputAccepted = accepted;
+  m_userInputText = inputText;
+
+  std::cout << "[RecipePage] User input response: " << (accepted ? "OK" : "Cancel") << std::endl;
+
+  // Hide the user input widget
+  m_userInputWidget->hideInput();
+
+  // Remove from scroll area
+  m_configScrollArea->takeWidget();
+
+  // Switch back to progress widget if it exists
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_configScrollArea->setWidget(m_progressWidget);
+    std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
   }
 
   // Exit the event loop to unblock the callback

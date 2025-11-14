@@ -16,6 +16,7 @@
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
+#include "version.h"              // Version information
 #include <QVBoxLayout>
 #include <QApplication>
 #include <iostream>
@@ -94,6 +95,10 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
 void MainWindow::setupUI()
 {
+  // Set window title with version
+  QString windowTitle = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
+  setWindowTitle(windowTitle);
+
   // ✅ Apply centralized dark theme globally to all widgets
   setStyleSheet(DarkTheme::getStyleSheet());
 

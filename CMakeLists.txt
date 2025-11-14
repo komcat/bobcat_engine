@@ -5,7 +5,34 @@ if(POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-project("bobcat_engine")
+# ============================================================================
+# Version Configuration
+# ============================================================================
+set(BOBCAT_VERSION_MAJOR 1)
+set(BOBCAT_VERSION_MINOR 0)
+set(BOBCAT_VERSION_BUILD 0)
+
+# Auto-increment build number (optional - can be managed manually or via CI/CD)
+# The build number can be overridden: cmake -DBOBCAT_VERSION_BUILD=123
+if(NOT DEFINED BOBCAT_VERSION_BUILD)
+    set(BOBCAT_VERSION_BUILD 0)
+endif()
+
+project("bobcat_engine" VERSION ${BOBCAT_VERSION_MAJOR}.${BOBCAT_VERSION_MINOR}.${BOBCAT_VERSION_BUILD})
+
+message(STATUS "========================================")
+message(STATUS "  Bobcat Engine Version: ${PROJECT_VERSION}")
+message(STATUS "  Major: ${BOBCAT_VERSION_MAJOR}")
+message(STATUS "  Minor: ${BOBCAT_VERSION_MINOR}")
+message(STATUS "  Build: ${BOBCAT_VERSION_BUILD}")
+message(STATUS "========================================")
+
+# Configure version header
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/include/version.h"
+    @ONLY
+)
 
 # ============================================================================
 # Simulation Mode Configuration
@@ -293,6 +320,7 @@ endif()
 # ============================================================================
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/include  # For generated version.h
     ${CMAKE_SOURCE_DIR}/include/camera
     ${CMAKE_SOURCE_DIR}/include/AppUI
     ${CMAKE_SOURCE_DIR}/include/AppUI/Common
@@ -517,6 +545,7 @@ set(SOURCES
     include/ProgramManager/RecipeExecutionStateMachine.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
+    include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
     include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
     include/motions/scanning/ScanExecutor.cpp
@@ -664,6 +693,7 @@ set(HEADERS
     include/ProgramManager/ProgramManager.h
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
+    include/AppUI/RunProgramPage/UserInputWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h

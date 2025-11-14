@@ -305,6 +305,238 @@ public:
 };
 
 //=============================================================================
+// SET EXPOSURE PLUGIN
+//=============================================================================
+
+class SetExposurePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Exposure";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Set camera exposure time (1-10000 microseconds)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"camera_name", "camera_1"},
+      {"value", "1000"}  // microseconds
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Camera selector
+    widget->addDeviceSelector("camera_name", "Camera", params.at("camera_name"),
+                             static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+    // Exposure value
+    widget->addParameterField("value", "Exposure (1-10000 μs)", params.at("value"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> exposureParams;
+
+    auto it = params.find("value");
+    if (it != params.end()) {
+      exposureParams["value"] = it->second;
+    }
+
+    // Get camera name
+    std::string cameraName = "camera_1";
+    it = params.find("camera_name");
+    if (it != params.end()) {
+      cameraName = it->second;
+    }
+
+    sequence->AddAction(cameraName, "SetExposure", exposureParams);
+  }
+};
+
+//=============================================================================
+// SET GAIN PLUGIN
+//=============================================================================
+
+class SetGainPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Gain";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Set camera gain (0.0-10.0)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"camera_name", "camera_1"},
+      {"value", "1.0"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Camera selector
+    widget->addDeviceSelector("camera_name", "Camera", params.at("camera_name"),
+                             static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+    // Gain value
+    widget->addParameterField("value", "Gain (0.0-10.0)", params.at("value"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> gainParams;
+
+    auto it = params.find("value");
+    if (it != params.end()) {
+      gainParams["value"] = it->second;
+    }
+
+    // Get camera name
+    std::string cameraName = "camera_1";
+    it = params.find("camera_name");
+    if (it != params.end()) {
+      cameraName = it->second;
+    }
+
+    sequence->AddAction(cameraName, "SetGain", gainParams);
+  }
+};
+
+//=============================================================================
+// SET AUTO EXPOSURE PLUGIN
+//=============================================================================
+
+class SetAutoExposurePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Auto Exposure";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Enable or disable auto exposure";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"camera_name", "camera_1"},
+      {"value", "on"}  // on/off
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Camera selector
+    widget->addDeviceSelector("camera_name", "Camera", params.at("camera_name"),
+                             static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+    // Auto exposure value
+    widget->addParameterField("value", "Auto Exposure (on/off)", params.at("value"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> autoExpParams;
+
+    auto it = params.find("value");
+    if (it != params.end()) {
+      autoExpParams["value"] = it->second;
+    }
+
+    // Get camera name
+    std::string cameraName = "camera_1";
+    it = params.find("camera_name");
+    if (it != params.end()) {
+      cameraName = it->second;
+    }
+
+    sequence->AddAction(cameraName, "SetAutoExposure", autoExpParams);
+  }
+};
+
+//=============================================================================
+// SET AUTO GAIN PLUGIN
+//=============================================================================
+
+class SetAutoGainPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Auto Gain";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Enable or disable auto gain";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"camera_name", "camera_1"},
+      {"value", "on"}  // on/off
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Camera selector
+    widget->addDeviceSelector("camera_name", "Camera", params.at("camera_name"),
+                             static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+    // Auto gain value
+    widget->addParameterField("value", "Auto Gain (on/off)", params.at("value"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> autoGainParams;
+
+    auto it = params.find("value");
+    if (it != params.end()) {
+      autoGainParams["value"] = it->second;
+    }
+
+    // Get camera name
+    std::string cameraName = "camera_1";
+    it = params.find("camera_name");
+    if (it != params.end()) {
+      cameraName = it->second;
+    }
+
+    sequence->AddAction(cameraName, "SetAutoGain", autoGainParams);
+  }
+};
+
+//=============================================================================
 // REGISTRATION
 //=============================================================================
 
@@ -326,7 +558,19 @@ namespace {
       registry.RegisterPlugin(std::make_unique<CaptureAndConfirmPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Capture and Confirm (Category: Vision)" << std::endl;
 
-      std::cout << "[CameraProcesses] Registered 4 camera/vision process plugins" << std::endl;
+      registry.RegisterPlugin(std::make_unique<SetExposurePlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Set Exposure (Category: Vision)" << std::endl;
+
+      registry.RegisterPlugin(std::make_unique<SetGainPlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Set Gain (Category: Vision)" << std::endl;
+
+      registry.RegisterPlugin(std::make_unique<SetAutoExposurePlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Set Auto Exposure (Category: Vision)" << std::endl;
+
+      registry.RegisterPlugin(std::make_unique<SetAutoGainPlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Set Auto Gain (Category: Vision)" << std::endl;
+
+      std::cout << "[CameraProcesses] Registered 8 camera/vision process plugins" << std::endl;
     }
   };
 

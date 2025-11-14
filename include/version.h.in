@@ -1,0 +1,16 @@
+// version.h.in - Auto-generated version header
+// This file is configured by CMake - DO NOT EDIT MANUALLY
+#pragma once
+
+#define BOBCAT_VERSION_MAJOR @BOBCAT_VERSION_MAJOR@
+#define BOBCAT_VERSION_MINOR @BOBCAT_VERSION_MINOR@
+#define BOBCAT_VERSION_BUILD @BOBCAT_VERSION_BUILD@
+
+#define BOBCAT_VERSION_STRING "@BOBCAT_VERSION_MAJOR@.@BOBCAT_VERSION_MINOR@.@BOBCAT_VERSION_BUILD@"
+
+namespace BobcatVersion {
+    constexpr int MAJOR = BOBCAT_VERSION_MAJOR;
+    constexpr int MINOR = BOBCAT_VERSION_MINOR;
+    constexpr int BUILD = BOBCAT_VERSION_BUILD;
+    constexpr const char* VERSION_STRING = BOBCAT_VERSION_STRING;
+}

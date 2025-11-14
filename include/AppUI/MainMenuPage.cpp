@@ -5,6 +5,7 @@
 #include "FileSelectorDialog.h"
 #include "CreateProductDialog.h"
 #include "ProductSelectorDialog.h"
+#include "version.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -38,8 +39,9 @@ void MainMenuPage::setupUI()
   mainLayout->setContentsMargins(50, 50, 50, 50);
   mainLayout->setSpacing(30);
 
-  // Title
-  QLabel* titleLabel = new QLabel("Bobcat Engine");
+  // Title with version
+  QString titleText = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
+  QLabel* titleLabel = new QLabel(titleText);
   titleLabel->setAlignment(Qt::AlignCenter);
   titleLabel->setStyleSheet(
     "QLabel { "

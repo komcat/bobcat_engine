@@ -24,6 +24,7 @@ class ProcessConfigWidget;
 class RecipeWorker;
 class RecipeProgressWidget;  // ✅ NEW
 class ManualAdjustWidget;    // ✅ Manual adjust widget
+class UserInputWidget;       // ✅ User input widget
 class TransformationMatrixLoader;
 
 class RecipePage : public QWidget
@@ -95,6 +96,9 @@ private slots:
                           bool enableX, bool enableY, bool enableZ);
   void onManualAdjustResponse(bool completed);
 
+  // User input handling
+  void onUserInputResponse(bool accepted, QString inputText);
+
   // User prompt handling
   void onShowUserPrompt(QString title, QString message, bool allowCancel);
   void onUserPromptResponse(bool confirmed);
@@ -162,6 +166,7 @@ private:
   ProcessConfigWidget* m_currentConfigWidget;  // Config widget
   QPointer<RecipeProgressWidget> m_progressWidget;  // ✅ Safe pointer that auto-nulls when deleted
   ManualAdjustWidget* m_manualAdjustWidget;         // ✅ Manual adjust widget
+  UserInputWidget* m_userInputWidget;               // ✅ User input widget
 
   QPushButton* m_backButton;
   RecipeWorker* m_recipeWorker;
@@ -172,5 +177,7 @@ private:
 
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_manualAdjustResponse;       // Store manual adjust response
+  bool m_userInputAccepted;          // Store user input accepted status
+  QString m_userInputText;           // Store user input text
   bool m_userPromptResponse;         // Store user prompt response
 };

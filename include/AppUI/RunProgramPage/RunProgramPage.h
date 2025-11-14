@@ -20,6 +20,7 @@ class ProgramWorker;
 class ProcessSequenceFactory;
 class UserPromptWidget;
 class ManualAdjustWidget;
+class UserInputWidget;
 class ScanControlWidget;
 class ScanExecutor;
 class TransformationMatrixLoader;
@@ -86,6 +87,9 @@ private slots:
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                           bool enableX, bool enableY, bool enableZ);
   void onManualAdjustResponse(bool completed);
+
+  // User input handling
+  void onUserInputResponse(bool accepted, QString inputText);
 
   // Scanning integration (refactored)
   void onScanRequested(QString deviceName, bool isCoarse, QString channel);
@@ -165,12 +169,15 @@ private:
   QTimer* m_channelRefreshTimer;  // ✅ ADDED: Periodic refresh of DataStore channels
 
   // Prompt system
-  QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust
+  QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust/input
   UserPromptWidget* m_promptWidget;
   ManualAdjustWidget* m_manualAdjustWidget;
+  UserInputWidget* m_userInputWidget;
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_promptResponse;             // Store user's response
   bool m_manualAdjustResponse;       // Store manual adjust response
+  bool m_userInputAccepted;          // Store user input accepted status
+  QString m_userInputText;           // Store user input text
 
   // State
   QString m_currentProgramPath;
