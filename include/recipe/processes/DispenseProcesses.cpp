@@ -13,6 +13,9 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <filesystem>
+#include <QCheckBox>
+#include <QMessageBox>
 
 //=============================================================================
 // DISPENSE PLUGIN
@@ -42,7 +45,8 @@ public:
       {"dispense_interval_ms", "300"},
       {"velocity_approach", "20.0"},
       {"safety_height", "1.0"},
-      {"velocity_safety", "5.0"}
+      {"velocity_safety", "5.0"},
+      {"auto_confirm", "false"}  // Auto-confirm after first-time setup
     };
   }
 
@@ -86,6 +90,55 @@ public:
 
     widget->addParameterField("velocity_safety", "Safety Velocity (mm/s)",
                              getParam("velocity_safety"));
+
+    // Auto-confirm checkbox
+    widget->addCheckboxParameter("auto_confirm", "Auto-confirm (skip manual confirmations)",
+                                getParam("auto_confirm"),
+                                "Automatically confirm all prompts after first-time setup. "
+                                "Only works if camera position, Z-height, and needle offset are calibrated.");
+
+    // ✅ Add validation when user toggles auto_confirm checkbox
+    QCheckBox* autoConfirmCheckbox = widget->getCheckbox("auto_confirm");
+    if (autoConfirmCheckbox) {
+      // Add custom validation connection (don't disconnect existing signals)
+      QObject::connect(autoConfirmCheckbox, &QCheckBox::clicked, widget,
+        [autoConfirmCheckbox, instance](bool checked) {
+        if (checked) {
+          // User is trying to enable auto-confirm - validate setup
+          std::string uid = instance->uniqueId;
+          std::string navigationFile = "config/SYSTEM/navigation_" + uid + ".json";
+          std::string zHeightFile = "config/SYSTEM/dispense_z_" + uid + ".json";
+          std::string systemOffsetFile = "config/SYSTEM/needlexyoffset.json";
+
+          bool offsetExists = std::filesystem::exists(systemOffsetFile);
+          bool navigationExists = std::filesystem::exists(navigationFile);
+          bool zHeightExists = std::filesystem::exists(zHeightFile);
+          bool setupComplete = offsetExists && navigationExists && zHeightExists;
+
+          if (!setupComplete) {
+            // Setup incomplete - uncheck it
+            autoConfirmCheckbox->setChecked(false);
+
+            // Update tooltip to show what's missing
+            QString tooltipMsg = "⚠️ Setup incomplete - auto-confirm disabled\n\nMissing:\n";
+            if (!offsetExists) tooltipMsg += "  • Camera-to-Needle offset\n";
+            if (!navigationExists) tooltipMsg += "  • Camera position (UID: " + QString::fromStdString(uid) + ")\n";
+            if (!zHeightExists) tooltipMsg += "  • Z-height (UID: " + QString::fromStdString(uid) + ")\n";
+            tooltipMsg += "\nRun this process once manually to complete setup.";
+            autoConfirmCheckbox->setToolTip(tooltipMsg);
+
+            std::cout << "[DispensePlugin] ⚠️ Auto-confirm disabled - setup incomplete for UID: " << uid << std::endl;
+          } else {
+            // Setup complete - update tooltip to show success
+            autoConfirmCheckbox->setToolTip(
+              "✅ Setup complete!\n\n"
+              "Auto-confirm enabled - all prompts will be skipped.\n"
+              "Camera position, Z-height, and needle offset are calibrated.");
+            std::cout << "[DispensePlugin] ✅ Auto-confirm enabled - setup complete for UID: " << uid << std::endl;
+          }
+        }
+      });
+    }
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -106,9 +159,45 @@ public:
     std::string velocityApproach = getParam("velocity_approach");
     std::string safetyHeight = getParam("safety_height");
     std::string velocitySafety = getParam("velocity_safety");
+    bool autoConfirm = (getParam("auto_confirm") == "true");
 
     // Get the process instance UID for unique dispense position files
     std::string uid = step->uniqueId;
+
+    // =========================================================================
+    // SETUP VALIDATION: Check if all calibration files exist for auto-confirm
+    // =========================================================================
+    bool setupComplete = false;
+
+    if (autoConfirm) {
+      // Check if all required calibration files exist
+      std::string navigationFile = "config/SYSTEM/navigation_" + uid + ".json";
+      std::string zHeightFile = "config/SYSTEM/dispense_z_" + uid + ".json";  // ✅ Fixed: no "_height"
+      std::string systemOffsetFile = "config/SYSTEM/needlexyoffset.json";  // ✅ Fixed: lowercase "xy", no "Camera"
+
+      bool offsetExists = std::filesystem::exists(systemOffsetFile);
+      bool navigationExists = std::filesystem::exists(navigationFile);
+      bool zHeightExists = std::filesystem::exists(zHeightFile);
+
+      setupComplete = offsetExists && navigationExists && zHeightExists;
+
+      if (setupComplete) {
+        std::cout << "[DispensePlugin] ✅ Setup complete - auto-confirm enabled for UID: " << uid << std::endl;
+      } else {
+        std::cout << "[DispensePlugin] ⚠️ Setup incomplete - auto-confirm disabled:" << std::endl;
+        if (!offsetExists) std::cout << "  - Missing: Camera-to-Needle offset" << std::endl;
+        if (!navigationExists) std::cout << "  - Missing: Navigation position (UID: " << uid << ")" << std::endl;
+        if (!zHeightExists) std::cout << "  - Missing: Dispense Z-height (UID: " << uid << ")" << std::endl;
+      }
+    }
+
+    // Determine if we should auto-accept prompts
+    std::string autoAcceptValue = (autoConfirm && setupComplete) ? "true" : "false";
+
+    // Log auto-confirm mode status
+    if (autoConfirm && setupComplete) {
+      std::cout << "[DispensePlugin] 🚀 FULL AUTO MODE - Zero interaction, all prompts skipped" << std::endl;
+    }
 
     // =========================================================================
     // STEP 1: LOAD OR CREATE CAMERA DISPENSING POSITION
@@ -120,12 +209,15 @@ public:
     //   - Pneumatic slide: check config/pneumatic_slides.json
     //   - IO device: check config/io_devices.json
 
-    sequence->AddAction("system", "UserPrompt", {
-      {"title", "Dispense Process Starting"},
-      {"message", "Starting automated dispense process.\n\n"
-                  "System will guide you through positioning."},
-      {"blocking", "false"}
-    });
+    // Only show starting notification if NOT in auto-confirm mode
+    if (!autoConfirm || !setupComplete) {
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "Dispense Process Starting"},
+        {"message", "Starting automated dispense process.\n\n"
+                    "System will guide you through positioning."},
+        {"blocking", "false"}
+      });
+    }
 
     // Load existing dispense camera position (if exists)
     sequence->AddAction("calibration", "LoadExistingCalibration", {
@@ -145,7 +237,8 @@ public:
                     "OK: Auto-navigate to saved position\n"
                     "Cancel: Position manually"},
         {"blocking", "true"},
-        {"allow_cancel", "true"}
+        {"allow_cancel", "true"},
+        {"auto_accept", autoAcceptValue}
       });
 
       // User chose to use previous position
@@ -164,28 +257,35 @@ public:
     }
     sequence->EndIf();
 
-    // Manual adjust to position camera (either from scratch or to confirm auto-nav)
-    sequence->AddAction("system", "ManualAdjust", {
-      {"message", "Position camera over desired dispensing location.\n\n"
-                  "Adjust as needed, then click OK."},
-      {"device_name", device},
-      {"step_size_um", "100"},
-      {"enable_x", "true"},
-      {"enable_y", "true"},
-      {"enable_z", "true"}
-    });
+    // ✅ Only show manual adjust if NOT in auto-confirm mode with complete setup
+    // When auto-confirm is enabled and position exists, skip manual adjustment
+    if (!setupComplete || !autoConfirm) {
+      // Manual adjust to position camera (either from scratch or to confirm auto-nav)
+      sequence->AddAction("system", "ManualAdjust", {
+        {"message", "Position camera over desired dispensing location.\n\n"
+                    "Adjust as needed, then click OK."},
+        {"device_name", device},
+        {"step_size_um", "100"},
+        {"enable_x", "true"},
+        {"enable_y", "true"},
+        {"enable_z", "true"}
+      });
 
-    // Capture camera position - this is physical dispensing position
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", device},
-      {"key_prefix", "camera"}
-    });
+      // Capture camera position - this is physical dispensing position
+      sequence->AddAction("calibration", "CapturePosition", {
+        {"device", device},
+        {"key_prefix", "camera"}
+      });
 
-    // Save navigation data for future use
-    sequence->AddAction("calibration", "SaveNavigationData", {
-      {"uid", uid},
-      {"device", device}
-    });
+      // Save navigation data for future use
+      sequence->AddAction("calibration", "SaveNavigationData", {
+        {"uid", uid},
+        {"device", device}
+      });
+    } else {
+      // Auto-confirm mode with complete setup - position already loaded and navigated
+      std::cout << "[DispensePlugin] Skipping manual adjust - using saved position (auto-confirm enabled)" << std::endl;
+    }
 
     // =========================================================================
     // STEP 2: LOAD CAMERA-TO-NEEDLE OFFSET AND CALCULATE NEEDLE POSITION
@@ -362,7 +462,8 @@ public:
                   "OK: Proceed with dispense\n"
                   "Cancel: Abort dispense"},
       {"blocking", "true"},
-      {"allow_cancel", "true"}
+      {"allow_cancel", "true"},
+      {"auto_accept", autoAcceptValue}
     });
 
     // Check if user confirmed
@@ -383,16 +484,19 @@ public:
         {"state", "false"}
       });
 
-      sequence->AddAction("system", "UserPrompt", {
-        {"title", "✅ Dispense Complete"},
-        {"message", "Dispensing completed successfully.\n\n"
-                    "Retracting and returning to safe position."},
-        {"blocking", "false"}
-      });
+      // Only show completion notification if NOT in auto-confirm mode
+      if (!autoConfirm || !setupComplete) {
+        sequence->AddAction("system", "UserPrompt", {
+          {"title", "✅ Dispense Complete"},
+          {"message", "Dispensing completed successfully.\n\n"
+                      "Retracting and returning to safe position."},
+          {"blocking", "false"}
+        });
+      }
     }
     sequence->Else();
     {
-      // User cancelled
+      // User cancelled - always show this (shouldn't happen in auto-confirm mode)
       sequence->AddAction("system", "UserPrompt", {
         {"title", "❌ Dispense Cancelled"},
         {"message", "Dispense operation cancelled by user.\n\n"

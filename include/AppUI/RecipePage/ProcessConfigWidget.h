@@ -43,6 +43,12 @@ public:
   std::string getNickname() const;
   bool isEnabled() const;
 
+  // ✅ Get checkbox widget by key (for custom validation)
+  QCheckBox* getCheckbox(const std::string& key) const {
+    auto it = m_parameterCheckboxes.find(key);
+    return (it != m_parameterCheckboxes.end()) ? it->second : nullptr;
+  }
+
 signals:
   void parameterChanged();
   void nicknameChanged(const QString& nickname);

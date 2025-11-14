@@ -90,6 +90,7 @@ bool SystemCommandHandler::ExecuteCommand(
     auto messageIt = params.find("message");
     auto blockingIt = params.find("blocking");
     auto allowCancelIt = params.find("allow_cancel");
+    auto autoAcceptIt = params.find("auto_accept");
 
     if (titleIt == params.end() || messageIt == params.end()) {
       errorMessage = "Missing required parameters: title, message";
@@ -100,6 +101,22 @@ bool SystemCommandHandler::ExecuteCommand(
     std::string message = messageIt->second;
     bool blocking = (blockingIt != params.end() && blockingIt->second == "true");
     bool allowCancel = (allowCancelIt != params.end() && allowCancelIt->second == "true");
+    bool autoAccept = (autoAcceptIt != params.end() && autoAcceptIt->second == "true");
+
+    // ✅ AUTO-ACCEPT MODE: Skip user interaction entirely
+    if (autoAccept) {
+      if (m_logger) {
+        m_logger->Info("Auto-accepting prompt (auto_confirm enabled): " + title, "SystemHandler");
+      }
+
+      // Store auto-accept result in context
+      if (context) {
+        context->SetValue("user_prompt_result", "OK", "system", "UserPrompt");
+        context->SetValue("user_confirmed", true, "system", "UserPrompt");
+      }
+
+      return true;  // Auto-accept and continue
+    }
 
     if (!m_userPromptCallback) {
       errorMessage = "UserPrompt callback not configured";

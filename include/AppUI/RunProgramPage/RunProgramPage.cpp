@@ -2573,44 +2573,56 @@ void RunProgramPage::saveRecentPrograms(const QString& programPath)
 
 void RunProgramPage::loadLastProgramFromSettings()
 {
+  std::cout << "[RunProgramPage] ========== AUTO-LOAD LAST PROGRAM ==========" << std::endl;
+
   // ✅ Check if product is loaded first
   if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
-    std::cout << "[RunProgramPage] No product loaded - skipping auto-load of last program" << std::endl;
+    std::cout << "[RunProgramPage] ❌ No product loaded - skipping auto-load of last program" << std::endl;
+    std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
   }
+
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  std::cout << "[RunProgramPage] Current product: " << productName.toStdString() << std::endl;
 
   QSettings settings("Fabrinet", "BobcatEngine");
   QString lastProgramPath = settings.value("RunProgramPage/lastProgram", "").toString();
 
+  std::cout << "[RunProgramPage] Saved program path: "
+            << (lastProgramPath.isEmpty() ? "(none)" : lastProgramPath.toStdString()) << std::endl;
+
   if (lastProgramPath.isEmpty()) {
-    std::cout << "[RunProgramPage] No last program found in settings" << std::endl;
+    std::cout << "[RunProgramPage] ℹ️  No last program found in settings - load a program once to enable auto-load" << std::endl;
+    std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
   }
 
   // ✅ Verify the program belongs to the current product
-  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
   QString expectedPathPrefix = QString("config/%1/programs/").arg(productName);
 
   if (!lastProgramPath.startsWith(expectedPathPrefix)) {
-    std::cout << "[RunProgramPage] Last program is from different product - skipping auto-load" << std::endl;
-    std::cout << "  Last program: " << lastProgramPath.toStdString() << std::endl;
-    std::cout << "  Current product: " << productName.toStdString() << std::endl;
+    std::cout << "[RunProgramPage] ⚠️  Last program is from different product - skipping auto-load" << std::endl;
+    std::cout << "[RunProgramPage]   Expected prefix: " << expectedPathPrefix.toStdString() << std::endl;
+    std::cout << "[RunProgramPage]   Actual path: " << lastProgramPath.toStdString() << std::endl;
+    std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
   }
 
   // Check if file still exists
   if (!QFile::exists(lastProgramPath)) {
-    std::cout << "[RunProgramPage] Last program file no longer exists: "
+    std::cout << "[RunProgramPage] ❌ Last program file no longer exists: "
               << lastProgramPath.toStdString() << std::endl;
+    std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
   }
 
-  std::cout << "[RunProgramPage] Auto-loading last program: "
+  std::cout << "[RunProgramPage] ✅ Auto-loading last program: "
             << lastProgramPath.toStdString() << std::endl;
 
   // Load the program
   if (!m_programManager->loadProgram(lastProgramPath.toStdString())) {
-    std::cout << "[RunProgramPage] Failed to auto-load last program" << std::endl;
+    std::cout << "[RunProgramPage] ❌ Failed to auto-load last program" << std::endl;
+    std::cout << "[RunProgramPage] ===============================================" << std::endl;
     return;
   }
 
@@ -2622,6 +2634,7 @@ void RunProgramPage::loadLastProgramFromSettings()
   // ✅ IMPORTANT: Also update the program name edit field in the edit widget
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
-  std::cout << "[RunProgramPage] Successfully auto-loaded: "
+  std::cout << "[RunProgramPage] ✅ Successfully auto-loaded: "
             << m_programManager->getProgramName() << std::endl;
+  std::cout << "[RunProgramPage] ===============================================" << std::endl;
 }

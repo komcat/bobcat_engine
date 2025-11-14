@@ -199,9 +199,9 @@ void Application::initializeManagers()
     initializePowerSupplySystem();  // ✅ MOVED BEFORE SequenceEngine
     initializeSMUSystem();  // ✅ ADD SMU System initialization
     initializeAuxWindowManager();  // ✅ MOVED HERE: Initialize before SequenceEngine so handler gets valid pointer
+		initializeProductPositionManager();	// ✅ CRITICAL: Must be BEFORE SequenceEngine so MotionCommandHandler gets valid pointer
     initializeSequenceEngine();  // ✅ ADD THIS LAST (needs all managers initialized)
     initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
-		initializeProductPositionManager();	// ✅ ADD THIS
     initializeCoordinateSystemManager();
 
     // Optional: run test commands to verify managers
