@@ -53,6 +53,11 @@ void RecipeWorker::setManualAdjustCallback(ManualAdjustCallback callback)
   m_manualAdjustCallback = callback;
 }
 
+void RecipeWorker::setUserInputCallback(UserInputCallback callback)
+{
+  m_userInputCallback = callback;
+}
+
 void RecipeWorker::run()
 {
   try {
@@ -152,6 +157,25 @@ void RecipeWorker::run()
       }
       );
       emit logMessage("ManualAdjust auto-accept mode enabled");
+    }
+
+    // ✅ Step 4.6: Set up UserInput callback
+    if (m_userInputCallback) {
+      // User provided callback - use it
+      m_engine->SetUserInputCallback(m_userInputCallback);
+      emit logMessage("UserInput callback configured");
+    }
+    else {
+      // No callback - return empty string (fail the input)
+      m_engine->SetUserInputCallback(
+        [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+        emit logMessage(QString("Auto-failing user input (no callback): %1 - %2")
+          .arg(QString::fromStdString(title))
+          .arg(QString::fromStdString(prompt)));
+        return std::make_pair(false, "");  // Auto-fail
+      }
+      );
+      emit logMessage("UserInput auto-fail mode enabled (no callback configured)");
     }
 
     // Count enabled steps

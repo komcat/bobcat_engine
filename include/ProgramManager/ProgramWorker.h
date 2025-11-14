@@ -54,6 +54,14 @@ public:
   )>;
   void setManualAdjustCallback(ManualAdjustCallback callback);
 
+  // Set callback for user input (optional)
+  using UserInputCallback = std::function<std::pair<bool, std::string>(
+    const std::string& title,
+    const std::string& prompt,
+    const std::string& defaultValue
+  )>;
+  void setUserInputCallback(UserInputCallback callback);
+
   // ✅ NEW: Configure execution mode
   void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
   void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
@@ -98,6 +106,7 @@ private:
   std::atomic<bool> m_stopRequested;
   UserPromptCallback m_userPromptCallback;
   ManualAdjustCallback m_manualAdjustCallback;
+  UserInputCallback m_userInputCallback;
 
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe

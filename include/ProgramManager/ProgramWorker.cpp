@@ -53,6 +53,11 @@ void ProgramWorker::setManualAdjustCallback(ManualAdjustCallback callback)
   m_manualAdjustCallback = callback;
 }
 
+void ProgramWorker::setUserInputCallback(UserInputCallback callback)
+{
+  m_userInputCallback = callback;
+}
+
 // ✅ NEW: Set execution mode
 void ProgramWorker::setAutoRunMode(bool autoRun)
 {
@@ -460,6 +465,11 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // ✅ Set ManualAdjust callback if available
   if (m_manualAdjustCallback) {
     recipeWorker->setManualAdjustCallback(m_manualAdjustCallback);
+  }
+
+  // ✅ Set UserInput callback if available
+  if (m_userInputCallback) {
+    recipeWorker->setUserInputCallback(m_userInputCallback);
   }
 
   // ✅ Connect RecipeWorker signals to ProgramWorker signals

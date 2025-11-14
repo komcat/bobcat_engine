@@ -511,6 +511,7 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "System",
     "Control Flow",
     "Calibration",
+    "Vision",
     "Dispensing",
     "Aux Window"
   };

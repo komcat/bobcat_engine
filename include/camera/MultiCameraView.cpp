@@ -361,3 +361,13 @@ void MultiCameraView::updateStatusSummary()
 
   std::cout << "[MultiCameraView] Status: " << status.toStdString() << std::endl;
 }
+
+void MultiCameraView::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Update status summary when page is shown to reflect current camera states
+  updateStatusSummary();
+
+  std::cout << "[MultiCameraView] Page shown - refreshed status summary" << std::endl;
+}

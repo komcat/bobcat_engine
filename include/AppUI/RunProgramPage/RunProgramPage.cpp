@@ -22,9 +22,13 @@
 #include <QScrollArea>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QTextEdit>
 #include <QEventLoop>
 #include <QMetaObject>
+#include <QThread>
+#include <QApplication>
 #include <QHeaderView>
 #include <QTableWidgetItem>
 #include <QSettings>
@@ -1361,45 +1365,42 @@ void RunProgramPage::onExecuteProgram()
     }
   }
 
-  // Confirm execution
-  QString programName = QString::fromStdString(m_programManager->getProgramName());
-  QString confirmMsg;
+  // Confirm execution - DISABLED for production (direct execution)
+  // QString programName = QString::fromStdString(m_programManager->getProgramName());
+  // QString confirmMsg;
 
-  if (autoRunMode) {
-    int enabledCount = 0;
-    for (const auto& recipe : m_programManager->getAllRecipes()) {
-      if (recipe->enabled) enabledCount++;
-    }
-    confirmMsg = QString("Execute all %1 enabled recipe(s) in program '%2'?")
-      .arg(enabledCount)
-      .arg(programName);
-  }
-  else {
+  // if (autoRunMode) {
+  //   int enabledCount = 0;
+  //   for (const auto& recipe : m_programManager->getAllRecipes()) {
+  //     if (recipe->enabled) enabledCount++;
+  //   }
+  //   confirmMsg = QString("Execute all %1 enabled recipe(s) in program '%2'?")
+  //     .arg(enabledCount)
+  //     .arg(programName);
+  // }
+  // else {
     const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
-    if (!recipe) {
-      QMessageBox::critical(this, "Error", "Invalid recipe selection");
-      return;
+    if (selectedRecipeIndex >= 0 && recipe) {
+      if (!recipe->enabled) {
+        QMessageBox::warning(this, "Recipe Disabled",
+          QString("Recipe '%1' is disabled. Please enable it first or select a different recipe.")
+          .arg(QString::fromStdString(recipe->displayName)));
+        return;
+      }
     }
 
-    if (!recipe->enabled) {
-      QMessageBox::warning(this, "Recipe Disabled",
-        QString("Recipe '%1' is disabled. Please enable it first or select a different recipe.")
-        .arg(QString::fromStdString(recipe->displayName)));
-      return;
-    }
+  //   confirmMsg = QString("Execute recipe '%1' only?\n\n"
+  //     "Tip: Check 'Auto-run next recipe' to run all recipes.")
+  //     .arg(QString::fromStdString(recipe->displayName));
+  // }
 
-    confirmMsg = QString("Execute recipe '%1' only?\n\n"
-      "Tip: Check 'Auto-run next recipe' to run all recipes.")
-      .arg(QString::fromStdString(recipe->displayName));
-  }
+  // QMessageBox::StandardButton reply = QMessageBox::question(
+  //   this, "Execute Program",
+  //   confirmMsg,
+  //   QMessageBox::Yes | QMessageBox::No
+  // );
 
-  QMessageBox::StandardButton reply = QMessageBox::question(
-    this, "Execute Program",
-    confirmMsg,
-    QMessageBox::Yes | QMessageBox::No
-  );
-
-  if (reply != QMessageBox::Yes) return;
+  // if (reply != QMessageBox::Yes) return;
 
   // Switch to execution view
   showExecutionWidget();
@@ -1467,6 +1468,45 @@ void RunProgramPage::onExecuteProgram()
     m_promptEventLoop = nullptr;
 
     return m_manualAdjustResponse;
+  });
+
+  // Set UserInput callback
+  m_programWorker->setUserInputCallback(
+    [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+    std::pair<bool, std::string> result;
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
+      bool ok = false;
+      QString text = QInputDialog::getText(
+        this,
+        QString::fromStdString(title),
+        QString::fromStdString(prompt),
+        QLineEdit::Normal,
+        QString::fromStdString(defaultValue),
+        &ok
+      );
+      result.first = ok;
+      result.second = ok ? text.toStdString() : "";
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+        bool ok = false;
+        QString text = QInputDialog::getText(
+          this,
+          QString::fromStdString(title),
+          QString::fromStdString(prompt),
+          QLineEdit::Normal,
+          QString::fromStdString(defaultValue),
+          &ok
+        );
+        result.first = ok;
+        result.second = ok ? text.toStdString() : "";
+      }, Qt::BlockingQueuedConnection);
+    }
+
+    return result;
   });
 
   // Connect signals

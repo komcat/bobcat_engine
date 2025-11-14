@@ -51,11 +51,7 @@ void DeviceComboBox::populateDevices()
 
   case DeviceType::Camera:
     if (m_context->cameraManager) {
-      // For now, just use "camera" as single entry
-      // You can extend CameraManager to return multiple camera names
-      devices.push_back("gantry-main");
-      devices.push_back("hex-left");
-      devices.push_back("hex-right");
+      devices = m_context->cameraManager->GetCameraIds();
     }
     break;
 

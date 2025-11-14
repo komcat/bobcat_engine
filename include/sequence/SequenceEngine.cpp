@@ -51,7 +51,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
 
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
   m_dispatcher.RegisterHandler("pneumatic", std::make_unique<PneumaticCommandHandler>());
-  m_dispatcher.RegisterHandler("camera", std::make_unique<CameraCommandHandler>());
+
+  // ✅ UPDATED: Set context on CameraCommandHandler to access currentDUT
+  auto cameraHandler = std::make_unique<CameraCommandHandler>();
+  cameraHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("camera", std::move(cameraHandler));
+
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
   m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
 
@@ -133,11 +138,14 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered " + std::to_string(slides.size()) + " pneumatic slides");
   }
 
-  // Camera (special case - single instance)
+  // Camera devices
   if (m_context->cameraManager) {
-    m_deviceToManagerMap["camera"] = m_context->cameraManager;
-    m_deviceToTypeMap["camera"] = "camera";
-    LogInfo("Registered camera manager");
+    auto cameras = m_context->cameraManager->GetCameraIds();
+    for (const auto& name : cameras) {
+      m_deviceToManagerMap[name] = m_context->cameraManager;
+      m_deviceToTypeMap[name] = "camera";
+    }
+    LogInfo("Registered " + std::to_string(cameras.size()) + " camera devices");
   }
 
   // TEC devices

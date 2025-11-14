@@ -8,6 +8,7 @@
 #include <memory>
 #include <chrono>
 #include <functional>
+#include "CameraFrameData.h"
 
 // Forward declaration
 class DataStore;
@@ -33,7 +34,8 @@ public:
         NONE,
         NUMERIC,
         STRING,
-        BOOLEAN
+        BOOLEAN,
+        IMAGE_FRAME  // ✅ NEW: Store captured camera frames
     };
 
     // Stored value container
@@ -42,6 +44,8 @@ public:
         float numericValue = 0.0f;
         std::string stringValue;
         bool booleanValue = false;
+        std::shared_ptr<CameraFrameData> frameData;  // ✅ NEW: Image frame storage
+        std::string tempFilePath;  // ✅ NEW: Temp file path for saved frame
 
         std::chrono::system_clock::time_point timestamp;
         std::string sourceDevice;   // Device that produced this value
@@ -52,11 +56,13 @@ public:
         Value(float v, const std::string& device = "", const std::string& method = "");
         Value(const std::string& v, const std::string& device = "", const std::string& method = "");
         Value(bool v, const std::string& device = "", const std::string& method = "");
+        Value(const CameraFrameData& frame, const std::string& device = "", const std::string& method = "");  // ✅ NEW
 
         // Conversion helpers
         float AsFloat() const;
         bool AsBool() const;
         std::string AsString() const;
+        std::shared_ptr<CameraFrameData> AsFrameData() const;  // ✅ NEW
     };
 
     SequenceContext();
@@ -75,12 +81,19 @@ public:
                   const std::string& device = "", const std::string& method = "");
     void SetValue(const std::string& key, const Value& value);
 
+    // ✅ NEW: Set captured frame (with optional temp file save)
+    void SetFrameData(const std::string& key, const CameraFrameData& frameData,
+                      bool saveToTempFile = true,
+                      const std::string& device = "", const std::string& method = "");
+
     // Get values
     bool TryGetValue(const std::string& key, Value& outValue) const;
     Value GetValue(const std::string& key) const;
     float GetNumeric(const std::string& key, float defaultValue = 0.0f) const;
     std::string GetString(const std::string& key, const std::string& defaultValue = "") const;
     bool GetBoolean(const std::string& key, bool defaultValue = false) const;
+    std::shared_ptr<CameraFrameData> GetFrameData(const std::string& key) const;  // ✅ NEW
+    std::string GetFrameTempFilePath(const std::string& key) const;  // ✅ NEW
 
     // Check existence
     bool HasValue(const std::string& key) const;
@@ -178,6 +191,9 @@ public:
     // Serialize for logging/debugging
     std::string ToJson() const;
     void SaveToFile(const std::string& filepath) const;
+
+    // ✅ NEW: Generate unique temp file path for captured frames
+    static std::string GenerateTempFilePath(const std::string& cameraName);
 
 private:
     mutable std::mutex m_mutex;

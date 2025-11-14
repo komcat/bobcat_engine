@@ -133,6 +133,12 @@ public:
     std::string getFilePath() const { return filePath_; }
     size_t getEntryCount() const { return entries_.size(); }
 
+    // ✅ NEW: Get image folder path for this DUT
+    std::string getImageFolderPath() const;
+
+    // ✅ NEW: Static helper to get image folder path without loading DUT
+    static std::string getImageFolderPath(const std::string& productName, const std::string& serialNumber);
+
     // JSON serialization
     nlohmann::json toJson() const;
     static DeviceUnderTest fromJson(const nlohmann::json& j);

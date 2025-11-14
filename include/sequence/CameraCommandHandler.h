@@ -3,9 +3,15 @@
 
 #include "ICommandHandler.h"
 
+// Forward declaration
+class ApplicationContext;
+
 class CameraCommandHandler : public ICommandHandler
 {
 public:
+  CameraCommandHandler() : m_context(nullptr) {}
+  CameraCommandHandler(ApplicationContext* context) : m_context(context) {}
+
   bool ExecuteCommand(
     void* manager,
     const std::string& deviceName,
@@ -16,4 +22,9 @@ public:
   ) override;
 
   std::string GetManagerType() const override { return "camera"; }
+
+  void SetContext(ApplicationContext* context) { m_context = context; }
+
+private:
+  ApplicationContext* m_context;
 };

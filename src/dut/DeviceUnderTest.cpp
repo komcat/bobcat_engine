@@ -337,3 +337,15 @@ bool DeviceUnderTest::ensureDirectoryExists(const std::string& path) {
         return false;
     }
 }
+
+// ✅ NEW: Get image folder path for this DUT instance
+std::string DeviceUnderTest::getImageFolderPath() const {
+    return getImageFolderPath(productName_, serialNumber_);
+}
+
+// ✅ NEW: Static helper to get image folder path
+std::string DeviceUnderTest::getImageFolderPath(const std::string& productName, const std::string& serialNumber) {
+    // Build path: data/[product_name]/[serial_number]/images/
+    fs::path path = fs::path("data") / productName / serialNumber / "images";
+    return path.string();
+}

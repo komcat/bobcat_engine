@@ -56,6 +56,14 @@ public:
   )>;
   void setManualAdjustCallback(ManualAdjustCallback callback);
 
+  // Set callback for user input (optional - if not set, returns empty string)
+  using UserInputCallback = std::function<std::pair<bool, std::string>(
+    const std::string& title,
+    const std::string& prompt,
+    const std::string& defaultValue
+  )>;
+  void setUserInputCallback(UserInputCallback callback);
+
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
@@ -81,4 +89,5 @@ private:
   std::atomic<bool> m_stopRequested;
   UserPromptCallback m_userPromptCallback;
   ManualAdjustCallback m_manualAdjustCallback;
+  UserInputCallback m_userInputCallback;
 };

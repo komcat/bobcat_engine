@@ -22,6 +22,9 @@ public:
   explicit MultiCameraView(ApplicationContext* context, QWidget* parent = nullptr);
   ~MultiCameraView();
 
+protected:
+  void showEvent(QShowEvent* event) override;
+
 private slots:
   void onConnectAllClicked();
   void onDisconnectAllClicked();

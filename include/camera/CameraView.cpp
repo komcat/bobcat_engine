@@ -744,6 +744,9 @@ void CameraView::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
+  // Sync with CameraManager state in case camera was connected while page was hidden
+  syncWithManagerState();
+
   // Force repaint of the viewport when shown
   if (m_viewport) {
     m_viewport->forceRefresh();
@@ -771,10 +774,11 @@ void CameraView::syncWithManagerState()
 
   std::cout << "[CameraView] Syncing state for " << m_cameraId
     << " - Connected: " << status.connected
-    << ", Grabbing: " << status.grabbing << std::endl;
+    << ", Grabbing: " << status.grabbing
+    << ", UI Connected: " << m_isConnected << std::endl;
 
-  // If camera is already connected and grabbing, set up the view accordingly
-  if (status.connected && status.grabbing) {
+  // If camera is already connected and grabbing in the manager, but not in UI
+  if (status.connected && status.grabbing && !m_isConnected) {
     std::cout << "[CameraView] Camera already connected - setting up subscriber" << std::endl;
 
     // Create subscriber to receive frames
@@ -819,7 +823,14 @@ void CameraView::syncWithManagerState()
     std::cout << "[CameraView] Sync complete - camera is active" << std::endl;
   }
   else {
-    std::cout << "[CameraView] Camera not connected in manager - staying disconnected" << std::endl;
+    // Camera is not connected or not grabbing in manager
+    std::cout << "[CameraView] Camera not connected in manager" << std::endl;
+
+    // If UI thinks it's connected but manager says it's not, update UI to disconnected
+    if (m_isConnected) {
+      std::cout << "[CameraView] UI was connected but manager is not - updating to disconnected" << std::endl;
+      updateConnectionStatus(false);
+    }
 
     // ✅ Force refresh even when disconnected to show placeholder
     if (m_viewport) {

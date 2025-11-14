@@ -477,6 +477,7 @@ set(SOURCES
     include/recipe/processes/DispenseProcesses.cpp
     include/recipe/processes/SMUProcesses.cpp
     include/recipe/processes/AuxWindowProcesses.cpp
+    include/recipe/processes/CameraProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
     include/recipe/RecipeWorker.cpp
@@ -517,6 +518,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
+    include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
     include/motions/scanning/ScanExecutor.cpp
 )
 
@@ -663,6 +665,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h
+    include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/motions/scanning/ScanExecutor.h

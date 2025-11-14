@@ -6,6 +6,12 @@
 #include <fstream>
 #include <ctime>
 #include <cmath>
+#include <filesystem>
+#include <iostream>
+
+// ✅ For PNG saving via Qt
+#include <QImage>
+#include <QPixmap>
 
 //=============================================================================
 // VALUE IMPLEMENTATION
@@ -57,6 +63,19 @@ SequenceContext::Value::Value(bool v, const std::string& device, const std::stri
 {
 }
 
+// ✅ NEW: CameraFrameData constructor
+SequenceContext::Value::Value(const CameraFrameData& frame, const std::string& device, const std::string& method)
+    : type(ValueType::IMAGE_FRAME)
+    , numericValue(0.0f)
+    , booleanValue(frame.IsValid())
+    , frameData(std::make_shared<CameraFrameData>(frame))
+    , timestamp(std::chrono::system_clock::now())
+    , sourceDevice(device)
+    , sourceMethod(method)
+{
+    stringValue = frame.cameraId + " (" + std::to_string(frame.width) + "x" + std::to_string(frame.height) + ")";
+}
+
 float SequenceContext::Value::AsFloat() const {
     return numericValue;
 }
@@ -73,9 +92,19 @@ std::string SequenceContext::Value::AsString() const {
             return stringValue;
         case ValueType::BOOLEAN:
             return booleanValue ? "true" : "false";
+        case ValueType::IMAGE_FRAME:
+            return stringValue;  // Camera ID and dimensions
         default:
             return "";
     }
+}
+
+// ✅ NEW: AsFrameData helper
+std::shared_ptr<CameraFrameData> SequenceContext::Value::AsFrameData() const {
+    if (type == ValueType::IMAGE_FRAME) {
+        return frameData;
+    }
+    return nullptr;
 }
 
 //=============================================================================
@@ -174,6 +203,104 @@ bool SequenceContext::GetBoolean(const std::string& key, bool defaultValue) cons
         return it->second.AsBool();
     }
     return defaultValue;
+}
+
+// ✅ NEW: Set captured frame data
+void SequenceContext::SetFrameData(const std::string& key, const CameraFrameData& frameData,
+                                    bool saveToTempFile,
+                                    const std::string& device, const std::string& method)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    Value value(frameData, device, method);
+
+    // Save to temp file if requested
+    if (saveToTempFile && frameData.IsValid()) {
+        std::string tempPath = GenerateTempFilePath(frameData.cameraId);
+
+        // Create directory if needed
+        std::filesystem::path path(tempPath);
+        std::filesystem::create_directories(path.parent_path());
+
+        // Create QImage from raw data
+        QImage::Format format;
+        if (frameData.channels == 3) {
+            format = QImage::Format_RGB888;
+        } else if (frameData.channels == 1) {
+            format = QImage::Format_Grayscale8;
+        } else if (frameData.channels == 4) {
+            format = QImage::Format_RGBA8888;
+        } else {
+            std::cerr << "[SequenceContext] Unsupported channel count: " << frameData.channels << std::endl;
+            m_values[key] = value;
+            return;
+        }
+
+        QImage image(
+            frameData.imageData.data(),
+            frameData.width,
+            frameData.height,
+            frameData.width * frameData.channels,
+            format
+        );
+
+        // Save as PNG
+        if (image.save(QString::fromStdString(tempPath), "PNG")) {
+            value.tempFilePath = tempPath;
+            std::cout << "[SequenceContext] Saved frame to temp file: " << tempPath << std::endl;
+        } else {
+            std::cerr << "[SequenceContext] Failed to save frame to: " << tempPath << std::endl;
+        }
+    }
+
+    m_values[key] = value;
+}
+
+// ✅ NEW: Get captured frame data
+std::shared_ptr<CameraFrameData> SequenceContext::GetFrameData(const std::string& key) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_values.find(key);
+    if (it != m_values.end() && it->second.type == ValueType::IMAGE_FRAME) {
+        return it->second.frameData;
+    }
+    return nullptr;
+}
+
+// ✅ NEW: Get temp file path for saved frame
+std::string SequenceContext::GetFrameTempFilePath(const std::string& key) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_values.find(key);
+    if (it != m_values.end() && it->second.type == ValueType::IMAGE_FRAME) {
+        return it->second.tempFilePath;
+    }
+    return "";
+}
+
+// ✅ NEW: Generate unique temp file path
+std::string SequenceContext::GenerateTempFilePath(const std::string& cameraName)
+{
+    // Get current date
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_now;
+    localtime_s(&tm_now, &time_t_now);
+
+    char dateBuffer[32];
+    std::strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &tm_now);
+
+    // Generate unique instance ID using timestamp
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()
+    ).count();
+
+    std::string instanceId = std::to_string(ms);
+
+    // Build path: temp/[date]/[instanceID].png
+    std::filesystem::path tempPath = std::filesystem::path("temp") / dateBuffer / (instanceId + ".png");
+
+    return tempPath.string();
 }
 
 bool SequenceContext::HasValue(const std::string& key) const

@@ -1532,13 +1532,26 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine->SetUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     bool result = false;
-    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
       result = SequencePromptDialog::ShowPrompt(
         QString::fromStdString(title),
         QString::fromStdString(message),
         this
       );
-    }, Qt::BlockingQueuedConnection);
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, title, message, &result]() {
+        result = SequencePromptDialog::ShowPrompt(
+          QString::fromStdString(title),
+          QString::fromStdString(message),
+          this
+        );
+      }, Qt::BlockingQueuedConnection);
+    }
+
     return result;
   }
   );
@@ -1560,7 +1573,10 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine->SetUserInputCallback(
     [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
     std::pair<bool, std::string> result;
-    QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
       bool ok = false;
       QString text = QInputDialog::getText(
         this,
@@ -1572,7 +1588,23 @@ void RecipePage::setupSequenceEngine()
       );
       result.first = ok;
       result.second = ok ? text.toStdString() : "";
-    }, Qt::BlockingQueuedConnection);
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+        bool ok = false;
+        QString text = QInputDialog::getText(
+          this,
+          QString::fromStdString(title),
+          QString::fromStdString(prompt),
+          QLineEdit::Normal,
+          QString::fromStdString(defaultValue),
+          &ok
+        );
+        result.first = ok;
+        result.second = ok ? text.toStdString() : "";
+      }, Qt::BlockingQueuedConnection);
+    }
+
     return result;
   }
   );
@@ -1850,14 +1882,14 @@ void RecipePage::onRunSelectedStep()
       }
     }
 
-    // Show completion message
-    if (success) {
-      QMessageBox::information(this, "Step Completed",
-        QString("Step '%1' executed successfully!").arg(stepNickname));
-    } else {
-      QMessageBox::critical(this, "Step Failed",
-        QString("Step '%1' execution failed.").arg(stepNickname));
-    }
+    // Show completion message - DISABLED (user feedback via progress widget is sufficient)
+    // if (success) {
+    //   QMessageBox::information(this, "Step Completed",
+    //     QString("Step '%1' executed successfully!").arg(stepNickname));
+    // } else {
+    //   QMessageBox::critical(this, "Step Failed",
+    //     QString("Step '%1' execution failed.").arg(stepNickname));
+    // }
 
   } catch (const std::exception& e) {
     m_runRecipeButton->setEnabled(true);
