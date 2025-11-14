@@ -5,6 +5,49 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <filesystem>
+#include <QImage>
+
+// Helper function to save frame data to file
+static bool SaveFrameDataToFile(const CameraFrameData& frameData,
+                                const std::string& filepath,
+                                std::string& errorMessage)
+{
+  if (!frameData.IsValid()) {
+    errorMessage = "Invalid frame data";
+    return false;
+  }
+
+  // Determine QImage format based on channels
+  QImage::Format format;
+  if (frameData.channels == 3) {
+    format = QImage::Format_RGB888;
+  } else if (frameData.channels == 1) {
+    format = QImage::Format_Grayscale8;
+  } else if (frameData.channels == 4) {
+    format = QImage::Format_RGBA8888;
+  } else {
+    errorMessage = "Unsupported channel count: " + std::to_string(frameData.channels);
+    return false;
+  }
+
+  // Create QImage from raw data
+  QImage image(
+    frameData.imageData.data(),
+    frameData.width,
+    frameData.height,
+    frameData.width * frameData.channels,
+    format
+  );
+
+  // Save as PNG
+  if (!image.save(QString::fromStdString(filepath), "PNG")) {
+    errorMessage = "Failed to save image to: " + filepath;
+    return false;
+  }
+
+  return true;
+}
 
 bool SystemCommandHandler::ExecuteCommand(
   void* manager,
@@ -334,6 +377,311 @@ bool SystemCommandHandler::ExecuteCommand(
     else {
       errorMessage = "No execution context available for StopSequence";
       return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SAVE LAST CAPTURE TO FILE
+  // ============================================================================
+  else if (methodName == "SaveLastCaptureToFile") {
+    if (!context) {
+      errorMessage = "SequenceContext is null";
+      return false;
+    }
+
+    // Find the most recently captured image in context
+    auto allKeys = context->GetAllKeys();
+    std::string mostRecentImageKey;
+    auto mostRecentTime = std::chrono::system_clock::time_point::min();
+
+    for (const auto& key : allKeys) {
+      if (context->GetValueType(key) == SequenceContext::ValueType::IMAGE_FRAME) {
+        SequenceContext::Value val = context->GetValue(key);
+        if (val.timestamp > mostRecentTime) {
+          mostRecentTime = val.timestamp;
+          mostRecentImageKey = key;
+        }
+      }
+    }
+
+    if (mostRecentImageKey.empty()) {
+      errorMessage = "No captured images found in context";
+      if (m_logger) {
+        m_logger->Error("SaveLastCaptureToFile failed: No captured images in context", "SystemHandler");
+      }
+      return false;
+    }
+
+    // Get the frame data
+    auto frameData = context->GetFrameData(mostRecentImageKey);
+    if (!frameData || !frameData->IsValid()) {
+      errorMessage = "Failed to retrieve frame data for key: " + mostRecentImageKey;
+      return false;
+    }
+
+    // Build save path
+    std::string productName;
+    auto productIt = params.find("product_name");
+    if (productIt != params.end() && !productIt->second.empty()) {
+      productName = productIt->second;
+    }
+
+    std::string filename;
+    auto filenameIt = params.find("filename");
+    if (filenameIt != params.end() && !filenameIt->second.empty()) {
+      filename = filenameIt->second;
+    }
+    else {
+      // Auto-generate filename with timestamp
+      auto now = std::chrono::system_clock::now();
+      auto time_t_now = std::chrono::system_clock::to_time_t(now);
+      struct tm timeinfo;
+      localtime_s(&timeinfo, &time_t_now);
+      char buffer[64];
+      strftime(buffer, sizeof(buffer), "%H-%M-%S", &timeinfo);
+      filename = std::string("last_capture_") + buffer + ".png";
+    }
+
+    // Build directory path
+    std::string savePath;
+    if (!productName.empty()) {
+      // Save to product folder
+      char dateBuffer[32];
+      auto now = std::chrono::system_clock::now();
+      auto time_t_now = std::chrono::system_clock::to_time_t(now);
+      struct tm timeinfo;
+      localtime_s(&timeinfo, &time_t_now);
+      strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &timeinfo);
+
+      savePath = "data/captured_images/" + productName + "/" + std::string(dateBuffer) + "/" + filename;
+    }
+    else {
+      // Save to default folder
+      char dateBuffer[32];
+      auto now = std::chrono::system_clock::now();
+      auto time_t_now = std::chrono::system_clock::to_time_t(now);
+      struct tm timeinfo;
+      localtime_s(&timeinfo, &time_t_now);
+      strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &timeinfo);
+
+      savePath = "data/captured_images/" + std::string(dateBuffer) + "/" + filename;
+    }
+
+    // Ensure directory exists and save
+    std::filesystem::path dirPath = std::filesystem::path(savePath).parent_path();
+    if (!std::filesystem::exists(dirPath)) {
+      std::filesystem::create_directories(dirPath);
+    }
+
+    // Save image
+    if (!SaveFrameDataToFile(*frameData, savePath, errorMessage)) {
+      if (m_logger) {
+        m_logger->Error("Failed to save image: " + errorMessage, "SystemHandler");
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Saved last captured image to: " + savePath, "SystemHandler");
+    }
+
+    std::cout << "[SystemCommandHandler] Saved last captured image (from context["
+              << mostRecentImageKey << "]) to: " << savePath << std::endl;
+
+    // Store filepath in context if captureAs specified
+    auto captureAsIt = params.find("captureAs");
+    if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+      context->SetValue(captureAsIt->second, savePath, "system", "SaveLastCaptureToFile");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // CROP ROI
+  // ============================================================================
+  else if (methodName == "CropROI") {
+    if (!context) {
+      errorMessage = "SequenceContext is null";
+      return false;
+    }
+
+    // Get source context key
+    auto sourceKeyIt = params.find("source_context_key");
+    if (sourceKeyIt == params.end()) {
+      errorMessage = "Missing required parameter: source_context_key";
+      return false;
+    }
+    std::string sourceKey = sourceKeyIt->second;
+
+    // Get output context key
+    auto outputKeyIt = params.find("output_context_key");
+    if (outputKeyIt == params.end()) {
+      errorMessage = "Missing required parameter: output_context_key";
+      return false;
+    }
+    std::string outputKey = outputKeyIt->second;
+
+    // Get width and height percentages
+    float widthPercent = 100.0f;
+    float heightPercent = 100.0f;
+
+    auto widthIt = params.find("width_percent");
+    if (widthIt != params.end()) {
+      try {
+        widthPercent = std::stof(widthIt->second);
+        if (widthPercent <= 0 || widthPercent > 100) {
+          errorMessage = "width_percent must be between 0 and 100";
+          return false;
+        }
+      } catch (...) {
+        errorMessage = "Invalid width_percent value: " + widthIt->second;
+        return false;
+      }
+    }
+
+    auto heightIt = params.find("height_percent");
+    if (heightIt != params.end()) {
+      try {
+        heightPercent = std::stof(heightIt->second);
+        if (heightPercent <= 0 || heightPercent > 100) {
+          errorMessage = "height_percent must be between 0 and 100";
+          return false;
+        }
+      } catch (...) {
+        errorMessage = "Invalid height_percent value: " + heightIt->second;
+        return false;
+      }
+    }
+
+    // Get source frame data from context
+    auto sourceFrameData = context->GetFrameData(sourceKey);
+    if (!sourceFrameData || !sourceFrameData->IsValid()) {
+      errorMessage = "Source image not found or invalid in context[" + sourceKey + "]";
+      if (m_logger) {
+        m_logger->Error("CropROI failed: " + errorMessage, "SystemHandler");
+      }
+      return false;
+    }
+
+    // Convert frame data to QImage
+    QImage::Format format;
+    if (sourceFrameData->channels == 3) {
+      format = QImage::Format_RGB888;
+    } else if (sourceFrameData->channels == 1) {
+      format = QImage::Format_Grayscale8;
+    } else if (sourceFrameData->channels == 4) {
+      format = QImage::Format_RGBA8888;
+    } else {
+      errorMessage = "Unsupported channel count: " + std::to_string(sourceFrameData->channels);
+      return false;
+    }
+
+    QImage sourceImage(
+      sourceFrameData->imageData.data(),
+      sourceFrameData->width,
+      sourceFrameData->height,
+      sourceFrameData->width * sourceFrameData->channels,
+      format
+    );
+
+    // Calculate ROI dimensions (centered)
+    int imageWidth = sourceImage.width();
+    int imageHeight = sourceImage.height();
+
+    int cropWidth = static_cast<int>(imageWidth * widthPercent / 100.0f);
+    int cropHeight = static_cast<int>(imageHeight * heightPercent / 100.0f);
+
+    // Center the crop
+    int cropX = (imageWidth - cropWidth) / 2;
+    int cropY = (imageHeight - cropHeight) / 2;
+
+    // Perform crop
+    QImage croppedImage = sourceImage.copy(cropX, cropY, cropWidth, cropHeight);
+
+    if (croppedImage.isNull()) {
+      errorMessage = "Failed to crop image";
+      return false;
+    }
+
+    // Convert cropped QImage back to CameraFrameData
+    CameraFrameData croppedFrameData;
+    croppedFrameData.cameraId = sourceFrameData->cameraId + "_cropped";
+    croppedFrameData.width = croppedImage.width();
+    croppedFrameData.height = croppedImage.height();
+    croppedFrameData.channels = sourceFrameData->channels;
+    croppedFrameData.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+    croppedFrameData.exposureTime = sourceFrameData->exposureTime;
+    croppedFrameData.gain = sourceFrameData->gain;
+    croppedFrameData.frameNumber = sourceFrameData->frameNumber;
+
+    // Copy pixel data
+    size_t dataSize = croppedImage.width() * croppedImage.height() * sourceFrameData->channels;
+    croppedFrameData.imageData.resize(dataSize);
+    memcpy(croppedFrameData.imageData.data(), croppedImage.bits(), dataSize);
+
+    // Store cropped frame in context
+    context->SetFrameData(outputKey, croppedFrameData, true, "system", "CropROI");
+
+    if (m_logger) {
+      std::string tempPath = context->GetFrameTempFilePath(outputKey);
+      m_logger->Info("Cropped ROI (" + std::to_string((int)widthPercent) + "% x " +
+                     std::to_string((int)heightPercent) + "%) from context[" + sourceKey +
+                     "] -> context[" + outputKey + "], saved to: " + tempPath, "SystemHandler");
+    }
+
+    std::cout << "[SystemCommandHandler] Cropped ROI: " << cropWidth << "x" << cropHeight
+              << " (center: " << cropX + cropWidth/2 << "," << cropY + cropHeight/2
+              << ") from " << imageWidth << "x" << imageHeight << " image" << std::endl;
+
+    // Optional: Save to file
+    auto saveToFileIt = params.find("save_to_file");
+    if (saveToFileIt != params.end() && (saveToFileIt->second == "true" || saveToFileIt->second == "1")) {
+      std::string filename;
+      auto filenameIt = params.find("filename");
+      if (filenameIt != params.end() && !filenameIt->second.empty()) {
+        filename = filenameIt->second;
+      } else {
+        // Auto-generate filename
+        auto now = std::chrono::system_clock::now();
+        auto time_t_now = std::chrono::system_clock::to_time_t(now);
+        struct tm timeinfo;
+        localtime_s(&timeinfo, &time_t_now);
+        char buffer[64];
+        strftime(buffer, sizeof(buffer), "%H-%M-%S", &timeinfo);
+        filename = std::string("cropped_") + buffer + ".png";
+      }
+
+      // Build save path
+      char dateBuffer[32];
+      auto now = std::chrono::system_clock::now();
+      auto time_t_now = std::chrono::system_clock::to_time_t(now);
+      struct tm timeinfo;
+      localtime_s(&timeinfo, &time_t_now);
+      strftime(dateBuffer, sizeof(dateBuffer), "%Y-%m-%d", &timeinfo);
+
+      std::string savePath = "data/captured_images/" + std::string(dateBuffer) + "/" + filename;
+
+      // Ensure directory exists
+      std::filesystem::path dirPath = std::filesystem::path(savePath).parent_path();
+      if (!std::filesystem::exists(dirPath)) {
+        std::filesystem::create_directories(dirPath);
+      }
+
+      // Save image
+      if (!SaveFrameDataToFile(croppedFrameData, savePath, errorMessage)) {
+        if (m_logger) {
+          m_logger->Warning("Failed to save cropped image: " + errorMessage, "SystemHandler");
+        }
+        // Don't fail the whole command if file save fails
+      } else {
+        if (m_logger) {
+          m_logger->Info("Saved cropped image to: " + savePath, "SystemHandler");
+        }
+      }
     }
 
     return true;

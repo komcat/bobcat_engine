@@ -151,6 +151,139 @@ public:
 };
 
 //=============================================================================
+// SAVE LAST CAPTURE TO FILE PLUGIN
+//=============================================================================
+
+class SaveLastCaptureToFilePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Save Last Capture to File";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Save the most recently captured image to a file";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"product_name", ""},       // Optional - uses default folder if empty
+      {"filename", ""},           // Optional - auto-generated if empty
+      {"captureAs", ""}           // Optional - store filepath in context
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Product name (optional)
+    widget->addParameterField("product_name", "Product Name (optional)", params.at("product_name"));
+
+    // Filename (optional)
+    widget->addParameterField("filename", "Filename (optional - auto-generated if empty)", params.at("filename"));
+
+    // Optional context key to store filepath
+    widget->addParameterField("captureAs", "Store Path As (optional)", params.at("captureAs"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> saveParams;
+
+    // Optional parameters
+    auto it = params.find("product_name");
+    if (it != params.end() && !it->second.empty()) {
+      saveParams["product_name"] = it->second;
+    }
+
+    it = params.find("filename");
+    if (it != params.end() && !it->second.empty()) {
+      saveParams["filename"] = it->second;
+    }
+
+    it = params.find("captureAs");
+    if (it != params.end() && !it->second.empty()) {
+      saveParams["captureAs"] = it->second;
+    }
+
+    // Use special device name "system" for this command
+    sequence->AddAction("system", "SaveLastCaptureToFile", saveParams);
+  }
+};
+
+//=============================================================================
+// CROP ROI PLUGIN
+//=============================================================================
+
+class CropROIPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Crop ROI";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Crop Region of Interest (ROI) from captured image in context. ROI is centered and sized by width/height percentage.";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"source_context_key", "captured_image"},      // Source image key in context
+      {"output_context_key", "cropped_image"},       // Output image key in context
+      {"width_percent", "100"},                      // ROI width as % of total image (100 = full width)
+      {"height_percent", "100"},                     // ROI height as % of total image (100 = full height)
+      {"save_to_file", "false"},                     // Optional: save cropped image to file
+      {"filename", ""}                               // Optional: filename for saved crop
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Source context key
+    widget->addParameterField("source_context_key", "Source Image (context key)", params.at("source_context_key"));
+
+    // Output context key
+    widget->addParameterField("output_context_key", "Output Image (context key)", params.at("output_context_key"));
+
+    // Width percentage
+    widget->addParameterField("width_percent", "ROI Width % (0-100)", params.at("width_percent"));
+
+    // Height percentage
+    widget->addParameterField("height_percent", "ROI Height % (0-100)", params.at("height_percent"));
+
+    // Save to file option
+    widget->addParameterField("save_to_file", "Save to File (true/false)", params.at("save_to_file"));
+
+    // Filename (optional)
+    widget->addParameterField("filename", "Filename (optional)", params.at("filename"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> cropParams;
+
+    // Copy all parameters
+    for (const auto& param : params) {
+      cropParams[param.first] = param.second;
+    }
+
+    // Use special device name "system" for this command
+    sequence->AddAction("system", "CropROI", cropParams);
+  }
+};
+
+//=============================================================================
 // CAPTURE TO DUT PLUGIN
 //=============================================================================
 
@@ -552,6 +685,12 @@ namespace {
       registry.RegisterPlugin(std::make_unique<CaptureToContextPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Capture to Context (Category: Vision)" << std::endl;
 
+      registry.RegisterPlugin(std::make_unique<SaveLastCaptureToFilePlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Save Last Capture to File (Category: Vision)" << std::endl;
+
+      registry.RegisterPlugin(std::make_unique<CropROIPlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Crop ROI (Category: Vision)" << std::endl;
+
       registry.RegisterPlugin(std::make_unique<CaptureToDUTPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Capture to DUT Folder (Category: Vision)" << std::endl;
 
@@ -570,7 +709,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<SetAutoGainPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Set Auto Gain (Category: Vision)" << std::endl;
 
-      std::cout << "[CameraProcesses] Registered 8 camera/vision process plugins" << std::endl;
+      std::cout << "[CameraProcesses] Registered 10 camera/vision process plugins" << std::endl;
     }
   };
 
