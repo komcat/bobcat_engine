@@ -131,6 +131,7 @@ private:
 
   // Left panel widgets
   QWidget* m_leftPanel;
+  QWidget* m_rightPanel;  // ✅ Right panel for scanning controls
   QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
   QPushButton* m_loadButton;

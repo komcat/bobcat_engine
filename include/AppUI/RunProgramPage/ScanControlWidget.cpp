@@ -29,14 +29,16 @@ void ScanControlWidget::setupUI()
   QVBoxLayout* groupLayout = new QVBoxLayout(scanGroup);
   groupLayout->setSpacing(6);
 
-  // === CHANNEL SELECTION + VALUE DISPLAY ===
+  // === CHANNEL SELECTION ===
   QHBoxLayout* channelLayout = new QHBoxLayout();
-
   QLabel* channelLabel = new QLabel("Data Channel:");
   m_channelCombo = new QComboBox();
   m_channelCombo->setMinimumWidth(120);
+  channelLayout->addWidget(channelLabel);
+  channelLayout->addWidget(m_channelCombo, 1);
+  groupLayout->addLayout(channelLayout);
 
-  // Value display label
+  // === VALUE DISPLAY (moved below dropdown) ===
   m_valueLabel = new QLabel("-- --");
   m_valueLabel->setStyleSheet(
     "QLabel { "
@@ -47,14 +49,10 @@ void ScanControlWidget::setupUI()
     "  font-size: 24pt; "
     "  font-weight: bold; "
     "  color: #1565C0; "
-    "  min-width: 180px; "
+    "  min-height: 50px; "
     "}");
   m_valueLabel->setAlignment(Qt::AlignCenter);
-
-  channelLayout->addWidget(channelLabel);
-  channelLayout->addWidget(m_channelCombo);
-  channelLayout->addWidget(m_valueLabel, 1);
-  groupLayout->addLayout(channelLayout);
+  groupLayout->addWidget(m_valueLabel);
 
   // === SCAN BUTTONS - TWO COLUMNS ===
   QHBoxLayout* buttonsLayout = new QHBoxLayout();

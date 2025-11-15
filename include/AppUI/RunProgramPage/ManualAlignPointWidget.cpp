@@ -516,15 +516,8 @@ QString ManualAlignPointWidget::getReferenceImagePath(bool createNew)
     }
     return QString();
   } else {
-    // Create new path with timestamp if file exists
+    // Always use the same filename (overwrite existing)
     QString filepath = basePath + "/" + baseFilename + ".png";
-
-    if (QFile::exists(filepath)) {
-      // File exists, add timestamp
-      QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-      filepath = basePath + "/" + baseFilename + "_" + timestamp + ".png";
-    }
-
     return filepath;
   }
 }

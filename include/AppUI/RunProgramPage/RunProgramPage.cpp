@@ -139,19 +139,26 @@ void RunProgramPage::setupUI()
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // Left panel (20%)
+  // Left panel (20%) - Execution controls
   m_leftPanel = new QWidget();
   m_leftPanel->setMinimumWidth(250);
   m_leftPanel->setMaximumWidth(350);
   QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
   createLeftPanel(leftLayout);
 
-  // Right panel (80%)
+  // Right panel (20%) - Scanning controls (create BEFORE createRightPanel)
+  m_rightPanel = new QWidget();
+  m_rightPanel->setMinimumWidth(300);
+  m_rightPanel->setMaximumWidth(400);
+  m_rightPanel->setStyleSheet("QWidget { background-color: #252526; }");
+
+  // Center panel (60%) - Execution view (calls createExecutionWidget which needs m_rightPanel)
   createRightPanel();
 
-  // Add to main layout with stretch factors (20/80 split)
-  mainLayout->addWidget(m_leftPanel, 2);
-  mainLayout->addWidget(m_rightStack, 8);
+  // Add to main layout with stretch factors (20/60/20 split)
+  mainLayout->addWidget(m_leftPanel, 2);     // Left: 20%
+  mainLayout->addWidget(m_rightStack, 6);    // Center: 60%
+  mainLayout->addWidget(m_rightPanel, 2);    // Right: 20%
 
   // Start with edit widget visible
   showEditWidget();
@@ -1150,40 +1157,59 @@ void RunProgramPage::createExecutionWidget()
 
   layout->addWidget(m_executionStack, 1);
 
-  // === SCANNING CONTROLS (Refactored) ===
-  m_scanWidget = new ScanControlWidget();
+  // === SCANNING CONTROLS (Moved to Right Panel) ===
+  if (m_rightPanel) {
+    QVBoxLayout* rightLayout = new QVBoxLayout(m_rightPanel);
+    rightLayout->setContentsMargins(10, 10, 10, 10);
+    rightLayout->setSpacing(10);
 
-  // Populate channels from DataStore (initial load)
-  refreshDataStoreChannels();
+    // Title for right panel
+    QLabel* scanTitle = new QLabel("Hexapod Scanning");
+    scanTitle->setStyleSheet(
+      "QLabel { "
+      "  font-size: 16px; "
+      "  font-weight: bold; "
+      "  color: #ffffff; "
+      "  padding: 5px; "
+      "}");
+    rightLayout->addWidget(scanTitle);
 
-  // ✅ ADDED: Set up periodic channel refresh (every 3 seconds)
-  // This ensures new channels (e.g., SMU channels added when polling starts) appear in the dropdown
-  m_channelRefreshTimer = new QTimer(this);
-  connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
-  m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
+    // Scan widget
+    m_scanWidget = new ScanControlWidget();
 
-  layout->addWidget(m_scanWidget);
+    // Populate channels from DataStore (initial load)
+    refreshDataStoreChannels();
 
-  // Connect scan widget to this page
-  connect(m_scanWidget, &ScanControlWidget::scanRequested,
-    this, &RunProgramPage::onScanRequested);
-  connect(m_scanWidget, &ScanControlWidget::stopRequested,
-    this, &RunProgramPage::onStopScanRequested);
-  connect(m_scanWidget, &ScanControlWidget::channelChanged,
-    this, &RunProgramPage::onChannelChanged);  // ✅ ADDED
+    // ✅ ADDED: Set up periodic channel refresh (every 3 seconds)
+    // This ensures new channels (e.g., SMU channels added when polling starts) appear in the dropdown
+    m_channelRefreshTimer = new QTimer(this);
+    connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
+    m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
 
-  // ✅ ADDED: Trigger subscription for initial channel
-  if (!m_scanWidget->currentChannel().isEmpty()) {
-    onChannelChanged(m_scanWidget->currentChannel());
+    rightLayout->addWidget(m_scanWidget);
+    rightLayout->addStretch();  // Push controls to top
+
+    // Connect scan widget to this page
+    connect(m_scanWidget, &ScanControlWidget::scanRequested,
+      this, &RunProgramPage::onScanRequested);
+    connect(m_scanWidget, &ScanControlWidget::stopRequested,
+      this, &RunProgramPage::onStopScanRequested);
+    connect(m_scanWidget, &ScanControlWidget::channelChanged,
+      this, &RunProgramPage::onChannelChanged);  // ✅ ADDED
+
+    // ✅ ADDED: Trigger subscription for initial channel
+    if (!m_scanWidget->currentChannel().isEmpty()) {
+      onChannelChanged(m_scanWidget->currentChannel());
+    }
+
+    // Connect executor signals to UI
+    connect(m_scanExecutor, &ScanExecutor::logMessage,
+      this, &RunProgramPage::onScanLogMessage);
+    connect(m_scanExecutor, &ScanExecutor::scanCompleted,
+      this, &RunProgramPage::onScanCompleted);
+    connect(m_scanExecutor, &ScanExecutor::scanError,
+      this, &RunProgramPage::onScanError);
   }
-
-  // Connect executor signals to UI
-  connect(m_scanExecutor, &ScanExecutor::logMessage,
-    this, &RunProgramPage::onScanLogMessage);
-  connect(m_scanExecutor, &ScanExecutor::scanCompleted,
-    this, &RunProgramPage::onScanCompleted);
-  connect(m_scanExecutor, &ScanExecutor::scanError,
-    this, &RunProgramPage::onScanError);
 }
 
 void RunProgramPage::showEditWidget()
@@ -1753,13 +1779,11 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 
   m_autoRunNextCheckBox->setEnabled(true);
 
-  // Show result
-  if (success) {
-    QMessageBox::information(this, "Success", message);
-  }
-  else {
+  // Show result - only show errors, not success notifications
+  if (!success) {
     QMessageBox::critical(this, "Execution Failed", message);
   }
+  // Success: no notification popup (user can see completion in log)
 }
 
 void RunProgramPage::onProgramStopped()
