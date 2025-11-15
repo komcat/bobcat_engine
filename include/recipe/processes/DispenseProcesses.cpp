@@ -209,16 +209,6 @@ public:
     //   - Pneumatic slide: check config/pneumatic_slides.json
     //   - IO device: check config/io_devices.json
 
-    // Only show starting notification if NOT in auto-confirm mode
-    if (!autoConfirm || !setupComplete) {
-      sequence->AddAction("system", "UserPrompt", {
-        {"title", "Dispense Process Starting"},
-        {"message", "Starting automated dispense process.\n\n"
-                    "System will guide you through positioning."},
-        {"blocking", "false"}
-      });
-    }
-
     // Load existing dispense camera position (if exists)
     sequence->AddAction("calibration", "LoadExistingCalibration", {
       {"uid", uid}

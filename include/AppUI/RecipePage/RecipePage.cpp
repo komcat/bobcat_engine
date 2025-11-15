@@ -13,6 +13,7 @@
 #include "RecipeWorker.h"
 #include "RecipeProgressWidget.h"  // ✅ NEW
 #include "ManualAdjustWidget.h"    // ✅ Manual adjust widget
+#include "../RunProgramPage/ManualAlignPointWidget.h"  // ✅ Manual align point widget
 #include "../RunProgramPage/UserInputWidget.h"  // ✅ User input widget
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
@@ -53,9 +54,11 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_loadedProductLabel(nullptr)
   , m_progressWidget(nullptr)  // ✅ NEW
   , m_manualAdjustWidget(nullptr)  // ✅ Manual adjust widget
+  , m_manualAlignPointWidget(nullptr)  // ✅ Manual align point widget
   , m_userInputWidget(nullptr)     // ✅ User input widget
   , m_promptEventLoop(nullptr)  // ✅ Event loop for blocking
   , m_manualAdjustResponse(false)  // ✅ Initialize response flag
+  , m_manualAlignPointResponse(false)  // ✅ Initialize align point response flag
   , m_userInputAccepted(false)     // ✅ User input accepted
   , m_userInputText("")            // ✅ User input text
 {
@@ -687,6 +690,17 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RecipePage::onManualAdjustResponse);
+
+  // Create manual align point widget (will be shown when needed)
+  m_manualAlignPointWidget = new ManualAlignPointWidget(
+    m_context->motionManager,
+    m_context
+  );
+  m_manualAlignPointWidget->setStyleSheet("background-color: #2d2d30;");
+
+  // Connect manual align point response
+  connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
+    this, &RecipePage::onManualAlignPointResponse);
 
   // Create user input widget (will be shown when needed)
   m_userInputWidget = new UserInputWidget();
@@ -1642,6 +1656,132 @@ void RecipePage::setupSequenceEngine()
   }
   );
 
+  // Set manual align point callback - uses integrated ManualAlignPointWidget (thread-aware)
+  m_sequenceEngine->SetManualAlignPointCallback(
+    [this](const std::string& pointName, const std::string& message,
+           bool enableX, bool enableY, bool enableZ) -> bool {
+    bool result = false;
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
+      // Take the current widget out of the scroll area
+      QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+      // Show the manual align point widget in the scroll area
+      m_configScrollArea->setWidget(m_manualAlignPointWidget);
+      m_manualAlignPointWidget->showAlignment(
+        QString::fromStdString(pointName),
+        QString::fromStdString(message),
+        enableX, enableY, enableZ
+      );
+
+      std::cout << "[RecipePage] Showing manual align point widget (UI thread)" << std::endl;
+
+      // Process pending events to ensure widget is displayed before blocking
+      QApplication::processEvents();
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = m_manualAlignPointResponse;
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
+        // Take the current widget out of the scroll area
+        QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+        // Show the manual align point widget in the scroll area
+        m_configScrollArea->setWidget(m_manualAlignPointWidget);
+        m_manualAlignPointWidget->showAlignment(
+          QString::fromStdString(pointName),
+          QString::fromStdString(message),
+          enableX, enableY, enableZ
+        );
+
+        std::cout << "[RecipePage] Showing manual align point widget (worker thread)" << std::endl;
+
+        // Block until user responds (event loop pattern)
+        QEventLoop loop;
+        m_promptEventLoop = &loop;
+        loop.exec();
+        m_promptEventLoop = nullptr;
+
+        result = m_manualAlignPointResponse;
+      }, Qt::BlockingQueuedConnection);
+    }
+
+    return result;
+  }
+  );
+
+  // Set manual adjust callback - uses integrated ManualAdjustWidget (thread-aware)
+  m_sequenceEngine->SetManualAdjustCallback(
+    [this](const std::string& message, const std::string& deviceName,
+           double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+    bool result = false;
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
+      // Take the current widget out of the scroll area
+      QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+      // Show the manual adjust widget in the scroll area
+      m_configScrollArea->setWidget(m_manualAdjustWidget);
+      m_manualAdjustWidget->showAdjustment(
+        QString::fromStdString(message),
+        QString::fromStdString(deviceName),
+        stepSizeUm,
+        enableX, enableY, enableZ
+      );
+
+      std::cout << "[RecipePage] Showing manual adjust widget (UI thread)" << std::endl;
+
+      // Process pending events to ensure widget is displayed before blocking
+      QApplication::processEvents();
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = m_manualAdjustResponse;
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, &result]() {
+        // Take the current widget out of the scroll area
+        QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+        // Show the manual adjust widget in the scroll area
+        m_configScrollArea->setWidget(m_manualAdjustWidget);
+        m_manualAdjustWidget->showAdjustment(
+          QString::fromStdString(message),
+          QString::fromStdString(deviceName),
+          stepSizeUm,
+          enableX, enableY, enableZ
+        );
+
+        std::cout << "[RecipePage] Showing manual adjust widget (worker thread)" << std::endl;
+
+        // Block until user responds (event loop pattern)
+        QEventLoop loop;
+        m_promptEventLoop = &loop;
+        loop.exec();
+        m_promptEventLoop = nullptr;
+
+        result = m_manualAdjustResponse;
+      }, Qt::BlockingQueuedConnection);
+    }
+
+    return result;
+  }
+  );
+
   std::cout << "[RecipePage] SequenceEngine ready" << std::endl;
 }
 
@@ -2509,6 +2649,50 @@ void RecipePage::onManualAdjustResponse(bool completed)
 
   // Hide the manual adjust widget
   m_manualAdjustWidget->hideAdjustment();
+
+  // Remove from scroll area
+  m_configScrollArea->takeWidget();
+
+  // Switch back to progress widget if it exists
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_configScrollArea->setWidget(m_progressWidget);
+    std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
+  }
+  else {
+    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
+  }
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RecipePage::onShowManualAlignPoint(QString pointName, QString message,
+                                        bool enableX, bool enableY, bool enableZ)
+{
+  // Switch from current view to manual align point view in the scroll area
+  QWidget* oldWidget = m_configScrollArea->takeWidget();
+  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
+  // We'll just replace it in the scroll area
+
+  // Show the manual align point widget in the scroll area
+  m_configScrollArea->setWidget(m_manualAlignPointWidget);
+  m_manualAlignPointWidget->showAlignment(pointName, message, enableX, enableY, enableZ);
+
+  std::cout << "[RecipePage] Showing manual align point widget for point: "
+            << pointName.toStdString() << std::endl;
+}
+
+void RecipePage::onManualAlignPointResponse(bool completed)
+{
+  // Store the user's response
+  m_manualAlignPointResponse = completed;
+
+  std::cout << "[RecipePage] Manual align point response: " << (completed ? "Continue" : "Cancel") << std::endl;
+
+  // Hide the manual align point widget
+  m_manualAlignPointWidget->hideAlignment();
 
   // Remove from scroll area
   m_configScrollArea->takeWidget();

@@ -27,6 +27,15 @@ using UserInputCallback = std::function<std::pair<bool, std::string>(
   const std::string& defaultValue
 )>;
 
+// Callback type for manual align point - returns true if user clicked Continue, false if cancelled
+using ManualAlignPointCallback = std::function<bool(
+  const std::string& pointName,
+  const std::string& message,
+  bool enableX,
+  bool enableY,
+  bool enableZ
+)>;
+
 class SystemCommandHandler : public ICommandHandler
 {
 public:
@@ -61,9 +70,15 @@ public:
     m_userInputCallback = callback;
   }
 
+  // Set the UI callback for manual align point (must be called from main thread)
+  void SetManualAlignPointCallback(ManualAlignPointCallback callback) {
+    m_manualAlignPointCallback = callback;
+  }
+
 private:
   UserPromptCallback m_userPromptCallback;
   UserNotificationCallback m_userNotificationCallback;
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
+  ManualAlignPointCallback m_manualAlignPointCallback;
 };

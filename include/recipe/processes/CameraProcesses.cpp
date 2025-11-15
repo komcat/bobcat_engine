@@ -284,6 +284,69 @@ public:
 };
 
 //=============================================================================
+// MANUAL ALIGN POINT PLUGIN
+//=============================================================================
+
+class ManualAlignPointPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Manual Align Point";
+  }
+
+  std::string GetCategory() const override {
+    return "Vision";
+  }
+
+  std::string GetDescription() const override {
+    return "Manually align and save a point using camera click-to-move. Stores XYZ position in context.";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"point_name", "alignment_point_1"},   // Name of the alignment point
+      {"message", "Align the crosshair to the target point"},  // Instruction message
+      {"enable_x", "true"},                   // Enable X axis adjustment
+      {"enable_y", "true"},                   // Enable Y axis adjustment
+      {"enable_z", "true"}                    // Enable Z axis adjustment
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Point name
+    widget->addParameterField("point_name", "Point Name", params.at("point_name"));
+
+    // Message
+    widget->addParameterField("message", "Instruction Message", params.at("message"));
+
+    // Enable X axis
+    widget->addParameterField("enable_x", "Enable X Axis (true/false)", params.at("enable_x"));
+
+    // Enable Y axis
+    widget->addParameterField("enable_y", "Enable Y Axis (true/false)", params.at("enable_y"));
+
+    // Enable Z axis
+    widget->addParameterField("enable_z", "Enable Z Axis (true/false)", params.at("enable_z"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> alignParams;
+
+    // Copy all parameters
+    for (const auto& param : params) {
+      alignParams[param.first] = param.second;
+    }
+
+    // Use special device name "system" for this command
+    sequence->AddAction("system", "ManualAlignPoint", alignParams);
+  }
+};
+
+//=============================================================================
 // CAPTURE TO DUT PLUGIN
 //=============================================================================
 
@@ -691,6 +754,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<CropROIPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Crop ROI (Category: Vision)" << std::endl;
 
+      registry.RegisterPlugin(std::make_unique<ManualAlignPointPlugin>());
+      std::cout << "[ProcessPluginRegistry] Registered plugin: Manual Align Point (Category: Vision)" << std::endl;
+
       registry.RegisterPlugin(std::make_unique<CaptureToDUTPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Capture to DUT Folder (Category: Vision)" << std::endl;
 
@@ -709,7 +775,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<SetAutoGainPlugin>());
       std::cout << "[ProcessPluginRegistry] Registered plugin: Set Auto Gain (Category: Vision)" << std::endl;
 
-      std::cout << "[CameraProcesses] Registered 10 camera/vision process plugins" << std::endl;
+      std::cout << "[CameraProcesses] Registered 11 camera/vision process plugins" << std::endl;
     }
   };
 

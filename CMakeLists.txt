@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 0)
+set(BOBCAT_VERSION_MINOR 1)
 set(BOBCAT_VERSION_BUILD 0)
 
 # Auto-increment build number (optional - can be managed manually or via CI/CD)
@@ -547,6 +547,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
+    include/AppUI/RunProgramPage/ManualAlignPointWidget.cpp
     include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
     include/motions/scanning/ScanExecutor.cpp
 )
@@ -695,6 +696,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/UserPromptWidget.h
     include/AppUI/RunProgramPage/UserInputWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h
+    include/AppUI/RunProgramPage/ManualAlignPointWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp

@@ -260,6 +260,13 @@ void SequenceEngine::SetUserInputCallback(UserInputCallback callback)
   }
 }
 
+void SequenceEngine::SetManualAlignPointCallback(ManualAlignPointCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetManualAlignPointCallback(callback);
+  }
+}
+
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
 {
   if (!sequence) {

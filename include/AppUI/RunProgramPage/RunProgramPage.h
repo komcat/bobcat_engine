@@ -20,6 +20,7 @@ class ProgramWorker;
 class ProcessSequenceFactory;
 class UserPromptWidget;
 class ManualAdjustWidget;
+class ManualAlignPointWidget;
 class UserInputWidget;
 class ScanControlWidget;
 class ScanExecutor;
@@ -87,6 +88,9 @@ private slots:
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                           bool enableX, bool enableY, bool enableZ);
   void onManualAdjustResponse(bool completed);
+
+  // Manual align point handling
+  void onManualAlignPointResponse(bool completed);
 
   // User input handling
   void onUserInputResponse(bool accepted, QString inputText);
@@ -172,10 +176,12 @@ private:
   QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust/input
   UserPromptWidget* m_promptWidget;
   ManualAdjustWidget* m_manualAdjustWidget;
+  ManualAlignPointWidget* m_manualAlignPointWidget;  // ✅ Manual align point widget
   UserInputWidget* m_userInputWidget;
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_promptResponse;             // Store user's response
   bool m_manualAdjustResponse;       // Store manual adjust response
+  bool m_manualAlignPointResponse;   // ✅ Store manual align point response
   bool m_userInputAccepted;          // Store user input accepted status
   QString m_userInputText;           // Store user input text
 

@@ -196,10 +196,19 @@ bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
     file.close();
 
     // Load factory XY offset values (Z is always 0)
+    // Support both formats:
+    // 1. New format: {"offset": {"x": ..., "y": ...}}
+    // 2. Legacy format: {"x": ..., "y": ...}
     if (j.contains("offset") && j["offset"].contains("x") && j["offset"].contains("y")) {
+      // New format with nested "offset" object
       offsetX = j["offset"]["x"];
       offsetY = j["offset"]["y"];
-      offsetZ = 0.0;  // Z offset is not used in factory calibration
+      offsetZ = 0.0;
+    } else if (j.contains("x") && j.contains("y")) {
+      // Legacy format with direct x/y keys
+      offsetX = j["x"];
+      offsetY = j["y"];
+      offsetZ = 0.0;
     }
 
     if (m_logger) {
@@ -653,62 +662,10 @@ bool CalibrationCommandHandler::ExecuteCommand(
     bool exists = false;
     std::string source = "none";
 
-    // Priority 1: Try product-specific offset if product is loaded
-    std::string productName = "";
-
-    // Try to get product name from ProductPositionManager first (most reliable)
-    if (m_context && m_context->productPositionManager) {
-      productName = m_context->productPositionManager->GetCurrentProductName();
-    }
-
-    // Fallback: Try to get from active DUT
-    if (productName.empty() && m_context && m_context->currentDUT) {
-      productName = m_context->currentDUT->getProductName();
-    }
-
-    if (!productName.empty()) {
-      std::string productOffsetPath = "config/" + productName + "/calibration/needleXYoffsetCamera.json";
-
-      if (std::filesystem::exists(productOffsetPath)) {
-        // Load product-specific offset
-        try {
-          std::ifstream file(productOffsetPath);
-          if (file.is_open()) {
-            json j;
-            file >> j;
-            file.close();
-
-            if (j.contains("offset") && j["offset"].contains("x") && j["offset"].contains("y")) {
-              offsetX = j["offset"]["x"];
-              offsetY = j["offset"]["y"];
-              offsetZ = 0.0;
-              exists = true;
-              source = "product-specific (" + productName + ")";
-            }
-          }
-        }
-        catch (const std::exception& e) {
-          if (m_logger) {
-            m_logger->Warning("Failed to load product-specific offset: " + std::string(e.what()), "CalibrationHandler");
-          }
-        }
-      } else {
-        if (m_logger) {
-          m_logger->Info("Product-specific offset not found: " + productOffsetPath, "CalibrationHandler");
-        }
-      }
-    } else {
-      if (m_logger) {
-        m_logger->Info("No product loaded - will try SYSTEM offset", "CalibrationHandler");
-      }
-    }
-
-    // Priority 2: Fallback to SYSTEM-level factory offset
-    if (!exists) {
-      exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
-      if (exists) {
-        source = "SYSTEM factory";
-      }
+    // ✅ ALWAYS load from SYSTEM folder only (latest calibration result)
+    exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
+    if (exists) {
+      source = "SYSTEM";
     }
 
     // Log which offset was loaded

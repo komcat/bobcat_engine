@@ -41,7 +41,7 @@ public:
       {"z_retract_height", "10.0"},
       {"io_device", "EziIO-1"},
       {"dispense_pin", "0"},
-      {"dispense_duration_ms", "150"}
+      {"dispense_duration_ms", "300"}
     };
   }
 
@@ -289,139 +289,250 @@ public:
     // Step 12: Load previous needle Z calibration (if exists)
     sequence->AddAction("calibration", "LoadNeedleZCalibration", {});
 
-    // Step 13: If needle Z calibration exists, offer to use it
+    // Step 13: If needle Z calibration exists, ask user if they want automatic approach
     sequence->BeginIf("needle_z_calibration_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      // Ask user if they want to move to previous needle Z height
+      // Ask user if they want to use previous calibration for automatic approach
       sequence->AddAction("system", "UserPrompt", {
-        {"title", "Use Previous Needle Z Height?"},
+        {"title", "✓ Previous Z Calibration Found"},
         {"message", "Previous needle Z calibration found: context:previous_needle_z mm\n\n"
-                    "OK: Move to Z - 1mm (close positioning)\n"
-                    "Cancel: Move to Z - 10mm (safe positioning)\n\n"
-                    "Both options move closer to target height."},
+                    "OK: Automatic approach and dispense\n"
+                    "Cancel: Manual positioning (redo Z height)\n\n"
+                    "Choose your preference."},
         {"blocking", "true"},
         {"allow_cancel", "true"}
       });
 
-      // Capture current XY position (we'll only change Z)
-      sequence->AddAction("calibration", "CapturePosition", {
-        {"device", device},
-        {"key_prefix", "current"}
-      });
-
-      // Calculate target Z based on user choice
+      // Check if user wants automatic approach
       sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
       {
-        // OK: Move to previous_z - 1mm (close positioning)
-        sequence->AddAction("context", "Calculate", {
-          {"resultKey", "target_needle_z"},
-          {"key1", "previous_needle_z"},
-          {"key2", "1.0"},
-          {"operation", "-"}
-        });
-      }
-      sequence->Else();
-      {
-        // Cancel: Move to previous_z - 10mm (safe positioning)
-        sequence->AddAction("context", "Calculate", {
-          {"resultKey", "target_needle_z"},
-          {"key1", "previous_needle_z"},
-          {"key2", "10.0"},
-          {"operation", "-"}
-        });
-      }
-      sequence->EndIf();
+        // User chose automatic approach - proceed
 
-      // Move to calculated Z position
+        // Capture current position
+        sequence->AddAction("calibration", "CapturePosition", {
+          {"device", device},
+          {"key_prefix", "current"}
+        });
+
+      // Calculate intermediate Z position (Z_cal - 1mm)
+      sequence->AddAction("context", "Calculate", {
+        {"resultKey", "intermediate_z"},
+        {"key1", "previous_needle_z"},
+        {"key2", "1.0"},
+        {"operation", "-"}
+      });
+
+      // Calculate relative distance for fast approach: (Z_cal - 1mm) - current_z
+      sequence->AddAction("context", "Calculate", {
+        {"resultKey", "relative_z_fast"},
+        {"key1", "intermediate_z"},
+        {"key2", "current_z"},
+        {"operation", "-"}
+      });
+
+      // Step 13.1: Set velocity to 5mm/s for XYZ axes (fast approach)
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "X"},
+        {"velocity", "5.0"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Y"},
+        {"velocity", "5.0"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Z"},
+        {"velocity", "5.0"}
+      });
+
+      // Step 13.2: Move relative Z to (Z_cal - 1mm) at 5mm/s
+      sequence->AddAction(device, "MoveRelative", {
+        {"axis", "Z"},
+        {"distance", "context:relative_z_fast"},
+        {"blocking", "true"}
+      });
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+
+      // Step 13.3: Set velocity to 0.1mm/s for XYZ axes (slow final approach)
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "X"},
+        {"velocity", "0.1"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Y"},
+        {"velocity", "0.1"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Z"},
+        {"velocity", "0.1"}
+      });
+
+      // Step 13.4: Move relative Z the final 1mm to Z_cal at 0.1mm/s
+      sequence->AddAction(device, "MoveRelative", {
+        {"axis", "Z"},
+        {"distance", "1.0"},  // Final 1mm approach
+        {"blocking", "true"}
+      });
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+
+      // Step 13.5: Capture needle position at Z_cal
+      sequence->AddAction("calibration", "CapturePosition", {
+        {"device", device},
+        {"key_prefix", "needle"}
+      });
+
+      // Step 13.6: Automatic dispense
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "Ready to Dispense"},
+        {"message", "Needle positioned at calibration height.\n\n"
+                    "System will automatically dispense.\n\n"
+                    "Click OK to dispense."},
+        {"blocking", "true"}
+      });
+
+      // Turn ON dispenser output
+      sequence->AddAction(ioDevice, "SetOutputPin", {
+        {"pin", dispensePin},
+        {"state", "true"}
+      });
+
+      // Wait for dispense duration
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", dispenseDuration}
+      });
+
+      // Turn OFF dispenser output
+      sequence->AddAction(ioDevice, "SetOutputPin", {
+        {"pin", dispensePin},
+        {"state", "false"}
+      });
+
+      // Step 13.7: Retract dispenser head
+      sequence->AddAction(pneumaticSlide, "Retract", {
+        {"debounce_delay_ms", "300"},
+        {"timeout_ms", "10000"}
+      });
+
+      // Step 13.8: Set velocity to 10mm/s for XYZ axes (fast return)
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "X"},
+        {"velocity", "10.0"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Y"},
+        {"velocity", "10.0"}
+      });
+      sequence->AddAction(device, "SetVelocity", {
+        {"axis", "Z"},
+        {"velocity", "10.0"}
+      });
+
+        // Step 13.9: Move to safe position (camera initial position)
+        sequence->AddAction(device, "MoveToAbs", {
+          {"x", "context:camera_initial_x"},
+          {"y", "context:camera_initial_y"},
+          {"z", "context:camera_initial_z"},
+          {"blocking", "true"}
+        });
+        sequence->AddAction(device, "WaitForMotionComplete", {});
+
+        // Set flag to skip manual workflow
+        sequence->AddAction("context", "SetNumeric", {
+          {"key", "automatic_approach_done"},
+          {"value", "1"}
+        });
+      }
+      sequence->EndIf();  // End of user_confirmed check
+    }
+    sequence->EndIf();  // End of needle_z_calibration_exists check
+
+    // Step 14: Manual workflow (if automatic approach was not done)
+    // This runs if: no previous Z calibration OR user cancelled automatic approach
+    sequence->BeginIf("automatic_approach_done", ConditionalBlock::ComparisonType::EQUAL, 1.0);
+    {
+      // Automatic approach was done - skip manual workflow (do nothing here)
+    }
+    sequence->Else();
+    {
+      // Do manual workflow - either no previous Z OR user chose to redo Z height
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "ℹ️ Manual Positioning"},
+        {"message", "Needle is at REFERENCE HEIGHT (touching surface).\n\n"
+                    "This is for DISPENSING - no Z movement needed.\n\n"
+                    "Confirm: Continue with calibration\n"
+                    "Cancel: Abort calibration (redo height manually)"},
+        {"blocking", "false"}
+      });
+
+      // Step 14: Fine-tune needle position for dispensing (manual adjustment)
+      sequence->AddAction("system", "ManualAdjust", {
+        {"message", "Needle at REFERENCE HEIGHT (surface contact).\n\n"
+                    "Fine-tune XY position if needed.\n"
+                    "Z is FINAL - ready for dispensing.\n\n"
+                    "Click OK to confirm."},
+        {"device_name", device},
+        {"step_size_um", "10"},
+        {"enable_x", "true"},
+        {"enable_y", "true"},
+        {"enable_z", "true"}
+      });
+
+      // Step 15: Capture needle position (before dispense)
+      sequence->AddAction("calibration", "CapturePosition", {
+        {"device", device},
+        {"key_prefix", "needle"}
+      });
+
+      // Step 16: Automatic dispense to make imprint
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "Ready to Dispense"},
+        {"message", "Needle positioned at calibration point.\n\n"
+                    "System will automatically trigger dispenser to make imprint mark.\n\n"
+                    "Click OK to dispense."},
+        {"blocking", "true"}
+      });
+
+      // Turn ON dispenser output
+      sequence->AddAction(ioDevice, "SetOutputPin", {
+        {"pin", dispensePin},
+        {"state", "true"}
+      });
+
+      // Wait for dispense duration
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", dispenseDuration}
+      });
+
+      // Turn OFF dispenser output
+      sequence->AddAction(ioDevice, "SetOutputPin", {
+        {"pin", dispensePin},
+        {"state", "false"}
+      });
+
+      // Step 18: Retract dispenser head
+      sequence->AddAction(pneumaticSlide, "Retract", {
+        {"debounce_delay_ms", "300"},
+        {"timeout_ms", "10000"}
+      });
+
+      // Step 18.1: Move Z up to safe height (keep XY at needle position)
       sequence->AddAction(device, "MoveToAbs", {
-        {"x", "context:current_x"},
-        {"y", "context:current_y"},
-        {"z", "context:target_needle_z"},
+        {"x", "context:needle_x"},
+        {"y", "context:needle_y"},
+        {"z", "context:camera_initial_z"},
+        {"blocking", "true"}
+      });
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+
+      // Step 18.2: Move XY back to camera position (keep Z at safe height)
+      sequence->AddAction(device, "MoveToAbs", {
+        {"x", "context:camera_initial_x"},
+        {"y", "context:camera_initial_y"},
+        {"z", "context:camera_initial_z"},
         {"blocking", "true"}
       });
       sequence->AddAction(device, "WaitForMotionComplete", {});
     }
-    sequence->EndIf();
-
-    // Step 14: Fine-tune needle position for imprint (manual adjustment)
-    sequence->AddAction("system", "ManualAdjust", {
-      {"message", "Adjust needle position as needed.\n\n"
-                  "Fine-tune XYZ to position needle for imprinting.\n\n"
-                  "Click OK when positioned."},
-      {"device_name", device},
-      {"step_size_um", "10"},
-      {"enable_x", "true"},
-      {"enable_y", "true"},
-      {"enable_z", "true"}
-    });
-
-    // Step 15: Capture needle position (before imprint)
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", device},
-      {"key_prefix", "needle"}
-    });
-
-    // Step 16: Automatic dispense to make imprint
-    sequence->AddAction("system", "UserPrompt", {
-      {"title", "Ready to Dispense"},
-      {"message", "Needle positioned at calibration point.\n\n"
-                  "System will automatically trigger dispenser to make imprint mark.\n\n"
-                  "Click OK to dispense."},
-      {"blocking", "true"}
-    });
-
-    // Turn ON dispenser output
-    sequence->AddAction(ioDevice, "SetOutputPin", {
-      {"pin", dispensePin},
-      {"state", "true"}
-    });
-
-    // Wait for dispense duration
-    sequence->AddAction("system", "Wait", {
-      {"milliseconds", dispenseDuration}
-    });
-
-    // Turn OFF dispenser output
-    sequence->AddAction(ioDevice, "SetOutputPin", {
-      {"pin", dispensePin},
-      {"state", "false"}
-    });
-
-    // Step 17: Retract Z to safe height
-    /*
-    sequence->AddAction(device, "MoveRelative", {
-      {"axis", "Z"},
-      {"distance", zRetractHeight},
-      {"blocking", "true"}
-    });
-    sequence->AddAction(device, "WaitForMotionComplete", {});
-    */
-
-    // Step 18: Retract dispenser head
-    sequence->AddAction(pneumaticSlide, "Retract", {
-      {"debounce_delay_ms", "300"},
-      {"timeout_ms", "10000"}
-    });
-
-    // Step 18.1: Move Z up to safe height (keep XY at needle position)
-    // ✅ FIXED: MoveToAbs requires all three coordinates
-    sequence->AddAction(device, "MoveToAbs", {
-      {"x", "context:needle_x"},
-      {"y", "context:needle_y"},
-      {"z", "context:camera_initial_z"},
-      {"blocking", "true"}
-    });
-    sequence->AddAction(device, "WaitForMotionComplete", {});
-
-    // Step 18.2: Move XY back to camera position (keep Z at safe height)
-    // ✅ FIXED: MoveToAbs requires all three coordinates
-    sequence->AddAction(device, "MoveToAbs", {
-      {"x", "context:camera_initial_x"},
-      {"y", "context:camera_initial_y"},
-      {"z", "context:camera_initial_z"},
-      {"blocking", "true"}
-    });
-    sequence->AddAction(device, "WaitForMotionComplete", {});
+    sequence->EndIf();  // End of automatic_approach_done check
 
     // Step 20: Move camera to center on the imprint mark (manual adjustment)
     sequence->AddAction("system", "ManualAdjust", {

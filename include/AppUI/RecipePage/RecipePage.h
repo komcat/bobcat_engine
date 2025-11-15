@@ -24,6 +24,7 @@ class ProcessConfigWidget;
 class RecipeWorker;
 class RecipeProgressWidget;  // ✅ NEW
 class ManualAdjustWidget;    // ✅ Manual adjust widget
+class ManualAlignPointWidget; // ✅ Manual align point widget
 class UserInputWidget;       // ✅ User input widget
 class TransformationMatrixLoader;
 
@@ -44,6 +45,10 @@ signals:
   // Manual adjust signal
   void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
                         bool enableX, bool enableY, bool enableZ);
+
+  // Manual align point signal
+  void showManualAlignPoint(QString pointName, QString message,
+                            bool enableX, bool enableY, bool enableZ);
 
   // User prompt signal (for non-blocking prompts in execution area)
   void showUserPrompt(QString title, QString message, bool allowCancel);
@@ -95,6 +100,11 @@ private slots:
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                           bool enableX, bool enableY, bool enableZ);
   void onManualAdjustResponse(bool completed);
+
+  // Manual align point handling
+  void onShowManualAlignPoint(QString pointName, QString message,
+                              bool enableX, bool enableY, bool enableZ);
+  void onManualAlignPointResponse(bool completed);
 
   // User input handling
   void onUserInputResponse(bool accepted, QString inputText);
@@ -166,6 +176,7 @@ private:
   ProcessConfigWidget* m_currentConfigWidget;  // Config widget
   QPointer<RecipeProgressWidget> m_progressWidget;  // ✅ Safe pointer that auto-nulls when deleted
   ManualAdjustWidget* m_manualAdjustWidget;         // ✅ Manual adjust widget
+  ManualAlignPointWidget* m_manualAlignPointWidget; // ✅ Manual align point widget
   UserInputWidget* m_userInputWidget;               // ✅ User input widget
 
   QPushButton* m_backButton;
@@ -177,6 +188,7 @@ private:
 
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_manualAdjustResponse;       // Store manual adjust response
+  bool m_manualAlignPointResponse;   // Store manual align point response
   bool m_userInputAccepted;          // Store user input accepted status
   QString m_userInputText;           // Store user input text
   bool m_userPromptResponse;         // Store user prompt response

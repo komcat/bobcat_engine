@@ -1348,6 +1348,146 @@ void GraphWidget::updateLegend()
 }
 
 // ============================================================================
+// SPEED CONTROL
+// ============================================================================
+
+void GraphWidget::setupSpeedControl(QVBoxLayout* layout)
+{
+  // Determine device type
+  std::string deviceType = "unknown";
+  if (m_motionManager) {
+    deviceType = m_motionManager->GetDeviceType(m_deviceName.toStdString());
+  }
+
+  // Title
+  QLabel* speedTitle = new QLabel("Motion Speed");
+  QFont titleFont;
+  titleFont.setBold(true);
+  titleFont.setPointSize(9);
+  speedTitle->setFont(titleFont);
+  speedTitle->setStyleSheet("color: white; border: none;");
+  layout->addWidget(speedTitle);
+
+  // Device type label and current speed value in one row
+  QHBoxLayout* speedInfoLayout = new QHBoxLayout();
+  speedInfoLayout->setSpacing(5);
+
+  QLabel* typeLabel = new QLabel(QString("(%1)").arg(QString::fromStdString(deviceType).toUpper()));
+  typeLabel->setStyleSheet("color: #888; font-size: 9px; border: none;");
+  speedInfoLayout->addWidget(typeLabel);
+
+  m_speedValueLabel = new QLabel("-- mm/s");
+  m_speedValueLabel->setStyleSheet("color: #0e639c; font-weight: bold; font-size: 10px; border: none;");
+  speedInfoLayout->addStretch();
+  speedInfoLayout->addWidget(m_speedValueLabel);
+
+  layout->addLayout(speedInfoLayout);
+
+  // Slider
+  m_speedSlider = new QSlider(Qt::Horizontal);
+  m_speedSlider->setStyleSheet(
+    "QSlider::groove:horizontal { "
+    "  background: #3c3c3c; "
+    "  height: 6px; "
+    "  border-radius: 3px; "
+    "} "
+    "QSlider::handle:horizontal { "
+    "  background: #0e639c; "
+    "  width: 16px; "
+    "  margin: -5px 0; "
+    "  border-radius: 8px; "
+    "} "
+    "QSlider::handle:horizontal:hover { "
+    "  background: #1a7fcc; "
+    "}");
+
+  // Configure slider based on device type
+  if (deviceType == "ACS") {
+    m_speedSlider->setRange(1, 80);
+    m_speedSlider->setValue(20);
+  }
+  else if (deviceType == "PI") {
+    m_speedSlider->setRange(1, 20);
+    m_speedSlider->setValue(5);
+  }
+  else {
+    m_speedSlider->setRange(1, 50);
+    m_speedSlider->setValue(10);
+    m_speedSlider->setEnabled(false);
+  }
+
+  connect(m_speedSlider, &QSlider::valueChanged, this, &GraphWidget::onSpeedSliderChanged);
+  layout->addWidget(m_speedSlider);
+
+  // Preset buttons layout
+  QHBoxLayout* presetLayout = new QHBoxLayout();
+  presetLayout->setSpacing(5);
+
+  // Configure presets based on device type
+  QString buttonStyle =
+    "QPushButton { "
+    "  background-color: #505050; "
+    "  color: white; "
+    "  padding: 4px 8px; "
+    "  font-size: 9px; "
+    "  border: 1px solid #666; "
+    "  border-radius: 3px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #606060; "
+    "  border: 1px solid #0e639c; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #0e639c; "
+    "}";
+
+  if (deviceType == "ACS") {
+    m_speedPreset1 = new QPushButton("5 mm/s");
+    m_speedPreset2 = new QPushButton("20 mm/s");
+    m_speedPreset3 = new QPushButton("50 mm/s");
+  }
+  else if (deviceType == "PI") {
+    m_speedPreset1 = new QPushButton("1 mm/s");
+    m_speedPreset2 = new QPushButton("5 mm/s");
+    m_speedPreset3 = new QPushButton("10 mm/s");
+  }
+  else {
+    m_speedPreset1 = new QPushButton("Unknown");
+    m_speedPreset2 = new QPushButton("Unknown");
+    m_speedPreset3 = new QPushButton("Unknown");
+    m_speedPreset1->setEnabled(false);
+    m_speedPreset2->setEnabled(false);
+    m_speedPreset3->setEnabled(false);
+  }
+
+  m_speedPreset1->setStyleSheet(buttonStyle);
+  m_speedPreset2->setStyleSheet(buttonStyle);
+  m_speedPreset3->setStyleSheet(buttonStyle);
+
+  connect(m_speedPreset1, &QPushButton::clicked, this, &GraphWidget::onSpeedPresetClicked);
+  connect(m_speedPreset2, &QPushButton::clicked, this, &GraphWidget::onSpeedPresetClicked);
+  connect(m_speedPreset3, &QPushButton::clicked, this, &GraphWidget::onSpeedPresetClicked);
+
+  presetLayout->addWidget(m_speedPreset1);
+  presetLayout->addWidget(m_speedPreset2);
+  presetLayout->addWidget(m_speedPreset3);
+
+  layout->addLayout(presetLayout);
+
+  // Add separator
+  QFrame* separator = new QFrame();
+  separator->setFrameShape(QFrame::HLine);
+  separator->setStyleSheet("background-color: #444; border: none;");
+  separator->setFixedHeight(1);
+  layout->addWidget(separator);
+
+  // Update initial value display
+  if (deviceType != "unknown") {
+    onSpeedSliderChanged(m_speedSlider->value());
+  }
+}
+
+// ============================================================================
 // EXECUTION PANEL
 // ============================================================================
 
@@ -1375,6 +1515,9 @@ void GraphWidget::setupExecutionPanel()
   separator->setStyleSheet("background-color: #444; border: none;");
   separator->setFixedHeight(1);
   layout->addWidget(separator);
+
+  // Speed Control Section
+  setupSpeedControl(layout);
 
   // Current position (read-only, auto-detected)
   QLabel* currentLabel = new QLabel("Current Position:");
@@ -1888,4 +2031,56 @@ void GraphWidget::onSequenceExecutionCompleted(bool success, QString errorMessag
 
   // Note: Keep m_isExecutingPath = true for successful completion
   // The updateCurrentPosition() timer will detect arrival and clear it
+}
+
+// ============================================================================
+// SPEED CONTROL SLOTS
+// ============================================================================
+
+void GraphWidget::onSpeedSliderChanged(int value)
+{
+  // Update value label
+  m_speedValueLabel->setText(QString("%1 mm/s").arg(value));
+
+  // Apply velocity to motion controller
+  if (!m_motionManager) {
+    return;
+  }
+
+  std::string deviceType = m_motionManager->GetDeviceType(m_deviceName.toStdString());
+  std::string deviceName = m_deviceName.toStdString();
+  double velocity = static_cast<double>(value);
+
+  if (deviceType == "ACS") {
+    // For ACS controllers, set velocity for X, Y, Z axes
+    m_motionManager->SetVelocity(deviceName, "X", velocity);
+    m_motionManager->SetVelocity(deviceName, "Y", velocity);
+    m_motionManager->SetVelocity(deviceName, "Z", velocity);
+    std::cout << "[GraphWidget] ACS velocity set to " << velocity << " mm/s for X, Y, Z" << std::endl;
+  }
+  else if (deviceType == "PI") {
+    // For PI hexapods, use system velocity (applies to all axes)
+    m_motionManager->SetSystemVelocity(deviceName, velocity);
+    std::cout << "[GraphWidget] PI system velocity set to " << velocity << " mm/s" << std::endl;
+  }
+}
+
+void GraphWidget::onSpeedPresetClicked()
+{
+  QPushButton* button = qobject_cast<QPushButton*>(sender());
+  if (!button) {
+    return;
+  }
+
+  // Extract speed value from button text (e.g., "5 mm/s" -> 5)
+  QString text = button->text();
+  QStringList parts = text.split(" ");
+  if (parts.size() > 0) {
+    bool ok;
+    int speed = parts[0].toInt(&ok);
+    if (ok) {
+      m_speedSlider->setValue(speed);
+      // onSpeedSliderChanged will be called automatically via signal
+    }
+  }
 }

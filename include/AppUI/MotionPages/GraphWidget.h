@@ -13,6 +13,7 @@
 #include <QMap>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QSlider>
 
 #include "../../graph/MotionGraph.h"
 #include "../../graph/MotionGraphManager.h"
@@ -124,6 +125,10 @@ private slots:
   void onCalculatePath();
   void updateCurrentPosition();
 
+  // Speed control
+  void onSpeedSliderChanged(int value);
+  void onSpeedPresetClicked();
+
   // Sequence worker slots
   void onSequenceExecutionCompleted(bool success, QString errorMessage);
 
@@ -154,6 +159,7 @@ private:
 
   // Execution panel
   void setupExecutionPanel();
+  void setupSpeedControl(QVBoxLayout* layout);
   void updateNodeSelectors();
 
   // Members
@@ -192,6 +198,14 @@ private:
   QPushButton* m_btnCalculatePath;
   QPushButton* m_btnExecutePath;
   QLabel* m_pathInfoLabel;
+
+  // Speed control widgets
+  QWidget* m_speedControlPanel;
+  QLabel* m_speedValueLabel;
+  QSlider* m_speedSlider;
+  QPushButton* m_speedPreset1;
+  QPushButton* m_speedPreset2;
+  QPushButton* m_speedPreset3;
 
   // Item tracking
   QMap<QString, MotionNodeItem*> m_nodeItems;  // nodeId -> visual item

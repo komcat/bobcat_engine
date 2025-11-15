@@ -688,6 +688,54 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // MANUAL ALIGN POINT
+  // ============================================================================
+  else if (methodName == "ManualAlignPoint") {
+    auto pointNameIt = params.find("point_name");
+    auto messageIt = params.find("message");
+    auto enableXIt = params.find("enable_x");
+    auto enableYIt = params.find("enable_y");
+    auto enableZIt = params.find("enable_z");
+
+    if (pointNameIt == params.end()) {
+      errorMessage = "Missing required parameter: point_name";
+      return false;
+    }
+
+    std::string pointName = pointNameIt->second;
+    std::string message = (messageIt != params.end()) ? messageIt->second : "Align the crosshair to the target point";
+    bool enableX = (enableXIt != params.end() && (enableXIt->second == "true" || enableXIt->second == "1"));
+    bool enableY = (enableYIt != params.end() && (enableYIt->second == "true" || enableYIt->second == "1"));
+    bool enableZ = (enableZIt != params.end() && (enableZIt->second == "true" || enableZIt->second == "1"));
+
+    if (!m_manualAlignPointCallback) {
+      errorMessage = "ManualAlignPoint callback not configured";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Showing manual align point for: " + pointName, "SystemHandler");
+    }
+
+    // Call the callback - this will show the ManualAlignPointWidget and wait for user
+    bool userCompleted = m_manualAlignPointCallback(pointName, message, enableX, enableY, enableZ);
+
+    if (!userCompleted) {
+      errorMessage = "User cancelled manual alignment";
+      if (m_logger) {
+        m_logger->Warning("User cancelled manual alignment for: " + pointName, "SystemHandler");
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("User completed manual alignment for: " + pointName, "SystemHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

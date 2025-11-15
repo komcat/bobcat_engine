@@ -6,6 +6,7 @@
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
 #include "ManualAdjustWidget.h"
+#include "ManualAlignPointWidget.h"
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
 #include "ScanExecutor.h"
@@ -51,10 +52,12 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_executionStack(nullptr)
   , m_promptWidget(nullptr)
   , m_manualAdjustWidget(nullptr)
+  , m_manualAlignPointWidget(nullptr)
   , m_userInputWidget(nullptr)
   , m_promptEventLoop(nullptr)
   , m_promptResponse(false)
   , m_manualAdjustResponse(false)
+  , m_manualAlignPointResponse(false)
   , m_userInputAccepted(false)
   , m_userInputText("")
   , m_scanWidget(nullptr)
@@ -1110,7 +1113,22 @@ void RunProgramPage::createExecutionWidget()
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RunProgramPage::onManualAdjustResponse);
 
-  // === USER INPUT VIEW (Index 3) ===
+  // === MANUAL ALIGN POINT VIEW (Index 3) ===
+  m_manualAlignPointWidget = new ManualAlignPointWidget(
+    m_context->motionManager,
+    m_context
+  );
+  m_manualAlignPointWidget->setStyleSheet(
+    "ManualAlignPointWidget { "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
+
+  // Connect manual align point response
+  connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
+    this, &RunProgramPage::onManualAlignPointResponse);
+
+  // === USER INPUT VIEW (Index 4) ===
   m_userInputWidget = new UserInputWidget();
   m_userInputWidget->setStyleSheet(
     "UserInputWidget { "
@@ -1123,11 +1141,12 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onUserInputResponse);
 
   // Add all views to stack
-  m_executionStack->addWidget(logWidget);              // Index 0: Log
-  m_executionStack->addWidget(m_promptWidget);         // Index 1: Prompt
-  m_executionStack->addWidget(m_manualAdjustWidget);  // Index 2: Manual Adjust
-  m_executionStack->addWidget(m_userInputWidget);     // Index 3: User Input
-  m_executionStack->setCurrentIndex(0);                // Start with log
+  m_executionStack->addWidget(logWidget);                 // Index 0: Log
+  m_executionStack->addWidget(m_promptWidget);            // Index 1: Prompt
+  m_executionStack->addWidget(m_manualAdjustWidget);      // Index 2: Manual Adjust
+  m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
+  m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
+  m_executionStack->setCurrentIndex(0);                   // Start with log
 
   layout->addWidget(m_executionStack, 1);
 
@@ -1437,6 +1456,36 @@ void RunProgramPage::onExecuteProgram()
 
   m_autoRunNextCheckBox->setEnabled(false);
 
+  // ✅ Set ManualAlignPoint callback on SequenceEngine (thread-aware)
+  m_context->sequenceEngine->SetManualAlignPointCallback(
+    [this](const std::string& pointName, const std::string& message,
+           bool enableX, bool enableY, bool enableZ) -> bool {
+    bool result = false;
+
+    // Must be called on UI thread
+    QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
+      // Switch to manual align point view (Index 3)
+      m_executionStack->setCurrentIndex(3);
+
+      // Show the manual align point widget
+      m_manualAlignPointWidget->showAlignment(
+        QString::fromStdString(pointName),
+        QString::fromStdString(message),
+        enableX, enableY, enableZ
+      );
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = m_manualAlignPointResponse;
+    }, Qt::BlockingQueuedConnection);
+
+    return result;
+  });
+
   // Create and start worker
   m_programWorker = new ProgramWorker(
     m_context->sequenceEngine,
@@ -1494,8 +1543,8 @@ void RunProgramPage::onExecuteProgram()
     [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
     // Show the user input widget (must be called on UI thread)
     QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue]() {
-      // Switch to user input view (Index 3)
-      m_executionStack->setCurrentIndex(3);
+      // Switch to user input view (Index 4)
+      m_executionStack->setCurrentIndex(4);
 
       // Show the user input widget
       m_userInputWidget->showInput(
@@ -1864,6 +1913,20 @@ void RunProgramPage::onManualAdjustResponse(bool completed)
 {
   // Store the response
   m_manualAdjustResponse = completed;
+
+  // Switch back to log view
+  m_executionStack->setCurrentIndex(0);
+
+  // Exit the event loop to unblock the callback
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onManualAlignPointResponse(bool completed)
+{
+  // Store the response
+  m_manualAlignPointResponse = completed;
 
   // Switch back to log view
   m_executionStack->setCurrentIndex(0);
