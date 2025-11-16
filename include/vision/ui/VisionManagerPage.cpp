@@ -11,6 +11,7 @@
 #include "product_position_manager.h"
 #include "../VisionManager.h"
 #include "../VisionROI.h"  // Includes VisionSearchBox
+#include "../VisionProcessingWorker.h"
 #include "../plugins/CircleDetectionPlugin.h"
 #include "../plugins/EdgeDetectionPlugin.h"
 #include "../plugins/FiducialDetectorPlugin.h"
@@ -48,6 +49,7 @@ VisionManagerPage::VisionManagerPage(ApplicationContext* context, QWidget* paren
     connectSignals();
     registerPlugins();
     updatePluginList();
+    setupWorker();
 
     // Initialize camera selection after signals are connected
     m_rightPanel->selectFirstCamera();
@@ -59,6 +61,14 @@ VisionManagerPage::VisionManagerPage(ApplicationContext* context, QWidget* paren
 
 VisionManagerPage::~VisionManagerPage()
 {
+    // Stop worker thread
+    if (m_worker) {
+        m_worker->stopWorkerThread();
+        delete m_worker;
+        m_worker = nullptr;
+        std::cout << "[VisionManagerPage] Worker thread stopped" << std::endl;
+    }
+
     // Unsubscribe from camera manager before destroying subscriber
     if (m_frameSubscriber && m_context && m_context->cameraManager) {
         m_context->cameraManager->UnsubscribeFromFrames(m_frameSubscriber->GetSubscriberId());
@@ -837,6 +847,21 @@ void VisionManagerPage::saveVisionRecipeFile()
 void VisionManagerPage::onStopRecipe()
 {
     std::cout << "[VisionManagerPage] Stop Recipe clicked" << std::endl;
+
+    // Cancel worker thread processing if active
+#ifdef HAS_OPENCV
+    if (m_worker && m_worker->isProcessing()) {
+        std::cout << "[VisionManagerPage] Cancelling worker thread processing..." << std::endl;
+        m_worker->cancelProcessing();
+
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Warning("Vision processing cancelled by user", "VisionManagerPage");
+        }
+        m_leftPanel->displayResult("Cancelling processing...\n\nPlease wait for cancellation to complete.");
+        return;
+    }
+#endif
+
     if (m_context && m_context->logManager) {
         m_context->logManager->Warning("Vision recipe execution stopped", "VisionManagerPage");
     }
@@ -1058,7 +1083,15 @@ void VisionManagerPage::onApplyParams()
         return;
     }
 
+#ifdef HAS_OPENCV
+    // Check if worker is already processing
+    if (m_worker && m_worker->isProcessing()) {
+        m_leftPanel->displayResult("Processing already in progress...\n\nPlease wait for current operation to complete.");
+        return;
+    }
+
     // Auto-recapture fresh image before execution
+    cv::Mat inputImage;
     if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected() && m_frameSubscriber->IsCameraGrabbing()) {
         std::cout << "[VisionManagerPage] Auto-recapturing fresh image before execution..." << std::endl;
 
@@ -1078,235 +1111,65 @@ void VisionManagerPage::onApplyParams()
             m_imageWidget->clearOverlays();
 
             // Convert to cv::Mat for VisionManager
-            cv::Mat cvImage;
             if (frame.channels == 3) {
-                cvImage = cv::Mat(frame.height, frame.width, CV_8UC3, frame.imageData.data()).clone();
-                cv::cvtColor(cvImage, cvImage, cv::COLOR_RGB2BGR);
+                inputImage = cv::Mat(frame.height, frame.width, CV_8UC3, frame.imageData.data()).clone();
+                cv::cvtColor(inputImage, inputImage, cv::COLOR_RGB2BGR);
             } else {
-                cvImage = cv::Mat(frame.height, frame.width, CV_8UC1, frame.imageData.data()).clone();
+                inputImage = cv::Mat(frame.height, frame.width, CV_8UC1, frame.imageData.data()).clone();
             }
 
-            // Set in VisionManager
-            VisionManager::instance().setInputImage(cvImage);
+            // Also set in VisionManager for consistency
+            VisionManager::instance().setInputImage(inputImage);
 
             if (m_context && m_context->logManager) {
                 m_context->logManager->Debug("Auto-recaptured fresh image before execution", "VisionManagerPage");
             }
         } else {
             std::cout << "[VisionManagerPage] Warning: Could not get fresh frame, using existing image" << std::endl;
+            inputImage = VisionManager::instance().getInputImage();
         }
+    } else {
+        // Use existing image from VisionManager
+        inputImage = VisionManager::instance().getInputImage();
     }
 
     // Check if we have an input image
-    if (!VisionManager::instance().hasValidImage()) {
+    if (inputImage.empty()) {
         m_leftPanel->displayResult("Error: No image captured\n\nPlease capture an image first.");
         return;
     }
 
-    VisionResult result;
-    QString resultText;
+    // Get current ROI
+    VisionROI currentROI = VisionManager::instance().getROI();
 
-    // Check if Search Box is enabled - perform grid search
-    if (m_rightPanel->isSearchBoxEnabled()) {
-        if (m_context && m_context->logManager) {
-            m_context->logManager->Info("Executing grid search with plugin: " + m_selectedPluginName.toStdString(), "VisionManagerPage");
-        }
+    // Check if worker is available
+    if (!m_worker) {
+        m_leftPanel->displayResult("Error: Vision processing worker not available.\n\nOpenCV may not be configured.");
+        return;
+    }
 
-        // Get current ROI dimensions
-        VisionROI currentROI = VisionManager::instance().getROI();
-        int roiWidth = currentROI.getWidth();
-        int roiHeight = currentROI.getHeight();
-
-        // Get search box coordinates from UI
-        int searchStartX, searchStartY, searchEndX, searchEndY;
+    // Get search box parameters
+    bool useSearchBox = m_rightPanel->isSearchBoxEnabled();
+    int searchStartX = 0, searchStartY = 0, searchEndX = 0, searchEndY = 0;
+    if (useSearchBox) {
         m_rightPanel->getSearchBox(searchStartX, searchStartY, searchEndX, searchEndY);
-
-        VisionSearchBox gridSearchBox(searchStartX, searchStartY, searchEndX, searchEndY);
-
-        resultText = "Grid Search Results\n";
-        resultText += "====================\n";
-        resultText += "Plugin: " + m_selectedPluginName + "\n";
-        resultText += "ROI Size: " + QString::number(roiWidth) + "x" + QString::number(roiHeight) + "\n";
-        resultText += "Search Box: " + QString::number(gridSearchBox.getWidth()) + "x" + QString::number(gridSearchBox.getHeight()) + "\n\n";
-
-        // Store original ROI
-        VisionROI originalROI = currentROI;
-
-        // Iterate through 9 grid positions
-        VisionResult bestResult;
-        int bestGridIndex = -1;
-        double bestScore = -1.0;
-        double totalTime = 0;
-
-        resultText += "Grid Search Progress:\n";
-
-        for (int gridIndex = 0; gridIndex < 9; ++gridIndex) {
-            VisionROI gridROI = gridSearchBox.getROIForGridCell(gridIndex, roiWidth, roiHeight);
-            QString gridLabel = QString::fromStdString(VisionSearchBox::getGridLabel(gridIndex));
-
-            // Set new ROI position
-            VisionManager::instance().setROI(gridROI);
-
-            // Execute plugin at this position
-            VisionResult gridResult = VisionManager::instance().executePlugin(m_selectedPluginName);
-            totalTime += gridResult.processingTimeMs;
-
-            // Calculate score based on result
-            // Higher score for more detections, better measurements
-            double score = 0.0;
-            if (gridResult.success) {
-                score += gridResult.circles.size() * 10.0;  // Circles found
-                score += gridResult.lines.size() * 5.0;     // Lines found
-
-                // Add measurement-based scoring
-                if (gridResult.measurements.count("circularity") > 0) {
-                    score += gridResult.measurements.at("circularity") * 100.0;
-                }
-                if (gridResult.measurements.count("confidence") > 0) {
-                    score += gridResult.measurements.at("confidence") * 50.0;
-                }
-            }
-
-            resultText += QString("  Grid %1: ").arg(gridLabel);
-            if (gridResult.success) {
-                resultText += QString("Found %1 circles, %2 lines (score: %3)\n")
-                    .arg(gridResult.circles.size())
-                    .arg(gridResult.lines.size())
-                    .arg(score, 0, 'f', 1);
-            } else {
-                resultText += "Failed\n";
-            }
-
-            // Track best result
-            if (score > bestScore) {
-                bestScore = score;
-                bestResult = gridResult;
-                bestGridIndex = gridIndex;
-            }
-        }
-
-        // Restore original ROI
-        VisionManager::instance().setROI(originalROI);
-
-        resultText += "\n";
-        resultText += QString("Best Result: Grid %1 (score: %2)\n")
-            .arg(QString::fromStdString(VisionSearchBox::getGridLabel(bestGridIndex)))
-            .arg(bestScore, 0, 'f', 1);
-        resultText += QString("Total Search Time: %1 ms\n\n").arg(totalTime, 0, 'f', 2);
-
-        result = bestResult;
-
-        // Update ROI display to show where best result was found
-        if (bestGridIndex >= 0) {
-            VisionROI bestROI = gridSearchBox.getROIForGridCell(bestGridIndex, roiWidth, roiHeight);
-            m_imageWidget->setROI(bestROI.getStartX(), bestROI.getStartY(), bestROI.getEndX(), bestROI.getEndY());
-            m_rightPanel->setROI(bestROI.getStartX(), bestROI.getStartY(), bestROI.getEndX(), bestROI.getEndY());
-            VisionManager::instance().setROI(bestROI);
-        }
-
-    } else {
-        // Normal single execution
-        if (m_context && m_context->logManager) {
-            m_context->logManager->Info("Executing plugin: " + m_selectedPluginName.toStdString(), "VisionManagerPage");
-        }
-
-        // Execute the selected plugin
-        result = VisionManager::instance().executePlugin(m_selectedPluginName);
-
-        // Display results
-        resultText = "Plugin: " + m_selectedPluginName + "\n";
-        resultText += "Status: " + QString(result.success ? "SUCCESS" : "FAILED") + "\n";
-        resultText += "Processing Time: " + QString::number(result.processingTimeMs, 'f', 2) + " ms\n";
-        resultText += QString(50, '=') + "\n\n";
     }
-
-    if (result.success) {
-        // Show numeric results
-        if (!result.measurements.empty()) {
-            resultText += "Measurements:\n";
-            for (const auto& kv : result.measurements) {
-                resultText += "  " + QString::fromStdString(kv.first) + ": "
-                           + QString::number(kv.second, 'f', 4) + "\n";
-            }
-            resultText += "\n";
-        }
-
-        // Show detected circles
-        if (!result.circles.empty()) {
-            resultText += "Detected Circles: " + QString::number(result.circles.size()) + "\n";
-            int count = 0;
-            for (const auto& circle : result.circles) {
-                if (count >= 10) {
-                    resultText += "  ... and " + QString::number(result.circles.size() - 10) + " more\n";
-                    break;
-                }
-                resultText += "  " + QString::number(count+1) + ". Circle at ("
-                           + QString::number(circle.centerPx.x, 'f', 1) + ", "
-                           + QString::number(circle.centerPx.y, 'f', 1) + ") r="
-                           + QString::number(circle.radiusPx, 'f', 1) + " px\n";
-                count++;
-            }
-            resultText += "\n";
-        }
-
-        // Show detected lines
-        if (!result.lines.empty()) {
-            resultText += "Detected Lines: " + QString::number(result.lines.size()) + "\n";
-            for (size_t i = 0; i < std::min(result.lines.size(), size_t(5)); ++i) {
-                const auto& line = result.lines[i];
-                resultText += "  " + QString::number(i+1) + ". Line from ("
-                           + QString::number(line.startPx.x, 'f', 1) + ", "
-                           + QString::number(line.startPx.y, 'f', 1) + ") to ("
-                           + QString::number(line.endPx.x, 'f', 1) + ", "
-                           + QString::number(line.endPx.y, 'f', 1) + ")\n";
-            }
-            if (result.lines.size() > 5) {
-                resultText += "  ... and " + QString::number(result.lines.size() - 5) + " more\n";
-            }
-            resultText += "\n";
-        }
-
-        // Show metadata
-        if (!result.metadata.empty()) {
-            resultText += "Metadata:\n";
-            for (const auto& kv : result.metadata) {
-                resultText += "  " + QString::fromStdString(kv.first) + ": "
-                           + QString::fromStdString(kv.second) + "\n";
-            }
-        }
-
-        // Create result markers for detected circles
-        std::vector<VisionImageWidget::ResultMarker> markers;
-        int labelNum = 1;
-        for (const auto& circle : result.circles) {
-            VisionImageWidget::ResultMarker marker;
-            marker.x = circle.centerPx.x;
-            marker.y = circle.centerPx.y;
-            marker.radius = circle.radiusPx;
-            marker.label = labelNum++;
-            markers.push_back(marker);
-        }
-
-        // Set markers on image widget
-        m_imageWidget->setResultMarkers(markers);
-
-        // Set overlay commands (contours, lines, etc.)
-        m_imageWidget->setOverlays(result.overlays);
-
-    } else {
-        resultText += "Error: " + QString::fromStdString(result.errorMessage) + "\n";
-
-        // Clear markers on failure
-        m_imageWidget->clearResultMarkers();
-        m_imageWidget->clearOverlays();
-    }
-
-    m_leftPanel->displayResult(resultText);
 
     if (m_context && m_context->logManager) {
-        m_context->logManager->Info("Plugin execution completed: " +
-            std::string(result.success ? "success" : "failed"), "VisionManagerPage");
+        if (useSearchBox) {
+            m_context->logManager->Info("Starting async grid search with plugin: " + m_selectedPluginName.toStdString(), "VisionManagerPage");
+        } else {
+            m_context->logManager->Info("Starting async execution of plugin: " + m_selectedPluginName.toStdString(), "VisionManagerPage");
+        }
     }
+
+    // Execute plugin asynchronously using worker thread
+    m_worker->executePlugin(m_selectedPluginName, inputImage, currentROI, useSearchBox,
+                           searchStartX, searchStartY, searchEndX, searchEndY);
+
+#else
+    m_leftPanel->displayResult("Error: OpenCV not available\n\nVision processing requires OpenCV.");
+#endif
 }
 
 void VisionManagerPage::onCameraSelected(const QString& cameraId)
@@ -1811,4 +1674,251 @@ void VisionManagerPage::updateProfileDisplay()
 
     // Update toolbar title or window title
     m_toolbar->setTitle(title);
+}
+
+// ========== Worker Thread Management ==========
+void VisionManagerPage::setupWorker()
+{
+#ifdef HAS_OPENCV
+    std::cout << "[VisionManagerPage] Setting up vision processing worker..." << std::endl;
+
+    m_worker = new VisionProcessingWorker();
+
+    // Connect worker signals to UI slots
+    QObject::connect(m_worker, &VisionProcessingWorker::processingStarted,
+            this, &VisionManagerPage::onProcessingStarted);
+    QObject::connect(m_worker, &VisionProcessingWorker::processingProgress,
+            this, &VisionManagerPage::onProcessingProgress);
+    QObject::connect(m_worker, &VisionProcessingWorker::processingFinished,
+            this, &VisionManagerPage::onProcessingFinished);
+    QObject::connect(m_worker, &VisionProcessingWorker::processingError,
+            this, &VisionManagerPage::onProcessingError);
+    QObject::connect(m_worker, &VisionProcessingWorker::processingCancelled,
+            this, &VisionManagerPage::onProcessingCancelled);
+
+    // Start the worker thread
+    m_worker->startWorkerThread();
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Vision processing worker initialized", "VisionManagerPage");
+    }
+
+    std::cout << "[VisionManagerPage] Worker setup complete" << std::endl;
+#else
+    std::cout << "[VisionManagerPage] OpenCV not available, worker not created" << std::endl;
+#endif
+}
+
+void VisionManagerPage::setUIProcessingState(bool isProcessing)
+{
+    // Disable/enable UI elements during processing
+    m_toolbar->setEnabled(!isProcessing);
+    m_leftPanel->setEnabled(!isProcessing);
+    m_rightPanel->setEnabled(!isProcessing);
+    m_imageWidget->setEnabled(!isProcessing);
+    m_backButton->setEnabled(!isProcessing);
+
+    if (isProcessing) {
+        setCursor(Qt::WaitCursor);
+    } else {
+        unsetCursor();
+    }
+}
+
+void VisionManagerPage::onProcessingStarted(const QString& pluginName)
+{
+    std::cout << "[VisionManagerPage] Processing started: " << pluginName.toStdString() << std::endl;
+
+    setUIProcessingState(true);
+
+    QString info = "Processing: " + pluginName + "\n\n";
+    info += "Status: Running...\n";
+    info += "Progress: 0%";
+    m_leftPanel->displayResult(info);
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Started processing: " + pluginName.toStdString(), "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::onProcessingProgress(int percent, const QString& message)
+{
+    std::cout << "[VisionManagerPage] Processing progress: " << percent << "% - " << message.toStdString() << std::endl;
+
+    QString info = "Processing: " + m_selectedPluginName + "\n\n";
+    info += "Status: " + message + "\n";
+    info += "Progress: " + QString::number(percent) + "%\n";
+
+    // Add a simple progress bar
+    int barWidth = 30;
+    int filled = (percent * barWidth) / 100;
+    QString bar = "[";
+    for (int i = 0; i < barWidth; ++i) {
+        if (i < filled) {
+            bar += "=";
+        } else if (i == filled) {
+            bar += ">";
+        } else {
+            bar += " ";
+        }
+    }
+    bar += "]";
+    info += bar;
+
+    m_leftPanel->displayResult(info);
+}
+
+void VisionManagerPage::onProcessingFinished(const VisionResult& result, const QString& pluginName)
+{
+    std::cout << "[VisionManagerPage] Processing finished: " << pluginName.toStdString() << std::endl;
+
+    setUIProcessingState(false);
+
+    // Display results (similar to original onApplyParams logic)
+    QString resultText = "Plugin: " + pluginName + "\n";
+    resultText += "Status: " + QString(result.success ? "SUCCESS" : "FAILED") + "\n";
+    resultText += "Processing Time: " + QString::number(result.processingTimeMs, 'f', 2) + " ms\n";
+    resultText += QString(50, '=') + "\n\n";
+
+    if (result.success) {
+        // Show numeric results
+        if (!result.measurements.empty()) {
+            resultText += "Measurements:\n";
+            for (const auto& kv : result.measurements) {
+                resultText += "  " + QString::fromStdString(kv.first) + ": "
+                           + QString::number(kv.second, 'f', 4) + "\n";
+            }
+            resultText += "\n";
+        }
+
+        // Show detected circles
+        if (!result.circles.empty()) {
+            resultText += "Detected Circles: " + QString::number(result.circles.size()) + "\n";
+            int count = 0;
+            for (const auto& circle : result.circles) {
+                if (count >= 10) {
+                    resultText += "  ... and " + QString::number(result.circles.size() - 10) + " more\n";
+                    break;
+                }
+                resultText += "  " + QString::number(count+1) + ". Circle at ("
+                           + QString::number(circle.centerPx.x, 'f', 1) + ", "
+                           + QString::number(circle.centerPx.y, 'f', 1) + ") r="
+                           + QString::number(circle.radiusPx, 'f', 1) + " px\n";
+                count++;
+            }
+            resultText += "\n";
+        }
+
+        // Show detected lines
+        if (!result.lines.empty()) {
+            resultText += "Detected Lines: " + QString::number(result.lines.size()) + "\n";
+            for (size_t i = 0; i < std::min(result.lines.size(), size_t(5)); ++i) {
+                const auto& line = result.lines[i];
+                resultText += "  " + QString::number(i+1) + ". Line from ("
+                           + QString::number(line.startPx.x, 'f', 1) + ", "
+                           + QString::number(line.startPx.y, 'f', 1) + ") to ("
+                           + QString::number(line.endPx.x, 'f', 1) + ", "
+                           + QString::number(line.endPx.y, 'f', 1) + ")\n";
+            }
+            if (result.lines.size() > 5) {
+                resultText += "  ... and " + QString::number(result.lines.size() - 5) + " more\n";
+            }
+            resultText += "\n";
+        }
+
+        // Show detected points
+        if (!result.points.empty()) {
+            resultText += "Detected Points: " + QString::number(result.points.size()) + "\n";
+            for (size_t i = 0; i < std::min(result.points.size(), size_t(10)); ++i) {
+                const auto& point = result.points[i];
+                resultText += "  " + QString::number(i+1) + ". Point at ("
+                           + QString::number(point.pixelCoord.x, 'f', 1) + ", "
+                           + QString::number(point.pixelCoord.y, 'f', 1) + ")\n";
+            }
+            if (result.points.size() > 10) {
+                resultText += "  ... and " + QString::number(result.points.size() - 10) + " more\n";
+            }
+            resultText += "\n";
+        }
+
+        // Show metadata
+        if (!result.metadata.empty()) {
+            resultText += "Metadata:\n";
+            for (const auto& kv : result.metadata) {
+                resultText += "  " + QString::fromStdString(kv.first) + ": "
+                           + QString::fromStdString(kv.second) + "\n";
+            }
+        }
+
+        // Create result markers for detected circles
+        std::vector<VisionImageWidget::ResultMarker> markers;
+        int labelNum = 1;
+        for (const auto& circle : result.circles) {
+            VisionImageWidget::ResultMarker marker;
+            marker.x = circle.centerPx.x;
+            marker.y = circle.centerPx.y;
+            marker.radius = circle.radiusPx;
+            marker.label = labelNum++;
+            markers.push_back(marker);
+        }
+
+        // Set markers on image widget
+        m_imageWidget->setResultMarkers(markers);
+
+        // Set overlay commands (contours, lines, etc.)
+        m_imageWidget->setOverlays(result.overlays);
+
+    } else {
+        resultText += "Error: " + QString::fromStdString(result.errorMessage) + "\n";
+
+        // Clear markers on failure
+        m_imageWidget->clearResultMarkers();
+        m_imageWidget->clearOverlays();
+    }
+
+    m_leftPanel->displayResult(resultText);
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Processing completed: " +
+            std::string(result.success ? "success" : "failed"), "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::onProcessingError(const QString& errorMessage)
+{
+    std::cout << "[VisionManagerPage] Processing error: " << errorMessage.toStdString() << std::endl;
+
+    setUIProcessingState(false);
+
+    QString info = "Processing Error!\n\n";
+    info += "Plugin: " + m_selectedPluginName + "\n";
+    info += "Error: " + errorMessage + "\n\n";
+    info += "Please check the parameters and try again.";
+
+    m_leftPanel->displayResult(info);
+
+    // Clear markers on error
+    m_imageWidget->clearResultMarkers();
+    m_imageWidget->clearOverlays();
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Error("Processing error: " + errorMessage.toStdString(), "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::onProcessingCancelled()
+{
+    std::cout << "[VisionManagerPage] Processing cancelled" << std::endl;
+
+    setUIProcessingState(false);
+
+    QString info = "Processing Cancelled\n\n";
+    info += "Plugin: " + m_selectedPluginName + "\n";
+    info += "The operation was cancelled by user.";
+
+    m_leftPanel->displayResult(info);
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Warning("Processing cancelled", "VisionManagerPage");
+    }
 }

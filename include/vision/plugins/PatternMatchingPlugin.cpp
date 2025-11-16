@@ -8,9 +8,117 @@
 #include <QImage>
 #include <QFileInfo>
 #include <QDir>
+#include <QThread>
+#include <QCoreApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QMouseEvent>
+#include <QPainter>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <functional>
+
+// Custom widget for anchor point selection with click interaction
+// Note: Using eventFilter instead of Q_OBJECT to avoid MOC compilation issues
+class AnchorPointWidget : public QLabel {
+public:
+    AnchorPointWidget(const QPixmap& templateImage, double initialOffsetX, double initialOffsetY, QWidget* parent = nullptr)
+        : QLabel(parent), m_templatePixmap(templateImage), m_anchorOffsetX(initialOffsetX), m_anchorOffsetY(initialOffsetY)
+    {
+        setAlignment(Qt::AlignCenter);
+        setCursor(Qt::CrossCursor);
+        setMouseTracking(true);
+        updateDisplay();
+    }
+
+    double getAnchorOffsetX() const { return m_anchorOffsetX; }
+    double getAnchorOffsetY() const { return m_anchorOffsetY; }
+
+    // Callback for anchor changes (replaces signal)
+    std::function<void(double, double)> onAnchorChanged;
+
+protected:
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton) {
+            updateAnchorFromMouse(event->pos());
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if (event->buttons() & Qt::LeftButton) {
+            updateAnchorFromMouse(event->pos());
+        }
+    }
+
+private:
+    void updateAnchorFromMouse(const QPoint& pos) {
+        // Calculate where in the template image the click corresponds to
+        QSize labelSize = size();
+        QSize pixmapSize = m_templatePixmap.size();
+
+        // Calculate the offset due to centering
+        int offsetX = (labelSize.width() - pixmapSize.width()) / 2;
+        int offsetY = (labelSize.height() - pixmapSize.height()) / 2;
+
+        // Get position relative to template image
+        double imgX = pos.x() - offsetX;
+        double imgY = pos.y() - offsetY;
+
+        // Clamp to template bounds
+        imgX = std::max(0.0, std::min(imgX, static_cast<double>(pixmapSize.width() - 1)));
+        imgY = std::max(0.0, std::min(imgY, static_cast<double>(pixmapSize.height() - 1)));
+
+        // Calculate offset from center
+        double centerX = pixmapSize.width() / 2.0;
+        double centerY = pixmapSize.height() / 2.0;
+        m_anchorOffsetX = imgX - centerX;
+        m_anchorOffsetY = imgY - centerY;
+
+        updateDisplay();
+
+        // Call callback if set
+        if (onAnchorChanged) {
+            onAnchorChanged(m_anchorOffsetX, m_anchorOffsetY);
+        }
+    }
+
+    void updateDisplay() {
+        // Create a copy of the template with anchor point overlay
+        QPixmap display = m_templatePixmap.copy();
+        QPainter painter(&display);
+
+        // Calculate anchor position in image coordinates
+        double centerX = display.width() / 2.0;
+        double centerY = display.height() / 2.0;
+        double anchorX = centerX + m_anchorOffsetX;
+        double anchorY = centerY + m_anchorOffsetY;
+
+        // Draw center marker (yellow crosshair)
+        painter.setPen(QPen(Qt::yellow, 1, Qt::DashLine));
+        painter.drawLine(static_cast<int>(centerX - 10), static_cast<int>(centerY),
+                         static_cast<int>(centerX + 10), static_cast<int>(centerY));
+        painter.drawLine(static_cast<int>(centerX), static_cast<int>(centerY - 10),
+                         static_cast<int>(centerX), static_cast<int>(centerY + 10));
+
+        // Draw anchor point (red dot with blue crosshair)
+        painter.setPen(QPen(Qt::blue, 2));
+        painter.drawLine(static_cast<int>(anchorX - 15), static_cast<int>(anchorY),
+                         static_cast<int>(anchorX + 15), static_cast<int>(anchorY));
+        painter.drawLine(static_cast<int>(anchorX), static_cast<int>(anchorY - 15),
+                         static_cast<int>(anchorX), static_cast<int>(anchorY + 15));
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(Qt::red);
+        painter.drawEllipse(QPointF(anchorX, anchorY), 4, 4);
+
+        setPixmap(display);
+    }
+
+    QPixmap m_templatePixmap;
+    double m_anchorOffsetX;
+    double m_anchorOffsetY;
+};
 
 PatternMatchingPlugin::PatternMatchingPlugin()
     : VisionPluginBase("PatternMatching", "PR", "Template-based pattern matching using normalized cross-correlation")
@@ -81,13 +189,35 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
     for (const auto& match : matches) {
         std::string matchName = "match_" + std::to_string(matchIndex);
 
-        // Add point result (center of matched region)
-        result.addPoint(matchName, match.location, cv::Point2d(0, 0), match.score);
+        // Calculate anchor point position (center + offset, rotated if needed)
+        cv::Point2d anchorPoint = match.location;
+        if (m_useCustomAnchor) {
+            double angleRad = match.angle * CV_PI / 180.0;
+            double cosA = std::cos(angleRad);
+            double sinA = std::sin(angleRad);
 
-        // Add measurements
+            // Apply anchor offset with rotation and scale
+            double offsetX = m_anchorOffsetX * match.scale;
+            double offsetY = m_anchorOffsetY * match.scale;
+            double rotatedOffsetX = offsetX * cosA - offsetY * sinA;
+            double rotatedOffsetY = offsetX * sinA + offsetY * cosA;
+
+            anchorPoint.x = match.location.x + rotatedOffsetX;
+            anchorPoint.y = match.location.y + rotatedOffsetY;
+        }
+
+        // Add point result (anchor point of matched region)
+        result.addPoint(matchName, anchorPoint, cv::Point2d(0, 0), match.score);
+
+        // Add measurements - report anchor point location
         result.addMeasurement(matchName + "_score", match.score);
-        result.addMeasurement(matchName + "_x", match.location.x);
-        result.addMeasurement(matchName + "_y", match.location.y);
+        result.addMeasurement(matchName + "_x", match.location.x);  // Template center
+        result.addMeasurement(matchName + "_y", match.location.y);  // Template center
+
+        if (m_useCustomAnchor) {
+            result.addMeasurement(matchName + "_anchor_x", anchorPoint.x);  // Anchor point
+            result.addMeasurement(matchName + "_anchor_y", anchorPoint.y);  // Anchor point
+        }
 
         if (m_searchRotation) {
             result.addMeasurement(matchName + "_angle", match.angle);
@@ -125,17 +255,29 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
             result.addLineOverlay(corners[i], corners[(i + 1) % 4], boxColor, 2);
         }
 
-        // Draw center crosshair
-        result.addPointOverlay(match.location, cv::Scalar(0, 0, 255), 5);  // Red center
+        // Draw anchor point crosshair (at the actual reported location)
+        result.addPointOverlay(anchorPoint, cv::Scalar(0, 0, 255), 5);  // Red anchor dot
         double crossSize = std::min(halfW, halfH) * 0.3;
         result.addLineOverlay(
-            cv::Point2d(match.location.x - crossSize, match.location.y),
-            cv::Point2d(match.location.x + crossSize, match.location.y),
+            cv::Point2d(anchorPoint.x - crossSize, anchorPoint.y),
+            cv::Point2d(anchorPoint.x + crossSize, anchorPoint.y),
             cv::Scalar(255, 0, 0), 2);
         result.addLineOverlay(
-            cv::Point2d(match.location.x, match.location.y - crossSize),
-            cv::Point2d(match.location.x, match.location.y + crossSize),
+            cv::Point2d(anchorPoint.x, anchorPoint.y - crossSize),
+            cv::Point2d(anchorPoint.x, anchorPoint.y + crossSize),
             cv::Scalar(255, 0, 0), 2);
+
+        // Draw template center marker (yellow dash) if using custom anchor
+        if (m_useCustomAnchor) {
+            result.addLineOverlay(
+                cv::Point2d(match.location.x - 5, match.location.y),
+                cv::Point2d(match.location.x + 5, match.location.y),
+                cv::Scalar(0, 255, 255), 1);
+            result.addLineOverlay(
+                cv::Point2d(match.location.x, match.location.y - 5),
+                cv::Point2d(match.location.x, match.location.y + 5),
+                cv::Scalar(0, 255, 255), 1);
+        }
 
         // Draw score text
         char scoreText[32];
@@ -484,6 +626,13 @@ void PatternMatchingPlugin::updatePreviewLabel() {
         return;
     }
 
+    // Check if we're in the main (GUI) thread - if not, skip UI updates
+    // This prevents crashes when setParameters is called from worker threads
+    if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        std::cout << "[PatternMatchingPlugin] Skipping UI update from worker thread" << std::endl;
+        return;
+    }
+
     if (m_template.empty()) {
         m_previewLabel->setText("No template");
         m_previewLabel->setPixmap(QPixmap());
@@ -514,6 +663,83 @@ void PatternMatchingPlugin::updatePreviewLabel() {
                 m_templatePathLabel->setToolTip(path);
             }
         }
+    }
+}
+
+void PatternMatchingPlugin::showAnchorPointDialog() {
+    if (m_template.empty()) {
+        return;
+    }
+
+    // Create dialog
+    QDialog dialog(m_configWidget);
+    dialog.setWindowTitle("Set Anchor Point");
+    dialog.setMinimumSize(400, 450);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+
+    // Instructions
+    QLabel* instructions = new QLabel(
+        "Click on the template to set the anchor point.\n"
+        "The anchor point determines what location is reported when the pattern is found.\n\n"
+        "Yellow dashed crosshair: Template center\n"
+        "Blue crosshair with red dot: Current anchor point"
+    );
+    instructions->setWordWrap(true);
+    layout->addWidget(instructions);
+
+    // Convert template to QPixmap
+    cv::Mat displayTemplate;
+    if (m_template.channels() == 1) {
+        cv::cvtColor(m_template, displayTemplate, cv::COLOR_GRAY2RGB);
+    } else {
+        displayTemplate = m_template.clone();
+    }
+
+    QImage qimg(displayTemplate.data, displayTemplate.cols, displayTemplate.rows,
+                static_cast<int>(displayTemplate.step), QImage::Format_RGB888);
+    QPixmap templatePixmap = QPixmap::fromImage(qimg.rgbSwapped());
+
+    // Create anchor point widget
+    AnchorPointWidget* anchorWidget = new AnchorPointWidget(templatePixmap, m_anchorOffsetX, m_anchorOffsetY);
+    anchorWidget->setMinimumSize(templatePixmap.size());
+    layout->addWidget(anchorWidget);
+
+    // Offset display
+    QLabel* offsetLabel = new QLabel(QString("Offset from center: (%.1f, %.1f) px")
+                                     .arg(m_anchorOffsetX).arg(m_anchorOffsetY));
+    layout->addWidget(offsetLabel);
+
+    // Set callback to update offset display
+    anchorWidget->onAnchorChanged = [offsetLabel](double x, double y) {
+        offsetLabel->setText(QString("Offset from center: (%.1f, %.1f) px").arg(x).arg(y));
+    };
+
+    // Use custom anchor checkbox
+    QCheckBox* useCustomCheck = new QCheckBox("Use custom anchor point (uncheck to use center)");
+    useCustomCheck->setChecked(m_useCustomAnchor || (m_anchorOffsetX != 0.0 || m_anchorOffsetY != 0.0));
+    layout->addWidget(useCustomCheck);
+
+    // Buttons
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    // Show dialog
+    if (dialog.exec() == QDialog::Accepted) {
+        m_anchorOffsetX = anchorWidget->getAnchorOffsetX();
+        m_anchorOffsetY = anchorWidget->getAnchorOffsetY();
+        m_useCustomAnchor = useCustomCheck->isChecked();
+
+        if (!m_useCustomAnchor) {
+            // Reset to center
+            m_anchorOffsetX = 0.0;
+            m_anchorOffsetY = 0.0;
+        }
+
+        std::cout << "[PatternMatchingPlugin] Anchor point set: offset=(" << m_anchorOffsetX << ", "
+                  << m_anchorOffsetY << "), useCustom=" << m_useCustomAnchor << std::endl;
     }
 }
 
@@ -821,6 +1047,9 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
             }
 
             QMessageBox::information(m_configWidget, "Template Taught", message);
+
+            // Show anchor point dialog after teaching
+            showAnchorPointDialog();
         } else {
             QMessageBox::warning(m_configWidget, "Teaching Error",
                                  "Failed to teach template from ROI.");
@@ -935,6 +1164,11 @@ nlohmann::json PatternMatchingPlugin::getParameters() const {
     params["templateOriginX"] = m_templateOrigin.x;
     params["templateOriginY"] = m_templateOrigin.y;
 
+    // Anchor point parameters
+    params["useCustomAnchor"] = m_useCustomAnchor;
+    params["anchorOffsetX"] = m_anchorOffsetX;
+    params["anchorOffsetY"] = m_anchorOffsetY;
+
     return params;
 }
 
@@ -1003,6 +1237,17 @@ void PatternMatchingPlugin::setParameters(const nlohmann::json& params) {
     if (params.contains("templateOriginX") && params.contains("templateOriginY")) {
         m_templateOrigin.x = params["templateOriginX"].get<double>();
         m_templateOrigin.y = params["templateOriginY"].get<double>();
+    }
+
+    // Anchor point parameters
+    if (params.contains("useCustomAnchor")) {
+        m_useCustomAnchor = params["useCustomAnchor"].get<bool>();
+    }
+    if (params.contains("anchorOffsetX")) {
+        m_anchorOffsetX = params["anchorOffsetX"].get<double>();
+    }
+    if (params.contains("anchorOffsetY")) {
+        m_anchorOffsetY = params["anchorOffsetY"].get<double>();
     }
 
     // Update UI if widget exists

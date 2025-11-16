@@ -12,6 +12,8 @@ class VisionLeftPanelWidget;
 class VisionImageWidget;
 class VisionRightPanelWidget;
 class LiveVideoSubscriber;
+class VisionProcessingWorker;
+struct VisionResult;
 
 class VisionManagerPage : public QWidget {
     Q_OBJECT
@@ -58,6 +60,13 @@ private slots:
     void onSearchBoxChanged(int startX, int startY, int endX, int endY);
     void onSearchBoxEnabledChanged(bool enabled);
 
+    // Worker thread callbacks
+    void onProcessingStarted(const QString& pluginName);
+    void onProcessingProgress(int percent, const QString& message);
+    void onProcessingFinished(const VisionResult& result, const QString& pluginName);
+    void onProcessingError(const QString& errorMessage);
+    void onProcessingCancelled();
+
 private:
     void setupUI();
     void connectSignals();
@@ -70,6 +79,10 @@ private:
     void saveProfileToPath(const QString& filePath);
     void saveRecipeToPath(const QString& filePath);
     void updateProfileDisplay();
+
+    // Worker thread management
+    void setupWorker();
+    void setUIProcessingState(bool isProcessing);
 
     ApplicationContext* m_context;
 
@@ -93,4 +106,7 @@ private:
     QString m_currentProfilePath;
     QString m_currentRecipePath;
     bool m_profileModified = false;
+
+    // Vision processing worker
+    VisionProcessingWorker* m_worker = nullptr;
 };

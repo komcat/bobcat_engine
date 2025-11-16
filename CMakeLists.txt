@@ -909,6 +909,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/LineDetectorPlugin.cpp
         include/vision/plugins/CornerDetectorPlugin.cpp
         include/vision/plugins/PatternMatchingPlugin.cpp
+        include/vision/VisionProcessingWorker.cpp
         # UI files (Phase 2)
         include/vision/ui/VisionManagerPage.cpp
         include/vision/ui/VisionToolbarWidget.cpp
@@ -927,6 +928,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/EdgeDetectionPlugin.h
         include/vision/plugins/FiducialDetectorPlugin.h
         include/vision/plugins/LineDetectorPlugin.h
+        include/vision/VisionProcessingWorker.h
         # UI headers (Phase 2)
         include/vision/ui/VisionManagerPage.h
         include/vision/ui/VisionToolbarWidget.h

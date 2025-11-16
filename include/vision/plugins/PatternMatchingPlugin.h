@@ -74,6 +74,7 @@ private:
 
     // Update UI preview
     void updatePreviewLabel();
+    void showAnchorPointDialog();
 
     // Template data
     cv::Mat m_template;                    // The taught template image
@@ -81,6 +82,11 @@ private:
     std::string m_templateFilePath;        // Path to saved template file
     std::string m_templateDirectory;       // Directory for auto-saving templates
     std::string m_profileName;             // Profile name for auto-generating template filename
+
+    // Anchor point (offset from center of template)
+    double m_anchorOffsetX = 0.0;          // X offset from template center
+    double m_anchorOffsetY = 0.0;          // Y offset from template center
+    bool m_useCustomAnchor = false;        // Whether to use custom anchor point
 
     // Source image for teaching
     cv::Mat m_sourceImage;
