@@ -70,6 +70,8 @@ struct OverlayCommand {
         DrawLine,
         DrawCircle,
         DrawRectangle,
+        DrawFilledRect,     // Semi-transparent filled rectangle (axis-aligned)
+        DrawFilledPolygon,  // Semi-transparent filled polygon (rotated/tilted)
         DrawText,
         DrawCrosshair,
         DrawContour
@@ -79,6 +81,7 @@ struct OverlayCommand {
     cv::Scalar color = cv::Scalar(0, 255, 0);  // Green default
     int thickness = 2;
     int fontScale = 1;
+    double opacity = 1.0;  // Opacity for filled shapes (0.0-1.0)
 
     // Geometry data (used based on type)
     cv::Point2d p1 = {0, 0};

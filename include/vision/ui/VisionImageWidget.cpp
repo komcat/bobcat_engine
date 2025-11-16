@@ -470,11 +470,25 @@ void VisionImageWidget::updateDisplayImage()
             painter.setBrush(Qt::NoBrush);
             painter.drawEllipse(QPoint(roiCenterX, roiCenterY), 5, 5);
 
-            // ROI label
-            painter.setPen(Qt::white);
+            // ROI label with outline for visibility on both black and white backgrounds
             painter.setFont(QFont("Arial", 10, QFont::Bold));
             QString roiText = QString("ROI: %1x%2").arg(m_roiEndX - m_roiStartX).arg(m_roiEndY - m_roiStartY);
-            painter.drawText(scaledStartX + 5, scaledStartY - 5, roiText);
+            int textX = scaledStartX + 5;
+            int textY = scaledStartY - 5;
+
+            // Draw black outline (draw text in black at 8 offset positions)
+            painter.setPen(Qt::black);
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    if (dx != 0 || dy != 0) {
+                        painter.drawText(textX + dx, textY + dy, roiText);
+                    }
+                }
+            }
+
+            // Draw main text in cyan (highly visible on both black and white)
+            painter.setPen(QColor(0, 255, 255));  // Cyan
+            painter.drawText(textX, textY, roiText);
         }
 
         // Draw overlay commands from VisionResult
@@ -528,6 +542,56 @@ void VisionImageWidget::updateDisplayImage()
                             static_cast<int>(overlay.rect.width * scaleX),
                             static_cast<int>(overlay.rect.height * scaleY)
                         );
+                        break;
+
+                    case OverlayCommand::DrawFilledRect:
+                        {
+                            // Draw semi-transparent filled rectangle
+                            QColor fillColor(
+                                static_cast<int>(overlay.color[2]),  // R (BGR to RGB)
+                                static_cast<int>(overlay.color[1]),  // G
+                                static_cast<int>(overlay.color[0])   // B
+                            );
+                            fillColor.setAlphaF(overlay.opacity);
+
+                            painter.save();
+                            painter.setBrush(QBrush(fillColor));
+                            painter.setPen(Qt::NoPen);  // No outline for filled rect
+                            painter.drawRect(
+                                static_cast<int>(overlay.p1.x * scaleX),
+                                static_cast<int>(overlay.p1.y * scaleY),
+                                static_cast<int>((overlay.p2.x - overlay.p1.x) * scaleX),
+                                static_cast<int>((overlay.p2.y - overlay.p1.y) * scaleY)
+                            );
+                            painter.restore();
+                        }
+                        break;
+
+                    case OverlayCommand::DrawFilledPolygon:
+                        {
+                            // Draw semi-transparent filled polygon (rotated/tilted shape)
+                            if (!overlay.contour.empty()) {
+                                QColor fillColor(
+                                    static_cast<int>(overlay.color[2]),  // R (BGR to RGB)
+                                    static_cast<int>(overlay.color[1]),  // G
+                                    static_cast<int>(overlay.color[0])   // B
+                                );
+                                fillColor.setAlphaF(overlay.opacity);
+
+                                QPolygon polygon;
+                                for (const auto& pt : overlay.contour) {
+                                    int sx = static_cast<int>(pt.x * scaleX);
+                                    int sy = static_cast<int>(pt.y * scaleY);
+                                    polygon.append(QPoint(sx, sy));
+                                }
+
+                                painter.save();
+                                painter.setBrush(QBrush(fillColor));
+                                painter.setPen(Qt::NoPen);  // No outline
+                                painter.drawPolygon(polygon);
+                                painter.restore();
+                            }
+                        }
                         break;
 
                     case OverlayCommand::DrawCrosshair:

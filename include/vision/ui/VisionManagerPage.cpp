@@ -15,6 +15,7 @@
 #include "../plugins/EdgeDetectionPlugin.h"
 #include "../plugins/FiducialDetectorPlugin.h"
 #include "../plugins/LineDetectorPlugin.h"
+#include "../plugins/CornerDetectorPlugin.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -308,6 +309,9 @@ void VisionManagerPage::onLoadRecipe()
 
                 m_rightPanel->setCameraSettings(camSettings);
                 VisionManager::instance().setPixelToMm(camSettings.pixelToMmX, camSettings.pixelToMmY);
+
+                // Apply camera settings to hardware immediately
+                m_rightPanel->applyCameraSettings();
 
                 resultText += "Camera: " + camSettings.cameraId + "\n";
                 resultText += "Exposure: " + QString::number(camSettings.exposureTime) + " us\n";
@@ -653,6 +657,9 @@ void VisionManagerPage::loadVisionRecipeFile()
 
             m_rightPanel->setCameraSettings(camSettings);
             VisionManager::instance().setPixelToMm(camSettings.pixelToMmX, camSettings.pixelToMmY);
+
+            // Apply camera settings to hardware immediately
+            m_rightPanel->applyCameraSettings();
 
             resultText += "Camera: " + camSettings.cameraId + "\n";
         }
@@ -1037,6 +1044,45 @@ void VisionManagerPage::onApplyParams()
     if (m_selectedPluginName.isEmpty()) {
         m_leftPanel->displayResult("Error: No plugin selected\n\nPlease select a plugin first.");
         return;
+    }
+
+    // Auto-recapture fresh image before execution
+    if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected() && m_frameSubscriber->IsCameraGrabbing()) {
+        std::cout << "[VisionManagerPage] Auto-recapturing fresh image before execution..." << std::endl;
+
+        // Get the latest frame
+        CameraFrameData frame = m_frameSubscriber->GetLatestFrame();
+        if (frame.IsValid()) {
+            // Convert to QImage for display
+            QImage::Format format = (frame.channels == 3) ? QImage::Format_RGB888 : QImage::Format_Grayscale8;
+            QImage qImage(frame.imageData.data(), frame.width, frame.height,
+                          frame.width * frame.channels, format);
+
+            // Display in image widget
+            m_imageWidget->setImage(QPixmap::fromImage(qImage));
+
+            // Clear any previous result markers and overlays
+            m_imageWidget->clearResultMarkers();
+            m_imageWidget->clearOverlays();
+
+            // Convert to cv::Mat for VisionManager
+            cv::Mat cvImage;
+            if (frame.channels == 3) {
+                cvImage = cv::Mat(frame.height, frame.width, CV_8UC3, frame.imageData.data()).clone();
+                cv::cvtColor(cvImage, cvImage, cv::COLOR_RGB2BGR);
+            } else {
+                cvImage = cv::Mat(frame.height, frame.width, CV_8UC1, frame.imageData.data()).clone();
+            }
+
+            // Set in VisionManager
+            VisionManager::instance().setInputImage(cvImage);
+
+            if (m_context && m_context->logManager) {
+                m_context->logManager->Debug("Auto-recaptured fresh image before execution", "VisionManagerPage");
+            }
+        } else {
+            std::cout << "[VisionManagerPage] Warning: Could not get fresh frame, using existing image" << std::endl;
+        }
     }
 
     // Check if we have an input image
@@ -1442,6 +1488,10 @@ void VisionManagerPage::registerPlugins()
     // Register Line Detector Plugin
     auto linePlugin = std::make_shared<LineDetectorPlugin>();
     VisionManager::instance().registerPlugin(linePlugin);
+
+    // Register Corner Detector Plugin
+    auto cornerPlugin = std::make_shared<CornerDetectorPlugin>();
+    VisionManager::instance().registerPlugin(cornerPlugin);
 
     if (m_context && m_context->logManager) {
         int count = VisionManager::instance().getPluginCount();
