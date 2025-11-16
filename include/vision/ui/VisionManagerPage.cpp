@@ -16,6 +16,7 @@
 #include "../plugins/FiducialDetectorPlugin.h"
 #include "../plugins/LineDetectorPlugin.h"
 #include "../plugins/CornerDetectorPlugin.h"
+#include "../plugins/PatternMatchingPlugin.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -27,6 +28,7 @@
 #include <QDir>
 #include <QTimer>
 #include <QFileInfo>
+#include <QCoreApplication>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <fstream>
@@ -986,6 +988,11 @@ void VisionManagerPage::onCaptureImage()
         m_context->logManager->Info("Image captured from " + m_selectedCameraId.toStdString(), "VisionManagerPage");
     }
 
+    // Update PatternMatching source image if that plugin is selected
+    if (m_selectedPluginName == "PatternMatching") {
+        updatePatternMatchingSourceImage();
+    }
+
     QString info = "Image captured successfully!\n\n";
     info += "Camera: " + m_selectedCameraId + "\n";
     info += "Size: " + QString::number(frame.width) + " x " + QString::number(frame.height) + "\n";
@@ -1030,6 +1037,11 @@ void VisionManagerPage::onROIDragged(int startX, int startY, int endX, int endY)
     VisionROI roi(startX, startY, endX, endY);
     roi.setEnabled(m_rightPanel->isROIEnabled());
     VisionManager::instance().setROI(roi);
+
+    // Update PatternMatching source image if that plugin is selected
+    if (m_selectedPluginName == "PatternMatching") {
+        updatePatternMatchingSourceImage();
+    }
 
     if (m_context && m_context->logManager) {
         m_context->logManager->Debug("ROI dragged to new position", "VisionManagerPage");
@@ -1493,6 +1505,10 @@ void VisionManagerPage::registerPlugins()
     auto cornerPlugin = std::make_shared<CornerDetectorPlugin>();
     VisionManager::instance().registerPlugin(cornerPlugin);
 
+    // Register Pattern Matching Plugin
+    auto patternPlugin = std::make_shared<PatternMatchingPlugin>();
+    VisionManager::instance().registerPlugin(patternPlugin);
+
     if (m_context && m_context->logManager) {
         int count = VisionManager::instance().getPluginCount();
         m_context->logManager->Info("Registered " + std::to_string(count) + " vision plugins", "VisionManagerPage");
@@ -1538,6 +1554,71 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
     } else {
         std::cerr << "[VisionManagerPage] Failed to create config widget for: " << pluginName.toStdString() << std::endl;
     }
+
+    // If it's a PatternMatchingPlugin, pass the current ROI image for teaching
+    if (pluginName == "PatternMatching") {
+        updatePatternMatchingSourceImage();
+    }
+}
+
+void VisionManagerPage::updatePatternMatchingSourceImage()
+{
+    auto plugin = VisionManager::instance().getPlugin("PatternMatching");
+    if (!plugin) return;
+
+    auto patternPlugin = std::dynamic_pointer_cast<PatternMatchingPlugin>(plugin);
+    if (!patternPlugin) return;
+
+    // Set template directory and profile name for auto-save
+    if (!m_currentProfilePath.isEmpty()) {
+        QFileInfo profileInfo(m_currentProfilePath);
+        QString visionDir = profileInfo.absolutePath();
+        patternPlugin->setTemplateDirectory(visionDir.toStdString());
+        patternPlugin->setProfileName(profileInfo.baseName().toStdString());
+        std::cout << "[VisionManagerPage] Set template directory: " << visionDir.toStdString()
+                  << ", profile: " << profileInfo.baseName().toStdString() << std::endl;
+    } else if (m_context && m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+        // Use product-based path if no profile path set
+        QString configPath = QCoreApplication::applicationDirPath() + "/config/"
+                            + QString::fromStdString(m_context->productPositionManager->GetCurrentProductName()) + "/vision";
+        patternPlugin->setTemplateDirectory(configPath.toStdString());
+        patternPlugin->setProfileName("untitled");
+        std::cout << "[VisionManagerPage] Set default template directory: " << configPath.toStdString() << std::endl;
+    }
+
+    // Get the current input image and ROI
+    cv::Mat inputImage = VisionManager::instance().getInputImage();
+    if (inputImage.empty()) {
+        std::cout << "[VisionManagerPage] No input image available for PatternMatching teaching" << std::endl;
+        return;
+    }
+
+    // Get current ROI
+    VisionROI roi = VisionManager::instance().getROI();
+    if (!roi.isValid()) {
+        // No ROI set, use entire image
+        patternPlugin->setSourceImage(inputImage);
+        std::cout << "[VisionManagerPage] Set full image for PatternMatching teaching" << std::endl;
+        return;
+    }
+
+    // Crop image to ROI
+    int startX = roi.getStartX();
+    int startY = roi.getStartY();
+    int endX = roi.getEndX();
+    int endY = roi.getEndY();
+
+    // Clamp to image bounds
+    startX = std::max(0, std::min(startX, inputImage.cols - 1));
+    startY = std::max(0, std::min(startY, inputImage.rows - 1));
+    endX = std::max(startX + 1, std::min(endX, inputImage.cols));
+    endY = std::max(startY + 1, std::min(endY, inputImage.rows));
+
+    cv::Mat roiImage = inputImage(cv::Rect(startX, startY, endX - startX, endY - startY)).clone();
+
+    patternPlugin->setSourceImage(roiImage);
+    std::cout << "[VisionManagerPage] Set ROI image (" << roiImage.cols << "x" << roiImage.rows
+              << ") for PatternMatching teaching" << std::endl;
 }
 
 void VisionManagerPage::saveProfileToPath(const QString& filePath)

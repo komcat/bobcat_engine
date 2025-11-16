@@ -908,6 +908,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/FiducialDetectorPlugin.cpp
         include/vision/plugins/LineDetectorPlugin.cpp
         include/vision/plugins/CornerDetectorPlugin.cpp
+        include/vision/plugins/PatternMatchingPlugin.cpp
         # UI files (Phase 2)
         include/vision/ui/VisionManagerPage.cpp
         include/vision/ui/VisionToolbarWidget.cpp

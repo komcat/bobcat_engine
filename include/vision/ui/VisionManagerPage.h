@@ -64,6 +64,7 @@ private:
     void registerPlugins();
     void updatePluginList();
     void loadPluginConfig(const QString& pluginName);
+    void updatePatternMatchingSourceImage();
 
     // Profile/Recipe save helpers
     void saveProfileToPath(const QString& filePath);
