@@ -17,6 +17,7 @@
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
 #include "version.h"              // Version information
+#include "VisionManagerPage.h"    // Vision Manager UI
 #include <QVBoxLayout>
 #include <QApplication>
 #include <iostream>
@@ -35,6 +36,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_motionPage(nullptr)
   , m_recipePage(nullptr)        // ✅ ADD THIS
   , m_runProgramPage(nullptr)
+  , m_visionManagerPage(nullptr) // Vision Manager page
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -211,6 +213,11 @@ void MainWindow::createPages()
     m_runProgramPage, &RunProgramPage::onProductChanged);
   m_pageStack->addWidget(m_runProgramPage);
 
+  // Vision Manager page
+  m_visionManagerPage = new VisionManagerPage(m_context, this);
+  connect(m_visionManagerPage, &VisionManagerPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_visionManagerPage);
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
@@ -314,10 +321,10 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutF5, &QShortcut::activated, this, &MainWindow::onMainMenuEditConfig);
   std::cout << "[MainWindow]   F5 -> Config Editor Page" << std::endl;
 
-  // F6 - Reserved (Future Update)
+  // F6 - Vision Manager Page
   m_shortcutF6 = new QShortcut(QKeySequence(Qt::Key_F6), this);
   connect(m_shortcutF6, &QShortcut::activated, this, &MainWindow::onMainMenuFutureUpdate);
-  std::cout << "[MainWindow]   F6 -> Reserved (Future)" << std::endl;
+  std::cout << "[MainWindow]   F6 -> Vision Manager Page" << std::endl;
 
   // F7 - Reserved (not connected yet)
   m_shortcutF7 = new QShortcut(QKeySequence(Qt::Key_F7), this);
@@ -403,8 +410,9 @@ void MainWindow::onMainMenuEditConfig()
 
 void MainWindow::onMainMenuFutureUpdate()
 {
-  std::cout << "[MainWindow] Future Update clicked (not implemented)" << std::endl;
-  m_context->logManager->Info("Future update button clicked", "MainWindow");
+  std::cout << "[MainWindow] Vision Manager clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Vision Manager page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_visionManagerPage);
 }
 
 void MainWindow::onBackToMainMenu()

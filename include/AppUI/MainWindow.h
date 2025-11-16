@@ -20,6 +20,7 @@ class JogKeyBindingHandler;
 class TransformationMatrixLoader;
 class RunProgramPage;
 class TopBar;
+class VisionManagerPage;       // Vision Manager UI
 
 class MainWindow : public QMainWindow
 {
@@ -72,6 +73,7 @@ private:
   MotionPage* m_motionPage;
   RecipePage* m_recipePage;      // ✅ ADD THIS
   RunProgramPage* m_runProgramPage;
+  VisionManagerPage* m_visionManagerPage;  // Vision Manager page
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;

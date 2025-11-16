@@ -1,0 +1,95 @@
+// VisionManagerPage.h
+#pragma once
+
+#include <QWidget>
+#include <QSplitter>
+#include <QPushButton>
+#include <memory>
+
+struct ApplicationContext;
+class VisionToolbarWidget;
+class VisionLeftPanelWidget;
+class VisionImageWidget;
+class VisionRightPanelWidget;
+class LiveVideoSubscriber;
+
+class VisionManagerPage : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit VisionManagerPage(ApplicationContext* context, QWidget* parent = nullptr);
+    ~VisionManagerPage();
+
+signals:
+    void backToMainMenu();
+
+private slots:
+    // Toolbar actions (mockup - just logging for now)
+    void onNewRecipe();
+    void onLoadRecipe();       // Load vision profile (single plugin settings)
+    void onSaveRecipe();       // Save vision profile
+    void onSaveAsRecipe();     // Save vision profile as
+    void onRunRecipe();        // Run loaded recipe (multi-step)
+    void onStopRecipe();
+
+    // Left panel actions
+    void onAddToNode();
+    void onPluginSelected(const QString& pluginName);
+
+    // Recipe management (multi-step processing)
+    void loadVisionRecipeFile();   // Load recipe JSON with multiple steps
+    void saveVisionRecipeFile();   // Save recipe JSON with multiple steps
+
+    // Image widget actions
+    void onCaptureImage();
+    void onClearImage();
+    void onROIDragged(int startX, int startY, int endX, int endY);
+
+    // Right panel actions
+    void onApplyParams();
+    void onCameraSelected(const QString& cameraId);
+    void onCameraSettingsChanged();
+    void onCalibrationChanged(double xMmPerPx, double yMmPerPx);
+    void onROIChanged(int startX, int startY, int endX, int endY);
+    void onROIEnabledChanged(bool enabled);
+
+    // Search Box actions
+    void onSearchBoxDragged(int startX, int startY, int endX, int endY);
+    void onSearchBoxChanged(int startX, int startY, int endX, int endY);
+    void onSearchBoxEnabledChanged(bool enabled);
+
+private:
+    void setupUI();
+    void connectSignals();
+    void registerPlugins();
+    void updatePluginList();
+    void loadPluginConfig(const QString& pluginName);
+
+    // Profile/Recipe save helpers
+    void saveProfileToPath(const QString& filePath);
+    void saveRecipeToPath(const QString& filePath);
+    void updateProfileDisplay();
+
+    ApplicationContext* m_context;
+
+    // Child widgets
+    VisionToolbarWidget* m_toolbar;
+    VisionLeftPanelWidget* m_leftPanel;
+    VisionImageWidget* m_imageWidget;
+    VisionRightPanelWidget* m_rightPanel;
+
+    QSplitter* m_mainSplitter;
+    QPushButton* m_backButton;
+
+    // Currently selected plugin name
+    QString m_selectedPluginName;
+
+    // Camera frame subscriber
+    std::shared_ptr<LiveVideoSubscriber> m_frameSubscriber;
+    QString m_selectedCameraId;
+
+    // Current profile/recipe state
+    QString m_currentProfilePath;
+    QString m_currentRecipePath;
+    bool m_profileModified = false;
+};

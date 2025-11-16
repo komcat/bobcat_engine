@@ -286,7 +286,7 @@ void MainMenuPage::setupUI()
   m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
   m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
   m_editConfigButton = createMenuButton("Edit Config", "assets/icons/config.png");
-  m_futureUpdateButton = createMenuButton("(future update)", "assets/icons/future.png");
+  m_futureUpdateButton = createMenuButton("Vision Manager", "assets/icons/future.png");
 
   // Add to grid (3 columns, 2 rows)
   buttonGrid->addWidget(m_processButton, 0, 0);

@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 1)
+set(BOBCAT_VERSION_MINOR 2)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -417,6 +417,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/TEC
     ${CMAKE_SOURCE_DIR}/include/SMU
     ${CMAKE_SOURCE_DIR}/include/vision
+    ${CMAKE_SOURCE_DIR}/include/vision/ui
 )
 
 # Add nlohmann json include directory if found
@@ -901,9 +902,35 @@ endif()
 if(OPENCV_FOUND)
     list(APPEND SOURCES
         include/vision/OpenCVTest.cpp
+        include/vision/VisionManager.cpp
+        include/vision/plugins/CircleDetectionPlugin.cpp
+        include/vision/plugins/EdgeDetectionPlugin.cpp
+        include/vision/plugins/FiducialDetectorPlugin.cpp
+        include/vision/plugins/LineDetectorPlugin.cpp
+        # UI files (Phase 2)
+        include/vision/ui/VisionManagerPage.cpp
+        include/vision/ui/VisionToolbarWidget.cpp
+        include/vision/ui/VisionLeftPanelWidget.cpp
+        include/vision/ui/VisionImageWidget.cpp
+        include/vision/ui/VisionRightPanelWidget.cpp
     )
     list(APPEND HEADERS
         include/vision/OpenCVTest.h
+        include/vision/IVisionPlugin.h
+        include/vision/VisionResult.h
+        include/vision/VisionManager.h
+        include/vision/PluginParameter.h
+        include/vision/VisionROI.h
+        include/vision/plugins/CircleDetectionPlugin.h
+        include/vision/plugins/EdgeDetectionPlugin.h
+        include/vision/plugins/FiducialDetectorPlugin.h
+        include/vision/plugins/LineDetectorPlugin.h
+        # UI headers (Phase 2)
+        include/vision/ui/VisionManagerPage.h
+        include/vision/ui/VisionToolbarWidget.h
+        include/vision/ui/VisionLeftPanelWidget.h
+        include/vision/ui/VisionImageWidget.h
+        include/vision/ui/VisionRightPanelWidget.h
     )
     message(STATUS "OpenCV vision support enabled (v4.12.0)")
 else()
