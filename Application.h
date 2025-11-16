@@ -72,6 +72,7 @@ private:
   void testSequenceEngine();
   void testPneumaticSequence();
   void testScanController();            // ✅ ADD THIS (optional)
+  void testOpenCV();                    // ✅ OpenCV integration test
 
   // ✅ NEW: Background hardware connection
   void connectHardwareAsync();

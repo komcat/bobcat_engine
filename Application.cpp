@@ -43,6 +43,10 @@ using json = nlohmann::json;
 #include <windows.h>
 #endif
 
+#ifdef HAS_OPENCV
+#include "OpenCVTest.h"
+#endif
+
 Application::Application(int argc, char* argv[])
   : QObject(nullptr)
   , m_initialized(false)
@@ -314,6 +318,8 @@ void Application::initializeManagers()
      // Optional: run test commands
     // testScanController();  // ✅ UNCOMMENT TO TEST
 
+    // ✅ OpenCV Integration Test - uncomment to verify OpenCV is working
+    testOpenCV();
 
     std::cout << "[Application] All managers initialized successfully" << std::endl;
   }
@@ -1339,6 +1345,32 @@ void Application::testScanController()
   m_logManager->Info("======================================", "Scan Test");
   m_logManager->Info("Scan Test completed!", "Scan Test");
   m_logManager->Info("======================================", "Scan Test");
+}
+
+void Application::testOpenCV()
+{
+#ifdef HAS_OPENCV
+  std::cout << "[Application] Running OpenCV Integration Tests..." << std::endl;
+
+  OpenCVTest cvTest;
+  bool passed = cvTest.runAllTests();
+
+  if (passed) {
+    if (m_logManager) {
+      m_logManager->Info("OpenCV integration tests PASSED", "Application");
+    }
+  } else {
+    std::cerr << "[Application] OpenCV test failed: " << cvTest.getLastError() << std::endl;
+    if (m_logManager) {
+      m_logManager->Error("OpenCV test failed: " + cvTest.getLastError(), "Application");
+    }
+  }
+#else
+  std::cout << "[Application] OpenCV not available (HAS_OPENCV not defined)" << std::endl;
+  if (m_logManager) {
+    m_logManager->Warning("OpenCV not available", "Application");
+  }
+#endif
 }
 
 

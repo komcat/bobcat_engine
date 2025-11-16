@@ -10,12 +10,33 @@ endif()
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
 set(BOBCAT_VERSION_MINOR 1)
-set(BOBCAT_VERSION_BUILD 0)
 
-# Auto-increment build number (optional - can be managed manually or via CI/CD)
-# The build number can be overridden: cmake -DBOBCAT_VERSION_BUILD=123
-if(NOT DEFINED BOBCAT_VERSION_BUILD)
-    set(BOBCAT_VERSION_BUILD 0)
+# Auto-increment build number from file
+set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
+
+if(EXISTS ${BUILD_NUMBER_FILE})
+    # Read current build number
+    file(READ ${BUILD_NUMBER_FILE} BOBCAT_VERSION_BUILD)
+    string(STRIP ${BOBCAT_VERSION_BUILD} BOBCAT_VERSION_BUILD)
+
+    # Increment build number
+    math(EXPR BOBCAT_VERSION_BUILD "${BOBCAT_VERSION_BUILD} + 1")
+
+    # Write new build number back to file
+    file(WRITE ${BUILD_NUMBER_FILE} "${BOBCAT_VERSION_BUILD}\n")
+
+    message(STATUS "Build number auto-incremented to: ${BOBCAT_VERSION_BUILD}")
+else()
+    # Create file if it doesn't exist
+    set(BOBCAT_VERSION_BUILD 1)
+    file(WRITE ${BUILD_NUMBER_FILE} "${BOBCAT_VERSION_BUILD}\n")
+    message(STATUS "Created build number file starting at: ${BOBCAT_VERSION_BUILD}")
+endif()
+
+# Allow override via command line: cmake -DBOBCAT_VERSION_BUILD_OVERRIDE=123
+if(DEFINED BOBCAT_VERSION_BUILD_OVERRIDE)
+    set(BOBCAT_VERSION_BUILD ${BOBCAT_VERSION_BUILD_OVERRIDE})
+    message(STATUS "Build number overridden to: ${BOBCAT_VERSION_BUILD}")
 endif()
 
 project("bobcat_engine" VERSION ${BOBCAT_VERSION_MAJOR}.${BOBCAT_VERSION_MINOR}.${BOBCAT_VERSION_BUILD})
@@ -316,6 +337,46 @@ else()
 endif()
 
 # ============================================================================
+# OpenCV Configuration
+# ============================================================================
+set(OPENCV_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv")
+set(OPENCV_INCLUDE_DIR "${OPENCV_ROOT}/include")
+set(OPENCV_LIB_DIR "${OPENCV_ROOT}/lib")
+set(OPENCV_BIN_DIR "${OPENCV_ROOT}/bin")
+
+# Check if OpenCV installation exists
+if(NOT EXISTS ${OPENCV_INCLUDE_DIR})
+    message(WARNING "OpenCV not found at ${OPENCV_ROOT}. OpenCV features will be disabled.")
+    set(OPENCV_FOUND FALSE)
+else()
+    message(STATUS "OpenCV found at: ${OPENCV_ROOT}")
+    message(STATUS "  - Include directory: ${OPENCV_INCLUDE_DIR}")
+    message(STATUS "  - Library directory: ${OPENCV_LIB_DIR}")
+
+    # Set OpenCV libraries (world package includes everything)
+    # Version 4.12.0 = 4120
+    set(OPENCV_LIBRARY_RELEASE "${OPENCV_LIB_DIR}/opencv_world4120.lib")
+    set(OPENCV_LIBRARY_DEBUG "${OPENCV_LIB_DIR}/opencv_world4120d.lib")
+    set(OPENCV_DLL_RELEASE "${OPENCV_BIN_DIR}/opencv_world4120.dll")
+    set(OPENCV_DLL_DEBUG "${OPENCV_BIN_DIR}/opencv_world4120d.dll")
+    set(OPENCV_FFMPEG_DLL "${OPENCV_BIN_DIR}/opencv_videoio_ffmpeg4120_64.dll")
+
+    # Use generator expression to select correct library based on build type
+    set(OPENCV_LIBRARY "$<IF:$<CONFIG:Debug>,${OPENCV_LIBRARY_DEBUG},${OPENCV_LIBRARY_RELEASE}>")
+    set(OPENCV_DLL "$<IF:$<CONFIG:Debug>,${OPENCV_DLL_DEBUG},${OPENCV_DLL_RELEASE}>")
+
+    if(EXISTS ${OPENCV_LIBRARY_RELEASE} OR EXISTS ${OPENCV_LIBRARY_DEBUG})
+        set(OPENCV_FOUND TRUE)
+        message(STATUS "  - Release Library: ${OPENCV_LIBRARY_RELEASE}")
+        message(STATUS "  - Debug Library: ${OPENCV_LIBRARY_DEBUG}")
+        message(STATUS "  - FFmpeg DLL: ${OPENCV_FFMPEG_DLL}")
+    else()
+        message(WARNING "OpenCV library not found. OpenCV features will be disabled.")
+        set(OPENCV_FOUND FALSE)
+    endif()
+endif()
+
+# ============================================================================
 # Include Directories
 # ============================================================================
 include_directories(
@@ -355,6 +416,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/PSU
     ${CMAKE_SOURCE_DIR}/include/TEC
     ${CMAKE_SOURCE_DIR}/include/SMU
+    ${CMAKE_SOURCE_DIR}/include/vision
 )
 
 # Add nlohmann json include directory if found
@@ -390,6 +452,11 @@ endif()
 # Add EziIO include directory if found
 if(EZIIO_FOUND)
     include_directories(${EZIIO_INCLUDE_DIR})
+endif()
+
+# Add OpenCV include directory if found
+if(OPENCV_FOUND)
+    include_directories(${OPENCV_INCLUDE_DIR})
 endif()
 
 # ============================================================================
@@ -830,6 +897,19 @@ else()
     message(STATUS "SMU system disabled - NI-VISA SDK not found")
 endif()
 
+# Conditionally add OpenCV test files if OpenCV is found
+if(OPENCV_FOUND)
+    list(APPEND SOURCES
+        include/vision/OpenCVTest.cpp
+    )
+    list(APPEND HEADERS
+        include/vision/OpenCVTest.h
+    )
+    message(STATUS "OpenCV vision support enabled (v4.12.0)")
+else()
+    message(STATUS "OpenCV vision support disabled - OpenCV not found")
+endif()
+
 # ============================================================================
 # Create Executable
 # ============================================================================
@@ -927,6 +1007,34 @@ endif()
 if(VISA_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${VISA_LIBRARY})
     message(STATUS "Linked NI-VISA library for CLD101x Direct adapter")
+endif()
+
+# Link OpenCV if found
+if(OPENCV_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${OPENCV_LIBRARY})
+    target_compile_definitions(bobcat_engine PRIVATE HAS_OPENCV)
+    message(STATUS "Linked OpenCV library")
+
+    # On Windows, copy the DLLs to the output directory
+    if(WIN32)
+        # Copy main OpenCV DLL (debug or release based on config)
+        add_custom_command(TARGET bobcat_engine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${OPENCV_DLL}
+                $<TARGET_FILE_DIR:bobcat_engine>
+            COMMENT "Copying OpenCV DLL to output directory"
+        )
+
+        # Copy FFmpeg DLL (needed for video I/O)
+        if(EXISTS ${OPENCV_FFMPEG_DLL})
+            add_custom_command(TARGET bobcat_engine POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${OPENCV_FFMPEG_DLL}
+                    $<TARGET_FILE_DIR:bobcat_engine>
+                COMMENT "Copying OpenCV FFmpeg DLL to output directory"
+            )
+        endif()
+    endif()
 endif()
 
 # ============================================================================
