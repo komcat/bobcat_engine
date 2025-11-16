@@ -169,16 +169,31 @@ bool Application::initialize()
       std::cout << "[Application] BOBCAT_SIMULATION not set - defaulting to HARDWARE MODE" << std::endl;
     }
 
+    // ✅ NEW: Show splash screen BEFORE initialization (immediate user feedback)
+    if (!m_context.simulationMode) {
+      m_splashScreen = new ConnectionSplashScreen();
+      // Splash auto-shows in constructor
+      std::cout << "[Application] Splash screen shown for startup progress" << std::endl;
+
+      // Start loading phase (15 managers total)
+      m_splashScreen->startPhase(
+        ConnectionSplashScreen::Phase::Loading,
+        "Initializing System",
+        15  // Total manager count
+      );
+    }
+
     initializeManagers();
     createMainWindow();
 
-    // ✅ NEW: Show connection splash screen and connect hardware in background
+    // ✅ Start hardware connection phase
     if (!m_context.simulationMode) {
-      // Create and show splash screen
-      m_splashScreen = new ConnectionSplashScreen();
-      m_splashScreen->show();
-      m_splashScreen->raise();
-      m_splashScreen->activateWindow();
+      // Switch to connecting phase
+      m_splashScreen->startPhase(
+        ConnectionSplashScreen::Phase::Connecting,
+        "Connecting Hardware",
+        5  // TCP, Cameras, Motion, I/O, TEC
+      );
 
       // Use QTimer to defer hardware connection until after event loop starts
       QTimer::singleShot(100, [this]() {
@@ -213,27 +228,84 @@ void Application::initializeManagers()
     std::cout << "======================================" << std::endl;
   }
 
+  // Helper lambda for splash updates (no-op if simulation mode)
+  auto updateSplash = [this](const QString& name) {
+    if (m_splashScreen) {
+      m_splashScreen->startStep(name);
+    }
+  };
+
+  auto completeSplash = [this](const QString& name, bool success = true) {
+    if (m_splashScreen) {
+      m_splashScreen->completeStep(name, success);
+    }
+  };
+
   try {
+    updateSplash("LogManager");
     initializeLogManager();
+    completeSplash("LogManager");
+
+    updateSplash("DataStore");
     initializeDataStore();
+    completeSplash("DataStore");
+
+    updateSplash("TcpClientManager");
     initializeTcpClientManager();
+    completeSplash("TcpClientManager");
+
+    updateSplash("CameraManager");
     initializeCameraManager();
+    completeSplash("CameraManager");
+
+    updateSplash("MotionManager");
     initializeMotionManager();
-    initializeIOManager();  // Add IO manager initialization
-		initializePneumaticManager();  // ✅ ADD THIS
-		initializeTECManager();  // ✅ ADD THIS LINE
-    initializePowerSupplySystem();  // ✅ MOVED BEFORE SequenceEngine
-    initializeSMUSystem();  // ✅ ADD SMU System initialization
-    initializeAuxWindowManager();  // ✅ MOVED HERE: Initialize before SequenceEngine so handler gets valid pointer
-		initializeProductPositionManager();	// ✅ CRITICAL: Must be BEFORE SequenceEngine so MotionCommandHandler gets valid pointer
-    initializeSequenceEngine();  // ✅ ADD THIS LAST (needs all managers initialized)
-    initializeScanController();  // ✅ ADD THIS - Must be AFTER motion & datastore
+    completeSplash("MotionManager");
+
+    updateSplash("IOManager");
+    initializeIOManager();
+    completeSplash("IOManager");
+
+    updateSplash("PneumaticManager");
+    initializePneumaticManager();
+    completeSplash("PneumaticManager");
+
+    updateSplash("TECManager");
+    initializeTECManager();
+    completeSplash("TECManager");
+
+    updateSplash("PowerSupplyManager");
+    initializePowerSupplySystem();
+    completeSplash("PowerSupplyManager");
+
+    updateSplash("SMUManager");
+    initializeSMUSystem();
+    completeSplash("SMUManager");
+
+    updateSplash("AuxWindowManager");
+    initializeAuxWindowManager();
+    completeSplash("AuxWindowManager");
+
+    updateSplash("ProductPositionManager");
+    initializeProductPositionManager();
+    completeSplash("ProductPositionManager");
+
+    updateSplash("SequenceEngine");
+    initializeSequenceEngine();
+    completeSplash("SequenceEngine");
+
+    updateSplash("ScanController");
+    initializeScanController();
+    completeSplash("ScanController");
+
+    updateSplash("CoordinateSystemManager");
     initializeCoordinateSystemManager();
+    completeSplash("CoordinateSystemManager");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
     //testIOCommands();  // Test IO with Vacuum_Base
-    
+
 		//testPneumaticCommands();  // ✅ TEST PNEUMATICS
 
 		//testSequenceEngine();  // ✅ TEST SEQUENCE ENGINE
