@@ -83,8 +83,17 @@ if(MSVC)
     add_compile_options(/wd4566)
 endif()
 
-# Point to MSVC version
-set(CMAKE_PREFIX_PATH "C:/Qt/6.9.3/msvc2022_64")
+# Point to MSVC version - support multiple Qt installations
+if(EXISTS "C:/Qt/6.10.0/msvc2022_64")
+    set(CMAKE_PREFIX_PATH "C:/Qt/6.10.0/msvc2022_64")
+    message(STATUS "Using Qt 6.10.0")
+elseif(EXISTS "C:/Qt/6.9.3/msvc2022_64")
+    set(CMAKE_PREFIX_PATH "C:/Qt/6.9.3/msvc2022_64")
+    message(STATUS "Using Qt 6.9.3")
+else()
+    message(FATAL_ERROR "Qt not found. Please install Qt 6.9.3 or 6.10.0 at the expected location.")
+endif()
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
