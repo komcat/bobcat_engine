@@ -5,6 +5,10 @@
 #include "ICameraHardware.h"
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QCoreApplication>
+#include <QFile>
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <iostream>
 
 VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWidget* parent)
@@ -19,8 +23,8 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_exposureValueLabel(nullptr)
     , m_gainSlider(nullptr)
     , m_gainValueLabel(nullptr)
-    , m_pixelToMmXSpin(nullptr)
-    , m_pixelToMmYSpin(nullptr)
+    , m_pixelToMmXLabel(nullptr)
+    , m_pixelToMmYLabel(nullptr)
     , m_pluginScrollArea(nullptr)
     , m_pluginParamsLayout(nullptr)
     , m_currentPluginConfig(nullptr)
@@ -33,6 +37,7 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_roiSizeLabel(nullptr)
 {
     setupUI();
+    loadCalibrationFromConfig();  // Load calibration values from JSON
     loadCameraList();
 }
 
@@ -348,34 +353,27 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     QFormLayout* calibLayout = new QFormLayout(calibrationGroup);
     calibLayout->setSpacing(8);
 
-    m_pixelToMmXSpin = new QDoubleSpinBox();
-    m_pixelToMmXSpin->setRange(0.00001, 1.0);
-    m_pixelToMmXSpin->setValue(0.00248);
-    m_pixelToMmXSpin->setSuffix(" mm/px");
-    m_pixelToMmXSpin->setDecimals(6);
-    m_pixelToMmXSpin->setToolTip("X-axis calibration: millimeters per pixel");
-    calibLayout->addRow("X Scale:", m_pixelToMmXSpin);
+    // Display-only labels (values loaded from config/SYSTEM/val_pixelmm.json)
+    m_pixelToMmXLabel = new QLabel("0.00248 mm/px");
+    m_pixelToMmXLabel->setToolTip("X-axis calibration (from config/SYSTEM/val_pixelmm.json)");
+    m_pixelToMmXLabel->setStyleSheet("color: #d4d4d4; font-family: monospace;");
+    calibLayout->addRow("X Scale:", m_pixelToMmXLabel);
 
-    m_pixelToMmYSpin = new QDoubleSpinBox();
-    m_pixelToMmYSpin->setRange(0.00001, 1.0);
-    m_pixelToMmYSpin->setValue(0.00248);
-    m_pixelToMmYSpin->setSuffix(" mm/px");
-    m_pixelToMmYSpin->setDecimals(6);
-    m_pixelToMmYSpin->setToolTip("Y-axis calibration: millimeters per pixel");
-    calibLayout->addRow("Y Scale:", m_pixelToMmYSpin);
+    m_pixelToMmYLabel = new QLabel("0.00248 mm/px");
+    m_pixelToMmYLabel->setToolTip("Y-axis calibration (from config/SYSTEM/val_pixelmm.json)");
+    m_pixelToMmYLabel->setStyleSheet("color: #d4d4d4; font-family: monospace;");
+    calibLayout->addRow("Y Scale:", m_pixelToMmYLabel);
+
+    QLabel* configNote = new QLabel("Edit config/SYSTEM/val_pixelmm.json to change");
+    configNote->setStyleSheet("color: #888888; font-size: 10px; font-style: italic;");
+    calibLayout->addRow("", configNote);
 
     tabLayout->addWidget(calibrationGroup);
     tabLayout->addStretch();
 
-    // Calibration change signal
-    auto emitCalibrationChanged = [this]() {
-        emit calibrationChanged(m_pixelToMmXSpin->value(), m_pixelToMmYSpin->value());
-    };
-    connect(m_pixelToMmXSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, emitCalibrationChanged);
-    connect(m_pixelToMmYSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, emitCalibrationChanged);
+    // No calibration change signal - values are read-only from JSON file
 }
+
 
 void VisionRightPanelWidget::setupPluginTab(QWidget* pluginTab)
 {
@@ -580,8 +578,8 @@ VisionCameraSettings VisionRightPanelWidget::getCameraSettings() const
     settings.gain = m_gainSlider ? m_gainSlider->value() / 10.0 : 1.0;
     settings.autoExposure = m_autoExposureCheck ? m_autoExposureCheck->isChecked() : false;
     settings.autoGain = m_autoGainCheck ? m_autoGainCheck->isChecked() : false;
-    settings.pixelToMmX = m_pixelToMmXSpin ? m_pixelToMmXSpin->value() : 0.00248;
-    settings.pixelToMmY = m_pixelToMmYSpin ? m_pixelToMmYSpin->value() : 0.00248;
+    settings.pixelToMmX = m_pixelToMmX;  // From config/SYSTEM/val_pixelmm.json
+    settings.pixelToMmY = m_pixelToMmY;  // From config/SYSTEM/val_pixelmm.json
     return settings;
 }
 
@@ -593,8 +591,6 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_autoGainCheck->blockSignals(true);
     m_exposureSlider->blockSignals(true);
     m_gainSlider->blockSignals(true);
-    m_pixelToMmXSpin->blockSignals(true);
-    m_pixelToMmYSpin->blockSignals(true);
 
     // Set camera
     int cameraIndex = m_cameraSelector->findText(settings.cameraId);
@@ -610,9 +606,14 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     updateExposureLabel(settings.exposureTime);
     updateGainLabel(settings.gain);
 
-    // Set calibration
-    m_pixelToMmXSpin->setValue(settings.pixelToMmX);
-    m_pixelToMmYSpin->setValue(settings.pixelToMmY);
+    // Update calibration display labels (read-only from config/SYSTEM/val_pixelmm.json)
+    // Note: settings.pixelToMmX/Y are ignored - calibration comes from JSON file only
+    if (m_pixelToMmXLabel) {
+        m_pixelToMmXLabel->setText(QString("%1 mm/px").arg(m_pixelToMmX, 0, 'f', 5));
+    }
+    if (m_pixelToMmYLabel) {
+        m_pixelToMmYLabel->setText(QString("%1 mm/px").arg(m_pixelToMmY, 0, 'f', 5));
+    }
 
     // Update enabled states
     m_exposureSlider->setEnabled(!settings.autoExposure);
@@ -624,8 +625,6 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_autoGainCheck->blockSignals(false);
     m_exposureSlider->blockSignals(false);
     m_gainSlider->blockSignals(false);
-    m_pixelToMmXSpin->blockSignals(false);
-    m_pixelToMmYSpin->blockSignals(false);
 
     std::cout << "[VisionRightPanelWidget] Camera settings restored: "
               << "Camera=" << settings.cameraId.toStdString() << ", "
@@ -717,12 +716,12 @@ void VisionRightPanelWidget::clearPluginConfigWidget()
 
 double VisionRightPanelWidget::getPixelToMmX() const
 {
-    return m_pixelToMmXSpin ? m_pixelToMmXSpin->value() : 0.00248;
+    return m_pixelToMmX;  // From config/SYSTEM/val_pixelmm.json
 }
 
 double VisionRightPanelWidget::getPixelToMmY() const
 {
-    return m_pixelToMmYSpin ? m_pixelToMmYSpin->value() : 0.00248;
+    return m_pixelToMmY;  // From config/SYSTEM/val_pixelmm.json
 }
 
 // ========== ROI Management ==========
@@ -877,4 +876,50 @@ void VisionRightPanelWidget::onSearchBoxValueChanged()
 void VisionRightPanelWidget::onSearchBoxEnabledChanged(int state)
 {
     emit searchBoxEnabledChanged(state == Qt::Checked);
+}
+
+void VisionRightPanelWidget::loadCalibrationFromConfig()
+{
+    // Load calibration values from config/SYSTEM/val_pixelmm.json
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString configPath = appDir + "/config/SYSTEM/val_pixelmm.json";
+
+    if (QFile::exists(configPath)) {
+        try {
+            std::ifstream file(configPath.toStdString());
+            if (file.is_open()) {
+                nlohmann::json j;
+                file >> j;
+
+                if (j.contains("calibration")) {
+                    auto& cal = j["calibration"];
+                    if (cal.contains("pixel_to_mm_x")) {
+                        m_pixelToMmX = cal["pixel_to_mm_x"].get<double>();
+                    }
+                    if (cal.contains("pixel_to_mm_y")) {
+                        m_pixelToMmY = cal["pixel_to_mm_y"].get<double>();
+                    }
+                }
+
+                file.close();
+                std::cout << "[VisionRightPanelWidget] Loaded calibration from JSON: "
+                          << "X=" << m_pixelToMmX << " mm/px, "
+                          << "Y=" << m_pixelToMmY << " mm/px" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[VisionRightPanelWidget] Error loading calibration JSON: "
+                      << e.what() << std::endl;
+        }
+    } else {
+        std::cout << "[VisionRightPanelWidget] Calibration config not found at: "
+                  << configPath.toStdString() << ", using defaults" << std::endl;
+    }
+
+    // Update the display labels with loaded values
+    if (m_pixelToMmXLabel) {
+        m_pixelToMmXLabel->setText(QString("%1 mm/px").arg(m_pixelToMmX, 0, 'f', 5));
+    }
+    if (m_pixelToMmYLabel) {
+        m_pixelToMmYLabel->setText(QString("%1 mm/px").arg(m_pixelToMmY, 0, 'f', 5));
+    }
 }

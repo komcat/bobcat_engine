@@ -27,6 +27,8 @@ class ManualAdjustWidget;    // ✅ Manual adjust widget
 class ManualAlignPointWidget; // ✅ Manual align point widget
 class UserInputWidget;       // ✅ User input widget
 class TransformationMatrixLoader;
+class ContextViewerWindow;   // ✅ Context viewer window
+class SequenceContext;       // ✅ Execution context
 
 class RecipePage : public QWidget
 {
@@ -113,7 +115,9 @@ private slots:
   void onShowUserPrompt(QString title, QString message, bool allowCancel);
   void onUserPromptResponse(bool confirmed);
 
-
+  // Context viewer
+  void onShowContextViewer();
+  void onContextRefreshRequested();
 
 private:
   void setupUI();
@@ -192,4 +196,9 @@ private:
   bool m_userInputAccepted;          // Store user input accepted status
   QString m_userInputText;           // Store user input text
   bool m_userPromptResponse;         // Store user prompt response
+
+  // Context viewer
+  ContextViewerWindow* m_contextViewer;  // ✅ Context viewer window
+  SequenceContext* m_currentContext;     // ✅ Current execution context (owned, persists between steps)
+  QPushButton* m_contextViewerButton;    // ✅ Button to show context viewer
 };

@@ -143,6 +143,16 @@ public:
     double getPixelToMmY() const;
 
     /**
+     * @brief Load calibration from QSettings (persistent storage)
+     */
+    void loadCalibrationFromSettings();
+
+    /**
+     * @brief Save calibration to QSettings (persistent storage)
+     */
+    void saveCalibrationToSettings();
+
+    /**
      * @brief Convert pixel coordinates to mm
      */
     cv::Point2d convertPixelToMm(const cv::Point2d& pixelPt) const;

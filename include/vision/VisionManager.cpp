@@ -4,9 +4,20 @@
 #include "VisionManager.h"
 #include <QFile>
 #include <QFileInfo>
+#include <QSettings>
+#include <QCoreApplication>
+#include <QDir>
+#include <nlohmann/json.hpp>
 #include <chrono>
 #include <iostream>
 #include <fstream>
+
+// QSettings keys for calibration (shared with CameraClickToMoveWidget)
+static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_X = "CameraClickToMove/PixelToMmFactorX";
+static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_Y = "CameraClickToMove/PixelToMmFactorY";
+
+// JSON config file for calibration (priority over QSettings)
+static constexpr const char* CALIBRATION_CONFIG_FILE = "config/SYSTEM/val_pixelmm.json";
 
 VisionManager& VisionManager::instance()
 {
@@ -17,7 +28,10 @@ VisionManager& VisionManager::instance()
 VisionManager::VisionManager()
     : QObject(nullptr)
 {
-    std::cout << "[VisionManager] Initialized" << std::endl;
+    // Load calibration from JSON config file first, fallback to QSettings
+    loadCalibrationFromSettings();
+    std::cout << "[VisionManager] Initialized with calibration: "
+              << m_pixelToMmX << " mm/px (X), " << m_pixelToMmY << " mm/px (Y)" << std::endl;
 }
 
 // ========== Plugin Registry ==========
@@ -261,7 +275,11 @@ void VisionManager::setPixelToMm(double x, double y)
 
     m_pixelToMmX = x;
     m_pixelToMmY = y;
-    std::cout << "[VisionManager] Calibration set: " << x << " mm/px (X), " << y << " mm/px (Y)" << std::endl;
+
+    // Save to QSettings (persistent storage)
+    saveCalibrationToSettings();
+
+    std::cout << "[VisionManager] Calibration set and saved: " << x << " mm/px (X), " << y << " mm/px (Y)" << std::endl;
 
     emit calibrationChanged(x, y);
 }
@@ -274,6 +292,78 @@ double VisionManager::getPixelToMmX() const
 double VisionManager::getPixelToMmY() const
 {
     return m_pixelToMmY;
+}
+
+void VisionManager::loadCalibrationFromSettings()
+{
+    // Try to load from JSON config file first (priority)
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString configPath = appDir + "/" + CALIBRATION_CONFIG_FILE;
+
+    if (QFile::exists(configPath)) {
+        try {
+            std::ifstream file(configPath.toStdString());
+            if (file.is_open()) {
+                nlohmann::json j;
+                file >> j;
+
+                if (j.contains("calibration")) {
+                    auto& cal = j["calibration"];
+                    m_pixelToMmX = cal.value("pixel_to_mm_x", 0.00248);
+                    m_pixelToMmY = cal.value("pixel_to_mm_y", 0.00248);
+                    std::cout << "[VisionManager] Loaded calibration from JSON: " << configPath.toStdString() << std::endl;
+
+                    // Sync to QSettings for compatibility
+                    QSettings settings;
+                    settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_X, m_pixelToMmX);
+                    settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_Y, m_pixelToMmY);
+                    return;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[VisionManager] Error loading JSON config: " << e.what() << std::endl;
+        }
+    } else {
+        std::cout << "[VisionManager] JSON config not found: " << configPath.toStdString() << std::endl;
+    }
+
+    // Fallback to QSettings
+    QSettings settings;
+    m_pixelToMmX = settings.value(SETTINGS_KEY_PIXEL_TO_MM_X, 0.00248).toDouble();
+    m_pixelToMmY = settings.value(SETTINGS_KEY_PIXEL_TO_MM_Y, 0.00248).toDouble();
+    std::cout << "[VisionManager] Loaded calibration from QSettings (fallback)" << std::endl;
+}
+
+void VisionManager::saveCalibrationToSettings()
+{
+    // Save to JSON config file
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString configPath = appDir + "/" + CALIBRATION_CONFIG_FILE;
+
+    try {
+        nlohmann::json j;
+        j["description"] = "Pixel to millimeter calibration values for vision system";
+        j["calibration"]["pixel_to_mm_x"] = m_pixelToMmX;
+        j["calibration"]["pixel_to_mm_y"] = m_pixelToMmY;
+        j["notes"] = "These values are hardware-specific and should be calibrated for each camera setup";
+
+        std::ofstream file(configPath.toStdString());
+        if (file.is_open()) {
+            file << j.dump(2);
+            file.close();
+            std::cout << "[VisionManager] Saved calibration to JSON: " << configPath.toStdString() << std::endl;
+        } else {
+            std::cerr << "[VisionManager] Failed to open JSON config for writing: " << configPath.toStdString() << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[VisionManager] Error saving JSON config: " << e.what() << std::endl;
+    }
+
+    // Also save to QSettings for compatibility
+    QSettings settings;
+    settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_X, m_pixelToMmX);
+    settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_Y, m_pixelToMmY);
+    std::cout << "[VisionManager] Saved calibration to QSettings" << std::endl;
 }
 
 cv::Point2d VisionManager::convertPixelToMm(const cv::Point2d& pixelPt) const

@@ -575,9 +575,10 @@ set(SOURCES
     include/recipe/processes/AuxWindowProcesses.cpp
     include/recipe/processes/CameraProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
-    include/AppUI/RecipePage/DeviceSelectorWidgets.cpp 
+    include/AppUI/RecipePage/DeviceSelectorWidgets.cpp
     include/recipe/RecipeWorker.cpp
     include/AppUI/RecipePage/RecipeProgressWidget.cpp
+    include/AppUI/RecipePage/ContextViewerWindow.cpp
     include/AppUI/MotionPages/EditPositionDialog.cpp
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
     include/TEC/CLD101xAdapter.cpp
@@ -720,9 +721,10 @@ set(HEADERS
     include/recipe/IProcessPlugin.h
     include/recipe/ProcessPluginRegistry.h 
     include/AppUI/RecipePage/ProcessConfigWidget.h
-    include/AppUI/RecipePage/DeviceSelectorWidgets.h 
+    include/AppUI/RecipePage/DeviceSelectorWidgets.h
     include/recipe/RecipeWorker.h
     include/AppUI/RecipePage/RecipeProgressWidget.h
+    include/AppUI/RecipePage/ContextViewerWindow.h
     include/sequence/SequenceBuilder.h
     include/AppUI/MotionPages/EditPositionDialog.h
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
@@ -910,6 +912,8 @@ if(OPENCV_FOUND)
         include/vision/plugins/CornerDetectorPlugin.cpp
         include/vision/plugins/PatternMatchingPlugin.cpp
         include/vision/VisionProcessingWorker.cpp
+        include/sequence/VisionCommandHandler.cpp
+        include/recipe/processes/VisionProcesses.cpp
         # UI files (Phase 2)
         include/vision/ui/VisionManagerPage.cpp
         include/vision/ui/VisionToolbarWidget.cpp
@@ -929,6 +933,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/FiducialDetectorPlugin.h
         include/vision/plugins/LineDetectorPlugin.h
         include/vision/VisionProcessingWorker.h
+        include/sequence/VisionCommandHandler.h
         # UI headers (Phase 2)
         include/vision/ui/VisionManagerPage.h
         include/vision/ui/VisionToolbarWidget.h

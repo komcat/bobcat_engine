@@ -19,6 +19,7 @@
 #include "LogManager.h"
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
 #include "RecipeSaveAsDialog.h"  // ✅ Custom save dialog
+#include "ContextViewerWindow.h"  // ✅ Context viewer
 #include <QSplitter>
 #include <QLabel>
 #include <QHBoxLayout>
@@ -61,9 +62,17 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_manualAlignPointResponse(false)  // ✅ Initialize align point response flag
   , m_userInputAccepted(false)     // ✅ User input accepted
   , m_userInputText("")            // ✅ User input text
+  , m_contextViewer(nullptr)       // ✅ Context viewer window
+  , m_currentContext(nullptr)      // ✅ Current execution context
+  , m_contextViewerButton(nullptr) // ✅ Context viewer button
 {
   setupUI();
   setupSequenceEngine();
+
+  // Create context viewer window (but don't show it yet)
+  m_contextViewer = new ContextViewerWindow(this);
+  connect(m_contextViewer, &ContextViewerWindow::refreshRequested,
+          this, &RecipePage::onContextRefreshRequested);
 
   // ✅ Auto-load last recipe from settings
   loadLastRecipeFromSettings();
@@ -88,6 +97,15 @@ RecipePage::~RecipePage()
     m_recipeWorker->wait();
     delete m_recipeWorker;
   }
+
+  // Clean up context viewer
+  if (m_contextViewer) {
+    m_contextViewer->close();
+    delete m_contextViewer;
+  }
+
+  // Clean up execution context
+  delete m_currentContext;
 
   delete m_recipeManager;
   delete m_sequenceEngine;
@@ -193,6 +211,23 @@ void RecipePage::setupUI()
   );
   connect(m_loadProductButton, &QPushButton::clicked, this, &RecipePage::onLoadProductClicked);
   titleLayout->addWidget(m_loadProductButton);
+
+  // ✅ Context Viewer button (small button at far right)
+  m_contextViewerButton = new QPushButton("CV");
+  m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
+  m_contextViewerButton->setFixedSize(40, 28);
+  m_contextViewerButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #4a90a4; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  font-size: 11px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #5aa0b4; }"
+  );
+  connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
+  titleLayout->addWidget(m_contextViewerButton);
 
   titleLayout->addSpacing(m_backButton->width());
 
@@ -2091,8 +2126,12 @@ void RecipePage::onRunSelectedStep()
     m_runSelectedStepButton->setText("⏳ Running Step...");
 
     // Execute the sequence directly (synchronous)
-    auto context = std::make_unique<SequenceContext>();
-    bool success = m_sequenceEngine->ExecuteSequence(sequence, context.get());
+    // Create or reuse context (persists between step executions)
+    if (!m_currentContext) {
+      m_currentContext = new SequenceContext();
+      std::cout << "[RecipePage] Created new execution context" << std::endl;
+    }
+    bool success = m_sequenceEngine->ExecuteSequence(sequence, m_currentContext);
 
     // Stop timer
     if (m_progressWidget) {
@@ -2113,6 +2152,19 @@ void RecipePage::onRunSelectedStep()
 
       if (success) {
         m_progressWidget->showCompletionHint();
+      }
+    }
+
+    // Update context viewer if it's open
+    if (m_contextViewer && m_contextViewer->isVisible() && m_currentContext) {
+      m_contextViewer->updateFromContext(m_currentContext);
+    }
+
+    // Log context summary (popup disabled - use CV button to view results)
+    if (m_currentContext) {
+      auto summary = m_currentContext->GetSummary();
+      if (!summary.capturedValues.empty()) {
+        std::cout << "[RecipePage] Context captured " << summary.capturedValues.size() << " values (use CV button to view)" << std::endl;
       }
     }
 
@@ -2771,5 +2823,38 @@ void RecipePage::onUserPromptResponse(bool confirmed)
   // Exit the event loop to unblock the callback
   if (m_promptEventLoop) {
     m_promptEventLoop->quit();
+  }
+}
+
+// ============================================================================
+// CONTEXT VIEWER
+// ============================================================================
+
+void RecipePage::onShowContextViewer()
+{
+  if (!m_contextViewer) {
+    m_contextViewer = new ContextViewerWindow(this);
+    connect(m_contextViewer, &ContextViewerWindow::refreshRequested,
+            this, &RecipePage::onContextRefreshRequested);
+  }
+
+  // Update with current context
+  if (m_currentContext) {
+    m_contextViewer->updateFromContext(m_currentContext);
+  }
+
+  // Show and bring to front
+  m_contextViewer->show();
+  m_contextViewer->raise();
+  m_contextViewer->activateWindow();
+
+  std::cout << "[RecipePage] Context viewer shown" << std::endl;
+}
+
+void RecipePage::onContextRefreshRequested()
+{
+  if (m_contextViewer && m_currentContext) {
+    m_contextViewer->updateFromContext(m_currentContext);
+    std::cout << "[RecipePage] Context viewer refreshed" << std::endl;
   }
 }

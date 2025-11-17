@@ -14,6 +14,9 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QLineEdit>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <iostream>
 
 // ============================================================================
@@ -383,4 +386,119 @@ std::string NodeSelectorDialog::SelectNode(ApplicationContext* context,
   }
 
   return currentNode; // Return original if cancelled
+}
+
+// ============================================================================
+// VISION PROFILE COMBOBOX
+// ============================================================================
+
+VisionProfileComboBox::VisionProfileComboBox(ApplicationContext* context, QWidget* parent)
+  : QComboBox(parent)
+  , m_context(context)
+{
+  setStyleSheet("QComboBox { padding: 5px; min-height: 25px; }");
+  populateProfiles();
+}
+
+void VisionProfileComboBox::populateProfiles()
+{
+  clear();
+  m_profilePaths.clear();
+
+  if (!m_context) {
+    addItem("No context available");
+    return;
+  }
+
+  // Get product name from ProductPositionManager
+  std::string productName = "";
+  if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+    productName = m_context->productPositionManager->GetCurrentProductName();
+  }
+
+  if (productName.empty()) {
+    addItem("No product loaded");
+    return;
+  }
+
+  // Build vision config directory path
+  QString appDir = QCoreApplication::applicationDirPath();
+  m_visionConfigDir = (appDir + "/config/" + QString::fromStdString(productName) + "/vision").toStdString();
+
+  QDir visionDir(QString::fromStdString(m_visionConfigDir));
+  if (!visionDir.exists()) {
+    addItem("Vision folder not found");
+    std::cout << "[VisionProfileComboBox] Vision folder not found: " << m_visionConfigDir << std::endl;
+    return;
+  }
+
+  // Scan for .json files
+  QStringList filters;
+  filters << "*.json";
+  visionDir.setNameFilters(filters);
+  visionDir.setSorting(QDir::Name);
+
+  QFileInfoList files = visionDir.entryInfoList(QDir::Files);
+
+  if (files.isEmpty()) {
+    addItem("No profiles found");
+    return;
+  }
+
+  for (const QFileInfo& fileInfo : files) {
+    QString fileName = fileInfo.fileName();
+    QString fullPath = fileInfo.absoluteFilePath();
+
+    // Add to combo (display just filename)
+    addItem(fileName);
+    m_profilePaths.push_back(fullPath.toStdString());
+  }
+
+  std::cout << "[VisionProfileComboBox] Found " << m_profilePaths.size()
+            << " profiles in " << m_visionConfigDir << std::endl;
+}
+
+std::string VisionProfileComboBox::getSelectedProfile() const
+{
+  int index = currentIndex();
+  if (index >= 0 && index < static_cast<int>(m_profilePaths.size())) {
+    return m_profilePaths[index];
+  }
+  return "";
+}
+
+void VisionProfileComboBox::setSelectedProfile(const std::string& profilePath)
+{
+  // Try to match by full path first
+  for (int i = 0; i < static_cast<int>(m_profilePaths.size()); ++i) {
+    if (m_profilePaths[i] == profilePath) {
+      setCurrentIndex(i);
+      return;
+    }
+  }
+
+  // Try to match by filename only
+  QFileInfo fileInfo(QString::fromStdString(profilePath));
+  QString fileName = fileInfo.fileName();
+
+  int index = findText(fileName);
+  if (index >= 0) {
+    setCurrentIndex(index);
+  }
+  else if (profilePath.empty() && !m_profilePaths.empty()) {
+    // Auto-select first profile if path is empty and profiles are available
+    setCurrentIndex(0);
+    std::cout << "[VisionProfileComboBox] Auto-selected first profile: " << m_profilePaths[0] << std::endl;
+    emit currentIndexChanged(0);  // Trigger parameter change
+  }
+}
+
+void VisionProfileComboBox::refreshProfiles()
+{
+  populateProfiles();
+}
+
+std::string VisionProfileComboBox::getVisionConfigDir() const
+{
+  return m_visionConfigDir;
 }

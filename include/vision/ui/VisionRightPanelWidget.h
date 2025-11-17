@@ -110,8 +110,8 @@ private:
     QLabel* m_exposureValueLabel;
     QSlider* m_gainSlider;
     QLabel* m_gainValueLabel;
-    QDoubleSpinBox* m_pixelToMmXSpin;
-    QDoubleSpinBox* m_pixelToMmYSpin;
+    QLabel* m_pixelToMmXLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)
+    QLabel* m_pixelToMmYLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)
 
     // Plugin Parameters Tab
     QScrollArea* m_pluginScrollArea;
@@ -134,4 +134,9 @@ private:
     QSpinBox* m_searchBoxEndXSpin;
     QSpinBox* m_searchBoxEndYSpin;
     QLabel* m_searchBoxSizeLabel;
+
+    // Calibration values (loaded from config/SYSTEM/val_pixelmm.json)
+    double m_pixelToMmX = 0.00248;
+    double m_pixelToMmY = 0.00248;
+    void loadCalibrationFromConfig();
 };

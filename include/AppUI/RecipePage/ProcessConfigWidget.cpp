@@ -55,6 +55,7 @@ void ProcessConfigWidget::loadFromInstance(const ProcessInstance* instance)
   m_parameterSpinBoxes.clear();
   m_parameterCombos.clear();
   m_dataChannelCombos.clear();  // ✅ ADDED: Clear data channel combos
+  m_visionProfileCombos.clear();  // ✅ ADDED: Clear vision profile combos
 
   // Add enabled checkbox
   m_enabledCheckBox = new QCheckBox("Step Enabled");
@@ -613,6 +614,28 @@ void ProcessConfigWidget::refreshDataChannels()
   }
 }
 
+// ✅ NEW: Add vision profile selector (dropdown of .json files from product vision folder)
+void ProcessConfigWidget::addVisionProfileSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  VisionProfileComboBox* combo = new VisionProfileComboBox(m_context);
+
+  // Connect BEFORE setting profile so auto-select triggers parameterChanged
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+
+  // Store in vision profile combos map (special handling for full path)
+  m_visionProfileCombos[key] = combo;
+
+  // Set selected profile AFTER connection and storage
+  combo->setSelectedProfile(value);
+
+  std::cout << "[ProcessConfigWidget] Added vision profile selector for key: " << key << std::endl;
+}
+
 // ✅ NEW: Add IO pin name selector (dropdown with pin names from IO device)
 void ProcessConfigWidget::addIOPinSelector(const std::string& key,
   const std::string& label,
@@ -756,6 +779,11 @@ std::map<std::string, std::string> ProcessConfigWidget::getParameters() const
   // ✅ ADDED: Include data channel selector values
   for (const auto& [key, combo] : m_dataChannelCombos) {
     params[key] = combo->currentText().toStdString();
+  }
+
+  // ✅ ADDED: Include vision profile selector values (full path)
+  for (const auto& [key, combo] : m_visionProfileCombos) {
+    params[key] = combo->getSelectedProfile();
   }
 
   return params;

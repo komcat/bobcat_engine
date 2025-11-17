@@ -1,0 +1,8 @@
+{
+  "description": "Pixel to millimeter calibration values for vision system",
+  "calibration": {
+    "pixel_to_mm_x": 0.00248,
+    "pixel_to_mm_y": 0.00248
+  },
+  "notes": "These values are hardware-specific and should be calibrated for each camera setup"
+}

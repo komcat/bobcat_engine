@@ -18,6 +18,7 @@ struct ProcessInstance;
 struct ApplicationContext;
 class DeviceComboBox;
 class QDoubleSpinBox;
+class VisionProfileComboBox;
 
 /**
  * @brief Base class for process configuration widgets
@@ -68,6 +69,10 @@ public:
   // Helper to add device selector (dropdown)
   void addDeviceSelector(const std::string& key, const std::string& label,
     const std::string& value, int deviceType);
+
+  // Helper to add vision profile selector (dropdown of .json files from product vision folder)
+  void addVisionProfileSelector(const std::string& key, const std::string& label,
+    const std::string& value);
 
   // Helper to add node selector (with browse button)
   // deviceParamKey: the parameter key of the device selector (e.g., "device")
@@ -129,6 +134,9 @@ private:
   // ✅ NEW: Track data channel selectors for auto-refresh
   std::map<std::string, QComboBox*> m_dataChannelCombos;
   QTimer* m_channelRefreshTimer;
+
+  // ✅ NEW: Track vision profile selectors (need special handling for full path)
+  std::map<std::string, VisionProfileComboBox*> m_visionProfileCombos;
 };
 
 /**

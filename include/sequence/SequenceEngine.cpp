@@ -24,6 +24,9 @@
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
+#ifdef HAS_OPENCV
+#include "VisionCommandHandler.h"
+#endif
 #include "SequenceBuilder.h"
 #include <iostream>
 #include <cmath>
@@ -70,6 +73,13 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
   m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
   m_dispatcher.RegisterHandler("auxwindow", std::make_unique<AuxWindowCommandHandler>(m_context->auxWindowManager));
+
+#ifdef HAS_OPENCV
+  // Register vision command handler for vision profile execution
+  auto visionHandler = std::make_unique<VisionCommandHandler>();
+  visionHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("vision", std::move(visionHandler));
+#endif
 
   // Register system handler
   auto systemHandler = std::make_unique<SystemCommandHandler>();
@@ -212,6 +222,11 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered auxiliary window command handler");
   }
 
+  // Vision commands (special case - uses ApplicationContext internally, nullptr for manager)
+  m_deviceToManagerMap["vision"] = nullptr;
+  m_deviceToTypeMap["vision"] = "vision";
+  LogInfo("Registered vision command handler");
+
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 
@@ -274,7 +289,7 @@ bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std
     return false;
   }
 
-  LogInfo("Validating sequence: " + sequence->GetName());
+  LogInfo("🔍 Validating sequence: " + sequence->GetName());
 
   for (const auto& step : sequence->GetSteps()) {
     if (!ValidateStep(step.get(), errors)) {
@@ -283,11 +298,11 @@ bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std
   }
 
   if (errors.empty()) {
-    LogInfo("Validation passed");
+    LogInfo("✅ Validation passed");
     return true;
   }
   else {
-    LogWarning("Validation failed with " + std::to_string(errors.size()) + " errors");
+    LogWarning("❌ Validation failed with " + std::to_string(errors.size()) + " errors");
     return false;
   }
 }
@@ -307,8 +322,8 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
       return false;
     }
 
-    // System, context, calibration, and dut commands don't need a manager pointer, others do
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut") {
+    // System, context, calibration, dut, and vision commands don't need a manager pointer, others do
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision") {
       void* manager = ResolveManager(action->deviceName);
       if (!manager) {
         errors.push_back("Manager not found for device: " + action->deviceName);
@@ -395,13 +410,13 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     return false;
   }
 
-  LogInfo("Executing sequence: " + sequence->GetName());
+  LogInfo("▶️ Executing sequence: " + sequence->GetName());
 
   try {
     for (size_t i = 0; i < sequence->GetSteps().size(); ++i) {
       // ✅ CHECK STOP FLAG BEFORE EACH STEP (check both engine and context flags)
       if (m_stopRequested.load() || context->IsStopRequested()) {
-        LogWarning("Sequence execution stopped by user request");
+        LogWarning("⏹️ Sequence execution stopped by user request");
         return false;
       }
 
@@ -409,18 +424,18 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
       context->IncrementStepCount();
 
       if (!ExecuteStep(sequence->GetSteps()[i].get(), context)) {
-        LogError("Step execution failed");
+        LogError("❌ Step execution failed");
         return false;
       }
     }
 
     context->SetExecutionEndTime();
-    LogInfo("Sequence completed in " +
+    LogInfo("✅ Sequence completed in " +
            std::to_string(context->GetExecutionDuration().count()) + " ms");
     return true;
   }
   catch (const std::exception& e) {
-    LogError("Exception during execution: " + std::string(e.what()));
+    LogError("💥 Exception during execution: " + std::string(e.what()));
     return false;
   }
 }
@@ -431,7 +446,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 
   // ✅ CHECK STOP FLAG AT START OF EACH STEP (check both engine and context flags)
   if (m_stopRequested.load() || context->IsStopRequested()) {
-    LogWarning("Step execution stopped by user request");
+    LogWarning("⏹️ Step execution stopped by user request");
     return false;
   }
 
@@ -439,20 +454,20 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
   case ISequenceStep::Type::ACTION: {
     Action* action = static_cast<Action*>(step);
 
-    LogInfo("Executing: " + action->deviceName + "." + action->methodName);
+    LogInfo("⚙️ Executing: " + action->deviceName + "." + action->methodName);
 
     // Get manager and type
     void* manager = ResolveManager(action->deviceName);
     std::string managerType = ResolveManagerType(action->deviceName);
 
     if (managerType.empty()) {
-      LogError("Unknown device type for: " + action->deviceName);
+      LogError("❓ Unknown device type for: " + action->deviceName);
       return false;
     }
 
-    // System/context/calibration/dut commands can have nullptr manager, others cannot
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && !manager) {
-      LogError("Manager not found for device: " + action->deviceName);
+    // System/context/calibration/dut/vision commands can have nullptr manager, others cannot
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && !manager) {
+      LogError("❓ Manager not found for device: " + action->deviceName);
       return false;
     }
 
@@ -460,7 +475,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     std::string errorMessage;
     if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
       action->methodName, action->params, errorMessage, context)) {
-      LogError("Command failed: " + errorMessage);
+      LogError("❌ Command failed: " + errorMessage);
       return false;
     }
 
@@ -470,18 +485,18 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
   case ISequenceStep::Type::LOOP: {
     LoopBlock* loop = static_cast<LoopBlock*>(step);
 
-    LogInfo("Starting loop: " + std::to_string(loop->count) + " iterations");
+    LogInfo("🔄 Starting loop: " + std::to_string(loop->count) + " iterations");
 
     for (int i = 0; i < loop->count; i++) {
       // ✅ CHECK STOP FLAG BEFORE EACH LOOP ITERATION (check both engine and context flags)
       if (m_stopRequested.load() || context->IsStopRequested()) {
-        LogWarning("Loop stopped by user request at iteration " + std::to_string(i + 1));
+        LogWarning("⏹️ Loop stopped by user request at iteration " + std::to_string(i + 1));
         return false;
       }
 
       context->PushLoopIteration(i);
 
-      LogInfo("  Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
+      LogInfo("  🔁 Loop iteration " + std::to_string(i + 1) + "/" + std::to_string(loop->count));
 
       for (const auto& action : loop->actions) {
         if (!ExecuteStep(action.get(), context)) {
@@ -492,7 +507,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       context->PopLoopIteration();
     }
 
-    LogInfo("Loop completed");
+    LogInfo("✅ Loop completed");
     break;
   }
 
@@ -501,13 +516,13 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 
     bool conditionResult = EvaluateCondition(cond, context);
 
-    LogInfo("Condition [" + cond->contextKey + " " +
+    LogInfo("🔀 Condition [" + cond->contextKey + " " +
            ComparisonToString(cond->comparison) + " " +
            std::to_string(cond->threshold) + "] = " +
-           (conditionResult ? "TRUE" : "FALSE"));
+           (conditionResult ? "TRUE ✓" : "FALSE ✗"));
 
     if (conditionResult) {
-      LogInfo("Executing THEN branch");
+      LogInfo("  ➡️ Executing THEN branch");
       for (const auto& action : cond->thenActions) {
         if (!ExecuteStep(action.get(), context)) {
           return false;
@@ -515,7 +530,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       }
     }
     else {
-      LogInfo("Executing ELSE branch");
+      LogInfo("  ➡️ Executing ELSE branch");
       for (const auto& action : cond->elseActions) {
         if (!ExecuteStep(action.get(), context)) {
           return false;

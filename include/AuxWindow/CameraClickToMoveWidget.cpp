@@ -10,7 +10,14 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QShowEvent>  // ✅ ADD: For showEvent()
+#include <QCoreApplication>
+#include <QFile>
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <iostream>
+
+// JSON config file for calibration (shared with VisionManager)
+static constexpr const char* CALIBRATION_CONFIG_FILE = "config/SYSTEM/val_pixelmm.json";
 
 CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
                                                    UnifiedMotionManager* motionManager,
@@ -220,16 +227,69 @@ void CameraClickToMoveWidget::setupUI()
 
 void CameraClickToMoveWidget::loadSettingsFromQSettings()
 {
+  // Try to load from JSON config file first (shared with VisionManager)
+  QString appDir = QCoreApplication::applicationDirPath();
+  QString configPath = appDir + "/" + CALIBRATION_CONFIG_FILE;
+
+  if (QFile::exists(configPath)) {
+    try {
+      std::ifstream file(configPath.toStdString());
+      if (file.is_open()) {
+        nlohmann::json j;
+        file >> j;
+
+        if (j.contains("calibration")) {
+          auto& cal = j["calibration"];
+          m_pixelToMmFactorX = cal.value("pixel_to_mm_x", 0.00248);
+          m_pixelToMmFactorY = cal.value("pixel_to_mm_y", 0.00248);
+          std::cout << "[CameraClickToMoveWidget] Loaded from JSON: PixelToMm X=" << m_pixelToMmFactorX
+                    << ", Y=" << m_pixelToMmFactorY << std::endl;
+
+          // Sync to QSettings for legacy compatibility
+          QSettings settings("BobcatEngine", "Application");
+          settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_X, m_pixelToMmFactorX);
+          settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_Y, m_pixelToMmFactorY);
+          return;
+        }
+      }
+    } catch (const std::exception& e) {
+      std::cerr << "[CameraClickToMoveWidget] Error loading JSON config: " << e.what() << std::endl;
+    }
+  }
+
+  // Fallback to QSettings
   QSettings settings("BobcatEngine", "Application");
   m_pixelToMmFactorX = settings.value(SETTINGS_KEY_PIXEL_TO_MM_X, 0.00248).toDouble();
   m_pixelToMmFactorY = settings.value(SETTINGS_KEY_PIXEL_TO_MM_Y, 0.00248).toDouble();
 
-  std::cout << "[CameraClickToMoveWidget] Loaded settings: PixelToMm X=" << m_pixelToMmFactorX
+  std::cout << "[CameraClickToMoveWidget] Loaded from QSettings: PixelToMm X=" << m_pixelToMmFactorX
             << ", Y=" << m_pixelToMmFactorY << std::endl;
 }
 
 void CameraClickToMoveWidget::saveSettingsToQSettings()
 {
+  // Save to JSON config file (shared with VisionManager)
+  QString appDir = QCoreApplication::applicationDirPath();
+  QString configPath = appDir + "/" + CALIBRATION_CONFIG_FILE;
+
+  try {
+    nlohmann::json j;
+    j["description"] = "Pixel to millimeter calibration values for vision system";
+    j["calibration"]["pixel_to_mm_x"] = m_pixelToMmFactorX;
+    j["calibration"]["pixel_to_mm_y"] = m_pixelToMmFactorY;
+    j["notes"] = "These values are hardware-specific and should be calibrated for each camera setup";
+
+    std::ofstream file(configPath.toStdString());
+    if (file.is_open()) {
+      file << j.dump(2);
+      file.close();
+      std::cout << "[CameraClickToMoveWidget] Saved to JSON: " << configPath.toStdString() << std::endl;
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "[CameraClickToMoveWidget] Error saving JSON config: " << e.what() << std::endl;
+  }
+
+  // Also save to QSettings for legacy compatibility
   QSettings settings("BobcatEngine", "Application");
   settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_X, m_pixelToMmFactorX);
   settings.setValue(SETTINGS_KEY_PIXEL_TO_MM_Y, m_pixelToMmFactorY);
