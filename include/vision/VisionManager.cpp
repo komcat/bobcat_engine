@@ -232,8 +232,8 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
     }
 
     // Execute
-    m_outputImage = processingImage.clone();
-    result.success = plugin->execute(processingImage, m_outputImage, result);
+    cv::Mat pluginOutput = processingImage.clone();
+    result.success = plugin->execute(processingImage, pluginOutput, result);
 
     auto endTime = std::chrono::high_resolution_clock::now();
     result.processingTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
@@ -241,6 +241,7 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
     if (!result.success) {
         result.errorMessage = plugin->getLastError();
         std::cerr << "[VisionManager] Plugin failed: " << result.errorMessage << std::endl;
+        m_outputImage = pluginOutput;  // Use plugin output even on failure
     } else {
         // Apply ROI offset to convert coordinates back to full image space
         if (usingROI) {
@@ -250,7 +251,16 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
         // Apply calibration to all coordinates
         applyCalibrationToResult(result);
 
-        // ✅ Render overlays onto output image
+        // ✅ Render overlays onto FULL input image (not cropped ROI)
+        // This ensures ROI rectangle and result overlays are properly positioned
+        m_outputImage = m_inputImage.clone();
+
+        // Draw ROI rectangle if ROI was used
+        if (usingROI) {
+            renderROIRectangle(m_outputImage);
+        }
+
+        // Render result overlays (already offset-corrected to full image coordinates)
         renderOverlaysOnImage(result, m_outputImage);
 
         std::cout << "[VisionManager] Plugin succeeded in " << result.processingTimeMs << " ms" << std::endl;
@@ -759,6 +769,61 @@ void VisionManager::renderOverlaysOnImage(const VisionResult& result, cv::Mat& i
     image = colorImage;
 
     std::cout << "[VisionManager] Rendered " << result.overlays.size() << " overlays on output image" << std::endl;
+}
+
+void VisionManager::renderROIRectangle(cv::Mat& image)
+{
+    if (image.empty() || !m_roi.isEnabled() || !m_roi.isValid()) {
+        return;
+    }
+
+    // Convert to color if grayscale
+    cv::Mat colorImage;
+    if (image.channels() == 1) {
+        cv::cvtColor(image, colorImage, cv::COLOR_GRAY2BGR);
+    } else {
+        colorImage = image;
+    }
+
+    // Get ROI bounds
+    int startX = m_roi.getStartX();
+    int startY = m_roi.getStartY();
+    int endX = m_roi.getEndX();
+    int endY = m_roi.getEndY();
+
+    // Draw ROI rectangle in cyan color (matches VisionManager page)
+    cv::Scalar roiColor(255, 255, 0);  // BGR: Cyan
+    int thickness = 2;
+    cv::rectangle(colorImage,
+                 cv::Point(startX, startY),
+                 cv::Point(endX, endY),
+                 roiColor, thickness);
+
+    // Draw corner markers (like VisionManager page)
+    int markerSize = 10;
+    // Top-left
+    cv::rectangle(colorImage, cv::Point(startX - markerSize/2, startY - markerSize/2),
+                 cv::Point(startX + markerSize/2, startY + markerSize/2), roiColor, -1);
+    // Top-right
+    cv::rectangle(colorImage, cv::Point(endX - markerSize/2, startY - markerSize/2),
+                 cv::Point(endX + markerSize/2, startY + markerSize/2), roiColor, -1);
+    // Bottom-left
+    cv::rectangle(colorImage, cv::Point(startX - markerSize/2, endY - markerSize/2),
+                 cv::Point(startX + markerSize/2, endY + markerSize/2), roiColor, -1);
+    // Bottom-right
+    cv::rectangle(colorImage, cv::Point(endX - markerSize/2, endY - markerSize/2),
+                 cv::Point(endX + markerSize/2, endY + markerSize/2), roiColor, -1);
+
+    // Add ROI label
+    std::string roiLabel = "ROI: " + std::to_string(endX - startX) + "x" + std::to_string(endY - startY);
+    cv::putText(colorImage, roiLabel,
+               cv::Point(startX, startY - 10),
+               cv::FONT_HERSHEY_SIMPLEX, 0.6,
+               roiColor, 2);
+
+    image = colorImage;
+
+    std::cout << "[VisionManager] Rendered ROI rectangle: " << m_roi.toString() << std::endl;
 }
 
 #endif // HAS_OPENCV

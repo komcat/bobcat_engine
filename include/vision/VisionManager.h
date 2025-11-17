@@ -314,6 +314,9 @@ private:
 
     // ✅ Helper to render overlays from result onto output image
     void renderOverlaysOnImage(const VisionResult& result, cv::Mat& image);
+
+    // ✅ Helper to render ROI rectangle on full image
+    void renderROIRectangle(cv::Mat& image);
 };
 
 #endif // HAS_OPENCV

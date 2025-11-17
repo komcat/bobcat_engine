@@ -218,10 +218,61 @@ bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
             VisionManager::instance().setPixelToMm(pixelToMmX, pixelToMmY);
 
             // Store camera ID in context for later use
+            std::string cameraId = "";
             if (camJson.contains("cameraId")) {
-                std::string cameraId = camJson.value("cameraId", "");
+                cameraId = camJson.value("cameraId", "");
                 if (context) {
                     context->SetValue("vision.camera_id", cameraId);
+                }
+                std::cout << "[VisionCommandHandler] 📷 Camera ID: " << cameraId << std::endl;
+            }
+
+            // ✅ Apply exposure/gain settings to camera if specified
+            if (!cameraId.empty() && m_context && m_context->cameraManager) {
+                // Support both camelCase (from UI) and snake_case field names
+                bool hasExposureSettings = camJson.contains("exposureTime") || camJson.contains("exposure_time")
+                                        || camJson.contains("gain");
+                std::cout << "[VisionCommandHandler] 📷 Checking exposure settings: hasSettings=" << hasExposureSettings << std::endl;
+
+                if (hasExposureSettings) {
+                    ICameraHardware::ExposureSettings settings;
+                    // Support both camelCase and snake_case
+                    if (camJson.contains("exposureTime")) {
+                        settings.exposure_time = camJson.value("exposureTime", 10000.0);
+                    } else {
+                        settings.exposure_time = camJson.value("exposure_time", 10000.0);
+                    }
+                    settings.gain = camJson.value("gain", 1.0);
+                    if (camJson.contains("autoExposure")) {
+                        settings.auto_exposure = camJson.value("autoExposure", false);
+                    } else {
+                        settings.auto_exposure = camJson.value("auto_exposure", false);
+                    }
+                    if (camJson.contains("autoGain")) {
+                        settings.auto_gain = camJson.value("autoGain", false);
+                    } else {
+                        settings.auto_gain = camJson.value("auto_gain", false);
+                    }
+
+                    std::cout << "[VisionCommandHandler] 📷 Applying exposure: exp=" << settings.exposure_time
+                              << "µs, gain=" << settings.gain
+                              << ", autoExp=" << settings.auto_exposure
+                              << ", autoGain=" << settings.auto_gain << std::endl;
+
+                    if (m_context->cameraManager->ApplyExposureSettings(cameraId, settings)) {
+                        std::cout << "[VisionCommandHandler] ✅ Exposure settings applied successfully" << std::endl;
+                    } else {
+                        std::cout << "[VisionCommandHandler] ⚠️ Failed to apply exposure settings to camera: "
+                                  << cameraId << std::endl;
+                    }
+                } else {
+                    std::cout << "[VisionCommandHandler] ℹ️ No exposure/gain settings in profile" << std::endl;
+                }
+            } else {
+                if (cameraId.empty()) {
+                    std::cout << "[VisionCommandHandler] ⚠️ No cameraId specified in profile" << std::endl;
+                } else if (!m_context || !m_context->cameraManager) {
+                    std::cout << "[VisionCommandHandler] ⚠️ CameraManager not available" << std::endl;
                 }
             }
         }
