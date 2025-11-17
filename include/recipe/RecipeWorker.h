@@ -12,6 +12,7 @@ class RecipeManager;
 class ProcessSequenceFactory;
 class ProductPositionManager;
 class UnifiedMotionManager;
+class SequenceContext;  // ✅ Forward declaration for external context
 
 /**
  * @brief Worker thread for recipe execution (Self-contained)
@@ -64,6 +65,10 @@ public:
   )>;
   void setUserInputCallback(UserInputCallback callback);
 
+  // ✅ NEW: Set external context (for sharing with ProgramWorker)
+  // If set, this context will be used instead of creating a local one
+  void setExternalContext(SequenceContext* context);
+
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
@@ -90,4 +95,5 @@ private:
   UserPromptCallback m_userPromptCallback;
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
+  SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
 };

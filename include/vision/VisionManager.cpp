@@ -11,6 +11,7 @@
 #include <chrono>
 #include <iostream>
 #include <fstream>
+#include <opencv2/imgproc.hpp>  // ✅ For cvtColor, circle, line, rectangle, putText
 
 // QSettings keys for calibration (shared with CameraClickToMoveWidget)
 static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_X = "CameraClickToMove/PixelToMmFactorX";
@@ -248,6 +249,10 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
 
         // Apply calibration to all coordinates
         applyCalibrationToResult(result);
+
+        // ✅ Render overlays onto output image
+        renderOverlaysOnImage(result, m_outputImage);
+
         std::cout << "[VisionManager] Plugin succeeded in " << result.processingTimeMs << " ms" << std::endl;
     }
 
@@ -683,6 +688,77 @@ QString VisionManager::getCurrentRecipePath() const
 bool VisionManager::hasUnsavedChanges() const
 {
     return m_unsavedChanges;
+}
+
+void VisionManager::renderOverlaysOnImage(const VisionResult& result, cv::Mat& image)
+{
+    if (image.empty()) {
+        return;
+    }
+
+    // Convert to color if grayscale (so overlays are visible)
+    cv::Mat colorImage;
+    if (image.channels() == 1) {
+        cv::cvtColor(image, colorImage, cv::COLOR_GRAY2BGR);
+    } else {
+        colorImage = image;
+    }
+
+    // Render each overlay command
+    for (const auto& cmd : result.overlays) {
+        switch (cmd.type) {
+            case OverlayCommand::DrawPoint:
+                cv::circle(colorImage,
+                          cv::Point(static_cast<int>(cmd.p1.x), static_cast<int>(cmd.p1.y)),
+                          cmd.thickness, cmd.color, -1);  // Filled circle for point
+                break;
+
+            case OverlayCommand::DrawLine:
+                cv::line(colorImage,
+                        cv::Point(static_cast<int>(cmd.p1.x), static_cast<int>(cmd.p1.y)),
+                        cv::Point(static_cast<int>(cmd.p2.x), static_cast<int>(cmd.p2.y)),
+                        cmd.color, cmd.thickness);
+                break;
+
+            case OverlayCommand::DrawCircle:
+                cv::circle(colorImage,
+                          cv::Point(static_cast<int>(cmd.p1.x), static_cast<int>(cmd.p1.y)),
+                          static_cast<int>(cmd.radius), cmd.color, cmd.thickness);
+                break;
+
+            case OverlayCommand::DrawRectangle:
+                cv::rectangle(colorImage,
+                             cv::Point(static_cast<int>(cmd.p1.x), static_cast<int>(cmd.p1.y)),
+                             cv::Point(static_cast<int>(cmd.p2.x), static_cast<int>(cmd.p2.y)),
+                             cmd.color, cmd.thickness);
+                break;
+
+            case OverlayCommand::DrawText:
+                cv::putText(colorImage, cmd.text,
+                           cv::Point(static_cast<int>(cmd.p1.x), static_cast<int>(cmd.p1.y)),
+                           cv::FONT_HERSHEY_SIMPLEX, cmd.fontScale * 0.5,  // Scale font
+                           cmd.color, std::max(1, cmd.thickness));
+                break;
+
+            case OverlayCommand::DrawCrosshair: {
+                int x = static_cast<int>(cmd.p1.x);
+                int y = static_cast<int>(cmd.p1.y);
+                int size = static_cast<int>(cmd.radius);
+                cv::line(colorImage, cv::Point(x - size, y), cv::Point(x + size, y), cmd.color, cmd.thickness);
+                cv::line(colorImage, cv::Point(x, y - size), cv::Point(x, y + size), cmd.color, cmd.thickness);
+                break;
+            }
+
+            default:
+                // Skip unsupported overlay types
+                break;
+        }
+    }
+
+    // Update the image reference
+    image = colorImage;
+
+    std::cout << "[VisionManager] Rendered " << result.overlays.size() << " overlays on output image" << std::endl;
 }
 
 #endif // HAS_OPENCV

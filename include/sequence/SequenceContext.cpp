@@ -76,6 +76,21 @@ SequenceContext::Value::Value(const CameraFrameData& frame, const std::string& d
     stringValue = frame.cameraId + " (" + std::to_string(frame.width) + "x" + std::to_string(frame.height) + ")";
 }
 
+#ifdef HAS_OPENCV
+// ✅ NEW: cv::Mat constructor for vision result images
+SequenceContext::Value::Value(const cv::Mat& image, const std::string& device, const std::string& method)
+    : type(ValueType::IMAGE_FRAME)
+    , numericValue(0.0f)
+    , booleanValue(!image.empty())
+    , imageFrame(std::make_shared<cv::Mat>(image.clone()))
+    , timestamp(std::chrono::system_clock::now())
+    , sourceDevice(device)
+    , sourceMethod(method)
+{
+    stringValue = "cv::Mat (" + std::to_string(image.cols) + "x" + std::to_string(image.rows) + ")";
+}
+#endif
+
 float SequenceContext::Value::AsFloat() const {
     return numericValue;
 }
@@ -277,6 +292,28 @@ std::string SequenceContext::GetFrameTempFilePath(const std::string& key) const
     }
     return "";
 }
+
+#ifdef HAS_OPENCV
+// ✅ NEW: Set cv::Mat image frame (for vision result images)
+void SequenceContext::SetImageFrame(const std::string& key, const cv::Mat& image,
+                                     const std::string& device, const std::string& method)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    Value value(image, device, method);
+    m_values[key] = value;
+}
+
+// ✅ NEW: Get cv::Mat image frame (for vision result images)
+std::optional<cv::Mat> SequenceContext::GetImageFrame(const std::string& key) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_values.find(key);
+    if (it != m_values.end() && it->second.type == ValueType::IMAGE_FRAME && it->second.imageFrame) {
+        return *(it->second.imageFrame);
+    }
+    return std::nullopt;
+}
+#endif
 
 // ✅ NEW: Generate unique temp file path
 std::string SequenceContext::GenerateTempFilePath(const std::string& cameraName)

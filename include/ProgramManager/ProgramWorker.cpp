@@ -3,10 +3,13 @@
 #include "ProgramManager.h"
 #include "RecipeWorker.h"
 #include "RecipeExecutionStateMachine.h"
+#include "SequenceContext.h"
 #include <QEventLoop>
 #include <QMutexLocker>
 #include <QStringList>
+#include <QMetaObject>  // ✅ For invokeMethod
 #include <iostream>
+#include <memory>  // ✅ For std::make_unique
 
 ProgramWorker::ProgramWorker(
   SequenceEngine* engine,
@@ -27,6 +30,7 @@ ProgramWorker::ProgramWorker(
   , m_startRecipeIndex(0)     // ✅ Default: start from first
   , m_useDependencyGraph(false)  // ✅ Default: sequential execution
   , m_activeRecipeWorker(nullptr)  // ✅ No active worker initially
+  , m_currentContext(nullptr)  // ✅ Context created on first execution
 {
 }
 
@@ -84,6 +88,7 @@ void ProgramWorker::resetCompletionTracking()
 
 void ProgramWorker::run()
 {
+  std::cout << "[ProgramWorker] run() started, thread ID: " << QThread::currentThreadId() << std::endl;
   try {
     // Choose execution mode based on dependency graph setting
     if (m_useDependencyGraph) {
@@ -93,14 +98,20 @@ void ProgramWorker::run()
     }
   }
   catch (const std::exception& e) {
+    std::cout << "[ProgramWorker] Top-level exception: " << e.what() << std::endl;
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
   }
+  std::cout << "[ProgramWorker] run() finished, about to exit thread" << std::endl;
 }
 
 void ProgramWorker::runSequential()
 {
   try {
     const auto& allRecipes = m_programManager->getAllRecipes();
+
+    // ✅ Create shared context for all recipes in this program run
+    auto sharedContext = std::make_unique<SequenceContext>();
+    m_currentContext = sharedContext.get();  // Store for external access
 
     // ✅ Initialize completion tracking (only if not already initialized or in auto-run mode)
     if (m_completedRecipes.empty() || m_completedRecipes.size() != allRecipes.size() || m_autoRunMode) {
@@ -180,6 +191,7 @@ void ProgramWorker::runSequential()
         .arg(QString::fromStdString(recipeRef->displayName)));
 
       bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+      std::cout << "[ProgramWorker] executeRecipe returned: " << success << std::endl;
 
       if (success) {
         // ✅ Mark recipe as completed
@@ -187,6 +199,7 @@ void ProgramWorker::runSequential()
           m_completedRecipes[recipeIndex] = true;
         }
 
+        std::cout << "[ProgramWorker] Emitting recipeCompleted signal" << std::endl;
         emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
         emit logMessage(QString("Recipe '%1' completed successfully")
           .arg(QString::fromStdString(recipeRef->displayName)));
@@ -215,11 +228,39 @@ void ProgramWorker::runSequential()
       : QString("Recipe '%1' completed successfully!")
       .arg(QString::fromStdString(allRecipes[m_startRecipeIndex]->displayName));
 
+    // ✅ Store result for polling fallback
+    m_executionSuccess = true;
+    m_executionMessage = completionMsg;
+
+    std::cout << "[ProgramWorker] All recipes completed, emitting programExecutionCompleted: "
+              << completionMsg.toStdString() << std::endl;
+    std::cout.flush();
+
+    // ✅ Emit log message first to trigger event processing (this works!)
+    emit logMessage(QString("✅ PROGRAM COMPLETED: %1").arg(completionMsg));
+
     emit programExecutionCompleted(true, completionMsg);
+
+    // ✅ Also invoke parent's slot directly if parent exists (more reliable than signal)
+    if (parent()) {
+      std::cout << "[ProgramWorker] Invoking parent's slot via QMetaObject..." << std::endl;
+      std::cout.flush();
+      QMetaObject::invokeMethod(parent(), "onProgramExecutionCompleted",
+        Qt::QueuedConnection,
+        Q_ARG(bool, true),
+        Q_ARG(QString, completionMsg));
+      std::cout << "[ProgramWorker] QMetaObject::invokeMethod called" << std::endl;
+      std::cout.flush();
+    }
+
+    std::cout << "[ProgramWorker] programExecutionCompleted signal emitted, runSequential() returning" << std::endl;
+    std::cout.flush();
   }
   catch (const std::exception& e) {
+    std::cout << "[ProgramWorker] Exception in runSequential(): " << e.what() << std::endl;
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
   }
+  std::cout << "[ProgramWorker] runSequential() completed" << std::endl;
 }
 
 void ProgramWorker::runWithDependencies()
@@ -227,8 +268,13 @@ void ProgramWorker::runWithDependencies()
   try {
     const auto& allRecipes = m_programManager->getAllRecipes();
 
+    // ✅ Create shared context for all recipes in this program run
+    auto sharedContext = std::make_unique<SequenceContext>();
+    m_currentContext = sharedContext.get();  // Store for external access
+
     if (allRecipes.empty()) {
       emit programExecutionCompleted(false, "No recipes in program");
+      m_currentContext = nullptr;
       return;
     }
 
@@ -472,6 +518,11 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     recipeWorker->setUserInputCallback(m_userInputCallback);
   }
 
+  // ✅ Set shared context for vision result storage
+  if (m_currentContext) {
+    recipeWorker->setExternalContext(m_currentContext);
+  }
+
   // ✅ Connect RecipeWorker signals to ProgramWorker signals
   // Forward step-level signals with recipeIndex prefix
   connect(recipeWorker, &RecipeWorker::stepBuildStarted,
@@ -502,20 +553,22 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   QString errorMessage;
   QEventLoop loop;
 
-  // Connect completion signal to event loop
+  // Connect completion signal to event loop (use Qt::QueuedConnection for cross-thread safety)
   connect(recipeWorker, &RecipeWorker::executionCompleted,
     &loop, [&loop, &success, &errorMessage](bool s, QString msg) {
+    std::cout << "[ProgramWorker] executionCompleted signal received: " << msg.toStdString() << std::endl;
     success = s;
     errorMessage = msg;
     loop.quit();  // Exit event loop
-  });
+    std::cout << "[ProgramWorker] loop.quit() called" << std::endl;
+  }, Qt::QueuedConnection);
 
   // Also quit on stopped signal
   connect(recipeWorker, &RecipeWorker::executionStopped,
     &loop, [&loop, &success]() {
     success = false;
     loop.quit();
-  });
+  }, Qt::QueuedConnection);
 
   // Check for stop request before starting
   if (m_stopRequested.load()) {
@@ -532,7 +585,9 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   loop.exec();
 
   // Wait for thread to actually finish
+  std::cout << "[ProgramWorker] loop.exec() returned, waiting for thread to finish..." << std::endl;
   recipeWorker->wait();
+  std::cout << "[ProgramWorker] Thread finished, cleaning up" << std::endl;
 
   // ✅ Clear active worker (thread-safe)
   {
@@ -540,9 +595,15 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     m_activeRecipeWorker = nullptr;
   }
 
+  // ✅ Emit completion marker BEFORE deleting worker (signal forwarding still active)
+  if (success) {
+    emit logMessage(QString("✅ RECIPE EXECUTION COMPLETED"));
+  }
+
   // Cleanup
   delete recipeWorker;
 
+  std::cout << "[ProgramWorker] executeRecipe() returning success=" << success << std::endl;
   return success;
 }
 
@@ -589,4 +650,12 @@ bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
   }
 
   return true;
+}
+
+SequenceContext* ProgramWorker::getCurrentContext() const
+{
+  // ✅ Returns the shared context used across all recipes in this program run
+  // Context is created at start of runSequential()/runWithDependencies()
+  // and passed to each RecipeWorker via setExternalContext()
+  return m_currentContext;
 }

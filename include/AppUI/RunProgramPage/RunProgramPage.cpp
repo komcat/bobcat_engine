@@ -38,6 +38,17 @@
 #include <QDir>
 #include <iostream>
 #include <cmath>
+#include <memory>  // For std::make_shared
+#include <functional>  // For std::function
+#include <QPointer>  // For safe widget reference
+
+#ifdef HAS_OPENCV
+#include "SequenceContext.h"
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>  // For cv::imread
+#include <QImage>
+#include <QPixmap>
+#endif
 
 RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
@@ -66,6 +77,9 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_currentSubscribedChannel("")
   , m_currentRecipeTotalSteps(0)      // ✅ Initialize step tracking
   , m_currentRecipeCompletedSteps(0)  // ✅ Initialize step tracking
+  , m_visionResultGroup(nullptr)       // ✅ Vision result group
+  , m_visionResultImageLabel(nullptr)  // ✅ Vision result image
+  , m_currentContext(nullptr)          // ✅ Execution context
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -1187,6 +1201,41 @@ void RunProgramPage::createExecutionWidget()
     m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
 
     rightLayout->addWidget(m_scanWidget);
+
+    // ✅ Vision result image display
+    m_visionResultGroup = new QGroupBox("Vision Result");
+    m_visionResultGroup->setStyleSheet(
+      "QGroupBox { "
+      "  font-weight: bold; "
+      "  color: #FFA500; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 4px; "
+      "  margin-top: 10px; "
+      "  padding-top: 10px; "
+      "} "
+      "QGroupBox::title { "
+      "  subcontrol-origin: margin; "
+      "  left: 10px; "
+      "  padding: 0 5px; "
+      "}"
+    );
+    QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+    visionLayout->setContentsMargins(5, 15, 5, 5);
+
+    m_visionResultImageLabel = new QLabel("No vision result");
+    m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+    m_visionResultImageLabel->setMinimumHeight(200);
+    m_visionResultImageLabel->setStyleSheet(
+      "QLabel { "
+      "  background-color: #0f0f0f; "
+      "  border: 1px solid #3f3f46; "
+      "  color: #808080; "
+      "  font-style: italic; "
+      "}"
+    );
+    visionLayout->addWidget(m_visionResultImageLabel);
+
+    rightLayout->addWidget(m_visionResultGroup);
     rightLayout->addStretch();  // Push controls to top
 
     // Connect scan widget to this page
@@ -1590,36 +1639,104 @@ void RunProgramPage::onExecuteProgram()
     return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
   });
 
-  // Connect signals
+  // Connect signals (use Qt::QueuedConnection for cross-thread safety)
+  std::cout << "[RunProgramPage] Setting up signal connections..." << std::endl;
   connect(m_programWorker, &ProgramWorker::programExecutionStarted,
-    this, &RunProgramPage::onProgramExecutionStarted);
+    this, &RunProgramPage::onProgramExecutionStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::recipeStarted,
-    this, &RunProgramPage::onRecipeStarted);
+    this, &RunProgramPage::onRecipeStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::recipeCompleted,
-    this, &RunProgramPage::onRecipeCompleted);
+    this, &RunProgramPage::onRecipeCompleted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::recipeSkipped,
-    this, &RunProgramPage::onRecipeSkipped);
+    this, &RunProgramPage::onRecipeSkipped, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::programExecutionCompleted,
-    this, &RunProgramPage::onProgramExecutionCompleted);
+    this, &RunProgramPage::onProgramExecutionCompleted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::programStopped,
-    this, &RunProgramPage::onProgramStopped);
+    this, &RunProgramPage::onProgramStopped, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::logMessage,
-    this, &RunProgramPage::onWorkerLogMessage);
+    this, &RunProgramPage::onWorkerLogMessage, Qt::QueuedConnection);
+
+  // ✅ Connect finished() to trigger completion check AND cleanup
   connect(m_programWorker, &ProgramWorker::finished,
-    m_programWorker, &QObject::deleteLater);
+    this, &RunProgramPage::onWorkerFinished, Qt::QueuedConnection);
 
   // ✅ Connect step-level signals for progress tracking
   connect(m_programWorker, &ProgramWorker::stepBuildStarted,
-    this, &RunProgramPage::onStepBuildStarted);
+    this, &RunProgramPage::onStepBuildStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::stepBuildCompleted,
-    this, &RunProgramPage::onStepBuildCompleted);
+    this, &RunProgramPage::onStepBuildCompleted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::sequenceExecutionStarted,
-    this, &RunProgramPage::onSequenceExecutionStarted);
+    this, &RunProgramPage::onSequenceExecutionStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::waitProgress,
-    this, &RunProgramPage::onWaitProgress);
+    this, &RunProgramPage::onWaitProgress, Qt::QueuedConnection);
+
+  std::cout << "[RunProgramPage] All signals connected, main thread ID: " << QThread::currentThreadId() << std::endl;
+  std::cout.flush();
 
   // Start execution
   m_programWorker->start();
+  std::cout << "[RunProgramPage] ProgramWorker started" << std::endl;
+  std::cout.flush();
+
+  // ✅ Workaround: Poll for thread completion using QTimer::singleShot chain
+  // This is more reliable than regular timer for cross-thread scenarios
+  auto checkCountPtr = std::make_shared<int>(0);
+  auto selfPtr = QPointer<RunProgramPage>(this);  // Safe reference to this
+
+  // Use shared_ptr to hold the function so it can capture itself
+  auto checkCompletionPtr = std::make_shared<std::function<void()>>();
+  *checkCompletionPtr = [this, selfPtr, checkCountPtr, checkCompletionPtr]() {
+    if (!selfPtr) return;  // Widget destroyed
+
+    (*checkCountPtr)++;
+    if (*checkCountPtr % 10 == 0) {  // Log every second
+      std::cout << "[RunProgramPage] Timer heartbeat #" << *checkCountPtr
+                << ", m_isExecuting=" << m_isExecuting
+                << ", worker running=" << (m_programWorker ? m_programWorker->isRunning() : false)
+                << ", worker finished=" << (m_programWorker ? m_programWorker->isFinished() : false) << std::endl;
+      std::cout.flush();
+    }
+
+    if (m_programWorker && m_programWorker->isFinished()) {
+      std::cout << "[RunProgramPage] Timer detected thread finished after " << *checkCountPtr << " checks" << std::endl;
+      std::cout.flush();
+      if (m_isExecuting) {
+        std::cout << "[RunProgramPage] Forcing completion via timer fallback" << std::endl;
+        std::cout.flush();
+        // Get stored result from worker
+        bool success = m_programWorker->getExecutionSuccess();
+        QString message = m_programWorker->getExecutionMessage();
+        if (message.isEmpty()) {
+          message = "Execution completed";
+        }
+        onProgramExecutionCompleted(success, message);
+        m_programWorker->deleteLater();
+        m_programWorker = nullptr;
+      }
+    }
+    else if (m_isExecuting && *checkCountPtr < 6000) {  // Max 10 minutes
+      // Schedule next check
+      QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
+        if (*checkCompletionPtr) {
+          (*checkCompletionPtr)();
+        }
+      });
+    }
+  };
+
+  // Start the polling chain
+  QTimer::singleShot(100, this, [checkCompletionPtr]() {
+    if (*checkCompletionPtr) {
+      (*checkCompletionPtr)();
+    }
+  });
+  std::cout << "[RunProgramPage] Completion checker timer started (singleShot chain)" << std::endl;
+  std::cout.flush();
+
+  // ✅ Force event processing to ensure timer gets scheduled
+  QApplication::processEvents();
+  std::cout << "[RunProgramPage] Initial processEvents() called" << std::endl;
+  std::cout.flush();
 }
 
 void RunProgramPage::onStopProgram()
@@ -1723,6 +1840,9 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
     m_completedRecipes[recipeIndex] = true;
   }
 
+  // ✅ Update vision result image if available
+  updateVisionResultImage();
+
   if (!success) {
     m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
   }
@@ -1758,7 +1878,16 @@ void RunProgramPage::onRecipeSkipped(int recipeIndex, QString recipeName)
 
 void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 {
+  std::cout << "[RunProgramPage] onProgramExecutionCompleted called: success=" << success
+            << ", message=" << message.toStdString() << std::endl;
+  std::cout.flush();
+
+  std::cout << "[RunProgramPage] Setting m_isExecuting to false..." << std::endl;
+  std::cout.flush();
   m_isExecuting = false;
+
+  std::cout << "[RunProgramPage] Updating execute button..." << std::endl;
+  std::cout.flush();
 
   // Re-enable execute button
   m_executeButton->setText("▶ Execute Program");
@@ -1777,13 +1906,39 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
     "  background-color: #cccccc; "
     "}");
 
+  std::cout << "[RunProgramPage] Enabling auto-run checkbox..." << std::endl;
+  std::cout.flush();
   m_autoRunNextCheckBox->setEnabled(true);
 
   // Show result - only show errors, not success notifications
   if (!success) {
+    std::cout << "[RunProgramPage] Showing error dialog..." << std::endl;
+    std::cout.flush();
     QMessageBox::critical(this, "Execution Failed", message);
   }
   // Success: no notification popup (user can see completion in log)
+
+  std::cout << "[RunProgramPage] About to call updateVisionResultImage()..." << std::endl;
+  std::cout.flush();
+
+  // ✅ Update vision result image if available (loads from temp file to avoid deadlock)
+  updateVisionResultImage();
+
+  std::cout << "[RunProgramPage] updateVisionResultImage() completed" << std::endl;
+  std::cout.flush();
+
+  // ✅ CRITICAL: Force UI repaint to ensure changes are visible
+  std::cout << "[RunProgramPage] Forcing repaint..." << std::endl;
+  std::cout.flush();
+  m_executeButton->update();
+  m_executeButton->repaint();
+  this->update();
+
+  // ⚠️ Don't call processEvents() here - it causes reentrancy issues
+  // The Qt event loop will naturally process paint events
+
+  std::cout << "[RunProgramPage] UI update completed" << std::endl;
+  std::cout.flush();
 }
 
 void RunProgramPage::onProgramStopped()
@@ -1812,6 +1967,27 @@ void RunProgramPage::onProgramStopped()
   // No confirmation dialog needed - stop button itself is the confirmation
 }
 
+void RunProgramPage::onWorkerFinished()
+{
+  std::cout << "[RunProgramPage] onWorkerFinished() called" << std::endl;
+  std::cout.flush();
+
+  // If we haven't received programExecutionCompleted yet, trigger it now
+  if (m_isExecuting) {
+    std::cout << "[RunProgramPage] Still executing, forcing completion from finished handler" << std::endl;
+    std::cout.flush();
+    onProgramExecutionCompleted(true, "Execution completed (via finished signal)");
+  }
+
+  // Clean up worker after signals are processed
+  if (m_programWorker) {
+    std::cout << "[RunProgramPage] Scheduling worker deletion" << std::endl;
+    std::cout.flush();
+    m_programWorker->deleteLater();
+    m_programWorker = nullptr;
+  }
+}
+
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
   // Display in execution log
@@ -1819,6 +1995,95 @@ void RunProgramPage::onWorkerLogMessage(QString message)
 
   // Also print to console for debugging
   std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
+
+  // ✅ WORKAROUND: Detect completion markers since normal signals aren't being delivered
+  // Check for both program-level and recipe-level completion markers
+  bool shouldComplete = false;
+
+  if (message.startsWith("✅ PROGRAM COMPLETED:") && m_isExecuting) {
+    std::cout << "[RunProgramPage] Detected PROGRAM completion marker!" << std::endl;
+    std::cout.flush();
+    shouldComplete = true;
+  }
+  else if (message.startsWith("✅ RECIPE EXECUTION COMPLETED") && m_isExecuting) {
+    std::cout << "[RunProgramPage] Detected RECIPE completion marker!" << std::endl;
+    std::cout.flush();
+    // Check immediately if worker is done (it should be by now)
+    if (m_programWorker) {
+      std::cout << "[RunProgramPage] Checking worker state: running=" << m_programWorker->isRunning()
+                << ", finished=" << m_programWorker->isFinished() << std::endl;
+      std::cout.flush();
+      // Wait a tiny bit for thread to fully finish
+      if (m_programWorker->isRunning()) {
+        std::cout << "[RunProgramPage] Worker still running, waiting up to 100ms..." << std::endl;
+        std::cout.flush();
+        m_programWorker->wait(100);  // Wait up to 100ms
+      }
+      std::cout << "[RunProgramPage] After wait: running=" << m_programWorker->isRunning()
+                << ", finished=" << m_programWorker->isFinished() << std::endl;
+      std::cout.flush();
+      if (m_programWorker->isFinished()) {
+        std::cout << "[RunProgramPage] Worker finished after recipe completion, forcing UI update" << std::endl;
+        std::cout.flush();
+        bool success = m_programWorker->getExecutionSuccess();
+        QString actualMessage = m_programWorker->getExecutionMessage();
+        if (actualMessage.isEmpty()) {
+          actualMessage = "Execution completed";
+        }
+        onProgramExecutionCompleted(success, actualMessage);
+        m_programWorker->deleteLater();
+        m_programWorker = nullptr;
+      }
+    } else {
+      std::cout << "[RunProgramPage] m_programWorker is null!" << std::endl;
+      std::cout.flush();
+    }
+  }
+  else if (message.contains("Context saved to:") && m_isExecuting) {
+    // Fallback: detect end of context summary (this is the last log from RecipeWorker)
+    std::cout << "[RunProgramPage] Detected context save - execution finishing" << std::endl;
+    std::cout.flush();
+    // Process events and check immediately
+    QApplication::processEvents();
+    if (m_programWorker) {
+      if (m_programWorker->isRunning()) {
+        m_programWorker->wait(500);  // Wait up to 500ms
+      }
+      if (m_programWorker->isFinished()) {
+        std::cout << "[RunProgramPage] Worker finished after context save, forcing UI update" << std::endl;
+        std::cout.flush();
+        bool success = m_programWorker->getExecutionSuccess();
+        QString actualMessage = m_programWorker->getExecutionMessage();
+        if (actualMessage.isEmpty()) {
+          actualMessage = "Execution completed";
+        }
+        onProgramExecutionCompleted(success, actualMessage);
+        m_programWorker->deleteLater();
+        m_programWorker = nullptr;
+      }
+    }
+  }
+
+  if (shouldComplete) {
+    // Get result from worker if available
+    bool success = true;
+    QString actualMessage = "Execution completed";
+    if (m_programWorker) {
+      success = m_programWorker->getExecutionSuccess();
+      actualMessage = m_programWorker->getExecutionMessage();
+    }
+
+    // Force completion handler
+    std::cout << "[RunProgramPage] Forcing completion via log message workaround" << std::endl;
+    std::cout.flush();
+    onProgramExecutionCompleted(success, actualMessage);
+
+    // Clean up worker
+    if (m_programWorker) {
+      m_programWorker->deleteLater();
+      m_programWorker = nullptr;
+    }
+  }
 }
 
 // ============================================================================
@@ -2800,4 +3065,60 @@ void RunProgramPage::loadLastProgramFromSettings()
   std::cout << "[RunProgramPage] ✅ Successfully auto-loaded: "
             << m_programManager->getProgramName() << std::endl;
   std::cout << "[RunProgramPage] ===============================================" << std::endl;
+}
+
+void RunProgramPage::updateVisionResultImage()
+{
+#ifdef HAS_OPENCV
+  std::cout << "[RunProgramPage] updateVisionResultImage() started" << std::endl;
+  std::cout.flush();
+
+  if (!m_visionResultImageLabel) {
+    std::cout << "[RunProgramPage] m_visionResultImageLabel is null, returning" << std::endl;
+    std::cout.flush();
+    return;
+  }
+
+  // ✅ Load from temporary file to avoid cross-thread context access
+  std::string tempImagePath = "logs/vision_result_temp.png";
+  cv::Mat resultImage = cv::imread(tempImagePath, cv::IMREAD_COLOR);
+
+  if (resultImage.empty()) {
+    std::cout << "[RunProgramPage] No vision result image file found at: " << tempImagePath << std::endl;
+    std::cout.flush();
+    return;
+  }
+
+  std::cout << "[RunProgramPage] Loaded vision result from file: " << resultImage.cols << "x" << resultImage.rows << std::endl;
+  std::cout.flush();
+
+  // Convert cv::Mat to QImage (BGR -> RGB)
+  cv::Mat rgbImage;
+  cv::cvtColor(resultImage, rgbImage, cv::COLOR_BGR2RGB);
+  QImage qImage(rgbImage.data, rgbImage.cols, rgbImage.rows,
+                static_cast<int>(rgbImage.step), QImage::Format_RGB888);
+  qImage = qImage.copy();  // Deep copy to detach from cv::Mat memory
+
+  // Scale to fit the label while maintaining aspect ratio
+  QPixmap pixmap = QPixmap::fromImage(qImage);
+  pixmap = pixmap.scaled(m_visionResultImageLabel->size(),
+                         Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+  m_visionResultImageLabel->setPixmap(pixmap);
+  m_visionResultImageLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 1px solid #FFA500; "
+    "}"
+  );
+
+  std::cout << "[RunProgramPage] 📷 Vision result image updated: "
+            << resultImage.cols << "x" << resultImage.rows << std::endl;
+  std::cout.flush();
+#else
+  // No OpenCV support
+  if (m_visionResultImageLabel) {
+    m_visionResultImageLabel->setText("OpenCV not available");
+  }
+#endif
 }

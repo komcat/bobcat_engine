@@ -16,6 +16,7 @@
 #include <chrono>
 #include <iostream>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>  // For cv::imwrite
 
 bool VisionCommandHandler::ExecuteCommand(
     void* manager,
@@ -296,6 +297,22 @@ bool VisionCommandHandler::Execute(const std::string& pluginName,
     // Store results in context
     if (context) {
         StoreResultInContext(result, context);
+
+        // ✅ Store the result image (original + overlay) in context
+        cv::Mat outputImage = VisionManager::instance().getOutputImage();
+        if (!outputImage.empty()) {
+            context->SetImageFrame("vision.result.image", outputImage);
+            std::cout << "[VisionCommandHandler] 🖼️ Result image stored: "
+                      << outputImage.cols << "x" << outputImage.rows << std::endl;
+
+            // ✅ Also save to temporary file for cross-thread access
+            std::string tempPath = "logs/vision_result_temp.png";
+            cv::imwrite(tempPath, outputImage);
+            context->SetValue("vision.result.image_path", tempPath);
+            std::cout << "[VisionCommandHandler] 🖼️ Result image saved to: " << tempPath << std::endl;
+        } else {
+            std::cout << "[VisionCommandHandler] ⚠️ No output image available from VisionManager" << std::endl;
+        }
     }
 
     if (m_context && m_context->logManager) {

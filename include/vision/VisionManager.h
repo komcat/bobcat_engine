@@ -311,6 +311,9 @@ private:
 
     // Helper to apply ROI offset to result coordinates
     void applyROIOffsetToResult(VisionResult& result, const cv::Point2d& offset);
+
+    // ✅ Helper to render overlays from result onto output image
+    void renderOverlaysOnImage(const VisionResult& result, cv::Mat& image);
 };
 
 #endif // HAS_OPENCV

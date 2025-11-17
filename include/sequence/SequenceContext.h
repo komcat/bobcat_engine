@@ -10,6 +10,11 @@
 #include <functional>
 #include "CameraFrameData.h"
 
+#ifdef HAS_OPENCV
+#include <opencv2/core.hpp>
+#include <optional>
+#endif
+
 // Forward declaration
 class DataStore;
 
@@ -46,6 +51,9 @@ public:
         bool booleanValue = false;
         std::shared_ptr<CameraFrameData> frameData;  // ✅ NEW: Image frame storage
         std::string tempFilePath;  // ✅ NEW: Temp file path for saved frame
+#ifdef HAS_OPENCV
+        std::shared_ptr<cv::Mat> imageFrame;  // ✅ cv::Mat storage for vision results
+#endif
 
         std::chrono::system_clock::time_point timestamp;
         std::string sourceDevice;   // Device that produced this value
@@ -57,6 +65,9 @@ public:
         Value(const std::string& v, const std::string& device = "", const std::string& method = "");
         Value(bool v, const std::string& device = "", const std::string& method = "");
         Value(const CameraFrameData& frame, const std::string& device = "", const std::string& method = "");  // ✅ NEW
+#ifdef HAS_OPENCV
+        Value(const cv::Mat& image, const std::string& device = "", const std::string& method = "");  // ✅ cv::Mat constructor
+#endif
 
         // Conversion helpers
         float AsFloat() const;
@@ -85,6 +96,13 @@ public:
     void SetFrameData(const std::string& key, const CameraFrameData& frameData,
                       bool saveToTempFile = true,
                       const std::string& device = "", const std::string& method = "");
+
+#ifdef HAS_OPENCV
+    // ✅ NEW: Set/Get cv::Mat image frames (for vision results)
+    void SetImageFrame(const std::string& key, const cv::Mat& image,
+                       const std::string& device = "", const std::string& method = "");
+    std::optional<cv::Mat> GetImageFrame(const std::string& key) const;
+#endif
 
     // Get values
     bool TryGetValue(const std::string& key, Value& outValue) const;

@@ -14,6 +14,7 @@ class ProductPositionManager;
 class UnifiedMotionManager;
 class RecipeWorker;
 class RecipeExecutionStateMachine;
+class SequenceContext;  // ✅ Forward declaration for context sharing
 
 /**
  * @brief Worker thread for program execution
@@ -70,6 +71,13 @@ public:
   // ✅ Reset completion tracking (call when loading new program)
   void resetCompletionTracking();
 
+  // ✅ Get current execution context (for vision result display)
+  SequenceContext* getCurrentContext() const;
+
+  // ✅ Get execution result (for polling fallback)
+  bool getExecutionSuccess() const { return m_executionSuccess; }
+  QString getExecutionMessage() const { return m_executionMessage; }
+
 signals:
   // Program-level signals
   void programExecutionStarted(int totalRecipes);
@@ -119,6 +127,13 @@ private:
 
   // ✅ Track completed recipes in current session (for dependency validation)
   std::vector<bool> m_completedRecipes;
+
+  // ✅ Current execution context (shared across recipes in a program run)
+  SequenceContext* m_currentContext;
+
+  // ✅ Store execution result for finished() signal handler
+  bool m_executionSuccess = false;
+  QString m_executionMessage;
 
   // Helper methods for state machine execution
   void runWithDependencies();

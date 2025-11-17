@@ -13,6 +13,7 @@
 #include <QListWidget>
 #include <QEventLoop>
 #include <QTreeWidget>
+#include <QGroupBox>
 #include <map>
 
 struct ApplicationContext;
@@ -201,4 +202,9 @@ private:
   ContextViewerWindow* m_contextViewer;  // ✅ Context viewer window
   SequenceContext* m_currentContext;     // ✅ Current execution context (owned, persists between steps)
   QPushButton* m_contextViewerButton;    // ✅ Button to show context viewer
+
+  // Vision result image display
+  QGroupBox* m_visionResultGroup;        // ✅ Vision result display group
+  QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
+  void updateVisionResultImage();        // ✅ Update vision result image from context
 };

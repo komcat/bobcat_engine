@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QTimer>  // ✅ ADDED for periodic channel refresh
 #include <QTabWidget>  // ✅ ADDED for tab layout
+#include <QGroupBox>  // ✅ ADDED for vision result group
 
 struct ApplicationContext;
 class ProgramManager;
@@ -28,6 +29,7 @@ class TransformationMatrixLoader;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
+class SequenceContext;
 
 /**
  * @brief Run Program Page - Execute programs (collections of recipes)
@@ -79,6 +81,7 @@ private slots:
   void onStepBuildCompleted(int recipeIndex, int stepIndex);
   void onSequenceExecutionStarted(int recipeIndex);
   void onWaitProgress(int remainingMs, int totalMs);
+  void onWorkerFinished();  // ✅ Handle QThread::finished()
 
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);
@@ -213,4 +216,10 @@ private:
 
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription
+
+  // Vision result image display
+  QGroupBox* m_visionResultGroup;        // ✅ Vision result display group
+  QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
+  SequenceContext* m_currentContext;     // ✅ Current execution context
+  void updateVisionResultImage();        // ✅ Update vision result image from context
 };

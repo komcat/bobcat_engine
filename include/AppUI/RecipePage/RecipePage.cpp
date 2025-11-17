@@ -42,6 +42,12 @@
 #include <iostream>
 #include <chrono>
 
+#ifdef HAS_OPENCV
+#include <opencv2/imgproc.hpp>
+#include <QImage>
+#include <QPixmap>
+#endif
+
 RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
@@ -65,6 +71,8 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_contextViewer(nullptr)       // ✅ Context viewer window
   , m_currentContext(nullptr)      // ✅ Current execution context
   , m_contextViewerButton(nullptr) // ✅ Context viewer button
+  , m_visionResultGroup(nullptr)   // ✅ Vision result group
+  , m_visionResultImageLabel(nullptr) // ✅ Vision result image
 {
   setupUI();
   setupSequenceEngine();
@@ -744,6 +752,41 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RecipePage::onUserInputResponse);
+
+  // ✅ Vision result image display
+  m_visionResultGroup = new QGroupBox("Vision Result");
+  m_visionResultGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-weight: bold; "
+    "  color: #FFA500; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}"
+  );
+  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+  visionLayout->setContentsMargins(5, 15, 5, 5);
+
+  m_visionResultImageLabel = new QLabel("No vision result");
+  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+  m_visionResultImageLabel->setMinimumHeight(200);
+  m_visionResultImageLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 1px solid #3f3f46; "
+    "  color: #808080; "
+    "  font-style: italic; "
+    "}"
+  );
+  visionLayout->addWidget(m_visionResultImageLabel);
+
+  layout->addWidget(m_visionResultGroup);
 
   clearConfigurationForm();
 }
@@ -2168,6 +2211,9 @@ void RecipePage::onRunSelectedStep()
       }
     }
 
+    // ✅ Update vision result image if available
+    updateVisionResultImage();
+
     // Show completion message - DISABLED (user feedback via progress widget is sufficient)
     // if (success) {
     //   QMessageBox::information(this, "Step Completed",
@@ -2381,6 +2427,9 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   else {
     m_context->logManager->Error(message.toStdString(), "RecipePage");
   }
+
+  // ✅ Update vision result image if available
+  updateVisionResultImage();
 
   // ✅ NEW: Auto-dismiss progress panel after 3 seconds
   QTimer::singleShot(3000, this, [this]() {
@@ -2857,4 +2906,72 @@ void RecipePage::onContextRefreshRequested()
     m_contextViewer->updateFromContext(m_currentContext);
     std::cout << "[RecipePage] Context viewer refreshed" << std::endl;
   }
+}
+
+void RecipePage::updateVisionResultImage()
+{
+#ifdef HAS_OPENCV
+  if (!m_visionResultImageLabel || !m_currentContext) {
+    return;
+  }
+
+  // Check if vision result image exists in context
+  if (!m_currentContext->HasValue("vision.result.image")) {
+    std::cout << "[RecipePage] No vision result image in context" << std::endl;
+    return;
+  }
+
+  // Get the image frame from context
+  auto frameOpt = m_currentContext->GetImageFrame("vision.result.image");
+  if (!frameOpt.has_value()) {
+    std::cout << "[RecipePage] Failed to get vision result image from context" << std::endl;
+    return;
+  }
+
+  const cv::Mat& resultImage = frameOpt.value();
+  if (resultImage.empty()) {
+    std::cout << "[RecipePage] Vision result image is empty" << std::endl;
+    return;
+  }
+
+  // Convert cv::Mat to QImage
+  QImage qImage;
+  if (resultImage.type() == CV_8UC3) {
+    // BGR -> RGB
+    cv::Mat rgbImage;
+    cv::cvtColor(resultImage, rgbImage, cv::COLOR_BGR2RGB);
+    qImage = QImage(rgbImage.data, rgbImage.cols, rgbImage.rows,
+                    static_cast<int>(rgbImage.step), QImage::Format_RGB888).copy();
+  }
+  else if (resultImage.type() == CV_8UC1) {
+    // Grayscale
+    qImage = QImage(resultImage.data, resultImage.cols, resultImage.rows,
+                    static_cast<int>(resultImage.step), QImage::Format_Grayscale8).copy();
+  }
+  else {
+    std::cout << "[RecipePage] Unsupported image format: " << resultImage.type() << std::endl;
+    return;
+  }
+
+  // Scale to fit the label while maintaining aspect ratio
+  QPixmap pixmap = QPixmap::fromImage(qImage);
+  pixmap = pixmap.scaled(m_visionResultImageLabel->size(),
+                         Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+  m_visionResultImageLabel->setPixmap(pixmap);
+  m_visionResultImageLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 1px solid #FFA500; "
+    "}"
+  );
+
+  std::cout << "[RecipePage] 📷 Vision result image updated: "
+            << resultImage.cols << "x" << resultImage.rows << std::endl;
+#else
+  // No OpenCV support
+  if (m_visionResultImageLabel) {
+    m_visionResultImageLabel->setText("OpenCV not available");
+  }
+#endif
 }

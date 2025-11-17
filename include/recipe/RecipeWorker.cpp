@@ -58,6 +58,11 @@ void RecipeWorker::setUserInputCallback(UserInputCallback callback)
   m_userInputCallback = callback;
 }
 
+void RecipeWorker::setExternalContext(SequenceContext* context)
+{
+  m_externalContext = context;
+}
+
 void RecipeWorker::run()
 {
   try {
@@ -210,7 +215,13 @@ void RecipeWorker::run()
       emit logMessage("Executing sequence...");
 
       // Create execution context for value capture and conditionals
-      auto context = std::make_unique<SequenceContext>();
+      // ✅ Use external context if provided (for ProgramWorker integration)
+      std::unique_ptr<SequenceContext> localContext;
+      SequenceContext* context = m_externalContext;
+      if (!context) {
+        localContext = std::make_unique<SequenceContext>();
+        context = localContext.get();
+      }
 
       // Set up wait progress callback to emit countdown updates
       context->SetWaitProgressCallback([this](int remainingMs, int totalMs) {
@@ -219,7 +230,7 @@ void RecipeWorker::run()
           Q_ARG(int, remainingMs), Q_ARG(int, totalMs));
       });
 
-      bool success = m_engine->ExecuteSequence(sequence, context.get());
+      bool success = m_engine->ExecuteSequence(sequence, context);
 
       delete sequence;
       sequence = nullptr;
@@ -278,7 +289,9 @@ void RecipeWorker::run()
         logger->ClearUICallback();
       }
 
+      std::cout << "[RecipeWorker] Emitting executionCompleted signal: " << resultMsg.toStdString() << std::endl;
       emit executionCompleted(success, resultMsg);
+      std::cout << "[RecipeWorker] Signal emitted, run() is about to return (thread will exit)" << std::endl;
     }
     catch (...) {
       if (sequence) {
