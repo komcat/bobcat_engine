@@ -100,6 +100,16 @@ public:
     const std::string& value, const std::string& deviceParamKey,
     const std::string& graphParamKey);
 
+  // Helper to add graph selector with FIXED device name (e.g., "gantry-main")
+  void addGraphSelectorForDevice(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& fixedDeviceName);
+
+  // Helper to add graph node selector with FIXED device name
+  // graphParamKey: the parameter key of the graph selector (e.g., "graphName")
+  void addGraphNodeSelectorForDevice(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& fixedDeviceName,
+    const std::string& graphParamKey);
+
   // ✅ NEW: Helper to add DataStore channel selector with auto-refresh
   void addDataChannelSelector(const std::string& key, const std::string& label,
     const std::string& value);

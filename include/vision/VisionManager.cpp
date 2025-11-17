@@ -299,6 +299,21 @@ void VisionManager::setPixelToMm(double x, double y)
     emit calibrationChanged(x, y);
 }
 
+void VisionManager::setPixelToMmNoSave(double x, double y)
+{
+    if (x <= 0 || y <= 0) {
+        std::cerr << "[VisionManager] Invalid calibration values: x=" << x << ", y=" << y << std::endl;
+        return;
+    }
+
+    m_pixelToMmX = x;
+    m_pixelToMmY = y;
+
+    std::cout << "[VisionManager] Calibration set (no save): " << x << " mm/px (X), " << y << " mm/px (Y)" << std::endl;
+
+    emit calibrationChanged(x, y);
+}
+
 double VisionManager::getPixelToMmX() const
 {
     return m_pixelToMmX;

@@ -133,6 +133,15 @@ public:
     void setPixelToMm(double x, double y);
 
     /**
+     * @brief Set pixel to mm conversion factors WITHOUT saving to file
+     * @param x mm per pixel in X direction
+     * @param y mm per pixel in Y direction
+     *
+     * Used when loading system calibration to avoid overwriting config files
+     */
+    void setPixelToMmNoSave(double x, double y);
+
+    /**
      * @brief Get X calibration factor
      */
     double getPixelToMmX() const;

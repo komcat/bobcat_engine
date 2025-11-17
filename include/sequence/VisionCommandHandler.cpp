@@ -10,6 +10,8 @@
 #include "../vision/VisionManager.h"
 #include "../vision/VisionResult.h"
 #include "../vision/VisionROI.h"
+#include "../motions/unified_motion_manager.h"  // For GetCurrentPosition
+#include "../motions/MotionTypes.h"              // For PositionStruct
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <thread>
@@ -128,6 +130,110 @@ bool VisionCommandHandler::ExecuteCommand(
             std::cout << "[VisionCommandHandler] ✅ Results copied to prefix: " << captureAs << std::endl;
         }
 
+        // Step 4: Calculate world position if requested (GotoDetect feature)
+        auto calcWorldIt = params.find("calculate_world_position");
+        auto motionDeviceIt = params.find("motion_device");
+        if (calcWorldIt != params.end() && calcWorldIt->second == "true" &&
+            motionDeviceIt != params.end() && !motionDeviceIt->second.empty() && context) {
+
+            std::string motionDevice = motionDeviceIt->second;
+            std::cout << "[VisionCommandHandler] 🌍 Calculating world position for device: " << motionDevice << std::endl;
+
+            // Get detected feature center (from vision result)
+            if (context->HasValue("vision.result.center_x") && context->HasValue("vision.result.center_y")) {
+                double detectedCenterX_px = context->GetNumeric("vision.result.center_x", 0.0);
+                double detectedCenterY_px = context->GetNumeric("vision.result.center_y", 0.0);
+
+                // Check if anchor point is available (for pattern matching with custom anchor)
+                // If anchor exists, use it instead of center for more precise positioning
+                double referenceX_px = detectedCenterX_px;
+                double referenceY_px = detectedCenterY_px;
+                bool usingAnchor = false;
+
+                if (context->HasValue("vision.result.match_0_anchor_x") &&
+                    context->HasValue("vision.result.match_0_anchor_y")) {
+                    referenceX_px = context->GetNumeric("vision.result.match_0_anchor_x", detectedCenterX_px);
+                    referenceY_px = context->GetNumeric("vision.result.match_0_anchor_y", detectedCenterY_px);
+                    usingAnchor = true;
+                    std::cout << "[VisionCommandHandler] 📍 Using custom anchor point: ("
+                              << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
+                } else {
+                    std::cout << "[VisionCommandHandler] 📍 Using pattern center: ("
+                              << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
+                }
+
+                // Get image dimensions for center calculation
+                double imageWidth = context->GetNumeric("vision.result.image_width", 1280.0);
+                double imageHeight = context->GetNumeric("vision.result.image_height", 1024.0);
+                double imageCenterX_px = imageWidth / 2.0;
+                double imageCenterY_px = imageHeight / 2.0;
+
+                // Calculate offset from image center (in pixels)
+                double offsetX_px = referenceX_px - imageCenterX_px;
+                double offsetY_px = referenceY_px - imageCenterY_px;
+
+                // Convert to mm using calibration
+                double pixelToMmX = VisionManager::instance().getPixelToMmX();
+                double pixelToMmY = VisionManager::instance().getPixelToMmY();
+                double offsetX_mm = offsetX_px * pixelToMmX;
+                double offsetY_mm = offsetY_px * pixelToMmY;
+
+                std::cout << "[VisionCommandHandler] 📐 Detected center: (" << detectedCenterX_px << ", " << detectedCenterY_px << ") px" << std::endl;
+                std::cout << "[VisionCommandHandler] 📐 Image center: (" << imageCenterX_px << ", " << imageCenterY_px << ") px" << std::endl;
+                std::cout << "[VisionCommandHandler] 📐 Offset from center: (" << offsetX_px << ", " << offsetY_px << ") px" << std::endl;
+                std::cout << "[VisionCommandHandler] 📐 Offset in mm: (" << offsetX_mm << ", " << offsetY_mm << ") mm" << std::endl;
+
+                // Get current motion device position
+                double deviceX_mm = 0.0, deviceY_mm = 0.0, deviceZ_mm = 0.0;
+                if (m_context && m_context->motionManager) {
+                    PositionStruct currentPos = m_context->motionManager->GetCurrentPosition(motionDevice);
+                    deviceX_mm = currentPos.x;
+                    deviceY_mm = currentPos.y;
+                    deviceZ_mm = currentPos.z;
+
+                    std::cout << "[VisionCommandHandler] 📍 Device position: X=" << deviceX_mm
+                              << ", Y=" << deviceY_mm << ", Z=" << deviceZ_mm << " mm" << std::endl;
+                }
+
+                // Calculate world position of detected feature
+                // World position = device position + offset from camera center
+                double worldX_mm = deviceX_mm + offsetX_mm;
+                double worldY_mm = deviceY_mm + offsetY_mm;
+
+                std::cout << "[VisionCommandHandler] 🌍 World position: X=" << worldX_mm
+                          << ", Y=" << worldY_mm << " mm" << std::endl;
+
+                // Store world position in context
+                context->SetValue("vision.detected.world_x_mm", static_cast<float>(worldX_mm));
+                context->SetValue("vision.detected.world_y_mm", static_cast<float>(worldY_mm));
+                context->SetValue("vision.detected.offset_x_mm", static_cast<float>(offsetX_mm));
+                context->SetValue("vision.detected.offset_y_mm", static_cast<float>(offsetY_mm));
+                context->SetValue("vision.detected.device_x_mm", static_cast<float>(deviceX_mm));
+                context->SetValue("vision.detected.device_y_mm", static_cast<float>(deviceY_mm));
+                context->SetValue("vision.detected.device_z_mm", static_cast<float>(deviceZ_mm));  // Store Z for MoveToContextPosition
+                context->SetValue("vision.detected.reference_x_px", static_cast<float>(referenceX_px));
+                context->SetValue("vision.detected.reference_y_px", static_cast<float>(referenceY_px));
+                context->SetValue("vision.detected.using_anchor", usingAnchor);
+
+                // Also copy to capture_as prefix if specified
+                if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+                    std::string captureAs = captureAsIt->second;
+                    context->SetValue(captureAs + ".detected.world_x_mm", static_cast<float>(worldX_mm));
+                    context->SetValue(captureAs + ".detected.world_y_mm", static_cast<float>(worldY_mm));
+                    context->SetValue(captureAs + ".detected.offset_x_mm", static_cast<float>(offsetX_mm));
+                    context->SetValue(captureAs + ".detected.offset_y_mm", static_cast<float>(offsetY_mm));
+                    context->SetValue(captureAs + ".detected.device_z_mm", static_cast<float>(deviceZ_mm));
+                    context->SetValue(captureAs + ".detected.reference_x_px", static_cast<float>(referenceX_px));
+                    context->SetValue(captureAs + ".detected.reference_y_px", static_cast<float>(referenceY_px));
+                    context->SetValue(captureAs + ".detected.using_anchor", usingAnchor);
+                }
+
+                std::cout << "[VisionCommandHandler] ✅ World position calculated and stored" << std::endl;
+            } else {
+                std::cout << "[VisionCommandHandler] ⚠️ No detected center point found in vision result" << std::endl;
+            }
+        }
+
         std::cout << "[VisionCommandHandler] ✅ Vision execution completed: success" << std::endl;
         return true;  // Always return TRUE
     }
@@ -210,12 +316,70 @@ bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
                       << ") to (" << endX << "," << endY << ") enabled=" << enabled << std::endl;
         }
 
-        // Load calibration
+        // Load calibration from SYSTEM config (not from profile)
+        // This ensures consistent calibration across all profiles
+        {
+            // Try multiple possible paths for the calibration file
+            std::vector<std::string> possiblePaths = {
+                "config/SYSTEM/val_pixelmm.json",
+                "./config/SYSTEM/val_pixelmm.json",
+                "../config/SYSTEM/val_pixelmm.json"
+            };
+
+            // Also try to construct path relative to profile path
+            size_t configPos = profilePath.find("/config/");
+            if (configPos == std::string::npos) {
+                configPos = profilePath.find("\\config\\");
+            }
+            if (configPos != std::string::npos) {
+                std::string basePath = profilePath.substr(0, configPos);
+                possiblePaths.insert(possiblePaths.begin(), basePath + "/config/SYSTEM/val_pixelmm.json");
+            }
+
+            double pixelToMmX = 0.00248;  // Default fallback
+            double pixelToMmY = 0.00248;
+            bool loaded = false;
+
+            for (const auto& systemCalPath : possiblePaths) {
+                std::ifstream calFile(systemCalPath);
+                if (calFile.is_open()) {
+                    try {
+                        nlohmann::json calJson;
+                        calFile >> calJson;
+                        calFile.close();
+
+                        if (calJson.contains("calibration")) {
+                            pixelToMmX = calJson["calibration"].value("pixel_to_mm_x", 0.00248);
+                            pixelToMmY = calJson["calibration"].value("pixel_to_mm_y", 0.00248);
+                            std::cout << "[VisionCommandHandler] 📏 System calibration loaded from: " << systemCalPath << std::endl;
+                            std::cout << "[VisionCommandHandler] 📏 Calibration values: "
+                                      << pixelToMmX << " mm/px (X), " << pixelToMmY << " mm/px (Y)" << std::endl;
+                            loaded = true;
+                            break;
+                        }
+                    } catch (const std::exception& e) {
+                        std::cout << "[VisionCommandHandler] ⚠️ Failed to parse " << systemCalPath
+                                  << ": " << e.what() << std::endl;
+                    }
+                }
+            }
+
+            if (!loaded) {
+                std::cout << "[VisionCommandHandler] ⚠️ System calibration file not found in any path:" << std::endl;
+                for (const auto& p : possiblePaths) {
+                    std::cout << "  - " << p << std::endl;
+                }
+                std::cout << "[VisionCommandHandler] Using default calibration: " << pixelToMmX << " mm/px" << std::endl;
+            }
+
+            // Set calibration without saving (to avoid overwriting system config)
+            // Only update the internal values, don't save to file
+            VisionManager::instance().setPixelToMmNoSave(pixelToMmX, pixelToMmY);
+        }
+
+        // Load camera settings (exposure/gain, cameraId, but NOT pixelToMm)
         if (j.contains("camera")) {
             auto camJson = j["camera"];
-            double pixelToMmX = camJson.value("pixelToMmX", 0.00248);
-            double pixelToMmY = camJson.value("pixelToMmY", 0.00248);
-            VisionManager::instance().setPixelToMm(pixelToMmX, pixelToMmY);
 
             // Store camera ID in context for later use
             std::string cameraId = "";
@@ -470,10 +634,50 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
         return;
     }
 
-    // Store all measurements
+    // Store image dimensions (needed for GotoDetect world position calculation)
+    cv::Mat inputImage = VisionManager::instance().getInputImage();
+    if (!inputImage.empty()) {
+        context->SetValue("vision.result.image_width", static_cast<float>(inputImage.cols));
+        context->SetValue("vision.result.image_height", static_cast<float>(inputImage.rows));
+    }
+
+    // Store all measurements (applying ROI offset for coordinate measurements)
+    // Get ROI offset from metadata if available
+    double roiOffsetX = 0.0, roiOffsetY = 0.0;
+    if (result.metadata.count("roi_offset_x") > 0) {
+        try {
+            roiOffsetX = std::stod(result.metadata.at("roi_offset_x"));
+        } catch (...) {}
+    }
+    if (result.metadata.count("roi_offset_y") > 0) {
+        try {
+            roiOffsetY = std::stod(result.metadata.at("roi_offset_y"));
+        } catch (...) {}
+    }
+
     for (const auto& kv : result.measurements) {
         std::string key = "vision.result." + kv.first;
-        context->SetValue(key, static_cast<float>(kv.second));
+        double value = kv.second;
+
+        // Apply ROI offset to coordinate measurements (match_*_x, match_*_y, match_*_anchor_x, match_*_anchor_y)
+        // This converts from ROI-relative to whole-image coordinates
+        bool isXCoord = (kv.first.length() >= 2 && kv.first.substr(kv.first.length() - 2) == "_x");
+        bool isYCoord = (kv.first.length() >= 2 && kv.first.substr(kv.first.length() - 2) == "_y");
+        bool isMatchCoord = (kv.first.find("match_") == 0);  // Starts with "match_"
+
+        if (isMatchCoord && isXCoord) {
+            value += roiOffsetX;
+        }
+        if (isMatchCoord && isYCoord) {
+            value += roiOffsetY;
+        }
+
+        context->SetValue(key, static_cast<float>(value));
+    }
+
+    if (roiOffsetX != 0.0 || roiOffsetY != 0.0) {
+        std::cout << "[VisionCommandHandler] 📐 Applied ROI offset to measurements: ("
+                  << roiOffsetX << ", " << roiOffsetY << ") px" << std::endl;
     }
 
     // Store metadata
@@ -524,10 +728,51 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
     }
     context->SetValue("vision.line.count", static_cast<float>(lineIndex));
 
+    // Store detected rectangles
+    int rectIndex = 0;
+    for (const auto& rect : result.rectangles) {
+        std::string prefix = "vision.rectangle." + std::to_string(rectIndex) + ".";
+        context->SetValue(prefix + "center_x", static_cast<float>(rect.centerPx.x));
+        context->SetValue(prefix + "center_y", static_cast<float>(rect.centerPx.y));
+        context->SetValue(prefix + "width", static_cast<float>(rect.widthPx));
+        context->SetValue(prefix + "height", static_cast<float>(rect.heightPx));
+        context->SetValue(prefix + "angle", static_cast<float>(rect.angleDeg));
+        context->SetValue(prefix + "mm_x", static_cast<float>(rect.centerMm.x));
+        context->SetValue(prefix + "mm_y", static_cast<float>(rect.centerMm.y));
+        rectIndex++;
+    }
+    context->SetValue("vision.rectangle.count", static_cast<float>(rectIndex));
+
+    // Store primary detected center (for GotoDetect world position calculation)
+    // Priority: rectangle center > point > circle center
+    bool hasPrimaryCenter = false;
+    double primaryCenterX = 0.0, primaryCenterY = 0.0;
+
+    if (!result.rectangles.empty()) {
+        primaryCenterX = result.rectangles[0].centerPx.x;
+        primaryCenterY = result.rectangles[0].centerPx.y;
+        hasPrimaryCenter = true;
+    } else if (!result.points.empty()) {
+        primaryCenterX = result.points[0].pixelCoord.x;
+        primaryCenterY = result.points[0].pixelCoord.y;
+        hasPrimaryCenter = true;
+    } else if (!result.circles.empty()) {
+        primaryCenterX = result.circles[0].centerPx.x;
+        primaryCenterY = result.circles[0].centerPx.y;
+        hasPrimaryCenter = true;
+    }
+
+    if (hasPrimaryCenter) {
+        context->SetValue("vision.result.center_x", static_cast<float>(primaryCenterX));
+        context->SetValue("vision.result.center_y", static_cast<float>(primaryCenterY));
+        std::cout << "[VisionCommandHandler] 📍 Primary center: (" << primaryCenterX << ", " << primaryCenterY << ") px" << std::endl;
+    }
+
     std::cout << "[VisionCommandHandler] 📊 Results stored in context: "
               << result.measurements.size() << " measurements, "
               << pointIndex << " points, "
               << circleIndex << " circles, "
+              << rectIndex << " rectangles, "
               << lineIndex << " lines" << std::endl;
 }
 

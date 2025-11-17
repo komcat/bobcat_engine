@@ -872,51 +872,22 @@ void VisionManagerPage::onStopRecipe()
 void VisionManagerPage::onAddToNode()
 {
     QString selectedPlugin = m_leftPanel->getSelectedPlugin();
-    std::cout << "[VisionManagerPage] Add to Node clicked: " << selectedPlugin.toStdString() << std::endl;
+    std::cout << "[VisionManagerPage] Add to Node clicked (mockup): " << selectedPlugin.toStdString() << std::endl;
 
-    if (selectedPlugin.isEmpty()) {
-        if (m_context && m_context->logManager) {
-            m_context->logManager->Warning("No plugin selected", "VisionManagerPage");
-        }
-        m_leftPanel->displayResult("Error: No plugin selected\nPlease select a plugin from the list first.");
-        return;
-    }
-
-    auto plugin = VisionManager::instance().getPlugin(selectedPlugin);
-    if (!plugin) {
-        m_leftPanel->displayResult("Error: Plugin not found in registry");
-        return;
-    }
-
-    // Add to recipe with current parameters
-    VisionManager::instance().addRecipeStep(selectedPlugin, plugin->getParameters());
-
-    if (m_context && m_context->logManager) {
-        m_context->logManager->Info("Added plugin to recipe: " + selectedPlugin.toStdString(), "VisionManagerPage");
-    }
-
-    int stepCount = VisionManager::instance().getRecipeStepCount();
-    QString info = "Added to recipe: " + selectedPlugin + "\n\n";
-    info += "Recipe now contains " + QString::number(stepCount) + " step(s):\n";
-    for (int i = 0; i < stepCount; ++i) {
-        auto step = VisionManager::instance().getRecipeStep(i);
-        info += QString::number(i+1) + ". " + step.pluginName + "\n";
-    }
-    info += "\nOptions:\n";
-    info += "- Click 'Run Recipe' to execute all steps\n";
-    info += "- Click 'Save As' to save recipe to file\n";
-    info += "- Add more plugins to extend recipe\n";
+    // Mockup - functionality disabled
+    QString info = "Add to Recipe Node\n";
+    info += "==================\n\n";
+    info += "This feature is planned for future release.\n\n";
+    info += "It will allow building multi-step vision pipelines:\n";
+    info += "- Chain multiple plugins in sequence\n";
+    info += "- Filter -> Detect -> Measure workflows\n";
+    info += "- Save and load complex recipes\n\n";
+    info += "For now, use single plugin execution via 'Execute' button.";
 
     m_leftPanel->displayResult(info);
 
-    // Ask if user wants to save the recipe
-    if (stepCount >= 2) {
-        QMessageBox::StandardButton reply = QMessageBox::question(this, "Save Recipe?",
-            "Recipe now has " + QString::number(stepCount) + " steps.\n\nWould you like to save the recipe now?",
-            QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            saveVisionRecipeFile();
-        }
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Add to Recipe Node - mockup (not implemented)", "VisionManagerPage");
     }
 }
 

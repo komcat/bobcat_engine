@@ -44,6 +44,7 @@
 
 #ifdef HAS_OPENCV
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <QImage>
 #include <QPixmap>
 #endif
@@ -2911,47 +2912,28 @@ void RecipePage::onContextRefreshRequested()
 void RecipePage::updateVisionResultImage()
 {
 #ifdef HAS_OPENCV
-  if (!m_visionResultImageLabel || !m_currentContext) {
+  if (!m_visionResultImageLabel) {
     return;
   }
 
-  // Check if vision result image exists in context
-  if (!m_currentContext->HasValue("vision.result.image")) {
-    std::cout << "[RecipePage] No vision result image in context" << std::endl;
-    return;
-  }
+  // ✅ Load from temporary file to avoid cross-thread context access issues
+  // This is consistent with RunProgramPage behavior
+  std::string tempImagePath = "logs/vision_result_temp.png";
+  cv::Mat resultImage = cv::imread(tempImagePath, cv::IMREAD_COLOR);
 
-  // Get the image frame from context
-  auto frameOpt = m_currentContext->GetImageFrame("vision.result.image");
-  if (!frameOpt.has_value()) {
-    std::cout << "[RecipePage] Failed to get vision result image from context" << std::endl;
-    return;
-  }
-
-  const cv::Mat& resultImage = frameOpt.value();
   if (resultImage.empty()) {
-    std::cout << "[RecipePage] Vision result image is empty" << std::endl;
+    std::cout << "[RecipePage] No vision result image file found at: " << tempImagePath << std::endl;
     return;
   }
 
-  // Convert cv::Mat to QImage
-  QImage qImage;
-  if (resultImage.type() == CV_8UC3) {
-    // BGR -> RGB
-    cv::Mat rgbImage;
-    cv::cvtColor(resultImage, rgbImage, cv::COLOR_BGR2RGB);
-    qImage = QImage(rgbImage.data, rgbImage.cols, rgbImage.rows,
-                    static_cast<int>(rgbImage.step), QImage::Format_RGB888).copy();
-  }
-  else if (resultImage.type() == CV_8UC1) {
-    // Grayscale
-    qImage = QImage(resultImage.data, resultImage.cols, resultImage.rows,
-                    static_cast<int>(resultImage.step), QImage::Format_Grayscale8).copy();
-  }
-  else {
-    std::cout << "[RecipePage] Unsupported image format: " << resultImage.type() << std::endl;
-    return;
-  }
+  std::cout << "[RecipePage] Loaded vision result from file: " << resultImage.cols << "x" << resultImage.rows << std::endl;
+
+  // Convert cv::Mat to QImage (BGR -> RGB)
+  cv::Mat rgbImage;
+  cv::cvtColor(resultImage, rgbImage, cv::COLOR_BGR2RGB);
+  QImage qImage(rgbImage.data, rgbImage.cols, rgbImage.rows,
+                static_cast<int>(rgbImage.step), QImage::Format_RGB888);
+  qImage = qImage.copy();  // Deep copy to decouple from cv::Mat memory
 
   // Scale to fit the label while maintaining aspect ratio
   QPixmap pixmap = QPixmap::fromImage(qImage);

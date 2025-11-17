@@ -912,6 +912,130 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // MOVE TO CONTEXT POSITION - Move to world coordinates from vision detection results
+  // ============================================================================
+  else if (methodName == "MoveToContextPosition") {
+    // ✅ REQUIRED PARAMETER: context_prefix (e.g., "loc_sled")
+    auto prefixIt = params.find("context_prefix");
+    if (prefixIt == params.end() || prefixIt->second.empty()) {
+      errorMessage = "MoveToContextPosition: Missing required parameter 'context_prefix'";
+      return false;
+    }
+    std::string contextPrefix = prefixIt->second;
+
+    // ✅ OPTIONAL PARAMETER: keep_z (default: true)
+    bool keepZ = true;
+    auto keepZIt = params.find("keep_z");
+    if (keepZIt != params.end()) {
+      keepZ = (keepZIt->second == "true" || keepZIt->second == "1");
+    }
+
+    // ✅ VALIDATE CONTEXT
+    if (!context) {
+      errorMessage = "MoveToContextPosition: No context available";
+      return false;
+    }
+
+    // ✅ CHECK DETECTION SUCCESS
+    std::string successKey = contextPrefix + ".result.success";
+    if (!context->HasValue(successKey)) {
+      errorMessage = "MoveToContextPosition: No detection result found for '" + contextPrefix + "'";
+      return false;
+    }
+
+    bool detectionSuccess = context->GetBoolean(successKey, false);
+    if (!detectionSuccess) {
+      errorMessage = "MoveToContextPosition: Detection was not successful for '" + contextPrefix + "'";
+      return false;
+    }
+
+    // ✅ GET WORLD COORDINATES FROM CONTEXT
+    std::string worldXKey = contextPrefix + ".detected.world_x_mm";
+    std::string worldYKey = contextPrefix + ".detected.world_y_mm";
+
+    if (!context->HasValue(worldXKey) || !context->HasValue(worldYKey)) {
+      errorMessage = "MoveToContextPosition: World coordinates not found for '" + contextPrefix +
+                    "'. Make sure GotoDetect was used with capture_as='" + contextPrefix + "'";
+      return false;
+    }
+
+    double targetX = context->GetNumeric(worldXKey, 0.0);
+    double targetY = context->GetNumeric(worldYKey, 0.0);
+
+    // ✅ DETERMINE TARGET Z POSITION
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+    double targetZ = currentPos.z;  // Default: keep current Z
+
+    if (!keepZ) {
+      // If not keeping current Z, use the Z position from when detection was performed
+      std::string deviceZKey = contextPrefix + ".detected.device_z_mm";
+      if (context->HasValue(deviceZKey)) {
+        targetZ = context->GetNumeric(deviceZKey, currentPos.z);
+      } else {
+        // Fallback: keep current Z if device_z not available
+        if (m_logger) {
+          m_logger->Warning("MoveToContextPosition: device_z_mm not found, keeping current Z", "MotionHandler");
+        }
+      }
+    }
+
+    // ✅ LOG WHAT WE'RE DOING
+    bool usingAnchor = false;
+    std::string usingAnchorKey = contextPrefix + ".detected.using_anchor";
+    if (context->HasValue(usingAnchorKey)) {
+      usingAnchor = context->GetBoolean(usingAnchorKey, false);
+    }
+
+    if (m_logger) {
+      std::string moveInfo = "MoveToContextPosition: Moving " + deviceName + " to detected position from '" + contextPrefix + "'";
+      m_logger->Info(moveInfo, "MotionHandler");
+
+      std::string coordInfo = "  Target: X=" + std::to_string(targetX) + "mm, Y=" + std::to_string(targetY) + "mm";
+      if (keepZ) {
+        coordInfo += ", Z=" + std::to_string(targetZ) + "mm (kept current)";
+      } else {
+        coordInfo += ", Z=" + std::to_string(targetZ) + "mm (from detection time)";
+      }
+      m_logger->Info(coordInfo, "MotionHandler");
+
+      if (usingAnchor) {
+        m_logger->Info("  Reference: Custom anchor point (precise feature location)", "MotionHandler");
+      } else {
+        m_logger->Info("  Reference: Pattern center (no custom anchor)", "MotionHandler");
+      }
+    }
+
+    std::cout << "[MotionCommandHandler] MoveToContextPosition: " << deviceName << " -> ("
+              << targetX << ", " << targetY << ", " << targetZ << ") mm "
+              << "(using " << (usingAnchor ? "anchor" : "center") << ")" << std::endl;
+
+    // ✅ EXECUTE MOVE (XY with current Z)
+    // Use MoveToAbs with current Z to keep Z position unchanged
+    bool moveOk = motionManager->MoveToAbs(deviceName, targetX, targetY, targetZ, 100.0, false);  // false = non-blocking
+    if (!moveOk) {
+      errorMessage = "MoveToContextPosition: Failed to move to detected position";
+      return false;
+    }
+
+    // ✅ WAIT FOR COMPLETION
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context)) {
+      errorMessage = "MoveToContextPosition: Motion was interrupted or timed out";
+      return false;
+    }
+
+    if (m_logger) {
+      PositionStruct finalPos = motionManager->GetCurrentPosition(deviceName);
+      std::string finalInfo = "MoveToContextPosition: Reached position (" +
+                              std::to_string(finalPos.x) + ", " +
+                              std::to_string(finalPos.y) + ", " +
+                              std::to_string(finalPos.z) + ")";
+      m_logger->Info(finalInfo, "MotionHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

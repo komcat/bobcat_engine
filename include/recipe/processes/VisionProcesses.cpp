@@ -342,6 +342,171 @@ public:
 };
 
 //=============================================================================
+// MOVE TO DETECTED POSITION PLUGIN - Move to world coordinates from previous detection
+//=============================================================================
+
+class MoveToDetectedPositionPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Move to Detected Position";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Move gantry-main XY to world coordinates from previous GotoDetect result (keeps current Z)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"result_name", ""},          // Context prefix from GotoDetect (e.g., "loc_sled")
+            {"keep_z", "true"}            // Keep current Z position
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        // Helper to get parameter with default value
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        // Result name (context prefix from GotoDetect)
+        widget->addParameterField("result_name", "Detection Result Name",
+            getParam("result_name", ""));
+
+        // Keep Z checkbox
+        widget->addCheckboxParameter("keep_z", "Keep Current Z Position",
+            getParam("keep_z", "true"), "When enabled, only moves XY and keeps current Z position");
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        std::string resultName = params.at("result_name");
+        std::string keepZ = params.count("keep_z") ? params.at("keep_z") : "true";
+
+        // Move gantry-main to detected world position
+        sequence->AddAction("gantry-main", "MoveToContextPosition", {
+            {"context_prefix", resultName},
+            {"keep_z", keepZ}
+        });
+
+        std::cout << "[VisionProcesses] Built MoveToDetectedPosition sequence: "
+                  << "gantry-main -> " << resultName << ".detected.world_x/y_mm"
+                  << " (keep_z=" << keepZ << ")" << std::endl;
+    }
+};
+
+//=============================================================================
+// GOTO DETECT PLUGIN - Move to graph node and detect feature world position
+//=============================================================================
+
+class GotoDetectPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "GotoDetect";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Move gantry-main to graph node, execute vision profile, calculate detected feature world position (mm)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"graphName", ""},           // Graph name for gantry-main
+            {"endNodeName", ""},         // Target node position
+            {"profile_path", ""},        // Vision profile to execute
+            {"camera_name", "camera_1"}, // Camera for capture
+            {"capture_as", ""}           // Optional: store results with custom prefix
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        // Helper to get parameter with default value
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        // Graph selector for gantry-main (fixed device)
+        widget->addGraphSelectorForDevice("graphName", "Graph Name",
+            getParam("graphName", ""), "gantry-main");
+
+        // Node selector (based on selected graph, fixed device = gantry-main)
+        widget->addGraphNodeSelectorForDevice("endNodeName", "Target Node",
+            getParam("endNodeName", ""), "gantry-main", "graphName");
+
+        // Vision profile selector
+        widget->addVisionProfileSelector("profile_path", "Vision Profile",
+            getParam("profile_path", ""));
+
+        // Camera selector
+        widget->addDeviceSelector("camera_name", "Camera",
+            getParam("camera_name", "camera_1"),
+            static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+        // Capture As (optional custom prefix for results)
+        widget->addParameterField("capture_as", "Capture As (optional)",
+            getParam("capture_as", ""));
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        // Step 1: Move gantry-main to target graph node
+        sequence->AddAction("gantry-main", "MoveToGraphNode", {
+            {"graphName", params.at("graphName")},
+            {"endNodeName", params.at("endNodeName")}
+        });
+
+        // Step 2: Execute vision profile with world position calculation
+        std::map<std::string, std::string> execParams;
+
+        // Profile path
+        auto profileIt = params.find("profile_path");
+        if (profileIt != params.end()) {
+            execParams["profile_path"] = profileIt->second;
+        }
+
+        // Camera name
+        auto cameraIt = params.find("camera_name");
+        if (cameraIt != params.end()) {
+            execParams["camera"] = cameraIt->second;
+        }
+
+        // Capture As prefix (optional)
+        auto captureAsIt = params.find("capture_as");
+        if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+            execParams["capture_as"] = captureAsIt->second;
+        }
+
+        // Enable world position calculation for gantry-main
+        execParams["calculate_world_position"] = "true";
+        execParams["motion_device"] = "gantry-main";
+
+        // Execute vision profile (load + capture + execute + world position calculation)
+        sequence->AddAction("vision", "execute_profile", execParams);
+
+        std::cout << "[VisionProcesses] Built GotoDetect sequence: "
+                  << "gantry-main -> " << params.at("graphName") << ":" << params.at("endNodeName")
+                  << " + vision profile: " << params.at("profile_path") << std::endl;
+    }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -354,7 +519,15 @@ namespace {
             registry.RegisterPlugin(std::make_unique<ExecuteVisionProfilePlugin>());
             std::cout << "[ProcessPluginRegistry] Registered plugin: Execute Vision Profile (Category: Vision)" << std::endl;
 
-            std::cout << "[VisionProcesses] Registered 1 vision processing plugin" << std::endl;
+            // MoveToDetectedPosition: Move to world coordinates from previous detection
+            registry.RegisterPlugin(std::make_unique<MoveToDetectedPositionPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Move to Detected Position (Category: Vision)" << std::endl;
+
+            // GotoDetect: Move to node + vision detection with world position
+            registry.RegisterPlugin(std::make_unique<GotoDetectPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: GotoDetect (Category: Vision)" << std::endl;
+
+            std::cout << "[VisionProcesses] Registered 3 vision processing plugins" << std::endl;
         }
     };
 
