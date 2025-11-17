@@ -8,11 +8,18 @@ import time
 import requests
 import urllib3
 import json
-import telnetlib
 import re
 
 # Disable SSL warnings for devices with self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# telnetlib was removed in Python 3.13, make it optional
+try:
+    import telnetlib
+    HAS_TELNETLIB = True
+except ImportError:
+    HAS_TELNETLIB = False
+    print("Note: telnetlib not available (Python 3.13+). Telnet scanning disabled.")
 
 def find_gpib_devices():
     """
@@ -217,6 +224,8 @@ def try_scpi_over_telnet(ip, port=5024, timeout=2):
     """
     Try to connect via Telnet and send SCPI commands
     """
+    if not HAS_TELNETLIB:
+        return None
     try:
         tn = telnetlib.Telnet(ip, port, timeout)
         tn.write(b"*IDN?\n")

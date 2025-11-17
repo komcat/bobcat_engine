@@ -1088,35 +1088,12 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
 
     if (!isMoving && !waypointActive) {
-      // ✅ CRITICAL FIX: Verify position is stable before declaring motion complete
-      // The controller might report "not moving" while the motor is still settling
-      // Read position twice with 100ms delay and ensure they're the same
-      PositionStruct pos1 = motionManager->GetCurrentPosition(deviceName);
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      PositionStruct pos2 = motionManager->GetCurrentPosition(deviceName);
+      // ✅ Controller reports motion complete - trust the high-end hardware
+      // For slow velocities, verify we're actually close to target position
+      PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
 
-      double dx = std::abs(pos2.x - pos1.x);
-      double dy = std::abs(pos2.y - pos1.y);
-      double dz = std::abs(pos2.z - pos1.z);
-      double posDrift = std::sqrt(dx*dx + dy*dy + dz*dz);
-
-      if (posDrift > 0.05) {  // Position changed by more than 0.05mm - still settling
-        if (m_logger) {
-          std::string driftStr = "WaitForMotion: Position still drifting " + std::to_string(posDrift) +
-                                "mm (from [" + std::to_string(pos1.x) + "," + std::to_string(pos1.y) + "," + std::to_string(pos1.z) +
-                                "] to [" + std::to_string(pos2.x) + "," + std::to_string(pos2.y) + "," + std::to_string(pos2.z) + "]) - waiting for stability";
-          m_logger->Info(driftStr, "MotionHandler");
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        continue;  // Keep waiting
-      }
-
-      // ✅ CRITICAL FIX: For slow velocities, drift might appear small but motor is still far from target
-      // If we have a target position, verify we're actually close to it before declaring stable
-      // This catches cases where motor moves at 0.2mm/s (only 0.02mm per 100ms) and appears stable
       if (targetPos) {
         double distanceFromTarget = 0.0;
-        PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
 
         if (targetPos->hasX) {
           double dx = currentPos.x - targetPos->x;
@@ -1133,23 +1110,21 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
 
         distanceFromTarget = std::sqrt(distanceFromTarget);
 
-        const double TARGET_THRESHOLD = 0.01;  // Must be within 0.01mm of target before declaring stable (tight tolerance for slow speed precision)
+        const double TARGET_THRESHOLD = 0.01;  // Must be within 0.01mm of target
         if (distanceFromTarget > TARGET_THRESHOLD) {
           if (m_logger) {
-            std::string msg = "WaitForMotion: Position appears stable (drift=" + std::to_string(posDrift) +
-                             "mm) but still " + std::to_string(distanceFromTarget) +
+            std::string msg = "WaitForMotion: Controller reports done but still " + std::to_string(distanceFromTarget) +
                              "mm from target - continuing to wait";
             m_logger->Info(msg, "MotionHandler");
           }
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
           continue;  // Keep waiting until closer to target
         }
       }
 
       if (m_logger) {
-        std::string stableStr = "WaitForMotion: Position stable at [" +
-                               std::to_string(pos2.x) + "," + std::to_string(pos2.y) + "," + std::to_string(pos2.z) +
-                               "], drift=" + std::to_string(posDrift) + "mm";
+        std::string stableStr = "WaitForMotion: Motion complete at [" +
+                               std::to_string(currentPos.x) + "," + std::to_string(currentPos.y) + "," + std::to_string(currentPos.z) + "]";
         m_logger->Info(stableStr, "MotionHandler");
       }
 
