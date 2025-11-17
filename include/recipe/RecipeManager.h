@@ -64,6 +64,8 @@ public:
 
   // Step management
   void addStep(const std::string& processType);
+  void insertStepAt(int index, const std::string& processType, const std::string& nickname,
+                    bool enabled, const std::map<std::string, std::string>& parameters);  // ✅ NEW: Insert copy at index
   void removeStep(int index);
   bool moveStepUp(int index);
   bool moveStepDown(int index);

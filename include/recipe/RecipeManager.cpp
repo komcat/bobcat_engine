@@ -43,6 +43,27 @@ void RecipeManager::addStep(const std::string& processType)
     << " (ID: " << uniqueId << ")" << std::endl;
 }
 
+void RecipeManager::insertStepAt(int index, const std::string& processType, const std::string& nickname,
+                                  bool enabled, const std::map<std::string, std::string>& parameters)
+{
+  // Clamp index to valid range
+  if (index < 0) index = 0;
+  if (index > static_cast<int>(m_currentRecipe.steps.size())) {
+    index = static_cast<int>(m_currentRecipe.steps.size());
+  }
+
+  std::string uniqueId = generateUniqueId(processType);
+
+  auto instance = std::make_unique<ProcessInstance>(processType, nickname, uniqueId);
+  instance->enabled = enabled;
+  instance->parameters = parameters;
+
+  m_currentRecipe.steps.insert(m_currentRecipe.steps.begin() + index, std::move(instance));
+
+  std::cout << "[RecipeManager] Inserted step at index " << index << ": " << processType
+    << " (" << nickname << ", ID: " << uniqueId << ")" << std::endl;
+}
+
 void RecipeManager::removeStep(int index)
 {
   if (index < 0 || index >= static_cast<int>(m_currentRecipe.steps.size())) {

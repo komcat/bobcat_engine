@@ -77,6 +77,8 @@ private slots:
   void onDeselectAllProcesses();
   void onToggleSelectedProcesses();
   void onUpdateProductFile();  // ✅ NEW: Update product file in recipe
+  void onCopySelectedSteps();  // ✅ NEW: Copy selected process steps to clipboard
+  void onPasteSteps();         // ✅ NEW: Paste copied process steps
 
   // Middle panel actions
   void onAddProcess();
@@ -170,6 +172,8 @@ private:
   QPushButton* m_deselectAllButton;
   QPushButton* m_toggleSelectedButton;
   QPushButton* m_updateProductFileButton;  // ✅ NEW: Update product file reference
+  QPushButton* m_copyButton;               // ✅ NEW: Copy selected steps
+  QPushButton* m_pasteButton;              // ✅ NEW: Paste steps
   QLabel* m_loadedProductLabel;
 
   // Middle panel widgets
@@ -207,4 +211,13 @@ private:
   QGroupBox* m_visionResultGroup;        // ✅ Vision result display group
   QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
   void updateVisionResultImage();        // ✅ Update vision result image from context
+
+  // ✅ Clipboard for copy/paste operations
+  struct ClipboardStep {
+    std::string processType;
+    std::string userNickname;
+    bool enabled;
+    std::map<std::string, std::string> parameters;
+  };
+  std::vector<ClipboardStep> m_clipboard;  // ✅ Stores copied process steps
 };

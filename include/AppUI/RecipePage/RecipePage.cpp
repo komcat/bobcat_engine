@@ -74,6 +74,8 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_contextViewerButton(nullptr) // ✅ Context viewer button
   , m_visionResultGroup(nullptr)   // ✅ Vision result group
   , m_visionResultImageLabel(nullptr) // ✅ Vision result image
+  , m_copyButton(nullptr)          // ✅ Copy button
+  , m_pasteButton(nullptr)         // ✅ Paste button
 {
   setupUI();
   setupSequenceEngine();
@@ -583,6 +585,22 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_removeButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f75c4c, stop:1 #e74c3c); }");
   connect(m_removeButton, &QPushButton::clicked, this, &RecipePage::onRemoveStep);
   buttonColumn->addWidget(m_removeButton);
+
+  // ✅ Copy/Paste operations
+  buttonColumn->addSpacing(5);
+  m_copyButton = new QPushButton("📋 Copy");
+  m_copyButton->setToolTip("Copy selected process steps (Ctrl+C)");
+  m_copyButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); }");
+  connect(m_copyButton, &QPushButton::clicked, this, &RecipePage::onCopySelectedSteps);
+  buttonColumn->addWidget(m_copyButton);
+
+  m_pasteButton = new QPushButton("📌 Paste");
+  m_pasteButton->setToolTip("Paste copied process steps after selection (Ctrl+V)");
+  m_pasteButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #58d68d, stop:1 #27ae60); }");
+  m_pasteButton->setEnabled(false);  // Disabled until clipboard has content
+  connect(m_pasteButton, &QPushButton::clicked, this, &RecipePage::onPasteSteps);
+  buttonColumn->addWidget(m_pasteButton);
+  buttonColumn->addSpacing(5);
 
   // Selection operations
   m_selectAllButton = new QPushButton("☑ Select All");
@@ -1252,6 +1270,113 @@ void RecipePage::onRemoveStep()
   }
 
   // } // End of old if (reply == QMessageBox::Yes) block
+}
+
+void RecipePage::onCopySelectedSteps()
+{
+  // Get all selected items from the tree
+  QList<QTreeWidgetItem*> selectedItems = m_recipeTree->selectedItems();
+
+  if (selectedItems.isEmpty()) {
+    QMessageBox::information(this, "No Selection",
+      "Please select one or more process steps to copy.\n\n"
+      "Tip: Use Shift+Click to select a range, or Ctrl+Click to select multiple items.");
+    return;
+  }
+
+  // Clear the clipboard
+  m_clipboard.clear();
+
+  // Collect step indices and sort them
+  QList<int> indices;
+  for (QTreeWidgetItem* item : selectedItems) {
+    int stepIndex = item->data(0, Qt::UserRole).toInt();
+    indices.append(stepIndex);
+  }
+  std::sort(indices.begin(), indices.end());
+
+  // Copy each step to clipboard
+  for (int stepIndex : indices) {
+    const ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+    if (step) {
+      ClipboardStep clipStep;
+      clipStep.processType = step->processType;
+      clipStep.userNickname = step->userNickname;
+      clipStep.enabled = step->enabled;
+      clipStep.parameters = step->parameters;
+      m_clipboard.push_back(clipStep);
+    }
+  }
+
+  // Enable paste button
+  if (m_pasteButton) {
+    m_pasteButton->setEnabled(!m_clipboard.empty());
+  }
+
+  // Show feedback
+  QString msg = QString("Copied %1 step(s) to clipboard").arg(m_clipboard.size());
+  std::cout << "[RecipePage] " << msg.toStdString() << std::endl;
+
+  // Brief visual feedback (optional tooltip or status message)
+  m_copyButton->setToolTip(msg + "\nClick Paste to insert after current selection");
+  QTimer::singleShot(2000, this, [this]() {
+    if (m_copyButton) {
+      m_copyButton->setToolTip("Copy selected process steps (Ctrl+C)");
+    }
+  });
+}
+
+void RecipePage::onPasteSteps()
+{
+  if (m_clipboard.empty()) {
+    QMessageBox::information(this, "Empty Clipboard",
+      "No process steps in clipboard. Copy some steps first.");
+    return;
+  }
+
+  // Determine insertion point (after current selection, or at end)
+  int insertIndex = m_recipeManager->getStepCount();  // Default: at end
+
+  QList<QTreeWidgetItem*> selectedItems = m_recipeTree->selectedItems();
+  if (!selectedItems.isEmpty()) {
+    // Find the highest selected index and insert after it
+    int maxIndex = -1;
+    for (QTreeWidgetItem* item : selectedItems) {
+      int stepIndex = item->data(0, Qt::UserRole).toInt();
+      if (stepIndex > maxIndex) {
+        maxIndex = stepIndex;
+      }
+    }
+    insertIndex = maxIndex + 1;
+  }
+
+  // Insert each clipboard step
+  int pastedCount = 0;
+  for (const ClipboardStep& clipStep : m_clipboard) {
+    // Create a nickname with "(copy)" suffix
+    std::string nickname = clipStep.userNickname;
+    if (nickname.find("(copy)") == std::string::npos) {
+      nickname += " (copy)";
+    }
+
+    m_recipeManager->insertStepAt(insertIndex, clipStep.processType,
+                                   nickname, clipStep.enabled, clipStep.parameters);
+    insertIndex++;
+    pastedCount++;
+  }
+
+  // Refresh the tree
+  refreshRecipeList();
+
+  // Select the first pasted step
+  int firstPastedIndex = insertIndex - pastedCount;
+  m_selectedStepIndex = firstPastedIndex;
+  selectStepByIndex(m_selectedStepIndex);
+  updateConfigurationForm();
+
+  // Show feedback
+  QString msg = QString("Pasted %1 step(s)").arg(pastedCount);
+  std::cout << "[RecipePage] " << msg.toStdString() << " at index " << firstPastedIndex << std::endl;
 }
 
 void RecipePage::onMoveStepUp()
