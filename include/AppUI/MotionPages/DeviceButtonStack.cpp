@@ -1,9 +1,12 @@
 // DeviceButtonStack.cpp
 #include "DeviceButtonStack.h"
+#include "unified_motion_manager.h"
 #include <QFrame>
+#include <algorithm>
 
 DeviceButtonStack::DeviceButtonStack(QWidget* parent)
   : QWidget(parent)
+  , m_motionManager(nullptr)
   , m_posNameLabel(nullptr)
   , m_posXLabel(nullptr)
   , m_posYLabel(nullptr)
@@ -253,4 +256,43 @@ void DeviceButtonStack::clearButtons()
 
   m_deviceMap.clear();
   m_currentDevice.clear();
+}
+
+void DeviceButtonStack::setMotionManager(UnifiedMotionManager* motionManager)
+{
+  m_motionManager = motionManager;
+}
+
+void DeviceButtonStack::refreshDevices()
+{
+  if (!m_motionManager) {
+    return;
+  }
+
+  // Get all device names
+  std::vector<std::string> allDevices = m_motionManager->GetAllDeviceNames();
+
+  // Get connection status
+  std::map<std::string, bool> connectionStatus = m_motionManager->GetConnectionStatus();
+
+  // Filter to only connected devices
+  std::vector<std::string> connectedDevices;
+  for (const auto& deviceName : allDevices) {
+    auto it = connectionStatus.find(deviceName);
+    if (it != connectionStatus.end() && it->second) {
+      connectedDevices.push_back(deviceName);
+    }
+  }
+
+  // Sort alphabetically (ascending)
+  std::sort(connectedDevices.begin(), connectedDevices.end());
+
+  // Convert to QStringList
+  QStringList deviceList;
+  for (const auto& device : connectedDevices) {
+    deviceList << QString::fromStdString(device);
+  }
+
+  // Update device buttons
+  setDevices(deviceList);
 }

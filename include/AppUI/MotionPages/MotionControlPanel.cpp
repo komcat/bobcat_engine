@@ -11,6 +11,7 @@
 MotionControlPanel::MotionControlPanel(QWidget* parent)
   : QWidget(parent)
   , m_deviceCombo(nullptr)
+  , m_positionList(nullptr)  // ✅ NEW
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
   , m_editPosButton(nullptr)
@@ -367,84 +368,139 @@ void MotionControlPanel::clearSelectedPosition()
 void MotionControlPanel::setupActionsTab()
 {
   QWidget* actionsTab = new QWidget();
-  QVBoxLayout* actionsLayout = new QVBoxLayout(actionsTab);
-  actionsLayout->setContentsMargins(6, 6, 6, 6);
-  actionsLayout->setSpacing(6);
+
+  // ✅ NEW: Two-column layout - Left: Buttons, Right: Position List
+  QHBoxLayout* mainLayout = new QHBoxLayout(actionsTab);
+  mainLayout->setContentsMargins(6, 6, 6, 6);
+  mainLayout->setSpacing(6);
+
+  // === LEFT COLUMN: Buttons ===
+  QWidget* buttonsWidget = new QWidget();
+  QVBoxLayout* buttonsLayout = new QVBoxLayout(buttonsWidget);
+  buttonsLayout->setContentsMargins(0, 0, 0, 0);
+  buttonsLayout->setSpacing(6);
 
   // Move to Position
   m_moveToButton = new QPushButton("→ Move to Position");
   m_moveToButton->setObjectName("moveToButton");  // For green styling
   m_moveToButton->setMinimumHeight(30);
   m_moveToButton->setEnabled(false);
-  actionsLayout->addWidget(m_moveToButton);
+  buttonsLayout->addWidget(m_moveToButton);
 
   // Move with Offset
   m_moveOffsetButton = new QPushButton("⇄ Move with Offset");
   m_moveOffsetButton->setObjectName("moveOffsetButton");  // For orange styling
   m_moveOffsetButton->setMinimumHeight(30);
   m_moveOffsetButton->setEnabled(false);
-  actionsLayout->addWidget(m_moveOffsetButton);
+  buttonsLayout->addWidget(m_moveOffsetButton);
 
   // Edit Position
   m_editPosButton = new QPushButton("✎ Edit Position");
   m_editPosButton->setMinimumHeight(28);
   m_editPosButton->setEnabled(false);
-  actionsLayout->addWidget(m_editPosButton);
+  buttonsLayout->addWidget(m_editPosButton);
 
   // Update Position
   m_updatePosButton = new QPushButton("↻ Update Position");
   m_updatePosButton->setMinimumHeight(28);
   m_updatePosButton->setEnabled(false);
-  actionsLayout->addWidget(m_updatePosButton);
+  buttonsLayout->addWidget(m_updatePosButton);
 
   // Edit Waypoints
   m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
   m_editWaypointsBtn->setMinimumHeight(28);
   m_editWaypointsBtn->setEnabled(false);
-  actionsLayout->addWidget(m_editWaypointsBtn);
+  buttonsLayout->addWidget(m_editWaypointsBtn);
 
   // Delete Position
   m_deletePosButton = new QPushButton("✕ Delete Position");
   m_deletePosButton->setObjectName("deletePosButton");  // For red styling
   m_deletePosButton->setMinimumHeight(28);
   m_deletePosButton->setEnabled(false);
-  actionsLayout->addWidget(m_deletePosButton);
+  buttonsLayout->addWidget(m_deletePosButton);
 
   // Create New Position
   m_createPosButton = new QPushButton("+ Create Position");
   m_createPosButton->setMinimumHeight(28);
-  actionsLayout->addWidget(m_createPosButton);
+  buttonsLayout->addWidget(m_createPosButton);
 
   // Separator
   QFrame* line1 = new QFrame();
   line1->setFrameShape(QFrame::HLine);
   line1->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  actionsLayout->addWidget(line1);
+  buttonsLayout->addWidget(line1);
 
   // Auto Fit View Button
   m_autoFitButton = new QPushButton("⊡ Auto Fit View");
   m_autoFitButton->setMinimumHeight(28);
-  actionsLayout->addWidget(m_autoFitButton);
+  buttonsLayout->addWidget(m_autoFitButton);
 
   // Separator
   QFrame* line2 = new QFrame();
   line2->setFrameShape(QFrame::HLine);
   line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  actionsLayout->addWidget(line2);
+  buttonsLayout->addWidget(line2);
 
   // Home Button
   m_homeButton = new QPushButton("⌂ Home");
   m_homeButton->setMinimumHeight(28);
-  actionsLayout->addWidget(m_homeButton);
+  buttonsLayout->addWidget(m_homeButton);
 
   // Emergency Stop
   m_stopButton = new QPushButton("⚠ STOP");
   m_stopButton->setObjectName("stopButton");  // For dark red styling
   m_stopButton->setMinimumHeight(28);
-  actionsLayout->addWidget(m_stopButton);
+  buttonsLayout->addWidget(m_stopButton);
 
   // Push everything to top
-  actionsLayout->addStretch();
+  buttonsLayout->addStretch();
+
+  // === RIGHT COLUMN: Position List ===
+  QWidget* listWidget = new QWidget();
+  QVBoxLayout* listLayout = new QVBoxLayout(listWidget);
+  listLayout->setContentsMargins(0, 0, 0, 0);
+  listLayout->setSpacing(4);
+
+  // Title label
+  QLabel* listTitle = new QLabel("Positions:");
+  listTitle->setStyleSheet(
+    "QLabel {"
+    "  color: #d4d4d4;"
+    "  font-size: 11px;"
+    "  font-weight: bold;"
+    "  padding: 2px;"
+    "}"
+  );
+  listLayout->addWidget(listTitle);
+
+  // Position list
+  m_positionList = new QListWidget();
+  m_positionList->setStyleSheet(
+    "QListWidget {"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #3f3f46;"
+    "  border-radius: 3px;"
+    "  font-size: 11px;"
+    "  padding: 2px;"
+    "}"
+    "QListWidget::item {"
+    "  padding: 6px 8px;"
+    "  border-radius: 2px;"
+    "}"
+    "QListWidget::item:hover {"
+    "  background-color: #2a2d2e;"
+    "}"
+    "QListWidget::item:selected {"
+    "  background-color: #0e639c;"
+    "  color: white;"
+    "}"
+  );
+  listLayout->addWidget(m_positionList);
+
+  // Add both columns to main layout
+  mainLayout->addWidget(buttonsWidget, 1);  // Buttons take 1 part
+  mainLayout->addWidget(listWidget, 1);     // List takes 1 part
 
   m_tabWidget->addTab(actionsTab, "Actions");
 
@@ -478,6 +534,10 @@ void MotionControlPanel::setupActionsTab()
 
   connect(m_stopButton, &QPushButton::clicked,
     this, &MotionControlPanel::stopClicked);
+
+  // ✅ NEW: Connect position list selection
+  connect(m_positionList, &QListWidget::itemSelectionChanged,
+    this, &MotionControlPanel::onPositionListSelectionChanged);
 }
 
 void MotionControlPanel::setupGraphTab()
@@ -545,4 +605,52 @@ void MotionControlPanel::setupGraphTab()
 QString MotionControlPanel::getCurrentDevice() const
 {
   return m_deviceCombo->currentText();
+}
+
+// ✅ NEW: Update position list with available positions
+void MotionControlPanel::updatePositionList(const QStringList& positions)
+{
+  // Block signals to prevent triggering selection changed during update
+  m_positionList->blockSignals(true);
+
+  m_positionList->clear();
+  m_positionList->addItems(positions);
+
+  // Sort alphabetically
+  m_positionList->sortItems();
+
+  m_positionList->blockSignals(false);
+}
+
+// ✅ NEW: Select a specific position in the list
+void MotionControlPanel::selectPositionInList(const QString& positionName)
+{
+  // Block signals to prevent triggering selection changed
+  m_positionList->blockSignals(true);
+
+  // Find and select the item
+  QList<QListWidgetItem*> items = m_positionList->findItems(positionName, Qt::MatchExactly);
+  if (!items.isEmpty()) {
+    m_positionList->setCurrentItem(items.first());
+  }
+
+  m_positionList->blockSignals(false);
+}
+
+// ✅ NEW: Handle position list selection changed
+void MotionControlPanel::onPositionListSelectionChanged()
+{
+  QList<QListWidgetItem*> selectedItems = m_positionList->selectedItems();
+
+  if (selectedItems.isEmpty()) {
+    // No selection - disable buttons
+    clearSelectedPosition();
+    return;
+  }
+
+  // Get selected position name
+  QString positionName = selectedItems.first()->text();
+
+  // Emit signal to notify MotionPage
+  emit positionSelectedFromList(positionName);
 }

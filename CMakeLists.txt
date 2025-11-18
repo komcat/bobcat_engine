@@ -804,11 +804,13 @@ if(PI_FOUND)
     list(APPEND SOURCES
         include/motions/PI/pi_controller_manager.cpp
         include/motions/PI/pi_controller.cpp
+        include/motions/PI/PIPivotJsonLoader.cpp
     )
     list(APPEND HEADERS
         include/motions/PI/pi_controller_manager.h
         include/motions/PI/pi_controller.h
         include/motions/PI/PI_GCS2_DLL.h
+        include/motions/PI/PIPivotJsonLoader.h
     )
     message(STATUS "PI Controller support enabled")
 else()
@@ -881,6 +883,7 @@ else()
     message(STATUS "EziIO support disabled - library not found")
 endif()
 
+
 # Conditionally add CLD101x Direct VISA adapter if VISA is found
 if(VISA_FOUND)
     list(APPEND SOURCES
@@ -897,6 +900,7 @@ else()
     message(STATUS "CLD101x Direct VISA adapter disabled - NI-VISA SDK not found")
     message(STATUS "TED4015 Direct VISA adapter disabled - NI-VISA SDK not found")
 endif()
+
 
 # Conditionally add SMU system (Keithley adapters) if VISA is found
 if(VISA_FOUND)
@@ -1124,6 +1128,9 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/transformation_matrix.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/transformation_matrix.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/pi_pivot_config.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/pi_pivot_config.json
     COMMENT "Copying config templates (preserving *.local.json files)"
 )
 

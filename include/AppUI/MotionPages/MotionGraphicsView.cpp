@@ -241,6 +241,56 @@ void MotionGraphicsView::drawBackground(QPainter* painter, const QRectF& rect)
   drawGrid(painter, rect);
 }
 
+// ✅ NEW: Draw zoom level indicator in top-right corner
+void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& rect)
+{
+  Q_UNUSED(rect);
+
+  // Get the viewport rectangle in scene coordinates
+  QRectF viewportRect = mapToScene(viewport()->rect()).boundingRect();
+
+  // Calculate zoom percentage (100% = zoom factor of 1.0)
+  int zoomPercent = static_cast<int>(m_zoomFactor * 100.0);
+
+  // Format zoom text
+  QString zoomText = QString("Zoom: %1%").arg(zoomPercent);
+
+  // Set up text drawing
+  painter->save();
+  painter->resetTransform();  // Draw in viewport coordinates
+
+  // Get viewport dimensions
+  int viewportWidth = viewport()->width();
+  int viewportHeight = viewport()->height();
+
+  // Set font
+  QFont font("Arial", 11, QFont::Bold);
+  painter->setFont(font);
+
+  // Calculate text dimensions
+  QFontMetrics fm(font);
+  QRect textRect = fm.boundingRect(zoomText);
+  int textWidth = textRect.width();
+  int textHeight = textRect.height();
+
+  // Position in top-right corner with padding
+  int padding = 10;
+  int x = viewportWidth - textWidth - padding - 10;
+  int y = padding + textHeight;
+
+  // Draw semi-transparent background
+  QRect bgRect(x - 5, y - textHeight - 2, textWidth + 10, textHeight + 6);
+  painter->setBrush(QColor(0, 0, 0, 150));
+  painter->setPen(Qt::NoPen);
+  painter->drawRoundedRect(bgRect, 3, 3);
+
+  // Draw text
+  painter->setPen(QColor(255, 255, 255));
+  painter->drawText(x, y, zoomText);
+
+  painter->restore();
+}
+
 void MotionGraphicsView::drawGrid(QPainter* painter, const QRectF& rect)
 {
   qreal viewScale = transform().m11();
@@ -357,6 +407,37 @@ void MotionGraphicsView::autoFitView()
     // If no positions but device marker is visible, center on marker
     centerOnDeviceMarker();
   }
+}
+
+// ✅ NEW: Center on specific position with high zoom
+void MotionGraphicsView::centerOnPosition(const QString& positionName, double zoomLevel)
+{
+  // Check if position exists
+  if (!m_anchors.contains(positionName)) {
+    qWarning() << "Position" << positionName << "not found in graphics view";
+    return;
+  }
+
+  PositionAnchor* anchor = m_anchors[positionName];
+  if (!anchor) {
+    return;
+  }
+
+  // Get the position coordinates
+  QPointF positionPoint = anchor->scenePos();
+
+  // Reset transform and set new zoom level
+  resetTransform();
+
+  // Apply the zoom level (zoomLevel of 23.0 = 2300%)
+  scale(zoomLevel, zoomLevel);
+  m_zoomFactor = zoomLevel;
+
+  // Center the view on this position
+  centerOn(positionPoint);
+
+  // Update the viewport to show changes
+  viewport()->update();
 }
 
 void MotionGraphicsView::wheelEvent(QWheelEvent* event)

@@ -1021,12 +1021,144 @@ bool PIController::IsInMotion() {
 }
 
 PositionStruct PIController::GetCurrentPosition() {
-  PositionStruct pos = { 0.0, 0.0, 0.0 };
+  PositionStruct pos = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };  // Initialize all 6 axes
   std::map<std::string, double> positions;
   if (GetPositions(positions)) {
     if (positions.find("X") != positions.end()) pos.x = positions["X"];
     if (positions.find("Y") != positions.end()) pos.y = positions["Y"];
     if (positions.find("Z") != positions.end()) pos.z = positions["Z"];
+    if (positions.find("U") != positions.end()) pos.u = positions["U"];
+    if (positions.find("V") != positions.end()) pos.v = positions["V"];
+    if (positions.find("W") != positions.end()) pos.w = positions["W"];
   }
   return pos;
+}
+
+bool PIController::GetPivotPoint(double& pivotX, double& pivotY, double& pivotZ) {
+  if (!m_isConnected) {
+    std::cout << "❌ [ERROR] PIController: Cannot get pivot point - not connected" << std::endl;
+    return false;
+  }
+
+  std::cout << "🔍 [INFO] PIController: Reading pivot point from controller" << std::endl;
+
+  // Use PI_qSPI to query pivot point coordinates
+  // Try both "X Y Z" and "R S T" axis naming conventions
+  const char* axisNames[] = { "X Y Z", "R S T" };
+
+  for (const char* axes : axisNames) {
+    double values[3] = { 0.0, 0.0, 0.0 };
+
+    if (PI_qSPI(m_controllerId, axes, values)) {
+      pivotX = values[0];
+      pivotY = values[1];
+      pivotZ = values[2];
+
+      std::cout << "✅ [INFO] PIController: Successfully read pivot point using axes: " << axes << std::endl;
+      std::cout << "📍 [INFO] PIController: Current pivot point: X=" << pivotX
+                << ", Y=" << pivotY << ", Z=" << pivotZ << std::endl;
+      return true;
+    }
+    else {
+      int error = PI_GetError(m_controllerId);
+      std::cout << "⚠️ [DEBUG] PIController: Failed to read pivot with axes '" << axes
+                << "' (Error: " << error << ")" << std::endl;
+    }
+  }
+
+  std::cout << "❌ [ERROR] PIController: Failed to read pivot point" << std::endl;
+  return false;
+}
+
+bool PIController::SetPivotPoint(double pivotX, double pivotY, double pivotZ) {
+  if (!m_isConnected) {
+    std::cout << "❌ [ERROR] PIController: Cannot set pivot point - not connected" << std::endl;
+    return false;
+  }
+
+  std::cout << "📝 [INFO] PIController: Setting pivot point: X=" << pivotX
+            << ", Y=" << pivotY << ", Z=" << pivotZ << std::endl;
+
+  // Use PI_SPI to set pivot point coordinates
+  // Try both "X Y Z" and "R S T" axis naming conventions
+  const char* axisNames[] = { "X Y Z", "R S T" };
+
+  for (const char* axes : axisNames) {
+    double values[3] = { pivotX, pivotY, pivotZ };
+
+    if (PI_SPI(m_controllerId, axes, values)) {
+      std::cout << "✅ [INFO] PIController: Successfully set pivot point using axes: " << axes << std::endl;
+      return true;
+    }
+    else {
+      int error = PI_GetError(m_controllerId);
+      std::cout << "⚠️ [DEBUG] PIController: Failed to set pivot with axes '" << axes
+                << "' (Error: " << error << ")" << std::endl;
+    }
+  }
+
+  std::cout << "❌ [ERROR] PIController: Failed to set pivot point" << std::endl;
+  return false;
+}
+
+bool PIController::QueryAvailableParameters(int itemId) {
+  if (!m_isConnected) {
+    std::cout << "[ERROR] PIController: Cannot query parameters - not connected" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] PIController: Querying available parameters for item " << itemId << std::endl;
+
+  // PI_qHPA (Hardware Parameter Available) can list available parameters
+  // This is a simplified version - full implementation would require more GCS2 commands
+
+  // Try to query some common parameter ranges
+  std::cout << "[INFO] PIController: Testing common pivot-related parameter IDs..." << std::endl;
+
+  unsigned int testParams[] = {
+    0x50, 0x51, 0x52,           // Common pivot params
+    80, 81, 82,                  // Decimal equivalent
+    0x07000500, 0x07000501, 0x07000502,  // Extended range
+    0x3000001, 0x3000002, 0x3000003      // Another range
+  };
+
+  for (unsigned int paramId : testParams) {
+    double value = 0.0;
+    if (GetParameterValue(itemId, paramId, value)) {
+      std::cout << "[INFO]   Parameter 0x" << std::hex << paramId << std::dec
+                << " (" << paramId << ") = " << value << std::endl;
+    }
+  }
+
+  return true;
+}
+
+bool PIController::GetParameterValue(int itemId, unsigned int parameterId, double& value) {
+  if (!m_isConnected) return false;
+
+  char szItems[32];
+  snprintf(szItems, sizeof(szItems), "%d", itemId);
+
+  unsigned int paramIds[1] = { parameterId };
+  double values[1] = { 0.0 };
+  char szStrings[256] = { 0 };
+
+  if (PI_qSPA(m_controllerId, szItems, paramIds, values, szStrings, 256)) {
+    value = values[0];
+    return true;
+  }
+
+  return false;
+}
+
+bool PIController::SetParameterValue(int itemId, unsigned int parameterId, double value) {
+  if (!m_isConnected) return false;
+
+  char szItems[32];
+  snprintf(szItems, sizeof(szItems), "%d", itemId);
+
+  unsigned int paramIds[1] = { parameterId };
+  double values[1] = { value };
+
+  return PI_SPA(m_controllerId, szItems, paramIds, values, nullptr) != 0;
 }

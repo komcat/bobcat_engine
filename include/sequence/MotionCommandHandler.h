@@ -36,9 +36,15 @@ private:
     bool hasX = false;
     bool hasY = false;
     bool hasZ = false;
+    bool hasU = false;  // ✅ NEW: For hexapod rotation axes
+    bool hasV = false;  // ✅ NEW: For hexapod rotation axes
+    bool hasW = false;  // ✅ NEW: For hexapod rotation axes
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
+    double u = 0.0;  // ✅ NEW: For hexapod rotation axes
+    double v = 0.0;  // ✅ NEW: For hexapod rotation axes
+    double w = 0.0;  // ✅ NEW: For hexapod rotation axes
   };
 
   // Helper to wait for motion complete with safety stop checking and position verification

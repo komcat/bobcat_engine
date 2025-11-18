@@ -8,6 +8,7 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QTabWidget>
+#include <QListWidget>
 #include <vector>
 #include <string>
 
@@ -33,6 +34,10 @@ public:
     const std::vector<std::string>& waypoints = {});
   void clearSelectedPosition();
 
+  // Position list management
+  void updatePositionList(const QStringList& positions);
+  void selectPositionInList(const QString& positionName);
+
   // Get current selected device
   QString getCurrentDevice() const;
 
@@ -48,6 +53,10 @@ signals:
   void autoFitClicked();  // ✅ NEW: Auto-fit view to positions
   void homeClicked();
   void stopClicked();
+  void positionSelectedFromList(const QString& positionName);  // ✅ NEW: Position selected from list
+
+private slots:
+  void onPositionListSelectionChanged();
 
 private:
   void setupUI();
@@ -57,6 +66,7 @@ private:
   // Widgets
   QTabWidget* m_tabWidget;
   QComboBox* m_deviceCombo;
+  QListWidget* m_positionList;  // ✅ NEW: Position list widget
 
   QLabel* m_posNameLabel;
   QLabel* m_posXLabel;

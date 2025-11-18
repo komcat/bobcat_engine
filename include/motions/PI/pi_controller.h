@@ -105,6 +105,15 @@ public:
   int GetControllerId() const { return m_controllerId; }
   const std::vector<std::string>& GetAvailableAxes() const { return m_availableAxes; }
 
+  // Pivot point functions
+  bool GetPivotPoint(double& pivotX, double& pivotY, double& pivotZ);
+  bool SetPivotPoint(double pivotX, double pivotY, double pivotZ);
+
+  // Utility for finding correct parameter IDs
+  bool QueryAvailableParameters(int itemId = 1);
+  bool GetParameterValue(int itemId, unsigned int parameterId, double& value);
+  bool SetParameterValue(int itemId, unsigned int parameterId, double value);
+
   // Communication thread control
   void StartCommunicationThread();
   void StopCommunicationThread();

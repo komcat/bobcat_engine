@@ -134,6 +134,22 @@ bool MotionCommandHandler::ExecuteCommand(
     double x = ResolveNumericValue(xIt->second, context);
     double y = ResolveNumericValue(yIt->second, context);
     double z = ResolveNumericValue(zIt->second, context);
+
+    // ✅ NEW: Support optional U, V, W parameters for hexapods
+    double u = 0.0, v = 0.0, w = 0.0;
+    bool hasUVW = false;
+
+    auto uIt = params.find("u");
+    auto vIt = params.find("v");
+    auto wIt = params.find("w");
+
+    if (uIt != params.end() && vIt != params.end() && wIt != params.end()) {
+      u = ResolveNumericValue(uIt->second, context);
+      v = ResolveNumericValue(vIt->second, context);
+      w = ResolveNumericValue(wIt->second, context);
+      hasUVW = true;
+    }
+
     double velocity = 100.0;  // Default velocity
 
     auto velIt = params.find("velocity");
@@ -149,17 +165,47 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info(
-        "Moving " + deviceName + " to (" +
-        std::to_string(x) + ", " +
-        std::to_string(y) + ", " +
-        std::to_string(z) + ")",
-        "MotionHandler"
-      );
+      if (hasUVW) {
+        m_logger->Info(
+          "Moving " + deviceName + " to (X=" +
+          std::to_string(x) + ", Y=" +
+          std::to_string(y) + ", Z=" +
+          std::to_string(z) + ", U=" +
+          std::to_string(u) + ", V=" +
+          std::to_string(v) + ", W=" +
+          std::to_string(w) + ")",
+          "MotionHandler"
+        );
+      }
+      else {
+        m_logger->Info(
+          "Moving " + deviceName + " to (" +
+          std::to_string(x) + ", " +
+          std::to_string(y) + ", " +
+          std::to_string(z) + ")",
+          "MotionHandler"
+        );
+      }
     }
 
-    // ✅ SAFETY: Always use non-blocking mode + stop checking
-    if (!motionManager->MoveToAbs(deviceName, x, y, z, velocity, false)) {
+    // ✅ NEW: For 6-axis moves, move each axis individually
+    bool moveSuccess = true;
+
+    if (hasUVW) {
+      // For hexapods with UVW, move all 6 axes
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "X", x, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "Y", y, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "Z", z, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "U", u, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "V", v, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "W", w, false);
+    }
+    else {
+      // Use the 3-axis move command
+      moveSuccess = motionManager->MoveToAbs(deviceName, x, y, z, velocity, false);
+    }
+
+    if (!moveSuccess) {
       errorMessage = "MoveToAbs failed to start";
       return false;
     }
@@ -174,9 +220,15 @@ bool MotionCommandHandler::ExecuteCommand(
     target.hasX = true;
     target.hasY = true;
     target.hasZ = true;
+    target.hasU = hasUVW;
+    target.hasV = hasUVW;
+    target.hasW = hasUVW;
     target.x = x;
     target.y = y;
     target.z = z;
+    target.u = u;
+    target.v = v;
+    target.w = w;
 
     if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
       errorMessage = "Motion stopped, timeout, or position verification failed";

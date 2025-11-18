@@ -185,7 +185,21 @@ bool AdaptiveScanController::ExecuteScan() {
     return false;
   }
 
-  if (m_haltRequested || m_emergencyStopRequested) {
+  if (m_emergencyStopRequested) {
+    // Emergency stop: abort immediately without returning to peak
+    return false;
+  }
+
+  if (m_haltRequested) {
+    // User stop: still return to best position found so far
+    if (m_logger) {
+      m_logger->LogInfo("Halt requested - returning to best position before stopping");
+    }
+    if (!ReturnToBestPosition()) {
+      if (m_logger) {
+        m_logger->LogWarning("Failed to return to best position after halt");
+      }
+    }
     return false;
   }
 
@@ -194,11 +208,25 @@ bool AdaptiveScanController::ExecuteScan() {
     return false;
   }
 
-  if (m_haltRequested || m_emergencyStopRequested) {
+  if (m_emergencyStopRequested) {
+    // Emergency stop: abort immediately without returning to peak
     return false;
   }
 
-  // Return to best position
+  if (m_haltRequested) {
+    // User stop: still return to best position found so far
+    if (m_logger) {
+      m_logger->LogInfo("Halt requested - returning to best position before stopping");
+    }
+    if (!ReturnToBestPosition()) {
+      if (m_logger) {
+        m_logger->LogWarning("Failed to return to best position after halt");
+      }
+    }
+    return false;
+  }
+
+  // Return to best position (normal completion)
   if (!ReturnToBestPosition()) {
     if (m_logger) {  // ✅ Check before use
       m_logger->LogWarning("Failed to return to best position");

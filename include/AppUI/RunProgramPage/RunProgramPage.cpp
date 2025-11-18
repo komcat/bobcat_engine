@@ -1715,21 +1715,25 @@ void RunProgramPage::onExecuteProgram()
       }
     }
     else if (m_isExecuting && *checkCountPtr < 6000) {  // Max 10 minutes
-      // Schedule next check
-      QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
-        if (*checkCompletionPtr) {
-          (*checkCompletionPtr)();
-        }
-      });
+      // Schedule next check - only if widget still exists
+      if (selfPtr) {
+        QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
+          if (*checkCompletionPtr) {
+            (*checkCompletionPtr)();
+          }
+        });
+      }
     }
   };
 
-  // Start the polling chain
-  QTimer::singleShot(100, this, [checkCompletionPtr]() {
-    if (*checkCompletionPtr) {
-      (*checkCompletionPtr)();
-    }
-  });
+  // Start the polling chain - use selfPtr for safety
+  if (selfPtr) {
+    QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
+      if (*checkCompletionPtr) {
+        (*checkCompletionPtr)();
+      }
+    });
+  }
   std::cout << "[RunProgramPage] Completion checker timer started (singleShot chain)" << std::endl;
   std::cout.flush();
 

@@ -10,6 +10,9 @@
 #include <vector>
 #include <string>
 
+// Forward declarations
+class UnifiedMotionManager;
+
 /**
  * @brief Vertical stack of device selection buttons with selected position display
  * Replaces the device dropdown with large, easy-to-click buttons
@@ -23,8 +26,14 @@ public:
   explicit DeviceButtonStack(QWidget* parent = nullptr);
   ~DeviceButtonStack() = default;
 
+  // Set motion manager for connection status checking
+  void setMotionManager(UnifiedMotionManager* motionManager);
+
   // Set available devices
   void setDevices(const QStringList& devices);
+
+  // ✅ NEW: Refresh device list showing only connected devices, sorted alphabetically
+  void refreshDevices();
 
   // Get currently selected device
   QString getCurrentDevice() const;
@@ -53,6 +62,9 @@ private:
   QButtonGroup* m_buttonGroup;
   QMap<int, QString> m_deviceMap;  // Button ID -> Device name
   QString m_currentDevice;
+
+  // ✅ NEW: Motion manager for connection status
+  UnifiedMotionManager* m_motionManager;
 
   // Selected position info widgets
   QLabel* m_posNameLabel;

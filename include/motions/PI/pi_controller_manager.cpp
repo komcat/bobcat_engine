@@ -1,6 +1,8 @@
 ﻿// pi_controller_manager.cpp
 #include "pi_controller_manager.h"
+#include "PIPivotJsonLoader.h"
 #include <algorithm>
+#include <cmath>
 
 PIControllerManager::PIControllerManager() {
   std::cout << "[INFO] PIControllerManager: Initialized" << std::endl;
@@ -159,6 +161,9 @@ bool PIControllerManager::ConnectDevice(const std::string& deviceName) {
     m_connectionStatus[deviceName] = true;
     m_connectionErrors.erase(deviceName);
     LogDeviceInfo(deviceName, "Connected successfully");
+
+    // Verify and set pivot point after successful connection
+    VerifyAndSetPivotPoint(deviceName);
   }
   else {
     m_connectionStatus[deviceName] = false;
@@ -423,4 +428,88 @@ void PIControllerManager::LogDeviceInfo(const std::string& deviceName,
   const std::string& message) const {
   std::cout << "[INFO] PIControllerManager [" << deviceName << "]: "
     << message << std::endl;
+}
+
+bool PIControllerManager::LoadPivotConfigurations(const std::string& filepath) {
+  std::cout << "📂 [INFO] PIControllerManager: Loading pivot configurations from "
+    << filepath << std::endl;
+
+  m_pivotConfigs = PIPivotJsonLoader::LoadFromFile(filepath);
+
+  if (m_pivotConfigs.empty()) {
+    std::cout << "⚠️ [WARNING] PIControllerManager: No pivot configurations loaded" << std::endl;
+    return false;
+  }
+
+  std::cout << "✅ [INFO] PIControllerManager: Loaded " << m_pivotConfigs.size()
+    << " pivot configurations" << std::endl;
+
+  return true;
+}
+
+bool PIControllerManager::VerifyAndSetPivotPoint(const std::string& deviceName) {
+  // Check if device exists
+  auto controllerIt = m_controllers.find(deviceName);
+  if (controllerIt == m_controllers.end()) {
+    std::cout << "❌ [ERROR] PIControllerManager: Device " << deviceName
+      << " not found" << std::endl;
+    return false;
+  }
+
+  PIController* controller = controllerIt->second.get();
+  if (!controller || !controller->IsConnected()) {
+    std::cout << "❌ [ERROR] PIControllerManager: Device " << deviceName
+      << " is not connected" << std::endl;
+    return false;
+  }
+
+  // Check if pivot configuration exists for this device
+  auto pivotIt = m_pivotConfigs.find(deviceName);
+  if (pivotIt == m_pivotConfigs.end()) {
+    std::cout << "ℹ️ [INFO] PIControllerManager: No pivot configuration found for "
+      << deviceName << ". Skipping pivot verification." << std::endl;
+    return true; // Not an error - just no config for this device
+  }
+
+  const PIPivotConfig& expectedPivot = pivotIt->second;
+
+  std::cout << "🔍 [INFO] PIControllerManager: Verifying pivot point for " << deviceName << std::endl;
+
+  // Read current pivot point from controller
+  double currentX = 0.0, currentY = 0.0, currentZ = 0.0;
+  if (!controller->GetPivotPoint(currentX, currentY, currentZ)) {
+    std::cout << "❌ [ERROR] PIControllerManager: Failed to read pivot point from "
+      << deviceName << std::endl;
+    return false;
+  }
+
+  // Compare with expected values (use small tolerance for floating point comparison)
+  const double tolerance = 0.001;
+  bool xMatch = std::abs(currentX - expectedPivot.PivotX) < tolerance;
+  bool yMatch = std::abs(currentY - expectedPivot.PivotY) < tolerance;
+  bool zMatch = std::abs(currentZ - expectedPivot.PivotZ) < tolerance;
+
+  if (xMatch && yMatch && zMatch) {
+    std::cout << "✅ [INFO] PIControllerManager: Pivot point for " << deviceName
+      << " matches expected values" << std::endl;
+    return true;
+  }
+
+  // Pivot doesn't match - set the correct values
+  std::cout << "⚠️ [WARNING] PIControllerManager: Pivot point mismatch for " << deviceName << std::endl;
+  std::cout << "📍 [INFO] Current: X=" << currentX << ", Y=" << currentY << ", Z=" << currentZ << std::endl;
+  std::cout << "🎯 [INFO] Expected: X=" << expectedPivot.PivotX << ", Y=" << expectedPivot.PivotY
+    << ", Z=" << expectedPivot.PivotZ << std::endl;
+  std::cout << "📝 [INFO] PIControllerManager: Setting correct pivot point for " << deviceName << std::endl;
+
+  if (!controller->SetPivotPoint(expectedPivot.PivotX, expectedPivot.PivotY, expectedPivot.PivotZ)) {
+    std::cout << "❌ [ERROR] PIControllerManager: Failed to set pivot point for "
+      << deviceName << std::endl;
+    return false;
+  }
+
+  std::cout << "✅ [INFO] PIControllerManager: Pivot point updated successfully for "
+    << deviceName << std::endl;
+
+  return true;
 }

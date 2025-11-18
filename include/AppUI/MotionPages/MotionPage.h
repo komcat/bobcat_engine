@@ -37,6 +37,9 @@ public:
     QWidget* parent = nullptr);
   ~MotionPage() = default;
 
+  // ✅ NEW: Refresh device list to show only connected devices
+  void refreshDeviceList();
+
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
 
@@ -58,6 +61,7 @@ private slots:
   void onStopClicked();
   void onPositionSelected(const QString& name, double x, double y, double z);
   void onPositionDeselected();
+  void onPositionSelectedFromList(const QString& name);  // ✅ NEW: Position selected from list
   void onUpdateLivePosition();
 
   // Product management slots
@@ -70,6 +74,10 @@ private slots:
   void onScanDataChannelChanged(const QString& channel);
   void onStartScanClicked();
   void onStopScanClicked();
+
+protected:
+  // ✅ NEW: Override showEvent to refresh device list when page is shown
+  void showEvent(QShowEvent* event) override;
 
 private:
   void setupUI();

@@ -9,6 +9,8 @@
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
 #include "CreateSystemWidget.h"
 #include "TestSystemWidget.h"
+#include "SequenceBuilder.h"     // ✅ NEW: For sequence execution
+#include "SequenceContext.h"     // ✅ NEW: For sequence execution
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -16,6 +18,7 @@
 #include <QInputDialog>
 #include <QSettings>
 #include <QDebug>
+#include <QShowEvent>  // ✅ NEW: For showEvent override
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -274,6 +277,7 @@ void MotionPage::setupUI()
 
 	// Far Left - Device Selection Buttons (controls all tabs)
 	m_deviceButtonStack = new DeviceButtonStack();
+	m_deviceButtonStack->setMotionManager(m_motionManager);  // ✅ NEW: Pass motion manager for connection status
 	contentLayout->addWidget(m_deviceButtonStack);
 
 	// ============================================================================
@@ -483,6 +487,10 @@ void MotionPage::setupUI()
 	connect(m_graphicsView, &MotionGraphicsView::positionDeselected,
 		this, &MotionPage::onPositionDeselected);
 
+	// ✅ NEW: Connect position selection from list
+	connect(m_controlPanel, &MotionControlPanel::positionSelectedFromList,
+		this, &MotionPage::onPositionSelectedFromList);
+
 	// ✅ REMOVED: Scan panel connections (scan panel is hidden)
 	// connect(m_scanPanel, &ScanControlPanel::deviceChanged,
 	// 	this, &MotionPage::onScanDeviceChanged);
@@ -669,15 +677,16 @@ void MotionPage::loadDevices()
 		return;
 	}
 
+	// ✅ NEW: Refresh device button stack to show only connected devices (filtered & sorted)
+	m_deviceButtonStack->refreshDevices();
+
+	// Get all device names for control panel (backward compatibility)
 	std::vector<std::string> deviceNames = m_motionManager->GetAllDeviceNames();
 
 	QStringList devices;
 	for (const auto& name : deviceNames) {
 		devices << QString::fromStdString(name);
 	}
-
-	// Populate device button stack (primary selector)
-	m_deviceButtonStack->setDevices(devices);
 
 	// Also populate control panel
 	m_controlPanel->setDevices(devices);
@@ -706,6 +715,23 @@ void MotionPage::loadDevices()
 	}
 }
 
+// ✅ NEW: Refresh device list at runtime
+void MotionPage::refreshDeviceList()
+{
+	if (m_deviceButtonStack) {
+		m_deviceButtonStack->refreshDevices();
+	}
+}
+
+// ✅ NEW: Override showEvent to refresh device list when page is shown
+void MotionPage::showEvent(QShowEvent* event)
+{
+	QWidget::showEvent(event);
+
+	// Refresh device list to show only connected devices
+	refreshDeviceList();
+}
+
 void MotionPage::loadPositionsForDevice(const QString& deviceName)
 {
 	m_currentDevice = deviceName;
@@ -725,7 +751,31 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 		if (m_motionManager->GetNamedPosition(deviceName.toStdString(),
 			posName, pos)) {
 			double globalX, globalY, globalZ;
-			transformLocalToGlobal(pos.x, pos.y, pos.z, globalX, globalY, globalZ);
+
+			// ✅ FIX: For 2D graphic display, only use X and Y coordinates
+			// The graphic display should not be affected by Z, U, V, W values
+			if (!m_matrixLoader || m_currentDevice.isEmpty()) {
+				// No transformation - use raw X, Y coordinates
+				globalX = pos.x;
+				globalY = pos.y;
+				globalZ = pos.z;
+			}
+			else {
+				const auto* matrix = m_matrixLoader->GetMatrix(m_currentDevice.toStdString());
+				if (!matrix) {
+					// No matrix available - use raw X, Y coordinates
+					globalX = pos.x;
+					globalY = pos.y;
+					globalZ = pos.z;
+				}
+				else {
+					// Transform X and Y using only 2D components (exclude Z)
+					globalX = (*matrix)[0] * pos.x + (*matrix)[1] * pos.y;
+					globalY = (*matrix)[3] * pos.x + (*matrix)[4] * pos.y;
+					// Keep full 3D transformation for Z (used for color coding)
+					globalZ = (*matrix)[6] * pos.x + (*matrix)[7] * pos.y + (*matrix)[8] * pos.z;
+				}
+			}
 
 			QVector<double> values = {
 				globalX,
@@ -741,7 +791,7 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 
 			qDebug() << "  -" << qPosName
 				<< "Local:" << pos.x << pos.y << pos.z
-				<< "-> Global:" << globalX << globalY << globalZ;
+				<< "-> Global (2D display):" << globalX << globalY << globalZ;
 		}
 	}
 
@@ -750,6 +800,10 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 	m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
 	// ✅ REMOVED: Auto-fit on device switch - now using persistent zoom/pan
 	// m_graphicsView->autoFitView();
+
+	// ✅ NEW: Update position list in control panel
+	QStringList positionList = m_currentPositions.keys();
+	m_controlPanel->updatePositionList(positionList);
 
 	qDebug() << "Successfully loaded" << m_currentPositions.size()
 		<< "positions for" << deviceName;
@@ -884,17 +938,40 @@ void MotionPage::onMoveToPositionClicked()
 	std::cout << "[MotionPage] Moving device '" << m_currentDevice.toStdString()
 		<< "' to position '" << m_selectedPositionName.toStdString() << "'" << std::endl;
 
-	// ✅ UnifiedMotionManager handles all waypoint logic automatically
-	bool success = m_motionManager->MoveToNamedPosition(
-		m_currentDevice.toStdString(),
-		m_selectedPositionName.toStdString(),
-		false  // Non-blocking - waypoint system active
-	);
+	// ✅ Use SequenceEngine with MoveToNamedPosition to properly handle all 6 axes with waypoints
+	if (!m_sequenceEngine) {
+		QMessageBox::critical(this, "Error", "Sequence engine not available.");
+		return;
+	}
+
+	// Create a single-command sequence
+	SequenceBuilder* sequence = m_sequenceEngine->CreateSequence("MoveToPosition_" + m_selectedPositionName.toStdString());
+
+	// Add MoveToNamedPosition action
+	std::map<std::string, std::string> params;
+	params["positionName"] = m_selectedPositionName.toStdString();
+	params["blocking"] = "false";  // Non-blocking execution
+
+	sequence->AddAction(m_currentDevice.toStdString(), "MoveToNamedPosition", params);
+
+	// Execute sequence on worker thread
+	SequenceContext* context = new SequenceContext();
+	m_sequenceEngine->ClearStopFlag();
+
+	bool success = m_sequenceEngine->ExecuteSequence(sequence, context);
 
 	if (!success) {
-		QMessageBox::critical(this, "Motion Error",
-			"Failed to start motion to position");
+		// ✅ Apply dark theme to error dialog
+		QMessageBox msgBox(this);
+		msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+		msgBox.setIcon(QMessageBox::Critical);
+		msgBox.setWindowTitle("Motion Error");
+		msgBox.setText("Failed to start motion to position");
+		msgBox.exec();
 	}
+
+	delete context;
+	delete sequence;
 }
 
 void MotionPage::onUpdatePositionClicked()
@@ -1222,6 +1299,9 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 			pos[3], pos[4], pos[5],
 			entryWaypoints);
 
+		// ✅ NEW: Also select in position list
+		m_controlPanel->selectPositionInList(name);
+
 		m_graphicsView->showPathPreview(name,
 			entryWaypoints,
 			currentExitWaypoints);
@@ -1234,6 +1314,63 @@ void MotionPage::onPositionDeselected()
 	m_controlPanel->clearSelectedPosition();
 	m_deviceButtonStack->clearSelectedPosition();
 	m_graphicsView->hidePathPreview();
+}
+
+// ✅ NEW: Handle position selection from list
+void MotionPage::onPositionSelectedFromList(const QString& name)
+{
+	// Get position data
+	if (!m_currentPositions.contains(name)) {
+		qWarning() << "Position" << name << "not found in current positions";
+		return;
+	}
+
+	const QVector<double>& pos = m_currentPositions[name];
+	if (pos.size() < 6) {
+		qWarning() << "Invalid position data for" << name;
+		return;
+	}
+
+	// Update selected position name
+	m_selectedPositionName = name;
+
+	// Get waypoints from the position structure
+	std::vector<std::string> entryWaypoints;
+	std::vector<std::string> exitWaypoints;
+	PositionStruct selectedPos;
+	if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+		name.toStdString(),
+		selectedPos)) {
+		entryWaypoints = selectedPos.waypoints;
+		exitWaypoints = selectedPos.exit_waypoints;
+	}
+
+	// Get exit waypoints from current position
+	std::string currentPosName = m_motionManager->GetCurrentPositionName(
+		m_currentDevice.toStdString());
+	std::vector<std::string> currentExitWaypoints;
+	if (!currentPosName.empty() && currentPosName != name.toStdString()) {
+		PositionStruct currentPos;
+		if (m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+			currentPosName,
+			currentPos)) {
+			currentExitWaypoints = currentPos.exit_waypoints;
+		}
+	}
+
+	// Update control panel and device button stack
+	m_controlPanel->setSelectedPosition(name, pos[0], pos[1], pos[2],
+		pos[3], pos[4], pos[5], entryWaypoints);
+	m_deviceButtonStack->setSelectedPosition(name, pos[0], pos[1], pos[2],
+		pos[3], pos[4], pos[5], entryWaypoints);
+
+	// Show path preview in graphics view (with 3 arguments)
+	m_graphicsView->showPathPreview(name, entryWaypoints, currentExitWaypoints);
+
+	// ✅ NEW: Center on position with high zoom (2300% = zoom level 23.0)
+	m_graphicsView->centerOnPosition(name, 23.0);
+
+	qDebug() << "[MotionPage] Position selected from list:" << name;
 }
 
 // ============================================================================
@@ -1850,8 +1987,12 @@ void MotionPage::onEditPositionClicked()
 			m_selectedPositionName.toStdString(),
 			existingPos);
 
-		QMessageBox::information(this, "Success",
-			"Position values updated successfully!\n\nRemember to save the product file.");
+		QMessageBox msgBox(this);
+		msgBox.setWindowTitle("Success");
+		msgBox.setText("Position values updated successfully!\n\nRemember to save the product file.");
+		msgBox.setIcon(QMessageBox::Information);
+		msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+		msgBox.exec();
 
 		// Refresh display
 		refreshPositionDisplay();

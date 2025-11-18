@@ -1,0 +1,16 @@
+{
+  "pi_pivot_points": [
+    {
+      "device_name": "hex-left",
+      "pivot_x": -12.950,
+      "pivot_y": 0.0,
+      "pivot_z": 109.750
+    },
+    {
+      "device_name": "hex-right",
+      "pivot_x": -12.950,
+      "pivot_y": 0.0,
+      "pivot_z": 109.750
+    }
+  ]
+}

@@ -695,19 +695,52 @@ void TECControlPage::updateStatusDisplay()
   // Read current temperature
   auto tempResult = m_context->tecManager->ReadTemperature(device.toStdString());
   if (tempResult.Success) {
-    m_currentTemperature->setText(QString::number(tempResult.Value, 'f', 2) + " C");
+    // ✅ Validate temperature is within reasonable range (-50°C to +100°C)
+    // Invalid/disconnected thermistors often return very large float values
+    if (tempResult.Value >= -50.0 && tempResult.Value <= 100.0) {
+      m_currentTemperature->setText(QString::number(tempResult.Value, 'f', 2) + " C");
+      m_currentTemperature->setStyleSheet("QLabel { color: #0e639c; font-weight: bold; font-size: 24px; }");
+    }
+    else {
+      m_currentTemperature->setText("-- C");
+      m_currentTemperature->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; font-size: 24px; }");
+    }
+  }
+  else {
+    m_currentTemperature->setText("-- C");
+    m_currentTemperature->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; font-size: 24px; }");
   }
 
   // Read TEC current
   auto tecCurrentResult = m_context->tecManager->ReadTECCurrent(device.toStdString());
   if (tecCurrentResult.Success) {
-    m_currentTECCurrent->setText(QString::number(tecCurrentResult.Value, 'f', 3) + " A");
+    // ✅ Validate TEC current is within reasonable range (-5A to +5A)
+    // Invalid readings often return very large float values
+    if (tecCurrentResult.Value >= -5.0 && tecCurrentResult.Value <= 5.0) {
+      m_currentTECCurrent->setText(QString::number(tecCurrentResult.Value, 'f', 3) + " A");
+    }
+    else {
+      m_currentTECCurrent->setText("-- A");
+    }
+  }
+  else {
+    m_currentTECCurrent->setText("-- A");
   }
 
   // Read laser current
   auto currentResult = m_context->tecManager->ReadLaserCurrent(device.toStdString());
   if (currentResult.Success) {
-    m_actualLaserCurrent->setText(QString::number(currentResult.Value, 'f', 2) + " mA");
+    // ✅ Validate laser current is within reasonable range (0 to 500mA)
+    // Invalid readings often return very large float values
+    if (currentResult.Value >= 0.0 && currentResult.Value <= 500.0) {
+      m_actualLaserCurrent->setText(QString::number(currentResult.Value, 'f', 2) + " mA");
+    }
+    else {
+      m_actualLaserCurrent->setText("-- mA");
+    }
+  }
+  else {
+    m_actualLaserCurrent->setText("-- mA");
   }
 
   // Get status

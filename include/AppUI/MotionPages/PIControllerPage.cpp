@@ -2,6 +2,7 @@
 #include "PIControllerPage.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "pi_controller.h"  // ✅ NEW: For GetPivotPoint
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -11,11 +12,14 @@
 
 PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
   : MotionControllerPageBase(context, parent)
+  , m_tabWidget(nullptr)  // ✅ NEW: Initialize tab widget
   , m_deviceSelector(nullptr)
   , m_systemVelocity(nullptr)
   , m_turtleButton(nullptr)
   , m_rabbitButton(nullptr)
   , m_applyButton(nullptr)
+  , m_pivotDisplayWidget(nullptr)
+  , m_pivotDisplayLayout(nullptr)
 {
   std::cout << "[PIControllerPage] Initialized" << std::endl;
 
@@ -44,17 +48,54 @@ void PIControllerPage::setupUI()
   // Call base class to setup the device table
   MotionControllerPageBase::setupUI();
 
-  // Add velocity controls
-  createVelocityControls();
-}
-
-void PIControllerPage::createVelocityControls()
-{
   // Get main layout (created by base class)
   QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
   if (!mainLayout) return;
 
-  // Create velocity control group
+  // ✅ NEW: Create tab widget
+  m_tabWidget = new QTabWidget();
+  m_tabWidget->setStyleSheet(
+    "QTabWidget::pane { "
+    "  border: 1px solid #3f3f46; "
+    "  background-color: #1e1e1e; "
+    "} "
+    "QTabBar::tab { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  padding: 8px 20px; "
+    "  border: 1px solid #3f3f46; "
+    "  border-bottom: none; "
+    "  margin-right: 2px; "
+    "} "
+    "QTabBar::tab:selected { "
+    "  background-color: #1e1e1e; "
+    "  color: #ffffff; "
+    "  font-weight: bold; "
+    "} "
+    "QTabBar::tab:hover { "
+    "  background-color: #3c3c3c; "
+    "}");
+
+  // Create tabs
+  createMainTab();
+  createPivotPointTab();
+
+  // Connect tab change signal
+  connect(m_tabWidget, &QTabWidget::currentChanged, this, &PIControllerPage::onTabChanged);
+
+  // Insert tab widget before the device table (position 1)
+  mainLayout->insertWidget(1, m_tabWidget);
+}
+
+// ✅ NEW: Create main tab with velocity controls
+void PIControllerPage::createMainTab()
+{
+  QWidget* mainTab = new QWidget();
+  QVBoxLayout* mainTabLayout = new QVBoxLayout(mainTab);
+  mainTabLayout->setContentsMargins(10, 10, 10, 10);
+  mainTabLayout->setSpacing(10);
+
+  // Create velocity control group for main tab
   QGroupBox* velocityGroup = new QGroupBox("System Velocity Control");
   velocityGroup->setStyleSheet(
     "QGroupBox { "
@@ -198,11 +239,92 @@ void PIControllerPage::createVelocityControls()
 
   groupLayout->addLayout(buttonRow);
 
-  // Insert velocity group before the device table
-  mainLayout->insertWidget(1, velocityGroup);
+  // Add velocity group to main tab layout
+  mainTabLayout->addWidget(velocityGroup);
+  mainTabLayout->addStretch();
+
+  // Add tab to tab widget
+  m_tabWidget->addTab(mainTab, "Velocity Control");
 
   // Initialize device list
   updateVelocityDisplay();
+}
+
+// ✅ NEW: Create pivot point tab
+void PIControllerPage::createPivotPointTab()
+{
+  QWidget* pivotTab = new QWidget();
+  QVBoxLayout* pivotTabLayout = new QVBoxLayout(pivotTab);
+  pivotTabLayout->setContentsMargins(10, 10, 10, 10);
+  pivotTabLayout->setSpacing(10);
+
+  // Create pivot point display group
+  QGroupBox* pivotGroup = new QGroupBox("📍 Pivot Point Settings (from Controller)");
+  pivotGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #ffffff; "
+    "}");
+
+  QVBoxLayout* groupLayout = new QVBoxLayout(pivotGroup);
+  groupLayout->setSpacing(10);
+
+  // Create container widget for dynamic pivot point displays
+  m_pivotDisplayWidget = new QWidget();
+  m_pivotDisplayLayout = new QVBoxLayout(m_pivotDisplayWidget);
+  m_pivotDisplayLayout->setSpacing(5);
+  m_pivotDisplayLayout->setContentsMargins(0, 0, 0, 0);
+
+  groupLayout->addWidget(m_pivotDisplayWidget);
+
+  // Add note about updating pivot point
+  QLabel* noteLabel = new QLabel("ℹ️ To update pivot point: Edit config/pivot_points.json and restart the program");
+  noteLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  font-style: italic; "
+    "  color: #f39c12; "
+    "  background-color: #3c3c3c; "
+    "  border: 1px solid #f39c12; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  margin-top: 5px; "
+    "}");
+  noteLabel->setWordWrap(true);
+  groupLayout->addWidget(noteLabel);
+
+  // Add pivot group to pivot tab layout
+  pivotTabLayout->addWidget(pivotGroup);
+  pivotTabLayout->addStretch();
+
+  // Add tab to tab widget
+  m_tabWidget->addTab(pivotTab, "Pivot Point Settings");
+
+  // Initial update of pivot points
+  updatePivotPointDisplay();
+}
+
+// ✅ NEW: Handle tab changes
+void PIControllerPage::onTabChanged(int index)
+{
+  std::cout << "[PIControllerPage] Tab changed to index: " << index << std::endl;
+
+  // If switching to pivot point tab (index 1), refresh the display
+  if (index == 1) {
+    updatePivotPointDisplay();
+  }
 }
 
 void PIControllerPage::updateVelocityDisplay()
@@ -272,4 +394,136 @@ void PIControllerPage::onApplyVelocityClicked()
       QString("Failed to set velocity for %1\n\nPlease check:\n- Device is connected\n- Device is ready")
         .arg(QString::fromStdString(deviceName)));
   }
+}
+
+// ✅ Update pivot point display by reading from ALL PI controllers
+void PIControllerPage::updatePivotPointDisplay()
+{
+  if (!m_pivotDisplayLayout) {
+    return;
+  }
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) {
+    return;
+  }
+
+  // Clear existing displays
+  QLayoutItem* item;
+  while ((item = m_pivotDisplayLayout->takeAt(0)) != nullptr) {
+    if (item->widget()) {
+      delete item->widget();
+    }
+    delete item;
+  }
+
+  // Get all PI devices
+  std::vector<std::string> piDevices = motionMgr->GetDeviceNamesByType("PI");
+
+  if (piDevices.empty()) {
+    QLabel* noDevicesLabel = new QLabel("No PI devices found");
+    noDevicesLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+    m_pivotDisplayLayout->addWidget(noDevicesLabel);
+    return;
+  }
+
+  // Create display for each PI device
+  for (const auto& deviceName : piDevices) {
+    // Create horizontal layout for this device
+    QHBoxLayout* deviceLayout = new QHBoxLayout();
+    deviceLayout->setSpacing(15);
+
+    // Device name label
+    QLabel* deviceLabel = new QLabel(QString::fromStdString(deviceName) + ":");
+    deviceLabel->setStyleSheet(
+      "QLabel { "
+      "  font-size: 14px; "
+      "  font-weight: bold; "
+      "  color: #ffffff; "
+      "  min-width: 120px; "
+      "}");
+    deviceLayout->addWidget(deviceLabel);
+
+    // Get PI controller
+    PIController* piController = motionMgr->GetPIController(deviceName);
+
+    if (!piController || !piController->IsConnected()) {
+      QLabel* statusLabel = new QLabel("Not Connected");
+      statusLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+      deviceLayout->addWidget(statusLabel);
+      deviceLayout->addStretch();
+    }
+    else {
+      // Read pivot point from controller
+      double pivotX = 0.0, pivotY = 0.0, pivotZ = 0.0;
+      bool success = piController->GetPivotPoint(pivotX, pivotY, pivotZ);
+
+      if (success) {
+        // X value
+        QLabel* xLabel = new QLabel("X:");
+        xLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
+        deviceLayout->addWidget(xLabel);
+
+        QLabel* xValue = new QLabel(QString::number(pivotX, 'f', 3) + " mm");
+        xValue->setStyleSheet(
+          "QLabel { "
+          "  font-size: 13px; "
+          "  font-weight: bold; "
+          "  font-family: monospace; "
+          "  color: #ffffff; "
+          "  background-color: #3c3c3c; "
+          "  border: 1px solid #555555; "
+          "  border-radius: 3px; "
+          "  padding: 3px 8px; "
+          "  min-width: 70px; "
+          "}");
+        deviceLayout->addWidget(xValue);
+
+        // Y value
+        QLabel* yLabel = new QLabel("Y:");
+        yLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
+        deviceLayout->addWidget(yLabel);
+
+        QLabel* yValue = new QLabel(QString::number(pivotY, 'f', 3) + " mm");
+        yValue->setStyleSheet(xValue->styleSheet());
+        deviceLayout->addWidget(yValue);
+
+        // Z value
+        QLabel* zLabel = new QLabel("Z:");
+        zLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
+        deviceLayout->addWidget(zLabel);
+
+        QLabel* zValue = new QLabel(QString::number(pivotZ, 'f', 3) + " mm");
+        zValue->setStyleSheet(xValue->styleSheet());
+        deviceLayout->addWidget(zValue);
+
+        deviceLayout->addStretch();
+
+        std::cout << "📍 [PIControllerPage] Pivot point for " << deviceName
+                  << ": X=" << pivotX << ", Y=" << pivotY << ", Z=" << pivotZ << std::endl;
+      }
+      else {
+        QLabel* errorLabel = new QLabel("Read Failed");
+        errorLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+        deviceLayout->addWidget(errorLabel);
+        deviceLayout->addStretch();
+
+        std::cerr << "❌ [PIControllerPage] Failed to read pivot point from " << deviceName << std::endl;
+      }
+    }
+
+    // Add this device's layout to the main display
+    QWidget* deviceWidget = new QWidget();
+    deviceWidget->setLayout(deviceLayout);
+    deviceWidget->setStyleSheet(
+      "QWidget { "
+      "  background-color: #2d2d30; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 4px; "
+      "  padding: 5px; "
+      "}");
+    m_pivotDisplayLayout->addWidget(deviceWidget);
+  }
+
+  m_pivotDisplayLayout->addStretch();
 }

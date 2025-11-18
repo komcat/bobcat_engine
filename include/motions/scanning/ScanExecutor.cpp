@@ -80,7 +80,7 @@ bool ScanExecutor::executeScan(const QString& deviceName, bool isCoarse, const Q
     .arg(isCoarse ? "COARSE" : "FINE")
     .arg(deviceName));
   emit logMessage(QString("  Scanning axes: Z, Y, X with steps: %1")
-    .arg(isCoarse ? "10→5→2→1 µm" : "2→1→0.5 µm"));
+    .arg(isCoarse ? "5→2→1→0.5 µm" : "2→1→0.5 µm"));
   emit logMessage(QString("  Data channel: %1").arg(channel));
 
   // Start the scan
@@ -119,8 +119,8 @@ ScanParameters ScanExecutor::createScanParameters(bool isCoarse) const
 
   // Set step sizes (convert µm to mm)
   if (isCoarse) {
-    // Coarse: 10, 5, 2, 1 µm = 0.010, 0.005, 0.002, 0.001 mm
-    params.stepSizes = { 0.010, 0.005, 0.002, 0.001 };
+    // Coarse: 5, 2, 1, 0.5 µm = 0.005, 0.002, 0.001, 0.0005 mm
+    params.stepSizes = { 0.005, 0.002, 0.001, 0.0005 };
   }
   else {
     // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm

@@ -455,6 +455,17 @@ void Application::initializeMotionManager()
       "Application"
     );
 
+    // 3. Load PI pivot point configurations
+    PIControllerManager* piManager = m_motionManager->GetPIManager();
+    if (piManager) {
+      if (piManager->LoadPivotConfigurations("config/pi_pivot_config.json")) {
+        m_logManager->Info("PI pivot configurations loaded successfully", "Application");
+      }
+      else {
+        m_logManager->Warning("PI pivot configurations not loaded - pivot verification disabled", "Application");
+      }
+    }
+
     // ✅ DEFERRED: Motion device connection moved to connectHardwareAsync()
     m_logManager->Info("Motion device connection deferred to background thread", "Application");
 

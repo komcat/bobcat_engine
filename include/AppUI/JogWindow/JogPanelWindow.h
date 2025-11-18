@@ -7,6 +7,7 @@
 #include <QButtonGroup>
 #include <QTimer>
 #include <QTabWidget>
+#include <QGroupBox>
 #include <vector>
 #include <string>
 
@@ -36,6 +37,9 @@ public:
   void hidePanel();
   bool isPanelVisible() const;
 
+  // ✅ NEW: Refresh device list
+  void refreshDeviceList();
+
   // Get currently selected device
   std::string getSelectedDevice() const;
 
@@ -64,6 +68,7 @@ protected:
 private slots:
   void onDeviceSelected();
   void onStepSizeSelected();
+  void updatePositionDisplay();  // ✅ NEW: Update position labels
 
 private:
   void setupUI();
@@ -89,6 +94,8 @@ private:
   QButtonGroup* m_deviceButtonGroup;
   QButtonGroup* m_stepSizeButtonGroup;
   QLabel* m_currentStepLabel;
+  QGroupBox* m_deviceGroupBox;  // ✅ NEW: Store device panel for refresh
+  QWidget* m_devicePanelParent;  // ✅ NEW: Store parent widget for refresh
 
   // Movement buttons
   QPushButton* m_btnXPlus;
@@ -103,6 +110,17 @@ private:
   QPushButton* m_btnVMinus;
   QPushButton* m_btnWPlus;
   QPushButton* m_btnWMinus;
+
+  // ✅ NEW: Position display labels
+  QLabel* m_posXLabel;
+  QLabel* m_posYLabel;
+  QLabel* m_posZLabel;
+  QLabel* m_posULabel;
+  QLabel* m_posVLabel;
+  QLabel* m_posWLabel;
+
+  // ✅ NEW: Timer for position updates
+  QTimer* m_positionUpdateTimer;
 
   // Quick Output tab
   QuickOutputManager* m_quickOutputManager;

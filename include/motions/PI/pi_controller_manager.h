@@ -92,6 +92,20 @@ public:
    */
   void ClearConnectionError(const std::string& deviceName);
 
+  /**
+   * @brief Load pivot point configurations from JSON file
+   * @param filepath Path to pivot configuration JSON file
+   * @return True if loaded successfully
+   */
+  bool LoadPivotConfigurations(const std::string& filepath);
+
+  /**
+   * @brief Verify and set pivot point for a connected device
+   * @param deviceName Name of the device
+   * @return True if verification/setting was successful
+   */
+  bool VerifyAndSetPivotPoint(const std::string& deviceName);
+
 private:
   // Controller instances mapped by device name
   std::map<std::string, std::unique_ptr<PIController>> m_controllers;
@@ -104,6 +118,9 @@ private:
 
   // Track connection errors
   std::map<std::string, std::string> m_connectionErrors;
+
+  // Pivot point configurations
+  std::map<std::string, struct PIPivotConfig> m_pivotConfigs;
 
   // Helper methods
   PIController* CreateController(const MotionDevice& device);

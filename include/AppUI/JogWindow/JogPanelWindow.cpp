@@ -19,6 +19,7 @@
 #include <QTimer>
 #include <QTabWidget>
 #include <algorithm>
+#include <map>
 #include <QStyle>
 #include <QFile>
 
@@ -35,6 +36,15 @@ JogPanelWindow::JogPanelWindow(
   , m_deviceButtonGroup(nullptr)
   , m_stepSizeButtonGroup(nullptr)
   , m_currentStepLabel(nullptr)
+  , m_deviceGroupBox(nullptr)  // ✅ NEW
+  , m_devicePanelParent(nullptr)  // ✅ NEW
+  , m_posXLabel(nullptr)  // ✅ NEW: Position display
+  , m_posYLabel(nullptr)
+  , m_posZLabel(nullptr)
+  , m_posULabel(nullptr)
+  , m_posVLabel(nullptr)
+  , m_posWLabel(nullptr)
+  , m_positionUpdateTimer(nullptr)
   , m_quickOutputManager(nullptr)
   , m_quickOutputWidget(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
@@ -84,6 +94,11 @@ JogPanelWindow::JogPanelWindow(
   }
 
   setupUI();
+
+  // ✅ NEW: Setup position update timer
+  m_positionUpdateTimer = new QTimer(this);
+  connect(m_positionUpdateTimer, &QTimer::timeout, this, &JogPanelWindow::updatePositionDisplay);
+  m_positionUpdateTimer->setInterval(200);  // Update every 200ms
 
   // Start hidden
   hide();
@@ -262,6 +277,9 @@ void JogPanelWindow::createQuickOutputTab()
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
 {
+  // ✅ Store parent for refresh
+  m_devicePanelParent = parent;
+
   QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
   if (!layout) {
     layout = new QVBoxLayout(parent);
@@ -269,8 +287,9 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     layout->setSpacing(4);
   }
 
-  QGroupBox* groupBox = new QGroupBox("Device");
-  QVBoxLayout* groupLayout = new QVBoxLayout(groupBox);
+  // ✅ Store groupBox for refresh
+  m_deviceGroupBox = new QGroupBox("Device");
+  QVBoxLayout* groupLayout = new QVBoxLayout(m_deviceGroupBox);
   groupLayout->setSpacing(3);
   groupLayout->setContentsMargins(4, 8, 4, 4);
 
@@ -286,20 +305,40 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     allDevices.insert(allDevices.end(), piDevices.begin(), piDevices.end());
     allDevices.insert(allDevices.end(), acsDevices.begin(), acsDevices.end());
 
+    // ✅ Get connection status for all devices
+    std::map<std::string, bool> connectionStatus = m_context->motionManager->GetConnectionStatus();
+
     std::vector<std::string> validDevices;
     for (const auto& deviceId : allDevices) {
-      if (m_matrixLoader->HasDevice(deviceId)) {
-        validDevices.push_back(deviceId);
-      }
-      else {
+      // ✅ Check if device has transformation matrix
+      if (!m_matrixLoader->HasDevice(deviceId)) {
         if (m_context->logManager) {
           m_context->logManager->Warning(
             "Device '" + deviceId + "' has no transformation matrix - skipping",
             "JogPanel"
           );
         }
+        continue;
       }
+
+      // ✅ Check if device is connected/enabled
+      auto it = connectionStatus.find(deviceId);
+      if (it == connectionStatus.end() || !it->second) {
+        if (m_context->logManager) {
+          m_context->logManager->Info(
+            "Device '" + deviceId + "' is not connected - skipping",
+            "JogPanel"
+          );
+        }
+        continue;
+      }
+
+      // Device is valid and connected
+      validDevices.push_back(deviceId);
     }
+
+    // ✅ Sort devices alphabetically (ascending)
+    std::sort(validDevices.begin(), validDevices.end());
 
     // Create compact push buttons
     for (const auto& deviceId : validDevices) {
@@ -353,7 +392,139 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
   }
 
   groupLayout->addStretch();
-  layout->addWidget(groupBox);
+  layout->addWidget(m_deviceGroupBox);
+}
+
+// ✅ NEW: Refresh device list when panel is shown
+void JogPanelWindow::refreshDeviceList()
+{
+  if (!m_deviceGroupBox || !m_devicePanelParent) {
+    return;  // Panel not initialized yet
+  }
+
+  // Get the layout of the groupBox
+  QVBoxLayout* groupLayout = qobject_cast<QVBoxLayout*>(m_deviceGroupBox->layout());
+  if (!groupLayout) {
+    return;
+  }
+
+  // Clear all existing device buttons
+  if (m_deviceButtonGroup) {
+    // Remove and delete all buttons from the button group
+    QList<QAbstractButton*> buttons = m_deviceButtonGroup->buttons();
+    for (QAbstractButton* btn : buttons) {
+      m_deviceButtonGroup->removeButton(btn);
+      groupLayout->removeWidget(btn);
+      delete btn;
+    }
+  }
+
+  // Remove the stretch if it exists
+  QLayoutItem* stretch = groupLayout->takeAt(groupLayout->count() - 1);
+  if (stretch) {
+    delete stretch;
+  }
+
+  // Rebuild device list (same logic as createDevicePanel)
+  if (m_context && m_context->motionManager && m_matrixLoader) {
+    std::vector<std::string> piDevices = m_context->motionManager->GetDeviceNamesByType("PI");
+    std::vector<std::string> acsDevices = m_context->motionManager->GetDeviceNamesByType("ACS");
+
+    std::vector<std::string> allDevices;
+    allDevices.insert(allDevices.end(), piDevices.begin(), piDevices.end());
+    allDevices.insert(allDevices.end(), acsDevices.begin(), acsDevices.end());
+
+    // ✅ Get connection status for all devices
+    std::map<std::string, bool> connectionStatus = m_context->motionManager->GetConnectionStatus();
+
+    std::vector<std::string> validDevices;
+    for (const auto& deviceId : allDevices) {
+      // ✅ Check if device has transformation matrix
+      if (!m_matrixLoader->HasDevice(deviceId)) {
+        if (m_context->logManager) {
+          m_context->logManager->Warning(
+            "Device '" + deviceId + "' has no transformation matrix - skipping",
+            "JogPanel"
+          );
+        }
+        continue;
+      }
+
+      // ✅ Check if device is connected/enabled
+      auto it = connectionStatus.find(deviceId);
+      if (it == connectionStatus.end() || !it->second) {
+        if (m_context->logManager) {
+          m_context->logManager->Info(
+            "Device '" + deviceId + "' is not connected - skipping",
+            "JogPanel"
+          );
+        }
+        continue;
+      }
+
+      // Device is valid and connected
+      validDevices.push_back(deviceId);
+    }
+
+    // ✅ Sort devices alphabetically (ascending)
+    std::sort(validDevices.begin(), validDevices.end());
+
+    // Create compact push buttons
+    for (const auto& deviceId : validDevices) {
+      QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
+      btn->setCheckable(true);
+      btn->setMinimumHeight(26);
+      btn->setMaximumHeight(26);
+      btn->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #3a3a3a; "
+        "  color: white; "
+        "  border: 1px solid #555; "
+        "  border-radius: 3px; "
+        "  padding: 2px 2px; "
+        "  font-size: 10px; "
+        "  font-weight: bold; "
+        "  text-align: left; "
+        "} "
+        "QPushButton:hover { "
+        "  background-color: #4a4a4a; "
+        "  border-color: #777; "
+        "} "
+        "QPushButton:checked { "
+        "  background-color: #f0ad4e; "
+        "  color: #000000; "
+        "  border: 2px solid #ffcc00; "
+        "}"
+      );
+
+      m_deviceButtonGroup->addButton(btn);
+      groupLayout->addWidget(btn);
+
+      connect(btn, &QPushButton::clicked, this, &JogPanelWindow::onDeviceSelected);
+    }
+
+    // Select first device by default if available
+    if (!validDevices.empty()) {
+      auto firstButton = qobject_cast<QPushButton*>(m_deviceButtonGroup->buttons().first());
+      if (firstButton) {
+        firstButton->setChecked(true);
+        m_selectedDevice = validDevices[0];
+      }
+    }
+    else {
+      m_selectedDevice.clear();
+    }
+
+    if (m_context->logManager) {
+      m_context->logManager->Info(
+        "Jog panel refreshed with " + std::to_string(validDevices.size()) + " devices",
+        "JogPanel"
+      );
+    }
+  }
+
+  // Add stretch back
+  groupLayout->addStretch();
 }
 
 void JogPanelWindow::createStepSizePanel(QWidget* parent)
@@ -510,6 +681,27 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
 
   groupLayout->addLayout(xyzGrid);
 
+  // ✅ NEW: XYZ Position Display
+  QWidget* xyzPosWidget = new QWidget();
+  QGridLayout* xyzPosLayout = new QGridLayout(xyzPosWidget);
+  xyzPosLayout->setContentsMargins(4, 2, 4, 2);
+  xyzPosLayout->setSpacing(2);
+
+  m_posXLabel = new QLabel("X: ---");
+  m_posYLabel = new QLabel("Y: ---");
+  m_posZLabel = new QLabel("Z: ---");
+
+  QString posLabelStyle = "QLabel { color: #14ffec; font-size: 10px; font-family: monospace; background-color: #1e1e1e; padding: 2px; }";
+  m_posXLabel->setStyleSheet(posLabelStyle);
+  m_posYLabel->setStyleSheet(posLabelStyle);
+  m_posZLabel->setStyleSheet(posLabelStyle);
+
+  xyzPosLayout->addWidget(m_posXLabel, 0, 0);
+  xyzPosLayout->addWidget(m_posYLabel, 0, 1);
+  xyzPosLayout->addWidget(m_posZLabel, 0, 2);
+
+  groupLayout->addWidget(xyzPosWidget);
+
   // UVW Controls - Compact grid
   QLabel* uvwLabel = new QLabel("UVW Axes");
   uvwLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
@@ -573,6 +765,27 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   uvwGrid->addWidget(m_btnWPlus, 2, 1);
 
   groupLayout->addLayout(uvwGrid);
+
+  // ✅ NEW: UVW Position Display
+  QWidget* uvwPosWidget = new QWidget();
+  QGridLayout* uvwPosLayout = new QGridLayout(uvwPosWidget);
+  uvwPosLayout->setContentsMargins(4, 2, 4, 2);
+  uvwPosLayout->setSpacing(2);
+
+  m_posULabel = new QLabel("U: ---");
+  m_posVLabel = new QLabel("V: ---");
+  m_posWLabel = new QLabel("W: ---");
+
+  m_posULabel->setStyleSheet(posLabelStyle);
+  m_posVLabel->setStyleSheet(posLabelStyle);
+  m_posWLabel->setStyleSheet(posLabelStyle);
+
+  uvwPosLayout->addWidget(m_posULabel, 0, 0);
+  uvwPosLayout->addWidget(m_posVLabel, 0, 1);
+  uvwPosLayout->addWidget(m_posWLabel, 0, 2);
+
+  groupLayout->addWidget(uvwPosWidget);
+
   groupLayout->addStretch();
 
   layout->addWidget(groupBox);
@@ -645,6 +858,9 @@ void JogPanelWindow::onDeviceSelected()
         "JogPanel"
       );
     }
+
+    // ✅ NEW: Update position display immediately when device changes
+    updatePositionDisplay();
   }
 }
 
@@ -775,6 +991,15 @@ void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
 
 void JogPanelWindow::showPanel()
 {
+  // ✅ NEW: Refresh device list to show only connected devices
+  refreshDeviceList();
+
+  // ✅ NEW: Start position update timer
+  if (m_positionUpdateTimer) {
+    m_positionUpdateTimer->start();
+    updatePositionDisplay();  // Initial update
+  }
+
   show();
   raise();
   activateWindow();
@@ -783,6 +1008,11 @@ void JogPanelWindow::showPanel()
 
 void JogPanelWindow::hidePanel()
 {
+  // ✅ NEW: Stop position update timer
+  if (m_positionUpdateTimer) {
+    m_positionUpdateTimer->stop();
+  }
+
   hide();
   emit visibilityChanged(false);
 }
@@ -848,6 +1078,51 @@ void JogPanelWindow::jogW(double direction)
   if (direction > 0) flashButton(m_btnWPlus);
   else flashButton(m_btnWMinus);
   sendJogCommand("W", direction);
+}
+
+// ✅ NEW: Update position display labels
+void JogPanelWindow::updatePositionDisplay()
+{
+  if (m_selectedDevice.empty() || !m_context || !m_context->motionManager) {
+    // No device selected or no motion manager available
+    if (m_posXLabel) m_posXLabel->setText("X: ---");
+    if (m_posYLabel) m_posYLabel->setText("Y: ---");
+    if (m_posZLabel) m_posZLabel->setText("Z: ---");
+    if (m_posULabel) m_posULabel->setText("U: ---");
+    if (m_posVLabel) m_posVLabel->setText("V: ---");
+    if (m_posWLabel) m_posWLabel->setText("W: ---");
+    return;
+  }
+
+  // Get current position from motion manager
+  double x = 0.0, y = 0.0, z = 0.0, u = 0.0, v = 0.0, w = 0.0;
+
+  bool xValid = m_context->motionManager->GetPosition(m_selectedDevice, "X", x);
+  bool yValid = m_context->motionManager->GetPosition(m_selectedDevice, "Y", y);
+  bool zValid = m_context->motionManager->GetPosition(m_selectedDevice, "Z", z);
+  bool uValid = m_context->motionManager->GetPosition(m_selectedDevice, "U", u);
+  bool vValid = m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
+  bool wValid = m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
+
+  // Update labels with formatted values (3 decimal places)
+  if (m_posXLabel) {
+    m_posXLabel->setText(xValid ? QString("X: %1").arg(x, 0, 'f', 3) : "X: ---");
+  }
+  if (m_posYLabel) {
+    m_posYLabel->setText(yValid ? QString("Y: %1").arg(y, 0, 'f', 3) : "Y: ---");
+  }
+  if (m_posZLabel) {
+    m_posZLabel->setText(zValid ? QString("Z: %1").arg(z, 0, 'f', 3) : "Z: ---");
+  }
+  if (m_posULabel) {
+    m_posULabel->setText(uValid ? QString("U: %1").arg(u, 0, 'f', 3) : "U: ---");
+  }
+  if (m_posVLabel) {
+    m_posVLabel->setText(vValid ? QString("V: %1").arg(v, 0, 'f', 3) : "V: ---");
+  }
+  if (m_posWLabel) {
+    m_posWLabel->setText(wValid ? QString("W: %1").arg(w, 0, 'f', 3) : "W: ---");
+  }
 }
 
 void JogPanelWindow::cycleStepSizeUp()
