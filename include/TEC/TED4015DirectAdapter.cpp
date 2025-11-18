@@ -247,6 +247,16 @@ TECCommandResult TED4015DirectAdapter::ReadTECCurrent() {
     return result;
   }
 
+  // Check if TEC output is ON - measurements only work when output is enabled
+  if (!m_status.TECOn) {
+    result.Success = true;
+    result.Message = "TEC output is OFF";
+    result.Value = 0.0;
+    m_status.CurrentTECCurrent = 0.0;
+    m_status.CurrentTECVoltage = 0.0;
+    return result;
+  }
+
   std::string response;
   if (QueryCommand("MEAS:CURR?", response)) {
     double current = ParseNumericResponse(response);  // Current in Amps

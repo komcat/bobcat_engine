@@ -245,6 +245,15 @@ TECCommandResult CLD101xDirectAdapter::ReadTECCurrent() {
     return result;
   }
 
+  // Check if TEC output is ON - measurements only work when output is enabled
+  if (!m_status.TECOn) {
+    result.Success = true;
+    result.Message = "TEC output is OFF";
+    result.Value = 0.0;
+    m_status.CurrentTECCurrent = 0.0;
+    return result;
+  }
+
   std::string response;
   // CLD101x uses SENSe2:current:dc:data? for TEC current (matching laser pattern sense3:current:dc:data?)
   if (QueryCommand("SENSe2:current:dc:data?", response)) {
@@ -364,6 +373,15 @@ TECCommandResult CLD101xDirectAdapter::ReadLaserCurrent() {
   if (!m_connected) {
     result.Success = false;
     result.Message = "Not connected";
+    return result;
+  }
+
+  // Check if Laser output is ON - measurements only work when output is enabled
+  if (!m_status.LaserOn) {
+    result.Success = true;
+    result.Message = "Laser output is OFF";
+    result.Value = 0.0;
+    m_status.CurrentLaserCurrent = 0.0;
     return result;
   }
 
