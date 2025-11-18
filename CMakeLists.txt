@@ -885,13 +885,17 @@ endif()
 if(VISA_FOUND)
     list(APPEND SOURCES
         include/TEC/CLD101xDirectAdapter.cpp
+        include/TEC/TED4015DirectAdapter.cpp
     )
     list(APPEND HEADERS
         include/TEC/CLD101xDirectAdapter.h
+        include/TEC/TED4015DirectAdapter.h
     )
     message(STATUS "CLD101x Direct VISA adapter enabled")
+    message(STATUS "TED4015 Direct VISA adapter enabled")
 else()
     message(STATUS "CLD101x Direct VISA adapter disabled - NI-VISA SDK not found")
+    message(STATUS "TED4015 Direct VISA adapter disabled - NI-VISA SDK not found")
 endif()
 
 # Conditionally add SMU system (Keithley adapters) if VISA is found

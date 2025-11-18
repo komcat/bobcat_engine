@@ -60,6 +60,7 @@ private:
   void applyPreset(double temp, double current, bool tecOn, bool laserOn);
 
   QString getCurrentDevice() const;
+  bool deviceSupportsLaser() const;
 
   ApplicationContext* m_context;
 
@@ -75,6 +76,7 @@ private:
   QSlider* m_temperatureSlider;
   QLabel* m_temperatureValue;
   QLabel* m_currentTemperature;
+  QLabel* m_currentTECCurrent;
   QPushButton* m_tecToggle;
 
   // Right panel - Laser controls

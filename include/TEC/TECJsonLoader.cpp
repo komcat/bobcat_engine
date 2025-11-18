@@ -3,6 +3,7 @@
 #include "nlohmann/json.hpp"
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -78,8 +79,13 @@ void TECJsonLoader::LoadDevices(TECManager& manager, const json& config) {
       }
 
       // Check controller type to determine required fields
-      bool isDirect = (device.TypeController == "CLD101x_Direct" ||
-                       device.TypeController == "cld101x_direct");
+      // Direct VISA adapters: CLD101x_Direct, TED4015_Direct, TED4015
+      std::string typeUpper = device.TypeController;
+      std::transform(typeUpper.begin(), typeUpper.end(), typeUpper.begin(), ::toupper);
+
+      bool isDirect = (typeUpper == "CLD101X_DIRECT" ||
+                       typeUpper == "TED4015_DIRECT" ||
+                       typeUpper == "TED4015");
 
       // For direct VISA adapters, require visa_resource
       // For TCP-based adapters, require ip_address

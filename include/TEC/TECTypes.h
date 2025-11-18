@@ -27,9 +27,11 @@ struct TECStatus {
   bool Connected = false;
   bool TECOn = false;
   bool LaserOn = false;
-  double CurrentTemperature = 0.0;    // �C
+  double CurrentTemperature = 0.0;    // °C
+  double CurrentTECCurrent = 0.0;     // A (Amps)
+  double CurrentTECVoltage = 0.0;     // V (Volts)
   double CurrentLaserCurrent = 0.0;   // mA
-  double SetpointTemperature = 0.0;   // �C
+  double SetpointTemperature = 0.0;   // °C
   double SetpointLaserCurrent = 0.0;  // mA
   std::string LastError;
 };

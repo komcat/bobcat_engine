@@ -103,6 +103,11 @@ public:
    */
   TECCommandResult ReadTemperature(const std::string& deviceName);
 
+  /**
+   * @brief Read current TEC current
+   */
+  TECCommandResult ReadTECCurrent(const std::string& deviceName);
+
   // ============================================================================
   // LASER CONTROL
   // ============================================================================

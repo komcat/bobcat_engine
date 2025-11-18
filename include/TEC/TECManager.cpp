@@ -2,6 +2,7 @@
 #include "TECManager.h"
 #include "CLD101xAdapter.h"
 #include "CLD101xDirectAdapter.h"
+#include "TED4015DirectAdapter.h"
 #include <iostream>
 #include <algorithm>
 
@@ -198,6 +199,18 @@ TECCommandResult TECManager::ReadTemperature(const std::string& deviceName) {
   return result;
 }
 
+TECCommandResult TECManager::ReadTECCurrent(const std::string& deviceName) {
+  auto it = m_devices.find(deviceName);
+  if (it != m_devices.end()) {
+    return it->second->ReadTECCurrent();
+  }
+
+  TECCommandResult result;
+  result.Success = false;
+  result.Message = "Device not found: " + deviceName;
+  return result;
+}
+
 // ============================================================================
 // LASER CONTROL
 // ============================================================================
@@ -340,6 +353,10 @@ std::unique_ptr<ITECDevice> TECManager::CreateDeviceAdapter(const TECDevice& con
   else if (normalizedType == "CLD101X_DIRECT") {
     // Direct VISA adapter (no Python server required)
     return std::make_unique<CLD101xDirectAdapter>(config);
+  }
+  else if (normalizedType == "TED4015" || normalizedType == "TED4015_DIRECT") {
+    // TED4015 TEC-only controller (Direct VISA)
+    return std::make_unique<TED4015DirectAdapter>(config);
   }
 
   // Add more device types here in the future:

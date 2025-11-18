@@ -7,6 +7,7 @@
 #include <QGroupBox>
 #include <QFormLayout>
 #include <iostream>
+#include <algorithm>
 
 TECControlPage::TECControlPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -204,6 +205,12 @@ void TECControlPage::createRightPanel()
   QLabel* currentTempLabel = new QLabel("Current Temp:");
   currentTempLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
   tecLayout->addRow(currentTempLabel, m_currentTemperature);
+
+  m_currentTECCurrent = new QLabel("-- A");
+  m_currentTECCurrent->setStyleSheet("QLabel { color: #f39c12; font-weight: bold; font-size: 18px; }");
+  QLabel* currentTECCurrentLabel = new QLabel("TEC Current:");
+  currentTECCurrentLabel->setStyleSheet("QLabel { color: #d4d4d4; }");
+  tecLayout->addRow(currentTECCurrentLabel, m_currentTECCurrent);
 
   m_tecToggle = new QPushButton("TEC OFF");
   m_tecToggle->setCheckable(true);
@@ -430,6 +437,33 @@ QString TECControlPage::getCurrentDevice() const
     return item->text();
   }
   return QString();
+}
+
+bool TECControlPage::deviceSupportsLaser() const
+{
+  QString device = getCurrentDevice();
+  if (device.isEmpty() || !m_context || !m_context->tecManager) {
+    return false;
+  }
+
+  // Get device configuration
+  TECDevice config;
+  if (!m_context->tecManager->GetDeviceConfig(device.toStdString(), config)) {
+    return false;
+  }
+
+  // Check if device type is TEC-only (TED4015 doesn't support laser)
+  std::string typeUpper = config.TypeController;
+  std::transform(typeUpper.begin(), typeUpper.end(), typeUpper.begin(), ::toupper);
+
+  // TED4015 is TEC-only, no laser support
+  if (typeUpper.find("TED4015") != std::string::npos ||
+      typeUpper.find("TED4000") != std::string::npos) {
+    return false;
+  }
+
+  // CLD101x supports laser
+  return true;
 }
 
 void TECControlPage::onDeviceSelected()
@@ -664,6 +698,12 @@ void TECControlPage::updateStatusDisplay()
     m_currentTemperature->setText(QString::number(tempResult.Value, 'f', 2) + " C");
   }
 
+  // Read TEC current
+  auto tecCurrentResult = m_context->tecManager->ReadTECCurrent(device.toStdString());
+  if (tecCurrentResult.Success) {
+    m_currentTECCurrent->setText(QString::number(tecCurrentResult.Value, 'f', 3) + " A");
+  }
+
   // Read laser current
   auto currentResult = m_context->tecManager->ReadLaserCurrent(device.toStdString());
   if (currentResult.Success) {
@@ -673,7 +713,14 @@ void TECControlPage::updateStatusDisplay()
   // Get status
   TECStatus status = m_context->tecManager->GetDeviceStatus(device.toStdString());
 
-  // Update TEC status
+  // Prevent triggering slot handlers during polling update
+  m_isUpdatingFromDevice = true;
+
+  // Update TEC button state to match device status
+  m_tecToggle->setChecked(status.TECOn);
+  m_tecToggle->setText(status.TECOn ? "TEC ON" : "TEC OFF");
+
+  // Update TEC status label
   if (status.TECOn) {
     m_tecStatus->setText("ON");
     m_tecStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
@@ -683,7 +730,11 @@ void TECControlPage::updateStatusDisplay()
     m_tecStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
 
-  // Update laser status
+  // Update laser button state to match device status
+  m_laserToggle->setChecked(status.LaserOn);
+  m_laserToggle->setText(status.LaserOn ? "Laser ON" : "Laser OFF");
+
+  // Update laser status label
   if (status.LaserOn) {
     m_laserStatus->setText("ON");
     m_laserStatus->setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }");
@@ -692,6 +743,8 @@ void TECControlPage::updateStatusDisplay()
     m_laserStatus->setText("OFF");
     m_laserStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }");
   }
+
+  m_isUpdatingFromDevice = false;
 }
 
 void TECControlPage::enableControls(bool enabled)
@@ -700,8 +753,15 @@ void TECControlPage::enableControls(bool enabled)
   m_disconnectButton->setEnabled(enabled);
   m_temperatureSlider->setEnabled(enabled);
   m_tecToggle->setEnabled(enabled);
-  m_laserCurrentSlider->setEnabled(enabled);
-  m_laserToggle->setEnabled(enabled);
-  m_preset1Button->setEnabled(enabled);
-  m_preset2Button->setEnabled(enabled);
+
+  // Check if device supports laser control
+  bool laserSupported = deviceSupportsLaser();
+
+  // Only enable laser controls if device supports laser AND is connected
+  m_laserCurrentSlider->setEnabled(enabled && laserSupported);
+  m_laserToggle->setEnabled(enabled && laserSupported);
+
+  // Presets include laser settings, so disable for TEC-only devices
+  m_preset1Button->setEnabled(enabled && laserSupported);
+  m_preset2Button->setEnabled(enabled && laserSupported);
 }

@@ -207,6 +207,31 @@ TECCommandResult CLD101xAdapter::ReadTemperature() {
   return result;
 }
 
+TECCommandResult CLD101xAdapter::ReadTECCurrent() {
+  TECCommandResult result;
+
+  if (!m_connected) {
+    result.Success = false;
+    result.Message = "Not connected";
+    return result;
+  }
+
+  std::string response;
+  if (SendCommand("READ_TEC_CURRENT", response)) {
+    double current = ParseNumericResponse(response);
+    result.Success = true;
+    result.Message = response;
+    result.Value = current;
+    m_status.CurrentTECCurrent = current;
+  }
+  else {
+    result.Success = false;
+    result.Message = "Communication failed";
+  }
+
+  return result;
+}
+
 // ============================================================================
 // LASER CONTROL
 // ============================================================================

@@ -236,6 +236,31 @@ TECCommandResult CLD101xDirectAdapter::ReadTemperature() {
   return result;
 }
 
+TECCommandResult CLD101xDirectAdapter::ReadTECCurrent() {
+  TECCommandResult result;
+
+  if (!m_connected) {
+    result.Success = false;
+    result.Message = "Not connected";
+    return result;
+  }
+
+  std::string response;
+  // CLD101x uses SENSe2:current:dc:data? for TEC current (matching laser pattern sense3:current:dc:data?)
+  if (QueryCommand("SENSe2:current:dc:data?", response)) {
+    double current = ParseNumericResponse(response);  // Current in Amps
+    result.Success = true;
+    result.Message = "Current TEC current: " + std::to_string(current) + " A";
+    result.Value = current;
+    m_status.CurrentTECCurrent = current;
+  } else {
+    result.Success = false;
+    result.Message = "Communication failed";
+  }
+
+  return result;
+}
+
 // ============================================================================
 // LASER CONTROL
 // ============================================================================

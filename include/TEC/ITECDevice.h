@@ -67,6 +67,12 @@ public:
    */
   virtual TECCommandResult ReadTemperature() = 0;
 
+  /**
+   * @brief Read current TEC current
+   * @return Command result with current value in Amps
+   */
+  virtual TECCommandResult ReadTECCurrent() = 0;
+
   // ============================================================================
   // LASER CONTROL
   // ============================================================================

@@ -44,6 +44,7 @@ public:
   TECCommandResult TEC_On() override;
   TECCommandResult TEC_Off() override;
   TECCommandResult ReadTemperature() override;
+  TECCommandResult ReadTECCurrent() override;
 
   // ============================================================================
   // LASER CONTROL
