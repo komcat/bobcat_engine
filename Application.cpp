@@ -458,10 +458,23 @@ void Application::initializeMotionManager()
     // 3. Load PI pivot point configurations
     PIControllerManager* piManager = m_motionManager->GetPIManager();
     if (piManager) {
-      if (piManager->LoadPivotConfigurations("config/pi_pivot_config.json")) {
-        m_logManager->Info("PI pivot configurations loaded successfully", "Application");
+      bool pivotLoaded = false;
+      std::string pivotConfigPath;
+
+      // Try local config first (not in git)
+      if (piManager->LoadPivotConfigurations("config/pi_pivot_config.local.json")) {
+        pivotConfigPath = "config/pi_pivot_config.local.json";
+        pivotLoaded = true;
+        m_logManager->Info("PI pivot configurations loaded from LOCAL file", "Application");
       }
-      else {
+      // Fall back to default config
+      else if (piManager->LoadPivotConfigurations("config/pi_pivot_config.json")) {
+        pivotConfigPath = "config/pi_pivot_config.json";
+        pivotLoaded = true;
+        m_logManager->Info("PI pivot configurations loaded from default file", "Application");
+      }
+
+      if (!pivotLoaded) {
         m_logManager->Warning("PI pivot configurations not loaded - pivot verification disabled", "Application");
       }
     }
