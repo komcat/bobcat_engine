@@ -23,20 +23,24 @@ public:
   virtual std::string getDeviceID() const = 0;
 
   // Output control
-  virtual bool setOutputOn() = 0;
-  virtual bool setOutputOff() = 0;
+  // channel parameter: 1-based channel number (default = 1 for single-channel devices)
+  virtual bool setOutputOn(int channel = 1) = 0;
+  virtual bool setOutputOff(int channel = 1) = 0;
 
   // Voltage/Current control
-  virtual bool setVoltage(double voltage) = 0;
-  virtual bool setCurrent(double current) = 0;
+  // channel parameter: 1-based channel number (default = 1 for single-channel devices)
+  virtual bool setVoltage(double voltage, int channel = 1) = 0;
+  virtual bool setCurrent(double current, int channel = 1) = 0;
 
   // Protection settings
-  virtual bool setOVP(double voltage) = 0;  // Over-Voltage Protection
-  virtual bool setOCP(double current) = 0;  // Over-Current Protection
+  // channel parameter: 1-based channel number (default = 1 for single-channel devices)
+  virtual bool setOVP(double voltage, int channel = 1) = 0;  // Over-Voltage Protection
+  virtual bool setOCP(double current, int channel = 1) = 0;  // Over-Current Protection
 
   // Read measurements
-  virtual double readVoltage() = 0;
-  virtual double readCurrent() = 0;
+  // channel parameter: 1-based channel number (default = 1 for single-channel devices)
+  virtual double readVoltage(int channel = 1) = 0;
+  virtual double readCurrent(int channel = 1) = 0;
 
   // Error handling
   virtual std::string getLastError() const = 0;

@@ -10,6 +10,7 @@
  *
  * Supported device types:
  * - "keysight_e36103b_direct" or "keysight_direct" - Direct TCP/IP control (no Python server)
+ * - "keysight_e36441a_direct" - Direct TCP/IP control for 4-channel E36441A
  * - "keysight_e36103b" or "keysight" - Server-based control (via Python server)
  *
  * Expected JSON format (DIRECT control - recommended):
@@ -19,6 +20,12 @@
  *       "name": "PSU1",
  *       "type": "keysight_e36103b_direct",
  *       "ip": "192.168.0.60",
+ *       "port": 5025
+ *     },
+ *     {
+ *       "name": "PSU2",
+ *       "type": "keysight_e36441a_direct",
+ *       "ip": "192.168.0.32",
  *       "port": 5025
  *     }
  *   ]

@@ -242,8 +242,9 @@ bool KeysightPSUAdapter::sendCommand(const std::string& jsonCommand, std::string
   }
 }
 
-bool KeysightPSUAdapter::setOutputOn()
+bool KeysightPSUAdapter::setOutputOn(int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "output_on";
   command["device"] = m_deviceName;
@@ -252,8 +253,9 @@ bool KeysightPSUAdapter::setOutputOn()
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOutputOff()
+bool KeysightPSUAdapter::setOutputOff(int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "output_off";
   command["device"] = m_deviceName;
@@ -262,8 +264,9 @@ bool KeysightPSUAdapter::setOutputOff()
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setVoltage(double voltage)
+bool KeysightPSUAdapter::setVoltage(double voltage, int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "set_voltage";
   command["device"] = m_deviceName;
@@ -273,8 +276,9 @@ bool KeysightPSUAdapter::setVoltage(double voltage)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setCurrent(double current)
+bool KeysightPSUAdapter::setCurrent(double current, int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "set_current";
   command["device"] = m_deviceName;
@@ -284,8 +288,9 @@ bool KeysightPSUAdapter::setCurrent(double current)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOVP(double voltage)
+bool KeysightPSUAdapter::setOVP(double voltage, int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "set_ovp";
   command["device"] = m_deviceName;
@@ -295,8 +300,9 @@ bool KeysightPSUAdapter::setOVP(double voltage)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOCP(double current)
+bool KeysightPSUAdapter::setOCP(double current, int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "set_ocp";
   command["device"] = m_deviceName;
@@ -306,8 +312,9 @@ bool KeysightPSUAdapter::setOCP(double current)
   return sendCommand(command.dump(), response);
 }
 
-double KeysightPSUAdapter::readVoltage()
+double KeysightPSUAdapter::readVoltage(int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "read_voltage";
   command["device"] = m_deviceName;
@@ -327,8 +334,9 @@ double KeysightPSUAdapter::readVoltage()
   }
 }
 
-double KeysightPSUAdapter::readCurrent()
+double KeysightPSUAdapter::readCurrent(int channel)
 {
+  // Server-based adapter is single-channel, ignore channel parameter
   json command;
   command["command"] = "read_current";
   command["device"] = m_deviceName;

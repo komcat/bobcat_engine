@@ -253,6 +253,28 @@ void PowerSupplyControlPage::createRightPanel(QWidget* rightPanel)
 
 void PowerSupplyControlPage::createControlSection(QVBoxLayout* layout)
 {
+  // Channel Selection (for multi-channel devices)
+  QGroupBox* channelGroup = new QGroupBox("Channel Selection");
+  QHBoxLayout* channelLayout = new QHBoxLayout(channelGroup);
+  channelLayout->setSpacing(10);
+  channelLayout->setContentsMargins(12, 20, 12, 12);
+
+  m_channelLabel = new QLabel("Channel:");
+  m_channelSelector = new QComboBox();
+  m_channelSelector->addItem("Channel 1", 1);
+  m_channelSelector->addItem("Channel 2", 2);
+  m_channelSelector->addItem("Channel 3", 3);
+  m_channelSelector->addItem("Channel 4", 4);
+  m_channelSelector->setCurrentIndex(0);
+
+  channelLayout->addWidget(m_channelLabel);
+  channelLayout->addWidget(m_channelSelector, 1);
+  layout->addWidget(channelGroup);
+
+  // Initially hide channel selector (will be shown for multi-channel devices)
+  channelGroup->setVisible(false);
+  channelGroup->setObjectName("channelGroup");
+
   // Output Control
   QGroupBox* outputGroup = new QGroupBox("Output Control");
   QHBoxLayout* outputLayout = new QHBoxLayout(outputGroup);
@@ -501,9 +523,10 @@ void PowerSupplyControlPage::onOutputOnClicked()
     return;
   }
 
-  std::cout << "[PowerSupplyControlPage] Sending OUTPUT ON command..." << std::endl;
-  if (psu->setOutputOn()) {
-    showSuccess("Output turned ON");
+  int channel = getSelectedChannel();
+  std::cout << "[PowerSupplyControlPage] Sending OUTPUT ON command for channel " << channel << "..." << std::endl;
+  if (psu->setOutputOn(channel)) {
+    showSuccess(QString("Output turned ON (Ch %1)").arg(channel));
     std::cout << "[PowerSupplyControlPage] Output ON successful" << std::endl;
   }
   else {
@@ -529,9 +552,10 @@ void PowerSupplyControlPage::onOutputOffClicked()
     return;
   }
 
-  std::cout << "[PowerSupplyControlPage] Sending OUTPUT OFF command..." << std::endl;
-  if (psu->setOutputOff()) {
-    showSuccess("Output turned OFF");
+  int channel = getSelectedChannel();
+  std::cout << "[PowerSupplyControlPage] Sending OUTPUT OFF command for channel " << channel << "..." << std::endl;
+  if (psu->setOutputOff(channel)) {
+    showSuccess(QString("Output turned OFF (Ch %1)").arg(channel));
     std::cout << "[PowerSupplyControlPage] Output OFF successful" << std::endl;
   }
   else {
@@ -542,12 +566,14 @@ void PowerSupplyControlPage::onOutputOffClicked()
 
 void PowerSupplyControlPage::onSetVoltageClicked()
 {
+  int channel = getSelectedChannel();
+
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu) return;
 
   double voltage = m_voltageSpinBox->value();
-  if (psu->setVoltage(voltage)) {
-    showSuccess(QString("Voltage → %1 V").arg(voltage, 0, 'f', 2));
+  if (psu->setVoltage(voltage, channel)) {
+    showSuccess(QString("Voltage → %1 V (Ch %2)").arg(voltage, 0, 'f', 2).arg(channel));
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
@@ -556,12 +582,14 @@ void PowerSupplyControlPage::onSetVoltageClicked()
 
 void PowerSupplyControlPage::onSetCurrentClicked()
 {
+  int channel = getSelectedChannel();
+
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu) return;
 
   double current = m_currentSpinBox->value();
-  if (psu->setCurrent(current)) {
-    showSuccess(QString("Current → %1 A").arg(current, 0, 'f', 3));
+  if (psu->setCurrent(current, channel)) {
+    showSuccess(QString("Current → %1 A (Ch %2)").arg(current, 0, 'f', 3).arg(channel));
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
@@ -570,12 +598,14 @@ void PowerSupplyControlPage::onSetCurrentClicked()
 
 void PowerSupplyControlPage::onSetOVPClicked()
 {
+  int channel = getSelectedChannel();
+
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu) return;
 
   double ovp = m_ovpSpinBox->value();
-  if (psu->setOVP(ovp)) {
-    showSuccess(QString("OVP → %1 V").arg(ovp, 0, 'f', 2));
+  if (psu->setOVP(ovp, channel)) {
+    showSuccess(QString("OVP → %1 V (Ch %2)").arg(ovp, 0, 'f', 2).arg(channel));
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
@@ -584,12 +614,14 @@ void PowerSupplyControlPage::onSetOVPClicked()
 
 void PowerSupplyControlPage::onSetOCPClicked()
 {
+  int channel = getSelectedChannel();
+
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu) return;
 
   double ocp = m_ocpSpinBox->value();
-  if (psu->setOCP(ocp)) {
-    showSuccess(QString("OCP → %1 A").arg(ocp, 0, 'f', 3));
+  if (psu->setOCP(ocp, channel)) {
+    showSuccess(QString("OCP → %1 A (Ch %2)").arg(ocp, 0, 'f', 3).arg(channel));
   }
   else {
     showError("Failed: " + QString::fromStdString(psu->getLastError()));
@@ -612,11 +644,12 @@ void PowerSupplyControlPage::updateMeasurements()
     return;
   }
 
-  double voltage = psu->readVoltage();
-  double current = psu->readCurrent();
+  int channel = getSelectedChannel();
+  double voltage = psu->readVoltage(channel);
+  double current = psu->readCurrent(channel);
 
   if (voltage >= 0) {
-    m_voltageReadLabel->setText(QString("Voltage: %1 V").arg(voltage, 0, 'f', 3));
+    m_voltageReadLabel->setText(QString("Voltage: %1 V (Ch %2)").arg(voltage, 0, 'f', 3).arg(channel));
   }
   else {
     m_voltageReadLabel->setText("Voltage: Error");
@@ -624,7 +657,7 @@ void PowerSupplyControlPage::updateMeasurements()
   }
 
   if (current >= 0) {
-    m_currentReadLabel->setText(QString("Current: %1 A").arg(current, 0, 'f', 4));
+    m_currentReadLabel->setText(QString("Current: %1 A (Ch %2)").arg(current, 0, 'f', 4).arg(channel));
   }
   else {
     m_currentReadLabel->setText("Current: Error");
@@ -657,12 +690,50 @@ void PowerSupplyControlPage::updateConnectionStatus()
     m_connectionStatus->setText("● Connected");
     m_connectionStatus->setStyleSheet("color: #27ae60; font-size: 12px; font-weight: bold; padding: 4px;");
     m_controlPanel->setEnabled(true);
+    updateChannelSelector();
   }
   else {
     m_connectionStatus->setText("● Disconnected");
     m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold; padding: 4px;");
     m_controlPanel->setEnabled(false);
   }
+}
+
+void PowerSupplyControlPage::updateChannelSelector()
+{
+  // Find the channel group widget
+  QGroupBox* channelGroup = m_controlPanel->findChild<QGroupBox*>("channelGroup");
+  if (!channelGroup) {
+    return;
+  }
+
+  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+  if (!psu) {
+    channelGroup->setVisible(false);
+    return;
+  }
+
+  // Check device ID to determine if it's multi-channel
+  std::string deviceID = psu->getDeviceID();
+
+  // E36441A is a 4-channel device
+  // Show channel selector for multi-channel devices
+  bool isMultiChannel = (deviceID.find("E36441A") != std::string::npos) ||
+                        (deviceID.find("e36441a") != std::string::npos);
+
+  channelGroup->setVisible(isMultiChannel);
+
+  if (isMultiChannel) {
+    std::cout << "[PowerSupplyControlPage] Multi-channel device detected: " << deviceID << std::endl;
+  }
+}
+
+int PowerSupplyControlPage::getSelectedChannel() const
+{
+  if (!m_channelSelector) {
+    return 1; // Default to channel 1
+  }
+  return m_channelSelector->currentData().toInt();
 }
 
 void PowerSupplyControlPage::showError(const QString& message)

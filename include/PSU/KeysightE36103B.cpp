@@ -248,8 +248,9 @@ std::string KeysightE36103B::receiveResponse()
     return response;
 }
 
-bool KeysightE36103B::setOutputOn()
+bool KeysightE36103B::setOutputOn(int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::cout << "[KeysightE36103B] Setting output ON for device: " << m_deviceName << std::endl;
     bool result = write("OUTP ON");
     if (result) {
@@ -260,8 +261,9 @@ bool KeysightE36103B::setOutputOn()
     return result;
 }
 
-bool KeysightE36103B::setOutputOff()
+bool KeysightE36103B::setOutputOff(int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::cout << "[KeysightE36103B] Setting output OFF for device: " << m_deviceName << std::endl;
     bool result = write("OUTP OFF");
     if (result) {
@@ -272,22 +274,25 @@ bool KeysightE36103B::setOutputOff()
     return result;
 }
 
-bool KeysightE36103B::setVoltage(double voltage)
+bool KeysightE36103B::setVoltage(double voltage, int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::ostringstream oss;
     oss << "VOLT " << voltage;
     return write(oss.str());
 }
 
-bool KeysightE36103B::setCurrent(double current)
+bool KeysightE36103B::setCurrent(double current, int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::ostringstream oss;
     oss << "CURR " << current;
     return write(oss.str());
 }
 
-bool KeysightE36103B::setOVP(double voltage)
+bool KeysightE36103B::setOVP(double voltage, int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
     std::ostringstream oss;
@@ -298,8 +303,9 @@ bool KeysightE36103B::setOVP(double voltage)
     return writeInternal("VOLT:PROT:STAT ON");
 }
 
-bool KeysightE36103B::setOCP(double current)
+bool KeysightE36103B::setOCP(double current, int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
     std::ostringstream oss;
@@ -310,8 +316,9 @@ bool KeysightE36103B::setOCP(double current)
     return writeInternal("CURR:PROT:STAT ON");
 }
 
-double KeysightE36103B::readVoltage()
+double KeysightE36103B::readVoltage(int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:VOLT?");
     if (response.empty()) {
         return 0.0;
@@ -327,8 +334,9 @@ double KeysightE36103B::readVoltage()
     }
 }
 
-double KeysightE36103B::readCurrent()
+double KeysightE36103B::readCurrent(int channel)
 {
+    // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:CURR?");
     if (response.empty()) {
         return 0.0;

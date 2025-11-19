@@ -58,17 +58,17 @@ public:
   std::string getDeviceName() const override { return m_deviceName; }
   std::string getDeviceID() const override { return m_deviceID; }
 
-  bool setOutputOn() override;
-  bool setOutputOff() override;
+  bool setOutputOn(int channel = 1) override;
+  bool setOutputOff(int channel = 1) override;
 
-  bool setVoltage(double voltage) override;
-  bool setCurrent(double current) override;
+  bool setVoltage(double voltage, int channel = 1) override;
+  bool setCurrent(double current, int channel = 1) override;
 
-  bool setOVP(double voltage) override;
-  bool setOCP(double current) override;
+  bool setOVP(double voltage, int channel = 1) override;
+  bool setOCP(double current, int channel = 1) override;
 
-  double readVoltage() override;
-  double readCurrent() override;
+  double readVoltage(int channel = 1) override;
+  double readCurrent(int channel = 1) override;
 
   std::string getLastError() const override { return m_lastError; }
 

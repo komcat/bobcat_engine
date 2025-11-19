@@ -9,6 +9,7 @@
 #include <QListWidget>
 #include <QFrame>
 #include <QVBoxLayout>
+#include <QComboBox>
 
 struct ApplicationContext;
 class PowerSupplyManager;
@@ -62,6 +63,8 @@ private:
   void loadDevices();
   void updateConnectionStatus();
   void updateDeviceList();
+  void updateChannelSelector();
+  int getSelectedChannel() const;
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
@@ -77,6 +80,10 @@ private:
 
   // Right Panel - Controls
   QWidget* m_controlPanel;
+
+  // Channel selection (for multi-channel devices)
+  QComboBox* m_channelSelector;
+  QLabel* m_channelLabel;
 
   // Output control
   QPushButton* m_outputOnButton;

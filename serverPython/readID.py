@@ -64,7 +64,7 @@ class KeysightE36103B:
 
 # Example usage
 if __name__ == "__main__":
-    psu = KeysightE36103B("192.168.0.60")
+    psu = KeysightE36103B("192.168.0.32")
     
     try:
         psu.connect()

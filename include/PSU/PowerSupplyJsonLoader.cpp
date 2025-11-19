@@ -1,6 +1,7 @@
 // PowerSupplyJsonLoader.cpp
 #include "PowerSupplyJsonLoader.h"
 #include "KeysightE36103B.h"
+#include "KeysightE36441A.h"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -95,8 +96,14 @@ PowerSupplyPtr PowerSupplyJsonLoader::createPowerSupply(const std::string& type,
 {
   // Direct TCP/IP control (connects directly to PSU)
   if (type == "keysight_e36103b_direct" || type == "keysight_direct") {
-    std::cout << "[PowerSupplyJsonLoader] Creating DIRECT driver for " << name << std::endl;
+    std::cout << "[PowerSupplyJsonLoader] Creating DIRECT driver (E36103B) for " << name << std::endl;
     return std::make_shared<KeysightE36103B>(deviceIP, devicePort, name);
+  }
+
+  // Direct TCP/IP control for E36441A (4-channel)
+  if (type == "keysight_e36441a_direct") {
+    std::cout << "[PowerSupplyJsonLoader] Creating DIRECT driver (E36441A - 4 channels) for " << name << std::endl;
+    return std::make_shared<KeysightE36441A>(deviceIP, devicePort, name);
   }
 
   // Server-based control (connects through Python server)
