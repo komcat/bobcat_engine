@@ -102,6 +102,9 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
 
   // ✅ Auto-load last program from settings
   loadLastProgramFromSettings();
+
+  // ✅ Clear any stale vision results from previous session
+  clearVisionResult();
 }
 
 RunProgramPage::~RunProgramPage()
@@ -1352,6 +1355,9 @@ void RunProgramPage::onLoadProgram()
   // ✅ Update the program name edit field (for when user switches to edit mode)
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
+  // ✅ Clear stale vision results when loading new program
+  clearVisionResult();
+
   QMessageBox::information(this, "Success",
     QString("Loaded program: %1")
     .arg(QString::fromStdString(m_programManager->getProgramName())));
@@ -1410,6 +1416,9 @@ void RunProgramPage::onExecuteProgram()
     onStopProgram();
     return;
   }
+
+  // ✅ Clear stale vision results before starting new execution
+  clearVisionResult();
 
   bool autoRunMode = m_autoRunNextCheckBox->isChecked();
   int selectedRecipeIndex = m_recipeListWidget->currentRow();
@@ -3125,4 +3134,32 @@ void RunProgramPage::updateVisionResultImage()
     m_visionResultImageLabel->setText("OpenCV not available");
   }
 #endif
+}
+
+// ✅ Clear stale vision results
+void RunProgramPage::clearVisionResult()
+{
+  std::cout << "[RunProgramPage] Clearing vision result..." << std::endl;
+
+  // Delete temporary file if it exists
+  std::string tempImagePath = "logs/vision_result_temp.png";
+  if (QFile::exists(QString::fromStdString(tempImagePath))) {
+    QFile::remove(QString::fromStdString(tempImagePath));
+    std::cout << "[RunProgramPage] 🗑️ Deleted stale vision result file: " << tempImagePath << std::endl;
+  }
+
+  // Reset label to initial state
+  if (m_visionResultImageLabel) {
+    m_visionResultImageLabel->clear();  // Clear any pixmap
+    m_visionResultImageLabel->setText("No vision result");
+    m_visionResultImageLabel->setStyleSheet(
+      "QLabel { "
+      "  background-color: #0f0f0f; "
+      "  border: 1px solid #3f3f46; "
+      "  color: #808080; "
+      "  font-style: italic; "
+      "}"
+    );
+    std::cout << "[RunProgramPage] ✅ Vision result label reset to initial state" << std::endl;
+  }
 }

@@ -887,6 +887,9 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 	m_deviceButtonStack->clearSelectedPosition();
 	m_selectedPositionName.clear();
 
+	// ✅ NEW: Update breadcrumb with device only (no position selected yet)
+	m_controlPanel->updateBreadcrumb(m_currentDevice, QString());
+
 	// ✅ NEW: Set device name and restore its saved view state
 	if (m_graphicsView) {
 		m_graphicsView->setDeviceName(m_currentDevice);
@@ -1302,6 +1305,9 @@ void MotionPage::onPositionSelected(const QString& name, double x, double y, dou
 		// ✅ NEW: Also select in position list
 		m_controlPanel->selectPositionInList(name);
 
+		// ✅ NEW: Update breadcrumb with device and position
+		m_controlPanel->updateBreadcrumb(m_currentDevice, name);
+
 		m_graphicsView->showPathPreview(name,
 			entryWaypoints,
 			currentExitWaypoints);
@@ -1314,6 +1320,9 @@ void MotionPage::onPositionDeselected()
 	m_controlPanel->clearSelectedPosition();
 	m_deviceButtonStack->clearSelectedPosition();
 	m_graphicsView->hidePathPreview();
+
+	// ✅ NEW: Update breadcrumb to show only device (no position)
+	m_controlPanel->updateBreadcrumb(m_currentDevice, QString());
 }
 
 // ✅ NEW: Handle position selection from list
@@ -1363,6 +1372,9 @@ void MotionPage::onPositionSelectedFromList(const QString& name)
 		pos[3], pos[4], pos[5], entryWaypoints);
 	m_deviceButtonStack->setSelectedPosition(name, pos[0], pos[1], pos[2],
 		pos[3], pos[4], pos[5], entryWaypoints);
+
+	// ✅ NEW: Update breadcrumb with device and position
+	m_controlPanel->updateBreadcrumb(m_currentDevice, name);
 
 	// Show path preview in graphics view (with 3 arguments)
 	m_graphicsView->showPathPreview(name, entryWaypoints, currentExitWaypoints);

@@ -222,4 +222,5 @@ private:
   QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
   SequenceContext* m_currentContext;     // ✅ Current execution context
   void updateVisionResultImage();        // ✅ Update vision result image from context
+  void clearVisionResult();              // ✅ Clear stale vision result
 };

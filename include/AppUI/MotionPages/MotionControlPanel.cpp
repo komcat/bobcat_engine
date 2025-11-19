@@ -12,6 +12,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   : QWidget(parent)
   , m_deviceCombo(nullptr)
   , m_positionList(nullptr)  // ✅ NEW
+  , m_breadcrumbLabel(nullptr)  // ✅ NEW
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
   , m_editPosButton(nullptr)
@@ -369,10 +370,33 @@ void MotionControlPanel::setupActionsTab()
 {
   QWidget* actionsTab = new QWidget();
 
-  // ✅ NEW: Two-column layout - Left: Buttons, Right: Position List
-  QHBoxLayout* mainLayout = new QHBoxLayout(actionsTab);
-  mainLayout->setContentsMargins(6, 6, 6, 6);
-  mainLayout->setSpacing(6);
+  // ✅ Main vertical layout for Actions tab
+  QVBoxLayout* mainVLayout = new QVBoxLayout(actionsTab);
+  mainVLayout->setContentsMargins(6, 6, 6, 6);
+  mainVLayout->setSpacing(6);
+
+  // ✅ NEW: Breadcrumb label - Device >> Position
+  m_breadcrumbLabel = new QLabel("No device selected");
+  m_breadcrumbLabel->setStyleSheet(
+    "QLabel {"
+    "  color: #ffffff;"
+    "  font-size: 16px;"
+    "  font-weight: bold;"
+    "  background-color: #1e1e1e;"
+    "  border: 2px solid #0e639c;"
+    "  border-radius: 5px;"
+    "  padding: 8px 12px;"
+    "  margin-bottom: 4px;"
+    "}"
+  );
+  m_breadcrumbLabel->setAlignment(Qt::AlignCenter);
+  m_breadcrumbLabel->setWordWrap(true);
+  mainVLayout->addWidget(m_breadcrumbLabel);
+
+  // ✅ Two-column layout - Left: Buttons, Right: Position List
+  QHBoxLayout* contentLayout = new QHBoxLayout();
+  contentLayout->setContentsMargins(0, 0, 0, 0);
+  contentLayout->setSpacing(6);
 
   // === LEFT COLUMN: Buttons ===
   QWidget* buttonsWidget = new QWidget();
@@ -498,9 +522,12 @@ void MotionControlPanel::setupActionsTab()
   );
   listLayout->addWidget(m_positionList);
 
-  // Add both columns to main layout
-  mainLayout->addWidget(buttonsWidget, 1);  // Buttons take 1 part
-  mainLayout->addWidget(listWidget, 1);     // List takes 1 part
+  // Add both columns to content layout
+  contentLayout->addWidget(buttonsWidget, 1);  // Buttons take 1 part
+  contentLayout->addWidget(listWidget, 1);     // List takes 1 part
+
+  // Add content layout to main vertical layout
+  mainVLayout->addLayout(contentLayout);
 
   m_tabWidget->addTab(actionsTab, "Actions");
 
@@ -605,6 +632,58 @@ void MotionControlPanel::setupGraphTab()
 QString MotionControlPanel::getCurrentDevice() const
 {
   return m_deviceCombo->currentText();
+}
+
+// ✅ NEW: Update breadcrumb display with device and position
+void MotionControlPanel::updateBreadcrumb(const QString& deviceName, const QString& positionName)
+{
+  if (!m_breadcrumbLabel) return;
+
+  if (deviceName.isEmpty()) {
+    m_breadcrumbLabel->setText("No device selected");
+    m_breadcrumbLabel->setStyleSheet(
+      "QLabel {"
+      "  color: #888888;"
+      "  font-size: 16px;"
+      "  font-weight: bold;"
+      "  background-color: #1e1e1e;"
+      "  border: 2px solid #3f3f46;"
+      "  border-radius: 5px;"
+      "  padding: 8px 12px;"
+      "  margin-bottom: 4px;"
+      "}"
+    );
+  }
+  else if (positionName.isEmpty()) {
+    m_breadcrumbLabel->setText(deviceName);
+    m_breadcrumbLabel->setStyleSheet(
+      "QLabel {"
+      "  color: #ffffff;"
+      "  font-size: 16px;"
+      "  font-weight: bold;"
+      "  background-color: #1e1e1e;"
+      "  border: 2px solid #0e639c;"
+      "  border-radius: 5px;"
+      "  padding: 8px 12px;"
+      "  margin-bottom: 4px;"
+      "}"
+    );
+  }
+  else {
+    m_breadcrumbLabel->setText(deviceName + " >> " + positionName);
+    m_breadcrumbLabel->setStyleSheet(
+      "QLabel {"
+      "  color: #ffffff;"
+      "  font-size: 16px;"
+      "  font-weight: bold;"
+      "  background-color: #1e1e1e;"
+      "  border: 2px solid #27ae60;"
+      "  border-radius: 5px;"
+      "  padding: 8px 12px;"
+      "  margin-bottom: 4px;"
+      "}"
+    );
+  }
 }
 
 // ✅ NEW: Update position list with available positions

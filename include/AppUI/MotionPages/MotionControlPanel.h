@@ -41,6 +41,9 @@ public:
   // Get current selected device
   QString getCurrentDevice() const;
 
+  // ✅ NEW: Update breadcrumb display
+  void updateBreadcrumb(const QString& deviceName, const QString& positionName);
+
 signals:
   void deviceChanged(const QString& deviceName);
   void moveToPositionClicked();
@@ -67,6 +70,7 @@ private:
   QTabWidget* m_tabWidget;
   QComboBox* m_deviceCombo;
   QListWidget* m_positionList;  // ✅ NEW: Position list widget
+  QLabel* m_breadcrumbLabel;  // ✅ NEW: Breadcrumb display for device >> position
 
   QLabel* m_posNameLabel;
   QLabel* m_posXLabel;
