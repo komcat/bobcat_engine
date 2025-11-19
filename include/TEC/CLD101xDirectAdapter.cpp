@@ -3,6 +3,8 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include <thread>
+#include <chrono>
 
 CLD101xDirectAdapter::CLD101xDirectAdapter(const TECDevice& config)
   : m_config(config)
@@ -67,13 +69,29 @@ bool CLD101xDirectAdapter::Connect() {
       << GetVISAErrorDescription(status) << std::endl;
   }
 
+  // Configure termination character (newline)
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR_EN, VI_TRUE);
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR, '\n');
+
+  // Clear I/O buffers to remove any stale data
+  viFlush(m_instrument, VI_READ_BUF_DISCARD | VI_WRITE_BUF_DISCARD);
+
+  // USB devices need time to initialize after session opens
+  // Give the device 200ms to settle before sending commands
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
   m_connected = true;
   m_status.Connected = true;
+
+  // Clear any errors in the device (standard SCPI command)
+  WriteCommand("*CLS");
 
   // Query device identification
   std::string idn;
   if (QueryCommand("*IDN?", idn)) {
     std::cout << "[INFO] " << m_config.Name << ": Connected to: " << idn << std::endl;
+  } else {
+    std::cerr << "[WARN] " << m_config.Name << ": Failed to query *IDN?, but continuing..." << std::endl;
   }
 
   // Query initial states
@@ -245,27 +263,13 @@ TECCommandResult CLD101xDirectAdapter::ReadTECCurrent() {
     return result;
   }
 
-  // Check if TEC output is ON - measurements only work when output is enabled
-  if (!m_status.TECOn) {
-    result.Success = true;
-    result.Message = "TEC output is OFF";
-    result.Value = 0.0;
-    m_status.CurrentTECCurrent = 0.0;
-    return result;
-  }
-
-  std::string response;
-  // CLD101x uses SENSe2:current:dc:data? for TEC current (matching laser pattern sense3:current:dc:data?)
-  if (QueryCommand("SENSe2:current:dc:data?", response)) {
-    double current = ParseNumericResponse(response);  // Current in Amps
-    result.Success = true;
-    result.Message = "Current TEC current: " + std::to_string(current) + " A";
-    result.Value = current;
-    m_status.CurrentTECCurrent = current;
-  } else {
-    result.Success = false;
-    result.Message = "Communication failed";
-  }
+  // CLD101x does NOT support TEC current measurement
+  // The device only supports reading laser current (sense3:current:dc:data?)
+  // TEC current reading is not available on this hardware model
+  result.Success = true;
+  result.Message = "TEC current measurement not supported on CLD101x";
+  result.Value = 0.0;
+  m_status.CurrentTECCurrent = 0.0;
 
   return result;
 }
@@ -469,7 +473,7 @@ bool CLD101xDirectAdapter::QueryCommand(const std::string& query, std::string& r
                    &retCount);
 
   if (status < VI_SUCCESS) {
-    std::cerr << "[ERROR] " << m_config.Name << ": Query write failed: "
+    std::cerr << "[ERROR] " << m_config.Name << ": Query write failed for '" << query << "': "
       << GetVISAErrorDescription(status) << std::endl;
     return false;
   }
@@ -478,7 +482,7 @@ bool CLD101xDirectAdapter::QueryCommand(const std::string& query, std::string& r
   status = viRead(m_instrument, (ViBuf)buffer, READ_BUFFER_SIZE - 1, &retCount);
 
   if (status < VI_SUCCESS) {
-    std::cerr << "[ERROR] " << m_config.Name << ": Query read failed: "
+    std::cerr << "[ERROR] " << m_config.Name << ": Query read failed for '" << query << "': "
       << GetVISAErrorDescription(status) << std::endl;
     return false;
   }

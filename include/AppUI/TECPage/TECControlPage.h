@@ -24,6 +24,11 @@ public:
   explicit TECControlPage(ApplicationContext* context, QWidget* parent = nullptr);
   ~TECControlPage();
 
+protected:
+  // Lifecycle events to control polling
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
+
 private slots:
   // Device selection
   void onDeviceSelected();

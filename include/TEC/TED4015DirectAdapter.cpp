@@ -3,6 +3,8 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
+#include <thread>
+#include <chrono>
 
 TED4015DirectAdapter::TED4015DirectAdapter(const TECDevice& config)
   : m_config(config)
@@ -67,8 +69,22 @@ bool TED4015DirectAdapter::Connect() {
       << GetVISAErrorDescription(status) << std::endl;
   }
 
+  // Configure termination character (newline)
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR_EN, VI_TRUE);
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR, '\n');
+
+  // Clear I/O buffers to remove any stale data
+  viFlush(m_instrument, VI_READ_BUF_DISCARD | VI_WRITE_BUF_DISCARD);
+
+  // USB devices need time to initialize after session opens
+  // Give the device 200ms to settle before sending commands
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
   m_connected = true;
   m_status.Connected = true;
+
+  // Clear any errors in the device (optional but recommended)
+  WriteCommand("*CLS");
 
   // Query device identification
   std::string idn;
@@ -382,7 +398,7 @@ bool TED4015DirectAdapter::QueryCommand(const std::string& query, std::string& r
                    &retCount);
 
   if (status < VI_SUCCESS) {
-    std::cerr << "[ERROR] " << m_config.Name << ": Query write failed: "
+    std::cerr << "[ERROR] " << m_config.Name << ": Query write failed for '" << query << "': "
       << GetVISAErrorDescription(status) << std::endl;
     return false;
   }
@@ -391,7 +407,7 @@ bool TED4015DirectAdapter::QueryCommand(const std::string& query, std::string& r
   status = viRead(m_instrument, (ViBuf)buffer, READ_BUFFER_SIZE - 1, &retCount);
 
   if (status < VI_SUCCESS) {
-    std::cerr << "[ERROR] " << m_config.Name << ": Query read failed: "
+    std::cerr << "[ERROR] " << m_config.Name << ": Query read failed for '" << query << "': "
       << GetVISAErrorDescription(status) << std::endl;
     return false;
   }

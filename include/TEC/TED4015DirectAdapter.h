@@ -98,7 +98,7 @@ private:
   mutable TECStatus m_status;
 
   // Communication timeout (milliseconds)
-  static constexpr unsigned long TIMEOUT_MS = 5000;
+  static constexpr unsigned long TIMEOUT_MS = 2000;
 
   // Buffer size for VISA read operations
   static constexpr unsigned long READ_BUFFER_SIZE = 1024;

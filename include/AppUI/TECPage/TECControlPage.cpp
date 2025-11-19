@@ -6,6 +6,8 @@
 #include <QVBoxLayout>
 #include <QGroupBox>
 #include <QFormLayout>
+#include <QShowEvent>
+#include <QHideEvent>
 #include <iostream>
 #include <algorithm>
 
@@ -18,10 +20,10 @@ TECControlPage::TECControlPage(ApplicationContext* context, QWidget* parent)
   setupUI();
   updateDeviceList();
 
-  // Start polling timer (500ms)
+  // Create polling timer (500ms) but don't start it yet
+  // Timer will start in showEvent() when page becomes visible
   m_pollTimer = new QTimer(this);
   connect(m_pollTimer, &QTimer::timeout, this, &TECControlPage::onPollTimer);
-  m_pollTimer->start(500);
 }
 
 TECControlPage::~TECControlPage()
@@ -778,6 +780,29 @@ void TECControlPage::updateStatusDisplay()
   }
 
   m_isUpdatingFromDevice = false;
+}
+
+void TECControlPage::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  std::cout << "[TECControlPage] Page shown - starting polling" << std::endl;
+
+  // Refresh device list
+  updateDeviceList();
+
+  // Start polling timer (500ms)
+  m_pollTimer->start(500);
+}
+
+void TECControlPage::hideEvent(QHideEvent* event)
+{
+  QWidget::hideEvent(event);
+
+  std::cout << "[TECControlPage] Page hidden - stopping polling" << std::endl;
+
+  // Stop polling to prevent timeouts when page is not visible
+  m_pollTimer->stop();
 }
 
 void TECControlPage::enableControls(bool enabled)
