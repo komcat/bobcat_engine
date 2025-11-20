@@ -25,13 +25,23 @@ public:
     std::string name;
     std::string host;
     int port;
+
+    // Protocol configuration
+    std::string protocolType;  // "single" or "multi"
+
+    // For single-channel mode
     std::string dataStoreChannel;
+
+    // For multi-channel mode
+    std::vector<std::string> dataChannels;
+
     bool autoConnect;
     bool autoReconnect;
     std::string description;
 
     ClientConfig()
       : port(8888)
+      , protocolType("single")
       , autoConnect(false)
       , autoReconnect(false)
     {
@@ -101,7 +111,15 @@ private:
   mutable std::recursive_mutex m_clientsMutex;
   std::vector<ManagedClient> m_clients;
 
+  // Single-channel callback
   void OnDataReceived(const std::string& clientId, const std::string& channelId, float value);
+
+  // Multi-channel callback
+  void OnMultiChannelDataReceived(const std::string& clientId,
+                                   const std::vector<std::string>& channelIds,
+                                   size_t channelIndex,
+                                   float value);
+
   void OnConnectionChanged(const std::string& clientId, bool connected);
   ManagedClient* FindClient(const std::string& clientId);
   const ManagedClient* FindClient(const std::string& clientId) const;

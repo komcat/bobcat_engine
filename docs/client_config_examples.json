@@ -1,0 +1,126 @@
+{
+  "_comment": "TCP Client Configuration Examples for bobcat_engine TcpClientManager",
+  "_documentation": "See TCP_SERVER_GUIDE.md for detailed information",
+
+  "tcp_clients": [
+    {
+      "_example": "SINGLE-CHANNEL CONFIGURATION",
+      "id": "voltage_sensor",
+      "name": "Voltage Monitor",
+      "host": "127.0.0.1",
+      "port": 8888,
+      "protocol_type": "single",
+      "data_channel": "Voltage",
+      "auto_connect": true,
+      "auto_reconnect": true,
+      "description": "Single voltage measurement from external device"
+    },
+
+    {
+      "_example": "MULTI-CHANNEL CONFIGURATION (6 channels)",
+      "id": "siphog_01",
+      "name": "SiPhOG Device",
+      "host": "127.0.0.1",
+      "port": 65432,
+      "protocol_type": "multi",
+      "data_channels": [
+        "SLED_Current_mA",
+        "Photo_Current_uA",
+        "SLED_Temp_C",
+        "Target_SAG_PWR_V",
+        "SAG_PWR_V",
+        "TEC_Current_mA"
+      ],
+      "auto_connect": false,
+      "auto_reconnect": true,
+      "description": "SiPhOG FNW Server - 6 channel optical measurements"
+    },
+
+    {
+      "_example": "MULTI-CHANNEL CONFIGURATION (3 channels)",
+      "id": "weather_station",
+      "name": "Weather Sensors",
+      "host": "192.168.1.100",
+      "port": 9000,
+      "protocol_type": "multi",
+      "data_channels": [
+        "Temperature_C",
+        "Pressure_hPa",
+        "Humidity_Percent"
+      ],
+      "auto_connect": true,
+      "auto_reconnect": true,
+      "description": "Environmental monitoring station"
+    },
+
+    {
+      "_example": "SINGLE-CHANNEL FROM REMOTE SERVER",
+      "id": "remote_temp",
+      "name": "Remote Temperature",
+      "host": "192.168.1.50",
+      "port": 7777,
+      "protocol_type": "single",
+      "data_channel": "Remote_Temp",
+      "auto_connect": false,
+      "auto_reconnect": false,
+      "description": "Temperature sensor on remote machine"
+    },
+
+    {
+      "_example": "MULTI-CHANNEL DATA LOGGER (8 channels)",
+      "id": "datalogger_01",
+      "name": "8-Channel DAQ",
+      "host": "127.0.0.1",
+      "port": 10000,
+      "protocol_type": "multi",
+      "data_channels": [
+        "AI0_Voltage",
+        "AI1_Voltage",
+        "AI2_Voltage",
+        "AI3_Voltage",
+        "AI4_Current",
+        "AI5_Current",
+        "AI6_Temperature",
+        "AI7_Pressure"
+      ],
+      "auto_connect": true,
+      "auto_reconnect": true,
+      "description": "National Instruments DAQ device"
+    }
+  ],
+
+  "_field_descriptions": {
+    "id": "Unique identifier for this client (alphanumeric, no spaces)",
+    "name": "Human-readable name for display",
+    "host": "Server IP address (127.0.0.1 for localhost, or remote IP)",
+    "port": "TCP port number (1024-65535)",
+    "protocol_type": "Protocol format: 'single' for newline-delimited floats, 'multi' for $START...$END format",
+    "data_channel": "[Single-channel only] Name of DataStore channel to store values",
+    "data_channels": "[Multi-channel only] Array of DataStore channel names (one per value in stream)",
+    "auto_connect": "If true, automatically connect when application starts",
+    "auto_reconnect": "If true, automatically reconnect after disconnect (max 3 attempts)",
+    "description": "Optional description for documentation"
+  },
+
+  "_protocol_formats": {
+    "single": {
+      "format": "One float per line, newline-terminated",
+      "example": "1.234\\n5.678\\n9.012\\n",
+      "use_case": "Simple single-value sensors"
+    },
+    "multi": {
+      "format": "CSV wrapped in markers: $START,val1,val2,...,valN,$END",
+      "example": "$START,1.234,5.678,9.012,$END",
+      "use_case": "Multi-sensor arrays, synchronized measurements"
+    }
+  },
+
+  "_accessing_data_in_code": {
+    "single_channel": "float value = dataStore->GetValue(\"Voltage\");",
+    "multi_channel": [
+      "float temp = dataStore->GetValue(\"Temperature_C\");",
+      "float pressure = dataStore->GetValue(\"Pressure_hPa\");",
+      "float humidity = dataStore->GetValue(\"Humidity_Percent\");"
+    ]
+  }
+}

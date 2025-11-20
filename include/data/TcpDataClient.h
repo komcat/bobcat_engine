@@ -29,9 +29,20 @@
 #endif
 
 /**
+ * @brief Protocol type for TCP data stream
+ */
+enum class TcpProtocolType {
+  Single,      // Single float per line: "1.234\n"
+  MultiChannel // Multi-channel CSV: "$START,val1,val2,...,$END"
+};
+
+/**
  * @brief Non-blocking TCP client for real-time float data streams
  *
- * Protocol: Newline-delimited float values (e.g., "1.234\n5.678\n")
+ * Supports two protocols:
+ * - Single: Newline-delimited float values (e.g., "1.234\n5.678\n")
+ * - MultiChannel: CSV format with markers (e.g., "$START,1.2,3.4,5.6,$END")
+ *
  * Features:
  * - Non-blocking I/O
  * - Auto-reconnection
@@ -48,18 +59,30 @@ public:
   void Disconnect();
   bool IsConnected() const { return m_connected.load(); }
 
+  // Protocol configuration
+  void SetProtocolType(TcpProtocolType type) { m_protocolType = type; }
+  TcpProtocolType GetProtocolType() const { return m_protocolType; }
+  void SetChannelCount(size_t count) { m_channelCount = count; }
+  size_t GetChannelCount() const { return m_channelCount; }
+
   // Auto-reconnection
   void EnableAutoReconnect(bool enable, int intervalMs = 5000);
   bool IsAutoReconnectEnabled() const { return m_autoReconnect.load(); }
 
-  // Data access
+  // Data access (for single-channel mode)
   float GetLatestValue() const;
   std::deque<float> GetPendingValues(); // Returns and clears pending values
   size_t GetPendingCount() const;
 
+  // Data access (for multi-channel mode)
+  std::vector<float> GetLatestValues() const;
+
   // Callbacks
   using DataCallback = std::function<void(float value)>;
   void SetDataCallback(DataCallback callback);
+
+  using MultiChannelDataCallback = std::function<void(size_t channelIndex, float value)>;
+  void SetMultiChannelDataCallback(MultiChannelDataCallback callback);
 
   using ConnectionCallback = std::function<void(bool connected)>;
   void SetConnectionCallback(ConnectionCallback callback);
@@ -72,6 +95,8 @@ private:
   void ReceiveThread();
   void ReconnectThread();
   void ProcessBuffer(std::string& buffer);
+  void ProcessSingleChannelBuffer(std::string& buffer);
+  void ProcessMultiChannelBuffer(std::string& buffer);
   bool AttemptConnection();
   void NotifyConnection(bool connected);
 
@@ -85,15 +110,25 @@ private:
   std::atomic<bool> m_connected;
   std::atomic<bool> m_autoReconnect;
   int m_reconnectInterval;
-  int m_maxReconnectAttempts;        // ADD THIS
-  std::atomic<int> m_reconnectCount; // ADD THIS
+  int m_maxReconnectAttempts;
+  std::atomic<int> m_reconnectCount;
 
+  // Protocol configuration
+  TcpProtocolType m_protocolType;
+  size_t m_channelCount;
+
+  // Single-channel data storage
   mutable std::mutex m_dataMutex;
   std::deque<float> m_pendingValues;
   float m_latestValue;
 
+  // Multi-channel data storage
+  std::vector<float> m_latestValues;
+
+  // Callbacks
   mutable std::mutex m_callbackMutex;
   DataCallback m_dataCallback;
+  MultiChannelDataCallback m_multiChannelDataCallback;
   ConnectionCallback m_connectionCallback;
 
   static bool s_wsaInitialized;

@@ -51,10 +51,27 @@ bool TcpClientManager::LoadConfig(const std::string& configPath)
       clientConfig.name = clientJson.value("name", "TCP Client");
       clientConfig.host = clientJson.value("host", "127.0.0.1");
       clientConfig.port = clientJson.value("port", 8888);
-      clientConfig.dataStoreChannel = clientJson.value("data_channel", clientConfig.id);
+      clientConfig.protocolType = clientJson.value("protocol_type", "single");
       clientConfig.autoConnect = clientJson.value("auto_connect", false);
       clientConfig.autoReconnect = clientJson.value("auto_reconnect", false);
       clientConfig.description = clientJson.value("description", "");
+
+      // Load channel configuration based on protocol type
+      if (clientConfig.protocolType == "multi") {
+        if (clientJson.contains("data_channels") && clientJson["data_channels"].is_array()) {
+          for (const auto& channel : clientJson["data_channels"]) {
+            clientConfig.dataChannels.push_back(channel.get<std::string>());
+          }
+        }
+        else {
+          std::cerr << "[TcpClientManager] Multi-channel client missing 'data_channels' array: "
+                    << clientConfig.id << std::endl;
+        }
+      }
+      else {
+        // Single-channel mode
+        clientConfig.dataStoreChannel = clientJson.value("data_channel", clientConfig.id);
+      }
 
       if (clientConfig.id.empty()) {
         std::cerr << "[TcpClientManager] Skipping client with empty ID" << std::endl;
@@ -64,7 +81,8 @@ bool TcpClientManager::LoadConfig(const std::string& configPath)
       m_clients.emplace_back(clientConfig);
 
       std::cout << "[TcpClientManager] Added client: " << clientConfig.id
-        << " (" << clientConfig.host << ":" << clientConfig.port << ")" << std::endl;
+        << " (" << clientConfig.host << ":" << clientConfig.port << ", "
+        << clientConfig.protocolType << " mode)" << std::endl;
     }
 
     std::cout << "[TcpClientManager] Loaded " << m_clients.size() << " clients from config" << std::endl;
@@ -90,7 +108,16 @@ bool TcpClientManager::SaveConfig(const std::string& configPath) const
       clientJson["name"] = managed.config.name;
       clientJson["host"] = managed.config.host;
       clientJson["port"] = managed.config.port;
-      clientJson["data_channel"] = managed.config.dataStoreChannel;
+      clientJson["protocol_type"] = managed.config.protocolType;
+
+      // Save channel configuration based on protocol type
+      if (managed.config.protocolType == "multi") {
+        clientJson["data_channels"] = managed.config.dataChannels;
+      }
+      else {
+        clientJson["data_channel"] = managed.config.dataStoreChannel;
+      }
+
       clientJson["auto_connect"] = managed.config.autoConnect;
       clientJson["auto_reconnect"] = managed.config.autoReconnect;
       clientJson["description"] = managed.config.description;
@@ -160,11 +187,29 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
   const auto& config = managed->config;
   auto& client = managed->client;
 
-  // Set up callbacks - CAPTURE BOTH clientId and channelId
-  client->SetDataCallback([this, id = clientId, channelId = config.dataStoreChannel](float value) {
-    OnDataReceived(id, channelId, value);
-  });
+  // Configure protocol type
+  if (config.protocolType == "multi") {
+    client->SetProtocolType(TcpProtocolType::MultiChannel);
+    client->SetChannelCount(config.dataChannels.size());
 
+    // Set up multi-channel callback
+    client->SetMultiChannelDataCallback(
+      [this, id = clientId, channels = config.dataChannels](size_t channelIndex, float value) {
+        OnMultiChannelDataReceived(id, channels, channelIndex, value);
+      });
+  }
+  else {
+    // Single-channel mode
+    client->SetProtocolType(TcpProtocolType::Single);
+    client->SetChannelCount(1);
+
+    // Set up single-channel callback
+    client->SetDataCallback([this, id = clientId, channelId = config.dataStoreChannel](float value) {
+      OnDataReceived(id, channelId, value);
+    });
+  }
+
+  // Set up connection callback
   client->SetConnectionCallback([this, id = clientId](bool connected) {
     OnConnectionChanged(id, connected);
   });
@@ -173,7 +218,8 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
   bool connected = client->Connect(config.host, config.port);
 
   if (connected) {
-    std::cout << "[TcpClientManager] Connected client: " << clientId << std::endl;
+    std::cout << "[TcpClientManager] Connected client: " << clientId
+              << " (" << config.protocolType << " mode)" << std::endl;
 
     // Enable auto-reconnect AFTER successful connection
     if (config.autoReconnect) {
@@ -319,6 +365,30 @@ size_t TcpClientManager::GetClientCount() const
 
 void TcpClientManager::OnDataReceived(const std::string& clientId, const std::string& channelId, float value)
 {
+  // Store to DataStore
+  if (m_dataStore) {
+    m_dataStore->SetValue(channelId, value);
+  }
+
+  // Emit signal with timestamp for real-time plotting
+  qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
+  emit dataReceived(clientId, value, timestamp);
+}
+
+void TcpClientManager::OnMultiChannelDataReceived(const std::string& clientId,
+                                                    const std::vector<std::string>& channelIds,
+                                                    size_t channelIndex,
+                                                    float value)
+{
+  // Validate channel index
+  if (channelIndex >= channelIds.size()) {
+    std::cerr << "[TcpClientManager] Channel index out of range: " << channelIndex
+              << " (max: " << channelIds.size() << ")" << std::endl;
+    return;
+  }
+
+  const std::string& channelId = channelIds[channelIndex];
+
   // Store to DataStore
   if (m_dataStore) {
     m_dataStore->SetValue(channelId, value);

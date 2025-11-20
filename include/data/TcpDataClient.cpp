@@ -36,8 +36,10 @@ TcpDataClient::TcpDataClient()
   , m_connected(false)
   , m_autoReconnect(false)
   , m_reconnectInterval(5000)
-  , m_maxReconnectAttempts(3)      // ADD THIS
-  , m_reconnectCount(0)             // ADD THIS
+  , m_maxReconnectAttempts(3)
+  , m_reconnectCount(0)
+  , m_protocolType(TcpProtocolType::Single)
+  , m_channelCount(1)
   , m_latestValue(0.0f)
 {
   InitializeWSA();
@@ -153,6 +155,18 @@ void TcpDataClient::SetConnectionCallback(ConnectionCallback callback)
 {
   std::lock_guard<std::mutex> lock(m_callbackMutex);
   m_connectionCallback = callback;
+}
+
+void TcpDataClient::SetMultiChannelDataCallback(MultiChannelDataCallback callback)
+{
+  std::lock_guard<std::mutex> lock(m_callbackMutex);
+  m_multiChannelDataCallback = callback;
+}
+
+std::vector<float> TcpDataClient::GetLatestValues() const
+{
+  std::lock_guard<std::mutex> lock(m_dataMutex);
+  return m_latestValues;
 }
 
 bool TcpDataClient::AttemptConnection()
@@ -290,6 +304,16 @@ void TcpDataClient::ReconnectThread()
 
 void TcpDataClient::ProcessBuffer(std::string& buffer)
 {
+  if (m_protocolType == TcpProtocolType::Single) {
+    ProcessSingleChannelBuffer(buffer);
+  }
+  else {
+    ProcessMultiChannelBuffer(buffer);
+  }
+}
+
+void TcpDataClient::ProcessSingleChannelBuffer(std::string& buffer)
+{
   size_t pos;
   while ((pos = buffer.find('\n')) != std::string::npos) {
     std::string line = buffer.substr(0, pos);
@@ -327,6 +351,94 @@ void TcpDataClient::ProcessBuffer(std::string& buffer)
     }
     catch (const std::exception& ) {
       // Ignore parse errors
+    }
+  }
+}
+
+void TcpDataClient::ProcessMultiChannelBuffer(std::string& buffer)
+{
+  // Process complete messages in format: $START,val1,val2,...,valN,$END
+  while (true) {
+    size_t startPos = buffer.find("$START");
+    if (startPos == std::string::npos) {
+      // No start marker found, keep buffer for next recv
+      break;
+    }
+
+    size_t endPos = buffer.find("$END", startPos);
+    if (endPos == std::string::npos) {
+      // Incomplete message, wait for more data
+      break;
+    }
+
+    // Extract complete message
+    size_t messageEnd = endPos + 4; // Length of "$END"
+    std::string message = buffer.substr(startPos, messageEnd - startPos);
+    buffer.erase(0, messageEnd);
+
+    // Parse the message: $START,val1,val2,...,valN,$END
+    try {
+      // Extract data between $START, and ,$END
+      size_t dataStart = startPos + 7; // Length of "$START,"
+      size_t dataEnd = endPos;
+
+      if (dataEnd <= dataStart) {
+        std::cerr << "[TcpDataClient] Invalid message format (empty data)" << std::endl;
+        continue;
+      }
+
+      std::string dataStr = message.substr(7, message.length() - 7 - 5); // Remove "$START," and ",$END"
+
+      // Split by comma
+      std::vector<float> values;
+      std::stringstream ss(dataStr);
+      std::string token;
+
+      while (std::getline(ss, token, ',')) {
+        try {
+          float value = std::stof(token);
+          values.push_back(value);
+        }
+        catch (const std::exception&) {
+          std::cerr << "[TcpDataClient] Failed to parse value: " << token << std::endl;
+        }
+      }
+
+      // Validate channel count
+      if (m_channelCount > 0 && values.size() != m_channelCount) {
+        std::cerr << "[TcpDataClient] Channel count mismatch. Expected "
+                  << m_channelCount << ", got " << values.size() << std::endl;
+        // Continue anyway, process what we have
+      }
+
+      // Store latest values
+      {
+        std::lock_guard<std::mutex> lock(m_dataMutex);
+        m_latestValues = values;
+      }
+
+      // Notify callback for each channel
+      MultiChannelDataCallback callback;
+      {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        callback = m_multiChannelDataCallback;
+      }
+
+      if (callback) {
+        for (size_t i = 0; i < values.size(); ++i) {
+          try {
+            callback(i, values[i]);
+          }
+          catch (const std::exception& e) {
+            std::cerr << "[TcpDataClient] Multi-channel callback exception: "
+                      << e.what() << std::endl;
+          }
+        }
+      }
+    }
+    catch (const std::exception& e) {
+      std::cerr << "[TcpDataClient] Error processing multi-channel message: "
+                << e.what() << std::endl;
     }
   }
 }

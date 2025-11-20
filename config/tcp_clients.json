@@ -5,10 +5,29 @@
       "name": "Voltage Monitor",
       "host": "127.0.0.1",
       "port": 8888,
+      "protocol_type": "single",
       "data_channel": "Voltage",
-      "auto_connect": true,
-      "auto_reconnect": true,
-      "description": "Real-time voltage measurement"
+      "auto_connect": false,
+      "auto_reconnect": false,
+      "description": "Real-time voltage measurement (single-channel mode)"
+    },
+    {
+      "id": "siphog_01",
+      "name": "SiPhOG Multi-Channel Monitor",
+      "host": "127.0.0.63",
+      "port": 65432,
+      "protocol_type": "multi",
+      "data_channels": [
+        "SLED_Current_mA",
+        "Photo_Current_uA",
+        "SLED_Temp_C",
+        "Target_SAG_PWR_V",
+        "SAG_PWR_V",
+        "TEC_Current_mA"
+      ],
+      "auto_connect": false,
+      "auto_reconnect": false,
+      "description": "SiPhOG FNW Server V08 - 6 channel data stream"
     }
   ]
 }
