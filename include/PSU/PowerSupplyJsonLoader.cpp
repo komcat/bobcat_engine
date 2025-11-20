@@ -53,6 +53,7 @@ bool PowerSupplyJsonLoader::loadConfiguration(const std::string& filePath, Power
       std::string type = deviceConfig.value("type", "keysight_e36103b");
       std::string deviceIP = deviceConfig.value("ip", "");
       int devicePort = deviceConfig.value("port", 5025);
+      int channels = deviceConfig.value("channels", 1); // Default to 1 channel
 
       if (deviceIP.empty()) {
         std::cerr << "[PowerSupplyJsonLoader] Device '" << name << "' missing IP address" << std::endl;
@@ -64,9 +65,10 @@ bool PowerSupplyJsonLoader::loadConfiguration(const std::string& filePath, Power
 
       if (psu) {
         manager->addPowerSupply(name, psu);
+        manager->setDeviceChannelCount(name, channels); // Set channel count
         deviceCount++;
         std::cout << "[PowerSupplyJsonLoader] Loaded device: " << name
-          << " (Type: " << type << ", IP: " << deviceIP << ")" << std::endl;
+          << " (Type: " << type << ", IP: " << deviceIP << ", Channels: " << channels << ")" << std::endl;
       }
       else {
         std::cerr << "[PowerSupplyJsonLoader] Failed to create device: " << name << std::endl;

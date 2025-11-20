@@ -48,7 +48,26 @@ void PowerSupplyManager::clearAllDevices()
 {
   disconnectAll();
   m_devices.clear();
+  m_deviceChannels.clear();
   std::cout << "[PowerSupplyManager] Cleared all devices" << std::endl;
+}
+
+void PowerSupplyManager::setDeviceChannelCount(const std::string& name, int channels)
+{
+  if (channels < 1) {
+    channels = 1; // Default to 1 channel minimum
+  }
+  m_deviceChannels[name] = channels;
+  std::cout << "[PowerSupplyManager] Set " << name << " to " << channels << " channel(s)" << std::endl;
+}
+
+int PowerSupplyManager::getDeviceChannelCount(const std::string& name) const
+{
+  auto it = m_deviceChannels.find(name);
+  if (it != m_deviceChannels.end()) {
+    return it->second;
+  }
+  return 1; // Default to 1 channel if not specified
 }
 
 PowerSupplyPtr PowerSupplyManager::getPowerSupply(const std::string& name) const

@@ -18,21 +18,23 @@ Two control modes are supported:
 
 ```json
 {
-  "devices": [
-    {
-      "name": "PSU1",
-      "type": "keysight_e36103b_direct",
-      "ip": "192.168.0.60",
-      "port": 5025
-    },
-    {
-      "name": "PSU2",
-      "type": "keysight_direct",
-      "ip": "192.168.0.61",
-      "port": 5025
-    }
-  ]
-}
+    "devices": [
+      {
+        "name": "PSU1",
+        "type": "keysight_e36441a_direct",
+        "ip": "192.168.0.32",
+        "port": 5025,
+        "channels": 4
+      },
+      {
+        "name": "PSU2",
+        "type": "keysight_e36103b_direct",
+        "ip": "192.168.0.33",
+        "port": 5025,
+        "channels": 1
+      }
+    ]
+  }
 ```
 
 **Advantages:**
