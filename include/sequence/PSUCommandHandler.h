@@ -46,4 +46,9 @@ private:
    * @brief Parse current value from parameters (in mA)
    */
   bool ParseCurrent(const std::map<std::string, std::string>& params, double& outCurrent);
+
+  /**
+   * @brief Parse channel number from parameters (optional, defaults to 1)
+   */
+  int ParseChannel(const std::map<std::string, std::string>& params);
 };

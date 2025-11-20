@@ -121,6 +121,15 @@ public:
     const std::string& value, const std::string& ioDeviceParamKey,
     const std::string& pinType = "output");
 
+  // ✅ NEW: Helper to add simple dropdown parameter with fixed options
+  void addDropdownParameter(const std::string& key, const std::string& label,
+    const std::string& value, const std::vector<std::string>& options);
+
+  // ✅ NEW: Helper to add PSU channel selector (dynamic based on PSU device config)
+  // psuDeviceParamKey: the parameter key of the PSU device selector (e.g., "psu_device")
+  void addPSUChannelSelector(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& psuDeviceParamKey);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

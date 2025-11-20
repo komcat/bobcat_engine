@@ -20,13 +20,15 @@
  *       "name": "PSU1",
  *       "type": "keysight_e36103b_direct",
  *       "ip": "192.168.0.60",
- *       "port": 5025
+ *       "port": 5025,
+ *       "channels": 1
  *     },
  *     {
  *       "name": "PSU2",
  *       "type": "keysight_e36441a_direct",
  *       "ip": "192.168.0.32",
- *       "port": 5025
+ *       "port": 5025,
+ *       "channels": 4
  *     }
  *   ]
  * }

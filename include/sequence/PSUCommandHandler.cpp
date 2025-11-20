@@ -35,6 +35,9 @@ bool PSUCommandHandler::ExecuteCommand(
   // Example: MeasureVoltage, MeasureCurrent methods can capture values
   auto captureAsIt = params.find("captureAs");
 
+  // Parse channel number (defaults to 1 if not specified)
+  int channel = ParseChannel(params);
+
   // ============================================================================
   // AUTO-CONNECT: Check connection status and connect if needed
   // ============================================================================
@@ -61,13 +64,16 @@ bool PSUCommandHandler::ExecuteCommand(
   // ============================================================================
   if (methodName == "SetOutputOn" || methodName == "OutputOn") {
     if (m_logger) {
-      m_logger->Info("Turning PSU output ON for " + deviceName, "PSUHandler");
+      m_logger->Info("Turning PSU output ON for " + deviceName + " (Ch " + std::to_string(channel) + ")", "PSUHandler");
     }
 
-    if (!psu->setOutputOn()) {
+    if (!psu->setOutputOn(channel)) {
       errorMessage = "SetOutputOn failed: " + psu->getLastError();
       return false;
     }
+
+    // Delay to allow PSU output to stabilize
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     return true;
   }
@@ -77,13 +83,16 @@ bool PSUCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "SetOutputOff" || methodName == "OutputOff") {
     if (m_logger) {
-      m_logger->Info("Turning PSU output OFF for " + deviceName, "PSUHandler");
+      m_logger->Info("Turning PSU output OFF for " + deviceName + " (Ch " + std::to_string(channel) + ")", "PSUHandler");
     }
 
-    if (!psu->setOutputOff()) {
+    if (!psu->setOutputOff(channel)) {
       errorMessage = "SetOutputOff failed: " + psu->getLastError();
       return false;
     }
+
+    // Delay to allow PSU output to stabilize
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     return true;
   }
@@ -100,15 +109,18 @@ bool PSUCommandHandler::ExecuteCommand(
 
     if (m_logger) {
       m_logger->Info(
-        "Setting " + deviceName + " voltage to " + std::to_string(voltage) + " V",
+        "Setting " + deviceName + " voltage to " + std::to_string(voltage) + " V (Ch " + std::to_string(channel) + ")",
         "PSUHandler"
       );
     }
 
-    if (!psu->setVoltage(voltage)) {
+    if (!psu->setVoltage(voltage, channel)) {
       errorMessage = "SetVoltage failed: " + psu->getLastError();
       return false;
     }
+
+    // Delay to allow PSU voltage to stabilize
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     return true;
   }
@@ -129,15 +141,18 @@ bool PSUCommandHandler::ExecuteCommand(
     if (m_logger) {
       m_logger->Info(
         "Setting " + deviceName + " current to " + std::to_string(current) + " mA (" +
-        std::to_string(currentInAmps) + " A)",
+        std::to_string(currentInAmps) + " A) (Ch " + std::to_string(channel) + ")",
         "PSUHandler"
       );
     }
 
-    if (!psu->setCurrent(currentInAmps)) {
+    if (!psu->setCurrent(currentInAmps, channel)) {
       errorMessage = "SetCurrent failed: " + psu->getLastError();
       return false;
     }
+
+    // Delay to allow PSU current to stabilize
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
     return true;
   }
@@ -146,7 +161,7 @@ bool PSUCommandHandler::ExecuteCommand(
   // READ VOLTAGE
   // ============================================================================
   else if (methodName == "ReadVoltage") {
-    double voltage = psu->readVoltage();
+    double voltage = psu->readVoltage(channel);
 
     // Auto-capture to context if requested
     if (context && captureAsIt != params.end()) {
@@ -175,7 +190,7 @@ bool PSUCommandHandler::ExecuteCommand(
   // READ CURRENT
   // ============================================================================
   else if (methodName == "ReadCurrent") {
-    double current = psu->readCurrent();
+    double current = psu->readCurrent(channel);
 
     // Auto-capture to context if requested (store in Amps)
     if (context && captureAsIt != params.end()) {
@@ -242,7 +257,7 @@ bool PSUCommandHandler::ExecuteCommand(
     // Perform multiple reads
     double lastVoltage = 0.0;
     for (int i = 0; i < readCount; i++) {
-      double voltage = psu->readVoltage();
+      double voltage = psu->readVoltage(channel);
       lastVoltage = voltage;  // Track last reading for context capture
 
       // Format message
@@ -313,7 +328,7 @@ bool PSUCommandHandler::ExecuteCommand(
     // Perform multiple reads
     double lastCurrent = 0.0;
     for (int i = 0; i < readCount; i++) {
-      double current = psu->readCurrent();
+      double current = psu->readCurrent(channel);
       lastCurrent = current;  // Track last reading for context capture
 
       // Convert A to mA for display
@@ -402,5 +417,27 @@ bool PSUCommandHandler::ParseCurrent(
   }
   catch (...) {
     return false;
+  }
+}
+
+int PSUCommandHandler::ParseChannel(const std::map<std::string, std::string>& params)
+{
+  auto it = params.find("channel");
+  if (it == params.end()) {
+    return 1; // Default to channel 1
+  }
+
+  try {
+    int channel = std::stoi(it->second);
+
+    // Sanity check: channel range 1-4 (supports up to 4-channel devices)
+    if (channel < 1 || channel > 4) {
+      return 1; // Default to channel 1 if out of range
+    }
+
+    return channel;
+  }
+  catch (...) {
+    return 1; // Default to channel 1 on parse error
   }
 }

@@ -31,6 +31,10 @@ public:
   int getDeviceCount() const { return static_cast<int>(m_devices.size()); }
   bool hasDevice(const std::string& name) const;
 
+  // Channel count management
+  void setDeviceChannelCount(const std::string& name, int channels);
+  int getDeviceChannelCount(const std::string& name) const;
+
   // Batch operations
   bool connectAll();
   void disconnectAll();
@@ -42,4 +46,5 @@ signals:
 
 private:
   std::map<std::string, PowerSupplyPtr> m_devices;
+  std::map<std::string, int> m_deviceChannels; // Track channel count per device
 };

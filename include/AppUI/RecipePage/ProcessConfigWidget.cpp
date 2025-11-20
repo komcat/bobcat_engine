@@ -6,6 +6,7 @@
 #include "DataStore.h"
 #include "TECManager.h"
 #include "EziIOManager.h"  // ✅ ADDED: For IO pin selector
+#include "PowerSupplyManager.h"  // ✅ ADDED: For PSU channel selector
 #include "RecipeManager.h"
 #include "ProcessPluginRegistry.h"
 #include "products/product_position_manager.h"
@@ -858,6 +859,124 @@ void ProcessConfigWidget::addIOPinSelector(const std::string& key,
     connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
       [populatePinNames]() {
         populatePinNames();
+      });
+  }
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_parameterCombos[key] = combo;
+}
+
+// ✅ NEW: Add simple dropdown parameter with fixed options
+void ProcessConfigWidget::addDropdownParameter(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::vector<std::string>& options)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+
+  // Add all options to combo box
+  for (const auto& option : options) {
+    combo->addItem(QString::fromStdString(option));
+  }
+
+  // Set current value
+  int index = combo->findText(QString::fromStdString(value));
+  if (index >= 0) {
+    combo->setCurrentIndex(index);
+  } else if (!options.empty()) {
+    combo->setCurrentIndex(0);  // Default to first option if value not found
+  }
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  m_parameterCombos[key] = combo;
+}
+
+// ✅ NEW: Add PSU channel selector (dynamic based on PSU device config)
+void ProcessConfigWidget::addPSUChannelSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& psuDeviceParamKey)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+
+  // Lambda to populate channels based on PSU device
+  auto populateChannels = [this, combo, psuDeviceParamKey, value]() {
+    combo->clear();
+
+    // Get current PSU device name from parameters
+    auto params = getParameters();
+    if (params.find(psuDeviceParamKey) == params.end()) {
+      combo->addItem("1");  // Default to single channel
+      return;
+    }
+
+    std::string deviceName = params.at(psuDeviceParamKey);
+    if (deviceName.empty()) {
+      combo->addItem("1");  // Default to single channel
+      return;
+    }
+
+    // Get PSU device from manager
+    if (!m_context || !m_context->powerSupplyManager) {
+      combo->addItem("1");  // Default to single channel
+      return;
+    }
+
+    // Get channel count for the device
+    int channelCount = m_context->powerSupplyManager->getDeviceChannelCount(deviceName);
+    if (channelCount < 1) {
+      channelCount = 1;  // Safety: at least 1 channel
+    }
+
+    // Add channel options (1, 2, 3, 4, etc.)
+    for (int i = 1; i <= channelCount; i++) {
+      combo->addItem(QString::number(i));
+    }
+
+    // Set current value
+    if (!value.empty()) {
+      int index = combo->findText(QString::fromStdString(value));
+      if (index >= 0) {
+        combo->setCurrentIndex(index);
+      } else {
+        combo->setCurrentIndex(0);  // Default to channel 1
+      }
+    } else {
+      combo->setCurrentIndex(0);  // Default to channel 1
+    }
+  };
+
+  // Initial population
+  populateChannels();
+
+  // Connect to parameter change signal
+  connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  // Watch PSU device selector for changes and repopulate
+  if (m_deviceCombos.find(psuDeviceParamKey) != m_deviceCombos.end()) {
+    DeviceComboBox* deviceCombo = m_deviceCombos[psuDeviceParamKey];
+    connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+      [populateChannels]() {
+        populateChannels();
       });
   }
 

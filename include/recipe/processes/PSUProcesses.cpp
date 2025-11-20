@@ -35,7 +35,8 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"psu_device", "PSU1"},
-      {"output_state", "on"}  // "on" or "off"
+      {"output_state", "on"},  // "on" or "off"
+      {"channel", "1"}  // Channel number (1-4)
     };
   }
 
@@ -43,7 +44,8 @@ public:
     const auto& params = instance->parameters;
 
     widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
-    widget->addParameterField("output_state", "Output State (on/off)", params.at("output_state"));
+    widget->addDropdownParameter("output_state", "Output State", params.at("output_state"), {"on", "off"});
+    widget->addPSUChannelSelector("channel", "Channel", params.at("channel"), "psu_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -51,12 +53,13 @@ public:
 
     std::string psuDevice = params.at("psu_device");
     std::string outputState = params.at("output_state");
+    std::string channel = params.at("channel");
 
     if (outputState == "on") {
-      sequence->AddAction(psuDevice, "SetOutputOn", {});
+      sequence->AddAction(psuDevice, "SetOutputOn", {{"channel", channel}});
     }
     else {
-      sequence->AddAction(psuDevice, "SetOutputOff", {});
+      sequence->AddAction(psuDevice, "SetOutputOff", {{"channel", channel}});
     }
 
     std::cout << "[PSUProcesses] Built PSU Output " << outputState << " sequence for: "
@@ -86,7 +89,8 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"psu_device", "PSU1"},
-      {"voltage", "3.0"}
+      {"voltage", "3.0"},
+      {"channel", "1"}  // Channel number (1-4)
     };
   }
 
@@ -95,6 +99,7 @@ public:
 
     widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
     widget->addParameterField("voltage", "Voltage (V)", params.at("voltage"));
+    widget->addPSUChannelSelector("channel", "Channel", params.at("channel"), "psu_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -102,9 +107,11 @@ public:
 
     std::string psuDevice = params.at("psu_device");
     std::string voltage = params.at("voltage");
+    std::string channel = params.at("channel");
 
     sequence->AddAction(psuDevice, "SetVoltage", {
-      {"voltage", voltage}
+      {"voltage", voltage},
+      {"channel", channel}
     });
 
     std::cout << "[PSUProcesses] Built PSU Set Voltage sequence for: " << step->userNickname
@@ -134,7 +141,8 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"psu_device", "PSU1"},
-      {"current", "150"}
+      {"current", "150"},
+      {"channel", "1"}  // Channel number (1-4)
     };
   }
 
@@ -143,6 +151,7 @@ public:
 
     widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
     widget->addParameterField("current", "Current (mA)", params.at("current"));
+    widget->addPSUChannelSelector("channel", "Channel", params.at("channel"), "psu_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -150,9 +159,11 @@ public:
 
     std::string psuDevice = params.at("psu_device");
     std::string current = params.at("current");
+    std::string channel = params.at("channel");
 
     sequence->AddAction(psuDevice, "SetCurrent", {
-      {"current", current}
+      {"current", current},
+      {"channel", channel}
     });
 
     std::cout << "[PSUProcesses] Built PSU Set Current sequence for: " << step->userNickname
@@ -183,7 +194,9 @@ public:
     return {
       {"psu_device", "PSU1"},
       {"read_count", "3"},
-      {"delay_ms", "100"}
+      {"delay_ms", "100"},
+      {"channel", "1"},  // Channel number (1-4)
+      {"captureAs", ""}  // Variable name to store result (optional)
     };
   }
 
@@ -193,11 +206,8 @@ public:
     widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
     widget->addParameterField("read_count", "Read Count", params.at("read_count"));
     widget->addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
-
-    // Optional: Add captureAs field if exists
-    if (params.find("captureAs") != params.end()) {
-      widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
-    }
+    widget->addPSUChannelSelector("channel", "Channel", params.at("channel"), "psu_device");
+    widget->addParameterField("captureAs", "Capture As (Variable Name)", params.at("captureAs"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -206,11 +216,13 @@ public:
     std::string psuDevice = params.at("psu_device");
     std::string readCount = params.at("read_count");
     std::string delayMs = params.at("delay_ms");
+    std::string channel = params.at("channel");
 
     // Build action parameters
     std::map<std::string, std::string> actionParams = {
       {"read_count", readCount},
-      {"delay_ms", delayMs}
+      {"delay_ms", delayMs},
+      {"channel", channel}
     };
 
     // Add optional captureAs parameter if present
@@ -248,7 +260,9 @@ public:
     return {
       {"psu_device", "PSU1"},
       {"read_count", "3"},
-      {"delay_ms", "100"}
+      {"delay_ms", "100"},
+      {"channel", "1"},  // Channel number (1-4)
+      {"captureAs", ""}  // Variable name to store result (optional)
     };
   }
 
@@ -258,11 +272,8 @@ public:
     widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
     widget->addParameterField("read_count", "Read Count", params.at("read_count"));
     widget->addParameterField("delay_ms", "Delay Between Reads (ms)", params.at("delay_ms"));
-
-    // Optional: Add captureAs field if exists
-    if (params.find("captureAs") != params.end()) {
-      widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
-    }
+    widget->addPSUChannelSelector("channel", "Channel", params.at("channel"), "psu_device");
+    widget->addParameterField("captureAs", "Capture As (Variable Name)", params.at("captureAs"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -271,11 +282,13 @@ public:
     std::string psuDevice = params.at("psu_device");
     std::string readCount = params.at("read_count");
     std::string delayMs = params.at("delay_ms");
+    std::string channel = params.at("channel");
 
     // Build action parameters
     std::map<std::string, std::string> actionParams = {
       {"read_count", readCount},
-      {"delay_ms", delayMs}
+      {"delay_ms", delayMs},
+      {"channel", channel}
     };
 
     // Add optional captureAs parameter if present

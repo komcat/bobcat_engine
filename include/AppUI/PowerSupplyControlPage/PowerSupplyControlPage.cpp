@@ -713,18 +713,23 @@ void PowerSupplyControlPage::updateChannelSelector()
     return;
   }
 
-  // Check device ID to determine if it's multi-channel
-  std::string deviceID = psu->getDeviceID();
+  // Get channel count from config
+  int channelCount = m_psuManager->getDeviceChannelCount(m_currentDevice.toStdString());
 
-  // E36441A is a 4-channel device
-  // Show channel selector for multi-channel devices
-  bool isMultiChannel = (deviceID.find("E36441A") != std::string::npos) ||
-                        (deviceID.find("e36441a") != std::string::npos);
-
+  // Show channel selector only for multi-channel devices (> 1 channel)
+  bool isMultiChannel = (channelCount > 1);
   channelGroup->setVisible(isMultiChannel);
 
   if (isMultiChannel) {
-    std::cout << "[PowerSupplyControlPage] Multi-channel device detected: " << deviceID << std::endl;
+    // Update channel selector items to match actual channel count
+    m_channelSelector->clear();
+    for (int i = 1; i <= channelCount; i++) {
+      m_channelSelector->addItem(QString("Channel %1").arg(i), i);
+    }
+    m_channelSelector->setCurrentIndex(0);
+
+    std::cout << "[PowerSupplyControlPage] Multi-channel device detected: " << m_currentDevice.toStdString()
+              << " (" << channelCount << " channels)" << std::endl;
   }
 }
 
