@@ -192,10 +192,10 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
     client->SetProtocolType(TcpProtocolType::MultiChannel);
     client->SetChannelCount(config.dataChannels.size());
 
-    // Set up multi-channel callback
+    // Set up multi-channel callback with timestamp
     client->SetMultiChannelDataCallback(
-      [this, id = clientId, channels = config.dataChannels](size_t channelIndex, float value) {
-        OnMultiChannelDataReceived(id, channels, channelIndex, value);
+      [this, id = clientId, channels = config.dataChannels](size_t channelIndex, float value, qint64 timestamp) {
+        OnMultiChannelDataReceived(id, channels, channelIndex, value, timestamp);
       });
   }
   else {
@@ -378,7 +378,8 @@ void TcpClientManager::OnDataReceived(const std::string& clientId, const std::st
 void TcpClientManager::OnMultiChannelDataReceived(const std::string& clientId,
                                                     const std::vector<std::string>& channelIds,
                                                     size_t channelIndex,
-                                                    float value)
+                                                    float value,
+                                                    qint64 timestamp)
 {
   // Validate channel index
   if (channelIndex >= channelIds.size()) {
@@ -394,9 +395,10 @@ void TcpClientManager::OnMultiChannelDataReceived(const std::string& clientId,
     m_dataStore->SetValue(channelId, value);
   }
 
-  // Emit signal with timestamp for real-time plotting
-  qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
-  emit dataReceived(clientId, value, timestamp);
+  // Emit signal with original timestamp from TcpDataClient
+  // IMPORTANT: Emit channelId (not clientId) so LiveChartWidget can filter by channel name
+  // All channels from one message share the same timestamp for proper time-based plotting
+  emit dataReceived(channelId, value, timestamp);
 }
 
 void TcpClientManager::OnConnectionChanged(const std::string& clientId, bool connected)

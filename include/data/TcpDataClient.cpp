@@ -4,6 +4,7 @@
 #include <sstream>
 #include <chrono>
 #include <thread>
+#include <QDateTime>
 
 bool TcpDataClient::s_wsaInitialized = false;
 
@@ -417,7 +418,10 @@ void TcpDataClient::ProcessMultiChannelBuffer(std::string& buffer)
         m_latestValues = values;
       }
 
-      // Notify callback for each channel
+      // Capture timestamp ONCE for entire message (all channels share same timestamp)
+      qint64 messageTimestamp = QDateTime::currentMSecsSinceEpoch();
+
+      // Notify callback for each channel with shared timestamp
       MultiChannelDataCallback callback;
       {
         std::lock_guard<std::mutex> lock(m_callbackMutex);
@@ -427,7 +431,7 @@ void TcpDataClient::ProcessMultiChannelBuffer(std::string& buffer)
       if (callback) {
         for (size_t i = 0; i < values.size(); ++i) {
           try {
-            callback(i, values[i]);
+            callback(i, values[i], messageTimestamp);
           }
           catch (const std::exception& e) {
             std::cerr << "[TcpDataClient] Multi-channel callback exception: "

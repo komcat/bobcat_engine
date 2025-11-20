@@ -7,6 +7,7 @@
 #include <deque>
 #include <mutex>
 #include <functional>
+#include <QtGlobal>  // For qint64
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -81,7 +82,7 @@ public:
   using DataCallback = std::function<void(float value)>;
   void SetDataCallback(DataCallback callback);
 
-  using MultiChannelDataCallback = std::function<void(size_t channelIndex, float value)>;
+  using MultiChannelDataCallback = std::function<void(size_t channelIndex, float value, qint64 timestamp)>;
   void SetMultiChannelDataCallback(MultiChannelDataCallback callback);
 
   using ConnectionCallback = std::function<void(bool connected)>;

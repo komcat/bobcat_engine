@@ -118,7 +118,8 @@ private:
   void OnMultiChannelDataReceived(const std::string& clientId,
                                    const std::vector<std::string>& channelIds,
                                    size_t channelIndex,
-                                   float value);
+                                   float value,
+                                   qint64 timestamp);
 
   void OnConnectionChanged(const std::string& clientId, bool connected);
   ManagedClient* FindClient(const std::string& clientId);

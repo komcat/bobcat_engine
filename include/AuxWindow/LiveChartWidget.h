@@ -98,12 +98,13 @@ private:
   float m_latestValue;
   bool m_hasNewValue;
 
-  static constexpr size_t MAX_POINTS = 300;
-  static constexpr qint64 TIME_WINDOW_MS = 5000;  // 5 seconds
+  static constexpr size_t MAX_POINTS = 2000;  // Support up to 200 Hz for 10 seconds
+  static constexpr qint64 TIME_WINDOW_MS = 5000;  // 5 seconds display window
   static constexpr int CHART_UPDATE_INTERVAL_MS = 100;  // 10 Hz
   static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 100;  // 10 Hz (reduced throttle)
 
   // Y-axis hard limits to prevent unrealistic spike rescaling
-  static constexpr float Y_AXIS_MAX_LIMIT = 0.020f;  // 20 mA
-  static constexpr float Y_AXIS_MIN_LIMIT = -0.020f; // -20 mA
+  // Increased limits to support multi-channel data with various ranges (µA, mA, V, etc.)
+  static constexpr float Y_AXIS_MAX_LIMIT = 1000.0f;  // Support up to 1000 in any unit
+  static constexpr float Y_AXIS_MIN_LIMIT = -1000.0f; // Support down to -1000 in any unit
 };

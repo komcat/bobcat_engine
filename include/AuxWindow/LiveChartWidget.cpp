@@ -19,23 +19,27 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
 {
   setupUI();
 
-  // Connect to TcpClientManager for real-time data (TCP clients only)
+  // Connect to TcpClientManager for real-time data with original timestamps
   connect(m_tcpManager, &TcpClientManager::dataReceived,
     this, &LiveChartWidget::onDataReceived);
 
-  // ✅ NEW: Poll DataStore directly for all channels (SMU, TCP, etc.)
-  // This ensures we get data from ALL sources, not just TCP clients
+  // ✅ Poll DataStore for NON-TCP channels only (e.g., SMU channels)
+  // TCP channels receive data directly via the signal above with proper timestamps
   QTimer* pollTimer = new QTimer(this);
   connect(pollTimer, &QTimer::timeout, this, [this]() {
     if (m_currentChannelId.empty() || !m_dataStore) return;
 
+    // Skip polling if this is a TCP client channel (they use real-time signals)
+    if (!m_currentClientId.empty()) return;
+
+    // Poll only for non-TCP channels (SMU, etc.)
     float value = 0.0f;
     if (m_dataStore->TryGetValue(m_currentChannelId, value)) {
       qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
       onDataReceived(m_currentChannelId, value, timestamp);
     }
   });
-  pollTimer->start(100);  // Poll at 10 Hz
+  pollTimer->start(100);  // Poll at 10 Hz for non-TCP channels
 
   // Chart update timer - 10 Hz
   m_chartUpdateTimer = new QTimer(this);
@@ -319,14 +323,30 @@ void LiveChartWidget::setChannel(const std::string& channelId)
   auto clientIds = m_tcpManager->GetClientIds();
   for (const auto& clientId : clientIds) {
     auto config = m_tcpManager->GetClientConfig(clientId);
-    if (config.dataStoreChannel == channelId) {
+
+    // Check both single-channel and multi-channel configs
+    bool isThisChannel = false;
+    if (config.protocolType == "single" && config.dataStoreChannel == channelId) {
+      isThisChannel = true;
+    }
+    else if (config.protocolType == "multi") {
+      // Check if channel is in the multi-channel array
+      for (const auto& ch : config.dataChannels) {
+        if (ch == channelId) {
+          isThisChannel = true;
+          break;
+        }
+      }
+    }
+
+    if (isThisChannel) {
       m_currentClientId = config.id;
       foundClient = true;
 
       // Update info label with TCP client name
       QString infoText = QString("%1 (%2)")
         .arg(QString::fromStdString(config.name))
-        .arg(QString::fromStdString(clientId));
+        .arg(QString::fromStdString(channelId));
       m_channelInfoLabel->setText(infoText);
       break;
     }
@@ -521,7 +541,23 @@ void LiveChartWidget::refreshChannelList()
     auto clientIds = m_tcpManager->GetClientIds();
     for (const auto& clientId : clientIds) {
       auto config = m_tcpManager->GetClientConfig(clientId);
-      if (config.dataStoreChannel == channelId) {
+
+      // Check both single-channel and multi-channel configs
+      bool isThisChannel = false;
+      if (config.protocolType == "single" && config.dataStoreChannel == channelId) {
+        isThisChannel = true;
+      }
+      else if (config.protocolType == "multi") {
+        // Check if channel is in the multi-channel array
+        for (const auto& ch : config.dataChannels) {
+          if (ch == channelId) {
+            isThisChannel = true;
+            break;
+          }
+        }
+      }
+
+      if (isThisChannel) {
         displayName = QString("%1 (%2)")
           .arg(QString::fromStdString(config.name))
           .arg(QString::fromStdString(channelId));
