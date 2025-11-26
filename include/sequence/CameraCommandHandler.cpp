@@ -54,6 +54,17 @@ static bool CaptureFrameFromLiveFeed(CameraManager* cameraManager, const std::st
         return false;
     }
 
+    // Check if camera is connected and grabbing first
+    auto status = cameraManager->GetCameraStatus(cameraName);
+    if (!status.connected) {
+        errorMessage = "Camera not connected: " + cameraName;
+        return false;
+    }
+    if (!status.grabbing) {
+        errorMessage = "Camera not grabbing: " + cameraName;
+        return false;
+    }
+
     // Create temporary subscriber to get latest frame (must use shared_ptr for subscription system)
     auto subscriber = std::make_shared<LiveVideoSubscriber>(cameraName, "CameraCommandHandler_Temp");
 
@@ -63,15 +74,27 @@ static bool CaptureFrameFromLiveFeed(CameraManager* cameraManager, const std::st
     // Initialize status from manager (important if camera already grabbing)
     subscriber->InitializeStatusFromManager(cameraManager);
 
-    // Wait briefly for first frame (camera should already be grabbing)
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    // Wait for frame with timeout (max 3 seconds, checking every 100ms)
+    const int maxWaitMs = 3000;
+    const int checkIntervalMs = 100;
+    int waitedMs = 0;
+
+    while (!subscriber->HasNewFrame() && waitedMs < maxWaitMs) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(checkIntervalMs));
+        waitedMs += checkIntervalMs;
+    }
 
     // Check if frame is available
     if (!subscriber->HasNewFrame()) {
         cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
-        errorMessage = "No frame available from camera: " + cameraName + " (is camera connected and grabbing?)";
+        errorMessage = "Timeout waiting for frame from camera: " + cameraName +
+                      " (waited " + std::to_string(waitedMs) + "ms, is camera broadcasting?)";
+        std::cerr << "[CameraCommandHandler] " << errorMessage << std::endl;
         return false;
     }
+
+    std::cout << "[CameraCommandHandler] Frame received from " << cameraName
+              << " after " << waitedMs << "ms" << std::endl;
 
     // Get latest frame
     outFrame = subscriber->GetLatestFrame();
