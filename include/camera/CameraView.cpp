@@ -773,31 +773,54 @@ void CameraView::syncWithManagerState()
   auto status = m_context->cameraManager->GetCameraStatus(m_cameraId);
 
   std::cout << "[CameraView] Syncing state for " << m_cameraId
-    << " - Connected: " << status.connected
+    << " - Manager(Connected: " << status.connected
     << ", Grabbing: " << status.grabbing
-    << ", UI Connected: " << m_isConnected << std::endl;
+    << "), UI Connected: " << m_isConnected << std::endl;
 
-  // If camera is already connected and grabbing in the manager, but not in UI
-  if (status.connected && status.grabbing && !m_isConnected) {
-    std::cout << "[CameraView] Camera already connected - setting up subscriber" << std::endl;
+  // Check if manager says camera is connected and grabbing
+  if (status.connected && status.grabbing) {
+    // Camera is connected in manager - ensure UI reflects this
 
-    // Create subscriber to receive frames
-    m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraView_" + m_cameraId);
-    m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
-    m_context->cameraManager->SubscribeToFrames(m_subscriber);
+    // If UI doesn't have a subscriber yet, or thinks it's disconnected, set up subscription
+    if (!m_isConnected || !m_subscriber) {
+      std::cout << "[CameraView] Setting up subscriber for connected camera" << std::endl;
 
-    std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
+      // Clean up old subscriber if exists
+      if (m_subscriber) {
+        m_context->cameraManager->UnsubscribeFromFrames(m_subscriber->GetSubscriberId());
+        m_subscriber.reset();
+      }
 
-    // Start display update timer
-    m_displayUpdateTimer = new QTimer(this);
-    connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
-    m_displayUpdateTimer->start(33);  // ~30 FPS
+      // Clean up old timer if exists
+      if (m_displayUpdateTimer) {
+        m_displayUpdateTimer->stop();
+        delete m_displayUpdateTimer;
+        m_displayUpdateTimer = nullptr;
+      }
 
-    m_lastUpdateTime = std::chrono::steady_clock::now();
-    m_frameCounter = 0;
-    m_lastTotalFrames = 0;
+      // Create subscriber to receive frames
+      m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraView_" + m_cameraId);
+      m_subscriber->InitializeStatusFromManager(m_context->cameraManager);
+      m_context->cameraManager->SubscribeToFrames(m_subscriber);
 
-    // Update UI state
+      std::cout << "[CameraView] Subscribed to camera broadcasts: " << m_cameraId << std::endl;
+
+      // Start display update timer
+      m_displayUpdateTimer = new QTimer(this);
+      connect(m_displayUpdateTimer, &QTimer::timeout, this, &CameraView::onUpdateDisplay);
+      m_displayUpdateTimer->start(33);  // ~30 FPS
+
+      m_lastUpdateTime = std::chrono::steady_clock::now();
+      m_frameCounter = 0;
+      m_lastTotalFrames = 0;
+
+      // Load current camera settings
+      loadCurrentSettings();
+
+      emit cameraConnected(QString::fromStdString(m_cameraId));
+    }
+
+    // Always update UI status to connected (fixes stale state)
     updateConnectionStatus(true);
 
     // Enable controls
@@ -810,32 +833,33 @@ void CameraView::syncWithManagerState()
     m_gainSlider->setEnabled(true);
     m_saveImageButton->setEnabled(true);
 
-    // Load current camera settings
-    loadCurrentSettings();
-
-    // ✅ Force refresh viewport after sync
+    // Force refresh viewport after sync
     if (m_viewport) {
       m_viewport->forceRefresh();
-      std::cout << "[CameraView] Forcing viewport refresh after sync (connected)" << std::endl;
     }
 
-    emit cameraConnected(QString::fromStdString(m_cameraId));
-    std::cout << "[CameraView] Sync complete - camera is active" << std::endl;
+    std::cout << "[CameraView] Sync complete - camera is connected" << std::endl;
   }
   else {
     // Camera is not connected or not grabbing in manager
-    std::cout << "[CameraView] Camera not connected in manager" << std::endl;
+    std::cout << "[CameraView] Camera not connected/grabbing in manager" << std::endl;
 
-    // If UI thinks it's connected but manager says it's not, update UI to disconnected
-    if (m_isConnected) {
-      std::cout << "[CameraView] UI was connected but manager is not - updating to disconnected" << std::endl;
-      updateConnectionStatus(false);
-    }
+    // Always update UI to disconnected state (fixes stale state)
+    updateConnectionStatus(false);
 
-    // ✅ Force refresh even when disconnected to show placeholder
+    // Disable controls
+    m_zoomSlider->setEnabled(false);
+    m_zoomSpinBox->setEnabled(false);
+    m_zoomResetButton->setEnabled(false);
+    m_autoExposureCheck->setEnabled(false);
+    m_autoGainCheck->setEnabled(false);
+    m_exposureSlider->setEnabled(false);
+    m_gainSlider->setEnabled(false);
+    m_saveImageButton->setEnabled(false);
+
+    // Force refresh to show disconnected state
     if (m_viewport) {
       m_viewport->forceRefresh();
-      std::cout << "[CameraView] Forcing viewport refresh after sync (disconnected)" << std::endl;
     }
   }
 }
