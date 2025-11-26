@@ -300,8 +300,6 @@ bool PylonCamera::ConnectToSerial(const std::string& serialNumber)
 
 void PylonCamera::Disconnect()
 {
-	std::lock_guard<std::mutex> lock(m_cameraMutex);
-
 	if (!m_connected)
 	{
 		return; // Not connected
@@ -309,11 +307,15 @@ void PylonCamera::Disconnect()
 
 	try
 	{
-		// First, stop grabbing if we're grabbing
+		// First, stop grabbing if we're grabbing (BEFORE acquiring the lock)
+		// StopGrabbing() has its own locking for the camera operations
 		if (m_threadRunning.load())
 		{
 			StopGrabbing();
 		}
+
+		// Now acquire lock for camera close operation
+		std::lock_guard<std::mutex> lock(m_cameraMutex);
 
 		// Close camera
 		if (m_camera.IsOpen())
@@ -492,8 +494,6 @@ void PylonCamera::StopGrabbing()
 
 bool PylonCamera::DisconnectWithResult()
 {
-	std::lock_guard<std::mutex> lock(m_cameraMutex);
-
 	if (!m_connected)
 	{
 		return true; // Already disconnected - success
@@ -503,7 +503,8 @@ bool PylonCamera::DisconnectWithResult()
 
 	try
 	{
-		// First, stop grabbing if we're grabbing
+		// First, stop grabbing if we're grabbing (BEFORE acquiring the lock)
+		// StopGrabbingWithResult() has its own locking for the camera operations
 		if (m_threadRunning.load())
 		{
 			if (!StopGrabbingWithResult()) {
@@ -511,6 +512,9 @@ bool PylonCamera::DisconnectWithResult()
 				std::cerr << "Warning: Failed to stop grabbing during disconnect" << std::endl;
 			}
 		}
+
+		// Now acquire lock for camera close operation
+		std::lock_guard<std::mutex> lock(m_cameraMutex);
 
 		// Close camera
 		if (m_camera.IsOpen())
@@ -1441,8 +1445,7 @@ std::string PylonCamera::GetNetworkInfo() const {
 	}
 }
 
-// CORRECTED: Replace your FindDeviceByIP method with this version that compiles
-
+// Find device by IP address - uses CDeviceInfo directly without opening camera
 bool PylonCamera::FindDeviceByIP(const std::string& ipAddress, Pylon::CDeviceInfo& deviceInfo) {
 	try {
 		Pylon::CTlFactory& tlFactory = Pylon::CTlFactory::GetInstance();
@@ -1454,7 +1457,7 @@ bool PylonCamera::FindDeviceByIP(const std::string& ipAddress, Pylon::CDeviceInf
 			return false;
 		}
 
-		std::cout << "=== CORRECTED IP SEARCH ===" << std::endl;
+		std::cout << "=== IP SEARCH ===" << std::endl;
 		std::cout << "Searching among " << devices.size() << " cameras for IP: " << ipAddress << std::endl;
 
 		// Search through all devices for matching IP
@@ -1469,145 +1472,112 @@ bool PylonCamera::FindDeviceByIP(const std::string& ipAddress, Pylon::CDeviceInf
 
 				// Check if this is a GigE camera
 				std::string deviceClass = std::string(device.GetDeviceClass().c_str());
-				if (deviceClass.find("GigE") != std::string::npos) {
-					std::cout << "✓ This is a GigE camera, attempting IP detection..." << std::endl;
+				if (deviceClass.find("GigE") != std::string::npos || deviceClass.find("Gige") != std::string::npos) {
+					std::cout << "This is a GigE camera, checking IP..." << std::endl;
 
-					// FIXED: Only use the working method - temporary camera with proper node access
-					Pylon::CInstantCamera tempCamera;
-					tempCamera.Attach(tlFactory.CreateDevice(device));
-
+					// METHOD 1: Get IP directly from CDeviceInfo (preferred - no camera open needed)
+					std::string cameraIP = "";
 					try {
-						tempCamera.Open();
-						std::cout << "✓ Temporary camera opened" << std::endl;
-
-						std::string cameraIP = "";
-
-						// Method 1: Try Transport Layer NodeMap
-						std::cout << "Trying Transport Layer NodeMap..." << std::endl;
-						try {
-							if (tempCamera.GetTLNodeMap().GetNode("GevCurrentIPAddress")) {
-								std::cout << "Found GevCurrentIPAddress in TL NodeMap" << std::endl;
-								Pylon::CIntegerParameter ipParam(tempCamera.GetTLNodeMap(), "GevCurrentIPAddress");
-								if (ipParam.IsReadable()) {
-									int64_t ipValue = ipParam.GetValue();
-									int a = (ipValue >> 24) & 0xFF;
-									int b = (ipValue >> 16) & 0xFF;
-									int c = (ipValue >> 8) & 0xFF;
-									int d = ipValue & 0xFF;
-									cameraIP = std::to_string(a) + "." + std::to_string(b) + "." +
-										std::to_string(c) + "." + std::to_string(d);
-									std::cout << "IP from TL NodeMap: " << cameraIP << std::endl;
-								}
-							}
-							else {
-								std::cout << "GevCurrentIPAddress not found in TL NodeMap" << std::endl;
-							}
-						}
-						catch (const Pylon::GenericException& e) {
-							std::cout << "Error accessing TL NodeMap: " << e.GetDescription() << std::endl;
-						}
-
-						// Method 2: Try Device NodeMap
-						if (cameraIP.empty()) {
-							std::cout << "Trying Device NodeMap..." << std::endl;
-							try {
-								if (tempCamera.GetNodeMap().GetNode("GevCurrentIPAddress")) {
-									std::cout << "Found GevCurrentIPAddress in Device NodeMap" << std::endl;
-									Pylon::CIntegerParameter ipParam(tempCamera.GetNodeMap(), "GevCurrentIPAddress");
-									if (ipParam.IsReadable()) {
-										int64_t ipValue = ipParam.GetValue();
-										int a = (ipValue >> 24) & 0xFF;
-										int b = (ipValue >> 16) & 0xFF;
-										int c = (ipValue >> 8) & 0xFF;
-										int d = ipValue & 0xFF;
-										cameraIP = std::to_string(a) + "." + std::to_string(b) + "." +
-											std::to_string(c) + "." + std::to_string(d);
-										std::cout << "IP from Device NodeMap: " << cameraIP << std::endl;
-									}
-								}
-								else {
-									std::cout << "GevCurrentIPAddress not found in Device NodeMap" << std::endl;
-								}
-							}
-							catch (const Pylon::GenericException& e) {
-								std::cout << "Error accessing Device NodeMap: " << e.GetDescription() << std::endl;
-							}
-						}
-
-						// Method 3: Try alternative node names in TL NodeMap
-						if (cameraIP.empty()) {
-							std::cout << "Trying alternative node names..." << std::endl;
-
-							// Try GevDeviceIPAddress
-							try {
-								if (tempCamera.GetTLNodeMap().GetNode("GevDeviceIPAddress")) {
-									std::cout << "Found GevDeviceIPAddress" << std::endl;
-									Pylon::CIntegerParameter ipParam(tempCamera.GetTLNodeMap(), "GevDeviceIPAddress");
-									if (ipParam.IsReadable()) {
-										int64_t ipValue = ipParam.GetValue();
-										int a = (ipValue >> 24) & 0xFF;
-										int b = (ipValue >> 16) & 0xFF;
-										int c = (ipValue >> 8) & 0xFF;
-										int d = ipValue & 0xFF;
-										cameraIP = std::to_string(a) + "." + std::to_string(b) + "." +
-											std::to_string(c) + "." + std::to_string(d);
-										std::cout << "IP from GevDeviceIPAddress: " << cameraIP << std::endl;
-									}
-								}
-							}
-							catch (const Pylon::GenericException& e) {
-								std::cout << "GevDeviceIPAddress not available: " << e.GetDescription() << std::endl;
-							}
-						}
-
-						tempCamera.Close();
-
-						// FALLBACK: If IP detection fails but this is your known camera, use it anyway
-						if (cameraIP.empty()) {
-							std::cout << "⚠ Could not detect IP address" << std::endl;
-							std::cout << "Camera serial: " << device.GetSerialNumber() << std::endl;
-
-							// If this is your known camera (serial 22769967), assume it's the right one
-							if (std::string(device.GetSerialNumber().c_str()) == "22769967") {
-								std::cout << "⚠ This matches your known camera serial" << std::endl;
-								std::cout << "🎯 USING CAMERA BY SERIAL MATCH (IP detection failed)" << std::endl;
-								deviceInfo = device;
-								return true;
-							}
-						}
-						else {
-							// We got an IP address, check if it matches
-							std::cout << "Camera IP: " << cameraIP << std::endl;
-							std::cout << "Looking for: " << ipAddress << std::endl;
-
-							if (cameraIP == ipAddress) {
-								std::cout << "🎯 IP MATCH FOUND!" << std::endl;
-								deviceInfo = device;
-								return true;
-							}
-							else {
-								std::cout << "✗ IP does not match" << std::endl;
-							}
+						// For GigE cameras, the IP address is available in the device info
+						Pylon::String_t ipStr = device.GetIpAddress();
+						if (!ipStr.empty()) {
+							cameraIP = std::string(ipStr.c_str());
+							std::cout << "IP from DeviceInfo.GetIpAddress(): " << cameraIP << std::endl;
 						}
 					}
-					catch (const Pylon::GenericException& e) {
-						std::cout << "✗ Error opening temporary camera: " << e.GetDescription() << std::endl;
-						try { tempCamera.Close(); }
-						catch (...) {}
+					catch (...) {
+						std::cout << "GetIpAddress() not available" << std::endl;
+					}
+
+					// METHOD 2: Try GetPropertyValue for IP address
+					if (cameraIP.empty()) {
+						try {
+							Pylon::String_t value;
+							if (device.GetPropertyValue("IpAddress", value)) {
+								cameraIP = std::string(value.c_str());
+								std::cout << "IP from PropertyValue 'IpAddress': " << cameraIP << std::endl;
+							}
+						}
+						catch (...) {
+							// Property not available
+						}
+					}
+
+					// METHOD 3: Try full device ID which often contains the IP
+					if (cameraIP.empty()) {
+						try {
+							std::string fullName = std::string(device.GetFullName().c_str());
+							std::cout << "FullName: " << fullName << std::endl;
+
+							// Parse IP from full name - format is often like "Basler acA1920-40gm#00305337A40F#169.254.4.4:3956"
+							// Look for IP pattern in the string
+							size_t hashPos = fullName.rfind('#');
+							if (hashPos != std::string::npos) {
+								std::string afterHash = fullName.substr(hashPos + 1);
+								size_t colonPos = afterHash.find(':');
+								if (colonPos != std::string::npos) {
+									cameraIP = afterHash.substr(0, colonPos);
+									std::cout << "IP extracted from FullName: " << cameraIP << std::endl;
+								}
+							}
+						}
+						catch (...) {
+							std::cout << "Could not parse IP from FullName" << std::endl;
+						}
+					}
+
+					// METHOD 4: Check Address property
+					if (cameraIP.empty()) {
+						try {
+							Pylon::String_t addr = device.GetAddress();
+							if (!addr.empty()) {
+								std::string addrStr = std::string(addr.c_str());
+								std::cout << "Address: " << addrStr << std::endl;
+								// Address might be in format "169.254.4.4:3956"
+								size_t colonPos = addrStr.find(':');
+								if (colonPos != std::string::npos) {
+									cameraIP = addrStr.substr(0, colonPos);
+								} else {
+									cameraIP = addrStr;
+								}
+								std::cout << "IP from Address: " << cameraIP << std::endl;
+							}
+						}
+						catch (...) {
+							// Address not available
+						}
+					}
+
+					// Check if we found the IP and if it matches
+					if (!cameraIP.empty()) {
+						std::cout << "Camera IP: " << cameraIP << std::endl;
+						std::cout << "Looking for: " << ipAddress << std::endl;
+
+						if (cameraIP == ipAddress) {
+							std::cout << "IP MATCH FOUND!" << std::endl;
+							deviceInfo = device;
+							return true;
+						}
+						else {
+							std::cout << "IP does not match" << std::endl;
+						}
+					}
+					else {
+						std::cout << "Could not detect IP address for this camera" << std::endl;
 					}
 				}
 				else {
-					std::cout << "ℹ Skipping non-GigE camera" << std::endl;
+					std::cout << "Skipping non-GigE camera" << std::endl;
 				}
 			}
 			catch (const Pylon::GenericException& e) {
-				std::cout << "✗ Error processing camera " << i << ": " << e.GetDescription() << std::endl;
+				std::cout << "Error processing camera " << i << ": " << e.GetDescription() << std::endl;
 				continue;
 			}
 		}
 
 		std::cout << "\n=== SEARCH COMPLETED ===" << std::endl;
-		std::cout << "❌ No camera found with IP: " << ipAddress << std::endl;
+		std::cout << "No camera found with IP: " << ipAddress << std::endl;
 		return false;
 	}
 	catch (const Pylon::GenericException& e) {

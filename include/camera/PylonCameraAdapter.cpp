@@ -1,17 +1,59 @@
 // PylonCameraAdapter.cpp
 #include "PylonCameraAdapter.h"
+#include "CameraManager.h"  // For CameraInfo struct
 #include <iostream>
 
 PylonCameraAdapter::PylonCameraAdapter(const std::string& cameraId)
   : m_cameraId(cameraId)
   , m_pylonCamera(std::make_unique<PylonCamera>())
-  , m_frameCallback(nullptr) {
+  , m_frameCallback(nullptr)
+  , m_connectionMethod(ConnectionMethod::AUTO)
+  , m_deviceIndex(0) {
 
   // Initialize format converter once
   m_formatConverter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
   m_formatConverter.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
 
-  std::cout << "PylonCameraAdapter created for camera: " << cameraId << std::endl;
+  std::cout << "PylonCameraAdapter created for camera: " << cameraId << " (auto-connect mode)" << std::endl;
+}
+
+PylonCameraAdapter::PylonCameraAdapter(const CameraInfo& cameraInfo)
+  : m_cameraId(cameraInfo.id)
+  , m_pylonCamera(std::make_unique<PylonCamera>())
+  , m_frameCallback(nullptr)
+  , m_deviceIndex(cameraInfo.deviceIndex) {
+
+  // Copy connection info from CameraInfo
+  switch (cameraInfo.connectionMethod) {
+  case CameraInfo::ConnectionMethod::IP_ADDRESS:
+    m_connectionMethod = ConnectionMethod::IP_ADDRESS;
+    m_ipAddress = cameraInfo.ipAddress;
+    std::cout << "PylonCameraAdapter created for camera: " << cameraInfo.id
+      << " (IP: " << m_ipAddress << ")" << std::endl;
+    break;
+  case CameraInfo::ConnectionMethod::SERIAL_NUMBER:
+    m_connectionMethod = ConnectionMethod::SERIAL_NUMBER;
+    m_serialNumber = cameraInfo.serialNumber;
+    std::cout << "PylonCameraAdapter created for camera: " << cameraInfo.id
+      << " (Serial: " << m_serialNumber << ")" << std::endl;
+    break;
+  case CameraInfo::ConnectionMethod::DEVICE_INDEX:
+    m_connectionMethod = ConnectionMethod::DEVICE_INDEX;
+    m_deviceIndex = cameraInfo.deviceIndex;
+    std::cout << "PylonCameraAdapter created for camera: " << cameraInfo.id
+      << " (Index: " << m_deviceIndex << ")" << std::endl;
+    break;
+  case CameraInfo::ConnectionMethod::AUTO:
+  default:
+    m_connectionMethod = ConnectionMethod::AUTO;
+    std::cout << "PylonCameraAdapter created for camera: " << cameraInfo.id
+      << " (auto-connect mode)" << std::endl;
+    break;
+  }
+
+  // Initialize format converter once
+  m_formatConverter.OutputPixelFormat = Pylon::PixelType_RGB8packed;
+  m_formatConverter.OutputBitAlignment = Pylon::OutputBitAlignment_MsbAligned;
 }
 
 PylonCameraAdapter::~PylonCameraAdapter() {
@@ -69,12 +111,38 @@ bool PylonCameraAdapter::Connect() {
       return false;
     }
 
-    bool result = m_pylonCamera->Connect();
+    bool result = false;
+
+    // Use the appropriate connection method based on stored info
+    switch (m_connectionMethod) {
+    case ConnectionMethod::IP_ADDRESS:
+      std::cout << "PylonCameraAdapter [" << m_cameraId << "]: Connecting by IP: " << m_ipAddress << std::endl;
+      result = m_pylonCamera->ConnectToIP(m_ipAddress);
+      break;
+
+    case ConnectionMethod::SERIAL_NUMBER:
+      std::cout << "PylonCameraAdapter [" << m_cameraId << "]: Connecting by Serial: " << m_serialNumber << std::endl;
+      result = m_pylonCamera->ConnectToSerial(m_serialNumber);
+      break;
+
+    case ConnectionMethod::DEVICE_INDEX:
+      std::cout << "PylonCameraAdapter [" << m_cameraId << "]: Connecting by Index: " << m_deviceIndex << std::endl;
+      result = m_pylonCamera->ConnectToIndex(m_deviceIndex);
+      break;
+
+    case ConnectionMethod::AUTO:
+    default:
+      std::cout << "PylonCameraAdapter [" << m_cameraId << "]: Connecting to first available camera" << std::endl;
+      result = m_pylonCamera->Connect();
+      break;
+    }
+
     if (!result) {
       SetError("Failed to connect Pylon camera");
     }
     else {
       ClearLastError();
+      std::cout << "PylonCameraAdapter [" << m_cameraId << "]: Successfully connected" << std::endl;
     }
 
     return result;

@@ -6,6 +6,9 @@
 #include <memory>
 #include <string>
 
+// Forward declaration
+struct CameraInfo;
+
 /**
  * @brief Factory class for creating camera hardware instances
  *
@@ -26,6 +29,17 @@ public:
     ICameraHardware::CameraType type,
     const std::string& cameraId,
     const std::string& deviceInfo = ""
+  );
+
+  /**
+   * @brief Create a camera hardware instance with full connection info
+   * @param type The type of camera to create (PYLON, IDS, etc.)
+   * @param cameraInfo Full camera info including connection method (IP, serial, index)
+   * @return Unique pointer to the created camera hardware, or nullptr if creation failed
+   */
+  static std::unique_ptr<ICameraHardware> CreateCamera(
+    ICameraHardware::CameraType type,
+    const CameraInfo& cameraInfo
   );
 
   /**
