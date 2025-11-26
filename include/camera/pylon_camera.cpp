@@ -948,8 +948,29 @@ bool PylonCamera::SetExposureTime(double microseconds) {
 		// Set exposure mode first
 		SetExposureMode();
 
-		// Use ExposureTimeAbs for Basler cameras (microseconds)
-		if (m_camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
+		// Try ace2/newer cameras first: ExposureTime (float, microseconds)
+		if (m_camera.GetNodeMap().GetNode("ExposureTime")) {
+			Pylon::CFloatParameter exposureTime(m_camera.GetNodeMap(), "ExposureTime");
+
+			// Get valid range for this camera
+			double minExposure = exposureTime.GetMin();
+			double maxExposure = exposureTime.GetMax();
+
+			// Clamp to valid range
+			double clampedExposure = (std::max)(minExposure, (std::min)(maxExposure, microseconds));
+
+			exposureTime.SetValue(clampedExposure);
+
+			if (std::abs(clampedExposure - microseconds) > 1.0) {
+				std::cout << "Warning: Exposure clamped from " << microseconds
+					<< " to " << clampedExposure << " us" << std::endl;
+			}
+
+			m_lastErrorMessage.clear();
+			return true;
+		}
+		// Fallback for older ace cameras: ExposureTimeAbs (float, microseconds)
+		else if (m_camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
 			Pylon::CFloatParameter exposureTime(m_camera.GetNodeMap(), "ExposureTimeAbs");
 
 			// Get valid range for this camera
@@ -970,7 +991,7 @@ bool PylonCamera::SetExposureTime(double microseconds) {
 			return true;
 		}
 		else {
-			m_lastErrorMessage = "ExposureTimeAbs parameter not found";
+			m_lastErrorMessage = "Neither ExposureTime nor ExposureTimeAbs parameter found";
 			std::cerr << m_lastErrorMessage << std::endl;
 			return false;
 		}
@@ -982,19 +1003,56 @@ bool PylonCamera::SetExposureTime(double microseconds) {
 	}
 }
 
-// Set gain value (0-10 scale, mapped to camera's raw range)
+// Set gain value (0-10 scale, mapped to camera's range)
 bool PylonCamera::SetGain(double gain) {
 	if (!ValidateConnection()) return false;
 
 	try {
-		// First set GainSelector to AnalogAll (recommended for most cases)
+		// First set GainSelector to All or AnalogAll (recommended for most cases)
 		if (m_camera.GetNodeMap().GetNode("GainSelector")) {
 			Pylon::CEnumParameter gainSelector(m_camera.GetNodeMap(), "GainSelector");
-			gainSelector.SetValue("AnalogAll");
+			// Try "All" first (ace2), then "AnalogAll" (ace)
+			try {
+				gainSelector.SetValue("All");
+			}
+			catch (...) {
+				try {
+					gainSelector.SetValue("AnalogAll");
+				}
+				catch (...) {
+					// If neither works, just continue without setting selector
+				}
+			}
 		}
 
-		// Now set GainRaw value
-		if (m_camera.GetNodeMap().GetNode("GainRaw")) {
+		// Try ace2/newer cameras first: Gain (float, in dB)
+		if (m_camera.GetNodeMap().GetNode("Gain")) {
+			Pylon::CFloatParameter gainParam(m_camera.GetNodeMap(), "Gain");
+
+			// Get valid range for this camera
+			double minGain = gainParam.GetMin();
+			double maxGain = gainParam.GetMax();
+
+			// Convert our "gain" setting (0-10 range) to camera's dB range
+			double targetGain;
+			if (gain <= 0) {
+				targetGain = minGain;
+			}
+			else if (gain >= 10) {
+				targetGain = maxGain;
+			}
+			else {
+				// Linear interpolation between min and max
+				double ratio = gain / 10.0;
+				targetGain = minGain + (maxGain - minGain) * ratio;
+			}
+
+			gainParam.SetValue(targetGain);
+			m_lastErrorMessage.clear();
+			return true;
+		}
+		// Fallback for older ace cameras: GainRaw (integer)
+		else if (m_camera.GetNodeMap().GetNode("GainRaw")) {
 			Pylon::CIntegerParameter gainRaw(m_camera.GetNodeMap(), "GainRaw");
 
 			// Get valid range for this camera
@@ -1004,14 +1062,14 @@ bool PylonCamera::SetGain(double gain) {
 			// Convert our "gain" setting (0-10 range) to camera's raw range
 			int64_t rawGain;
 			if (gain <= 0) {
-				rawGain = minGain; // Minimum gain
+				rawGain = minGain;
 			}
 			else if (gain >= 10) {
-				rawGain = maxGain; // Maximum gain
+				rawGain = maxGain;
 			}
 			else {
 				// Linear interpolation between min and max
-				double ratio = gain / 10.0; // 0.0 to 1.0
+				double ratio = gain / 10.0;
 				rawGain = static_cast<int64_t>(minGain + (maxGain - minGain) * ratio);
 			}
 
@@ -1020,7 +1078,7 @@ bool PylonCamera::SetGain(double gain) {
 			return true;
 		}
 		else {
-			m_lastErrorMessage = "GainRaw parameter not found";
+			m_lastErrorMessage = "Neither Gain nor GainRaw parameter found";
 			std::cerr << m_lastErrorMessage << std::endl;
 			return false;
 		}
@@ -1088,7 +1146,15 @@ double PylonCamera::GetExposureTime() const {
 		// Need to cast away const to access GetNodeMap() - this is safe for read operations
 		auto& camera = const_cast<Pylon::CInstantCamera&>(m_camera);
 
-		if (camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
+		// Try ace2/newer cameras first: ExposureTime
+		if (camera.GetNodeMap().GetNode("ExposureTime")) {
+			Pylon::CFloatParameter exposureTime(camera.GetNodeMap(), "ExposureTime");
+			if (exposureTime.IsReadable()) {
+				return exposureTime.GetValue();
+			}
+		}
+		// Fallback for older ace cameras: ExposureTimeAbs
+		else if (camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
 			Pylon::CFloatParameter exposureTime(camera.GetNodeMap(), "ExposureTimeAbs");
 			if (exposureTime.IsReadable()) {
 				return exposureTime.GetValue();
@@ -1109,7 +1175,24 @@ double PylonCamera::GetGain() const {
 		// Need to cast away const to access GetNodeMap() - this is safe for read operations
 		auto& camera = const_cast<Pylon::CInstantCamera&>(m_camera);
 
-		if (camera.GetNodeMap().GetNode("GainRaw")) {
+		// Try ace2/newer cameras first: Gain (float, in dB)
+		if (camera.GetNodeMap().GetNode("Gain")) {
+			Pylon::CFloatParameter gainParam(camera.GetNodeMap(), "Gain");
+			if (gainParam.IsReadable()) {
+				// Get the value and convert back to 0-10 scale
+				double gainValue = gainParam.GetValue();
+				double minGain = gainParam.GetMin();
+				double maxGain = gainParam.GetMax();
+
+				// Convert back to 0-10 scale
+				if (maxGain > minGain) {
+					double ratio = (gainValue - minGain) / (maxGain - minGain);
+					return ratio * 10.0;
+				}
+			}
+		}
+		// Fallback for older ace cameras: GainRaw (integer)
+		else if (camera.GetNodeMap().GetNode("GainRaw")) {
 			Pylon::CIntegerParameter gainRaw(camera.GetNodeMap(), "GainRaw");
 			if (gainRaw.IsReadable()) {
 				// Get the raw value and convert back to 0-10 scale

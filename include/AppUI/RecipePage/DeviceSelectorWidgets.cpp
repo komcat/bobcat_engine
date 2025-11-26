@@ -149,16 +149,18 @@ void DeviceComboBox::setSelectedDevice(const std::string& deviceName)
     std::cout << "[DeviceComboBox]   setCurrentIndex(" << index << ") - SUCCESS" << std::endl;
   }
   else {
-    std::cout << "[DeviceComboBox]   Device not found in list! Current items:" << std::endl;
+    std::cout << "[DeviceComboBox]   Device '" << deviceName << "' not found in list! Current items:" << std::endl;
     for (int i = 0; i < count(); ++i) {
       std::cout << "[DeviceComboBox]     [" << i << "] = " << itemText(i).toStdString() << std::endl;
     }
 
-    // ✅ AUTO-SELECT FIX: If device name is empty and we have devices, auto-select the first one
-    if (deviceName.empty() && count() > 0 && itemText(0) != "No devices found") {
-      std::cout << "[DeviceComboBox]   Auto-selecting first device: " << itemText(0).toStdString() << std::endl;
+    // ✅ AUTO-SELECT FIX: If device is not found and we have valid devices, auto-select the first one
+    // This handles both empty deviceName AND obsolete/renamed device names (like "camera_1" -> "main_camera")
+    if (count() > 0 && itemText(0) != "No devices found") {
+      std::cout << "[DeviceComboBox]   Auto-selecting first device: " << itemText(0).toStdString()
+                << " (replacing invalid device name: '" << deviceName << "')" << std::endl;
       setCurrentIndex(0);
-      // Emit the change signal to trigger parameterChanged so it gets saved
+      // Emit the change signal to trigger parameterChanged so it gets saved with the corrected value
       emit currentIndexChanged(0);
     }
   }
