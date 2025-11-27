@@ -19,6 +19,7 @@
 #include "../plugins/LineDetectorPlugin.h"
 #include "../plugins/CornerDetectorPlugin.h"
 #include "../plugins/PatternMatchingPlugin.h"
+#include "../plugins/PatternMatchingEdgePlugin.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -31,6 +32,7 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QThread>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <fstream>
@@ -1069,6 +1071,9 @@ void VisionManagerPage::onApplyParams()
     if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected() && m_frameSubscriber->IsCameraGrabbing()) {
         std::cout << "[VisionManagerPage] Auto-recapturing fresh image before execution..." << std::endl;
 
+        // Wait 100ms for camera exposure settings to stabilize
+        QThread::msleep(100);
+
         // Get the latest frame
         CameraFrameData frame = m_frameSubscriber->GetLatestFrame();
         if (frame.IsValid()) {
@@ -1418,6 +1423,10 @@ void VisionManagerPage::registerPlugins()
     auto patternPlugin = std::make_shared<PatternMatchingPlugin>();
     VisionManager::instance().registerPlugin(patternPlugin);
 
+    // Register Pattern Matching Edge Plugin
+    auto patternEdgePlugin = std::make_shared<PatternMatchingEdgePlugin>();
+    VisionManager::instance().registerPlugin(patternEdgePlugin);
+
     if (m_context && m_context->logManager) {
         int count = VisionManager::instance().getPluginCount();
         m_context->logManager->Info("Registered " + std::to_string(count) + " vision plugins", "VisionManagerPage");
@@ -1472,6 +1481,27 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
         auto pmPlugin = std::dynamic_pointer_cast<PatternMatchingPlugin>(plugin);
         if (pmPlugin) {
             pmPlugin->setVisionManagerPage(this);
+        }
+    }
+
+    // If it's a PatternMatchingEdgePlugin, set VisionManagerPage reference for template selection
+    if (pluginName == "PatternMatchingEdge") {
+        auto pmePlugin = std::dynamic_pointer_cast<PatternMatchingEdgePlugin>(plugin);
+        if (pmePlugin) {
+            pmePlugin->setVisionManagerPage(this);
+
+            // Set template directory and profile name for auto-save
+            if (!m_currentProfilePath.isEmpty()) {
+                QFileInfo profileInfo(m_currentProfilePath);
+                QString visionDir = profileInfo.absolutePath();
+                pmePlugin->setTemplateDirectory(visionDir.toStdString());
+                pmePlugin->setProfileName(profileInfo.baseName().toStdString());
+            } else if (m_context && m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+                QString configPath = QCoreApplication::applicationDirPath() + "/config/"
+                                    + QString::fromStdString(m_context->productPositionManager->GetCurrentProductName()) + "/vision";
+                pmePlugin->setTemplateDirectory(configPath.toStdString());
+                pmePlugin->setProfileName("untitled");
+            }
         }
     }
 }

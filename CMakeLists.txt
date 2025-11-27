@@ -934,6 +934,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/LineDetectorPlugin.cpp
         include/vision/plugins/CornerDetectorPlugin.cpp
         include/vision/plugins/PatternMatchingPlugin.cpp
+        include/vision/plugins/PatternMatchingEdgePlugin.cpp
         include/vision/VisionProcessingWorker.cpp
         include/sequence/VisionCommandHandler.cpp
         include/recipe/processes/VisionProcesses.cpp
