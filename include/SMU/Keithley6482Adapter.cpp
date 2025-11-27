@@ -20,6 +20,7 @@ Keithley6482Adapter::Keithley6482Adapter(const std::string& visaResource, const 
   , m_pollTimer(nullptr)
   , m_isPolling(false)
   , m_sampleCount(0)
+  , m_readCount(0)
   , m_lastError("")
 {
   // Create polling timer
@@ -388,10 +389,17 @@ std::vector<double> Keithley6482Adapter::ReadAllChannels()
     return results;
   }
 
-  // Set format to read all enabled channels
+  // Periodic VISA buffer clear for stability (every 500 reads, like Python implementation)
+  m_readCount++;
+  if (m_readCount % 500 == 0) {
+    ClearVISABuffersInternal();
+  }
+
+  // Read all enabled channels
   if (m_config.EnabledChannels.size() > 1) {
     // Read multiple channels simultaneously
-    WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
+    // NOTE: FORM:ELEM is set once during ConfigureMeasurementMode(), not per-read
+    // This reduces SCPI overhead and improves polling performance
 
     std::string response;
     if (!QueryCommandInternal(":READ?", response)) {
@@ -555,17 +563,26 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       modeName = "ACCURATE";
       std::cout << "[Keithley6482] Configuring ACCURATE mode (NPLC=1.0, ~10 Hz)..." << std::endl;
 
+      // ===== Channel 1 configuration =====
       // NPLC = 1.0 for high accuracy
-      WriteCommandInternal(":SENS:CURR:NPLC 1.0");
-
+      WriteCommandInternal(":SENS1:CURR:NPLC 1.0");
       // Auto-range ON
-      WriteCommandInternal(":SENS:CURR:RANG:AUTO ON");
+      WriteCommandInternal(":SENS1:CURR:RANG:AUTO ON");
+      // Averaging enabled for accuracy
+      WriteCommandInternal(":SENS1:CURR:AVER:STAT ON");
+      WriteCommandInternal(":SENS1:CURR:AVER:COUN 5");
+      WriteCommandInternal(":SENS1:CURR:AVER:TCON REP");
 
+      // ===== Channel 2 configuration =====
+      WriteCommandInternal(":SENS2:CURR:NPLC 1.0");
+      WriteCommandInternal(":SENS2:CURR:RANG:AUTO ON");
+      WriteCommandInternal(":SENS2:CURR:AVER:STAT ON");
+      WriteCommandInternal(":SENS2:CURR:AVER:COUN 5");
+      WriteCommandInternal(":SENS2:CURR:AVER:TCON REP");
+
+      // ===== System-wide settings =====
       // Auto-zero ON for accuracy
       WriteCommandInternal(":SYST:AZER ON");
-
-      // Averaging default (usually enabled)
-      WriteCommandInternal(":SENS:CURR:AVER:STAT ON");
 
       // Display ON
       WriteCommandInternal(":DISP:ENAB ON");
@@ -579,17 +596,24 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       modeName = "FAST (COARSE)";
       std::cout << "[Keithley6482] Configuring FAST mode (NPLC=0.1, ~80 Hz)..." << std::endl;
 
+      // ===== Channel 1 configuration =====
       // NPLC = 0.1 (10x faster than ACCURATE)
-      WriteCommandInternal(":SENS:CURR:NPLC 0.1");
-
+      WriteCommandInternal(":SENS1:CURR:NPLC 0.1");
       // Auto-range ON (for wide dynamic range during alignment)
-      WriteCommandInternal(":SENS:CURR:RANG:AUTO ON");
-
+      WriteCommandInternal(":SENS1:CURR:RANG:AUTO ON");
       // Averaging: 3 count, repeating filter (noise reduction)
-      WriteCommandInternal(":SENS:CURR:AVER:STAT ON");
-      WriteCommandInternal(":SENS:CURR:AVER:COUN 3");
-      WriteCommandInternal(":SENS:CURR:AVER:TCON REP");
+      WriteCommandInternal(":SENS1:CURR:AVER:STAT ON");
+      WriteCommandInternal(":SENS1:CURR:AVER:COUN 3");
+      WriteCommandInternal(":SENS1:CURR:AVER:TCON REP");
 
+      // ===== Channel 2 configuration =====
+      WriteCommandInternal(":SENS2:CURR:NPLC 0.1");
+      WriteCommandInternal(":SENS2:CURR:RANG:AUTO ON");
+      WriteCommandInternal(":SENS2:CURR:AVER:STAT ON");
+      WriteCommandInternal(":SENS2:CURR:AVER:COUN 3");
+      WriteCommandInternal(":SENS2:CURR:AVER:TCON REP");
+
+      // ===== System-wide settings =====
       // Auto-zero ON (maintain accuracy)
       WriteCommandInternal(":SYST:AZER ON");
 
@@ -605,18 +629,27 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       modeName = "ULTRA-FAST (MONITOR)";
       std::cout << "[Keithley6482] Configuring ULTRA-FAST mode (NPLC=0.01, ~150 Hz)..." << std::endl;
 
+      // ===== Channel 1 configuration =====
       // Minimum NPLC (0.01 is minimum for Keithley 6482)
-      WriteCommandInternal(":SENS:CURR:NPLC 0.01");
+      WriteCommandInternal(":SENS1:CURR:NPLC 0.01");
+      // Fixed range (20mA) - no auto-ranging overhead
+      WriteCommandInternal(":SENS1:CURR:RANG:AUTO OFF");
+      WriteCommandInternal(":SENS1:CURR:RANG 0.02");  // 20mA
+      // Disable averaging for speed
+      WriteCommandInternal(":SENS1:CURR:AVER:STAT OFF");
+      // Disable median filter for speed
+      WriteCommandInternal(":SENS1:CURR:MED:STAT OFF");
 
+      // ===== Channel 2 configuration =====
+      WriteCommandInternal(":SENS2:CURR:NPLC 0.01");
+      WriteCommandInternal(":SENS2:CURR:RANG:AUTO OFF");
+      WriteCommandInternal(":SENS2:CURR:RANG 0.02");  // 20mA
+      WriteCommandInternal(":SENS2:CURR:AVER:STAT OFF");
+      WriteCommandInternal(":SENS2:CURR:MED:STAT OFF");
+
+      // ===== System-wide settings =====
       // Disable auto-zero for speed
       WriteCommandInternal(":SYST:AZER OFF");
-
-      // Disable averaging for speed
-      WriteCommandInternal(":SENS:CURR:AVER:STAT OFF");
-
-      // Fixed range (20mA) - no auto-ranging overhead
-      WriteCommandInternal(":SENS:CURR:RANG:AUTO OFF");
-      WriteCommandInternal(":SENS:CURR:RANG 0.02");  // 20mA
 
       // Display OFF for speed (if supported)
       try {
@@ -629,7 +662,7 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       // Continuous measurement mode
       WriteCommandInternal(":INIT:CONT ON");
 
-      // Read both channels simultaneously
+      // Read both channels simultaneously (set once here, not per-read)
       WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
       WriteCommandInternal(":FORM:DATA ASC");
 
@@ -870,6 +903,20 @@ std::string Keithley6482Adapter::TrimString(const std::string& str) const
   return str.substr(first, (last - first + 1));
 }
 
+void Keithley6482Adapter::ClearVISABuffersInternal()
+{
+  // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
+  // Clear VISA buffers periodically to prevent overflow (like Python implementation)
+  // This improves stability during high-speed polling
+
+  if (m_instrument != VI_NULL) {
+    // Clear the instrument's input/output buffers
+    viClear(m_instrument);
+    // Clear status registers and error queue
+    WriteCommandInternal("*CLS");
+  }
+}
+
 // ========== Polling Methods ==========
 
 bool Keithley6482Adapter::StartPolling(int intervalMs)
@@ -895,6 +942,7 @@ bool Keithley6482Adapter::StartPolling(int intervalMs)
     << " (Interval: " << intervalMs << "ms, Channel: " << m_currentChannel << ")" << std::endl;
 
   m_sampleCount = 0;
+  m_readCount = 0;  // Reset read counter for periodic VISA buffer clear
   m_isPolling = true;
   m_pollTimer->start(intervalMs);
 

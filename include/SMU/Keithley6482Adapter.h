@@ -234,6 +234,7 @@ private:
   QTimer* m_pollTimer;                    // Timer for periodic polling
   std::atomic<bool> m_isPolling;          // Polling active flag
   std::atomic<uint64_t> m_sampleCount;    // Total samples acquired
+  std::atomic<uint64_t> m_readCount;      // Counter for periodic VISA buffer clear
 
   // Thread safety
   mutable std::mutex m_mutex;
@@ -256,4 +257,5 @@ private:
   bool SetIntegrationTimeInternal(double nplc);
   bool SetMeasurementRangeInternal(double range, bool autoRange);
   bool ConfigureMeasurementModeInternal(MeasurementMode mode);
+  void ClearVISABuffersInternal();  // Periodic VISA buffer clear for stability
 };
