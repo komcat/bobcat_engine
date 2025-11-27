@@ -48,7 +48,21 @@ void DeviceComboBox::populateDevices()
   switch (m_deviceType) {
   case DeviceType::Motion:
     if (m_context->motionManager) {
-      devices = m_context->motionManager->GetAllDeviceNames();
+      // ✅ FIX: Filter for only CONNECTED devices (not all configured devices)
+      std::vector<std::string> allDevices = m_context->motionManager->GetAllDeviceNames();
+      std::map<std::string, bool> connectionStatus = m_context->motionManager->GetConnectionStatus();
+
+      // Only add connected devices
+      for (const auto& deviceName : allDevices) {
+        auto it = connectionStatus.find(deviceName);
+        if (it != connectionStatus.end() && it->second) {
+          devices.push_back(deviceName);
+          std::cout << "[DeviceComboBox] Motion device connected: " << deviceName << std::endl;
+        }
+        else {
+          std::cout << "[DeviceComboBox] Motion device NOT connected (skipped): " << deviceName << std::endl;
+        }
+      }
     }
     break;
 

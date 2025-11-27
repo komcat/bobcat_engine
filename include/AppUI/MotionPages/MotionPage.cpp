@@ -859,8 +859,11 @@ void MotionPage::transformLocalToGlobal(double localX, double localY, double loc
 		return;
 	}
 
-	globalX = (*matrix)[0] * localX + (*matrix)[1] * localY + (*matrix)[2] * localZ;
-	globalY = (*matrix)[3] * localX + (*matrix)[4] * localY + (*matrix)[5] * localZ;
+	// ✅ FIX: Use 2D transformation for XY (exclude Z component) to match saved position display
+	// This ensures live marker aligns with saved position markers on the 2D graphic map
+	globalX = (*matrix)[0] * localX + (*matrix)[1] * localY;
+	globalY = (*matrix)[3] * localX + (*matrix)[4] * localY;
+	// Keep full 3D transformation for Z (used for color coding, not position)
 	globalZ = (*matrix)[6] * localX + (*matrix)[7] * localY + (*matrix)[8] * localZ;
 }
 
@@ -1964,17 +1967,19 @@ void MotionPage::onEditPositionClicked()
 		return;
 	}
 
-	if (!m_currentPositions.contains(m_selectedPositionName)) {
-		QMessageBox::critical(this, "Error", "Position data not found.");
+	// ✅ FIX: Get position data from motion manager (local coordinates), NOT from m_currentPositions (transformed coordinates)
+	PositionStruct pos;
+	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+		m_selectedPositionName.toStdString(),
+		pos)) {
+		QMessageBox::critical(this, "Error", "Failed to get position data from motion manager.");
 		return;
 	}
 
-	QVector<double> pos = m_currentPositions[m_selectedPositionName];
-
-	// Show edit dialog
+	// Show edit dialog with LOCAL coordinates (not transformed)
 	EditPositionDialog dialog(m_selectedPositionName,
-		pos[0], pos[1], pos[2],  // X, Y, Z
-		pos[3], pos[4], pos[5],  // U, V, W
+		pos.x, pos.y, pos.z,  // X, Y, Z (local coordinates)
+		pos.u, pos.v, pos.w,  // U, V, W
 		this);
 
 	if (dialog.exec() == QDialog::Accepted) {
