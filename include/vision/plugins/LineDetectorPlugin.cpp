@@ -98,17 +98,46 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
                                          longestLine[2] - longestLine[0]) * 180.0 / CV_PI;
             double angle = 180.0 - rawAngle;
 
-            bestLine.startPx.x = longestLine[0];
-            bestLine.startPx.y = longestLine[1];
-            bestLine.endPx.x = longestLine[2];
-            bestLine.endPx.y = longestLine[3];
-            bestLine.lengthPx = maxLength;
-            bestLine.angleDeg = angle;
-            bestLine.name = "BestLine";
-            lineFound = true;
+            // Check orientation filter if specified
+            bool orientationMatch = true;
+            if (m_expectedOrientation >= 0) {
+                double targetAngle = 0;
+                switch (m_expectedOrientation) {
+                    case 0: targetAngle = 0.0; break;     // Horizontal right (0°)
+                    case 1: targetAngle = 90.0; break;    // Vertical (90°)
+                    case 2: targetAngle = 180.0; break;   // Horizontal left (180°)
+                    case 3: targetAngle = 90.0; break;    // Vertical (270° = 90°)
+                }
 
-            result.addMeasurement("line_angle_deg", angle);
-            result.addMeasurement("line_length_px", maxLength);
+                // For horizontal lines, check both 0° and 180°
+                if (m_expectedOrientation == 0 || m_expectedOrientation == 2) {
+                    double diff0 = std::abs(angle - 0.0);
+                    double diff180 = std::abs(angle - 180.0);
+                    double minDiff = std::min(diff0, diff180);
+                    orientationMatch = (minDiff <= m_orientationTolerance);
+                } else {
+                    // For vertical lines, check 90°
+                    double diff = std::abs(angle - targetAngle);
+                    orientationMatch = (diff <= m_orientationTolerance);
+                }
+            }
+
+            if (orientationMatch) {
+                bestLine.startPx.x = longestLine[0];
+                bestLine.startPx.y = longestLine[1];
+                bestLine.endPx.x = longestLine[2];
+                bestLine.endPx.y = longestLine[3];
+                bestLine.lengthPx = maxLength;
+                bestLine.angleDeg = angle;
+                bestLine.name = "BestLine";
+                lineFound = true;
+
+                result.addMeasurement("line_angle_deg", angle);
+                result.addMeasurement("line_length_px", maxLength);
+            } else {
+                std::cout << "[LineDetector] Line rejected - angle " << angle
+                          << "° does not match expected orientation" << std::endl;
+            }
         }
     } else {
         // Standard Hough Transform - returns rho/theta
@@ -139,22 +168,51 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
             if (rawAngle < 0.0) rawAngle += 180.0;
             double angle = 180.0 - rawAngle;
 
-            // Calculate line length within image bounds
-            double length = std::sqrt(
-                std::pow(pt2.x - pt1.x, 2) + std::pow(pt2.y - pt1.y, 2)
-            );
+            // Check orientation filter if specified
+            bool orientationMatch = true;
+            if (m_expectedOrientation >= 0) {
+                double targetAngle = 0;
+                switch (m_expectedOrientation) {
+                    case 0: targetAngle = 0.0; break;     // Horizontal right (0°)
+                    case 1: targetAngle = 90.0; break;    // Vertical (90°)
+                    case 2: targetAngle = 180.0; break;   // Horizontal left (180°)
+                    case 3: targetAngle = 90.0; break;    // Vertical (270° = 90°)
+                }
 
-            bestLine.startPx = pt1;
-            bestLine.endPx = pt2;
-            bestLine.angleDeg = angle;
-            bestLine.lengthPx = length;
-            bestLine.name = "BestLine";
-            lineFound = true;
+                // For horizontal lines, check both 0° and 180°
+                if (m_expectedOrientation == 0 || m_expectedOrientation == 2) {
+                    double diff0 = std::abs(angle - 0.0);
+                    double diff180 = std::abs(angle - 180.0);
+                    double minDiff = std::min(diff0, diff180);
+                    orientationMatch = (minDiff <= m_orientationTolerance);
+                } else {
+                    // For vertical lines, check 90°
+                    double diff = std::abs(angle - targetAngle);
+                    orientationMatch = (diff <= m_orientationTolerance);
+                }
+            }
 
-            result.addMeasurement("line_angle_deg", angle);
-            result.addMeasurement("line_rho", static_cast<double>(rho));
-            result.addMeasurement("line_theta_deg", theta * 180.0 / CV_PI);
-            result.addMeasurement("line_length_px", length);
+            if (orientationMatch) {
+                // Calculate line length within image bounds
+                double length = std::sqrt(
+                    std::pow(pt2.x - pt1.x, 2) + std::pow(pt2.y - pt1.y, 2)
+                );
+
+                bestLine.startPx = pt1;
+                bestLine.endPx = pt2;
+                bestLine.angleDeg = angle;
+                bestLine.lengthPx = length;
+                bestLine.name = "BestLine";
+                lineFound = true;
+
+                result.addMeasurement("line_angle_deg", angle);
+                result.addMeasurement("line_rho", static_cast<double>(rho));
+                result.addMeasurement("line_theta_deg", theta * 180.0 / CV_PI);
+                result.addMeasurement("line_length_px", length);
+            } else {
+                std::cout << "[LineDetector] Line rejected - angle " << angle
+                          << "° does not match expected orientation" << std::endl;
+            }
         }
     }
 
@@ -377,6 +435,23 @@ QWidget* LineDetectorPlugin::createConfigWidget(QWidget* parent)
     m_extendLineCheck->setToolTip("Draw line extended to image boundaries");
     houghLayout->addRow("", m_extendLineCheck);
 
+    m_orientationCombo = new QComboBox();
+    m_orientationCombo->addItem("Any Orientation", -1);
+    m_orientationCombo->addItem("Horizontal (0°)", 0);
+    m_orientationCombo->addItem("Vertical (90°)", 1);
+    m_orientationCombo->addItem("Horizontal (180°)", 2);
+    m_orientationCombo->setCurrentIndex(m_expectedOrientation + 1);  // +1 because -1 is index 0
+    m_orientationCombo->setToolTip("Filter lines by orientation");
+    houghLayout->addRow("Expected Orientation:", m_orientationCombo);
+
+    m_orientationToleranceSpin = new QDoubleSpinBox();
+    m_orientationToleranceSpin->setRange(1.0, 45.0);
+    m_orientationToleranceSpin->setSingleStep(1.0);
+    m_orientationToleranceSpin->setValue(m_orientationTolerance);
+    m_orientationToleranceSpin->setSuffix(" deg");
+    m_orientationToleranceSpin->setToolTip("Angle tolerance for orientation filter");
+    houghLayout->addRow("Orientation Tolerance:", m_orientationToleranceSpin);
+
     mainLayout->addWidget(houghGroup);
 
     // Edge Detection Parameters
@@ -426,6 +501,10 @@ QWidget* LineDetectorPlugin::createConfigWidget(QWidget* parent)
             [this](double val) { m_maxLineGap = val; });
     QObject::connect(m_extendLineCheck, &QCheckBox::toggled,
             [this](bool checked) { m_extendLine = checked; });
+    QObject::connect(m_orientationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [this](int index) { m_expectedOrientation = m_orientationCombo->itemData(index).toInt(); });
+    QObject::connect(m_orientationToleranceSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            [this](double val) { m_orientationTolerance = val; });
     QObject::connect(m_threshold1Spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             [this](double val) { m_cannyThreshold1 = val; });
     QObject::connect(m_threshold2Spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
@@ -455,6 +534,8 @@ nlohmann::json LineDetectorPlugin::getParameters() const
     params["blurKernelSize"] = m_blurKernelSize;
     params["applyBlur"] = m_applyBlur;
     params["extendLine"] = m_extendLine;
+    params["expectedOrientation"] = m_expectedOrientation;
+    params["orientationTolerance"] = m_orientationTolerance;
     return params;
 }
 
@@ -471,6 +552,8 @@ void LineDetectorPlugin::setParameters(const nlohmann::json& params)
     if (params.contains("blurKernelSize")) m_blurKernelSize = params["blurKernelSize"].get<int>();
     if (params.contains("applyBlur")) m_applyBlur = params["applyBlur"].get<bool>();
     if (params.contains("extendLine")) m_extendLine = params["extendLine"].get<bool>();
+    if (params.contains("expectedOrientation")) m_expectedOrientation = params["expectedOrientation"].get<int>();
+    if (params.contains("orientationTolerance")) m_orientationTolerance = params["orientationTolerance"].get<double>();
 
     // Update UI
     if (m_rhoSpin) m_rhoSpin->setValue(m_rhoResolution);
@@ -484,6 +567,11 @@ void LineDetectorPlugin::setParameters(const nlohmann::json& params)
     if (m_blurKernelSizeSpin) m_blurKernelSizeSpin->setValue(m_blurKernelSize);
     if (m_applyBlurCheck) m_applyBlurCheck->setChecked(m_applyBlur);
     if (m_extendLineCheck) m_extendLineCheck->setChecked(m_extendLine);
+    if (m_orientationCombo) {
+        int idx = m_orientationCombo->findData(m_expectedOrientation);
+        if (idx >= 0) m_orientationCombo->setCurrentIndex(idx);
+    }
+    if (m_orientationToleranceSpin) m_orientationToleranceSpin->setValue(m_orientationTolerance);
 }
 
 nlohmann::json LineDetectorPlugin::getDefaultParameters() const
@@ -500,6 +588,8 @@ nlohmann::json LineDetectorPlugin::getDefaultParameters() const
     params["blurKernelSize"] = 5;
     params["applyBlur"] = true;
     params["extendLine"] = true;
+    params["expectedOrientation"] = -1;   // Any orientation
+    params["orientationTolerance"] = 15.0;
     return params;
 }
 
@@ -562,6 +652,22 @@ ParameterSchema LineDetectorPlugin::getParameterSchema() const
         true,
         "Draw the detected line extended to image boundaries.",
         "Display"
+    ));
+
+    schema.parameters.push_back(ParameterDescriptor::createInt(
+        "expectedOrientation", "Expected Orientation",
+        -1, 3, -1,
+        "Filter lines by orientation (-1=Any, 0=Horizontal 0°, 1=Vertical 90°, 2=Horizontal 180°).",
+        "", 1,
+        "Hough Transform"
+    ));
+
+    schema.parameters.push_back(ParameterDescriptor::createDouble(
+        "orientationTolerance", "Orientation Tolerance",
+        1.0, 45.0, 15.0,
+        "Angle tolerance for orientation filter.",
+        "deg", 1.0,
+        "Hough Transform"
     ));
 
     // Edge Detection

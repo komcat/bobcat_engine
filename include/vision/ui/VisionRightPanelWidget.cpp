@@ -90,8 +90,8 @@ void VisionRightPanelWidget::setupUI()
 
     mainLayout->addWidget(m_tabWidget);
 
-    // Set fixed width
-    setFixedWidth(300);
+    // Set minimum width (allows expansion)
+    setMinimumWidth(300);
 }
 
 void VisionRightPanelWidget::setupROITab(QWidget* roiTab)

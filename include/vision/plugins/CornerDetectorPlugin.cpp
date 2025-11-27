@@ -186,7 +186,7 @@ bool CornerDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, Vision
         cornerMarker.p1 = bestCornerPt;
         cornerMarker.radius = 15;
         cornerMarker.color = cv::Scalar(0, 255, 0);  // Green
-        cornerMarker.thickness = 3;
+        cornerMarker.thickness = 1;
         result.overlays.push_back(cornerMarker);
 
         // Draw legs of the corner (showing the actual edges)
@@ -199,7 +199,7 @@ bool CornerDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, Vision
         leg1Line.p2 = cv::Point2d(bestCornerPt.x + bestLeg1Dir.x * legLength,
                                    bestCornerPt.y + bestLeg1Dir.y * legLength);
         leg1Line.color = cv::Scalar(255, 0, 0);  // Blue
-        leg1Line.thickness = 3;
+        leg1Line.thickness = 1;
         result.overlays.push_back(leg1Line);
 
         // Leg 2 (Red)
@@ -209,7 +209,7 @@ bool CornerDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, Vision
         leg2Line.p2 = cv::Point2d(bestCornerPt.x + bestLeg2Dir.x * legLength,
                                    bestCornerPt.y + bestLeg2Dir.y * legLength);
         leg2Line.color = cv::Scalar(0, 0, 255);  // Red
-        leg2Line.thickness = 3;
+        leg2Line.thickness = 1;
         result.overlays.push_back(leg2Line);
 
         // Draw angle arc indicator
@@ -218,7 +218,7 @@ bool CornerDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, Vision
         angleArc.p1 = bestCornerPt;
         angleArc.radius = 20;
         angleArc.color = cv::Scalar(0, 255, 255);  // Yellow
-        angleArc.thickness = 2;
+        angleArc.thickness = 1;
         result.overlays.push_back(angleArc);
 
         // Add text overlay for angle
@@ -227,7 +227,7 @@ bool CornerDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, Vision
         angleText.p1 = cv::Point2d(bestCornerPt.x + 25, bestCornerPt.y - 25);
         angleText.text = std::to_string(static_cast<int>(std::round(bestAngle))) + " deg";
         angleText.color = cv::Scalar(255, 255, 0);  // Cyan
-        angleText.thickness = 2;
+        angleText.thickness = 1;
         result.overlays.push_back(angleText);
 
         // Draw semi-transparent polygon representing corner area

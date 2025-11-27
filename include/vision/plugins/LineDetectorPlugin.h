@@ -51,6 +51,10 @@ private:
     // Display
     bool m_extendLine = true;            // Extend line to image boundaries
 
+    // Line orientation filter
+    int m_expectedOrientation = -1;      // -1=Any, 0=Horizontal(0°), 1=Vertical(90°), 2=Horizontal(180°), 3=Vertical(270°)
+    double m_orientationTolerance = 15.0; // Angle tolerance in degrees
+
     // UI widgets
     QWidget* m_configWidget = nullptr;
     QDoubleSpinBox* m_rhoSpin = nullptr;
@@ -64,6 +68,8 @@ private:
     QSpinBox* m_blurKernelSizeSpin = nullptr;
     QCheckBox* m_applyBlurCheck = nullptr;
     QCheckBox* m_extendLineCheck = nullptr;
+    QComboBox* m_orientationCombo = nullptr;
+    QDoubleSpinBox* m_orientationToleranceSpin = nullptr;
 };
 
 #endif // HAS_OPENCV
