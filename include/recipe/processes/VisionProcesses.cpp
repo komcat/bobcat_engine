@@ -140,20 +140,30 @@ public:
 
         // Capture As prefix (optional)
         auto captureAsIt = params.find("capture_as");
-        if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+        bool hasCaptureAs = (captureAsIt != params.end() && !captureAsIt->second.empty());
+        if (hasCaptureAs) {
             execParams["capture_as"] = captureAsIt->second;
         }
 
         // ✅ World position calculation (like GotoDetect)
+        // Auto-enable if capture_as is specified (since you need device position to move to detected coords)
         auto calcWorldIt = params.find("calculate_world_position");
-        if (calcWorldIt != params.end() && calcWorldIt->second == "true") {
+        bool shouldCalcWorld = (calcWorldIt != params.end() && calcWorldIt->second == "true") || hasCaptureAs;
+
+        if (shouldCalcWorld) {
             execParams["calculate_world_position"] = "true";
 
             // Motion device for world position calculation
             auto motionDeviceIt = params.find("motion_device");
             if (motionDeviceIt != params.end() && !motionDeviceIt->second.empty()) {
                 execParams["motion_device"] = motionDeviceIt->second;
+            } else {
+                // Default to gantry-main if not specified
+                execParams["motion_device"] = "gantry-main";
             }
+
+            std::cout << "[ExecuteVisionProfile] World position calculation enabled (device: "
+                      << execParams["motion_device"] << ")" << std::endl;
         }
 
         // Single command that does: load profile + capture + execute + return results
@@ -386,8 +396,9 @@ public:
 
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
-            {"result_name", ""},          // Context prefix from GotoDetect (e.g., "loc_sled")
-            {"keep_z", "true"}            // Keep current Z position
+            {"result_name", ""},                      // Context prefix from GotoDetect (e.g., "loc_sled")
+            {"keep_z", "true"},                       // Keep current Z position
+            {"coord_source", "Auto (Primary Detection)"}  // Coordinate source dropdown display text
         };
     }
 
@@ -404,6 +415,17 @@ public:
         widget->addParameterField("result_name", "Detection Result Name",
             getParam("result_name", ""));
 
+        // Coordinate source selector
+        std::vector<std::string> coordSourceOptions = {
+            "Auto (Primary Detection)",
+            "Line Center",
+            "Line Start Point",
+            "Line End Point",
+            "Corner Point"
+        };
+        widget->addDropdownParameter("coord_source", "Coordinate Source",
+            getParam("coord_source", "Auto (Primary Detection)"), coordSourceOptions);
+
         // Keep Z checkbox
         widget->addCheckboxParameter("keep_z", "Keep Current Z Position",
             getParam("keep_z", "true"), "When enabled, only moves XY and keeps current Z position");
@@ -414,16 +436,56 @@ public:
 
         std::string resultName = params.at("result_name");
         std::string keepZ = params.count("keep_z") ? params.at("keep_z") : "true";
+        std::string coordSourceDisplay = params.count("coord_source") ? params.at("coord_source") : "Auto (Primary Detection)";
+
+        // Map display text to internal value
+        std::string coordSource = "auto";
+        if (coordSourceDisplay == "Line Center") {
+            coordSource = "line_center";
+        } else if (coordSourceDisplay == "Line Start Point") {
+            coordSource = "line_start";
+        } else if (coordSourceDisplay == "Line End Point") {
+            coordSource = "line_end";
+        } else if (coordSourceDisplay == "Corner Point") {
+            coordSource = "corner";
+        }
+
+        // Determine X/Y coordinate keys based on source
+        std::string xKey, yKey;
+        if (coordSource == "line_center") {
+            xKey = resultName + ".result.center_x";
+            yKey = resultName + ".result.center_y";
+        } else if (coordSource == "line_start") {
+            xKey = resultName + ".result.start_x";
+            yKey = resultName + ".result.start_y";
+        } else if (coordSource == "line_end") {
+            xKey = resultName + ".result.end_x";
+            yKey = resultName + ".result.end_y";
+        } else if (coordSource == "corner") {
+            xKey = resultName + ".result.corner_x";
+            yKey = resultName + ".result.corner_y";
+        } else {
+            // "auto" - use default .detected.world_x/y_mm
+            xKey = "";
+            yKey = "";
+        }
 
         // Move gantry-main to detected world position
-        sequence->AddAction("gantry-main", "MoveToContextPosition", {
+        std::map<std::string, std::string> moveParams = {
             {"context_prefix", resultName},
             {"keep_z", keepZ}
-        });
+        };
+        if (!xKey.empty() && !yKey.empty()) {
+            moveParams["x_key"] = xKey;
+            moveParams["y_key"] = yKey;
+        }
+        sequence->AddAction("gantry-main", "MoveToContextPosition", moveParams);
 
+        std::string coordInfo = (coordSource == "auto") ? ".detected.world_x/y_mm" :
+                                 "(" + xKey + ", " + yKey + ")";
         std::cout << "[VisionProcesses] Built MoveToDetectedPosition sequence: "
-                  << "gantry-main -> " << resultName << ".detected.world_x/y_mm"
-                  << " (keep_z=" << keepZ << ")" << std::endl;
+                  << "gantry-main -> " << resultName << coordInfo
+                  << " (keep_z=" << keepZ << ", source=" << coordSource << ")" << std::endl;
     }
 };
 

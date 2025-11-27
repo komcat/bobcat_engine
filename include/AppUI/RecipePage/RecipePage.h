@@ -179,6 +179,7 @@ private:
   // Middle panel widgets
   QTreeWidget* m_processTemplateList;
   QPushButton* m_addButton;
+  QLabel* m_selectedProcessLabel;  // ✅ NEW: Shows currently selected process type
 
   // Right panel widgets
   QScrollArea* m_configScrollArea;
@@ -192,6 +193,7 @@ private:
   RecipeWorker* m_recipeWorker;
 
   QPushButton* m_loadProductButton;
+  QPushButton* m_stopButton;  // ✅ NEW: Emergency stop button
   QLabel* m_productStatusLabel;
   QLabel* m_recipeFileLabel;  // ✅ NEW: Shows current recipe file name
 

@@ -2,6 +2,7 @@
 #include "RecipePage.h"
 #include "RecipeManager.h"
 #include "ApplicationContext.h"
+#include "unified_motion_manager.h"  // ✅ For EmergencyStopAll
 #include "SequenceEngine.h"
 #include "SequenceBuilder.h"  // Full definition needed for delete
 #include "SequenceContext.h"
@@ -76,6 +77,7 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_visionResultImageLabel(nullptr) // ✅ Vision result image
   , m_copyButton(nullptr)          // ✅ Copy button
   , m_pasteButton(nullptr)         // ✅ Paste button
+  , m_selectedProcessLabel(nullptr) // ✅ Selected process display
 {
   setupUI();
   setupSequenceEngine();
@@ -207,21 +209,22 @@ void RecipePage::setupUI()
   );
   titleLayout->addWidget(m_productStatusLabel);
 
-  m_loadProductButton = new QPushButton("📁 Load Product's Position File");
-  m_loadProductButton->setFixedHeight(28);
-  m_loadProductButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #27ae60; "
-    "  color: white; "
-    "  border-radius: 3px; "
-    "  font-size: 11px; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "} "
-    "QPushButton:hover { background-color: #2ecc71; }"
-  );
-  connect(m_loadProductButton, &QPushButton::clicked, this, &RecipePage::onLoadProductClicked);
-  titleLayout->addWidget(m_loadProductButton);
+  // ❌ COMMENTED OUT: Load Product button (not needed - product loaded in MainWindow)
+  // m_loadProductButton = new QPushButton("📁 Load Product's Position File");
+  // m_loadProductButton->setFixedHeight(28);
+  // m_loadProductButton->setStyleSheet(
+  //   "QPushButton { "
+  //   "  background-color: #27ae60; "
+  //   "  color: white; "
+  //   "  border-radius: 3px; "
+  //   "  font-size: 11px; "
+  //   "  font-weight: bold; "
+  //   "  padding: 4px 12px; "
+  //   "} "
+  //   "QPushButton:hover { background-color: #2ecc71; }"
+  // );
+  // connect(m_loadProductButton, &QPushButton::clicked, this, &RecipePage::onLoadProductClicked);
+  // titleLayout->addWidget(m_loadProductButton);
 
   // ✅ Context Viewer button (small button at far right)
   m_contextViewerButton = new QPushButton("CV");
@@ -239,6 +242,24 @@ void RecipePage::setupUI()
   );
   connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
   titleLayout->addWidget(m_contextViewerButton);
+
+  // ✅ STOP button (emergency stop for motors and sequence)
+  m_stopButton = new QPushButton("⚠ STOP");
+  m_stopButton->setObjectName("stopButton");  // For dark red styling
+  m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
+  m_stopButton->setFixedSize(70, 28);
+  m_stopButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #c0392b; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  font-size: 11px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #e74c3c; }"
+  );
+  connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
+  titleLayout->addWidget(m_stopButton);
 
   titleLayout->addSpacing(m_backButton->width());
 
@@ -286,6 +307,22 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "color: #d4d4d4;"
   );
   mainLayout->addWidget(searchBox);
+
+  // ✅ Selected process label
+  m_selectedProcessLabel = new QLabel("Selected: (none)");
+  m_selectedProcessLabel->setFixedHeight(50);
+  m_selectedProcessLabel->setStyleSheet(
+    "padding: 5px; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px; "
+    "background-color: #2d2d30; "
+    "color: #4ec9b0; "
+    "font-style: italic; "
+    "font-size: 13px;"
+  );
+  m_selectedProcessLabel->setWordWrap(true);
+  m_selectedProcessLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+  mainLayout->addWidget(m_selectedProcessLabel);
 
   // ========== HORIZONTAL SPLIT: List on left, Button on right ==========
   QHBoxLayout* contentLayout = new QHBoxLayout();
@@ -425,17 +462,18 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   nameLayout->addWidget(m_recipeNameEdit);
   layout->addLayout(nameLayout);
 
-  m_loadedProductLabel = new QLabel("Product: None");
-  m_loadedProductLabel->setStyleSheet(
-    "font-size: 11px; "
-    "color: #cccccc; "
-    "padding: 5px; "
-    "border: 1px solid #3f3f46; "
-    "border-radius: 3px; "
-    "background-color: #1e1e1e;"
-  );
-  m_loadedProductLabel->setWordWrap(true);
-  layout->addWidget(m_loadedProductLabel);
+  // ❌ COMMENTED OUT: Product label (redundant with title bar product status)
+  // m_loadedProductLabel = new QLabel("Product: None");
+  // m_loadedProductLabel->setStyleSheet(
+  //   "font-size: 11px; "
+  //   "color: #cccccc; "
+  //   "padding: 5px; "
+  //   "border: 1px solid #3f3f46; "
+  //   "border-radius: 3px; "
+  //   "background-color: #1e1e1e;"
+  // );
+  // m_loadedProductLabel->setWordWrap(true);
+  // layout->addWidget(m_loadedProductLabel);
 
   // ========== TWO COLUMN LAYOUT: Buttons Left | List Right ==========
   QHBoxLayout* twoColumnLayout = new QHBoxLayout();
@@ -848,10 +886,11 @@ void RecipePage::onProductChanged()
       .arg(QString::fromStdString(productName)));
     m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
-    m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-      .arg(QString::fromStdString(productName))
-      .arg(QString::fromStdString(productPath)));
-    m_loadedProductLabel->setStyleSheet(
+    if (m_loadedProductLabel) {
+      m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+        .arg(QString::fromStdString(productName))
+        .arg(QString::fromStdString(productPath)));
+      m_loadedProductLabel->setStyleSheet(
       "font-size: 11px; "
       "color: #4ec9b0; "
       "font-weight: bold; "
@@ -860,6 +899,7 @@ void RecipePage::onProductChanged()
       "border-radius: 3px; "
       "background-color: #1e3a32;"
     );
+    }
 
     std::cout << "[RecipePage] Product changed to: " << productName << std::endl;
   }
@@ -920,10 +960,11 @@ void RecipePage::onLoadRecipe()
             .arg(QString::fromStdString(productName)));
           m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
-          m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-            .arg(QString::fromStdString(productName))
-            .arg(QString::fromStdString(productFile)));
-          m_loadedProductLabel->setStyleSheet(
+          if (m_loadedProductLabel) {
+            m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+              .arg(QString::fromStdString(productName))
+              .arg(QString::fromStdString(productFile)));
+            m_loadedProductLabel->setStyleSheet(
             "font-size: 11px; "
             "color: #4ec9b0; "
             "font-weight: bold; "
@@ -932,6 +973,7 @@ void RecipePage::onLoadRecipe()
             "border-radius: 3px; "
             "background-color: #1e3a32;"
           );
+          }
 
           std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
 
@@ -941,9 +983,10 @@ void RecipePage::onLoadRecipe()
             .arg(QString::fromStdString(productName)));
         }
         else {
-          m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
-            .arg(QString::fromStdString(productFile)));
-          m_loadedProductLabel->setStyleSheet(
+          if (m_loadedProductLabel) {
+            m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
+              .arg(QString::fromStdString(productFile)));
+            m_loadedProductLabel->setStyleSheet(
             "font-size: 11px; "
             "color: #f48771; "
             "padding: 5px; "
@@ -951,6 +994,7 @@ void RecipePage::onLoadRecipe()
             "border-radius: 3px; "
             "background-color: #3d2121;"
           );
+          }
 
           QMessageBox::warning(this, "Product Not Found",
             QString("Recipe loaded, but associated product file not found:\n%1\n\nPlease load the product manually.")
@@ -959,8 +1003,9 @@ void RecipePage::onLoadRecipe()
       }
     }
     else {
-      m_loadedProductLabel->setText("Product: None");
-      m_loadedProductLabel->setStyleSheet(
+      if (m_loadedProductLabel) {
+        m_loadedProductLabel->setText("Product: None");
+        m_loadedProductLabel->setStyleSheet(
         "font-size: 11px; "
         "color: #888888; "
         "padding: 5px; "
@@ -968,6 +1013,7 @@ void RecipePage::onLoadRecipe()
         "border-radius: 3px; "
         "background-color: #1e1e1e;"
       );
+      }
 
       QMessageBox::information(this, "Success", "Recipe loaded successfully!");
     }
@@ -1199,10 +1245,11 @@ void RecipePage::onUpdateProductFile()
       m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
       // Update loaded product label in middle panel
-      m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-        .arg(QString::fromStdString(productName))
-        .arg(QString::fromStdString(m_recipeManager->getProductFile())));
-      m_loadedProductLabel->setStyleSheet(
+      if (m_loadedProductLabel) {
+        m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+          .arg(QString::fromStdString(productName))
+          .arg(QString::fromStdString(m_recipeManager->getProductFile())));
+        m_loadedProductLabel->setStyleSheet(
         "font-size: 11px; "
         "color: #27ae60; "
         "font-weight: bold; "
@@ -1211,6 +1258,7 @@ void RecipePage::onUpdateProductFile()
         "border-radius: 3px; "
         "background-color: #e8f5e9;"
       );
+      }
 
       QMessageBox::information(this, "Success",
         QString("Product file updated to:\n%1\n\nRecipe saved successfully!")
@@ -1503,7 +1551,18 @@ void RecipePage::onProcessTemplateSelected(QTreeWidgetItem* item, int column)
 {
   (void)column; // Unused
   if (item && item->parent()) { // Only process items (not category headers)
-    std::cout << "[RecipePage] Selected template: " << item->text(0).toStdString() << std::endl;
+    QString processName = item->text(0);
+    std::cout << "[RecipePage] Selected template: " << processName.toStdString() << std::endl;
+
+    // ✅ Update selected process label
+    if (m_selectedProcessLabel) {
+      m_selectedProcessLabel->setText("Selected: " + processName);
+    }
+  } else {
+    // Category header selected, clear selection
+    if (m_selectedProcessLabel) {
+      m_selectedProcessLabel->setText("Selected: (none)");
+    }
   }
 }
 
@@ -2607,15 +2666,23 @@ void RecipePage::onWaitProgress(int remainingMs, int totalMs)
 
 void RecipePage::onStopRecipeRequested()
 {
-  if (!m_recipeWorker || !m_recipeWorker->isRunning()) {
-    return;
+  std::cout << "[RecipePage] ⚠️ EMERGENCY STOP requested!" << std::endl;
+
+  // Stop recipe execution if running
+  if (m_recipeWorker && m_recipeWorker->isRunning()) {
+    m_recipeWorker->requestStop();
+    if (m_progressWidget) {
+      m_progressWidget->setStatusText("Stopping...");
+    }
   }
 
-  // Stop immediately without confirmation (stop button itself is the confirmation)
-  m_recipeWorker->requestStop();
-  if (m_progressWidget) {
-    m_progressWidget->setStatusText("Stopping...");
+  // Emergency stop all motors
+  if (m_context && m_context->motionManager) {
+    std::cout << "[RecipePage] Calling EmergencyStopAll on motion manager" << std::endl;
+    m_context->motionManager->EmergencyStopAll();
   }
+
+  std::cout << "[RecipePage] Emergency stop completed" << std::endl;
 }
 
 // ============================================================================
@@ -2723,10 +2790,11 @@ void RecipePage::onLoadProductClicked()
       .arg(QString::fromStdString(productName)));
     m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
-    m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-      .arg(QString::fromStdString(productName))
-      .arg(filePath));
-    m_loadedProductLabel->setStyleSheet(
+    if (m_loadedProductLabel) {
+      m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+        .arg(QString::fromStdString(productName))
+        .arg(filePath));
+      m_loadedProductLabel->setStyleSheet(
       "font-size: 11px; "
       "color: #27ae60; "
       "font-weight: bold; "
@@ -2735,6 +2803,7 @@ void RecipePage::onLoadProductClicked()
       "border-radius: 3px; "
       "background-color: #e8f5e9;"
     );
+    }
 
     m_recipeManager->setProductFile(filePath.toStdString());
 
@@ -2798,10 +2867,11 @@ void RecipePage::loadLastRecipeFromSettings()
           .arg(QString::fromStdString(productName)));
         m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
 
-        m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-          .arg(QString::fromStdString(productName))
-          .arg(QString::fromStdString(productFile)));
-        m_loadedProductLabel->setStyleSheet(
+        if (m_loadedProductLabel) {
+          m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+            .arg(QString::fromStdString(productName))
+            .arg(QString::fromStdString(productFile)));
+          m_loadedProductLabel->setStyleSheet(
           "font-size: 11px; "
           "color: #27ae60; "
           "font-weight: bold; "
@@ -2810,11 +2880,13 @@ void RecipePage::loadLastRecipeFromSettings()
           "border-radius: 3px; "
           "background-color: #e8f5e9;"
         );
+        }
 
         std::cout << "[RecipePage] Auto-loaded product positions: " << productFile << std::endl;
       }
       else {
-        m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
+        if (m_loadedProductLabel) {
+          m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
           .arg(QString::fromStdString(productFile)));
         m_loadedProductLabel->setStyleSheet(
           "font-size: 11px; "
@@ -2824,6 +2896,7 @@ void RecipePage::loadLastRecipeFromSettings()
           "border-radius: 3px; "
           "background-color: #ffebee;"
         );
+        }
 
         std::cout << "[RecipePage] Warning: Product file not found: " << productFile << std::endl;
       }
@@ -2834,15 +2907,17 @@ void RecipePage::loadLastRecipeFromSettings()
     m_productStatusLabel->setText("Product: None");
     m_productStatusLabel->setStyleSheet("font-size: 11px; color: #888888;");
 
-    m_loadedProductLabel->setText("Product: None");
-    m_loadedProductLabel->setStyleSheet(
-      "font-size: 11px; "
-      "color: #666; "
-      "padding: 5px; "
-      "border: 1px solid #ddd; "
-      "border-radius: 3px; "
-      "background-color: #f9f9f9;"
-    );
+    if (m_loadedProductLabel) {
+      m_loadedProductLabel->setText("Product: None");
+      m_loadedProductLabel->setStyleSheet(
+        "font-size: 11px; "
+        "color: #666; "
+        "padding: 5px; "
+        "border: 1px solid #ddd; "
+        "border-radius: 3px; "
+        "background-color: #f9f9f9;"
+      );
+    }
 
     std::cout << "[RecipePage] No product file associated with recipe" << std::endl;
   }

@@ -139,28 +139,44 @@ bool VisionCommandHandler::ExecuteCommand(
             std::string motionDevice = motionDeviceIt->second;
             std::cout << "[VisionCommandHandler] 🌍 Calculating world position for device: " << motionDevice << std::endl;
 
-            // Get detected feature center (from vision result)
-            if (context->HasValue("vision.result.center_x") && context->HasValue("vision.result.center_y")) {
-                double detectedCenterX_px = context->GetNumeric("vision.result.center_x", 0.0);
-                double detectedCenterY_px = context->GetNumeric("vision.result.center_y", 0.0);
+            // ✅ Find reference point from vision result (priority order)
+            double referenceX_px = 0.0;
+            double referenceY_px = 0.0;
+            bool foundReference = false;
+            bool usingAnchor = false;
+            std::string referenceType = "";
 
-                // Check if anchor point is available (for pattern matching with custom anchor)
-                // If anchor exists, use it instead of center for more precise positioning
-                double referenceX_px = detectedCenterX_px;
-                double referenceY_px = detectedCenterY_px;
-                bool usingAnchor = false;
+            // Priority 1: Anchor point (pattern matching with custom anchor)
+            if (context->HasValue("vision.result.match_0_anchor_x") &&
+                context->HasValue("vision.result.match_0_anchor_y")) {
+                referenceX_px = context->GetNumeric("vision.result.match_0_anchor_x", 0.0);
+                referenceY_px = context->GetNumeric("vision.result.match_0_anchor_y", 0.0);
+                foundReference = true;
+                usingAnchor = true;
+                referenceType = "anchor";
+                std::cout << "[VisionCommandHandler] 📍 Using anchor point: ("
+                          << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
+            }
+            // Priority 2: Corner point (corner detector)
+            else if (context->HasValue("vision.result.corner_x") && context->HasValue("vision.result.corner_y")) {
+                referenceX_px = context->GetNumeric("vision.result.corner_x", 0.0);
+                referenceY_px = context->GetNumeric("vision.result.corner_y", 0.0);
+                foundReference = true;
+                referenceType = "corner";
+                std::cout << "[VisionCommandHandler] 📍 Using corner point: ("
+                          << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
+            }
+            // Priority 3: Center point (points/circles/line center)
+            else if (context->HasValue("vision.result.center_x") && context->HasValue("vision.result.center_y")) {
+                referenceX_px = context->GetNumeric("vision.result.center_x", 0.0);
+                referenceY_px = context->GetNumeric("vision.result.center_y", 0.0);
+                foundReference = true;
+                referenceType = "center";
+                std::cout << "[VisionCommandHandler] 📍 Using center point: ("
+                          << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
+            }
 
-                if (context->HasValue("vision.result.match_0_anchor_x") &&
-                    context->HasValue("vision.result.match_0_anchor_y")) {
-                    referenceX_px = context->GetNumeric("vision.result.match_0_anchor_x", detectedCenterX_px);
-                    referenceY_px = context->GetNumeric("vision.result.match_0_anchor_y", detectedCenterY_px);
-                    usingAnchor = true;
-                    std::cout << "[VisionCommandHandler] 📍 Using custom anchor point: ("
-                              << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
-                } else {
-                    std::cout << "[VisionCommandHandler] 📍 Using pattern center: ("
-                              << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
-                }
+            if (foundReference) {
 
                 // Get image dimensions for center calculation
                 double imageWidth = context->GetNumeric("vision.result.image_width", 1280.0);
@@ -178,10 +194,12 @@ bool VisionCommandHandler::ExecuteCommand(
                 double offsetX_mm = offsetX_px * pixelToMmX;
                 double offsetY_mm = offsetY_px * pixelToMmY;
 
-                std::cout << "[VisionCommandHandler] 📐 Detected center: (" << detectedCenterX_px << ", " << detectedCenterY_px << ") px" << std::endl;
-                std::cout << "[VisionCommandHandler] 📐 Image center: (" << imageCenterX_px << ", " << imageCenterY_px << ") px" << std::endl;
+                std::cout << "[VisionCommandHandler] 📐 Reference point: (" << referenceX_px << ", " << referenceY_px << ") px (detected feature in full image)" << std::endl;
+                std::cout << "[VisionCommandHandler] 📐 Image center: (" << imageCenterX_px << ", " << imageCenterY_px << ") px (full image: " << imageWidth << "×" << imageHeight << ")" << std::endl;
                 std::cout << "[VisionCommandHandler] 📐 Offset from center: (" << offsetX_px << ", " << offsetY_px << ") px" << std::endl;
+                std::cout << "[VisionCommandHandler]    Calculation: offset_px = reference - center = (" << referenceX_px << " - " << imageCenterX_px << ", " << referenceY_px << " - " << imageCenterY_px << ")" << std::endl;
                 std::cout << "[VisionCommandHandler] 📐 Offset in mm: (" << offsetX_mm << ", " << offsetY_mm << ") mm" << std::endl;
+                std::cout << "[VisionCommandHandler]    Calculation: offset_mm = offset_px × calibration = (" << offsetX_px << " × " << pixelToMmX << ", " << offsetY_px << " × " << pixelToMmY << ")" << std::endl;
 
                 // Get current motion device position
                 double deviceX_mm = 0.0, deviceY_mm = 0.0, deviceZ_mm = 0.0;
@@ -202,6 +220,7 @@ bool VisionCommandHandler::ExecuteCommand(
 
                 std::cout << "[VisionCommandHandler] 🌍 World position: X=" << worldX_mm
                           << ", Y=" << worldY_mm << " mm" << std::endl;
+                std::cout << "[VisionCommandHandler]    Calculation: world = device + offset = (" << deviceX_mm << " + " << offsetX_mm << ", " << deviceY_mm << " + " << offsetY_mm << ")" << std::endl;
 
                 // Store world position in context
                 context->SetValue("vision.detected.world_x_mm", static_cast<float>(worldX_mm));
@@ -222,15 +241,19 @@ bool VisionCommandHandler::ExecuteCommand(
                     context->SetValue(captureAs + ".detected.world_y_mm", static_cast<float>(worldY_mm));
                     context->SetValue(captureAs + ".detected.offset_x_mm", static_cast<float>(offsetX_mm));
                     context->SetValue(captureAs + ".detected.offset_y_mm", static_cast<float>(offsetY_mm));
+                    context->SetValue(captureAs + ".detected.device_x_mm", static_cast<float>(deviceX_mm));
+                    context->SetValue(captureAs + ".detected.device_y_mm", static_cast<float>(deviceY_mm));
                     context->SetValue(captureAs + ".detected.device_z_mm", static_cast<float>(deviceZ_mm));
                     context->SetValue(captureAs + ".detected.reference_x_px", static_cast<float>(referenceX_px));
                     context->SetValue(captureAs + ".detected.reference_y_px", static_cast<float>(referenceY_px));
                     context->SetValue(captureAs + ".detected.using_anchor", usingAnchor);
                 }
 
-                std::cout << "[VisionCommandHandler] ✅ World position calculated and stored" << std::endl;
+                std::cout << "[VisionCommandHandler] ✅ World position calculated and stored (reference: " << referenceType << ")" << std::endl;
             } else {
-                std::cout << "[VisionCommandHandler] ⚠️ No detected center point found in vision result" << std::endl;
+                std::cout << "[VisionCommandHandler] ⚠️ No reference point found in vision result" << std::endl;
+                std::cout << "[VisionCommandHandler]    Checked for: anchor, corner, center" << std::endl;
+                std::cout << "[VisionCommandHandler]    Make sure vision plugin produces one of these coordinates" << std::endl;
             }
         }
 
@@ -659,16 +682,28 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
         std::string key = "vision.result." + kv.first;
         double value = kv.second;
 
-        // Apply ROI offset to coordinate measurements (match_*_x, match_*_y, match_*_anchor_x, match_*_anchor_y)
+        // ✅ Skip image_width and image_height from measurements when ROI is active
+        // These are ROI dimensions, not full image dimensions
+        // Full image dimensions were already stored above from inputImage
+        bool isImageSize = (kv.first == "image_width" || kv.first == "image_height");
+        if (isImageSize && (roiOffsetX != 0.0 || roiOffsetY != 0.0)) {
+            // Skip ROI dimensions, keep full image dimensions
+            std::cout << "[VisionCommandHandler] 📐 Skipping ROI dimension: " << kv.first << "=" << value
+                      << " (keeping full image dimensions)" << std::endl;
+            continue;
+        }
+
+        // ✅ Apply ROI offset to ALL coordinate measurements (_x, _y)
         // This converts from ROI-relative to whole-image coordinates
         bool isXCoord = (kv.first.length() >= 2 && kv.first.substr(kv.first.length() - 2) == "_x");
         bool isYCoord = (kv.first.length() >= 2 && kv.first.substr(kv.first.length() - 2) == "_y");
-        bool isMatchCoord = (kv.first.find("match_") == 0);  // Starts with "match_"
 
-        if (isMatchCoord && isXCoord) {
+        // Apply offset to all X coordinates (corner_x, center_x, start_x, end_x, match_*_x, etc.)
+        if (isXCoord) {
             value += roiOffsetX;
         }
-        if (isMatchCoord && isYCoord) {
+        // Apply offset to all Y coordinates (corner_y, center_y, start_y, end_y, match_*_y, etc.)
+        if (isYCoord) {
             value += roiOffsetY;
         }
 

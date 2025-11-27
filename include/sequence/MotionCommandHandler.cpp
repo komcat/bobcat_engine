@@ -8,6 +8,7 @@
 #include "ScanTypes.h"                // ✅ NEW: For XCAN command
 #include "../graph/MotionGraphManager.h"  // ✅ NEW: For MoveToGraphNode command
 #include "../products/product_position_manager.h"  // ✅ NEW: For MoveToGraphNode command
+#include "../vision/VisionManager.h"  // ✅ NEW: For pixel-to-mm calibration in MoveToContextPosition
 #include <chrono>
 #include <thread>
 #include <regex>                      // ✅ NEW: For device name validation
@@ -982,6 +983,11 @@ bool MotionCommandHandler::ExecuteCommand(
       keepZ = (keepZIt->second == "true" || keepZIt->second == "1");
     }
 
+    // ✅ OPTIONAL PARAMETERS: x_key, y_key (for custom coordinate source)
+    auto xKeyIt = params.find("x_key");
+    auto yKeyIt = params.find("y_key");
+    bool useCustomKeys = (xKeyIt != params.end() && yKeyIt != params.end());
+
     // ✅ VALIDATE CONTEXT
     if (!context) {
       errorMessage = "MoveToContextPosition: No context available";
@@ -1002,17 +1008,112 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     // ✅ GET WORLD COORDINATES FROM CONTEXT
-    std::string worldXKey = contextPrefix + ".detected.world_x_mm";
-    std::string worldYKey = contextPrefix + ".detected.world_y_mm";
+    double targetX = 0.0, targetY = 0.0;
 
-    if (!context->HasValue(worldXKey) || !context->HasValue(worldYKey)) {
-      errorMessage = "MoveToContextPosition: World coordinates not found for '" + contextPrefix +
-                    "'. Make sure GotoDetect was used with capture_as='" + contextPrefix + "'";
-      return false;
+    if (useCustomKeys) {
+      // Use custom pixel coordinate keys and convert to world coordinates
+      std::string pixelXKey = xKeyIt->second;
+      std::string pixelYKey = yKeyIt->second;
+
+      if (!context->HasValue(pixelXKey) || !context->HasValue(pixelYKey)) {
+        errorMessage = "MoveToContextPosition: Custom coordinates not found: " + pixelXKey + " or " + pixelYKey;
+        return false;
+      }
+
+      double detectedX_px = context->GetNumeric(pixelXKey, 0.0);
+      double detectedY_px = context->GetNumeric(pixelYKey, 0.0);
+
+      // Get image size
+      std::string widthKey = contextPrefix + ".result.image_width";
+      std::string heightKey = contextPrefix + ".result.image_height";
+      double imageWidth = context->GetNumeric(widthKey, 0.0);
+      double imageHeight = context->GetNumeric(heightKey, 0.0);
+
+      if (imageWidth == 0.0 || imageHeight == 0.0) {
+        errorMessage = "MoveToContextPosition: Image size not found in context";
+        return false;
+      }
+
+      // Calculate offset from image center
+      double imageCenterX = imageWidth / 2.0;
+      double imageCenterY = imageHeight / 2.0;
+      double offsetX_px = detectedX_px - imageCenterX;
+      double offsetY_px = detectedY_px - imageCenterY;
+
+      // Convert to mm using calibration
+      double pixelToMmX = VisionManager::instance().getPixelToMmX();
+      double pixelToMmY = VisionManager::instance().getPixelToMmY();
+      double offsetX_mm = offsetX_px * pixelToMmX;
+      double offsetY_mm = offsetY_px * pixelToMmY;
+
+      // Get device position at capture time
+      std::string deviceXKey = contextPrefix + ".detected.device_x_mm";
+      std::string deviceYKey = contextPrefix + ".detected.device_y_mm";
+
+      if (!context->HasValue(deviceXKey) || !context->HasValue(deviceYKey)) {
+        std::cout << "[MotionCommandHandler] ⚠️ WARNING: Device position not found in context!" << std::endl;
+        std::cout << "[MotionCommandHandler]   Missing keys: " << deviceXKey << ", " << deviceYKey << std::endl;
+      }
+
+      double deviceX_mm = context->GetNumeric(deviceXKey, 0.0);
+      double deviceY_mm = context->GetNumeric(deviceYKey, 0.0);
+
+      std::cout << "[MotionCommandHandler] 📍 Device position at capture: (" << deviceX_mm << ", " << deviceY_mm << ") mm" << std::endl;
+      std::cout << "[MotionCommandHandler] 📐 Pixel offset from center: (" << offsetX_px << ", " << offsetY_px << ") px" << std::endl;
+      std::cout << "[MotionCommandHandler]    Calculation: pixel_offset = detected - image_center = (" << detectedX_px << " - " << (imageWidth/2.0) << ", " << detectedY_px << " - " << (imageHeight/2.0) << ")" << std::endl;
+      std::cout << "[MotionCommandHandler] 📐 MM offset from center: (" << offsetX_mm << ", " << offsetY_mm << ") mm" << std::endl;
+      std::cout << "[MotionCommandHandler]    Calculation: mm_offset = pixel_offset × calibration = (" << offsetX_px << " × " << pixelToMmX << ", " << offsetY_px << " × " << pixelToMmY << ")" << std::endl;
+
+      // Calculate world position
+      targetX = deviceX_mm + offsetX_mm;
+      targetY = deviceY_mm + offsetY_mm;
+
+      std::cout << "[MotionCommandHandler] 🌍 Target world position: (" << targetX << ", " << targetY << ") mm" << std::endl;
+      std::cout << "[MotionCommandHandler]    Calculation: target = device + offset = (" << deviceX_mm << " + " << offsetX_mm << ", " << deviceY_mm << " + " << offsetY_mm << ")" << std::endl;
+    } else {
+      // Use default world coordinates
+      std::string worldXKey = contextPrefix + ".detected.world_x_mm";
+      std::string worldYKey = contextPrefix + ".detected.world_y_mm";
+
+      if (!context->HasValue(worldXKey) || !context->HasValue(worldYKey)) {
+        errorMessage = "MoveToContextPosition: World coordinates not found for '" + contextPrefix +
+                      "'. Make sure GotoDetect was used with capture_as='" + contextPrefix + "'";
+        return false;
+      }
+
+      targetX = context->GetNumeric(worldXKey, 0.0);
+      targetY = context->GetNumeric(worldYKey, 0.0);
     }
 
-    double targetX = context->GetNumeric(worldXKey, 0.0);
-    double targetY = context->GetNumeric(worldYKey, 0.0);
+    // ✅ SAFETY CHECK: Verify target is within FOV limits (5mm x 5mm from capture position)
+    // Get device position at capture time
+    std::string deviceXKey = contextPrefix + ".detected.device_x_mm";
+    std::string deviceYKey = contextPrefix + ".detected.device_y_mm";
+
+    if (context->HasValue(deviceXKey) && context->HasValue(deviceYKey)) {
+      double captureDeviceX = context->GetNumeric(deviceXKey, 0.0);
+      double captureDeviceY = context->GetNumeric(deviceYKey, 0.0);
+
+      double deltaX = std::abs(targetX - captureDeviceX);
+      double deltaY = std::abs(targetY - captureDeviceY);
+
+      const double MAX_FOV_OFFSET_MM = 5.0;  // Safety limit: 5mm x 5mm FOV
+
+      if (deltaX > MAX_FOV_OFFSET_MM || deltaY > MAX_FOV_OFFSET_MM) {
+        errorMessage = "MoveToContextPosition: Target exceeds FOV safety limit!\n";
+        errorMessage += "  Capture position: (" + std::to_string(captureDeviceX) + ", " + std::to_string(captureDeviceY) + ") mm\n";
+        errorMessage += "  Target position: (" + std::to_string(targetX) + ", " + std::to_string(targetY) + ") mm\n";
+        errorMessage += "  Offset: ΔX=" + std::to_string(deltaX) + "mm, ΔY=" + std::to_string(deltaY) + "mm\n";
+        errorMessage += "  Maximum allowed: " + std::to_string(MAX_FOV_OFFSET_MM) + "mm\n";
+        errorMessage += "  This likely indicates a calculation error. Check vision calibration.";
+
+        std::cout << "[MotionCommandHandler] ⛔ " << errorMessage << std::endl;
+        return false;
+      }
+
+      std::cout << "[MotionCommandHandler] ✅ FOV safety check passed: ΔX=" << deltaX
+                << "mm, ΔY=" << deltaY << "mm (limit: " << MAX_FOV_OFFSET_MM << "mm)" << std::endl;
+    }
 
     // ✅ DETERMINE TARGET Z POSITION
     PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
