@@ -299,6 +299,131 @@ public:
 };
 
 //=============================================================================
+// TOGGLE OUTPUT PLUGIN
+//=============================================================================
+
+class ToggleOutputPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Toggle Output";
+  }
+
+  std::string GetCategory() const override {
+    return "I/O & Pneumatics";
+  }
+
+  std::string GetDescription() const override {
+    return "Toggle digital output pin with configurable timing: inbounce delay -> toggle -> dwell -> toggle back -> outbounce delay";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"io_device", "IOBottom"},
+      {"pin_name", ""},
+      {"start_state", "off"},  // "off" or "on"
+      {"inbounce_delay_ms", "300"},
+      {"dwell_time_ms", "300"},
+      {"outbounce_delay_ms", "300"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO));
+
+    // IO pin selector
+    widget->addIOPinSelector("pin_name", "Output Pin", params.at("pin_name"), "io_device", "output");
+
+    // Start state selector (off/on)
+    widget->addDropdownParameter("start_state", "Start State", params.at("start_state"),
+      {"off", "on"});
+
+    // Timing parameters
+    widget->addNumericParameter("inbounce_delay_ms", "Inbounce Delay (ms)",
+      params.at("inbounce_delay_ms"),
+      0,      // min
+      10000,  // max
+      50,     // step
+      0,      // decimals (integer)
+      "ms"    // suffix
+    );
+
+    widget->addNumericParameter("dwell_time_ms", "Dwell Time (ms)",
+      params.at("dwell_time_ms"),
+      0,      // min
+      10000,  // max
+      50,     // step
+      0,      // decimals (integer)
+      "ms"    // suffix
+    );
+
+    widget->addNumericParameter("outbounce_delay_ms", "Outbounce Delay (ms)",
+      params.at("outbounce_delay_ms"),
+      0,      // min
+      10000,  // max
+      50,     // step
+      0,      // decimals (integer)
+      "ms"    // suffix
+    );
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string ioDevice = params.at("io_device");
+    std::string pinName = params.at("pin_name");
+    std::string startState = params.at("start_state");
+    std::string inbounceDelay = params.at("inbounce_delay_ms");
+    std::string dwellTime = params.at("dwell_time_ms");
+    std::string outbounceDelay = params.at("outbounce_delay_ms");
+
+    // Determine toggle states based on start state
+    bool firstToggleState = (startState == "off") ? true : false;  // opposite of start state
+    bool secondToggleState = !firstToggleState;  // back to start state
+
+    // Step 1: Inbounce delay
+    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", inbounceDelay}
+      });
+    }
+
+    // Step 2: First toggle (opposite of start state)
+    sequence->AddAction(ioDevice, "SetOutput", {
+      {"pinName", pinName},
+      {"state", firstToggleState ? "true" : "false"}
+    });
+
+    // Step 3: Dwell time
+    if (dwellTime != "0" && !dwellTime.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", dwellTime}
+      });
+    }
+
+    // Step 4: Second toggle (back to start state)
+    sequence->AddAction(ioDevice, "SetOutput", {
+      {"pinName", pinName},
+      {"state", secondToggleState ? "true" : "false"}
+    });
+
+    // Step 5: Outbounce delay
+    if (outbounceDelay != "0" && !outbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", outbounceDelay}
+      });
+    }
+
+    std::cout << "[IOProcesses] Built Toggle Output sequence for: " << step->userNickname
+              << " (Device: " << ioDevice << ", Pin: " << pinName
+              << ", Start: " << startState << ")" << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -312,8 +437,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<ClearOutputNamePlugin>());
       registry.RegisterPlugin(std::make_unique<SlideExtendPlugin>());
       registry.RegisterPlugin(std::make_unique<SlideRetractPlugin>());
+      registry.RegisterPlugin(std::make_unique<ToggleOutputPlugin>());
 
-      std::cout << "[IOProcesses] Registered 5 I/O process plugins" << std::endl;
+      std::cout << "[IOProcesses] Registered 6 I/O process plugins" << std::endl;
     }
   };
 
