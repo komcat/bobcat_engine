@@ -41,11 +41,25 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
     cv::Mat edges;
     cv::Canny(processed, edges, m_cannyThreshold1, m_cannyThreshold2);
 
-    // Convert to output
+    // Convert to output (use original input as background)
     if (input.channels() == 1) {
         cv::cvtColor(input, output, cv::COLOR_GRAY2BGR);
     } else {
         output = input.clone();
+    }
+
+    // Convert edge pixels to contours for overlay visualization
+    std::vector<std::vector<cv::Point>> edgeContours;
+    cv::findContours(edges.clone(), edgeContours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
+
+    // Add cyan edge contours as overlays
+    for (const auto& contour : edgeContours) {
+        OverlayCommand overlay;
+        overlay.type = OverlayCommand::DrawContour;
+        overlay.color = cv::Scalar(255, 255, 0);  // Cyan in BGR
+        overlay.thickness = 1;
+        overlay.contour = contour;
+        result.overlays.push_back(overlay);
     }
 
     // Hough Line Transform
@@ -78,9 +92,11 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
                 }
             }
 
-            // Calculate angle
-            double angle = std::atan2(longestLine[3] - longestLine[1],
-                                      longestLine[2] - longestLine[0]) * 180.0 / CV_PI;
+            // Calculate angle (complemented from 180° for intuitive vertical reference)
+            // This gives: 90° = vertical, >90° = tilted right, <90° = tilted left
+            double rawAngle = std::atan2(longestLine[3] - longestLine[1],
+                                         longestLine[2] - longestLine[0]) * 180.0 / CV_PI;
+            double angle = 180.0 - rawAngle;
 
             bestLine.startPx.x = longestLine[0];
             bestLine.startPx.y = longestLine[1];
@@ -117,10 +133,11 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
             cv::Point2d pt1(x0 + lineLen * (-b), y0 + lineLen * (a));
             cv::Point2d pt2(x0 - lineLen * (-b), y0 - lineLen * (a));
 
-            // Calculate angle (perpendicular to theta)
-            double angle = (theta * 180.0 / CV_PI) - 90.0;
-            if (angle < -90.0) angle += 180.0;
-            if (angle > 90.0) angle -= 180.0;
+            // Calculate angle (complemented for intuitive vertical reference)
+            // Convert theta to line angle, then complement from 180°
+            double rawAngle = (theta * 180.0 / CV_PI) - 90.0;
+            if (rawAngle < 0.0) rawAngle += 180.0;
+            double angle = 180.0 - rawAngle;
 
             // Calculate line length within image bounds
             double length = std::sqrt(
@@ -173,13 +190,13 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
             }
         }
 
-        // Add overlay for the line (bright green, thick)
+        // Add overlay for the line (bright green, thin)
         OverlayCommand lineOverlay;
         lineOverlay.type = OverlayCommand::DrawLine;
         lineOverlay.p1 = cv::Point2d(x1, y1);
         lineOverlay.p2 = cv::Point2d(x2, y2);
         lineOverlay.color = cv::Scalar(0, 255, 0);  // Green
-        lineOverlay.thickness = 3;
+        lineOverlay.thickness = 1;
         result.overlays.push_back(lineOverlay);
 
         // Add center point marker
@@ -193,6 +210,59 @@ bool LineDetectorPlugin::execute(const cv::Mat& input, cv::Mat& output, VisionRe
         centerOverlay.color = cv::Scalar(0, 255, 255);  // Yellow
         centerOverlay.thickness = 2;
         result.overlays.push_back(centerOverlay);
+
+        // Add arrowhead at midpoint to show line orientation
+        double dx = bestLine.endPx.x - bestLine.startPx.x;
+        double dy = bestLine.endPx.y - bestLine.startPx.y;
+        double lineLen = std::sqrt(dx * dx + dy * dy);
+
+        if (lineLen > 0) {
+            // Flip direction if pointing downward (dy > 0)
+            // This ensures arrow points upward for angles near 90°
+            if (dy > 0) {
+                dx = -dx;
+                dy = -dy;
+            }
+
+            // Unit direction vector
+            double ux = dx / lineLen;
+            double uy = dy / lineLen;
+
+            // Perpendicular vector (rotated 90°)
+            double px = -uy;
+            double py = ux;
+
+            // Arrowhead size
+            double arrowLen = 20.0;
+            double arrowWidth = 10.0;
+
+            // Arrow tip point (slightly ahead of center)
+            double tipX = midX + ux * arrowLen * 0.5;
+            double tipY = midY + uy * arrowLen * 0.5;
+
+            // Arrow base points
+            double base1X = midX - ux * arrowLen * 0.5 + px * arrowWidth;
+            double base1Y = midY - uy * arrowLen * 0.5 + py * arrowWidth;
+            double base2X = midX - ux * arrowLen * 0.5 - px * arrowWidth;
+            double base2Y = midY - uy * arrowLen * 0.5 - py * arrowWidth;
+
+            // Draw arrowhead (two lines forming a ">" shape)
+            OverlayCommand arrow1;
+            arrow1.type = OverlayCommand::DrawLine;
+            arrow1.p1 = cv::Point2d(base1X, base1Y);
+            arrow1.p2 = cv::Point2d(tipX, tipY);
+            arrow1.color = cv::Scalar(0, 0, 255);  // Red arrow
+            arrow1.thickness = 2;
+            result.overlays.push_back(arrow1);
+
+            OverlayCommand arrow2;
+            arrow2.type = OverlayCommand::DrawLine;
+            arrow2.p1 = cv::Point2d(base2X, base2Y);
+            arrow2.p2 = cv::Point2d(tipX, tipY);
+            arrow2.color = cv::Scalar(0, 0, 255);  // Red arrow
+            arrow2.thickness = 2;
+            result.overlays.push_back(arrow2);
+        }
 
         // Add measurements for original segment endpoints
         result.addMeasurement("start_x", bestLine.startPx.x);
