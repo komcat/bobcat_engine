@@ -85,7 +85,9 @@ public:
         return {
             {"profile_path", ""},  // Will be selected from dropdown (auto-discovers from product vision folder)
             {"camera_name", "main_camera"},
-            {"capture_as", ""}     // Optional: store results with custom prefix (e.g., "sled_position")
+            {"capture_as", ""},     // Optional: store results with custom prefix (e.g., "sled_position")
+            {"calculate_world_position", "false"},  // Calculate world position from detected feature
+            {"motion_device", "gantry-main"}        // Motion device for world position calculation
         };
     }
 
@@ -107,6 +109,16 @@ public:
 
         // Capture As (optional custom prefix for results)
         widget->addParameterField("capture_as", "Capture As (optional)", getParam("capture_as", ""));
+
+        // World position calculation (like GotoDetect)
+        widget->addCheckboxParameter("calculate_world_position", "Calculate World Position",
+            getParam("calculate_world_position", "false"),
+            "Calculate detected feature world position in mm (like GotoDetect)");
+
+        // Motion device for world position calculation
+        widget->addDeviceSelector("motion_device", "Motion Device (for world pos)",
+            getParam("motion_device", "gantry-main"),
+            static_cast<int>(DeviceComboBox::DeviceType::Motion));
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -130,6 +142,18 @@ public:
         auto captureAsIt = params.find("capture_as");
         if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
             execParams["capture_as"] = captureAsIt->second;
+        }
+
+        // ✅ World position calculation (like GotoDetect)
+        auto calcWorldIt = params.find("calculate_world_position");
+        if (calcWorldIt != params.end() && calcWorldIt->second == "true") {
+            execParams["calculate_world_position"] = "true";
+
+            // Motion device for world position calculation
+            auto motionDeviceIt = params.find("motion_device");
+            if (motionDeviceIt != params.end() && !motionDeviceIt->second.empty()) {
+                execParams["motion_device"] = motionDeviceIt->second;
+            }
         }
 
         // Single command that does: load profile + capture + execute + return results

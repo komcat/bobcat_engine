@@ -26,9 +26,15 @@ public:
     void setSearchBoxEnabled(bool enabled) { m_searchBoxEnabled = enabled; }
     void setSearchBox(int startX, int startY, int endX, int endY);
 
+    // Template Selection support (red rectangle for teaching template)
+    void setTemplateSelectionEnabled(bool enabled) { m_templateSelectionEnabled = enabled; }
+    void setTemplateSelection(int startX, int startY, int endX, int endY);
+    void getTemplateSelection(int& startX, int& startY, int& endX, int& endY) const;
+
 signals:
     void roiCornerDragged(int startX, int startY, int endX, int endY);
     void searchBoxCornerDragged(int startX, int startY, int endX, int endY);
+    void templateSelectionCornerDragged(int startX, int startY, int endX, int endY);
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -37,10 +43,11 @@ protected:
 
 private:
     enum class DragCorner { None, TopLeft, TopRight, BottomLeft, BottomRight };
-    enum class DragTarget { None, ROI, SearchBox };
+    enum class DragTarget { None, ROI, SearchBox, TemplateSelection };
     DragCorner hitTestCorner(const QPoint& pos, int startX, int startY, int endX, int endY);
     DragCorner hitTestROICorner(const QPoint& pos);
     DragCorner hitTestSearchBoxCorner(const QPoint& pos);
+    DragCorner hitTestTemplateSelectionCorner(const QPoint& pos);
     void updateCursor(const QPoint& pos);
     QPoint pixmapOffset() const;
     QPoint toPixmapCoords(const QPoint& widgetPos) const;
@@ -57,6 +64,13 @@ private:
     int m_searchBoxStartY = 0;
     int m_searchBoxEndX = 800;
     int m_searchBoxEndY = 600;
+
+    // Template Selection (red rectangle for teaching template)
+    bool m_templateSelectionEnabled = false;
+    int m_templateSelectionStartX = 100;
+    int m_templateSelectionStartY = 100;
+    int m_templateSelectionEndX = 300;
+    int m_templateSelectionEndY = 300;
 
     double m_scaleX = 1.0;
     double m_scaleY = 1.0;
@@ -86,6 +100,11 @@ public:
     void setSearchBox(int startX, int startY, int endX, int endY);
     void setSearchBoxEnabled(bool enabled);
 
+    // Template Selection overlay (red rectangle for teaching template)
+    void setTemplateSelection(int startX, int startY, int endX, int endY);
+    void setTemplateSelectionEnabled(bool enabled);
+    void getTemplateSelection(int& startX, int& startY, int& endX, int& endY) const;
+
     // Result overlay - circles with crosshairs and labels
     struct ResultMarker {
         double x;
@@ -105,6 +124,7 @@ signals:
     void clearClicked();
     void roiDragged(int startX, int startY, int endX, int endY);
     void searchBoxDragged(int startX, int startY, int endX, int endY);
+    void templateSelectionDragged(int startX, int startY, int endX, int endY);
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -112,6 +132,7 @@ protected:
 private slots:
     void onROICornerDragged(int startX, int startY, int endX, int endY);
     void onSearchBoxCornerDragged(int startX, int startY, int endX, int endY);
+    void onTemplateSelectionCornerDragged(int startX, int startY, int endX, int endY);
 
 private:
     void setupUI();
@@ -142,6 +163,13 @@ private:
     int m_searchBoxStartY;
     int m_searchBoxEndX;
     int m_searchBoxEndY;
+
+    // Template Selection overlay (red rectangle)
+    bool m_templateSelectionEnabled;
+    int m_templateSelectionStartX;
+    int m_templateSelectionStartY;
+    int m_templateSelectionEndX;
+    int m_templateSelectionEndY;
 
     // Result markers
     std::vector<ResultMarker> m_resultMarkers;

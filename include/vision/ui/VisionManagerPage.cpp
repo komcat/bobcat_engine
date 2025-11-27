@@ -4,6 +4,7 @@
 #include "VisionLeftPanelWidget.h"
 #include "VisionImageWidget.h"
 #include "VisionRightPanelWidget.h"
+#include "../plugins/PatternMatchingPlugin.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include "CameraManager.h"
@@ -159,6 +160,8 @@ void VisionManagerPage::connectSignals()
             this, &VisionManagerPage::onROIDragged);
     connect(m_imageWidget, &VisionImageWidget::searchBoxDragged,
             this, &VisionManagerPage::onSearchBoxDragged);
+    connect(m_imageWidget, &VisionImageWidget::templateSelectionDragged,
+            this, &VisionManagerPage::onTemplateSelectionDragged);
 
     // Right panel signals
     connect(m_rightPanel, &VisionRightPanelWidget::applyPluginParamsClicked,
@@ -1315,6 +1318,78 @@ void VisionManagerPage::onSearchBoxEnabledChanged(bool enabled)
     }
 }
 
+// ========== Template Selection Actions ==========
+
+void VisionManagerPage::onTemplateSelectionDragged(int startX, int startY, int endX, int endY)
+{
+    std::cout << "[VisionManagerPage] Template Selection dragged: (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
+    // Just update display - no other action needed while dragging
+}
+
+void VisionManagerPage::onTemplateSelectionConfirmed()
+{
+    if (m_templateSelectionMode && m_templateSelectionOnConfirm) {
+        int startX, startY, endX, endY;
+        m_imageWidget->getTemplateSelection(startX, startY, endX, endY);
+
+        std::cout << "[VisionManagerPage] Template selection confirmed: ("
+                  << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
+
+        // Call the callback
+        m_templateSelectionOnConfirm(startX, startY, endX, endY);
+
+        // Stop template selection mode
+        stopTemplateSelectionMode();
+    }
+}
+
+void VisionManagerPage::onTemplateSelectionCancelled()
+{
+    if (m_templateSelectionMode) {
+        std::cout << "[VisionManagerPage] Template selection cancelled" << std::endl;
+
+        if (m_templateSelectionOnCancel) {
+            m_templateSelectionOnCancel();
+        }
+
+        // Stop template selection mode
+        stopTemplateSelectionMode();
+    }
+}
+
+void VisionManagerPage::startTemplateSelectionMode(std::function<void(int, int, int, int)> onConfirm,
+                                                   std::function<void()> onCancel)
+{
+    m_templateSelectionMode = true;
+    m_templateSelectionOnConfirm = onConfirm;
+    m_templateSelectionOnCancel = onCancel;
+
+    // Enable template selection in image widget
+    m_imageWidget->setTemplateSelectionEnabled(true);
+
+    std::cout << "[VisionManagerPage] Template selection mode started" << std::endl;
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Template selection mode activated", "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::stopTemplateSelectionMode()
+{
+    m_templateSelectionMode = false;
+    m_templateSelectionOnConfirm = nullptr;
+    m_templateSelectionOnCancel = nullptr;
+
+    // Disable template selection in image widget
+    m_imageWidget->setTemplateSelectionEnabled(false);
+
+    std::cout << "[VisionManagerPage] Template selection mode stopped" << std::endl;
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Template selection mode deactivated", "VisionManagerPage");
+    }
+}
+
 void VisionManagerPage::registerPlugins()
 {
     std::cout << "[VisionManagerPage] Registering vision plugins..." << std::endl;
@@ -1389,9 +1464,15 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
         std::cerr << "[VisionManagerPage] Failed to create config widget for: " << pluginName.toStdString() << std::endl;
     }
 
-    // If it's a PatternMatchingPlugin, pass the current ROI image for teaching
+    // If it's a PatternMatchingPlugin, pass the current ROI image for teaching and set VisionManagerPage reference
     if (pluginName == "PatternMatching") {
         updatePatternMatchingSourceImage();
+
+        // Give plugin access to VisionManagerPage for template selection mode
+        auto pmPlugin = std::dynamic_pointer_cast<PatternMatchingPlugin>(plugin);
+        if (pmPlugin) {
+            pmPlugin->setVisionManagerPage(this);
+        }
     }
 }
 

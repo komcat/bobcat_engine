@@ -2,6 +2,8 @@
 #ifdef HAS_OPENCV
 
 #include "PatternMatchingPlugin.h"
+#include "../ui/VisionManagerPage.h"
+#include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <QPixmap>
@@ -155,20 +157,50 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
 
     output = input.clone();
 
-    // Apply edge preprocessing if enabled
+    // ✅ NEW: Apply binary preprocessing if enabled (more robust for high-contrast objects)
     cv::Mat searchImage = grayInput;
+    std::string preprocessingDesc = "grayscale";
+
+    if (m_useBinaryPreprocess) {
+        cv::Mat binaryImage;
+
+        if (m_binaryMethod == "otsu") {
+            // Otsu's automatic thresholding
+            cv::threshold(grayInput, binaryImage, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+            preprocessingDesc = "binary_otsu";
+        } else if (m_binaryMethod == "adaptive") {
+            // Adaptive thresholding (local threshold)
+            cv::adaptiveThreshold(grayInput, binaryImage, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv::THRESH_BINARY, 11, 2);
+            preprocessingDesc = "binary_adaptive";
+        } else {
+            // Fixed threshold
+            cv::threshold(grayInput, binaryImage, m_binaryThreshold, 255, cv::THRESH_BINARY);
+            preprocessingDesc = "binary_fixed";
+        }
+
+        // Invert if needed (for dark objects on bright background)
+        if (m_binaryInvert) {
+            cv::bitwise_not(binaryImage, binaryImage);
+            preprocessingDesc += "_inverted";
+        }
+
+        searchImage = binaryImage;
+    }
+
+    // Apply edge detection if enabled (works on binary or grayscale)
     if (m_useEdgeMatching) {
         cv::Mat blurred;
         if (m_gaussianBlurSize > 0 && m_gaussianBlurSize % 2 == 1) {
-            cv::GaussianBlur(grayInput, blurred, cv::Size(m_gaussianBlurSize, m_gaussianBlurSize), 0);
+            cv::GaussianBlur(searchImage, blurred, cv::Size(m_gaussianBlurSize, m_gaussianBlurSize), 0);
         } else {
-            blurred = grayInput;
+            blurred = searchImage;
         }
         cv::Canny(blurred, searchImage, m_cannyThreshold1, m_cannyThreshold2);
-        result.addMetadata("preprocessing", "edge_based");
-    } else {
-        result.addMetadata("preprocessing", "grayscale");
+        preprocessingDesc += "+edges";
     }
+
+    result.addMetadata("preprocessing", preprocessingDesc);
 
     // Find matches
     std::vector<MatchResult> matches = findMatches(searchImage);
@@ -277,6 +309,76 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
                 cv::Point2d(match.location.x, match.location.y - 5),
                 cv::Point2d(match.location.x, match.location.y + 5),
                 cv::Scalar(0, 255, 255), 1);
+        }
+
+        // ✅ NEW: Draw template edge overlay in red at detected location
+        {
+            // Create edge map of template
+            cv::Mat templateEdges;
+            cv::Mat templateForEdge = m_template.clone();
+
+            // Extract edges for visualization
+            cv::Mat blurred;
+            int blurSize = 5;  // Fixed blur for visualization
+            if (blurSize > 0 && blurSize % 2 == 1) {
+                cv::GaussianBlur(templateForEdge, blurred, cv::Size(blurSize, blurSize), 0);
+            } else {
+                blurred = templateForEdge;
+            }
+            cv::Canny(blurred, templateEdges, 50, 150);  // Fixed thresholds for visualization
+
+            // Scale template edges if needed
+            cv::Mat scaledEdges = templateEdges;
+            if (std::abs(match.scale - 1.0) > 0.001) {
+                cv::resize(templateEdges, scaledEdges, cv::Size(), match.scale, match.scale, cv::INTER_NEAREST);
+            }
+
+            // Rotate template edges if needed
+            cv::Mat transformedEdges = scaledEdges;
+            if (std::abs(match.angle) > 0.001) {
+                cv::Point2f center(scaledEdges.cols / 2.0f, scaledEdges.rows / 2.0f);
+                cv::Mat rotMatrix = cv::getRotationMatrix2D(center, -match.angle, 1.0);
+
+                // Calculate new bounding size
+                cv::Rect2f bbox = cv::RotatedRect(center, scaledEdges.size(),
+                                                   static_cast<float>(match.angle)).boundingRect2f();
+
+                // Adjust rotation matrix for new center
+                rotMatrix.at<double>(0, 2) += bbox.width / 2.0 - center.x;
+                rotMatrix.at<double>(1, 2) += bbox.height / 2.0 - center.y;
+
+                cv::warpAffine(scaledEdges, transformedEdges, rotMatrix, bbox.size(),
+                              cv::INTER_NEAREST, cv::BORDER_CONSTANT, cv::Scalar(0));
+            }
+
+            // Calculate offset for placing edges at match location
+            double offsetX = match.location.x - transformedEdges.cols / 2.0;
+            double offsetY = match.location.y - transformedEdges.rows / 2.0;
+
+            // Draw edge pixels directly on output image (before overlays are rendered)
+            // This is more efficient than adding thousands of point overlays
+            for (int y = 0; y < transformedEdges.rows; y++) {
+                for (int x = 0; x < transformedEdges.cols; x++) {
+                    if (transformedEdges.at<uchar>(y, x) > 128) {
+                        int outputX = static_cast<int>(offsetX + x);
+                        int outputY = static_cast<int>(offsetY + y);
+
+                        // Check bounds
+                        if (outputX >= 0 && outputX < output.cols &&
+                            outputY >= 0 && outputY < output.rows) {
+
+                            // Draw red pixel (works for both grayscale and color)
+                            if (output.channels() == 3) {
+                                // Color image - set to pure red (B=0, G=0, R=255)
+                                output.at<cv::Vec3b>(outputY, outputX) = cv::Vec3b(0, 0, 255);
+                            } else {
+                                // Grayscale - set to white
+                                output.at<uchar>(outputY, outputX) = 255;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Draw score text
@@ -452,7 +554,27 @@ PatternMatchingPlugin::MatchResult PatternMatchingPlugin::findBestMatch(
         searchTemplate = rotateTemplate(searchTemplate, angle);
     }
 
-    // Apply edge preprocessing to template if enabled
+    // ✅ Apply binary preprocessing to template (same as search image)
+    if (m_useBinaryPreprocess) {
+        cv::Mat binaryTemplate;
+
+        if (m_binaryMethod == "otsu") {
+            cv::threshold(searchTemplate, binaryTemplate, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+        } else if (m_binaryMethod == "adaptive") {
+            cv::adaptiveThreshold(searchTemplate, binaryTemplate, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv::THRESH_BINARY, 11, 2);
+        } else {
+            cv::threshold(searchTemplate, binaryTemplate, m_binaryThreshold, 255, cv::THRESH_BINARY);
+        }
+
+        if (m_binaryInvert) {
+            cv::bitwise_not(binaryTemplate, binaryTemplate);
+        }
+
+        searchTemplate = binaryTemplate;
+    }
+
+    // Apply edge preprocessing to template if enabled (works on binary or grayscale)
     if (m_useEdgeMatching) {
         cv::Mat blurred;
         if (m_gaussianBlurSize > 0 && m_gaussianBlurSize % 2 == 1) {
@@ -641,15 +763,58 @@ void PatternMatchingPlugin::updatePreviewLabel() {
             m_templatePathLabel->setText("File: Not saved");
         }
     } else {
-        // Create preview image
+        // Create preview image with anchor point marker
         cv::Mat preview = getTemplatePreview(100);
-        QImage qimg(preview.data, preview.cols, preview.rows,
-                    static_cast<int>(preview.step), QImage::Format_Grayscale8);
-        m_previewLabel->setPixmap(QPixmap::fromImage(qimg));
+
+        // Convert to RGB for colored markers
+        cv::Mat previewRGB;
+        cv::cvtColor(preview, previewRGB, cv::COLOR_GRAY2RGB);
+
+        // Calculate scale factor for anchor point positioning
+        double scale = static_cast<double>(preview.cols) / m_template.cols;
+
+        // Draw center marker (yellow dashed crosshair)
+        double centerX = preview.cols / 2.0;
+        double centerY = preview.rows / 2.0;
+        cv::line(previewRGB,
+                 cv::Point(static_cast<int>(centerX - 5), static_cast<int>(centerY)),
+                 cv::Point(static_cast<int>(centerX + 5), static_cast<int>(centerY)),
+                 cv::Scalar(0, 255, 255), 1);  // Yellow in BGR
+        cv::line(previewRGB,
+                 cv::Point(static_cast<int>(centerX), static_cast<int>(centerY - 5)),
+                 cv::Point(static_cast<int>(centerX), static_cast<int>(centerY + 5)),
+                 cv::Scalar(0, 255, 255), 1);  // Yellow in BGR
+
+        // Draw anchor point marker if custom anchor is set
+        if (m_useCustomAnchor || (m_anchorOffsetX != 0.0 || m_anchorOffsetY != 0.0)) {
+            double anchorX = centerX + m_anchorOffsetX * scale;
+            double anchorY = centerY + m_anchorOffsetY * scale;
+
+            // Blue crosshair
+            cv::line(previewRGB,
+                     cv::Point(static_cast<int>(anchorX - 8), static_cast<int>(anchorY)),
+                     cv::Point(static_cast<int>(anchorX + 8), static_cast<int>(anchorY)),
+                     cv::Scalar(255, 0, 0), 1);  // Blue in BGR
+            cv::line(previewRGB,
+                     cv::Point(static_cast<int>(anchorX), static_cast<int>(anchorY - 8)),
+                     cv::Point(static_cast<int>(anchorX), static_cast<int>(anchorY + 8)),
+                     cv::Scalar(255, 0, 0), 1);  // Blue in BGR
+
+            // Red dot
+            cv::circle(previewRGB, cv::Point(static_cast<int>(anchorX), static_cast<int>(anchorY)),
+                      2, cv::Scalar(0, 0, 255), -1);  // Red filled circle in BGR
+        }
+
+        QImage qimg(previewRGB.data, previewRGB.cols, previewRGB.rows,
+                    static_cast<int>(previewRGB.step), QImage::Format_RGB888);
+        m_previewLabel->setPixmap(QPixmap::fromImage(qimg.rgbSwapped()));
         m_previewLabel->setText("");
 
-        // Update info
+        // Update info - include anchor point info if set
         QString info = QString("Size: %1 x %2 px").arg(m_template.cols).arg(m_template.rows);
+        if (m_useCustomAnchor || (m_anchorOffsetX != 0.0 || m_anchorOffsetY != 0.0)) {
+            info += QString("\nAnchor: (%.1f, %.1f)").arg(m_anchorOffsetX).arg(m_anchorOffsetY);
+        }
         m_templateInfoLabel->setText(info);
 
         if (m_templatePathLabel) {
@@ -740,6 +905,9 @@ void PatternMatchingPlugin::showAnchorPointDialog() {
 
         std::cout << "[PatternMatchingPlugin] Anchor point set: offset=(" << m_anchorOffsetX << ", "
                   << m_anchorOffsetY << "), useCustom=" << m_useCustomAnchor << std::endl;
+
+        // ✅ Update preview to show anchor point marker
+        updatePreviewLabel();
     }
 }
 
@@ -780,9 +948,9 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
     // Teaching buttons
     QHBoxLayout* teachButtonLayout = new QHBoxLayout();
 
-    m_teachBtn = new QPushButton("Teach from ROI", templateGroup);
+    m_teachBtn = new QPushButton("Select Template Area", templateGroup);
     m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-    m_teachBtn->setToolTip("Capture current ROI as template pattern");
+    m_teachBtn->setToolTip("Draw a red rectangle on the image to select template area");
     teachButtonLayout->addWidget(m_teachBtn);
 
     m_clearTemplateBtn = new QPushButton("Clear", templateGroup);
@@ -803,6 +971,12 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
     fileButtonLayout->addWidget(m_loadTemplateBtn);
 
     templateLayout->addLayout(fileButtonLayout);
+
+    // Anchor point button
+    m_setAnchorBtn = new QPushButton("Set Anchor Point...", templateGroup);
+    m_setAnchorBtn->setToolTip("Set custom anchor point for pattern match reporting");
+    m_setAnchorBtn->setStyleSheet("QPushButton { background-color: #388E3C; color: white; }");
+    templateLayout->addWidget(m_setAnchorBtn);
 
     mainLayout->addWidget(templateGroup);
 
@@ -887,6 +1061,41 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
     scaleLayout->addRow("Step:", m_scaleStepSpin);
 
     mainLayout->addWidget(scaleGroup);
+
+    // Binary preprocessing group
+    QGroupBox* binaryGroup = new QGroupBox("Binary Preprocessing", m_configWidget);
+    QFormLayout* binaryLayout = new QFormLayout(binaryGroup);
+
+    m_useBinaryPreprocessCheck = new QCheckBox("Enable Binary Threshold", binaryGroup);
+    m_useBinaryPreprocessCheck->setChecked(m_useBinaryPreprocess);
+    m_useBinaryPreprocessCheck->setToolTip("Apply binary threshold before matching (more robust for high-contrast objects)");
+    binaryLayout->addRow("", m_useBinaryPreprocessCheck);
+
+    QLabel* binaryMethodLabel = new QLabel("Method:");
+    m_binaryMethodCombo = new QComboBox(binaryGroup);
+    m_binaryMethodCombo->addItem("Fixed Threshold", "fixed");
+    m_binaryMethodCombo->addItem("Otsu (Auto)", "otsu");
+    m_binaryMethodCombo->addItem("Adaptive", "adaptive");
+    int binaryMethodIndex = (m_binaryMethod == "otsu") ? 1 : (m_binaryMethod == "adaptive") ? 2 : 0;
+    m_binaryMethodCombo->setCurrentIndex(binaryMethodIndex);
+    m_binaryMethodCombo->setEnabled(m_useBinaryPreprocess);
+    m_binaryMethodCombo->setToolTip("Fixed: Manual threshold | Otsu: Automatic | Adaptive: Local threshold");
+    binaryLayout->addRow(binaryMethodLabel, m_binaryMethodCombo);
+
+    m_binaryThresholdSpin = new QSpinBox(binaryGroup);
+    m_binaryThresholdSpin->setRange(0, 255);
+    m_binaryThresholdSpin->setValue(m_binaryThreshold);
+    m_binaryThresholdSpin->setEnabled(m_useBinaryPreprocess);
+    m_binaryThresholdSpin->setToolTip("Threshold value for 'Fixed' method (0-255)");
+    binaryLayout->addRow("Threshold:", m_binaryThresholdSpin);
+
+    m_binaryInvertCheck = new QCheckBox("Invert Binary", binaryGroup);
+    m_binaryInvertCheck->setChecked(m_binaryInvert);
+    m_binaryInvertCheck->setEnabled(m_useBinaryPreprocess);
+    m_binaryInvertCheck->setToolTip("Invert binary (use for dark objects on bright background)");
+    binaryLayout->addRow("", m_binaryInvertCheck);
+
+    mainLayout->addWidget(binaryGroup);
 
     // Edge-based matching group
     QGroupBox* edgeGroup = new QGroupBox("Edge-Based Matching", m_configWidget);
@@ -977,6 +1186,26 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
     QObject::connect(m_scaleStepSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             [this](double val) { m_scaleStep = val; });
 
+    // Binary preprocessing connections
+    QObject::connect(m_useBinaryPreprocessCheck, &QCheckBox::toggled, [this](bool checked) {
+        m_useBinaryPreprocess = checked;
+        m_binaryMethodCombo->setEnabled(checked);
+        m_binaryThresholdSpin->setEnabled(checked && m_binaryMethod == "fixed");
+        m_binaryInvertCheck->setEnabled(checked);
+    });
+
+    QObject::connect(m_binaryMethodCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) {
+        m_binaryMethod = m_binaryMethodCombo->itemData(index).toString().toStdString();
+        // Only enable threshold spin for fixed method
+        m_binaryThresholdSpin->setEnabled(m_useBinaryPreprocess && m_binaryMethod == "fixed");
+    });
+
+    QObject::connect(m_binaryThresholdSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            [this](int val) { m_binaryThreshold = val; });
+
+    QObject::connect(m_binaryInvertCheck, &QCheckBox::toggled,
+            [this](bool checked) { m_binaryInvert = checked; });
+
     // Edge-based matching connections
     QObject::connect(m_useEdgeMatchingCheck, &QCheckBox::toggled, [this](bool checked) {
         m_useEdgeMatching = checked;
@@ -1012,48 +1241,103 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
 
     // Teach button - use the source image's ROI
     QObject::connect(m_teachBtn, &QPushButton::clicked, [this]() {
-        if (m_sourceImage.empty()) {
-            QMessageBox::warning(m_configWidget, "Teaching Error",
-                                 "No source image available. Please capture an image first.");
+        // ✅ NEW: Use template selection mode instead of ROI
+        if (!m_visionManagerPage) {
+            QMessageBox::warning(m_configWidget, "Template Selection Error",
+                                 "Vision system not available. Please try again.");
             return;
         }
 
-        // The source image should already be the ROI cropped image
-        if (teachFromImage(m_sourceImage)) {
-            QString message = QString("Template successfully captured.\nSize: %1 x %2 pixels")
-                                  .arg(m_template.cols).arg(m_template.rows);
+        auto* visionPage = static_cast<VisionManagerPage*>(m_visionManagerPage);
 
-            // Auto-save template if directory and profile name are set
-            if (!m_templateDirectory.empty() && !m_profileName.empty()) {
-                // Create templates subdirectory
-                QString templatesDir = QString::fromStdString(m_templateDirectory) + "/templates";
-                QDir dir(templatesDir);
-                if (!dir.exists()) {
-                    dir.mkpath(".");
-                }
-
-                // Generate filename based on profile name
-                QString templateFileName = QString::fromStdString(m_profileName) + "_template.png";
-                QString fullPath = templatesDir + "/" + templateFileName;
-
-                if (saveTemplateToFile(fullPath.toStdString())) {
-                    message += QString("\n\nTemplate auto-saved to:\n%1").arg(templateFileName);
-                    std::cout << "PatternMatchingPlugin: Template auto-saved to " << fullPath.toStdString() << std::endl;
-                } else {
-                    message += "\n\nWarning: Failed to auto-save template.";
-                }
-            } else {
-                message += "\n\nNote: Template is in memory only.\nUse 'Save...' to save to file.";
-            }
-
-            QMessageBox::information(m_configWidget, "Template Taught", message);
-
-            // Show anchor point dialog after teaching
-            showAnchorPointDialog();
-        } else {
-            QMessageBox::warning(m_configWidget, "Teaching Error",
-                                 "Failed to teach template from ROI.");
+        // Check if we're already in template selection mode
+        if (m_inTemplateSelectionMode) {
+            // Button clicked in "confirm" state - trigger confirmation
+            visionPage->onTemplateSelectionConfirmed();
+            return;
         }
+
+        // First click - enter template selection mode
+        m_inTemplateSelectionMode = true;
+        m_teachBtn->setText("OK - Confirm Template");
+        m_teachBtn->setStyleSheet("QPushButton { background-color: #2E7D32; color: white; font-weight: bold; }");
+
+        // Start template selection mode with callbacks
+        visionPage->startTemplateSelectionMode(
+            // onConfirm callback - called when user finishes selection
+            [this, visionPage](int startX, int startY, int endX, int endY) {
+                std::cout << "[PatternMatchingPlugin] Template confirmed: ("
+                          << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
+
+                // Get the full image from VisionManager
+                cv::Mat fullImage = VisionManager::instance().getInputImage();
+                if (fullImage.empty()) {
+                    QMessageBox::warning(m_configWidget, "Teaching Error",
+                                         "No image available. Please capture an image first.");
+                    m_teachBtn->setText("Select Template Area");
+                    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+                    return;
+                }
+
+                // Extract template region
+                cv::Rect templateROI(startX, startY, endX - startX, endY - startY);
+                templateROI.x = std::max(0, templateROI.x);
+                templateROI.y = std::max(0, templateROI.y);
+                templateROI.width = std::min(fullImage.cols - templateROI.x, templateROI.width);
+                templateROI.height = std::min(fullImage.rows - templateROI.y, templateROI.height);
+
+                if (templateROI.width <= 0 || templateROI.height <= 0) {
+                    QMessageBox::warning(m_configWidget, "Teaching Error",
+                                         "Invalid template region.");
+                    m_teachBtn->setText("Select Template Area");
+                    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+                    return;
+                }
+
+                cv::Mat templateImage = fullImage(templateROI).clone();
+
+                // Teach template
+                if (teachFromImage(templateImage)) {
+                    QString message = QString("Template successfully captured.\nSize: %1 x %2 pixels")
+                                          .arg(m_template.cols).arg(m_template.rows);
+
+                    // Auto-save
+                    if (!m_templateDirectory.empty() && !m_profileName.empty()) {
+                        QString templatesDir = QString::fromStdString(m_templateDirectory) + "/templates";
+                        QDir dir(templatesDir);
+                        if (!dir.exists()) dir.mkpath(".");
+
+                        QString templateFileName = QString::fromStdString(m_profileName) + "_template.png";
+                        QString fullPath = templatesDir + "/" + templateFileName;
+
+                        if (saveTemplateToFile(fullPath.toStdString())) {
+                            message += QString("\n\nTemplate auto-saved to:\n%1").arg(templateFileName);
+                        } else {
+                            message += "\n\nWarning: Failed to auto-save template.";
+                        }
+                    } else {
+                        message += "\n\nNote: Template is in memory only.\nUse 'Save...' to save to file.";
+                    }
+
+                    QMessageBox::information(m_configWidget, "Template Taught", message);
+                    showAnchorPointDialog();
+                } else {
+                    QMessageBox::warning(m_configWidget, "Teaching Error",
+                                         "Failed to teach template.");
+                }
+
+                // Reset button and state
+                m_inTemplateSelectionMode = false;
+                m_teachBtn->setText("Select Template Area");
+                m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+            },
+            // onCancel callback
+            [this]() {
+                m_inTemplateSelectionMode = false;
+                m_teachBtn->setText("Select Template Area");
+                m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+            }
+        );
     });
 
     QObject::connect(m_clearTemplateBtn, &QPushButton::clicked, [this]() {
@@ -1127,6 +1411,15 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
         }
     });
 
+    QObject::connect(m_setAnchorBtn, &QPushButton::clicked, [this]() {
+        if (!hasTemplate()) {
+            QMessageBox::warning(m_configWidget, "Anchor Point Error",
+                                 "No template loaded. Please teach or load a template first.");
+            return;
+        }
+        showAnchorPointDialog();
+    });
+
     // Update preview with current state
     updatePreviewLabel();
 
@@ -1146,6 +1439,12 @@ nlohmann::json PatternMatchingPlugin::getParameters() const {
     params["scaleMin"] = m_scaleMin;
     params["scaleMax"] = m_scaleMax;
     params["scaleStep"] = m_scaleStep;
+
+    // Binary preprocessing parameters
+    params["useBinaryPreprocess"] = m_useBinaryPreprocess;
+    params["binaryThreshold"] = m_binaryThreshold;
+    params["binaryInvert"] = m_binaryInvert;
+    params["binaryMethod"] = m_binaryMethod;
 
     // Edge-based matching parameters
     params["useEdgeMatching"] = m_useEdgeMatching;
@@ -1204,6 +1503,20 @@ void PatternMatchingPlugin::setParameters(const nlohmann::json& params) {
         m_scaleStep = params["scaleStep"].get<double>();
     }
 
+    // Binary preprocessing parameters
+    if (params.contains("useBinaryPreprocess")) {
+        m_useBinaryPreprocess = params["useBinaryPreprocess"].get<bool>();
+    }
+    if (params.contains("binaryThreshold")) {
+        m_binaryThreshold = params["binaryThreshold"].get<int>();
+    }
+    if (params.contains("binaryInvert")) {
+        m_binaryInvert = params["binaryInvert"].get<bool>();
+    }
+    if (params.contains("binaryMethod")) {
+        m_binaryMethod = params["binaryMethod"].get<std::string>();
+    }
+
     // Edge-based matching parameters
     if (params.contains("useEdgeMatching")) {
         m_useEdgeMatching = params["useEdgeMatching"].get<bool>();
@@ -1250,7 +1563,13 @@ void PatternMatchingPlugin::setParameters(const nlohmann::json& params) {
         m_anchorOffsetY = params["anchorOffsetY"].get<double>();
     }
 
-    // Update UI if widget exists
+    // Update UI if widget exists - ONLY if we're on the main GUI thread
+    // Skip UI updates if called from worker thread to prevent Qt threading errors
+    if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
+        std::cout << "[PatternMatchingPlugin] Skipping UI updates - called from worker thread" << std::endl;
+        return;
+    }
+
     if (m_thresholdSpin) m_thresholdSpin->setValue(m_matchThreshold);
     if (m_maxMatchesSpin) m_maxMatchesSpin->setValue(m_maxMatches);
     if (m_subpixelCheck) m_subpixelCheck->setChecked(m_subpixelRefinement);
@@ -1275,6 +1594,24 @@ void PatternMatchingPlugin::setParameters(const nlohmann::json& params) {
     if (m_scaleStepSpin) {
         m_scaleStepSpin->setValue(m_scaleStep);
         m_scaleStepSpin->setEnabled(m_searchScale);
+    }
+
+    // Update binary preprocessing UI
+    if (m_useBinaryPreprocessCheck) m_useBinaryPreprocessCheck->setChecked(m_useBinaryPreprocess);
+    if (m_binaryMethodCombo) {
+        int methodIndex = m_binaryMethodCombo->findData(QString::fromStdString(m_binaryMethod));
+        if (methodIndex >= 0) {
+            m_binaryMethodCombo->setCurrentIndex(methodIndex);
+        }
+        m_binaryMethodCombo->setEnabled(m_useBinaryPreprocess);
+    }
+    if (m_binaryThresholdSpin) {
+        m_binaryThresholdSpin->setValue(m_binaryThreshold);
+        m_binaryThresholdSpin->setEnabled(m_useBinaryPreprocess && m_binaryMethod == "fixed");
+    }
+    if (m_binaryInvertCheck) {
+        m_binaryInvertCheck->setChecked(m_binaryInvert);
+        m_binaryInvertCheck->setEnabled(m_useBinaryPreprocess);
     }
 
     // Update edge-based matching UI
@@ -1314,6 +1651,10 @@ nlohmann::json PatternMatchingPlugin::getDefaultParameters() const {
     params["scaleMin"] = 0.9;
     params["scaleMax"] = 1.1;
     params["scaleStep"] = 0.05;
+    params["useBinaryPreprocess"] = false;
+    params["binaryThreshold"] = 127;
+    params["binaryInvert"] = false;
+    params["binaryMethod"] = "fixed";
     params["useEdgeMatching"] = false;
     params["cannyThreshold1"] = 50.0;
     params["cannyThreshold2"] = 150.0;

@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QPointer>
 
 struct ApplicationContext;
 class VisionROI;
@@ -116,7 +117,7 @@ private:
     // Plugin Parameters Tab
     QScrollArea* m_pluginScrollArea;
     QVBoxLayout* m_pluginParamsLayout;
-    QWidget* m_currentPluginConfig;
+    QPointer<QWidget> m_currentPluginConfig;  // ✅ Use QPointer to prevent use-after-free
     QPushButton* m_applyParamsBtn;
 
     // ROI Tab

@@ -698,6 +698,8 @@ void VisionRightPanelWidget::setPluginConfigWidget(QWidget* configWidget)
 
 void VisionRightPanelWidget::clearPluginConfigWidget()
 {
+    // ✅ FIX: Use QPointer to safely handle widget lifecycle
+    // QPointer automatically becomes null if widget is deleted elsewhere
     if (m_currentPluginConfig) {
         m_pluginParamsLayout->removeWidget(m_currentPluginConfig);
         m_currentPluginConfig->deleteLater();

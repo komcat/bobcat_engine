@@ -5,6 +5,7 @@
 #include <QSplitter>
 #include <QPushButton>
 #include <memory>
+#include <functional>
 
 struct ApplicationContext;
 class VisionToolbarWidget;
@@ -21,6 +22,14 @@ class VisionManagerPage : public QWidget {
 public:
     explicit VisionManagerPage(ApplicationContext* context, QWidget* parent = nullptr);
     ~VisionManagerPage();
+
+    // Template selection mode for plugins (e.g., PatternMatching teach template)
+    void startTemplateSelectionMode(std::function<void(int, int, int, int)> onConfirm,
+                                   std::function<void()> onCancel = nullptr);
+    void stopTemplateSelectionMode();
+    void onTemplateSelectionConfirmed();  // Public method to trigger confirmation
+    void onTemplateSelectionCancelled();  // Public method to trigger cancellation
+    VisionImageWidget* getImageWidget() { return m_imageWidget; }
 
 signals:
     void backToMainMenu();
@@ -59,6 +68,9 @@ private slots:
     void onSearchBoxDragged(int startX, int startY, int endX, int endY);
     void onSearchBoxChanged(int startX, int startY, int endX, int endY);
     void onSearchBoxEnabledChanged(bool enabled);
+
+    // Template Selection actions
+    void onTemplateSelectionDragged(int startX, int startY, int endX, int endY);
 
     // Worker thread callbacks
     void onProcessingStarted(const QString& pluginName);
@@ -109,4 +121,9 @@ private:
 
     // Vision processing worker
     VisionProcessingWorker* m_worker = nullptr;
+
+    // Template selection mode callbacks
+    std::function<void(int, int, int, int)> m_templateSelectionOnConfirm;
+    std::function<void()> m_templateSelectionOnCancel;
+    bool m_templateSelectionMode = false;
 };

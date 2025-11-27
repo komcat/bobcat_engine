@@ -251,13 +251,22 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
         // Apply calibration to all coordinates
         applyCalibrationToResult(result);
 
-        // ✅ Render overlays onto FULL input image (not cropped ROI)
-        // This ensures ROI rectangle and result overlays are properly positioned
-        m_outputImage = m_inputImage.clone();
-
-        // Draw ROI rectangle if ROI was used
+        // ✅ FIX: Use pluginOutput instead of cloning input image
+        // This preserves any direct pixel modifications made by the plugin (e.g., edge overlays)
+        // Then composite it onto the full input image if ROI was used
         if (usingROI) {
+            // Composite plugin output (ROI-sized) onto full image
+            m_outputImage = m_inputImage.clone();
+
+            // Copy pluginOutput into the ROI region of the full image
+            cv::Rect roiRect(roiOffset.x, roiOffset.y, pluginOutput.cols, pluginOutput.rows);
+            pluginOutput.copyTo(m_outputImage(roiRect));
+
+            // Draw ROI rectangle
             renderROIRectangle(m_outputImage);
+        } else {
+            // No ROI - use plugin output directly
+            m_outputImage = pluginOutput.clone();
         }
 
         // Render result overlays (already offset-corrected to full image coordinates)

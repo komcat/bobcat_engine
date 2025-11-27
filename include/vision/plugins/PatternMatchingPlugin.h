@@ -11,6 +11,7 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QVBoxLayout>
@@ -58,6 +59,9 @@ public:
     // Special method to set the source image for teaching from ROI
     void setSourceImage(const cv::Mat& sourceImage) { m_sourceImage = sourceImage.clone(); }
 
+    // Set vision manager page reference (for template selection mode)
+    void setVisionManagerPage(void* visionPage) { m_visionManagerPage = visionPage; }
+
 private:
     // Template matching algorithm
     struct MatchResult {
@@ -90,6 +94,8 @@ private:
 
     // Source image for teaching
     cv::Mat m_sourceImage;
+    void* m_visionManagerPage = nullptr;   // VisionManagerPage reference (for template selection)
+    bool m_inTemplateSelectionMode = false; // Track if currently selecting template
 
     // Algorithm parameters
     double m_matchThreshold = 0.7;         // Minimum match score (0-1)
@@ -110,6 +116,12 @@ private:
     double m_cannyThreshold2 = 150.0;      // Canny high threshold
     int m_gaussianBlurSize = 5;            // Gaussian blur kernel size
 
+    // Binary preprocessing parameters
+    bool m_useBinaryPreprocess = false;    // Apply binary threshold before edge/matching
+    int m_binaryThreshold = 127;           // Binary threshold value (0-255)
+    bool m_binaryInvert = false;           // Invert binary (white on black vs black on white)
+    std::string m_binaryMethod = "fixed";  // "fixed", "otsu", or "adaptive"
+
     // Pyramid search parameters
     bool m_usePyramidSearch = false;       // Use coarse-to-fine pyramid search
     int m_pyramidLevels = 3;               // Number of pyramid levels
@@ -123,6 +135,7 @@ private:
     QPushButton* m_saveTemplateBtn = nullptr;
     QPushButton* m_loadTemplateBtn = nullptr;
     QPushButton* m_clearTemplateBtn = nullptr;
+    QPushButton* m_setAnchorBtn = nullptr;
     QDoubleSpinBox* m_thresholdSpin = nullptr;
     QSpinBox* m_maxMatchesSpin = nullptr;
     QCheckBox* m_searchRotationCheck = nullptr;
@@ -137,6 +150,10 @@ private:
     QDoubleSpinBox* m_cannyThreshold1Spin = nullptr;
     QDoubleSpinBox* m_cannyThreshold2Spin = nullptr;
     QSpinBox* m_gaussianBlurSizeSpin = nullptr;
+    QCheckBox* m_useBinaryPreprocessCheck = nullptr;
+    QSpinBox* m_binaryThresholdSpin = nullptr;
+    QCheckBox* m_binaryInvertCheck = nullptr;
+    QComboBox* m_binaryMethodCombo = nullptr;
     QCheckBox* m_usePyramidSearchCheck = nullptr;
     QSpinBox* m_pyramidLevelsSpin = nullptr;
 };

@@ -43,6 +43,22 @@ void ImageDisplayLabel::setSearchBox(int startX, int startY, int endX, int endY)
     m_searchBoxEndY = endY;
 }
 
+void ImageDisplayLabel::setTemplateSelection(int startX, int startY, int endX, int endY)
+{
+    m_templateSelectionStartX = startX;
+    m_templateSelectionStartY = startY;
+    m_templateSelectionEndX = endX;
+    m_templateSelectionEndY = endY;
+}
+
+void ImageDisplayLabel::getTemplateSelection(int& startX, int& startY, int& endX, int& endY) const
+{
+    startX = m_templateSelectionStartX;
+    startY = m_templateSelectionStartY;
+    endX = m_templateSelectionEndX;
+    endY = m_templateSelectionEndY;
+}
+
 QPoint ImageDisplayLabel::pixmapOffset() const
 {
     // Calculate offset of pixmap within the label (due to center alignment)
@@ -102,10 +118,21 @@ ImageDisplayLabel::DragCorner ImageDisplayLabel::hitTestSearchBoxCorner(const QP
     return hitTestCorner(pos, m_searchBoxStartX, m_searchBoxStartY, m_searchBoxEndX, m_searchBoxEndY);
 }
 
+ImageDisplayLabel::DragCorner ImageDisplayLabel::hitTestTemplateSelectionCorner(const QPoint& pos)
+{
+    if (!m_templateSelectionEnabled) return DragCorner::None;
+    return hitTestCorner(pos, m_templateSelectionStartX, m_templateSelectionStartY,
+                        m_templateSelectionEndX, m_templateSelectionEndY);
+}
+
 void ImageDisplayLabel::updateCursor(const QPoint& pos)
 {
-    // Check ROI corners first (higher priority since it's usually inside search box)
-    DragCorner corner = hitTestROICorner(pos);
+    // Check template selection first (highest priority when teaching)
+    DragCorner corner = hitTestTemplateSelectionCorner(pos);
+    if (corner == DragCorner::None) {
+        // Check ROI corners (higher priority since it's usually inside search box)
+        corner = hitTestROICorner(pos);
+    }
     if (corner == DragCorner::None) {
         corner = hitTestSearchBoxCorner(pos);
     }
@@ -127,12 +154,21 @@ void ImageDisplayLabel::updateCursor(const QPoint& pos)
 
 void ImageDisplayLabel::mousePressEvent(QMouseEvent* event)
 {
-    if ((!m_roiEnabled && !m_searchBoxEnabled) || event->button() != Qt::LeftButton) {
+    if ((!m_roiEnabled && !m_searchBoxEnabled && !m_templateSelectionEnabled) || event->button() != Qt::LeftButton) {
         QLabel::mousePressEvent(event);
         return;
     }
 
-    // Check ROI corners first (higher priority)
+    // Check template selection first (highest priority)
+    m_draggingCorner = hitTestTemplateSelectionCorner(event->pos());
+    if (m_draggingCorner != DragCorner::None) {
+        m_draggingTarget = DragTarget::TemplateSelection;
+        m_isDragging = true;
+        event->accept();
+        return;
+    }
+
+    // Check ROI corners (higher priority)
     m_draggingCorner = hitTestROICorner(event->pos());
     if (m_draggingCorner != DragCorner::None) {
         m_draggingTarget = DragTarget::ROI;
@@ -155,7 +191,7 @@ void ImageDisplayLabel::mousePressEvent(QMouseEvent* event)
 
 void ImageDisplayLabel::mouseMoveEvent(QMouseEvent* event)
 {
-    if (!m_roiEnabled && !m_searchBoxEnabled) {
+    if (!m_roiEnabled && !m_searchBoxEnabled && !m_templateSelectionEnabled) {
         QLabel::mouseMoveEvent(event);
         return;
     }
@@ -172,7 +208,37 @@ void ImageDisplayLabel::mouseMoveEvent(QMouseEvent* event)
         imageX = std::max(0, std::min(10000, imageX));
         imageY = std::max(0, std::min(10000, imageY));
 
-        if (m_draggingTarget == DragTarget::ROI) {
+        if (m_draggingTarget == DragTarget::TemplateSelection) {
+            // Update Template Selection corners
+            switch (m_draggingCorner) {
+                case DragCorner::TopLeft:
+                    m_templateSelectionStartX = imageX;
+                    m_templateSelectionStartY = imageY;
+                    break;
+                case DragCorner::TopRight:
+                    m_templateSelectionEndX = imageX;
+                    m_templateSelectionStartY = imageY;
+                    break;
+                case DragCorner::BottomLeft:
+                    m_templateSelectionStartX = imageX;
+                    m_templateSelectionEndY = imageY;
+                    break;
+                case DragCorner::BottomRight:
+                    m_templateSelectionEndX = imageX;
+                    m_templateSelectionEndY = imageY;
+                    break;
+                default:
+                    break;
+            }
+
+            // Emit signal with new template selection (ensure start < end)
+            int finalStartX = std::min(m_templateSelectionStartX, m_templateSelectionEndX);
+            int finalStartY = std::min(m_templateSelectionStartY, m_templateSelectionEndY);
+            int finalEndX = std::max(m_templateSelectionStartX, m_templateSelectionEndX);
+            int finalEndY = std::max(m_templateSelectionStartY, m_templateSelectionEndY);
+
+            emit templateSelectionCornerDragged(finalStartX, finalStartY, finalEndX, finalEndY);
+        } else if (m_draggingTarget == DragTarget::ROI) {
             // Update ROI corners
             switch (m_draggingCorner) {
                 case DragCorner::TopLeft:
@@ -273,6 +339,11 @@ VisionImageWidget::VisionImageWidget(QWidget* parent)
     , m_searchBoxStartY(0)
     , m_searchBoxEndX(800)
     , m_searchBoxEndY(600)
+    , m_templateSelectionEnabled(false)
+    , m_templateSelectionStartX(100)
+    , m_templateSelectionStartY(100)
+    , m_templateSelectionEndX(300)
+    , m_templateSelectionEndY(300)
 {
     setupUI();
 }
@@ -300,6 +371,8 @@ void VisionImageWidget::setupUI()
             this, &VisionImageWidget::onROICornerDragged);
     connect(m_imageLabel, &ImageDisplayLabel::searchBoxCornerDragged,
             this, &VisionImageWidget::onSearchBoxCornerDragged);
+    connect(m_imageLabel, &ImageDisplayLabel::templateSelectionCornerDragged,
+            this, &VisionImageWidget::onTemplateSelectionCornerDragged);
 
     m_scrollArea->setWidget(m_imageLabel);
     layout->addWidget(m_scrollArea, 1);
@@ -376,9 +449,12 @@ void VisionImageWidget::updateDisplayImage()
     m_imageLabel->setPixmapSize(scaledImage.width(), scaledImage.height());
     m_imageLabel->setROI(m_roiStartX, m_roiStartY, m_roiEndX, m_roiEndY);
     m_imageLabel->setSearchBox(m_searchBoxStartX, m_searchBoxStartY, m_searchBoxEndX, m_searchBoxEndY);
+    m_imageLabel->setTemplateSelection(m_templateSelectionStartX, m_templateSelectionStartY,
+                                      m_templateSelectionEndX, m_templateSelectionEndY);
 
     // Draw overlays
-    if (m_showCrosshair || m_roiEnabled || m_searchBoxEnabled || !m_resultMarkers.empty() || !m_overlays.empty()) {
+    if (m_showCrosshair || m_roiEnabled || m_searchBoxEnabled || m_templateSelectionEnabled ||
+        !m_resultMarkers.empty() || !m_overlays.empty()) {
         QPixmap withOverlay = scaledImage;
         QPainter painter(&withOverlay);
         painter.setRenderHint(QPainter::Antialiasing);
@@ -429,6 +505,51 @@ void VisionImageWidget::updateDisplayImage()
             painter.setFont(QFont("Arial", 10, QFont::Bold));
             QString searchText = QString("Search: %1x%2").arg(m_searchBoxEndX - m_searchBoxStartX).arg(m_searchBoxEndY - m_searchBoxStartY);
             painter.drawText(scaledStartX + 5, scaledStartY - 20, searchText);
+        }
+
+        // Draw Template Selection rectangle if enabled (RED for teaching template)
+        if (m_templateSelectionEnabled) {
+            int scaledStartX = static_cast<int>(m_templateSelectionStartX * scaleX);
+            int scaledStartY = static_cast<int>(m_templateSelectionStartY * scaleY);
+            int scaledEndX = static_cast<int>(m_templateSelectionEndX * scaleX);
+            int scaledEndY = static_cast<int>(m_templateSelectionEndY * scaleY);
+
+            // Template selection rectangle - RED for visibility
+            QPen templatePen(QColor(255, 0, 0), 3, Qt::SolidLine);  // Thick red solid line
+            painter.setPen(templatePen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(scaledStartX, scaledStartY,
+                           scaledEndX - scaledStartX, scaledEndY - scaledStartY);
+
+            // Corner markers (larger for easier grabbing)
+            int markerSize = 14;  // Slightly larger than ROI/SearchBox
+            painter.setBrush(QColor(255, 0, 0));  // Red
+            painter.drawRect(scaledStartX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
+            painter.drawRect(scaledEndX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
+            painter.drawRect(scaledStartX - markerSize/2, scaledEndY - markerSize/2, markerSize, markerSize);
+            painter.drawRect(scaledEndX - markerSize/2, scaledEndY - markerSize/2, markerSize, markerSize);
+
+            // Template selection label with outline for visibility
+            painter.setFont(QFont("Arial", 12, QFont::Bold));  // Slightly larger font
+            QString templateText = QString("Template: %1x%2 px")
+                .arg(m_templateSelectionEndX - m_templateSelectionStartX)
+                .arg(m_templateSelectionEndY - m_templateSelectionStartY);
+            int textX = scaledStartX + 5;
+            int textY = scaledStartY - 5;
+
+            // Draw black outline for visibility
+            painter.setPen(Qt::black);
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    if (dx != 0 || dy != 0) {
+                        painter.drawText(textX + dx, textY + dy, templateText);
+                    }
+                }
+            }
+
+            // Draw red text on top
+            painter.setPen(QColor(255, 0, 0));
+            painter.drawText(textX, textY, templateText);
         }
 
         // Draw ROI rectangle if enabled
@@ -801,4 +922,49 @@ void VisionImageWidget::setSearchBoxEnabled(bool enabled)
     m_searchBoxEnabled = enabled;
     m_imageLabel->setSearchBoxEnabled(enabled);
     updateDisplayImage();
+}
+
+void VisionImageWidget::onTemplateSelectionCornerDragged(int startX, int startY, int endX, int endY)
+{
+    m_templateSelectionStartX = startX;
+    m_templateSelectionStartY = startY;
+    m_templateSelectionEndX = endX;
+    m_templateSelectionEndY = endY;
+
+    // Update display
+    updateDisplayImage();
+
+    // Forward signal to parent
+    emit templateSelectionDragged(startX, startY, endX, endY);
+}
+
+void VisionImageWidget::setTemplateSelection(int startX, int startY, int endX, int endY)
+{
+    m_templateSelectionStartX = startX;
+    m_templateSelectionStartY = startY;
+    m_templateSelectionEndX = endX;
+    m_templateSelectionEndY = endY;
+
+    // Update label's template selection for mouse tracking
+    m_imageLabel->setTemplateSelection(startX, startY, endX, endY);
+
+    // Update display if template selection is enabled
+    if (m_templateSelectionEnabled && !m_originalImage.isNull()) {
+        updateDisplayImage();
+    }
+}
+
+void VisionImageWidget::setTemplateSelectionEnabled(bool enabled)
+{
+    m_templateSelectionEnabled = enabled;
+    m_imageLabel->setTemplateSelectionEnabled(enabled);
+    updateDisplayImage();
+}
+
+void VisionImageWidget::getTemplateSelection(int& startX, int& startY, int& endX, int& endY) const
+{
+    startX = m_templateSelectionStartX;
+    startY = m_templateSelectionStartY;
+    endX = m_templateSelectionEndX;
+    endY = m_templateSelectionEndY;
 }
