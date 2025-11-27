@@ -71,12 +71,14 @@ CameraManager::~CameraManager() {
 CameraManager::ManagedCamera::ManagedCamera(const ExtendedCameraInfo& cameraInfo)
   : info(cameraInfo) {
 
-  // Create camera using factory
-  camera = CameraHardwareFactory::CreateCamera(cameraInfo.type, cameraInfo.id, cameraInfo.deviceInfo);
+  // Create camera using factory with full connection info
+  // This passes IP address, serial number, or device index to the adapter
+  camera = CameraHardwareFactory::CreateCamera(cameraInfo.type, static_cast<const CameraInfo&>(cameraInfo));
 
   std::string typeName = CameraHardwareFactory::GetCameraTypeName(cameraInfo.type);
   if (camera) {
-    std::cout << "[INFO] Created " << typeName << " camera: " << cameraInfo.id << std::endl;
+    std::cout << "[INFO] Created " << typeName << " camera: " << cameraInfo.id
+      << " (" << cameraInfo.GetConnectionInfo() << ")" << std::endl;
   }
   else {
     std::cout << "[ERROR] Failed to create " << typeName << " camera: " << cameraInfo.id << std::endl;

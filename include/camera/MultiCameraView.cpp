@@ -330,12 +330,22 @@ void MultiCameraView::updateStatusSummary()
   int connectedCameras = 0;
   int enabledCameras = 0;
 
-  for (size_t i = 0; i < m_cameraViews.size(); ++i) {
-    if (m_cameraViews[i]->isConnected()) {
-      connectedCameras++;
-    }
+  // Query CameraManager directly for accurate connection status
+  for (size_t i = 0; i < m_cameras.size(); ++i) {
     if (m_cameras[i].enabled) {
       enabledCameras++;
+    }
+
+    // Get status from CameraManager, not from UI state
+    if (m_context && m_context->cameraManager) {
+      auto status = m_context->cameraManager->GetCameraStatus(m_cameras[i].id);
+      if (status.connected && status.grabbing) {
+        connectedCameras++;
+      }
+    }
+    else if (i < m_cameraViews.size() && m_cameraViews[i]->isConnected()) {
+      // Fallback to UI state if no CameraManager
+      connectedCameras++;
     }
   }
 

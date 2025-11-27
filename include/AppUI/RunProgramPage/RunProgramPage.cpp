@@ -1712,15 +1712,18 @@ void RunProgramPage::onExecuteProgram()
       if (m_isExecuting) {
         std::cout << "[RunProgramPage] Forcing completion via timer fallback" << std::endl;
         std::cout.flush();
-        // Get stored result from worker
-        bool success = m_programWorker->getExecutionSuccess();
-        QString message = m_programWorker->getExecutionMessage();
-        if (message.isEmpty()) {
-          message = "Execution completed";
+        // ✅ FIX: Check if worker still exists before accessing it
+        if (m_programWorker) {
+          // Get stored result from worker
+          bool success = m_programWorker->getExecutionSuccess();
+          QString message = m_programWorker->getExecutionMessage();
+          if (message.isEmpty()) {
+            message = "Execution completed";
+          }
+          onProgramExecutionCompleted(success, message);
+          m_programWorker->deleteLater();
+          m_programWorker = nullptr;
         }
-        onProgramExecutionCompleted(success, message);
-        m_programWorker->deleteLater();
-        m_programWorker = nullptr;
       }
     }
     else if (m_isExecuting && *checkCountPtr < 6000) {  // Max 10 minutes
@@ -2035,17 +2038,20 @@ void RunProgramPage::onWorkerLogMessage(QString message)
       std::cout << "[RunProgramPage] After wait: running=" << m_programWorker->isRunning()
                 << ", finished=" << m_programWorker->isFinished() << std::endl;
       std::cout.flush();
-      if (m_programWorker->isFinished()) {
+      if (m_programWorker && m_programWorker->isFinished()) {
         std::cout << "[RunProgramPage] Worker finished after recipe completion, forcing UI update" << std::endl;
         std::cout.flush();
-        bool success = m_programWorker->getExecutionSuccess();
-        QString actualMessage = m_programWorker->getExecutionMessage();
-        if (actualMessage.isEmpty()) {
-          actualMessage = "Execution completed";
+        // ✅ FIX: Check worker still exists before accessing
+        if (m_programWorker) {
+          bool success = m_programWorker->getExecutionSuccess();
+          QString actualMessage = m_programWorker->getExecutionMessage();
+          if (actualMessage.isEmpty()) {
+            actualMessage = "Execution completed";
+          }
+          onProgramExecutionCompleted(success, actualMessage);
+          m_programWorker->deleteLater();
+          m_programWorker = nullptr;
         }
-        onProgramExecutionCompleted(success, actualMessage);
-        m_programWorker->deleteLater();
-        m_programWorker = nullptr;
       }
     } else {
       std::cout << "[RunProgramPage] m_programWorker is null!" << std::endl;
@@ -2062,17 +2068,20 @@ void RunProgramPage::onWorkerLogMessage(QString message)
       if (m_programWorker->isRunning()) {
         m_programWorker->wait(500);  // Wait up to 500ms
       }
-      if (m_programWorker->isFinished()) {
+      if (m_programWorker && m_programWorker->isFinished()) {
         std::cout << "[RunProgramPage] Worker finished after context save, forcing UI update" << std::endl;
         std::cout.flush();
-        bool success = m_programWorker->getExecutionSuccess();
-        QString actualMessage = m_programWorker->getExecutionMessage();
-        if (actualMessage.isEmpty()) {
-          actualMessage = "Execution completed";
+        // ✅ FIX: Check worker still exists before accessing
+        if (m_programWorker) {
+          bool success = m_programWorker->getExecutionSuccess();
+          QString actualMessage = m_programWorker->getExecutionMessage();
+          if (actualMessage.isEmpty()) {
+            actualMessage = "Execution completed";
+          }
+          onProgramExecutionCompleted(success, actualMessage);
+          m_programWorker->deleteLater();
+          m_programWorker = nullptr;
         }
-        onProgramExecutionCompleted(success, actualMessage);
-        m_programWorker->deleteLater();
-        m_programWorker = nullptr;
       }
     }
   }

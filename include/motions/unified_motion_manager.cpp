@@ -1028,7 +1028,81 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
     return;  // Still moving, wait
   }
 
-  // Movement complete - process next state
+  // ✅ FIX: Verify position reached before proceeding to next state
+  // Get current position
+  PositionStruct currentPos = GetCurrentPosition(deviceName);
+
+  // Determine target position for current state
+  std::string currentTargetName;
+  PositionStruct targetPos;
+  bool hasTarget = false;
+
+  switch (state.state) {
+  case WaypointState::MovingThroughExitWaypoints:
+  case WaypointState::MovingThroughEntryWaypoints:
+    // Target is the waypoint we just tried to move to (already popped from queue in previous cycle)
+    // We need to track this - for now, skip verification for waypoints (they're usually safe positions)
+    hasTarget = false;
+    break;
+
+  case WaypointState::MovingToFinalTarget:
+    currentTargetName = state.targetPositionName;
+    hasTarget = GetNamedPosition(deviceName, currentTargetName, targetPos);
+    break;
+
+  default:
+    hasTarget = false;
+    break;
+  }
+
+  // ✅ Verify position if we have a target
+  if (hasTarget) {
+    double dx = std::abs(currentPos.x - targetPos.x);
+    double dy = std::abs(currentPos.y - targetPos.y);
+    double dz = std::abs(currentPos.z - targetPos.z);
+    double du = std::abs(currentPos.u - targetPos.u);
+    double dv = std::abs(currentPos.v - targetPos.v);
+    double dw = std::abs(currentPos.w - targetPos.w);
+
+    // Position tolerance (configurable - using 0.01mm for precision)
+    const double tolerance = 0.01;
+
+    bool positionReached = (dx < tolerance && dy < tolerance && dz < tolerance &&
+                           du < tolerance && dv < tolerance && dw < tolerance);
+
+    if (!positionReached) {
+      // ✅ Device hasn't reached target yet - check if we should log a warning
+      // Track warning count to avoid spam (static map persists across calls)
+      static std::map<std::string, int> warningCount;
+      static std::map<std::string, std::chrono::steady_clock::time_point> lastWarningTime;
+
+      auto now = std::chrono::steady_clock::now();
+      auto& lastTime = lastWarningTime[deviceName];
+      auto& count = warningCount[deviceName];
+
+      // Only log warning every 1 second to reduce spam
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime).count();
+      if (count == 0 || elapsed > 1000) {
+        std::cout << "[DEBUG] UnifiedMotionManager: Device " << deviceName
+                  << " moving to " << currentTargetName
+                  << " (error: X=" << dx << ", Y=" << dy << ", Z=" << dz << "mm)" << std::endl;
+        lastTime = now;
+        count++;
+      }
+
+      // Don't proceed to next state - wait for position to be reached
+      return;
+    }
+    else {
+      // ✅ Position reached - reset warning counters
+      static std::map<std::string, int> warningCount;
+      static std::map<std::string, std::chrono::steady_clock::time_point> lastWarningTime;
+      warningCount[deviceName] = 0;
+      lastWarningTime[deviceName] = std::chrono::steady_clock::now();
+    }
+  }
+
+  // Movement complete AND position verified - process next state
   switch (state.state) {
 
   case WaypointState::MovingThroughExitWaypoints:

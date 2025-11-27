@@ -34,7 +34,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"product_name", ""},
       {"filename", ""},  // Optional - auto-generated if empty
       {"captureAs", ""}  // Optional - store filepath in context
@@ -81,7 +81,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";  // default
+    std::string cameraName = "main_camera";  // default
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -112,7 +112,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"context_key", "captured_image"}
     };
   }
@@ -140,7 +140,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";  // default
+    std::string cameraName = "main_camera";  // default
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -367,7 +367,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"product_name", ""},       // Optional - uses current DUT if empty
       {"serial_number", ""},      // Optional - uses current DUT if empty
       {"filename", ""},           // Optional - auto-generated if empty
@@ -422,7 +422,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";  // default
+    std::string cameraName = "main_camera";  // default
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -453,7 +453,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"message", "Review captured image - Continue?"},
       {"save_on_confirm", "false"}
     };
@@ -490,7 +490,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";  // default
+    std::string cameraName = "main_camera";  // default
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -521,7 +521,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"value", "1000"}  // microseconds
     };
   }
@@ -548,7 +548,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";
+    std::string cameraName = "main_camera";
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -579,7 +579,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"value", "1.0"}
     };
   }
@@ -606,7 +606,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";
+    std::string cameraName = "main_camera";
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -637,7 +637,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"value", "on"}  // on/off
     };
   }
@@ -664,7 +664,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";
+    std::string cameraName = "main_camera";
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;
@@ -695,7 +695,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"camera_name", "camera_1"},
+      {"camera_name", "main_camera"},
       {"value", "on"}  // on/off
     };
   }
@@ -722,7 +722,7 @@ public:
     }
 
     // Get camera name
-    std::string cameraName = "camera_1";
+    std::string cameraName = "main_camera";
     it = params.find("camera_name");
     if (it != params.end()) {
       cameraName = it->second;

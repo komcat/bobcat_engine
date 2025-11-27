@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 2)
+set(BOBCAT_VERSION_MINOR 3)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -87,6 +87,9 @@ endif()
 if(EXISTS "C:/Qt/6.10.0/msvc2022_64")
     set(CMAKE_PREFIX_PATH "C:/Qt/6.10.0/msvc2022_64")
     message(STATUS "Using Qt 6.10.0")
+elseif(EXISTS "C:/Qt/6.10.1/msvc2022_64")
+    set(CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64")
+    message(STATUS "Using Qt 6.10.1")
 elseif(EXISTS "C:/Qt/6.9.3/msvc2022_64")
     set(CMAKE_PREFIX_PATH "C:/Qt/6.9.3/msvc2022_64")
     message(STATUS "Using Qt 6.9.3")

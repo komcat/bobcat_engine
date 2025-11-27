@@ -1,5 +1,6 @@
 // CameraHardwareFactory.cpp - Complete implementation
 #include "CameraHardwareFactory.h"
+#include "CameraManager.h"  // For CameraInfo struct
 #include "PylonCameraAdapter.h"
 #include "IDSCameraAdapter.h"
 #include <algorithm>
@@ -14,7 +15,7 @@ std::unique_ptr<ICameraHardware> CameraHardwareFactory::CreateCamera(
   try {
     switch (type) {
     case ICameraHardware::CameraType::PYLON: {
-      std::cout << "Creating Pylon camera adapter for: " << cameraId << std::endl;
+      std::cout << "Creating Pylon camera adapter for: " << cameraId << " (no connection info)" << std::endl;
       auto camera = std::make_unique<PylonCameraAdapter>(cameraId);
       if (camera) {
         std::cout << "Pylon camera adapter created successfully" << std::endl;
@@ -53,6 +54,46 @@ std::unique_ptr<ICameraHardware> CameraHardwareFactory::CreateCamera(
   }
   catch (const std::exception& e) {
     std::cerr << "Exception creating camera [" << cameraId << "]: " << e.what() << std::endl;
+    return nullptr;
+  }
+}
+
+std::unique_ptr<ICameraHardware> CameraHardwareFactory::CreateCamera(
+  ICameraHardware::CameraType type,
+  const CameraInfo& cameraInfo) {
+
+  try {
+    switch (type) {
+    case ICameraHardware::CameraType::PYLON: {
+      std::cout << "Creating Pylon camera adapter for: " << cameraInfo.id
+        << " with " << cameraInfo.GetConnectionInfo() << std::endl;
+      auto camera = std::make_unique<PylonCameraAdapter>(cameraInfo);
+      if (camera) {
+        std::cout << "Pylon camera adapter created successfully with connection info" << std::endl;
+      }
+      return camera;
+    }
+
+    case ICameraHardware::CameraType::IDS: {
+      std::cout << "Creating IDS camera adapter for: " << cameraInfo.id << std::endl;
+
+      // For IDS cameras, use deviceIndex
+      auto camera = std::make_unique<IDSCameraAdapter>(cameraInfo.id, cameraInfo.deviceIndex);
+      if (camera) {
+        std::cout << "IDS camera adapter created successfully (Device ID: " << cameraInfo.deviceIndex << ")" << std::endl;
+      }
+      return camera;
+    }
+
+    case ICameraHardware::CameraType::UNKNOWN:
+    default: {
+      std::cerr << "Unknown camera type requested for: " << cameraInfo.id << std::endl;
+      return nullptr;
+    }
+    }
+  }
+  catch (const std::exception& e) {
+    std::cerr << "Exception creating camera [" << cameraInfo.id << "]: " << e.what() << std::endl;
     return nullptr;
   }
 }

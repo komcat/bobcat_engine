@@ -48,7 +48,21 @@ void DeviceComboBox::populateDevices()
   switch (m_deviceType) {
   case DeviceType::Motion:
     if (m_context->motionManager) {
-      devices = m_context->motionManager->GetAllDeviceNames();
+      // ✅ FIX: Filter for only CONNECTED devices (not all configured devices)
+      std::vector<std::string> allDevices = m_context->motionManager->GetAllDeviceNames();
+      std::map<std::string, bool> connectionStatus = m_context->motionManager->GetConnectionStatus();
+
+      // Only add connected devices
+      for (const auto& deviceName : allDevices) {
+        auto it = connectionStatus.find(deviceName);
+        if (it != connectionStatus.end() && it->second) {
+          devices.push_back(deviceName);
+          std::cout << "[DeviceComboBox] Motion device connected: " << deviceName << std::endl;
+        }
+        else {
+          std::cout << "[DeviceComboBox] Motion device NOT connected (skipped): " << deviceName << std::endl;
+        }
+      }
     }
     break;
 
@@ -149,16 +163,18 @@ void DeviceComboBox::setSelectedDevice(const std::string& deviceName)
     std::cout << "[DeviceComboBox]   setCurrentIndex(" << index << ") - SUCCESS" << std::endl;
   }
   else {
-    std::cout << "[DeviceComboBox]   Device not found in list! Current items:" << std::endl;
+    std::cout << "[DeviceComboBox]   Device '" << deviceName << "' not found in list! Current items:" << std::endl;
     for (int i = 0; i < count(); ++i) {
       std::cout << "[DeviceComboBox]     [" << i << "] = " << itemText(i).toStdString() << std::endl;
     }
 
-    // ✅ AUTO-SELECT FIX: If device name is empty and we have devices, auto-select the first one
-    if (deviceName.empty() && count() > 0 && itemText(0) != "No devices found") {
-      std::cout << "[DeviceComboBox]   Auto-selecting first device: " << itemText(0).toStdString() << std::endl;
+    // ✅ AUTO-SELECT FIX: If device is not found and we have valid devices, auto-select the first one
+    // This handles both empty deviceName AND obsolete/renamed device names (like "camera_1" -> "main_camera")
+    if (count() > 0 && itemText(0) != "No devices found") {
+      std::cout << "[DeviceComboBox]   Auto-selecting first device: " << itemText(0).toStdString()
+                << " (replacing invalid device name: '" << deviceName << "')" << std::endl;
       setCurrentIndex(0);
-      // Emit the change signal to trigger parameterChanged so it gets saved
+      // Emit the change signal to trigger parameterChanged so it gets saved with the corrected value
       emit currentIndexChanged(0);
     }
   }

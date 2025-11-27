@@ -8,6 +8,9 @@
 #include <string>
 #include <functional>
 
+// Forward declaration
+struct CameraInfo;
+
 /**
  * @brief Adapter that wraps PylonCamera to implement ICameraHardware
  *
@@ -18,6 +21,10 @@
 class PylonCameraAdapter : public ICameraHardware {
 public:
   explicit PylonCameraAdapter(const std::string& cameraId);
+
+  // Constructor with full connection info
+  explicit PylonCameraAdapter(const CameraInfo& cameraInfo);
+
   virtual ~PylonCameraAdapter();
 
   // Disable copy/move to prevent issues with callbacks
@@ -69,6 +76,18 @@ private:
   std::unique_ptr<PylonCamera> m_pylonCamera;
   std::function<void(const CameraFrameData&)> m_frameCallback;
   std::string m_lastError;
+
+  // Connection info from CameraInfo
+  enum class ConnectionMethod {
+    AUTO,
+    SERIAL_NUMBER,
+    IP_ADDRESS,
+    DEVICE_INDEX
+  };
+  ConnectionMethod m_connectionMethod = ConnectionMethod::AUTO;
+  std::string m_ipAddress;
+  std::string m_serialNumber;
+  int m_deviceIndex = 0;
 
   // ADD THESE NEW MEMBERS:
   mutable Pylon::CImageFormatConverter m_formatConverter;

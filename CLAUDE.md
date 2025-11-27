@@ -195,3 +195,4 @@ Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for run
 - `config/*.json` - Hardware configuration files
 - i'll cmake build myself
 - i added #include <iostream> in the systemcommandhandler. please note
+- i'll make the program myself thanks. including compiler

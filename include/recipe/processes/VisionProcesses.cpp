@@ -84,7 +84,7 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"profile_path", ""},  // Will be selected from dropdown (auto-discovers from product vision folder)
-            {"camera_name", "camera_1"},
+            {"camera_name", "main_camera"},
             {"capture_as", ""}     // Optional: store results with custom prefix (e.g., "sled_position")
         };
     }
@@ -102,7 +102,7 @@ public:
         widget->addVisionProfileSelector("profile_path", "Vision Profile", getParam("profile_path", ""));
 
         // Camera selector
-        widget->addDeviceSelector("camera_name", "Camera", getParam("camera_name", "camera_1"),
+        widget->addDeviceSelector("camera_name", "Camera", getParam("camera_name", "main_camera"),
                                  static_cast<int>(DeviceComboBox::DeviceType::Camera));
 
         // Capture As (optional custom prefix for results)
@@ -158,7 +158,7 @@ public:
 
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
-            {"camera_name", "camera_1"},
+            {"camera_name", "main_camera"},
             {"plugin_name", ""},  // Empty = use what was loaded from profile
             {"profile_path", ""}  // Optional - load profile first
         };
@@ -227,7 +227,7 @@ public:
 
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
-            {"camera_name", "camera_1"},
+            {"camera_name", "main_camera"},
             {"profile_path", ""},  // Vision profile with PatternMatching plugin
             {"store_result_as", "pr_result"}  // Context key prefix for results
         };
@@ -300,7 +300,7 @@ public:
 
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
-            {"camera_name", "camera_1"},
+            {"camera_name", "main_camera"},
             {"profile_path", ""}  // Vision profile with CircleDetection plugin
         };
     }
@@ -427,7 +427,7 @@ public:
             {"graphName", ""},           // Graph name for gantry-main
             {"endNodeName", ""},         // Target node position
             {"profile_path", ""},        // Vision profile to execute
-            {"camera_name", "camera_1"}, // Camera for capture
+            {"camera_name", "main_camera"}, // Camera for capture
             {"capture_as", ""}           // Optional: store results with custom prefix
         };
     }
@@ -455,7 +455,7 @@ public:
 
         // Camera selector
         widget->addDeviceSelector("camera_name", "Camera",
-            getParam("camera_name", "camera_1"),
+            getParam("camera_name", "main_camera"),
             static_cast<int>(DeviceComboBox::DeviceType::Camera));
 
         // Capture As (optional custom prefix for results)
