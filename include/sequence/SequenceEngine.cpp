@@ -9,6 +9,7 @@
 #include "SystemCommandHandler.h"
 #include "MotionCommandHandler.h"
 #include "TECCommandHandler.h"
+#include "LightingCommandHandler.h"
 #include "DataStoreCommandHandler.h"
 #include "PSUCommandHandler.h"
 #include "SMUCommandHandler.h"  // ✅ ADDED
@@ -21,6 +22,7 @@
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
 #include "SMUManager.h"  // ✅ ADDED
+#include "lighting/LightingManager.h"
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
@@ -61,6 +63,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("camera", std::move(cameraHandler));
 
   m_dispatcher.RegisterHandler("tec", std::make_unique<TECCommandHandler>());
+  m_dispatcher.RegisterHandler("lighting", std::make_unique<LightingCommandHandler>());
   m_dispatcher.RegisterHandler("psu", std::make_unique<PSUCommandHandler>());
 
   // ✅ UPDATED: Set context on SMU handler to access polling manager
@@ -186,6 +189,20 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToTypeMap[name] = "smu";
     }
     LogInfo("Registered " + std::to_string(devices.size()) + " SMU devices");
+  }
+
+  // Lighting controllers (register by device_name from config)
+  if (m_context->lightingManager) {
+    auto deviceIds = m_context->lightingManager->GetControllerIds();
+    for (const auto& deviceId : deviceIds) {
+      const auto* config = m_context->lightingManager->GetControllerConfig(deviceId);
+      if (config) {
+        // Register by device_name (e.g., "light-main")
+        m_deviceToManagerMap[config->deviceName] = m_context->lightingManager;
+        m_deviceToTypeMap[config->deviceName] = "lighting";
+      }
+    }
+    LogInfo("Registered " + std::to_string(deviceIds.size()) + " lighting controllers");
   }
 
   // Register DataStore as virtual device

@@ -25,7 +25,8 @@ public:
     Lens,        // Camera lenses (from CameraManager)
     TEC,         // TEC devices (thermal controllers)
     PSU,         // Power supply units
-    SMU          // SMU devices (Source Measure Units)
+    SMU,         // SMU devices (Source Measure Units)
+    Lighting     // Lighting controllers
   };
 
   explicit DeviceComboBox(ApplicationContext* context, DeviceType type, QWidget* parent = nullptr);

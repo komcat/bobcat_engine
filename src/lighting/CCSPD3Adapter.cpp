@@ -357,23 +357,77 @@ LightingResult CCSPD3Adapter::SetAllChannelsIntensity(int intensity) {
     std::ostringstream intStr;
     intStr << std::setfill('0') << std::setw(3) << intensity;
 
-    std::string cmd = BuildCommand("FF", "F", intStr.str());
-    std::string response = SendCommandInternal(cmd);
+    // Set each enabled channel individually
+    // The FF broadcast command may not work reliably on all CCS PD3 units
+    bool anyError = false;
+    for (const auto& ch : m_config.channels) {
+        if (!ch.enabled) {
+            continue;
+        }
 
-    if (response.empty()) {
-        return LightingResult::CommunicationError;
+        std::ostringstream chStr;
+        chStr << std::setfill('0') << std::setw(2) << ch.channelNumber;
+
+        std::string cmd = BuildCommand(chStr.str(), "F", intStr.str());
+        std::string response = SendCommandInternal(cmd);
+
+        if (response.empty()) {
+            anyError = true;
+            continue;
+        }
+
+        // Check for error response
+        if (response.find("N01") != std::string::npos ||
+            response.find("N02") != std::string::npos ||
+            response.find("N03") != std::string::npos) {
+            anyError = true;
+        }
+
+        // Small delay between commands
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (response.find('O') != std::string::npos &&
-        response.find('N') == std::string::npos) {
-        return LightingResult::Success;
-    }
-
-    return LightingResult::CommandError;
+    return anyError ? LightingResult::CommandError : LightingResult::Success;
 }
 
 LightingResult CCSPD3Adapter::SetAllChannelsOff() {
-    return SetAllChannelsIntensity(0);
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (!m_connected) {
+        return LightingResult::NotConnected;
+    }
+
+    // Set each enabled channel's intensity to 0 individually
+    // The FF broadcast command may not work reliably on all CCS PD3 units
+    bool anyError = false;
+    for (const auto& ch : m_config.channels) {
+        if (!ch.enabled) {
+            continue;
+        }
+
+        std::ostringstream chStr;
+        chStr << std::setfill('0') << std::setw(2) << ch.channelNumber;
+
+        std::string cmd = BuildCommand(chStr.str(), "F", "000");
+        std::string response = SendCommandInternal(cmd);
+
+        if (response.empty()) {
+            anyError = true;
+            continue;
+        }
+
+        // Check for error response
+        if (response.find("N01") != std::string::npos ||
+            response.find("N02") != std::string::npos ||
+            response.find("N03") != std::string::npos) {
+            anyError = true;
+        }
+
+        // Small delay between commands
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    return anyError ? LightingResult::CommandError : LightingResult::Success;
 }
 
 bool CCSPD3Adapter::ParseStatusResponse(const std::string& response, ChannelStatus& status) {

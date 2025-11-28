@@ -9,6 +9,7 @@
 #include "TECManager.h"
 #include "PowerSupplyManager.h"
 #include "SMUManager.h"
+#include "lighting/LightingManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -113,6 +114,23 @@ void DeviceComboBox::populateDevices()
     }
     else {
       std::cout << "[DeviceComboBox] SMU: smuManager is NULL!" << std::endl;
+    }
+    break;
+
+  case DeviceType::Lighting:
+    if (m_context->lightingManager) {
+      // Get device names from lighting manager config
+      auto deviceIds = m_context->lightingManager->GetControllerIds();
+      for (const auto& deviceId : deviceIds) {
+        const auto* config = m_context->lightingManager->GetControllerConfig(deviceId);
+        if (config) {
+          devices.push_back(config->deviceName);
+          std::cout << "[DeviceComboBox] Lighting: Added device: " << config->deviceName << std::endl;
+        }
+      }
+    }
+    else {
+      std::cout << "[DeviceComboBox] Lighting: lightingManager is NULL!" << std::endl;
     }
     break;
   }

@@ -35,5 +35,6 @@ private:
     QListWidget* m_prList;
     QListWidget* m_measureList;
     QListWidget* m_filterList;
+    QListWidget* m_lightingList;  // Lighting commands tab
     QTextEdit* m_resultsDisplay;
 };

@@ -10,6 +10,7 @@ VisionLeftPanelWidget::VisionLeftPanelWidget(QWidget* parent)
     , m_prList(nullptr)
     , m_measureList(nullptr)
     , m_filterList(nullptr)
+    , m_lightingList(nullptr)
     , m_resultsDisplay(nullptr)
 {
     setupUI();
@@ -50,6 +51,11 @@ void VisionLeftPanelWidget::setupUI()
     m_filterList->setToolTip("Image filter plugins");
     m_pluginTabs->addTab(m_filterList, "Filter");
 
+    // Lighting tab
+    m_lightingList = new QListWidget();
+    m_lightingList->setToolTip("Lighting control commands");
+    m_pluginTabs->addTab(m_lightingList, "Light");
+
     layout->addWidget(m_pluginTabs, 1);
 
     // Results display
@@ -76,6 +82,7 @@ void VisionLeftPanelWidget::setupUI()
     connectList(m_prList);
     connectList(m_measureList);
     connectList(m_filterList);
+    connectList(m_lightingList);
 
     // Set fixed width
     setFixedWidth(250);
@@ -100,6 +107,14 @@ void VisionLeftPanelWidget::populateMockupData()
     m_filterList->addItem("Threshold Binary");
     m_filterList->addItem("Gaussian Blur");
     m_filterList->addItem("Morphology");
+
+    // Lighting commands
+    // Format: "Light: <command>" - will be parsed to create sequence actions
+    m_lightingList->addItem("Light: Set Intensity");    // Set channel intensity (%)
+    m_lightingList->addItem("Light: Turn On");          // Turn channel on
+    m_lightingList->addItem("Light: Turn Off");         // Turn channel off
+    m_lightingList->addItem("Light: All Off");          // Turn all channels off
+    m_lightingList->addItem("Light: All On");           // Turn all channels on
 }
 
 void VisionLeftPanelWidget::updatePluginList(const QStringList& plugins)
@@ -142,6 +157,7 @@ void VisionLeftPanelWidget::clearPluginLists()
     m_prList->clear();
     m_measureList->clear();
     m_filterList->clear();
+    m_lightingList->clear();
 }
 
 void VisionLeftPanelWidget::displayResult(const QString& resultText)

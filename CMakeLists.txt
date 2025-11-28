@@ -588,6 +588,7 @@ set(SOURCES
     include/recipe/processes/SMUProcesses.cpp
     include/recipe/processes/AuxWindowProcesses.cpp
     include/recipe/processes/CameraProcesses.cpp
+    include/recipe/processes/LightingProcesses.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp
     include/recipe/RecipeWorker.cpp
@@ -599,6 +600,7 @@ set(SOURCES
     include/TEC/TECManager.cpp
     include/TEC/TECJsonLoader.cpp
     include/sequence/TECCommandHandler.cpp
+    include/sequence/LightingCommandHandler.cpp
     include/AppUI/TECPage/TECControlPage.cpp
     include/sequence/DataStoreCommandHandler.cpp
     include/sequence/DUTCommandHandler.cpp
@@ -756,6 +758,7 @@ set(HEADERS
     include/TEC/TECManager.h
     include/TEC/TECJsonLoader.h
     include/sequence/TECCommandHandler.h
+    include/sequence/LightingCommandHandler.h
     include/AppUI/TECPage/TECControlPage.h
     include/sequence/DataStoreCommandHandler.h
     include/sequence/DUTCommandHandler.h
