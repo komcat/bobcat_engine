@@ -80,6 +80,10 @@ signals:
   void logMessage(QString message);
   void waitProgress(int remainingMs, int totalMs);  // Wait/Delay countdown
 
+  // Step execution events (from SequenceEngine pub-sub)
+  void stepExecutionStarted(int stepIndex, QString stepName, QString stepType);
+  void stepExecutionCompleted(int stepIndex, bool success);
+
 protected:
   void run() override;
 

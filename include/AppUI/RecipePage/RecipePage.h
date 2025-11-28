@@ -101,6 +101,10 @@ private slots:
   void onWaitProgress(int remainingMs, int totalMs);
   void onStopRecipeRequested();
 
+  // Step execution events (from pub-sub)
+  void onStepExecutionStarted(int stepIndex, QString stepName, QString stepType);
+  void onStepExecutionCompleted(int stepIndex, bool success);
+
   // Manual adjust handling
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                           bool enableX, bool enableY, bool enableZ);
@@ -138,6 +142,10 @@ private:
   // ✅ NEW: Panel switching
   void showProgressPanel();
   void showConfigPanel();
+
+  // Step execution highlighting
+  void highlightExecutingStep(int stepIndex);
+  void clearExecutingStepHighlight();
 
   // Recipe execution
   void setupSequenceEngine();

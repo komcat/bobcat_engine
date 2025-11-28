@@ -214,6 +214,19 @@ void RecipeWorker::run()
       emit sequenceExecutionStarted();
       emit logMessage("Executing sequence...");
 
+      // Set up step execution callbacks (pub-sub) to forward events to signals
+      m_engine->SetStepStartedCallback([this](int stepIndex, const std::string& stepName, const std::string& stepType) {
+        QMetaObject::invokeMethod(this, "stepExecutionStarted", Qt::QueuedConnection,
+          Q_ARG(int, stepIndex),
+          Q_ARG(QString, QString::fromStdString(stepName)),
+          Q_ARG(QString, QString::fromStdString(stepType)));
+      });
+      m_engine->SetStepCompletedCallback([this](int stepIndex, bool success) {
+        QMetaObject::invokeMethod(this, "stepExecutionCompleted", Qt::QueuedConnection,
+          Q_ARG(int, stepIndex),
+          Q_ARG(bool, success));
+      });
+
       // Create execution context for value capture and conditionals
       // ✅ Use external context if provided (for ProgramWorker integration)
       std::unique_ptr<SequenceContext> localContext;
@@ -339,6 +352,9 @@ void RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeMana
 
     std::cout << "[RecipeWorker] Building step " << (enabledStepIndex + 1) << ": "
       << step->userNickname << " (Type: " << step->processType << ")" << std::endl;
+
+    // Insert step marker for execution tracking (pub-sub)
+    sequence->AddStepMarker(enabledStepIndex, step->userNickname, step->processType);
 
     std::string errorMsg;
     if (!m_factory->BuildStep(sequence, step.get(), errorMsg)) {

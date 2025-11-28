@@ -42,6 +42,9 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   , m_logger(nullptr)
   , m_systemHandler(nullptr)
   , m_stopRequested(false)  // ✅ Initialize stop flag
+  , m_stepStartedCallback(nullptr)
+  , m_stepCompletedCallback(nullptr)
+  , m_currentStepIndex(-1)
 {
   if (!m_context) {
     throw std::runtime_error("SequenceEngine: ApplicationContext is null");
@@ -299,6 +302,16 @@ void SequenceEngine::SetManualAlignPointCallback(ManualAlignPointCallback callba
   }
 }
 
+void SequenceEngine::SetStepStartedCallback(StepStartedCallback callback)
+{
+  m_stepStartedCallback = callback;
+}
+
+void SequenceEngine::SetStepCompletedCallback(StepCompletedCallback callback)
+{
+  m_stepCompletedCallback = callback;
+}
+
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
 {
   if (!sequence) {
@@ -388,6 +401,11 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
     }
     break;
   }
+
+  case ISequenceStep::Type::STEP_MARKER: {
+    // Step markers are always valid - they're just tracking markers
+    break;
+  }
   }
 
   return true;
@@ -427,13 +445,20 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     return false;
   }
 
-  LogInfo("▶️ Executing sequence: " + sequence->GetName());
+  LogInfo("Executing sequence: " + sequence->GetName());
+
+  // Reset step tracking
+  m_currentStepIndex = -1;
 
   try {
     for (size_t i = 0; i < sequence->GetSteps().size(); ++i) {
       // ✅ CHECK STOP FLAG BEFORE EACH STEP (check both engine and context flags)
       if (m_stopRequested.load() || context->IsStopRequested()) {
-        LogWarning("⏹️ Sequence execution stopped by user request");
+        LogWarning("Sequence execution stopped by user request");
+        // Notify failure for current step if any
+        if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
+          m_stepCompletedCallback(m_currentStepIndex, false);
+        }
         return false;
       }
 
@@ -441,18 +466,31 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
       context->IncrementStepCount();
 
       if (!ExecuteStep(sequence->GetSteps()[i].get(), context)) {
-        LogError("❌ Step execution failed");
+        LogError("Step execution failed");
+        // Notify failure for current step if any
+        if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
+          m_stepCompletedCallback(m_currentStepIndex, false);
+        }
         return false;
       }
     }
 
+    // Complete the last step if there was one
+    if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
+      m_stepCompletedCallback(m_currentStepIndex, true);
+    }
+
     context->SetExecutionEndTime();
-    LogInfo("✅ Sequence completed in " +
+    LogInfo("Sequence completed in " +
            std::to_string(context->GetExecutionDuration().count()) + " ms");
     return true;
   }
   catch (const std::exception& e) {
-    LogError("💥 Exception during execution: " + std::string(e.what()));
+    LogError("Exception during execution: " + std::string(e.what()));
+    // Notify failure for current step if any
+    if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
+      m_stepCompletedCallback(m_currentStepIndex, false);
+    }
     return false;
   }
 }
@@ -533,13 +571,13 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 
     bool conditionResult = EvaluateCondition(cond, context);
 
-    LogInfo("🔀 Condition [" + cond->contextKey + " " +
+    LogInfo("Condition [" + cond->contextKey + " " +
            ComparisonToString(cond->comparison) + " " +
            std::to_string(cond->threshold) + "] = " +
-           (conditionResult ? "TRUE ✓" : "FALSE ✗"));
+           (conditionResult ? "TRUE" : "FALSE"));
 
     if (conditionResult) {
-      LogInfo("  ➡️ Executing THEN branch");
+      LogInfo("  Executing THEN branch");
       for (const auto& action : cond->thenActions) {
         if (!ExecuteStep(action.get(), context)) {
           return false;
@@ -547,7 +585,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       }
     }
     else {
-      LogInfo("  ➡️ Executing ELSE branch");
+      LogInfo("  Executing ELSE branch");
       for (const auto& action : cond->elseActions) {
         if (!ExecuteStep(action.get(), context)) {
           return false;
@@ -555,6 +593,24 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       }
     }
 
+    break;
+  }
+
+  case ISequenceStep::Type::STEP_MARKER: {
+    StepMarker* marker = static_cast<StepMarker*>(step);
+
+    // Complete the previous step if there was one
+    if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
+      m_stepCompletedCallback(m_currentStepIndex, true);
+    }
+
+    // Notify subscribers that a new step is starting
+    m_currentStepIndex = marker->stepIndex;
+    if (m_stepStartedCallback) {
+      m_stepStartedCallback(marker->stepIndex, marker->stepName, marker->stepType);
+    }
+
+    LogInfo(">>> Step " + std::to_string(marker->stepIndex + 1) + ": " + marker->stepName);
     break;
   }
   }
@@ -680,6 +736,12 @@ void SequenceBuilder::AddAction(
 {
   auto action = std::make_shared<Action>(deviceName, methodName, params);
   GetActiveStepList()->push_back(action);
+}
+
+void SequenceBuilder::AddStepMarker(int stepIndex, const std::string& stepName, const std::string& stepType)
+{
+  auto marker = std::make_shared<StepMarker>(stepIndex, stepName, stepType);
+  GetActiveStepList()->push_back(marker);
 }
 
 void SequenceBuilder::BeginLoop(int count)

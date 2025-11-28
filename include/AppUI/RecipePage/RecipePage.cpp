@@ -2228,6 +2228,13 @@ void RecipePage::onRunRecipe()
     this, &RecipePage::onWorkerLogMessage);
   connect(m_recipeWorker, &RecipeWorker::waitProgress,
     this, &RecipePage::onWaitProgress);
+
+  // Step execution events (pub-sub from SequenceEngine)
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionStarted,
+    this, &RecipePage::onStepExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionCompleted,
+    this, &RecipePage::onStepExecutionCompleted);
+
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
@@ -2544,6 +2551,9 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
 {
   std::cout << "[RecipePage] Execution completed: " << message.toStdString() << std::endl;
 
+  // ✅ Clear step highlighting when execution completes
+  clearExecutingStepHighlight();
+
   // ✅ Safer pointer check - verify widget still exists and is valid
   if (m_progressWidget && !m_progressWidget->isHidden()) {
     // Only access if widget is still the current widget
@@ -2613,6 +2623,9 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
 
 void RecipePage::onExecutionStopped()
 {
+  // ✅ Clear step highlighting when execution is stopped
+  clearExecutingStepHighlight();
+
   if (m_progressWidget) {
     m_progressWidget->setStatusText("Stopped by user");
   }
@@ -2630,6 +2643,114 @@ void RecipePage::onWaitProgress(int remainingMs, int totalMs)
 {
   if (m_progressWidget) {
     m_progressWidget->setWaitCountdown(remainingMs, totalMs);
+  }
+}
+
+// ============================================================================
+// ✅ STEP EXECUTION EVENTS (PUB-SUB FROM SEQUENCE ENGINE)
+// ============================================================================
+
+void RecipePage::onStepExecutionStarted(int stepIndex, QString stepName, QString stepType)
+{
+  // Highlight the currently executing step in the recipe tree
+  highlightExecutingStep(stepIndex);
+}
+
+void RecipePage::onStepExecutionCompleted(int stepIndex, bool success)
+{
+  // Note: We don't clear highlight here - it will be updated when next step starts
+  // or cleared when execution completes
+  Q_UNUSED(stepIndex);
+  Q_UNUSED(success);
+}
+
+void RecipePage::highlightExecutingStep(int stepIndex)
+{
+  // Find the enabled step index in the tree
+  // The tree shows ALL steps, but stepIndex is for ENABLED steps only
+  // We need to map enabled step index to actual tree item index
+
+  int enabledCount = 0;
+  int targetTreeIndex = -1;
+
+  // Use RecipeManager to check if steps are enabled (checkbox widget state is not accessible via checkState)
+  int totalSteps = m_recipeManager->getStepCount();
+
+  for (int i = 0; i < totalSteps; ++i) {
+    ProcessInstance* step = m_recipeManager->getStep(i);
+    if (!step) continue;
+
+    // Check if this step is enabled using RecipeManager
+    if (step->enabled) {
+      if (enabledCount == stepIndex) {
+        targetTreeIndex = i;
+        break;
+      }
+      enabledCount++;
+    }
+  }
+
+  // Clear previous highlight and set new one
+  for (int i = 0; i < m_recipeTree->topLevelItemCount(); ++i) {
+    QTreeWidgetItem* item = m_recipeTree->topLevelItem(i);
+    if (!item) continue;
+
+    if (i == targetTreeIndex) {
+      // Highlight executing step with bold yellow text
+      QColor yellowColor(255, 255, 0);  // Bright yellow
+      item->setForeground(0, QBrush(yellowColor));
+      item->setForeground(1, QBrush(yellowColor));
+      item->setForeground(2, QBrush(yellowColor));
+
+      // Make font bold for extra visibility
+      QFont boldFont = item->font(0);
+      boldFont.setBold(true);
+      item->setFont(0, boldFont);
+      item->setFont(1, boldFont);
+      item->setFont(2, boldFont);
+
+      // Also scroll to make it visible
+      m_recipeTree->scrollToItem(item);
+    }
+    else {
+      // Clear highlight from other items
+      item->setBackground(0, QBrush());
+      item->setBackground(1, QBrush());
+      item->setBackground(2, QBrush());
+      item->setForeground(0, QBrush());
+      item->setForeground(1, QBrush());
+      item->setForeground(2, QBrush());
+
+      // Reset font to normal
+      QFont normalFont = item->font(0);
+      normalFont.setBold(false);
+      item->setFont(0, normalFont);
+      item->setFont(1, normalFont);
+      item->setFont(2, normalFont);
+    }
+  }
+}
+
+void RecipePage::clearExecutingStepHighlight()
+{
+  // Clear all highlighting
+  for (int i = 0; i < m_recipeTree->topLevelItemCount(); ++i) {
+    QTreeWidgetItem* item = m_recipeTree->topLevelItem(i);
+    if (!item) continue;
+
+    item->setBackground(0, QBrush());
+    item->setBackground(1, QBrush());
+    item->setBackground(2, QBrush());
+    item->setForeground(0, QBrush());
+    item->setForeground(1, QBrush());
+    item->setForeground(2, QBrush());
+
+    // Reset font to normal
+    QFont normalFont = item->font(0);
+    normalFont.setBold(false);
+    item->setFont(0, normalFont);
+    item->setFont(1, normalFont);
+    item->setFont(2, normalFont);
   }
 }
 

@@ -21,6 +21,10 @@ class SequenceContext;
 // Callback type for user prompts - returns true if user confirmed, false if cancelled
 using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
 
+// Callback types for step execution events (pub-sub pattern)
+using StepStartedCallback = std::function<void(int stepIndex, const std::string& stepName, const std::string& stepType)>;
+using StepCompletedCallback = std::function<void(int stepIndex, bool success)>;
+
 //=============================================================================
 // SEQUENCE STEP INTERFACE
 //=============================================================================
@@ -29,7 +33,8 @@ struct ISequenceStep
   enum class Type {
     ACTION,
     LOOP,
-    CONDITIONAL
+    CONDITIONAL,
+    STEP_MARKER  // Marker for recipe step boundaries
   };
 
   virtual ~ISequenceStep() = default;
@@ -105,6 +110,21 @@ struct ConditionalBlock : public ISequenceStep
 };
 
 //=============================================================================
+// STEP MARKER - Marks the beginning of a recipe step for tracking
+//=============================================================================
+struct StepMarker : public ISequenceStep
+{
+  int stepIndex;           // Recipe step index (0-based)
+  std::string stepName;    // User-friendly name (e.g., "Pick 1", "Light: All Off 2")
+  std::string stepType;    // Process type (e.g., "Pick", "Light: All Off")
+
+  StepMarker(int index, const std::string& name, const std::string& type)
+    : stepIndex(index), stepName(name), stepType(type) {}
+
+  Type GetType() const override { return Type::STEP_MARKER; }
+};
+
+//=============================================================================
 // SEQUENCE ENGINE
 //=============================================================================
 class SequenceEngine
@@ -122,6 +142,10 @@ public:
   void SetManualAdjustCallback(ManualAdjustCallback callback);
   void SetUserInputCallback(UserInputCallback callback);
   void SetManualAlignPointCallback(ManualAlignPointCallback callback);
+
+  // Step execution event callbacks (pub-sub)
+  void SetStepStartedCallback(StepStartedCallback callback);
+  void SetStepCompletedCallback(StepCompletedCallback callback);
 
   // ✅ NEW: Stop control
   void RequestStop();        // Request stop at next checkpoint
@@ -158,6 +182,11 @@ private:
 
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
+
+  // Step execution event callbacks
+  StepStartedCallback m_stepStartedCallback;
+  StepCompletedCallback m_stepCompletedCallback;
+  int m_currentStepIndex;  // Track current step for completion callback
 
   bool ExecuteStep(ISequenceStep* step, SequenceContext* context);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);

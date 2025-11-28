@@ -26,6 +26,9 @@ public:
     const std::map<std::string, std::string>& params = {}
   );
 
+  // Add step marker (for tracking recipe step execution)
+  void AddStepMarker(int stepIndex, const std::string& stepName, const std::string& stepType);
+
   // Loop control
   void BeginLoop(int count);
   void EndLoop();
