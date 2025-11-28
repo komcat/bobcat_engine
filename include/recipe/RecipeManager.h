@@ -14,12 +14,13 @@ struct ProcessInstance {
   std::string processType;        // Template type: "Pick", "Place", "PickAndPlace"
   std::string userNickname;       // User-friendly name (e.g., "Pick Left Lens")
   bool enabled;                   // Can disable step without deleting
+  bool breakpoint;                // Pause execution before this step (like IDE debugger)
 
   // Process parameters (editable)
   std::map<std::string, std::string> parameters;
 
   ProcessInstance(const std::string& type, const std::string& nickname, const std::string& id)
-    : uniqueId(id), processType(type), userNickname(nickname), enabled(true) {
+    : uniqueId(id), processType(type), userNickname(nickname), enabled(true), breakpoint(false) {
   }
 };
 

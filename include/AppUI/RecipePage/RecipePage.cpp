@@ -557,6 +557,65 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
   executeRow->addWidget(m_runSelectedStepButton, 1);
 
+  // Step button (cyan/teal color for debug mode)
+  m_stepButton = new QPushButton("Step");
+  m_stepButton->setToolTip("Run recipe step-by-step (pause at each step)");
+  m_stepButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #17a2b8, stop:1 #138496); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 8px 12px; "
+    "  min-height: 36px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1fc8e3, stop:1 #17a2b8); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #117a8b; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #6c757d; "
+    "  color: #adb5bd; "
+    "}"
+  );
+  connect(m_stepButton, &QPushButton::clicked, this, &RecipePage::onStepButtonClicked);
+  executeRow->addWidget(m_stepButton);
+
+  // Continue button (green - only enabled when paused)
+  m_continueButton = new QPushButton("Continue");
+  m_continueButton->setToolTip("Continue execution (or run to end)");
+  m_continueButton->setEnabled(false);  // Disabled until paused
+  m_continueButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #28a745, stop:1 #1e7e34); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 8px 12px; "
+    "  min-height: 36px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34ce57, stop:1 #28a745); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #1c7430; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #6c757d; "
+    "  color: #adb5bd; "
+    "}"
+  );
+  connect(m_continueButton, &QPushButton::clicked, this, &RecipePage::onContinueButtonClicked);
+  executeRow->addWidget(m_continueButton);
+
   layout->addLayout(executeRow);
 
   // ========== ROW 2: File Operations ==========
@@ -649,17 +708,18 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   // ========== PROCESS INSTANCE LIST ==========
   m_recipeTree = new QTreeWidget();
-  m_recipeTree->setColumnCount(3);
-  m_recipeTree->setHeaderLabels({ "#", "Process Instance", "Run" });
+  m_recipeTree->setColumnCount(4);
+  m_recipeTree->setHeaderLabels({ "", "#", "Process Instance", "Run" });  // Column 0 = breakpoint
   m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_recipeTree->setRootIsDecorated(true);
   m_recipeTree->setIndentation(20);
 
-  m_recipeTree->setColumnWidth(0, 40);
-  m_recipeTree->setColumnWidth(2, 50);
+  m_recipeTree->setColumnWidth(0, 40);   // Breakpoint column (red dot)
+  m_recipeTree->setColumnWidth(1, 40);   // Step number
+  m_recipeTree->setColumnWidth(3, 50);   // Run checkbox
   m_recipeTree->header()->setStretchLastSection(false);
-  m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);  // Process Instance stretches
 
   m_recipeTree->setStyleSheet(
     "QTreeWidget { "
@@ -1569,33 +1629,83 @@ void RecipePage::refreshRecipeList()
     // Store step index in item data
     item->setData(0, Qt::UserRole, stepIndex);
 
-    // Column 0: Step number
-    item->setText(0, QString::number(stepIndex + 1));
-    item->setTextAlignment(0, Qt::AlignCenter);
+    // Column 0: Breakpoint indicator (clickable red dot)
+    QPushButton* breakpointBtn = new QPushButton();
+    breakpointBtn->setFixedSize(20, 20);
+    breakpointBtn->setProperty("stepIndex", stepIndex);
+    breakpointBtn->setCursor(Qt::PointingHandCursor);
 
-    // Column 1: Process name
+    // Style based on breakpoint state
+    if (step->breakpoint) {
+      breakpointBtn->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #ff3333; "
+        "  border: none; "
+        "  border-radius: 10px; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #ff6666; "
+        "}"
+      );
+      breakpointBtn->setToolTip("Click to remove breakpoint");
+    } else {
+      breakpointBtn->setStyleSheet(
+        "QPushButton { "
+        "  background-color: transparent; "
+        "  border: 2px solid #555555; "
+        "  border-radius: 10px; "
+        "}"
+        "QPushButton:hover { "
+        "  background-color: #ff3333; "
+        "  border: none; "
+        "}"
+      );
+      breakpointBtn->setToolTip("Click to set breakpoint");
+    }
+
+    connect(breakpointBtn, &QPushButton::clicked, this, [this, stepIndex]() {
+      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+      if (step) {
+        step->breakpoint = !step->breakpoint;
+        refreshRecipeList();
+        selectStepByIndex(m_selectedStepIndex);
+      }
+    });
+
+    QWidget* breakpointWidget = new QWidget();
+    QHBoxLayout* bpLayout = new QHBoxLayout(breakpointWidget);
+    bpLayout->addWidget(breakpointBtn);
+    bpLayout->setAlignment(Qt::AlignCenter);
+    bpLayout->setContentsMargins(0, 0, 0, 0);
+    m_recipeTree->setItemWidget(item, 0, breakpointWidget);
+
+    // Column 1: Step number
+    item->setText(1, QString::number(stepIndex + 1));
+    item->setTextAlignment(1, Qt::AlignCenter);
+
+    // Column 2: Process name
     QString displayText = QString::fromStdString(step->userNickname);
     if (!step->enabled) {
       displayText = "[DISABLED] " + displayText;
     }
-    item->setText(1, displayText);
+    item->setText(2, displayText);
 
     // Visual styling for disabled items
     if (!step->enabled) {
-      item->setForeground(0, QColor("#999999"));
       item->setForeground(1, QColor("#999999"));
-      QFont font = item->font(1);
+      item->setForeground(2, QColor("#999999"));
+      QFont font = item->font(2);
       font.setStrikeOut(true);
-      item->setFont(1, font);
+      item->setFont(2, font);
     }
 
-    // Column 2: Checkbox widget
+    // Column 3: Run checkbox widget
     QWidget* checkboxWidget = new QWidget();
     QCheckBox* checkbox = new QCheckBox();
     checkbox->setChecked(step->enabled);
     checkbox->setProperty("stepIndex", stepIndex);
 
-    // ✅ Add checkmark text that appears when checked
+    // Add checkmark text that appears when checked
     checkbox->setText(step->enabled ? "✓" : "");
     checkbox->setStyleSheet(
       "QCheckBox { "
@@ -1617,7 +1727,7 @@ void RecipePage::refreshRecipeList()
       selectStepByIndex(m_selectedStepIndex);
     });
 
-    m_recipeTree->setItemWidget(item, 2, checkboxWidget);
+    m_recipeTree->setItemWidget(item, 3, checkboxWidget);
 
     // Manage parent stack for nesting
     if (isBlockStart) {
@@ -2235,6 +2345,20 @@ void RecipePage::onRunRecipe()
   connect(m_recipeWorker, &RecipeWorker::stepExecutionCompleted,
     this, &RecipePage::onStepExecutionCompleted);
 
+  // Breakpoint/pause events
+  connect(m_recipeWorker, &RecipeWorker::executionPaused,
+    this, &RecipePage::onExecutionPaused);
+
+  // Build breakpoints vector from ProcessInstance breakpoint flags
+  std::vector<bool> breakpoints;
+  for (int i = 0; i < m_recipeManager->getStepCount(); ++i) {
+    ProcessInstance* step = m_recipeManager->getStep(i);
+    if (step && step->enabled) {
+      breakpoints.push_back(step->breakpoint);
+    }
+  }
+  m_recipeWorker->setBreakpoints(breakpoints);
+
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
@@ -2392,6 +2516,157 @@ void RecipePage::onRunSelectedStep()
     QMessageBox::critical(this, "Execution Error",
       QString("Failed to execute step: %1").arg(e.what()));
   }
+}
+
+// ============================================================================
+// ✅ STEP-BY-STEP EXECUTION
+// ============================================================================
+
+void RecipePage::onStepButtonClicked()
+{
+  // Check if already running - if paused, this acts as "step to next"
+  if (m_recipeWorker && m_recipeWorker->isRunning()) {
+    // Recipe is running and paused - step to next
+    std::cout << "[RecipePage] Step button clicked - continuing to next step" << std::endl;
+    m_recipeWorker->requestContinue();
+    m_continueButton->setEnabled(false);  // Disable until paused again
+    return;
+  }
+
+  // Start recipe in step-by-step mode
+  // Validate recipe first
+  std::vector<std::string> errors;
+  if (!m_recipeManager->validateRecipe(errors)) {
+    QString errorMsg = "Recipe validation failed:\n\n";
+    for (const auto& err : errors) {
+      errorMsg += "• " + QString::fromStdString(err) + "\n";
+    }
+    QMessageBox::critical(this, "Validation Error", errorMsg);
+    return;
+  }
+
+  // Save recipe if needed (same logic as onRunRecipe)
+  std::string recipeFilePath = m_recipeManager->getCurrentFilePath();
+  if (recipeFilePath.empty()) {
+    QMessageBox::StandardButton saveReply = QMessageBox::question(
+      this, "Save Recipe",
+      "Recipe must be saved before execution. Save now?",
+      QMessageBox::Yes | QMessageBox::No
+    );
+    if (saveReply != QMessageBox::Yes) return;
+    onSaveRecipe();
+    recipeFilePath = m_recipeManager->getCurrentFilePath();
+    if (recipeFilePath.empty()) {
+      QMessageBox::warning(this, "Save Required", "Recipe must be saved before execution.");
+      return;
+    }
+  } else {
+    if (!m_recipeManager->saveRecipe(recipeFilePath)) {
+      QMessageBox::critical(this, "Save Error", "Failed to save recipe before execution.");
+      return;
+    }
+  }
+
+  std::cout << "[RecipePage] Starting step-by-step execution" << std::endl;
+
+  // Switch to progress panel
+  showProgressPanel();
+
+  // Update button states
+  m_runRecipeButton->setEnabled(false);
+  m_runRecipeButton->setText("⏳ Step Mode...");
+  m_stepButton->setText("Next Step");
+
+  // Create RecipeWorker
+  m_recipeWorker = new RecipeWorker(
+    m_sequenceEngine,
+    m_processFactory,
+    m_context->productPositionManager,
+    m_context->motionManager,
+    recipeFilePath,
+    this
+  );
+
+  // Enable step-by-step mode
+  m_recipeWorker->setStepByStepMode(true);
+
+  // Build breakpoints vector from ProcessInstance breakpoint flags
+  std::vector<bool> breakpoints;
+  for (int i = 0; i < m_recipeManager->getStepCount(); ++i) {
+    ProcessInstance* step = m_recipeManager->getStep(i);
+    if (step && step->enabled) {
+      breakpoints.push_back(step->breakpoint);
+    }
+  }
+  m_recipeWorker->setBreakpoints(breakpoints);
+
+  // Connect signals (same as onRunRecipe)
+  connect(m_recipeWorker, &RecipeWorker::executionStarted,
+    this, &RecipePage::onExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildStarted,
+    this, &RecipePage::onStepBuildStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildCompleted,
+    this, &RecipePage::onStepBuildCompleted);
+  connect(m_recipeWorker, &RecipeWorker::sequenceExecutionStarted,
+    this, &RecipePage::onSequenceExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::executionCompleted,
+    this, &RecipePage::onExecutionCompleted);
+  connect(m_recipeWorker, &RecipeWorker::executionStopped,
+    this, &RecipePage::onExecutionStopped);
+  connect(m_recipeWorker, &RecipeWorker::logMessage,
+    this, &RecipePage::onWorkerLogMessage);
+  connect(m_recipeWorker, &RecipeWorker::waitProgress,
+    this, &RecipePage::onWaitProgress);
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionStarted,
+    this, &RecipePage::onStepExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionCompleted,
+    this, &RecipePage::onStepExecutionCompleted);
+  connect(m_recipeWorker, &RecipeWorker::executionPaused,
+    this, &RecipePage::onExecutionPaused);
+  connect(m_recipeWorker, &RecipeWorker::finished,
+    m_recipeWorker, &QObject::deleteLater);
+
+  // Start execution
+  m_recipeWorker->start();
+}
+
+void RecipePage::onContinueButtonClicked()
+{
+  if (!m_recipeWorker || !m_recipeWorker->isRunning()) {
+    std::cout << "[RecipePage] Continue clicked but no running worker" << std::endl;
+    return;
+  }
+
+  std::cout << "[RecipePage] Continue button clicked - running to end" << std::endl;
+
+  // Disable step-by-step mode and continue running to end (or next breakpoint)
+  m_recipeWorker->requestRunToEnd();
+
+  // Update button states
+  m_continueButton->setEnabled(false);
+  m_stepButton->setText("Step");
+  m_runRecipeButton->setText("⏳ Running...");
+}
+
+void RecipePage::onExecutionPaused(int stepIndex, QString stepName, bool isBreakpoint)
+{
+  std::cout << "[RecipePage] Execution paused at step " << (stepIndex + 1)
+            << ": " << stepName.toStdString()
+            << (isBreakpoint ? " (breakpoint)" : " (step-by-step)") << std::endl;
+
+  // Enable continue button
+  m_continueButton->setEnabled(true);
+
+  // Update progress widget status
+  if (m_progressWidget) {
+    QString statusMsg = isBreakpoint ?
+      QString("⏸️ Paused at breakpoint: %1").arg(stepName) :
+      QString("⏸️ Step %1: %2").arg(stepIndex + 1).arg(stepName);
+    m_progressWidget->setStatusText(statusMsg);
+  }
+
+  // Update step button text
+  m_stepButton->setText("Next Step");
 }
 
 // Legacy slots (kept for compatibility but not used with new system)
@@ -2573,6 +2848,10 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   m_runRecipeButton->setEnabled(true);
   m_runRecipeButton->setText("▶ Run Recipe");
 
+  // Reset step-by-step button states
+  m_stepButton->setText("Step");
+  m_continueButton->setEnabled(false);
+
   // ✅ SUPPRESSED: Result popup after execution
   // Show result dialog
   // if (success) {
@@ -2626,6 +2905,10 @@ void RecipePage::onExecutionStopped()
   // ✅ Clear step highlighting when execution is stopped
   clearExecutingStepHighlight();
 
+  // Reset step-by-step button states
+  m_stepButton->setText("Step");
+  m_continueButton->setEnabled(false);
+
   if (m_progressWidget) {
     m_progressWidget->setStatusText("Stopped by user");
   }
@@ -2654,6 +2937,12 @@ void RecipePage::onStepExecutionStarted(int stepIndex, QString stepName, QString
 {
   // Highlight the currently executing step in the recipe tree
   highlightExecutingStep(stepIndex);
+
+  // Update progress widget with accurate step progress
+  if (m_progressWidget) {
+    m_progressWidget->setCurrentStep(stepIndex + 1, stepName);  // stepIndex is 0-based, display is 1-based
+    m_progressWidget->setStatusText(QString("Executing step %1: %2").arg(stepIndex + 1).arg(stepName));
+  }
 }
 
 void RecipePage::onStepExecutionCompleted(int stepIndex, bool success)
@@ -2697,36 +2986,38 @@ void RecipePage::highlightExecutingStep(int stepIndex)
 
     if (i == targetTreeIndex) {
       // Highlight executing step with bold yellow text
+      // Column 0 is breakpoint widget, columns 1,2,3 are text columns
       QColor yellowColor(255, 255, 0);  // Bright yellow
-      item->setForeground(0, QBrush(yellowColor));
       item->setForeground(1, QBrush(yellowColor));
       item->setForeground(2, QBrush(yellowColor));
+      item->setForeground(3, QBrush(yellowColor));
 
       // Make font bold for extra visibility
-      QFont boldFont = item->font(0);
+      QFont boldFont = item->font(1);
       boldFont.setBold(true);
-      item->setFont(0, boldFont);
       item->setFont(1, boldFont);
       item->setFont(2, boldFont);
+      item->setFont(3, boldFont);
 
       // Also scroll to make it visible
       m_recipeTree->scrollToItem(item);
     }
     else {
       // Clear highlight from other items
-      item->setBackground(0, QBrush());
+      // Column 0 is breakpoint widget, columns 1,2,3 are text columns
       item->setBackground(1, QBrush());
       item->setBackground(2, QBrush());
-      item->setForeground(0, QBrush());
+      item->setBackground(3, QBrush());
       item->setForeground(1, QBrush());
       item->setForeground(2, QBrush());
+      item->setForeground(3, QBrush());
 
       // Reset font to normal
-      QFont normalFont = item->font(0);
+      QFont normalFont = item->font(1);
       normalFont.setBold(false);
-      item->setFont(0, normalFont);
       item->setFont(1, normalFont);
       item->setFont(2, normalFont);
+      item->setFont(3, normalFont);
     }
   }
 }
@@ -2738,19 +3029,20 @@ void RecipePage::clearExecutingStepHighlight()
     QTreeWidgetItem* item = m_recipeTree->topLevelItem(i);
     if (!item) continue;
 
-    item->setBackground(0, QBrush());
+    // Column 0 is breakpoint widget, columns 1,2,3 are text columns
     item->setBackground(1, QBrush());
     item->setBackground(2, QBrush());
-    item->setForeground(0, QBrush());
+    item->setBackground(3, QBrush());
     item->setForeground(1, QBrush());
     item->setForeground(2, QBrush());
+    item->setForeground(3, QBrush());
 
     // Reset font to normal
-    QFont normalFont = item->font(0);
+    QFont normalFont = item->font(1);
     normalFont.setBold(false);
-    item->setFont(0, normalFont);
     item->setFont(1, normalFont);
     item->setFont(2, normalFont);
+    item->setFont(3, normalFont);
   }
 }
 

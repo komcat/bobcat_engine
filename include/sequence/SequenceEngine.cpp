@@ -45,6 +45,9 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   , m_stepStartedCallback(nullptr)
   , m_stepCompletedCallback(nullptr)
   , m_currentStepIndex(-1)
+  , m_breakpointCallback(nullptr)
+  , m_stepByStepMode(false)
+  , m_continueRequested(false)
 {
   if (!m_context) {
     throw std::runtime_error("SequenceEngine: ApplicationContext is null");
@@ -310,6 +313,39 @@ void SequenceEngine::SetStepStartedCallback(StepStartedCallback callback)
 void SequenceEngine::SetStepCompletedCallback(StepCompletedCallback callback)
 {
   m_stepCompletedCallback = callback;
+}
+
+void SequenceEngine::SetBreakpointCallback(BreakpointCallback callback)
+{
+  m_breakpointCallback = callback;
+}
+
+void SequenceEngine::SetBreakpoints(const std::vector<bool>& breakpoints)
+{
+  m_breakpoints = breakpoints;
+}
+
+void SequenceEngine::SetStepByStepMode(bool enabled)
+{
+  m_stepByStepMode.store(enabled);
+  if (enabled) {
+    m_continueRequested.store(false);
+  }
+}
+
+void SequenceEngine::RequestContinue()
+{
+  std::lock_guard<std::mutex> lock(m_pauseMutex);
+  m_continueRequested.store(true);
+  m_pauseCondition.notify_all();
+}
+
+void SequenceEngine::RequestRunToEnd()
+{
+  std::lock_guard<std::mutex> lock(m_pauseMutex);
+  m_stepByStepMode.store(false);
+  m_continueRequested.store(true);
+  m_pauseCondition.notify_all();
 }
 
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)
@@ -602,6 +638,34 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     // Complete the previous step if there was one
     if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
       m_stepCompletedCallback(m_currentStepIndex, true);
+    }
+
+    // Check for breakpoint or step-by-step mode BEFORE starting this step
+    bool hasBreakpoint = (marker->stepIndex < static_cast<int>(m_breakpoints.size()) && m_breakpoints[marker->stepIndex]);
+    bool shouldPause = hasBreakpoint || m_stepByStepMode.load();
+
+    if (shouldPause && !m_stopRequested.load()) {
+      LogInfo("⏸️ Paused at step " + std::to_string(marker->stepIndex + 1) + ": " + marker->stepName +
+              (hasBreakpoint ? " (breakpoint)" : " (step-by-step)"));
+
+      // Notify via breakpoint callback if set (for UI updates)
+      if (m_breakpointCallback) {
+        m_breakpointCallback(marker->stepIndex, marker->stepName);
+      }
+
+      // Always wait for continue signal (condition_variable)
+      std::unique_lock<std::mutex> lock(m_pauseMutex);
+      m_continueRequested.store(false);
+      m_pauseCondition.wait(lock, [this]() {
+        return m_continueRequested.load() || m_stopRequested.load();
+      });
+
+      if (m_stopRequested.load()) {
+        LogInfo("Execution stopped by user");
+        return false;
+      }
+
+      LogInfo("▶️ Continuing execution...");
     }
 
     // Notify subscribers that a new step is starting

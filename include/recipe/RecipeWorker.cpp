@@ -43,6 +43,32 @@ void RecipeWorker::requestStop()
   }
 }
 
+void RecipeWorker::setStepByStepMode(bool enabled)
+{
+  if (m_engine) {
+    m_engine->SetStepByStepMode(enabled);
+  }
+}
+
+void RecipeWorker::requestContinue()
+{
+  if (m_engine) {
+    m_engine->RequestContinue();
+  }
+}
+
+void RecipeWorker::requestRunToEnd()
+{
+  if (m_engine) {
+    m_engine->RequestRunToEnd();
+  }
+}
+
+void RecipeWorker::setBreakpoints(const std::vector<bool>& breakpoints)
+{
+  m_breakpoints = breakpoints;
+}
+
 void RecipeWorker::setUserPromptCallback(UserPromptCallback callback)
 {
   m_userPromptCallback = callback;
@@ -225,6 +251,21 @@ void RecipeWorker::run()
         QMetaObject::invokeMethod(this, "stepExecutionCompleted", Qt::QueuedConnection,
           Q_ARG(int, stepIndex),
           Q_ARG(bool, success));
+      });
+
+      // Set up breakpoints if provided
+      if (!m_breakpoints.empty()) {
+        m_engine->SetBreakpoints(m_breakpoints);
+        emit logMessage(QString("Breakpoints set for %1 steps").arg(m_breakpoints.size()));
+      }
+
+      // Set up breakpoint callback to notify UI when paused
+      m_engine->SetBreakpointCallback([this](int stepIndex, const std::string& stepName) {
+        // Emit pause signal to UI (SequenceEngine will handle the actual pause via condition_variable)
+        QMetaObject::invokeMethod(this, "executionPaused", Qt::QueuedConnection,
+          Q_ARG(int, stepIndex),
+          Q_ARG(QString, QString::fromStdString(stepName)),
+          Q_ARG(bool, true));  // isBreakpoint = true
       });
 
       // Create execution context for value capture and conditionals

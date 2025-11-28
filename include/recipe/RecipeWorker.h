@@ -42,6 +42,14 @@ public:
 
   void requestStop();  // Request graceful stop
 
+  // Step-by-step execution control
+  void setStepByStepMode(bool enabled);  // Enable/disable step-by-step mode
+  void requestContinue();                 // Continue to next step
+  void requestRunToEnd();                 // Continue running without pausing
+
+  // Set breakpoints (called before starting execution)
+  void setBreakpoints(const std::vector<bool>& breakpoints);
+
   // Set callback for user prompts (optional - if not set, auto-accepts all)
   using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
   void setUserPromptCallback(UserPromptCallback callback);
@@ -84,6 +92,9 @@ signals:
   void stepExecutionStarted(int stepIndex, QString stepName, QString stepType);
   void stepExecutionCompleted(int stepIndex, bool success);
 
+  // Breakpoint/pause events
+  void executionPaused(int stepIndex, QString stepName, bool isBreakpoint);
+
 protected:
   void run() override;
 
@@ -100,4 +111,5 @@ private:
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
+  std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
 };

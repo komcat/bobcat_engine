@@ -10,6 +10,8 @@
 #include <memory>
 #include <functional>
 #include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 // Forward declarations
 class SequenceBuilder;
@@ -147,10 +149,23 @@ public:
   void SetStepStartedCallback(StepStartedCallback callback);
   void SetStepCompletedCallback(StepCompletedCallback callback);
 
+  // Breakpoint callback - called when execution hits a breakpoint (for UI notification)
+  using BreakpointCallback = std::function<void(int stepIndex, const std::string& stepName)>;
+  void SetBreakpointCallback(BreakpointCallback callback);
+
+  // Set breakpoints for steps (step index -> has breakpoint)
+  void SetBreakpoints(const std::vector<bool>& breakpoints);
+
   // ✅ NEW: Stop control
   void RequestStop();        // Request stop at next checkpoint
   void ClearStopFlag();      // Reset stop flag before execution
   bool IsStopRequested() const { return m_stopRequested.load(); }
+
+  // Step-by-step execution control
+  void SetStepByStepMode(bool enabled);  // Enable/disable step-by-step mode
+  bool IsStepByStepMode() const { return m_stepByStepMode.load(); }
+  void RequestContinue();                 // Continue to next step (or breakpoint)
+  void RequestRunToEnd();                 // Continue running without pausing
 
   // Sequence creation and execution
   SequenceBuilder* CreateSequence(const std::string& name);
@@ -187,6 +202,16 @@ private:
   StepStartedCallback m_stepStartedCallback;
   StepCompletedCallback m_stepCompletedCallback;
   int m_currentStepIndex;  // Track current step for completion callback
+
+  // Breakpoint support
+  BreakpointCallback m_breakpointCallback;
+  std::vector<bool> m_breakpoints;  // Breakpoint flag for each enabled step
+
+  // Step-by-step execution control
+  std::atomic<bool> m_stepByStepMode;      // True = pause at each step
+  std::atomic<bool> m_continueRequested;   // True = continue to next step
+  std::condition_variable m_pauseCondition;
+  std::mutex m_pauseMutex;
 
   bool ExecuteStep(ISequenceStep* step, SequenceContext* context);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);

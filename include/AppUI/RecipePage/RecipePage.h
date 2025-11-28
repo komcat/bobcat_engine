@@ -72,6 +72,8 @@ private slots:
   void onRemoveStep();
   void onRunRecipe();
   void onRunSelectedStep();  // ✅ NEW: Run single selected step
+  void onStepButtonClicked();      // ✅ Step-by-step execution
+  void onContinueButtonClicked();  // ✅ Continue from pause/breakpoint
   void onLoadProductClicked();
   void onSelectAllProcesses();
   void onDeselectAllProcesses();
@@ -104,6 +106,9 @@ private slots:
   // Step execution events (from pub-sub)
   void onStepExecutionStarted(int stepIndex, QString stepName, QString stepType);
   void onStepExecutionCompleted(int stepIndex, bool success);
+
+  // Breakpoint/pause handling
+  void onExecutionPaused(int stepIndex, QString stepName, bool isBreakpoint);
 
   // Manual adjust handling
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
@@ -176,6 +181,8 @@ private:
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
   QPushButton* m_runSelectedStepButton;  // ✅ NEW: Run single selected step
+  QPushButton* m_stepButton;             // ✅ Step-by-step execution
+  QPushButton* m_continueButton;         // ✅ Continue from pause/breakpoint
   QPushButton* m_selectAllButton;
   QPushButton* m_deselectAllButton;
   QPushButton* m_toggleSelectedButton;
