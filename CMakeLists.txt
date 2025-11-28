@@ -406,6 +406,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/JogWindow
     ${CMAKE_SOURCE_DIR}/include/AppUI/RecipePage
     ${CMAKE_SOURCE_DIR}/include/AppUI/TECPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/LightingPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/PowerSupplyControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/SMUControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
@@ -430,6 +431,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/SMU
     ${CMAKE_SOURCE_DIR}/include/vision
     ${CMAKE_SOURCE_DIR}/include/vision/ui
+    ${CMAKE_SOURCE_DIR}/include/lighting
 )
 
 # Add nlohmann json include directory if found
@@ -632,6 +634,13 @@ set(SOURCES
     include/AppUI/RunProgramPage/ManualAlignPointWidget.cpp
     include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
     include/motions/scanning/ScanExecutor.cpp
+    # Lighting system
+    src/lighting/CCSPD3Adapter.cpp
+    src/lighting/LightingManager.cpp
+    src/lighting/LightingJsonLoader.cpp
+    # Lighting UI
+    include/AppUI/LightingPage/LightingControlWidget.cpp
+    include/AppUI/LightingPage/CameraLightingPage.cpp
 )
 
 set(HEADERS
@@ -786,6 +795,15 @@ set(HEADERS
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/motions/scanning/ScanExecutor.h
+    # Lighting system
+    include/lighting/LightingTypes.h
+    include/lighting/ILightingController.h
+    include/lighting/CCSPD3Adapter.h
+    include/lighting/LightingManager.h
+    include/lighting/LightingJsonLoader.h
+    # Lighting UI
+    include/AppUI/LightingPage/LightingControlWidget.h
+    include/AppUI/LightingPage/CameraLightingPage.h
 )
 
 # Conditionally add ACS controller files if library is found
@@ -1138,6 +1156,9 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/pi_pivot_config.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/pi_pivot_config.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/lighting_config.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/lighting_config.json
     COMMENT "Copying config templates (preserving *.local.json files)"
 )
 

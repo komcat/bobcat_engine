@@ -20,6 +20,10 @@ class SMUPollingManager;  // ✅ ADD SMU Polling Manager
 class CoordinateSystemManager;
 class DeviceUnderTest;
 
+namespace Lighting {
+class LightingManager;
+}
+
 struct ApplicationContext
 {
   // Hardware managers
@@ -40,6 +44,7 @@ struct ApplicationContext
   SMUPollingManager* smuPollingManager = nullptr;  // ✅ ADD SMU Polling Manager
   CoordinateSystemManager* coordinateSystemManager = nullptr;
   DeviceUnderTest* currentDUT = nullptr;  // Current active Device Under Test
+  Lighting::LightingManager* lightingManager = nullptr;  // LED lighting controller
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

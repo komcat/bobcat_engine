@@ -17,6 +17,7 @@ struct ApplicationContext;
 class JogKeyBindingHandler;
 class QuickOutputWidget;
 class QuickOutputManager;
+class LightingControlWidget;
 
 class JogPanelWindow : public QWidget
 {
@@ -74,6 +75,7 @@ private:
   void setupUI();
   void createJogTab();
   void createQuickOutputTab();
+  void createLightingTab();
   void createDevicePanel(QWidget* parent);
   void createStepSizePanel(QWidget* parent);
   void createMovementPanel(QWidget* parent);
@@ -125,6 +127,9 @@ private:
   // Quick Output tab
   QuickOutputManager* m_quickOutputManager;
   QuickOutputWidget* m_quickOutputWidget;
+
+  // Lighting tab
+  LightingControlWidget* m_lightingWidget;
 
   // State
   std::string m_selectedDevice;

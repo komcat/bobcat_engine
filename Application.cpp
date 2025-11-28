@@ -20,6 +20,9 @@
 #include "SMUJsonLoader.h"  // ✅ ADD SMU Config Loader
 #include "Keithley6482Adapter.h"  // ✅ For polling test and channel info
 #include "CoordinateSystemManager.h"
+#include "lighting/LightingManager.h"
+#include "lighting/LightingJsonLoader.h"
+#include "lighting/LightingTypes.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
@@ -305,6 +308,10 @@ void Application::initializeManagers()
     updateSplash("CoordinateSystemManager");
     initializeCoordinateSystemManager();
     completeSplash("CoordinateSystemManager");
+
+    updateSplash("LightingManager");
+    initializeLightingManager();
+    completeSplash("LightingManager");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -747,6 +754,78 @@ void Application::connectHardwareAsync()
       if (m_splashScreen) m_splashScreen->updateStatus("TEC Devices", "success");
     }
 
+    // 6. Connect Lighting Controllers
+    if (m_splashScreen) m_splashScreen->updateStatus("Lighting", "connecting");
+    if (m_lightingManager) {
+      m_logManager->Info("Connecting lighting controllers...", "Application");
+      int connectedCount = m_lightingManager->ConnectEnabledDevices();
+      m_logManager->Info(
+        "Connected " + std::to_string(connectedCount) + " lighting controllers",
+        "Application"
+      );
+
+      // Print status report for all channels
+      if (connectedCount > 0) {
+        std::cout << "\n[Lighting] ========================================" << std::endl;
+        std::cout << "[Lighting] LIGHTING STATUS REPORT" << std::endl;
+        std::cout << "[Lighting] ========================================" << std::endl;
+
+        auto allStatus = m_lightingManager->GetAllStatus();
+        for (const auto& ctrlStatus : allStatus) {
+          std::cout << "\n[Lighting] Controller: " << ctrlStatus.deviceName
+                    << " (" << ctrlStatus.deviceId << ")" << std::endl;
+          std::cout << "[Lighting] Connected: " << (ctrlStatus.connected ? "YES" : "NO") << std::endl;
+
+          if (ctrlStatus.connected) {
+            std::cout << "[Lighting] Channels:" << std::endl;
+            for (const auto& chStatus : ctrlStatus.channelStatuses) {
+              double percent = Lighting::IntensityToPercent(chStatus.intensity);
+              std::cout << "  L" << (chStatus.channelNumber + 1)
+                        << " [" << chStatus.name << "]: "
+                        << (chStatus.isOn ? "ON " : "OFF")
+                        << " | Intensity: " << chStatus.intensity
+                        << " (" << std::fixed << std::setprecision(1) << percent << "%)"
+                        << " | Mode: " << chStatus.mode << std::endl;
+            }
+          }
+        }
+        std::cout << "[Lighting] ========================================\n" << std::endl;
+
+        // Startup test: Cycle through Red, Green, Blue - 1 second each
+        std::cout << "[Lighting] Running startup test: RGB cycle..." << std::endl;
+        m_logManager->Info("Lighting startup test: RGB cycle", "Application");
+
+        int intensity50 = Lighting::PercentToIntensity(50.0);  // 50% intensity
+
+        for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
+          // Red (channel 1) - 1 second
+          std::cout << "[Lighting] RED ON" << std::endl;
+          m_lightingManager->SetIntensityByName(deviceId, "Red", intensity50);
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          m_lightingManager->SetIntensityByName(deviceId, "Red", 0);
+
+          // Green (channel 2) - 1 second
+          std::cout << "[Lighting] GREEN ON" << std::endl;
+          m_lightingManager->SetIntensityByName(deviceId, "Green", intensity50);
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          m_lightingManager->SetIntensityByName(deviceId, "Green", 0);
+
+          // Blue (channel 3) - 1 second
+          std::cout << "[Lighting] BLUE ON" << std::endl;
+          m_lightingManager->SetIntensityByName(deviceId, "Blue", intensity50);
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          m_lightingManager->SetIntensityByName(deviceId, "Blue", 0);
+        }
+
+        // Ensure all off
+        m_lightingManager->AllOff();
+        std::cout << "[Lighting] Startup test complete - All channels OFF" << std::endl;
+        m_logManager->Info("Lighting startup test complete - All channels OFF", "Application");
+      }
+
+      if (m_splashScreen) m_splashScreen->updateStatus("Lighting", "success");
+    }
+
     std::cout << "\n[Application] ========================================" << std::endl;
     std::cout << "[Application] BACKGROUND HARDWARE CONNECTION COMPLETE" << std::endl;
     std::cout << "[Application] ========================================\n" << std::endl;
@@ -823,6 +902,7 @@ void Application::shutdownManagers()
 
 	m_powerSupplyManager.reset();
   m_smuManager.reset();  // ✅ ADD SMU Manager cleanup
+  m_lightingManager.reset();
   m_tecManager.reset();  // ✅ ADD THIS LINE
   m_productPositionManager.reset();  // ✅ ADD THIS
   m_pneumaticManager.reset();
@@ -1509,6 +1589,47 @@ void Application::initializeCoordinateSystemManager()
 
   m_logManager->Info("CoordinateSystemManager initialized", "Application");
   std::cout << "[Application] CoordinateSystemManager initialized successfully" << std::endl;
+}
+
+void Application::initializeLightingManager()
+{
+  std::cout << "[Application] Initializing LightingManager..." << std::endl;
+
+  m_lightingManager = std::make_unique<Lighting::LightingManager>();
+  m_context.lightingManager = m_lightingManager.get();
+
+  // Try local config first, then fall back to default
+  std::string localConfigPath = "config/lighting_config.local.json";
+  std::string defaultConfigPath = "config/lighting_config.json";
+
+  int loadedCount = 0;
+
+  // Try local config first
+  std::ifstream localFile(localConfigPath);
+  if (localFile.good()) {
+    localFile.close();
+    loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, localConfigPath);
+    if (loadedCount > 0) {
+      std::cout << "[Application] Lighting configuration loaded from "
+                << localConfigPath << " (" << loadedCount << " controllers)" << std::endl;
+    }
+  }
+
+  // Fall back to default config if local not found or failed
+  if (loadedCount == 0) {
+    loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, defaultConfigPath);
+    if (loadedCount > 0) {
+      std::cout << "[Application] Lighting configuration loaded from "
+                << defaultConfigPath << " (" << loadedCount << " controllers)" << std::endl;
+    }
+  }
+
+  if (loadedCount == 0) {
+    std::cout << "[Application] No lighting controllers configured" << std::endl;
+  }
+
+  m_logManager->Info("LightingManager initialized with " + std::to_string(loadedCount) + " controllers", "Application");
+  std::cout << "[Application] LightingManager initialized successfully" << std::endl;
 }
 
 // In your Application constructor or initialization function:

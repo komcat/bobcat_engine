@@ -1,7 +1,7 @@
-﻿// HardwareInstrumentPage.cpp - UPDATED with PowerSupplyControlPage
+﻿// HardwareInstrumentPage.cpp - UPDATED with CameraLightingPage
 #include "HardwareInstrumentPage.h"
 #include "ApplicationContext.h"
-#include "MultiCameraView.h"
+#include "CameraLightingPage.h"
 #include "TcpClientWidget.h"
 #include "DataStoreWidget.h"
 #include "PIControllerPage.h"
@@ -21,7 +21,7 @@ HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWid
   , m_context(context)
   , m_sidebar(nullptr)
   , m_contentStack(nullptr)
-  , m_cameraView(nullptr)
+  , m_cameraLightingPage(nullptr)
   , m_tcpClientWidget(nullptr)
   , m_tecControlPage(nullptr)
   , m_dataStoreWidget(nullptr)
@@ -142,9 +142,9 @@ void HardwareInstrumentPage::createContentArea()
 {
   m_contentStack = new QStackedWidget();
 
-  // Index 0: Camera view
-  m_cameraView = new MultiCameraView(m_context);
-  m_contentStack->addWidget(m_cameraView);
+  // Index 0: Camera + Lighting (tabbed page)
+  m_cameraLightingPage = new CameraLightingPage(m_context);
+  m_contentStack->addWidget(m_cameraLightingPage);
 
   // Index 1: PI Hexapod
   m_piControllerPage = new PIControllerPage(m_context);

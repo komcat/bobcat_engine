@@ -1,0 +1,70 @@
+{
+  "lighting_controllers": [
+    {
+      "device_id": "led-controller-1",
+      "device_name": "Main LED Controller",
+      "controller_type": "CCS_PD3",
+      "ip_address": "192.168.0.2",
+      "port": 40001,
+      "enabled": true,
+      "channels": [
+        {
+          "channel": 0,
+          "name": "Collimate",
+          "color": "white",
+          "default_intensity": 0,
+          "enabled": true
+        },
+        {
+          "channel": 1,
+          "name": "Red",
+          "color": "red",
+          "default_intensity": 0,
+          "enabled": true
+        },
+        {
+          "channel": 2,
+          "name": "Green",
+          "color": "green",
+          "default_intensity": 0,
+          "enabled": true
+        },
+        {
+          "channel": 3,
+          "name": "Blue",
+          "color": "blue",
+          "default_intensity": 0,
+          "enabled": true
+        },
+        {
+          "channel": 4,
+          "name": "L5",
+          "color": "",
+          "default_intensity": 0,
+          "enabled": false
+        },
+        {
+          "channel": 5,
+          "name": "L6",
+          "color": "",
+          "default_intensity": 0,
+          "enabled": false
+        },
+        {
+          "channel": 6,
+          "name": "L7",
+          "color": "",
+          "default_intensity": 0,
+          "enabled": false
+        },
+        {
+          "channel": 7,
+          "name": "L8",
+          "color": "",
+          "default_intensity": 0,
+          "enabled": false
+        }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@
 #include <QVBoxLayout>
 
 struct ApplicationContext;
-class MultiCameraView;
+class CameraLightingPage;  // Replaces MultiCameraView
 class TcpClientWidget;
 class DataStoreWidget;
 class PIControllerPage;
@@ -70,7 +70,7 @@ private:
   QPushButton* m_smuButton;
 
   // Content pages
-  MultiCameraView* m_cameraView;
+  CameraLightingPage* m_cameraLightingPage;  // Contains Camera + Lighting tabs
   TcpClientWidget* m_tcpClientWidget;
   DataStoreWidget* m_dataStoreWidget;
   PIControllerPage* m_piControllerPage;

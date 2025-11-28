@@ -1,8 +1,9 @@
-﻿// JogPanelWindow.cpp - Tabbed interface with Jog and Quick Output
+﻿// JogPanelWindow.cpp - Tabbed interface with Jog, Quick Output, and Lighting
 #include "JogPanelWindow.h"
 #include "QuickOutputWidget.h"
 #include "QuickOutputManager.h"
 #include "QuickOutput_JsonLoader.h"
+#include "LightingControlWidget.h"
 #include "TransformationMatrixLoader.h"
 #include "CoordinateTransformer.h"
 #include "ApplicationContext.h"
@@ -47,6 +48,7 @@ JogPanelWindow::JogPanelWindow(
   , m_positionUpdateTimer(nullptr)
   , m_quickOutputManager(nullptr)
   , m_quickOutputWidget(nullptr)
+  , m_lightingWidget(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
   , m_keyboardActive(false)
 {
@@ -146,6 +148,7 @@ void JogPanelWindow::setupUI()
   // Create tabs
   createJogTab();
   createQuickOutputTab();
+  createLightingTab();
 
   mainLayout->addWidget(m_tabWidget);
 
@@ -272,6 +275,24 @@ void JogPanelWindow::createQuickOutputTab()
     label->setStyleSheet("color: #888888; font-size: 11px;");
     layout->addWidget(label);
     m_tabWidget->addTab(placeholder, "Quick Output");
+  }
+}
+
+void JogPanelWindow::createLightingTab()
+{
+  if (m_context && m_context->lightingManager) {
+    m_lightingWidget = new LightingControlWidget(m_context, this);
+    m_tabWidget->addTab(m_lightingWidget, "Lighting");
+  }
+  else {
+    // Create placeholder if Lighting manager not available
+    QWidget* placeholder = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(placeholder);
+    QLabel* label = new QLabel("Lighting Manager not available.\n\nLighting control requires LightingManager.");
+    label->setAlignment(Qt::AlignCenter);
+    label->setStyleSheet("color: #888888; font-size: 11px;");
+    layout->addWidget(label);
+    m_tabWidget->addTab(placeholder, "Lighting");
   }
 }
 
