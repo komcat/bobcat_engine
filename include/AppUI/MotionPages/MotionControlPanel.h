@@ -52,7 +52,7 @@ signals:
   void updatePositionClicked();
   void deletePositionClicked();
   void createPositionClicked();
-  void editWaypointsClicked();
+  // void editWaypointsClicked();  // ❌ REMOVED: Waypoints not used
   void autoFitClicked();  // ✅ NEW: Auto-fit view to positions
   void homeClicked();
   void stopClicked();
@@ -79,14 +79,14 @@ private:
   QLabel* m_posULabel;
   QLabel* m_posVLabel;
   QLabel* m_posWLabel;
-  QLabel* m_waypointsLabel;
+  // QLabel* m_waypointsLabel;  // ❌ REMOVED: Waypoints not used
 
   QPushButton* m_moveToButton;
   QPushButton* m_moveOffsetButton;
   QPushButton* m_editPosButton;  // NEW
   QPushButton* m_updatePosButton;
   QPushButton* m_deletePosButton;
-  QPushButton* m_editWaypointsBtn;
+  // QPushButton* m_editWaypointsBtn;  // ❌ REMOVED: Waypoints not used
   QPushButton* m_createPosButton;
   QPushButton* m_autoFitButton;  // ✅ NEW: Auto-fit view button
   QPushButton* m_homeButton;

@@ -56,7 +56,7 @@ private slots:
   void onUpdatePositionClicked();
   void onCreatePositionClicked();
   void onDeletePositionClicked();
-  void onEditWaypointsClicked();
+  // void onEditWaypointsClicked();  // ❌ REMOVED: Waypoints not used
   void onHomeClicked();
   void onStopClicked();
   void onPositionSelected(const QString& name, double x, double y, double z);

@@ -2,7 +2,7 @@
 #include "MotionPage.h"
 #include "AppUI/DarkTheme.h"
 #include "NewPositionDialog.h"
-#include "WaypointEditorDialog.h"
+// #include "WaypointEditorDialog.h"  // ❌ REMOVED: Waypoints not used
 #include "OffsetMoveDialog.h"  // ✅ Add at top
 #include "EditPositionDialog.h"
 #include "ScanControlPanel.h"
@@ -464,8 +464,9 @@ void MotionPage::setupUI()
 	connect(m_controlPanel, &MotionControlPanel::deletePositionClicked,
 		this, &MotionPage::onDeletePositionClicked);
 
-	connect(m_controlPanel, &MotionControlPanel::editWaypointsClicked,
-		this, &MotionPage::onEditWaypointsClicked);
+	// ❌ REMOVED: Waypoint editor signal (waypoints not used)
+	// connect(m_controlPanel, &MotionControlPanel::editWaypointsClicked,
+	//	this, &MotionPage::onEditWaypointsClicked);
 
 	// ✅ NEW: Auto-fit view button
 	connect(m_controlPanel, &MotionControlPanel::autoFitClicked,
@@ -1525,52 +1526,53 @@ void MotionPage::onLabelOffsetChanged(const QString& name, double offsetX, doubl
 // WAYPOINT EDITOR
 // ============================================================================
 
-void MotionPage::onEditWaypointsClicked()
-{
-	if (m_selectedPositionName.isEmpty()) {
-		return;
-	}
-
-	PositionStruct currentPos;
-	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
-		m_selectedPositionName.toStdString(),
-		currentPos)) {
-		QMessageBox::critical(this, "Error", "Failed to get position data");
-		return;
-	}
-
-	std::vector<std::string> availablePositions =
-		m_motionManager->GetNamedPositionList(m_currentDevice.toStdString());
-
-	WaypointEditorDialog dialog(m_selectedPositionName,
-		currentPos.waypoints,
-		currentPos.exit_waypoints,
-		availablePositions,
-		this);
-
-	if (dialog.exec() == QDialog::Accepted) {
-		currentPos.waypoints = dialog.getWaypoints();
-		currentPos.exit_waypoints = dialog.getExitWaypoints();
-
-		m_motionManager->AddNamedPosition(m_currentDevice.toStdString(),
-			m_selectedPositionName.toStdString(),
-			currentPos);
-
-		if (m_productManager->HasLoadedProduct()) {
-			m_productManager->ImportFromMotionManager(*m_motionManager);
-			m_productManager->SaveProduct();
-		}
-
-		refreshPositionDisplay();
-
-		m_graphicsView->showPathPreview(m_selectedPositionName,
-			currentPos.waypoints,
-			currentPos.exit_waypoints);
-
-		QMessageBox::information(this, "Success",
-			"Waypoints updated successfully!");
-	}
-}
+// ❌ REMOVED: Waypoint editor handler (waypoints not used)
+// void MotionPage::onEditWaypointsClicked()
+// {
+// 	if (m_selectedPositionName.isEmpty()) {
+// 		return;
+// 	}
+//
+// 	PositionStruct currentPos;
+// 	if (!m_motionManager->GetNamedPosition(m_currentDevice.toStdString(),
+// 		m_selectedPositionName.toStdString(),
+// 		currentPos)) {
+// 		QMessageBox::critical(this, "Error", "Failed to get position data");
+// 		return;
+// 	}
+//
+// 	std::vector<std::string> availablePositions =
+// 		m_motionManager->GetNamedPositionList(m_currentDevice.toStdString());
+//
+// 	WaypointEditorDialog dialog(m_selectedPositionName,
+// 		currentPos.waypoints,
+// 		currentPos.exit_waypoints,
+// 		availablePositions,
+// 		this);
+//
+// 	if (dialog.exec() == QDialog::Accepted) {
+// 		currentPos.waypoints = dialog.getWaypoints();
+// 		currentPos.exit_waypoints = dialog.getExitWaypoints();
+//
+// 		m_motionManager->AddNamedPosition(m_currentDevice.toStdString(),
+// 			m_selectedPositionName.toStdString(),
+// 			currentPos);
+//
+// 		if (m_productManager->HasLoadedProduct()) {
+// 			m_productManager->ImportFromMotionManager(*m_motionManager);
+// 			m_productManager->SaveProduct();
+// 		}
+//
+// 		refreshPositionDisplay();
+//
+// 		m_graphicsView->showPathPreview(m_selectedPositionName,
+// 			currentPos.waypoints,
+// 			currentPos.exit_waypoints);
+//
+// 		QMessageBox::information(this, "Success",
+// 			"Waypoints updated successfully!");
+// 	}
+// }
 
 void MotionPage::onMoveWithOffsetClicked()
 {

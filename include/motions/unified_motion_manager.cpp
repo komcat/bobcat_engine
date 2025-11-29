@@ -324,6 +324,9 @@ bool UnifiedMotionManager::EmergencyStop(const std::string& deviceName) {
 
   std::cout << "[WARNING] UnifiedMotionManager: EMERGENCY STOP on " << deviceName << std::endl;
 
+  // ✅ Clear waypoint state after stopping motion
+  stopWaypointSequence(deviceName);
+
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;

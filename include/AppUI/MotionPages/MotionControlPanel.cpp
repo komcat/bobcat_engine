@@ -54,7 +54,7 @@ void MotionControlPanel::setupUI()
   m_posULabel = new QLabel("U: -");
   m_posVLabel = new QLabel("V: -");
   m_posWLabel = new QLabel("W: -");
-  m_waypointsLabel = new QLabel("Waypoints: -");
+  // m_waypointsLabel = new QLabel("Waypoints: -");  // ❌ REMOVED: Waypoints not used
 
   // Hide all position labels (not added to layout)
   m_posNameLabel->hide();
@@ -64,7 +64,7 @@ void MotionControlPanel::setupUI()
   m_posULabel->hide();
   m_posVLabel->hide();
   m_posWLabel->hide();
-  m_waypointsLabel->hide();
+  // m_waypointsLabel->hide();  // ❌ REMOVED: Waypoints not used
 
   // === Tab Widget ===
   m_tabWidget = new QTabWidget();
@@ -321,26 +321,27 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
   m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
   m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
 
-  if (waypoints.empty()) {
-    m_waypointsLabel->setText("Waypoints: None");
-  }
-  else {
-    QString waypointStr = "Waypoints: ";
-    for (size_t i = 0; i < waypoints.size(); ++i) {
-      waypointStr += QString::fromStdString(waypoints[i]);
-      if (i < waypoints.size() - 1) {
-        waypointStr += " → ";
-      }
-    }
-    m_waypointsLabel->setText(waypointStr);
-  }
+  // ❌ REMOVED: Waypoint label updates (waypoints not used)
+  // if (waypoints.empty()) {
+  //   m_waypointsLabel->setText("Waypoints: None");
+  // }
+  // else {
+  //   QString waypointStr = "Waypoints: ";
+  //   for (size_t i = 0; i < waypoints.size(); ++i) {
+  //     waypointStr += QString::fromStdString(waypoints[i]);
+  //     if (i < waypoints.size() - 1) {
+  //       waypointStr += " → ";
+  //     }
+  //   }
+  //   m_waypointsLabel->setText(waypointStr);
+  // }
 
   // Enable all position-specific buttons
   m_moveToButton->setEnabled(true);
   m_moveOffsetButton->setEnabled(true);
   m_editPosButton->setEnabled(true);  // NEW
   m_updatePosButton->setEnabled(true);
-  m_editWaypointsBtn->setEnabled(true);
+  // m_editWaypointsBtn->setEnabled(true);  // ❌ REMOVED: Waypoints not used
   m_deletePosButton->setEnabled(true);
 }
 
@@ -355,14 +356,14 @@ void MotionControlPanel::clearSelectedPosition()
   m_posULabel->setText("U: -");
   m_posVLabel->setText("V: -");
   m_posWLabel->setText("W: -");
-  m_waypointsLabel->setText("Waypoints: -");
+  // m_waypointsLabel->setText("Waypoints: -");  // ❌ REMOVED: Waypoints not used
 
   // Disable all position-specific buttons
   m_moveToButton->setEnabled(false);
   m_moveOffsetButton->setEnabled(false);
   m_editPosButton->setEnabled(false);  // NEW
   m_updatePosButton->setEnabled(false);
-  m_editWaypointsBtn->setEnabled(false);
+  // m_editWaypointsBtn->setEnabled(false);  // ❌ REMOVED: Waypoints not used
   m_deletePosButton->setEnabled(false);
 }
 
@@ -430,11 +431,11 @@ void MotionControlPanel::setupActionsTab()
   m_updatePosButton->setEnabled(false);
   buttonsLayout->addWidget(m_updatePosButton);
 
-  // Edit Waypoints
-  m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
-  m_editWaypointsBtn->setMinimumHeight(28);
-  m_editWaypointsBtn->setEnabled(false);
-  buttonsLayout->addWidget(m_editWaypointsBtn);
+  // ❌ REMOVED: Edit Waypoints (waypoints not used)
+  // m_editWaypointsBtn = new QPushButton("⚙ Edit Waypoints");
+  // m_editWaypointsBtn->setMinimumHeight(28);
+  // m_editWaypointsBtn->setEnabled(false);
+  // buttonsLayout->addWidget(m_editWaypointsBtn);
 
   // Delete Position
   m_deletePosButton = new QPushButton("✕ Delete Position");
@@ -544,8 +545,9 @@ void MotionControlPanel::setupActionsTab()
   connect(m_updatePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::updatePositionClicked);
 
-  connect(m_editWaypointsBtn, &QPushButton::clicked,
-    this, &MotionControlPanel::editWaypointsClicked);
+  // ❌ REMOVED: Waypoint button signal (waypoints not used)
+  // connect(m_editWaypointsBtn, &QPushButton::clicked,
+  //   this, &MotionControlPanel::editWaypointsClicked);
 
   connect(m_deletePosButton, &QPushButton::clicked,
     this, &MotionControlPanel::deletePositionClicked);

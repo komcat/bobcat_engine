@@ -413,6 +413,8 @@ bool RecipeManager::saveToJson(const std::string& filename) const
     stepObj["type"] = QString::fromStdString(step->processType);
     stepObj["nickname"] = QString::fromStdString(step->userNickname);
     stepObj["enabled"] = step->enabled;
+    stepObj["breakpoint"] = step->breakpoint;
+    stepObj["background_color"] = QString::fromStdString(step->backgroundColor);
 
     QJsonObject paramsObj;
     for (const auto& [key, value] : step->parameters) {
@@ -495,6 +497,8 @@ bool RecipeManager::loadFromJson(const std::string& filename)
 
     auto instance = std::make_unique<ProcessInstance>(type, nickname, id);
     instance->enabled = stepObj["enabled"].toBool(true);
+    instance->breakpoint = stepObj["breakpoint"].toBool(false);
+    instance->backgroundColor = stepObj["background_color"].toString("").toStdString();
 
     QJsonObject paramsObj = stepObj["parameters"].toObject();
     for (const QString& key : paramsObj.keys()) {

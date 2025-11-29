@@ -35,6 +35,8 @@
 #include <QApplication>
 #include <QHeaderView>
 #include <QCheckBox>
+#include <QColorDialog>
+#include <QMenu>
 #include <QListWidget>
 #include <QSet>
 #include <QSettings>
@@ -715,8 +717,8 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_recipeTree->setRootIsDecorated(true);
   m_recipeTree->setIndentation(20);
 
-  m_recipeTree->setColumnWidth(0, 40);   // Breakpoint column (red dot)
-  m_recipeTree->setColumnWidth(1, 40);   // Step number
+  m_recipeTree->setColumnWidth(0, 80);   // Breakpoint column (red dot)
+  m_recipeTree->setColumnWidth(1, 60);   // Step number
   m_recipeTree->setColumnWidth(3, 50);   // Run checkbox
   m_recipeTree->header()->setStretchLastSection(false);
   m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);  // Process Instance stretches
@@ -731,6 +733,7 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "  show-decoration-selected: 1; "
     "} "
     "QTreeWidget::item { "
+    "  background-color: #3c3c3c; "
     "  border-bottom: 1px solid #3f3f46; "
     "  padding: 4px 2px; "
     "  min-height: 24px; "
@@ -1543,7 +1546,7 @@ void RecipePage::onNicknameChanged(const QString& nickname)
       if (!step->enabled) {
         displayText = "[DISABLED] " + displayText;
       }
-      currentItem->setText(1, displayText);
+      currentItem->setText(2, displayText);  // Column 2 = "Process Instance"
     }
   }
 }
@@ -1629,7 +1632,7 @@ void RecipePage::refreshRecipeList()
     // Store step index in item data
     item->setData(0, Qt::UserRole, stepIndex);
 
-    // Column 0: Breakpoint indicator (clickable red dot)
+    // Column 0: Breakpoint indicator (clickable red dot) + Color picker button
     QPushButton* breakpointBtn = new QPushButton();
     breakpointBtn->setFixedSize(20, 20);
     breakpointBtn->setProperty("stepIndex", stepIndex);
@@ -1672,11 +1675,79 @@ void RecipePage::refreshRecipeList()
       }
     });
 
+    // Color picker button (shows current color or empty if no color set)
+    QPushButton* colorBtn = new QPushButton();
+    colorBtn->setFixedSize(20, 20);
+    colorBtn->setProperty("stepIndex", stepIndex);
+    colorBtn->setCursor(Qt::PointingHandCursor);
+
+    QString currentColor = QString::fromStdString(step->backgroundColor);
+    if (currentColor.isEmpty()) {
+      colorBtn->setStyleSheet(
+        "QPushButton { "
+        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+        "    stop:0 #ff0000, stop:0.17 #ffff00, stop:0.33 #00ff00, "
+        "    stop:0.5 #00ffff, stop:0.67 #0000ff, stop:0.83 #ff00ff, stop:1 #ff0000); "
+        "  border: 1px solid #888888; "
+        "  border-radius: 3px; "
+        "}"
+        "QPushButton:hover { "
+        "  border: 2px solid #ffffff; "
+        "}"
+      );
+      colorBtn->setToolTip("Click to set row color");
+    } else {
+      colorBtn->setStyleSheet(
+        QString("QPushButton { "
+        "  background-color: %1; "
+        "  border: 1px solid #888888; "
+        "  border-radius: 3px; "
+        "}"
+        "QPushButton:hover { "
+        "  border: 2px solid #ffffff; "
+        "}").arg(currentColor)
+      );
+      colorBtn->setToolTip("Click to change row color (right-click to clear)");
+    }
+
+    connect(colorBtn, &QPushButton::clicked, this, [this, stepIndex]() {
+      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+      if (step) {
+        QColor initialColor = step->backgroundColor.empty() ?
+          QColor(50, 50, 50) : QColor(QString::fromStdString(step->backgroundColor));
+
+        QColor color = QColorDialog::getColor(initialColor, this, "Choose Row Color");
+        if (color.isValid()) {
+          step->backgroundColor = color.name().toStdString();
+          refreshRecipeList();
+          selectStepByIndex(m_selectedStepIndex);
+        }
+      }
+    });
+
+    // Right-click to clear color
+    colorBtn->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(colorBtn, &QPushButton::customContextMenuRequested, this, [this, stepIndex](const QPoint& pos) {
+      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+      if (step && !step->backgroundColor.empty()) {
+        QMenu menu;
+        QAction* clearAction = menu.addAction("Clear Color");
+        if (menu.exec(QCursor::pos()) == clearAction) {
+          step->backgroundColor = "";
+          refreshRecipeList();
+          selectStepByIndex(m_selectedStepIndex);
+        }
+      }
+    });
+
     QWidget* breakpointWidget = new QWidget();
+    breakpointWidget->setStyleSheet("background: transparent;");  // ✅ Make transparent to show row color
     QHBoxLayout* bpLayout = new QHBoxLayout(breakpointWidget);
     bpLayout->addWidget(breakpointBtn);
+    bpLayout->addWidget(colorBtn);
     bpLayout->setAlignment(Qt::AlignCenter);
     bpLayout->setContentsMargins(0, 0, 0, 0);
+    bpLayout->setSpacing(2);
     m_recipeTree->setItemWidget(item, 0, breakpointWidget);
 
     // Column 1: Step number
@@ -1701,6 +1772,7 @@ void RecipePage::refreshRecipeList()
 
     // Column 3: Run checkbox widget
     QWidget* checkboxWidget = new QWidget();
+    checkboxWidget->setStyleSheet("background: transparent;");  // ✅ Make transparent to show row color
     QCheckBox* checkbox = new QCheckBox();
     checkbox->setChecked(step->enabled);
     checkbox->setProperty("stepIndex", stepIndex);
@@ -1712,6 +1784,7 @@ void RecipePage::refreshRecipeList()
       "  font-size: 16px; "
       "  font-weight: bold; "
       "  color: white; "
+      "  background: transparent; "
       "}"
     );
 
@@ -1728,6 +1801,14 @@ void RecipePage::refreshRecipeList()
     });
 
     m_recipeTree->setItemWidget(item, 3, checkboxWidget);
+
+    // Apply custom background color to Process Instance column (column 2) if set
+    if (!step->backgroundColor.empty()) {
+      QColor bgColor(QString::fromStdString(step->backgroundColor));
+      if (bgColor.isValid()) {
+        item->setBackground(2, QBrush(bgColor));  // Only apply to column 2 (Process Instance)
+      }
+    }
 
     // Manage parent stack for nesting
     if (isBlockStart) {
@@ -2416,106 +2497,174 @@ void RecipePage::onRunSelectedStep()
   std::cout << "[RecipePage] Running single step: " << stepNickname.toStdString()
             << " (type: " << stepType.toStdString() << ")" << std::endl;
 
-  // Build sequence for just this one step
-  if (!m_sequenceEngine) {
-    QMessageBox::critical(this, "Error", "Sequence engine not initialized!");
+  // ✅ NEW: Create a temporary recipe with just this one step
+  RecipeManager tempRecipe;
+  tempRecipe.setRecipeName("TempSingleStep");
+
+  // Copy the selected step to temporary recipe using insertStepAt
+  tempRecipe.insertStepAt(
+    0,                           // index
+    step->processType,           // process type
+    step->userNickname,          // nickname
+    true,                        // enabled
+    step->parameters             // parameters
+  );
+
+  // Save to temporary file (use current directory to avoid path issues)
+  std::string tempRecipePath = "temp_single_step.json";
+  if (!tempRecipe.saveRecipe(tempRecipePath)) {
+    QMessageBox::critical(this, "Error",
+      "Failed to create temporary recipe file for single step execution.");
     return;
   }
 
-  // Create a temporary sequence for the single step
-  std::string sequenceName = "SingleStep_" + step->userNickname;
-  SequenceBuilder* sequence = m_sequenceEngine->CreateSequence(sequenceName);
+  std::cout << "[RecipePage] Created temporary recipe: " << tempRecipePath << std::endl;
 
-  try {
-    // Build the selected process into the sequence
-    std::string errorMsg;
-    if (!m_processFactory->BuildStep(sequence, step, errorMsg)) {
-      QMessageBox::critical(this, "Build Error",
-        QString("Failed to build step: %1").arg(QString::fromStdString(errorMsg)));
-      return;
-    }
+  // Switch to progress panel
+  showProgressPanel();
 
-    std::cout << "[RecipePage] Built sequence for step: " << step->userNickname << std::endl;
+  // Disable buttons during execution
+  m_runRecipeButton->setEnabled(false);
+  m_runSelectedStepButton->setEnabled(false);
+  m_runSelectedStepButton->setText("⏳ Running Step...");
 
-    // Switch to progress panel
-    showProgressPanel();
+  // ✅ NEW: Use RecipeWorker for background thread execution (same as Run Recipe)
+  m_recipeWorker = new RecipeWorker(
+    m_sequenceEngine,
+    m_processFactory,
+    m_context->productPositionManager,
+    m_context->motionManager,
+    tempRecipePath,
+    this
+  );
 
-    // Update progress widget with step info
-    if (m_progressWidget) {
-      m_progressWidget->setTotalSteps(1);  // 1 step total
-      m_progressWidget->setCurrentStep(1, stepNickname);
-      m_progressWidget->setStatusText("Executing step: " + stepNickname);
-      m_progressWidget->startTimer();
-    }
-
-    // Disable buttons during execution
-    m_runRecipeButton->setEnabled(false);
-    m_runSelectedStepButton->setEnabled(false);
-    m_runSelectedStepButton->setText("⏳ Running Step...");
-
-    // Execute the sequence directly (synchronous)
-    // Create or reuse context (persists between step executions)
-    if (!m_currentContext) {
-      m_currentContext = new SequenceContext();
-      std::cout << "[RecipePage] Created new execution context" << std::endl;
-    }
-    bool success = m_sequenceEngine->ExecuteSequence(sequence, m_currentContext);
-
-    // Stop timer
-    if (m_progressWidget) {
-      m_progressWidget->stopTimer();
-    }
-
-    // Re-enable buttons
-    m_runRecipeButton->setEnabled(true);
-    m_runSelectedStepButton->setEnabled(true);
-    m_runSelectedStepButton->setText("▶ Run Selected Step");
-
-    // Show result
-    if (m_progressWidget) {
-      QString resultMsg = success ?
-        QString("✅ Step '%1' completed successfully").arg(stepNickname) :
-        QString("❌ Step '%1' failed").arg(stepNickname);
-      m_progressWidget->setStatusText(resultMsg);
-
-      if (success) {
-        m_progressWidget->showCompletionHint();
-      }
-    }
-
-    // Update context viewer if it's open
-    if (m_contextViewer && m_contextViewer->isVisible() && m_currentContext) {
-      m_contextViewer->updateFromContext(m_currentContext);
-    }
-
-    // Log context summary (popup disabled - use CV button to view results)
-    if (m_currentContext) {
-      auto summary = m_currentContext->GetSummary();
-      if (!summary.capturedValues.empty()) {
-        std::cout << "[RecipePage] Context captured " << summary.capturedValues.size() << " values (use CV button to view)" << std::endl;
-      }
-    }
-
-    // ✅ Update vision result image if available
-    updateVisionResultImage();
-
-    // Show completion message - DISABLED (user feedback via progress widget is sufficient)
-    // if (success) {
-    //   QMessageBox::information(this, "Step Completed",
-    //     QString("Step '%1' executed successfully!").arg(stepNickname));
-    // } else {
-    //   QMessageBox::critical(this, "Step Failed",
-    //     QString("Step '%1' execution failed.").arg(stepNickname));
-    // }
-
-  } catch (const std::exception& e) {
-    m_runRecipeButton->setEnabled(true);
-    m_runSelectedStepButton->setEnabled(true);
-    m_runSelectedStepButton->setText("▶ Run Selected Step");
-
-    QMessageBox::critical(this, "Execution Error",
-      QString("Failed to execute step: %1").arg(e.what()));
+  // Set external context if available (for sharing context between steps)
+  if (m_currentContext) {
+    m_recipeWorker->setExternalContext(m_currentContext);
   }
+
+  // Connect signals for UI updates (same as onRunRecipe and onStepButtonClicked)
+  connect(m_recipeWorker, &RecipeWorker::executionStarted,
+    this, &RecipePage::onExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildStarted,
+    this, &RecipePage::onStepBuildStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepBuildCompleted,
+    this, &RecipePage::onStepBuildCompleted);
+  connect(m_recipeWorker, &RecipeWorker::sequenceExecutionStarted,
+    this, &RecipePage::onSequenceExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::executionCompleted,
+    this, &RecipePage::onExecutionCompleted);
+  connect(m_recipeWorker, &RecipeWorker::executionStopped,
+    this, &RecipePage::onExecutionStopped);
+  connect(m_recipeWorker, &RecipeWorker::logMessage,
+    this, &RecipePage::onWorkerLogMessage);
+  connect(m_recipeWorker, &RecipeWorker::waitProgress,
+    this, &RecipePage::onWaitProgress);
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionStarted,
+    this, &RecipePage::onStepExecutionStarted);
+  connect(m_recipeWorker, &RecipeWorker::stepExecutionCompleted,
+    this, &RecipePage::onStepExecutionCompleted);
+  connect(m_recipeWorker, &RecipeWorker::finished,
+    m_recipeWorker, &QObject::deleteLater);
+
+  // Set up callbacks (SequenceEngine callbacks persist, but worker-specific ones need to be set)
+  connect(this, &RecipePage::showUserPrompt,
+    this, &RecipePage::onShowUserPrompt);
+
+  m_recipeWorker->setUserPromptCallback(
+    [this](const std::string& title, const std::string& message) -> bool {
+    emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message), true);
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+    return m_userPromptResponse;
+  });
+
+  // ✅ Set ManualAdjust callback (same as Run Recipe)
+  connect(this, &RecipePage::showManualAdjust,
+    this, &RecipePage::onShowManualAdjust);
+
+  m_recipeWorker->setManualAdjustCallback(
+    [this](const std::string& message, const std::string& deviceName, double stepSizeUm,
+           bool enableX, bool enableY, bool enableZ) -> bool {
+    // Emit signal to UI thread to show manual adjust widget
+    emit showManualAdjust(QString::fromStdString(message), QString::fromStdString(deviceName),
+                          stepSizeUm, enableX, enableY, enableZ);
+
+    // Block until user responds using event loop
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_manualAdjustResponse;
+  });
+
+  // ✅ Set UserInput callback (for AskForInput commands like DUT serial number)
+  m_recipeWorker->setUserInputCallback(
+    [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+    std::pair<bool, std::string> result;
+
+    // Check if we're already on the UI thread
+    if (QThread::currentThread() == QApplication::instance()->thread()) {
+      // Already on UI thread - call directly to avoid deadlock
+      // Take the current widget out of the scroll area
+      QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+      // Show the user input widget in the scroll area
+      m_configScrollArea->setWidget(m_userInputWidget);
+      m_userInputWidget->showInput(
+        QString::fromStdString(title),
+        QString::fromStdString(prompt),
+        QString::fromStdString(defaultValue)
+      );
+
+      std::cout << "[RecipePage] Showing user input widget for RecipeWorker (UI thread)" << std::endl;
+
+      // Process pending events to ensure widget is displayed before blocking
+      QApplication::processEvents();
+
+      // Block until user responds (event loop pattern)
+      QEventLoop loop;
+      m_promptEventLoop = &loop;
+      loop.exec();
+      m_promptEventLoop = nullptr;
+
+      result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+    } else {
+      // Called from worker thread - use BlockingQueuedConnection
+      QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
+        // Take the current widget out of the scroll area
+        QWidget* oldWidget = m_configScrollArea->takeWidget();
+
+        // Show the user input widget in the scroll area
+        m_configScrollArea->setWidget(m_userInputWidget);
+        m_userInputWidget->showInput(
+          QString::fromStdString(title),
+          QString::fromStdString(prompt),
+          QString::fromStdString(defaultValue)
+        );
+
+        std::cout << "[RecipePage] Showing user input widget for RecipeWorker (worker thread)" << std::endl;
+
+        // Block until user responds (event loop pattern)
+        QEventLoop loop;
+        m_promptEventLoop = &loop;
+        loop.exec();
+        m_promptEventLoop = nullptr;
+
+        result = std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+      }, Qt::BlockingQueuedConnection);
+    }
+
+    return result;
+  });
+
+  // Start background thread execution ✅
+  m_recipeWorker->start();
+
+  std::cout << "[RecipePage] Started RecipeWorker for single step execution (non-blocking)" << std::endl;
 }
 
 // ============================================================================
@@ -2848,6 +2997,10 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   m_runRecipeButton->setEnabled(true);
   m_runRecipeButton->setText("▶ Run Recipe");
 
+  // ✅ Reset "Run Selected Step" button
+  m_runSelectedStepButton->setEnabled(true);
+  m_runSelectedStepButton->setText("▶ Run Selected Step");
+
   // Reset step-by-step button states
   m_stepButton->setText("Step");
   m_continueButton->setEnabled(false);
@@ -2904,6 +3057,13 @@ void RecipePage::onExecutionStopped()
 {
   // ✅ Clear step highlighting when execution is stopped
   clearExecutingStepHighlight();
+
+  // ✅ Re-enable all execution buttons
+  m_runRecipeButton->setEnabled(true);
+  m_runRecipeButton->setText("▶ Run Recipe");
+
+  m_runSelectedStepButton->setEnabled(true);
+  m_runSelectedStepButton->setText("▶ Run Selected Step");
 
   // Reset step-by-step button states
   m_stepButton->setText("Step");

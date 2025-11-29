@@ -15,12 +15,13 @@ struct ProcessInstance {
   std::string userNickname;       // User-friendly name (e.g., "Pick Left Lens")
   bool enabled;                   // Can disable step without deleting
   bool breakpoint;                // Pause execution before this step (like IDE debugger)
+  std::string backgroundColor;    // Custom row background color (hex format: "#RRGGBB")
 
   // Process parameters (editable)
   std::map<std::string, std::string> parameters;
 
   ProcessInstance(const std::string& type, const std::string& nickname, const std::string& id)
-    : uniqueId(id), processType(type), userNickname(nickname), enabled(true), breakpoint(false) {
+    : uniqueId(id), processType(type), userNickname(nickname), enabled(true), breakpoint(false), backgroundColor("") {
   }
 };
 
