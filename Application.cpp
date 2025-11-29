@@ -1603,20 +1603,25 @@ void Application::initializeLightingManager()
   std::string defaultConfigPath = "config/lighting_config.json";
 
   int loadedCount = 0;
+  bool localFileExists = false;
 
   // Try local config first
   std::ifstream localFile(localConfigPath);
   if (localFile.good()) {
     localFile.close();
+    localFileExists = true;
     loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, localConfigPath);
     if (loadedCount > 0) {
       std::cout << "[Application] Lighting configuration loaded from "
                 << localConfigPath << " (" << loadedCount << " controllers)" << std::endl;
+    } else {
+      std::cout << "[Application] Lighting configuration loaded from "
+                << localConfigPath << " (0 controllers - lighting disabled)" << std::endl;
     }
   }
 
-  // Fall back to default config if local not found or failed
-  if (loadedCount == 0) {
+  // Fall back to default config ONLY if local file doesn't exist
+  if (!localFileExists) {
     loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, defaultConfigPath);
     if (loadedCount > 0) {
       std::cout << "[Application] Lighting configuration loaded from "

@@ -1256,8 +1256,14 @@ void MotionPage::onStopClicked()
 		m_motionManager->CancelWaypointSequence(m_currentDevice.toStdString());
 	}
 
-	QMessageBox::information(this, "Stopped",
-		"Device motion and waypoint sequence stopped.");
+	// Create styled message box
+	QMessageBox msgBox(this);
+	msgBox.setIcon(QMessageBox::Information);
+	msgBox.setWindowTitle("Stopped");
+	msgBox.setText("Device motion and waypoint sequence stopped.");
+	msgBox.setStandardButtons(QMessageBox::Ok);
+	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
+	msgBox.exec();
 }
 
 void MotionPage::onPositionSelected(const QString& name, double x, double y, double z)

@@ -361,14 +361,14 @@ void CameraClickToMoveWidget::setCamera(const std::string& cameraId)
   // Update info label
   m_cameraInfoLabel->setText(QString("Streaming: %1").arg(QString::fromStdString(cameraId)));
 
-  // Enable click-to-move only for camera_1
-  if (cameraId == "camera_1") {
+  // Enable click-to-move only for main_camera (gantry camera)
+  if (cameraId == "main_camera") {
     m_clickToMoveCheckbox->setEnabled(true);
   }
   else {
     m_clickToMoveCheckbox->setEnabled(false);
     m_clickToMoveCheckbox->setChecked(false);
-    m_cameraInfoLabel->setText(QString("Streaming: %1 (Click-to-move only available for camera_1)")
+    m_cameraInfoLabel->setText(QString("Streaming: %1 (Click-to-move only available for main_camera)")
       .arg(QString::fromStdString(cameraId)));
   }
 
@@ -564,8 +564,8 @@ void CameraClickToMoveWidget::onClickToMoveToggled(bool checked)
 {
   m_clickToMoveEnabled = checked;
 
-  if (checked && m_currentCameraId != "camera_1") {
-    std::cerr << "[CameraClickToMoveWidget] Click-to-move only works with camera_1!" << std::endl;
+  if (checked && m_currentCameraId != "main_camera") {
+    std::cerr << "[CameraClickToMoveWidget] Click-to-move only works with main_camera!" << std::endl;
     m_clickToMoveCheckbox->setChecked(false);
     return;
   }
