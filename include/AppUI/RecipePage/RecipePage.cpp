@@ -1,26 +1,29 @@
-﻿// RecipePage.cpp
+// RecipePage.cpp
 #include "RecipePage.h"
 #include "RecipeManager.h"
+#include "RecipePageStyles.h"        // NEW: Centralized styles
+#include "RecipeTreeItemFactory.h"   // NEW: Tree item factory
+#include "RecipeClipboard.h"         // NEW: Clipboard
 #include "ApplicationContext.h"
-#include "unified_motion_manager.h"  // ✅ For EmergencyStopAll
+#include "unified_motion_manager.h"
 #include "SequenceEngine.h"
-#include "SequenceBuilder.h"  // Full definition needed for delete
+#include "SequenceBuilder.h"
 #include "SequenceContext.h"
 #include "GripperSequenceHelpers.h"
 #include "ProcessSequenceFactory.h"
 #include "ProcessConfigWidget.h"
-#include "ProcessPluginRegistry.h"  // ✅ Plugin system
+#include "ProcessPluginRegistry.h"
 #include "product_position_manager.h"
 #include "RecipeWorker.h"
-#include "RecipeProgressWidget.h"  // ✅ NEW
-#include "ManualAdjustWidget.h"    // ✅ Manual adjust widget
-#include "../RunProgramPage/ManualAlignPointWidget.h"  // ✅ Manual align point widget
-#include "../RunProgramPage/UserInputWidget.h"  // ✅ User input widget
+#include "RecipeProgressWidget.h"
+#include "ManualAdjustWidget.h"
+#include "../RunProgramPage/ManualAlignPointWidget.h"
+#include "../RunProgramPage/UserInputWidget.h"
 #include "SequencePromptDialog.h"
 #include "LogManager.h"
-#include "FileSelectorDialog.h"  // ✅ Custom file selector
-#include "RecipeSaveAsDialog.h"  // ✅ Custom save dialog
-#include "ContextViewerWindow.h"  // ✅ Context viewer
+#include "FileSelectorDialog.h"
+#include "RecipeSaveAsDialog.h"
+#include "ContextViewerWindow.h"
 #include <QSplitter>
 #include <QLabel>
 #include <QHBoxLayout>
@@ -30,8 +33,8 @@
 #include <QFrame>
 #include <QMetaObject>
 #include <QThread>
-#include <QTimer>  // ✅ NEW
-#include <QEventLoop>  // ✅ For blocking callbacks
+#include <QTimer>
+#include <QEventLoop>
 #include <QApplication>
 #include <QHeaderView>
 #include <QCheckBox>
@@ -41,7 +44,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QFile>
-#include <QFileInfo>  // ✅ For extracting file name from path
+#include <QFileInfo>
 #include <iostream>
 #include <chrono>
 
@@ -51,47 +54,6 @@
 #include <QImage>
 #include <QPixmap>
 #endif
-
-// Helper function to get emoji symbol for process category
-static QString getCategorySymbol(const std::string& category)
-{
-  // Using simple ASCII/Unicode symbols that render reliably on Windows
-  if (category == "Motion Control" || category == "Motion") {
-    return QString::fromUtf8("\xE2\x9E\xA4");  // ➤ Arrow (motion/movement)
-  }
-  if (category == "I/O & Pneumatics") {
-    return QString::fromUtf8("\xE2\x9A\xA1");  // ⚡ Lightning bolt (I/O)
-  }
-  if (category == "TEC & Laser") {
-    return QString::fromUtf8("\xE2\x98\x80");  // ☀ Sun (thermal/laser)
-  }
-  if (category == "Power Supply") {
-    return QString::fromUtf8("\xE2\x8F\xBB");  // ⏻ Power symbol
-  }
-  if (category == "Data") {
-    return QString::fromUtf8("\xE2\x96\xA3");  // ▣ Data/storage
-  }
-  if (category == "System") {
-    return QString::fromUtf8("\xE2\x9C\x8B");  // ✋ Hand (user interaction)
-  }
-  if (category == "Control Flow") {
-    return QString::fromUtf8("\xE2\x86\xB9");  // ↹ Control flow
-  }
-  if (category == "Camera" || category == "Vision") {
-    return QString::fromUtf8("\xE2\x97\x89");  // ◉ Eye/camera
-  }
-  if (category == "Dispensing") {
-    return QString::fromUtf8("\xE2\x96\xBC");  // ▼ Dispense
-  }
-  if (category == "Aux Window") {
-    return QString::fromUtf8("\xE2\x96\xA1");  // □ Window
-  }
-  if (category == "Comment") {
-    return QString::fromUtf8("#");  // # Comment marker
-  }
-  // Default
-  return QString::fromUtf8("\xE2\x97\x8F");  // ● Circle (generic)
-}
 
 RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
@@ -121,9 +83,34 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_copyButton(nullptr)          // ✅ Copy button
   , m_pasteButton(nullptr)         // ✅ Paste button
   , m_selectedProcessLabel(nullptr) // ✅ Selected process display
+  , m_clipboard(std::make_unique<RecipeClipboard>())  // ✅ NEW: Clipboard for copy/paste
+  , m_quickAddMode(false)            // Quick add mode off by default
+  , m_quickAddSelectedCategory(-1)   // No category selected
+  , m_quickAddOverlay(nullptr)       // Overlay created on demand
 {
   setupUI();
   setupSequenceEngine();
+
+  // Initialize tree item factory after m_recipeTree is created in setupUI
+  m_treeItemFactory = std::make_unique<RecipeTreeItemFactory>(
+    m_recipeTree,
+    m_recipeManager,
+    // Breakpoint callback
+    [this](int stepIndex, bool checked) {
+      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
+      if (step) {
+        step->breakpoint = checked;
+        refreshRecipeList();
+        selectStepByIndex(m_selectedStepIndex);
+      }
+    },
+    // Enabled callback
+    [this](int stepIndex, bool enabled) {
+      m_recipeManager->setStepEnabled(stepIndex, enabled);
+      refreshRecipeList();
+      selectStepByIndex(m_selectedStepIndex);
+    }
+  );
 
   // Create context viewer window (but don't show it yet)
   m_contextViewer = new ContextViewerWindow(this);
@@ -139,7 +126,7 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
   }
 
   std::cout << "[RecipePage] Initialized" << std::endl;
@@ -171,30 +158,8 @@ RecipePage::~RecipePage()
 
 void RecipePage::setupUI()
 {
-  // Set dark theme background for entire page
-  setStyleSheet(
-    "RecipePage { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "} "
-    "QLabel { "
-    "  color: #d4d4d4; "
-    "} "
-    "QLineEdit { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 5px; "
-    "} "
-    "QLineEdit:focus { "
-    "  border: 1px solid #0e639c; "
-    "} "
-    "QScrollArea { "
-    "  background-color: #2d2d30; "
-    "  border: none; "
-    "}"
-  );
+  // Set dark theme background for entire page (using centralized styles)
+  setStyleSheet(RecipeStyles::pageBackground());
 
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(5, 0, 5, 5);
@@ -206,101 +171,39 @@ void RecipePage::setupUI()
 
   m_backButton = new QPushButton("← Back to Main Menu");
   m_backButton->setFixedHeight(28);
-  m_backButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3d5a8c; "
-    "  color: white; "
-    "  border-radius: 3px; "
-    "  font-size: 11px; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "} "
-    "QPushButton:hover { background-color: #5a8fd6; }"
-  );
+  m_backButton->setStyleSheet(RecipeStyles::backButton());
   connect(m_backButton, &QPushButton::clicked, this, &RecipePage::backToMainMenu);
   titleLayout->addWidget(m_backButton);
 
   QLabel* titleLabel = new QLabel("Recipe Editor");
-  titleLabel->setStyleSheet(
-    "font-size: 15px; "
-    "font-weight: bold; "
-    "color: #ffffff; "
-    "padding: 0px; "
-    "margin: 0px;"
-  );
+  titleLabel->setStyleSheet(RecipeStyles::pageTitleLabel());
   titleLabel->setAlignment(Qt::AlignCenter);
   titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   titleLayout->addWidget(titleLabel);
 
-  // ✅ NEW: Recipe file name label
+  // Recipe file name label
   m_recipeFileLabel = new QLabel("No recipe loaded");
-  m_recipeFileLabel->setStyleSheet(
-    "font-size: 11px; "
-    "color: #d4d4d4; "
-    "padding: 4px; "
-    "background-color: #1e1e1e; "
-    "border: 1px solid #3f3f46; "
-    "border-radius: 3px;"
-  );
+  m_recipeFileLabel->setStyleSheet(RecipeStyles::recipeFileLabel());
   titleLayout->addWidget(m_recipeFileLabel);
 
   m_productStatusLabel = new QLabel("No product loaded");
-  m_productStatusLabel->setStyleSheet(
-    "font-size: 11px; "
-    "color: #cccccc; "
-    "padding: 4px;"
-  );
+  m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabel());
   titleLayout->addWidget(m_productStatusLabel);
 
-  // ❌ COMMENTED OUT: Load Product button (not needed - product loaded in MainWindow)
-  // m_loadProductButton = new QPushButton("📁 Load Product's Position File");
-  // m_loadProductButton->setFixedHeight(28);
-  // m_loadProductButton->setStyleSheet(
-  //   "QPushButton { "
-  //   "  background-color: #27ae60; "
-  //   "  color: white; "
-  //   "  border-radius: 3px; "
-  //   "  font-size: 11px; "
-  //   "  font-weight: bold; "
-  //   "  padding: 4px 12px; "
-  //   "} "
-  //   "QPushButton:hover { background-color: #2ecc71; }"
-  // );
-  // connect(m_loadProductButton, &QPushButton::clicked, this, &RecipePage::onLoadProductClicked);
-  // titleLayout->addWidget(m_loadProductButton);
-
-  // ✅ Context Viewer button (small button at far right)
+  // Context Viewer button (small button at far right)
   m_contextViewerButton = new QPushButton("CV");
   m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
   m_contextViewerButton->setFixedSize(40, 28);
-  m_contextViewerButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4a90a4; "
-    "  color: white; "
-    "  border-radius: 3px; "
-    "  font-size: 11px; "
-    "  font-weight: bold; "
-    "} "
-    "QPushButton:hover { background-color: #5aa0b4; }"
-  );
+  m_contextViewerButton->setStyleSheet(RecipeStyles::contextViewerButton());
   connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
   titleLayout->addWidget(m_contextViewerButton);
 
-  // ✅ STOP button (emergency stop for motors and sequence)
+  // STOP button (emergency stop for motors and sequence)
   m_stopButton = new QPushButton("⚠ STOP");
-  m_stopButton->setObjectName("stopButton");  // For dark red styling
+  m_stopButton->setObjectName("stopButton");
   m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
   m_stopButton->setFixedSize(70, 28);
-  m_stopButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #c0392b; "
-    "  color: white; "
-    "  border-radius: 3px; "
-    "  font-size: 11px; "
-    "  font-weight: bold; "
-    "} "
-    "QPushButton:hover { background-color: #e74c3c; }"
-  );
+  m_stopButton->setStyleSheet(RecipeStyles::emergencyStopButton());
   connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
   titleLayout->addWidget(m_stopButton);
 
@@ -336,72 +239,52 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   mainLayout->setSpacing(5);
 
   QLabel* title = new QLabel("Available Processes");
-  title->setStyleSheet("font-weight: bold; color: #ffffff;");
+  title->setStyleSheet(RecipeStyles::sectionLabel());
   mainLayout->addWidget(title);
 
   // Search box for filtering processes
   QLineEdit* searchBox = new QLineEdit();
   searchBox->setPlaceholderText("Search processes...");
-  searchBox->setStyleSheet(
-    "padding: 5px; "
-    "border: 1px solid #555555; "
-    "border-radius: 3px; "
-    "background-color: #3c3c3c; "
-    "color: #d4d4d4;"
-  );
+  searchBox->setStyleSheet(RecipeStyles::searchBox());
   mainLayout->addWidget(searchBox);
 
-  // ✅ Selected process label
-  m_selectedProcessLabel = new QLabel("Selected: (none)");
-  m_selectedProcessLabel->setFixedHeight(50);
-  m_selectedProcessLabel->setStyleSheet(
-    "padding: 5px; "
-    "border: 1px solid #555555; "
-    "border-radius: 3px; "
-    "background-color: #2d2d30; "
-    "color: #4ec9b0; "
-    "font-style: italic; "
-    "font-size: 13px;"
-  );
-  m_selectedProcessLabel->setWordWrap(true);
-  m_selectedProcessLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-  mainLayout->addWidget(m_selectedProcessLabel);
-
-  // ========== HORIZONTAL SPLIT: List on left, Button on right ==========
-  QHBoxLayout* contentLayout = new QHBoxLayout();
-  contentLayout->setSpacing(5);
-
-  // LEFT: Process tree (categorized)
-  m_processTemplateList = new QTreeWidget();
-  m_processTemplateList->setHeaderHidden(true);
-  m_processTemplateList->setStyleSheet(
-    "QTreeWidget { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  color: #d4d4d4; "
-    "  gridline-color: #3f3f46; "
-    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
-    "  font-size: 13px; "
-    "} "
-    "QTreeWidget::item { "
-    "  padding: 5px; "
-    "  border-bottom: 1px solid #3f3f46; "
-    "} "
-    "QTreeWidget::item:hover { "
-    "  background-color: #2a2d2e; "
-    "} "
-    "QTreeWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "} "
-    "QTreeWidget::branch:has-children:closed { "
-    "  border-image: none; "
-    "} "
-    "QTreeWidget::branch:has-children:open { "
-    "  border-image: none; "
+  // Quick tip for keyboard shortcut
+  QLabel* quickTip = new QLabel("Tip: Press Ctrl+B for quick add");
+  quickTip->setStyleSheet(
+    "QLabel { "
+    "  color: #888888; "
+    "  font-size: 10px; "
+    "  font-style: italic; "
+    "  padding: 2px 0px; "
     "}"
   );
+  mainLayout->addWidget(quickTip);
+
+  // ========== Selected process label + Add button row ==========
+  QHBoxLayout* selectedRow = new QHBoxLayout();
+  selectedRow->setSpacing(5);
+
+  m_selectedProcessLabel = new QLabel("Selected: (none)");
+  m_selectedProcessLabel->setFixedHeight(50);
+  m_selectedProcessLabel->setStyleSheet(RecipeStyles::selectedProcessLabel());
+  m_selectedProcessLabel->setWordWrap(true);
+  m_selectedProcessLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+  selectedRow->addWidget(m_selectedProcessLabel, 1);  // Stretch to fill
+
+  // Add button next to selected label
+  m_addButton = new QPushButton("»");
+  m_addButton->setFixedSize(35, 50);  // Match height of selected label
+  m_addButton->setToolTip("Add selected process to recipe (or double-click item)");
+  m_addButton->setStyleSheet(RecipeStyles::addProcessButton());
+  connect(m_addButton, &QPushButton::clicked, this, &RecipePage::onAddProcess);
+  selectedRow->addWidget(m_addButton);
+
+  mainLayout->addLayout(selectedRow);
+
+  // ========== Process tree (full width now) ==========
+  m_processTemplateList = new QTreeWidget();
+  m_processTemplateList->setHeaderHidden(true);
+  m_processTemplateList->setStyleSheet(RecipeStyles::processTemplateTree());
   m_processTemplateList->setRootIsDecorated(true);  // Show expand/collapse arrows
   m_processTemplateList->setIndentation(20);        // Indentation for child items
 
@@ -414,8 +297,8 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     QFont font = categoryItem->font(0);
     font.setBold(true);
     categoryItem->setFont(0, font);
-    categoryItem->setForeground(0, QColor("#dcdcaa"));  // Yellow/gold for category headers
-    categoryItem->setBackground(0, QColor("#2d2d30"));  // Dark background for categories
+    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY));
+    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM));
 
     // Add processes for this category
     for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
@@ -436,32 +319,7 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
       }
     });
 
-  contentLayout->addWidget(m_processTemplateList);
-
-  // RIGHT: Thin vertical button with >>
-  m_addButton = new QPushButton("»");
-  m_addButton->setFixedWidth(35);
-  m_addButton->setToolTip("Add selected process to recipe (or double-click item)");
-  m_addButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  padding: 5px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #45a049; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #3d8b40; "
-    "}"
-  );
-  connect(m_addButton, &QPushButton::clicked, this, &RecipePage::onAddProcess);
-
-  contentLayout->addWidget(m_addButton);
-
-  mainLayout->addLayout(contentLayout);
+  mainLayout->addWidget(m_processTemplateList, 1);  // Add with stretch factor
 
   // Connect search box to filter tree
   connect(searchBox, &QLineEdit::textChanged, [this](const QString& searchText) {
@@ -496,36 +354,14 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   layout->setSpacing(5);
 
   QLabel* title = new QLabel("Recipe Steps");
-  title->setStyleSheet(
-    "font-weight: bold; "
-    "color: #ffffff; "
-    "font-size: 18px; "
-    "padding: 4px 0px;"
-  );
+  title->setStyleSheet(RecipeStyles::titleLabel());
   layout->addWidget(title);
 
   QHBoxLayout* nameLayout = new QHBoxLayout();
   QLabel* nameLabel = new QLabel("Name:");
-  nameLabel->setStyleSheet(
-    "font-weight: bold; "
-    "color: #ffffff; "
-    "font-size: 14px;"
-  );
+  nameLabel->setStyleSheet(RecipeStyles::sectionLabel());
   m_recipeNameEdit = new QLineEdit(QString::fromStdString(m_recipeManager->getRecipeName()));
-  m_recipeNameEdit->setStyleSheet(
-    "QLineEdit { "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  color: #ffffff; "
-    "  background-color: #2d2d30; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  padding: 6px 8px; "
-    "}"
-    "QLineEdit:focus { "
-    "  border: 1px solid #007acc; "
-    "}"
-  );
+  m_recipeNameEdit->setStyleSheet(RecipeStyles::recipeNameEdit());
   connect(m_recipeNameEdit, &QLineEdit::textChanged, this, &RecipePage::onRecipeNameChanged);
   nameLayout->addWidget(nameLabel);
   nameLayout->addWidget(m_recipeNameEdit);
@@ -836,63 +672,7 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Stretch);           // Process Instance stretches
   m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::ResizeToContents);  // Run checkbox auto-fit
 
-  m_recipeTree->setStyleSheet(
-    "QTreeWidget { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #d4d4d4; "
-    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "} "
-    "QTreeWidget::branch { border-image: none; image: none; } "
-    "QTreeWidget::item { "
-    "  padding: 6px 4px; "
-    "  min-height: 26px; "
-    "} "
-    "QTreeWidget::item:hover { "
-    "  background-color: #2a2d2e; "
-    "} "
-    "QTreeWidget::item:selected { "
-    "  background-color: #2d4f7c; "
-    "  color: white; "
-    "} "
-    "QHeaderView::section { "
-    "  background-color: #383838; "
-    "  padding: 6px; "
-    "  border: 1px solid #3f3f46; "
-    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
-    "  font-weight: bold; "
-    "  font-size: 14px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox { "
-    "  spacing: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #0e639c; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #27ae60; "
-    "  border-color: #27ae60; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #2ecc71; "
-    "  border-color: #2ecc71; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
+  m_recipeTree->setStyleSheet(RecipeStyles::recipeStepsTree());
 
   connect(m_recipeTree, &QTreeWidget::itemSelectionChanged,
     this, &RecipePage::onRecipeStepSelected);
@@ -906,22 +686,12 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   layout->setContentsMargins(5, 5, 5, 5);
 
   QLabel* title = new QLabel("Process Configuration");
-  title->setStyleSheet("font-weight: bold; color: #ffffff;");
+  title->setStyleSheet(RecipeStyles::sectionLabel());
   layout->addWidget(title);
 
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
-  m_configScrollArea->setStyleSheet(
-    "QScrollArea { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "} "
-    "QWidget { "
-    "  background-color: #1e1e1e; "
-    "  color: #d4d4d4; "
-    "}"
-  );
+  m_configScrollArea->setStyleSheet(RecipeStyles::configScrollArea());
 
   layout->addWidget(m_configScrollArea);
 
@@ -930,7 +700,8 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
     m_context->motionManager,
     m_matrixLoader
   );
-  m_manualAdjustWidget->setStyleSheet("background-color: #2d2d30;");
+  m_manualAdjustWidget->setStyleSheet(
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
 
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
@@ -941,7 +712,8 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
     m_context->motionManager,
     m_context
   );
-  m_manualAlignPointWidget->setStyleSheet("background-color: #2d2d30;");
+  m_manualAlignPointWidget->setStyleSheet(
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
 
   // Connect manual align point response
   connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
@@ -1029,7 +801,7 @@ void RecipePage::onProductChanged()
     // Update product status labels
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
     if (m_loadedProductLabel) {
       m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
@@ -1103,7 +875,7 @@ void RecipePage::onLoadRecipe()
 
           m_productStatusLabel->setText(QString("Product: %1")
             .arg(QString::fromStdString(productName)));
-          m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+          m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
           if (m_loadedProductLabel) {
             m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
@@ -1387,7 +1159,7 @@ void RecipePage::onUpdateProductFile()
       // Update top status label
       m_productStatusLabel->setText(QString("Product: %1")
         .arg(QString::fromStdString(productName)));
-      m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+      m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
       // Update loaded product label in middle panel
       if (m_loadedProductLabel) {
@@ -1477,9 +1249,6 @@ void RecipePage::onCopySelectedSteps()
     return;
   }
 
-  // Clear the clipboard
-  m_clipboard.clear();
-
   // Collect step indices and sort them
   QList<int> indices;
   for (QTreeWidgetItem* item : selectedItems) {
@@ -1488,26 +1257,25 @@ void RecipePage::onCopySelectedSteps()
   }
   std::sort(indices.begin(), indices.end());
 
-  // Copy each step to clipboard
+  // Collect steps to copy
+  std::vector<const ProcessInstance*> stepsToCopy;
   for (int stepIndex : indices) {
     const ProcessInstance* step = m_recipeManager->getStep(stepIndex);
     if (step) {
-      ClipboardStep clipStep;
-      clipStep.processType = step->processType;
-      clipStep.userNickname = step->userNickname;
-      clipStep.enabled = step->enabled;
-      clipStep.parameters = step->parameters;
-      m_clipboard.push_back(clipStep);
+      stepsToCopy.push_back(step);
     }
   }
 
+  // Use clipboard to copy steps
+  m_clipboard->copySteps(stepsToCopy);
+
   // Enable paste button
   if (m_pasteButton) {
-    m_pasteButton->setEnabled(!m_clipboard.empty());
+    m_pasteButton->setEnabled(m_clipboard->hasContent());
   }
 
   // Show feedback
-  QString msg = QString("Copied %1 step(s) to clipboard").arg(m_clipboard.size());
+  QString msg = QString::fromStdString(m_clipboard->getSummary());
   std::cout << "[RecipePage] " << msg.toStdString() << std::endl;
 
   // Brief visual feedback (optional tooltip or status message)
@@ -1521,7 +1289,7 @@ void RecipePage::onCopySelectedSteps()
 
 void RecipePage::onPasteSteps()
 {
-  if (m_clipboard.empty()) {
+  if (!m_clipboard->hasContent()) {
     QMessageBox::information(this, "Empty Clipboard",
       "No process steps in clipboard. Copy some steps first.");
     return;
@@ -1545,7 +1313,7 @@ void RecipePage::onPasteSteps()
 
   // Insert each clipboard step
   int pastedCount = 0;
-  for (const ClipboardStep& clipStep : m_clipboard) {
+  for (const auto& clipStep : m_clipboard->getSteps()) {
     // Create a nickname with "(copy)" suffix
     std::string nickname = clipStep.userNickname;
     if (nickname.find("(copy)") == std::string::npos) {
@@ -1655,41 +1423,8 @@ void RecipePage::onNicknameChanged(const QString& nickname)
   if (currentItem) {
     const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
     if (step) {
-      // Get the label widget from column 3 (Process Instance column)
-      QWidget* widget = m_recipeTree->itemWidget(currentItem, 3);
-      QLabel* processLabel = qobject_cast<QLabel*>(widget);
-      if (processLabel) {
-        // Build display text with appropriate prefix
-        QString iconPrefix;
-        bool isComment = (step->processType == "Comment");
-        bool isBlockStart = RecipeManager::isBlockStart(step->processType);
-        bool isBlockEnd = RecipeManager::isBlockEnd(step->processType);
-        bool isElse = (step->processType == "Conditional Else");
-
-        if (isComment) {
-          iconPrefix = "### ";
-        } else if (isBlockStart) {
-          iconPrefix = QString::fromUtf8("\u25BC ");
-        } else if (isBlockEnd) {
-          iconPrefix = QString::fromUtf8("\u2514\u2500 ");
-        } else if (isElse) {
-          iconPrefix = QString::fromUtf8("\u251C\u2500 ");
-        }
-
-        // For comments, display the comment text parameter
-        QString displayText;
-        if (isComment) {
-          displayText = iconPrefix + nickname;
-        } else {
-          displayText = iconPrefix + QString::fromStdString(step->userNickname);
-        }
-
-        if (!step->enabled) {
-          displayText = "[DISABLED] " + displayText;
-        }
-
-        processLabel->setText(displayText);
-      }
+      // Use factory to update only the process name label
+      m_treeItemFactory->updateProcessNameLabel(currentItem, step);
     }
   }
 }
@@ -1757,7 +1492,6 @@ void RecipePage::refreshRecipeList()
 
   int stepIndex = 0;
   for (const auto& step : m_recipeManager->getAllSteps()) {
-    QTreeWidgetItem* item = nullptr;
     QTreeWidgetItem* currentParent = parentStack.empty() ? nullptr : parentStack.back();
 
     // Determine if this step starts or ends a block
@@ -1765,187 +1499,8 @@ void RecipePage::refreshRecipeList()
     bool isBlockEnd = RecipeManager::isBlockEnd(step->processType);
     bool isElse = (step->processType == "Conditional Else");
 
-    // Create tree item
-    if (currentParent) {
-      item = new QTreeWidgetItem(currentParent);
-    } else {
-      item = new QTreeWidgetItem(m_recipeTree);
-    }
-
-    // Store step index in item data
-    item->setData(0, Qt::UserRole, stepIndex);
-
-    // Clear all column text to prevent any default text from showing
-    for (int col = 0; col < 5; ++col) {
-      item->setText(col, "");
-    }
-
-    // Column 0: Breakpoint checkbox - red when checked
-    QCheckBox* breakpointChk = new QCheckBox();
-    breakpointChk->setChecked(step->breakpoint);
-    breakpointChk->setProperty("stepIndex", stepIndex);
-    breakpointChk->setCursor(Qt::PointingHandCursor);
-    breakpointChk->setToolTip(step->breakpoint ? "Breakpoint set - click to remove" : "Click to set breakpoint");
-
-    // Style: red background when checked
-    breakpointChk->setStyleSheet(
-      "QCheckBox { spacing: 0px; }"
-      "QCheckBox::indicator { width: 16px; height: 16px; }"
-      "QCheckBox::indicator:unchecked { "
-      "  background-color: #444444; "
-      "  border: 1px solid #666666; "
-      "  border-radius: 3px; "
-      "}"
-      "QCheckBox::indicator:checked { "
-      "  background-color: #ff3333; "
-      "  border: 1px solid #ff3333; "
-      "  border-radius: 3px; "
-      "}"
-    );
-
-    connect(breakpointChk, &QCheckBox::toggled, this, [this, stepIndex](bool checked) {
-      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
-      if (step) {
-        step->breakpoint = checked;
-        refreshRecipeList();
-        selectStepByIndex(m_selectedStepIndex);
-      }
-    });
-
-    // Get background color for this row
-    QString bgColorStr;
-    if (!step->backgroundColor.empty()) {
-      bgColorStr = QString::fromStdString(step->backgroundColor);
-    } else {
-      bgColorStr = "transparent";  // No background color
-    }
-
-    QWidget* breakpointWidget = new QWidget();
-    breakpointWidget->setStyleSheet(QString("background-color: %1;").arg(bgColorStr));
-    QHBoxLayout* bpLayout = new QHBoxLayout(breakpointWidget);
-    bpLayout->addWidget(breakpointChk);
-    bpLayout->setAlignment(Qt::AlignCenter);
-    bpLayout->setContentsMargins(0, 0, 0, 0);
-    m_recipeTree->setItemWidget(item, 0, breakpointWidget);
-
-    // Column 1: Step number (use widget for background control)
-    QLabel* stepNumLabel = new QLabel(QString::number(stepIndex + 1));
-    stepNumLabel->setAlignment(Qt::AlignCenter);
-    stepNumLabel->setStyleSheet(QString(
-      "QLabel { "
-      "  background-color: %1; "
-      "  color: %2; "
-      "  padding: 4px; "
-      "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
-      "  font-weight: bold; "
-      "  font-size: 14px; "
-      "}"
-    ).arg(bgColorStr).arg(step->enabled ? "#d4d4d4" : "#999999"));
-    m_recipeTree->setItemWidget(item, 1, stepNumLabel);
-
-    // Column 2: Process category symbol
-    std::string category = m_recipeManager->getProcessCategory(step->processType);
-    QString symbol = getCategorySymbol(category);
-    QLabel* symbolLabel = new QLabel(symbol);
-    symbolLabel->setAlignment(Qt::AlignCenter);
-    symbolLabel->setStyleSheet(QString(
-      "QLabel { "
-      "  background-color: %1; "
-      "  color: %2; "
-      "  padding: 4px; "
-      "  font-size: 14px; "
-      "}"
-    ).arg(bgColorStr).arg(step->enabled ? "#d4d4d4" : "#999999"));
-    symbolLabel->setToolTip(QString::fromStdString(category));
-    m_recipeTree->setItemWidget(item, 2, symbolLabel);
-
-    // Column 3: Process name (use widget for background control)
-    // Add icon prefix based on step type for visual hierarchy
-    QString iconPrefix;
-    bool isComment = (step->processType == "Comment");
-    if (isComment) {
-      iconPrefix = "### ";  // Comment prefix
-    } else if (isBlockStart) {
-      iconPrefix = QString::fromUtf8("\u25BC ");  // ▼ down arrow for block start
-    } else if (isBlockEnd) {
-      iconPrefix = QString::fromUtf8("\u2514\u2500 ");  // └─ end marker
-    } else if (isElse) {
-      iconPrefix = QString::fromUtf8("\u251C\u2500 ");  // ├─ else branch marker
-    }
-
-    // For comments, display the comment text parameter instead of nickname
-    QString displayText;
-    if (isComment) {
-      auto it = step->parameters.find("text");
-      if (it != step->parameters.end()) {
-        displayText = iconPrefix + QString::fromStdString(it->second);
-      } else {
-        displayText = iconPrefix + QString::fromStdString(step->userNickname);
-      }
-    } else {
-      displayText = iconPrefix + QString::fromStdString(step->userNickname);
-    }
-    if (!step->enabled) {
-      displayText = "[DISABLED] " + displayText;
-    }
-
-    // Comment rows get a distinct green color for visual separation
-    QString textColor;
-    if (!step->enabled) {
-      textColor = "#999999";
-    } else if (isComment) {
-      textColor = "#6a9955";  // Green color for comments (like code editor)
-    } else {
-      textColor = "#d4d4d4";
-    }
-
-    QLabel* processLabel = new QLabel(displayText);
-    processLabel->setStyleSheet(QString(
-      "QLabel { "
-      "  background-color: %1; "
-      "  color: %2; "
-      "  padding: 4px 8px; "
-      "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
-      "  font-weight: bold; "
-      "  font-size: 14px; "
-      "  %3"
-      "}"
-    ).arg(bgColorStr)
-     .arg(textColor)
-     .arg(step->enabled ? (isComment ? "font-style: italic;" : "") : "text-decoration: line-through;"));
-    m_recipeTree->setItemWidget(item, 3, processLabel);
-
-    // Column 4: Run checkbox widget
-    QWidget* checkboxWidget = new QWidget();
-    checkboxWidget->setStyleSheet(QString("background-color: %1;").arg(bgColorStr));
-    QCheckBox* checkbox = new QCheckBox();
-    checkbox->setChecked(step->enabled);
-    checkbox->setProperty("stepIndex", stepIndex);
-
-    // Add checkmark text that appears when checked
-    checkbox->setText(step->enabled ? "✓" : "");
-    checkbox->setStyleSheet(
-      "QCheckBox { "
-      "  font-size: 16px; "
-      "  font-weight: bold; "
-      "  color: white; "
-      "  background: transparent; "
-      "}"
-    );
-
-    QHBoxLayout* checkLayout = new QHBoxLayout(checkboxWidget);
-    checkLayout->addWidget(checkbox);
-    checkLayout->setAlignment(Qt::AlignCenter);
-    checkLayout->setContentsMargins(0, 0, 0, 0);
-
-    connect(checkbox, &QCheckBox::toggled, this, [this, stepIndex](bool checked) {
-      m_recipeManager->setStepEnabled(stepIndex, checked);
-      refreshRecipeList();
-      // Restore selection
-      selectStepByIndex(m_selectedStepIndex);
-    });
-
-    m_recipeTree->setItemWidget(item, 4, checkboxWidget);
+    // Use factory to create tree item with all widgets
+    QTreeWidgetItem* item = m_treeItemFactory->createStepItem(step.get(), stepIndex, currentParent);
 
     // Manage parent stack for nesting
     if (isBlockStart) {
@@ -1955,12 +1510,7 @@ void RecipePage::refreshRecipeList()
     }
     else if (isElse) {
       // Else is at the same level as If, so we stay with same parent
-      // But we need to pop the If's child container and stay at the If level
-      if (!parentStack.empty()) {
-        // We're inside an If block. The Else should be a sibling of the If's children
-        // Actually, the Else should close the Then branch and open the Else branch
-        // For now, keep it simple: Else appears at same level
-      }
+      // For now, keep it simple: Else appears at same level
     }
     else if (isBlockEnd) {
       // Pop from stack
@@ -3566,7 +3116,7 @@ void RecipePage::onLoadProductClicked()
 
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+    m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
     if (m_loadedProductLabel) {
       m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
@@ -3643,7 +3193,7 @@ void RecipePage::loadLastRecipeFromSettings()
 
         m_productStatusLabel->setText(QString("Product: %1")
           .arg(QString::fromStdString(productName)));
-        m_productStatusLabel->setStyleSheet("font-size: 11px; color: #4ec9b0; font-weight: bold;");
+        m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
         if (m_loadedProductLabel) {
           m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
@@ -3934,4 +3484,211 @@ void RecipePage::updateVisionResultImage()
     m_visionResultImageLabel->setText("OpenCV not available");
   }
 #endif
+}
+
+//=============================================================================
+// QUICK ADD MODE (Ctrl+B shortcut)
+//=============================================================================
+
+void RecipePage::keyPressEvent(QKeyEvent* event)
+{
+  // Ctrl+B to activate quick add mode
+  if (event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_B) {
+    if (!m_quickAddMode) {
+      activateQuickAddMode();
+    } else {
+      deactivateQuickAddMode();
+    }
+    event->accept();
+    return;
+  }
+
+  // If in quick add mode, handle number keys
+  if (m_quickAddMode) {
+    int key = event->key();
+
+    // Escape to cancel
+    if (key == Qt::Key_Escape) {
+      deactivateQuickAddMode();
+      event->accept();
+      return;
+    }
+
+    // Number keys 1-9 and 0
+    if (key >= Qt::Key_0 && key <= Qt::Key_9) {
+      int num = (key == Qt::Key_0) ? 10 : (key - Qt::Key_0);  // 0 maps to 10
+
+      if (m_quickAddSelectedCategory < 0) {
+        // First key press: select category
+        handleQuickAddCategoryKey(num);
+      } else {
+        // Second key press: select process
+        handleQuickAddProcessKey(num);
+      }
+      event->accept();
+      return;
+    }
+  }
+
+  // Pass to base class
+  QWidget::keyPressEvent(event);
+}
+
+void RecipePage::activateQuickAddMode()
+{
+  m_quickAddMode = true;
+  m_quickAddSelectedCategory = -1;
+
+  // Create overlay if not exists
+  if (!m_quickAddOverlay) {
+    m_quickAddOverlay = new QLabel(this);
+    m_quickAddOverlay->setAlignment(Qt::AlignCenter);
+    m_quickAddOverlay->setStyleSheet(
+      "QLabel { "
+      "  background-color: rgba(0, 120, 200, 0.95); "
+      "  color: white; "
+      "  font-size: 14px; "
+      "  font-weight: bold; "
+      "  border: 2px solid #00a0ff; "
+      "  border-radius: 8px; "
+      "  padding: 15px; "
+      "}"
+    );
+  }
+
+  updateQuickAddDisplay();
+  m_quickAddOverlay->show();
+  m_quickAddOverlay->raise();
+
+  // Make sure we can receive key events
+  setFocus();
+
+  std::cout << "[RecipePage] Quick Add Mode activated - press category number (1-9)" << std::endl;
+}
+
+void RecipePage::deactivateQuickAddMode()
+{
+  m_quickAddMode = false;
+  m_quickAddSelectedCategory = -1;
+
+  if (m_quickAddOverlay) {
+    m_quickAddOverlay->hide();
+  }
+
+  std::cout << "[RecipePage] Quick Add Mode deactivated" << std::endl;
+}
+
+void RecipePage::handleQuickAddCategoryKey(int key)
+{
+  auto categories = RecipeManager::getProcessCategories();
+  int categoryIndex = key - 1;  // 1-based to 0-based
+
+  if (categoryIndex < 0 || categoryIndex >= static_cast<int>(categories.size())) {
+    std::cout << "[RecipePage] Invalid category key: " << key << std::endl;
+    return;
+  }
+
+  m_quickAddSelectedCategory = categoryIndex;
+  updateQuickAddDisplay();
+
+  std::cout << "[RecipePage] Selected category: " << categories[categoryIndex]
+            << " - press process number (1-9)" << std::endl;
+}
+
+void RecipePage::handleQuickAddProcessKey(int key)
+{
+  auto categories = RecipeManager::getProcessCategories();
+
+  if (m_quickAddSelectedCategory < 0 ||
+      m_quickAddSelectedCategory >= static_cast<int>(categories.size())) {
+    deactivateQuickAddMode();
+    return;
+  }
+
+  std::string selectedCategory = categories[m_quickAddSelectedCategory];
+  auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+
+  int processIndex = key - 1;  // 1-based to 0-based
+
+  if (processIndex < 0 || processIndex >= static_cast<int>(processes.size())) {
+    std::cout << "[RecipePage] Invalid process key: " << key << std::endl;
+    deactivateQuickAddMode();
+    return;
+  }
+
+  std::string processType = processes[processIndex];
+
+  // Add the process to the recipe (addStep uses default parameters)
+  m_recipeManager->addStep(processType);
+
+  // Refresh and select the new step
+  refreshRecipeList();
+  m_selectedStepIndex = m_recipeManager->getStepCount() - 1;
+  selectStepByIndex(m_selectedStepIndex);
+  updateConfigurationForm();
+
+  std::cout << "[RecipePage] Quick Add: Added '" << processType << "'" << std::endl;
+
+  // Deactivate quick add mode
+  deactivateQuickAddMode();
+}
+
+void RecipePage::updateQuickAddDisplay()
+{
+  if (!m_quickAddOverlay) return;
+
+  QString text;
+  auto categories = RecipeManager::getProcessCategories();
+
+  if (m_quickAddSelectedCategory < 0) {
+    // Show category list
+    text = "<b>QUICK ADD MODE</b> (Ctrl+B)<br><br>";
+    text += "<b>Select Category:</b><br><br>";
+
+    int num = 1;
+    for (const auto& category : categories) {
+      if (num <= 9) {
+        text += QString("<b>%1</b> - %2<br>")
+          .arg(num)
+          .arg(QString::fromStdString(category));
+      }
+      num++;
+      if (num > 9) break;  // Only show first 9
+    }
+
+    text += "<br><i>Press ESC to cancel</i>";
+  } else {
+    // Show process list for selected category
+    std::string selectedCategory = categories[m_quickAddSelectedCategory];
+    auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+
+    text = QString("<b>QUICK ADD: %1</b><br><br>")
+      .arg(QString::fromStdString(selectedCategory));
+    text += "<b>Select Process:</b><br><br>";
+
+    int num = 1;
+    for (const auto& process : processes) {
+      if (num <= 9) {
+        text += QString("<b>%1</b> - %2<br>")
+          .arg(num)
+          .arg(QString::fromStdString(process));
+      }
+      num++;
+      if (num > 9) break;  // Only show first 9
+    }
+
+    if (processes.size() > 9) {
+      text += QString("<i>... and %1 more (use mouse)</i><br>").arg(processes.size() - 9);
+    }
+
+    text += "<br><i>Press ESC to cancel</i>";
+  }
+
+  m_quickAddOverlay->setText(text);
+
+  // Position overlay in center of the widget
+  m_quickAddOverlay->adjustSize();
+  int x = (width() - m_quickAddOverlay->width()) / 2;
+  int y = (height() - m_quickAddOverlay->height()) / 2;
+  m_quickAddOverlay->move(x, y);
 }

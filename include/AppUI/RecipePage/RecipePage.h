@@ -1,4 +1,4 @@
-﻿// RecipePage.h
+// RecipePage.h
 #pragma once
 
 #include <QWidget>
@@ -14,8 +14,11 @@
 #include <QEventLoop>
 #include <QTreeWidget>
 #include <QGroupBox>
+#include <QKeyEvent>
 #include <map>
+#include <memory>
 
+// Forward declarations
 struct ApplicationContext;
 class RecipeManager;
 class SequenceEngine;
@@ -23,13 +26,15 @@ class ProcessSequenceFactory;
 class SequenceBuilder;
 class ProcessConfigWidget;
 class RecipeWorker;
-class RecipeProgressWidget;  // ✅ NEW
-class ManualAdjustWidget;    // ✅ Manual adjust widget
-class ManualAlignPointWidget; // ✅ Manual align point widget
-class UserInputWidget;       // ✅ User input widget
+class RecipeProgressWidget;
+class ManualAdjustWidget;
+class ManualAlignPointWidget;
+class UserInputWidget;
 class TransformationMatrixLoader;
-class ContextViewerWindow;   // ✅ Context viewer window
-class SequenceContext;       // ✅ Execution context
+class ContextViewerWindow;
+class SequenceContext;
+class RecipeTreeItemFactory;  // NEW: Factory for tree items
+class RecipeClipboard;        // NEW: Clipboard for copy/paste
 
 class RecipePage : public QWidget
 {
@@ -161,6 +166,13 @@ private:
   void saveLastRecipeToSettings(const QString& recipePath);
   void loadLastRecipeFromSettings();
 
+  // Quick add mode (Ctrl+B shortcut)
+  void activateQuickAddMode();
+  void deactivateQuickAddMode();
+  void handleQuickAddCategoryKey(int key);
+  void handleQuickAddProcessKey(int key);
+  void updateQuickAddDisplay();
+
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
   RecipeManager* m_recipeManager;
@@ -220,21 +232,24 @@ private:
   bool m_userPromptResponse;         // Store user prompt response
 
   // Context viewer
-  ContextViewerWindow* m_contextViewer;  // ✅ Context viewer window
-  SequenceContext* m_currentContext;     // ✅ Current execution context (owned, persists between steps)
-  QPushButton* m_contextViewerButton;    // ✅ Button to show context viewer
+  ContextViewerWindow* m_contextViewer;
+  SequenceContext* m_currentContext;     // Current execution context (owned)
+  QPushButton* m_contextViewerButton;
 
   // Vision result image display
-  QGroupBox* m_visionResultGroup;        // ✅ Vision result display group
-  QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
-  void updateVisionResultImage();        // ✅ Update vision result image from context
+  QGroupBox* m_visionResultGroup;
+  QLabel* m_visionResultImageLabel;
+  void updateVisionResultImage();
 
-  // ✅ Clipboard for copy/paste operations
-  struct ClipboardStep {
-    std::string processType;
-    std::string userNickname;
-    bool enabled;
-    std::map<std::string, std::string> parameters;
-  };
-  std::vector<ClipboardStep> m_clipboard;  // ✅ Stores copied process steps
+  // Refactored components
+  std::unique_ptr<RecipeTreeItemFactory> m_treeItemFactory;  // Factory for tree items
+  std::unique_ptr<RecipeClipboard> m_clipboard;              // Clipboard for copy/paste
+
+  // Quick add mode state (Ctrl+B shortcut)
+  bool m_quickAddMode;                    // Whether quick add mode is active
+  int m_quickAddSelectedCategory;         // Selected category index (-1 = none)
+  QLabel* m_quickAddOverlay;              // Overlay showing quick add instructions
+
+protected:
+  void keyPressEvent(QKeyEvent* event) override;
 };

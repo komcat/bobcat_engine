@@ -571,6 +571,8 @@ set(SOURCES
     include/sequence/SequencePromptDialog.cpp
     include/sequence/GripperSequenceHelpers.cpp
     include/AppUI/RecipePage/RecipePage.cpp
+    include/AppUI/RecipePage/RecipeTreeItemFactory.cpp
+    include/AppUI/RecipePage/RecipeClipboard.cpp
     include/recipe/RecipeManager.cpp
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
