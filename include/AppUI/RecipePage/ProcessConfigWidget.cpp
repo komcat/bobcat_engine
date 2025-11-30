@@ -1,14 +1,16 @@
 // ProcessConfigWidget.cpp
 #include "ProcessConfigWidget.h"
+#include "PropertyTableWidget.h"
 #include "DeviceSelectorWidgets.h"
 #include "ApplicationContext.h"
 #include "PneumaticSlideSelectorDialog.h"
 #include "DataStore.h"
 #include "TECManager.h"
-#include "EziIOManager.h"  // ✅ ADDED: For IO pin selector
-#include "PowerSupplyManager.h"  // ✅ ADDED: For PSU channel selector
+#include "EziIOManager.h"  // For IO pin selector
+#include "PowerSupplyManager.h"  // For PSU channel selector
 #include "RecipeManager.h"
 #include "ProcessPluginRegistry.h"
+#include "IProcessPlugin.h"
 #include "products/product_position_manager.h"
 #include <QLabel>
 #include <QFrame>
@@ -1052,6 +1054,49 @@ void PluginBasedConfigWidget::createParameterFields(const ProcessInstance* insta
   else {
     std::cerr << "[PluginBasedConfigWidget] No plugin found for process type: " << m_processType << std::endl;
   }
+}
+
+// ============================================================================
+// TABLE-BASED CONFIG WIDGET
+// ============================================================================
+
+TableBasedConfigWidget::TableBasedConfigWidget(ApplicationContext* context, const std::string& processType, QWidget* parent)
+  : ProcessConfigWidget(context, parent)
+  , m_processType(processType)
+  , m_propertyTable(nullptr)
+{
+}
+
+void TableBasedConfigWidget::createParameterFields(const ProcessInstance* instance)
+{
+  // Create the property table widget
+  m_propertyTable = new PropertyTableWidget(m_context, this);
+  m_formLayout->addRow(m_propertyTable);
+
+  // Connect property changes to our parameterChanged signal
+  // Use the no-argument overload of propertyChanged
+  connect(m_propertyTable, QOverload<>::of(&PropertyTableWidget::propertyChanged),
+    this, &ProcessConfigWidget::parameterChanged);
+
+  // Get the plugin and have it create the table UI
+  auto& registry = ProcessPluginRegistry::Instance();
+  IProcessPlugin* plugin = registry.GetPlugin(m_processType);
+
+  if (plugin) {
+    plugin->CreateTableUI(m_propertyTable, instance);
+  }
+  else {
+    std::cerr << "[TableBasedConfigWidget] No plugin found for process type: " << m_processType << std::endl;
+  }
+}
+
+std::map<std::string, std::string> TableBasedConfigWidget::getParameters() const
+{
+  if (m_propertyTable) {
+    return m_propertyTable->getParameters();
+  }
+  // Fall back to base class implementation
+  return ProcessConfigWidget::getParameters();
 }
 
 // ============================================================================

@@ -13,6 +13,7 @@
 #include "ProcessSequenceFactory.h"
 #include "ProcessConfigWidget.h"
 #include "ProcessPluginRegistry.h"
+#include "IProcessPlugin.h"
 #include "product_position_manager.h"
 #include "RecipeWorker.h"
 #include "RecipeProgressWidget.h"
@@ -1603,9 +1604,19 @@ void RecipePage::updateConfigurationForm()
   // ============================================================================
   auto& registry = ProcessPluginRegistry::Instance();
   if (registry.HasPlugin(instance->processType)) {
-    m_currentConfigWidget = new PluginBasedConfigWidget(m_context, instance->processType);
-    std::cout << "[RecipePage] Created PluginBasedConfigWidget for: "
-              << instance->processType << std::endl;
+    IProcessPlugin* plugin = registry.GetPlugin(instance->processType);
+
+    // Check if plugin prefers table-based UI
+    if (plugin && plugin->PrefersTableUI()) {
+      m_currentConfigWidget = new TableBasedConfigWidget(m_context, instance->processType);
+      std::cout << "[RecipePage] Created TableBasedConfigWidget for: "
+                << instance->processType << std::endl;
+    }
+    else {
+      m_currentConfigWidget = new PluginBasedConfigWidget(m_context, instance->processType);
+      std::cout << "[RecipePage] Created PluginBasedConfigWidget for: "
+                << instance->processType << std::endl;
+    }
   }
   else {
     std::cerr << "[RecipePage] No plugin found for process type: " << instance->processType << std::endl;

@@ -1,4 +1,4 @@
-﻿// ProcessConfigWidget.h
+// ProcessConfigWidget.h
 #pragma once
 
 #include <QWidget>
@@ -9,7 +9,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QTimer>  // ✅ ADDED for periodic channel refresh
+#include <QTimer>  // For periodic channel refresh
 #include <QComboBox>
 #include <map>
 #include <string>
@@ -19,6 +19,7 @@ struct ApplicationContext;
 class DeviceComboBox;
 class QDoubleSpinBox;
 class VisionProfileComboBox;
+class PropertyTableWidget;
 
 /**
  * @brief Base class for process configuration widgets
@@ -182,3 +183,28 @@ private:
 // All process-specific widgets have been migrated to the plugin architecture.
 // Old widget classes removed - now using PluginBasedConfigWidget with IProcessPlugin.
 // ============================================================================
+
+/**
+ * @brief Table-based configuration widget for processes that prefer VS-style property grid
+ *
+ * Uses PropertyTableWidget internally for a modern table-based property editor.
+ * Plugins that return true from PrefersTableUI() will use this widget instead of
+ * PluginBasedConfigWidget.
+ */
+class TableBasedConfigWidget : public ProcessConfigWidget
+{
+  Q_OBJECT
+
+public:
+  explicit TableBasedConfigWidget(ApplicationContext* context, const std::string& processType, QWidget* parent = nullptr);
+
+  // Override getParameters to delegate to PropertyTableWidget
+  std::map<std::string, std::string> getParameters() const;
+
+protected:
+  void createParameterFields(const ProcessInstance* instance) override;
+
+private:
+  std::string m_processType;
+  PropertyTableWidget* m_propertyTable;
+};

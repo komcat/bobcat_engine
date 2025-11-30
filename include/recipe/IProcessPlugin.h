@@ -8,6 +8,7 @@
 // Forward declarations
 class SequenceBuilder;
 class ProcessConfigWidget;
+class PropertyTableWidget;
 struct ProcessInstance;
 
 /**
@@ -81,6 +82,38 @@ public:
   virtual void CreateConfigUI(
     ProcessConfigWidget* widget,
     const ProcessInstance* instance) = 0;
+
+  /**
+   * @brief Check if this plugin prefers table-based UI (Visual Studio property grid style)
+   * @return true if CreateTableUI should be used instead of CreateConfigUI
+   *
+   * Override this to return true for processes that want a table-based property editor.
+   */
+  virtual bool PrefersTableUI() const { return false; }
+
+  /**
+   * @brief Create table-based configuration UI for this process
+   * @param table The PropertyTableWidget to populate with properties
+   * @param instance The process instance with current parameter values
+   *
+   * Only called if PrefersTableUI() returns true.
+   * Use helper methods on table:
+   * - table->addTextProperty(key, label, value, tooltip)
+   * - table->addDropdownProperty(key, label, value, options, tooltip)
+   * - table->addCheckboxProperty(key, label, value, tooltip)
+   * - table->addNumericProperty(key, label, value, min, max, step, decimals, suffix, tooltip)
+   * - table->addDeviceProperty(key, label, value, deviceType, tooltip)
+   * - table->addIOPinProperty(key, label, value, ioDeviceKey, pinType, tooltip)
+   * - table->addCategoryHeader(categoryName)
+   * - table->addSeparator()
+   */
+  virtual void CreateTableUI(
+    PropertyTableWidget* table,
+    const ProcessInstance* instance) {
+    // Default: do nothing (override in derived classes that use table UI)
+    (void)table;
+    (void)instance;
+  }
 
   //===========================================================================
   // SEQUENCE BUILDING

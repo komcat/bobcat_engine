@@ -7,6 +7,7 @@
 #include "../../sequence/SequenceBuilder.h"
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
 #include "../../AppUI/RecipePage/DeviceSelectorWidgets.h"
+#include "../../AppUI/RecipePage/PropertyTableWidget.h"
 
 #include <iostream>
 #include <memory>
@@ -14,7 +15,7 @@
 #include <string>
 
 //=============================================================================
-// SET OUTPUT PLUGIN
+// SET OUTPUT PLUGIN (Table-Based UI)
 //=============================================================================
 
 class SetOutputPlugin : public IProcessPlugin
@@ -40,16 +41,33 @@ public:
     };
   }
 
-  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    const auto& params = instance->parameters;
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
 
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for compatibility
+    const auto& params = instance->parameters;
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-
-    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
     widget->addIOPinSelector("pin", "Output Pin", params.at("pin"), "io_device", "output");
-
     widget->addCheckboxParameter("state", "Output State (ON/OFF)", params.at("state"),
+      "Set to ON (checked) or OFF (unchecked)");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device Configuration");
+    table->addDeviceProperty("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO),
+      "Select the I/O device");
+    table->addIOPinProperty("pin", "Output Pin", params.at("pin"),
+      "io_device", "output",
+      "Select the output pin to control");
+
+    table->addCategoryHeader("Output Settings");
+    table->addCheckboxProperty("state", "Output State (ON)",
+      params.at("state") == "true",
       "Set to ON (checked) or OFF (unchecked)");
   }
 
@@ -67,7 +85,7 @@ public:
 };
 
 //=============================================================================
-// SET OUTPUT NAME PLUGIN (Turn ON by name)
+// SET OUTPUT NAME PLUGIN (Turn ON by name) - Table-Based UI
 //=============================================================================
 
 class SetOutputNamePlugin : public IProcessPlugin
@@ -92,14 +110,27 @@ public:
     };
   }
 
-  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    const auto& params = instance->parameters;
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
 
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for compatibility
+    const auto& params = instance->parameters;
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-
-    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
     widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device Configuration");
+    table->addDeviceProperty("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO),
+      "Select the I/O device");
+    table->addIOPinProperty("pin_name", "Output Pin Name", params.at("pin_name"),
+      "io_device", "output",
+      "Select the output pin to turn ON");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -114,7 +145,7 @@ public:
 };
 
 //=============================================================================
-// CLEAR OUTPUT NAME PLUGIN (Turn OFF by name)
+// CLEAR OUTPUT NAME PLUGIN (Turn OFF by name) - Table-Based UI
 //=============================================================================
 
 class ClearOutputNamePlugin : public IProcessPlugin
@@ -139,14 +170,27 @@ public:
     };
   }
 
-  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    const auto& params = instance->parameters;
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
 
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for compatibility
+    const auto& params = instance->parameters;
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-
-    // ✅ IMPROVED: IO pin selector (dropdown with pin names from IO device)
     widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device Configuration");
+    table->addDeviceProperty("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO),
+      "Select the I/O device");
+    table->addIOPinProperty("pin_name", "Output Pin Name", params.at("pin_name"),
+      "io_device", "output",
+      "Select the output pin to turn OFF");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -161,7 +205,7 @@ public:
 };
 
 //=============================================================================
-// SLIDE EXTEND PLUGIN
+// SLIDE EXTEND PLUGIN (Table-Based UI)
 //=============================================================================
 
 class SlideExtendPlugin : public IProcessPlugin
@@ -188,13 +232,40 @@ public:
     };
   }
 
-  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    const auto& params = instance->parameters;
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
 
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for compatibility
+    const auto& params = instance->parameters;
     widget->addSlideSelector("slide_name", "Pneumatic Slide", params.at("slide_name"));
     widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
     widget->addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
     widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Slide configuration
+    table->addCategoryHeader("Slide Configuration");
+    table->addTextProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
+      "Name of the pneumatic slide to extend");
+
+    // Timing configuration
+    table->addCategoryHeader("Timing Configuration");
+    table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
+      std::stod(params.at("inbounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay before starting extend operation");
+    table->addNumericProperty("timeout_ms", "Timeout",
+      std::stod(params.at("timeout_ms")),
+      0, 60000, 100, 0, "ms",
+      "Maximum time to wait for extend completion");
+    table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
+      std::stod(params.at("debounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay after extend completes (settling time)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -230,7 +301,7 @@ public:
 };
 
 //=============================================================================
-// SLIDE RETRACT PLUGIN
+// SLIDE RETRACT PLUGIN (Table-Based UI)
 //=============================================================================
 
 class SlideRetractPlugin : public IProcessPlugin
@@ -257,13 +328,40 @@ public:
     };
   }
 
-  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    const auto& params = instance->parameters;
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
 
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for compatibility
+    const auto& params = instance->parameters;
     widget->addSlideSelector("slide_name", "Pneumatic Slide", params.at("slide_name"));
     widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
     widget->addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
     widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Slide configuration
+    table->addCategoryHeader("Slide Configuration");
+    table->addTextProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
+      "Name of the pneumatic slide to retract");
+
+    // Timing configuration
+    table->addCategoryHeader("Timing Configuration");
+    table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
+      std::stod(params.at("inbounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay before starting retract operation");
+    table->addNumericProperty("timeout_ms", "Timeout",
+      std::stod(params.at("timeout_ms")),
+      0, 60000, 100, 0, "ms",
+      "Maximum time to wait for retract completion");
+    table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
+      std::stod(params.at("debounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay after retract completes (settling time)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -299,7 +397,7 @@ public:
 };
 
 //=============================================================================
-// TOGGLE OUTPUT PLUGIN
+// TOGGLE OUTPUT PLUGIN (Table-Based UI)
 //=============================================================================
 
 class ToggleOutputPlugin : public IProcessPlugin
@@ -328,46 +426,58 @@ public:
     };
   }
 
+  // Use table-based UI for this plugin
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    // Fallback for non-table UI (kept for compatibility)
     const auto& params = instance->parameters;
 
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
-
-    // IO pin selector
     widget->addIOPinSelector("pin_name", "Output Pin", params.at("pin_name"), "io_device", "output");
-
-    // Start state selector (off/on)
     widget->addDropdownParameter("start_state", "Start State", params.at("start_state"),
       {"off", "on"});
-
-    // Timing parameters
     widget->addNumericParameter("inbounce_delay_ms", "Inbounce Delay (ms)",
-      params.at("inbounce_delay_ms"),
-      0,      // min
-      10000,  // max
-      50,     // step
-      0,      // decimals (integer)
-      "ms"    // suffix
-    );
-
+      params.at("inbounce_delay_ms"), 0, 10000, 50, 0, "ms");
     widget->addNumericParameter("dwell_time_ms", "Dwell Time (ms)",
-      params.at("dwell_time_ms"),
-      0,      // min
-      10000,  // max
-      50,     // step
-      0,      // decimals (integer)
-      "ms"    // suffix
-    );
-
+      params.at("dwell_time_ms"), 0, 10000, 50, 0, "ms");
     widget->addNumericParameter("outbounce_delay_ms", "Outbounce Delay (ms)",
-      params.at("outbounce_delay_ms"),
-      0,      // min
-      10000,  // max
-      50,     // step
-      0,      // decimals (integer)
-      "ms"    // suffix
-    );
+      params.at("outbounce_delay_ms"), 0, 10000, 50, 0, "ms");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Device configuration section
+    table->addCategoryHeader("Device Configuration");
+    table->addDeviceProperty("io_device", "I/O Device", params.at("io_device"),
+      static_cast<int>(DeviceComboBox::DeviceType::IO),
+      "Select the I/O device to control");
+    table->addIOPinProperty("pin_name", "Output Pin", params.at("pin_name"),
+      "io_device", "output",
+      "Select the output pin to toggle");
+
+    // Toggle settings section
+    table->addCategoryHeader("Toggle Settings");
+    table->addDropdownProperty("start_state", "Start State", params.at("start_state"),
+      {"off", "on"},
+      "Initial state before toggle sequence begins");
+
+    // Timing section
+    table->addCategoryHeader("Timing Configuration");
+    table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
+      std::stod(params.at("inbounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay before first toggle (debounce input)");
+    table->addNumericProperty("dwell_time_ms", "Dwell Time",
+      std::stod(params.at("dwell_time_ms")),
+      0, 10000, 50, 0, "ms",
+      "Time to hold the toggled state");
+    table->addNumericProperty("outbounce_delay_ms", "Outbounce Delay",
+      std::stod(params.at("outbounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay after returning to original state");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {

@@ -573,6 +573,7 @@ set(SOURCES
     include/AppUI/RecipePage/RecipePage.cpp
     include/AppUI/RecipePage/RecipeTreeItemFactory.cpp
     include/AppUI/RecipePage/RecipeClipboard.cpp
+    include/AppUI/RecipePage/PropertyTableWidget.cpp
     include/recipe/RecipeManager.cpp
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
