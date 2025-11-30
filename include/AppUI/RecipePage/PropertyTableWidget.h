@@ -60,9 +60,41 @@ public:
                          const std::string& value, int deviceType,
                          const std::string& tooltip = "");
 
+  // Motion device selector with browse button (shows only connected devices)
+  void addMotionDeviceProperty(const std::string& key, const std::string& label,
+                               const std::string& value, const std::string& tooltip = "");
+
+  // Motion device selector with axis filtering (e.g., "UVW" for 6-axis devices)
+  void addMotionDevicePropertyWithAxes(const std::string& key, const std::string& label,
+                                       const std::string& value, const std::string& requiredAxes,
+                                       const std::string& tooltip = "");
+
   void addIOPinProperty(const std::string& key, const std::string& label,
                         const std::string& value, const std::string& ioDeviceKey,
                         const std::string& pinType = "output", const std::string& tooltip = "");
+
+  // Pneumatic slide selector with browse button
+  void addSlideProperty(const std::string& key, const std::string& label,
+                        const std::string& value, const std::string& tooltip = "");
+
+  // Node selector with browse button (for named positions)
+  void addNodeProperty(const std::string& key, const std::string& label,
+                       const std::string& value, const std::string& deviceKey,
+                       const std::string& tooltip = "");
+
+  // Graph selector dropdown (populates based on device)
+  void addGraphProperty(const std::string& key, const std::string& label,
+                        const std::string& value, const std::string& deviceKey,
+                        const std::string& tooltip = "");
+
+  // Graph node selector dropdown (populates based on device + graph)
+  void addGraphNodeProperty(const std::string& key, const std::string& label,
+                            const std::string& value, const std::string& deviceKey,
+                            const std::string& graphKey, const std::string& tooltip = "");
+
+  // DataStore channel selector dropdown
+  void addDataChannelProperty(const std::string& key, const std::string& label,
+                              const std::string& value, const std::string& tooltip = "");
 
   // Add a category header row (non-editable, spans both columns)
   void addCategoryHeader(const std::string& categoryName);
@@ -103,4 +135,7 @@ protected:
 
   // Get string value from widget
   std::string getWidgetValue(const std::string& key) const;
+
+  // Update table height to fit content (no internal scrollbar)
+  void updateTableHeight();
 };

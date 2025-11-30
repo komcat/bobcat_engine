@@ -8,6 +8,7 @@
 #include "../../sequence/GripperSequenceHelpers.h"
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
 #include "../../AppUI/RecipePage/DeviceSelectorWidgets.h"
+#include "../../AppUI/RecipePage/PropertyTableWidget.h"
 
 #include <iostream>
 #include <memory>
@@ -238,7 +239,7 @@ public:
 };
 
 //=============================================================================
-// MOVE TO POSITION PLUGIN
+// MOVE TO POSITION PLUGIN - Table-Based UI
 //=============================================================================
 
 class MoveToPositionPlugin : public IProcessPlugin
@@ -263,12 +264,27 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addNodeSelector("target_position", "Target Position", params.at("target_position"), "device");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to control (click [...] to browse connected devices)");
+
+    table->addCategoryHeader("Target");
+    table->addNodeProperty("target_position", "Target Position", params.at("target_position"),
+      "device",
+      "Named position to move to (click [...] to browse)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -284,7 +300,7 @@ public:
 };
 
 //=============================================================================
-// MOVE RELATIVE PLUGIN (Single Axis)
+// MOVE RELATIVE PLUGIN (Single Axis) - Table-Based UI
 //=============================================================================
 
 class MoveRelativePlugin : public IProcessPlugin
@@ -310,13 +326,31 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addParameterField("axis", "Axis (X/Y/Z)", params.at("axis"));
     widget->addParameterField("distance", "Distance (mm)", params.at("distance"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to move");
+
+    table->addCategoryHeader("Movement");
+    table->addDropdownProperty("axis", "Axis", params.at("axis"),
+      {"X", "Y", "Z"},
+      "Axis to move along");
+    table->addNumericProperty("distance", "Distance",
+      std::stod(params.at("distance")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Distance to move (positive or negative)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -337,7 +371,7 @@ public:
 };
 
 //=============================================================================
-// MOVE RELATIVE MULTI-AXIS PLUGIN
+// MOVE RELATIVE MULTI-AXIS PLUGIN - Table-Based UI
 //=============================================================================
 
 class MoveRelativeMultiAxisPlugin : public IProcessPlugin
@@ -364,14 +398,37 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addParameterField("distance_x", "X Distance (mm)", params.at("distance_x"));
     widget->addParameterField("distance_y", "Y Distance (mm)", params.at("distance_y"));
     widget->addParameterField("distance_z", "Z Distance (mm)", params.at("distance_z"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to move");
+
+    table->addCategoryHeader("Movement Distances");
+    table->addNumericProperty("distance_x", "X Distance",
+      std::stod(params.at("distance_x")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Distance to move on X axis (0 = no move)");
+    table->addNumericProperty("distance_y", "Y Distance",
+      std::stod(params.at("distance_y")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Distance to move on Y axis (0 = no move)");
+    table->addNumericProperty("distance_z", "Z Distance",
+      std::stod(params.at("distance_z")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Distance to move on Z axis (0 = no move)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -408,7 +465,103 @@ public:
 };
 
 //=============================================================================
-// MOVE TO POSITION WITH OFFSET PLUGIN
+// MOVE RELATIVE THETA PLUGIN (U/V/W axes) - Table-Based UI
+//=============================================================================
+
+class MoveRelativeThetaPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Move Relative Theta";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Move device relative on rotational axes (U/V/W) - for 6-axis devices only";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"distance_u", "0"},
+      {"distance_v", "0"},
+      {"distance_w", "0"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addDeviceSelector("device", "Motion Device (6-axis)", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("distance_u", "U Distance (deg)", params.at("distance_u"));
+    widget->addParameterField("distance_v", "V Distance (deg)", params.at("distance_v"));
+    widget->addParameterField("distance_w", "W Distance (deg)", params.at("distance_w"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    // Use axis-filtered selector to show only devices with U/V/W axes
+    table->addMotionDevicePropertyWithAxes("device", "Motion Device (6-axis)", params.at("device"),
+      "UVW",  // Filter: require U, V, W axes
+      "Select a 6-axis motion device");
+
+    table->addCategoryHeader("Rotational Distances");
+    table->addNumericProperty("distance_u", "U Distance",
+      std::stod(params.at("distance_u")),
+      -180, 180, 0.1, 3, "",
+      "U axis movement (0 = no move)");
+    table->addNumericProperty("distance_v", "V Distance",
+      std::stod(params.at("distance_v")),
+      -180, 180, 0.1, 3, "",
+      "V axis movement (0 = no move)");
+    table->addNumericProperty("distance_w", "W Distance",
+      std::stod(params.at("distance_w")),
+      -180, 180, 0.1, 3, "",
+      "W axis movement (0 = no move)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string distU = params.at("distance_u");
+    std::string distV = params.at("distance_v");
+    std::string distW = params.at("distance_w");
+
+    bool hasMoves = false;
+
+    if (distU != "0" && distU != "0.0" && !distU.empty()) {
+      sequence->AddAction(device, "MoveRelative", {{"axis", "U"}, {"distance", distU}});
+      hasMoves = true;
+    }
+
+    if (distV != "0" && distV != "0.0" && !distV.empty()) {
+      sequence->AddAction(device, "MoveRelative", {{"axis", "V"}, {"distance", distV}});
+      hasMoves = true;
+    }
+
+    if (distW != "0" && distW != "0.0" && !distW.empty()) {
+      sequence->AddAction(device, "MoveRelative", {{"axis", "W"}, {"distance", distW}});
+      hasMoves = true;
+    }
+
+    if (hasMoves) {
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+    }
+
+    std::cout << "[MotionProcesses] Built Move Relative Theta sequence for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// MOVE TO POSITION WITH OFFSET PLUGIN - Table-Based UI
 //=============================================================================
 
 class MoveToPositionWithOffsetPlugin : public IProcessPlugin
@@ -436,6 +589,8 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
@@ -445,6 +600,33 @@ public:
     widget->addParameterField("offset_x", "X Offset (mm)", params.at("offset_x"));
     widget->addParameterField("offset_y", "Y Offset (mm)", params.at("offset_y"));
     widget->addParameterField("offset_z", "Z Offset (mm)", params.at("offset_z"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to control");
+
+    table->addCategoryHeader("Base Position");
+    table->addNodeProperty("base_position", "Base Position", params.at("base_position"),
+      "device",
+      "Named position to use as base (click [...] to browse)");
+
+    table->addCategoryHeader("Offsets");
+    table->addNumericProperty("offset_x", "X Offset",
+      std::stod(params.at("offset_x")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Offset to add to base X position");
+    table->addNumericProperty("offset_y", "Y Offset",
+      std::stod(params.at("offset_y")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Offset to add to base Y position");
+    table->addNumericProperty("offset_z", "Z Offset",
+      std::stod(params.at("offset_z")),
+      -1000, 1000, 0.1, 2, "mm",
+      "Offset to add to base Z position");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -479,7 +661,7 @@ public:
 };
 
 //=============================================================================
-// SET VELOCITY PLUGIN
+// SET VELOCITY PLUGIN - Table-Based UI
 //=============================================================================
 
 class SetVelocityPlugin : public IProcessPlugin
@@ -504,23 +686,28 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
-
-    // Use numeric parameter with conservative range that works for both ACS and PI
-    // ACS: 1-70 mm/s, PI: 0.1-10 mm/s
-    // Conservative range: 0.1-70 mm/s
     widget->addNumericParameter("speed", "Speed (mm/s) [ACS: 1-70, PI: 0.1-10]",
-      params.at("speed"),
-      0.1,   // min (PI minimum)
-      70.0,  // max (ACS maximum)
-      0.1,   // step
-      1,     // decimals
-      "mm/s" // suffix
-    );
+      params.at("speed"), 0.1, 70.0, 0.1, 1, "mm/s");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device");
+
+    table->addCategoryHeader("Velocity Settings");
+    table->addNumericProperty("speed", "Speed",
+      std::stod(params.at("speed")),
+      0.1, 70.0, 0.1, 1, "mm/s",
+      "Motion speed (ACS: 1-70, PI: 0.1-10 mm/s)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -568,7 +755,7 @@ public:
 };
 
 //=============================================================================
-// XCAN PLUGIN (Hexapod Adaptive Scanning)
+// XCAN PLUGIN (Hexapod Adaptive Scanning) - Table-Based UI
 //=============================================================================
 
 class XCANPlugin : public IProcessPlugin
@@ -595,6 +782,8 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
@@ -611,6 +800,27 @@ public:
       0,      // decimals (integer)
       "ms"    // suffix
     );
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Hexapod Device", params.at("device"),
+      "Select the hexapod device for scanning (hex-* naming)");
+
+    table->addCategoryHeader("Scan Configuration");
+    table->addDropdownProperty("mode", "Scan Mode", params.at("mode"),
+      {"coarse", "fine"},
+      "Scanning resolution (coarse for initial search, fine for precision)");
+    table->addDataChannelProperty("channel", "Data Channel", params.at("channel"),
+      "DataStore channel to read scan feedback values");
+
+    table->addCategoryHeader("Timing");
+    table->addNumericProperty("settling_time_ms", "Settling Time",
+      std::stod(params.at("settling_time_ms")),
+      50, 2000, 10, 0, "ms",
+      "Wait time after each position move for signal stabilization");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -632,7 +842,7 @@ public:
 };
 
 //=============================================================================
-// MOVE TO GRAPH NODE PLUGIN
+// MOVE TO GRAPH NODE PLUGIN - Table-Based UI
 //=============================================================================
 
 class MoveToGraphNodePlugin : public IProcessPlugin
@@ -658,6 +868,8 @@ public:
     };
   }
 
+  bool PrefersTableUI() const override { return true; }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
@@ -671,6 +883,22 @@ public:
     // Node selector (populates based on selected device + graph)
     widget->addGraphNodeSelector("endNodeName", "End Node Position", params.at("endNodeName"),
       "device", "graphName");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to control");
+
+    table->addCategoryHeader("Graph Path");
+    table->addGraphProperty("graphName", "Graph Name", params.at("graphName"),
+      "device",
+      "Select the motion graph to use for path planning");
+    table->addGraphNodeProperty("endNodeName", "End Node", params.at("endNodeName"),
+      "device", "graphName",
+      "Select the target node in the graph");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -703,12 +931,13 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToPositionPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativePlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativeMultiAxisPlugin>());
+      registry.RegisterPlugin(std::make_unique<MoveRelativeThetaPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
       registry.RegisterPlugin(std::make_unique<XCANPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
 
-      std::cout << "[MotionProcesses] Registered 10 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 11 motion process plugins" << std::endl;
     }
   };
 

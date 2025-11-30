@@ -249,7 +249,7 @@ public:
 
     // Slide configuration
     table->addCategoryHeader("Slide Configuration");
-    table->addTextProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
+    table->addSlideProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
       "Name of the pneumatic slide to extend");
 
     // Timing configuration
@@ -345,7 +345,7 @@ public:
 
     // Slide configuration
     table->addCategoryHeader("Slide Configuration");
-    table->addTextProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
+    table->addSlideProperty("slide_name", "Pneumatic Slide", params.at("slide_name"),
       "Name of the pneumatic slide to retract");
 
     // Timing configuration

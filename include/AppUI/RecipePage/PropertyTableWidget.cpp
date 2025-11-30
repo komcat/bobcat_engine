@@ -1,10 +1,15 @@
 // PropertyTableWidget.cpp
 #include "PropertyTableWidget.h"
-#include "DeviceSelectorWidgets.h"
+#include "DeviceSelectorWidgets.h"  // Contains NodeSelectorDialog
 #include "ApplicationContext.h"
 #include "EziIOManager.h"
 #include "IEziIODevice.h"
+#include "PneumaticSlideSelectorDialog.h"
+#include "MotionDeviceSelectorDialog.h"
+#include "products/product_position_manager.h"
+#include "DataStore.h"
 #include <QLabel>
+#include <QPushButton>
 #include <iostream>
 
 PropertyTableWidget::PropertyTableWidget(ApplicationContext* context, QWidget* parent)
@@ -19,10 +24,17 @@ PropertyTableWidget::PropertyTableWidget(ApplicationContext* context, QWidget* p
   m_table->setColumnCount(2);
   m_table->setHorizontalHeaderLabels({"Property", "Value"});
 
+  // Disable table's own scrollbars - use parent scroll area instead
+  m_table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  m_table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
   // Configure table appearance
   applyTableStyle();
 
   layout->addWidget(m_table);
+
+  // Set size policy to expand based on content
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 }
 
 void PropertyTableWidget::applyTableStyle()
@@ -165,6 +177,9 @@ int PropertyTableWidget::addPropertyRow(const std::string& key, const std::strin
   m_valueWidgets[key] = valueWidget;
   m_keyToRow[key] = row;
 
+  // Update table height to fit content
+  updateTableHeight();
+
   return row;
 }
 
@@ -242,6 +257,9 @@ void PropertyTableWidget::addCheckboxProperty(const std::string& key, const std:
   m_table->setCellWidget(row, 0, createPropertyLabel(label, tooltip));
   m_table->setCellWidget(row, 1, container);
   m_keyToRow[key] = row;
+
+  // Update table height to fit content
+  updateTableHeight();
 }
 
 void PropertyTableWidget::addNumericProperty(const std::string& key, const std::string& label,
@@ -289,6 +307,135 @@ void PropertyTableWidget::addDeviceProperty(const std::string& key, const std::s
   });
 
   addPropertyRow(key, label, combo, tooltip);
+}
+
+void PropertyTableWidget::addMotionDeviceProperty(const std::string& key, const std::string& label,
+                                                  const std::string& value, const std::string& tooltip)
+{
+  // Create container with line edit + browse button
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(4);
+
+  QLineEdit* lineEdit = new QLineEdit();
+  lineEdit->setText(QString::fromStdString(value));
+  lineEdit->setReadOnly(true);  // Only allow selection via dialog
+  if (!tooltip.empty()) {
+    lineEdit->setToolTip(QString::fromStdString(tooltip));
+  }
+  layout->addWidget(lineEdit, 1);
+
+  QPushButton* browseBtn = new QPushButton("...");
+  browseBtn->setFixedWidth(30);
+  browseBtn->setToolTip("Browse connected motion devices");
+  layout->addWidget(browseBtn);
+
+  // Connect browse button
+  connect(browseBtn, &QPushButton::clicked, this, [this, key, lineEdit]() {
+    std::string currentValue = lineEdit->text().toStdString();
+
+    std::string selected = MotionDeviceSelectorDialog::SelectDevice(
+      m_context,
+      currentValue,
+      true,  // Show only connected devices by default
+      this
+    );
+
+    if (selected != currentValue) {
+      lineEdit->setText(QString::fromStdString(selected));
+      emit propertyChanged(QString::fromStdString(key), QString::fromStdString(selected));
+      emit propertyChanged();
+    }
+  });
+
+  // Store line edit as the value widget
+  m_valueWidgets[key] = lineEdit;
+
+  // Add row manually since we're using a container
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+
+  QWidget* labelWidget = createPropertyLabel(label, tooltip);
+  m_table->setCellWidget(row, 0, labelWidget);
+
+  QWidget* valueContainer = new QWidget();
+  QHBoxLayout* valueLayout = new QHBoxLayout(valueContainer);
+  valueLayout->setContentsMargins(6, 4, 6, 4);
+  valueLayout->setSpacing(0);
+  valueLayout->addWidget(container);
+  m_table->setCellWidget(row, 1, valueContainer);
+
+  m_keyToRow[key] = row;
+  updateTableHeight();
+}
+
+void PropertyTableWidget::addMotionDevicePropertyWithAxes(const std::string& key, const std::string& label,
+                                                          const std::string& value, const std::string& requiredAxes,
+                                                          const std::string& tooltip)
+{
+  // Create container with line edit + browse button
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(4);
+
+  QLineEdit* lineEdit = new QLineEdit();
+  lineEdit->setText(QString::fromStdString(value));
+  lineEdit->setReadOnly(true);  // Only allow selection via dialog
+  std::string tooltipWithAxes = tooltip;
+  if (!requiredAxes.empty()) {
+    if (!tooltipWithAxes.empty()) tooltipWithAxes += " ";
+    tooltipWithAxes += "(requires " + requiredAxes + " axes)";
+  }
+  if (!tooltipWithAxes.empty()) {
+    lineEdit->setToolTip(QString::fromStdString(tooltipWithAxes));
+  }
+  layout->addWidget(lineEdit, 1);
+
+  QPushButton* browseBtn = new QPushButton("...");
+  browseBtn->setFixedWidth(30);
+  browseBtn->setToolTip(QString("Browse devices with %1 axes").arg(QString::fromStdString(requiredAxes)));
+  layout->addWidget(browseBtn);
+
+  // Connect browse button with axis filter
+  connect(browseBtn, &QPushButton::clicked, this, [this, key, lineEdit, requiredAxes]() {
+    std::string currentValue = lineEdit->text().toStdString();
+
+    std::string selected = MotionDeviceSelectorDialog::SelectDeviceWithAxes(
+      m_context,
+      currentValue,
+      requiredAxes,
+      true,  // Show only connected devices by default
+      this
+    );
+
+    if (selected != currentValue) {
+      lineEdit->setText(QString::fromStdString(selected));
+      emit propertyChanged(QString::fromStdString(key), QString::fromStdString(selected));
+      emit propertyChanged();
+    }
+  });
+
+  // Store line edit as the value widget
+  m_valueWidgets[key] = lineEdit;
+
+  // Add row manually since we're using a container
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+
+  QWidget* labelWidget = createPropertyLabel(label, tooltipWithAxes);
+  m_table->setCellWidget(row, 0, labelWidget);
+
+  QWidget* valueContainer = new QWidget();
+  QHBoxLayout* valueLayout = new QHBoxLayout(valueContainer);
+  valueLayout->setContentsMargins(6, 4, 6, 4);
+  valueLayout->setSpacing(0);
+  valueLayout->addWidget(container);
+  m_table->setCellWidget(row, 1, valueContainer);
+
+  m_keyToRow[key] = row;
+  updateTableHeight();
 }
 
 void PropertyTableWidget::addIOPinProperty(const std::string& key, const std::string& label,
@@ -380,6 +527,350 @@ void PropertyTableWidget::addIOPinProperty(const std::string& key, const std::st
   addPropertyRow(key, label, combo, tooltip);
 }
 
+void PropertyTableWidget::addSlideProperty(const std::string& key, const std::string& label,
+                                           const std::string& value, const std::string& tooltip)
+{
+  // Create container with line edit and browse button
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 4px 8px; "
+    "  min-height: 24px; "
+    "}"
+  );
+  if (!tooltip.empty()) {
+    edit->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  connect(edit, &QLineEdit::textChanged, this, [this, key](const QString& text) {
+    emit propertyChanged(QString::fromStdString(key), text);
+    emit propertyChanged();
+  });
+  layout->addWidget(edit, 1);  // Stretch factor 1
+
+  QPushButton* browseBtn = new QPushButton("...");
+  browseBtn->setFixedSize(28, 28);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+  browseBtn->setToolTip("Browse for pneumatic slide...");
+
+  connect(browseBtn, &QPushButton::clicked, this, [this, edit]() {
+    std::string currentSlide = edit->text().toStdString();
+    std::string selected = PneumaticSlideSelectorDialog::SelectSlide(
+      m_context, currentSlide, this
+    );
+    if (!selected.empty()) {
+      edit->setText(QString::fromStdString(selected));
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  // Store the line edit for value retrieval
+  m_valueWidgets[key] = edit;
+
+  // Add row manually (don't use addPropertyRow since we have custom container)
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+  m_table->setCellWidget(row, 0, createPropertyLabel(label, tooltip));
+
+  // Wrap container in another container with margins
+  QWidget* outerContainer = new QWidget();
+  QHBoxLayout* outerLayout = new QHBoxLayout(outerContainer);
+  outerLayout->setContentsMargins(6, 4, 6, 4);
+  outerLayout->setSpacing(0);
+  outerLayout->addWidget(container);
+  m_table->setCellWidget(row, 1, outerContainer);
+
+  m_keyToRow[key] = row;
+
+  // Update table height to fit content
+  updateTableHeight();
+}
+
+void PropertyTableWidget::addNodeProperty(const std::string& key, const std::string& label,
+                                          const std::string& value, const std::string& deviceKey,
+                                          const std::string& tooltip)
+{
+  // Create container with line edit and browse button
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 4px 8px; "
+    "  min-height: 24px; "
+    "}"
+  );
+  if (!tooltip.empty()) {
+    edit->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  connect(edit, &QLineEdit::textChanged, this, [this, key](const QString& text) {
+    emit propertyChanged(QString::fromStdString(key), text);
+    emit propertyChanged();
+  });
+  layout->addWidget(edit, 1);
+
+  QPushButton* browseBtn = new QPushButton("...");
+  browseBtn->setFixedSize(28, 28);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+  browseBtn->setToolTip("Browse for position...");
+
+  connect(browseBtn, &QPushButton::clicked, this, [this, edit, deviceKey]() {
+    // Get current device from parameters
+    std::string deviceName = getParameter(deviceKey);
+    if (deviceName.empty()) {
+      deviceName = deviceKey;  // Fallback to key as device name
+    }
+
+    std::string currentNode = edit->text().toStdString();
+    std::string selected = NodeSelectorDialog::SelectNode(
+      m_context, deviceName, currentNode, this
+    );
+    if (!selected.empty()) {
+      edit->setText(QString::fromStdString(selected));
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  // Store the line edit for value retrieval
+  m_valueWidgets[key] = edit;
+
+  // Add row manually
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+  m_table->setCellWidget(row, 0, createPropertyLabel(label, tooltip));
+
+  // Wrap container
+  QWidget* outerContainer = new QWidget();
+  QHBoxLayout* outerLayout = new QHBoxLayout(outerContainer);
+  outerLayout->setContentsMargins(6, 4, 6, 4);
+  outerLayout->setSpacing(0);
+  outerLayout->addWidget(container);
+  m_table->setCellWidget(row, 1, outerContainer);
+
+  m_keyToRow[key] = row;
+  updateTableHeight();
+}
+
+void PropertyTableWidget::addGraphProperty(const std::string& key, const std::string& label,
+                                           const std::string& value, const std::string& deviceKey,
+                                           const std::string& tooltip)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setEditable(true);
+  if (!tooltip.empty()) {
+    combo->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  // Lambda to populate graph names
+  auto populateGraphs = [this, combo, deviceKey, value]() {
+    QString currentText = combo->currentText();
+    combo->clear();
+
+    std::string deviceName = getParameter(deviceKey);
+    if (deviceName.empty()) {
+      combo->addItem("(Select device first)");
+      return;
+    }
+
+    if (m_context && m_context->productPositionManager) {
+      std::vector<std::string> graphNames =
+        m_context->productPositionManager->GetGraphNamesForDevice(deviceName);
+
+      for (const std::string& graphName : graphNames) {
+        combo->addItem(QString::fromStdString(graphName));
+      }
+    }
+
+    // Restore selection
+    if (!currentText.isEmpty()) {
+      int idx = combo->findText(currentText);
+      if (idx >= 0) {
+        combo->setCurrentIndex(idx);
+      } else {
+        combo->setEditText(currentText);
+      }
+    } else if (!value.empty()) {
+      int idx = combo->findText(QString::fromStdString(value));
+      if (idx >= 0) {
+        combo->setCurrentIndex(idx);
+      } else {
+        combo->setEditText(QString::fromStdString(value));
+      }
+    }
+  };
+
+  // Initial population
+  populateGraphs();
+
+  // Watch for device changes
+  if (m_valueWidgets.find(deviceKey) != m_valueWidgets.end()) {
+    QComboBox* deviceCombo = qobject_cast<QComboBox*>(m_valueWidgets[deviceKey]);
+    if (deviceCombo) {
+      connect(deviceCombo, &QComboBox::currentTextChanged, this, [populateGraphs]() {
+        populateGraphs();
+      });
+    }
+  }
+
+  connect(combo, &QComboBox::currentTextChanged, this, [this, key](const QString& text) {
+    emit propertyChanged(QString::fromStdString(key), text);
+    emit propertyChanged();
+  });
+
+  addPropertyRow(key, label, combo, tooltip);
+}
+
+void PropertyTableWidget::addGraphNodeProperty(const std::string& key, const std::string& label,
+                                               const std::string& value, const std::string& deviceKey,
+                                               const std::string& graphKey, const std::string& tooltip)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setEditable(true);
+  if (!tooltip.empty()) {
+    combo->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  // Lambda to populate node names
+  auto populateNodes = [this, combo, deviceKey, graphKey, value]() {
+    QString currentText = combo->currentText();
+    combo->clear();
+
+    std::string deviceName = getParameter(deviceKey);
+    std::string graphName = getParameter(graphKey);
+
+    if (deviceName.empty() || graphName.empty()) {
+      combo->addItem("(Select device and graph first)");
+      return;
+    }
+
+    if (m_context && m_context->productPositionManager) {
+      std::vector<std::string> nodeNames =
+        m_context->productPositionManager->GetNodeNamesForGraph(deviceName, graphName);
+
+      for (const std::string& nodeName : nodeNames) {
+        combo->addItem(QString::fromStdString(nodeName));
+      }
+    }
+
+    // Restore selection
+    if (!currentText.isEmpty()) {
+      int idx = combo->findText(currentText);
+      if (idx >= 0) {
+        combo->setCurrentIndex(idx);
+      } else {
+        combo->setEditText(currentText);
+      }
+    } else if (!value.empty()) {
+      int idx = combo->findText(QString::fromStdString(value));
+      if (idx >= 0) {
+        combo->setCurrentIndex(idx);
+      } else {
+        combo->setEditText(QString::fromStdString(value));
+      }
+    }
+  };
+
+  // Initial population
+  populateNodes();
+
+  // Watch for device changes
+  if (m_valueWidgets.find(deviceKey) != m_valueWidgets.end()) {
+    QComboBox* deviceCombo = qobject_cast<QComboBox*>(m_valueWidgets[deviceKey]);
+    if (deviceCombo) {
+      connect(deviceCombo, &QComboBox::currentTextChanged, this, [populateNodes]() {
+        populateNodes();
+      });
+    }
+  }
+
+  // Watch for graph changes
+  if (m_valueWidgets.find(graphKey) != m_valueWidgets.end()) {
+    QComboBox* graphCombo = qobject_cast<QComboBox*>(m_valueWidgets[graphKey]);
+    if (graphCombo) {
+      connect(graphCombo, &QComboBox::currentTextChanged, this, [populateNodes]() {
+        populateNodes();
+      });
+    }
+  }
+
+  connect(combo, &QComboBox::currentTextChanged, this, [this, key](const QString& text) {
+    emit propertyChanged(QString::fromStdString(key), text);
+    emit propertyChanged();
+  });
+
+  addPropertyRow(key, label, combo, tooltip);
+}
+
+void PropertyTableWidget::addDataChannelProperty(const std::string& key, const std::string& label,
+                                                 const std::string& value, const std::string& tooltip)
+{
+  QComboBox* combo = new QComboBox();
+  combo->setEditable(true);
+  if (!tooltip.empty()) {
+    combo->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  // Populate with DataStore channels
+  if (m_context && m_context->dataStore) {
+    auto channelNames = m_context->dataStore->GetAllChannelNames();
+    for (const auto& channel : channelNames) {
+      combo->addItem(QString::fromStdString(channel));
+    }
+  }
+
+  // Set current value
+  if (!value.empty()) {
+    int idx = combo->findText(QString::fromStdString(value));
+    if (idx >= 0) {
+      combo->setCurrentIndex(idx);
+    } else {
+      combo->setEditText(QString::fromStdString(value));
+    }
+  }
+
+  connect(combo, &QComboBox::currentTextChanged, this, [this, key](const QString& text) {
+    emit propertyChanged(QString::fromStdString(key), text);
+    emit propertyChanged();
+  });
+
+  addPropertyRow(key, label, combo, tooltip);
+}
+
 void PropertyTableWidget::addCategoryHeader(const std::string& categoryName)
 {
   int row = m_table->rowCount();
@@ -400,6 +891,9 @@ void PropertyTableWidget::addCategoryHeader(const std::string& categoryName)
 
   m_table->setCellWidget(row, 0, headerLabel);
   m_table->setSpan(row, 0, 1, 2);  // Span both columns
+
+  // Update table height to fit content
+  updateTableHeight();
 }
 
 void PropertyTableWidget::addSeparator()
@@ -414,6 +908,9 @@ void PropertyTableWidget::addSeparator()
   m_table->setCellWidget(row, 0, separator);
   m_table->setSpan(row, 0, 1, 2);
   m_table->setRowHeight(row, 1);
+
+  // Update table height to fit content
+  updateTableHeight();
 }
 
 std::map<std::string, std::string> PropertyTableWidget::getParameters() const
@@ -461,4 +958,19 @@ void PropertyTableWidget::clear()
   m_table->setRowCount(0);
   m_valueWidgets.clear();
   m_keyToRow.clear();
+  updateTableHeight();
+}
+
+void PropertyTableWidget::updateTableHeight()
+{
+  // Calculate total height needed: header + all rows
+  int totalHeight = m_table->horizontalHeader()->height();
+  for (int i = 0; i < m_table->rowCount(); ++i) {
+    totalHeight += m_table->rowHeight(i);
+  }
+  // Add small margin for border
+  totalHeight += 4;
+
+  m_table->setFixedHeight(totalHeight);
+  setMinimumHeight(totalHeight);
 }

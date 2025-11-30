@@ -599,6 +599,7 @@ set(SOURCES
     include/AppUI/RecipePage/ContextViewerWindow.cpp
     include/AppUI/MotionPages/EditPositionDialog.cpp
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
+    include/AppUI/RecipePage/MotionDeviceSelectorDialog.cpp
     include/TEC/CLD101xAdapter.cpp
     include/TEC/TECManager.cpp
     include/TEC/TECJsonLoader.cpp
@@ -755,6 +756,7 @@ set(HEADERS
     include/sequence/SequenceBuilder.h
     include/AppUI/MotionPages/EditPositionDialog.h
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
+    include/AppUI/RecipePage/MotionDeviceSelectorDialog.h
     include/TEC/TECTypes.h
     include/TEC/ITECDevice.h
     include/TEC/Cld101xadapter.h
