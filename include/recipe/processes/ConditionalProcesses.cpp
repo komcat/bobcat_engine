@@ -54,7 +54,19 @@ public:
 
     std::string contextKey = params.at("context_key");
     std::string comparisonStr = params.at("comparison");
-    float threshold = std::stof(params.at("threshold"));
+
+    // Parse threshold with error handling - default to 0.0 if empty or invalid
+    float threshold = 0.0f;
+    std::string thresholdStr = params.at("threshold");
+    if (!thresholdStr.empty()) {
+      try {
+        threshold = std::stof(thresholdStr);
+      } catch (const std::exception& e) {
+        std::cerr << "[ConditionalProcesses] Warning: Invalid threshold value '"
+                  << thresholdStr << "', using 0.0. Error: " << e.what() << std::endl;
+        threshold = 0.0f;
+      }
+    }
 
     // Convert comparison string to enum
     ConditionalBlock::ComparisonType comparison;

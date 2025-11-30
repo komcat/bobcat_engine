@@ -86,6 +86,9 @@ static QString getCategorySymbol(const std::string& category)
   if (category == "Aux Window") {
     return QString::fromUtf8("\xE2\x96\xA1");  // □ Window
   }
+  if (category == "Comment") {
+    return QString::fromUtf8("#");  // # Comment marker
+  }
   // Default
   return QString::fromUtf8("\xE2\x97\x8F");  // ● Circle (generic)
 }
@@ -378,6 +381,8 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "  border-radius: 4px; "
     "  color: #d4d4d4; "
     "  gridline-color: #3f3f46; "
+    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+    "  font-size: 13px; "
     "} "
     "QTreeWidget::item { "
     "  padding: 5px; "
@@ -390,15 +395,15 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     "  background-color: #0e639c; "
     "  color: white; "
     "} "
-    "QTreeWidget::branch:has-children:!has-siblings:closed,"
-    "QTreeWidget::branch:closed:has-children:has-siblings { "
-    "  image: url(none); "
+    "QTreeWidget::branch:has-children:closed { "
+    "  border-image: none; "
     "} "
-    "QTreeWidget::branch:open:has-children:!has-siblings,"
-    "QTreeWidget::branch:open:has-children:has-siblings { "
-    "  image: url(none); "
+    "QTreeWidget::branch:has-children:open { "
+    "  border-image: none; "
     "}"
   );
+  m_processTemplateList->setRootIsDecorated(true);  // Show expand/collapse arrows
+  m_processTemplateList->setIndentation(20);        // Indentation for child items
 
   // Populate tree with categories
   for (const auto& category : RecipeManager::getProcessCategories()) {
@@ -409,7 +414,8 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
     QFont font = categoryItem->font(0);
     font.setBold(true);
     categoryItem->setFont(0, font);
-    categoryItem->setBackground(0, QColor(240, 240, 240));
+    categoryItem->setForeground(0, QColor("#dcdcaa"));  // Yellow/gold for category headers
+    categoryItem->setBackground(0, QColor("#2d2d30"));  // Dark background for categories
 
     // Add processes for this category
     for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
@@ -418,7 +424,7 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
       processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
     }
 
-    categoryItem->setExpanded(true);
+    categoryItem->setExpanded(false);  // Start collapsed so user sees the arrows
   }
 
   connect(m_processTemplateList, &QTreeWidget::itemClicked,
@@ -490,13 +496,36 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   layout->setSpacing(5);
 
   QLabel* title = new QLabel("Recipe Steps");
-  title->setStyleSheet("font-weight: bold; color: #ffffff;");
+  title->setStyleSheet(
+    "font-weight: bold; "
+    "color: #ffffff; "
+    "font-size: 18px; "
+    "padding: 4px 0px;"
+  );
   layout->addWidget(title);
 
   QHBoxLayout* nameLayout = new QHBoxLayout();
   QLabel* nameLabel = new QLabel("Name:");
-  nameLabel->setStyleSheet("font-weight: bold; color: #ffffff;");
+  nameLabel->setStyleSheet(
+    "font-weight: bold; "
+    "color: #ffffff; "
+    "font-size: 14px;"
+  );
   m_recipeNameEdit = new QLineEdit(QString::fromStdString(m_recipeManager->getRecipeName()));
+  m_recipeNameEdit->setStyleSheet(
+    "QLineEdit { "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  padding: 6px 8px; "
+    "}"
+    "QLineEdit:focus { "
+    "  border: 1px solid #007acc; "
+    "}"
+  );
   connect(m_recipeNameEdit, &QLineEdit::textChanged, this, &RecipePage::onRecipeNameChanged);
   nameLayout->addWidget(nameLabel);
   nameLayout->addWidget(m_recipeNameEdit);
@@ -1621,16 +1650,46 @@ void RecipePage::onNicknameChanged(const QString& nickname)
 
   m_recipeManager->setStepNickname(m_selectedStepIndex, nickname.toStdString());
 
-  // Update the tree item text directly
+  // Update only the label widget in the current item (column 3) for fast typing response
   QTreeWidgetItem* currentItem = m_recipeTree->currentItem();
   if (currentItem) {
     const ProcessInstance* step = m_recipeManager->getStep(m_selectedStepIndex);
     if (step) {
-      QString displayText = QString::fromStdString(step->userNickname);
-      if (!step->enabled) {
-        displayText = "[DISABLED] " + displayText;
+      // Get the label widget from column 3 (Process Instance column)
+      QWidget* widget = m_recipeTree->itemWidget(currentItem, 3);
+      QLabel* processLabel = qobject_cast<QLabel*>(widget);
+      if (processLabel) {
+        // Build display text with appropriate prefix
+        QString iconPrefix;
+        bool isComment = (step->processType == "Comment");
+        bool isBlockStart = RecipeManager::isBlockStart(step->processType);
+        bool isBlockEnd = RecipeManager::isBlockEnd(step->processType);
+        bool isElse = (step->processType == "Conditional Else");
+
+        if (isComment) {
+          iconPrefix = "### ";
+        } else if (isBlockStart) {
+          iconPrefix = QString::fromUtf8("\u25BC ");
+        } else if (isBlockEnd) {
+          iconPrefix = QString::fromUtf8("\u2514\u2500 ");
+        } else if (isElse) {
+          iconPrefix = QString::fromUtf8("\u251C\u2500 ");
+        }
+
+        // For comments, display the comment text parameter
+        QString displayText;
+        if (isComment) {
+          displayText = iconPrefix + nickname;
+        } else {
+          displayText = iconPrefix + QString::fromStdString(step->userNickname);
+        }
+
+        if (!step->enabled) {
+          displayText = "[DISABLED] " + displayText;
+        }
+
+        processLabel->setText(displayText);
       }
-      currentItem->setText(2, displayText);  // Column 2 = "Process Instance"
     }
   }
 }
@@ -1716,6 +1775,11 @@ void RecipePage::refreshRecipeList()
     // Store step index in item data
     item->setData(0, Qt::UserRole, stepIndex);
 
+    // Clear all column text to prevent any default text from showing
+    for (int col = 0; col < 5; ++col) {
+      item->setText(col, "");
+    }
+
     // Column 0: Breakpoint checkbox - red when checked
     QCheckBox* breakpointChk = new QCheckBox();
     breakpointChk->setChecked(step->breakpoint);
@@ -1798,7 +1862,10 @@ void RecipePage::refreshRecipeList()
     // Column 3: Process name (use widget for background control)
     // Add icon prefix based on step type for visual hierarchy
     QString iconPrefix;
-    if (isBlockStart) {
+    bool isComment = (step->processType == "Comment");
+    if (isComment) {
+      iconPrefix = "### ";  // Comment prefix
+    } else if (isBlockStart) {
       iconPrefix = QString::fromUtf8("\u25BC ");  // ▼ down arrow for block start
     } else if (isBlockEnd) {
       iconPrefix = QString::fromUtf8("\u2514\u2500 ");  // └─ end marker
@@ -1806,9 +1873,30 @@ void RecipePage::refreshRecipeList()
       iconPrefix = QString::fromUtf8("\u251C\u2500 ");  // ├─ else branch marker
     }
 
-    QString displayText = iconPrefix + QString::fromStdString(step->userNickname);
+    // For comments, display the comment text parameter instead of nickname
+    QString displayText;
+    if (isComment) {
+      auto it = step->parameters.find("text");
+      if (it != step->parameters.end()) {
+        displayText = iconPrefix + QString::fromStdString(it->second);
+      } else {
+        displayText = iconPrefix + QString::fromStdString(step->userNickname);
+      }
+    } else {
+      displayText = iconPrefix + QString::fromStdString(step->userNickname);
+    }
     if (!step->enabled) {
       displayText = "[DISABLED] " + displayText;
+    }
+
+    // Comment rows get a distinct green color for visual separation
+    QString textColor;
+    if (!step->enabled) {
+      textColor = "#999999";
+    } else if (isComment) {
+      textColor = "#6a9955";  // Green color for comments (like code editor)
+    } else {
+      textColor = "#d4d4d4";
     }
 
     QLabel* processLabel = new QLabel(displayText);
@@ -1823,8 +1911,8 @@ void RecipePage::refreshRecipeList()
       "  %3"
       "}"
     ).arg(bgColorStr)
-     .arg(step->enabled ? "#d4d4d4" : "#999999")
-     .arg(step->enabled ? "" : "text-decoration: line-through;"));
+     .arg(textColor)
+     .arg(step->enabled ? (isComment ? "font-style: italic;" : "") : "text-decoration: line-through;"));
     m_recipeTree->setItemWidget(item, 3, processLabel);
 
     // Column 4: Run checkbox widget

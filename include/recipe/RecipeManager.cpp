@@ -538,7 +538,8 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "Calibration",
     "Vision",
     "Dispensing",
-    "Aux Window"
+    "Aux Window",
+    "Comment"
   };
 }
 
@@ -591,6 +592,11 @@ std::string RecipeManager::getProcessCategory(const std::string& processType)
       processType == "Conditional End" || processType == "Group Start" ||
       processType == "Group End") {
     return "Control Flow";
+  }
+
+  // Comment
+  if (processType == "Comment") {
+    return "Comment";
   }
 
   return "Uncategorized";

@@ -332,6 +332,44 @@ public:
 };
 
 //=============================================================================
+// COMMENT PLUGIN - Visual comment row, does nothing when executed
+//=============================================================================
+
+class CommentPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Comment";
+  }
+
+  std::string GetCategory() const override {
+    return "Comment";
+  }
+
+  std::string GetDescription() const override {
+    return "Visual comment for recipe organization (does nothing when executed)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"text", "Enter comment here"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("text", "Comment Text", params.at("text"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    // Comment does nothing - it's purely visual
+    // Just suppress unused parameter warnings
+    (void)sequence;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -347,8 +385,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<GroupStartPlugin>());
       registry.RegisterPlugin(std::make_unique<GroupEndPlugin>());
       registry.RegisterPlugin(std::make_unique<StopSequencePlugin>());
+      registry.RegisterPlugin(std::make_unique<CommentPlugin>());
 
-      std::cout << "[SystemProcesses] Registered 7 system process plugins" << std::endl;
+      std::cout << "[SystemProcesses] Registered 8 system process plugins" << std::endl;
     }
   };
 
