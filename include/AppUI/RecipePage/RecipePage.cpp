@@ -52,6 +52,44 @@
 #include <QPixmap>
 #endif
 
+// Helper function to get emoji symbol for process category
+static QString getCategorySymbol(const std::string& category)
+{
+  // Using simple ASCII/Unicode symbols that render reliably on Windows
+  if (category == "Motion Control" || category == "Motion") {
+    return QString::fromUtf8("\xE2\x9E\xA4");  // ➤ Arrow (motion/movement)
+  }
+  if (category == "I/O & Pneumatics") {
+    return QString::fromUtf8("\xE2\x9A\xA1");  // ⚡ Lightning bolt (I/O)
+  }
+  if (category == "TEC & Laser") {
+    return QString::fromUtf8("\xE2\x98\x80");  // ☀ Sun (thermal/laser)
+  }
+  if (category == "Power Supply") {
+    return QString::fromUtf8("\xE2\x8F\xBB");  // ⏻ Power symbol
+  }
+  if (category == "Data") {
+    return QString::fromUtf8("\xE2\x96\xA3");  // ▣ Data/storage
+  }
+  if (category == "System") {
+    return QString::fromUtf8("\xE2\x9C\x8B");  // ✋ Hand (user interaction)
+  }
+  if (category == "Control Flow") {
+    return QString::fromUtf8("\xE2\x86\xB9");  // ↹ Control flow
+  }
+  if (category == "Camera" || category == "Vision") {
+    return QString::fromUtf8("\xE2\x97\x89");  // ◉ Eye/camera
+  }
+  if (category == "Dispensing") {
+    return QString::fromUtf8("\xE2\x96\xBC");  // ▼ Dispense
+  }
+  if (category == "Aux Window") {
+    return QString::fromUtf8("\xE2\x96\xA1");  // □ Window
+  }
+  // Default
+  return QString::fromUtf8("\xE2\x97\x8F");  // ● Circle (generic)
+}
+
 RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
@@ -620,135 +658,181 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   layout->addLayout(executeRow);
 
-  // ========== ROW 2: File Operations ==========
-  QHBoxLayout* fileRow = new QHBoxLayout();
-  fileRow->setSpacing(3);
+  // ========== DROPDOWN MENUS ROW ==========
+  QHBoxLayout* menuRow = new QHBoxLayout();
+  menuRow->setSpacing(3);
 
-  m_newButton = new QPushButton("New");
-  m_newButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4aa8e3, stop:1 #3498db); }");
-  connect(m_newButton, &QPushButton::clicked, this, &RecipePage::onNewRecipe);
-  fileRow->addWidget(m_newButton);
+  // Common dropdown button style
+  QString menuButtonStyle =
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 6px 12px; "
+    "  min-height: 28px; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a); "
+    "} "
+    "QPushButton:pressed, QPushButton:menu-open { "
+    "  background-color: #3a3a3a; "
+    "} "
+    "QPushButton::menu-indicator { "
+    "  subcontrol-origin: padding; "
+    "  subcontrol-position: center right; "
+    "  right: 5px; "
+    "}";
 
-  m_loadButton = new QPushButton("Load");
-  m_loadButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4aa8e3, stop:1 #3498db); }");
-  connect(m_loadButton, &QPushButton::clicked, this, &RecipePage::onLoadRecipe);
-  fileRow->addWidget(m_loadButton);
+  QString menuStyle =
+    "QMenu { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "  padding: 4px; "
+    "} "
+    "QMenu::item { "
+    "  background-color: transparent; "
+    "  padding: 6px 20px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QMenu::item:selected { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "} "
+    "QMenu::separator { "
+    "  height: 1px; "
+    "  background: #555555; "
+    "  margin: 4px 10px; "
+    "}";
 
-  m_saveButton = new QPushButton("Save");
-  m_saveButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #37be70, stop:1 #27ae60); }");
-  connect(m_saveButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipe);
-  fileRow->addWidget(m_saveButton);
+  // ===== FILE MENU =====
+  QPushButton* fileMenuBtn = new QPushButton("File \u25BC");
+  fileMenuBtn->setStyleSheet(menuButtonStyle);
+  QMenu* fileMenu = new QMenu(fileMenuBtn);
+  fileMenu->setStyleSheet(menuStyle);
 
-  m_saveAsButton = new QPushButton("Save As");
-  m_saveAsButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #26b095, stop:1 #16a085); }");
-  connect(m_saveAsButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipeAs);
-  fileRow->addWidget(m_saveAsButton);
+  // Create hidden buttons for member pointer compatibility
+  m_newButton = new QPushButton();
+  m_newButton->setVisible(false);
+  m_loadButton = new QPushButton();
+  m_loadButton->setVisible(false);
+  m_saveButton = new QPushButton();
+  m_saveButton->setVisible(false);
+  m_saveAsButton = new QPushButton();
+  m_saveAsButton->setVisible(false);
+  m_updateProductFileButton = new QPushButton();
+  m_updateProductFileButton->setVisible(false);
 
-  m_updateProductFileButton = new QPushButton("Product");
-  m_updateProductFileButton->setToolTip("Update the product positions file reference in this recipe");
-  m_updateProductFileButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9e54bd, stop:1 #8e44ad); }");
-  connect(m_updateProductFileButton, &QPushButton::clicked, this, &RecipePage::onUpdateProductFile);
-  fileRow->addWidget(m_updateProductFileButton);
+  fileMenu->addAction("New", this, &RecipePage::onNewRecipe);
+  fileMenu->addAction("Load...", this, &RecipePage::onLoadRecipe);
+  fileMenu->addSeparator();
+  fileMenu->addAction("Save", this, &RecipePage::onSaveRecipe);
+  fileMenu->addAction("Save As...", this, &RecipePage::onSaveRecipeAs);
+  fileMenu->addSeparator();
+  fileMenu->addAction("Set Product File...", this, &RecipePage::onUpdateProductFile);
 
-  layout->addLayout(fileRow);
+  fileMenuBtn->setMenu(fileMenu);
+  menuRow->addWidget(fileMenuBtn);
 
-  // ========== ROW 3: Edit Operations (Copy/Paste/Move/Remove) ==========
-  QHBoxLayout* editRow = new QHBoxLayout();
-  editRow->setSpacing(3);
+  // ===== EDIT MENU =====
+  QPushButton* editMenuBtn = new QPushButton("Edit \u25BC");
+  editMenuBtn->setStyleSheet(menuButtonStyle);
+  QMenu* editMenu = new QMenu(editMenuBtn);
+  editMenu->setStyleSheet(menuStyle);
 
-  m_copyButton = new QPushButton("Copy");
-  m_copyButton->setToolTip("Copy selected process steps (Ctrl+C)");
-  m_copyButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); }");
-  connect(m_copyButton, &QPushButton::clicked, this, &RecipePage::onCopySelectedSteps);
-  editRow->addWidget(m_copyButton);
+  // Create hidden buttons for member pointer compatibility
+  m_copyButton = new QPushButton();
+  m_copyButton->setVisible(false);
+  m_pasteButton = new QPushButton();
+  m_pasteButton->setVisible(false);
+  m_moveUpButton = new QPushButton();
+  m_moveUpButton->setVisible(false);
+  m_moveDownButton = new QPushButton();
+  m_moveDownButton->setVisible(false);
+  m_removeButton = new QPushButton();
+  m_removeButton->setVisible(false);
 
-  m_pasteButton = new QPushButton("Paste");
-  m_pasteButton->setToolTip("Paste copied process steps after selection (Ctrl+V)");
-  m_pasteButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #58d68d, stop:1 #27ae60); }");
-  m_pasteButton->setEnabled(false);
-  connect(m_pasteButton, &QPushButton::clicked, this, &RecipePage::onPasteSteps);
-  editRow->addWidget(m_pasteButton);
+  editMenu->addAction("Copy", this, &RecipePage::onCopySelectedSteps, QKeySequence::Copy);
+  editMenu->addAction("Paste", this, &RecipePage::onPasteSteps, QKeySequence::Paste);
+  editMenu->addSeparator();
+  editMenu->addAction("Move Up", this, &RecipePage::onMoveStepUp, QKeySequence(Qt::CTRL | Qt::Key_Up));
+  editMenu->addAction("Move Down", this, &RecipePage::onMoveStepDown, QKeySequence(Qt::CTRL | Qt::Key_Down));
+  editMenu->addSeparator();
+  editMenu->addAction("Remove", this, &RecipePage::onRemoveStep, QKeySequence::Delete);
 
-  m_moveUpButton = new QPushButton("Up");
-  m_moveUpButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
-  connect(m_moveUpButton, &QPushButton::clicked, this, &RecipePage::onMoveStepUp);
-  editRow->addWidget(m_moveUpButton);
+  editMenuBtn->setMenu(editMenu);
+  menuRow->addWidget(editMenuBtn);
 
-  m_moveDownButton = new QPushButton("Down");
-  m_moveDownButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
-  connect(m_moveDownButton, &QPushButton::clicked, this, &RecipePage::onMoveStepDown);
-  editRow->addWidget(m_moveDownButton);
+  // ===== SELECT MENU =====
+  QPushButton* selectMenuBtn = new QPushButton("Select \u25BC");
+  selectMenuBtn->setStyleSheet(menuButtonStyle);
+  QMenu* selectMenu = new QMenu(selectMenuBtn);
+  selectMenu->setStyleSheet(menuStyle);
 
-  m_removeButton = new QPushButton("Remove");
-  m_removeButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f75c4c, stop:1 #e74c3c); }");
-  connect(m_removeButton, &QPushButton::clicked, this, &RecipePage::onRemoveStep);
-  editRow->addWidget(m_removeButton);
+  // Create hidden buttons for member pointer compatibility
+  m_selectAllButton = new QPushButton();
+  m_selectAllButton->setVisible(false);
+  m_deselectAllButton = new QPushButton();
+  m_deselectAllButton->setVisible(false);
+  m_toggleSelectedButton = new QPushButton();
+  m_toggleSelectedButton->setVisible(false);
 
-  layout->addLayout(editRow);
+  selectMenu->addAction("Select All", this, &RecipePage::onSelectAllProcesses, QKeySequence::SelectAll);
+  selectMenu->addAction("Deselect All", this, &RecipePage::onDeselectAllProcesses);
+  selectMenu->addSeparator();
+  selectMenu->addAction("Toggle Selected", this, &RecipePage::onToggleSelectedProcesses);
 
-  // ========== ROW 4: Selection Operations ==========
-  QHBoxLayout* selectRow = new QHBoxLayout();
-  selectRow->setSpacing(3);
+  selectMenuBtn->setMenu(selectMenu);
+  menuRow->addWidget(selectMenuBtn);
 
-  m_selectAllButton = new QPushButton("Select All");
-  m_selectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #26b095, stop:1 #16a085); }");
-  connect(m_selectAllButton, &QPushButton::clicked, this, &RecipePage::onSelectAllProcesses);
-  selectRow->addWidget(m_selectAllButton);
+  menuRow->addStretch();  // Push menus to the left
 
-  m_deselectAllButton = new QPushButton("Deselect All");
-  m_deselectAllButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); }");
-  connect(m_deselectAllButton, &QPushButton::clicked, this, &RecipePage::onDeselectAllProcesses);
-  selectRow->addWidget(m_deselectAllButton);
-
-  m_toggleSelectedButton = new QPushButton("Toggle Selected");
-  m_toggleSelectedButton->setToolTip("Toggle Run checkboxes for currently selected (highlighted) rows");
-  m_toggleSelectedButton->setStyleSheet(buttonStyle + "QPushButton { background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffac22, stop:1 #f39c12); }");
-  connect(m_toggleSelectedButton, &QPushButton::clicked, this, &RecipePage::onToggleSelectedProcesses);
-  selectRow->addWidget(m_toggleSelectedButton);
-
-  layout->addLayout(selectRow);
+  layout->addLayout(menuRow);
 
   // ========== PROCESS INSTANCE LIST ==========
   m_recipeTree = new QTreeWidget();
-  m_recipeTree->setColumnCount(4);
-  m_recipeTree->setHeaderLabels({ "", "#", "Process Instance", "Run" });  // Column 0 = breakpoint
+  m_recipeTree->setColumnCount(5);
+  m_recipeTree->setHeaderLabels({ "", "#", "", "Process Instance", "Run" });  // Column 0 = breakpoint, 2 = symbol
   m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_recipeTree->setRootIsDecorated(true);
-  m_recipeTree->setIndentation(20);
+  m_recipeTree->setRootIsDecorated(false);  // Hide expand arrows for clean look
+  m_recipeTree->setIndentation(24);          // Indent for nesting clarity
 
-  m_recipeTree->setColumnWidth(0, 80);   // Breakpoint column (red dot)
-  m_recipeTree->setColumnWidth(1, 60);   // Step number
-  m_recipeTree->setColumnWidth(3, 50);   // Run checkbox
   m_recipeTree->header()->setStretchLastSection(false);
-  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);  // Process Instance stretches
+  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Interactive);       // Breakpoint column - manual drag
+  m_recipeTree->setColumnWidth(0, 30);                                             // Default width for breakpoint
+  m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);  // Step number auto-fit
+  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);  // Symbol column auto-fit
+  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Stretch);           // Process Instance stretches
+  m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::ResizeToContents);  // Run checkbox auto-fit
 
   m_recipeTree->setStyleSheet(
     "QTreeWidget { "
     "  background-color: #1e1e1e; "
     "  border: 1px solid #3f3f46; "
     "  color: #d4d4d4; "
+    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
     "  font-size: 14px; "
-    "  gridline-color: #3f3f46; "
-    "  show-decoration-selected: 1; "
+    "  font-weight: bold; "
     "} "
+    "QTreeWidget::branch { border-image: none; image: none; } "
     "QTreeWidget::item { "
-    "  background-color: #3c3c3c; "
-    "  border-bottom: 1px solid #3f3f46; "
-    "  padding: 4px 2px; "
-    "  min-height: 24px; "
+    "  padding: 6px 4px; "
+    "  min-height: 26px; "
     "} "
     "QTreeWidget::item:hover { "
     "  background-color: #2a2d2e; "
     "} "
     "QTreeWidget::item:selected { "
-    "  background-color: #0e639c; "
+    "  background-color: #2d4f7c; "
     "  color: white; "
     "} "
     "QHeaderView::section { "
     "  background-color: #383838; "
     "  padding: 6px; "
     "  border: 1px solid #3f3f46; "
+    "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
     "  font-weight: bold; "
     "  font-size: 14px; "
     "  color: #d4d4d4; "
@@ -1632,147 +1716,120 @@ void RecipePage::refreshRecipeList()
     // Store step index in item data
     item->setData(0, Qt::UserRole, stepIndex);
 
-    // Column 0: Breakpoint indicator (clickable red dot) + Color picker button
-    QPushButton* breakpointBtn = new QPushButton();
-    breakpointBtn->setFixedSize(20, 20);
-    breakpointBtn->setProperty("stepIndex", stepIndex);
-    breakpointBtn->setCursor(Qt::PointingHandCursor);
+    // Column 0: Breakpoint checkbox - red when checked
+    QCheckBox* breakpointChk = new QCheckBox();
+    breakpointChk->setChecked(step->breakpoint);
+    breakpointChk->setProperty("stepIndex", stepIndex);
+    breakpointChk->setCursor(Qt::PointingHandCursor);
+    breakpointChk->setToolTip(step->breakpoint ? "Breakpoint set - click to remove" : "Click to set breakpoint");
 
-    // Style based on breakpoint state
-    if (step->breakpoint) {
-      breakpointBtn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #ff3333; "
-        "  border: none; "
-        "  border-radius: 10px; "
-        "}"
-        "QPushButton:hover { "
-        "  background-color: #ff6666; "
-        "}"
-      );
-      breakpointBtn->setToolTip("Click to remove breakpoint");
-    } else {
-      breakpointBtn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: transparent; "
-        "  border: 2px solid #555555; "
-        "  border-radius: 10px; "
-        "}"
-        "QPushButton:hover { "
-        "  background-color: #ff3333; "
-        "  border: none; "
-        "}"
-      );
-      breakpointBtn->setToolTip("Click to set breakpoint");
-    }
+    // Style: red background when checked
+    breakpointChk->setStyleSheet(
+      "QCheckBox { spacing: 0px; }"
+      "QCheckBox::indicator { width: 16px; height: 16px; }"
+      "QCheckBox::indicator:unchecked { "
+      "  background-color: #444444; "
+      "  border: 1px solid #666666; "
+      "  border-radius: 3px; "
+      "}"
+      "QCheckBox::indicator:checked { "
+      "  background-color: #ff3333; "
+      "  border: 1px solid #ff3333; "
+      "  border-radius: 3px; "
+      "}"
+    );
 
-    connect(breakpointBtn, &QPushButton::clicked, this, [this, stepIndex]() {
+    connect(breakpointChk, &QCheckBox::toggled, this, [this, stepIndex](bool checked) {
       ProcessInstance* step = m_recipeManager->getStep(stepIndex);
       if (step) {
-        step->breakpoint = !step->breakpoint;
+        step->breakpoint = checked;
         refreshRecipeList();
         selectStepByIndex(m_selectedStepIndex);
       }
     });
 
-    // Color picker button (shows current color or empty if no color set)
-    QPushButton* colorBtn = new QPushButton();
-    colorBtn->setFixedSize(20, 20);
-    colorBtn->setProperty("stepIndex", stepIndex);
-    colorBtn->setCursor(Qt::PointingHandCursor);
-
-    QString currentColor = QString::fromStdString(step->backgroundColor);
-    if (currentColor.isEmpty()) {
-      colorBtn->setStyleSheet(
-        "QPushButton { "
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-        "    stop:0 #ff0000, stop:0.17 #ffff00, stop:0.33 #00ff00, "
-        "    stop:0.5 #00ffff, stop:0.67 #0000ff, stop:0.83 #ff00ff, stop:1 #ff0000); "
-        "  border: 1px solid #888888; "
-        "  border-radius: 3px; "
-        "}"
-        "QPushButton:hover { "
-        "  border: 2px solid #ffffff; "
-        "}"
-      );
-      colorBtn->setToolTip("Click to set row color");
+    // Get background color for this row
+    QString bgColorStr;
+    if (!step->backgroundColor.empty()) {
+      bgColorStr = QString::fromStdString(step->backgroundColor);
     } else {
-      colorBtn->setStyleSheet(
-        QString("QPushButton { "
-        "  background-color: %1; "
-        "  border: 1px solid #888888; "
-        "  border-radius: 3px; "
-        "}"
-        "QPushButton:hover { "
-        "  border: 2px solid #ffffff; "
-        "}").arg(currentColor)
-      );
-      colorBtn->setToolTip("Click to change row color (right-click to clear)");
+      bgColorStr = "transparent";  // No background color
     }
 
-    connect(colorBtn, &QPushButton::clicked, this, [this, stepIndex]() {
-      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
-      if (step) {
-        QColor initialColor = step->backgroundColor.empty() ?
-          QColor(50, 50, 50) : QColor(QString::fromStdString(step->backgroundColor));
-
-        QColor color = QColorDialog::getColor(initialColor, this, "Choose Row Color");
-        if (color.isValid()) {
-          step->backgroundColor = color.name().toStdString();
-          refreshRecipeList();
-          selectStepByIndex(m_selectedStepIndex);
-        }
-      }
-    });
-
-    // Right-click to clear color
-    colorBtn->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(colorBtn, &QPushButton::customContextMenuRequested, this, [this, stepIndex](const QPoint& pos) {
-      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
-      if (step && !step->backgroundColor.empty()) {
-        QMenu menu;
-        QAction* clearAction = menu.addAction("Clear Color");
-        if (menu.exec(QCursor::pos()) == clearAction) {
-          step->backgroundColor = "";
-          refreshRecipeList();
-          selectStepByIndex(m_selectedStepIndex);
-        }
-      }
-    });
-
     QWidget* breakpointWidget = new QWidget();
-    breakpointWidget->setStyleSheet("background: transparent;");  // ✅ Make transparent to show row color
+    breakpointWidget->setStyleSheet(QString("background-color: %1;").arg(bgColorStr));
     QHBoxLayout* bpLayout = new QHBoxLayout(breakpointWidget);
-    bpLayout->addWidget(breakpointBtn);
-    bpLayout->addWidget(colorBtn);
+    bpLayout->addWidget(breakpointChk);
     bpLayout->setAlignment(Qt::AlignCenter);
     bpLayout->setContentsMargins(0, 0, 0, 0);
-    bpLayout->setSpacing(2);
     m_recipeTree->setItemWidget(item, 0, breakpointWidget);
 
-    // Column 1: Step number
-    item->setText(1, QString::number(stepIndex + 1));
-    item->setTextAlignment(1, Qt::AlignCenter);
+    // Column 1: Step number (use widget for background control)
+    QLabel* stepNumLabel = new QLabel(QString::number(stepIndex + 1));
+    stepNumLabel->setAlignment(Qt::AlignCenter);
+    stepNumLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  padding: 4px; "
+      "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+      "  font-weight: bold; "
+      "  font-size: 14px; "
+      "}"
+    ).arg(bgColorStr).arg(step->enabled ? "#d4d4d4" : "#999999"));
+    m_recipeTree->setItemWidget(item, 1, stepNumLabel);
 
-    // Column 2: Process name
-    QString displayText = QString::fromStdString(step->userNickname);
+    // Column 2: Process category symbol
+    std::string category = m_recipeManager->getProcessCategory(step->processType);
+    QString symbol = getCategorySymbol(category);
+    QLabel* symbolLabel = new QLabel(symbol);
+    symbolLabel->setAlignment(Qt::AlignCenter);
+    symbolLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  padding: 4px; "
+      "  font-size: 14px; "
+      "}"
+    ).arg(bgColorStr).arg(step->enabled ? "#d4d4d4" : "#999999"));
+    symbolLabel->setToolTip(QString::fromStdString(category));
+    m_recipeTree->setItemWidget(item, 2, symbolLabel);
+
+    // Column 3: Process name (use widget for background control)
+    // Add icon prefix based on step type for visual hierarchy
+    QString iconPrefix;
+    if (isBlockStart) {
+      iconPrefix = QString::fromUtf8("\u25BC ");  // ▼ down arrow for block start
+    } else if (isBlockEnd) {
+      iconPrefix = QString::fromUtf8("\u2514\u2500 ");  // └─ end marker
+    } else if (isElse) {
+      iconPrefix = QString::fromUtf8("\u251C\u2500 ");  // ├─ else branch marker
+    }
+
+    QString displayText = iconPrefix + QString::fromStdString(step->userNickname);
     if (!step->enabled) {
       displayText = "[DISABLED] " + displayText;
     }
-    item->setText(2, displayText);
 
-    // Visual styling for disabled items
-    if (!step->enabled) {
-      item->setForeground(1, QColor("#999999"));
-      item->setForeground(2, QColor("#999999"));
-      QFont font = item->font(2);
-      font.setStrikeOut(true);
-      item->setFont(2, font);
-    }
+    QLabel* processLabel = new QLabel(displayText);
+    processLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  padding: 4px 8px; "
+      "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+      "  font-weight: bold; "
+      "  font-size: 14px; "
+      "  %3"
+      "}"
+    ).arg(bgColorStr)
+     .arg(step->enabled ? "#d4d4d4" : "#999999")
+     .arg(step->enabled ? "" : "text-decoration: line-through;"));
+    m_recipeTree->setItemWidget(item, 3, processLabel);
 
-    // Column 3: Run checkbox widget
+    // Column 4: Run checkbox widget
     QWidget* checkboxWidget = new QWidget();
-    checkboxWidget->setStyleSheet("background: transparent;");  // ✅ Make transparent to show row color
+    checkboxWidget->setStyleSheet(QString("background-color: %1;").arg(bgColorStr));
     QCheckBox* checkbox = new QCheckBox();
     checkbox->setChecked(step->enabled);
     checkbox->setProperty("stepIndex", stepIndex);
@@ -1800,15 +1857,7 @@ void RecipePage::refreshRecipeList()
       selectStepByIndex(m_selectedStepIndex);
     });
 
-    m_recipeTree->setItemWidget(item, 3, checkboxWidget);
-
-    // Apply custom background color to Process Instance column (column 2) if set
-    if (!step->backgroundColor.empty()) {
-      QColor bgColor(QString::fromStdString(step->backgroundColor));
-      if (bgColor.isValid()) {
-        item->setBackground(2, QBrush(bgColor));  // Only apply to column 2 (Process Instance)
-      }
-    }
+    m_recipeTree->setItemWidget(item, 4, checkboxWidget);
 
     // Manage parent stack for nesting
     if (isBlockStart) {
@@ -3144,65 +3193,164 @@ void RecipePage::highlightExecutingStep(int stepIndex)
     QTreeWidgetItem* item = m_recipeTree->topLevelItem(i);
     if (!item) continue;
 
-    if (i == targetTreeIndex) {
-      // Highlight executing step with bold yellow text
-      // Column 0 is breakpoint widget, columns 1,2,3 are text columns
-      QColor yellowColor(255, 255, 0);  // Bright yellow
-      item->setForeground(1, QBrush(yellowColor));
-      item->setForeground(2, QBrush(yellowColor));
-      item->setForeground(3, QBrush(yellowColor));
+    // Get step data for background color
+    ProcessInstance* step = m_recipeManager->getStep(i);
+    if (!step) continue;
 
-      // Make font bold for extra visibility
-      QFont boldFont = item->font(1);
-      boldFont.setBold(true);
-      item->setFont(1, boldFont);
-      item->setFont(2, boldFont);
-      item->setFont(3, boldFont);
+    QString bgColorStr;
+    if (!step->backgroundColor.empty()) {
+      bgColorStr = QString::fromStdString(step->backgroundColor);
+    } else {
+      bgColorStr = "transparent";  // No background color
+    }
+
+    if (i == targetTreeIndex) {
+      // Highlight executing step with bold yellow text on brightened background
+      QString highlightBgColor = "#555555";  // Gray background for executing step visibility
+
+      // Update column 1 (step number label)
+      QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
+      if (col1Widget) {
+        QLabel* label = qobject_cast<QLabel*>(col1Widget);
+        if (label) {
+          label->setStyleSheet(QString(
+            "QLabel { "
+            "  background-color: %1; "
+            "  color: #ffff00; "
+            "  padding: 4px; "
+            "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+            "  font-weight: bold; "
+            "  font-size: 14px; "
+            "}"
+          ).arg(highlightBgColor));
+        }
+      }
+
+      // Update column 2 (process name label)
+      QWidget* col2Widget = m_recipeTree->itemWidget(item, 2);
+      if (col2Widget) {
+        QLabel* label = qobject_cast<QLabel*>(col2Widget);
+        if (label) {
+          label->setStyleSheet(QString(
+            "QLabel { "
+            "  background-color: %1; "
+            "  color: #ffff00; "
+            "  padding: 4px 8px; "
+            "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+            "  font-weight: bold; "
+            "  font-size: 14px; "
+            "}"
+          ).arg(highlightBgColor));
+        }
+      }
 
       // Also scroll to make it visible
       m_recipeTree->scrollToItem(item);
     }
     else {
-      // Clear highlight from other items
-      // Column 0 is breakpoint widget, columns 1,2,3 are text columns
-      item->setBackground(1, QBrush());
-      item->setBackground(2, QBrush());
-      item->setBackground(3, QBrush());
-      item->setForeground(1, QBrush());
-      item->setForeground(2, QBrush());
-      item->setForeground(3, QBrush());
+      // Restore normal colors for other items
+      QString textColor = step->enabled ? "#d4d4d4" : "#999999";
 
-      // Reset font to normal
-      QFont normalFont = item->font(1);
-      normalFont.setBold(false);
-      item->setFont(1, normalFont);
-      item->setFont(2, normalFont);
-      item->setFont(3, normalFont);
+      // Restore column 1 (step number label)
+      QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
+      if (col1Widget) {
+        QLabel* label = qobject_cast<QLabel*>(col1Widget);
+        if (label) {
+          label->setStyleSheet(QString(
+            "QLabel { "
+            "  background-color: %1; "
+            "  color: %2; "
+            "  padding: 4px; "
+            "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+            "  font-weight: bold; "
+            "  font-size: 14px; "
+            "}"
+          ).arg(bgColorStr).arg(textColor));
+        }
+      }
+
+      // Restore column 2 (process name label)
+      QWidget* col2Widget = m_recipeTree->itemWidget(item, 2);
+      if (col2Widget) {
+        QLabel* label = qobject_cast<QLabel*>(col2Widget);
+        if (label) {
+          label->setStyleSheet(QString(
+            "QLabel { "
+            "  background-color: %1; "
+            "  color: %2; "
+            "  padding: 4px 8px; "
+            "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+            "  font-weight: bold; "
+            "  font-size: 14px; "
+            "  %3"
+            "}"
+          ).arg(bgColorStr)
+           .arg(textColor)
+           .arg(step->enabled ? "" : "text-decoration: line-through;"));
+        }
+      }
     }
   }
 }
 
 void RecipePage::clearExecutingStepHighlight()
 {
-  // Clear all highlighting
+  // Clear all highlighting - restore original background colors
   for (int i = 0; i < m_recipeTree->topLevelItemCount(); ++i) {
     QTreeWidgetItem* item = m_recipeTree->topLevelItem(i);
     if (!item) continue;
 
-    // Column 0 is breakpoint widget, columns 1,2,3 are text columns
-    item->setBackground(1, QBrush());
-    item->setBackground(2, QBrush());
-    item->setBackground(3, QBrush());
-    item->setForeground(1, QBrush());
-    item->setForeground(2, QBrush());
-    item->setForeground(3, QBrush());
+    // Get step data for background color
+    ProcessInstance* step = m_recipeManager->getStep(i);
+    if (!step) continue;
 
-    // Reset font to normal
-    QFont normalFont = item->font(1);
-    normalFont.setBold(false);
-    item->setFont(1, normalFont);
-    item->setFont(2, normalFont);
-    item->setFont(3, normalFont);
+    QString bgColorStr;
+    if (!step->backgroundColor.empty()) {
+      bgColorStr = QString::fromStdString(step->backgroundColor);
+    } else {
+      bgColorStr = "transparent";  // No background color
+    }
+
+    QString textColor = step->enabled ? "#d4d4d4" : "#999999";
+
+    // Restore column 1 (step number label)
+    QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
+    if (col1Widget) {
+      QLabel* label = qobject_cast<QLabel*>(col1Widget);
+      if (label) {
+        label->setStyleSheet(QString(
+          "QLabel { "
+          "  background-color: %1; "
+          "  color: %2; "
+          "  padding: 4px; "
+          "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+          "  font-weight: bold; "
+          "  font-size: 14px; "
+          "}"
+        ).arg(bgColorStr).arg(textColor));
+      }
+    }
+
+    // Restore column 2 (process name label)
+    QWidget* col2Widget = m_recipeTree->itemWidget(item, 2);
+    if (col2Widget) {
+      QLabel* label = qobject_cast<QLabel*>(col2Widget);
+      if (label) {
+        label->setStyleSheet(QString(
+          "QLabel { "
+          "  background-color: %1; "
+          "  color: %2; "
+          "  padding: 4px 8px; "
+          "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
+          "  font-weight: bold; "
+          "  font-size: 14px; "
+          "  %3"
+          "}"
+        ).arg(bgColorStr)
+         .arg(textColor)
+         .arg(step->enabled ? "" : "text-decoration: line-through;"));
+      }
+    }
   }
 }
 
