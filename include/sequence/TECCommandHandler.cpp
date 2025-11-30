@@ -363,6 +363,43 @@ bool TECCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // CONNECT
+  // ============================================================================
+  else if (methodName == "Connect") {
+    if (m_logger) {
+      m_logger->Info("Connecting to TEC device: " + deviceName, "TECHandler");
+    }
+
+    bool success = tecManager->ConnectDevice(deviceName);
+
+    if (!success) {
+      errorMessage = "Failed to connect to TEC device: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Successfully connected to TEC device: " + deviceName, "TECHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
+  // DISCONNECT
+  // ============================================================================
+  else if (methodName == "Disconnect") {
+    if (m_logger) {
+      m_logger->Info("Disconnecting from TEC device: " + deviceName, "TECHandler");
+    }
+
+    tecManager->DisconnectDevice(deviceName);
+
+    if (m_logger) {
+      m_logger->Info("Disconnected from TEC device: " + deviceName, "TECHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

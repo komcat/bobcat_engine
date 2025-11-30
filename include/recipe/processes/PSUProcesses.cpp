@@ -304,6 +304,86 @@ public:
 };
 
 //=============================================================================
+// PSU CONNECT PLUGIN
+//=============================================================================
+
+class PSUConnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "PSU Connect";
+  }
+
+  std::string GetCategory() const override {
+    return "Power Supply";
+  }
+
+  std::string GetDescription() const override {
+    return "Connect to a power supply device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"psu_device", "PSU1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("psu_device");
+
+    sequence->AddAction(device, "Connect", {});
+
+    std::cout << "[PSUProcesses] Built PSU Connect for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
+// PSU DISCONNECT PLUGIN
+//=============================================================================
+
+class PSUDisconnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "PSU Disconnect";
+  }
+
+  std::string GetCategory() const override {
+    return "Power Supply";
+  }
+
+  std::string GetDescription() const override {
+    return "Disconnect from a power supply device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"psu_device", "PSU1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("psu_device", "PSU Device Name", params.at("psu_device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("psu_device");
+
+    sequence->AddAction(device, "Disconnect", {});
+
+    std::cout << "[PSUProcesses] Built PSU Disconnect for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -312,13 +392,15 @@ namespace {
     RegisterPSUProcesses() {
       auto& registry = ProcessPluginRegistry::Instance();
 
+      registry.RegisterPlugin(std::make_unique<PSUConnectPlugin>());
+      registry.RegisterPlugin(std::make_unique<PSUDisconnectPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUOutputPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUSetVoltagePlugin>());
       registry.RegisterPlugin(std::make_unique<PSUSetCurrentPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUReadVoltagePlugin>());
       registry.RegisterPlugin(std::make_unique<PSUReadCurrentPlugin>());
 
-      std::cout << "[PSUProcesses] Registered 5 PSU process plugins" << std::endl;
+      std::cout << "[PSUProcesses] Registered 7 PSU process plugins" << std::endl;
     }
   };
 

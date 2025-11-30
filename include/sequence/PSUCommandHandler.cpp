@@ -364,6 +364,43 @@ bool PSUCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // CONNECT
+  // ============================================================================
+  else if (methodName == "Connect") {
+    if (m_logger) {
+      m_logger->Info("Connecting to PSU device: " + deviceName, "PSUHandler");
+    }
+
+    bool success = psu->connect();
+
+    if (!success) {
+      errorMessage = "Failed to connect to PSU device: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Successfully connected to PSU device: " + deviceName, "PSUHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
+  // DISCONNECT
+  // ============================================================================
+  else if (methodName == "Disconnect") {
+    if (m_logger) {
+      m_logger->Info("Disconnecting from PSU device: " + deviceName, "PSUHandler");
+    }
+
+    psu->disconnect();
+
+    if (m_logger) {
+      m_logger->Info("Disconnected from PSU device: " + deviceName, "PSUHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

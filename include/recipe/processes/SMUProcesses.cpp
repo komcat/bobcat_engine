@@ -456,6 +456,70 @@ public:
 };
 
 //=============================================================================
+// SMU CONNECT PLUGIN
+//=============================================================================
+
+class SMUConnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override { return "SMU Connect"; }
+  std::string GetCategory() const override { return "SMU Control"; }
+  std::string GetDescription() const override {
+    return "Connect to SMU device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "Keithley_6482"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
+  }
+
+  void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
+    std::string device = step->parameters.at("device");
+    seq->AddAction(device, "Connect", {});
+    std::cout << "[SMUConnectPlugin] Built sequence: Connect on " << device << std::endl;
+  }
+};
+
+//=============================================================================
+// SMU DISCONNECT PLUGIN
+//=============================================================================
+
+class SMUDisconnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override { return "SMU Disconnect"; }
+  std::string GetCategory() const override { return "SMU Control"; }
+  std::string GetDescription() const override {
+    return "Disconnect from SMU device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "Keithley_6482"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
+  }
+
+  void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
+    std::string device = step->parameters.at("device");
+    seq->AddAction(device, "Disconnect", {});
+    std::cout << "[SMUDisconnectPlugin] Built sequence: Disconnect on " << device << std::endl;
+  }
+};
+
+//=============================================================================
 // PLUGIN REGISTRATION
 //=============================================================================
 
@@ -464,6 +528,8 @@ static bool RegisterSMUPlugins()
 {
   auto& registry = ProcessPluginRegistry::Instance();
 
+  registry.RegisterPlugin(std::make_unique<SMUConnectPlugin>());
+  registry.RegisterPlugin(std::make_unique<SMUDisconnectPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUStartPollingPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUStopPollingPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUReadCurrentPlugin>());
@@ -474,7 +540,7 @@ static bool RegisterSMUPlugins()
   registry.RegisterPlugin(std::make_unique<SMUOutputOnPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUOutputOffPlugin>());
 
-  std::cout << "[SMUProcesses] Registered 9 SMU process plugins" << std::endl;
+  std::cout << "[SMUProcesses] Registered 11 SMU process plugins" << std::endl;
   return true;
 }
 

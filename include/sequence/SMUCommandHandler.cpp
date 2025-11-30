@@ -487,6 +487,43 @@ bool SMUCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // CONNECT
+  // ============================================================================
+  else if (methodName == "Connect") {
+    if (m_logger) {
+      m_logger->Info("Connecting to SMU device: " + deviceName, "SMUHandler");
+    }
+
+    bool success = device->Connect();
+
+    if (!success) {
+      errorMessage = "Failed to connect to SMU device: " + deviceName + " - " + device->GetLastError();
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Successfully connected to SMU device: " + deviceName, "SMUHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
+  // DISCONNECT
+  // ============================================================================
+  else if (methodName == "Disconnect") {
+    if (m_logger) {
+      m_logger->Info("Disconnecting from SMU device: " + deviceName, "SMUHandler");
+    }
+
+    device->Disconnect();
+
+    if (m_logger) {
+      m_logger->Info("Disconnected from SMU device: " + deviceName, "SMUHandler");
+    }
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

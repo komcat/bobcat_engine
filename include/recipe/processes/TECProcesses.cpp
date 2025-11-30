@@ -244,6 +244,86 @@ public:
 };
 
 //=============================================================================
+// TEC CONNECT PLUGIN
+//=============================================================================
+
+class TECConnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "TEC Connect";
+  }
+
+  std::string GetCategory() const override {
+    return "TEC & Laser";
+  }
+
+  std::string GetDescription() const override {
+    return "Connect to a TEC device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "TEC1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("device", "TEC Device Name", params.at("device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("device");
+
+    sequence->AddAction(device, "Connect", {});
+
+    std::cout << "[TECProcesses] Built TEC Connect for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
+// TEC DISCONNECT PLUGIN
+//=============================================================================
+
+class TECDisconnectPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "TEC Disconnect";
+  }
+
+  std::string GetCategory() const override {
+    return "TEC & Laser";
+  }
+
+  std::string GetDescription() const override {
+    return "Disconnect from a TEC device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "TEC1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("device", "TEC Device Name", params.at("device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("device");
+
+    sequence->AddAction(device, "Disconnect", {});
+
+    std::cout << "[TECProcesses] Built TEC Disconnect for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -252,12 +332,14 @@ namespace {
     RegisterTECProcesses() {
       auto& registry = ProcessPluginRegistry::Instance();
 
+      registry.RegisterPlugin(std::make_unique<TECConnectPlugin>());
+      registry.RegisterPlugin(std::make_unique<TECDisconnectPlugin>());
       registry.RegisterPlugin(std::make_unique<SetTECTempPlugin>());
       registry.RegisterPlugin(std::make_unique<SetLaserCurrentPlugin>());
       registry.RegisterPlugin(std::make_unique<ReadTemperaturePlugin>());
       registry.RegisterPlugin(std::make_unique<ReadLaserCurrentPlugin>());
 
-      std::cout << "[TECProcesses] Registered 4 TEC/Laser process plugins" << std::endl;
+      std::cout << "[TECProcesses] Registered 6 TEC/Laser process plugins" << std::endl;
     }
   };
 
