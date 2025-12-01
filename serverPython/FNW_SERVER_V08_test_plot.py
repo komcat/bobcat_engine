@@ -237,6 +237,182 @@ class SiPhOGThread(QtCore.QThread):
         self.server_running = False
 
 
+class SagnacComparisonWidget(QtWidgets.QWidget):
+    """Widget for comparing Target SAG vs Actual SAG with percentage indicator"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.layout = QtWidgets.QVBoxLayout(self)
+
+        # Percentage display at the top
+        self.percent_container = QtWidgets.QWidget()
+        self.percent_container.setMinimumHeight(120)
+        self.percent_layout = QtWidgets.QVBoxLayout(self.percent_container)
+
+        self.percent_label = QtWidgets.QLabel("-- %")
+        self.percent_label.setAlignment(QtCore.Qt.AlignCenter)
+        percent_font = QtGui.QFont()
+        percent_font.setPointSize(48)
+        percent_font.setBold(True)
+        self.percent_label.setFont(percent_font)
+
+        self.status_label = QtWidgets.QLabel("Waiting for data...")
+        self.status_label.setAlignment(QtCore.Qt.AlignCenter)
+        status_font = QtGui.QFont()
+        status_font.setPointSize(16)
+        self.status_label.setFont(status_font)
+
+        self.percent_layout.addWidget(self.percent_label)
+        self.percent_layout.addWidget(self.status_label)
+
+        # Chart for comparing Target vs Actual
+        self.chart_widget = pg.GraphicsLayoutWidget()
+        self.chart_widget.setBackground('w')
+
+        self.plot = self.chart_widget.addPlot(title="Sagnac Power Comparison")
+
+        # Set larger fonts for axis labels
+        label_style = {'color': '#333', 'font-size': '14pt', 'font-weight': 'bold'}
+        self.plot.setLabel('left', 'Voltage (mV)', **label_style)
+        self.plot.setLabel('bottom', 'Sample', **label_style)
+
+        # Set larger font for title
+        self.plot.setTitle("Sagnac Power Comparison", size="16pt", color='#333')
+
+        # Set larger font for tick labels (axis values)
+        tick_font = QtGui.QFont()
+        tick_font.setPointSize(12)
+        self.plot.getAxis('left').setTickFont(tick_font)
+        self.plot.getAxis('bottom').setTickFont(tick_font)
+        self.plot.getAxis('left').setTextPen('#333')
+        self.plot.getAxis('bottom').setTextPen('#333')
+
+        self.plot.addLegend(labelTextSize='12pt')
+        self.plot.showGrid(x=True, y=True)
+
+        # Data buffers for plotting
+        self.max_points = 100
+        self.target_data = []
+        self.actual_data = []
+
+        # Plot curves
+        self.target_curve = self.plot.plot(pen=pg.mkPen(color='#FFA07A', width=2), name='Target SAG (V)')
+        self.actual_curve = self.plot.plot(pen=pg.mkPen(color='#98D8C8', width=2), name='Actual SAG (V)')
+
+        # Value displays below the chart
+        self.values_container = QtWidgets.QWidget()
+        self.values_layout = QtWidgets.QHBoxLayout(self.values_container)
+
+        # Target value display
+        self.target_container = QtWidgets.QWidget()
+        self.target_container.setStyleSheet("background-color: #f5f5f5; border-radius: 10px;")
+        target_layout = QtWidgets.QVBoxLayout(self.target_container)
+
+        target_name = QtWidgets.QLabel("Target SAG_PWR (V)")
+        target_name.setAlignment(QtCore.Qt.AlignCenter)
+        target_name_font = QtGui.QFont()
+        target_name_font.setPointSize(12)
+        target_name_font.setBold(True)
+        target_name.setFont(target_name_font)
+
+        self.target_value_label = QtWidgets.QLabel("--")
+        self.target_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        target_value_font = QtGui.QFont()
+        target_value_font.setPointSize(28)
+        target_value_font.setBold(True)
+        self.target_value_label.setFont(target_value_font)
+        self.target_value_label.setStyleSheet("color: #FFA07A; padding: 10px;")
+
+        target_layout.addWidget(target_name)
+        target_layout.addWidget(self.target_value_label)
+
+        # Actual value display
+        self.actual_container = QtWidgets.QWidget()
+        self.actual_container.setStyleSheet("background-color: #f5f5f5; border-radius: 10px;")
+        actual_layout = QtWidgets.QVBoxLayout(self.actual_container)
+
+        actual_name = QtWidgets.QLabel("Actual SAG_PWR (V)")
+        actual_name.setAlignment(QtCore.Qt.AlignCenter)
+        actual_name_font = QtGui.QFont()
+        actual_name_font.setPointSize(12)
+        actual_name_font.setBold(True)
+        actual_name.setFont(actual_name_font)
+
+        self.actual_value_label = QtWidgets.QLabel("--")
+        self.actual_value_label.setAlignment(QtCore.Qt.AlignCenter)
+        actual_value_font = QtGui.QFont()
+        actual_value_font.setPointSize(28)
+        actual_value_font.setBold(True)
+        self.actual_value_label.setFont(actual_value_font)
+        self.actual_value_label.setStyleSheet("color: #98D8C8; padding: 10px;")
+
+        actual_layout.addWidget(actual_name)
+        actual_layout.addWidget(self.actual_value_label)
+
+        self.values_layout.addWidget(self.target_container)
+        self.values_layout.addWidget(self.actual_container)
+
+        # Add all to main layout
+        self.layout.addWidget(self.percent_container)
+        self.layout.addWidget(self.chart_widget, stretch=1)
+        self.layout.addWidget(self.values_container)
+
+    def update_data(self, target_sag, actual_sag):
+        """Update the comparison display with new data"""
+        # Update value labels
+        self.target_value_label.setText(f'{target_sag:.4f}')
+        self.actual_value_label.setText(f'{actual_sag:.4f}')
+
+        # Calculate percentage
+        if target_sag > 0:
+            percentage = (actual_sag / target_sag) * 100
+        else:
+            percentage = 0
+
+        # Update percentage label with color coding
+        self.percent_label.setText(f'{percentage:.1f} %')
+
+        # Color coding based on percentage
+        if percentage >= 120:
+            # Godlike - Cyan
+            color = '#00CED1'
+            status = "Godlike"
+            bg_color = '#E0FFFF'
+        elif percentage >= 95:
+            # Pass - Green
+            color = '#32CD32'
+            status = "Pass"
+            bg_color = '#E8F5E9'
+        elif percentage >= 85:
+            # Marginal - Yellow
+            color = '#FFD700'
+            status = "Marginal"
+            bg_color = '#FFFDE7'
+        else:
+            # Need work - Red
+            color = '#FF4444'
+            status = "Need Work"
+            bg_color = '#FFEBEE'
+
+        self.percent_label.setStyleSheet(f"color: {color}; padding: 10px;")
+        self.status_label.setText(status)
+        self.status_label.setStyleSheet(f"color: {color};")
+        self.percent_container.setStyleSheet(f"background-color: {bg_color}; border-radius: 10px;")
+
+        # Update chart data
+        self.target_data.append(target_sag)
+        self.actual_data.append(actual_sag)
+
+        # Keep only last max_points
+        if len(self.target_data) > self.max_points:
+            self.target_data = self.target_data[-self.max_points:]
+            self.actual_data = self.actual_data[-self.max_points:]
+
+        # Update curves
+        self.target_curve.setData(self.target_data)
+        self.actual_curve.setData(self.actual_data)
+
+
 class RealTimePlotWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -283,7 +459,10 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         self.current_control_layout.addWidget(self.apply_current_button)
         self.current_control_layout.addWidget(self.current_status_label)
 
-        # Create grid layout to show all values on one page
+        # Create tab widget
+        self.tab_widget = QtWidgets.QTabWidget()
+
+        # Tab 1: All Values (existing layout)
         self.values_widget = QtWidgets.QWidget()
         self.values_layout = QtWidgets.QGridLayout(self.values_widget)
         self.values_layout.setSpacing(20)
@@ -328,10 +507,16 @@ class RealTimePlotWidget(QtWidgets.QWidget):
             # Store reference to value label
             self.value_labels.append(value_label)
 
+        self.tab_widget.addTab(self.values_widget, "All Values")
+
+        # Tab 2: Sagnac Comparison
+        self.sagnac_comparison_widget = SagnacComparisonWidget()
+        self.tab_widget.addTab(self.sagnac_comparison_widget, "Sagnac Comparison")
+
         # Add layouts to the main layout
         self.layout.addLayout(self.control_layout)
         self.layout.addLayout(self.current_control_layout)
-        self.layout.addWidget(self.values_widget)
+        self.layout.addWidget(self.tab_widget)
 
         # Thread and signal connections
         self.server_thread = None
@@ -344,6 +529,12 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         for i in range(len(data_key)):
             # Update text label with current value
             self.value_labels[i].setText(f'{values[i]:.3f}')
+
+        # Update Sagnac comparison widget
+        # data_key indices: 3 = "Target SAG_PWR (V)", 4 = "SAG_PWR (V)"
+        target_sag = values[3]
+        actual_sag = values[4]
+        self.sagnac_comparison_widget.update_data(target_sag, actual_sag)
 
     def update_status(self, status):
         self.status_label.setText(status)
