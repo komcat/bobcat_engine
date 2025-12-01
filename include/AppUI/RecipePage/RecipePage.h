@@ -74,6 +74,7 @@ private slots:
   void onRecipeStepSelected();
   void onMoveStepUp();
   void onMoveStepDown();
+  void onMoveStepToLine();  // Move step to specific line number
   void onRemoveStep();
   void onRunRecipe();
   void onRunSelectedStep();  // ✅ NEW: Run single selected step
@@ -148,6 +149,8 @@ private:
   void clearConfigurationForm();
   void selectStepByIndex(int index);
   void updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
+  QTreeWidgetItem* findTreeItemByIndex(int stepIndex);  // Find tree item by step index
+  void updateTreeItemsForSwap(int index1, int index2);  // Fast update for move up/down
 
   // ✅ NEW: Panel switching
   void showProgressPanel();

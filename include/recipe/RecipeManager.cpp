@@ -43,6 +43,26 @@ void RecipeManager::addStep(const std::string& processType)
     << " (ID: " << uniqueId << ")" << std::endl;
 }
 
+void RecipeManager::insertStep(int index, const std::string& processType)
+{
+  // Clamp index to valid range
+  if (index < 0) index = 0;
+  if (index > static_cast<int>(m_currentRecipe.steps.size())) {
+    index = static_cast<int>(m_currentRecipe.steps.size());
+  }
+
+  std::string uniqueId = generateUniqueId(processType);
+  std::string nickname = processType + " " + std::to_string(m_currentRecipe.steps.size() + 1);
+
+  auto instance = std::make_unique<ProcessInstance>(processType, nickname, uniqueId);
+  instance->parameters = getDefaultParameters(processType);
+
+  m_currentRecipe.steps.insert(m_currentRecipe.steps.begin() + index, std::move(instance));
+
+  std::cout << "[RecipeManager] Inserted step at index " << index << ": " << processType
+    << " (ID: " << uniqueId << ")" << std::endl;
+}
+
 void RecipeManager::insertStepAt(int index, const std::string& processType, const std::string& nickname,
                                   bool enabled, const std::map<std::string, std::string>& parameters)
 {
@@ -97,6 +117,34 @@ bool RecipeManager::moveStepDown(int index)
 
   std::swap(m_currentRecipe.steps[index], m_currentRecipe.steps[index + 1]);
   std::cout << "[RecipeManager] Moved step " << index << " down" << std::endl;
+  return true;
+}
+
+bool RecipeManager::moveStepTo(int fromIndex, int toIndex)
+{
+  int stepCount = static_cast<int>(m_currentRecipe.steps.size());
+
+  // Validate indices
+  if (fromIndex < 0 || fromIndex >= stepCount) {
+    std::cerr << "[RecipeManager] Invalid fromIndex for moveStepTo: " << fromIndex << std::endl;
+    return false;
+  }
+  if (toIndex < 0 || toIndex >= stepCount) {
+    std::cerr << "[RecipeManager] Invalid toIndex for moveStepTo: " << toIndex << std::endl;
+    return false;
+  }
+  if (fromIndex == toIndex) {
+    return true;  // No move needed
+  }
+
+  // Extract the step
+  auto step = std::move(m_currentRecipe.steps[fromIndex]);
+  m_currentRecipe.steps.erase(m_currentRecipe.steps.begin() + fromIndex);
+
+  // Insert at new position (adjust if moving down since we removed an element)
+  m_currentRecipe.steps.insert(m_currentRecipe.steps.begin() + toIndex, std::move(step));
+
+  std::cout << "[RecipeManager] Moved step from " << fromIndex << " to " << toIndex << std::endl;
   return true;
 }
 

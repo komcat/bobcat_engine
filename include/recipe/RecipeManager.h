@@ -66,11 +66,13 @@ public:
 
   // Step management
   void addStep(const std::string& processType);
+  void insertStep(int index, const std::string& processType);  // Insert new step at index with defaults
   void insertStepAt(int index, const std::string& processType, const std::string& nickname,
-                    bool enabled, const std::map<std::string, std::string>& parameters);  // ✅ NEW: Insert copy at index
+                    bool enabled, const std::map<std::string, std::string>& parameters);  // Insert copy at index
   void removeStep(int index);
   bool moveStepUp(int index);
   bool moveStepDown(int index);
+  bool moveStepTo(int fromIndex, int toIndex);  // Move step to specific line number
 
   // Step access
   ProcessInstance* getStep(int index);

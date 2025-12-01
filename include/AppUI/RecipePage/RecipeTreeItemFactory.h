@@ -58,6 +58,14 @@ public:
   void updateProcessNameLabel(QTreeWidgetItem* item, const ProcessInstance* step);
 
   /**
+   * @brief Update all widgets of an existing tree item with new step data
+   * @param item The tree widget item to update
+   * @param step The new process instance data
+   * @param stepIndex The new step index (for display purposes)
+   */
+  void updateStepItem(QTreeWidgetItem* item, const ProcessInstance* step, int stepIndex);
+
+  /**
    * @brief Get category symbol for a process type
    */
   static QString getCategorySymbol(const std::string& category);

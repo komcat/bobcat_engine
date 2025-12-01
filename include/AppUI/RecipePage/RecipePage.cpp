@@ -624,6 +624,7 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   editMenu->addSeparator();
   editMenu->addAction("Move Up", this, &RecipePage::onMoveStepUp, QKeySequence(Qt::CTRL | Qt::Key_Up));
   editMenu->addAction("Move Down", this, &RecipePage::onMoveStepDown, QKeySequence(Qt::CTRL | Qt::Key_Down));
+  editMenu->addAction("Move to Line...", this, &RecipePage::onMoveStepToLine, QKeySequence(Qt::CTRL | Qt::Key_G));
   editMenu->addSeparator();
   editMenu->addAction("Remove", this, &RecipePage::onRemoveStep, QKeySequence::Delete);
 
@@ -1032,9 +1033,11 @@ void RecipePage::onAddProcess()
     return;
   }
 
-  m_recipeManager->addStep(item->text(0).toStdString());
+  // Insert at current selection + 1 (after selected), or at end if nothing selected
+  int insertIndex = (m_selectedStepIndex >= 0) ? m_selectedStepIndex + 1 : m_recipeManager->getStepCount();
+  m_recipeManager->insertStep(insertIndex, item->text(0).toStdString());
   refreshRecipeList();
-  selectStepByIndex(m_recipeManager->getStepCount() - 1);
+  selectStepByIndex(insertIndex);
 }
 
 void RecipePage::onSelectAllProcesses()
@@ -1343,17 +1346,62 @@ void RecipePage::onPasteSteps()
 
 void RecipePage::onMoveStepUp()
 {
-  if (m_recipeManager->moveStepUp(m_selectedStepIndex)) {
-    m_selectedStepIndex--;  // Update index to follow the moved step
-    refreshRecipeList();
+  int oldIndex = m_selectedStepIndex;
+  if (m_recipeManager->moveStepUp(oldIndex)) {
+    int newIndex = oldIndex - 1;
+    m_selectedStepIndex = newIndex;
+    // Fast update: only update the two swapped items
+    updateTreeItemsForSwap(newIndex, oldIndex);
     selectStepByIndex(m_selectedStepIndex);
   }
 }
 
 void RecipePage::onMoveStepDown()
 {
-  if (m_recipeManager->moveStepDown(m_selectedStepIndex)) {
-    m_selectedStepIndex++;  // Update index to follow the moved step
+  int oldIndex = m_selectedStepIndex;
+  if (m_recipeManager->moveStepDown(oldIndex)) {
+    int newIndex = oldIndex + 1;
+    m_selectedStepIndex = newIndex;
+    // Fast update: only update the two swapped items
+    updateTreeItemsForSwap(oldIndex, newIndex);
+    selectStepByIndex(m_selectedStepIndex);
+  }
+}
+
+void RecipePage::onMoveStepToLine()
+{
+  if (m_selectedStepIndex < 0) {
+    QMessageBox::warning(this, "No Selection", "Please select a step to move.");
+    return;
+  }
+
+  int stepCount = m_recipeManager->getStepCount();
+  if (stepCount <= 1) {
+    return;  // Nothing to move
+  }
+
+  // Show dialog with 1-based line numbers for user-friendly display
+  bool ok;
+  int targetLine = QInputDialog::getInt(
+    this,
+    "Move to Line",
+    QString("Move step from line %1 to line (1-%2):").arg(m_selectedStepIndex + 1).arg(stepCount),
+    m_selectedStepIndex + 1,  // Default: current position
+    1,                        // Min: line 1
+    stepCount,                // Max: last line
+    1,                        // Step
+    &ok
+  );
+
+  if (!ok) {
+    return;  // User cancelled
+  }
+
+  // Convert 1-based line to 0-based index
+  int targetIndex = targetLine - 1;
+
+  if (m_recipeManager->moveStepTo(m_selectedStepIndex, targetIndex)) {
+    m_selectedStepIndex = targetIndex;
     refreshRecipeList();
     selectStepByIndex(m_selectedStepIndex);
   }
@@ -1559,6 +1607,50 @@ void RecipePage::selectStepByIndex(int index)
     }
     ++it;
   }
+}
+
+QTreeWidgetItem* RecipePage::findTreeItemByIndex(int stepIndex)
+{
+  QTreeWidgetItemIterator it(m_recipeTree);
+  while (*it) {
+    int itemIndex = (*it)->data(0, Qt::UserRole).toInt();
+    if (itemIndex == stepIndex) {
+      return *it;
+    }
+    ++it;
+  }
+  return nullptr;
+}
+
+void RecipePage::updateTreeItemsForSwap(int index1, int index2)
+{
+  // Find both tree items
+  QTreeWidgetItem* item1 = findTreeItemByIndex(index1);
+  QTreeWidgetItem* item2 = findTreeItemByIndex(index2);
+
+  if (!item1 || !item2) {
+    // Fallback to full refresh if items not found
+    refreshRecipeList();
+    return;
+  }
+
+  // Get the step data (already swapped in RecipeManager)
+  const ProcessInstance* step1 = m_recipeManager->getStep(index1);
+  const ProcessInstance* step2 = m_recipeManager->getStep(index2);
+
+  if (!step1 || !step2) {
+    refreshRecipeList();
+    return;
+  }
+
+  // Block signals during update
+  m_recipeTree->blockSignals(true);
+
+  // Update both items with their new data
+  m_treeItemFactory->updateStepItem(item1, step1, index1);
+  m_treeItemFactory->updateStepItem(item2, step2, index2);
+
+  m_recipeTree->blockSignals(false);
 }
 
 void RecipePage::updateRecipeFileNameDisplay()
