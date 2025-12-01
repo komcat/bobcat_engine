@@ -69,7 +69,8 @@ protected:
 private slots:
   void onDeviceSelected();
   void onStepSizeSelected();
-  void updatePositionDisplay();  // ✅ NEW: Update position labels
+  void updatePositionDisplay();  // Update position labels
+  void updateUVWButtonState();   // Enable/disable U/V/W buttons based on device axes
 
 private:
   void setupUI();

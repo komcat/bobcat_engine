@@ -1443,6 +1443,13 @@ void RecipePage::onParameterChanged()
 {
   std::cout << "[RecipePage] onParameterChanged() called" << std::endl;
 
+  // Verify signal is from current widget (prevent stale signal processing)
+  QObject* signalSender = sender();
+  if (signalSender && signalSender != m_currentConfigWidget) {
+    std::cout << "[RecipePage]   Ignoring stale signal from old widget" << std::endl;
+    return;
+  }
+
   if (m_selectedStepIndex < 0 || !m_currentConfigWidget) {
     std::cout << "[RecipePage]   Skipping - selectedIndex=" << m_selectedStepIndex
               << ", hasWidget=" << (m_currentConfigWidget != nullptr) << std::endl;
@@ -1452,6 +1459,12 @@ void RecipePage::onParameterChanged()
   auto params = m_currentConfigWidget->getParameters();
   std::cout << "[RecipePage]   Updating " << params.size() << " parameters for step "
             << m_selectedStepIndex << std::endl;
+
+  if (params.empty()) {
+    std::cout << "[RecipePage]   WARNING: No parameters returned from widget!" << std::endl;
+    return;
+  }
+
   for (const auto& [key, value] : params) {
     std::cout << "[RecipePage]     " << key << " = '" << value << "'" << std::endl;
     m_recipeManager->setStepParameter(m_selectedStepIndex, key, value);
@@ -1592,8 +1605,14 @@ void RecipePage::updateConfigurationForm()
     return;
   }
 
-  // Safe widget cleanup
+  // Safe widget cleanup - disconnect signals first to prevent stale signal delivery
   if (m_currentConfigWidget) {
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::parameterChanged,
+      this, &RecipePage::onParameterChanged);
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::nicknameChanged,
+      this, &RecipePage::onNicknameChanged);
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::enabledChanged,
+      this, &RecipePage::onEnabledChanged);
     m_configScrollArea->takeWidget();
     delete m_currentConfigWidget;
     m_currentConfigWidget = nullptr;
@@ -1645,8 +1664,14 @@ void RecipePage::updateConfigurationForm()
 
 void RecipePage::clearConfigurationForm()
 {
-  // ✅ FIX: Safe widget cleanup
+  // ✅ FIX: Safe widget cleanup - disconnect signals first
   if (m_currentConfigWidget) {
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::parameterChanged,
+      this, &RecipePage::onParameterChanged);
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::nicknameChanged,
+      this, &RecipePage::onNicknameChanged);
+    disconnect(m_currentConfigWidget, &ProcessConfigWidget::enabledChanged,
+      this, &RecipePage::onEnabledChanged);
     m_configScrollArea->takeWidget();  // Remove from scroll area
     delete m_currentConfigWidget;      // Delete immediately
     m_currentConfigWidget = nullptr;

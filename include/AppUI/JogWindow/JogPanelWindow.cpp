@@ -880,9 +880,37 @@ void JogPanelWindow::onDeviceSelected()
       );
     }
 
-    // ✅ NEW: Update position display immediately when device changes
+    // Update UVW button enabled state based on device capabilities
+    updateUVWButtonState();
+
+    // Update position display immediately when device changes
     updatePositionDisplay();
   }
+}
+
+void JogPanelWindow::updateUVWButtonState()
+{
+  if (!m_context || !m_context->motionManager || m_selectedDevice.empty()) {
+    return;
+  }
+
+  // Check if device supports U/V/W axes
+  std::string installedAxes = m_context->motionManager->GetInstalledAxes(m_selectedDevice);
+  bool hasU = installedAxes.find('U') != std::string::npos;
+  bool hasV = installedAxes.find('V') != std::string::npos;
+  bool hasW = installedAxes.find('W') != std::string::npos;
+
+  // Enable/disable U buttons
+  if (m_btnUMinus) m_btnUMinus->setEnabled(hasU);
+  if (m_btnUPlus) m_btnUPlus->setEnabled(hasU);
+
+  // Enable/disable V buttons
+  if (m_btnVMinus) m_btnVMinus->setEnabled(hasV);
+  if (m_btnVPlus) m_btnVPlus->setEnabled(hasV);
+
+  // Enable/disable W buttons
+  if (m_btnWMinus) m_btnWMinus->setEnabled(hasW);
+  if (m_btnWPlus) m_btnWPlus->setEnabled(hasW);
 }
 
 void JogPanelWindow::onStepSizeSelected()
@@ -1012,10 +1040,13 @@ void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
 
 void JogPanelWindow::showPanel()
 {
-  // ✅ NEW: Refresh device list to show only connected devices
+  // Refresh device list to show only connected devices
   refreshDeviceList();
 
-  // ✅ NEW: Start position update timer
+  // Update U/V/W button state for currently selected device
+  updateUVWButtonState();
+
+  // Start position update timer
   if (m_positionUpdateTimer) {
     m_positionUpdateTimer->start();
     updatePositionDisplay();  // Initial update
@@ -1029,7 +1060,7 @@ void JogPanelWindow::showPanel()
 
 void JogPanelWindow::hidePanel()
 {
-  // ✅ NEW: Stop position update timer
+  // Stop position update timer
   if (m_positionUpdateTimer) {
     m_positionUpdateTimer->stop();
   }
@@ -1115,15 +1146,23 @@ void JogPanelWindow::updatePositionDisplay()
     return;
   }
 
+  // Get installed axes for this device to avoid querying unsupported axes
+  std::string installedAxes = m_context->motionManager->GetInstalledAxes(m_selectedDevice);
+  bool hasU = installedAxes.find('U') != std::string::npos;
+  bool hasV = installedAxes.find('V') != std::string::npos;
+  bool hasW = installedAxes.find('W') != std::string::npos;
+
   // Get current position from motion manager
   double x = 0.0, y = 0.0, z = 0.0, u = 0.0, v = 0.0, w = 0.0;
 
   bool xValid = m_context->motionManager->GetPosition(m_selectedDevice, "X", x);
   bool yValid = m_context->motionManager->GetPosition(m_selectedDevice, "Y", y);
   bool zValid = m_context->motionManager->GetPosition(m_selectedDevice, "Z", z);
-  bool uValid = m_context->motionManager->GetPosition(m_selectedDevice, "U", u);
-  bool vValid = m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
-  bool wValid = m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
+
+  // Only query U/V/W if the device supports them
+  bool uValid = hasU && m_context->motionManager->GetPosition(m_selectedDevice, "U", u);
+  bool vValid = hasV && m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
+  bool wValid = hasW && m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
 
   // Update labels with formatted values (3 decimal places)
   if (m_posXLabel) {

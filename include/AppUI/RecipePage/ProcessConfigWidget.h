@@ -40,8 +40,8 @@ public:
   // Load data from process instance
   virtual void loadFromInstance(const ProcessInstance* instance);
 
-  // Get parameter values
-  std::map<std::string, std::string> getParameters() const;
+  // Get parameter values (virtual to allow derived classes to override)
+  virtual std::map<std::string, std::string> getParameters() const;
   std::string getNickname() const;
   bool isEnabled() const;
 
@@ -199,7 +199,7 @@ public:
   explicit TableBasedConfigWidget(ApplicationContext* context, const std::string& processType, QWidget* parent = nullptr);
 
   // Override getParameters to delegate to PropertyTableWidget
-  std::map<std::string, std::string> getParameters() const;
+  std::map<std::string, std::string> getParameters() const override;
 
 protected:
   void createParameterFields(const ProcessInstance* instance) override;

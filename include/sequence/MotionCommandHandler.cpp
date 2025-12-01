@@ -300,6 +300,15 @@ bool MotionCommandHandler::ExecuteCommand(
     } else if (axis == "Z") {
       target.hasZ = true;
       target.z = targetPos;
+    } else if (axis == "U") {
+      target.hasU = true;
+      target.u = targetPos;
+    } else if (axis == "V") {
+      target.hasV = true;
+      target.v = targetPos;
+    } else if (axis == "W") {
+      target.hasW = true;
+      target.w = targetPos;
     }
 
     if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
@@ -1260,6 +1269,18 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
           double dz = currentPos.z - targetPos->z;
           distanceFromTarget += dz * dz;
         }
+        if (targetPos->hasU) {
+          double du = currentPos.u - targetPos->u;
+          distanceFromTarget += du * du;
+        }
+        if (targetPos->hasV) {
+          double dv = currentPos.v - targetPos->v;
+          distanceFromTarget += dv * dv;
+        }
+        if (targetPos->hasW) {
+          double dw = currentPos.w - targetPos->w;
+          distanceFromTarget += dw * dw;
+        }
 
         distanceFromTarget = std::sqrt(distanceFromTarget);
 
@@ -1326,6 +1347,48 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
               errorDetail += "Z: target=" + std::to_string(targetPos->z) +
                              ", actual=" + std::to_string(actualZ) +
                              ", error=" + std::to_string(errorZ) + "mm; ";
+            }
+          }
+        }
+
+        // Verify U axis if specified (rotational, degrees)
+        if (targetPos->hasU) {
+          double actualU = 0.0;
+          if (motionManager->GetPosition(deviceName, "U", actualU)) {
+            double errorU = std::abs(actualU - targetPos->u);
+            if (errorU > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "U: target=" + std::to_string(targetPos->u) +
+                             ", actual=" + std::to_string(actualU) +
+                             ", error=" + std::to_string(errorU) + "deg; ";
+            }
+          }
+        }
+
+        // Verify V axis if specified (rotational, degrees)
+        if (targetPos->hasV) {
+          double actualV = 0.0;
+          if (motionManager->GetPosition(deviceName, "V", actualV)) {
+            double errorV = std::abs(actualV - targetPos->v);
+            if (errorV > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "V: target=" + std::to_string(targetPos->v) +
+                             ", actual=" + std::to_string(actualV) +
+                             ", error=" + std::to_string(errorV) + "deg; ";
+            }
+          }
+        }
+
+        // Verify W axis if specified (rotational, degrees)
+        if (targetPos->hasW) {
+          double actualW = 0.0;
+          if (motionManager->GetPosition(deviceName, "W", actualW)) {
+            double errorW = std::abs(actualW - targetPos->w);
+            if (errorW > TOLERANCE) {
+              positionOK = false;
+              errorDetail += "W: target=" + std::to_string(targetPos->w) +
+                             ", actual=" + std::to_string(actualW) +
+                             ", error=" + std::to_string(errorW) + "deg; ";
             }
           }
         }

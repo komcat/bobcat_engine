@@ -15,6 +15,20 @@
 #include <map>
 #include <string>
 #include <algorithm>  // for std::transform
+#include <cmath>      // for std::abs
+
+namespace {
+  // Helper to check if a string value represents zero (handles "0", "0.0", "0.000000", etc.)
+  bool isZeroDistance(const std::string& value) {
+    if (value.empty()) return true;
+    try {
+      double d = std::stod(value);
+      return std::abs(d) < 1e-9;  // Effectively zero
+    } catch (...) {
+      return true;  // If can't parse, treat as zero (don't move)
+    }
+  }
+}
 
 //=============================================================================
 // PICK PLUGIN
@@ -441,17 +455,17 @@ public:
 
     bool hasMoves = false;
 
-    if (distX != "0" && distX != "0.0" && !distX.empty()) {
+    if (!isZeroDistance(distX)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "X"}, {"distance", distX}});
       hasMoves = true;
     }
 
-    if (distY != "0" && distY != "0.0" && !distY.empty()) {
+    if (!isZeroDistance(distY)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "Y"}, {"distance", distY}});
       hasMoves = true;
     }
 
-    if (distZ != "0" && distZ != "0.0" && !distZ.empty()) {
+    if (!isZeroDistance(distZ)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "Z"}, {"distance", distZ}});
       hasMoves = true;
     }
@@ -537,17 +551,17 @@ public:
 
     bool hasMoves = false;
 
-    if (distU != "0" && distU != "0.0" && !distU.empty()) {
+    if (!isZeroDistance(distU)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "U"}, {"distance", distU}});
       hasMoves = true;
     }
 
-    if (distV != "0" && distV != "0.0" && !distV.empty()) {
+    if (!isZeroDistance(distV)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "V"}, {"distance", distV}});
       hasMoves = true;
     }
 
-    if (distW != "0" && distW != "0.0" && !distW.empty()) {
+    if (!isZeroDistance(distW)) {
       sequence->AddAction(device, "MoveRelative", {{"axis", "W"}, {"distance", distW}});
       hasMoves = true;
     }
@@ -640,13 +654,13 @@ public:
     // Build position name with offsets (e.g. "base+X1+Y-2+Z0.5")
     std::string calculatedPosition = basePosition;
 
-    if (offsetX != "0" && offsetX != "0.0" && !offsetX.empty()) {
+    if (!isZeroDistance(offsetX)) {
       calculatedPosition += "+X" + offsetX;
     }
-    if (offsetY != "0" && offsetY != "0.0" && !offsetY.empty()) {
+    if (!isZeroDistance(offsetY)) {
       calculatedPosition += "+Y" + offsetY;
     }
-    if (offsetZ != "0" && offsetZ != "0.0" && !offsetZ.empty()) {
+    if (!isZeroDistance(offsetZ)) {
       calculatedPosition += "+Z" + offsetZ;
     }
 
