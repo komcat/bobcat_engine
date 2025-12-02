@@ -1,22 +1,32 @@
-﻿// LiveChartWidget.cpp
+// LiveChartWidget.cpp
 #include "LiveChartWidget.h"
 #include "DataStore.h"
 #include "TcpClientManager.h"
 #include <QTimer>
 #include <QDateTime>
 #include <QFontMetrics>
+#include <QFile>
+#include <QInputDialog>
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpManager, QWidget* parent)
   : QWidget(parent)
   , m_dataStore(dataStore)
   , m_tcpManager(tcpManager)
+  , m_setTargetButton(nullptr)
+  , m_clearTargetButton(nullptr)
+  , m_percentageLabel(nullptr)
   , m_isDirty(false)
   , m_latestValue(0.0f)
   , m_hasNewValue(false)
 {
+  // Load saved targets from config file
+  loadTargets();
+
   setupUI();
 
   // Connect to TcpClientManager for real-time data with original timestamps
@@ -97,6 +107,59 @@ void LiveChartWidget::setupUI()
 
   // Channel selector row
   QHBoxLayout* selectorRow = new QHBoxLayout();
+
+  // Set Target button (before channel selector)
+  m_setTargetButton = new QPushButton("🎯");
+  m_setTargetButton->setToolTip("Set current value as target for this channel");
+  m_setTargetButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #28a745; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 5px 8px; "
+    "  font-size: 14px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #34c759; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #1e7e34; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #555555; "
+    "  color: #888888; "
+    "}");
+  m_setTargetButton->setFixedWidth(36);
+  connect(m_setTargetButton, &QPushButton::clicked, this, &LiveChartWidget::onSetTarget);
+  selectorRow->addWidget(m_setTargetButton);
+
+  // Clear Target button
+  m_clearTargetButton = new QPushButton("✕");
+  m_clearTargetButton->setToolTip("Clear target for this channel");
+  m_clearTargetButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #dc3545; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 5px 8px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #e04555; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #c82333; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #555555; "
+    "  color: #888888; "
+    "}");
+  m_clearTargetButton->setFixedWidth(36);
+  connect(m_clearTargetButton, &QPushButton::clicked, this, &LiveChartWidget::onClearTarget);
+  selectorRow->addWidget(m_clearTargetButton);
 
   QLabel* selectorLabel = new QLabel("Channel:");
   selectorLabel->setStyleSheet("QLabel { color: #aaaaaa; font-size: 14px; background: transparent; }");
@@ -206,9 +269,37 @@ void LiveChartWidget::setupUI()
   m_unitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   m_unitLabel->setMaximumHeight(50);  // Limit height for unit
 
-  // Add to vertical layout (value on top, unit on bottom)
+  // Percentage label - shows when target is set
+  m_percentageLabel = new QLabel("");
+  m_percentageLabel->setAlignment(Qt::AlignCenter);
+  m_percentageLabel->setWordWrap(false);
+
+  QFont percentFont("Consolas", 48);
+  if (!percentFont.exactMatch()) {
+    percentFont.setFamily("Courier New");
+  }
+  percentFont.setBold(true);
+  m_percentageLabel->setFont(percentFont);
+
+  m_percentageLabel->setStyleSheet(
+    "QLabel { "
+    "  color: #00ff00; "
+    "  font-weight: bold; "
+    "  font-size: 48pt; "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
+    "  background: transparent; "
+    "  padding: 0px; "
+    "  white-space: nowrap; "
+    "}");
+
+  m_percentageLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_percentageLabel->setMaximumHeight(60);
+  m_percentageLabel->hide();  // Hidden by default
+
+  // Add to vertical layout (value on top, unit in middle, percentage on bottom)
   valueLayout->addWidget(m_valueLabel);
   valueLayout->addWidget(m_unitLabel);
+  valueLayout->addWidget(m_percentageLabel);
 
   headerLayout->addLayout(valueLayout);
 
@@ -381,6 +472,9 @@ void LiveChartWidget::setChannel(const std::string& channelId)
   QString yAxisTitle = m_currentUnit.empty() ? "Value" : QString::fromStdString(m_currentUnit);
   m_axisY->setTitleText(yAxisTitle);
 
+  // Update target button states for this channel
+  updateTargetButtonStates();
+
   emit channelChanged(channelId);
 
   std::cout << "[LiveChartWidget] Channel set to: " << channelId
@@ -399,7 +493,7 @@ void LiveChartWidget::onUpdateValueLabel()
 {
   // Only update label if there's a new value
   if (m_hasNewValue) {
-    // ✅ Split value and unit into separate labels
+    // Split value and unit into separate labels
     QString fullText = formatValueWithUnit(m_latestValue, m_currentUnit);
 
     // Parse the formatted string to split value and unit
@@ -413,8 +507,44 @@ void LiveChartWidget::onUpdateValueLabel()
       m_unitLabel->setText("");
     }
 
-    // Update color based on value magnitude (but preserve font size!)
-    QColor valueColor = getValueColor(m_latestValue);
+    // Check if target is set for current channel
+    auto targetIt = m_targetValues.find(m_currentChannelId);
+    bool hasTarget = (targetIt != m_targetValues.end());
+
+    QColor valueColor;
+
+    if (hasTarget && targetIt->second != 0.0f) {
+      // Calculate percentage relative to target
+      float percentage = (m_latestValue / targetIt->second) * 100.0f;
+
+      // Show percentage label with color coding
+      m_percentageLabel->setText(QString("%1%").arg(percentage, 0, 'f', 1));
+      m_percentageLabel->show();
+
+      // Get color based on percentage thresholds
+      QColor percentColor = getPercentageColor(percentage);
+      valueColor = percentColor;  // Use same color for value
+
+      // Get current font size for percentage label
+      int percentFontSize = m_percentageLabel->font().pointSize();
+      if (percentFontSize <= 0) percentFontSize = 48;
+
+      m_percentageLabel->setStyleSheet(
+        QString("QLabel { "
+                "  color: %1; "
+                "  font-weight: bold; "
+                "  font-size: %2pt; "
+                "  background: transparent; "
+                "  padding: 0px; "
+                "}").arg(percentColor.name()).arg(percentFontSize));
+    } else {
+      // No target - hide percentage, use value-based color
+      m_percentageLabel->hide();
+      valueColor = getValueColor(m_latestValue);
+    }
+
+    // Update button states (enable Set Target once we have data)
+    updateTargetButtonStates();
 
     // Get current font size to preserve it in stylesheet
     int currentFontSize = m_valueLabel->font().pointSize();
@@ -731,4 +861,197 @@ void LiveChartWidget::updateValueFontSize()
   m_unitLabel->setMaximumHeight(unitHeight + 10);
 
   std::cout << "[LiveChartWidget] Font sizes updated - Value: " << valueFontSize << "pt (height: " << valueHeight << "px), Unit: " << unitFontSize << "pt (height: " << unitHeight << "px)" << std::endl;
+
+  // Update percentage label font size
+  if (m_percentageLabel) {
+    int percentFontSize = static_cast<int>(valueFontSize * 0.67);  // 2/3 of value font size
+    if (percentFontSize < 48) percentFontSize = 48;
+    if (percentFontSize > 130) percentFontSize = 130;
+
+    QFont percentFont = m_percentageLabel->font();
+    percentFont.setPointSize(percentFontSize);
+    percentFont.setBold(true);
+    m_percentageLabel->setFont(percentFont);
+
+    QFontMetrics percentFm(percentFont);
+    int percentHeight = percentFm.height();
+    m_percentageLabel->setMaximumHeight(percentHeight + 10);
+  }
+}
+
+QColor LiveChartWidget::getPercentageColor(float percentage) const
+{
+  // Color coding based on percentage thresholds:
+  // <85%: Red (Need work)
+  // 85-95%: Yellow/Orange (Marginal)
+  // 95-120%: Green (Pass)
+  // >120%: Purple (Exceptional)
+
+  if (percentage < 85.0f) {
+    return QColor(255, 80, 80);  // Red - Need work
+  }
+  else if (percentage < 95.0f) {
+    return QColor(255, 193, 7);  // Yellow/Orange - Marginal
+  }
+  else if (percentage <= 120.0f) {
+    return QColor(40, 200, 40);  // Green - Pass
+  }
+  else {
+    return QColor(180, 100, 255);  // Purple - Exceptional
+  }
+}
+
+void LiveChartWidget::onSetTarget()
+{
+  if (m_currentChannelId.empty()) {
+    std::cout << "[LiveChartWidget] Cannot set target: no channel selected" << std::endl;
+    return;
+  }
+
+  // Determine the unit and appropriate default value
+  QString unitStr = QString::fromStdString(m_currentUnit);
+
+  // Get current target or use current live value as default
+  float defaultValue = m_latestValue;
+  auto it = m_targetValues.find(m_currentChannelId);
+  if (it != m_targetValues.end()) {
+    defaultValue = it->second;
+  }
+
+  // Format default value with SI prefix for display
+  QString formattedDefault = formatValueWithUnit(defaultValue, m_currentUnit);
+
+  // Show input dialog
+  bool ok;
+  QString title = "Set Target";
+  QString label = QString("Enter target value for %1:\n\n"
+                          "Current value: %2\n"
+                          "Enter value in base unit (%3):")
+                    .arg(QString::fromStdString(m_currentChannelId))
+                    .arg(formatValueWithUnit(m_latestValue, m_currentUnit))
+                    .arg(unitStr.isEmpty() ? "value" : unitStr);
+
+  // Use scientific notation for small values
+  double inputValue = QInputDialog::getDouble(
+    this,
+    title,
+    label,
+    defaultValue,          // default value
+    -1e15,                 // min
+    1e15,                  // max
+    9,                     // decimals (for precision)
+    &ok,
+    Qt::WindowFlags(),
+    0.0                    // step
+  );
+
+  if (ok) {
+    m_targetValues[m_currentChannelId] = static_cast<float>(inputValue);
+    saveTargets();
+    updateTargetButtonStates();
+
+    std::cout << "[LiveChartWidget] Target set for " << m_currentChannelId
+              << ": " << inputValue << " " << m_currentUnit << std::endl;
+  }
+}
+
+void LiveChartWidget::onClearTarget()
+{
+  if (m_currentChannelId.empty()) {
+    return;
+  }
+
+  auto it = m_targetValues.find(m_currentChannelId);
+  if (it != m_targetValues.end()) {
+    m_targetValues.erase(it);
+    saveTargets();
+    updateTargetButtonStates();
+
+    // Hide percentage label
+    if (m_percentageLabel) {
+      m_percentageLabel->hide();
+    }
+
+    std::cout << "[LiveChartWidget] Target cleared for " << m_currentChannelId << std::endl;
+  }
+}
+
+void LiveChartWidget::updateTargetButtonStates()
+{
+  if (!m_setTargetButton || !m_clearTargetButton) return;
+
+  bool hasChannel = !m_currentChannelId.empty();
+  bool hasTarget = (m_targetValues.find(m_currentChannelId) != m_targetValues.end());
+  bool hasData = !m_dataBuffer.empty();  // Check if we have any data for this channel
+
+  // Set target button: enabled when channel selected and we have any data
+  m_setTargetButton->setEnabled(hasChannel && hasData);
+
+  // Clear target button: enabled only when target exists
+  m_clearTargetButton->setEnabled(hasChannel && hasTarget);
+
+  // Update tooltips with target info
+  if (hasTarget) {
+    float target = m_targetValues[m_currentChannelId];
+    QString targetStr = formatValueWithUnit(target, m_currentUnit);
+    m_setTargetButton->setToolTip(QString("Update target (current: %1)").arg(targetStr));
+    m_clearTargetButton->setToolTip(QString("Clear target: %1").arg(targetStr));
+  } else {
+    m_setTargetButton->setToolTip("Set current value as target");
+    m_clearTargetButton->setToolTip("No target set");
+  }
+}
+
+void LiveChartWidget::loadTargets()
+{
+  try {
+    std::ifstream file(TARGET_CONFIG_FILE);
+    if (!file.is_open()) {
+      std::cout << "[LiveChartWidget] No saved targets file found" << std::endl;
+      return;
+    }
+
+    nlohmann::json j;
+    file >> j;
+
+    m_targetValues.clear();
+    if (j.contains("targets") && j["targets"].is_object()) {
+      for (auto& [channelId, targetValue] : j["targets"].items()) {
+        if (targetValue.is_number()) {
+          m_targetValues[channelId] = targetValue.get<float>();
+          std::cout << "[LiveChartWidget] Loaded target for " << channelId
+                    << ": " << m_targetValues[channelId] << std::endl;
+        }
+      }
+    }
+
+    std::cout << "[LiveChartWidget] Loaded " << m_targetValues.size() << " targets from config" << std::endl;
+  }
+  catch (const std::exception& e) {
+    std::cout << "[LiveChartWidget] Error loading targets: " << e.what() << std::endl;
+  }
+}
+
+void LiveChartWidget::saveTargets()
+{
+  try {
+    nlohmann::json j;
+    j["targets"] = nlohmann::json::object();
+
+    for (const auto& [channelId, targetValue] : m_targetValues) {
+      j["targets"][channelId] = targetValue;
+    }
+
+    std::ofstream file(TARGET_CONFIG_FILE);
+    if (!file.is_open()) {
+      std::cout << "[LiveChartWidget] ERROR: Cannot open file for writing: " << TARGET_CONFIG_FILE << std::endl;
+      return;
+    }
+
+    file << j.dump(2);
+    std::cout << "[LiveChartWidget] Saved " << m_targetValues.size() << " targets to config" << std::endl;
+  }
+  catch (const std::exception& e) {
+    std::cout << "[LiveChartWidget] Error saving targets: " << e.what() << std::endl;
+  }
 }

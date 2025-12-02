@@ -13,6 +13,7 @@
 #include <QValueAxis>
 #include <deque>
 #include <string>
+#include <map>
 
 class DataStore;
 class TcpClientManager;
@@ -54,6 +55,8 @@ private slots:
   void onUpdateChart();
   void onRefreshChannels();
   void onUpdateValueLabel();
+  void onSetTarget();
+  void onClearTarget();
 
 protected:
   void resizeEvent(QResizeEvent* event) override;
@@ -64,7 +67,11 @@ private:
   void refreshChannelList();
   void updateValueFontSize();
   QColor getValueColor(float value) const;
+  QColor getPercentageColor(float percentage) const;
   QString formatValueWithUnit(float value, const std::string& unit) const;
+  void loadTargets();
+  void saveTargets();
+  void updateTargetButtonStates();
 
   struct DataPoint {
     qint64 timestamp;
@@ -77,8 +84,11 @@ private:
   // UI Components
   QComboBox* m_channelSelector;
   QPushButton* m_refreshButton;
+  QPushButton* m_setTargetButton;
+  QPushButton* m_clearTargetButton;
   QLabel* m_valueLabel;
-  QLabel* m_unitLabel;  // ✅ NEW: Separate label for unit
+  QLabel* m_unitLabel;  // Separate label for unit
+  QLabel* m_percentageLabel;  // Shows percentage when target is set
   QLabel* m_channelInfoLabel;
   QChartView* m_chartView;
   QChart* m_chart;
@@ -91,6 +101,10 @@ private:
   std::string m_currentClientId;
   std::string m_currentUnit;
   std::deque<DataPoint> m_dataBuffer;
+
+  // Target values (channel ID -> target value)
+  std::map<std::string, float> m_targetValues;
+  static constexpr const char* TARGET_CONFIG_FILE = "config/live_chart_targets.json";
 
   QTimer* m_chartUpdateTimer;
   QTimer* m_valueLabelUpdateTimer;
