@@ -583,7 +583,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
   const std::vector<QString> labels = {
-    "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
+    "0.1µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
     "100µ", "200µ", "500µ", "1mm", "2mm"
   };
 
@@ -936,6 +936,10 @@ void JogPanelWindow::updateStepSizeDisplay()
   QString text;
   if (m_currentStepSize >= 1000.0) {
     text = QString::number(m_currentStepSize / 1000.0, 'f', 0) + " mm";
+  }
+  else if (m_currentStepSize < 1.0) {
+    // Show decimal for sub-micron steps (0.1, 0.5)
+    text = QString::number(m_currentStepSize, 'f', 1) + " µm";
   }
   else {
     text = QString::number(m_currentStepSize, 'f', 0) + " µm";
