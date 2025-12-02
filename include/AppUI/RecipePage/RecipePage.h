@@ -15,6 +15,7 @@
 #include <QTreeWidget>
 #include <QGroupBox>
 #include <QKeyEvent>
+#include <QShowEvent>
 #include <map>
 #include <memory>
 
@@ -255,4 +256,5 @@ private:
 
 protected:
   void keyPressEvent(QKeyEvent* event) override;
+  void showEvent(QShowEvent* event) override;  // Hot reload when page becomes visible
 };

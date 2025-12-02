@@ -2365,15 +2365,18 @@ void RunProgramPage::onScanError(QString errorMessage)
 
 void RunProgramPage::onStopScanRequested()
 {
-  // Stop any active scan
+  // Log the stop action - note: device will return to global peak position
+  m_logTextEdit->append("Stopping scan - returning to global peak position...");
+
+  // Stop any active scan (this will block until return to peak is complete)
   m_scanExecutor->stopScan();
 
   // Re-enable scan controls, disable stop button
   m_scanWidget->setScanButtonsEnabled(true);
   m_scanWidget->setStopButtonEnabled(false);
 
-  // Log the stop action
-  m_logTextEdit->append("Scan stopped by user");
+  // Log completion
+  m_logTextEdit->append("Scan stopped - device returned to peak position");
 }
 
 // ✅ ADDED: Handle channel change from scan widget

@@ -104,8 +104,9 @@ bool ScanExecutor::isScanActive() const
 void ScanExecutor::stopScan()
 {
   if (m_scanController && m_scanController->IsScanActive()) {
-    m_scanController->HaltScan();
-    emit logMessage("Scan stopped by user");
+    emit logMessage("Stopping scan - returning to global peak position...");
+    m_scanController->HaltScan();  // This blocks until return to peak is complete
+    emit logMessage("Scan halted - device returned to best position found");
   }
   cleanup();
 }

@@ -3820,3 +3820,49 @@ void RecipePage::updateQuickAddDisplay()
   int y = (height() - m_quickAddOverlay->height()) / 2;
   m_quickAddOverlay->move(x, y);
 }
+
+// ============================================================================
+// HOT RELOAD - SHOW EVENT
+// ============================================================================
+
+void RecipePage::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Skip reload if recipe is currently executing
+  if (m_recipeWorker && m_recipeWorker->isRunning()) {
+    std::cout << "[RecipePage] Skipping hot reload - recipe is executing" << std::endl;
+    return;
+  }
+
+  std::cout << "[RecipePage] Page activated - hot reloading position data..." << std::endl;
+
+  // Reload product position data from disk to pick up any changes from Motion page
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+
+    std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
+    std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+    // Reload product data from disk
+    if (m_context->productPositionManager->LoadProduct(productPath)) {
+      // Re-export to motion manager so named positions are updated
+      if (m_context->motionManager) {
+        m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+      }
+
+      std::cout << "[RecipePage] Hot reload: Product '" << productName
+                << "' reloaded with updated positions/graphs" << std::endl;
+
+      // Refresh the current config widget to pick up new position names
+      if (m_currentConfigWidget && m_selectedStepIndex >= 0) {
+        updateConfigurationForm();
+        std::cout << "[RecipePage] Hot reload: Config widget refreshed" << std::endl;
+      }
+    }
+    else {
+      std::cerr << "[RecipePage] Hot reload: Failed to reload product from '"
+                << productPath << "'" << std::endl;
+    }
+  }
+}

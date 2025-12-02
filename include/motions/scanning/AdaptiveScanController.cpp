@@ -204,10 +204,9 @@ bool AdaptiveScanController::ExecuteScan() {
   }
 
   // Execute strategy
-  if (!ExecuteScanStrategy()) {
-    return false;
-  }
+  bool strategySuccess = ExecuteScanStrategy();
 
+  // After strategy execution (success or failure), check for stop conditions
   if (m_emergencyStopRequested) {
     // Emergency stop: abort immediately without returning to peak
     return false;
@@ -216,7 +215,7 @@ bool AdaptiveScanController::ExecuteScan() {
   if (m_haltRequested) {
     // User stop: still return to best position found so far
     if (m_logger) {
-      m_logger->LogInfo("Halt requested - returning to best position before stopping");
+      m_logger->LogInfo("Halt requested - returning to global peak position");
     }
     if (!ReturnToBestPosition()) {
       if (m_logger) {
@@ -226,9 +225,18 @@ bool AdaptiveScanController::ExecuteScan() {
     return false;
   }
 
+  // If strategy failed for other reasons (not halt/emergency), still try to return to best
+  if (!strategySuccess) {
+    if (m_logger) {
+      m_logger->LogWarning("Strategy failed - attempting to return to best position");
+    }
+    ReturnToBestPosition();
+    return false;
+  }
+
   // Return to best position (normal completion)
   if (!ReturnToBestPosition()) {
-    if (m_logger) {  // ✅ Check before use
+    if (m_logger) {
       m_logger->LogWarning("Failed to return to best position");
     }
   }
@@ -318,16 +326,27 @@ bool AdaptiveScanController::ReturnToBestPosition() {
   PeakInfo peak = m_dataCollector->GetPeakPosition();
 
   if (!peak.valid) {
-    if (m_logger) {  // ✅ Check before use
+    if (m_logger) {
       m_logger->LogWarning("No valid peak found - staying at current position");
     }
     return true;
   }
 
-  if (m_logger) {  // ✅ Check before use
-    m_logger->LogInfo("Returning to global peak position");
+  // Log the target position with coordinates
+  if (m_logger) {
+    std::stringstream ss;
+    ss << "Returning to global peak position: X="
+       << std::fixed << std::setprecision(6) << peak.position.x
+       << " Y=" << peak.position.y
+       << " Z=" << peak.position.z
+       << " (Peak value: " << peak.value << ")";
+    m_logger->LogInfo(ss.str());
   }
-  NotifyProgress(0.95, "Returning to best position");
+
+  std::stringstream progressMsg;
+  progressMsg << "Returning to peak at X=" << std::fixed << std::setprecision(4)
+              << peak.position.x << " Y=" << peak.position.y << " Z=" << peak.position.z;
+  NotifyProgress(0.95, progressMsg.str());
 
   bool success = MoveToPosition(peak.position);
 
@@ -336,9 +355,10 @@ bool AdaptiveScanController::ReturnToBestPosition() {
     double verificationValue = GetMeasurement();
     std::stringstream ss;
     ss << "Returned to peak - Verification value: "
-      << std::fixed << std::setprecision(6) << verificationValue;
+      << std::fixed << std::setprecision(6) << verificationValue
+      << " (Original peak: " << peak.value << ")";
 
-    if (m_logger) {  // ✅ Check before use
+    if (m_logger) {
       m_logger->LogInfo(ss.str());
     }
   }
