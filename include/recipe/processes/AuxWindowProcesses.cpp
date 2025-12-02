@@ -146,6 +146,110 @@ public:
 };
 
 //=============================================================================
+// SET TARGET PLUGIN
+//=============================================================================
+
+class SetChartTargetPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Set Chart Target";
+  }
+
+  std::string GetCategory() const override {
+    return "Aux Window";
+  }
+
+  std::string GetDescription() const override {
+    return "Set target value for live chart percentage display";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"channel", ""},  // Empty = use current channel
+      {"value", "1.0e-6"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Optional channel selector (empty = current channel)
+    widget->addDataChannelSelector("channel", "Channel (empty = current)", params.at("channel"));
+
+    // Target value input
+    widget->addTextParameter("value", "Target Value", params.at("value"),
+      "Target value in base units (e.g., 1.5e-6 for 1.5uA)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> cmdParams = {
+      {"value", params.at("value")}
+    };
+
+    // Only add channel if specified
+    if (!params.at("channel").empty()) {
+      cmdParams["channel"] = params.at("channel");
+    }
+
+    sequence->AddAction("auxwindow", "SetTarget", cmdParams);
+
+    std::cout << "[AuxWindowProcesses] Built Set Chart Target sequence for: " << step->userNickname
+              << " (Value: " << params.at("value") << ")" << std::endl;
+  }
+};
+
+//=============================================================================
+// CLEAR TARGET PLUGIN
+//=============================================================================
+
+class ClearChartTargetPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Clear Chart Target";
+  }
+
+  std::string GetCategory() const override {
+    return "Aux Window";
+  }
+
+  std::string GetDescription() const override {
+    return "Clear target value for live chart (returns to absolute value display)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"channel", ""}  // Empty = use current channel
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Optional channel selector (empty = current channel)
+    widget->addDataChannelSelector("channel", "Channel (empty = current)", params.at("channel"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::map<std::string, std::string> cmdParams;
+
+    // Only add channel if specified
+    if (!params.at("channel").empty()) {
+      cmdParams["channel"] = params.at("channel");
+    }
+
+    sequence->AddAction("auxwindow", "ClearTarget", cmdParams);
+
+    std::cout << "[AuxWindowProcesses] Built Clear Chart Target sequence for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -157,8 +261,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<EnableCrosshairPlugin>());
       registry.RegisterPlugin(std::make_unique<EnableClickToMovePlugin>());
       registry.RegisterPlugin(std::make_unique<SetChartChannelPlugin>());
+      registry.RegisterPlugin(std::make_unique<SetChartTargetPlugin>());
+      registry.RegisterPlugin(std::make_unique<ClearChartTargetPlugin>());
 
-      std::cout << "[AuxWindowProcesses] Registered 3 auxiliary window process plugins" << std::endl;
+      std::cout << "[AuxWindowProcesses] Registered 5 auxiliary window process plugins" << std::endl;
     }
   };
 

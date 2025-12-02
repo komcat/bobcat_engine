@@ -123,6 +123,78 @@ bool AuxWindowCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SET TARGET
+  // ============================================================================
+  else if (methodName == "SetTarget") {
+    auto valueIt = params.find("value");
+    if (valueIt == params.end()) {
+      errorMessage = "Missing required parameter: value";
+      return false;
+    }
+
+    float targetValue;
+    try {
+      targetValue = std::stof(valueIt->second);
+    } catch (const std::exception& e) {
+      errorMessage = "Invalid target value: " + valueIt->second;
+      return false;
+    }
+
+    auto* chartWidget = window->getChartWidget();
+    if (!chartWidget) {
+      errorMessage = "Chart widget is not available";
+      return false;
+    }
+
+    // Check if channel is specified, otherwise use current channel
+    auto channelIt = params.find("channel");
+    if (channelIt != params.end()) {
+      chartWidget->setTarget(channelIt->second, targetValue);
+      if (m_logger) {
+        m_logger->Info("Set target for " + channelIt->second + ": " + valueIt->second, "AuxWindow");
+      }
+      std::cout << "[AuxWindowCommandHandler] Target set for " << channelIt->second << ": " << targetValue << std::endl;
+    } else {
+      chartWidget->setTarget(targetValue);
+      if (m_logger) {
+        m_logger->Info("Set target for current channel: " + valueIt->second, "AuxWindow");
+      }
+      std::cout << "[AuxWindowCommandHandler] Target set for current channel: " << targetValue << std::endl;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // CLEAR TARGET
+  // ============================================================================
+  else if (methodName == "ClearTarget") {
+    auto* chartWidget = window->getChartWidget();
+    if (!chartWidget) {
+      errorMessage = "Chart widget is not available";
+      return false;
+    }
+
+    // Check if channel is specified, otherwise use current channel
+    auto channelIt = params.find("channel");
+    if (channelIt != params.end()) {
+      chartWidget->clearTarget(channelIt->second);
+      if (m_logger) {
+        m_logger->Info("Cleared target for " + channelIt->second, "AuxWindow");
+      }
+      std::cout << "[AuxWindowCommandHandler] Target cleared for " << channelIt->second << std::endl;
+    } else {
+      chartWidget->clearTarget();
+      if (m_logger) {
+        m_logger->Info("Cleared target for current channel", "AuxWindow");
+      }
+      std::cout << "[AuxWindowCommandHandler] Target cleared for current channel" << std::endl;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

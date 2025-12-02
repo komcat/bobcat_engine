@@ -46,6 +46,16 @@ public:
   // Set which channel to display
   void setChannel(const std::string& channelId);
 
+  // Target value management
+  void setTarget(float targetValue);
+  void setTarget(const std::string& channelId, float targetValue);
+  void clearTarget();
+  void clearTarget(const std::string& channelId);
+  bool hasTarget() const;
+  bool hasTarget(const std::string& channelId) const;
+  float getTarget() const;
+  float getTarget(const std::string& channelId) const;
+
 signals:
   void channelChanged(const std::string& channelId);
 

@@ -737,11 +737,19 @@ void PropertyTableWidget::addGraphProperty(const std::string& key, const std::st
   // Initial population
   populateGraphs();
 
-  // Watch for device changes
+  // Watch for device changes - support both QComboBox and QLineEdit (from addMotionDeviceProperty)
   if (m_valueWidgets.find(deviceKey) != m_valueWidgets.end()) {
-    QComboBox* deviceCombo = qobject_cast<QComboBox*>(m_valueWidgets[deviceKey]);
-    if (deviceCombo) {
+    QWidget* deviceWidget = m_valueWidgets[deviceKey];
+
+    // Try QComboBox first
+    if (QComboBox* deviceCombo = qobject_cast<QComboBox*>(deviceWidget)) {
       connect(deviceCombo, &QComboBox::currentTextChanged, this, [populateGraphs]() {
+        populateGraphs();
+      });
+    }
+    // Try QLineEdit (used by addMotionDeviceProperty)
+    else if (QLineEdit* deviceLineEdit = qobject_cast<QLineEdit*>(deviceWidget)) {
+      connect(deviceLineEdit, &QLineEdit::textChanged, this, [populateGraphs]() {
         populateGraphs();
       });
     }
@@ -808,11 +816,19 @@ void PropertyTableWidget::addGraphNodeProperty(const std::string& key, const std
   // Initial population
   populateNodes();
 
-  // Watch for device changes
+  // Watch for device changes - support both QComboBox and QLineEdit (from addMotionDeviceProperty)
   if (m_valueWidgets.find(deviceKey) != m_valueWidgets.end()) {
-    QComboBox* deviceCombo = qobject_cast<QComboBox*>(m_valueWidgets[deviceKey]);
-    if (deviceCombo) {
+    QWidget* deviceWidget = m_valueWidgets[deviceKey];
+
+    // Try QComboBox first
+    if (QComboBox* deviceCombo = qobject_cast<QComboBox*>(deviceWidget)) {
       connect(deviceCombo, &QComboBox::currentTextChanged, this, [populateNodes]() {
+        populateNodes();
+      });
+    }
+    // Try QLineEdit (used by addMotionDeviceProperty)
+    else if (QLineEdit* deviceLineEdit = qobject_cast<QLineEdit*>(deviceWidget)) {
+      connect(deviceLineEdit, &QLineEdit::textChanged, this, [populateNodes]() {
         populateNodes();
       });
     }

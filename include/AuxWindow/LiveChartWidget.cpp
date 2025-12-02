@@ -269,9 +269,9 @@ void LiveChartWidget::setupUI()
   m_unitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   m_unitLabel->setMaximumHeight(50);  // Limit height for unit
 
-  // Percentage label - shows when target is set
+  // Percentage label - shows when target is set (value + percentage)
   m_percentageLabel = new QLabel("");
-  m_percentageLabel->setAlignment(Qt::AlignCenter);
+  m_percentageLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
   m_percentageLabel->setWordWrap(false);
 
   QFont percentFont("Consolas", 48);
@@ -288,7 +288,7 @@ void LiveChartWidget::setupUI()
     "  font-size: 48pt; "
     "  font-family: 'Consolas', 'Courier New', monospace; "
     "  background: transparent; "
-    "  padding: 0px; "
+    "  padding: 0px 15px; "
     "  white-space: nowrap; "
     "}");
 
@@ -517,8 +517,20 @@ void LiveChartWidget::onUpdateValueLabel()
       // Calculate percentage relative to target
       float percentage = (m_latestValue / targetIt->second) * 100.0f;
 
-      // Show percentage label with color coding
-      m_percentageLabel->setText(QString("%1%").arg(percentage, 0, 'f', 1));
+      // Determine status text based on percentage thresholds
+      QString statusText;
+      if (percentage < 50.0f) {
+        statusText = "NWRK";
+      } else if (percentage < 80.0f) {
+        statusText = "MRGN";
+      } else if (percentage <= 120.0f) {
+        statusText = "PASS";
+      } else {
+        statusText = "EXCP";
+      }
+
+      // Show percentage label with status and percentage (e.g., "PASS 97.9%")
+      m_percentageLabel->setText(QString("%1 %2%").arg(statusText).arg(percentage, 0, 'f', 1));
       m_percentageLabel->show();
 
       // Get color based on percentage thresholds
@@ -535,7 +547,7 @@ void LiveChartWidget::onUpdateValueLabel()
                 "  font-weight: bold; "
                 "  font-size: %2pt; "
                 "  background: transparent; "
-                "  padding: 0px; "
+                "  padding: 0px 15px; "
                 "}").arg(percentColor.name()).arg(percentFontSize));
     } else {
       // No target - hide percentage, use value-based color
@@ -882,16 +894,16 @@ void LiveChartWidget::updateValueFontSize()
 QColor LiveChartWidget::getPercentageColor(float percentage) const
 {
   // Color coding based on percentage thresholds:
-  // <85%: Red (Need work)
-  // 85-95%: Yellow/Orange (Marginal)
-  // 95-120%: Green (Pass)
+  // <50%: Gray (Need work)
+  // 50-80%: Cyan (Marginal)
+  // 80-120%: Green (Pass)
   // >120%: Purple (Exceptional)
 
-  if (percentage < 85.0f) {
-    return QColor(255, 80, 80);  // Red - Need work
+  if (percentage < 50.0f) {
+    return QColor(150, 150, 150);  // Gray - Need work
   }
-  else if (percentage < 95.0f) {
-    return QColor(255, 193, 7);  // Yellow/Orange - Marginal
+  else if (percentage < 80.0f) {
+    return QColor(0, 217, 255);  // Cyan - Marginal
   }
   else if (percentage <= 120.0f) {
     return QColor(40, 200, 40);  // Green - Pass
@@ -899,6 +911,73 @@ QColor LiveChartWidget::getPercentageColor(float percentage) const
   else {
     return QColor(180, 100, 255);  // Purple - Exceptional
   }
+}
+
+// Public API for target management
+void LiveChartWidget::setTarget(float targetValue)
+{
+  if (m_currentChannelId.empty()) {
+    std::cout << "[LiveChartWidget] Cannot set target: no channel selected" << std::endl;
+    return;
+  }
+  setTarget(m_currentChannelId, targetValue);
+}
+
+void LiveChartWidget::setTarget(const std::string& channelId, float targetValue)
+{
+  m_targetValues[channelId] = targetValue;
+  saveTargets();
+  updateTargetButtonStates();
+  std::cout << "[LiveChartWidget] Target set for " << channelId << ": " << targetValue << std::endl;
+}
+
+void LiveChartWidget::clearTarget()
+{
+  if (m_currentChannelId.empty()) {
+    return;
+  }
+  clearTarget(m_currentChannelId);
+}
+
+void LiveChartWidget::clearTarget(const std::string& channelId)
+{
+  auto it = m_targetValues.find(channelId);
+  if (it != m_targetValues.end()) {
+    m_targetValues.erase(it);
+    saveTargets();
+    updateTargetButtonStates();
+
+    // Hide percentage label if clearing current channel
+    if (channelId == m_currentChannelId && m_percentageLabel) {
+      m_percentageLabel->hide();
+    }
+
+    std::cout << "[LiveChartWidget] Target cleared for " << channelId << std::endl;
+  }
+}
+
+bool LiveChartWidget::hasTarget() const
+{
+  return hasTarget(m_currentChannelId);
+}
+
+bool LiveChartWidget::hasTarget(const std::string& channelId) const
+{
+  return m_targetValues.find(channelId) != m_targetValues.end();
+}
+
+float LiveChartWidget::getTarget() const
+{
+  return getTarget(m_currentChannelId);
+}
+
+float LiveChartWidget::getTarget(const std::string& channelId) const
+{
+  auto it = m_targetValues.find(channelId);
+  if (it != m_targetValues.end()) {
+    return it->second;
+  }
+  return 0.0f;
 }
 
 void LiveChartWidget::onSetTarget()
@@ -957,23 +1036,7 @@ void LiveChartWidget::onSetTarget()
 
 void LiveChartWidget::onClearTarget()
 {
-  if (m_currentChannelId.empty()) {
-    return;
-  }
-
-  auto it = m_targetValues.find(m_currentChannelId);
-  if (it != m_targetValues.end()) {
-    m_targetValues.erase(it);
-    saveTargets();
-    updateTargetButtonStates();
-
-    // Hide percentage label
-    if (m_percentageLabel) {
-      m_percentageLabel->hide();
-    }
-
-    std::cout << "[LiveChartWidget] Target cleared for " << m_currentChannelId << std::endl;
-  }
+  clearTarget();  // Use public API
 }
 
 void LiveChartWidget::updateTargetButtonStates()
