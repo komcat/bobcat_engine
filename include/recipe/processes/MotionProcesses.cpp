@@ -16,6 +16,7 @@
 #include <string>
 #include <algorithm>  // for std::transform
 #include <cmath>      // for std::abs
+#include <nlohmann/json.hpp>  // for ParallelMove JSON serialization
 
 namespace {
   // Helper to check if a string value represents zero (handles "0", "0.0", "0.000000", etc.)
@@ -931,6 +932,343 @@ public:
 };
 
 //=============================================================================
+// PARALLEL MOVE PLUGIN - Move multiple devices simultaneously
+//=============================================================================
+
+class ParallelMovePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Parallel Move";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Move multiple devices simultaneously to their target positions";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"move_count", "2"},
+      // Move 1
+      {"device_1", "hex-left"},
+      {"type_1", "position"},
+      {"target_1", "home"},
+      {"graph_1", ""},
+      // Move 2
+      {"device_2", "hex-right"},
+      {"type_2", "position"},
+      {"target_2", "home"},
+      {"graph_2", ""},
+      // Move 3 (optional)
+      {"device_3", ""},
+      {"type_3", "position"},
+      {"target_3", ""},
+      {"graph_3", ""},
+      // Move 4 (optional)
+      {"device_4", ""},
+      {"type_4", "position"},
+      {"target_4", ""},
+      {"graph_4", ""}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addParameterField("move_count", "Number of Moves (2-4)", params.at("move_count"));
+
+    // Move 1
+    widget->addDeviceSelector("device_1", "Device 1", params.at("device_1"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("type_1", "Type 1", params.at("type_1"), {"position", "graphNode"});
+    widget->addNodeSelector("target_1", "Target 1", params.at("target_1"), "device_1");
+    widget->addParameterField("graph_1", "Graph 1 (for graphNode)", params.at("graph_1"));
+
+    // Move 2
+    widget->addDeviceSelector("device_2", "Device 2", params.at("device_2"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("type_2", "Type 2", params.at("type_2"), {"position", "graphNode"});
+    widget->addNodeSelector("target_2", "Target 2", params.at("target_2"), "device_2");
+    widget->addParameterField("graph_2", "Graph 2 (for graphNode)", params.at("graph_2"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Parallel Move Configuration");
+    table->addNumericProperty("move_count", "Number of Moves",
+      std::stod(params.at("move_count")), 2, 4, 1, 0, "",
+      "Number of devices to move simultaneously (2-4)");
+
+    // Move 1
+    table->addCategoryHeader("Move 1");
+    table->addMotionDeviceProperty("device_1", "Device", params.at("device_1"),
+      "First device to move");
+    table->addDropdownProperty("type_1", "Move Type", params.at("type_1"),
+      {"position", "graphNode"},
+      "position = named position, graphNode = graph-based path");
+    table->addNodeProperty("target_1", "Target Position", params.at("target_1"),
+      "device_1", "Target position name");
+    table->addTextProperty("graph_1", "Graph Name", params.at("graph_1"),
+      "Graph name (only for graphNode type)");
+
+    // Move 2
+    table->addCategoryHeader("Move 2");
+    table->addMotionDeviceProperty("device_2", "Device", params.at("device_2"),
+      "Second device to move");
+    table->addDropdownProperty("type_2", "Move Type", params.at("type_2"),
+      {"position", "graphNode"},
+      "position = named position, graphNode = graph-based path");
+    table->addNodeProperty("target_2", "Target Position", params.at("target_2"),
+      "device_2", "Target position name");
+    table->addTextProperty("graph_2", "Graph Name", params.at("graph_2"),
+      "Graph name (only for graphNode type)");
+
+    // Move 3 (optional)
+    table->addCategoryHeader("Move 3 (Optional)");
+    table->addMotionDeviceProperty("device_3", "Device", params.at("device_3"),
+      "Third device to move (leave empty to skip)");
+    table->addDropdownProperty("type_3", "Move Type", params.at("type_3"),
+      {"position", "graphNode"},
+      "position = named position, graphNode = graph-based path");
+    table->addNodeProperty("target_3", "Target Position", params.at("target_3"),
+      "device_3", "Target position name");
+    table->addTextProperty("graph_3", "Graph Name", params.at("graph_3"),
+      "Graph name (only for graphNode type)");
+
+    // Move 4 (optional)
+    table->addCategoryHeader("Move 4 (Optional)");
+    table->addMotionDeviceProperty("device_4", "Device", params.at("device_4"),
+      "Fourth device to move (leave empty to skip)");
+    table->addDropdownProperty("type_4", "Move Type", params.at("type_4"),
+      {"position", "graphNode"},
+      "position = named position, graphNode = graph-based path");
+    table->addNodeProperty("target_4", "Target Position", params.at("target_4"),
+      "device_4", "Target position name");
+    table->addTextProperty("graph_4", "Graph Name", params.at("graph_4"),
+      "Graph name (only for graphNode type)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    int moveCount = std::stoi(params.at("move_count"));
+    if (moveCount < 2) moveCount = 2;
+    if (moveCount > 4) moveCount = 4;
+
+    // Build JSON array of moves
+    nlohmann::json movesArray = nlohmann::json::array();
+
+    for (int i = 1; i <= moveCount; ++i) {
+      std::string suffix = "_" + std::to_string(i);
+      std::string device = params.at("device" + suffix);
+      std::string type = params.at("type" + suffix);
+      std::string target = params.at("target" + suffix);
+      std::string graph = params.at("graph" + suffix);
+
+      // Skip empty entries
+      if (device.empty() || target.empty()) {
+        continue;
+      }
+
+      nlohmann::json moveObj;
+      moveObj["device"] = device;
+      moveObj["type"] = type;
+      moveObj["target"] = target;
+
+      if (type == "graphNode" && !graph.empty()) {
+        moveObj["graph"] = graph;
+      }
+
+      movesArray.push_back(moveObj);
+    }
+
+    if (movesArray.empty()) {
+      std::cerr << "[ParallelMovePlugin] ERROR: No valid moves specified" << std::endl;
+      return;
+    }
+
+    // Use a pseudo device name for parallel move (command handler ignores it)
+    sequence->AddAction("parallel", "ParallelMove", {
+      {"moves", movesArray.dump()}
+    });
+
+    std::cout << "[MotionProcesses] Built Parallel Move sequence with " << movesArray.size()
+              << " devices: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// PARALLEL MOVE RELATIVE PLUGIN - Move multiple devices with relative distances simultaneously
+//=============================================================================
+
+class ParallelMoveRelativePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Parallel Move Relative";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Move multiple devices by relative distances simultaneously";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"move_count", "2"},
+      // Move 1
+      {"device_1", "hex-left"},
+      {"axis_1", "X"},
+      {"distance_1", "0"},
+      // Move 2
+      {"device_2", "hex-right"},
+      {"axis_2", "X"},
+      {"distance_2", "0"},
+      // Move 3 (optional)
+      {"device_3", ""},
+      {"axis_3", "X"},
+      {"distance_3", "0"},
+      // Move 4 (optional)
+      {"device_4", ""},
+      {"axis_4", "X"},
+      {"distance_4", "0"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addParameterField("move_count", "Number of Moves (2-4)", params.at("move_count"));
+
+    // Move 1
+    widget->addDeviceSelector("device_1", "Device 1", params.at("device_1"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("axis_1", "Axis 1", params.at("axis_1"), {"X", "Y", "Z", "U", "V", "W"});
+    widget->addParameterField("distance_1", "Distance 1 (mm)", params.at("distance_1"));
+
+    // Move 2
+    widget->addDeviceSelector("device_2", "Device 2", params.at("device_2"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("axis_2", "Axis 2", params.at("axis_2"), {"X", "Y", "Z", "U", "V", "W"});
+    widget->addParameterField("distance_2", "Distance 2 (mm)", params.at("distance_2"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Parallel Move Relative Configuration");
+    table->addNumericProperty("move_count", "Number of Moves",
+      std::stod(params.at("move_count")), 2, 4, 1, 0, "",
+      "Number of devices to move simultaneously (2-4)");
+
+    // Move 1
+    table->addCategoryHeader("Move 1");
+    table->addMotionDeviceProperty("device_1", "Device", params.at("device_1"),
+      "First device to move");
+    table->addDropdownProperty("axis_1", "Axis", params.at("axis_1"),
+      {"X", "Y", "Z", "U", "V", "W"},
+      "Axis to move on");
+    table->addNumericProperty("distance_1", "Distance",
+      std::stod(params.at("distance_1")), -1000, 1000, 0.1, 2, "mm",
+      "Distance to move (positive or negative)");
+
+    // Move 2
+    table->addCategoryHeader("Move 2");
+    table->addMotionDeviceProperty("device_2", "Device", params.at("device_2"),
+      "Second device to move");
+    table->addDropdownProperty("axis_2", "Axis", params.at("axis_2"),
+      {"X", "Y", "Z", "U", "V", "W"},
+      "Axis to move on");
+    table->addNumericProperty("distance_2", "Distance",
+      std::stod(params.at("distance_2")), -1000, 1000, 0.1, 2, "mm",
+      "Distance to move (positive or negative)");
+
+    // Move 3 (optional)
+    table->addCategoryHeader("Move 3 (Optional)");
+    table->addMotionDeviceProperty("device_3", "Device", params.at("device_3"),
+      "Third device to move (leave empty to skip)");
+    table->addDropdownProperty("axis_3", "Axis", params.at("axis_3"),
+      {"X", "Y", "Z", "U", "V", "W"},
+      "Axis to move on");
+    table->addNumericProperty("distance_3", "Distance",
+      std::stod(params.at("distance_3")), -1000, 1000, 0.1, 2, "mm",
+      "Distance to move (positive or negative)");
+
+    // Move 4 (optional)
+    table->addCategoryHeader("Move 4 (Optional)");
+    table->addMotionDeviceProperty("device_4", "Device", params.at("device_4"),
+      "Fourth device to move (leave empty to skip)");
+    table->addDropdownProperty("axis_4", "Axis", params.at("axis_4"),
+      {"X", "Y", "Z", "U", "V", "W"},
+      "Axis to move on");
+    table->addNumericProperty("distance_4", "Distance",
+      std::stod(params.at("distance_4")), -1000, 1000, 0.1, 2, "mm",
+      "Distance to move (positive or negative)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    int moveCount = std::stoi(params.at("move_count"));
+    if (moveCount < 2) moveCount = 2;
+    if (moveCount > 4) moveCount = 4;
+
+    // Build JSON array of moves
+    nlohmann::json movesArray = nlohmann::json::array();
+
+    for (int i = 1; i <= moveCount; ++i) {
+      std::string suffix = "_" + std::to_string(i);
+      std::string device = params.at("device" + suffix);
+      std::string axis = params.at("axis" + suffix);
+      std::string distanceStr = params.at("distance" + suffix);
+
+      // Skip empty device entries
+      if (device.empty()) {
+        continue;
+      }
+
+      // Skip zero distance
+      double distance = std::stod(distanceStr);
+      if (std::abs(distance) < 1e-9) {
+        continue;
+      }
+
+      nlohmann::json moveObj;
+      moveObj["device"] = device;
+      moveObj["axis"] = axis;
+      moveObj["distance"] = distance;
+
+      movesArray.push_back(moveObj);
+    }
+
+    if (movesArray.empty()) {
+      std::cerr << "[ParallelMoveRelativePlugin] WARNING: No valid moves specified (all zero distance)" << std::endl;
+      return;
+    }
+
+    // Use a pseudo device name for parallel move (command handler ignores it)
+    sequence->AddAction("parallel", "ParallelMoveRelative", {
+      {"moves", movesArray.dump()}
+    });
+
+    std::cout << "[MotionProcesses] Built Parallel Move Relative sequence with " << movesArray.size()
+              << " devices: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -950,8 +1288,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
       registry.RegisterPlugin(std::make_unique<XCANPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
+      registry.RegisterPlugin(std::make_unique<ParallelMovePlugin>());
+      registry.RegisterPlugin(std::make_unique<ParallelMoveRelativePlugin>());
 
-      std::cout << "[MotionProcesses] Registered 11 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 13 motion process plugins" << std::endl;
     }
   };
 

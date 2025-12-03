@@ -250,6 +250,13 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["vision"] = "vision";
   LogInfo("Registered vision command handler");
 
+  // Parallel motion commands (special case - uses motion manager for multiple devices)
+  if (m_context->motionManager) {
+    m_deviceToManagerMap["parallel"] = m_context->motionManager;
+    m_deviceToTypeMap["parallel"] = "motion";
+    LogInfo("Registered parallel motion command handler");
+  }
+
   LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 

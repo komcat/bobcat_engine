@@ -1198,6 +1198,337 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // PARALLEL MOVE - Move multiple devices simultaneously
+  // ============================================================================
+  else if (methodName == "ParallelMove") {
+    // Parse the moves JSON array from parameters
+    // Format: moves = [{"device":"gantry","type":"position","target":"home"},
+    //                  {"device":"hex-left","type":"graphNode","graph":"align","target":"probe"}]
+
+    auto movesIt = params.find("moves");
+    if (movesIt == params.end()) {
+      errorMessage = "ParallelMove: Missing required parameter 'moves'";
+      return false;
+    }
+
+    // Parse JSON array of moves
+    std::vector<ParallelMoveSpec> moveSpecs;
+    try {
+      nlohmann::json movesJson = nlohmann::json::parse(movesIt->second);
+
+      if (!movesJson.is_array()) {
+        errorMessage = "ParallelMove: 'moves' must be a JSON array";
+        return false;
+      }
+
+      for (const auto& moveObj : movesJson) {
+        ParallelMoveSpec spec;
+
+        if (!moveObj.contains("device") || !moveObj.contains("type") || !moveObj.contains("target")) {
+          errorMessage = "ParallelMove: Each move must have 'device', 'type', and 'target'";
+          return false;
+        }
+
+        spec.deviceName = moveObj["device"].get<std::string>();
+        spec.moveType = moveObj["type"].get<std::string>();
+        spec.targetName = moveObj["target"].get<std::string>();
+
+        if (spec.moveType == "graphNode") {
+          if (!moveObj.contains("graph")) {
+            errorMessage = "ParallelMove: graphNode type requires 'graph' parameter";
+            return false;
+          }
+          spec.graphName = moveObj["graph"].get<std::string>();
+        }
+
+        // Validate device exists
+        if (!motionManager->HasDevice(spec.deviceName)) {
+          errorMessage = "ParallelMove: Device '" + spec.deviceName + "' not found";
+          return false;
+        }
+
+        moveSpecs.push_back(spec);
+      }
+    } catch (const nlohmann::json::exception& e) {
+      errorMessage = "ParallelMove: Failed to parse moves JSON: " + std::string(e.what());
+      return false;
+    }
+
+    if (moveSpecs.empty()) {
+      errorMessage = "ParallelMove: No moves specified";
+      return false;
+    }
+
+    if (m_logger) {
+      std::string moveList = "ParallelMove: Starting " + std::to_string(moveSpecs.size()) + " parallel moves:\n";
+      for (size_t i = 0; i < moveSpecs.size(); ++i) {
+        moveList += "  [" + std::to_string(i+1) + "] " + moveSpecs[i].deviceName +
+                    " -> " + moveSpecs[i].targetName +
+                    " (type=" + moveSpecs[i].moveType +
+                    ", graph=" + moveSpecs[i].graphName + ")\n";
+      }
+      m_logger->Info(moveList, "MotionHandler");
+    }
+
+    // ✅ PHASE 1: Start all moves (non-blocking)
+    for (const auto& spec : moveSpecs) {
+      bool startSuccess = false;
+
+      if (spec.moveType == "position") {
+        // MoveToNamedPosition
+        startSuccess = motionManager->MoveToNamedPosition(spec.deviceName, spec.targetName, false);
+        if (!startSuccess) {
+          errorMessage = "ParallelMove: Failed to start move for " + spec.deviceName + " to " + spec.targetName;
+          // Emergency stop all devices that already started
+          for (const auto& s : moveSpecs) {
+            motionManager->EmergencyStop(s.deviceName);
+          }
+          return false;
+        }
+      }
+      else if (spec.moveType == "graphNode") {
+        // For graphNode, we need to compute and execute the path
+        // This is more complex - we'll use the existing graph navigation logic
+        if (!m_positionManager) {
+          errorMessage = "ParallelMove: ProductPositionManager not available for graphNode move";
+          return false;
+        }
+
+        MotionGraphManager& graphManager = m_positionManager->GetGraphManager();
+        const MotionGraph* graph = graphManager.getGraph(
+          QString::fromStdString(spec.deviceName),
+          QString::fromStdString(spec.graphName)
+        );
+
+        if (!graph) {
+          // Debug: List available graphs for this device
+          QList<QString> availableGraphs = graphManager.getGraphNames(QString::fromStdString(spec.deviceName));
+          std::string graphList = "Available graphs for " + spec.deviceName + ": ";
+          if (availableGraphs.isEmpty()) {
+            graphList += "(none)";
+          } else {
+            for (int i = 0; i < availableGraphs.size(); ++i) {
+              if (i > 0) graphList += ", ";
+              graphList += "'" + availableGraphs[i].toStdString() + "'";
+            }
+          }
+          if (m_logger) {
+            m_logger->Warning(graphList, "MotionHandler");
+          }
+          errorMessage = "ParallelMove: Graph '" + spec.graphName + "' not found for device '" + spec.deviceName + "'. " + graphList;
+          return false;
+        }
+
+        // Find current position in graph
+        PositionStruct currentPos = motionManager->GetCurrentPosition(spec.deviceName);
+        std::map<std::string, PositionStruct> allPositions = m_positionManager->GetAllPositions(spec.deviceName);
+
+        std::string currentPosName;
+        double closestDistance = std::numeric_limits<double>::max();
+        const double POSITION_TOLERANCE = 0.2;
+
+        for (const auto& pair : allPositions) {
+          double dx = currentPos.x - pair.second.x;
+          double dy = currentPos.y - pair.second.y;
+          double dz = currentPos.z - pair.second.z;
+          double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            if (distance < POSITION_TOLERANCE) {
+              currentPosName = pair.first;
+              break;
+            }
+          }
+        }
+
+        if (currentPosName.empty()) {
+          errorMessage = "ParallelMove: Device '" + spec.deviceName + "' not at a known position";
+          return false;
+        }
+
+        const MotionNode* startNode = graph->getNodeByPosition(QString::fromStdString(currentPosName));
+        const MotionNode* endNode = graph->getNodeByPosition(QString::fromStdString(spec.targetName));
+
+        if (!startNode || !endNode) {
+          errorMessage = "ParallelMove: Cannot find nodes in graph for " + spec.deviceName;
+          return false;
+        }
+
+        // Already at target?
+        if (startNode->id == endNode->id) {
+          if (m_logger) {
+            m_logger->Info("ParallelMove: " + spec.deviceName + " already at " + spec.targetName, "MotionHandler");
+          }
+          continue;
+        }
+
+        // Get path and move to first waypoint (for parallel, we only start the first move)
+        GraphPath path = graphManager.findPath(
+          QString::fromStdString(spec.deviceName),
+          QString::fromStdString(spec.graphName),
+          startNode->id,
+          endNode->id
+        );
+
+        if (!path.isValid || path.positionNames.empty()) {
+          errorMessage = "ParallelMove: No valid path for " + spec.deviceName + " to " + spec.targetName;
+          return false;
+        }
+
+        // Start moving to the final target position (waypoint system will handle intermediate points)
+        startSuccess = motionManager->MoveToNamedPosition(spec.deviceName, spec.targetName, false);
+        if (!startSuccess) {
+          errorMessage = "ParallelMove: Failed to start graphNode move for " + spec.deviceName;
+          return false;
+        }
+      }
+      else {
+        errorMessage = "ParallelMove: Unknown move type '" + spec.moveType + "'";
+        return false;
+      }
+
+      if (m_logger) {
+        m_logger->Info("ParallelMove: Started move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
+      }
+    }
+
+    // ✅ PHASE 2: Wait for all moves to complete
+    if (!WaitForMultipleMotionsWithStopCheck(manager, moveSpecs, context)) {
+      errorMessage = "ParallelMove: One or more moves failed, timed out, or were stopped";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("ParallelMove: All " + std::to_string(moveSpecs.size()) + " moves completed successfully", "MotionHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // PARALLEL MOVE RELATIVE - Move multiple devices relative distances simultaneously
+  // ============================================================================
+  else if (methodName == "ParallelMoveRelative") {
+    // Parse the moves JSON array from parameters
+    // Format: moves = [{"device":"hex-left","axis":"X","distance":4.0},
+    //                  {"device":"hex-right","axis":"Z","distance":-2.0}]
+
+    auto movesIt = params.find("moves");
+    if (movesIt == params.end()) {
+      errorMessage = "ParallelMoveRelative: Missing required parameter 'moves'";
+      return false;
+    }
+
+    // Parse JSON array of moves
+    std::vector<ParallelRelativeMoveSpec> moveSpecs;
+    std::vector<std::string> deviceNames;  // For waiting
+    try {
+      nlohmann::json movesJson = nlohmann::json::parse(movesIt->second);
+
+      if (!movesJson.is_array()) {
+        errorMessage = "ParallelMoveRelative: 'moves' must be a JSON array";
+        return false;
+      }
+
+      for (const auto& moveObj : movesJson) {
+        ParallelRelativeMoveSpec spec;
+
+        if (!moveObj.contains("device") || !moveObj.contains("axis") || !moveObj.contains("distance")) {
+          errorMessage = "ParallelMoveRelative: Each move must have 'device', 'axis', and 'distance'";
+          return false;
+        }
+
+        spec.deviceName = moveObj["device"].get<std::string>();
+        spec.axis = moveObj["axis"].get<std::string>();
+
+        // Handle distance as either number or string
+        if (moveObj["distance"].is_number()) {
+          spec.distance = moveObj["distance"].get<double>();
+        } else {
+          spec.distance = std::stod(moveObj["distance"].get<std::string>());
+        }
+
+        // Validate device exists
+        if (!motionManager->HasDevice(spec.deviceName)) {
+          errorMessage = "ParallelMoveRelative: Device '" + spec.deviceName + "' not found";
+          return false;
+        }
+
+        // Validate axis
+        std::string axisUpper = spec.axis;
+        std::transform(axisUpper.begin(), axisUpper.end(), axisUpper.begin(), ::toupper);
+        if (axisUpper != "X" && axisUpper != "Y" && axisUpper != "Z" &&
+            axisUpper != "U" && axisUpper != "V" && axisUpper != "W") {
+          errorMessage = "ParallelMoveRelative: Invalid axis '" + spec.axis + "' (must be X, Y, Z, U, V, or W)";
+          return false;
+        }
+        spec.axis = axisUpper;
+
+        moveSpecs.push_back(spec);
+
+        // Track unique device names for waiting
+        if (std::find(deviceNames.begin(), deviceNames.end(), spec.deviceName) == deviceNames.end()) {
+          deviceNames.push_back(spec.deviceName);
+        }
+      }
+    } catch (const nlohmann::json::exception& e) {
+      errorMessage = "ParallelMoveRelative: Failed to parse moves JSON: " + std::string(e.what());
+      return false;
+    }
+
+    if (moveSpecs.empty()) {
+      errorMessage = "ParallelMoveRelative: No moves specified";
+      return false;
+    }
+
+    if (m_logger) {
+      std::string moveList = "ParallelMoveRelative: Starting " + std::to_string(moveSpecs.size()) + " parallel relative moves:\n";
+      for (size_t i = 0; i < moveSpecs.size(); ++i) {
+        moveList += "  [" + std::to_string(i+1) + "] " + moveSpecs[i].deviceName +
+                    " " + moveSpecs[i].axis + " by " + std::to_string(moveSpecs[i].distance) + "mm\n";
+      }
+      m_logger->Info(moveList, "MotionHandler");
+    }
+
+    // ✅ PHASE 1: Start all relative moves (non-blocking)
+    for (const auto& spec : moveSpecs) {
+      // Skip zero distance moves
+      if (std::abs(spec.distance) < 1e-9) {
+        if (m_logger) {
+          m_logger->Info("ParallelMoveRelative: Skipping zero-distance move for " + spec.deviceName + " " + spec.axis, "MotionHandler");
+        }
+        continue;
+      }
+
+      if (!motionManager->MoveRelative(spec.deviceName, spec.axis, spec.distance, false)) {
+        errorMessage = "ParallelMoveRelative: Failed to start move for " + spec.deviceName + " " + spec.axis;
+        // Emergency stop all devices that already started
+        for (const auto& deviceName : deviceNames) {
+          motionManager->EmergencyStop(deviceName);
+        }
+        return false;
+      }
+
+      if (m_logger) {
+        m_logger->Info("ParallelMoveRelative: Started move for " + spec.deviceName + " " + spec.axis + " by " + std::to_string(spec.distance), "MotionHandler");
+      }
+    }
+
+    // ✅ PHASE 2: Wait for all moves to complete
+    if (!WaitForMultipleRelativeMotionsWithStopCheck(manager, deviceNames, context)) {
+      errorMessage = "ParallelMoveRelative: One or more moves failed, timed out, or were stopped";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("ParallelMoveRelative: All " + std::to_string(moveSpecs.size()) + " moves completed successfully", "MotionHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
@@ -1425,4 +1756,219 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     // Sleep briefly to avoid busy-waiting (50ms polling rate)
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+}
+
+// =============================================================================
+// HELPER: Wait for multiple motions to complete with safety stop checking
+// =============================================================================
+bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
+  void* manager,
+  const std::vector<ParallelMoveSpec>& moves,
+  SequenceContext* context,
+  int timeoutMs)
+{
+  UnifiedMotionManager* motionManager = static_cast<UnifiedMotionManager*>(manager);
+  auto startTime = std::chrono::steady_clock::now();
+
+  // Track completion status for each device
+  std::vector<bool> completed(moves.size(), false);
+  int completedCount = 0;
+
+  // Small delay to ensure all motions actually start
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  while (completedCount < static_cast<int>(moves.size())) {
+    // ✅ CRITICAL: Update waypoint state machines for all devices
+    motionManager->Update();
+
+    // ✅ SAFETY-CRITICAL: Check stop flags FIRST
+    if (context && context->IsStopRequestedAny()) {
+      if (m_logger) {
+        m_logger->Warning("SAFETY STOP: Stop requested during parallel motion - stopping all devices", "MotionHandler");
+      }
+
+      // Emergency stop ALL devices
+      for (const auto& spec : moves) {
+        motionManager->EmergencyStop(spec.deviceName);
+      }
+
+      return false;
+    }
+
+    // Check each device's motion status
+    for (size_t i = 0; i < moves.size(); ++i) {
+      if (completed[i]) continue;  // Already done
+
+      const auto& spec = moves[i];
+      bool isMoving = motionManager->IsDeviceInMotion(spec.deviceName);
+      bool waypointActive = motionManager->IsWaypointSystemActive(spec.deviceName);
+
+      if (!isMoving && !waypointActive) {
+        // This device has stopped - verify position
+        PositionStruct currentPos = motionManager->GetCurrentPosition(spec.deviceName);
+
+        // Get target position for verification
+        PositionStruct targetPos;
+        bool hasTarget = false;
+
+        if (m_positionManager) {
+          std::map<std::string, PositionStruct> allPositions = m_positionManager->GetAllPositions(spec.deviceName);
+          auto it = allPositions.find(spec.targetName);
+          if (it != allPositions.end()) {
+            targetPos = it->second;
+            hasTarget = true;
+          }
+        }
+
+        if (hasTarget) {
+          // Verify position within tolerance
+          double dx = currentPos.x - targetPos.x;
+          double dy = currentPos.y - targetPos.y;
+          double dz = currentPos.z - targetPos.z;
+          double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+          const double TOLERANCE = 0.05;  // 0.05mm tolerance
+          if (distance > TOLERANCE) {
+            // Still not at target - might be in waypoint transition
+            if (m_logger) {
+              m_logger->Info("ParallelMove: " + spec.deviceName + " stopped but " +
+                            std::to_string(distance) + "mm from target, waiting...", "MotionHandler");
+            }
+            continue;
+          }
+        }
+
+        // Device completed successfully
+        completed[i] = true;
+        completedCount++;
+
+        if (m_logger) {
+          m_logger->Info("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
+                        " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
+        }
+      }
+    }
+
+    // Check timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime
+    ).count();
+
+    if (elapsed > timeoutMs) {
+      if (m_logger) {
+        std::string pendingDevices;
+        for (size_t i = 0; i < moves.size(); ++i) {
+          if (!completed[i]) {
+            if (!pendingDevices.empty()) pendingDevices += ", ";
+            pendingDevices += moves[i].deviceName;
+          }
+        }
+        m_logger->Error("ParallelMove: Timeout waiting for devices: " + pendingDevices, "MotionHandler");
+      }
+
+      // Emergency stop all devices that are still moving
+      for (size_t i = 0; i < moves.size(); ++i) {
+        if (!completed[i]) {
+          motionManager->EmergencyStop(moves[i].deviceName);
+        }
+      }
+
+      return false;
+    }
+
+    // Sleep briefly to avoid busy-waiting
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  return true;
+}
+
+// =============================================================================
+// HELPER: Wait for multiple relative motions to complete with safety stop checking
+// =============================================================================
+bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
+  void* manager,
+  const std::vector<std::string>& deviceNames,
+  SequenceContext* context,
+  int timeoutMs)
+{
+  UnifiedMotionManager* motionManager = static_cast<UnifiedMotionManager*>(manager);
+  auto startTime = std::chrono::steady_clock::now();
+
+  // Track completion status for each device
+  std::vector<bool> completed(deviceNames.size(), false);
+  int completedCount = 0;
+
+  // Small delay to ensure all motions actually start
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  while (completedCount < static_cast<int>(deviceNames.size())) {
+    // ✅ CRITICAL: Update waypoint state machines for all devices
+    motionManager->Update();
+
+    // ✅ SAFETY-CRITICAL: Check stop flags FIRST
+    if (context && context->IsStopRequestedAny()) {
+      if (m_logger) {
+        m_logger->Warning("SAFETY STOP: Stop requested during parallel relative motion - stopping all devices", "MotionHandler");
+      }
+
+      // Emergency stop ALL devices
+      for (const auto& deviceName : deviceNames) {
+        motionManager->EmergencyStop(deviceName);
+      }
+
+      return false;
+    }
+
+    // Check each device's motion status
+    for (size_t i = 0; i < deviceNames.size(); ++i) {
+      if (completed[i]) continue;  // Already done
+
+      const auto& deviceName = deviceNames[i];
+      bool isMoving = motionManager->IsDeviceInMotion(deviceName);
+
+      if (!isMoving) {
+        // Device completed
+        completed[i] = true;
+        completedCount++;
+
+        if (m_logger) {
+          m_logger->Info("ParallelMoveRelative: " + deviceName + " completed (" +
+                        std::to_string(completedCount) + "/" + std::to_string(deviceNames.size()) + ")", "MotionHandler");
+        }
+      }
+    }
+
+    // Check timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime
+    ).count();
+
+    if (elapsed > timeoutMs) {
+      if (m_logger) {
+        std::string pendingDevices;
+        for (size_t i = 0; i < deviceNames.size(); ++i) {
+          if (!completed[i]) {
+            if (!pendingDevices.empty()) pendingDevices += ", ";
+            pendingDevices += deviceNames[i];
+          }
+        }
+        m_logger->Error("ParallelMoveRelative: Timeout waiting for devices: " + pendingDevices, "MotionHandler");
+      }
+
+      // Emergency stop all devices that are still moving
+      for (size_t i = 0; i < deviceNames.size(); ++i) {
+        if (!completed[i]) {
+          motionManager->EmergencyStop(deviceNames[i]);
+        }
+      }
+
+      return false;
+    }
+
+    // Sleep briefly to avoid busy-waiting
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  return true;
 }

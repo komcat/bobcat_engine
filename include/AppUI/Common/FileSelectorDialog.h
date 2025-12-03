@@ -70,12 +70,14 @@ private slots:
   void onCancel();
   void onRefresh();
   void onSearchTextChanged(const QString& searchText);
+  void onHeaderClicked(int logicalIndex);
 
 private:
   void setupUI();
   void loadFiles();
   void populateFileTable();
   void applySearchFilter();
+  void sortFiles();
 
   QString m_folderPath;
   QString m_filePattern;
@@ -102,4 +104,8 @@ private:
 
   QList<FileInfo> m_allFiles;
   QList<FileInfo> m_filteredFiles;
+
+  // Sorting state
+  int m_sortColumn = -1;           // -1 = no sorting, otherwise column index
+  Qt::SortOrder m_sortOrder = Qt::AscendingOrder;
 };

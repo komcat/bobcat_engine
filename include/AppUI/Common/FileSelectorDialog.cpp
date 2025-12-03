@@ -136,6 +136,13 @@ void FileSelectorDialog::setupUI()
   m_fileTable->setAlternatingRowColors(true);
   m_fileTable->setStyleSheet("font-size: 11px;");  // ✅ Only custom font size, rest from global theme
 
+  // Enable sorting by clicking column headers
+  m_fileTable->setSortingEnabled(false);  // We handle sorting manually
+  m_fileTable->horizontalHeader()->setSectionsClickable(true);
+  m_fileTable->horizontalHeader()->setSortIndicatorShown(true);
+  connect(m_fileTable->horizontalHeader(), &QHeaderView::sectionClicked,
+    this, &FileSelectorDialog::onHeaderClicked);
+
   connect(m_fileTable, &QTableWidget::cellDoubleClicked,
     this, &FileSelectorDialog::onFileDoubleClicked);
 
@@ -347,6 +354,9 @@ void FileSelectorDialog::applySearchFilter()
     }
   }
 
+  // Apply current sort order if any
+  sortFiles();
+
   populateFileTable();
 }
 
@@ -391,4 +401,62 @@ void FileSelectorDialog::onSearchTextChanged(const QString& searchText)
 {
   Q_UNUSED(searchText);
   applySearchFilter();
+}
+
+void FileSelectorDialog::onHeaderClicked(int logicalIndex)
+{
+  // Determine which column was clicked (accounting for recursive mode)
+  // Non-recursive: 0=FileName, 1=DateModified, 2=Size
+  // Recursive:     0=FileName, 1=Location, 2=DateModified, 3=Size
+
+  // Only allow sorting on FileName and DateModified columns
+  int fileNameCol = 0;
+  int dateModifiedCol = m_recursive ? 2 : 1;
+
+  if (logicalIndex != fileNameCol && logicalIndex != dateModifiedCol) {
+    return;  // Don't sort on Location or Size columns
+  }
+
+  // Toggle sort order if clicking same column, otherwise ascending
+  if (m_sortColumn == logicalIndex) {
+    m_sortOrder = (m_sortOrder == Qt::AscendingOrder) ? Qt::DescendingOrder : Qt::AscendingOrder;
+  } else {
+    m_sortColumn = logicalIndex;
+    m_sortOrder = Qt::AscendingOrder;
+  }
+
+  // Update sort indicator
+  m_fileTable->horizontalHeader()->setSortIndicator(m_sortColumn, m_sortOrder);
+
+  // Sort and repopulate
+  sortFiles();
+  populateFileTable();
+}
+
+void FileSelectorDialog::sortFiles()
+{
+  if (m_sortColumn < 0) {
+    return;  // No sorting
+  }
+
+  int fileNameCol = 0;
+  int dateModifiedCol = m_recursive ? 2 : 1;
+
+  bool ascending = (m_sortOrder == Qt::AscendingOrder);
+
+  if (m_sortColumn == fileNameCol) {
+    // Sort by file name
+    std::sort(m_filteredFiles.begin(), m_filteredFiles.end(),
+      [ascending](const FileInfo& a, const FileInfo& b) {
+        int cmp = QString::compare(a.fileName, b.fileName, Qt::CaseInsensitive);
+        return ascending ? (cmp < 0) : (cmp > 0);
+      });
+  } else if (m_sortColumn == dateModifiedCol) {
+    // Sort by date modified
+    std::sort(m_filteredFiles.begin(), m_filteredFiles.end(),
+      [ascending](const FileInfo& a, const FileInfo& b) {
+        int cmp = QString::compare(a.dateModified, b.dateModified);
+        return ascending ? (cmp < 0) : (cmp > 0);
+      });
+  }
 }

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "ICommandHandler.h"
+#include <vector>
 
 // Forward declarations
 class DataStore;
@@ -56,6 +57,36 @@ private:
     SequenceContext* context,
     int timeoutMs = 30000,
     const TargetPosition* targetPos = nullptr);
+
+  // ✅ NEW: Structure for parallel move specification
+  struct ParallelMoveSpec {
+    std::string deviceName;
+    std::string moveType;      // "position" or "graphNode"
+    std::string targetName;    // Named position or node name
+    std::string graphName;     // Only for graphNode type
+  };
+
+  // ✅ NEW: Structure for parallel relative move specification
+  struct ParallelRelativeMoveSpec {
+    std::string deviceName;
+    std::string axis;          // "X", "Y", "Z", "U", "V", "W"
+    double distance;           // Distance to move
+  };
+
+  // ✅ NEW: Helper to wait for multiple motions to complete with safety stop checking
+  // Returns false if stop requested, timeout, or any position verification failed
+  bool WaitForMultipleMotionsWithStopCheck(
+    void* motionManager,
+    const std::vector<ParallelMoveSpec>& moves,
+    SequenceContext* context,
+    int timeoutMs = 60000);
+
+  // ✅ NEW: Helper to wait for multiple relative motions to complete
+  bool WaitForMultipleRelativeMotionsWithStopCheck(
+    void* motionManager,
+    const std::vector<std::string>& deviceNames,
+    SequenceContext* context,
+    int timeoutMs = 60000);
 
   // ✅ NEW: DataStore for XCAN command
   DataStore* m_dataStore = nullptr;
