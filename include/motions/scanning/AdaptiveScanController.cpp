@@ -393,6 +393,37 @@ void AdaptiveScanController::HandleScanError(const std::string& message) {
   m_stateMachine->TransitionTo(ScanState::Error);
   NotifyError(message, ScanErrorType::Unknown);
 
+  // Try to return to safe position after error (unless emergency stop)
+  if (m_dataCollector && !m_emergencyStopRequested) {
+    PeakInfo peak = m_dataCollector->GetPeakPosition();
+    BaselineInfo baseline = m_dataCollector->GetBaseline();
+
+    // Simple logic: return to peak if valid, otherwise return to baseline
+    if (peak.valid && peak.value > baseline.value) {
+      // Peak found that's better than baseline - go to peak
+      if (m_logger) {
+        std::stringstream ss;
+        ss << "Error recovery: Returning to peak position (value: "
+           << std::fixed << std::setprecision(6) << peak.value << ")";
+        m_logger->LogInfo(ss.str());
+      }
+      MoveToPosition(peak.position);
+    } else if (baseline.valid) {
+      // No valid peak - return to baseline
+      if (m_logger) {
+        std::stringstream ss;
+        ss << "Error recovery: Returning to baseline position (value: "
+           << std::fixed << std::setprecision(6) << baseline.value << ")";
+        m_logger->LogInfo(ss.str());
+      }
+      MoveToPosition(baseline.position);
+    } else {
+      if (m_logger) {
+        m_logger->LogWarning("Error recovery: No baseline or peak recorded - staying at current position");
+      }
+    }
+  }
+
   if (m_dataCollector) {
     m_dataCollector->SaveResults();
   }
