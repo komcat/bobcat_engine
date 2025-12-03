@@ -2,6 +2,9 @@
 
 Industrial motion control and automation application.
 
+## Introduction
+- [Introduction](introduction/) - Overview, purpose, and key features
+
 ## Quick Start
 
 1. Launch `bobcat_engine.exe`
@@ -56,6 +59,8 @@ Industrial motion control and automation application.
 ```
 user_manual/
 ├── README.md (this file)
+├── introduction/
+│   └── README.md (overview, purpose, key features)
 ├── pages/
 │   ├── main_menu/
 │   ├── motion_page/

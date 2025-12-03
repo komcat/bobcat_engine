@@ -91,10 +91,16 @@ public:
   void onNodeMoved(MotionNodeItem* node);
 
   // Set motion manager for execution
-  void setMotionManager(UnifiedMotionManager* motionManager) { m_motionManager = motionManager; }
+  void setMotionManager(UnifiedMotionManager* motionManager) {
+    m_motionManager = motionManager;
+    refreshSpeedControl();  // Update speed control now that we have the motion manager
+  }
 
   // Set sequence engine for multi-step path execution
   void setSequenceEngine(SequenceEngine* sequenceEngine) { m_sequenceEngine = sequenceEngine; }
+
+  // Refresh speed control panel (call after motion manager is set)
+  void refreshSpeedControl();
 
   // Cleanup - call before deleting widget
   void cleanup();

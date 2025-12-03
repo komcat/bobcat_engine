@@ -1487,6 +1487,78 @@ void GraphWidget::setupSpeedControl(QVBoxLayout* layout)
   }
 }
 
+void GraphWidget::refreshSpeedControl()
+{
+  if (!m_motionManager || !m_speedSlider || !m_speedValueLabel) {
+    return;
+  }
+
+  // Get device type
+  std::string deviceType = m_motionManager->GetDeviceType(m_deviceName.toStdString());
+  if (deviceType.empty()) {
+    return;  // Device not registered yet
+  }
+
+  // Update slider range and preset buttons based on device type
+  if (deviceType == "ACS") {
+    m_speedSlider->setRange(1, 80);
+    m_speedSlider->setEnabled(true);
+    if (m_speedPreset1) m_speedPreset1->setText("5 mm/s");
+    if (m_speedPreset2) m_speedPreset2->setText("20 mm/s");
+    if (m_speedPreset3) m_speedPreset3->setText("50 mm/s");
+    if (m_speedPreset1) m_speedPreset1->setEnabled(true);
+    if (m_speedPreset2) m_speedPreset2->setEnabled(true);
+    if (m_speedPreset3) m_speedPreset3->setEnabled(true);
+
+    // Query current velocity from device (use X axis as reference)
+    double velocity = 0.0;
+    if (m_motionManager->GetVelocity(m_deviceName.toStdString(), "X", velocity)) {
+      int sliderValue = static_cast<int>(velocity);
+      if (sliderValue >= 1 && sliderValue <= 80) {
+        m_speedSlider->setValue(sliderValue);
+      }
+      m_speedValueLabel->setText(QString("%1 mm/s").arg(velocity, 0, 'f', 1));
+    } else {
+      m_speedSlider->setValue(20);  // Default
+      onSpeedSliderChanged(20);
+    }
+  }
+  else if (deviceType == "PI") {
+    m_speedSlider->setRange(1, 20);
+    m_speedSlider->setEnabled(true);
+    if (m_speedPreset1) m_speedPreset1->setText("1 mm/s");
+    if (m_speedPreset2) m_speedPreset2->setText("5 mm/s");
+    if (m_speedPreset3) m_speedPreset3->setText("10 mm/s");
+    if (m_speedPreset1) m_speedPreset1->setEnabled(true);
+    if (m_speedPreset2) m_speedPreset2->setEnabled(true);
+    if (m_speedPreset3) m_speedPreset3->setEnabled(true);
+
+    // Query current system velocity from PI device
+    double velocity = 0.0;
+    if (m_motionManager->GetSystemVelocity(m_deviceName.toStdString(), velocity)) {
+      int sliderValue = static_cast<int>(velocity);
+      if (sliderValue >= 1 && sliderValue <= 20) {
+        m_speedSlider->setValue(sliderValue);
+      }
+      m_speedValueLabel->setText(QString("%1 mm/s").arg(velocity, 0, 'f', 1));
+    } else {
+      m_speedSlider->setValue(5);  // Default
+      onSpeedSliderChanged(5);
+    }
+  }
+
+  // Update the device type label (find it in the execution panel)
+  if (m_executionPanel) {
+    QList<QLabel*> labels = m_executionPanel->findChildren<QLabel*>();
+    for (QLabel* label : labels) {
+      if (label->text().startsWith("(") && label->text().endsWith(")")) {
+        label->setText(QString("(%1)").arg(QString::fromStdString(deviceType).toUpper()));
+        break;
+      }
+    }
+  }
+}
+
 // ============================================================================
 // EXECUTION PANEL
 // ============================================================================
