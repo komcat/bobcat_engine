@@ -447,74 +447,6 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}");
   executeLayout->addWidget(m_executeButton);
 
-  m_autoRunNextCheckBox = new QCheckBox("Auto-run next recipe");
-  m_autoRunNextCheckBox->setChecked(false);
-  m_autoRunNextCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #0e639c; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #27ae60; "
-    "  border-color: #27ae60; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #2ecc71; "
-    "  border-color: #2ecc71; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
-  executeLayout->addWidget(m_autoRunNextCheckBox);
-
-  // ✅ NEW: Use dependencies checkbox
-  m_useDependenciesCheckBox = new QCheckBox("Use recipe dependencies (advanced)");
-  m_useDependenciesCheckBox->setChecked(false);
-  m_useDependenciesCheckBox->setToolTip("Enable dependency-based execution where recipes run based on prerequisites");
-  m_useDependenciesCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #9b59b6; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #9b59b6; "
-    "  border-color: #9b59b6; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #a06fbd; "
-    "  border-color: #a06fbd; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
-  executeLayout->addWidget(m_useDependenciesCheckBox);
-
   m_progressBar = new QProgressBar();
   m_progressBar->setRange(0, 100);
   m_progressBar->setValue(0);
@@ -534,7 +466,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   );
   executeLayout->addWidget(m_progressBar);
 
-  executeTabLayout->addWidget(executeGroup);
+  executeTabLayout->addWidget(executeGroup, 0);
 
   // === Recipe List ===
   QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
@@ -593,6 +525,105 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   executeTabLayout->addWidget(recipeGroup, 1);
 
   m_tabWidget->addTab(executeTab, "Execute");
+
+  // === OPTION TAB ===
+  QWidget* optionTab = new QWidget();
+  QVBoxLayout* optionTabLayout = new QVBoxLayout(optionTab);
+  optionTabLayout->setContentsMargins(5, 10, 5, 5);
+  optionTabLayout->setSpacing(10);
+
+  QGroupBox* optionGroup = new QGroupBox("Execution Options");
+  optionGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
+  QVBoxLayout* optionLayout = new QVBoxLayout(optionGroup);
+
+  m_autoRunNextCheckBox = new QCheckBox("Auto-run next recipe");
+  m_autoRunNextCheckBox->setChecked(false);
+  m_autoRunNextCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #27ae60; "
+    "  border-color: #27ae60; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #2ecc71; "
+    "  border-color: #2ecc71; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
+    "}"
+  );
+  optionLayout->addWidget(m_autoRunNextCheckBox);
+
+  m_useDependenciesCheckBox = new QCheckBox("Use recipe dependencies (advanced)");
+  m_useDependenciesCheckBox->setChecked(false);
+  m_useDependenciesCheckBox->setToolTip("Enable dependency-based execution where recipes run based on prerequisites");
+  m_useDependenciesCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #9b59b6; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #9b59b6; "
+    "  border-color: #9b59b6; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #a06fbd; "
+    "  border-color: #a06fbd; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
+    "}"
+  );
+  optionLayout->addWidget(m_useDependenciesCheckBox);
+
+  optionLayout->addStretch();
+  optionTabLayout->addWidget(optionGroup);
+  optionTabLayout->addStretch();
+
+  m_tabWidget->addTab(optionTab, "Option");
 
   // Set Execute tab as default
   m_tabWidget->setCurrentIndex(1);
