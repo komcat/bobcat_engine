@@ -12,6 +12,9 @@ Industrial motion control and automation application.
 ## Manual Contents
 
 ### Pages
+- [Main Menu](pages/main_menu/) - Home screen and product management
+- [Motion Page](pages/motion_page/) - Position management and graph editing
+- [Hardware Instrument](pages/hardware_instrument/) - Hardware device configuration
 - [Auxiliary Display](pages/auxiliary_display/) - Camera view and live data
 - [Jog Window](pages/jog_window/) - Manual motion control
 - [Recipe Page](pages/recipe_page/) - Recipe editing and process configuration
@@ -21,6 +24,12 @@ Industrial motion control and automation application.
 - [Live Chart View](systems/live_chart_view/) - Real-time data with target comparison
 - [Motion Control](systems/motion_control/) - Motion devices and commands
 - [Graph Navigation](systems/graph_navigation/) - Path planning with motion graphs
+
+### Configuration
+- [Config Files](config/) - JSON configuration file reference
+
+### Programs
+- [Build SiPhOG Rev1](programs/build_siphog_rev1.md) - SiPhOG assembly program with recipe details
 
 ## Common Workflows
 
@@ -48,12 +57,19 @@ Industrial motion control and automation application.
 user_manual/
 ├── README.md (this file)
 ├── pages/
+│   ├── main_menu/
+│   ├── motion_page/
+│   ├── hardware_instrument/
 │   ├── auxiliary_display/
 │   ├── jog_window/
 │   ├── recipe_page/
 │   └── run_program_page/
-└── systems/
-    ├── live_chart_view/
-    ├── motion_control/
-    └── graph_navigation/
+├── systems/
+│   ├── live_chart_view/
+│   ├── motion_control/
+│   └── graph_navigation/
+├── config/
+│   └── README.md (config file reference)
+└── programs/
+    └── build_siphog_rev1.md (program documentation)
 ```
