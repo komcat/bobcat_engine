@@ -1721,8 +1721,11 @@ void RunProgramPage::onExecuteProgram()
             message = "Execution completed";
           }
           onProgramExecutionCompleted(success, message);
-          m_programWorker->deleteLater();
-          m_programWorker = nullptr;
+          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
+          if (m_programWorker) {
+            m_programWorker->deleteLater();
+            m_programWorker = nullptr;
+          }
         }
       }
     }
@@ -2049,8 +2052,11 @@ void RunProgramPage::onWorkerLogMessage(QString message)
             actualMessage = "Execution completed";
           }
           onProgramExecutionCompleted(success, actualMessage);
-          m_programWorker->deleteLater();
-          m_programWorker = nullptr;
+          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
+          if (m_programWorker) {
+            m_programWorker->deleteLater();
+            m_programWorker = nullptr;
+          }
         }
       }
     } else {
@@ -2079,8 +2085,11 @@ void RunProgramPage::onWorkerLogMessage(QString message)
             actualMessage = "Execution completed";
           }
           onProgramExecutionCompleted(success, actualMessage);
-          m_programWorker->deleteLater();
-          m_programWorker = nullptr;
+          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
+          if (m_programWorker) {
+            m_programWorker->deleteLater();
+            m_programWorker = nullptr;
+          }
         }
       }
     }

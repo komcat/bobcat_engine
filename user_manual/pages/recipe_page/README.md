@@ -2,36 +2,103 @@
 
 Recipe editing and process configuration.
 
-## Recipe Structure
+## Layout
 
-A recipe contains ordered process steps that execute sequentially.
+| Left Panel | Center Panel | Right Panel |
+|------------|--------------|-------------|
+| Available Processes | Recipe Steps | Process Configuration |
+| | | Vision Result |
 
-## Process List (Left Panel)
+## Available Processes (Left Panel)
 
-- **Add**: Add new process step
-- **Remove**: Delete selected step
-- **Up/Down**: Reorder steps
-- **Enable/Disable**: Toggle step execution
+### Search
+Type in search box to filter processes by name.
+
+### Categories
+- **Motion Control** - Move, position, velocity commands
+- **I/O & Pneumatics** - Digital I/O, pneumatic slides
+- **TEC & Laser** - Temperature and laser control
+- **Power Supply** - Power supply commands
+- **SMU Control** - Source measure unit operations
+- **Data** - Data capture and storage
+- **System** - Delays, prompts, logging
+- **Control Flow** - Loops, conditionals
+- **Calibration** - Calibration routines
+- **Vision** - Camera capture, image processing
+- **Dispensing** - Dispense operations
+- **Aux Window** - Auxiliary display control
+- **Comment** - Recipe documentation
+
+### Adding a Process
+1. Expand category
+2. Double-click process or drag to Recipe Steps
+
+## Recipe Steps (Center Panel)
+
+### Header Controls
+
+| Control | Function |
+|---------|----------|
+| **Name** | Recipe display name |
+| **Run Recipe** (orange) | Execute entire recipe |
+| **Run Selected** (blue) | Execute selected steps only |
+| **Step** (green) | Execute one step at a time |
+| **Continue** | Resume after step mode |
+
+### Menu Bar
+
+| Menu | Options |
+|------|---------|
+| **File** | New, Open, Save, Save As |
+| **Edit** | Cut, Copy, Paste, Delete, Undo |
+| **Select** | All, None, Invert, Enable/Disable |
+
+### Process List
+
+| Column | Description |
+|--------|-------------|
+| **Checkbox** | Select for batch operations |
+| **#** | Step number |
+| **>** | Execution indicator |
+| **Process Instance** | Step name (editable) |
+| **Run** | Enable/disable (green = enabled) |
+
+### Step Operations
+- **Click** - Select step for configuration
+- **Double-click name** - Rename step
+- **Drag** - Reorder steps
+- **Right-click** - Context menu
 
 ## Process Configuration (Right Panel)
 
+Displays parameters for selected step.
+
 ### Property Table
 
-Two-column editor for process parameters:
-- **Property**: Parameter name
-- **Value**: Editable value (dropdown, text, checkbox)
+| Column | Description |
+|--------|-------------|
+| **Property** | Parameter name |
+| **Value** | Editable value |
+
+### Value Types
+- **Dropdown** - Select from list
+- **Text field** - Enter value
+- **Checkbox** - Toggle on/off
+- **Browse button (...)** - Open selector dialog
 
 ### Dependent Dropdowns
 
-Some parameters auto-refresh based on parent selection:
+Parameters auto-refresh based on parent selection:
 
-| Parent | Child | Behavior |
-|--------|-------|----------|
-| Motion Device | Graph Name | Refreshes available graphs |
-| Graph Name | End Node | Refreshes available nodes |
-| IO Device | Pin Name | Refreshes available pins |
+| When Changed | Updates |
+|--------------|---------|
+| Motion Device | Graph Name, Node lists |
+| Graph Name | End Node list |
+| IO Device | Pin Name list |
 
-**Example:** Changing Motion Device from `hex-left` to `gantry-main` automatically reloads the Graph Name dropdown with graphs configured for `gantry-main`.
+## Vision Result (Bottom Right)
+
+Displays captured images from vision processes.
 
 ## Process Categories
 
@@ -56,7 +123,16 @@ Some parameters auto-refresh based on parent selection:
 - Delay
 - Prompt User
 
-## Saving Recipes
+## Keyboard Shortcuts
 
-- Recipes saved as JSON in `recipes/` folder
-- Use File > Save Recipe or Ctrl+S
+| Key | Action |
+|-----|--------|
+| Ctrl+B | Quick add process |
+| Ctrl+S | Save recipe |
+| Ctrl+Z | Undo |
+| Delete | Remove selected step |
+| Ctrl+A | Select all steps |
+
+## Recipe File Format
+
+Recipes saved as JSON in `recipes/` folder.

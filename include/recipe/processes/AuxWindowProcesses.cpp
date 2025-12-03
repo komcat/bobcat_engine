@@ -177,9 +177,8 @@ public:
     // Optional channel selector (empty = current channel)
     widget->addDataChannelSelector("channel", "Channel (empty = current)", params.at("channel"));
 
-    // Target value input
-    widget->addTextParameter("value", "Target Value", params.at("value"),
-      "Target value in base units (e.g., 1.5e-6 for 1.5uA)");
+    // Target value input (e.g., 1.5e-6 for 1.5uA)
+    widget->addParameterField("value", "Target Value", params.at("value"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
