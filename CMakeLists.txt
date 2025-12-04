@@ -620,6 +620,11 @@ set(SOURCES
     include/AuxWindow/LiveChartWidget.cpp
     include/AuxWindow/LiveViewCameraWidget.cpp
     include/AuxWindow/CameraClickToMoveWidget.cpp
+    include/AuxWindow/WorldOverlay.cpp
+    include/AuxWindow/WorldOverlayManager.cpp
+    include/AuxWindow/WorldOverlayWidget.cpp
+    include/AuxWindow/WorldOverlayRenderer.cpp
+    include/AuxWindow/ShapeCreatorDialog.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp
@@ -779,6 +784,11 @@ set(HEADERS
     include/AuxWindow/LiveChartWidget.h
     include/AuxWindow/LiveViewCameraWidget.h
     include/AuxWindow/CameraClickToMoveWidget.h
+    include/AuxWindow/WorldOverlay.h
+    include/AuxWindow/WorldOverlayManager.h
+    include/AuxWindow/WorldOverlayWidget.h
+    include/AuxWindow/WorldOverlayRenderer.h
+    include/AuxWindow/ShapeCreatorDialog.h
     include/PSU/IPowerSupply.h
     include/PSU/PowerSupplyManager.h
     include/PSU/PowerSupplyJsonLoader.h

@@ -1,0 +1,96 @@
+{
+  "name": "Sample Overlay",
+  "description": "Sample world-locked overlay file",
+  "camera": "Camera_1",
+  "px_per_mm": 403.23,
+  "layers": [
+    {
+      "name": "Template",
+      "type": "template",
+      "visible": true,
+      "locked": false,
+      "color": "#00FF00",
+      "opacity": 0.8,
+      "markers": [
+        {
+          "id": "fid_top_left",
+          "type": "crosshair",
+          "world_x": -50.0,
+          "world_y": 50.0,
+          "world_z": 0.0,
+          "size_px": 40.0,
+          "line_width_px": 2.0,
+          "label": "TL Fiducial",
+          "show_label": true,
+          "font_size": 12
+        },
+        {
+          "id": "fid_top_right",
+          "type": "crosshair",
+          "world_x": 50.0,
+          "world_y": 50.0,
+          "world_z": 0.0,
+          "size_px": 40.0,
+          "line_width_px": 2.0,
+          "label": "TR Fiducial",
+          "show_label": true,
+          "font_size": 12
+        },
+        {
+          "id": "fid_bottom_left",
+          "type": "crosshair",
+          "world_x": -50.0,
+          "world_y": -50.0,
+          "world_z": 0.0,
+          "size_px": 40.0,
+          "line_width_px": 2.0,
+          "label": "BL Fiducial",
+          "show_label": true,
+          "font_size": 12
+        },
+        {
+          "id": "fid_bottom_right",
+          "type": "crosshair",
+          "world_x": 50.0,
+          "world_y": -50.0,
+          "world_z": 0.0,
+          "size_px": 40.0,
+          "line_width_px": 2.0,
+          "label": "BR Fiducial",
+          "show_label": true,
+          "font_size": 12
+        },
+        {
+          "id": "center_circle",
+          "type": "circle",
+          "world_x": 0.0,
+          "world_y": 0.0,
+          "world_z": 0.0,
+          "radius_px": 30.0,
+          "line_width_px": 2.0,
+          "label": "Center",
+          "show_label": true,
+          "font_size": 12
+        }
+      ]
+    },
+    {
+      "name": "Detected",
+      "type": "detected",
+      "visible": true,
+      "locked": false,
+      "color": "#FF00FF",
+      "opacity": 0.8,
+      "markers": []
+    },
+    {
+      "name": "Runtime",
+      "type": "runtime",
+      "visible": true,
+      "locked": false,
+      "color": "#FFFF00",
+      "opacity": 0.8,
+      "markers": []
+    }
+  ]
+}
