@@ -625,6 +625,7 @@ set(SOURCES
     include/AuxWindow/WorldOverlayWidget.cpp
     include/AuxWindow/WorldOverlayRenderer.cpp
     include/AuxWindow/ShapeCreatorDialog.cpp
+    include/AuxWindow/AlignmentWizardDialog.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp
@@ -789,6 +790,7 @@ set(HEADERS
     include/AuxWindow/WorldOverlayWidget.h
     include/AuxWindow/WorldOverlayRenderer.h
     include/AuxWindow/ShapeCreatorDialog.h
+    include/AuxWindow/AlignmentWizardDialog.h
     include/PSU/IPowerSupply.h
     include/PSU/PowerSupplyManager.h
     include/PSU/PowerSupplyJsonLoader.h

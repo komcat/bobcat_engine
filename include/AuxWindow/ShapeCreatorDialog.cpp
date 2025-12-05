@@ -528,6 +528,10 @@ void ShapeCreatorDialog::createRectangleMarkers(const QString& shapeName)
     marker.worldX = corners[i].worldX;
     marker.worldY = corners[i].worldY;
     marker.worldZ = corners[i].worldZ;
+    // Initialize template = world (same when first teaching)
+    marker.templateX = corners[i].worldX;
+    marker.templateY = corners[i].worldY;
+    marker.templateZ = corners[i].worldZ;
     marker.label = QString("%1.P%2").arg(shapeName).arg(i + 1);
     marker.showLabel = false;  // Don't show individual point labels
     marker.sizePx = 6;
@@ -544,6 +548,12 @@ void ShapeCreatorDialog::createRectangleMarkers(const QString& shapeName)
     line.worldZ = corners[i].worldZ;
     line.endWorldX = corners[next].worldX;
     line.endWorldY = corners[next].worldY;
+    // Initialize template = world (same when first teaching)
+    line.templateX = corners[i].worldX;
+    line.templateY = corners[i].worldY;
+    line.templateZ = corners[i].worldZ;
+    line.endTemplateX = corners[next].worldX;
+    line.endTemplateY = corners[next].worldY;
     line.lineWidthPx = 2;
     // Label only the first line with the shape name
     if (i == 0) {
@@ -568,6 +578,10 @@ void ShapeCreatorDialog::createPolygonMarkers(const QString& shapeName)
     marker.worldX = m_capturedPoints[i].worldX;
     marker.worldY = m_capturedPoints[i].worldY;
     marker.worldZ = m_capturedPoints[i].worldZ;
+    // Initialize template = world (same when first teaching)
+    marker.templateX = m_capturedPoints[i].worldX;
+    marker.templateY = m_capturedPoints[i].worldY;
+    marker.templateZ = m_capturedPoints[i].worldZ;
     marker.label = QString("%1.P%2").arg(shapeName).arg(i + 1);
     marker.showLabel = false;  // Don't show individual point labels
     marker.sizePx = 6;
@@ -584,6 +598,12 @@ void ShapeCreatorDialog::createPolygonMarkers(const QString& shapeName)
     line.worldZ = m_capturedPoints[i].worldZ;
     line.endWorldX = m_capturedPoints[next].worldX;
     line.endWorldY = m_capturedPoints[next].worldY;
+    // Initialize template = world (same when first teaching)
+    line.templateX = m_capturedPoints[i].worldX;
+    line.templateY = m_capturedPoints[i].worldY;
+    line.templateZ = m_capturedPoints[i].worldZ;
+    line.endTemplateX = m_capturedPoints[next].worldX;
+    line.endTemplateY = m_capturedPoints[next].worldY;
     line.lineWidthPx = 2;
     // Label only the first line with the shape name
     if (i == 0) {

@@ -3,6 +3,7 @@
 #include "CameraClickToMoveWidget.h"
 #include "LiveChartWidget.h"
 #include "WorldOverlayWidget.h"
+#include "WorldOverlayManager.h"
 #include "CameraManager.h"
 #include "unified_motion_manager.h"
 #include "DataStore.h"
@@ -157,6 +158,12 @@ QWidget* AuxViewWindow::createOverlayTab()
   m_worldOverlayWidget = new WorldOverlayWidget(m_cameraManager, m_motionManager, tab);
   m_worldOverlayWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   layout->addWidget(m_worldOverlayWidget);
+
+  // Share the overlay manager with CameraClickToMoveWidget for "Show Overlay" feature
+  if (m_cameraClickToMoveWidget && m_worldOverlayWidget->overlayManager()) {
+    m_cameraClickToMoveWidget->setOverlayManager(m_worldOverlayWidget->overlayManager());
+    std::cout << "[AuxViewWindow] Shared overlay manager with CameraClickToMoveWidget" << std::endl;
+  }
 
   return tab;
 }

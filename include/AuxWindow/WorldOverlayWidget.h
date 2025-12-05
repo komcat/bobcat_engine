@@ -74,6 +74,7 @@ public slots:
   void onLayerVisibilityChanged(QListWidgetItem* item);
   void onAddLayer();
   void onRemoveLayer();
+  void onLayerColorClicked();
 
   // Marker management
   void onAddMarkerClicked();
@@ -84,6 +85,11 @@ public slots:
   void onCreateShapeClicked();
   void onMarkerContextMenu(const QPoint& pos);
   void onRenameMarker();
+
+  // Alignment wizard
+  void onAlignmentWizardClicked();
+  void onAlignmentPreview(double rotation, double translateX, double translateY, double scale);
+  void onAlignmentCompleted();
 
   // Click-to-move and crosshair
   void onClickToMoveToggled(bool checked);
@@ -154,6 +160,8 @@ private:
   QListWidget* m_layerList;
   QPushButton* m_addLayerButton;
   QPushButton* m_removeLayerButton;
+  QPushButton* m_layerColorButton;
+  QPushButton* m_alignmentWizardButton;
   QSlider* m_opacitySlider;
 
   // Marker controls

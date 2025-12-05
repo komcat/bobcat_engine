@@ -14,6 +14,8 @@ class CameraManager;
 class UnifiedMotionManager;
 class LiveVideoSubscriber;
 class CameraFrameData;
+class WorldOverlayManager;
+class WorldOverlayRenderer;
 
 /**
  * @brief Camera widget with click-to-move feature for gantry alignment
@@ -57,6 +59,11 @@ public:
   bool isClickToMoveEnabled() const { return m_clickToMoveEnabled; }
   bool isCrosshairEnabled() const { return m_centerCrosshairEnabled; }
 
+  // Overlay support - allows showing World Overlay markers on live view
+  void setOverlayManager(WorldOverlayManager* overlayManager);
+  void setOverlayEnabled(bool enabled);
+  bool isOverlayEnabled() const { return m_overlayEnabled; }
+
 signals:
   void cameraChanged(const std::string& cameraId);
   void clickToMoveTriggered(double offsetX_mm, double offsetY_mm);
@@ -67,6 +74,7 @@ private slots:
   void onUpdateFrame();
   void onClickToMoveToggled(bool checked);
   void onCrosshairToggled(bool checked);
+  void onOverlayToggled(bool checked);
   void onZoomChanged(int zoomPercent);
 
 protected:
@@ -95,6 +103,7 @@ private:
   QLabel* m_imageLabel;  // Displays camera image
   QCheckBox* m_clickToMoveCheckbox;
   QCheckBox* m_crosshairCheckbox;
+  QCheckBox* m_overlayCheckbox;
   QPushButton* m_zoom1xButton;
   QPushButton* m_zoom15xButton;
   QPushButton* m_zoom2xButton;
@@ -125,4 +134,12 @@ private:
   // Settings keys
   static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_X = "CameraClickToMove/PixelToMmFactorX";
   static constexpr const char* SETTINGS_KEY_PIXEL_TO_MM_Y = "CameraClickToMove/PixelToMmFactorY";
+
+  // Overlay support
+  WorldOverlayManager* m_overlayManager = nullptr;
+  WorldOverlayRenderer* m_overlayRenderer = nullptr;
+  bool m_overlayEnabled = false;
+  double m_gantryX = 0.0;
+  double m_gantryY = 0.0;
+  double m_gantryZ = 0.0;
 };

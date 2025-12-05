@@ -4,6 +4,7 @@
 #include "WorldOverlayRenderer.h"
 #include "WorldOverlay.h"
 #include "ShapeCreatorDialog.h"
+#include "AlignmentWizardDialog.h"
 #include "CameraManager.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -19,6 +20,7 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QMenu>
+#include <QColorDialog>
 #include <iostream>
 #include <cmath>
 
@@ -312,12 +314,17 @@ void WorldOverlayWidget::setupControlPanel()
   QHBoxLayout* layerButtons = new QHBoxLayout();
   m_addLayerButton = new QPushButton("+");
   m_removeLayerButton = new QPushButton("-");
+  m_layerColorButton = new QPushButton();
+  m_layerColorButton->setFixedSize(24, 24);
+  m_layerColorButton->setToolTip("Change layer color");
+  m_layerColorButton->setStyleSheet("QPushButton { background-color: #00ff00; border: 1px solid #555; border-radius: 3px; }");
   m_addLayerButton->setStyleSheet(buttonStyle);
   m_removeLayerButton->setStyleSheet(buttonStyle);
   m_addLayerButton->setFixedWidth(30);
   m_removeLayerButton->setFixedWidth(30);
   layerButtons->addWidget(m_addLayerButton);
   layerButtons->addWidget(m_removeLayerButton);
+  layerButtons->addWidget(m_layerColorButton);
   layerButtons->addStretch();
 
   QLabel* opacityLabel = new QLabel("Opacity:");
@@ -331,6 +338,21 @@ void WorldOverlayWidget::setupControlPanel()
   layerButtons->addWidget(m_opacitySlider);
 
   layerLayout->addLayout(layerButtons);
+
+  // Alignment wizard button
+  m_alignmentWizardButton = new QPushButton("Alignment Wizard...");
+  m_alignmentWizardButton->setStyleSheet(R"(
+    QPushButton {
+      background-color: #6b3fa0;
+      color: white;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 3px;
+    }
+    QPushButton:hover { background-color: #7b4fb0; }
+  )");
+  layerLayout->addWidget(m_alignmentWizardButton);
+
   layout->addWidget(layerGroup);
 
   // Markers group
@@ -440,6 +462,8 @@ void WorldOverlayWidget::setupConnections()
           this, &WorldOverlayWidget::onLayerVisibilityChanged);
   connect(m_addLayerButton, &QPushButton::clicked, this, &WorldOverlayWidget::onAddLayer);
   connect(m_removeLayerButton, &QPushButton::clicked, this, &WorldOverlayWidget::onRemoveLayer);
+  connect(m_layerColorButton, &QPushButton::clicked, this, &WorldOverlayWidget::onLayerColorClicked);
+  connect(m_alignmentWizardButton, &QPushButton::clicked, this, &WorldOverlayWidget::onAlignmentWizardClicked);
 
   // Marker controls
   connect(m_markerList, &QListWidget::itemSelectionChanged,
@@ -491,7 +515,19 @@ void WorldOverlayWidget::populateLayerList()
 
   const WorldOverlay::OverlayFile* overlay = m_overlayManager->currentOverlay();
   for (const auto& layer : overlay->layers) {
-    QListWidgetItem* item = new QListWidgetItem(layer.name);
+    // Build layer name with alignment status indicator
+    QString displayName = layer.name;
+    if (layer.localSystem.masterTaught) {
+      // Master F1/F2 has been taught - show indicator
+      if (layer.localSystem.currentTaught && layer.localSystem.transformValid) {
+        displayName += QString::fromUtf8(" \u2713");  // ✓ - fully aligned
+      } else {
+        displayName += QString::fromUtf8(" \u2699");  // ⚙ - master taught, needs current alignment
+      }
+    }
+
+    QListWidgetItem* item = new QListWidgetItem(displayName);
+    item->setData(Qt::UserRole, layer.name);  // Store actual layer name for lookup
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
     item->setCheckState(layer.visible ? Qt::Checked : Qt::Unchecked);
 
@@ -667,9 +703,14 @@ void WorldOverlayWidget::onLayerSelectionChanged()
   QListWidgetItem* item = m_layerList->currentItem();
   if (!item) return;
 
-  WorldOverlay::Layer* layer = m_overlayManager->findLayer(item->text());
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = item->data(Qt::UserRole).toString();
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
   if (layer) {
     m_opacitySlider->setValue(static_cast<int>(layer->opacity * 100));
+    // Update color button to show layer's color
+    m_layerColorButton->setStyleSheet(QString("QPushButton { background-color: %1; border: 1px solid #555; border-radius: 3px; }")
+      .arg(layer->color.name()));
   }
 
   // Update marker list for the selected layer
@@ -680,7 +721,9 @@ void WorldOverlayWidget::onLayerVisibilityChanged(QListWidgetItem* item)
 {
   if (!item) return;
 
-  WorldOverlay::Layer* layer = m_overlayManager->findLayer(item->text());
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = item->data(Qt::UserRole).toString();
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
   if (layer) {
     layer->visible = (item->checkState() == Qt::Checked);
     update();
@@ -704,11 +747,49 @@ void WorldOverlayWidget::onRemoveLayer()
   QListWidgetItem* item = m_layerList->currentItem();
   if (!item) return;
 
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = item->data(Qt::UserRole).toString();
+
   if (QMessageBox::question(this, "Remove Layer",
-                             QString("Remove layer '%1'?").arg(item->text()),
+                             QString("Remove layer '%1'?").arg(layerName),
                              QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
-    m_overlayManager->removeLayer(item->text());
+    m_overlayManager->removeLayer(layerName);
     populateLayerList();
+  }
+}
+
+void WorldOverlayWidget::onLayerColorClicked()
+{
+  QListWidgetItem* item = m_layerList->currentItem();
+  if (!item) {
+    QMessageBox::information(this, "Layer Color", "Please select a layer first.");
+    return;
+  }
+
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = item->data(Qt::UserRole).toString();
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
+  if (!layer) return;
+
+  // Open color picker dialog with current layer color
+  QColor newColor = QColorDialog::getColor(layer->color, this, "Select Layer Color",
+                                            QColorDialog::ShowAlphaChannel);
+
+  if (newColor.isValid()) {
+    layer->color = newColor;
+
+    // Update color button
+    m_layerColorButton->setStyleSheet(QString("QPushButton { background-color: %1; border: 1px solid #555; border-radius: 3px; }")
+      .arg(newColor.name()));
+
+    // Update layer list item icon
+    QPixmap colorPx(16, 16);
+    colorPx.fill(newColor);
+    item->setIcon(QIcon(colorPx));
+
+    update();  // Refresh overlay display
+    std::cout << "[WorldOverlayWidget] Layer '" << layerName.toStdString()
+              << "' color changed to " << newColor.name().toStdString() << std::endl;
   }
 }
 
@@ -720,6 +801,9 @@ void WorldOverlayWidget::onAddMarkerClicked()
     return;
   }
 
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = layerItem->data(Qt::UserRole).toString();
+
   // Create marker at current gantry position (X, Y, Z)
   WorldOverlay::Marker marker;
   marker.type = static_cast<WorldOverlay::MarkerType>(
@@ -727,6 +811,11 @@ void WorldOverlayWidget::onAddMarkerClicked()
   marker.worldX = m_gantryX;
   marker.worldY = m_gantryY;
   marker.worldZ = m_gantryZ;
+
+  // Initialize template coordinates (same as world when first teaching)
+  marker.templateX = m_gantryX;
+  marker.templateY = m_gantryY;
+  marker.templateZ = m_gantryZ;
 
   bool ok;
   QString label = QInputDialog::getText(this, "Add Marker",
@@ -736,10 +825,10 @@ void WorldOverlayWidget::onAddMarkerClicked()
     marker.label = label;
     marker.showLabel = !label.isEmpty();
 
-    WorldOverlay::Marker* added = m_overlayManager->addMarker(layerItem->text(), marker);
+    WorldOverlay::Marker* added = m_overlayManager->addMarker(layerName, marker);
     if (added) {
       populateMarkerList();  // Refresh marker list
-      emit markerAdded(layerItem->text(), added->id);
+      emit markerAdded(layerName, added->id);
       std::cout << "[WorldOverlayWidget] Added marker at X=" << m_gantryX
                 << " Y=" << m_gantryY << " Z=" << m_gantryZ << std::endl;
     }
@@ -807,10 +896,13 @@ void WorldOverlayWidget::onClearLayerClicked()
   QListWidgetItem* item = m_layerList->currentItem();
   if (!item) return;
 
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = item->data(Qt::UserRole).toString();
+
   if (QMessageBox::question(this, "Clear Layer",
-                             QString("Clear all markers from '%1'?").arg(item->text()),
+                             QString("Clear all markers from '%1'?").arg(layerName),
                              QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
-    WorldOverlay::Layer* layer = m_overlayManager->findLayer(item->text());
+    WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
     if (layer) {
       layer->clearMarkers();
       populateMarkerList();
@@ -826,7 +918,9 @@ void WorldOverlayWidget::populateMarkerList()
   QListWidgetItem* layerItem = m_layerList->currentItem();
   if (!layerItem) return;
 
-  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerItem->text());
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = layerItem->data(Qt::UserRole).toString();
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
   if (!layer) return;
 
   // Group markers by shape name prefix (e.g., "Rect1.P1" -> "Rect1")
@@ -1039,6 +1133,9 @@ void WorldOverlayWidget::onCreateShapeClicked()
     return;
   }
 
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = layerItem->data(Qt::UserRole).toString();
+
   if (m_currentFrame.isNull()) {
     QMessageBox::warning(this, "Create Shape", "No camera frame available. Start the camera first.");
     return;
@@ -1069,9 +1166,9 @@ void WorldOverlayWidget::onCreateShapeClicked()
 
   // Connect signal to add markers when shape is created
   connect(&dialog, &ShapeCreatorDialog::shapeCreated,
-          [this, layerItem](const QVector<WorldOverlay::Marker>& markers) {
+          [this, layerName](const QVector<WorldOverlay::Marker>& markers) {
     for (const auto& marker : markers) {
-      m_overlayManager->addMarker(layerItem->text(), marker);
+      m_overlayManager->addMarker(layerName, marker);
       std::cout << "[WorldOverlayWidget] Adding marker: " << marker.label.toStdString()
                 << " at world(" << marker.worldX << ", " << marker.worldY << ", " << marker.worldZ << ")"
                 << std::endl;
@@ -1091,6 +1188,103 @@ void WorldOverlayWidget::addMarkerAtCurrentPosition(const QString& layerName,
   marker.worldY = m_gantryY;
   marker.worldZ = m_gantryZ;
   m_overlayManager->addMarker(layerName, marker);
+}
+
+void WorldOverlayWidget::onAlignmentWizardClicked()
+{
+  // Check if a layer is selected
+  QListWidgetItem* layerItem = m_layerList->currentItem();
+  if (!layerItem) {
+    QMessageBox::warning(this, "Alignment Wizard", "Please select a layer first.");
+    return;
+  }
+
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = layerItem->data(Qt::UserRole).toString();
+
+  // Get the layer
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
+  if (!layer) {
+    QMessageBox::warning(this, "Alignment Wizard", "Could not find selected layer.");
+    return;
+  }
+
+  // Create and show alignment wizard (non-modal, so user can move gantry)
+  AlignmentWizardDialog* dialog = new AlignmentWizardDialog(layer, m_motionManager, this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);  // Auto-delete when closed
+
+  // Set overlay directory for saving reference images
+  dialog->setOverlayDirectory(m_overlayManager->overlayDirectory());
+
+  // Set frame provider callback so wizard can capture reference images
+  dialog->setFrameProvider([this]() -> QImage {
+    return m_currentFrame.copy();  // Return a copy of the current camera frame
+  });
+
+  // Connect preview signal for live preview
+  connect(dialog, &AlignmentWizardDialog::previewRequested,
+          this, &WorldOverlayWidget::onAlignmentPreview);
+
+  // Connect completion signal
+  connect(dialog, &AlignmentWizardDialog::alignmentCompleted,
+          this, &WorldOverlayWidget::onAlignmentCompleted);
+
+  dialog->show();  // Non-blocking show
+}
+
+void WorldOverlayWidget::onAlignmentPreview(double rotation, double translateX, double translateY, double scale)
+{
+  // Get current layer
+  QListWidgetItem* layerItem = m_layerList->currentItem();
+  if (!layerItem) return;
+
+  // Get actual layer name from UserRole (display text may have alignment symbols)
+  QString layerName = layerItem->data(Qt::UserRole).toString();
+  WorldOverlay::Layer* layer = m_overlayManager->findLayer(layerName);
+  if (!layer) return;
+
+  // Apply preview transform temporarily
+  if (std::abs(rotation) < 0.0001 && std::abs(translateX) < 0.0001 &&
+      std::abs(translateY) < 0.0001 && std::abs(scale - 1.0) < 0.0001) {
+    // No transform - reset to template
+    layer->resetMarkersToTemplate();
+  } else {
+    // Create temporary transform and apply
+    WorldOverlay::LocalCoordinateSystem tempSystem = layer->localSystem;
+    tempSystem.rotation = rotation;
+    tempSystem.translateX = translateX;
+    tempSystem.translateY = translateY;
+    tempSystem.scale = scale;
+    tempSystem.transformValid = true;
+
+    // Transform each marker
+    for (auto& marker : layer->markers) {
+      tempSystem.transformPoint(marker.templateX, marker.templateY,
+                                marker.worldX, marker.worldY);
+      marker.worldZ = marker.templateZ;
+
+      if (marker.type == WorldOverlay::MarkerType::Line) {
+        tempSystem.transformPoint(marker.endTemplateX, marker.endTemplateY,
+                                  marker.endWorldX, marker.endWorldY);
+      }
+    }
+  }
+
+  // Force redraw
+  update();
+}
+
+void WorldOverlayWidget::onAlignmentCompleted()
+{
+  // Refresh UI after alignment
+  populateMarkerList();
+  update();
+
+  // Save the overlay
+  if (m_overlayManager->hasCurrentOverlay()) {
+    m_overlayManager->saveCurrentOverlay();
+    std::cout << "[WorldOverlayWidget] Alignment completed and saved." << std::endl;
+  }
 }
 
 void WorldOverlayWidget::updateOverlay()

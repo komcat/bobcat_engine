@@ -1,15 +1,18 @@
 // CameraClickToMoveWidget.cpp
 #include "CameraClickToMoveWidget.h"
 #include "CameraManager.h"
-#include "ICameraHardware.h"  // ✅ ADD: For IsGrabbing() check
+#include "ICameraHardware.h"
 #include "LiveVideoSubscriber.h"
 #include "unified_motion_manager.h"
 #include "CameraFrameData.h"
+#include "WorldOverlayManager.h"
+#include "WorldOverlayRenderer.h"
+#include "WorldOverlay.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QMouseEvent>
-#include <QShowEvent>  // ✅ ADD: For showEvent()
+#include <QShowEvent>
 #include <QCoreApplication>
 #include <QFile>
 #include <nlohmann/json.hpp>
@@ -155,10 +158,17 @@ void CameraClickToMoveWidget::setupUI()
   connect(m_clickToMoveCheckbox, &QCheckBox::toggled, this, &CameraClickToMoveWidget::onClickToMoveToggled);
   controls1Row->addWidget(m_clickToMoveCheckbox);
 
-  m_crosshairCheckbox = new QCheckBox("Crosshair Overlay");
+  m_crosshairCheckbox = new QCheckBox("Crosshair");
   m_crosshairCheckbox->setStyleSheet("QCheckBox { color: #aaaaaa; font-size: 13px; background: transparent; }");
   connect(m_crosshairCheckbox, &QCheckBox::toggled, this, &CameraClickToMoveWidget::onCrosshairToggled);
   controls1Row->addWidget(m_crosshairCheckbox);
+
+  // Show Overlay checkbox
+  m_overlayCheckbox = new QCheckBox("Show Overlay");
+  m_overlayCheckbox->setStyleSheet("QCheckBox { color: #aaaaaa; font-size: 13px; background: transparent; }");
+  m_overlayCheckbox->setToolTip("Show overlay markers from World Overlay tab");
+  connect(m_overlayCheckbox, &QCheckBox::toggled, this, &CameraClickToMoveWidget::onOverlayToggled);
+  controls1Row->addWidget(m_overlayCheckbox);
 
   controls1Row->addStretch();
 
@@ -480,6 +490,14 @@ void CameraClickToMoveWidget::onUpdateFrame()
       return;
     }
 
+    // Update gantry position for overlay rendering
+    if (m_overlayEnabled && m_motionManager) {
+      PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
+      m_gantryX = pos.x;
+      m_gantryY = pos.y;
+      m_gantryZ = pos.z;
+    }
+
     // Convert to QImage
     QImage::Format format = (frame.channels == 3)
       ? QImage::Format_RGB888
@@ -518,8 +536,24 @@ void CameraClickToMoveWidget::updateDisplay()
     return;
   }
 
+  QImage displayImage = m_currentImage;
+
+  // Render overlay if enabled
+  if (m_overlayEnabled && m_overlayManager && m_overlayRenderer && m_overlayManager->hasCurrentOverlay()) {
+    double pxPerMm = m_overlayManager->currentOverlay()->pxPerMm;
+
+    displayImage = m_overlayRenderer->renderOverlay(
+      m_currentImage,
+      m_overlayManager->currentOverlay(),
+      m_gantryX, m_gantryY,
+      m_currentImage.width() / 2.0, m_currentImage.height() / 2.0,
+      pxPerMm, 1.0,  // zoom = 1.0
+      QString()      // no selected marker
+    );
+  }
+
   // Convert to pixmap and scale to fit label
-  QPixmap pixmap = QPixmap::fromImage(m_currentImage).scaled(
+  QPixmap pixmap = QPixmap::fromImage(displayImage).scaled(
     m_imageLabel->size(),
     Qt::KeepAspectRatio,
     Qt::FastTransformation
@@ -590,6 +624,40 @@ void CameraClickToMoveWidget::onZoomChanged(int zoomPercent)
   m_zoomPercent = zoomPercent;
   double zoomLevel = 100.0 / zoomPercent;
   std::cout << "[CameraClickToMoveWidget] Zoom set to " << zoomLevel << "x" << std::endl;
+}
+
+void CameraClickToMoveWidget::setOverlayManager(WorldOverlayManager* overlayManager)
+{
+  m_overlayManager = overlayManager;
+
+  // Create renderer if not exists
+  if (!m_overlayRenderer && overlayManager) {
+    m_overlayRenderer = new WorldOverlayRenderer(this);
+  }
+
+  std::cout << "[CameraClickToMoveWidget] Overlay manager set" << std::endl;
+}
+
+void CameraClickToMoveWidget::setOverlayEnabled(bool enabled)
+{
+  m_overlayEnabled = enabled;
+  m_overlayCheckbox->setChecked(enabled);
+}
+
+void CameraClickToMoveWidget::onOverlayToggled(bool checked)
+{
+  m_overlayEnabled = checked;
+
+  if (checked && !m_overlayManager) {
+    std::cout << "[CameraClickToMoveWidget] Overlay enabled but no overlay manager set!" << std::endl;
+  } else if (checked && m_overlayManager && !m_overlayManager->hasCurrentOverlay()) {
+    std::cout << "[CameraClickToMoveWidget] Overlay enabled but no overlay file loaded in World Overlay tab!" << std::endl;
+  } else {
+    std::cout << "[CameraClickToMoveWidget] Overlay " << (checked ? "ENABLED" : "DISABLED") << std::endl;
+  }
+
+  // Force redraw
+  updateDisplay();
 }
 
 void CameraClickToMoveWidget::paintEvent(QPaintEvent* event)

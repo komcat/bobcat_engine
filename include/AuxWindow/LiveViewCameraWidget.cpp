@@ -1,10 +1,15 @@
-﻿// LiveViewCameraWidget.cpp
+// LiveViewCameraWidget.cpp
 #include "LiveViewCameraWidget.h"
 #include "CameraManager.h"
-#include "ICameraHardware.h"  // ✅ ADD: For IsGrabbing() check
+#include "ICameraHardware.h"
 #include "CameraImageWidget.h"
 #include "LiveVideoSubscriber.h"
+#include "WorldOverlayManager.h"
+#include "WorldOverlayRenderer.h"
+#include "WorldOverlay.h"
+#include "unified_motion_manager.h"
 #include <QTimer>
+#include <QPainter>
 #include <iostream>
 
 LiveViewCameraWidget::LiveViewCameraWidget(CameraManager* cameraManager, QWidget* parent)
@@ -107,10 +112,17 @@ void LiveViewCameraWidget::setupUI()
   QHBoxLayout* controlsRow = new QHBoxLayout();
 
   // Crosshair checkbox
-  m_crosshairCheckbox = new QCheckBox("Crosshair Overlay");
+  m_crosshairCheckbox = new QCheckBox("Crosshair");
   m_crosshairCheckbox->setStyleSheet("QCheckBox { color: #aaaaaa; font-size: 13px; background: transparent; }");
   connect(m_crosshairCheckbox, &QCheckBox::toggled, this, &LiveViewCameraWidget::onCrosshairToggled);
   controlsRow->addWidget(m_crosshairCheckbox);
+
+  // Show Overlay checkbox (for World Overlay markers)
+  m_overlayCheckbox = new QCheckBox("Show Overlay");
+  m_overlayCheckbox->setStyleSheet("QCheckBox { color: #aaaaaa; font-size: 13px; background: transparent; }");
+  m_overlayCheckbox->setToolTip("Show overlay markers from World Overlay tab");
+  connect(m_overlayCheckbox, &QCheckBox::toggled, this, &LiveViewCameraWidget::onOverlayToggled);
+  controlsRow->addWidget(m_overlayCheckbox);
 
   controlsRow->addStretch();
 
@@ -253,7 +265,69 @@ void LiveViewCameraWidget::onUpdateFrame()
   // Poll subscriber for new frames
   if (m_subscriber && m_subscriber->HasNewFrame()) {
     CameraFrameData frame = m_subscriber->GetLatestFrame();
-    m_imageWidget->setFrame(frame);
+
+    // If overlay is enabled and we have an overlay manager, render overlay on frame
+    if (m_overlayEnabled && m_overlayManager && m_overlayRenderer && m_overlayManager->hasCurrentOverlay()) {
+      // Convert frame to QImage
+      QImage::Format format = (frame.channels == 3)
+        ? QImage::Format_RGB888
+        : QImage::Format_Grayscale8;
+
+      QImage frameImage(
+        frame.imageData.data(),
+        frame.width,
+        frame.height,
+        frame.width * frame.channels,
+        format
+      );
+
+      // Get pxPerMm from overlay
+      double pxPerMm = m_overlayManager->currentOverlay()->pxPerMm;
+
+      // Render overlay onto the frame
+      QImage renderedFrame = m_overlayRenderer->renderOverlay(
+        frameImage,
+        m_overlayManager->currentOverlay(),
+        m_gantryX, m_gantryY,
+        frameImage.width() / 2.0, frameImage.height() / 2.0,
+        pxPerMm, 1.0,  // zoom = 1.0
+        QString()      // no selected marker
+      );
+
+      // Create a modified CameraFrameData with the rendered image
+      CameraFrameData renderedFrameData;
+      renderedFrameData.width = renderedFrame.width();
+      renderedFrameData.height = renderedFrame.height();
+      renderedFrameData.channels = renderedFrame.depth() == 8 ? 1 : 3;
+      renderedFrameData.timestamp = frame.timestamp;
+
+      // Convert QImage back to raw data
+      if (renderedFrame.format() == QImage::Format_RGB888) {
+        renderedFrameData.channels = 3;
+        renderedFrameData.imageData.resize(renderedFrame.width() * renderedFrame.height() * 3);
+        for (int y = 0; y < renderedFrame.height(); ++y) {
+          const uchar* line = renderedFrame.scanLine(y);
+          memcpy(renderedFrameData.imageData.data() + y * renderedFrame.width() * 3,
+                 line, renderedFrame.width() * 3);
+        }
+      } else {
+        // Convert to RGB888 for display
+        QImage rgbImage = renderedFrame.convertToFormat(QImage::Format_RGB888);
+        renderedFrameData.channels = 3;
+        renderedFrameData.imageData.resize(rgbImage.width() * rgbImage.height() * 3);
+        for (int y = 0; y < rgbImage.height(); ++y) {
+          const uchar* line = rgbImage.scanLine(y);
+          memcpy(renderedFrameData.imageData.data() + y * rgbImage.width() * 3,
+                 line, rgbImage.width() * 3);
+        }
+      }
+
+      m_imageWidget->setFrame(renderedFrameData);
+    } else {
+      // No overlay, just display the frame as-is
+      m_imageWidget->setFrame(frame);
+    }
+
     m_subscriber->MarkFrameConsumed();
   }
 }
@@ -349,4 +423,61 @@ void LiveViewCameraWidget::onZoomChanged(int zoomPercent)
     double zoomLevel = 100.0 / zoomPercent;
     std::cout << "[LiveViewCameraWidget] Zoom set to " << zoomLevel << "x (percent: " << zoomPercent << ")" << std::endl;
   }
+}
+
+void LiveViewCameraWidget::setOverlayManager(WorldOverlayManager* overlayManager)
+{
+  m_overlayManager = overlayManager;
+
+  // Create renderer if not exists
+  if (!m_overlayRenderer && overlayManager) {
+    m_overlayRenderer = new WorldOverlayRenderer(this);
+  }
+
+  std::cout << "[LiveViewCameraWidget] Overlay manager set" << std::endl;
+}
+
+void LiveViewCameraWidget::setMotionManager(UnifiedMotionManager* motionManager)
+{
+  m_motionManager = motionManager;
+
+  // Setup position update timer if motion manager is provided
+  if (motionManager && !m_positionTimer) {
+    m_positionTimer = new QTimer(this);
+    connect(m_positionTimer, &QTimer::timeout, this, &LiveViewCameraWidget::updateGantryPosition);
+    m_positionTimer->start(50);  // 20 Hz position updates
+  }
+
+  std::cout << "[LiveViewCameraWidget] Motion manager set" << std::endl;
+}
+
+void LiveViewCameraWidget::setOverlayEnabled(bool enabled)
+{
+  m_overlayEnabled = enabled;
+  m_overlayCheckbox->setChecked(enabled);
+}
+
+void LiveViewCameraWidget::onOverlayToggled(bool checked)
+{
+  m_overlayEnabled = checked;
+
+  if (checked && !m_overlayManager) {
+    std::cout << "[LiveViewCameraWidget] Overlay enabled but no overlay manager set!" << std::endl;
+  } else {
+    std::cout << "[LiveViewCameraWidget] Overlay " << (checked ? "ENABLED" : "DISABLED") << std::endl;
+  }
+
+  emit overlayToggled(checked);
+}
+
+void LiveViewCameraWidget::updateGantryPosition()
+{
+  if (!m_motionManager || !m_overlayEnabled) {
+    return;
+  }
+
+  PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
+  m_gantryX = pos.x;
+  m_gantryY = pos.y;
+  m_gantryZ = pos.z;
 }
