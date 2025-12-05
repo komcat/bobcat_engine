@@ -232,6 +232,24 @@ void AlignmentWizardDialog::setupStep2_CaptureF1()
   m_f1PositionLabel = new QLabel();
   m_f1PositionLabel->setStyleSheet("color: #888; font-size: 11px;");
   refInfoLayout->addWidget(m_f1PositionLabel);
+
+  // Move to Master F1 button (only shown in realign mode)
+  m_moveToMasterF1Button = new QPushButton("Move to Master F1");
+  m_moveToMasterF1Button->setStyleSheet(R"(
+    QPushButton {
+      background-color: #0078d4;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    QPushButton:hover { background-color: #1084d8; }
+  )");
+  m_moveToMasterF1Button->setToolTip("Move gantry to the master F1 position");
+  connect(m_moveToMasterF1Button, &QPushButton::clicked, this, &AlignmentWizardDialog::onMoveToMasterF1Clicked);
+  refInfoLayout->addWidget(m_moveToMasterF1Button);
+
   refInfoLayout->addStretch();
   refLayout->addLayout(refInfoLayout);
   refLayout->addStretch();
@@ -318,6 +336,24 @@ void AlignmentWizardDialog::setupStep3_CaptureF2()
   m_f2PositionLabel = new QLabel();
   m_f2PositionLabel->setStyleSheet("color: #888; font-size: 11px;");
   refInfoLayout->addWidget(m_f2PositionLabel);
+
+  // Move to Master F2 button (only shown in realign mode)
+  m_moveToMasterF2Button = new QPushButton("Move to Master F2");
+  m_moveToMasterF2Button->setStyleSheet(R"(
+    QPushButton {
+      background-color: #0078d4;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    QPushButton:hover { background-color: #1084d8; }
+  )");
+  m_moveToMasterF2Button->setToolTip("Move gantry to the master F2 position");
+  connect(m_moveToMasterF2Button, &QPushButton::clicked, this, &AlignmentWizardDialog::onMoveToMasterF2Clicked);
+  refInfoLayout->addWidget(m_moveToMasterF2Button);
+
   refInfoLayout->addStretch();
   refLayout->addLayout(refInfoLayout);
   refLayout->addStretch();
@@ -469,6 +505,7 @@ void AlignmentWizardDialog::goToStep(int step)
         .arg(m_layer->localSystem.masterF1Z, 0, 'f', 3));
       m_f1PositionLabel->setVisible(true);
       m_f1RefImageLabel->parentWidget()->setVisible(true);
+      m_moveToMasterF1Button->setVisible(true);  // Show move button in realign mode
 
       // Load and display master F1 reference image
       if (!m_layer->localSystem.masterF1RefImage.isEmpty() && !m_overlayDir.isEmpty()) {
@@ -488,6 +525,7 @@ void AlignmentWizardDialog::goToStep(int step)
       // Hide reference group in teach mode
       m_f1RefImageLabel->parentWidget()->setVisible(false);
       m_f1PositionLabel->setVisible(false);
+      m_moveToMasterF1Button->setVisible(false);  // Hide move button in teach mode
     }
   } else if (step == 2) {
     // Step 3: Show master F2 reference in realign mode
@@ -498,6 +536,7 @@ void AlignmentWizardDialog::goToStep(int step)
         .arg(m_layer->localSystem.masterF2Z, 0, 'f', 3));
       m_f2PositionLabel->setVisible(true);
       m_f2RefImageLabel->parentWidget()->setVisible(true);
+      m_moveToMasterF2Button->setVisible(true);  // Show move button in realign mode
 
       // Load and display master F2 reference image
       if (!m_layer->localSystem.masterF2RefImage.isEmpty() && !m_overlayDir.isEmpty()) {
@@ -517,6 +556,7 @@ void AlignmentWizardDialog::goToStep(int step)
       // Hide reference group in teach mode
       m_f2RefImageLabel->parentWidget()->setVisible(false);
       m_f2PositionLabel->setVisible(false);
+      m_moveToMasterF2Button->setVisible(false);  // Hide move button in teach mode
     }
   } else if (step == 3) {
     // Step 4: Compute and display preview transform
@@ -825,4 +865,80 @@ void AlignmentWizardDialog::updatePositionDisplay()
   } else if (m_currentStep == 2) {
     m_f2CurrentPosLabel->setText(posText);
   }
+}
+
+void AlignmentWizardDialog::onMoveToMasterF1Clicked()
+{
+  if (!m_motionManager) {
+    QMessageBox::warning(this, "Error", "Motion manager not available");
+    return;
+  }
+
+  if (!m_layer->localSystem.masterTaught) {
+    QMessageBox::warning(this, "Error", "Master F1 position has not been taught yet.");
+    return;
+  }
+
+  // Ask user for confirmation
+  QMessageBox::StandardButton reply = QMessageBox::question(
+    this, "Move to Master F1",
+    QString("Move gantry to master F1 position?\n\n"
+            "X: %1\nY: %2\nZ: %3")
+      .arg(m_layer->localSystem.masterF1X, 0, 'f', 3)
+      .arg(m_layer->localSystem.masterF1Y, 0, 'f', 3)
+      .arg(m_layer->localSystem.masterF1Z, 0, 'f', 3),
+    QMessageBox::Yes | QMessageBox::No,
+    QMessageBox::Yes);
+
+  if (reply != QMessageBox::Yes) {
+    return;
+  }
+
+  // Move to master F1 position
+  std::cout << "[AlignmentWizard] Moving to Master F1: X=" << m_layer->localSystem.masterF1X
+            << " Y=" << m_layer->localSystem.masterF1Y
+            << " Z=" << m_layer->localSystem.masterF1Z << std::endl;
+
+  m_motionManager->MoveToAbs("gantry-main",
+    m_layer->localSystem.masterF1X,
+    m_layer->localSystem.masterF1Y,
+    m_layer->localSystem.masterF1Z);
+}
+
+void AlignmentWizardDialog::onMoveToMasterF2Clicked()
+{
+  if (!m_motionManager) {
+    QMessageBox::warning(this, "Error", "Motion manager not available");
+    return;
+  }
+
+  if (!m_layer->localSystem.masterTaught) {
+    QMessageBox::warning(this, "Error", "Master F2 position has not been taught yet.");
+    return;
+  }
+
+  // Ask user for confirmation
+  QMessageBox::StandardButton reply = QMessageBox::question(
+    this, "Move to Master F2",
+    QString("Move gantry to master F2 position?\n\n"
+            "X: %1\nY: %2\nZ: %3")
+      .arg(m_layer->localSystem.masterF2X, 0, 'f', 3)
+      .arg(m_layer->localSystem.masterF2Y, 0, 'f', 3)
+      .arg(m_layer->localSystem.masterF2Z, 0, 'f', 3),
+    QMessageBox::Yes | QMessageBox::No,
+    QMessageBox::Yes);
+
+  if (reply != QMessageBox::Yes) {
+    return;
+  }
+
+  // Move to master F2 position
+  std::cout << "[AlignmentWizard] Moving to Master F2: X=" << m_layer->localSystem.masterF2X
+            << " Y=" << m_layer->localSystem.masterF2Y
+            << " Z=" << m_layer->localSystem.masterF2Z << std::endl;
+
+  m_motionManager->MoveToAbs("gantry-main",
+    m_layer->localSystem.masterF2X,
+    m_layer->localSystem.masterF2Y,
+    m_layer->localSystem.masterF2Z);
 }

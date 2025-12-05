@@ -62,6 +62,8 @@ private slots:
   void onBackClicked();
   void onCaptureF1Clicked();
   void onCaptureF2Clicked();
+  void onMoveToMasterF1Clicked();
+  void onMoveToMasterF2Clicked();
   void onApplyClicked();
   void onPreviewToggled(bool checked);
   void updatePositionDisplay();
@@ -122,6 +124,7 @@ private:
   QLabel* m_f1PositionLabel;
   QLabel* m_f1CurrentPosLabel;
   QPushButton* m_captureF1Button;
+  QPushButton* m_moveToMasterF1Button;  // Move to master F1 position (realign mode)
   QLabel* m_f1StatusLabel;
   QLabel* m_f1RefImageLabel;        // Thumbnail of master F1 reference (in realign mode)
   QLabel* m_f1CapturedImageLabel;   // Thumbnail of captured F1 image (in teach mode)
@@ -130,6 +133,7 @@ private:
   QLabel* m_f2PositionLabel;
   QLabel* m_f2CurrentPosLabel;
   QPushButton* m_captureF2Button;
+  QPushButton* m_moveToMasterF2Button;  // Move to master F2 position (realign mode)
   QLabel* m_f2StatusLabel;
   QLabel* m_f2RefImageLabel;        // Thumbnail of master F2 reference (in realign mode)
   QLabel* m_f2CapturedImageLabel;   // Thumbnail of captured F2 image (in teach mode)
