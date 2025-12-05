@@ -82,6 +82,8 @@ public slots:
   void onMarkerSelectionChanged();
   void populateMarkerList();
   void onCreateShapeClicked();
+  void onMarkerContextMenu(const QPoint& pos);
+  void onRenameMarker();
 
   // Click-to-move and crosshair
   void onClickToMoveToggled(bool checked);
@@ -196,4 +198,6 @@ private:
 
   // Current frame
   QImage m_currentFrame;
+  int m_originalFrameWidth = 0;   // Original camera frame dimensions for click-to-move
+  int m_originalFrameHeight = 0;
 };

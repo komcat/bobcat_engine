@@ -18,6 +18,7 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QMenu>
 #include <iostream>
 #include <cmath>
 
@@ -358,6 +359,7 @@ void WorldOverlayWidget::setupControlPanel()
     }
   )");
   m_markerList->setMaximumHeight(100);
+  m_markerList->setContextMenuPolicy(Qt::CustomContextMenu);
   markerLayout->addWidget(m_markerList);
 
   QHBoxLayout* markerTypeRow = new QHBoxLayout();
@@ -442,6 +444,8 @@ void WorldOverlayWidget::setupConnections()
   // Marker controls
   connect(m_markerList, &QListWidget::itemSelectionChanged,
           this, &WorldOverlayWidget::onMarkerSelectionChanged);
+  connect(m_markerList, &QListWidget::customContextMenuRequested,
+          this, &WorldOverlayWidget::onMarkerContextMenu);
   connect(m_addMarkerButton, &QPushButton::clicked, this, &WorldOverlayWidget::onAddMarkerClicked);
   connect(m_removeMarkerButton, &QPushButton::clicked, this, &WorldOverlayWidget::onRemoveMarkerClicked);
   connect(m_clearLayerButton, &QPushButton::clicked, this, &WorldOverlayWidget::onClearLayerClicked);
@@ -915,6 +919,117 @@ void WorldOverlayWidget::onMarkerSelectionChanged()
   update();  // Refresh to show selection highlight on the overlay
 }
 
+void WorldOverlayWidget::onMarkerContextMenu(const QPoint& pos)
+{
+  QListWidgetItem* item = m_markerList->itemAt(pos);
+  if (!item) {
+    return;
+  }
+
+  // Select the item under cursor
+  m_markerList->setCurrentItem(item);
+  m_selectedMarkerId = item->data(Qt::UserRole).toString();
+
+  // Create context menu
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(R"(
+    QMenu {
+      background-color: #2d2d2d;
+      color: white;
+      border: 1px solid #555;
+    }
+    QMenu::item:selected {
+      background-color: #0078d4;
+    }
+  )");
+
+  QAction* renameAction = contextMenu.addAction("Rename...");
+  QAction* removeAction = contextMenu.addAction("Remove");
+
+  // Show menu and handle selection
+  QAction* selectedAction = contextMenu.exec(m_markerList->mapToGlobal(pos));
+
+  if (selectedAction == renameAction) {
+    onRenameMarker();
+  } else if (selectedAction == removeAction) {
+    onRemoveMarkerClicked();
+  }
+}
+
+void WorldOverlayWidget::onRenameMarker()
+{
+  if (m_selectedMarkerId.isEmpty()) {
+    return;
+  }
+
+  // Check if this is a shape group
+  if (m_selectedMarkerId.startsWith("shape:")) {
+    QString shapeName = m_selectedMarkerId.mid(6);
+
+    bool ok;
+    QString newName = QInputDialog::getText(this, "Rename Shape",
+                                             "New shape name:", QLineEdit::Normal,
+                                             shapeName, &ok);
+    if (!ok || newName.isEmpty() || newName == shapeName) {
+      return;
+    }
+
+    // Rename all markers belonging to this shape
+    if (m_overlayManager->hasCurrentOverlay()) {
+      for (auto& layer : m_overlayManager->currentOverlay()->layers) {
+        for (auto& marker : layer.markers) {
+          // Check if marker belongs to this shape (label starts with "ShapeName.")
+          if (marker.label.startsWith(shapeName + ".")) {
+            // Replace shape name prefix with new name
+            marker.label = newName + marker.label.mid(shapeName.length());
+          }
+        }
+      }
+    }
+
+    std::cout << "[WorldOverlayWidget] Renamed shape '" << shapeName.toStdString()
+              << "' to '" << newName.toStdString() << "'" << std::endl;
+
+    populateMarkerList();
+    update();
+    return;
+  }
+
+  // Find the marker and get current label
+  QString currentLabel;
+  WorldOverlay::Marker* marker = nullptr;
+
+  if (m_overlayManager->hasCurrentOverlay()) {
+    for (auto& layer : m_overlayManager->currentOverlay()->layers) {
+      marker = layer.findMarker(m_selectedMarkerId);
+      if (marker) {
+        currentLabel = marker->label.isEmpty() ? marker->id : marker->label;
+        break;
+      }
+    }
+  }
+
+  if (!marker) {
+    return;
+  }
+
+  bool ok;
+  QString newLabel = QInputDialog::getText(this, "Rename Marker",
+                                            "New name:", QLineEdit::Normal,
+                                            currentLabel, &ok);
+  if (!ok || newLabel.isEmpty()) {
+    return;
+  }
+
+  marker->label = newLabel;
+  marker->showLabel = !newLabel.isEmpty();
+
+  std::cout << "[WorldOverlayWidget] Renamed marker to '" << newLabel.toStdString() << "'" << std::endl;
+
+  populateMarkerList();
+  update();
+}
+
 void WorldOverlayWidget::onCreateShapeClicked()
 {
   // Check prerequisites
@@ -935,15 +1050,22 @@ void WorldOverlayWidget::onCreateShapeClicked()
     pxPerMm = m_overlayManager->currentOverlay()->pxPerMm;
   }
 
+  // Adjust pxPerMm for the scaled frame
+  // m_currentFrame is now scaled, so we need to adjust pxPerMm accordingly
+  double displayScale = (m_originalFrameWidth > 0)
+      ? static_cast<double>(m_currentFrame.width()) / m_originalFrameWidth
+      : 1.0;
+  double effectivePxPerMm = pxPerMm * displayScale;
+
   // Create and show the shape creator dialog with a snapshot of current frame
   std::cout << "[WorldOverlayWidget] Creating ShapeCreatorDialog with:"
             << " frame " << m_currentFrame.width() << "x" << m_currentFrame.height()
-            << " pxPerMm=" << pxPerMm
+            << " pxPerMm=" << effectivePxPerMm << " (original=" << pxPerMm << ", scale=" << displayScale << ")"
             << " gantry(" << m_gantryX << ", " << m_gantryY << ", " << m_gantryZ << ")"
             << std::endl;
 
   ShapeCreatorDialog dialog(m_currentFrame, m_gantryX, m_gantryY, m_gantryZ,
-                             pxPerMm, m_overlayManager, this);
+                             effectivePxPerMm, m_overlayManager, this);
 
   // Connect signal to add markers when shape is created
   connect(&dialog, &ShapeCreatorDialog::shapeCreated,
@@ -988,22 +1110,43 @@ void WorldOverlayWidget::updateOverlay()
     return;
   }
 
-  // Convert CameraFrameData to QImage
+  // Convert CameraFrameData to QImage - use direct pointer reference (no copy yet)
   QImage::Format format = (frameData.channels == 3)
     ? QImage::Format_RGB888
     : QImage::Format_Grayscale8;
 
-  QImage frame = QImage(
+  // Create QImage wrapping the raw data (zero-copy for viewing)
+  QImage frameView(
     frameData.imageData.data(),
     frameData.width,
     frameData.height,
     frameData.width * frameData.channels,
     format
-  ).copy();  // Deep copy
+  );
+
+  // Store original frame dimensions for click-to-move calculations
+  m_originalFrameWidth = frameData.width;
+  m_originalFrameHeight = frameData.height;
+
+  // Get display size and calculate scale factor
+  QSize viewSize = m_cameraView->size();
+  int scaledWidth = static_cast<int>(frameData.width * std::min(
+      static_cast<double>(viewSize.width()) / frameData.width,
+      static_cast<double>(viewSize.height()) / frameData.height));
+  int scaledHeight = static_cast<int>(frameData.height * std::min(
+      static_cast<double>(viewSize.width()) / frameData.width,
+      static_cast<double>(viewSize.height()) / frameData.height));
+
+  // Scale the image directly using FastTransformation (much faster than SmoothTransformation)
+  // The visual quality difference is minimal for live video
+  QImage scaledFrame = frameView.scaled(scaledWidth, scaledHeight,
+                                         Qt::KeepAspectRatio,
+                                         Qt::FastTransformation);
 
   m_subscriber->MarkFrameConsumed();
 
-  m_currentFrame = frame;
+  // Store a copy for shape creation dialog (only if needed - could optimize further)
+  m_currentFrame = scaledFrame;
 
   // Get pxPerMm from overlay or use default from calibration
   double pxPerMm = m_overlayManager->getDefaultPxPerMm();
@@ -1011,37 +1154,13 @@ void WorldOverlayWidget::updateOverlay()
     pxPerMm = m_overlayManager->currentOverlay()->pxPerMm;
   }
 
-  // Calculate the display scale factor BEFORE rendering
-  // We need to know how much the image will be scaled when displayed
-  QSize viewSize = m_cameraView->size();
-  double scaleX = static_cast<double>(viewSize.width()) / frame.width();
-  double scaleY = static_cast<double>(viewSize.height()) / frame.height();
-  double displayScale = std::min(scaleX, scaleY);  // Qt::KeepAspectRatio uses min
+  // Calculate the display scale factor
+  double displayScale = static_cast<double>(scaledWidth) / frameData.width;
 
   // Adjust pxPerMm by the display scale factor
-  // When the image is scaled down, markers need to move less in pixels
   double effectivePxPerMm = pxPerMm * displayScale;
 
-  // Debug: Log every 60 frames (about once per second at 60fps)
-  static int frameCount = 0;
-  if (++frameCount % 60 == 0) {
-    std::cout << "[WorldOverlayWidget] Render: frame " << frame.width() << "x" << frame.height()
-              << " -> scaled " << (int)(frame.width() * displayScale) << "x" << (int)(frame.height() * displayScale)
-              << " displayScale=" << displayScale
-              << " pxPerMm=" << pxPerMm
-              << " effectivePxPerMm=" << effectivePxPerMm
-              << std::endl;
-  }
-
-  // Scale frame first to match display size
-  QPixmap pixmap = QPixmap::fromImage(frame);
-  QPixmap scaledPixmap = pixmap.scaled(m_cameraView->size(),
-                                        Qt::KeepAspectRatio,
-                                        Qt::SmoothTransformation);
-
-  // Render overlay on the SCALED image with adjusted pxPerMm
-  // Use smoothed gantry position to prevent markers from jumping ahead during motion
-  QImage scaledFrame = scaledPixmap.toImage();
+  // Render overlay directly on the scaled QImage (no QPixmap conversion yet)
   QImage rendered = m_renderer->renderOverlay(
       scaledFrame,
       m_overlayManager->currentOverlay(),
@@ -1050,26 +1169,23 @@ void WorldOverlayWidget::updateOverlay()
       effectivePxPerMm, m_zoomFactor,
       m_selectedMarkerId);
 
-  // Convert back to pixmap for display
-  scaledPixmap = QPixmap::fromImage(rendered);
-
-  // Draw crosshairs on the scaled pixmap
-  QPainter painter(&scaledPixmap);
-  int centerX = scaledPixmap.width() / 2;
-  int centerY = scaledPixmap.height() / 2;
+  // Draw crosshairs directly on the rendered QImage
+  QPainter painter(&rendered);
+  int centerX = rendered.width() / 2;
+  int centerY = rendered.height() / 2;
 
   // Draw center crosshair (green, full width/height) if enabled
   if (m_crosshairEnabled) {
     painter.setPen(QPen(Qt::green, 2));
-    painter.drawLine(0, centerY, scaledPixmap.width(), centerY);
-    painter.drawLine(centerX, 0, centerX, scaledPixmap.height());
+    painter.drawLine(0, centerY, rendered.width(), centerY);
+    painter.drawLine(centerX, 0, centerX, rendered.height());
   }
 
   // Draw tracking crosshair (cyan) if click-to-move enabled and mouse over image
   if (m_clickToMoveEnabled && m_mouseOverImage) {
     painter.setPen(QPen(Qt::cyan, 1));
-    painter.drawLine(m_mousePosInPixmap.x(), 0, m_mousePosInPixmap.x(), scaledPixmap.height());
-    painter.drawLine(0, m_mousePosInPixmap.y(), scaledPixmap.width(), m_mousePosInPixmap.y());
+    painter.drawLine(m_mousePosInPixmap.x(), 0, m_mousePosInPixmap.x(), rendered.height());
+    painter.drawLine(0, m_mousePosInPixmap.y(), rendered.width(), m_mousePosInPixmap.y());
 
     // Small cross at mouse position
     int crossSize = 15;
@@ -1080,7 +1196,9 @@ void WorldOverlayWidget::updateOverlay()
   }
 
   painter.end();
-  m_cameraView->setPixmap(scaledPixmap);
+
+  // Single conversion to QPixmap at the end for display
+  m_cameraView->setPixmap(QPixmap::fromImage(rendered));
 }
 
 void WorldOverlayWidget::paintEvent(QPaintEvent* event)
@@ -1246,16 +1364,17 @@ void WorldOverlayWidget::handleImageClick(const QPoint& pixmapClickPos)
   int pixelOffsetX = pixmapClickPos.x() - centerX;
   int pixelOffsetY = pixmapClickPos.y() - centerY;
 
-  // Scale to original image size (account for scaling when displaying)
-  double scaleFactorX = (double)m_currentFrame.width() / currentPixmap.width();
-  double scaleFactorY = (double)m_currentFrame.height() / currentPixmap.height();
-
-  pixelOffsetX *= scaleFactorX;
-  pixelOffsetY *= scaleFactorY;
-
   // Convert to mm using pixel-to-mm calibration
-  double offsetX_mm = pixelOffsetX * m_pixelToMmX;
-  double offsetY_mm = pixelOffsetY * m_pixelToMmY;
+  // The pxPerMm calibration is for the original camera resolution.
+  // We need to scale by the ratio of original to displayed size.
+  double pxPerMm = m_overlayManager->getDefaultPxPerMm();
+  double displayScale = (m_originalFrameWidth > 0)
+      ? static_cast<double>(currentPixmap.width()) / m_originalFrameWidth
+      : 1.0;
+
+  // Pixel offset in display coords / (pxPerMm * displayScale) = mm offset
+  double offsetX_mm = pixelOffsetX / (pxPerMm * displayScale);
+  double offsetY_mm = pixelOffsetY / (pxPerMm * displayScale);
 
   std::cout << "[WorldOverlayWidget] Click detected: Pixel offset (" << pixelOffsetX << ", " << pixelOffsetY << ")"
             << " = (" << offsetX_mm << " mm, " << offsetY_mm << " mm)" << std::endl;
