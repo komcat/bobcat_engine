@@ -20,6 +20,10 @@
 #include "../plugins/CornerDetectorPlugin.h"
 #include "../plugins/PatternMatchingPlugin.h"
 #include "../plugins/PatternMatchingEdgePlugin.h"
+#ifdef HAS_HALCON
+#include "../plugins/HalconCircleDetectionPlugin.h"
+#include "../plugins/HalconCircleDetectionRobustPlugin.h"
+#endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -1426,6 +1430,18 @@ void VisionManagerPage::registerPlugins()
     // Register Pattern Matching Edge Plugin
     auto patternEdgePlugin = std::make_shared<PatternMatchingEdgePlugin>();
     VisionManager::instance().registerPlugin(patternEdgePlugin);
+
+#ifdef HAS_HALCON
+    // Register Halcon Circle Detection Plugin
+    auto halconCirclePlugin = std::make_shared<HalconCircleDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconCirclePlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Circle Detection plugin" << std::endl;
+
+    // Register Halcon Circle Detection Robust Plugin
+    auto halconCircleRobustPlugin = std::make_shared<HalconCircleDetectionRobustPlugin>();
+    VisionManager::instance().registerPlugin(halconCircleRobustPlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Circle Detection Robust plugin" << std::endl;
+#endif
 
     if (m_context && m_context->logManager) {
         int count = VisionManager::instance().getPluginCount();

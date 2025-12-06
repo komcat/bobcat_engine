@@ -349,6 +349,36 @@ else()
 endif()
 
 # ============================================================================
+# Halcon SDK Configuration
+# ============================================================================
+set(HALCON_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/halcon")
+set(HALCON_INCLUDE_DIR "${HALCON_ROOT}/include")
+set(HALCON_LIB_DIR "${HALCON_ROOT}/lib/x64-win64")
+
+# Check if Halcon installation exists
+if(NOT EXISTS ${HALCON_INCLUDE_DIR})
+    message(WARNING "Halcon SDK not found at ${HALCON_ROOT}. Halcon vision features will be disabled.")
+    set(HALCON_FOUND FALSE)
+else()
+    message(STATUS "Halcon SDK found at: ${HALCON_ROOT}")
+    message(STATUS "  - Include directory: ${HALCON_INCLUDE_DIR}")
+    message(STATUS "  - Library directory: ${HALCON_LIB_DIR}")
+
+    # Set Halcon libraries
+    set(HALCON_LIBRARY "${HALCON_LIB_DIR}/halconcpp.lib")
+    set(HALCON_CORE_LIBRARY "${HALCON_LIB_DIR}/halcon.lib")
+
+    if(EXISTS ${HALCON_LIBRARY})
+        set(HALCON_FOUND TRUE)
+        message(STATUS "  - C++ Library: ${HALCON_LIBRARY}")
+        message(STATUS "  - Core Library: ${HALCON_CORE_LIBRARY}")
+    else()
+        message(WARNING "Halcon library not found at ${HALCON_LIBRARY}. Halcon features will be disabled.")
+        set(HALCON_FOUND FALSE)
+    endif()
+endif()
+
+# ============================================================================
 # OpenCV Configuration
 # ============================================================================
 set(OPENCV_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/opencv")
@@ -472,6 +502,11 @@ endif()
 # Add OpenCV include directory if found
 if(OPENCV_FOUND)
     include_directories(${OPENCV_INCLUDE_DIR})
+endif()
+
+# Add Halcon include directory if found
+if(HALCON_FOUND)
+    include_directories(${HALCON_INCLUDE_DIR})
 endif()
 
 # ============================================================================
@@ -1008,6 +1043,24 @@ else()
     message(STATUS "OpenCV vision support disabled - OpenCV not found")
 endif()
 
+# Conditionally add Halcon vision plugin files if BOTH Halcon and OpenCV are found
+# (Halcon plugins still use OpenCV for image conversion and UI)
+if(HALCON_FOUND AND OPENCV_FOUND)
+    list(APPEND SOURCES
+        include/vision/plugins/HalconCircleDetectionPlugin.cpp
+        include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
+    )
+    list(APPEND HEADERS
+        include/vision/plugins/HalconCircleDetectionPlugin.h
+        include/vision/plugins/HalconCircleDetectionRobustPlugin.h
+    )
+    message(STATUS "Halcon vision plugins enabled")
+else()
+    if(NOT HALCON_FOUND)
+        message(STATUS "Halcon vision plugins disabled - Halcon SDK not found")
+    endif()
+endif()
+
 # ============================================================================
 # Create Executable
 # ============================================================================
@@ -1133,6 +1186,13 @@ if(OPENCV_FOUND)
             )
         endif()
     endif()
+endif()
+
+# Link Halcon SDK if found
+if(HALCON_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${HALCON_LIBRARY} ${HALCON_CORE_LIBRARY})
+    target_compile_definitions(bobcat_engine PRIVATE HAS_HALCON)
+    message(STATUS "Linked Halcon library")
 endif()
 
 # ============================================================================
