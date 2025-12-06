@@ -1049,10 +1049,12 @@ if(HALCON_FOUND AND OPENCV_FOUND)
     list(APPEND SOURCES
         include/vision/plugins/HalconCircleDetectionPlugin.cpp
         include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
+        include/vision/plugins/HalconLineDetectionPlugin.cpp
     )
     list(APPEND HEADERS
         include/vision/plugins/HalconCircleDetectionPlugin.h
         include/vision/plugins/HalconCircleDetectionRobustPlugin.h
+        include/vision/plugins/HalconLineDetectionPlugin.h
     )
     message(STATUS "Halcon vision plugins enabled")
 else()
@@ -1080,6 +1082,14 @@ else()
         VS_DEBUGGER_ENVIRONMENT "BOBCAT_SIMULATION=0"
     )
     message(STATUS "Visual Studio debugger environment: BOBCAT_SIMULATION=0")
+endif()
+
+# ============================================================================
+# Compile Definitions
+# ============================================================================
+# Prevent Windows min/max macros from conflicting with std::min/std::max in OpenCV/Halcon
+if(WIN32)
+    target_compile_definitions(bobcat_engine PRIVATE NOMINMAX)
 endif()
 
 # ============================================================================

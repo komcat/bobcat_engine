@@ -23,6 +23,7 @@
 #ifdef HAS_HALCON
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
+#include "../plugins/HalconLineDetectionPlugin.h"
 #endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -1441,6 +1442,11 @@ void VisionManagerPage::registerPlugins()
     auto halconCircleRobustPlugin = std::make_shared<HalconCircleDetectionRobustPlugin>();
     VisionManager::instance().registerPlugin(halconCircleRobustPlugin);
     std::cout << "[VisionManagerPage] Registered Halcon Circle Detection Robust plugin" << std::endl;
+
+    // Register Halcon Line Detection Plugin
+    auto halconLinePlugin = std::make_shared<HalconLineDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconLinePlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Line Detection plugin" << std::endl;
 #endif
 
     if (m_context && m_context->logManager) {
