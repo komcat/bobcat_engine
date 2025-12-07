@@ -501,7 +501,8 @@ void VisionManager::applyROIOffsetToResult(VisionResult& result, const cv::Point
 void VisionManager::setROI(const VisionROI& roi)
 {
     m_roi = roi;
-    std::cout << "[VisionManager] ROI set: " << roi.toString() << std::endl;
+    // Debug log suppressed - spams during drag events
+    // std::cout << "[VisionManager] ROI set: " << roi.toString() << std::endl;
     emit roiChanged(m_roi);
 }
 

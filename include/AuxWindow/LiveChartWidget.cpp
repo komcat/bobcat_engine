@@ -872,7 +872,8 @@ void LiveChartWidget::updateValueFontSize()
   int unitHeight = unitFm.height();
   m_unitLabel->setMaximumHeight(unitHeight + 10);
 
-  std::cout << "[LiveChartWidget] Font sizes updated - Value: " << valueFontSize << "pt (height: " << valueHeight << "px), Unit: " << unitFontSize << "pt (height: " << unitHeight << "px)" << std::endl;
+  // Debug log suppressed - was spamming during resize events
+  // std::cout << "[LiveChartWidget] Font sizes updated - Value: " << valueFontSize << "pt (height: " << valueHeight << "px), Unit: " << unitFontSize << "pt (height: " << unitHeight << "px)" << std::endl;
 
   // Update percentage label font size
   if (m_percentageLabel) {

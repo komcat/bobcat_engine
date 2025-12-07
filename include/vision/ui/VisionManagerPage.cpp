@@ -24,9 +24,7 @@
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
 #include "../plugins/HalconLineDetectionPlugin.h"
-#ifdef _WIN32
-#include <Windows.h>
-#endif
+#include "../plugins/HalconPatternMatchingEdgePlugin.h"
 #endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -1037,7 +1035,8 @@ void VisionManagerPage::onClearImage()
 
 void VisionManagerPage::onROIDragged(int startX, int startY, int endX, int endY)
 {
-    std::cout << "[VisionManagerPage] ROI dragged: (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
+    // Debug log suppressed - spams during drag events
+    // std::cout << "[VisionManagerPage] ROI dragged: (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
 
     // Update the right panel spinboxes (without triggering signals back)
     m_rightPanel->setROI(startX, startY, endX, endY);
@@ -1052,9 +1051,10 @@ void VisionManagerPage::onROIDragged(int startX, int startY, int endX, int endY)
         updatePatternMatchingSourceImage();
     }
 
-    if (m_context && m_context->logManager) {
-        m_context->logManager->Debug("ROI dragged to new position", "VisionManagerPage");
-    }
+    // Debug log suppressed - spams during drag events
+    // if (m_context && m_context->logManager) {
+    //     m_context->logManager->Debug("ROI dragged to new position", "VisionManagerPage");
+    // }
 }
 
 // ========== Right Panel Actions ==========
@@ -1297,14 +1297,16 @@ void VisionManagerPage::onROIEnabledChanged(bool enabled)
 
 void VisionManagerPage::onSearchBoxDragged(int startX, int startY, int endX, int endY)
 {
-    std::cout << "[VisionManagerPage] Search Box dragged: (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
+    // Debug log suppressed - spams during drag events
+    // std::cout << "[VisionManagerPage] Search Box dragged: (" << startX << "," << startY << ") to (" << endX << "," << endY << ")" << std::endl;
 
     // Update the right panel spinboxes (without triggering signals back)
     m_rightPanel->setSearchBox(startX, startY, endX, endY);
 
-    if (m_context && m_context->logManager) {
-        m_context->logManager->Debug("Search Box dragged to new position", "VisionManagerPage");
-    }
+    // Debug log suppressed - spams during drag events
+    // if (m_context && m_context->logManager) {
+    //     m_context->logManager->Debug("Search Box dragged to new position", "VisionManagerPage");
+    // }
 }
 
 void VisionManagerPage::onSearchBoxChanged(int startX, int startY, int endX, int endY)
@@ -1436,38 +1438,26 @@ void VisionManagerPage::registerPlugins()
     VisionManager::instance().registerPlugin(patternEdgePlugin);
 
 #ifdef HAS_HALCON
-    // Check if Halcon DLL is available at runtime before registering plugins
-    bool halconAvailable = false;
-#ifdef _WIN32
-    // Try to load the DLL to check if it's available (delay-loaded)
-    HMODULE hHalcon = LoadLibraryA("halconcpp.dll");
-    if (hHalcon != nullptr) {
-        halconAvailable = true;
-        FreeLibrary(hHalcon);  // Release the handle, delay-load will reload when needed
-        std::cout << "[VisionManagerPage] Halcon DLL found - enabling Halcon plugins" << std::endl;
-    } else {
-        std::cout << "[VisionManagerPage] Halcon DLL not found - Halcon plugins disabled" << std::endl;
-    }
-#else
-    halconAvailable = true;  // Assume available on non-Windows platforms
-#endif
+    // Register Halcon Circle Detection Plugin
+    auto halconCirclePlugin = std::make_shared<HalconCircleDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconCirclePlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Circle Detection plugin" << std::endl;
 
-    if (halconAvailable) {
-        // Register Halcon Circle Detection Plugin
-        auto halconCirclePlugin = std::make_shared<HalconCircleDetectionPlugin>();
-        VisionManager::instance().registerPlugin(halconCirclePlugin);
-        std::cout << "[VisionManagerPage] Registered Halcon Circle Detection plugin" << std::endl;
+    // Register Halcon Circle Detection Robust Plugin
+    auto halconCircleRobustPlugin = std::make_shared<HalconCircleDetectionRobustPlugin>();
+    VisionManager::instance().registerPlugin(halconCircleRobustPlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Circle Detection Robust plugin" << std::endl;
 
-        // Register Halcon Circle Detection Robust Plugin
-        auto halconCircleRobustPlugin = std::make_shared<HalconCircleDetectionRobustPlugin>();
-        VisionManager::instance().registerPlugin(halconCircleRobustPlugin);
-        std::cout << "[VisionManagerPage] Registered Halcon Circle Detection Robust plugin" << std::endl;
+    // Register Halcon Line Detection Plugin
+    auto halconLinePlugin = std::make_shared<HalconLineDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconLinePlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Line Detection plugin" << std::endl;
 
-        // Register Halcon Line Detection Plugin
-        auto halconLinePlugin = std::make_shared<HalconLineDetectionPlugin>();
-        VisionManager::instance().registerPlugin(halconLinePlugin);
-        std::cout << "[VisionManagerPage] Registered Halcon Line Detection plugin" << std::endl;
-    }
+    // Register Halcon Pattern Matching Edge Plugin
+    auto halconPatternEdgePlugin = std::make_shared<HalconPatternMatchingEdgePlugin>();
+    halconPatternEdgePlugin->setVisionManagerPage(this);
+    VisionManager::instance().registerPlugin(halconPatternEdgePlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Pattern Matching Edge plugin" << std::endl;
 #endif
 
     if (m_context && m_context->logManager) {
