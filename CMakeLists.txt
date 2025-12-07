@@ -1198,11 +1198,23 @@ if(OPENCV_FOUND)
     endif()
 endif()
 
-# Link Halcon SDK if found
+# Link Halcon SDK if found (with delay loading for optional runtime availability)
 if(HALCON_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${HALCON_LIBRARY} ${HALCON_CORE_LIBRARY})
     target_compile_definitions(bobcat_engine PRIVATE HAS_HALCON)
-    message(STATUS "Linked Halcon library")
+
+    # Use delay-loaded DLLs so the program can run even without Halcon installed
+    # The DLLs are only loaded when Halcon functions are actually called
+    if(MSVC)
+        target_link_options(bobcat_engine PRIVATE
+            "/DELAYLOAD:halconcpp.dll"
+            "/DELAYLOAD:halcon.dll"
+        )
+        target_link_libraries(bobcat_engine PRIVATE delayimp.lib)
+        message(STATUS "Linked Halcon library with delay loading (optional at runtime)")
+    else()
+        message(STATUS "Linked Halcon library")
+    endif()
 endif()
 
 # ============================================================================
