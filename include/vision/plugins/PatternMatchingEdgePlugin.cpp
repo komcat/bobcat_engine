@@ -2,108 +2,21 @@
 #ifdef HAS_OPENCV
 
 #include "PatternMatchingEdgePlugin.h"
-#include "../ui/VisionManagerPage.h"
-#include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
-#include <QPixmap>
-#include <QImage>
-#include <QFileInfo>
-#include <QDir>
 #include <QThread>
 #include <QCoreApplication>
-#include <QDialog>
-#include <QDialogButtonBox>
-#include <QMouseEvent>
-#include <QPainter>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
-#include <functional>
-
-// Custom widget for anchor point selection
-class AnchorPointWidget : public QLabel {
-public:
-    AnchorPointWidget(const QPixmap& templateImage, double initialOffsetX, double initialOffsetY, QWidget* parent = nullptr)
-        : QLabel(parent), m_templatePixmap(templateImage), m_anchorOffsetX(initialOffsetX), m_anchorOffsetY(initialOffsetY)
-    {
-        setAlignment(Qt::AlignCenter);
-        setCursor(Qt::CrossCursor);
-        setMouseTracking(true);
-        updateDisplay();
-    }
-
-    double getAnchorOffsetX() const { return m_anchorOffsetX; }
-    double getAnchorOffsetY() const { return m_anchorOffsetY; }
-
-    std::function<void(double, double)> onAnchorChanged;
-
-protected:
-    void mousePressEvent(QMouseEvent* event) override {
-        if (event->button() == Qt::LeftButton) {
-            updateAnchorFromMouse(event->pos());
-        }
-    }
-
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (event->buttons() & Qt::LeftButton) {
-            updateAnchorFromMouse(event->pos());
-        }
-    }
-
-private:
-    void updateAnchorFromMouse(const QPoint& pos) {
-        QRect imageRect = contentsRect();
-        int centerX = imageRect.width() / 2;
-        int centerY = imageRect.height() / 2;
-
-        m_anchorOffsetX = pos.x() - centerX;
-        m_anchorOffsetY = pos.y() - centerY;
-
-        updateDisplay();
-        if (onAnchorChanged) {
-            onAnchorChanged(m_anchorOffsetX, m_anchorOffsetY);
-        }
-    }
-
-    void updateDisplay() {
-        QPixmap display = m_templatePixmap.copy();
-        QPainter painter(&display);
-
-        QRect imageRect = contentsRect();
-        int centerX = display.width() / 2;
-        int centerY = display.height() / 2;
-        int anchorX = centerX + static_cast<int>(m_anchorOffsetX);
-        int anchorY = centerY + static_cast<int>(m_anchorOffsetY);
-
-        painter.setPen(QPen(Qt::green, 2));
-        painter.drawLine(anchorX - 10, anchorY, anchorX + 10, anchorY);
-        painter.drawLine(anchorX, anchorY - 10, anchorX, anchorY + 10);
-        painter.drawEllipse(QPoint(anchorX, anchorY), 5, 5);
-
-        setPixmap(display);
-    }
-
-    QPixmap m_templatePixmap;
-    double m_anchorOffsetX;
-    double m_anchorOffsetY;
-};
 
 PatternMatchingEdgePlugin::PatternMatchingEdgePlugin()
-    : VisionPluginBase("PatternMatchingEdge", "PR", "Edge-based pattern matching using Canny edge detection")
+    : TemplateMatchingBase("PatternMatchingEdge", "PR", "Edge-based pattern matching using Canny edge detection")
 {
     m_templateOrigin = cv::Point2d(0, 0);
 
     // Initialize all widget pointers to nullptr
     m_configWidget = nullptr;
-    m_previewLabel = nullptr;
-    m_templateInfoLabel = nullptr;
-    m_templatePathLabel = nullptr;
-    m_teachBtn = nullptr;
-    m_saveTemplateBtn = nullptr;
-    m_loadTemplateBtn = nullptr;
-    m_clearTemplateBtn = nullptr;
-    m_setAnchorBtn = nullptr;
     m_thresholdSpin = nullptr;
     m_subpixelCheck = nullptr;
     m_maxMatchesSpin = nullptr;
@@ -347,7 +260,7 @@ bool PatternMatchingEdgePlugin::teachFromImage(const cv::Mat& templateImage) {
         return false;
     }
 
-    // Store original template
+    // Store original template (in base class)
     m_template = templateImage.clone();
 
     // Convert to grayscale if needed
@@ -378,168 +291,21 @@ bool PatternMatchingEdgePlugin::teachFromImage(const cv::Mat& templateImage) {
 }
 
 void PatternMatchingEdgePlugin::clearTemplate() {
-    m_template = cv::Mat();
+    // Call base class implementation
+    TemplateMatchingBase::clearTemplate();
+
+    // Clear plugin-specific data
     m_templateEdge = cv::Mat();
     m_templateOrigin = cv::Point2d(0, 0);
-    m_templateFilePath.clear();
-    m_anchorOffsetX = 0.0;
-    m_anchorOffsetY = 0.0;
-    m_useCustomAnchor = false;
-    updatePreviewLabel();
-}
-
-cv::Mat PatternMatchingEdgePlugin::getTemplatePreview(int maxSize) const {
-    if (!hasTemplate()) {
-        return cv::Mat();
-    }
-
-    cv::Mat preview = m_template.clone();
-    if (preview.cols > maxSize || preview.rows > maxSize) {
-        double scale = std::min(maxSize / (double)preview.cols, maxSize / (double)preview.rows);
-        cv::resize(preview, preview, cv::Size(), scale, scale);
-    }
-
-    return preview;
-}
-
-bool PatternMatchingEdgePlugin::saveTemplateToFile(const std::string& filePath) {
-    if (!hasTemplate()) {
-        return false;
-    }
-
-    bool success = cv::imwrite(filePath, m_template);
-    if (success) {
-        m_templateFilePath = filePath;
-        std::cout << "[PatternMatchingEdge] Template saved to: " << filePath << std::endl;
-    }
-    return success;
-}
-
-bool PatternMatchingEdgePlugin::loadTemplateFromFile(const std::string& filePath) {
-    cv::Mat loadedTemplate = cv::imread(filePath, cv::IMREAD_UNCHANGED);
-    if (loadedTemplate.empty()) {
-        std::cout << "[PatternMatchingEdge] Failed to load template from: " << filePath << std::endl;
-        return false;
-    }
-
-    m_templateFilePath = filePath;
-    return teachFromImage(loadedTemplate);
-}
-
-void PatternMatchingEdgePlugin::updatePreviewLabel() {
-    if (!m_previewLabel || !m_templateInfoLabel) {
-        return;
-    }
-
-    if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
-        std::cout << "[PatternMatchingEdge] Skipping UI update from worker thread" << std::endl;
-        return;
-    }
-
-    if (!hasTemplate()) {
-        m_previewLabel->setText("No template");
-        m_templateInfoLabel->setText("Size: N/A");
-        if (m_templatePathLabel) m_templatePathLabel->setText("File: Not saved");
-        return;
-    }
-
-    cv::Mat preview = getTemplatePreview(150);
-    if (!preview.empty()) {
-        cv::Mat display;
-        if (preview.channels() == 1) {
-            cv::cvtColor(preview, display, cv::COLOR_GRAY2RGB);
-        } else {
-            cv::cvtColor(preview, display, cv::COLOR_BGR2RGB);
-        }
-
-        QImage qImage(display.data, display.cols, display.rows, display.step, QImage::Format_RGB888);
-        m_previewLabel->setPixmap(QPixmap::fromImage(qImage));
-    }
-
-    QString sizeText = QString("Size: %1 x %2").arg(m_template.cols).arg(m_template.rows);
-    m_templateInfoLabel->setText(sizeText);
-
-    if (m_templatePathLabel) {
-        if (!m_templateFilePath.empty()) {
-            QFileInfo fileInfo(QString::fromStdString(m_templateFilePath));
-            m_templatePathLabel->setText("File: " + fileInfo.fileName());
-        } else {
-            m_templatePathLabel->setText("File: Not saved");
-        }
-    }
-}
-
-void PatternMatchingEdgePlugin::showAnchorPointDialog() {
-    if (!hasTemplate()) {
-        return;
-    }
-
-    cv::Mat preview = getTemplatePreview(300);
-    if (preview.empty()) {
-        return;
-    }
-
-    cv::Mat display;
-    if (preview.channels() == 1) {
-        cv::cvtColor(preview, display, cv::COLOR_GRAY2RGB);
-    } else {
-        cv::cvtColor(preview, display, cv::COLOR_BGR2RGB);
-    }
-
-    QImage qImage(display.data, display.cols, display.rows, display.step, QImage::Format_RGB888);
-    QPixmap pixmap = QPixmap::fromImage(qImage);
-
-    QDialog dialog(m_configWidget);
-    dialog.setWindowTitle("Set Anchor Point");
-    QVBoxLayout* layout = new QVBoxLayout(&dialog);
-
-    QLabel* instructionLabel = new QLabel("Click on the template to set the anchor point.\n"
-                                         "The anchor point is where the match position will be reported.", &dialog);
-    instructionLabel->setWordWrap(true);
-    layout->addWidget(instructionLabel);
-
-    AnchorPointWidget* anchorWidget = new AnchorPointWidget(pixmap, m_anchorOffsetX, m_anchorOffsetY, &dialog);
-    layout->addWidget(anchorWidget);
-
-    QLabel* coordLabel = new QLabel(QString::asprintf("Offset: (%.1f, %.1f)", m_anchorOffsetX, m_anchorOffsetY), &dialog);
-    layout->addWidget(coordLabel);
-
-    anchorWidget->onAnchorChanged = [coordLabel](double x, double y) {
-        coordLabel->setText(QString::asprintf("Offset: (%.1f, %.1f)", x, y));
-    };
-
-    QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttonBox);
-
-    if (dialog.exec() == QDialog::Accepted) {
-        m_anchorOffsetX = anchorWidget->getAnchorOffsetX();
-        m_anchorOffsetY = anchorWidget->getAnchorOffsetY();
-        m_useCustomAnchor = (std::abs(m_anchorOffsetX) > 0.1 || std::abs(m_anchorOffsetY) > 0.1);
-
-        std::cout << "[PatternMatchingEdge] Anchor point set to offset ("
-                  << m_anchorOffsetX << ", " << m_anchorOffsetY << ")" << std::endl;
-    }
 }
 
 QWidget* PatternMatchingEdgePlugin::createConfigWidget(QWidget* parent) {
-    // Always create a new widget - don't reuse old ones
-    // This prevents issues with stale widget pointers
     m_configWidget = new QWidget(parent);
     QVBoxLayout* mainLayout = new QVBoxLayout(m_configWidget);
 
     // Connect to destroyed signal to reset our pointer
     QObject::connect(m_configWidget, &QObject::destroyed, [this]() {
         m_configWidget = nullptr;
-        m_previewLabel = nullptr;
-        m_templateInfoLabel = nullptr;
-        m_templatePathLabel = nullptr;
-        m_teachBtn = nullptr;
-        m_saveTemplateBtn = nullptr;
-        m_loadTemplateBtn = nullptr;
-        m_clearTemplateBtn = nullptr;
-        m_setAnchorBtn = nullptr;
         m_thresholdSpin = nullptr;
         m_subpixelCheck = nullptr;
         m_maxMatchesSpin = nullptr;
@@ -548,52 +314,8 @@ QWidget* PatternMatchingEdgePlugin::createConfigWidget(QWidget* parent) {
         m_gaussianBlurSizeSpin = nullptr;
     });
 
-    // Template group
-    QGroupBox* templateGroup = new QGroupBox("Template", m_configWidget);
-    QVBoxLayout* templateLayout = new QVBoxLayout(templateGroup);
-
-    m_previewLabel = new QLabel("No template", templateGroup);
-    m_previewLabel->setMinimumSize(100, 100);
-    m_previewLabel->setMaximumSize(150, 150);
-    m_previewLabel->setAlignment(Qt::AlignCenter);
-    m_previewLabel->setStyleSheet("QLabel { background-color: #2a2a2a; border: 1px solid #555; }");
-    templateLayout->addWidget(m_previewLabel, 0, Qt::AlignCenter);
-
-    m_templateInfoLabel = new QLabel("Size: N/A", templateGroup);
-    m_templateInfoLabel->setAlignment(Qt::AlignCenter);
-    templateLayout->addWidget(m_templateInfoLabel);
-
-    m_templatePathLabel = new QLabel("File: Not saved", templateGroup);
-    m_templatePathLabel->setAlignment(Qt::AlignCenter);
-    m_templatePathLabel->setStyleSheet("QLabel { color: #888; font-size: 9px; }");
-    templateLayout->addWidget(m_templatePathLabel);
-
-    QHBoxLayout* teachButtonLayout = new QHBoxLayout();
-    m_teachBtn = new QPushButton("Select Template Area", templateGroup);
-    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-    m_teachBtn->setToolTip("Draw a red rectangle on the image to select template area");
-    teachButtonLayout->addWidget(m_teachBtn);
-
-    m_clearTemplateBtn = new QPushButton("Clear", templateGroup);
-    m_clearTemplateBtn->setStyleSheet("QPushButton { background-color: #C62828; color: white; }");
-    teachButtonLayout->addWidget(m_clearTemplateBtn);
-    templateLayout->addLayout(teachButtonLayout);
-
-    QHBoxLayout* fileButtonLayout = new QHBoxLayout();
-    m_saveTemplateBtn = new QPushButton("Save...", templateGroup);
-    m_saveTemplateBtn->setToolTip("Save template to PNG file");
-    fileButtonLayout->addWidget(m_saveTemplateBtn);
-
-    m_loadTemplateBtn = new QPushButton("Load...", templateGroup);
-    m_loadTemplateBtn->setToolTip("Load template from PNG file");
-    fileButtonLayout->addWidget(m_loadTemplateBtn);
-    templateLayout->addLayout(fileButtonLayout);
-
-    m_setAnchorBtn = new QPushButton("Set Anchor Point...", templateGroup);
-    m_setAnchorBtn->setToolTip("Set custom anchor point for pattern match reporting");
-    m_setAnchorBtn->setStyleSheet("QPushButton { background-color: #388E3C; color: white; }");
-    templateLayout->addWidget(m_setAnchorBtn);
-
+    // Add template group from base class
+    QGroupBox* templateGroup = createTemplateGroupWidget(m_configWidget);
     mainLayout->addWidget(templateGroup);
 
     // Search parameters group
@@ -690,179 +412,6 @@ QWidget* PatternMatchingEdgePlugin::createConfigWidget(QWidget* parent) {
                 }
             });
 
-    // Teach button
-    QObject::connect(m_teachBtn, &QPushButton::clicked, [this]() {
-        if (!m_visionManagerPage) {
-            if (m_configWidget) {
-                QMessageBox::warning(m_configWidget, "Template Selection Error",
-                                     "Vision system not available. Please try again.");
-            }
-            return;
-        }
-
-        auto* visionPage = static_cast<VisionManagerPage*>(m_visionManagerPage);
-
-        if (m_inTemplateSelectionMode) {
-            visionPage->onTemplateSelectionConfirmed();
-            return;
-        }
-
-        m_inTemplateSelectionMode = true;
-        if (m_teachBtn) {
-            m_teachBtn->setText("OK - Confirm Template");
-            m_teachBtn->setStyleSheet("QPushButton { background-color: #2E7D32; color: white; font-weight: bold; }");
-        }
-
-        visionPage->startTemplateSelectionMode(
-            [this, visionPage](int startX, int startY, int endX, int endY) {
-                cv::Mat fullImage = VisionManager::instance().getInputImage();
-                if (fullImage.empty()) {
-                    if (m_configWidget) {
-                        QMessageBox::warning(m_configWidget, "Teaching Error",
-                                             "No image available. Please capture an image first.");
-                    }
-                    m_inTemplateSelectionMode = false;
-                    if (m_teachBtn) {
-                        m_teachBtn->setText("Select Template Area");
-                        m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-                    }
-                    return;
-                }
-
-                cv::Rect templateROI(startX, startY, endX - startX, endY - startY);
-                templateROI.x = std::max(0, templateROI.x);
-                templateROI.y = std::max(0, templateROI.y);
-                templateROI.width = std::min(fullImage.cols - templateROI.x, templateROI.width);
-                templateROI.height = std::min(fullImage.rows - templateROI.y, templateROI.height);
-
-                if (templateROI.width <= 0 || templateROI.height <= 0) {
-                    if (m_configWidget) {
-                        QMessageBox::warning(m_configWidget, "Teaching Error", "Invalid template region.");
-                    }
-                    m_inTemplateSelectionMode = false;
-                    if (m_teachBtn) {
-                        m_teachBtn->setText("Select Template Area");
-                        m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-                    }
-                    return;
-                }
-
-                cv::Mat templateImage = fullImage(templateROI).clone();
-
-                if (teachFromImage(templateImage)) {
-                    QString message = QString("Template successfully captured.\nSize: %1 x %2 pixels")
-                                          .arg(m_template.cols).arg(m_template.rows);
-
-                    if (!m_templateDirectory.empty() && !m_profileName.empty()) {
-                        QString templatesDir = QString::fromStdString(m_templateDirectory) + "/templates";
-                        QDir dir(templatesDir);
-                        if (!dir.exists()) dir.mkpath(".");
-
-                        QString templateFileName = QString::fromStdString(m_profileName) + "_edge_template.png";
-                        QString fullPath = templatesDir + "/" + templateFileName;
-
-                        if (saveTemplateToFile(fullPath.toStdString())) {
-                            message += QString("\n\nTemplate auto-saved to:\n%1").arg(templateFileName);
-                        } else {
-                            message += "\n\nWarning: Failed to auto-save template.";
-                        }
-                    } else {
-                        message += "\n\nNote: Template is in memory only.\nUse 'Save...' to save to file.";
-                    }
-
-                    if (m_configWidget) {
-                        QMessageBox::information(m_configWidget, "Template Taught", message);
-                    }
-                    showAnchorPointDialog();
-                } else {
-                    if (m_configWidget) {
-                        QMessageBox::warning(m_configWidget, "Teaching Error", "Failed to teach template.");
-                    }
-                }
-
-                m_inTemplateSelectionMode = false;
-                if (m_teachBtn) {
-                    m_teachBtn->setText("Select Template Area");
-                    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-                }
-            },
-            [this]() {
-                m_inTemplateSelectionMode = false;
-                if (m_teachBtn) {
-                    m_teachBtn->setText("Select Template Area");
-                    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-                }
-            }
-        );
-    });
-
-    QObject::connect(m_clearTemplateBtn, &QPushButton::clicked, [this]() {
-        clearTemplate();
-    });
-
-    QObject::connect(m_saveTemplateBtn, &QPushButton::clicked, [this]() {
-        if (!hasTemplate()) {
-            if (m_configWidget) {
-                QMessageBox::warning(m_configWidget, "Save Error",
-                                     "No template to save. Please teach a template first.");
-            }
-            return;
-        }
-
-        if (!m_configWidget) return;
-
-        QString fileName = QFileDialog::getSaveFileName(m_configWidget,
-            "Save Template", "", "PNG Images (*.png)");
-
-        if (!fileName.isEmpty()) {
-            if (saveTemplateToFile(fileName.toStdString())) {
-                if (m_configWidget) {
-                    QMessageBox::information(m_configWidget, "Template Saved",
-                        "Template saved successfully.");
-                }
-                updatePreviewLabel();
-            } else {
-                if (m_configWidget) {
-                    QMessageBox::warning(m_configWidget, "Save Error",
-                        "Failed to save template file.");
-                }
-            }
-        }
-    });
-
-    QObject::connect(m_loadTemplateBtn, &QPushButton::clicked, [this]() {
-        if (!m_configWidget) return;
-
-        QString fileName = QFileDialog::getOpenFileName(m_configWidget,
-            "Load Template", "", "PNG Images (*.png)");
-
-        if (!fileName.isEmpty()) {
-            if (loadTemplateFromFile(fileName.toStdString())) {
-                if (m_configWidget) {
-                    QMessageBox::information(m_configWidget, "Template Loaded",
-                        "Template loaded successfully.");
-                }
-            } else {
-                if (m_configWidget) {
-                    QMessageBox::warning(m_configWidget, "Load Error",
-                        "Failed to load template file.");
-                }
-            }
-        }
-    });
-
-    QObject::connect(m_setAnchorBtn, &QPushButton::clicked, [this]() {
-        if (!hasTemplate()) {
-            if (m_configWidget) {
-                QMessageBox::warning(m_configWidget, "Anchor Point Error",
-                                     "No template taught. Please teach a template first.");
-            }
-            return;
-        }
-        showAnchorPointDialog();
-    });
-
-    updatePreviewLabel();
     return m_configWidget;
 }
 
@@ -876,13 +425,11 @@ nlohmann::json PatternMatchingEdgePlugin::getParameters() const {
     params["cannyThreshold2"] = m_cannyThreshold2;
     params["gaussianBlurSize"] = m_gaussianBlurSize;
 
-    if (!m_templateFilePath.empty()) {
-        params["templateFile"] = m_templateFilePath;
+    // Merge with base class template parameters
+    nlohmann::json templateParams = getTemplateParameters();
+    for (auto& [key, value] : templateParams.items()) {
+        params[key] = value;
     }
-
-    params["useCustomAnchor"] = m_useCustomAnchor;
-    params["anchorOffsetX"] = m_anchorOffsetX;
-    params["anchorOffsetY"] = m_anchorOffsetY;
 
     return params;
 }
@@ -907,22 +454,8 @@ void PatternMatchingEdgePlugin::setParameters(const nlohmann::json& params) {
         m_gaussianBlurSize = params["gaussianBlurSize"].get<int>();
     }
 
-    if (params.contains("templateFile")) {
-        std::string templatePath = params["templateFile"].get<std::string>();
-        if (!templatePath.empty()) {
-            loadTemplateFromFile(templatePath);
-        }
-    }
-
-    if (params.contains("useCustomAnchor")) {
-        m_useCustomAnchor = params["useCustomAnchor"].get<bool>();
-    }
-    if (params.contains("anchorOffsetX")) {
-        m_anchorOffsetX = params["anchorOffsetX"].get<double>();
-    }
-    if (params.contains("anchorOffsetY")) {
-        m_anchorOffsetY = params["anchorOffsetY"].get<double>();
-    }
+    // Set base class template parameters
+    setTemplateParameters(params);
 
     // Update UI if on main thread
     if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
