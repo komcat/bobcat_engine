@@ -75,37 +75,36 @@ bool SMUCommandHandler::ExecuteCommand(
       }
     }
 
-    // Try to cast to Keithley6482Adapter for mode configuration
-    auto keithley = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (!keithley) {
-      errorMessage = "Device does not support polling: " + deviceName;
-      return false;
-    }
-
     // Check connection status
     if (!device->IsConnected()) {
       errorMessage = "SMU device not connected: " + deviceName;
       return false;
     }
 
-    // Configure measurement mode
-    Keithley6482Adapter::MeasurementMode measMode = Keithley6482Adapter::MeasurementMode::ACCURATE;
-    if (mode == "FAST") {
-      measMode = Keithley6482Adapter::MeasurementMode::FAST;
-    } else if (mode == "ULTRA_FAST") {
-      measMode = Keithley6482Adapter::MeasurementMode::ULTRA_FAST;
-    } else if (mode != "ACCURATE") {
-      errorMessage = "Invalid mode: " + mode + " (must be ACCURATE, FAST, or ULTRA_FAST)";
-      return false;
-    }
+    // Try to cast to Keithley6482Adapter for mode configuration (optional)
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      // Configure measurement mode for Keithley 6482
+      Keithley6482Adapter::MeasurementMode measMode = Keithley6482Adapter::MeasurementMode::ACCURATE;
+      if (mode == "FAST") {
+        measMode = Keithley6482Adapter::MeasurementMode::FAST;
+      } else if (mode == "ULTRA_FAST") {
+        measMode = Keithley6482Adapter::MeasurementMode::ULTRA_FAST;
+      } else if (mode != "ACCURATE") {
+        errorMessage = "Invalid mode: " + mode + " (must be ACCURATE, FAST, or ULTRA_FAST)";
+        return false;
+      }
 
-    if (!keithley->ConfigureMeasurementMode(measMode)) {
-      errorMessage = "Failed to configure measurement mode";
-      return false;
-    }
+      if (!keithley6482->ConfigureMeasurementMode(measMode)) {
+        errorMessage = "Failed to configure measurement mode";
+        return false;
+      }
 
-    // Select channel
-    keithley->SelectChannel(channel);
+      // Select channel for 6482
+      keithley6482->SelectChannel(channel);
+    }
+    // For other SMU devices (like KeithleySMUAdapter), mode is ignored
+    // and polling just uses the default measurement settings
 
     if (m_logger) {
       m_logger->Info(

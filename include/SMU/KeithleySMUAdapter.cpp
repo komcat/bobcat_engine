@@ -66,6 +66,12 @@ bool KeithleySMUAdapter::Connect()
   viSetAttribute(m_instrument, VI_ATTR_TMO_VALUE, TIMEOUT_MS);
   std::cout << "[KeithleySMUAdapter] Timeout set to " << TIMEOUT_MS << "ms" << std::endl;
 
+  // Configure termination character for SOCKET connections
+  // Keithley instruments use newline (\n = 0x0A) as terminator
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR, '\n');
+  viSetAttribute(m_instrument, VI_ATTR_TERMCHAR_EN, VI_TRUE);
+  std::cout << "[KeithleySMUAdapter] Termination character set to LF (0x0A)" << std::endl;
+
   // Query device ID
   std::string idn;
   if (!QueryCommandInternal("*IDN?", idn)) {
@@ -115,7 +121,16 @@ bool KeithleySMUAdapter::Connect()
   WriteCommandInternal("*RST");
 
   // Turn output off by default
-  WriteCommandInternal(":OUTP OFF");
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP commands for 2600 series - turn off both channels
+    WriteCommandInternal("smua.source.output = smua.OUTPUT_OFF");
+    if (m_channelCount > 1) {
+      WriteCommandInternal("smub.source.output = smub.OUTPUT_OFF");
+    }
+  } else {
+    // SCPI command for 2400 series
+    WriteCommandInternal(":OUTP OFF");
+  }
   m_outputOn = false;
 
   m_connected = true;
@@ -130,7 +145,16 @@ void KeithleySMUAdapter::Disconnect()
 
   if (m_connected) {
     // Turn output off before disconnecting
-    WriteCommandInternal(":OUTP OFF");
+    if (m_modelFamily == ModelFamily::SERIES_2600) {
+      // TSP commands for 2600 series - turn off both channels
+      WriteCommandInternal("smua.source.output = smua.OUTPUT_OFF");
+      if (m_channelCount > 1) {
+        WriteCommandInternal("smub.source.output = smub.OUTPUT_OFF");
+      }
+    } else {
+      // SCPI command for 2400 series
+      WriteCommandInternal(":OUTP OFF");
+    }
   }
 
   if (m_instrument != VI_NULL) {
@@ -172,7 +196,16 @@ bool KeithleySMUAdapter::SetOutputOn()
     return false;
   }
 
-  if (!WriteCommandInternal(":OUTP ON")) {
+  std::string cmd;
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP command for 2600 series
+    cmd = GetTSPChannelName() + ".source.output = " + GetTSPChannelName() + ".OUTPUT_ON";
+  } else {
+    // SCPI command for 2400 series
+    cmd = ":OUTP ON";
+  }
+
+  if (!WriteCommandInternal(cmd)) {
     SetLastError("Failed to turn output on");
     return false;
   }
@@ -190,7 +223,16 @@ bool KeithleySMUAdapter::SetOutputOff()
     return false;
   }
 
-  if (!WriteCommandInternal(":OUTP OFF")) {
+  std::string cmd;
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP command for 2600 series
+    cmd = GetTSPChannelName() + ".source.output = " + GetTSPChannelName() + ".OUTPUT_OFF";
+  } else {
+    // SCPI command for 2400 series
+    cmd = ":OUTP OFF";
+  }
+
+  if (!WriteCommandInternal(cmd)) {
     SetLastError("Failed to turn output off");
     return false;
   }
@@ -208,11 +250,33 @@ bool KeithleySMUAdapter::IsOutputOn()
   }
 
   std::string response;
-  if (!QueryCommandInternal(":OUTP?", response)) {
+  std::string cmd;
+
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP command for 2600 series - use print() to get response
+    cmd = "print(" + GetTSPChannelName() + ".source.output)";
+  } else {
+    // SCPI command for 2400 series
+    cmd = ":OUTP?";
+  }
+
+  if (!QueryCommandInternal(cmd, response)) {
     return false;
   }
 
-  m_outputOn = (response == "1" || response == "ON");
+  // 2600 series returns "1.00000e+00" for ON, "0.00000e+00" for OFF
+  // 2400 series returns "1" or "ON" for ON, "0" or "OFF" for OFF
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    try {
+      double val = std::stod(response);
+      m_outputOn = (val > 0.5);
+    } catch (...) {
+      m_outputOn = false;
+    }
+  } else {
+    m_outputOn = (response == "1" || response == "ON");
+  }
+
   return m_outputOn;
 }
 
@@ -225,19 +289,37 @@ bool KeithleySMUAdapter::SetVoltage(double voltage)
     return false;
   }
 
-  // Set source function to voltage
-  if (!WriteCommandInternal(":SOUR:FUNC VOLT")) {
-    SetLastError("Failed to set source function to voltage");
-    return false;
-  }
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP commands for 2600 series
+    std::string ch = GetTSPChannelName();
 
-  // Set voltage level
-  std::ostringstream oss;
-  oss << ":SOUR:VOLT " << std::scientific << std::setprecision(6) << voltage;
+    // Set source function to voltage
+    std::string funcCmd = ch + ".source.func = " + ch + ".OUTPUT_DCVOLTS";
+    if (!WriteCommandInternal(funcCmd)) {
+      SetLastError("Failed to set source function to voltage");
+      return false;
+    }
 
-  if (!WriteCommandInternal(oss.str())) {
-    SetLastError("Failed to set voltage");
-    return false;
+    // Set voltage level
+    std::ostringstream oss;
+    oss << ch << ".source.levelv = " << std::scientific << std::setprecision(6) << voltage;
+    if (!WriteCommandInternal(oss.str())) {
+      SetLastError("Failed to set voltage");
+      return false;
+    }
+  } else {
+    // SCPI commands for 2400 series
+    if (!WriteCommandInternal(":SOUR:FUNC VOLT")) {
+      SetLastError("Failed to set source function to voltage");
+      return false;
+    }
+
+    std::ostringstream oss;
+    oss << ":SOUR:VOLT " << std::scientific << std::setprecision(6) << voltage;
+    if (!WriteCommandInternal(oss.str())) {
+      SetLastError("Failed to set voltage");
+      return false;
+    }
   }
 
   m_sourceMode = SourceMode::VOLTAGE;
@@ -253,19 +335,37 @@ bool KeithleySMUAdapter::SetCurrent(double current)
     return false;
   }
 
-  // Set source function to current
-  if (!WriteCommandInternal(":SOUR:FUNC CURR")) {
-    SetLastError("Failed to set source function to current");
-    return false;
-  }
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP commands for 2600 series
+    std::string ch = GetTSPChannelName();
 
-  // Set current level
-  std::ostringstream oss;
-  oss << ":SOUR:CURR " << std::scientific << std::setprecision(6) << current;
+    // Set source function to current
+    std::string funcCmd = ch + ".source.func = " + ch + ".OUTPUT_DCAMPS";
+    if (!WriteCommandInternal(funcCmd)) {
+      SetLastError("Failed to set source function to current");
+      return false;
+    }
 
-  if (!WriteCommandInternal(oss.str())) {
-    SetLastError("Failed to set current");
-    return false;
+    // Set current level
+    std::ostringstream oss;
+    oss << ch << ".source.leveli = " << std::scientific << std::setprecision(6) << current;
+    if (!WriteCommandInternal(oss.str())) {
+      SetLastError("Failed to set current");
+      return false;
+    }
+  } else {
+    // SCPI commands for 2400 series
+    if (!WriteCommandInternal(":SOUR:FUNC CURR")) {
+      SetLastError("Failed to set source function to current");
+      return false;
+    }
+
+    std::ostringstream oss;
+    oss << ":SOUR:CURR " << std::scientific << std::setprecision(6) << current;
+    if (!WriteCommandInternal(oss.str())) {
+      SetLastError("Failed to set current");
+      return false;
+    }
   }
 
   m_sourceMode = SourceMode::CURRENT;
@@ -283,13 +383,27 @@ bool KeithleySMUAdapter::SetCompliance(double limit)
 
   std::ostringstream oss;
 
-  // Set compliance based on source mode
-  if (m_sourceMode == SourceMode::VOLTAGE) {
-    // Sourcing voltage -> set current compliance
-    oss << ":SENS:CURR:PROT " << std::scientific << std::setprecision(6) << limit;
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP commands for 2600 series
+    std::string ch = GetTSPChannelName();
+
+    // Set compliance based on source mode
+    if (m_sourceMode == SourceMode::VOLTAGE) {
+      // Sourcing voltage -> set current limit
+      oss << ch << ".source.limiti = " << std::scientific << std::setprecision(6) << limit;
+    } else {
+      // Sourcing current -> set voltage limit
+      oss << ch << ".source.limitv = " << std::scientific << std::setprecision(6) << limit;
+    }
   } else {
-    // Sourcing current -> set voltage compliance
-    oss << ":SENS:VOLT:PROT " << std::scientific << std::setprecision(6) << limit;
+    // SCPI commands for 2400 series
+    if (m_sourceMode == SourceMode::VOLTAGE) {
+      // Sourcing voltage -> set current compliance
+      oss << ":SENS:CURR:PROT " << std::scientific << std::setprecision(6) << limit;
+    } else {
+      // Sourcing current -> set voltage compliance
+      oss << ":SENS:VOLT:PROT " << std::scientific << std::setprecision(6) << limit;
+    }
   }
 
   if (!WriteCommandInternal(oss.str())) {
@@ -309,10 +423,18 @@ double KeithleySMUAdapter::ReadVoltage()
     return -999.0;
   }
 
-  // Use :MEAS:VOLT? which configures and takes a single measurement
-  // This is more reliable than :READ? which requires trigger configuration
   std::string response;
-  if (!QueryCommandInternal(":MEAS:VOLT?", response)) {
+  std::string cmd;
+
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP command for 2600 series
+    cmd = "print(" + GetTSPChannelName() + ".measure.v())";
+  } else {
+    // SCPI command for 2400 series
+    cmd = ":MEAS:VOLT?";
+  }
+
+  if (!QueryCommandInternal(cmd, response)) {
     SetLastError("Failed to read voltage measurement");
     return -999.0;
   }
@@ -343,10 +465,18 @@ double KeithleySMUAdapter::ReadCurrent()
     return -999.0;
   }
 
-  // Use :MEAS:CURR? which configures and takes a single measurement
-  // This is more reliable than :READ? which requires trigger configuration
   std::string response;
-  if (!QueryCommandInternal(":MEAS:CURR?", response)) {
+  std::string cmd;
+
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP command for 2600 series
+    cmd = "print(" + GetTSPChannelName() + ".measure.i())";
+  } else {
+    // SCPI command for 2400 series
+    cmd = ":MEAS:CURR?";
+  }
+
+  if (!QueryCommandInternal(cmd, response)) {
     SetLastError("Failed to read current measurement");
     return -999.0;
   }
@@ -545,10 +675,21 @@ bool KeithleySMUAdapter::SetSourceMode(SourceMode mode)
   }
 
   std::string cmd;
-  if (mode == SourceMode::VOLTAGE) {
-    cmd = ":SOUR:FUNC VOLT";
+  if (m_modelFamily == ModelFamily::SERIES_2600) {
+    // TSP commands for 2600 series
+    std::string ch = GetTSPChannelName();
+    if (mode == SourceMode::VOLTAGE) {
+      cmd = ch + ".source.func = " + ch + ".OUTPUT_DCVOLTS";
+    } else {
+      cmd = ch + ".source.func = " + ch + ".OUTPUT_DCAMPS";
+    }
   } else {
-    cmd = ":SOUR:FUNC CURR";
+    // SCPI commands for 2400 series
+    if (mode == SourceMode::VOLTAGE) {
+      cmd = ":SOUR:FUNC VOLT";
+    } else {
+      cmd = ":SOUR:FUNC CURR";
+    }
   }
 
   if (!WriteCommandInternal(cmd)) {
@@ -574,15 +715,9 @@ bool KeithleySMUAdapter::SelectChannel(int channel)
     return false;
   }
 
-  // For 2600 series, use :ROUT:TERM command
-  if (m_modelFamily == ModelFamily::SERIES_2600) {
-    std::string cmd = ":ROUT:TERM FRON" + std::to_string(channel);
-    if (!WriteCommandInternal(cmd)) {
-      SetLastError("Failed to select channel");
-      return false;
-    }
-  }
-
+  // For 2600 series, we just update the internal channel variable
+  // The TSP commands use smua/smub based on this selection
+  // No command needed - channel is used in GetTSPChannelName()
   m_currentChannel = channel;
   return true;
 }
@@ -683,8 +818,6 @@ bool KeithleySMUAdapter::QueryCommandInternal(const std::string& command, std::s
     return false;
   }
 
-  std::cout << "[KeithleySMUAdapter] Sending command: " << command << std::endl;
-
   // Write command
   ViStatus status = viPrintf(m_instrument, "%s\n", command.c_str());
   if (status < VI_SUCCESS) {
@@ -692,8 +825,6 @@ bool KeithleySMUAdapter::QueryCommandInternal(const std::string& command, std::s
     std::cerr << "[KeithleySMUAdapter] " << m_lastError << std::endl;
     return false;
   }
-
-  std::cout << "[KeithleySMUAdapter] Command sent successfully, reading response..." << std::endl;
 
   // Read response
   char buffer[BUFFER_SIZE] = {0};
@@ -707,7 +838,6 @@ bool KeithleySMUAdapter::QueryCommandInternal(const std::string& command, std::s
   }
 
   response = TrimString(std::string(buffer));
-  std::cout << "[KeithleySMUAdapter] Response received: " << response << std::endl;
   return true;
 }
 
@@ -751,4 +881,10 @@ std::string KeithleySMUAdapter::TrimString(const std::string& str) const
   } while (std::distance(start, end) > 0 && std::isspace(*end));
 
   return std::string(start, end + 1);
+}
+
+std::string KeithleySMUAdapter::GetTSPChannelName() const
+{
+  // For 2600 series: channel 1 = "smua", channel 2 = "smub"
+  return (m_currentChannel == 1) ? "smua" : "smub";
 }

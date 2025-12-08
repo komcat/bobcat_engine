@@ -57,6 +57,34 @@
             }
         },
         {
+            "name": "x64-debug-hardware-no-halcon",
+            "displayName": "x64 Debug (Hardware, No Halcon)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BOBCAT_SIMULATION": "OFF",
+                "BOBCAT_ENABLE_HALCON": "OFF"
+            }
+        },
+        {
+            "name": "x64-release-no-halcon",
+            "displayName": "x64 Release (Hardware, No Halcon)",
+            "inherits": "windows-base",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BOBCAT_SIMULATION": "OFF",
+                "BOBCAT_ENABLE_HALCON": "OFF"
+            }
+        },
+        {
             "name": "x86-debug",
             "displayName": "x86 Debug (Simulation)",
             "inherits": "windows-base",

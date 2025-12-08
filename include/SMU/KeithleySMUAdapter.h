@@ -224,6 +224,9 @@ private:
   std::string TrimString(const std::string& str) const;
   bool DetectModelFromIDN(const std::string& idn);
 
+  // TSP channel name helper for 2600 series (returns "smua" or "smub")
+  std::string GetTSPChannelName() const;
+
   // Internal methods (assume mutex is already locked by caller)
   bool QueryCommandInternal(const std::string& command, std::string& response);
   bool WriteCommandInternal(const std::string& command);

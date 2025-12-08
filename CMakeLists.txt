@@ -351,12 +351,17 @@ endif()
 # ============================================================================
 # Halcon SDK Configuration
 # ============================================================================
+option(BOBCAT_ENABLE_HALCON "Enable Halcon vision features" ON)
+
 set(HALCON_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/halcon")
 set(HALCON_INCLUDE_DIR "${HALCON_ROOT}/include")
 set(HALCON_LIB_DIR "${HALCON_ROOT}/lib/x64-win64")
 
-# Check if Halcon installation exists
-if(NOT EXISTS ${HALCON_INCLUDE_DIR})
+# Check if Halcon is enabled and installation exists
+if(NOT BOBCAT_ENABLE_HALCON)
+    message(STATUS "Halcon disabled by BOBCAT_ENABLE_HALCON=OFF")
+    set(HALCON_FOUND FALSE)
+elseif(NOT EXISTS ${HALCON_INCLUDE_DIR})
     message(WARNING "Halcon SDK not found at ${HALCON_ROOT}. Halcon vision features will be disabled.")
     set(HALCON_FOUND FALSE)
 else()
