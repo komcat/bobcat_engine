@@ -9,6 +9,17 @@
 #include <memory>
 
 /**
+ * @brief Device metadata for display purposes
+ */
+struct PowerSupplyDeviceInfo
+{
+  std::string type;
+  std::string ip;
+  int port = 5025;
+  int channels = 1;
+};
+
+/**
  * @brief Manager for multiple power supply devices
  * Handles device lifecycle, selection, and command routing
  */
@@ -35,6 +46,10 @@ public:
   void setDeviceChannelCount(const std::string& name, int channels);
   int getDeviceChannelCount(const std::string& name) const;
 
+  // Device info management
+  void setDeviceInfo(const std::string& name, const PowerSupplyDeviceInfo& info);
+  PowerSupplyDeviceInfo getDeviceInfo(const std::string& name) const;
+
   // Batch operations
   bool connectAll();
   void disconnectAll();
@@ -47,4 +62,5 @@ signals:
 private:
   std::map<std::string, PowerSupplyPtr> m_devices;
   std::map<std::string, int> m_deviceChannels; // Track channel count per device
+  std::map<std::string, PowerSupplyDeviceInfo> m_deviceInfo; // Device metadata
 };

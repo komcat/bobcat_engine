@@ -356,6 +356,28 @@ double KeysightPSUAdapter::readCurrent(int channel)
   }
 }
 
+bool KeysightPSUAdapter::readOutputState(int channel)
+{
+  // Server-based adapter is single-channel, ignore channel parameter
+  json command;
+  command["command"] = "read_output_state";
+  command["device"] = m_deviceName;
+
+  std::string response;
+  if (!sendCommand(command.dump(), response)) {
+    return false;
+  }
+
+  try {
+    json responseJson = json::parse(response);
+    return responseJson["data"]["output_state"].get<bool>();
+  }
+  catch (const json::exception& e) {
+    setError("Failed to parse output state response: " + std::string(e.what()));
+    return false;
+  }
+}
+
 void KeysightPSUAdapter::setError(const std::string& error)
 {
   m_lastError = error;

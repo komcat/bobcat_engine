@@ -49,7 +49,22 @@ void PowerSupplyManager::clearAllDevices()
   disconnectAll();
   m_devices.clear();
   m_deviceChannels.clear();
+  m_deviceInfo.clear();
   std::cout << "[PowerSupplyManager] Cleared all devices" << std::endl;
+}
+
+void PowerSupplyManager::setDeviceInfo(const std::string& name, const PowerSupplyDeviceInfo& info)
+{
+  m_deviceInfo[name] = info;
+}
+
+PowerSupplyDeviceInfo PowerSupplyManager::getDeviceInfo(const std::string& name) const
+{
+  auto it = m_deviceInfo.find(name);
+  if (it != m_deviceInfo.end()) {
+    return it->second;
+  }
+  return PowerSupplyDeviceInfo{}; // Return empty info if not found
 }
 
 void PowerSupplyManager::setDeviceChannelCount(const std::string& name, int channels)

@@ -9,15 +9,46 @@
 #include <QListWidget>
 #include <QFrame>
 #include <QVBoxLayout>
-#include <QComboBox>
+#include <QTabWidget>
+#include <QScrollArea>
+#include <vector>
 
 struct ApplicationContext;
 class PowerSupplyManager;
 
 /**
+ * @brief Per-channel control widgets
+ */
+struct ChannelControlWidgets
+{
+  int channel = 1;
+  QPushButton* outputOnButton = nullptr;
+  QPushButton* outputOffButton = nullptr;
+  QDoubleSpinBox* voltageSpinBox = nullptr;
+  QPushButton* setVoltageButton = nullptr;
+  QDoubleSpinBox* currentSpinBox = nullptr;
+  QPushButton* setCurrentButton = nullptr;
+  QDoubleSpinBox* ovpSpinBox = nullptr;
+  QPushButton* setOVPButton = nullptr;
+  QDoubleSpinBox* ocpSpinBox = nullptr;
+  QPushButton* setOCPButton = nullptr;
+};
+
+/**
+ * @brief Per-channel measurement display
+ */
+struct ChannelMeasurementWidgets
+{
+  int channel = 1;
+  QLabel* channelLabel = nullptr;
+  QLabel* voltageLabel = nullptr;
+  QLabel* currentLabel = nullptr;
+  QLabel* outputStateLabel = nullptr;
+};
+
+/**
  * @brief Control page for power supply devices
- * Two-panel layout: Device list (left) + Controls (right)
- * Light theme with compact design
+ * Three-panel layout: Device list (left) + Channel tabs (middle) + All measurements (right)
  */
 class PowerSupplyControlPage : public QWidget
 {
@@ -37,17 +68,13 @@ private slots:
   void onConnectClicked();
   void onDisconnectClicked();
 
-  // Output control
-  void onOutputOnClicked();
-  void onOutputOffClicked();
-
-  // Voltage/Current control
-  void onSetVoltageClicked();
-  void onSetCurrentClicked();
-
-  // Protection control
-  void onSetOVPClicked();
-  void onSetOCPClicked();
+  // Per-channel control slots
+  void onOutputOnClicked(int channel);
+  void onOutputOffClicked(int channel);
+  void onSetVoltageClicked(int channel);
+  void onSetCurrentClicked(int channel);
+  void onSetOVPClicked(int channel);
+  void onSetOCPClicked(int channel);
 
   // Measurement update
   void onRefreshClicked();
@@ -56,15 +83,17 @@ private slots:
 private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
+  void createMiddlePanel(QWidget* middlePanel);
   void createRightPanel(QWidget* rightPanel);
-  void createControlSection(QVBoxLayout* layout);
-  void createMeasurementSection(QVBoxLayout* layout);
+
+  QWidget* createChannelTab(int channel);
+  QWidget* createChannelMeasurementWidget(int channel);
 
   void loadDevices();
   void updateConnectionStatus();
   void updateDeviceList();
-  void updateChannelSelector();
-  int getSelectedChannel() const;
+  void rebuildChannelTabs();
+  void rebuildMeasurementPanel();
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
@@ -77,39 +106,23 @@ private:
   QPushButton* m_connectButton;
   QPushButton* m_disconnectButton;
   QLabel* m_connectionStatus;
+  QLabel* m_deviceInfoLabel;
+  QLabel* m_statusLabel;
 
-  // Right Panel - Controls
-  QWidget* m_controlPanel;
+  // Middle Panel - Channel Tabs
+  QWidget* m_middlePanel;
+  QTabWidget* m_channelTabs;
+  std::vector<ChannelControlWidgets> m_channelControls;
 
-  // Channel selection (for multi-channel devices)
-  QComboBox* m_channelSelector;
-  QLabel* m_channelLabel;
-
-  // Output control
-  QPushButton* m_outputOnButton;
-  QPushButton* m_outputOffButton;
-
-  // Voltage/Current control
-  QDoubleSpinBox* m_voltageSpinBox;
-  QPushButton* m_setVoltageButton;
-  QDoubleSpinBox* m_currentSpinBox;
-  QPushButton* m_setCurrentButton;
-
-  // Protection control
-  QDoubleSpinBox* m_ovpSpinBox;
-  QPushButton* m_setOVPButton;
-  QDoubleSpinBox* m_ocpSpinBox;
-  QPushButton* m_setOCPButton;
-
-  // Measurements
-  QLabel* m_voltageReadLabel;
-  QLabel* m_currentReadLabel;
+  // Right Panel - All Channel Measurements
+  QWidget* m_rightPanel;
+  QWidget* m_measurementContainer;
+  QVBoxLayout* m_measurementLayout;
+  std::vector<ChannelMeasurementWidgets> m_channelMeasurements;
   QPushButton* m_refreshButton;
   QTimer* m_refreshTimer;
 
-  // Status
-  QLabel* m_statusLabel;
-
   // Current device
   QString m_currentDevice;
+  int m_currentChannelCount = 1;
 };

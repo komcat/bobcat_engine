@@ -66,6 +66,15 @@ bool PowerSupplyJsonLoader::loadConfiguration(const std::string& filePath, Power
       if (psu) {
         manager->addPowerSupply(name, psu);
         manager->setDeviceChannelCount(name, channels); // Set channel count
+
+        // Store device metadata for UI display
+        PowerSupplyDeviceInfo info;
+        info.type = type;
+        info.ip = deviceIP;
+        info.port = devicePort;
+        info.channels = channels;
+        manager->setDeviceInfo(name, info);
+
         deviceCount++;
         std::cout << "[PowerSupplyJsonLoader] Loaded device: " << name
           << " (Type: " << type << ", IP: " << deviceIP << ", Channels: " << channels << ")" << std::endl;

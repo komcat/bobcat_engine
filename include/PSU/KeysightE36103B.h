@@ -68,6 +68,7 @@ public:
 
     double readVoltage(int channel = 1) override;
     double readCurrent(int channel = 1) override;
+    bool readOutputState(int channel = 1) override;
 
     std::string getLastError() const override { return m_lastError; }
 

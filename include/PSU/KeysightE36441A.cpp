@@ -188,8 +188,6 @@ bool KeysightE36441A::writeInternal(const std::string& command)
         cmd += '\n';
     }
 
-    std::cout << "[KeysightE36441A] Sending command: " << command << std::endl;
-
     // Send command
     int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
@@ -202,7 +200,6 @@ bool KeysightE36441A::writeInternal(const std::string& command)
         return false;
     }
 
-    std::cout << "[KeysightE36441A] Command sent successfully (" << bytesSent << " bytes)" << std::endl;
     return true;
 }
 
@@ -259,12 +256,12 @@ bool KeysightE36441A::selectChannel(int channel)
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
+    // Use INST CH<n> format
     std::ostringstream oss;
-    oss << "INST:NSEL " << channel;
+    oss << "INST CH" << channel;
 
     if (writeInternal(oss.str())) {
         m_currentChannel = channel;
-        std::cout << "[KeysightE36441A] Selected channel " << channel << std::endl;
         return true;
     }
 
@@ -281,9 +278,9 @@ std::string KeysightE36441A::queryChannel(const std::string& command, int channe
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first
+    // Select channel first using INST CH<n> format
     std::ostringstream selectCmd;
-    selectCmd << "INST:NSEL " << channel;
+    selectCmd << "INST CH" << channel;
     if (!writeInternal(selectCmd.str())) {
         return "";
     }
@@ -303,9 +300,9 @@ bool KeysightE36441A::writeChannel(const std::string& command, int channel)
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first
+    // Select channel first using INST CH<n> format
     std::ostringstream selectCmd;
-    selectCmd << "INST:NSEL " << channel;
+    selectCmd << "INST CH" << channel;
     if (!writeInternal(selectCmd.str())) {
         return false;
     }
@@ -317,36 +314,33 @@ bool KeysightE36441A::writeChannel(const std::string& command, int channel)
 
 bool KeysightE36441A::setOutputOn(int channel)
 {
-    std::cout << "[KeysightE36441A] Setting output ON for device: " << m_deviceName
-              << ", channel: " << channel << std::endl;
-
-    bool result = writeChannel("OUTP ON", channel);
-
-    if (result) {
-        std::cout << "[KeysightE36441A] Output ON command sent successfully" << std::endl;
-    } else {
-        std::cerr << "[KeysightE36441A] Output ON command failed: " << m_lastError << std::endl;
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return false;
     }
-    return result;
+
+    std::cout << "[KeysightE36441A] Setting output ON, channel: " << channel << std::endl;
+    return writeChannel("OUTP ON", channel);
 }
 
 bool KeysightE36441A::setOutputOff(int channel)
 {
-    std::cout << "[KeysightE36441A] Setting output OFF for device: " << m_deviceName
-              << ", channel: " << channel << std::endl;
-
-    bool result = writeChannel("OUTP OFF", channel);
-
-    if (result) {
-        std::cout << "[KeysightE36441A] Output OFF command sent successfully" << std::endl;
-    } else {
-        std::cerr << "[KeysightE36441A] Output OFF command failed: " << m_lastError << std::endl;
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return false;
     }
-    return result;
+
+    std::cout << "[KeysightE36441A] Setting output OFF, channel: " << channel << std::endl;
+    return writeChannel("OUTP OFF", channel);
 }
 
 bool KeysightE36441A::setVoltage(double voltage, int channel)
 {
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return false;
+    }
+
     std::ostringstream oss;
     oss << "VOLT " << voltage;
 
@@ -358,6 +352,11 @@ bool KeysightE36441A::setVoltage(double voltage, int channel)
 
 bool KeysightE36441A::setCurrent(double current, int channel)
 {
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return false;
+    }
+
     std::ostringstream oss;
     oss << "CURR " << current;
 
@@ -370,20 +369,18 @@ bool KeysightE36441A::setCurrent(double current, int channel)
 bool KeysightE36441A::setOVP(double voltage, int channel)
 {
     if (channel < 1 || channel > NUM_CHANNELS) {
-        m_lastError = "Invalid channel: " + std::to_string(channel) + " (valid: 1-4)";
-        std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+        m_lastError = "Invalid channel: " + std::to_string(channel);
         return false;
     }
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel
+    // Select channel first using INST CH<n> format
     std::ostringstream selectCmd;
-    selectCmd << "INST:NSEL " << channel;
+    selectCmd << "INST CH" << channel;
     if (!writeInternal(selectCmd.str())) {
         return false;
     }
-    m_currentChannel = channel;
 
     // Set OVP value
     std::ostringstream oss;
@@ -399,20 +396,18 @@ bool KeysightE36441A::setOVP(double voltage, int channel)
 bool KeysightE36441A::setOCP(double current, int channel)
 {
     if (channel < 1 || channel > NUM_CHANNELS) {
-        m_lastError = "Invalid channel: " + std::to_string(channel) + " (valid: 1-4)";
-        std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+        m_lastError = "Invalid channel: " + std::to_string(channel);
         return false;
     }
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel
+    // Select channel first using INST CH<n> format
     std::ostringstream selectCmd;
-    selectCmd << "INST:NSEL " << channel;
+    selectCmd << "INST CH" << channel;
     if (!writeInternal(selectCmd.str())) {
         return false;
     }
-    m_currentChannel = channel;
 
     // Set OCP value
     std::ostringstream oss;
@@ -427,9 +422,16 @@ bool KeysightE36441A::setOCP(double current, int channel)
 
 double KeysightE36441A::readVoltage(int channel)
 {
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return -1.0;
+    }
+
+    // Use INST:NSEL to select channel, then query
     std::string response = queryChannel("MEAS:VOLT?", channel);
+
     if (response.empty()) {
-        return 0.0;
+        return -1.0;
     }
 
     try {
@@ -438,15 +440,22 @@ double KeysightE36441A::readVoltage(int channel)
     catch (const std::exception& e) {
         m_lastError = "Failed to parse voltage: " + std::string(e.what());
         std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
-        return 0.0;
+        return -1.0;
     }
 }
 
 double KeysightE36441A::readCurrent(int channel)
 {
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return -1.0;
+    }
+
+    // Use INST:NSEL to select channel, then query
     std::string response = queryChannel("MEAS:CURR?", channel);
+
     if (response.empty()) {
-        return 0.0;
+        return -1.0;
     }
 
     try {
@@ -455,6 +464,24 @@ double KeysightE36441A::readCurrent(int channel)
     catch (const std::exception& e) {
         m_lastError = "Failed to parse current: " + std::string(e.what());
         std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
-        return 0.0;
+        return -1.0;
     }
+}
+
+bool KeysightE36441A::readOutputState(int channel)
+{
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return false;
+    }
+
+    // Use INST:NSEL to select channel, then query
+    std::string response = queryChannel("OUTP?", channel);
+
+    if (response.empty()) {
+        return false;
+    }
+
+    // Response is "0" or "1" (or "OFF"/"ON")
+    return (response == "1" || response == "ON");
 }

@@ -42,6 +42,10 @@ public:
   virtual double readVoltage(int channel = 1) = 0;
   virtual double readCurrent(int channel = 1) = 0;
 
+  // Read output state
+  // Returns true if output is ON, false if OFF or error
+  virtual bool readOutputState(int channel = 1) = 0;
+
   // Error handling
   virtual std::string getLastError() const = 0;
 };

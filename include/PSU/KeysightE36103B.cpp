@@ -187,8 +187,6 @@ bool KeysightE36103B::writeInternal(const std::string& command)
         cmd += '\n';
     }
 
-    std::cout << "[KeysightE36103B] Sending command: " << command << std::endl;
-
     // Send command
     int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
@@ -201,7 +199,6 @@ bool KeysightE36103B::writeInternal(const std::string& command)
         return false;
     }
 
-    std::cout << "[KeysightE36103B] Command sent successfully (" << bytesSent << " bytes)" << std::endl;
     return true;
 }
 
@@ -321,7 +318,7 @@ double KeysightE36103B::readVoltage(int channel)
     // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:VOLT?");
     if (response.empty()) {
-        return 0.0;
+        return -1.0;  // Return negative to indicate error
     }
 
     try {
@@ -330,7 +327,7 @@ double KeysightE36103B::readVoltage(int channel)
     catch (const std::exception& e) {
         m_lastError = "Failed to parse voltage: " + std::string(e.what());
         std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
-        return 0.0;
+        return -1.0;
     }
 }
 
@@ -339,7 +336,7 @@ double KeysightE36103B::readCurrent(int channel)
     // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:CURR?");
     if (response.empty()) {
-        return 0.0;
+        return -1.0;  // Return negative to indicate error
     }
 
     try {
@@ -348,6 +345,18 @@ double KeysightE36103B::readCurrent(int channel)
     catch (const std::exception& e) {
         m_lastError = "Failed to parse current: " + std::string(e.what());
         std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
-        return 0.0;
+        return -1.0;
     }
+}
+
+bool KeysightE36103B::readOutputState(int channel)
+{
+    // E36103B is single-channel, ignore channel parameter
+    std::string response = query("OUTP?");
+    if (response.empty()) {
+        return false;
+    }
+
+    // Response is "0" or "1" (or "OFF"/"ON")
+    return (response == "1" || response == "ON");
 }

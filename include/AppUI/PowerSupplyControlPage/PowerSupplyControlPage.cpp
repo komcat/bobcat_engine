@@ -1,4 +1,4 @@
-﻿// PowerSupplyControlPage.cpp - Redesigned with 2-panel layout
+// PowerSupplyControlPage.cpp - Redesigned with 3-panel layout
 #include "PowerSupplyControlPage.h"
 #include "ApplicationContext.h"
 #include "PowerSupplyManager.h"
@@ -9,6 +9,7 @@
 #include <QGroupBox>
 #include <QSplitter>
 #include <QFrame>
+#include <QScrollArea>
 #include <iostream>
 
 PowerSupplyControlPage::PowerSupplyControlPage(ApplicationContext* context, QWidget* parent)
@@ -20,130 +21,109 @@ PowerSupplyControlPage::PowerSupplyControlPage(ApplicationContext* context, QWid
   setupUI();
   loadDevices();
 
-  // Auto-refresh measurements every 2 seconds when connected
   connect(m_refreshTimer, &QTimer::timeout, this, &PowerSupplyControlPage::updateMeasurements);
 }
 
 QString PowerSupplyControlPage::createStyleSheet()
 {
   return R"(
-        /* Main widget - Dark theme */
-        QWidget {
-            background-color: #2d2d30;
-            color: #d4d4d4;
-            font-family: "Segoe UI", Arial, sans-serif;
-        }
-
-        /* List widget */
-        QListWidget {
-            background-color: #1e1e1e;
-            border: 1px solid #3f3f46;
-            border-radius: 4px;
-            padding: 4px;
-            font-size: 13px;
-            color: #d4d4d4;
-        }
-        QListWidget::item {
-            padding: 8px;
-            border-radius: 3px;
-            margin: 2px 0px;
-        }
-        QListWidget::item:selected {
-            background-color: #0e639c;
-            color: white;
-        }
-        QListWidget::item:hover {
-            background-color: #3c3c3c;
-        }
-
-        /* Labels */
-        QLabel {
-            color: #d4d4d4;
-            font-size: 13px;
-        }
-
-        /* Group boxes */
-        QGroupBox {
-            font-weight: bold;
-            font-size: 13px;
-            color: #ffffff;
-            border: 2px solid #3f3f46;
-            border-radius: 6px;
-            margin-top: 12px;
-            padding-top: 12px;
-            background-color: #1e1e1e;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            subcontrol-position: top left;
-            padding: 4px 10px;
-            background-color: #1e1e1e;
-            color: #ffffff;
-        }
-
-        /* Spin boxes */
-        QDoubleSpinBox {
-            background-color: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px;
-            font-size: 13px;
-            min-width: 100px;
-        }
-        QDoubleSpinBox:focus {
-            border: 2px solid #0e639c;
-        }
-        QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-            background-color: #2d2d30;
-            border: 1px solid #555555;
-        }
-        QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
-            background-color: #3c3c3c;
-        }
-
-        /* Buttons - Primary */
-        QPushButton {
-            background-color: #0e639c;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-            font-weight: 500;
-            min-height: 32px;
-        }
-        QPushButton:hover {
-            background-color: #1177bb;
-        }
-        QPushButton:pressed {
-            background-color: #0c5280;
-        }
-        QPushButton:disabled {
-            background-color: #3c3c3c;
-            color: #666666;
-        }
-
-        /* Status indicators */
-        .status-connected {
-            color: #27ae60;
-            font-weight: bold;
-        }
-        .status-disconnected {
-            color: #e74c3c;
-            font-weight: bold;
-        }
-        .status-info {
-            color: #0e639c;
-        }
-
-        /* Frames */
-        QFrame {
-            background-color: #1e1e1e;
-            border: 1px solid #3f3f46;
-            border-radius: 6px;
-        }
-    )";
+    QWidget {
+      background-color: #2d2d30;
+      color: #d4d4d4;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    QListWidget {
+      background-color: #1e1e1e;
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      padding: 4px;
+      font-size: 13px;
+    }
+    QListWidget::item {
+      padding: 8px;
+      border-radius: 3px;
+      margin: 2px 0px;
+    }
+    QListWidget::item:selected {
+      background-color: #0e639c;
+      color: white;
+    }
+    QListWidget::item:hover {
+      background-color: #3c3c3c;
+    }
+    QLabel {
+      color: #d4d4d4;
+      font-size: 13px;
+    }
+    QGroupBox {
+      font-weight: bold;
+      font-size: 13px;
+      color: #ffffff;
+      border: 2px solid #3f3f46;
+      border-radius: 6px;
+      margin-top: 12px;
+      padding-top: 12px;
+      background-color: #1e1e1e;
+    }
+    QGroupBox::title {
+      subcontrol-origin: margin;
+      subcontrol-position: top left;
+      padding: 4px 10px;
+      background-color: #1e1e1e;
+    }
+    QDoubleSpinBox {
+      background-color: #3c3c3c;
+      color: #d4d4d4;
+      border: 1px solid #555555;
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 13px;
+      min-width: 80px;
+    }
+    QDoubleSpinBox:focus {
+      border: 2px solid #0e639c;
+    }
+    QPushButton {
+      background-color: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      min-height: 28px;
+    }
+    QPushButton:hover {
+      background-color: #1177bb;
+    }
+    QPushButton:pressed {
+      background-color: #0c5280;
+    }
+    QPushButton:disabled {
+      background-color: #3c3c3c;
+      color: #666666;
+    }
+    QTabWidget::pane {
+      border: 1px solid #3f3f46;
+      background-color: #1e1e1e;
+      border-radius: 4px;
+    }
+    QTabBar::tab {
+      background-color: #2d2d30;
+      color: #d4d4d4;
+      padding: 8px 16px;
+      margin-right: 2px;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+    }
+    QTabBar::tab:selected {
+      background-color: #0e639c;
+      color: white;
+    }
+    QTabBar::tab:hover:!selected {
+      background-color: #3c3c3c;
+    }
+  )";
 }
 
 void PowerSupplyControlPage::setupUI()
@@ -154,28 +134,35 @@ void PowerSupplyControlPage::setupUI()
   mainLayout->setContentsMargins(10, 10, 10, 10);
   mainLayout->setSpacing(10);
 
-  // Create 2-panel splitter
   QSplitter* splitter = new QSplitter(Qt::Horizontal);
 
-  // Left panel - Device list (30% width)
+  // Left panel - Device list
   QWidget* leftPanel = new QWidget();
-  leftPanel->setMinimumWidth(200);
-  leftPanel->setMaximumWidth(300);
+  leftPanel->setMinimumWidth(180);
+  leftPanel->setMaximumWidth(250);
   createLeftPanel(leftPanel);
 
-  // Right panel - Controls (70% width)
-  QWidget* rightPanel = new QWidget();
-  createRightPanel(rightPanel);
+  // Middle panel - Channel tabs
+  m_middlePanel = new QWidget();
+  m_middlePanel->setMinimumWidth(350);
+  createMiddlePanel(m_middlePanel);
+
+  // Right panel - All measurements
+  m_rightPanel = new QWidget();
+  m_rightPanel->setMinimumWidth(200);
+  createRightPanel(m_rightPanel);
 
   splitter->addWidget(leftPanel);
-  splitter->addWidget(rightPanel);
-  splitter->setStretchFactor(0, 3);  // Left: 30%
-  splitter->setStretchFactor(1, 7);  // Right: 70%
+  splitter->addWidget(m_middlePanel);
+  splitter->addWidget(m_rightPanel);
+  splitter->setStretchFactor(0, 1);
+  splitter->setStretchFactor(1, 2);
+  splitter->setStretchFactor(2, 1);
 
   mainLayout->addWidget(splitter);
 
-  // Initially disable control panel
-  m_controlPanel->setEnabled(false);
+  // Initially disable control panels
+  m_middlePanel->setEnabled(false);
 }
 
 void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
@@ -184,234 +171,293 @@ void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
 
-  // Title
   QLabel* titleLabel = new QLabel("Power Supply Units");
-  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff; padding: 8px;");
+  titleLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; padding: 4px;");
   layout->addWidget(titleLabel);
 
-  // Device list
   m_deviceList = new QListWidget();
-  m_deviceList->setAlternatingRowColors(false);
   layout->addWidget(m_deviceList);
 
   connect(m_deviceList, &QListWidget::currentRowChanged,
     this, &PowerSupplyControlPage::onDeviceSelected);
 
-  // Connection controls
   QHBoxLayout* buttonLayout = new QHBoxLayout();
-  buttonLayout->setSpacing(6);
+  buttonLayout->setSpacing(4);
 
   m_connectButton = new QPushButton("Connect");
   m_connectButton->setStyleSheet(
     "QPushButton { background-color: #27ae60; }"
-    "QPushButton:hover { background-color: #2ecc71; }"
-    "QPushButton:pressed { background-color: #229954; }");
+    "QPushButton:hover { background-color: #2ecc71; }");
   connect(m_connectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onConnectClicked);
 
   m_disconnectButton = new QPushButton("Disconnect");
   m_disconnectButton->setEnabled(false);
   m_disconnectButton->setStyleSheet(
     "QPushButton { background-color: #e74c3c; }"
-    "QPushButton:hover { background-color: #c0392b; }"
-    "QPushButton:pressed { background-color: #a93226; }");
+    "QPushButton:hover { background-color: #c0392b; }");
   connect(m_disconnectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onDisconnectClicked);
 
   buttonLayout->addWidget(m_connectButton);
   buttonLayout->addWidget(m_disconnectButton);
   layout->addLayout(buttonLayout);
 
-  // Connection status
   m_connectionStatus = new QLabel("● Disconnected");
-  m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold; padding: 4px;");
+  m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold; padding: 2px;");
   m_connectionStatus->setAlignment(Qt::AlignCenter);
   layout->addWidget(m_connectionStatus);
 
-  // Status label at bottom
+  m_deviceInfoLabel = new QLabel("Select a device");
+  m_deviceInfoLabel->setStyleSheet(
+    "font-size: 10px; color: #aaaaaa; padding: 4px; "
+    "background-color: #252526; border-radius: 4px;");
+  m_deviceInfoLabel->setWordWrap(true);
+  layout->addWidget(m_deviceInfoLabel);
+
   m_statusLabel = new QLabel("Ready");
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #888888; padding: 4px;");
+  m_statusLabel->setStyleSheet("font-size: 10px; color: #888888; padding: 2px;");
   m_statusLabel->setWordWrap(true);
   layout->addWidget(m_statusLabel);
+}
+
+void PowerSupplyControlPage::createMiddlePanel(QWidget* middlePanel)
+{
+  QVBoxLayout* layout = new QVBoxLayout(middlePanel);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(8);
+
+  QLabel* titleLabel = new QLabel("Channel Settings");
+  titleLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; padding: 4px;");
+  layout->addWidget(titleLabel);
+
+  m_channelTabs = new QTabWidget();
+  layout->addWidget(m_channelTabs);
+
+  // Create default single channel tab
+  rebuildChannelTabs();
 }
 
 void PowerSupplyControlPage::createRightPanel(QWidget* rightPanel)
 {
   QVBoxLayout* layout = new QVBoxLayout(rightPanel);
   layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(10);
+  layout->setSpacing(8);
 
-  m_controlPanel = new QWidget();
-  QVBoxLayout* controlLayout = new QVBoxLayout(m_controlPanel);
-  controlLayout->setContentsMargins(0, 0, 0, 0);
-  controlLayout->setSpacing(10);
+  QLabel* titleLabel = new QLabel("Live Measurements");
+  titleLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; padding: 4px;");
+  layout->addWidget(titleLabel);
 
-  createControlSection(controlLayout);
-  createMeasurementSection(controlLayout);
+  // Scrollable container for measurements
+  QScrollArea* scrollArea = new QScrollArea();
+  scrollArea->setWidgetResizable(true);
+  scrollArea->setStyleSheet("QScrollArea { border: none; background-color: transparent; }");
 
-  layout->addWidget(m_controlPanel);
-  layout->addStretch();
-}
+  m_measurementContainer = new QWidget();
+  m_measurementLayout = new QVBoxLayout(m_measurementContainer);
+  m_measurementLayout->setContentsMargins(0, 0, 0, 0);
+  m_measurementLayout->setSpacing(8);
 
-void PowerSupplyControlPage::createControlSection(QVBoxLayout* layout)
-{
-  // Channel Selection (for multi-channel devices)
-  QGroupBox* channelGroup = new QGroupBox("Channel Selection");
-  QHBoxLayout* channelLayout = new QHBoxLayout(channelGroup);
-  channelLayout->setSpacing(10);
-  channelLayout->setContentsMargins(12, 20, 12, 12);
+  scrollArea->setWidget(m_measurementContainer);
+  layout->addWidget(scrollArea);
 
-  m_channelLabel = new QLabel("Channel:");
-  m_channelSelector = new QComboBox();
-  m_channelSelector->addItem("Channel 1", 1);
-  m_channelSelector->addItem("Channel 2", 2);
-  m_channelSelector->addItem("Channel 3", 3);
-  m_channelSelector->addItem("Channel 4", 4);
-  m_channelSelector->setCurrentIndex(0);
-
-  channelLayout->addWidget(m_channelLabel);
-  channelLayout->addWidget(m_channelSelector, 1);
-  layout->addWidget(channelGroup);
-
-  // Initially hide channel selector (will be shown for multi-channel devices)
-  channelGroup->setVisible(false);
-  channelGroup->setObjectName("channelGroup");
-
-  // Output Control
-  QGroupBox* outputGroup = new QGroupBox("Output Control");
-  QHBoxLayout* outputLayout = new QHBoxLayout(outputGroup);
-  outputLayout->setSpacing(10);
-  outputLayout->setContentsMargins(12, 20, 12, 12);
-
-  m_outputOnButton = new QPushButton("OUTPUT ON");
-  m_outputOnButton->setMinimumHeight(45);
-  m_outputOnButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; font-size: 14px; font-weight: bold; }"
-    "QPushButton:hover { background-color: #2ecc71; }"
-    "QPushButton:pressed { background-color: #229954; }");
-  connect(m_outputOnButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onOutputOnClicked);
-
-  m_outputOffButton = new QPushButton("OUTPUT OFF");
-  m_outputOffButton->setMinimumHeight(45);
-  m_outputOffButton->setStyleSheet(
-    "QPushButton { background-color: #e74c3c; font-size: 14px; font-weight: bold; }"
-    "QPushButton:hover { background-color: #ec7063; }"
-    "QPushButton:pressed { background-color: #c0392b; }");
-  connect(m_outputOffButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onOutputOffClicked);
-
-  outputLayout->addWidget(m_outputOnButton);
-  outputLayout->addWidget(m_outputOffButton);
-  layout->addWidget(outputGroup);
-
-  // Voltage & Current Settings
-  QGroupBox* settingsGroup = new QGroupBox("Voltage & Current Settings");
-  QGridLayout* settingsLayout = new QGridLayout(settingsGroup);
-  settingsLayout->setContentsMargins(12, 20, 12, 12);
-  settingsLayout->setSpacing(8);
-  settingsLayout->setColumnStretch(1, 1);
-
-  // Voltage
-  QLabel* voltageLabel = new QLabel("Voltage (V):");
-  m_voltageSpinBox = new QDoubleSpinBox();
-  m_voltageSpinBox->setRange(0.0, 20.0);
-  m_voltageSpinBox->setDecimals(2);
-  m_voltageSpinBox->setSingleStep(0.1);
-  m_voltageSpinBox->setValue(5.0);
-  m_setVoltageButton = new QPushButton("Set");
-  m_setVoltageButton->setMinimumWidth(80);
-  connect(m_setVoltageButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetVoltageClicked);
-
-  settingsLayout->addWidget(voltageLabel, 0, 0);
-  settingsLayout->addWidget(m_voltageSpinBox, 0, 1);
-  settingsLayout->addWidget(m_setVoltageButton, 0, 2);
-
-  // Current
-  QLabel* currentLabel = new QLabel("Current (A):");
-  m_currentSpinBox = new QDoubleSpinBox();
-  m_currentSpinBox->setRange(0.0, 6.0);
-  m_currentSpinBox->setDecimals(3);
-  m_currentSpinBox->setSingleStep(0.1);
-  m_currentSpinBox->setValue(1.0);
-  m_setCurrentButton = new QPushButton("Set");
-  m_setCurrentButton->setMinimumWidth(80);
-  connect(m_setCurrentButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetCurrentClicked);
-
-  settingsLayout->addWidget(currentLabel, 1, 0);
-  settingsLayout->addWidget(m_currentSpinBox, 1, 1);
-  settingsLayout->addWidget(m_setCurrentButton, 1, 2);
-
-  layout->addWidget(settingsGroup);
-
-  // Protection Settings
-  QGroupBox* protectionGroup = new QGroupBox("Protection Settings");
-  QGridLayout* protectionLayout = new QGridLayout(protectionGroup);
-  protectionLayout->setContentsMargins(12, 20, 12, 12);
-  protectionLayout->setSpacing(8);
-  protectionLayout->setColumnStretch(1, 1);
-
-  // OVP
-  QLabel* ovpLabel = new QLabel("OVP (V):");
-  m_ovpSpinBox = new QDoubleSpinBox();
-  m_ovpSpinBox->setRange(0.0, 22.0);
-  m_ovpSpinBox->setDecimals(2);
-  m_ovpSpinBox->setSingleStep(0.1);
-  m_ovpSpinBox->setValue(6.0);
-  m_setOVPButton = new QPushButton("Set");
-  m_setOVPButton->setMinimumWidth(80);
-  m_setOVPButton->setStyleSheet(
-    "QPushButton { background-color: #f39c12; color: white; }"
-    "QPushButton:hover { background-color: #e67e22; }");
-  connect(m_setOVPButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetOVPClicked);
-
-  protectionLayout->addWidget(ovpLabel, 0, 0);
-  protectionLayout->addWidget(m_ovpSpinBox, 0, 1);
-  protectionLayout->addWidget(m_setOVPButton, 0, 2);
-
-  // OCP
-  QLabel* ocpLabel = new QLabel("OCP (A):");
-  m_ocpSpinBox = new QDoubleSpinBox();
-  m_ocpSpinBox->setRange(0.0, 6.5);
-  m_ocpSpinBox->setDecimals(3);
-  m_ocpSpinBox->setSingleStep(0.1);
-  m_ocpSpinBox->setValue(1.2);
-  m_setOCPButton = new QPushButton("Set");
-  m_setOCPButton->setMinimumWidth(80);
-  m_setOCPButton->setStyleSheet(
-    "QPushButton { background-color: #f39c12; color: white; }"
-    "QPushButton:hover { background-color: #e67e22; }");
-  connect(m_setOCPButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onSetOCPClicked);
-
-  protectionLayout->addWidget(ocpLabel, 1, 0);
-  protectionLayout->addWidget(m_ocpSpinBox, 1, 1);
-  protectionLayout->addWidget(m_setOCPButton, 1, 2);
-
-  layout->addWidget(protectionGroup);
-}
-
-void PowerSupplyControlPage::createMeasurementSection(QVBoxLayout* layout)
-{
-  QGroupBox* measurementGroup = new QGroupBox("Live Measurements");
-  QVBoxLayout* measurementLayout = new QVBoxLayout(measurementGroup);
-  measurementLayout->setContentsMargins(12, 20, 12, 12);
-  measurementLayout->setSpacing(8);
-
-  // Voltage reading
-  m_voltageReadLabel = new QLabel("Voltage: --- V");
-  m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #27ae60; padding: 4px;");
-  measurementLayout->addWidget(m_voltageReadLabel);
-
-  // Current reading
-  m_currentReadLabel = new QLabel("Current: --- A");
-  m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0e639c; padding: 4px;");
-  measurementLayout->addWidget(m_currentReadLabel);
-
-  // Refresh button
-  m_refreshButton = new QPushButton("🔄 Refresh Now");
+  m_refreshButton = new QPushButton("Refresh All");
   m_refreshButton->setStyleSheet(
     "QPushButton { background-color: #0e639c; }"
     "QPushButton:hover { background-color: #1177bb; }");
   connect(m_refreshButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onRefreshClicked);
-  measurementLayout->addWidget(m_refreshButton);
+  layout->addWidget(m_refreshButton);
 
-  layout->addWidget(measurementGroup);
+  rebuildMeasurementPanel();
+}
+
+QWidget* PowerSupplyControlPage::createChannelTab(int channel)
+{
+  QWidget* tabWidget = new QWidget();
+  QVBoxLayout* layout = new QVBoxLayout(tabWidget);
+  layout->setContentsMargins(8, 8, 8, 8);
+  layout->setSpacing(8);
+
+  ChannelControlWidgets controls;
+  controls.channel = channel;
+
+  // Output Control
+  QGroupBox* outputGroup = new QGroupBox("Output Control");
+  QHBoxLayout* outputLayout = new QHBoxLayout(outputGroup);
+  outputLayout->setContentsMargins(8, 16, 8, 8);
+
+  controls.outputOnButton = new QPushButton("OUTPUT ON");
+  controls.outputOnButton->setMinimumHeight(40);
+  controls.outputOnButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; font-weight: bold; }"
+    "QPushButton:hover { background-color: #2ecc71; }");
+  connect(controls.outputOnButton, &QPushButton::clicked, this, [this, channel]() {
+    onOutputOnClicked(channel);
+  });
+
+  controls.outputOffButton = new QPushButton("OUTPUT OFF");
+  controls.outputOffButton->setMinimumHeight(40);
+  controls.outputOffButton->setStyleSheet(
+    "QPushButton { background-color: #e74c3c; font-weight: bold; }"
+    "QPushButton:hover { background-color: #c0392b; }");
+  connect(controls.outputOffButton, &QPushButton::clicked, this, [this, channel]() {
+    onOutputOffClicked(channel);
+  });
+
+  outputLayout->addWidget(controls.outputOnButton);
+  outputLayout->addWidget(controls.outputOffButton);
+  layout->addWidget(outputGroup);
+
+  // Voltage & Current Settings
+  QGroupBox* settingsGroup = new QGroupBox("Voltage / Current");
+  QGridLayout* settingsLayout = new QGridLayout(settingsGroup);
+  settingsLayout->setContentsMargins(8, 16, 8, 8);
+  settingsLayout->setSpacing(6);
+
+  settingsLayout->addWidget(new QLabel("Voltage (V):"), 0, 0);
+  controls.voltageSpinBox = new QDoubleSpinBox();
+  controls.voltageSpinBox->setRange(0.0, 20.0);
+  controls.voltageSpinBox->setDecimals(2);
+  controls.voltageSpinBox->setSingleStep(0.1);
+  controls.voltageSpinBox->setValue(5.0);
+  settingsLayout->addWidget(controls.voltageSpinBox, 0, 1);
+
+  controls.setVoltageButton = new QPushButton("Set");
+  controls.setVoltageButton->setMinimumWidth(60);
+  connect(controls.setVoltageButton, &QPushButton::clicked, this, [this, channel]() {
+    onSetVoltageClicked(channel);
+  });
+  settingsLayout->addWidget(controls.setVoltageButton, 0, 2);
+
+  settingsLayout->addWidget(new QLabel("Current (A):"), 1, 0);
+  controls.currentSpinBox = new QDoubleSpinBox();
+  controls.currentSpinBox->setRange(0.0, 6.0);
+  controls.currentSpinBox->setDecimals(3);
+  controls.currentSpinBox->setSingleStep(0.1);
+  controls.currentSpinBox->setValue(1.0);
+  settingsLayout->addWidget(controls.currentSpinBox, 1, 1);
+
+  controls.setCurrentButton = new QPushButton("Set");
+  controls.setCurrentButton->setMinimumWidth(60);
+  connect(controls.setCurrentButton, &QPushButton::clicked, this, [this, channel]() {
+    onSetCurrentClicked(channel);
+  });
+  settingsLayout->addWidget(controls.setCurrentButton, 1, 2);
+
+  settingsLayout->setColumnStretch(1, 1);
+  layout->addWidget(settingsGroup);
+
+  // Protection Settings
+  QGroupBox* protectionGroup = new QGroupBox("Protection");
+  QGridLayout* protectionLayout = new QGridLayout(protectionGroup);
+  protectionLayout->setContentsMargins(8, 16, 8, 8);
+  protectionLayout->setSpacing(6);
+
+  protectionLayout->addWidget(new QLabel("OVP (V):"), 0, 0);
+  controls.ovpSpinBox = new QDoubleSpinBox();
+  controls.ovpSpinBox->setRange(0.0, 22.0);
+  controls.ovpSpinBox->setDecimals(2);
+  controls.ovpSpinBox->setValue(6.0);
+  protectionLayout->addWidget(controls.ovpSpinBox, 0, 1);
+
+  controls.setOVPButton = new QPushButton("Set");
+  controls.setOVPButton->setMinimumWidth(60);
+  controls.setOVPButton->setStyleSheet(
+    "QPushButton { background-color: #f39c12; }"
+    "QPushButton:hover { background-color: #e67e22; }");
+  connect(controls.setOVPButton, &QPushButton::clicked, this, [this, channel]() {
+    onSetOVPClicked(channel);
+  });
+  protectionLayout->addWidget(controls.setOVPButton, 0, 2);
+
+  protectionLayout->addWidget(new QLabel("OCP (A):"), 1, 0);
+  controls.ocpSpinBox = new QDoubleSpinBox();
+  controls.ocpSpinBox->setRange(0.0, 6.5);
+  controls.ocpSpinBox->setDecimals(3);
+  controls.ocpSpinBox->setValue(1.2);
+  protectionLayout->addWidget(controls.ocpSpinBox, 1, 1);
+
+  controls.setOCPButton = new QPushButton("Set");
+  controls.setOCPButton->setMinimumWidth(60);
+  controls.setOCPButton->setStyleSheet(
+    "QPushButton { background-color: #f39c12; }"
+    "QPushButton:hover { background-color: #e67e22; }");
+  connect(controls.setOCPButton, &QPushButton::clicked, this, [this, channel]() {
+    onSetOCPClicked(channel);
+  });
+  protectionLayout->addWidget(controls.setOCPButton, 1, 2);
+
+  protectionLayout->setColumnStretch(1, 1);
+  layout->addWidget(protectionGroup);
+
+  layout->addStretch();
+
+  m_channelControls.push_back(controls);
+  return tabWidget;
+}
+
+QWidget* PowerSupplyControlPage::createChannelMeasurementWidget(int channel)
+{
+  QGroupBox* group = new QGroupBox(QString("Channel %1").arg(channel));
+  group->setStyleSheet(
+    "QGroupBox { background-color: #252526; border: 1px solid #3f3f46; }"
+    "QGroupBox::title { color: #0e639c; }");
+
+  QVBoxLayout* layout = new QVBoxLayout(group);
+  layout->setContentsMargins(8, 16, 8, 8);
+  layout->setSpacing(4);
+
+  ChannelMeasurementWidgets widgets;
+  widgets.channel = channel;
+
+  widgets.outputStateLabel = new QLabel("Output: ---");
+  widgets.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #888888;");
+  layout->addWidget(widgets.outputStateLabel);
+
+  widgets.voltageLabel = new QLabel("V: --- V");
+  widgets.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;");
+  layout->addWidget(widgets.voltageLabel);
+
+  widgets.currentLabel = new QLabel("I: --- A");
+  widgets.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #3498db;");
+  layout->addWidget(widgets.currentLabel);
+
+  m_channelMeasurements.push_back(widgets);
+  return group;
+}
+
+void PowerSupplyControlPage::rebuildChannelTabs()
+{
+  // Clear existing tabs and controls
+  m_channelTabs->clear();
+  m_channelControls.clear();
+
+  // Create tabs for each channel
+  for (int i = 1; i <= m_currentChannelCount; i++) {
+    QWidget* tab = createChannelTab(i);
+    m_channelTabs->addTab(tab, QString("Ch %1").arg(i));
+  }
+}
+
+void PowerSupplyControlPage::rebuildMeasurementPanel()
+{
+  // Clear existing measurements
+  m_channelMeasurements.clear();
+
+  // Remove all widgets from layout
+  QLayoutItem* item;
+  while ((item = m_measurementLayout->takeAt(0)) != nullptr) {
+    if (item->widget()) {
+      delete item->widget();
+    }
+    delete item;
+  }
+
+  // Create measurement widgets for each channel
+  for (int i = 1; i <= m_currentChannelCount; i++) {
+    QWidget* widget = createChannelMeasurementWidget(i);
+    m_measurementLayout->addWidget(widget);
+  }
+
+  m_measurementLayout->addStretch();
 }
 
 void PowerSupplyControlPage::loadDevices()
@@ -429,7 +475,7 @@ void PowerSupplyControlPage::loadDevices()
 
   if (m_deviceList->count() == 0) {
     m_statusLabel->setText("No PSU devices configured");
-    m_statusLabel->setStyleSheet("font-size: 11px; color: #e74c3c; padding: 4px;");
+    m_statusLabel->setStyleSheet("font-size: 10px; color: #e74c3c; padding: 2px;");
   }
   else {
     m_deviceList->setCurrentRow(0);
@@ -438,17 +484,16 @@ void PowerSupplyControlPage::loadDevices()
 
 void PowerSupplyControlPage::updateDeviceList()
 {
-  // Update visual indicators for connected devices
   for (int i = 0; i < m_deviceList->count(); ++i) {
     QListWidgetItem* item = m_deviceList->item(i);
     QString deviceName = item->text();
 
     auto psu = m_psuManager->getPowerSupply(deviceName.toStdString());
     if (psu && psu->isConnected()) {
-      item->setForeground(QColor("#27ae60"));  // Green for connected
+      item->setForeground(QColor("#27ae60"));
     }
     else {
-      item->setForeground(QColor("#888888"));  // Gray for disconnected
+      item->setForeground(QColor("#888888"));
     }
   }
 }
@@ -457,10 +502,29 @@ void PowerSupplyControlPage::onDeviceSelected(int row)
 {
   if (row < 0) {
     m_currentDevice = "";
+    m_deviceInfoLabel->setText("Select a device");
     return;
   }
 
   m_currentDevice = m_deviceList->item(row)->text();
+
+  // Update device info display
+  auto info = m_psuManager->getDeviceInfo(m_currentDevice.toStdString());
+  QString infoText = QString("Type: %1\nIP: %2:%3\nChannels: %4")
+    .arg(QString::fromStdString(info.type))
+    .arg(QString::fromStdString(info.ip))
+    .arg(info.port)
+    .arg(info.channels);
+  m_deviceInfoLabel->setText(infoText);
+
+  // Update channel count and rebuild UI if needed
+  int newChannelCount = m_psuManager->getDeviceChannelCount(m_currentDevice.toStdString());
+  if (newChannelCount != m_currentChannelCount) {
+    m_currentChannelCount = newChannelCount;
+    rebuildChannelTabs();
+    rebuildMeasurementPanel();
+  }
+
   updateConnectionStatus();
 }
 
@@ -506,125 +570,124 @@ void PowerSupplyControlPage::onDisconnectClicked()
   updateDeviceList();
 }
 
-void PowerSupplyControlPage::onOutputOnClicked()
+void PowerSupplyControlPage::onOutputOnClicked(int channel)
 {
-  std::cout << "[PowerSupplyControlPage] Output ON button clicked for device: " << m_currentDevice.toStdString() << std::endl;
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) {
-    showError("Device not found");
-    std::cerr << "[PowerSupplyControlPage] PSU device not found!" << std::endl;
-    return;
-  }
-
-  if (!psu->isConnected()) {
+  if (!psu || !psu->isConnected()) {
     showError("Device not connected");
-    std::cerr << "[PowerSupplyControlPage] PSU device not connected!" << std::endl;
     return;
   }
 
-  int channel = getSelectedChannel();
-  std::cout << "[PowerSupplyControlPage] Sending OUTPUT ON command for channel " << channel << "..." << std::endl;
   if (psu->setOutputOn(channel)) {
-    showSuccess(QString("Output turned ON (Ch %1)").arg(channel));
-    std::cout << "[PowerSupplyControlPage] Output ON successful" << std::endl;
+    showSuccess(QString("Ch %1: Output ON").arg(channel));
   }
   else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
-    std::cerr << "[PowerSupplyControlPage] Output ON failed: " << psu->getLastError() << std::endl;
+    showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
   }
 }
 
-void PowerSupplyControlPage::onOutputOffClicked()
+void PowerSupplyControlPage::onOutputOffClicked(int channel)
 {
-  std::cout << "[PowerSupplyControlPage] Output OFF button clicked for device: " << m_currentDevice.toStdString() << std::endl;
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) {
-    showError("Device not found");
-    std::cerr << "[PowerSupplyControlPage] PSU device not found!" << std::endl;
-    return;
-  }
-
-  if (!psu->isConnected()) {
+  if (!psu || !psu->isConnected()) {
     showError("Device not connected");
-    std::cerr << "[PowerSupplyControlPage] PSU device not connected!" << std::endl;
     return;
   }
 
-  int channel = getSelectedChannel();
-  std::cout << "[PowerSupplyControlPage] Sending OUTPUT OFF command for channel " << channel << "..." << std::endl;
   if (psu->setOutputOff(channel)) {
-    showSuccess(QString("Output turned OFF (Ch %1)").arg(channel));
-    std::cout << "[PowerSupplyControlPage] Output OFF successful" << std::endl;
+    showSuccess(QString("Ch %1: Output OFF").arg(channel));
   }
   else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
-    std::cerr << "[PowerSupplyControlPage] Output OFF failed: " << psu->getLastError() << std::endl;
+    showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
   }
 }
 
-void PowerSupplyControlPage::onSetVoltageClicked()
+void PowerSupplyControlPage::onSetVoltageClicked(int channel)
 {
-  int channel = getSelectedChannel();
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
-
-  double voltage = m_voltageSpinBox->value();
-  if (psu->setVoltage(voltage, channel)) {
-    showSuccess(QString("Voltage → %1 V (Ch %2)").arg(voltage, 0, 'f', 2).arg(channel));
+  if (!psu || !psu->isConnected()) {
+    showError("Device not connected");
+    return;
   }
-  else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
+
+  // Find the control widgets for this channel
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double voltage = ctrl.voltageSpinBox->value();
+      if (psu->setVoltage(voltage, channel)) {
+        showSuccess(QString("Ch %1: Voltage -> %2 V").arg(channel).arg(voltage, 0, 'f', 2));
+      }
+      else {
+        showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
+      }
+      break;
+    }
   }
 }
 
-void PowerSupplyControlPage::onSetCurrentClicked()
+void PowerSupplyControlPage::onSetCurrentClicked(int channel)
 {
-  int channel = getSelectedChannel();
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
-
-  double current = m_currentSpinBox->value();
-  if (psu->setCurrent(current, channel)) {
-    showSuccess(QString("Current → %1 A (Ch %2)").arg(current, 0, 'f', 3).arg(channel));
+  if (!psu || !psu->isConnected()) {
+    showError("Device not connected");
+    return;
   }
-  else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
+
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double current = ctrl.currentSpinBox->value();
+      if (psu->setCurrent(current, channel)) {
+        showSuccess(QString("Ch %1: Current -> %2 A").arg(channel).arg(current, 0, 'f', 3));
+      }
+      else {
+        showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
+      }
+      break;
+    }
   }
 }
 
-void PowerSupplyControlPage::onSetOVPClicked()
+void PowerSupplyControlPage::onSetOVPClicked(int channel)
 {
-  int channel = getSelectedChannel();
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
-
-  double ovp = m_ovpSpinBox->value();
-  if (psu->setOVP(ovp, channel)) {
-    showSuccess(QString("OVP → %1 V (Ch %2)").arg(ovp, 0, 'f', 2).arg(channel));
+  if (!psu || !psu->isConnected()) {
+    showError("Device not connected");
+    return;
   }
-  else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
+
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double ovp = ctrl.ovpSpinBox->value();
+      if (psu->setOVP(ovp, channel)) {
+        showSuccess(QString("Ch %1: OVP -> %2 V").arg(channel).arg(ovp, 0, 'f', 2));
+      }
+      else {
+        showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
+      }
+      break;
+    }
   }
 }
 
-void PowerSupplyControlPage::onSetOCPClicked()
+void PowerSupplyControlPage::onSetOCPClicked(int channel)
 {
-  int channel = getSelectedChannel();
-
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) return;
-
-  double ocp = m_ocpSpinBox->value();
-  if (psu->setOCP(ocp, channel)) {
-    showSuccess(QString("OCP → %1 A (Ch %2)").arg(ocp, 0, 'f', 3).arg(channel));
+  if (!psu || !psu->isConnected()) {
+    showError("Device not connected");
+    return;
   }
-  else {
-    showError("Failed: " + QString::fromStdString(psu->getLastError()));
+
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double ocp = ctrl.ocpSpinBox->value();
+      if (psu->setOCP(ocp, channel)) {
+        showSuccess(QString("Ch %1: OCP -> %2 A").arg(channel).arg(ocp, 0, 'f', 3));
+      }
+      else {
+        showError(QString("Ch %1: Failed - %2").arg(channel).arg(QString::fromStdString(psu->getLastError())));
+      }
+      break;
+    }
   }
 }
 
@@ -644,24 +707,40 @@ void PowerSupplyControlPage::updateMeasurements()
     return;
   }
 
-  int channel = getSelectedChannel();
-  double voltage = psu->readVoltage(channel);
-  double current = psu->readCurrent(channel);
+  // Update all channel measurements
+  for (auto& meas : m_channelMeasurements) {
+    // Read output state
+    bool outputOn = psu->readOutputState(meas.channel);
+    if (outputOn) {
+      meas.outputStateLabel->setText("Output: ON");
+      meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #27ae60;");
+    }
+    else {
+      meas.outputStateLabel->setText("Output: OFF");
+      meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #e74c3c;");
+    }
 
-  if (voltage >= 0) {
-    m_voltageReadLabel->setText(QString("Voltage: %1 V (Ch %2)").arg(voltage, 0, 'f', 3).arg(channel));
-  }
-  else {
-    m_voltageReadLabel->setText("Voltage: Error");
-    m_voltageReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #e74c3c; padding: 4px;");
-  }
+    // Read voltage
+    double voltage = psu->readVoltage(meas.channel);
+    if (voltage >= 0) {
+      meas.voltageLabel->setText(QString("V: %1 V").arg(voltage, 0, 'f', 3));
+      meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;");
+    }
+    else {
+      meas.voltageLabel->setText("V: Error");
+      meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+    }
 
-  if (current >= 0) {
-    m_currentReadLabel->setText(QString("Current: %1 A (Ch %2)").arg(current, 0, 'f', 4).arg(channel));
-  }
-  else {
-    m_currentReadLabel->setText("Current: Error");
-    m_currentReadLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #e74c3c; padding: 4px;");
+    // Read current
+    double current = psu->readCurrent(meas.channel);
+    if (current >= 0) {
+      meas.currentLabel->setText(QString("I: %1 A").arg(current, 0, 'f', 4));
+      meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #3498db;");
+    }
+    else {
+      meas.currentLabel->setText("I: Error");
+      meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+    }
   }
 }
 
@@ -671,8 +750,8 @@ void PowerSupplyControlPage::updateConnectionStatus()
     m_connectButton->setEnabled(false);
     m_disconnectButton->setEnabled(false);
     m_connectionStatus->setText("● No device selected");
-    m_connectionStatus->setStyleSheet("color: #666666; font-size: 12px; padding: 4px;");
-    m_controlPanel->setEnabled(false);
+    m_connectionStatus->setStyleSheet("color: #666666; font-size: 11px; padding: 2px;");
+    m_middlePanel->setEnabled(false);
     return;
   }
 
@@ -688,84 +767,38 @@ void PowerSupplyControlPage::updateConnectionStatus()
 
   if (connected) {
     m_connectionStatus->setText("● Connected");
-    m_connectionStatus->setStyleSheet("color: #27ae60; font-size: 12px; font-weight: bold; padding: 4px;");
-    m_controlPanel->setEnabled(true);
-    updateChannelSelector();
+    m_connectionStatus->setStyleSheet("color: #27ae60; font-size: 11px; font-weight: bold; padding: 2px;");
+    m_middlePanel->setEnabled(true);
   }
   else {
     m_connectionStatus->setText("● Disconnected");
-    m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 12px; font-weight: bold; padding: 4px;");
-    m_controlPanel->setEnabled(false);
+    m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold; padding: 2px;");
+    m_middlePanel->setEnabled(false);
   }
-}
-
-void PowerSupplyControlPage::updateChannelSelector()
-{
-  // Find the channel group widget
-  QGroupBox* channelGroup = m_controlPanel->findChild<QGroupBox*>("channelGroup");
-  if (!channelGroup) {
-    return;
-  }
-
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu) {
-    channelGroup->setVisible(false);
-    return;
-  }
-
-  // Get channel count from config
-  int channelCount = m_psuManager->getDeviceChannelCount(m_currentDevice.toStdString());
-
-  // Show channel selector only for multi-channel devices (> 1 channel)
-  bool isMultiChannel = (channelCount > 1);
-  channelGroup->setVisible(isMultiChannel);
-
-  if (isMultiChannel) {
-    // Update channel selector items to match actual channel count
-    m_channelSelector->clear();
-    for (int i = 1; i <= channelCount; i++) {
-      m_channelSelector->addItem(QString("Channel %1").arg(i), i);
-    }
-    m_channelSelector->setCurrentIndex(0);
-
-    std::cout << "[PowerSupplyControlPage] Multi-channel device detected: " << m_currentDevice.toStdString()
-              << " (" << channelCount << " channels)" << std::endl;
-  }
-}
-
-int PowerSupplyControlPage::getSelectedChannel() const
-{
-  if (!m_channelSelector) {
-    return 1; // Default to channel 1
-  }
-  return m_channelSelector->currentData().toInt();
 }
 
 void PowerSupplyControlPage::showError(const QString& message)
 {
-  m_statusLabel->setText("❌ " + message);
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #e74c3c; font-weight: bold; padding: 4px;");
+  m_statusLabel->setText("X " + message);
+  m_statusLabel->setStyleSheet("font-size: 10px; color: #e74c3c; font-weight: bold; padding: 2px;");
   std::cerr << "[PowerSupplyControlPage] " << message.toStdString() << std::endl;
 }
 
 void PowerSupplyControlPage::showSuccess(const QString& message)
 {
-  m_statusLabel->setText("✓ " + message);
-  m_statusLabel->setStyleSheet("font-size: 11px; color: #27ae60; padding: 4px;");
+  m_statusLabel->setText("OK " + message);
+  m_statusLabel->setStyleSheet("font-size: 10px; color: #27ae60; padding: 2px;");
   std::cout << "[PowerSupplyControlPage] " << message.toStdString() << std::endl;
 }
 
-// Visibility management - stop polling when hidden
 void PowerSupplyControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
-  // Resume auto-refresh if we have a connected device
   if (!m_currentDevice.isEmpty()) {
     auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
     if (psu && psu->isConnected()) {
       m_refreshTimer->start(2000);
-      std::cout << "[PowerSupplyControlPage] Page shown - resuming auto-refresh" << std::endl;
     }
   }
 }
@@ -773,8 +806,5 @@ void PowerSupplyControlPage::showEvent(QShowEvent* event)
 void PowerSupplyControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
-
-  // Stop auto-refresh to avoid unnecessary SCPI commands
   m_refreshTimer->stop();
-  std::cout << "[PowerSupplyControlPage] Page hidden - stopped auto-refresh" << std::endl;
 }
