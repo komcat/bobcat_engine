@@ -3,6 +3,7 @@
 
 #include "IEziIODevice.h"
 #include "EziIODevice.h"
+#include "WagoIODevice.h"
 #include "EziIO_Types.h"
 #include <string>
 #include <vector>
@@ -12,9 +13,9 @@
 #include <atomic>
 
 /**
- * @brief Manages multiple EziIO devices
+ * @brief Manages multiple IO devices (EziIO and WAGO)
  *
- * Provides centralized control and monitoring of all EziIO devices.
+ * Provides centralized control and monitoring of all IO devices.
  * Supports automatic polling, observer notifications, and JSON configuration.
  */
 class EziIOManager {
@@ -33,6 +34,8 @@ public:
   // DEVICE MANAGEMENT
   // ============================================================================
   bool AddDevice(const EziIODeviceConfig& config);
+  bool AddWagoDevice(const EziIODeviceConfig& config);
+  bool RegisterDevice(std::shared_ptr<IEziIODevice> device);
   bool RemoveDevice(const std::string& deviceName);
   bool HasDevice(const std::string& deviceName) const;
 

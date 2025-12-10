@@ -950,6 +950,7 @@ if(EZIIO_FOUND)
     list(APPEND SOURCES
         include/IO/EziIODevice.cpp
         include/IO/EziIOManager.cpp
+        include/IO/WagoIODevice.cpp
         include/IO/QuickOutputManager.cpp
         include/IO/QuickOutput_JsonLoader.cpp
     )
@@ -957,12 +958,13 @@ if(EZIIO_FOUND)
         include/IO/EziIO_Types.h
         include/IO/IEziIODevice.h
         include/IO/EziIODevice.h
+        include/IO/WagoIODevice.h
         include/IO/EziIOManager.h
         include/IO/EziIO_JsonLoader.h
         include/IO/QuickOutputManager.h
         include/IO/QuickOutput_JsonLoader.h
     )
-    message(STATUS "EziIO support enabled")
+    message(STATUS "EziIO support enabled (includes WAGO Modbus TCP adapter)")
 else()
     message(STATUS "EziIO support disabled - library not found")
 endif()

@@ -1,4 +1,4 @@
-﻿// EziIO_JsonLoader.h - JSON configuration loader with pin name mapping
+// EziIO_JsonLoader.h - JSON configuration loader with pin name mapping
 #pragma once
 
 #include "EziIOManager.h"
@@ -58,22 +58,33 @@ public:
       json j;
       file >> j;
 
-      // Parse device configurations
-      std::vector<EziIODeviceConfig> configs = ParseJson(j);
-
-      // Add devices to manager and apply pin name mappings
       int addedCount = 0;
-      for (const auto& config : configs) {
-        if (manager.AddDevice(config)) {
-          // Apply pin name mappings from ioConfig
-          ApplyPinMappings(manager, j, config.Name);
-          addedCount++;
+
+      // Load WAGO devices first (if present)
+      if (j.contains("wago") && j["wago"].is_array()) {
+        std::cout << "[EziIOJsonLoader] Found WAGO device section" << std::endl;
+        std::vector<EziIODeviceConfig> wagoConfigs = ParseJsonArray(j["wago"], "wago");
+        for (const auto& config : wagoConfigs) {
+          if (manager.AddWagoDevice(config)) {
+            ApplyPinMappingsFromArray(manager, j["wago"], config.Name);
+            addedCount++;
+          }
         }
       }
 
-      std::cout << "[EziIOJsonLoader] Successfully loaded " << addedCount
-        << "/" << configs.size() << " devices" << std::endl;
+      // Load EziIO devices (if present)
+      if (j.contains("eziio") && j["eziio"].is_array()) {
+        std::cout << "[EziIOJsonLoader] Found EziIO device section" << std::endl;
+        std::vector<EziIODeviceConfig> eziioConfigs = ParseJsonArray(j["eziio"], "eziio");
+        for (const auto& config : eziioConfigs) {
+          if (manager.AddDevice(config)) {
+            ApplyPinMappingsFromArray(manager, j["eziio"], config.Name);
+            addedCount++;
+          }
+        }
+      }
 
+      std::cout << "[EziIOJsonLoader] Successfully loaded " << addedCount << " devices" << std::endl;
       return addedCount;
 
     }
@@ -88,7 +99,64 @@ public:
   }
 
   /**
-   * @brief Parse JSON and extract device configurations
+   * @brief Parse a JSON array and extract device configurations
+   * @param arr JSON array of devices
+   * @param deviceType Type name for logging (e.g., "wago", "eziio")
+   * @return Vector of device configurations
+   */
+  static std::vector<EziIODeviceConfig> ParseJsonArray(const json& arr, const std::string& deviceType) {
+    std::vector<EziIODeviceConfig> configs;
+
+    for (const auto& deviceJson : arr) {
+      try {
+        EziIODeviceConfig config;
+        config.DeviceId = deviceJson.at("deviceId").get<int>();
+        config.Name = deviceJson.at("name").get<std::string>();
+        config.IpAddress = deviceJson.at("ip").get<std::string>();
+        config.InputCount = deviceJson.at("inputCount").get<int>();
+        config.OutputCount = deviceJson.at("outputCount").get<int>();
+        config.Enabled = deviceJson.value("enabled", true);
+        configs.push_back(config);
+
+        std::cout << "[EziIOJsonLoader] Parsed " << deviceType << " device: " << config.Name
+          << " (ID: " << config.DeviceId << ", IP: " << config.IpAddress << ")" << std::endl;
+      }
+      catch (const json::exception& e) {
+        std::cerr << "[EziIOJsonLoader] Error parsing " << deviceType << " device: " << e.what() << std::endl;
+      }
+    }
+    return configs;
+  }
+
+  /**
+   * @brief Apply pin name mappings from a JSON array to device
+   */
+  static void ApplyPinMappingsFromArray(EziIOManager& manager, const json& arr, const std::string& deviceName) {
+    for (const auto& deviceJson : arr) {
+      if (deviceJson["name"].get<std::string>() != deviceName) continue;
+      if (!deviceJson.contains("ioConfig")) return;
+
+      const auto& ioConfig = deviceJson["ioConfig"];
+      IEziIODevice* device = manager.GetDevice(deviceName);
+      if (!device) return;
+
+      if (ioConfig.contains("inputs") && ioConfig["inputs"].is_array()) {
+        for (const auto& cfg : ioConfig["inputs"]) {
+          device->MapInputPinName(cfg.at("name").get<std::string>(), cfg.at("pin").get<int>());
+        }
+      }
+      if (ioConfig.contains("outputs") && ioConfig["outputs"].is_array()) {
+        for (const auto& cfg : ioConfig["outputs"]) {
+          device->MapOutputPinName(cfg.at("name").get<std::string>(), cfg.at("pin").get<int>());
+        }
+      }
+      std::cout << "[EziIOJsonLoader] Applied pin mappings to " << deviceName << std::endl;
+      return;
+    }
+  }
+
+  /**
+   * @brief Parse JSON and extract device configurations (legacy)
    * @param j JSON object
    * @return Vector of device configurations
    */

@@ -1,4 +1,84 @@
 {
+  "wago": [
+    {
+      "deviceId": 10,
+      "name": "wago1",
+      "ip": "192.168.0.13",
+      "inputCount": 8,
+      "outputCount": 8,
+      "enabled": true,
+      "ioConfig": {
+        "inputs": [
+          {
+            "name": "WagoIn0",
+            "pin": 0
+          },
+          {
+            "name": "WagoIn1",
+            "pin": 1
+          },
+          {
+            "name": "WagoIn2",
+            "pin": 2
+          },
+          {
+            "name": "WagoIn3",
+            "pin": 3
+          },
+          {
+            "name": "WagoIn4",
+            "pin": 4
+          },
+          {
+            "name": "WagoIn5",
+            "pin": 5
+          },
+          {
+            "name": "WagoIn6",
+            "pin": 6
+          },
+          {
+            "name": "WagoIn7",
+            "pin": 7
+          }
+        ],
+        "outputs": [
+          {
+            "name": "WagoOut0",
+            "pin": 0
+          },
+          {
+            "name": "WagoOut1",
+            "pin": 1
+          },
+          {
+            "name": "WagoOut2",
+            "pin": 2
+          },
+          {
+            "name": "WagoOut3",
+            "pin": 3
+          },
+          {
+            "name": "WagoOut4",
+            "pin": 4
+          },
+          {
+            "name": "WagoOut5",
+            "pin": 5
+          },
+          {
+            "name": "WagoOut6",
+            "pin": 6
+          },
+          {
+            "name": "WagoOut7",
+            "pin": 7
+          }
+        ]
+      }
+    }
+  ],
   "eziio": [
     {
       "deviceId": 0,

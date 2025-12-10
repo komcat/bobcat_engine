@@ -122,6 +122,70 @@ bool EziIOManager::AddDevice(const EziIODeviceConfig& config) {
   return true;
 }
 
+
+bool EziIOManager::AddWagoDevice(const EziIODeviceConfig& config) {
+  // Check if device with this name already exists
+  if (m_deviceNameMap.find(config.Name) != m_deviceNameMap.end()) {
+    std::cerr << "[EziIOManager] Device '" << config.Name << "' already exists" << std::endl;
+    return false;
+  }
+
+  // Check if device with this ID already exists
+  if (m_deviceIdMap.find(config.DeviceId) != m_deviceIdMap.end()) {
+    std::cerr << "[EziIOManager] Device ID " << config.DeviceId << " already exists" << std::endl;
+    return false;
+  }
+
+  // Create new WAGO device
+  auto device = std::make_shared<WagoIODevice>(config);
+
+  // Add to collections
+  m_devices.push_back(device);
+  m_deviceNameMap[config.Name] = device;
+  m_deviceIdMap[config.DeviceId] = device;
+
+  if (m_enableLogging) {
+    std::cout << "[EziIOManager] Added WAGO device: " << config.Name
+      << " (ID: " << config.DeviceId << ", IP: " << config.IpAddress << ")" << std::endl;
+  }
+
+  return true;
+}
+
+bool EziIOManager::RegisterDevice(std::shared_ptr<IEziIODevice> device) {
+  if (!device) {
+    std::cerr << "[EziIOManager] Cannot register null device" << std::endl;
+    return false;
+  }
+
+  const std::string& name = device->GetName();
+  int deviceId = device->GetDeviceId();
+
+  // Check if device with this name already exists
+  if (m_deviceNameMap.find(name) != m_deviceNameMap.end()) {
+    std::cerr << "[EziIOManager] Device '" << name << "' already exists" << std::endl;
+    return false;
+  }
+
+  // Check if device with this ID already exists
+  if (m_deviceIdMap.find(deviceId) != m_deviceIdMap.end()) {
+    std::cerr << "[EziIOManager] Device ID " << deviceId << " already exists" << std::endl;
+    return false;
+  }
+
+  // Add to collections
+  m_devices.push_back(device);
+  m_deviceNameMap[name] = device;
+  m_deviceIdMap[deviceId] = device;
+
+  if (m_enableLogging) {
+    std::cout << "[EziIOManager] Registered device: " << name
+      << " (ID: " << deviceId << ", IP: " << device->GetIpAddress() << ")" << std::endl;
+  }
+
+  return true;
+}
+
 bool EziIOManager::RemoveDevice(const std::string& deviceName) {
   auto it = m_deviceNameMap.find(deviceName);
   if (it == m_deviceNameMap.end()) {
