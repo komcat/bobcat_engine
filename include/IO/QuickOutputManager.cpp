@@ -91,8 +91,8 @@ EziIOError QuickOutputManager::SetOutput(size_t index, bool state)
 
   // Force a read to update the cached status
   if (error == EziIOError::SUCCESS) {
-    uint32_t outputs = 0;
-    uint32_t status = 0;
+    uint64_t outputs = 0;
+    uint64_t status = 0;
     m_ioManager->ReadOutputs(pinDef.deviceName, outputs, status);
   }
 
@@ -147,8 +147,8 @@ void QuickOutputManager::TurnOffAll()
 
       // Refresh device status if not done yet
       if (!alreadyRefreshed) {
-        uint32_t outputs = 0;
-        uint32_t status = 0;
+        uint64_t outputs = 0;
+        uint64_t status = 0;
         m_ioManager->ReadOutputs(pinDef.deviceName, outputs, status);
         refreshedDevices.push_back(pinDef.deviceName);
       }
@@ -170,8 +170,8 @@ OutputPinStatus QuickOutputManager::GetPinStatus(size_t index) const
   }
 
   // Force a fresh read from the device (not cached)
-  uint32_t outputs = 0;
-  uint32_t status = 0;
+  uint64_t outputs = 0;
+  uint64_t status = 0;
   EziIOError error = m_ioManager->ReadOutputs(pinDef.deviceName, outputs, status);
 
   if (error != EziIOError::SUCCESS) {
@@ -190,7 +190,7 @@ OutputPinStatus QuickOutputManager::GetPinStatus(size_t index) const
   int bitOffset = (outputCount > 8) ? 16 : 8;
 
   // Check if bit is set (with proper offset)
-  bool isOn = (outputs & (1U << (bitOffset + pinNumber))) != 0;
+  bool isOn = (outputs & (1ULL << (bitOffset + pinNumber))) != 0;
   return OutputPinStatus(pinDef.displayName, isOn, true);
 }
 
@@ -220,8 +220,8 @@ std::vector<OutputPinStatus> QuickOutputManager::GetAllPinStatuses() const
 
     // Read the device if we haven't yet
     if (needsRead) {
-      uint32_t outputs = 0;
-      uint32_t status = 0;
+      uint64_t outputs = 0;
+      uint64_t status = 0;
       m_ioManager->ReadOutputs(pinDef.deviceName, outputs, status);
       readDevices.push_back(pinDef.deviceName);
     }
@@ -240,8 +240,8 @@ std::vector<OutputPinStatus> QuickOutputManager::GetAllPinStatuses() const
       continue;
     }
 
-    uint32_t outputs = 0;
-    uint32_t status = 0;
+    uint64_t outputs = 0;
+    uint64_t status = 0;
     EziIOError error = m_ioManager->GetLastOutputStatus(pinDef.deviceName, outputs, status);
 
     if (error != EziIOError::SUCCESS) {
@@ -254,7 +254,7 @@ std::vector<OutputPinStatus> QuickOutputManager::GetAllPinStatuses() const
     int bitOffset = (outputCount > 8) ? 16 : 8;
 
     // Check if bit is set (with proper offset)
-    bool isOn = (outputs & (1U << (bitOffset + pinNumber))) != 0;
+    bool isOn = (outputs & (1ULL << (bitOffset + pinNumber))) != 0;
     statuses.push_back(OutputPinStatus(pinDef.displayName, isOn, true));
   }
 
@@ -281,8 +281,8 @@ void QuickOutputManager::RefreshAllStatuses()
     }
 
     if (!alreadyRead) {
-      uint32_t outputs = 0;
-      uint32_t status = 0;
+      uint64_t outputs = 0;
+      uint64_t status = 0;
       m_ioManager->ReadOutputs(pinDef.deviceName, outputs, status);
       devicesRead.push_back(pinDef.deviceName);
     }

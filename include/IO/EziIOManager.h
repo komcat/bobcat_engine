@@ -53,18 +53,18 @@ public:
   int ConnectEnabledDevices();
 
   // ============================================================================
-  // INPUT OPERATIONS
+  // INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadInputs(const std::string& deviceName, uint32_t& inputs, uint32_t& latch);
-  EziIOError GetLastInputStatus(const std::string& deviceName, uint32_t& inputs, uint32_t& latch);
-  EziIOError ClearLatch(const std::string& deviceName, uint32_t latchMask);
+  EziIOError ReadInputs(const std::string& deviceName, uint64_t& inputs, uint64_t& latch);
+  EziIOError GetLastInputStatus(const std::string& deviceName, uint64_t& inputs, uint64_t& latch);
+  EziIOError ClearLatch(const std::string& deviceName, uint64_t latchMask);
 
   // ============================================================================
-  // OUTPUT OPERATIONS
+  // OUTPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadOutputs(const std::string& deviceName, uint32_t& outputs, uint32_t& status);
-  EziIOError GetLastOutputStatus(const std::string& deviceName, uint32_t& outputs, uint32_t& status);
-  EziIOError SetOutputs(const std::string& deviceName, uint32_t setMask, uint32_t clearMask);
+  EziIOError ReadOutputs(const std::string& deviceName, uint64_t& outputs, uint64_t& status);
+  EziIOError GetLastOutputStatus(const std::string& deviceName, uint64_t& outputs, uint64_t& status);
+  EziIOError SetOutputs(const std::string& deviceName, uint64_t setMask, uint64_t clearMask);
   EziIOError SetOutput(const std::string& deviceName, int pin, bool state);
 
   // Pin name convenience methods

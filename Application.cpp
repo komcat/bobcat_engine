@@ -667,9 +667,9 @@ void Application::testIOCommands()
 
   // Test 4: Verify output status
   m_logManager->Info("Test 3: Verifying output status...", "IO Test");
-  uint32_t outputs = 0, status = 0;
+  uint64_t outputs = 0, status = 0;
   if (m_ioManager->ReadOutputs("IOBottom", outputs, status) == EziIOError::SUCCESS) {
-    bool vacuum_state = (outputs & (1U << 10)) != 0;  // Pin 10
+    bool vacuum_state = (outputs & (1ULL << 10)) != 0;  // Pin 10
     m_logManager->Info(
       "Vacuum_Base current state: " + std::string(vacuum_state ? "ON" : "OFF"),
       "IO Test"

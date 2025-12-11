@@ -24,18 +24,18 @@ public:
   virtual bool IsConnected() const = 0;
 
   // ============================================================================
-  // INPUT OPERATIONS
+  // INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  virtual EziIOError ReadInputs(uint32_t& inputs, uint32_t& latch) = 0;
-  virtual EziIOError GetLastInputStatus(uint32_t& inputs, uint32_t& latch) = 0;
-  virtual EziIOError ClearLatch(uint32_t latchMask) = 0;
+  virtual EziIOError ReadInputs(uint64_t& inputs, uint64_t& latch) = 0;
+  virtual EziIOError GetLastInputStatus(uint64_t& inputs, uint64_t& latch) = 0;
+  virtual EziIOError ClearLatch(uint64_t latchMask) = 0;
 
   // ============================================================================
-  // OUTPUT OPERATIONS
+  // OUTPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  virtual EziIOError ReadOutputs(uint32_t& outputs, uint32_t& status) = 0;
-  virtual EziIOError GetLastOutputStatus(uint32_t& outputs, uint32_t& status) = 0;
-  virtual EziIOError SetOutputs(uint32_t setMask, uint32_t clearMask) = 0;
+  virtual EziIOError ReadOutputs(uint64_t& outputs, uint64_t& status) = 0;
+  virtual EziIOError GetLastOutputStatus(uint64_t& outputs, uint64_t& status) = 0;
+  virtual EziIOError SetOutputs(uint64_t setMask, uint64_t clearMask) = 0;
   virtual EziIOError SetOutput(int pin, bool state) = 0;
 
   // ============================================================================

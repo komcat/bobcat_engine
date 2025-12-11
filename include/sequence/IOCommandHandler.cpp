@@ -248,7 +248,7 @@ bool IOCommandHandler::ExecuteCommand(
   // READ ALL INPUTS
   // ============================================================================
   else if (methodName == "ReadInputs") {
-    uint32_t inputs = 0, latch = 0;
+    uint64_t inputs = 0, latch = 0;
 
     EziIOError result = ioManager->ReadInputs(deviceName, inputs, latch);
 
@@ -272,7 +272,7 @@ bool IOCommandHandler::ExecuteCommand(
   // READ ALL OUTPUTS
   // ============================================================================
   else if (methodName == "ReadOutputs") {
-    uint32_t outputs = 0, status = 0;
+    uint64_t outputs = 0, status = 0;
 
     EziIOError result = ioManager->ReadOutputs(deviceName, outputs, status);
 

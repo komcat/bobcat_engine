@@ -6,19 +6,19 @@
 #include <iostream>
 
 // ============================================================================
-// STATIC PIN MASKS
+// STATIC PIN MASKS (uint64_t for 48+ I/O support)
 // ============================================================================
 
-const uint32_t EziIODevice::OUTPUT_PIN_MASKS_16[16] = {
-  0x10000, 0x20000, 0x40000, 0x80000,
-  0x100000, 0x200000, 0x400000, 0x800000,
-  0x1000000, 0x2000000, 0x4000000, 0x8000000,
-  0x10000000, 0x20000000, 0x40000000, 0x80000000
+const uint64_t EziIODevice::OUTPUT_PIN_MASKS_16[16] = {
+  0x10000ULL, 0x20000ULL, 0x40000ULL, 0x80000ULL,
+  0x100000ULL, 0x200000ULL, 0x400000ULL, 0x800000ULL,
+  0x1000000ULL, 0x2000000ULL, 0x4000000ULL, 0x8000000ULL,
+  0x10000000ULL, 0x20000000ULL, 0x40000000ULL, 0x80000000ULL
 };
 
-const uint32_t EziIODevice::OUTPUT_PIN_MASKS_8[8] = {
-  0x100, 0x200, 0x400, 0x800,
-  0x1000, 0x2000, 0x4000, 0x8000
+const uint64_t EziIODevice::OUTPUT_PIN_MASKS_8[8] = {
+  0x100ULL, 0x200ULL, 0x400ULL, 0x800ULL,
+  0x1000ULL, 0x2000ULL, 0x4000ULL, 0x8000ULL
 };
 
 // ============================================================================
@@ -85,7 +85,7 @@ bool EziIODevice::Disconnect() {
 // INPUT OPERATIONS
 // ============================================================================
 
-EziIOError EziIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
+EziIOError EziIODevice::ReadInputs(uint64_t& inputs, uint64_t& latch) {
   if (!m_isConnected) {
     std::cerr << "[EziIODevice] " << m_config.Name << " not connected" << std::endl;
     return EziIOError::DEVICE_DISCONNECTED;
@@ -97,8 +97,8 @@ EziIOError EziIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
   int result = PE::FAS_GetInput(m_config.DeviceId, &temp_inputs, &temp_latch);
 
   if (result == FMM_OK) {
-    inputs = static_cast<uint32_t>(temp_inputs);
-    latch = static_cast<uint32_t>(temp_latch);
+    inputs = static_cast<uint64_t>(temp_inputs);
+    latch = static_cast<uint64_t>(temp_latch);
 
     // Update cached status
     {
@@ -116,14 +116,14 @@ EziIOError EziIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
   return EziIOError::OPERATION_FAILED;
 }
 
-EziIOError EziIODevice::GetLastInputStatus(uint32_t& inputs, uint32_t& latch) {
+EziIOError EziIODevice::GetLastInputStatus(uint64_t& inputs, uint64_t& latch) {
   std::lock_guard<std::mutex> lock(m_statusMutex);
   inputs = m_lastStatus.Inputs;
   latch = m_lastStatus.Latch;
   return m_lastStatus.Valid ? EziIOError::SUCCESS : EziIOError::OPERATION_FAILED;
 }
 
-EziIOError EziIODevice::ClearLatch(uint32_t latchMask) {
+EziIOError EziIODevice::ClearLatch(uint64_t latchMask) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
@@ -144,7 +144,7 @@ EziIOError EziIODevice::ClearLatch(uint32_t latchMask) {
 // OUTPUT OPERATIONS
 // ============================================================================
 
-EziIOError EziIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
+EziIOError EziIODevice::ReadOutputs(uint64_t& outputs, uint64_t& status) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
@@ -155,8 +155,8 @@ EziIOError EziIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
   int result = PE::FAS_GetOutput(m_config.DeviceId, &temp_outputs, &temp_status);
 
   if (result == FMM_OK) {
-    outputs = static_cast<uint32_t>(temp_outputs);
-    status = static_cast<uint32_t>(temp_status);
+    outputs = static_cast<uint64_t>(temp_outputs);
+    status = static_cast<uint64_t>(temp_status);
 
     // Update cached status
     {
@@ -173,14 +173,14 @@ EziIOError EziIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
   return EziIOError::OPERATION_FAILED;
 }
 
-EziIOError EziIODevice::GetLastOutputStatus(uint32_t& outputs, uint32_t& status) {
+EziIOError EziIODevice::GetLastOutputStatus(uint64_t& outputs, uint64_t& status) {
   std::lock_guard<std::mutex> lock(m_statusMutex);
   outputs = m_lastStatus.Outputs;
   status = m_lastStatus.OutputStatus;
   return EziIOError::SUCCESS;
 }
 
-EziIOError EziIODevice::SetOutputs(uint32_t setMask, uint32_t clearMask) {
+EziIOError EziIODevice::SetOutputs(uint64_t setMask, uint64_t clearMask) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
@@ -198,7 +198,7 @@ EziIOError EziIODevice::SetOutputs(uint32_t setMask, uint32_t clearMask) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Read back to update status
-    uint32_t outputs = 0, status = 0;
+    uint64_t outputs = 0, status = 0;
     ReadOutputs(outputs, status);
 
     return EziIOError::SUCCESS;
@@ -219,7 +219,7 @@ EziIOError EziIODevice::SetOutput(int pin, bool state) {
     return EziIOError::INVALID_PIN;
   }
 
-  uint32_t mask = GetOutputPinMask(pin);
+  uint64_t mask = GetOutputPinMask(pin);
 
   std::cout << "[EziIODevice] " << m_config.Name << " - Pin " << pin
     << " -> " << (state ? "ON" : "OFF") << std::endl;
@@ -316,7 +316,7 @@ void EziIODevice::ParseIpAddress() {
   }
 }
 
-uint32_t EziIODevice::GetOutputPinMask(int pin) const {
+uint64_t EziIODevice::GetOutputPinMask(int pin) const {
   if (pin < 0 || pin >= m_config.OutputCount) {
     return 0;
   }

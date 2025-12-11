@@ -29,18 +29,18 @@ public:
   bool IsConnected() const override { return m_isConnected; }
 
   // ============================================================================
-  // INPUT OPERATIONS
+  // INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadInputs(uint32_t& inputs, uint32_t& latch) override;
-  EziIOError GetLastInputStatus(uint32_t& inputs, uint32_t& latch) override;
-  EziIOError ClearLatch(uint32_t latchMask) override;
+  EziIOError ReadInputs(uint64_t& inputs, uint64_t& latch) override;
+  EziIOError GetLastInputStatus(uint64_t& inputs, uint64_t& latch) override;
+  EziIOError ClearLatch(uint64_t latchMask) override;
 
   // ============================================================================
-  // OUTPUT OPERATIONS
+  // OUTPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadOutputs(uint32_t& outputs, uint32_t& status) override;
-  EziIOError GetLastOutputStatus(uint32_t& outputs, uint32_t& status) override;
-  EziIOError SetOutputs(uint32_t setMask, uint32_t clearMask) override;
+  EziIOError ReadOutputs(uint64_t& outputs, uint64_t& status) override;
+  EziIOError GetLastOutputStatus(uint64_t& outputs, uint64_t& status) override;
+  EziIOError SetOutputs(uint64_t setMask, uint64_t clearMask) override;
   EziIOError SetOutput(int pin, bool state) override;
 
   // ============================================================================
@@ -76,10 +76,10 @@ private:
   bool m_isConnected;
   uint8_t m_ipBytes[4];
 
-  // Pin masks for output operations
-  static const uint32_t OUTPUT_PIN_MASKS_16[16];
-  static const uint32_t OUTPUT_PIN_MASKS_8[8];
-  const uint32_t* m_currentOutputMasks;
+  // Pin masks for output operations (uint64_t for 48+ I/O support)
+  static const uint64_t OUTPUT_PIN_MASKS_16[16];
+  static const uint64_t OUTPUT_PIN_MASKS_8[8];
+  const uint64_t* m_currentOutputMasks;
 
   // Status tracking
   std::mutex m_statusMutex;
@@ -97,5 +97,5 @@ private:
   // PRIVATE HELPERS
   // ============================================================================
   void ParseIpAddress();
-  uint32_t GetOutputPinMask(int pin) const;
+  uint64_t GetOutputPinMask(int pin) const;
 };

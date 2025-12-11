@@ -43,18 +43,18 @@ public:
   bool IsConnected() const override { return m_isConnected; }
 
   // ============================================================================
-  // INPUT OPERATIONS
+  // INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadInputs(uint32_t& inputs, uint32_t& latch) override;
-  EziIOError GetLastInputStatus(uint32_t& inputs, uint32_t& latch) override;
-  EziIOError ClearLatch(uint32_t latchMask) override;
+  EziIOError ReadInputs(uint64_t& inputs, uint64_t& latch) override;
+  EziIOError GetLastInputStatus(uint64_t& inputs, uint64_t& latch) override;
+  EziIOError ClearLatch(uint64_t latchMask) override;
 
   // ============================================================================
-  // OUTPUT OPERATIONS
+  // OUTPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadOutputs(uint32_t& outputs, uint32_t& status) override;
-  EziIOError GetLastOutputStatus(uint32_t& outputs, uint32_t& status) override;
-  EziIOError SetOutputs(uint32_t setMask, uint32_t clearMask) override;
+  EziIOError ReadOutputs(uint64_t& outputs, uint64_t& status) override;
+  EziIOError GetLastOutputStatus(uint64_t& outputs, uint64_t& status) override;
+  EziIOError SetOutputs(uint64_t setMask, uint64_t clearMask) override;
   EziIOError SetOutput(int pin, bool state) override;
 
   // ============================================================================
@@ -105,7 +105,7 @@ private:
   // Status tracking
   std::mutex m_statusMutex;
   IOStatus m_lastStatus;
-  uint32_t m_previousInputs;  // For latch detection
+  uint64_t m_previousInputs;  // For latch detection
 
   // Pin name mapping
   std::map<std::string, int> m_inputPinNames;
@@ -114,7 +114,7 @@ private:
   std::map<int, std::string> m_outputPinNumbers;
 
   // Current output state (cached for read-modify-write operations)
-  uint32_t m_currentOutputState;
+  uint64_t m_currentOutputState;
 
   // ============================================================================
   // MODBUS TCP PROTOCOL HELPERS
@@ -135,11 +135,11 @@ private:
   std::vector<uint8_t> BuildReadInputRegistersRequest(uint16_t startAddr, uint16_t count);
 
   // Modbus response parsing
-  bool ParseReadBitsResponse(const std::vector<uint8_t>& response, uint32_t& bits, int count);
+  bool ParseReadBitsResponse(const std::vector<uint8_t>& response, uint64_t& bits, int count);
   bool ParseReadRegistersResponse(const std::vector<uint8_t>& response, std::vector<uint16_t>& registers);
 
   // Helper
-  uint32_t GetOutputPinMask(int pin) const;
+  uint64_t GetOutputPinMask(int pin) const;
 
   // ============================================================================
   // PIN/ADDRESS ADAPTER LAYER
@@ -158,12 +158,12 @@ private:
   }
 
   // Convert WAGO raw output bits (0-N) to UI format (offset+0 to offset+N)
-  uint32_t WagoToUiBits(uint32_t wagoBits) const {
+  uint64_t WagoToUiBits(uint64_t wagoBits) const {
     return wagoBits << GetOutputBitOffset();
   }
 
   // Convert UI format bits back to WAGO raw bits
-  uint32_t UiToWagoBits(uint32_t uiBits) const {
+  uint64_t UiToWagoBits(uint64_t uiBits) const {
     return uiBits >> GetOutputBitOffset();
   }
 

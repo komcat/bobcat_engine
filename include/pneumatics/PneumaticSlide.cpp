@@ -214,7 +214,7 @@ PneumaticStatus PneumaticSlide::GetStatus() const {
 
   // Get output state
   if (m_ioManager) {
-    uint32_t outputs = 0, ioStatus = 0;
+    uint64_t outputs = 0, ioStatus = 0;
     if (m_ioManager->ReadOutputs(m_config.Output.DeviceName, outputs, ioStatus) == EziIOError::SUCCESS) {
       IEziIODevice* device = m_ioManager->GetDevice(m_config.Output.DeviceName);
       if (device) {
@@ -222,7 +222,7 @@ PneumaticStatus PneumaticSlide::GetStatus() const {
         if (pin >= 0) {
           bool is16Pin = (device->GetOutputCount() > 8);
           int bitOffset = is16Pin ? 16 : 8;
-          status.OutputActive = (outputs & (1U << (bitOffset + pin))) != 0;
+          status.OutputActive = (outputs & (1ULL << (bitOffset + pin))) != 0;
         }
       }
     }

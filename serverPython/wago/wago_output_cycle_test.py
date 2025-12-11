@@ -1,6 +1,6 @@
 """
-WAGO 750-342 Output Cycle Test Script
-Cycles through each output pin: ON for 2 seconds, then OFF, then next pin.
+WAGO Output Cycle Test Script (48 Outputs)
+Cycles through each output pin: ON briefly, then OFF, then next pin.
 """
 
 from pymodbus.client import ModbusTcpClient
@@ -13,8 +13,8 @@ WAGO_PORT = 502
 UNIT_ID = 1
 
 # Test Configuration
-NUM_OUTPUTS = 8       # Number of output pins to cycle through
-ON_DURATION = 2       # Seconds to keep each output ON
+NUM_OUTPUTS = 48      # Number of output pins to cycle through (48 outputs)
+ON_DURATION = 0.5     # Seconds to keep each output ON (reduced for 48 outputs)
 CYCLES = 1            # Number of times to repeat the full cycle
 OUTPUT_READ_ADDR = 512  # Address 0x0200 for reading output status
 
@@ -44,13 +44,14 @@ def read_outputs_status(client: ModbusTcpClient, count: int = NUM_OUTPUTS) -> li
 
 
 def format_outputs_status(bits: list) -> str:
-    """Format output status as a string."""
+    """Format output status as a compact string showing active outputs."""
     if bits is None:
         return "[READ ERROR]"
-    status = ""
-    for i, bit in enumerate(bits):
-        status += f"O{i}:{'ON ' if bit else 'OFF'} "
-    return status.strip()
+    # Show which outputs are ON
+    active = [i for i, bit in enumerate(bits) if bit]
+    if not active:
+        return "All OFF"
+    return f"ON: {active}"
 
 
 def wait_with_polling(client: ModbusTcpClient, duration: float, poll_interval: float = 0.25):
@@ -86,7 +87,7 @@ def run_output_cycle(client: ModbusTcpClient):
     print(f"\nStarting output cycle test")
     print(f"Outputs: 0-{NUM_OUTPUTS-1}")
     print(f"ON duration: {ON_DURATION} seconds per output")
-    print(f"Poll interval: 250ms")
+    print(f"Total time: ~{NUM_OUTPUTS * ON_DURATION:.0f} seconds")
     print(f"Cycles: {CYCLES}")
     print("-" * 50)
 
@@ -100,8 +101,8 @@ def run_output_cycle(client: ModbusTcpClient):
             if not set_output(client, output_num, True):
                 continue
 
-            # Wait with polling every 250ms
-            wait_with_polling(client, ON_DURATION, poll_interval=0.25)
+            # Wait with polling
+            wait_with_polling(client, ON_DURATION, poll_interval=0.1)
 
             # Turn OFF
             if set_output(client, output_num, False):
@@ -116,7 +117,7 @@ def run_output_cycle(client: ModbusTcpClient):
 
 def main():
     print("=" * 50)
-    print("WAGO 750-342 Output Cycle Test")
+    print("WAGO Output Cycle Test (48 Outputs)")
     print("=" * 50)
     print(f"IP: {WAGO_IP}:{WAGO_PORT}")
 

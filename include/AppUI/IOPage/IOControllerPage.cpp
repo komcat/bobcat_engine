@@ -508,11 +508,11 @@ void IOControllerPage::updateIOStatus()
   }
 
   // Read inputs
-  uint32_t inputs = 0, latch = 0;
+  uint64_t inputs = 0, latch = 0;
   if (device->ReadInputs(inputs, latch) == EziIOError::SUCCESS) {
     int inputCount = device->GetInputCount();
     for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
-      bool state = (inputs & (1U << i)) != 0;
+      bool state = (inputs & (1ULL << i)) != 0;
 
       // Update status text (column 3 for inputs)
       QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 3);
@@ -539,7 +539,7 @@ void IOControllerPage::updateIOStatus()
   }
 
   // Read outputs
-  uint32_t outputs = 0, status = 0;
+  uint64_t outputs = 0, status = 0;
   if (device->ReadOutputs(outputs, status) == EziIOError::SUCCESS) {
     int outputCount = device->GetOutputCount();
 
@@ -551,7 +551,7 @@ void IOControllerPage::updateIOStatus()
       int row = i;
       if (row >= m_outputPinsTable->rowCount()) break;
 
-      bool state = (outputs & (1U << (bitOffset + i))) != 0;
+      bool state = (outputs & (1ULL << (bitOffset + i))) != 0;
 
       // Update status text (column 4 for outputs - new position)
       QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 4);

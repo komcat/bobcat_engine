@@ -64,7 +64,7 @@ bool WagoIODevice::Connect() {
 
   // Read initial output state (ReadOutputs returns UI-formatted bits,
   // but also updates m_currentOutputState with raw WAGO bits internally)
-  uint32_t outputs = 0, status = 0;
+  uint64_t outputs = 0, status = 0;
   ReadOutputs(outputs, status);
   // Note: m_currentOutputState is already set correctly inside ReadOutputs
 
@@ -345,7 +345,7 @@ std::vector<uint8_t> WagoIODevice::BuildReadInputRegistersRequest(uint16_t start
 // MODBUS RESPONSE PARSING
 // ============================================================================
 
-bool WagoIODevice::ParseReadBitsResponse(const std::vector<uint8_t>& response, uint32_t& bits, int count) {
+bool WagoIODevice::ParseReadBitsResponse(const std::vector<uint8_t>& response, uint64_t& bits, int count) {
   // Minimum response: MBAP header (7) + function code (1) + byte count (1) + data (1+)
   if (response.size() < 10) {
     return false;
@@ -361,14 +361,14 @@ bool WagoIODevice::ParseReadBitsResponse(const std::vector<uint8_t>& response, u
   uint8_t byteCount = response[8];
   bits = 0;
 
-  // Unpack bits from response bytes
-  for (int i = 0; i < byteCount && i < 4; i++) {
-    bits |= (static_cast<uint32_t>(response[9 + i]) << (i * 8));
+  // Unpack bits from response bytes (supports up to 8 bytes = 64 bits for 48+ I/O)
+  for (int i = 0; i < byteCount && i < 8; i++) {
+    bits |= (static_cast<uint64_t>(response[9 + i]) << (i * 8));
   }
 
   // Mask to actual count
-  if (count < 32) {
-    bits &= ((1U << count) - 1);
+  if (count < 64) {
+    bits &= ((1ULL << count) - 1);
   }
 
   return true;
@@ -400,7 +400,7 @@ bool WagoIODevice::ParseReadRegistersResponse(const std::vector<uint8_t>& respon
 // INPUT OPERATIONS
 // ============================================================================
 
-EziIOError WagoIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
+EziIOError WagoIODevice::ReadInputs(uint64_t& inputs, uint64_t& latch) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
@@ -422,7 +422,7 @@ EziIOError WagoIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
     return EziIOError::OPERATION_FAILED;
   }
 
-  uint32_t newInputs = 0;
+  uint64_t newInputs = 0;
   if (!ParseReadBitsResponse(response, newInputs, m_config.InputCount)) {
     return EziIOError::OPERATION_FAILED;
   }
@@ -444,7 +444,7 @@ EziIOError WagoIODevice::ReadInputs(uint32_t& inputs, uint32_t& latch) {
   return EziIOError::SUCCESS;
 }
 
-EziIOError WagoIODevice::GetLastInputStatus(uint32_t& inputs, uint32_t& latch) {
+EziIOError WagoIODevice::GetLastInputStatus(uint64_t& inputs, uint64_t& latch) {
   std::lock_guard<std::mutex> lock(m_statusMutex);
 
   if (!m_lastStatus.Valid) {
@@ -456,7 +456,7 @@ EziIOError WagoIODevice::GetLastInputStatus(uint32_t& inputs, uint32_t& latch) {
   return EziIOError::SUCCESS;
 }
 
-EziIOError WagoIODevice::ClearLatch(uint32_t latchMask) {
+EziIOError WagoIODevice::ClearLatch(uint64_t latchMask) {
   std::lock_guard<std::mutex> lock(m_statusMutex);
   m_lastStatus.Latch &= ~latchMask;
   return EziIOError::SUCCESS;
@@ -466,7 +466,7 @@ EziIOError WagoIODevice::ClearLatch(uint32_t latchMask) {
 // OUTPUT OPERATIONS
 // ============================================================================
 
-EziIOError WagoIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
+EziIOError WagoIODevice::ReadOutputs(uint64_t& outputs, uint64_t& status) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
@@ -489,7 +489,7 @@ EziIOError WagoIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
     return EziIOError::OPERATION_FAILED;
   }
 
-  uint32_t wagoRawBits = 0;
+  uint64_t wagoRawBits = 0;
   if (!ParseReadBitsResponse(response, wagoRawBits, m_config.OutputCount)) {
     return EziIOError::OPERATION_FAILED;
   }
@@ -498,7 +498,7 @@ EziIOError WagoIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
   m_currentOutputState = wagoRawBits;
 
   // Convert WAGO raw bits (0-7) to UI format (8-15 for 8-pin devices)
-  uint32_t uiFormattedBits = WagoToUiBits(wagoRawBits);
+  uint64_t uiFormattedBits = WagoToUiBits(wagoRawBits);
 
   // Update status with UI-formatted bits
   {
@@ -514,7 +514,7 @@ EziIOError WagoIODevice::ReadOutputs(uint32_t& outputs, uint32_t& status) {
   return EziIOError::SUCCESS;
 }
 
-EziIOError WagoIODevice::GetLastOutputStatus(uint32_t& outputs, uint32_t& status) {
+EziIOError WagoIODevice::GetLastOutputStatus(uint64_t& outputs, uint64_t& status) {
   std::lock_guard<std::mutex> lock(m_statusMutex);
 
   if (!m_lastStatus.Valid) {
@@ -526,22 +526,22 @@ EziIOError WagoIODevice::GetLastOutputStatus(uint32_t& outputs, uint32_t& status
   return EziIOError::SUCCESS;
 }
 
-EziIOError WagoIODevice::SetOutputs(uint32_t setMask, uint32_t clearMask) {
+EziIOError WagoIODevice::SetOutputs(uint64_t setMask, uint64_t clearMask) {
   if (!m_isConnected) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
 
   // Convert UI format masks to WAGO raw format
-  uint32_t wagoSetMask = UiToWagoBits(setMask);
-  uint32_t wagoClearMask = UiToWagoBits(clearMask);
+  uint64_t wagoSetMask = UiToWagoBits(setMask);
+  uint64_t wagoClearMask = UiToWagoBits(clearMask);
 
   // Calculate new output state (using raw WAGO bits)
-  uint32_t newState = (m_currentOutputState | wagoSetMask) & ~wagoClearMask;
+  uint64_t newState = (m_currentOutputState | wagoSetMask) & ~wagoClearMask;
 
   // Build coil values array
   std::vector<bool> values;
   for (int i = 0; i < m_config.OutputCount; i++) {
-    values.push_back((newState & (1U << i)) != 0);
+    values.push_back((newState & (1ULL << i)) != 0);
   }
 
   std::lock_guard<std::mutex> lock(m_socketMutex);
@@ -567,7 +567,7 @@ EziIOError WagoIODevice::SetOutputs(uint32_t setMask, uint32_t clearMask) {
   m_currentOutputState = newState;
 
   // Update status with UI-formatted bits
-  uint32_t uiFormattedBits = WagoToUiBits(newState);
+  uint64_t uiFormattedBits = WagoToUiBits(newState);
   {
     std::lock_guard<std::mutex> statusLock(m_statusMutex);
     m_lastStatus.Outputs = uiFormattedBits;
@@ -582,7 +582,7 @@ EziIOError WagoIODevice::SetOutput(int pin, bool state) {
     return EziIOError::DEVICE_DISCONNECTED;
   }
 
-  // Pin is 0-based (0-7 for 8-pin WAGO)
+  // Pin is 0-based (0-47 for 48-pin WAGO)
   if (pin < 0 || pin >= m_config.OutputCount) {
     return EziIOError::INVALID_PIN;
   }
@@ -608,13 +608,13 @@ EziIOError WagoIODevice::SetOutput(int pin, bool state) {
 
   // Update cached state (raw WAGO bits)
   if (state) {
-    m_currentOutputState |= (1U << pin);
+    m_currentOutputState |= (1ULL << pin);
   } else {
-    m_currentOutputState &= ~(1U << pin);
+    m_currentOutputState &= ~(1ULL << pin);
   }
 
   // Update status with UI-formatted bits
-  uint32_t uiFormattedBits = WagoToUiBits(m_currentOutputState);
+  uint64_t uiFormattedBits = WagoToUiBits(m_currentOutputState);
   {
     std::lock_guard<std::mutex> statusLock(m_statusMutex);
     m_lastStatus.Outputs = uiFormattedBits;
@@ -624,13 +624,13 @@ EziIOError WagoIODevice::SetOutput(int pin, bool state) {
   return EziIOError::SUCCESS;
 }
 
-uint32_t WagoIODevice::GetOutputPinMask(int pin) const {
+uint64_t WagoIODevice::GetOutputPinMask(int pin) const {
   if (pin < 0 || pin >= m_config.OutputCount) {
     return 0;
   }
   // Return UI-formatted mask (shifted by bit offset)
   int offset = (m_config.OutputCount > 8) ? 16 : 8;
-  return (1U << (offset + pin));
+  return (1ULL << (offset + pin));
 }
 
 // ============================================================================

@@ -40,12 +40,13 @@ struct EziIODeviceConfig {
 
 /**
  * @brief IO Status structure
+ * Uses uint64_t to support up to 64 inputs/outputs (e.g., 48 in/48 out)
  */
 struct IOStatus {
-  uint32_t Inputs = 0;
-  uint32_t Latch = 0;
-  uint32_t Outputs = 0;
-  uint32_t OutputStatus = 0;
+  uint64_t Inputs = 0;
+  uint64_t Latch = 0;
+  uint64_t Outputs = 0;
+  uint64_t OutputStatus = 0;
   bool Valid = false;
 };
 

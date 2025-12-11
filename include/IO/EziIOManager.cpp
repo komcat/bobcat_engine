@@ -336,11 +336,11 @@ int EziIOManager::ConnectEnabledDevices() {
 }
 
 // ============================================================================
-// INPUT OPERATIONS
+// INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
 // ============================================================================
 
 EziIOError EziIOManager::ReadInputs(const std::string& deviceName,
-  uint32_t& inputs, uint32_t& latch) {
+  uint64_t& inputs, uint64_t& latch) {
   IEziIODevice* device = nullptr;
   EziIOError validationResult = ValidateDevice(deviceName, &device, "ReadInputs");
   if (validationResult != EziIOError::SUCCESS) {
@@ -351,7 +351,7 @@ EziIOError EziIOManager::ReadInputs(const std::string& deviceName,
 }
 
 EziIOError EziIOManager::GetLastInputStatus(const std::string& deviceName,
-  uint32_t& inputs, uint32_t& latch) {
+  uint64_t& inputs, uint64_t& latch) {
   IEziIODevice* device = GetDevice(deviceName);
   if (!device) {
     return EziIOError::DEVICE_NOT_FOUND;
@@ -360,7 +360,7 @@ EziIOError EziIOManager::GetLastInputStatus(const std::string& deviceName,
   return device->GetLastInputStatus(inputs, latch);
 }
 
-EziIOError EziIOManager::ClearLatch(const std::string& deviceName, uint32_t latchMask) {
+EziIOError EziIOManager::ClearLatch(const std::string& deviceName, uint64_t latchMask) {
   IEziIODevice* device = nullptr;
   EziIOError validationResult = ValidateDevice(deviceName, &device, "ClearLatch");
   if (validationResult != EziIOError::SUCCESS) {
@@ -371,11 +371,11 @@ EziIOError EziIOManager::ClearLatch(const std::string& deviceName, uint32_t latc
 }
 
 // ============================================================================
-// OUTPUT OPERATIONS
+// OUTPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
 // ============================================================================
 
 EziIOError EziIOManager::ReadOutputs(const std::string& deviceName,
-  uint32_t& outputs, uint32_t& status) {
+  uint64_t& outputs, uint64_t& status) {
   IEziIODevice* device = nullptr;
   EziIOError validationResult = ValidateDevice(deviceName, &device, "ReadOutputs");
   if (validationResult != EziIOError::SUCCESS) {
@@ -386,7 +386,7 @@ EziIOError EziIOManager::ReadOutputs(const std::string& deviceName,
 }
 
 EziIOError EziIOManager::GetLastOutputStatus(const std::string& deviceName,
-  uint32_t& outputs, uint32_t& status) {
+  uint64_t& outputs, uint64_t& status) {
   IEziIODevice* device = GetDevice(deviceName);
   if (!device) {
     return EziIOError::DEVICE_NOT_FOUND;
@@ -396,7 +396,7 @@ EziIOError EziIOManager::GetLastOutputStatus(const std::string& deviceName,
 }
 
 EziIOError EziIOManager::SetOutputs(const std::string& deviceName,
-  uint32_t setMask, uint32_t clearMask) {
+  uint64_t setMask, uint64_t clearMask) {
   IEziIODevice* device = nullptr;
   EziIOError validationResult = ValidateDevice(deviceName, &device, "SetOutputs");
   if (validationResult != EziIOError::SUCCESS) {
@@ -472,13 +472,13 @@ bool EziIOManager::GetInputByName(const std::string& deviceName,
   }
 
   // Read current inputs
-  uint32_t inputs = 0, latch = 0;
+  uint64_t inputs = 0, latch = 0;
   if (device->ReadInputs(inputs, latch) != EziIOError::SUCCESS) {
     return false;
   }
 
   // Extract the specific pin state
-  state = (inputs & (1U << pin)) != 0;
+  state = (inputs & (1ULL << pin)) != 0;
   return true;
 }
 
@@ -540,8 +540,8 @@ void EziIOManager::PollingThreadFunc() {
       if (device->IsConnected()) {
         connectedCount++;
 
-        uint32_t inputs = 0, latch = 0;
-        uint32_t outputs = 0, status = 0;
+        uint64_t inputs = 0, latch = 0;
+        uint64_t outputs = 0, status = 0;
 
         // Read inputs and outputs (updates cached values)
         device->ReadInputs(inputs, latch);
