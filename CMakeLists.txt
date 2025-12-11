@@ -1016,8 +1016,10 @@ if(OPENCV_FOUND)
         include/vision/plugins/PatternMatchingPlugin.cpp
         include/vision/plugins/PatternMatchingEdgePlugin.cpp
         include/vision/plugins/TemplateMatchingBase.cpp
+        include/vision/plugins/ImageProcessingPlugin.cpp
         include/vision/VisionProcessingWorker.cpp
         include/sequence/VisionCommandHandler.cpp
+        include/sequence/ContextImageViewer.cpp
         include/recipe/processes/VisionProcesses.cpp
         # UI files (Phase 2)
         include/vision/ui/VisionManagerPage.cpp
@@ -1038,8 +1040,10 @@ if(OPENCV_FOUND)
         include/vision/plugins/FiducialDetectorPlugin.h
         include/vision/plugins/LineDetectorPlugin.h
         include/vision/plugins/TemplateMatchingBase.h
+        include/vision/plugins/ImageProcessingPlugin.h
         include/vision/VisionProcessingWorker.h
         include/sequence/VisionCommandHandler.h
+        include/sequence/ContextImageViewer.h
         # UI headers (Phase 2)
         include/vision/ui/VisionManagerPage.h
         include/vision/ui/VisionToolbarWidget.h
@@ -1282,3 +1286,36 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         $<TARGET_FILE_DIR:bobcat_engine>/assets
     COMMENT "Copying assets folder to output directory"
 )
+
+# ============================================================================
+# Config Editor Utility
+# ============================================================================
+# Standalone JSON configuration file editor
+add_executable(config_editor
+    tools/config_editor/main.cpp
+    tools/config_editor/ConfigEditorWindow.cpp
+    tools/config_editor/JsonFileListWidget.cpp
+    tools/config_editor/JsonEditorWidget.cpp
+    include/AppUI/DarkTheme.cpp
+)
+
+target_include_directories(config_editor PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/AppUI
+    ${NLOHMANN_JSON_DIR}
+)
+
+target_link_libraries(config_editor PRIVATE Qt6::Widgets)
+
+set_target_properties(config_editor PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+)
+
+if(WIN32 AND MSVC)
+    set_target_properties(config_editor PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()
+
+message(STATUS "Config Editor utility: 'config_editor' - standalone JSON config file editor")

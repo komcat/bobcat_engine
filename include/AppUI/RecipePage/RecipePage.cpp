@@ -1489,32 +1489,24 @@ void RecipePage::onEnabledChanged(bool enabled)
 
 void RecipePage::onParameterChanged()
 {
-  std::cout << "[RecipePage] onParameterChanged() called" << std::endl;
-
   // Verify signal is from current widget (prevent stale signal processing)
   QObject* signalSender = sender();
   if (signalSender && signalSender != m_currentConfigWidget) {
-    std::cout << "[RecipePage]   Ignoring stale signal from old widget" << std::endl;
     return;
   }
 
   if (m_selectedStepIndex < 0 || !m_currentConfigWidget) {
-    std::cout << "[RecipePage]   Skipping - selectedIndex=" << m_selectedStepIndex
-              << ", hasWidget=" << (m_currentConfigWidget != nullptr) << std::endl;
     return;
   }
 
   auto params = m_currentConfigWidget->getParameters();
-  std::cout << "[RecipePage]   Updating " << params.size() << " parameters for step "
-            << m_selectedStepIndex << std::endl;
 
   if (params.empty()) {
-    std::cout << "[RecipePage]   WARNING: No parameters returned from widget!" << std::endl;
+    std::cout << "[RecipePage] WARNING: No parameters returned from widget!" << std::endl;
     return;
   }
 
   for (const auto& [key, value] : params) {
-    std::cout << "[RecipePage]     " << key << " = '" << value << "'" << std::endl;
     m_recipeManager->setStepParameter(m_selectedStepIndex, key, value);
   }
 }

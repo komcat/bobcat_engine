@@ -593,6 +593,82 @@ public:
 };
 
 //=============================================================================
+// SHOW CONTEXT IMAGE PLUGIN - Display image from context in popup window
+//=============================================================================
+
+class ShowContextImagePlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Show Context Image";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Display an image from sequence context in a non-modal popup window";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"context_key", ""},        // Context key for the image (e.g., "$FLIPSN" or "vision.result.image")
+            {"title", ""},              // Window title (optional, uses context_key if empty)
+            {"auto_close_ms", "0"}      // Auto-close after ms (0 = no auto-close)
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        // Helper to get parameter with default value
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        // Context key input (e.g., "$FLIPSN" or "vision.result.image")
+        widget->addParameterField("context_key", "Context Key",
+            getParam("context_key", ""));
+
+        // Window title (optional)
+        widget->addParameterField("title", "Window Title (optional)",
+            getParam("title", ""));
+
+        // Auto-close time
+        widget->addParameterField("auto_close_ms", "Auto Close (ms)",
+            getParam("auto_close_ms", "0"));
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        std::map<std::string, std::string> cmdParams;
+
+        auto keyIt = params.find("context_key");
+        if (keyIt != params.end() && !keyIt->second.empty()) {
+            cmdParams["context_key"] = keyIt->second;
+        }
+
+        auto titleIt = params.find("title");
+        if (titleIt != params.end() && !titleIt->second.empty()) {
+            cmdParams["title"] = titleIt->second;
+        }
+
+        auto autoCloseIt = params.find("auto_close_ms");
+        if (autoCloseIt != params.end() && !autoCloseIt->second.empty()) {
+            cmdParams["auto_close_ms"] = autoCloseIt->second;
+        }
+
+        sequence->AddAction("vision", "show_context_image", cmdParams);
+
+        std::cout << "[VisionProcesses] Built ShowContextImage sequence: key="
+                  << cmdParams["context_key"] << std::endl;
+    }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -613,7 +689,11 @@ namespace {
             registry.RegisterPlugin(std::make_unique<GotoDetectPlugin>());
             std::cout << "[ProcessPluginRegistry] Registered plugin: GotoDetect (Category: Vision)" << std::endl;
 
-            std::cout << "[VisionProcesses] Registered 3 vision processing plugins" << std::endl;
+            // ShowContextImage: Display image from context in popup window
+            registry.RegisterPlugin(std::make_unique<ShowContextImagePlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Show Context Image (Category: Vision)" << std::endl;
+
+            std::cout << "[VisionProcesses] Registered 4 vision processing plugins" << std::endl;
         }
     };
 

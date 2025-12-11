@@ -1287,8 +1287,9 @@ bool MotionCommandHandler::ExecuteCommand(
         }
       }
       else if (spec.moveType == "graphNode") {
-        // For graphNode, we need to compute and execute the path
-        // This is more complex - we'll use the existing graph navigation logic
+        // For graphNode, we execute the graph path sequentially for this device
+        // This is NOT truly parallel for graphNode - each device follows its own path
+        // but we process all graphNode devices one at a time
         if (!m_positionManager) {
           errorMessage = "ParallelMove: ProductPositionManager not available for graphNode move";
           return false;
@@ -1363,7 +1364,7 @@ bool MotionCommandHandler::ExecuteCommand(
           continue;
         }
 
-        // Get path and move to first waypoint (for parallel, we only start the first move)
+        // Get the full path
         GraphPath path = graphManager.findPath(
           QString::fromStdString(spec.deviceName),
           QString::fromStdString(spec.graphName),
@@ -1376,11 +1377,65 @@ bool MotionCommandHandler::ExecuteCommand(
           return false;
         }
 
-        // Start moving to the final target position (waypoint system will handle intermediate points)
-        startSuccess = motionManager->MoveToNamedPosition(spec.deviceName, spec.targetName, false);
-        if (!startSuccess) {
-          errorMessage = "ParallelMove: Failed to start graphNode move for " + spec.deviceName;
-          return false;
+        // Log the path
+        if (m_logger) {
+          std::string pathStr = "ParallelMove: " + spec.deviceName + " path: ";
+          for (int i = 0; i < path.positionNames.size(); ++i) {
+            if (i > 0) pathStr += " -> ";
+            pathStr += path.positionNames[i].toStdString();
+          }
+          m_logger->Info(pathStr, "MotionHandler");
+        }
+
+        // ✅ Execute the full graph path sequentially through all waypoints
+        for (const QString& waypointName : path.positionNames) {
+          std::string wpName = waypointName.toStdString();
+
+          // Check if already at this waypoint
+          PositionStruct wpCurrentPos = motionManager->GetCurrentPosition(spec.deviceName);
+          if (allPositions.count(wpName) > 0) {
+            const PositionStruct& targetPos = allPositions[wpName];
+            double dx = wpCurrentPos.x - targetPos.x;
+            double dy = wpCurrentPos.y - targetPos.y;
+            double dz = wpCurrentPos.z - targetPos.z;
+            double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+            if (distance < POSITION_TOLERANCE) {
+              if (m_logger) {
+                m_logger->Info("ParallelMove: " + spec.deviceName + " already at waypoint '" + wpName + "', skipping", "MotionHandler");
+              }
+              continue;
+            }
+          }
+
+          // Move to this waypoint
+          if (m_logger) {
+            m_logger->Info("ParallelMove: " + spec.deviceName + " moving to waypoint '" + wpName + "'", "MotionHandler");
+          }
+
+          if (!motionManager->MoveToNamedPosition(spec.deviceName, wpName, false)) {
+            errorMessage = "ParallelMove: Failed to start move to waypoint '" + wpName + "' for " + spec.deviceName;
+            return false;
+          }
+
+          // Wait for this waypoint move to complete
+          if (!WaitForMotionWithStopCheck(manager, spec.deviceName, context, 30000)) {
+            errorMessage = "ParallelMove: Motion to waypoint '" + wpName + "' stopped or timed out for " + spec.deviceName;
+            return false;
+          }
+
+          // Small settling time
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+          if (m_logger) {
+            m_logger->Info("ParallelMove: " + spec.deviceName + " reached waypoint '" + wpName + "'", "MotionHandler");
+          }
+        }
+
+        // graphNode path is now complete for this device
+        startSuccess = true;
+        if (m_logger) {
+          m_logger->Info("ParallelMove: " + spec.deviceName + " completed graph path to " + spec.targetName, "MotionHandler");
         }
       }
       else {
@@ -1388,15 +1443,25 @@ bool MotionCommandHandler::ExecuteCommand(
         return false;
       }
 
-      if (m_logger) {
+      if (m_logger && spec.moveType == "position") {
         m_logger->Info("ParallelMove: Started move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
       }
     }
 
-    // ✅ PHASE 2: Wait for all moves to complete
-    if (!WaitForMultipleMotionsWithStopCheck(manager, moveSpecs, context)) {
-      errorMessage = "ParallelMove: One or more moves failed, timed out, or were stopped";
-      return false;
+    // ✅ PHASE 2: Wait for all 'position' type moves to complete
+    // (graphNode moves are already completed in the loop above)
+    std::vector<ParallelMoveSpec> positionMoves;
+    for (const auto& spec : moveSpecs) {
+      if (spec.moveType == "position") {
+        positionMoves.push_back(spec);
+      }
+    }
+
+    if (!positionMoves.empty()) {
+      if (!WaitForMultipleMotionsWithStopCheck(manager, positionMoves, context)) {
+        errorMessage = "ParallelMove: One or more position moves failed, timed out, or were stopped";
+        return false;
+      }
     }
 
     if (m_logger) {

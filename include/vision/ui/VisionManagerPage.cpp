@@ -20,6 +20,7 @@
 #include "../plugins/CornerDetectorPlugin.h"
 #include "../plugins/PatternMatchingPlugin.h"
 #include "../plugins/PatternMatchingEdgePlugin.h"
+#include "../plugins/ImageProcessingPlugin.h"
 #ifdef HAS_HALCON
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
@@ -1436,6 +1437,10 @@ void VisionManagerPage::registerPlugins()
     // Register Pattern Matching Edge Plugin
     auto patternEdgePlugin = std::make_shared<PatternMatchingEdgePlugin>();
     VisionManager::instance().registerPlugin(patternEdgePlugin);
+
+    // Register Image Processing Plugin (rotate, flip, grayscale, binary, gaussian)
+    auto imageProcessingPlugin = std::make_shared<ImageProcessingPlugin>();
+    VisionManager::instance().registerPlugin(imageProcessingPlugin);
 
 #ifdef HAS_HALCON
     // Register Halcon Circle Detection Plugin

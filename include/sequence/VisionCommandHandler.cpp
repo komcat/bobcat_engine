@@ -3,6 +3,7 @@
 
 #include "VisionCommandHandler.h"
 #include "SequenceContext.h"
+#include "ContextImageViewer.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include "CameraManager.h"
@@ -19,6 +20,8 @@
 #include <iostream>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>  // For cv::imwrite
+#include <QMetaObject>
+#include <QApplication>
 
 bool VisionCommandHandler::ExecuteCommand(
     void* manager,
@@ -98,17 +101,40 @@ bool VisionCommandHandler::ExecuteCommand(
         auto captureAsIt = params.find("capture_as");
         if (captureAsIt != params.end() && !captureAsIt->second.empty() && context) {
             std::string captureAs = captureAsIt->second;
+
+            // Strip $ prefix if present for context keys
+            std::string contextPrefix = captureAs;
+            if (!contextPrefix.empty() && contextPrefix[0] == '$') {
+                contextPrefix = contextPrefix.substr(1);
+            }
+
             auto summary = context->GetSummary();
 
-            std::cout << "[VisionCommandHandler] 📋 Copying results to prefix: " << captureAs << std::endl;
+            std::cout << "[VisionCommandHandler] 📋 Copying results to prefix: " << contextPrefix << std::endl;
 
-            // Copy all vision.* values to <capture_as>.*
+            // Save a unique copy of the result image for this capture_as
+            cv::Mat outputImage = VisionManager::instance().getOutputImage();
+            if (!outputImage.empty()) {
+                std::string uniquePath = "logs/" + contextPrefix + "_result.png";
+                cv::imwrite(uniquePath, outputImage);
+                context->SetValue(contextPrefix + ".result.image_path", uniquePath);
+                context->SetImageFrame(contextPrefix + ".result.image", outputImage);
+                std::cout << "[VisionCommandHandler] 🖼️ Saved unique image for " << contextPrefix
+                          << ": " << uniquePath << " (" << outputImage.cols << "x" << outputImage.rows << ")" << std::endl;
+            }
+
+            // Copy all vision.* values to <contextPrefix>.* (except image which we handled above)
             for (const auto& [key, value] : summary.capturedValues) {
                 // Check if key starts with "vision."
                 if (key.find("vision.") == 0) {
-                    // Extract the part after "vision." and prepend with capture_as
+                    // Extract the part after "vision." and prepend with contextPrefix
                     std::string suffix = key.substr(7);  // Remove "vision."
-                    std::string newKey = captureAs + "." + suffix;
+                    std::string newKey = contextPrefix + "." + suffix;
+
+                    // Skip image keys - we already handled them above
+                    if (suffix.find("image") != std::string::npos) {
+                        continue;
+                    }
 
                     // Copy value to new key based on type
                     switch (value.type) {
@@ -127,7 +153,7 @@ bool VisionCommandHandler::ExecuteCommand(
                 }
             }
 
-            std::cout << "[VisionCommandHandler] ✅ Results copied to prefix: " << captureAs << std::endl;
+            std::cout << "[VisionCommandHandler] ✅ Results copied to prefix: " << contextPrefix << std::endl;
         }
 
         // Step 4: Calculate world position if requested (GotoDetect feature)
@@ -298,6 +324,37 @@ bool VisionCommandHandler::ExecuteCommand(
             return false;
         }
         return GetResult(keyIt->second, errorMessage, context);
+    }
+    else if (methodName == "show_context_image") {
+        // Show image from context in non-modal popup window
+        // params: "context_key" = key to the image in context (e.g., "$FLIPSN.result.image" or "vision.result.image")
+        //         "title" = window title (optional)
+        //         "auto_close_ms" = auto-close after ms (optional, 0 = no auto-close)
+        auto keyIt = params.find("context_key");
+        if (keyIt == params.end() || keyIt->second.empty()) {
+            errorMessage = "show_context_image requires 'context_key' parameter";
+            return false;
+        }
+
+        std::string contextKey = keyIt->second;
+        std::string title = "Context Image";
+        int autoCloseMs = 0;
+
+        auto titleIt = params.find("title");
+        if (titleIt != params.end() && !titleIt->second.empty()) {
+            title = titleIt->second;
+        }
+
+        auto autoCloseIt = params.find("auto_close_ms");
+        if (autoCloseIt != params.end() && !autoCloseIt->second.empty()) {
+            try {
+                autoCloseMs = std::stoi(autoCloseIt->second);
+            } catch (...) {
+                autoCloseMs = 0;
+            }
+        }
+
+        return ShowContextImage(contextKey, title, autoCloseMs, errorMessage, context);
     }
     else {
         errorMessage = "Unknown vision command: " + methodName;
@@ -809,6 +866,98 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
               << circleIndex << " circles, "
               << rectIndex << " rectangles, "
               << lineIndex << " lines" << std::endl;
+}
+
+bool VisionCommandHandler::ShowContextImage(const std::string& contextKey,
+                                             const std::string& title,
+                                             int autoCloseMs,
+                                             std::string& errorMessage,
+                                             SequenceContext* context)
+{
+    std::cout << "[VisionCommandHandler] 🖼️ ShowContextImage: key=" << contextKey
+              << ", title=" << title << ", autoClose=" << autoCloseMs << "ms" << std::endl;
+
+    if (!context) {
+        errorMessage = "No context available";
+        return false;
+    }
+
+    // Resolve the context key (handle $ prefix for capture_as variables)
+    std::string baseKey = contextKey;
+    if (!contextKey.empty() && contextKey[0] == '$') {
+        baseKey = contextKey.substr(1);  // Remove $ prefix
+    }
+
+    // PRIORITY 1: Try file paths first (these contain the full processed image with overlays)
+    std::vector<std::string> pathKeysToTry;
+    pathKeysToTry.push_back(baseKey + ".result.image_path");
+    pathKeysToTry.push_back(baseKey + ".image_path");
+    pathKeysToTry.push_back("vision.result.image_path");  // Fallback to default
+
+    for (const auto& pathKey : pathKeysToTry) {
+        std::string imagePath = context->GetString(pathKey, "");
+        if (!imagePath.empty()) {
+            std::cout << "[VisionCommandHandler] 📂 Found image path at '" << pathKey << "': " << imagePath << std::endl;
+
+            cv::Mat image = cv::imread(imagePath);
+            if (!image.empty()) {
+                std::cout << "[VisionCommandHandler] ✅ Loaded image from file: "
+                          << image.cols << "x" << image.rows << std::endl;
+
+                QString qTitle = QString::fromStdString(title.empty() ? contextKey : title);
+                int closeMsCapture = autoCloseMs;
+
+                QMetaObject::invokeMethod(qApp, [image, qTitle, closeMsCapture]() {
+                    ContextImageViewer::ShowImage(image, qTitle, closeMsCapture, nullptr);
+                }, Qt::QueuedConnection);
+
+                return true;
+            } else {
+                std::cout << "[VisionCommandHandler] ⚠️ Failed to load image from: " << imagePath << std::endl;
+            }
+        }
+    }
+
+    // PRIORITY 2: Try cv::Mat stored in context
+    std::vector<std::string> keysToTry;
+    keysToTry.push_back(baseKey + ".result.image");
+    keysToTry.push_back(baseKey + ".image");
+    keysToTry.push_back(baseKey);
+    keysToTry.push_back("vision.result.image");  // Fallback to default
+
+    for (const auto& key : keysToTry) {
+        std::cout << "[VisionCommandHandler] 🔍 Trying image key: " << key << std::endl;
+
+        auto imageOpt = context->GetImageFrame(key);
+        if (imageOpt.has_value() && !imageOpt.value().empty()) {
+            cv::Mat image = imageOpt.value();
+            std::cout << "[VisionCommandHandler] ✅ Found image at key '" << key << "': "
+                      << image.cols << "x" << image.rows << std::endl;
+
+            QString qTitle = QString::fromStdString(title.empty() ? contextKey : title);
+            int closeMsCapture = autoCloseMs;
+
+            QMetaObject::invokeMethod(qApp, [image, qTitle, closeMsCapture]() {
+                ContextImageViewer::ShowImage(image, qTitle, closeMsCapture, nullptr);
+            }, Qt::QueuedConnection);
+
+            return true;
+        }
+    }
+
+    errorMessage = "Image not found in context for key: " + contextKey;
+    std::cout << "[VisionCommandHandler] ❌ " << errorMessage << std::endl;
+
+    // List available image keys for debugging
+    auto allKeys = context->GetAllKeys();
+    std::cout << "[VisionCommandHandler] Available keys containing 'image':" << std::endl;
+    for (const auto& key : allKeys) {
+        if (key.find("image") != std::string::npos) {
+            std::cout << "  - " << key << std::endl;
+        }
+    }
+
+    return false;
 }
 
 #endif // HAS_OPENCV

@@ -14,6 +14,7 @@ class ApplicationContext;
  * - execute: Execute the loaded vision plugin
  * - capture_and_execute: Capture image from camera and execute vision
  * - get_result: Get specific measurement from last execution
+ * - show_context_image: Display image from context in popup window
  *
  * Results are stored in SequenceContext under "vision.*" keys
  */
@@ -45,6 +46,8 @@ private:
     bool CaptureAndExecute(const std::string& cameraName, const std::string& pluginName,
                            std::string& errorMessage, SequenceContext* context);
     bool GetResult(const std::string& measurementKey, std::string& errorMessage, SequenceContext* context);
+    bool ShowContextImage(const std::string& contextKey, const std::string& title,
+                          int autoCloseMs, std::string& errorMessage, SequenceContext* context);
 
     // Helper to store VisionResult in context
     void StoreResultInContext(const struct VisionResult& result, SequenceContext* context);
