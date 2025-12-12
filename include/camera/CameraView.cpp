@@ -151,19 +151,21 @@ void CameraView::setupUI()
     "QLabel { background-color: #333333; color: #00ff00; padding: 3px; font-family: monospace; }");
   mainLayout->addWidget(m_performanceLabel);
 
-  // ✅ NEW - Main content: LEFT PANEL + VIDEO
+  // ✅ Main content: LEFT PANELS (two columns) + VIDEO
   QHBoxLayout* contentLayout = new QHBoxLayout();
 
-  // ================== LEFT PANEL ==================
-  QWidget* leftPanel = new QWidget();
-  leftPanel->setMaximumWidth(250);
-  leftPanel->setMinimumWidth(200);
-  QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
-  leftLayout->setSpacing(10);
+  // ================== LEFT PANEL - CAMERA SETTINGS ==================
+  QWidget* settingsPanel = new QWidget();
+  settingsPanel->setMaximumWidth(220);
+  settingsPanel->setMinimumWidth(180);
+  QVBoxLayout* settingsPanelLayout = new QVBoxLayout(settingsPanel);
+  settingsPanelLayout->setSpacing(8);
+  settingsPanelLayout->setContentsMargins(0, 0, 5, 0);
 
   // -------- Camera Settings Group --------
   m_settingsGroup = new QGroupBox("Camera Settings");
   QVBoxLayout* settingsLayout = new QVBoxLayout();
+  settingsLayout->setSpacing(12);  // More spacing between elements
 
   // Auto Exposure checkbox
   m_autoExposureCheck = new QCheckBox("Auto Exposure");
@@ -179,7 +181,7 @@ void CameraView::setupUI()
     this, &CameraView::onAutoGainChanged);
   settingsLayout->addWidget(m_autoGainCheck);
 
-  settingsLayout->addSpacing(10);
+  settingsLayout->addSpacing(15);
 
   // Exposure control
   QLabel* expLabel = new QLabel("Exposure:");
@@ -199,7 +201,7 @@ void CameraView::setupUI()
   m_exposureValueLabel->setAlignment(Qt::AlignCenter);
   settingsLayout->addWidget(m_exposureValueLabel);
 
-  settingsLayout->addSpacing(10);
+  settingsLayout->addSpacing(15);
 
   // Gain control
   QLabel* gainLabel = new QLabel("Gain:");
@@ -219,7 +221,7 @@ void CameraView::setupUI()
   m_gainValueLabel->setAlignment(Qt::AlignCenter);
   settingsLayout->addWidget(m_gainValueLabel);
 
-  settingsLayout->addSpacing(15);
+  settingsLayout->addSpacing(20);
 
   // Save Image button
   m_saveImageButton = new QPushButton("Save Image");
@@ -241,14 +243,25 @@ void CameraView::setupUI()
     this, &CameraView::onSaveImageClicked);
   settingsLayout->addWidget(m_saveImageButton);
 
-  m_settingsGroup->setLayout(settingsLayout);
-  leftLayout->addWidget(m_settingsGroup);
+  settingsLayout->addStretch();  // Push content to top
 
-  leftLayout->addSpacing(20);
+  m_settingsGroup->setLayout(settingsLayout);
+  settingsPanelLayout->addWidget(m_settingsGroup);
+
+  contentLayout->addWidget(settingsPanel);
+
+  // ================== LEFT PANEL 2 - DIGITAL ZOOM ==================
+  QWidget* zoomPanel = new QWidget();
+  zoomPanel->setMaximumWidth(150);
+  zoomPanel->setMinimumWidth(120);
+  QVBoxLayout* zoomPanelLayout = new QVBoxLayout(zoomPanel);
+  zoomPanelLayout->setSpacing(8);
+  zoomPanelLayout->setContentsMargins(5, 0, 5, 0);
 
   // -------- Zoom Controls Group --------
   QGroupBox* zoomGroup = new QGroupBox("Digital Zoom");
   QVBoxLayout* zoomLayout = new QVBoxLayout();
+  zoomLayout->setSpacing(12);
 
   m_zoomLabel = new QLabel("Zoom: 100%");
   m_zoomLabel->setStyleSheet("QLabel { font-weight: bold; }");
@@ -280,12 +293,12 @@ void CameraView::setupUI()
   connect(m_zoomResetButton, &QPushButton::clicked, this, &CameraView::onZoomResetClicked);
   zoomLayout->addWidget(m_zoomResetButton);
 
+  zoomLayout->addStretch();  // Push content to top
+
   zoomGroup->setLayout(zoomLayout);
-  leftLayout->addWidget(zoomGroup);
+  zoomPanelLayout->addWidget(zoomGroup);
 
-  leftLayout->addStretch();
-
-  contentLayout->addWidget(leftPanel);
+  contentLayout->addWidget(zoomPanel);
 
   // ================== VIDEO DISPLAY ==================
   m_viewport = new CameraImageWidget(this);

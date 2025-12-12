@@ -18,6 +18,13 @@
 // Forward declarations
 class PylonCamera;
 
+// Camera model enum for ace vs ace2 parameter detection
+enum class BaslerCameraModel {
+  UNKNOWN,    // Not yet detected or unrecognized model
+  ACE,        // Older ace cameras (acA prefix) - uses ExposureTimeAbs, GainRaw
+  ACE2        // Newer ace2 cameras (a2A prefix) - uses ExposureTime, Gain
+};
+
 // Configuration event handler for device removal handling
 class PylonDeviceRemovalHandler : public Pylon::CConfigurationEventHandler
 {
@@ -148,6 +155,12 @@ public:
   // Get the latest frame data from continuous grabbing (thread-safe)
   bool GetLatestFrameData(uint8_t*& imageData, uint32_t& width, uint32_t& height, bool& newFrame);
 
+  // Get the detected camera model (ace vs ace2)
+  BaslerCameraModel GetCameraModel() const { return m_cameraModel; }
+
+  // Get camera model as string for logging
+  std::string GetCameraModelString() const;
+
 private:
   // NEW: Enhanced connection methods
   bool ConnectToDevice(const Pylon::CDeviceInfo& deviceInfo);
@@ -170,6 +183,9 @@ private:
   bool ValidateConnectionForRead() const;  // Check connection for read operations (handles const issues)
   void DebugAllCameras();
   bool ConnectToIPWithFallback(const std::string& ipAddress, const std::string& fallbackSerial = "");
+
+  // Detect camera model from model name (ace vs ace2)
+  void DetectCameraModel();
 
 private:
   // Pylon camera object
@@ -210,6 +226,9 @@ private:
 
   // Error message storage
   mutable std::string m_lastErrorMessage;
+
+  // Detected camera model (ace vs ace2)
+  BaslerCameraModel m_cameraModel;
 
   // Friend the handler so it can access private members
   friend class PylonDeviceRemovalHandler;

@@ -41,7 +41,8 @@ PylonCamera::PylonCamera()
 	, m_targetFPS(30)
 	, m_lastIPAddress("")
 	, m_lastDeviceIndex(-1)
-	, m_hasLatestFrame(false)  // Initialize new member
+	, m_hasLatestFrame(false)
+	, m_cameraModel(BaslerCameraModel::UNKNOWN)  // Initialize camera model
 {
 	// Initialize Pylon runtime
 	Pylon::PylonInitialize();
@@ -202,6 +203,9 @@ bool PylonCamera::Connect()
 		std::cout << "Connected to camera: " << m_camera.GetDeviceInfo().GetModelName() << std::endl;
 		std::cout << "Serial Number: " << m_lastDeviceSerialNumber << std::endl;
 
+		// Detect camera model (ace vs ace2) for correct parameter usage
+		DetectCameraModel();
+
 		return true;
 	}
 	catch (const Pylon::GenericException& e)
@@ -288,6 +292,9 @@ bool PylonCamera::ConnectToSerial(const std::string& serialNumber)
 
 		std::cout << "Connected to camera: " << m_camera.GetDeviceInfo().GetModelName() << std::endl;
 		std::cout << "Serial Number: " << m_lastDeviceSerialNumber << std::endl;
+
+		// Detect camera model (ace vs ace2) for correct parameter usage
+		DetectCameraModel();
 
 		return true;
 	}
@@ -948,30 +955,32 @@ bool PylonCamera::SetExposureTime(double microseconds) {
 		// Set exposure mode first
 		SetExposureMode();
 
-		// Try ace2/newer cameras first: ExposureTime (float, microseconds)
-		if (m_camera.GetNodeMap().GetNode("ExposureTime")) {
-			Pylon::CFloatParameter exposureTime(m_camera.GetNodeMap(), "ExposureTime");
-
-			// Get valid range for this camera
-			double minExposure = exposureTime.GetMin();
-			double maxExposure = exposureTime.GetMax();
-
-			// Clamp to valid range
-			double clampedExposure = (std::max)(minExposure, (std::min)(maxExposure, microseconds));
-
-			exposureTime.SetValue(clampedExposure);
-
-			if (std::abs(clampedExposure - microseconds) > 1.0) {
-				std::cout << "Warning: Exposure clamped from " << microseconds
-					<< " to " << clampedExposure << " us" << std::endl;
-			}
-
-			m_lastErrorMessage.clear();
-			return true;
+		// Determine which parameter to use based on detected camera model
+		std::string paramName;
+		if (m_cameraModel == BaslerCameraModel::ACE2) {
+			paramName = "ExposureTime";
 		}
-		// Fallback for older ace cameras: ExposureTimeAbs (float, microseconds)
-		else if (m_camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
-			Pylon::CFloatParameter exposureTime(m_camera.GetNodeMap(), "ExposureTimeAbs");
+		else if (m_cameraModel == BaslerCameraModel::ACE) {
+			paramName = "ExposureTimeAbs";
+		}
+		else {
+			// UNKNOWN model - use fallback detection
+			if (m_camera.GetNodeMap().GetNode("ExposureTime")) {
+				paramName = "ExposureTime";
+			}
+			else if (m_camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
+				paramName = "ExposureTimeAbs";
+			}
+			else {
+				m_lastErrorMessage = "Neither ExposureTime nor ExposureTimeAbs parameter found";
+				std::cerr << m_lastErrorMessage << std::endl;
+				return false;
+			}
+		}
+
+		// Set exposure using the determined parameter name
+		if (m_camera.GetNodeMap().GetNode(paramName.c_str())) {
+			Pylon::CFloatParameter exposureTime(m_camera.GetNodeMap(), paramName.c_str());
 
 			// Get valid range for this camera
 			double minExposure = exposureTime.GetMin();
@@ -991,7 +1000,7 @@ bool PylonCamera::SetExposureTime(double microseconds) {
 			return true;
 		}
 		else {
-			m_lastErrorMessage = "Neither ExposureTime nor ExposureTimeAbs parameter found";
+			m_lastErrorMessage = "Parameter " + paramName + " not found on camera";
 			std::cerr << m_lastErrorMessage << std::endl;
 			return false;
 		}
@@ -1008,25 +1017,51 @@ bool PylonCamera::SetGain(double gain) {
 	if (!ValidateConnection()) return false;
 
 	try {
-		// First set GainSelector to All or AnalogAll (recommended for most cases)
+		// First set GainSelector based on detected model
 		if (m_camera.GetNodeMap().GetNode("GainSelector")) {
 			Pylon::CEnumParameter gainSelector(m_camera.GetNodeMap(), "GainSelector");
-			// Try "All" first (ace2), then "AnalogAll" (ace)
-			try {
-				gainSelector.SetValue("All");
+
+			if (m_cameraModel == BaslerCameraModel::ACE2) {
+				// ace2 uses "All"
+				try { gainSelector.SetValue("All"); } catch (...) {}
 			}
-			catch (...) {
+			else if (m_cameraModel == BaslerCameraModel::ACE) {
+				// ace uses "AnalogAll"
+				try { gainSelector.SetValue("AnalogAll"); } catch (...) {}
+			}
+			else {
+				// UNKNOWN - try both
 				try {
-					gainSelector.SetValue("AnalogAll");
+					gainSelector.SetValue("All");
 				}
 				catch (...) {
-					// If neither works, just continue without setting selector
+					try { gainSelector.SetValue("AnalogAll"); } catch (...) {}
 				}
 			}
 		}
 
-		// Try ace2/newer cameras first: Gain (float, in dB)
-		if (m_camera.GetNodeMap().GetNode("Gain")) {
+		// Determine which parameter to use based on detected camera model
+		bool useFloatGain = false;
+		bool useRawGain = false;
+
+		if (m_cameraModel == BaslerCameraModel::ACE2) {
+			useFloatGain = true;
+		}
+		else if (m_cameraModel == BaslerCameraModel::ACE) {
+			useRawGain = true;
+		}
+		else {
+			// UNKNOWN model - use fallback detection
+			if (m_camera.GetNodeMap().GetNode("Gain")) {
+				useFloatGain = true;
+			}
+			else if (m_camera.GetNodeMap().GetNode("GainRaw")) {
+				useRawGain = true;
+			}
+		}
+
+		if (useFloatGain && m_camera.GetNodeMap().GetNode("Gain")) {
+			// ace2/newer cameras: Gain (float, in dB)
 			Pylon::CFloatParameter gainParam(m_camera.GetNodeMap(), "Gain");
 
 			// Get valid range for this camera
@@ -1051,8 +1086,8 @@ bool PylonCamera::SetGain(double gain) {
 			m_lastErrorMessage.clear();
 			return true;
 		}
-		// Fallback for older ace cameras: GainRaw (integer)
-		else if (m_camera.GetNodeMap().GetNode("GainRaw")) {
+		else if (useRawGain && m_camera.GetNodeMap().GetNode("GainRaw")) {
+			// Older ace cameras: GainRaw (integer)
 			Pylon::CIntegerParameter gainRaw(m_camera.GetNodeMap(), "GainRaw");
 
 			// Get valid range for this camera
@@ -1146,16 +1181,29 @@ double PylonCamera::GetExposureTime() const {
 		// Need to cast away const to access GetNodeMap() - this is safe for read operations
 		auto& camera = const_cast<Pylon::CInstantCamera&>(m_camera);
 
-		// Try ace2/newer cameras first: ExposureTime
-		if (camera.GetNodeMap().GetNode("ExposureTime")) {
-			Pylon::CFloatParameter exposureTime(camera.GetNodeMap(), "ExposureTime");
-			if (exposureTime.IsReadable()) {
-				return exposureTime.GetValue();
+		// Determine which parameter to use based on detected camera model
+		std::string paramName;
+		if (m_cameraModel == BaslerCameraModel::ACE2) {
+			paramName = "ExposureTime";
+		}
+		else if (m_cameraModel == BaslerCameraModel::ACE) {
+			paramName = "ExposureTimeAbs";
+		}
+		else {
+			// UNKNOWN model - use fallback detection
+			if (camera.GetNodeMap().GetNode("ExposureTime")) {
+				paramName = "ExposureTime";
+			}
+			else if (camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
+				paramName = "ExposureTimeAbs";
+			}
+			else {
+				return -1.0;
 			}
 		}
-		// Fallback for older ace cameras: ExposureTimeAbs
-		else if (camera.GetNodeMap().GetNode("ExposureTimeAbs")) {
-			Pylon::CFloatParameter exposureTime(camera.GetNodeMap(), "ExposureTimeAbs");
+
+		if (camera.GetNodeMap().GetNode(paramName.c_str())) {
+			Pylon::CFloatParameter exposureTime(camera.GetNodeMap(), paramName.c_str());
 			if (exposureTime.IsReadable()) {
 				return exposureTime.GetValue();
 			}
@@ -1175,8 +1223,28 @@ double PylonCamera::GetGain() const {
 		// Need to cast away const to access GetNodeMap() - this is safe for read operations
 		auto& camera = const_cast<Pylon::CInstantCamera&>(m_camera);
 
-		// Try ace2/newer cameras first: Gain (float, in dB)
-		if (camera.GetNodeMap().GetNode("Gain")) {
+		// Determine which parameter to use based on detected camera model
+		bool useFloatGain = false;
+		bool useRawGain = false;
+
+		if (m_cameraModel == BaslerCameraModel::ACE2) {
+			useFloatGain = true;
+		}
+		else if (m_cameraModel == BaslerCameraModel::ACE) {
+			useRawGain = true;
+		}
+		else {
+			// UNKNOWN model - use fallback detection
+			if (camera.GetNodeMap().GetNode("Gain")) {
+				useFloatGain = true;
+			}
+			else if (camera.GetNodeMap().GetNode("GainRaw")) {
+				useRawGain = true;
+			}
+		}
+
+		if (useFloatGain && camera.GetNodeMap().GetNode("Gain")) {
+			// ace2/newer cameras: Gain (float, in dB)
 			Pylon::CFloatParameter gainParam(camera.GetNodeMap(), "Gain");
 			if (gainParam.IsReadable()) {
 				// Get the value and convert back to 0-10 scale
@@ -1191,8 +1259,8 @@ double PylonCamera::GetGain() const {
 				}
 			}
 		}
-		// Fallback for older ace cameras: GainRaw (integer)
-		else if (camera.GetNodeMap().GetNode("GainRaw")) {
+		else if (useRawGain && camera.GetNodeMap().GetNode("GainRaw")) {
+			// Older ace cameras: GainRaw (integer)
 			Pylon::CIntegerParameter gainRaw(camera.GetNodeMap(), "GainRaw");
 			if (gainRaw.IsReadable()) {
 				// Get the raw value and convert back to 0-10 scale
@@ -1377,6 +1445,9 @@ bool PylonCamera::ConnectToIP(const std::string& ipAddress) {
 			<< " at IP: " << ipAddress << std::endl;
 		std::cout << "Serial Number: " << m_lastDeviceSerialNumber << std::endl;
 
+		// Detect camera model (ace vs ace2) for correct parameter usage
+		DetectCameraModel();
+
 		return true;
 	}
 	catch (const Pylon::GenericException& e) {
@@ -1439,6 +1510,9 @@ bool PylonCamera::ConnectToIndex(int deviceIndex) {
 		std::cout << "Successfully connected to camera: " << m_camera.GetDeviceInfo().GetModelName()
 			<< " at index: " << deviceIndex << std::endl;
 		std::cout << "Serial Number: " << m_lastDeviceSerialNumber << std::endl;
+
+		// Detect camera model (ace vs ace2) for correct parameter usage
+		DetectCameraModel();
 
 		return true;
 	}
@@ -1855,6 +1929,61 @@ void PylonCamera::DebugAllCameras() {
 	}
 }
 
+
+// Detect camera model from model name prefix
+void PylonCamera::DetectCameraModel() {
+	if (!m_connected || !m_camera.IsOpen()) {
+		m_cameraModel = BaslerCameraModel::UNKNOWN;
+		return;
+	}
+
+	try {
+		std::string modelName = std::string(m_camera.GetDeviceInfo().GetModelName().c_str());
+		std::cout << "Detecting camera model from: " << modelName << std::endl;
+
+		// Check model name prefix to determine ace vs ace2
+		// ace cameras: acA prefix (e.g., acA1300-60gm, acA1920-40gc)
+		// ace2 cameras: a2A prefix (e.g., a2A1920-51gcPRO, a2A2590-22gcPRO)
+		if (modelName.length() >= 3) {
+			std::string prefix = modelName.substr(0, 3);
+
+			if (prefix == "a2A" || prefix == "a2a") {
+				m_cameraModel = BaslerCameraModel::ACE2;
+				std::cout << "Detected camera model: ACE2 (uses ExposureTime, Gain)" << std::endl;
+			}
+			else if (prefix == "acA" || prefix == "aca") {
+				m_cameraModel = BaslerCameraModel::ACE;
+				std::cout << "Detected camera model: ACE (uses ExposureTimeAbs, GainRaw)" << std::endl;
+			}
+			else {
+				// Unknown prefix - will use try/fallback approach
+				m_cameraModel = BaslerCameraModel::UNKNOWN;
+				std::cout << "Unknown camera model prefix: " << prefix << " (will use fallback detection)" << std::endl;
+			}
+		}
+		else {
+			m_cameraModel = BaslerCameraModel::UNKNOWN;
+			std::cout << "Model name too short to detect: " << modelName << std::endl;
+		}
+	}
+	catch (const Pylon::GenericException& e) {
+		std::cerr << "Error detecting camera model: " << e.GetDescription() << std::endl;
+		m_cameraModel = BaslerCameraModel::UNKNOWN;
+	}
+}
+
+// Get camera model as string for logging
+std::string PylonCamera::GetCameraModelString() const {
+	switch (m_cameraModel) {
+	case BaslerCameraModel::ACE:
+		return "ACE (legacy parameters)";
+	case BaslerCameraModel::ACE2:
+		return "ACE2 (SFNC parameters)";
+	case BaslerCameraModel::UNKNOWN:
+	default:
+		return "UNKNOWN (fallback mode)";
+	}
+}
 
 // Add to pylon_camera.cpp:
 bool PylonCamera::ConnectToIPWithFallback(const std::string& ipAddress, const std::string& fallbackSerial) {
