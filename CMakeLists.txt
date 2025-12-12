@@ -564,6 +564,7 @@ set(SOURCES
     include/sequence/SequenceContext.cpp
     include/sequence/SequenceContextCommandHandler.cpp
     include/sequence/SequenceWorker.cpp
+    include/sequence/GraphMoveWorker.cpp
     include/sequence/MotionCommandHandler.cpp
     include/sequence/IOCommandHandler.cpp
     include/sequence/PneumaticCommandHandler.cpp
