@@ -292,6 +292,33 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   fileLayout->addWidget(m_programPathLabel);
 
   QHBoxLayout* fileButtonLayout = new QHBoxLayout();
+  m_newButton = new QPushButton("New");
+  m_newButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
+    "  color: #d4d4d4; "
+    "  padding: 5px 10px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2c2c2c; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 12px; "
+    "}"
+  );
   m_loadButton = new QPushButton("Load");
   m_loadButton->setStyleSheet(
     "QPushButton { "
@@ -374,6 +401,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}"
   );
 
+  fileButtonLayout->addWidget(m_newButton);
   fileButtonLayout->addWidget(m_loadButton);
   fileButtonLayout->addWidget(m_saveButton);
   fileButtonLayout->addWidget(m_editButton);
@@ -632,6 +660,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   leftLayout->addWidget(m_tabWidget, 1);
 
   // Connect signals
+  connect(m_newButton, &QPushButton::clicked, this, &RunProgramPage::onNewProgram);
   connect(m_loadButton, &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
   connect(m_saveButton, &QPushButton::clicked, this, &RunProgramPage::onSaveProgram);
   connect(m_editButton, &QPushButton::clicked, this, &RunProgramPage::onEditProgram);
@@ -1338,6 +1367,42 @@ void RunProgramPage::onProductChanged()
       std::cout << "[RunProgramPage] No product - program cleared" << std::endl;
     }
   }
+}
+
+void RunProgramPage::onNewProgram()
+{
+  // Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before creating a new program.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // Confirm if there's unsaved work
+  if (m_programManager->getRecipeCount() > 0) {
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "Create New Program",
+      "Creating a new program will clear the current program.\n\n"
+      "Do you want to continue?",
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) {
+      return;
+    }
+  }
+
+  // Create new program
+  m_programManager->newProgram();
+  m_currentProgramPath.clear();
+
+  // Update UI
+  updateRecipeList();
+  updateProgramInfo();
+
+  // Switch to edit mode so user can start adding recipes
+  showEditWidget();
+
+  std::cout << "[RunProgramPage] New program created" << std::endl;
 }
 
 void RunProgramPage::onLoadProgram()

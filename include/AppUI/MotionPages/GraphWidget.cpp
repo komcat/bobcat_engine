@@ -580,6 +580,51 @@ void GraphWidget::setupToolbar()
   m_toolbar->addWidget(m_btnResetZoom);
 
   m_mainLayout->addWidget(m_toolbar);
+
+  // ============================================================================
+  // HELP/DESCRIPTION PANEL FOR NEW USERS
+  // ============================================================================
+  QWidget* helpPanel = new QWidget(this);
+  helpPanel->setStyleSheet(
+    "QWidget { background-color: #1a3a4a; border: 1px solid #2980b9; border-radius: 4px; }"
+  );
+  QVBoxLayout* helpLayout = new QVBoxLayout(helpPanel);
+  helpLayout->setContentsMargins(12, 8, 12, 8);
+  helpLayout->setSpacing(6);
+
+  // Title with icon
+  QLabel* helpTitle = new QLabel("What is Motion Graph?", helpPanel);
+  helpTitle->setStyleSheet(
+    "QLabel { color: #3498db; font-weight: bold; font-size: 12px; border: none; background: transparent; }"
+  );
+  helpLayout->addWidget(helpTitle);
+
+  // Description text
+  QLabel* helpText = new QLabel(
+    "<p style='color: #bdc3c7; font-size: 11px; line-height: 1.4; margin: 0;'>"
+    "<b>Motion Graph</b> defines safe movement paths between positions. "
+    "Instead of moving directly (which may cause collisions), the system follows "
+    "connected nodes to reach the destination safely.</p>"
+    "<p style='color: #95a5a6; font-size: 10px; margin-top: 6px;'>"
+    "<b>Quick Start:</b> Right-click on canvas to add nodes. "
+    "Drag between nodes to create edges (paths). "
+    "Use <b>Parallel Move</b> with <i>graphNode</i> type in recipes to utilize these paths.</p>",
+    helpPanel
+  );
+  helpText->setWordWrap(true);
+  helpText->setStyleSheet("QLabel { border: none; background: transparent; }");
+  helpLayout->addWidget(helpText);
+
+  // Mouse controls hint
+  QLabel* controlsHint = new QLabel(
+    "<span style='color: #7f8c8d; font-size: 9px;'>"
+    "Controls: Scroll=Zoom | Middle-drag=Pan | Right-click=Context menu</span>",
+    helpPanel
+  );
+  controlsHint->setStyleSheet("QLabel { border: none; background: transparent; }");
+  helpLayout->addWidget(controlsHint);
+
+  m_mainLayout->addWidget(helpPanel);
 }
 
 void GraphWidget::setupScene()

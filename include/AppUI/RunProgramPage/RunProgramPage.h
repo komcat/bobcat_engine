@@ -59,6 +59,7 @@ signals:
 
 private slots:
   // File operations
+  void onNewProgram();
   void onLoadProgram();
   void onSaveProgram();
   void onEditProgram();
@@ -137,6 +138,7 @@ private:
   QWidget* m_rightPanel;  // ✅ Right panel for scanning controls
   QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
+  QPushButton* m_newButton;
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
   QPushButton* m_editButton;

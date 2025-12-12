@@ -100,7 +100,7 @@ void MotionControlPanel::setupUI()
   );
 
   setupActionsTab();
-  setupGraphTab();
+  // setupGraphTab();  // Removed - Graph functionality is in main "Graph" tab
 
   mainLayout->addWidget(m_tabWidget);
 
@@ -466,10 +466,10 @@ void MotionControlPanel::setupActionsTab()
   line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   buttonsLayout->addWidget(line2);
 
-  // Home Button
-  m_homeButton = new QPushButton("⌂ Home");
-  m_homeButton->setMinimumHeight(28);
-  buttonsLayout->addWidget(m_homeButton);
+  // Home Button - Removed (user can select Home position from list and click Move to Position)
+  // m_homeButton = new QPushButton("⌂ Home");
+  // m_homeButton->setMinimumHeight(28);
+  // buttonsLayout->addWidget(m_homeButton);
 
   // Emergency Stop
   m_stopButton = new QPushButton("⚠ STOP");
@@ -558,8 +558,8 @@ void MotionControlPanel::setupActionsTab()
   connect(m_autoFitButton, &QPushButton::clicked,
     this, &MotionControlPanel::autoFitClicked);
 
-  connect(m_homeButton, &QPushButton::clicked,
-    this, &MotionControlPanel::homeClicked);
+  // connect(m_homeButton, &QPushButton::clicked,
+  //   this, &MotionControlPanel::homeClicked);  // Home button removed
 
   connect(m_stopButton, &QPushButton::clicked,
     this, &MotionControlPanel::stopClicked);

@@ -412,6 +412,7 @@ void MotionPage::setupUI()
 	coordTabLayout->addWidget(coordSubTabs);
 
 	m_tabWidget->addTab(coordinateSystemTab, "Coordinate Systems");
+	m_tabWidget->setTabEnabled(1, false);  // Disable Coordinate Systems tab (index 1)
 
 	// ============================================================================
 	// TAB 3: GRAPH

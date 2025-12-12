@@ -855,14 +855,22 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+  // ✅ CRITICAL: Stop SMU polling FIRST and disconnect signals BEFORE touching DataStore
+  // This prevents crash where polling thread tries to access destroyed DataStore
+  if (m_smuPollingManager) {
+    std::cout << "[Application] Stopping SMU polling..." << std::endl;
+    m_smuPollingManager->StopAllPolling();
+    m_smuPollingManager->disconnect();  // Disconnect all Qt signals
+  }
 
   // Disconnect all PSU devices
   if (m_context.powerSupplyManager) {
     m_context.powerSupplyManager->disconnectAll();
   }
 
-  // Disconnect all SMU devices
+  // Disconnect all SMU devices (after polling is stopped)
   if (m_context.smuManager) {
+    m_context.smuManager->disconnect();  // Disconnect signals first
     m_context.smuManager->DisconnectAll();
   }
 
@@ -900,13 +908,15 @@ void Application::shutdownManagers()
 
   m_context = ApplicationContext();
 
-	m_powerSupplyManager.reset();
-  m_smuManager.reset();  // ✅ ADD SMU Manager cleanup
+  // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
+  m_smuPollingManager.reset();
+  m_powerSupplyManager.reset();
+  m_smuManager.reset();
   m_lightingManager.reset();
-  m_tecManager.reset();  // ✅ ADD THIS LINE
-  m_productPositionManager.reset();  // ✅ ADD THIS
+  m_tecManager.reset();
+  m_productPositionManager.reset();
   m_pneumaticManager.reset();
-  m_scanController.reset();   // ✅ ADD THIS
+  m_scanController.reset();
   m_ioManager.reset();
   m_motionManager.reset();
   m_cameraManager.reset();
