@@ -120,42 +120,43 @@ void IOControllerPage::createIOPinPanel()
   m_ioPinPanel = new QWidget();
 
   QVBoxLayout* layout = new QVBoxLayout(m_ioPinPanel);
-  layout->setContentsMargins(20, 20, 20, 20);
-  layout->setSpacing(15);
+  layout->setContentsMargins(15, 15, 15, 15);
+  layout->setSpacing(10);
 
   // ============================================================================
-  // HEADER
+  // HEADER - Minimal
   // ============================================================================
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_deviceNameLabel = new QLabel("No device selected");
-  m_deviceNameLabel->setStyleSheet("QLabel { font-size: 22px; font-weight: bold; color: #ecf0f1; }");  // Larger, light color
+  m_deviceNameLabel->setStyleSheet("QLabel { font-size: 18px; font-weight: 600; color: #e0e0e0; }");
   headerLayout->addWidget(m_deviceNameLabel);
 
   headerLayout->addStretch();
 
-  m_connectionStatusLabel = new QLabel("⚪ Disconnected");
-  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #95a5a6; }");  // Larger, bold
+  m_connectionStatusLabel = new QLabel("● Disconnected");
+  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #666; }");
   headerLayout->addWidget(m_connectionStatusLabel);
 
   layout->addLayout(headerLayout);
 
   // ============================================================================
-  // PIN TABLES - TWO COLUMNS
+  // PIN TABLES - Clean Minimal Style
   // ============================================================================
   QHBoxLayout* tablesLayout = new QHBoxLayout();
-  tablesLayout->setSpacing(10);
+  tablesLayout->setSpacing(15);
 
+  // Minimal group box style
   QString groupBoxStyle =
     "QGroupBox { "
-    "  font-size: 16px; "  // Larger font
-    "  font-weight: bold; "
-    "  color: #ecf0f1; "  // Light color for dark theme
-    "  background-color: #2c3e50; "  // Dark background
-    "  border: 2px solid #34495e; "
-    "  border-radius: 5px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
+    "  font-size: 13px; "
+    "  font-weight: 600; "
+    "  color: #aaa; "
+    "  background-color: #252525; "
+    "  border: 1px solid #333; "
+    "  border-radius: 4px; "
+    "  margin-top: 8px; "
+    "  padding-top: 8px; "
     "} "
     "QGroupBox::title { "
     "  subcontrol-origin: margin; "
@@ -163,81 +164,91 @@ void IOControllerPage::createIOPinPanel()
     "  padding: 0 5px; "
     "}";
 
+  // Clean flat table style
   QString tableStyle =
     "QTableWidget { "
-    "  background-color: #34495e; "  // Dark background
-    "  color: #ecf0f1; "  // Light text color
-    "  gridline-color: #4a5f7f; "
-    "  border: 1px solid #2c3e50; "
-    "  font-size: 14px; "  // Larger font
-    "  font-weight: bold; "  // Bold text
+    "  background-color: #1a1a1a; "
+    "  alternate-background-color: #202020; "
+    "  color: #ccc; "
+    "  gridline-color: #2a2a2a; "
+    "  border: none; "
+    "  font-size: 12px; "
+    "  selection-background-color: #333; "
     "} "
     "QTableWidget::item { "
-    "  padding: 10px; "  // More padding for larger font
-    "  border-bottom: 1px solid #2c3e50; "
-    "} "
-    "QTableWidget::item:selected { "
-    "  background-color: #5d6d7e; "  // Darker selection
+    "  padding: 4px 8px; "
+    "  border: none; "
     "} "
     "QHeaderView::section { "
-    "  background-color: #2c3e50; "  // Dark header
-    "  color: #ecf0f1; "  // Light text
-    "  padding: 12px; "  // More padding
-    "  border: 1px solid #34495e; "
-    "  font-weight: bold; "
-    "  font-size: 14px; "  // Larger font
+    "  background-color: #1a1a1a; "
+    "  color: #888; "
+    "  padding: 6px 8px; "
+    "  border: none; "
+    "  border-bottom: 1px solid #333; "
+    "  font-weight: 600; "
+    "  font-size: 11px; "
+    "  text-transform: uppercase; "
     "}";
 
   // ============================================================================
-  // COLUMN 1: INPUT PINS
+  // COLUMN 1: INPUT PINS - Minimal (removed Type column)
   // ============================================================================
-  QGroupBox* inputGroup = new QGroupBox("Input Pins");
+  QGroupBox* inputGroup = new QGroupBox("Inputs");
   inputGroup->setStyleSheet(groupBoxStyle);
 
   QVBoxLayout* inputLayout = new QVBoxLayout(inputGroup);
+  inputLayout->setContentsMargins(5, 10, 5, 5);
 
   m_inputPinsTable = new QTableWidget();
-  m_inputPinsTable->setColumnCount(4);
-  m_inputPinsTable->setHorizontalHeaderLabels({ "Pin #", "Name", "Type", "Status" });
+  m_inputPinsTable->setColumnCount(3);  // Removed Type column
+  m_inputPinsTable->setHorizontalHeaderLabels({ "#", "Name", "Status" });
 
-  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+  m_inputPinsTable->horizontalHeader()->resizeSection(0, 40);
   m_inputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  m_inputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+  m_inputPinsTable->horizontalHeader()->resizeSection(2, 60);
 
   m_inputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_inputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_inputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_inputPinsTable->verticalHeader()->setDefaultSectionSize(50);  // Larger rows for bigger font
-  m_inputPinsTable->verticalHeader()->setMinimumSectionSize(50);
+  m_inputPinsTable->setAlternatingRowColors(true);
+  m_inputPinsTable->verticalHeader()->setVisible(false);  // Hide row numbers
+  m_inputPinsTable->verticalHeader()->setDefaultSectionSize(32);  // Compact rows
+  m_inputPinsTable->setShowGrid(false);
   m_inputPinsTable->setStyleSheet(tableStyle);
 
   inputLayout->addWidget(m_inputPinsTable);
   tablesLayout->addWidget(inputGroup, 1);
 
   // ============================================================================
-  // COLUMN 2: OUTPUT PINS (with control)
+  // COLUMN 2: OUTPUT PINS - Minimal (removed Type column)
   // ============================================================================
-  QGroupBox* outputGroup = new QGroupBox("Output Pins");
+  QGroupBox* outputGroup = new QGroupBox("Outputs");
   outputGroup->setStyleSheet(groupBoxStyle);
 
   QVBoxLayout* outputLayout = new QVBoxLayout(outputGroup);
+  outputLayout->setContentsMargins(5, 10, 5, 5);
 
   m_outputPinsTable = new QTableWidget();
-  m_outputPinsTable->setColumnCount(5);
-  m_outputPinsTable->setHorizontalHeaderLabels({ "Control", "Pin #", "Name", "Type", "Status" });  // Control moved to left
+  m_outputPinsTable->setColumnCount(4);  // Removed Type column
+  m_outputPinsTable->setHorizontalHeaderLabels({ "", "#", "Name", "Status" });  // Empty header for toggle
 
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);  // Control
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);  // Pin #
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);           // Name
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);  // Type
-  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);  // Status
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+  m_outputPinsTable->horizontalHeader()->resizeSection(0, 50);  // Toggle
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
+  m_outputPinsTable->horizontalHeader()->resizeSection(1, 40);  // Pin #
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);  // Name
+  m_outputPinsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
+  m_outputPinsTable->horizontalHeader()->resizeSection(3, 60);  // Status
 
   m_outputPinsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_outputPinsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_outputPinsTable->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_outputPinsTable->verticalHeader()->setDefaultSectionSize(50);  // Larger rows for bigger font
-  m_outputPinsTable->verticalHeader()->setMinimumSectionSize(50);
+  m_outputPinsTable->setAlternatingRowColors(true);
+  m_outputPinsTable->verticalHeader()->setVisible(false);  // Hide row numbers
+  m_outputPinsTable->verticalHeader()->setDefaultSectionSize(32);  // Compact rows
+  m_outputPinsTable->setShowGrid(false);
   m_outputPinsTable->setStyleSheet(tableStyle);
 
   outputLayout->addWidget(m_outputPinsTable);
@@ -362,17 +373,17 @@ void IOControllerPage::onDeviceSelected()
   // Update device info
   m_deviceNameLabel->setText(QString::fromStdString(m_selectedDevice));
 
-  // Check connection status
+  // Check connection status - minimal style
   EziIOManager* ioMgr = getIOManager();
   if (ioMgr) {
     IEziIODevice* device = ioMgr->GetDevice(m_selectedDevice);
     if (device && device->IsConnected()) {
-      m_connectionStatusLabel->setText("🟢 Connected");
-      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #2ecc71; }");
+      m_connectionStatusLabel->setText("● Connected");
+      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #4CAF50; }");
     }
     else {
-      m_connectionStatusLabel->setText("🔴 Disconnected");
-      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #e74c3c; }");
+      m_connectionStatusLabel->setText("● Disconnected");
+      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #666; }");
     }
   }
 
@@ -422,58 +433,56 @@ void IOControllerPage::refreshIOPinTable()
 void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
   const std::string& pinName, bool isOutput, bool currentState)
 {
-  // For outputs: Control, Pin #, Name, Type, Status (columns 0-4)
-  // For inputs: Pin #, Name, Type, Status (columns 0-3)
+  // Minimal layout:
+  // For outputs: Toggle, #, Name, Status (columns 0-3)
+  // For inputs: #, Name, Status (columns 0-2)
 
-  int colOffset = isOutput ? 1 : 0;  // Offset by 1 for outputs (Control is in column 0)
+  int colOffset = isOutput ? 1 : 0;
 
-  // Toggle button FIRST for outputs (column 0)
+  // Toggle button for outputs (column 0)
   if (isOutput) {
     QCheckBox* toggleButton = new QCheckBox();
     toggleButton->setChecked(currentState);
     toggleButton->setStyleSheet(
       "QCheckBox::indicator { "
-      "  width: 35px; "  // Larger for easier clicking
-      "  height: 35px; "
-      "  border: 2px solid #7f8c8d; "
-      "  border-radius: 6px; "
-      "  background-color: #2c3e50; "  // Dark background
+      "  width: 24px; "
+      "  height: 24px; "
+      "  border: 1px solid #444; "
+      "  border-radius: 4px; "
+      "  background-color: #2a2a2a; "
       "} "
       "QCheckBox::indicator:checked { "
-      "  background-color: #27ae60; "
-      "  border-color: #229954; "
+      "  background-color: #4CAF50; "
+      "  border-color: #4CAF50; "
       "} "
       "QCheckBox::indicator:hover { "
-      "  border-color: #3498db; "
+      "  border-color: #666; "
       "}");
 
     connect(toggleButton, &QCheckBox::toggled, this, [this, pinName](bool checked) {
       EziIOManager* ioMgr = getIOManager();
       if (ioMgr && !m_selectedDevice.empty()) {
-        std::cout << "[IOControllerPage] Toggle " << pinName << " -> "
-          << (checked ? "ON" : "OFF") << std::endl;
-
         EziIOError result = ioMgr->SetOutputByName(m_selectedDevice, pinName, checked);
-
         if (result != EziIOError::SUCCESS) {
-          std::cerr << "[IOControllerPage] Failed to set output: "
-            << GetErrorString(result) << std::endl;
+          std::cerr << "[IO] Failed to set " << pinName << std::endl;
         }
       }
     });
 
     QWidget* toggleWidget = new QWidget();
+    toggleWidget->setStyleSheet("background: transparent;");
     QHBoxLayout* toggleLayout = new QHBoxLayout(toggleWidget);
     toggleLayout->addWidget(toggleButton);
     toggleLayout->setAlignment(Qt::AlignCenter);
     toggleLayout->setContentsMargins(0, 0, 0, 0);
 
-    table->setCellWidget(row, 0, toggleWidget);  // Column 0 for outputs
+    table->setCellWidget(row, 0, toggleWidget);
   }
 
   // Pin number
   QTableWidgetItem* pinNumItem = new QTableWidgetItem(QString::number(pinNumber));
   pinNumItem->setTextAlignment(Qt::AlignCenter);
+  pinNumItem->setForeground(QColor("#666"));
   table->setItem(row, 0 + colOffset, pinNumItem);
 
   // Pin name
@@ -481,16 +490,11 @@ void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
   nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
   table->setItem(row, 1 + colOffset, nameItem);
 
-  // Type
-  QTableWidgetItem* typeItem = new QTableWidgetItem(isOutput ? "Output" : "Input");
-  typeItem->setTextAlignment(Qt::AlignCenter);
-  typeItem->setForeground(isOutput ? QColor("#f39c12") : QColor("#3498db"));  // Brighter colors for dark theme
-  table->setItem(row, 2 + colOffset, typeItem);
-
-  // Status (will be updated by polling)
+  // Status (will be updated by polling) - column 2 for inputs, column 3 for outputs
   QTableWidgetItem* statusItem = new QTableWidgetItem("--");
   statusItem->setTextAlignment(Qt::AlignCenter);
-  table->setItem(row, 3 + colOffset, statusItem);
+  statusItem->setForeground(QColor("#666"));
+  table->setItem(row, 2 + colOffset, statusItem);
 }
 
 void IOControllerPage::updateIOStatus()
@@ -514,24 +518,23 @@ void IOControllerPage::updateIOStatus()
     for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
       bool state = (inputs & (1ULL << i)) != 0;
 
-      // Update status text (column 3 for inputs)
-      QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 3);
+      // Update status text (column 2 for inputs: #, Name, Status)
+      QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 2);
       if (statusItem) {
-        statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
-        statusItem->setForeground(state ? QColor("#2ecc71") : QColor("#95a5a6"));
+        statusItem->setText(state ? "ON" : "OFF");
+        statusItem->setForeground(state ? QColor("#4CAF50") : QColor("#666"));
       }
 
-      // Highlight entire row based on status
-      QColor rowColor = state ? QColor("#27ae60") : QColor("#34495e");  // Green for ON, dark gray for OFF
+      // Subtle row highlight for ON state
       for (int col = 0; col < m_inputPinsTable->columnCount(); ++col) {
         QTableWidgetItem* item = m_inputPinsTable->item(i, col);
         if (item) {
-          item->setBackground(rowColor);
-          // Keep Type column color distinct, white for others
-          if (col == 2) {  // Type column
-            item->setForeground(QColor("#3498db"));  // Keep blue for Input
+          if (state) {
+            item->setBackground(QColor("#1a2f1a"));  // Subtle green tint
+            item->setForeground(col == 2 ? QColor("#4CAF50") : QColor("#ccc"));
           } else {
-            item->setForeground(QColor("#ecf0f1"));  // White for readable text
+            item->setBackground(QColor(i % 2 == 0 ? 0x1a1a1a : 0x202020));  // Alternating
+            item->setForeground(col == 2 ? QColor("#666") : QColor("#999"));
           }
         }
       }
@@ -553,14 +556,14 @@ void IOControllerPage::updateIOStatus()
 
       bool state = (outputs & (1ULL << (bitOffset + i))) != 0;
 
-      // Update status text (column 4 for outputs - new position)
-      QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 4);
+      // Update status text (column 3 for outputs: Toggle, #, Name, Status)
+      QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 3);
       if (statusItem) {
-        statusItem->setText(state ? "🟢 ON" : "⚪ OFF");
-        statusItem->setForeground(state ? QColor("#2ecc71") : QColor("#95a5a6"));
+        statusItem->setText(state ? "ON" : "OFF");
+        statusItem->setForeground(state ? QColor("#4CAF50") : QColor("#666"));
       }
 
-      // Update toggle button to match actual state (column 0 - new position)
+      // Update toggle button to match actual state (column 0)
       QWidget* toggleWidget = m_outputPinsTable->cellWidget(row, 0);
       if (toggleWidget) {
         QCheckBox* toggleButton = toggleWidget->findChild<QCheckBox*>();
@@ -569,21 +572,19 @@ void IOControllerPage::updateIOStatus()
           toggleButton->setChecked(state);
           toggleButton->blockSignals(false);
         }
-        // Also set background for toggle widget
-        toggleWidget->setStyleSheet(state ? "background-color: #27ae60;" : "background-color: #34495e;");
+        toggleWidget->setStyleSheet("background: transparent;");
       }
 
-      // Highlight entire row based on status (skip column 0 which has the toggle widget)
-      QColor rowColor = state ? QColor("#27ae60") : QColor("#34495e");  // Green for ON, dark gray for OFF
-      for (int col = 1; col < m_outputPinsTable->columnCount(); ++col) {  // Start from col 1 to skip Control column
+      // Subtle row highlight for ON state (skip column 0 toggle widget)
+      for (int col = 1; col < m_outputPinsTable->columnCount(); ++col) {
         QTableWidgetItem* item = m_outputPinsTable->item(row, col);
         if (item) {
-          item->setBackground(rowColor);
-          // Keep Type column color distinct, white for others
-          if (col == 3) {  // Type column (col 3 in output table: Control, Pin#, Name, Type, Status)
-            item->setForeground(QColor("#f39c12"));  // Keep orange for Output
+          if (state) {
+            item->setBackground(QColor("#1a2f1a"));  // Subtle green tint
+            item->setForeground(col == 3 ? QColor("#4CAF50") : QColor("#ccc"));
           } else {
-            item->setForeground(QColor("#ecf0f1"));  // White for readable text
+            item->setBackground(QColor(row % 2 == 0 ? 0x1a1a1a : 0x202020));  // Alternating
+            item->setForeground(col == 3 ? QColor("#666") : QColor("#999"));
           }
         }
       }

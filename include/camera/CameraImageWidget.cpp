@@ -341,9 +341,30 @@ void CameraImageWidget::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
-  // Force repaint when widget becomes visible
+  // Force complete repaint when widget becomes visible
+  // This fixes overlay artifacts when switching pages
+  if (m_displayLabel) {
+    m_displayLabel->update();
+    m_displayLabel->repaint();
+  }
+
+  // Re-render current frame if we have one (same effect as resize)
+  if (!m_reusableBuffer.isNull()) {
+    QImage displayImage;
+    int zoom = m_zoomPercent.load();
+
+    if (zoom < 100) {
+      displayImage = applyZoom(m_reusableBuffer);
+    }
+    else {
+      displayImage = m_reusableBuffer;
+    }
+
+    renderFrame(displayImage);
+  }
+
   update();
   repaint();
 
-  std::cout << "[CameraImageWidget] Widget shown - forcing repaint" << std::endl;
+  std::cout << "[CameraImageWidget] Widget shown - forcing complete repaint" << std::endl;
 }

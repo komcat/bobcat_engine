@@ -69,62 +69,50 @@ void PneumaticControlPage::createSlideListPanel()
 
   // Title
   QLabel* titleLabel = new QLabel("Pneumatic Slides");
-  titleLabel->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #ffffff; }");
+  titleLabel->setStyleSheet("QLabel { font-size: 13px; color: #aaa; }");
   layout->addWidget(titleLabel);
 
-  // Refresh button
-  m_refreshButton = new QPushButton("🔄 Refresh");
+  // Refresh button - flat minimalistic style
+  m_refreshButton = new QPushButton("Refresh");
   m_refreshButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
-    "  color: white; "
-    "  border-radius: 4px; "
-    "  padding: 8px; "
-    "  font-size: 13px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 3px; "
+    "  padding: 8px 16px; "
+    "  font-size: 12px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  background-color: #3e3e42; "
+    "  border-color: #0e639c; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #2874a6; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 10px; "
-    "  padding-left: 10px; "
+    "  background-color: #0e639c; "
     "}");
   connect(m_refreshButton, &QPushButton::clicked, this, &PneumaticControlPage::onRefreshClicked);
   layout->addWidget(m_refreshButton);
 
-  // Slide list
+  // Slide list - clean minimalistic style
   m_slideList = new QListWidget();
   m_slideList->setStyleSheet(
     "QListWidget { "
-    "  background-color: #2d2d2d; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  padding: 5px; "
-    "  font-size: 14px; "
+    "  background-color: #1a1a1a; "
+    "  border: 1px solid #333; "
+    "  border-radius: 2px; "
+    "  font-size: 12px; "
     "  color: #d4d4d4; "
     "} "
     "QListWidget::item { "
-    "  padding: 10px; "
-    "  border-bottom: 1px solid #3f3f46; "
+    "  padding: 8px 10px; "
+    "  border-bottom: 1px solid #252525; "
     "} "
     "QListWidget::item:selected { "
     "  background-color: #0e639c; "
     "  color: white; "
     "} "
-    "QListWidget::item:hover { "
-    "  background-color: #3c3c3c; "
+    "QListWidget::item:hover:!selected { "
+    "  background-color: #252525; "
     "}");
   connect(m_slideList, &QListWidget::itemSelectionChanged, this, &PneumaticControlPage::onSlideSelected);
   layout->addWidget(m_slideList);
@@ -144,13 +132,13 @@ void PneumaticControlPage::createControlPanel()
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   m_slideNameLabel = new QLabel("No slide selected");
-  m_slideNameLabel->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
+  m_slideNameLabel->setStyleSheet("QLabel { font-size: 14px; color: #d4d4d4; }");
   headerLayout->addWidget(m_slideNameLabel);
 
   headerLayout->addStretch();
 
-  m_connectionStatusLabel = new QLabel("⚪ Not Connected");
-  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #7f8c8d; }");
+  m_connectionStatusLabel = new QLabel("Not Connected");
+  m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
   headerLayout->addWidget(m_connectionStatusLabel);
 
   layout->addLayout(headerLayout);
@@ -161,91 +149,94 @@ void PneumaticControlPage::createControlPanel()
   QGroupBox* statusGroup = new QGroupBox("Status");
   statusGroup->setStyleSheet(
     "QGroupBox { "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  color: #ffffff; "
-    "  background-color: #1e1e1e; "
-    "  border: 2px solid #3f3f46; "
-    "  border-radius: 5px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
+    "  font-size: 12px; "
+    "  color: #aaa; "
+    "  background-color: #1a1a1a; "
+    "  border: 1px solid #333; "
+    "  border-radius: 3px; "
+    "  margin-top: 12px; "
+    "  padding-top: 8px; "
     "} "
     "QGroupBox::title { "
     "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "  color: #ffffff; "
+    "  left: 8px; "
+    "  padding: 0 4px; "
+    "  color: #888; "
     "}");
 
   QGridLayout* statusLayout = new QGridLayout(statusGroup);
-  statusLayout->setSpacing(15);
+  statusLayout->setSpacing(8);
+  statusLayout->setContentsMargins(12, 16, 12, 12);
 
   // Position
   m_positionLabel = new QLabel("Position:");
-  m_positionLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  m_positionLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
   m_positionValueLabel = new QLabel("Unknown");
-  m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #7f8c8d; }");
+  m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #666; }");
 
   statusLayout->addWidget(m_positionLabel, 0, 0);
   statusLayout->addWidget(m_positionValueLabel, 0, 1);
 
-  // Position bar - Visual indicator
+  // Position bar - Clean flat indicator
   m_positionBar = new QProgressBar();
   m_positionBar->setRange(0, 100);
   m_positionBar->setValue(0);
-  m_positionBar->setFormat("");  // No text inside bar
+  m_positionBar->setFormat("");
   m_positionBar->setTextVisible(false);
   m_positionBar->setStyleSheet(
     "QProgressBar { "
-    "  border: 2px solid #3f3f46; "
-    "  border-radius: 5px; "
-    "  background-color: #1e1e1e; "
-    "  height: 30px; "
-    "  text-align: center; "
+    "  border: 1px solid #333; "
+    "  border-radius: 2px; "
+    "  background-color: #252525; "
+    "  height: 16px; "
     "} "
     "QProgressBar::chunk { "
-    "  background-color: #3498db; "
-    "  border-radius: 3px; "
+    "  background-color: #4CAF50; "
+    "  border-radius: 1px; "
     "}");
   statusLayout->addWidget(m_positionBar, 1, 0, 1, 2);
 
-  // Elapsed Time - NEW
-  m_elapsedTimeLabel = new QLabel("Elapsed Time:");
-  m_elapsedTimeLabel->setStyleSheet("QLabel { font-weight: bold; }");
-  m_elapsedTimeValueLabel = new QLabel("-- ms");
-  m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #95a5a6; }");
+  // Elapsed Time
+  m_elapsedTimeLabel = new QLabel("Elapsed:");
+  m_elapsedTimeLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
+  m_elapsedTimeValueLabel = new QLabel("--");
+  m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
 
   statusLayout->addWidget(m_elapsedTimeLabel, 2, 0);
   statusLayout->addWidget(m_elapsedTimeValueLabel, 2, 1);
 
   // Output status
   QLabel* outputLabel = new QLabel("Output:");
-  outputLabel->setStyleSheet("QLabel { font-weight: bold; }");
-  m_outputStatusLabel = new QLabel("⚪ OFF");
+  outputLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
+  m_outputStatusLabel = new QLabel("OFF");
+  m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
 
   statusLayout->addWidget(outputLabel, 3, 0);
   statusLayout->addWidget(m_outputStatusLabel, 3, 1);
 
   // Extended sensor
-  QLabel* extendedLabel = new QLabel("Extended Sensor:");
-  extendedLabel->setStyleSheet("QLabel { font-weight: bold; }");
-  m_extendedSensorLabel = new QLabel("⚪ OFF");
+  QLabel* extendedLabel = new QLabel("Extended:");
+  extendedLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
+  m_extendedSensorLabel = new QLabel("OFF");
+  m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
 
   statusLayout->addWidget(extendedLabel, 4, 0);
   statusLayout->addWidget(m_extendedSensorLabel, 4, 1);
 
   // Retracted sensor
-  QLabel* retractedLabel = new QLabel("Retracted Sensor:");
-  retractedLabel->setStyleSheet("QLabel { font-weight: bold; }");
-  m_retractedSensorLabel = new QLabel("⚪ OFF");
+  QLabel* retractedLabel = new QLabel("Retracted:");
+  retractedLabel->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
+  m_retractedSensorLabel = new QLabel("OFF");
+  m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
 
   statusLayout->addWidget(retractedLabel, 5, 0);
   statusLayout->addWidget(m_retractedSensorLabel, 5, 1);
 
   // Timeout
   QLabel* timeoutLabelText = new QLabel("Timeout:");
-  timeoutLabelText->setStyleSheet("QLabel { font-weight: bold; }");
+  timeoutLabelText->setStyleSheet("QLabel { color: #888; font-size: 12px; }");
   m_timeoutLabel = new QLabel("5000 ms");
+  m_timeoutLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
 
   statusLayout->addWidget(timeoutLabelText, 6, 0);
   statusLayout->addWidget(m_timeoutLabel, 6, 1);
@@ -258,144 +249,104 @@ void PneumaticControlPage::createControlPanel()
   QGroupBox* controlGroup = new QGroupBox("Control");
   controlGroup->setStyleSheet(
     "QGroupBox { "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  color: #ffffff; "
-    "  background-color: #1e1e1e; "
-    "  border: 2px solid #3f3f46; "
-    "  border-radius: 5px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
+    "  font-size: 12px; "
+    "  color: #aaa; "
+    "  background-color: #1a1a1a; "
+    "  border: 1px solid #333; "
+    "  border-radius: 3px; "
+    "  margin-top: 12px; "
+    "  padding-top: 8px; "
     "} "
     "QGroupBox::title { "
     "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "  color: #ffffff; "
+    "  left: 8px; "
+    "  padding: 0 4px; "
+    "  color: #888; "
     "}");
 
   QHBoxLayout* controlLayout = new QHBoxLayout(controlGroup);
   controlLayout->setSpacing(10);
 
-  // Extend button
-  m_extendButton = new QPushButton("⬆ Extend");
+  // Extend button - flat minimalistic
+  m_extendButton = new QPushButton("Extend");
   m_extendButton->setEnabled(false);
-  m_extendButton->setMinimumHeight(50);
+  m_extendButton->setMinimumHeight(36);
   m_extendButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "  background-color: #2d5a3d; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3d7a4d; "
+    "  border-radius: 3px; "
+    "  font-size: 12px; "
+    "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  background-color: #3d7a4d; "
+    "  border-color: #4CAF50; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #3d9041; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
+    "  background-color: #4CAF50; "
     "} "
     "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "  background-color: #2a2a2a; "
+    "  color: #555; "
+    "  border-color: #333; "
     "}");
   connect(m_extendButton, &QPushButton::clicked, this, &PneumaticControlPage::onExtendClicked);
   controlLayout->addWidget(m_extendButton);
 
-  // Retract button
-  m_retractButton = new QPushButton("⬇ Retract");
+  // Retract button - flat minimalistic
+  m_retractButton = new QPushButton("Retract");
   m_retractButton->setEnabled(false);
-  m_retractButton->setMinimumHeight(50);
+  m_retractButton->setMinimumHeight(36);
   m_retractButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f39c50, stop:1 #e67e22); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "  background-color: #5a4a2d; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #7a6a3d; "
+    "  border-radius: 3px; "
+    "  font-size: 12px; "
+    "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffac60, stop:1 #f39c50); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  background-color: #7a6a3d; "
+    "  border-color: #e67e22; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #d35400; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
+    "  background-color: #e67e22; "
     "} "
     "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "  background-color: #2a2a2a; "
+    "  color: #555; "
+    "  border-color: #333; "
     "}");
   connect(m_retractButton, &QPushButton::clicked, this, &PneumaticControlPage::onRetractClicked);
   controlLayout->addWidget(m_retractButton);
 
-  // Stop button
-  m_stopButton = new QPushButton("⏹ Stop");
+  // Stop button - flat minimalistic
+  m_stopButton = new QPushButton("Stop");
   m_stopButton->setEnabled(false);
-  m_stopButton->setMinimumHeight(50);
+  m_stopButton->setMinimumHeight(36);
   m_stopButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e85d5d, stop:1 #e74c3c); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "  background-color: #5a2d2d; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #7a3d3d; "
+    "  border-radius: 3px; "
+    "  font-size: 12px; "
+    "  padding: 8px 20px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f86d6d, stop:1 #e85d5d); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "  background-color: #7a3d3d; "
+    "  border-color: #e74c3c; "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #c0392b; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
+    "  background-color: #e74c3c; "
     "} "
     "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
+    "  background-color: #2a2a2a; "
+    "  color: #555; "
+    "  border-color: #333; "
     "}");
   connect(m_stopButton, &QPushButton::clicked, this, &PneumaticControlPage::onStopClicked);
   controlLayout->addWidget(m_stopButton);
@@ -464,7 +415,8 @@ void PneumaticControlPage::onSlideSelected()
   if (m_slideList->selectedItems().isEmpty()) {
     m_selectedSlide = "";
     m_slideNameLabel->setText("No slide selected");
-    m_connectionStatusLabel->setText("⚪ Not Connected");
+    m_connectionStatusLabel->setText("Not Connected");
+    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
     m_extendButton->setEnabled(false);
     m_retractButton->setEnabled(false);
     m_stopButton->setEnabled(false);
@@ -481,8 +433,8 @@ void PneumaticControlPage::onSlideSelected()
   // Check if pneumatic manager is available
   PneumaticManager* pneumaticMgr = getPneumaticManager();
   if (pneumaticMgr && pneumaticMgr->HasSlide(m_selectedSlide)) {
-    m_connectionStatusLabel->setText("🟢 Ready");
-    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #27ae60; }");
+    m_connectionStatusLabel->setText("Ready");
+    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
 
     m_extendButton->setEnabled(true);
     m_retractButton->setEnabled(true);
@@ -495,8 +447,8 @@ void PneumaticControlPage::onSlideSelected()
     }
   }
   else {
-    m_connectionStatusLabel->setText("🔴 Not Available");
-    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 14px; color: #e74c3c; }");
+    m_connectionStatusLabel->setText("Not Available");
+    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #e74c3c; }");
 
     m_extendButton->setEnabled(false);
     m_retractButton->setEnabled(false);
@@ -531,114 +483,105 @@ void PneumaticControlPage::updateSlideStatus()
   // Update elapsed time
   if (status.Position == PneumaticPosition::EXTENDING ||
     status.Position == PneumaticPosition::RETRACTING) {
-    // Currently moving - show live elapsed time in BLUE
+    // Currently moving - show live elapsed time in blue
     if (status.LastMoveTimeMs > 0) {
       m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #3498db; font-weight: bold; }");
+      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #3498db; }");
     }
     else {
       m_elapsedTimeValueLabel->setText("0 ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #3498db; font-weight: bold; }");
+      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #3498db; }");
     }
   }
   else if (status.Position == PneumaticPosition::EXTENDED ||
     status.Position == PneumaticPosition::RETRACTED) {
-    // Finished moving - show final time in GREEN
+    // Finished moving - show final time in green
     if (status.LastMoveTimeMs > 0) {
-      m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms ✓");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #27ae60; font-weight: bold; }");
+      m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
+      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
     }
     else {
-      m_elapsedTimeValueLabel->setText("-- ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #95a5a6; }");
+      m_elapsedTimeValueLabel->setText("--");
+      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
     }
   }
   else if (status.Position == PneumaticPosition::TIMEOUT) {
-    // Timeout - show in RED
-    m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms ⚠");
-    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #e74c3c; font-weight: bold; }");
+    // Timeout - show in red
+    m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms TIMEOUT");
+    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #e74c3c; }");
   }
   else {
     // Unknown/Error - show placeholder
-    m_elapsedTimeValueLabel->setText("-- ms");
-    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 14px; color: #95a5a6; }");
+    m_elapsedTimeValueLabel->setText("--");
+    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
   }
 
   // Update output status
   if (status.OutputActive) {
-    m_outputStatusLabel->setText("🟢 ON");
-    m_outputStatusLabel->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
+    m_outputStatusLabel->setText("ON");
+    m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
   }
   else {
-    m_outputStatusLabel->setText("⚪ OFF");
-    m_outputStatusLabel->setStyleSheet("QLabel { color: #95a5a6; }");
+    m_outputStatusLabel->setText("OFF");
+    m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
   }
 
   // Update extended sensor
   if (status.ExtendedSensorActive) {
-    m_extendedSensorLabel->setText("🟢 ON");
-    m_extendedSensorLabel->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
+    m_extendedSensorLabel->setText("ON");
+    m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
   }
   else {
-    m_extendedSensorLabel->setText("⚪ OFF");
-    m_extendedSensorLabel->setStyleSheet("QLabel { color: #95a5a6; }");
+    m_extendedSensorLabel->setText("OFF");
+    m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
   }
 
   // Update retracted sensor
   if (status.RetractedSensorActive) {
-    m_retractedSensorLabel->setText("🟢 ON");
-    m_retractedSensorLabel->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }");
+    m_retractedSensorLabel->setText("ON");
+    m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
   }
   else {
-    m_retractedSensorLabel->setText("⚪ OFF");
-    m_retractedSensorLabel->setStyleSheet("QLabel { color: #95a5a6; }");
+    m_retractedSensorLabel->setText("OFF");
+    m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
   }
 }
 
 
 void PneumaticControlPage::updatePositionIndicator(const std::string& position)
 {
+  // Clean flat progress bar base style
+  QString baseStyle = "QProgressBar { border: 1px solid #333; border-radius: 2px; background-color: #252525; height: 16px; } ";
+
   if (position == "Extended") {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #27ae60; font-weight: bold; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #4CAF50; }");
     m_positionBar->setValue(100);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #27ae60; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #4CAF50; border-radius: 1px; }");
   }
   else if (position == "Retracted") {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #e67e22; font-weight: bold; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #e67e22; }");
     m_positionBar->setValue(0);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #e67e22; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #e67e22; border-radius: 1px; }");
   }
   else if (position == "Extending") {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #3498db; font-weight: bold; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #3498db; }");
     m_positionBar->setValue(50);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #3498db; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #3498db; border-radius: 1px; }");
   }
   else if (position == "Retracting") {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #9b59b6; font-weight: bold; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #9b59b6; }");
     m_positionBar->setValue(50);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #9b59b6; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #9b59b6; border-radius: 1px; }");
   }
   else if (position == "Hardware Error" || position == "Timeout") {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #e74c3c; font-weight: bold; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #e74c3c; }");
     m_positionBar->setValue(0);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #e74c3c; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #e74c3c; border-radius: 1px; }");
   }
   else {
-    m_positionValueLabel->setStyleSheet("QLabel { font-size: 16px; color: #7f8c8d; }");
+    m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #666; }");
     m_positionBar->setValue(0);
-    m_positionBar->setStyleSheet(
-      "QProgressBar { border: 2px solid #3f3f46; border-radius: 5px; background-color: #1e1e1e; height: 25px; } "
-      "QProgressBar::chunk { background-color: #95a5a6; border-radius: 3px; }");
+    m_positionBar->setStyleSheet(baseStyle + "QProgressBar::chunk { background-color: #555; border-radius: 1px; }");
   }
 }
 
