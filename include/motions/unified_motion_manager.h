@@ -24,6 +24,22 @@ public:
 	~UnifiedMotionManager();
 
 	// ============================================================================
+	// DEBUG LOGGING CONTROL
+	// ============================================================================
+
+	/**
+	 * @brief Enable/disable verbose debug logging for waypoint system
+	 * @param enable true to enable detailed logging, false to suppress
+	 */
+	void SetDebugLogging(bool enable) { m_debugLogging = enable; }
+	bool IsDebugLoggingEnabled() const { return m_debugLogging; }
+
+	/**
+	 * @brief Get string representation of waypoint state for debugging
+	 */
+	std::string GetWaypointStateString(const std::string& deviceName) const;
+
+	// ============================================================================
 	// DEVICE MANAGEMENT
 	// ============================================================================
 
@@ -211,6 +227,28 @@ public:
 	void CancelWaypointSequence(const std::string& deviceName);
 
 	/**
+	 * @brief Get pending target position for a device (set when non-blocking move starts)
+	 * @return Target position name, or empty string if no pending move
+	 */
+	std::string GetPendingTarget(const std::string& deviceName) const;
+
+	/**
+	 * @brief Clear pending target for a device (call when move is confirmed complete)
+	 */
+	void ClearPendingTarget(const std::string& deviceName);
+
+	/**
+	 * @brief Get position with runtime offset calculation
+	 * @param deviceName Device name
+	 * @param positionName Position name (can include offsets like "base+Y1")
+	 * @param outPosition Output position
+	 * @return true if position found/calculated successfully
+	 */
+	bool GetPositionWithCalculation(const std::string& deviceName,
+		const std::string& positionName,
+		PositionStruct& outPosition);
+
+	/**
  * @brief Get all node names for a specific device
  * @param deviceName Name of the motion device
  * @return Vector of all saved position names for that device
@@ -265,6 +303,13 @@ private:
 	// Waypoint state for each device: deviceName -> state
 	std::map<std::string, DeviceWaypointState> m_waypointStates;
 
+	// Debug logging flag
+	bool m_debugLogging = false;  // Set to true to enable verbose waypoint logging
+
+	// Pending target tracking for non-blocking moves
+	// Stores the target position name for each device when a non-blocking move starts
+	std::map<std::string, std::string> m_pendingTargets;  // deviceName -> targetPositionName
+
 	// Internal waypoint methods
 	bool startWaypointSequence(const std::string& deviceName);
 	void updateDeviceWaypoints(const std::string& deviceName);
@@ -299,14 +344,4 @@ private:
 		double& offsetY,
 		double& offsetZ);
 
-	/**
-	 * @brief Get position with runtime offset calculation
-	 * @param deviceName Device name
-	 * @param positionName Position name (can include offsets like "base+Y1")
-	 * @param outPosition Output position
-	 * @return true if position found/calculated successfully
-	 */
-	bool GetPositionWithCalculation(const std::string& deviceName,
-		const std::string& positionName,
-		PositionStruct& outPosition);
 };

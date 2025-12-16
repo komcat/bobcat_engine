@@ -12,6 +12,7 @@
 #include "../vision/VisionManager.h"  // ✅ NEW: For pixel-to-mm calibration in MoveToContextPosition
 #include <chrono>
 #include <thread>
+#include <iostream>                   // ✅ For debug logging
 #include <regex>                      // ✅ NEW: For device name validation
 #include <atomic>                     // ✅ NEW: For scan completion flag
 #include <condition_variable>         // ✅ NEW: For scan completion signaling
@@ -1261,6 +1262,19 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
 
+    // ✅ Check for debug parameter to enable verbose logging
+    bool debugMode = false;
+    auto debugIt = params.find("debug");
+    if (debugIt != params.end() && (debugIt->second == "true" || debugIt->second == "1")) {
+      debugMode = true;
+    }
+    if (debugMode && motionManager) {
+      motionManager->SetDebugLogging(true);
+      if (m_logger) {
+        m_logger->Info("ParallelMove: Debug logging ENABLED", "MotionHandler");
+      }
+    }
+
     if (m_logger) {
       std::string moveList = "ParallelMove: Starting " + std::to_string(moveSpecs.size()) + " parallel moves:\n";
       for (size_t i = 0; i < moveSpecs.size(); ++i) {
@@ -1270,6 +1284,15 @@ bool MotionCommandHandler::ExecuteCommand(
                     ", graph=" + moveSpecs[i].graphName + ")\n";
       }
       m_logger->Info(moveList, "MotionHandler");
+
+      // ✅ Also log current waypoint states before starting
+      if (debugMode && motionManager) {
+        std::string stateInfo = "ParallelMove: Current waypoint states before move:\n";
+        for (const auto& spec : moveSpecs) {
+          stateInfo += "  " + spec.deviceName + ": " + motionManager->GetWaypointStateString(spec.deviceName) + "\n";
+        }
+        m_logger->Info(stateInfo, "MotionHandler");
+      }
     }
 
     // ✅ PHASE 1: Separate moves by type and validate
@@ -1365,6 +1388,51 @@ bool MotionCommandHandler::ExecuteCommand(
     // ✅ PHASE 4: Unified wait loop for ALL moves (position and graphNode)
     auto startTime = std::chrono::steady_clock::now();
     const int OVERALL_TIMEOUT_MS = 60000;  // 60 seconds overall timeout
+    const double POSITION_TOLERANCE = 0.5;  // mm - tolerance for position verification
+
+    // Track starting positions and completion state for position moves
+    struct PositionMoveState {
+      std::string deviceName;
+      std::string targetName;
+      PositionStruct startPos;
+      PositionStruct targetPos;
+      bool motionStarted = false;
+      bool completed = false;
+    };
+    std::vector<PositionMoveState> positionMoveStates;
+
+    for (const auto& spec : positionMoves) {
+      PositionMoveState state;
+      state.deviceName = spec.deviceName;
+      state.targetName = spec.targetName;
+      state.startPos = motionManager->GetCurrentPosition(spec.deviceName);
+
+      // Get target position
+      if (motionManager->GetPositionWithCalculation(spec.deviceName, spec.targetName, state.targetPos)) {
+        // Check if already at target (within tolerance)
+        double dx = state.startPos.x - state.targetPos.x;
+        double dy = state.startPos.y - state.targetPos.y;
+        double dz = state.startPos.z - state.targetPos.z;
+        double distToTarget = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+        if (distToTarget < POSITION_TOLERANCE) {
+          state.motionStarted = true;
+          state.completed = true;
+          if (m_logger) {
+            m_logger->Info("ParallelMove: " + state.deviceName + " already at target '" + state.targetName +
+                         "' (dist: " + std::to_string(distToTarget) + "mm)", "MotionHandler");
+          }
+        }
+        positionMoveStates.push_back(state);
+      } else {
+        if (m_logger) {
+          m_logger->Warning("ParallelMove: Could not get target position for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
+        }
+        // Still add it but without target verification
+        state.targetPos = state.startPos;  // Will rely on IsDeviceInMotion
+        positionMoveStates.push_back(state);
+      }
+    }
 
     while (true) {
       // Check stop request
@@ -1397,12 +1465,46 @@ bool MotionCommandHandler::ExecuteCommand(
         }
       }
 
-      // Check if all position moves completed
+      // Check if all position moves completed (with motion start detection)
       bool allPositionsComplete = true;
-      for (const auto& spec : positionMoves) {
-        if (motionManager->IsDeviceInMotion(spec.deviceName)) {
+      for (auto& state : positionMoveStates) {
+        if (state.completed) continue;
+
+        PositionStruct currentPos = motionManager->GetCurrentPosition(state.deviceName);
+        bool isMoving = motionManager->IsDeviceInMotion(state.deviceName);
+
+        // Detect if motion has started (position changed from start)
+        if (!state.motionStarted) {
+          double dx = currentPos.x - state.startPos.x;
+          double dy = currentPos.y - state.startPos.y;
+          double dz = currentPos.z - state.startPos.z;
+          double distFromStart = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+          if (distFromStart > 0.01 || isMoving) {  // 0.01mm threshold for start detection
+            state.motionStarted = true;
+          }
+        }
+
+        // Only mark complete if motion started AND device stopped AND at target
+        if (state.motionStarted && !isMoving) {
+          double dx = currentPos.x - state.targetPos.x;
+          double dy = currentPos.y - state.targetPos.y;
+          double dz = currentPos.z - state.targetPos.z;
+          double distToTarget = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+          if (distToTarget < POSITION_TOLERANCE) {
+            state.completed = true;
+            if (m_logger) {
+              m_logger->Info("ParallelMove: " + state.deviceName + " completed (dist to target: " +
+                           std::to_string(distToTarget) + "mm)", "MotionHandler");
+            }
+            // Clear pending target
+            motionManager->ClearPendingTarget(state.deviceName);
+          }
+        }
+
+        if (!state.completed) {
           allPositionsComplete = false;
-          break;
         }
       }
 
@@ -1608,6 +1710,40 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
   UnifiedMotionManager* motionManager = static_cast<UnifiedMotionManager*>(manager);
   auto startTime = std::chrono::steady_clock::now();
 
+  // ✅ Get pending target from motion manager if no explicit target provided
+  // This ensures we verify position even for MoveToNamedPosition commands
+  std::string pendingTargetName = motionManager->GetPendingTarget(deviceName);
+  TargetPosition pendingTarget;
+  bool usePendingTarget = false;
+
+  if (!targetPos && !pendingTargetName.empty()) {
+    // Get the target position coordinates
+    PositionStruct targetPosStruct;
+    if (motionManager->GetPositionWithCalculation(deviceName, pendingTargetName, targetPosStruct)) {
+      pendingTarget.x = targetPosStruct.x;
+      pendingTarget.y = targetPosStruct.y;
+      pendingTarget.z = targetPosStruct.z;
+      pendingTarget.hasX = true;
+      pendingTarget.hasY = true;
+      pendingTarget.hasZ = true;
+      usePendingTarget = true;
+
+      if (m_logger) {
+        m_logger->Info("WaitForMotion: Using pending target '" + pendingTargetName +
+                       "' at [" + std::to_string(pendingTarget.x) + "," +
+                       std::to_string(pendingTarget.y) + "," +
+                       std::to_string(pendingTarget.z) + "]", "MotionHandler");
+      }
+    }
+  }
+
+  // Use pending target if no explicit target provided
+  const TargetPosition* effectiveTarget = targetPos ? targetPos : (usePendingTarget ? &pendingTarget : nullptr);
+
+  // ✅ Record starting position to detect actual movement
+  PositionStruct startingPos = motionManager->GetCurrentPosition(deviceName);
+  bool hasMovedFromStart = false;
+
   // ✅ FIX: Small delay to ensure motion actually starts (avoid race condition)
   // When non-blocking motion is initiated, there's a brief window where the command
   // has been sent but the motor hasn't started moving yet
@@ -1631,6 +1767,8 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
       }
 
+      // Clear pending target on stop
+      motionManager->ClearPendingTarget(deviceName);
       return false;  // Stop sequence execution
     }
 
@@ -1638,42 +1776,79 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     bool isMoving = motionManager->IsDeviceInMotion(deviceName);
     bool waypointActive = motionManager->IsWaypointSystemActive(deviceName);
 
-    if (!isMoving && !waypointActive) {
-      // ✅ Controller reports motion complete - trust the high-end hardware
-      // For slow velocities, verify we're actually close to target position
-      PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+    // ✅ Check if device has moved from starting position
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+    if (!hasMovedFromStart) {
+      double dx = currentPos.x - startingPos.x;
+      double dy = currentPos.y - startingPos.y;
+      double dz = currentPos.z - startingPos.z;
+      double distFromStart = std::sqrt(dx*dx + dy*dy + dz*dz);
+      if (distFromStart > 0.1) {  // Consider moved if > 0.1mm from start
+        hasMovedFromStart = true;
+      }
+    }
 
-      if (targetPos) {
+    if (!isMoving && !waypointActive) {
+      // ✅ If we have a target and haven't moved yet, keep waiting (motor startup delay)
+      if (effectiveTarget && !hasMovedFromStart) {
+        // Check if we're already at target (maybe no move needed)
+        double distToTarget = 0.0;
+        if (effectiveTarget->hasX) distToTarget += (currentPos.x - effectiveTarget->x) * (currentPos.x - effectiveTarget->x);
+        if (effectiveTarget->hasY) distToTarget += (currentPos.y - effectiveTarget->y) * (currentPos.y - effectiveTarget->y);
+        if (effectiveTarget->hasZ) distToTarget += (currentPos.z - effectiveTarget->z) * (currentPos.z - effectiveTarget->z);
+        distToTarget = std::sqrt(distToTarget);
+
+        if (distToTarget > 0.5) {  // More than 0.5mm from target but haven't started moving
+          // Check elapsed time to avoid infinite wait
+          auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime
+          ).count();
+
+          if (elapsed < 500) {  // Wait up to 500ms for motion to start
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;  // Keep waiting for motion to start
+          } else {
+            if (m_logger) {
+              m_logger->Warning("WaitForMotion: Motion did not start within 500ms, position still " +
+                              std::to_string(distToTarget) + "mm from target", "MotionHandler");
+            }
+          }
+        }
+      }
+
+      // ✅ Controller reports motion complete
+
+      if (effectiveTarget) {
         double distanceFromTarget = 0.0;
 
-        if (targetPos->hasX) {
-          double dx = currentPos.x - targetPos->x;
+        if (effectiveTarget->hasX) {
+          double dx = currentPos.x - effectiveTarget->x;
           distanceFromTarget += dx * dx;
         }
-        if (targetPos->hasY) {
-          double dy = currentPos.y - targetPos->y;
+        if (effectiveTarget->hasY) {
+          double dy = currentPos.y - effectiveTarget->y;
           distanceFromTarget += dy * dy;
         }
-        if (targetPos->hasZ) {
-          double dz = currentPos.z - targetPos->z;
+        if (effectiveTarget->hasZ) {
+          double dz = currentPos.z - effectiveTarget->z;
           distanceFromTarget += dz * dz;
         }
-        if (targetPos->hasU) {
-          double du = currentPos.u - targetPos->u;
+        if (effectiveTarget->hasU) {
+          double du = currentPos.u - effectiveTarget->u;
           distanceFromTarget += du * du;
         }
-        if (targetPos->hasV) {
-          double dv = currentPos.v - targetPos->v;
+        if (effectiveTarget->hasV) {
+          double dv = currentPos.v - effectiveTarget->v;
           distanceFromTarget += dv * dv;
         }
-        if (targetPos->hasW) {
-          double dw = currentPos.w - targetPos->w;
+        if (effectiveTarget->hasW) {
+          double dw = currentPos.w - effectiveTarget->w;
           distanceFromTarget += dw * dw;
         }
 
         distanceFromTarget = std::sqrt(distanceFromTarget);
 
-        const double TARGET_THRESHOLD = 0.01;  // Must be within 0.01mm of target
+        const double TARGET_THRESHOLD = 0.05;  // Must be within 0.05mm of target
         if (distanceFromTarget > TARGET_THRESHOLD) {
           if (m_logger) {
             std::string msg = "WaitForMotion: Controller reports done but still " + std::to_string(distanceFromTarget) +
@@ -1691,21 +1866,24 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         m_logger->Info(stableStr, "MotionHandler");
       }
 
+      // ✅ Clear pending target now that move is confirmed complete
+      motionManager->ClearPendingTarget(deviceName);
+
       // Motion stopped and position is stable - now verify position if target was provided
-      if (targetPos) {
+      if (effectiveTarget) {
         const double TOLERANCE = 0.05;  // ±0.05mm tolerance
 
         bool positionOK = true;
         std::string errorDetail;
 
         // Verify X axis if specified
-        if (targetPos->hasX) {
+        if (effectiveTarget->hasX) {
           double actualX = 0.0;
           if (motionManager->GetPosition(deviceName, "X", actualX)) {
-            double errorX = std::abs(actualX - targetPos->x);
+            double errorX = std::abs(actualX - effectiveTarget->x);
             if (errorX > TOLERANCE) {
               positionOK = false;
-              errorDetail += "X: target=" + std::to_string(targetPos->x) +
+              errorDetail += "X: target=" + std::to_string(effectiveTarget->x) +
                              ", actual=" + std::to_string(actualX) +
                              ", error=" + std::to_string(errorX) + "mm; ";
             }
@@ -1713,13 +1891,13 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         // Verify Y axis if specified
-        if (targetPos->hasY) {
+        if (effectiveTarget->hasY) {
           double actualY = 0.0;
           if (motionManager->GetPosition(deviceName, "Y", actualY)) {
-            double errorY = std::abs(actualY - targetPos->y);
+            double errorY = std::abs(actualY - effectiveTarget->y);
             if (errorY > TOLERANCE) {
               positionOK = false;
-              errorDetail += "Y: target=" + std::to_string(targetPos->y) +
+              errorDetail += "Y: target=" + std::to_string(effectiveTarget->y) +
                              ", actual=" + std::to_string(actualY) +
                              ", error=" + std::to_string(errorY) + "mm; ";
             }
@@ -1727,13 +1905,13 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         // Verify Z axis if specified
-        if (targetPos->hasZ) {
+        if (effectiveTarget->hasZ) {
           double actualZ = 0.0;
           if (motionManager->GetPosition(deviceName, "Z", actualZ)) {
-            double errorZ = std::abs(actualZ - targetPos->z);
+            double errorZ = std::abs(actualZ - effectiveTarget->z);
             if (errorZ > TOLERANCE) {
               positionOK = false;
-              errorDetail += "Z: target=" + std::to_string(targetPos->z) +
+              errorDetail += "Z: target=" + std::to_string(effectiveTarget->z) +
                              ", actual=" + std::to_string(actualZ) +
                              ", error=" + std::to_string(errorZ) + "mm; ";
             }
@@ -1741,13 +1919,13 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         // Verify U axis if specified (rotational, degrees)
-        if (targetPos->hasU) {
+        if (effectiveTarget->hasU) {
           double actualU = 0.0;
           if (motionManager->GetPosition(deviceName, "U", actualU)) {
-            double errorU = std::abs(actualU - targetPos->u);
+            double errorU = std::abs(actualU - effectiveTarget->u);
             if (errorU > TOLERANCE) {
               positionOK = false;
-              errorDetail += "U: target=" + std::to_string(targetPos->u) +
+              errorDetail += "U: target=" + std::to_string(effectiveTarget->u) +
                              ", actual=" + std::to_string(actualU) +
                              ", error=" + std::to_string(errorU) + "deg; ";
             }
@@ -1755,13 +1933,13 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         // Verify V axis if specified (rotational, degrees)
-        if (targetPos->hasV) {
+        if (effectiveTarget->hasV) {
           double actualV = 0.0;
           if (motionManager->GetPosition(deviceName, "V", actualV)) {
-            double errorV = std::abs(actualV - targetPos->v);
+            double errorV = std::abs(actualV - effectiveTarget->v);
             if (errorV > TOLERANCE) {
               positionOK = false;
-              errorDetail += "V: target=" + std::to_string(targetPos->v) +
+              errorDetail += "V: target=" + std::to_string(effectiveTarget->v) +
                              ", actual=" + std::to_string(actualV) +
                              ", error=" + std::to_string(errorV) + "deg; ";
             }
@@ -1769,13 +1947,13 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         // Verify W axis if specified (rotational, degrees)
-        if (targetPos->hasW) {
+        if (effectiveTarget->hasW) {
           double actualW = 0.0;
           if (motionManager->GetPosition(deviceName, "W", actualW)) {
-            double errorW = std::abs(actualW - targetPos->w);
+            double errorW = std::abs(actualW - effectiveTarget->w);
             if (errorW > TOLERANCE) {
               positionOK = false;
-              errorDetail += "W: target=" + std::to_string(targetPos->w) +
+              errorDetail += "W: target=" + std::to_string(effectiveTarget->w) +
                              ", actual=" + std::to_string(actualW) +
                              ", error=" + std::to_string(errorW) + "deg; ";
             }
@@ -1861,6 +2039,15 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
       bool isMoving = motionManager->IsDeviceInMotion(spec.deviceName);
       bool waypointActive = motionManager->IsWaypointSystemActive(spec.deviceName);
 
+      // ✅ DEBUG: Log state for each device check
+      if (motionManager->IsDebugLoggingEnabled()) {
+        std::cout << "[DEBUG] WaitForMultiple: " << spec.deviceName
+          << " isMoving=" << (isMoving ? "true" : "false")
+          << ", waypointActive=" << (waypointActive ? "true" : "false")
+          << ", waypointState=" << motionManager->GetWaypointStateString(spec.deviceName)
+          << std::endl;
+      }
+
       if (!isMoving && !waypointActive) {
         // This device has stopped - verify position
         PositionStruct currentPos = motionManager->GetCurrentPosition(spec.deviceName);
@@ -1904,6 +2091,13 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
           m_logger->Info("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
                         " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
         }
+
+        // ✅ DEBUG: Verify waypoint state is Idle after marking complete
+        if (motionManager->IsDebugLoggingEnabled()) {
+          std::cout << "[DEBUG] WaitForMultiple: MARKED COMPLETE " << spec.deviceName
+            << " -> waypointState=" << motionManager->GetWaypointStateString(spec.deviceName)
+            << std::endl;
+        }
       }
     }
 
@@ -1936,6 +2130,18 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
 
     // Sleep briefly to avoid busy-waiting
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  // ✅ DEBUG: Log final states of all devices before returning
+  if (motionManager->IsDebugLoggingEnabled()) {
+    std::cout << "[DEBUG] WaitForMultiple: ALL MOVES COMPLETE - Final states:" << std::endl;
+    for (const auto& spec : moves) {
+      std::cout << "[DEBUG]   " << spec.deviceName
+        << " -> waypointState=" << motionManager->GetWaypointStateString(spec.deviceName)
+        << ", IsDeviceInMotion=" << (motionManager->IsDeviceInMotion(spec.deviceName) ? "true" : "false")
+        << ", IsWaypointSystemActive=" << (motionManager->IsWaypointSystemActive(spec.deviceName) ? "true" : "false")
+        << std::endl;
+    }
   }
 
   return true;

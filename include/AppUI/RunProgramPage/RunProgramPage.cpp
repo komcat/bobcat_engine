@@ -1164,7 +1164,7 @@ void RunProgramPage::createExecutionWidget()
     "  border: 1px solid #3f3f46; "
     "  border-radius: 4px; "
     "  font-family: 'Consolas', 'Courier New', monospace; "
-    "  font-size: 12px; "
+    "  font-size: 14px; "
     "}"
   );
   logLayout->addWidget(m_logTextEdit, 1);

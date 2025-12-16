@@ -1,4 +1,4 @@
-﻿// IOControllerPage.cpp
+// IOControllerPage.cpp
 #include "IOControllerPage.h"
 #include "ApplicationContext.h"
 #include "EziIOManager.h"
@@ -8,7 +8,14 @@
 #include <QHeaderView>
 #include <QCheckBox>
 #include <QFrame>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QCoreApplication>
+#include <QDir>
+#include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 IOControllerPage::IOControllerPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -22,6 +29,7 @@ IOControllerPage::IOControllerPage(ApplicationContext* context, QWidget* parent)
   , m_connectionStatusLabel(nullptr)
   , m_inputPinsTable(nullptr)
   , m_outputPinsTable(nullptr)
+  , m_restartWarningLabel(nullptr)
   , m_pollTimer(nullptr)
 {
   setupUI();
@@ -141,6 +149,23 @@ void IOControllerPage::createIOPinPanel()
   layout->addLayout(headerLayout);
 
   // ============================================================================
+  // RESTART WARNING LABEL - Initially hidden
+  // ============================================================================
+  m_restartWarningLabel = new QLabel("⚠ Pin names changed. Restart application for changes to take effect.");
+  m_restartWarningLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #FF9800; "
+    "  color: #000; "
+    "  padding: 8px 15px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
+  m_restartWarningLabel->setVisible(false);
+  layout->addWidget(m_restartWarningLabel);
+
+  // ============================================================================
   // PIN TABLES - Clean Minimal Style
   // ============================================================================
   QHBoxLayout* tablesLayout = new QHBoxLayout();
@@ -218,6 +243,11 @@ void IOControllerPage::createIOPinPanel()
   m_inputPinsTable->setShowGrid(false);
   m_inputPinsTable->setStyleSheet(tableStyle);
 
+  // Enable right-click context menu for renaming
+  m_inputPinsTable->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_inputPinsTable, &QTableWidget::customContextMenuRequested,
+    this, &IOControllerPage::onInputTableContextMenu);
+
   inputLayout->addWidget(m_inputPinsTable);
   tablesLayout->addWidget(inputGroup, 1);
 
@@ -250,6 +280,11 @@ void IOControllerPage::createIOPinPanel()
   m_outputPinsTable->verticalHeader()->setDefaultSectionSize(32);  // Compact rows
   m_outputPinsTable->setShowGrid(false);
   m_outputPinsTable->setStyleSheet(tableStyle);
+
+  // Enable right-click context menu for renaming
+  m_outputPinsTable->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_outputPinsTable, &QTableWidget::customContextMenuRequested,
+    this, &IOControllerPage::onOutputTableContextMenu);
 
   outputLayout->addWidget(m_outputPinsTable);
   tablesLayout->addWidget(outputGroup, 1);
@@ -604,4 +639,236 @@ EziIOManager* IOControllerPage::getIOManager()
     return nullptr;
   }
   return m_context->ioManager;
+}
+
+// ============================================================================
+// CONTEXT MENU HANDLERS
+// ============================================================================
+
+void IOControllerPage::onInputTableContextMenu(const QPoint& pos)
+{
+  QTableWidgetItem* item = m_inputPinsTable->itemAt(pos);
+  if (!item) return;
+
+  int row = item->row();
+
+  // Get pin number from column 0 (# column for inputs)
+  QTableWidgetItem* pinItem = m_inputPinsTable->item(row, 0);
+  if (!pinItem) return;
+
+  int pinNumber = pinItem->text().toInt();
+
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(
+    "QMenu { background-color: #2a2a2a; color: #ccc; border: 1px solid #444; }"
+    "QMenu::item { padding: 6px 20px; }"
+    "QMenu::item:selected { background-color: #3498db; color: white; }"
+  );
+
+  QAction* renameAction = contextMenu.addAction("✏️ Rename Pin...");
+  connect(renameAction, &QAction::triggered, this, [this, pinNumber]() {
+    showRenameDialog(pinNumber, false);
+  });
+
+  contextMenu.exec(m_inputPinsTable->viewport()->mapToGlobal(pos));
+}
+
+void IOControllerPage::onOutputTableContextMenu(const QPoint& pos)
+{
+  QTableWidgetItem* item = m_outputPinsTable->itemAt(pos);
+  if (!item) return;
+
+  int row = item->row();
+
+  // Get pin number from column 1 (# column for outputs, column 0 is toggle)
+  QTableWidgetItem* pinItem = m_outputPinsTable->item(row, 1);
+  if (!pinItem) return;
+
+  int pinNumber = pinItem->text().toInt();
+
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(
+    "QMenu { background-color: #2a2a2a; color: #ccc; border: 1px solid #444; }"
+    "QMenu::item { padding: 6px 20px; }"
+    "QMenu::item:selected { background-color: #3498db; color: white; }"
+  );
+
+  QAction* renameAction = contextMenu.addAction("✏️ Rename Pin...");
+  connect(renameAction, &QAction::triggered, this, [this, pinNumber]() {
+    showRenameDialog(pinNumber, true);
+  });
+
+  contextMenu.exec(m_outputPinsTable->viewport()->mapToGlobal(pos));
+}
+
+void IOControllerPage::showRenameDialog(int pinNumber, bool isOutput)
+{
+  if (m_selectedDevice.empty()) return;
+
+  EziIOManager* ioMgr = getIOManager();
+  if (!ioMgr) return;
+
+  IEziIODevice* device = ioMgr->GetDevice(m_selectedDevice);
+  if (!device) return;
+
+  // Get current name
+  std::string currentName = isOutput
+    ? device->GetOutputPinName(pinNumber)
+    : device->GetInputPinName(pinNumber);
+
+  // Show input dialog
+  bool ok;
+  QString newName = QInputDialog::getText(
+    this,
+    isOutput ? "Rename Output Pin" : "Rename Input Pin",
+    QString("Enter new name for %1 pin %2:")
+      .arg(isOutput ? "output" : "input")
+      .arg(pinNumber),
+    QLineEdit::Normal,
+    QString::fromStdString(currentName),
+    &ok
+  );
+
+  if (ok && !newName.isEmpty() && newName.toStdString() != currentName) {
+    // Save to local config
+    if (savePinNameToLocalConfig(m_selectedDevice, pinNumber, newName.toStdString(), isOutput)) {
+      // Update the table immediately for visual feedback
+      if (isOutput) {
+        QTableWidgetItem* nameItem = m_outputPinsTable->item(pinNumber, 2);  // Name is column 2 for outputs
+        if (nameItem) {
+          nameItem->setText(newName);
+          nameItem->setForeground(QColor("#FFEB3B"));  // Yellow to indicate changed
+        }
+      } else {
+        QTableWidgetItem* nameItem = m_inputPinsTable->item(pinNumber, 1);  // Name is column 1 for inputs
+        if (nameItem) {
+          nameItem->setText(newName);
+          nameItem->setForeground(QColor("#FFEB3B"));  // Yellow to indicate changed
+        }
+      }
+
+      // Show restart warning
+      m_restartWarningLabel->setVisible(true);
+
+      std::cout << "[IOControllerPage] Pin renamed: " << m_selectedDevice << " "
+        << (isOutput ? "output" : "input") << " " << pinNumber
+        << " -> " << newName.toStdString() << std::endl;
+    } else {
+      QMessageBox::warning(this, "Error", "Failed to save pin name to configuration file.");
+    }
+  }
+}
+
+std::string IOControllerPage::getLocalConfigPath() const
+{
+  QString appDir = QCoreApplication::applicationDirPath();
+  return (appDir + "/config/io_devices.local.json").toStdString();
+}
+
+bool IOControllerPage::savePinNameToLocalConfig(const std::string& deviceName, int pinNumber,
+  const std::string& newName, bool isOutput)
+{
+  std::string localConfigPath = getLocalConfigPath();
+  nlohmann::json localConfig;
+
+  // Load existing local config
+  std::ifstream inFile(localConfigPath);
+  if (!inFile.is_open()) {
+    std::cerr << "[IOControllerPage] Failed to open local config for reading: " << localConfigPath << std::endl;
+    return false;
+  }
+
+  try {
+    inFile >> localConfig;
+  } catch (const std::exception& e) {
+    std::cerr << "[IOControllerPage] Error parsing local config: " << e.what() << std::endl;
+    inFile.close();
+    return false;
+  }
+  inFile.close();
+
+  // Find the device in eziio array and update the pin name
+  bool found = false;
+  if (localConfig.contains("eziio") && localConfig["eziio"].is_array()) {
+    for (auto& device : localConfig["eziio"]) {
+      if (device.contains("name") && device["name"].get<std::string>() == deviceName) {
+        std::string pinType = isOutput ? "outputs" : "inputs";
+
+        if (device.contains("ioConfig") && device["ioConfig"].contains(pinType)) {
+          auto& pins = device["ioConfig"][pinType];
+
+          // Find the pin entry or create it
+          bool pinFound = false;
+          for (auto& pin : pins) {
+            if (pin.contains("pin") && pin["pin"].get<int>() == pinNumber) {
+              pin["name"] = newName;
+              pinFound = true;
+              found = true;
+              break;
+            }
+          }
+
+          // If pin entry doesn't exist, add it
+          if (!pinFound) {
+            nlohmann::json newPin;
+            newPin["pin"] = pinNumber;
+            newPin["name"] = newName;
+            pins.push_back(newPin);
+            found = true;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  // Also check wago array if not found in eziio
+  if (!found && localConfig.contains("wago") && localConfig["wago"].is_array()) {
+    for (auto& device : localConfig["wago"]) {
+      if (device.contains("name") && device["name"].get<std::string>() == deviceName) {
+        std::string pinType = isOutput ? "outputs" : "inputs";
+
+        if (device.contains("ioConfig") && device["ioConfig"].contains(pinType)) {
+          auto& pins = device["ioConfig"][pinType];
+
+          bool pinFound = false;
+          for (auto& pin : pins) {
+            if (pin.contains("pin") && pin["pin"].get<int>() == pinNumber) {
+              pin["name"] = newName;
+              pinFound = true;
+              found = true;
+              break;
+            }
+          }
+
+          if (!pinFound) {
+            nlohmann::json newPin;
+            newPin["pin"] = pinNumber;
+            newPin["name"] = newName;
+            pins.push_back(newPin);
+            found = true;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    std::cerr << "[IOControllerPage] Device not found in config: " << deviceName << std::endl;
+    return false;
+  }
+
+  // Write back to file
+  std::ofstream outFile(localConfigPath);
+  if (!outFile.is_open()) {
+    std::cerr << "[IOControllerPage] Failed to open local config for writing: " << localConfigPath << std::endl;
+    return false;
+  }
+
+  outFile << localConfig.dump(2);
+  outFile.close();
+
+  std::cout << "[IOControllerPage] Saved pin name to: " << localConfigPath << std::endl;
+  return true;
 }

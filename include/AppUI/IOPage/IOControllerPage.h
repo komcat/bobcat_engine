@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QMenu>
 #include <string>
 
 struct ApplicationContext;
@@ -37,6 +38,9 @@ private slots:
   void onDeviceSelected();
   void onRefreshClicked();
   void updateIOStatus();
+  void onInputTableContextMenu(const QPoint& pos);
+  void onOutputTableContextMenu(const QPoint& pos);
+  void showRenameDialog(int pinNumber, bool isOutput);
 
 private:
   void setupUI();
@@ -48,6 +52,9 @@ private:
     const std::string& pinName, bool isOutput, bool currentState);
 
   EziIOManager* getIOManager();
+  bool savePinNameToLocalConfig(const std::string& deviceName, int pinNumber,
+    const std::string& newName, bool isOutput);
+  std::string getLocalConfigPath() const;
 
   ApplicationContext* m_context;
 
@@ -64,6 +71,9 @@ private:
 
   QTableWidget* m_inputPinsTable;   // ✅ NEW - separate input table
   QTableWidget* m_outputPinsTable;  // ✅ NEW - separate output table
+
+  // Restart warning label
+  QLabel* m_restartWarningLabel;
 
   // Polling
   QTimer* m_pollTimer;

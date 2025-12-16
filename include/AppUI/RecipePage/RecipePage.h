@@ -152,6 +152,7 @@ private:
   void updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
   QTreeWidgetItem* findTreeItemByIndex(int stepIndex);  // Find tree item by step index
   void updateTreeItemsForSwap(int index1, int index2);  // Fast update for move up/down
+  void updateSingleStepItem(int stepIndex);             // Fast update for single item (checkbox toggle)
 
   // ✅ NEW: Panel switching
   void showProgressPanel();

@@ -4,6 +4,20 @@
 #include <iostream>
 #include <algorithm>
 
+std::string UnifiedMotionManager::GetWaypointStateString(const std::string& deviceName) const {
+  auto it = m_waypointStates.find(deviceName);
+  if (it == m_waypointStates.end()) {
+    return "NoState";
+  }
+  switch (it->second.state) {
+    case WaypointState::Idle: return "Idle";
+    case WaypointState::MovingThroughExitWaypoints: return "MovingThroughExitWaypoints";
+    case WaypointState::MovingThroughEntryWaypoints: return "MovingThroughEntryWaypoints";
+    case WaypointState::MovingToFinalTarget: return "MovingToFinalTarget";
+    default: return "Unknown";
+  }
+}
+
 UnifiedMotionManager::UnifiedMotionManager() {
   std::cout << "[INFO] UnifiedMotionManager: Initializing" << std::endl;
 
@@ -867,20 +881,85 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     return executeMoveToPosition(deviceName, positionName, true);
   }
 
-  // ✅ NON-BLOCKING MODE - Use waypoint system
+  // ✅ NON-BLOCKING MODE - Check if we need waypoint state machine at all
+
+  // Get target position first to check for waypoints
+  PositionStruct targetPos;
+  if (!GetPositionWithCalculation(deviceName, positionName, targetPos)) {
+    std::cout << "[ERROR] UnifiedMotionManager: Failed to get position '" << positionName << "'" << std::endl;
+    return false;
+  }
+
+  // Check if target has entry waypoints
+  bool hasEntryWaypoints = !targetPos.waypoints.empty();
+
+  // Check if current position has exit waypoints
+  bool hasExitWaypoints = false;
+  auto stateIt = m_waypointStates.find(deviceName);
+  if (stateIt != m_waypointStates.end() && !stateIt->second.currentPositionName.empty()) {
+    std::string currentPosName = stateIt->second.currentPositionName;
+    std::string baseName;
+    double ox, oy, oz;
+    if (!ParseCalculatedPosition(currentPosName, baseName, ox, oy, oz)) {
+      PositionStruct currentPos;
+      if (GetNamedPosition(deviceName, currentPosName, currentPos)) {
+        hasExitWaypoints = !currentPos.exit_waypoints.empty();
+      }
+    }
+  }
+
+  // ✅ SIMPLE PATH: No waypoints - just do direct move without state machine
+  if (!hasEntryWaypoints && !hasExitWaypoints) {
+    std::cout << "[INFO] UnifiedMotionManager: Direct point-to-point move (no waypoints)" << std::endl;
+
+    // ✅ Store pending target for position verification by WaitForMotionComplete
+    m_pendingTargets[deviceName] = positionName;
+
+    bool success = executeMoveToPosition(deviceName, positionName, false);
+    if (success) {
+      // Update current position tracking (but don't use state machine)
+      if (m_waypointStates.find(deviceName) == m_waypointStates.end()) {
+        m_waypointStates[deviceName] = DeviceWaypointState();
+      }
+      // Note: Don't set currentPositionName yet - device is still moving
+      // It will be updated when WaitForMotionComplete verifies arrival
+      m_waypointStates[deviceName].state = WaypointState::Idle;  // Ensure idle
+    } else {
+      // Move failed to start, clear pending target
+      m_pendingTargets.erase(deviceName);
+    }
+    return success;
+  }
+
+  // ✅ WAYPOINT PATH: Has waypoints - use full state machine
   std::cout << "[INFO] UnifiedMotionManager: Non-blocking move - using waypoint system" << std::endl;
 
   // Initialize waypoint state for this device if needed
   if (m_waypointStates.find(deviceName) == m_waypointStates.end()) {
     m_waypointStates[deviceName] = DeviceWaypointState();
+    if (m_debugLogging) {
+      std::cout << "[DEBUG] UnifiedMotionManager: Created new waypoint state for " << deviceName << std::endl;
+    }
   }
 
   DeviceWaypointState& state = m_waypointStates[deviceName];
 
+  // ✅ DEBUG: Log current state before checking
+  if (m_debugLogging) {
+    std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
+      << " current waypoint state = " << GetWaypointStateString(deviceName)
+      << ", target = '" << state.targetPositionName << "'"
+      << ", current = '" << state.currentPositionName << "'"
+      << ", queue size = " << state.waypointQueue.size()
+      << ", IsDeviceInMotion = " << (IsDeviceInMotion(deviceName) ? "true" : "false")
+      << std::endl;
+  }
+
   // Don't allow new movement if already in motion
   if (state.state != WaypointState::Idle) {
     std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
-      << " already in waypoint motion" << std::endl;
+      << " already in waypoint motion (state=" << GetWaypointStateString(deviceName) << ")"
+      << std::endl;
     return false;
   }
 
@@ -890,13 +969,6 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   }
   state.exitWaypointCount = 0;
   state.exitWaypointsProcessed = 0;
-
-  // ✅ Get target position (may be calculated)
-  PositionStruct targetPos;
-  if (!GetPositionWithCalculation(deviceName, positionName, targetPos)) {
-    std::cout << "[ERROR] UnifiedMotionManager: Failed to get position" << std::endl;
-    return false;
-  }
 
   state.targetPositionName = positionName;
 
@@ -909,39 +981,24 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     }
   }
 
-  bool hasExitWaypoints = false;
-  bool hasEntryWaypoints = !targetPos.waypoints.empty();  // ✅ Calculated positions have no waypoints
-
-  // Queue exit waypoints from current position (only if current is NOT calculated)
-  if (!state.currentPositionName.empty() &&
+  // Queue exit waypoints from current position
+  if (hasExitWaypoints && !state.currentPositionName.empty() &&
     state.currentPositionName != positionName) {
 
-    // ✅ Only get exit waypoints if current position is NOT a calculated one
-    std::string baseName;
-    double ox, oy, oz;
-    if (!ParseCalculatedPosition(state.currentPositionName, baseName, ox, oy, oz)) {
-      // Current position is not calculated, can have exit waypoints
-      PositionStruct currentPos;
-      if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
-        if (!currentPos.exit_waypoints.empty()) {
-          std::cout << "[INFO] UnifiedMotionManager: Queueing "
-            << currentPos.exit_waypoints.size()
-            << " exit waypoints from " << state.currentPositionName << std::endl;
+    PositionStruct currentPos;
+    if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
+      std::cout << "[INFO] UnifiedMotionManager: Queueing "
+        << currentPos.exit_waypoints.size()
+        << " exit waypoints from " << state.currentPositionName << std::endl;
 
-          for (const auto& wp : currentPos.exit_waypoints) {
-            state.waypointQueue.push(wp);
-          }
-          state.exitWaypointCount = currentPos.exit_waypoints.size();
-          hasExitWaypoints = true;
-        }
+      for (const auto& wp : currentPos.exit_waypoints) {
+        state.waypointQueue.push(wp);
       }
-    }
-    else {
-      std::cout << "[INFO] UnifiedMotionManager: Current position is calculated, skipping exit waypoints" << std::endl;
+      state.exitWaypointCount = currentPos.exit_waypoints.size();
     }
   }
 
-  // Queue entry waypoints to target (calculated positions won't have any)
+  // Queue entry waypoints to target
   if (hasEntryWaypoints) {
     std::cout << "[INFO] UnifiedMotionManager: Queueing "
       << targetPos.waypoints.size()
@@ -962,7 +1019,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     return startWaypointSequence(deviceName);
   }
   else {
-    // No waypoints - move directly to target
+    // This shouldn't happen now (handled by SIMPLE PATH above)
     std::cout << "[INFO] UnifiedMotionManager: No waypoints, moving directly to target" << std::endl;
     state.state = WaypointState::MovingToFinalTarget;
     bool success = executeMoveToPosition(deviceName, positionName, false);
@@ -1013,6 +1070,10 @@ void UnifiedMotionManager::Update() {
   // Update all device waypoint state machines
   for (auto& [deviceName, state] : m_waypointStates) {
     if (state.state != WaypointState::Idle) {
+      if (m_debugLogging) {
+        std::cout << "[DEBUG] Update(): Processing " << deviceName
+          << " (state=" << GetWaypointStateString(deviceName) << ")" << std::endl;
+      }
       updateDeviceWaypoints(deviceName);
     }
   }
@@ -1025,9 +1086,18 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
   }
 
   DeviceWaypointState& state = it->second;
+  std::string oldStateStr = GetWaypointStateString(deviceName);  // For logging
 
   // Check if device is still moving
-  if (IsDeviceInMotion(deviceName)) {
+  bool isMoving = IsDeviceInMotion(deviceName);
+  if (isMoving) {
+    if (m_debugLogging) {
+      static int skipCount = 0;
+      if (++skipCount % 20 == 0) {  // Log every 20th check to reduce spam
+        std::cout << "[DEBUG] updateDeviceWaypoints: " << deviceName
+          << " still in motion, waiting... (state=" << oldStateStr << ")" << std::endl;
+      }
+    }
     return;  // Still moving, wait
   }
 
@@ -1153,9 +1223,19 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
       << state.targetPositionName << std::endl;
     state.currentPositionName = state.targetPositionName;
     state.state = WaypointState::Idle;
+    if (m_debugLogging) {
+      std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
+        << " STATE TRANSITION: " << oldStateStr << " -> Idle"
+        << " (target was " << state.targetPositionName << ")" << std::endl;
+    }
     break;
 
   case WaypointState::Idle:
+    // Already idle - this shouldn't happen in normal flow
+    if (m_debugLogging) {
+      std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
+        << " updateDeviceWaypoints called while already Idle (unexpected)" << std::endl;
+    }
     break;
   }
 }
@@ -1430,4 +1510,30 @@ bool UnifiedMotionManager::GetPositionWithCalculation(const std::string& deviceN
 std::vector<std::string> UnifiedMotionManager::GetAllNodeNames(const std::string& deviceName) const {
   // Return all named positions for this device
   return GetNamedPositionList(deviceName);
+}
+
+// ============================================================================
+// PENDING TARGET TRACKING
+// ============================================================================
+
+std::string UnifiedMotionManager::GetPendingTarget(const std::string& deviceName) const {
+  auto it = m_pendingTargets.find(deviceName);
+  if (it != m_pendingTargets.end()) {
+    return it->second;
+  }
+  return "";
+}
+
+void UnifiedMotionManager::ClearPendingTarget(const std::string& deviceName) {
+  auto it = m_pendingTargets.find(deviceName);
+  if (it != m_pendingTargets.end()) {
+    // Update current position name now that move is confirmed complete
+    if (m_waypointStates.find(deviceName) != m_waypointStates.end()) {
+      m_waypointStates[deviceName].currentPositionName = it->second;
+    }
+    m_pendingTargets.erase(it);
+    if (m_debugLogging) {
+      std::cout << "[DEBUG] UnifiedMotionManager: Cleared pending target for " << deviceName << std::endl;
+    }
+  }
 }
