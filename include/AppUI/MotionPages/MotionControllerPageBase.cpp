@@ -128,6 +128,12 @@ void MotionControllerPageBase::createDeviceTable()
 
   m_deviceTable->horizontalHeader()->setStretchLastSection(false);
   m_deviceTable->horizontalHeader()->setSectionResizeMode(COL_NAME, QHeaderView::Stretch);
+
+  // Set minimum width for Action column to prevent button text cutoff
+  int actionColIdx = COL_AXIS_START + static_cast<int>(axisNames.size());
+  m_deviceTable->setColumnWidth(actionColIdx, 120);
+  m_deviceTable->horizontalHeader()->setSectionResizeMode(actionColIdx, QHeaderView::Fixed);
+
   m_deviceTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_deviceTable->setSelectionMode(QAbstractItemView::SingleSelection);
   m_deviceTable->setEditTriggers(QAbstractItemView::NoEditTriggers);

@@ -7,6 +7,7 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QMessageBox>
+#include <map>
 #include <iostream>
 
 ACSControllerPage::ACSControllerPage(ApplicationContext* context, QWidget* parent)
@@ -18,6 +19,10 @@ ACSControllerPage::ACSControllerPage(ApplicationContext* context, QWidget* paren
   , m_turtleButton(nullptr)
   , m_rabbitButton(nullptr)
   , m_applyButton(nullptr)
+  , m_enableX(nullptr)
+  , m_enableY(nullptr)
+  , m_enableZ(nullptr)
+  , m_axisStatusTimer(nullptr)
 {
   std::cout << "[ACSControllerPage] Initialized" << std::endl;
 
@@ -49,6 +54,9 @@ void ACSControllerPage::setupUI()
 
   // Add velocity controls
   createVelocityControls();
+
+  // Add axis enable/disable controls
+  createAxisControlGroup();
 }
 
 void ACSControllerPage::createVelocityControls()
@@ -331,5 +339,197 @@ void ACSControllerPage::onApplyVelocityClicked()
     errorMsg += "\nPlease check:\n- Device is connected\n- Device is ready";
 
     QMessageBox::critical(this, "Error", errorMsg);
+  }
+}
+
+void ACSControllerPage::createAxisControlGroup()
+{
+  QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
+  if (!mainLayout) return;
+
+  // Create axis control group
+  QGroupBox* axisGroup = new QGroupBox("Axis Enable/Disable");
+  axisGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #ffffff; "
+    "}");
+
+  QHBoxLayout* axisLayout = new QHBoxLayout(axisGroup);
+  axisLayout->setSpacing(20);
+
+  // Common button style for enabled (green)
+  QString enabledStyle =
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #229954; }";
+
+  // Common button style for disabled (red)
+  QString disabledStyle =
+    "QPushButton { "
+    "  background-color: #e74c3c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #c0392b; }";
+
+  // X axis button
+  m_enableX = new QPushButton("X: --");
+  m_enableX->setStyleSheet(disabledStyle);
+  m_enableX->setProperty("axis", "X");
+  m_enableX->setProperty("servoOn", false);
+  m_enableX->setProperty("enabledStyle", enabledStyle);
+  m_enableX->setProperty("disabledStyle", disabledStyle);
+  connect(m_enableX, &QPushButton::clicked, this, [this]() {
+    bool currentState = m_enableX->property("servoOn").toBool();
+    onAxisEnableClicked("X", !currentState);
+  });
+  axisLayout->addWidget(m_enableX);
+
+  // Y axis button
+  m_enableY = new QPushButton("Y: --");
+  m_enableY->setStyleSheet(disabledStyle);
+  m_enableY->setProperty("axis", "Y");
+  m_enableY->setProperty("servoOn", false);
+  m_enableY->setProperty("enabledStyle", enabledStyle);
+  m_enableY->setProperty("disabledStyle", disabledStyle);
+  connect(m_enableY, &QPushButton::clicked, this, [this]() {
+    bool currentState = m_enableY->property("servoOn").toBool();
+    onAxisEnableClicked("Y", !currentState);
+  });
+  axisLayout->addWidget(m_enableY);
+
+  // Z axis button
+  m_enableZ = new QPushButton("Z: --");
+  m_enableZ->setStyleSheet(disabledStyle);
+  m_enableZ->setProperty("axis", "Z");
+  m_enableZ->setProperty("servoOn", false);
+  m_enableZ->setProperty("enabledStyle", enabledStyle);
+  m_enableZ->setProperty("disabledStyle", disabledStyle);
+  connect(m_enableZ, &QPushButton::clicked, this, [this]() {
+    bool currentState = m_enableZ->property("servoOn").toBool();
+    onAxisEnableClicked("Z", !currentState);
+  });
+  axisLayout->addWidget(m_enableZ);
+
+  axisLayout->addStretch();
+
+  // Insert axis control group after velocity controls (index 2)
+  mainLayout->insertWidget(2, axisGroup);
+
+  // Setup timer to periodically update axis status
+  m_axisStatusTimer = new QTimer(this);
+  connect(m_axisStatusTimer, &QTimer::timeout, this, &ACSControllerPage::updateAxisControlButtons);
+  m_axisStatusTimer->start(500);  // Update every 500ms
+}
+
+void ACSControllerPage::updateAxisControlButtons()
+{
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) return;
+
+  std::string deviceName = m_deviceSelector->currentText().toStdString();
+  if (deviceName.empty()) {
+    // No device selected - show "--"
+    m_enableX->setText("X: --");
+    m_enableY->setText("Y: --");
+    m_enableZ->setText("Z: --");
+    return;
+  }
+
+  // Check connection status
+  std::map<std::string, bool> status = motionMgr->GetConnectionStatus();
+  if (!status[deviceName]) {
+    // Not connected
+    m_enableX->setText("X: N/C");
+    m_enableY->setText("Y: N/C");
+    m_enableZ->setText("Z: N/C");
+    return;
+  }
+
+  // Helper lambda to update button state
+  auto updateButton = [&](QPushButton* btn, const QString& axis) {
+    bool isServoOn = motionMgr->IsServoEnabled(deviceName, axis.toStdString());
+    btn->setProperty("servoOn", isServoOn);
+    if (isServoOn) {
+      btn->setText(axis + ": Enabled");
+      btn->setStyleSheet(btn->property("enabledStyle").toString());
+    }
+    else {
+      btn->setText(axis + ": Disabled");
+      btn->setStyleSheet(btn->property("disabledStyle").toString());
+    }
+  };
+
+  updateButton(m_enableX, "X");
+  updateButton(m_enableY, "Y");
+  updateButton(m_enableZ, "Z");
+}
+
+void ACSControllerPage::onAxisEnableClicked(const QString& axis, bool enable)
+{
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) {
+    QMessageBox::critical(this, "Error", "Motion manager not available!");
+    return;
+  }
+
+  std::string deviceName = m_deviceSelector->currentText().toStdString();
+  if (deviceName.empty()) {
+    QMessageBox::warning(this, "Warning", "Please select a device first!");
+    return;
+  }
+
+  std::cout << "[ACSControllerPage] " << (enable ? "Enabling" : "Disabling")
+            << " axis " << axis.toStdString() << " on " << deviceName << std::endl;
+
+  bool success = motionMgr->EnableServo(deviceName, axis.toStdString(), enable);
+
+  if (success) {
+    std::cout << "[ACSControllerPage] Axis " << axis.toStdString()
+              << " " << (enable ? "enabled" : "disabled") << " successfully" << std::endl;
+
+    // Delay before updating UI to allow controller state to settle
+    QTimer::singleShot(100, this, &ACSControllerPage::updateAxisControlButtons);
+  }
+  else {
+    std::cerr << "[ACSControllerPage] Failed to " << (enable ? "enable" : "disable")
+              << " axis " << axis.toStdString() << std::endl;
+    QMessageBox::critical(this, "Error",
+      QString("Failed to %1 axis %2.\n\nPossible causes:\n"
+              "- Motor fault present\n"
+              "- Hardware safety interlock\n"
+              "- Motor in motion\n"
+              "- Check ACS controller logs")
+        .arg(enable ? "enable" : "disable")
+        .arg(axis));
+
+    // Still update the buttons to show actual state
+    QTimer::singleShot(100, this, &ACSControllerPage::updateAxisControlButtons);
   }
 }

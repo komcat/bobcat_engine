@@ -125,6 +125,9 @@ public:
 		const std::string& axis,
 		bool enable);
 
+	bool IsServoEnabled(const std::string& deviceName,
+		const std::string& axis);
+
 	// ============================================================================
 	// NAMED POSITION MANAGEMENT
 	// ============================================================================

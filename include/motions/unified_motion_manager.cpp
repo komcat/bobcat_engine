@@ -580,6 +580,30 @@ bool UnifiedMotionManager::EnableServo(const std::string& deviceName,
   return false;
 }
 
+bool UnifiedMotionManager::IsServoEnabled(const std::string& deviceName,
+  const std::string& axis) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) return false;
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) return false;
+    bool enabled = false;
+    if (controller->IsServoEnabled(axis, enabled)) {
+      return enabled;
+    }
+    return false;
+  }
+  else if (NormalizeType(type) == "PI") {
+    // PI hexapods are typically always enabled when connected
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) return false;
+    return controller->IsConnected();
+  }
+
+  return false;
+}
+
 // ============================================================================
 // Device Queries
 // ============================================================================

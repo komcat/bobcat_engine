@@ -4,6 +4,7 @@
 #include "MotionControllerPageBase.h"
 #include <QDoubleSpinBox>
 #include <QComboBox>
+#include <QTimer>
 
 /**
  * @brief Page for ACS Motion Control controllers
@@ -34,10 +35,13 @@ private slots:
   void onPresetRabbitClicked();
   void onDeviceSelected(const QString& deviceName);
   void onApplyVelocityClicked();
+  void onAxisEnableClicked(const QString& axis, bool enable);
 
 private:
   void createVelocityControls();
+  void createAxisControlGroup();
   void updateVelocityDisplay();
+  void updateAxisControlButtons();
 
   // Velocity control widgets
   QComboBox* m_deviceSelector;
@@ -47,4 +51,10 @@ private:
   QPushButton* m_turtleButton;
   QPushButton* m_rabbitButton;
   QPushButton* m_applyButton;
+
+  // Axis enable/disable control widgets
+  QPushButton* m_enableX;
+  QPushButton* m_enableY;
+  QPushButton* m_enableZ;
+  QTimer* m_axisStatusTimer;
 };

@@ -513,6 +513,17 @@ bool ACSController::EnableServo(const std::string& axis, bool enable) {
 
   bool result = false;
   if (enable) {
+    // First, clear any faults on the axis before enabling
+    // This is required by ACS controllers - motors cannot be enabled if faults are present
+    if (acsc_FaultClear(m_controllerId, axisIndex, NULL) == 0) {
+      std::cout << "[WARN] ACSController: FaultClear returned 0 for axis " << axis << std::endl;
+      // Continue anyway - might not have any faults
+    }
+
+    // Small delay to ensure fault clear is processed
+    Sleep(50);
+
+    // Now try to enable the motor
     result = acsc_Enable(m_controllerId, axisIndex, NULL) != 0;
   }
   else {
@@ -521,7 +532,11 @@ bool ACSController::EnableServo(const std::string& axis, bool enable) {
 
   if (!result) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to set servo. Error: " << error << std::endl;
+    std::cout << "[ERROR] ACSController: Failed to set servo. Error code: " << error << std::endl;
+  }
+  else {
+    std::cout << "[INFO] ACSController: Servo " << axis << " "
+      << (enable ? "enabled" : "disabled") << " successfully" << std::endl;
   }
 
   return result;
