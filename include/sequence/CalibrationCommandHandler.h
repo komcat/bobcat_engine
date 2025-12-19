@@ -80,6 +80,29 @@ private:
   std::string GetNeedleZCalibrationFilePath() const;
   std::string GetCameraToNeedleOffsetFilePath() const;
   std::string GetDispenseZFilePath(const std::string& uid) const;
+  std::string GetYawCorrectionFilePath(const std::string& uid) const;
   std::string GetCurrentDateTime(bool dateOnly = false) const;
   bool EnsureCalibrationDirectoryExists(std::string& errorMessage);
+
+  // Yaw Correction methods
+  bool LoadYawCorrectionData(
+    const std::string& uid,
+    double& corner1X, double& corner1Y,
+    double& corner2X, double& corner2Y,
+    double& previousYawAngle
+  );
+
+  bool SaveYawCorrectionData(
+    const std::string& uid,
+    const std::string& gantryDevice,
+    double corner1X, double corner1Y,
+    double corner2X, double corner2Y,
+    double yawAngleDegrees,
+    std::string& errorMessage
+  );
+
+  double CalculateYawAngle(
+    double corner1X, double corner1Y,
+    double corner2X, double corner2Y
+  );
 };

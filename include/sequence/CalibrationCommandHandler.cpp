@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <ctime>
 #include <chrono>
+#include <cmath>
 
 using json = nlohmann::json;
 
@@ -808,6 +809,265 @@ bool CalibrationCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // LOAD YAW CORRECTION DATA
+  // ============================================================================
+  else if (methodName == "LoadYawCorrectionData") {
+    auto uidIt = params.find("uid");
+    if (uidIt == params.end()) {
+      errorMessage = "LoadYawCorrectionData: Missing required parameter 'uid'";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    double corner1X = 0.0, corner1Y = 0.0;
+    double corner2X = 0.0, corner2Y = 0.0;
+    double previousYawAngle = 0.0;
+
+    bool exists = LoadYawCorrectionData(uid, corner1X, corner1Y, corner2X, corner2Y, previousYawAngle);
+
+    if (context) {
+      context->SetValue("yaw_data_exists", exists, "calibration", "LoadYawCorrectionData");
+      if (exists) {
+        context->SetValue("corner1_x", static_cast<float>(corner1X), "calibration", "LoadYawCorrectionData");
+        context->SetValue("corner1_y", static_cast<float>(corner1Y), "calibration", "LoadYawCorrectionData");
+        context->SetValue("corner2_x", static_cast<float>(corner2X), "calibration", "LoadYawCorrectionData");
+        context->SetValue("corner2_y", static_cast<float>(corner2Y), "calibration", "LoadYawCorrectionData");
+        context->SetValue("previous_yaw_angle", static_cast<float>(previousYawAngle), "calibration", "LoadYawCorrectionData");
+
+        if (m_logger) {
+          m_logger->Info("Loaded yaw correction data for UID: " + uid +
+                        " - Yaw angle: " + std::to_string(previousYawAngle) + " deg",
+                        "CalibrationHandler");
+        }
+      } else {
+        if (m_logger) {
+          m_logger->Info("No saved yaw correction data found for UID: " + uid, "CalibrationHandler");
+        }
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // CALCULATE AND SAVE YAW CORRECTION
+  // ============================================================================
+  else if (methodName == "CalculateAndSaveYawCorrection") {
+    auto uidIt = params.find("uid");
+    auto gantryDeviceIt = params.find("gantry_device");
+
+    if (uidIt == params.end() || gantryDeviceIt == params.end()) {
+      errorMessage = "CalculateAndSaveYawCorrection: Missing required parameters 'uid' and 'gantry_device'";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    std::string gantryDevice = gantryDeviceIt->second;
+
+    if (!context) {
+      errorMessage = "CalculateAndSaveYawCorrection: Context not available";
+      return false;
+    }
+
+    // Get corner positions from context
+    double corner1X = static_cast<double>(context->GetNumeric("corner1_x", 0.0f));
+    double corner1Y = static_cast<double>(context->GetNumeric("corner1_y", 0.0f));
+    double corner2X = static_cast<double>(context->GetNumeric("corner2_x", 0.0f));
+    double corner2Y = static_cast<double>(context->GetNumeric("corner2_y", 0.0f));
+
+    // Calculate yaw angle
+    double yawAngleDegrees = CalculateYawAngle(corner1X, corner1Y, corner2X, corner2Y);
+
+    // Store yaw angle in context
+    context->SetValue("yaw_angle_degrees", static_cast<float>(yawAngleDegrees), "calibration", "CalculateAndSaveYawCorrection");
+
+    // Save to file
+    if (!SaveYawCorrectionData(uid, gantryDevice, corner1X, corner1Y, corner2X, corner2Y, yawAngleDegrees, errorMessage)) {
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Calculated and saved yaw correction: " + std::to_string(yawAngleDegrees) + " deg for UID: " + uid,
+                    "CalibrationHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // NAVIGATE TO SAVED CORNER (for yaw correction)
+  // ============================================================================
+  else if (methodName == "NavigateToSavedCorner") {
+    auto deviceIt = params.find("device");
+    auto cornerIt = params.find("corner");
+
+    if (deviceIt == params.end() || cornerIt == params.end()) {
+      errorMessage = "NavigateToSavedCorner: Missing required parameters 'device' and 'corner'";
+      return false;
+    }
+
+    std::string device = deviceIt->second;
+    std::string corner = cornerIt->second;
+
+    if (!context) {
+      errorMessage = "NavigateToSavedCorner: Context not available";
+      return false;
+    }
+
+    // Get corner position from context
+    double x = 0.0, y = 0.0;
+    if (corner == "1") {
+      x = static_cast<double>(context->GetNumeric("corner1_x", 0.0f));
+      y = static_cast<double>(context->GetNumeric("corner1_y", 0.0f));
+    } else if (corner == "2") {
+      x = static_cast<double>(context->GetNumeric("corner2_x", 0.0f));
+      y = static_cast<double>(context->GetNumeric("corner2_y", 0.0f));
+    } else {
+      errorMessage = "NavigateToSavedCorner: Invalid corner '" + corner + "' (must be '1' or '2')";
+      return false;
+    }
+
+    // Navigate to saved position
+    if (!m_context || !m_context->motionManager) {
+      errorMessage = "NavigateToSavedCorner: Motion manager not available";
+      return false;
+    }
+
+    // Get current Z to maintain height
+    double currentZ = 0.0;
+    m_context->motionManager->GetPosition(device, "Z", currentZ);
+
+    if (!m_context->motionManager->MoveToAbs(device, x, y, currentZ, 100.0, true)) {
+      errorMessage = "NavigateToSavedCorner: Failed to move to corner " + corner;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Navigated to saved corner " + corner + ": (" +
+                    std::to_string(x) + ", " + std::to_string(y) + ")",
+                    "CalibrationHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // APPLY YAW CORRECTION
+  // ============================================================================
+  else if (methodName == "ApplyYawCorrection") {
+    auto uidIt = params.find("uid");
+    auto targetDeviceIt = params.find("target_device");
+    auto xDirectionIt = params.find("x_direction");
+
+    if (uidIt == params.end()) {
+      errorMessage = "ApplyYawCorrection: Missing required parameter 'uid'";
+      return false;
+    }
+
+    std::string uid = uidIt->second;
+    std::string targetDevice = (targetDeviceIt != params.end()) ? targetDeviceIt->second : "";
+    // X direction determines sign: "up" = positive U, "down" = negative U
+    std::string xDirection = (xDirectionIt != params.end()) ? xDirectionIt->second : "up";
+
+    if (targetDevice.empty()) {
+      errorMessage = "ApplyYawCorrection: Missing target_device parameter";
+      return false;
+    }
+
+    if (!context) {
+      errorMessage = "ApplyYawCorrection: Context not available";
+      return false;
+    }
+
+    // Get yaw angle from context (may have been loaded or just calculated)
+    double yawAngleDegrees = 0.0;
+
+    // First check if yaw_angle_degrees is in context (from CalculateAndSaveYawCorrection)
+    if (context->HasValue("yaw_angle_degrees")) {
+      yawAngleDegrees = static_cast<double>(context->GetNumeric("yaw_angle_degrees", 0.0f));
+    } else {
+      // Load from file if not in context
+      double corner1X, corner1Y, corner2X, corner2Y, previousYawAngle;
+      if (LoadYawCorrectionData(uid, corner1X, corner1Y, corner2X, corner2Y, previousYawAngle)) {
+        yawAngleDegrees = previousYawAngle;
+        context->SetValue("yaw_angle_degrees", static_cast<float>(yawAngleDegrees), "calibration", "ApplyYawCorrection");
+      } else {
+        errorMessage = "ApplyYawCorrection: No yaw correction data found for UID: " + uid;
+        return false;
+      }
+    }
+
+    // Apply correction to target device
+    if (!m_context || !m_context->motionManager) {
+      errorMessage = "ApplyYawCorrection: Motion manager not available";
+      return false;
+    }
+
+    // Correction is OPPOSITE of measured error (to compensate)
+    // Then adjust sign based on X-axis orientation (right-hand rule)
+    // "up" = negate once, "down" = negate twice (same as original)
+    double uCorrection = -yawAngleDegrees;  // Negate to correct the error
+    if (xDirection == "down") {
+      uCorrection = -uCorrection;  // Flip for opposite hexapod orientation
+    }
+
+    if (!m_context->motionManager->MoveRelative(targetDevice, "U", uCorrection, true)) {
+      errorMessage = "ApplyYawCorrection: Failed to move U axis on device: " + targetDevice;
+      return false;
+    }
+
+    // Store correction in context
+    context->SetValue("u_correction", static_cast<float>(uCorrection), "calibration", "ApplyYawCorrection");
+
+    if (m_logger) {
+      m_logger->Info("Applied yaw correction to " + targetDevice + ": U = " + std::to_string(uCorrection) +
+                    " deg (X " + xDirection + ")", "CalibrationHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // SHOW YAW CORRECTION RESULT
+  // ============================================================================
+  else if (methodName == "ShowYawCorrectionResult") {
+    auto targetDeviceIt = params.find("target_device");
+
+    std::string targetDevice = (targetDeviceIt != params.end()) ? targetDeviceIt->second : "hexapod";
+
+    if (!context) {
+      errorMessage = "ShowYawCorrectionResult: Context not available";
+      return false;
+    }
+
+    // Get values from context
+    double corner1X = static_cast<double>(context->GetNumeric("corner1_x", 0.0f));
+    double corner1Y = static_cast<double>(context->GetNumeric("corner1_y", 0.0f));
+    double corner2X = static_cast<double>(context->GetNumeric("corner2_x", 0.0f));
+    double corner2Y = static_cast<double>(context->GetNumeric("corner2_y", 0.0f));
+    double yawAngle = static_cast<double>(context->GetNumeric("yaw_angle_degrees", 0.0f));
+    double uCorrection = static_cast<double>(context->GetNumeric("u_correction", 0.0f));
+
+    // Format result message
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    oss << "Corner1=(" << corner1X << ", " << corner1Y << ") ";
+    oss << "Corner2=(" << corner2X << ", " << corner2Y << ") ";
+    oss << "YawAngle=" << yawAngle << "deg ";
+    oss << "U=" << uCorrection << "deg ";
+    oss << "Target=" << targetDevice;
+
+    // Store formatted result in context for display
+    context->SetValue("yaw_result_message", oss.str(), "calibration", "ShowYawCorrectionResult");
+
+    if (m_logger) {
+      m_logger->Info("✅ Yaw Correction Complete: " + oss.str(), "CalibrationHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
@@ -904,4 +1164,156 @@ bool CalibrationCommandHandler::LoadDispenseZHeight(
     }
     return false;
   }
+}
+
+// =============================================================================
+// YAW CORRECTION HELPER METHODS
+// =============================================================================
+
+std::string CalibrationCommandHandler::GetYawCorrectionFilePath(const std::string& uid) const
+{
+  // Use product-specific instances_data folder for yaw correction data
+  std::string productName = "default";
+  if (m_context && m_context->productPositionManager) {
+    std::string currentProduct = m_context->productPositionManager->GetCurrentProductName();
+    if (!currentProduct.empty()) {
+      productName = currentProduct;
+    }
+  }
+  return "config/" + productName + "/instances_data/yaw_correction_" + uid + ".json";
+}
+
+bool CalibrationCommandHandler::LoadYawCorrectionData(
+  const std::string& uid,
+  double& corner1X, double& corner1Y,
+  double& corner2X, double& corner2Y,
+  double& previousYawAngle)
+{
+  try {
+    std::string filePath = GetYawCorrectionFilePath(uid);
+
+    if (!std::filesystem::exists(filePath)) {
+      return false;  // File doesn't exist
+    }
+
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+      return false;
+    }
+
+    json data;
+    file >> data;
+    file.close();
+
+    // Extract corner positions and yaw angle
+    if (data.contains("corner1") && data.contains("corner2") && data.contains("yaw_angle_degrees")) {
+      corner1X = data["corner1"]["x"].get<double>();
+      corner1Y = data["corner1"]["y"].get<double>();
+      corner2X = data["corner2"]["x"].get<double>();
+      corner2Y = data["corner2"]["y"].get<double>();
+      previousYawAngle = data["yaw_angle_degrees"].get<double>();
+      return true;
+    }
+
+    return false;
+  }
+  catch (const std::exception& e) {
+    if (m_logger) {
+      m_logger->Error("Exception loading yaw correction data: " + std::string(e.what()), "CalibrationHandler");
+    }
+    return false;
+  }
+}
+
+bool CalibrationCommandHandler::SaveYawCorrectionData(
+  const std::string& uid,
+  const std::string& gantryDevice,
+  double corner1X, double corner1Y,
+  double corner2X, double corner2Y,
+  double yawAngleDegrees,
+  std::string& errorMessage)
+{
+  try {
+    // Ensure instances_data directory exists for current product
+    std::string filePath = GetYawCorrectionFilePath(uid);
+    std::filesystem::path dirPath = std::filesystem::path(filePath).parent_path();
+
+    if (!std::filesystem::exists(dirPath)) {
+      if (!std::filesystem::create_directories(dirPath)) {
+        errorMessage = "Failed to create instances_data directory: " + dirPath.string();
+        return false;
+      }
+      if (m_logger) {
+        m_logger->Info("Created instances_data directory: " + dirPath.string(), "CalibrationHandler");
+      }
+    }
+
+    // Calculate distance between corners
+    double deltaX = corner2X - corner1X;
+    double deltaY = corner2Y - corner1Y;
+    double distance = std::sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Create JSON structure
+    json data;
+    data["uid"] = uid;
+    data["gantry_device"] = gantryDevice;
+    data["corner1"]["x"] = corner1X;
+    data["corner1"]["y"] = corner1Y;
+    data["corner2"]["x"] = corner2X;
+    data["corner2"]["y"] = corner2Y;
+    data["delta"]["x"] = deltaX;
+    data["delta"]["y"] = deltaY;
+    data["distance"] = distance;
+    data["yaw_angle_degrees"] = yawAngleDegrees;
+    data["timestamp"] = GetCurrentDateTime(false);
+    data["date"] = GetCurrentDateTime(true);
+
+    // Write to file
+    std::ofstream file(filePath);
+    if (!file.is_open()) {
+      errorMessage = "Failed to open file for writing: " + filePath;
+      return false;
+    }
+
+    file << data.dump(2);  // Pretty print with 2-space indentation
+    file.close();
+
+    if (m_logger) {
+      m_logger->Info("Saved yaw correction data to: " + filePath +
+                    " (Yaw: " + std::to_string(yawAngleDegrees) + " deg)",
+                    "CalibrationHandler");
+    }
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    errorMessage = "Exception saving yaw correction data: " + std::string(e.what());
+    return false;
+  }
+}
+
+double CalibrationCommandHandler::CalculateYawAngle(
+  double corner1X, double corner1Y,
+  double corner2X, double corner2Y)
+{
+  // Calculate delta between corners
+  double deltaX = corner2X - corner1X;
+  double deltaY = corner2Y - corner1Y;
+
+  // Calculate yaw angle using atan2
+  // The yaw angle is the angle from the Y-axis (vertical line)
+  // atan2(deltaX, deltaY) gives angle from Y-axis
+  double yawRadians = std::atan2(deltaX, deltaY);
+
+  // Convert to degrees
+  double yawDegrees = yawRadians * 180.0 / 3.14159265358979323846;
+
+  if (m_logger) {
+    m_logger->Info("Calculated yaw angle: " + std::to_string(yawDegrees) + " deg"
+                  " (deltaX=" + std::to_string(deltaX) +
+                  ", deltaY=" + std::to_string(deltaY) + ")",
+                  "CalibrationHandler");
+  }
+
+  return yawDegrees;
 }
