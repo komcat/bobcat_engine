@@ -38,8 +38,18 @@ public:
     return {
       {"gantry_device", "gantry-main"},
       {"target_device", "hex-left"},
-      {"x_direction", "up"}
+      {"x_direction", "up"},
+      {"apply_to_position", "false"},
+      {"position_device", "hex-left"},
+      {"position_name", ""}
     };
+  }
+
+  // Helper to safely get parameter with default value
+  std::string getParam(const std::map<std::string, std::string>& params,
+                       const std::string& key, const std::string& defaultVal) const {
+    auto it = params.find(key);
+    return (it != params.end()) ? it->second : defaultVal;
   }
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
@@ -47,26 +57,46 @@ public:
 
     // Gantry device selector (for measuring corners)
     widget->addDeviceSelector("gantry_device", "Gantry Device",
-                              params.at("gantry_device"),
+                              getParam(params, "gantry_device", "gantry-main"),
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // Target device (hexapod to correct)
     widget->addDeviceSelector("target_device", "Target Device (Hexapod)",
-                              params.at("target_device"),
+                              getParam(params, "target_device", "hex-left"),
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // X-axis direction (right-hand rule orientation)
     widget->addDropdownParameter("x_direction", "X Direction (Right-Hand Rule)",
-                                 params.at("x_direction"),
+                                 getParam(params, "x_direction", "up"),
                                  {"up", "down"});
+
+    // Checkbox to apply yaw correction to a saved position
+    widget->addCheckboxParameter("apply_to_position", "Apply U to Position",
+                                 getParam(params, "apply_to_position", "false"),
+                                 "Save the U correction value to a named position");
+
+    // Device selector for the position to update
+    widget->addDeviceSelector("position_device", "Position Device",
+                              getParam(params, "position_device", "hex-left"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+    // Node selector for position name (linked to position_device)
+    widget->addNodeSelector("position_name", "Position Name",
+                            getParam(params, "position_name", ""),
+                            "position_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
-    std::string gantryDevice = params.at("gantry_device");
-    std::string targetDevice = params.at("target_device");
-    std::string xDirection = params.at("x_direction");
+    std::string gantryDevice = getParam(params, "gantry_device", "gantry-main");
+    std::string targetDevice = getParam(params, "target_device", "hex-left");
+    std::string xDirection = getParam(params, "x_direction", "up");
+
+    // Apply to position parameters (with safe defaults)
+    bool applyToPosition = (getParam(params, "apply_to_position", "false") == "true");
+    std::string positionDevice = getParam(params, "position_device", "hex-left");
+    std::string positionName = getParam(params, "position_name", "");
 
     // Get the process instance UID for unique data files
     std::string uid = step->uniqueId;
@@ -83,12 +113,12 @@ public:
     // STEP 2: CORNER 1 - Navigate to saved position (if exists) then manual adjust
     // =========================================================================
 
-    // If saved data exists, navigate to corner 1 first
+    // If saved data exists, navigate to corner 1 first (using generic motion command)
     sequence->BeginIf("yaw_data_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      sequence->AddAction("calibration", "NavigateToSavedCorner", {
-        {"device", gantryDevice},
-        {"corner", "1"}
+      sequence->AddAction(gantryDevice, "MoveToAbsFromContext", {
+        {"key_prefix", "corner1"},
+        {"keep_z", "true"}  // Maintain current Z height
       });
     }
     sequence->EndIf();
@@ -105,9 +135,8 @@ public:
       {"enable_z", "false"}
     });
 
-    // Capture corner 1 position
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", gantryDevice},
+    // Capture corner 1 position (using generic motion command)
+    sequence->AddAction(gantryDevice, "SavePositionToContext", {
       {"key_prefix", "corner1"}
     });
 
@@ -115,12 +144,12 @@ public:
     // STEP 3: CORNER 2 - Navigate to saved position (if exists) then manual adjust
     // =========================================================================
 
-    // If saved data exists, navigate to corner 2 first
+    // If saved data exists, navigate to corner 2 first (using generic motion command)
     sequence->BeginIf("yaw_data_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      sequence->AddAction("calibration", "NavigateToSavedCorner", {
-        {"device", gantryDevice},
-        {"corner", "2"}
+      sequence->AddAction(gantryDevice, "MoveToAbsFromContext", {
+        {"key_prefix", "corner2"},
+        {"keep_z", "true"}  // Maintain current Z height
       });
     }
     sequence->EndIf();
@@ -137,9 +166,8 @@ public:
       {"enable_z", "false"}
     });
 
-    // Capture corner 2 position
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", gantryDevice},
+    // Capture corner 2 position (using generic motion command)
+    sequence->AddAction(gantryDevice, "SavePositionToContext", {
       {"key_prefix", "corner2"}
     });
 
@@ -170,6 +198,20 @@ public:
       {"uid", uid},
       {"target_device", targetDevice}
     });
+
+    // =========================================================================
+    // STEP 7: SAVE U TO NAMED POSITION (optional, based on checkbox)
+    // =========================================================================
+
+    if (applyToPosition && !positionName.empty()) {
+      sequence->AddAction("calibration", "SaveYawCorrectionToPosition", {
+        {"position_device", positionDevice},
+        {"position_name", positionName}
+      });
+
+      std::cout << "[YawCorrectionPlugin] Will save U correction to position: "
+        << positionDevice << "/" << positionName << std::endl;
+    }
 
     std::cout << "[YawCorrectionPlugin] Built sequence for: "
       << step->userNickname << " (Gantry: " << gantryDevice

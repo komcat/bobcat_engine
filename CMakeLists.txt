@@ -630,6 +630,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
+    include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
     include/recipe/processes/DispenseProcesses.cpp
     include/recipe/processes/SMUProcesses.cpp

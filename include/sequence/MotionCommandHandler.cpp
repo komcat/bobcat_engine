@@ -1689,6 +1689,170 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SAVE POSITION TO CONTEXT - Capture current device position into context variables
+  // ============================================================================
+  else if (methodName == "SavePositionToContext") {
+    // Required: key_prefix - prefix for context keys (e.g., "corner1" -> corner1_x, corner1_y, etc.)
+    auto prefixIt = params.find("key_prefix");
+    if (prefixIt == params.end()) {
+      errorMessage = "SavePositionToContext: Missing required parameter 'key_prefix'";
+      return false;
+    }
+    std::string keyPrefix = prefixIt->second;
+
+    if (!context) {
+      errorMessage = "SavePositionToContext: No sequence context available";
+      return false;
+    }
+
+    // Get current position from device
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+
+    // Save XYZ to context
+    context->SetValue(keyPrefix + "_x", static_cast<float>(currentPos.x), deviceName, methodName);
+    context->SetValue(keyPrefix + "_y", static_cast<float>(currentPos.y), deviceName, methodName);
+    context->SetValue(keyPrefix + "_z", static_cast<float>(currentPos.z), deviceName, methodName);
+
+    // Check if UVW should also be saved (optional parameter)
+    bool saveUVW = false;
+    auto uvwIt = params.find("save_uvw");
+    if (uvwIt != params.end() && (uvwIt->second == "true" || uvwIt->second == "1")) {
+      saveUVW = true;
+    }
+
+    if (saveUVW) {
+      context->SetValue(keyPrefix + "_u", static_cast<float>(currentPos.u), deviceName, methodName);
+      context->SetValue(keyPrefix + "_v", static_cast<float>(currentPos.v), deviceName, methodName);
+      context->SetValue(keyPrefix + "_w", static_cast<float>(currentPos.w), deviceName, methodName);
+    }
+
+    if (m_logger) {
+      std::string logMsg = "SavePositionToContext: " + deviceName + " position saved as '" + keyPrefix + "' (X=" +
+                           std::to_string(currentPos.x) + ", Y=" + std::to_string(currentPos.y) +
+                           ", Z=" + std::to_string(currentPos.z);
+      if (saveUVW) {
+        logMsg += ", U=" + std::to_string(currentPos.u) + ", V=" + std::to_string(currentPos.v) +
+                  ", W=" + std::to_string(currentPos.w);
+      }
+      logMsg += ")";
+      m_logger->Info(logMsg, "MotionHandler");
+    }
+
+    std::cout << "[MotionCommandHandler] SavePositionToContext: " << deviceName
+              << " -> " << keyPrefix << "_xyz" << (saveUVW ? "uvw" : "") << std::endl;
+
+    return true;
+  }
+
+  // ============================================================================
+  // MOVE TO ABS FROM CONTEXT - Move to position stored in context variables
+  // ============================================================================
+  else if (methodName == "MoveToAbsFromContext") {
+    // Required: key_prefix - prefix for context keys (e.g., "corner1" -> reads corner1_x, corner1_y, corner1_z)
+    auto prefixIt = params.find("key_prefix");
+    if (prefixIt == params.end()) {
+      errorMessage = "MoveToAbsFromContext: Missing required parameter 'key_prefix'";
+      return false;
+    }
+    std::string keyPrefix = prefixIt->second;
+
+    if (!context) {
+      errorMessage = "MoveToAbsFromContext: No sequence context available";
+      return false;
+    }
+
+    // Read position from context
+    double x = static_cast<double>(context->GetNumeric(keyPrefix + "_x", 0.0f));
+    double y = static_cast<double>(context->GetNumeric(keyPrefix + "_y", 0.0f));
+    double z = static_cast<double>(context->GetNumeric(keyPrefix + "_z", 0.0f));
+
+    // Optional: keep_z parameter - if true, use current Z instead of context Z
+    bool keepZ = false;
+    auto keepZIt = params.find("keep_z");
+    if (keepZIt != params.end() && (keepZIt->second == "true" || keepZIt->second == "1")) {
+      keepZ = true;
+      double currentZ = 0.0;
+      motionManager->GetPosition(deviceName, "Z", currentZ);
+      z = currentZ;
+    }
+
+    // Optional: UVW from context
+    double u = 0.0, v = 0.0, w = 0.0;
+    bool hasUVW = false;
+    auto uvwIt = params.find("use_uvw");
+    if (uvwIt != params.end() && (uvwIt->second == "true" || uvwIt->second == "1")) {
+      u = static_cast<double>(context->GetNumeric(keyPrefix + "_u", 0.0f));
+      v = static_cast<double>(context->GetNumeric(keyPrefix + "_v", 0.0f));
+      w = static_cast<double>(context->GetNumeric(keyPrefix + "_w", 0.0f));
+      hasUVW = true;
+    }
+
+    // Check if non-blocking mode requested explicitly
+    bool explicitNonBlocking = false;
+    auto blockingIt = params.find("blocking");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
+    }
+
+    if (m_logger) {
+      std::string logMsg = "MoveToAbsFromContext: " + deviceName + " moving to '" + keyPrefix + "' (X=" +
+                           std::to_string(x) + ", Y=" + std::to_string(y) + ", Z=" + std::to_string(z);
+      if (keepZ) logMsg += " [Z=current]";
+      if (hasUVW) {
+        logMsg += ", U=" + std::to_string(u) + ", V=" + std::to_string(v) + ", W=" + std::to_string(w);
+      }
+      logMsg += ")";
+      m_logger->Info(logMsg, "MotionHandler");
+    }
+
+    // Execute move
+    bool moveSuccess = true;
+    if (hasUVW) {
+      // For hexapods with UVW, move all 6 axes
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "X", x, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "Y", y, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "Z", z, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "U", u, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "V", v, false);
+      moveSuccess &= motionManager->MoveToPosition(deviceName, "W", w, false);
+    } else {
+      moveSuccess = motionManager->MoveToAbs(deviceName, x, y, z, 100.0, false);
+    }
+
+    if (!moveSuccess) {
+      errorMessage = "MoveToAbsFromContext: Failed to start move";
+      return false;
+    }
+
+    // If explicit non-blocking requested, return immediately
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // Wait for completion with stop flag monitoring
+    TargetPosition target;
+    target.hasX = true;
+    target.hasY = true;
+    target.hasZ = true;
+    target.hasU = hasUVW;
+    target.hasV = hasUVW;
+    target.hasW = hasUVW;
+    target.x = x;
+    target.y = y;
+    target.z = z;
+    target.u = u;
+    target.v = v;
+    target.w = w;
+
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
+      errorMessage = "MoveToAbsFromContext: Motion stopped, timeout, or position verification failed";
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

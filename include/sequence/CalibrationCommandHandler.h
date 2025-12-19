@@ -105,4 +105,27 @@ private:
     double corner1X, double corner1Y,
     double corner2X, double corner2Y
   );
+
+  // Yaw Correction to Template methods
+  std::string GetYawToTemplateFilePath(const std::string& uid) const;
+
+  bool LoadYawToTemplateData(
+    const std::string& uid,
+    double& templateCorner1X, double& templateCorner1Y,
+    double& templateCorner2X, double& templateCorner2Y,
+    double& targetCorner3X, double& targetCorner3Y,
+    double& targetCorner4X, double& targetCorner4Y,
+    double& templateYaw, double& targetYaw, double& correctionAngle
+  );
+
+  bool SaveYawToTemplateData(
+    const std::string& uid,
+    const std::string& gantryDevice,
+    double templateCorner1X, double templateCorner1Y,
+    double templateCorner2X, double templateCorner2Y,
+    double targetCorner3X, double targetCorner3Y,
+    double targetCorner4X, double targetCorner4Y,
+    double templateYaw, double targetYaw, double correctionAngle,
+    std::string& errorMessage
+  );
 };
