@@ -296,8 +296,8 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
         self.actual_data = []
 
         # Plot curves
-        self.target_curve = self.plot.plot(pen=pg.mkPen(color='#FFA07A', width=2), name='Target SAG (V)')
-        self.actual_curve = self.plot.plot(pen=pg.mkPen(color='#98D8C8', width=2), name='Actual SAG (V)')
+        self.target_curve = self.plot.plot(pen=pg.mkPen(color='#FFA07A', width=4), name='Target SAG (V)')
+        self.actual_curve = self.plot.plot(pen=pg.mkPen(color='#98D8C8', width=4), name='Actual SAG (V)')
 
         # Value displays below the chart
         self.values_container = QtWidgets.QWidget()
