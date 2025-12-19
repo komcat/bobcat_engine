@@ -84,17 +84,10 @@ struct RotationScanParameters {
   // Safety limits
   std::chrono::minutes scanTimeout = std::chrono::minutes(30);
 
-  // Get the translation axes based on rotation axis
+  // Get the translation axes - always X and Y for all rotation axes
   std::vector<std::string> GetTranslationAxes() const {
-    switch (rotationAxis) {
-      case RotationAxis::U:  // Yaw (around Z) -> scan Y, Z
-        return { "Y", "Z" };
-      case RotationAxis::V:  // Pitch (around Y) -> scan X, Z
-        return { "X", "Z" };
-      case RotationAxis::W:  // Roll (around X) -> scan X, Y
-      default:
-        return { "X", "Y" };
-    }
+    // Fixed to X, Y for all rotation axes (U, V, W)
+    return { "X", "Y" };
   }
 
   // Get rotation axis name
