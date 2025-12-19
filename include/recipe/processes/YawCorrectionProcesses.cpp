@@ -38,7 +38,10 @@ public:
     return {
       {"gantry_device", "gantry-main"},
       {"target_device", "hex-left"},
-      {"x_direction", "up"}
+      {"x_direction", "up"},
+      {"apply_to_position", "false"},
+      {"position_device", "hex-left"},
+      {"position_name", ""}
     };
   }
 
@@ -59,6 +62,21 @@ public:
     widget->addDropdownParameter("x_direction", "X Direction (Right-Hand Rule)",
                                  params.at("x_direction"),
                                  {"up", "down"});
+
+    // Checkbox to apply yaw correction to a saved position
+    widget->addCheckboxParameter("apply_to_position", "Apply U to Position",
+                                 params.at("apply_to_position"),
+                                 "Save the U correction value to a named position");
+
+    // Device selector for the position to update
+    widget->addDeviceSelector("position_device", "Position Device",
+                              params.at("position_device"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+    // Node selector for position name (linked to position_device)
+    widget->addNodeSelector("position_name", "Position Name",
+                            params.at("position_name"),
+                            "position_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -67,6 +85,11 @@ public:
     std::string gantryDevice = params.at("gantry_device");
     std::string targetDevice = params.at("target_device");
     std::string xDirection = params.at("x_direction");
+
+    // New: Apply to position parameters
+    bool applyToPosition = (params.at("apply_to_position") == "true");
+    std::string positionDevice = params.at("position_device");
+    std::string positionName = params.at("position_name");
 
     // Get the process instance UID for unique data files
     std::string uid = step->uniqueId;
@@ -83,12 +106,12 @@ public:
     // STEP 2: CORNER 1 - Navigate to saved position (if exists) then manual adjust
     // =========================================================================
 
-    // If saved data exists, navigate to corner 1 first
+    // If saved data exists, navigate to corner 1 first (using generic motion command)
     sequence->BeginIf("yaw_data_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      sequence->AddAction("calibration", "NavigateToSavedCorner", {
-        {"device", gantryDevice},
-        {"corner", "1"}
+      sequence->AddAction(gantryDevice, "MoveToAbsFromContext", {
+        {"key_prefix", "corner1"},
+        {"keep_z", "true"}  // Maintain current Z height
       });
     }
     sequence->EndIf();
@@ -105,9 +128,8 @@ public:
       {"enable_z", "false"}
     });
 
-    // Capture corner 1 position
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", gantryDevice},
+    // Capture corner 1 position (using generic motion command)
+    sequence->AddAction(gantryDevice, "SavePositionToContext", {
       {"key_prefix", "corner1"}
     });
 
@@ -115,12 +137,12 @@ public:
     // STEP 3: CORNER 2 - Navigate to saved position (if exists) then manual adjust
     // =========================================================================
 
-    // If saved data exists, navigate to corner 2 first
+    // If saved data exists, navigate to corner 2 first (using generic motion command)
     sequence->BeginIf("yaw_data_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      sequence->AddAction("calibration", "NavigateToSavedCorner", {
-        {"device", gantryDevice},
-        {"corner", "2"}
+      sequence->AddAction(gantryDevice, "MoveToAbsFromContext", {
+        {"key_prefix", "corner2"},
+        {"keep_z", "true"}  // Maintain current Z height
       });
     }
     sequence->EndIf();
@@ -137,9 +159,8 @@ public:
       {"enable_z", "false"}
     });
 
-    // Capture corner 2 position
-    sequence->AddAction("calibration", "CapturePosition", {
-      {"device", gantryDevice},
+    // Capture corner 2 position (using generic motion command)
+    sequence->AddAction(gantryDevice, "SavePositionToContext", {
       {"key_prefix", "corner2"}
     });
 
@@ -170,6 +191,20 @@ public:
       {"uid", uid},
       {"target_device", targetDevice}
     });
+
+    // =========================================================================
+    // STEP 7: SAVE U TO NAMED POSITION (optional, based on checkbox)
+    // =========================================================================
+
+    if (applyToPosition && !positionName.empty()) {
+      sequence->AddAction("calibration", "SaveYawCorrectionToPosition", {
+        {"position_device", positionDevice},
+        {"position_name", positionName}
+      });
+
+      std::cout << "[YawCorrectionPlugin] Will save U correction to position: "
+        << positionDevice << "/" << positionName << std::endl;
+    }
 
     std::cout << "[YawCorrectionPlugin] Built sequence for: "
       << step->userNickname << " (Gantry: " << gantryDevice

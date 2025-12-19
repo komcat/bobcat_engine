@@ -1068,6 +1068,85 @@ bool CalibrationCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SAVE YAW CORRECTION TO NAMED POSITION
+  // ============================================================================
+  else if (methodName == "SaveYawCorrectionToPosition") {
+    auto posDeviceIt = params.find("position_device");
+    auto posNameIt = params.find("position_name");
+
+    if (posDeviceIt == params.end() || posNameIt == params.end()) {
+      errorMessage = "SaveYawCorrectionToPosition: Missing required parameters 'position_device' and 'position_name'";
+      return false;
+    }
+
+    std::string positionDevice = posDeviceIt->second;
+    std::string positionName = posNameIt->second;
+
+    if (positionName.empty()) {
+      errorMessage = "SaveYawCorrectionToPosition: Position name cannot be empty";
+      return false;
+    }
+
+    if (!context) {
+      errorMessage = "SaveYawCorrectionToPosition: Context not available";
+      return false;
+    }
+
+    // Get U correction from context (set by ApplyYawCorrection)
+    if (!context->HasValue("u_correction")) {
+      errorMessage = "SaveYawCorrectionToPosition: No u_correction value found in context. Run ApplyYawCorrection first.";
+      return false;
+    }
+
+    double uCorrection = static_cast<double>(context->GetNumeric("u_correction", 0.0f));
+
+    // Get ProductPositionManager
+    if (!m_context || !m_context->productPositionManager) {
+      errorMessage = "SaveYawCorrectionToPosition: ProductPositionManager not available";
+      return false;
+    }
+
+    // Get current position
+    PositionStruct currentPos;
+    if (!m_context->productPositionManager->GetPosition(positionDevice, positionName, currentPos)) {
+      errorMessage = "SaveYawCorrectionToPosition: Position '" + positionName + "' not found for device '" + positionDevice + "'";
+      return false;
+    }
+
+    // Update only U value (add correction to existing U)
+    double newU = currentPos.u + uCorrection;
+
+    // Create updated position
+    PositionStruct updatedPos = currentPos;
+    updatedPos.u = newU;
+
+    // Save back to ProductPositionManager
+    m_context->productPositionManager->AddPosition(positionDevice, positionName, updatedPos);
+
+    // Persist to disk
+    if (!m_context->productPositionManager->SaveProduct()) {
+      errorMessage = "SaveYawCorrectionToPosition: Failed to save product file";
+      return false;
+    }
+
+    // Also update the motion manager's cached positions
+    if (m_context->motionManager) {
+      m_context->motionManager->AddNamedPosition(positionDevice, positionName, updatedPos);
+    }
+
+    if (m_logger) {
+      m_logger->Info("✅ Saved U correction to position: " + positionDevice + "/" + positionName +
+                    " (U: " + std::to_string(currentPos.u) + " -> " + std::to_string(newU) + " deg)",
+                    "CalibrationHandler");
+    }
+
+    std::cout << "[CalibrationCommandHandler] SaveYawCorrectionToPosition: " << positionDevice
+              << "/" << positionName << " U=" << newU << " deg" << std::endl;
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
