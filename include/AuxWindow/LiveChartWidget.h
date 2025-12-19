@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QPushButton>
 #include <QLabel>
+#include <QCheckBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QChart>
@@ -67,6 +68,8 @@ private slots:
   void onUpdateValueLabel();
   void onSetTarget();
   void onClearTarget();
+  void onPercentageModeToggled(bool checked);
+  void onTargetChannelSelected(int index);
 
 protected:
   void resizeEvent(QResizeEvent* event) override;
@@ -103,14 +106,26 @@ private:
   QChartView* m_chartView;
   QChart* m_chart;
   QLineSeries* m_series;
+  QLineSeries* m_targetSeries;  // Second series for target channel in % mode
   QValueAxis* m_axisX;
   QValueAxis* m_axisY;
+
+  // Percentage mode UI
+  QCheckBox* m_percentageModeCheckbox;
+  QWidget* m_targetChannelRow;
+  QComboBox* m_targetChannelSelector;
+  bool m_percentageMode;
 
   // Data
   std::string m_currentChannelId;
   std::string m_currentClientId;
   std::string m_currentUnit;
   std::deque<DataPoint> m_dataBuffer;
+
+  // Percentage mode data
+  std::string m_targetChannelId;
+  float m_latestTargetValue;
+  std::deque<DataPoint> m_targetDataBuffer;  // Buffer for target channel data
 
   // Target values (channel ID -> target value)
   std::map<std::string, float> m_targetValues;

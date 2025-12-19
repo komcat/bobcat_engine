@@ -20,6 +20,12 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   , m_setTargetButton(nullptr)
   , m_clearTargetButton(nullptr)
   , m_percentageLabel(nullptr)
+  , m_percentageModeCheckbox(nullptr)
+  , m_targetChannelRow(nullptr)
+  , m_targetChannelSelector(nullptr)
+  , m_percentageMode(false)
+  , m_latestTargetValue(0.0f)
+  , m_targetSeries(nullptr)
   , m_isDirty(false)
   , m_latestValue(0.0f)
   , m_hasNewValue(false)
@@ -33,23 +39,53 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
   connect(m_tcpManager, &TcpClientManager::dataReceived,
     this, &LiveChartWidget::onDataReceived);
 
-  // ✅ Poll DataStore for NON-TCP channels only (e.g., SMU channels)
-  // TCP channels receive data directly via the signal above with proper timestamps
+  // ✅ Poll DataStore for all channels (reading + target in % mode)
   QTimer* pollTimer = new QTimer(this);
   connect(pollTimer, &QTimer::timeout, this, [this]() {
-    if (m_currentChannelId.empty() || !m_dataStore) return;
+    if (!m_dataStore) return;
 
-    // Skip polling if this is a TCP client channel (they use real-time signals)
-    if (!m_currentClientId.empty()) return;
+    qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
 
-    // Poll only for non-TCP channels (SMU, etc.)
-    float value = 0.0f;
-    if (m_dataStore->TryGetValue(m_currentChannelId, value)) {
-      qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
-      onDataReceived(m_currentChannelId, value, timestamp);
+    // Poll reading channel (top dropdown)
+    if (!m_currentChannelId.empty()) {
+      float value = 0.0f;
+      if (m_dataStore->TryGetValue(m_currentChannelId, value)) {
+        // Add to main data buffer
+        DataPoint point;
+        point.timestamp = timestamp;
+        point.value = value;
+        m_dataBuffer.push_back(point);
+
+        if (m_dataBuffer.size() > MAX_POINTS) {
+          m_dataBuffer.pop_front();
+        }
+
+        m_latestValue = value;
+        m_hasNewValue = true;
+        m_isDirty = true;
+      }
+    }
+
+    // Poll target channel if in percentage mode (bottom dropdown)
+    if (m_percentageMode && !m_targetChannelId.empty()) {
+      float targetValue = 0.0f;
+      if (m_dataStore->TryGetValue(m_targetChannelId, targetValue)) {
+        // Add to target data buffer
+        DataPoint point;
+        point.timestamp = timestamp;
+        point.value = targetValue;
+        m_targetDataBuffer.push_back(point);
+
+        if (m_targetDataBuffer.size() > MAX_POINTS) {
+          m_targetDataBuffer.pop_front();
+        }
+
+        m_latestTargetValue = targetValue;
+        m_isDirty = true;
+      }
     }
   });
-  pollTimer->start(100);  // Poll at 10 Hz for non-TCP channels
+  pollTimer->start(100);  // Poll at 10 Hz
 
   // Chart update timer - 10 Hz
   m_chartUpdateTimer = new QTimer(this);
@@ -212,6 +248,71 @@ void LiveChartWidget::setupUI()
 
   headerLayout->addLayout(selectorRow);
 
+  // === PERCENTAGE MODE ROW ===
+  QHBoxLayout* percentModeRow = new QHBoxLayout();
+
+  m_percentageModeCheckbox = new QCheckBox("% Mode");
+  m_percentageModeCheckbox->setToolTip("Show percentage: (Reading Channel / Target Channel) × 100%");
+  m_percentageModeCheckbox->setStyleSheet(
+    "QCheckBox { "
+    "  color: #aaaaaa; "
+    "  font-size: 14px; "
+    "  background: transparent; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 18px; "
+    "  height: 18px; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  border: 2px solid #505050; "
+    "  background-color: #3d3d3d; "
+    "  border-radius: 3px; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  border: 2px solid #28a745; "
+    "  background-color: #28a745; "
+    "  border-radius: 3px; "
+    "}");
+  connect(m_percentageModeCheckbox, &QCheckBox::toggled, this, &LiveChartWidget::onPercentageModeToggled);
+  percentModeRow->addWidget(m_percentageModeCheckbox);
+
+  // Target channel selector (initially hidden)
+  m_targetChannelRow = new QWidget();
+  QHBoxLayout* targetLayout = new QHBoxLayout(m_targetChannelRow);
+  targetLayout->setContentsMargins(0, 0, 0, 0);
+  targetLayout->setSpacing(5);
+
+  QLabel* divideLabel = new QLabel("÷");
+  divideLabel->setStyleSheet("QLabel { color: #ffaa00; font-size: 18px; font-weight: bold; background: transparent; }");
+  targetLayout->addWidget(divideLabel);
+
+  m_targetChannelSelector = new QComboBox();
+  m_targetChannelSelector->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #3d3d3d; "
+    "  color: white; "
+    "  padding: 5px 10px; "
+    "  border: 1px solid #505050; "
+    "  border-radius: 4px; "
+    "  font-size: 14px; "
+    "} "
+    "QComboBox::drop-down { border: none; } "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #3d3d3d; "
+    "  color: white; "
+    "  selection-background-color: #0078d4; "
+    "}");
+  connect(m_targetChannelSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, &LiveChartWidget::onTargetChannelSelected);
+  targetLayout->addWidget(m_targetChannelSelector);
+
+  m_targetChannelRow->hide();  // Hidden by default
+  percentModeRow->addWidget(m_targetChannelRow);
+
+  percentModeRow->addStretch();
+
+  headerLayout->addLayout(percentModeRow);
+
   // ✅ Current value display - TWO ROWS (value on top, unit on bottom)
   QVBoxLayout* valueLayout = new QVBoxLayout();
   valueLayout->setSpacing(0);  // No spacing between value and unit
@@ -313,10 +414,18 @@ void LiveChartWidget::setupUI()
 
   // Chart
   m_series = new QLineSeries();
+  m_series->setName("Reading");
   m_series->setColor(QColor(0, 217, 255));  // Cyan
+
+  // Target series (for percentage mode)
+  m_targetSeries = new QLineSeries();
+  m_targetSeries->setName("Target");
+  m_targetSeries->setColor(QColor(255, 170, 0));  // Orange
+  m_targetSeries->setVisible(false);  // Hidden by default
 
   m_chart = new QChart();
   m_chart->addSeries(m_series);
+  m_chart->addSeries(m_targetSeries);
   m_chart->legend()->hide();
   m_chart->setBackgroundBrush(QBrush(QColor(30, 30, 30)));
   m_chart->setMargins(QMargins(0, 0, 0, 0));
@@ -332,6 +441,7 @@ void LiveChartWidget::setupUI()
   m_axisX->setRange(-10, 0);
   m_chart->addAxis(m_axisX, Qt::AlignBottom);
   m_series->attachAxis(m_axisX);
+  m_targetSeries->attachAxis(m_axisX);
 
   // Y-axis (value)
   m_axisY = new QValueAxis();
@@ -342,6 +452,7 @@ void LiveChartWidget::setupUI()
   m_axisY->setGridLineColor(QColor(70, 70, 70));
   m_chart->addAxis(m_axisY, Qt::AlignLeft);
   m_series->attachAxis(m_axisY);
+  m_targetSeries->attachAxis(m_axisY);
 
   m_chartView = new QChartView(m_chart);
   m_chartView->setRenderHint(QPainter::Antialiasing);
@@ -493,78 +604,122 @@ void LiveChartWidget::onUpdateValueLabel()
 {
   // Only update label if there's a new value
   if (m_hasNewValue) {
-    // Split value and unit into separate labels
-    QString fullText = formatValueWithUnit(m_latestValue, m_currentUnit);
+    // Get current font size to preserve it in stylesheet
+    int currentFontSize = m_valueLabel->font().pointSize();
+    if (currentFontSize <= 0) currentFontSize = 72;
 
-    // Parse the formatted string to split value and unit
-    // Format is like "-633.299 nA" or "1.278 µA"
-    QStringList parts = fullText.split(' ', Qt::SkipEmptyParts);
-    if (parts.size() == 2) {
-      m_valueLabel->setText(parts[0]);  // Numeric value
-      m_unitLabel->setText(parts[1]);   // Unit with prefix
-    } else {
-      m_valueLabel->setText(fullText);
-      m_unitLabel->setText("");
-    }
-
-    // Check if target is set for current channel
-    auto targetIt = m_targetValues.find(m_currentChannelId);
-    bool hasTarget = (targetIt != m_targetValues.end());
+    int percentFontSize = m_percentageLabel ? m_percentageLabel->font().pointSize() : 48;
+    if (percentFontSize <= 0) percentFontSize = 48;
 
     QColor valueColor;
 
-    if (hasTarget && targetIt->second != 0.0f) {
-      // Calculate percentage relative to target
-      float percentage = (m_latestValue / targetIt->second) * 100.0f;
+    // === PERCENTAGE MODE: Show (reading / target) × 100% ===
+    if (m_percentageMode && !m_targetChannelId.empty()) {
+      // Get target channel value from DataStore
+      float targetValue = 0.0f;
+      if (m_dataStore && m_dataStore->TryGetValue(m_targetChannelId, targetValue) && targetValue != 0.0f) {
+        m_latestTargetValue = targetValue;
 
-      // Determine status text based on percentage thresholds
-      QString statusText;
-      if (percentage < 50.0f) {
-        statusText = "NWRK";
-      } else if (percentage < 80.0f) {
-        statusText = "MRGN";
-      } else if (percentage <= 120.0f) {
-        statusText = "PASS";
+        // Calculate percentage
+        float percentage = (m_latestValue / targetValue) * 100.0f;
+
+        // Show only percentage as main value
+        m_valueLabel->setText(QString("%1%").arg(percentage, 0, 'f', 1));
+        m_unitLabel->setText("");  // No unit in percentage mode
+
+        // Determine status text
+        QString statusText;
+        if (percentage < 50.0f) {
+          statusText = "NWRK";
+        } else if (percentage < 80.0f) {
+          statusText = "MRGN";
+        } else if (percentage <= 120.0f) {
+          statusText = "PASS";
+        } else {
+          statusText = "EXCP";
+        }
+
+        // Show status in percentage label
+        m_percentageLabel->setText(statusText);
+        m_percentageLabel->show();
+
+        // Color based on percentage
+        valueColor = getPercentageColor(percentage);
+
+        m_percentageLabel->setStyleSheet(
+          QString("QLabel { "
+                  "  color: %1; "
+                  "  font-weight: bold; "
+                  "  font-size: %2pt; "
+                  "  background: transparent; "
+                  "  padding: 0px 15px; "
+                  "}").arg(valueColor.name()).arg(percentFontSize));
       } else {
-        statusText = "EXCP";
+        // Target channel has no value or is zero
+        m_valueLabel->setText("--");
+        m_unitLabel->setText("");
+        m_percentageLabel->setText("No Target");
+        m_percentageLabel->show();
+        valueColor = QColor(150, 150, 150);  // Gray
+      }
+    }
+    // === NORMAL MODE ===
+    else {
+      // Split value and unit into separate labels
+      QString fullText = formatValueWithUnit(m_latestValue, m_currentUnit);
+
+      // Parse the formatted string to split value and unit
+      QStringList parts = fullText.split(' ', Qt::SkipEmptyParts);
+      if (parts.size() == 2) {
+        m_valueLabel->setText(parts[0]);  // Numeric value
+        m_unitLabel->setText(parts[1]);   // Unit with prefix
+      } else {
+        m_valueLabel->setText(fullText);
+        m_unitLabel->setText("");
       }
 
-      // Show percentage label with status and percentage (e.g., "PASS 97.9%")
-      m_percentageLabel->setText(QString("%1 %2%").arg(statusText).arg(percentage, 0, 'f', 1));
-      m_percentageLabel->show();
+      // Check if target is set for current channel (old target system)
+      auto targetIt = m_targetValues.find(m_currentChannelId);
+      bool hasTarget = (targetIt != m_targetValues.end());
 
-      // Get color based on percentage thresholds
-      QColor percentColor = getPercentageColor(percentage);
-      valueColor = percentColor;  // Use same color for value
+      if (hasTarget && targetIt->second != 0.0f) {
+        // Calculate percentage relative to target
+        float percentage = (m_latestValue / targetIt->second) * 100.0f;
 
-      // Get current font size for percentage label
-      int percentFontSize = m_percentageLabel->font().pointSize();
-      if (percentFontSize <= 0) percentFontSize = 48;
+        // Determine status text based on percentage thresholds
+        QString statusText;
+        if (percentage < 50.0f) {
+          statusText = "NWRK";
+        } else if (percentage < 80.0f) {
+          statusText = "MRGN";
+        } else if (percentage <= 120.0f) {
+          statusText = "PASS";
+        } else {
+          statusText = "EXCP";
+        }
 
-      m_percentageLabel->setStyleSheet(
-        QString("QLabel { "
-                "  color: %1; "
-                "  font-weight: bold; "
-                "  font-size: %2pt; "
-                "  background: transparent; "
-                "  padding: 0px 15px; "
-                "}").arg(percentColor.name()).arg(percentFontSize));
-    } else {
-      // No target - hide percentage, use value-based color
-      m_percentageLabel->hide();
-      valueColor = getValueColor(m_latestValue);
+        m_percentageLabel->setText(QString("%1 %2%").arg(statusText).arg(percentage, 0, 'f', 1));
+        m_percentageLabel->show();
+
+        QColor percentColor = getPercentageColor(percentage);
+        valueColor = percentColor;
+
+        m_percentageLabel->setStyleSheet(
+          QString("QLabel { "
+                  "  color: %1; "
+                  "  font-weight: bold; "
+                  "  font-size: %2pt; "
+                  "  background: transparent; "
+                  "  padding: 0px 15px; "
+                  "}").arg(percentColor.name()).arg(percentFontSize));
+      } else {
+        m_percentageLabel->hide();
+        valueColor = getValueColor(m_latestValue);
+      }
     }
 
-    // Update button states (enable Set Target once we have data)
+    // Update button states
     updateTargetButtonStates();
-
-    // Get current font size to preserve it in stylesheet
-    int currentFontSize = m_valueLabel->font().pointSize();
-
-    // Ensure valid font size (fallback to 72pt if not set yet)
-    if (currentFontSize <= 0) {
-      currentFontSize = 72;
-    }
 
     m_valueLabel->setStyleSheet(
       QString("QLabel { "
@@ -583,6 +738,7 @@ void LiveChartWidget::updateChart()
 {
   if (m_dataBuffer.empty()) {
     m_series->clear();
+    if (m_targetSeries) m_targetSeries->clear();
     return;
   }
 
@@ -604,6 +760,23 @@ void LiveChartWidget::updateChart()
   }
 
   m_series->replace(points);
+
+  // Update target series if in percentage mode
+  if (m_percentageMode && m_targetSeries && !m_targetDataBuffer.empty()) {
+    QVector<QPointF> targetPoints;
+    targetPoints.reserve(m_targetDataBuffer.size());
+
+    for (const auto& point : m_targetDataBuffer) {
+      double relativeTime = (point.timestamp - latestTime) / 1000.0;
+      targetPoints.append(QPointF(relativeTime, point.value));
+
+      // Include target values in Y-axis range
+      minValue = (std::min)(minValue, point.value);
+      maxValue = (std::max)(maxValue, point.value);
+    }
+
+    m_targetSeries->replace(targetPoints);
+  }
 
   // X-axis: fixed 10-second window
   double timeRange = TIME_WINDOW_MS / 1000.0;
@@ -730,6 +903,61 @@ void LiveChartWidget::refreshChannelList()
   }
 
   m_channelSelector->blockSignals(false);
+
+  // Also update target channel selector with same channels
+  if (m_targetChannelSelector) {
+    std::string currentTargetChannel = m_targetChannelId;
+
+    m_targetChannelSelector->blockSignals(true);
+    m_targetChannelSelector->clear();
+
+    int targetIndex = -1;
+    int tidx = 0;
+
+    for (const auto& channelId : channels) {
+      QString displayName = QString::fromStdString(channelId);
+
+      // Try to find client info for display name
+      auto clientIds = m_tcpManager->GetClientIds();
+      for (const auto& clientId : clientIds) {
+        auto config = m_tcpManager->GetClientConfig(clientId);
+
+        bool isThisChannel = false;
+        if (config.protocolType == "single" && config.dataStoreChannel == channelId) {
+          isThisChannel = true;
+        }
+        else if (config.protocolType == "multi") {
+          for (const auto& ch : config.dataChannels) {
+            if (ch == channelId) {
+              isThisChannel = true;
+              break;
+            }
+          }
+        }
+
+        if (isThisChannel) {
+          displayName = QString("%1 (%2)")
+            .arg(QString::fromStdString(config.name))
+            .arg(QString::fromStdString(channelId));
+          break;
+        }
+      }
+
+      m_targetChannelSelector->addItem(displayName, QVariant(QString::fromStdString(channelId)));
+
+      if (channelId == currentTargetChannel) {
+        targetIndex = tidx;
+      }
+      tidx++;
+    }
+
+    // Restore target channel selection
+    if (targetIndex >= 0) {
+      m_targetChannelSelector->setCurrentIndex(targetIndex);
+    }
+
+    m_targetChannelSelector->blockSignals(false);
+  }
 
   // If selection changed, update channel
   std::string newChannel = getCurrentChannel();
@@ -1118,4 +1346,77 @@ void LiveChartWidget::saveTargets()
   catch (const std::exception& e) {
     std::cout << "[LiveChartWidget] Error saving targets: " << e.what() << std::endl;
   }
+}
+
+void LiveChartWidget::onPercentageModeToggled(bool checked)
+{
+  m_percentageMode = checked;
+
+  // Show/hide target channel selector
+  if (m_targetChannelRow) {
+    m_targetChannelRow->setVisible(checked);
+  }
+
+  // Hide target buttons in percentage mode (they use the old fixed target system)
+  if (m_setTargetButton) {
+    m_setTargetButton->setVisible(!checked);
+  }
+  if (m_clearTargetButton) {
+    m_clearTargetButton->setVisible(!checked);
+  }
+
+  // Show/hide target series and legend
+  if (m_targetSeries) {
+    m_targetSeries->setVisible(checked);
+    if (!checked) {
+      m_targetSeries->clear();
+      m_targetDataBuffer.clear();
+    }
+  }
+
+  // Show legend when in percentage mode (to distinguish the two lines)
+  if (m_chart) {
+    m_chart->legend()->setVisible(checked);
+    if (checked) {
+      m_chart->legend()->setAlignment(Qt::AlignBottom);
+      m_chart->legend()->setLabelColor(Qt::white);
+
+      // Update series names based on selected channels
+      if (m_series) {
+        m_series->setName(QString::fromStdString(m_currentChannelId));
+      }
+      if (m_targetSeries && !m_targetChannelId.empty()) {
+        m_targetSeries->setName(QString::fromStdString(m_targetChannelId));
+      }
+    }
+  }
+
+  // Reset display
+  m_hasNewValue = true;  // Force update
+
+  std::cout << "[LiveChartWidget] Percentage mode: " << (checked ? "ON" : "OFF") << std::endl;
+}
+
+void LiveChartWidget::onTargetChannelSelected(int index)
+{
+  if (index < 0 || !m_targetChannelSelector) return;
+
+  std::string newTargetChannel = m_targetChannelSelector->itemData(index).toString().toStdString();
+
+  // Clear target buffer if channel changed
+  if (newTargetChannel != m_targetChannelId) {
+    m_targetDataBuffer.clear();
+    if (m_targetSeries) {
+      m_targetSeries->clear();
+      // Update series name in legend
+      m_targetSeries->setName(QString::fromStdString(newTargetChannel));
+    }
+  }
+
+  m_targetChannelId = newTargetChannel;
+
+  // Force update display
+  m_hasNewValue = true;
+
+  std::cout << "[LiveChartWidget] Target channel set to: " << m_targetChannelId << std::endl;
 }
