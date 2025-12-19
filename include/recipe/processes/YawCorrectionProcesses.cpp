@@ -45,51 +45,58 @@ public:
     };
   }
 
+  // Helper to safely get parameter with default value
+  std::string getParam(const std::map<std::string, std::string>& params,
+                       const std::string& key, const std::string& defaultVal) const {
+    auto it = params.find(key);
+    return (it != params.end()) ? it->second : defaultVal;
+  }
+
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
     // Gantry device selector (for measuring corners)
     widget->addDeviceSelector("gantry_device", "Gantry Device",
-                              params.at("gantry_device"),
+                              getParam(params, "gantry_device", "gantry-main"),
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // Target device (hexapod to correct)
     widget->addDeviceSelector("target_device", "Target Device (Hexapod)",
-                              params.at("target_device"),
+                              getParam(params, "target_device", "hex-left"),
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // X-axis direction (right-hand rule orientation)
     widget->addDropdownParameter("x_direction", "X Direction (Right-Hand Rule)",
-                                 params.at("x_direction"),
+                                 getParam(params, "x_direction", "up"),
                                  {"up", "down"});
 
     // Checkbox to apply yaw correction to a saved position
     widget->addCheckboxParameter("apply_to_position", "Apply U to Position",
-                                 params.at("apply_to_position"),
+                                 getParam(params, "apply_to_position", "false"),
                                  "Save the U correction value to a named position");
 
     // Device selector for the position to update
     widget->addDeviceSelector("position_device", "Position Device",
-                              params.at("position_device"),
+                              getParam(params, "position_device", "hex-left"),
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // Node selector for position name (linked to position_device)
     widget->addNodeSelector("position_name", "Position Name",
-                            params.at("position_name"),
+                            getParam(params, "position_name", ""),
                             "position_device");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
-    std::string gantryDevice = params.at("gantry_device");
-    std::string targetDevice = params.at("target_device");
-    std::string xDirection = params.at("x_direction");
+    std::string gantryDevice = getParam(params, "gantry_device", "gantry-main");
+    std::string targetDevice = getParam(params, "target_device", "hex-left");
+    std::string xDirection = getParam(params, "x_direction", "up");
 
-    // New: Apply to position parameters
-    bool applyToPosition = (params.at("apply_to_position") == "true");
-    std::string positionDevice = params.at("position_device");
-    std::string positionName = params.at("position_name");
+    // Apply to position parameters (with safe defaults)
+    bool applyToPosition = (getParam(params, "apply_to_position", "false") == "true");
+    std::string positionDevice = getParam(params, "position_device", "hex-left");
+    std::string positionName = getParam(params, "position_name", "");
 
     // Get the process instance UID for unique data files
     std::string uid = step->uniqueId;
