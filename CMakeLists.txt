@@ -606,6 +606,8 @@ set(SOURCES
     include/motions/scanning/ScanContext.cpp
     include/motions/scanning/ScanDataCollector.cpp
     include/motions/scanning/CoarseToFineStrategy.cpp
+    include/motions/scanning/RotationScanStrategy.cpp
+    include/motions/scanning/RotationScanController.cpp
     include/logger/ILogger.cpp
     include/AppUI/MotionPages/ScanControlPanel.cpp
     include/sequence/SystemCommandHandler.cpp
@@ -783,10 +785,13 @@ set(HEADERS
     include/AppUI/MotionPages/OffsetMoveDialog.h
     include/motions/scanning/AdaptiveScanController.h
     include/motions/scanning/ScanTypes.h
-    include/motions/scanning/ScanStrategy.h 
+    include/motions/scanning/ScanStrategy.h
     include/motions/scanning/ScanStateMachine.h
     include/motions/scanning/ScanContext.h
     include/motions/scanning/ScanDataCollector.h
+    include/motions/scanning/RotationScanTypes.h
+    include/motions/scanning/RotationScanStrategy.h
+    include/motions/scanning/RotationScanController.h
     include/AppUI/MotionPages/ScanControlPanel.h 
     include/sequence/SystemCommandHandler.h
     include/sequence/SequencePromptDialog.h

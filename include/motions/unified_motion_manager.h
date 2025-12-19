@@ -68,10 +68,15 @@ public:
 	// MOTION CONTROL METHODS
 	// ============================================================================
 
-	// Move to absolute position (multi-axis)
+	// Move to absolute position (XYZ only)
 	bool MoveToAbs(const std::string& deviceName,
 		double x, double y, double z,
 		double velocity = 100.0,
+		bool blocking = true);
+
+	// Move to absolute position (all 6 axes XYZUVW)
+	bool MoveToAbs6(const std::string& deviceName,
+		const PositionStruct& position,
 		bool blocking = true);
 
 	// Move single axis to position

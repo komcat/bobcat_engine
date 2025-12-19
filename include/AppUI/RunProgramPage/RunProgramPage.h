@@ -101,6 +101,9 @@ private slots:
 
   // Scanning integration (refactored)
   void onScanRequested(QString deviceName, bool isCoarse, QString channel);
+  void onRotationScanRequested(QString deviceName, QString rotationAxis,
+                                double rotationStep, double threshold,
+                                int maxNoImprovement, QString channel);
   void onScanLogMessage(QString message);
   void onScanCompleted(QString deviceName, double peakValue, bool success);
   void onScanError(QString errorMessage);

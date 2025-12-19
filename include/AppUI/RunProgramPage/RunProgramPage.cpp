@@ -1304,6 +1304,8 @@ void RunProgramPage::createExecutionWidget()
     // Connect scan widget to this page
     connect(m_scanWidget, &ScanControlWidget::scanRequested,
       this, &RunProgramPage::onScanRequested);
+    connect(m_scanWidget, &ScanControlWidget::rotationScanRequested,
+      this, &RunProgramPage::onRotationScanRequested);
     connect(m_scanWidget, &ScanControlWidget::stopRequested,
       this, &RunProgramPage::onStopScanRequested);
     connect(m_scanWidget, &ScanControlWidget::channelChanged,
@@ -2424,6 +2426,36 @@ void RunProgramPage::onScanRequested(QString deviceName, bool isCoarse, QString 
 
   // Execute scan - all business logic handled by ScanExecutor
   bool success = m_scanExecutor->executeScan(deviceName, isCoarse, channel);
+
+  if (!success) {
+    // Re-enable controls if scan failed to start
+    m_scanWidget->setScanButtonsEnabled(true);
+    m_scanWidget->setStopButtonEnabled(false);
+  }
+}
+
+void RunProgramPage::onRotationScanRequested(QString deviceName, QString rotationAxis,
+                                              double rotationStep, double threshold,
+                                              int maxNoImprovement, QString channel)
+{
+  // Validation
+  if (channel.isEmpty()) {
+    QMessageBox::warning(this, "Scan Error", "Please select a data channel");
+    return;
+  }
+
+  if (!m_context || !m_context->motionManager || !m_context->dataStore) {
+    QMessageBox::warning(this, "Scan Error", "Motion manager or data store not available");
+    return;
+  }
+
+  // Disable scan buttons, enable stop button
+  m_scanWidget->setScanButtonsEnabled(false);
+  m_scanWidget->setStopButtonEnabled(true);
+
+  // Execute rotation scan
+  bool success = m_scanExecutor->executeRotationScan(
+    deviceName, rotationAxis, rotationStep, threshold, maxNoImprovement, channel);
 
   if (!success) {
     // Re-enable controls if scan failed to start

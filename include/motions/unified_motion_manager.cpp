@@ -270,6 +270,65 @@ bool UnifiedMotionManager::MoveToAbs(const std::string& deviceName,
   return false;
 }
 
+bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
+  const PositionStruct& pos,
+  bool blocking) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
+      << " not found" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] UnifiedMotionManager: MoveToAbs6 on " << deviceName
+    << " to (" << pos.x << ", " << pos.y << ", " << pos.z
+    << ", " << pos.u << ", " << pos.v << ", " << pos.w << ")" << std::endl;
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) return false;
+
+    // Build list of axes and positions based on installed axes
+    std::string installedAxes = GetInstalledAxes(deviceName);
+    std::vector<std::string> axes;
+    std::vector<double> positions;
+
+    // Always include X, Y, Z
+    axes.push_back("X");
+    axes.push_back("Y");
+    axes.push_back("Z");
+    positions.push_back(pos.x);
+    positions.push_back(pos.y);
+    positions.push_back(pos.z);
+
+    // Add U, V, W if installed
+    if (installedAxes.find('U') != std::string::npos) {
+      axes.push_back("U");
+      positions.push_back(pos.u);
+    }
+    if (installedAxes.find('V') != std::string::npos) {
+      axes.push_back("V");
+      positions.push_back(pos.v);
+    }
+    if (installedAxes.find('W') != std::string::npos) {
+      axes.push_back("W");
+      positions.push_back(pos.w);
+    }
+
+    return controller->MoveToPositionMultiAxis(axes, positions, blocking);
+  }
+  else if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) return false;
+
+    return controller->MoveToPositionAll(pos.x, pos.y, pos.z,
+      pos.u, pos.v, pos.w,
+      blocking);
+  }
+
+  return false;
+}
+
 bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
   const std::string& axis,
   double position,
