@@ -315,7 +315,7 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
 
     m_exposureSlider = new QSlider(Qt::Horizontal);
     m_exposureSlider->setMinimum(1);
-    m_exposureSlider->setMaximum(10000);
+    m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
     m_exposureSlider->setValue(1000);
     m_exposureSlider->setToolTip("Camera exposure time in microseconds");
     connect(m_exposureSlider, &QSlider::valueChanged,
@@ -335,9 +335,9 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
 
     m_gainSlider = new QSlider(Qt::Horizontal);
     m_gainSlider->setMinimum(0);
-    m_gainSlider->setMaximum(100);  // 0-10 with 0.1 precision
+    m_gainSlider->setMaximum(240);  // 0-24 with 0.1 precision (ACE/ACE2 compatible)
     m_gainSlider->setValue(10);
-    m_gainSlider->setToolTip("Camera gain (0.0 - 10.0)");
+    m_gainSlider->setToolTip("Camera gain (0.0 - 24.0)");
     connect(m_gainSlider, &QSlider::valueChanged,
             this, &VisionRightPanelWidget::onGainSliderChanged);
     settingsLayout->addWidget(m_gainSlider);
@@ -521,12 +521,12 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
 
     int exposureValue = static_cast<int>(settings.exposure_time);
     if (exposureValue < 1) exposureValue = 1;
-    if (exposureValue > 10000) exposureValue = 10000;
+    if (exposureValue > 100000) exposureValue = 100000;
     m_exposureSlider->setValue(exposureValue);
 
     int gainValue = static_cast<int>(settings.gain * 10);
     if (gainValue < 0) gainValue = 0;
-    if (gainValue > 100) gainValue = 100;
+    if (gainValue > 240) gainValue = 240;
     m_gainSlider->setValue(gainValue);
 
     // Update labels
@@ -665,7 +665,12 @@ void VisionRightPanelWidget::onAutoGainChanged(int state)
 
 void VisionRightPanelWidget::updateExposureLabel(int microseconds)
 {
-    m_exposureValueLabel->setText(QString("%1 \xce\xbcs").arg(microseconds));
+    if (microseconds >= 1000) {
+        double ms = microseconds / 1000.0;
+        m_exposureValueLabel->setText(QString("%1 ms").arg(ms, 0, 'f', 2));
+    } else {
+        m_exposureValueLabel->setText(QString("%1 \xce\xbcs").arg(microseconds));
+    }
 }
 
 void VisionRightPanelWidget::updateGainLabel(double gain)

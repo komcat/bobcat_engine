@@ -23,12 +23,28 @@
 #include <algorithm>
 
 // TemplateAnchorPointWidget implementation
-TemplateAnchorPointWidget::TemplateAnchorPointWidget(const QPixmap& templateImage, double initialOffsetX, double initialOffsetY, QWidget* parent)
-    : QLabel(parent), m_templatePixmap(templateImage), m_anchorOffsetX(initialOffsetX), m_anchorOffsetY(initialOffsetY)
+TemplateAnchorPointWidget::TemplateAnchorPointWidget(const QPixmap& templateImage,
+                                                     int originalWidth, int originalHeight,
+                                                     double initialOffsetX, double initialOffsetY,
+                                                     QWidget* parent)
+    : QLabel(parent)
+    , m_templatePixmap(templateImage)
+    , m_originalWidth(originalWidth)
+    , m_originalHeight(originalHeight)
+    , m_anchorOffsetX(initialOffsetX)
+    , m_anchorOffsetY(initialOffsetY)
 {
+    // Calculate scale factors (preview size / original size)
+    m_scaleX = (m_originalWidth > 0) ? static_cast<double>(m_templatePixmap.width()) / m_originalWidth : 1.0;
+    m_scaleY = (m_originalHeight > 0) ? static_cast<double>(m_templatePixmap.height()) / m_originalHeight : 1.0;
+
     setAlignment(Qt::AlignCenter);
     setCursor(Qt::CrossCursor);
     setMouseTracking(true);
+
+    // Set fixed size to match pixmap to avoid alignment offset issues
+    setFixedSize(m_templatePixmap.size());
+
     updateDisplay();
 }
 
@@ -45,11 +61,27 @@ void TemplateAnchorPointWidget::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void TemplateAnchorPointWidget::updateAnchorFromMouse(const QPoint& pos) {
-    int centerX = m_templatePixmap.width() / 2;
-    int centerY = m_templatePixmap.height() / 2;
+    // Get the offset of the pixmap within the label (in case of alignment padding)
+    QPoint pixmapOffset = getPixmapOffset();
 
-    m_anchorOffsetX = pos.x() - centerX;
-    m_anchorOffsetY = pos.y() - centerY;
+    // Convert mouse position to pixmap coordinates
+    int pixmapX = pos.x() - pixmapOffset.x();
+    int pixmapY = pos.y() - pixmapOffset.y();
+
+    // Clamp to pixmap bounds
+    pixmapX = std::max(0, std::min(pixmapX, m_templatePixmap.width() - 1));
+    pixmapY = std::max(0, std::min(pixmapY, m_templatePixmap.height() - 1));
+
+    // Convert from preview coordinates to original template coordinates
+    double originalX = pixmapX / m_scaleX;
+    double originalY = pixmapY / m_scaleY;
+
+    // Calculate offset from center of ORIGINAL template
+    double originalCenterX = m_originalWidth / 2.0;
+    double originalCenterY = m_originalHeight / 2.0;
+
+    m_anchorOffsetX = originalX - originalCenterX;
+    m_anchorOffsetY = originalY - originalCenterY;
 
     updateDisplay();
     if (onAnchorChanged) {
@@ -57,15 +89,52 @@ void TemplateAnchorPointWidget::updateAnchorFromMouse(const QPoint& pos) {
     }
 }
 
+QPoint TemplateAnchorPointWidget::getPixmapOffset() const {
+    // Calculate the offset of the pixmap within the label due to alignment
+    int offsetX = 0;
+    int offsetY = 0;
+
+    Qt::Alignment align = alignment();
+    QSize labelSize = size();
+    QSize pixmapSize = m_templatePixmap.size();
+
+    if (align & Qt::AlignHCenter) {
+        offsetX = (labelSize.width() - pixmapSize.width()) / 2;
+    } else if (align & Qt::AlignRight) {
+        offsetX = labelSize.width() - pixmapSize.width();
+    }
+
+    if (align & Qt::AlignVCenter) {
+        offsetY = (labelSize.height() - pixmapSize.height()) / 2;
+    } else if (align & Qt::AlignBottom) {
+        offsetY = labelSize.height() - pixmapSize.height();
+    }
+
+    return QPoint(std::max(0, offsetX), std::max(0, offsetY));
+}
+
 void TemplateAnchorPointWidget::updateDisplay() {
     QPixmap display = m_templatePixmap.copy();
     QPainter painter(&display);
 
-    int centerX = display.width() / 2;
-    int centerY = display.height() / 2;
-    int anchorX = centerX + static_cast<int>(m_anchorOffsetX);
-    int anchorY = centerY + static_cast<int>(m_anchorOffsetY);
+    // Convert anchor offset from ORIGINAL coordinates to PREVIEW coordinates
+    // Anchor offset is relative to center of original template
+    double originalCenterX = m_originalWidth / 2.0;
+    double originalCenterY = m_originalHeight / 2.0;
 
+    // Anchor position in original coordinates
+    double anchorOriginalX = originalCenterX + m_anchorOffsetX;
+    double anchorOriginalY = originalCenterY + m_anchorOffsetY;
+
+    // Convert to preview coordinates
+    int anchorX = static_cast<int>(anchorOriginalX * m_scaleX);
+    int anchorY = static_cast<int>(anchorOriginalY * m_scaleY);
+
+    // Clamp to preview bounds
+    anchorX = std::max(0, std::min(anchorX, display.width() - 1));
+    anchorY = std::max(0, std::min(anchorY, display.height() - 1));
+
+    // Draw crosshair
     painter.setPen(QPen(Qt::green, 2));
     painter.drawLine(anchorX - 10, anchorY, anchorX + 10, anchorY);
     painter.drawLine(anchorX, anchorY - 10, anchorX, anchorY + 10);
@@ -327,6 +396,10 @@ void TemplateMatchingBase::showAnchorPointDialog() {
         return;
     }
 
+    // Store original template dimensions before scaling
+    int originalWidth = m_template.cols;
+    int originalHeight = m_template.rows;
+
     cv::Mat preview = getTemplatePreview(300);
     if (preview.empty()) {
         return;
@@ -353,7 +426,9 @@ void TemplateMatchingBase::showAnchorPointDialog() {
     instructionLabel->setWordWrap(true);
     layout->addWidget(instructionLabel);
 
-    TemplateAnchorPointWidget* anchorWidget = new TemplateAnchorPointWidget(pixmap, m_anchorOffsetX, m_anchorOffsetY, &dialog);
+    // Pass original template dimensions to widget for proper coordinate conversion
+    TemplateAnchorPointWidget* anchorWidget = new TemplateAnchorPointWidget(
+        pixmap, originalWidth, originalHeight, m_anchorOffsetX, m_anchorOffsetY, &dialog);
     layout->addWidget(anchorWidget);
 
     QLabel* coordLabel = new QLabel(QString::asprintf("Offset: (%.1f, %.1f)", m_anchorOffsetX, m_anchorOffsetY), &dialog);

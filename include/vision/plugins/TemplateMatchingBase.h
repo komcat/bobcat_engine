@@ -130,8 +130,21 @@ private:
 class TemplateAnchorPointWidget : public QLabel {
     Q_OBJECT
 public:
-    TemplateAnchorPointWidget(const QPixmap& templateImage, double initialOffsetX, double initialOffsetY, QWidget* parent = nullptr);
+    /**
+     * @brief Create anchor point widget
+     * @param templateImage The preview pixmap to display
+     * @param originalWidth Original template width (before scaling)
+     * @param originalHeight Original template height (before scaling)
+     * @param initialOffsetX Initial anchor X offset (in original template coordinates)
+     * @param initialOffsetY Initial anchor Y offset (in original template coordinates)
+     * @param parent Parent widget
+     */
+    TemplateAnchorPointWidget(const QPixmap& templateImage,
+                              int originalWidth, int originalHeight,
+                              double initialOffsetX, double initialOffsetY,
+                              QWidget* parent = nullptr);
 
+    // Returns anchor offset in ORIGINAL template coordinates
     double getAnchorOffsetX() const { return m_anchorOffsetX; }
     double getAnchorOffsetY() const { return m_anchorOffsetY; }
 
@@ -144,10 +157,15 @@ protected:
 private:
     void updateAnchorFromMouse(const QPoint& pos);
     void updateDisplay();
+    QPoint getPixmapOffset() const;  // Get pixmap position within label (due to alignment)
 
     QPixmap m_templatePixmap;
-    double m_anchorOffsetX;
-    double m_anchorOffsetY;
+    int m_originalWidth;             // Original template width
+    int m_originalHeight;            // Original template height
+    double m_scaleX;                 // Scale factor (preview/original) for X
+    double m_scaleY;                 // Scale factor (preview/original) for Y
+    double m_anchorOffsetX;          // Anchor offset in ORIGINAL coordinates
+    double m_anchorOffsetY;          // Anchor offset in ORIGINAL coordinates
 };
 
 #endif // HAS_OPENCV

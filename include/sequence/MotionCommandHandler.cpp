@@ -1853,6 +1853,109 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // UPDATE POSITION AXIS FROM CONTEXT
+  // ============================================================================
+  // Updates a single axis of a named position with a value from context
+  // Then saves the product file
+  // params: position_name, axis (X/Y/Z/U/V/W), context_key, save_to_file (true/false)
+  else if (methodName == "UpdatePositionAxis") {
+    auto posNameIt = params.find("position_name");
+    auto axisIt = params.find("axis");
+    auto contextKeyIt = params.find("context_key");
+
+    if (posNameIt == params.end() || axisIt == params.end() || contextKeyIt == params.end()) {
+      errorMessage = "UpdatePositionAxis: Missing required parameters (position_name, axis, context_key)";
+      return false;
+    }
+
+    std::string positionName = posNameIt->second;
+    std::string axis = axisIt->second;
+    std::string contextKey = contextKeyIt->second;
+
+    // Validate axis
+    if (axis != "X" && axis != "Y" && axis != "Z" &&
+        axis != "U" && axis != "V" && axis != "W") {
+      errorMessage = "UpdatePositionAxis: Invalid axis '" + axis + "'. Must be X, Y, Z, U, V, or W";
+      return false;
+    }
+
+    // Get value from context
+    if (!context) {
+      errorMessage = "UpdatePositionAxis: No context available";
+      return false;
+    }
+
+    // Strip $ prefix if present
+    std::string actualKey = contextKey;
+    while (!actualKey.empty() && actualKey[0] == '$') {
+      actualKey = actualKey.substr(1);
+    }
+
+    if (!context->HasValue(actualKey)) {
+      errorMessage = "UpdatePositionAxis: Context key '" + contextKey + "' not found";
+      return false;
+    }
+
+    double newValue = static_cast<double>(context->GetNumeric(actualKey, 0.0f));
+
+    // Check if ProductPositionManager is available
+    if (!m_positionManager) {
+      errorMessage = "UpdatePositionAxis: ProductPositionManager not available";
+      return false;
+    }
+
+    // Get current position
+    PositionStruct currentPos;
+    if (!m_positionManager->GetPosition(deviceName, positionName, currentPos)) {
+      errorMessage = "UpdatePositionAxis: Position '" + positionName + "' not found for device '" + deviceName + "'";
+      return false;
+    }
+
+    // Update the specific axis
+    if (axis == "X") currentPos.x = newValue;
+    else if (axis == "Y") currentPos.y = newValue;
+    else if (axis == "Z") currentPos.z = newValue;
+    else if (axis == "U") currentPos.u = newValue;
+    else if (axis == "V") currentPos.v = newValue;
+    else if (axis == "W") currentPos.w = newValue;
+
+    // Update position in ProductPositionManager
+    m_positionManager->AddPosition(deviceName, positionName, currentPos);
+
+    // Also update in UnifiedMotionManager (runtime)
+    motionManager->AddNamedPosition(deviceName, positionName, currentPos);
+
+    std::cout << "[MotionCommandHandler] Updated position '" << positionName
+              << "' " << axis << " = " << newValue
+              << " (from context: " << contextKey << ")" << std::endl;
+
+    // Save to file if requested (default: true)
+    bool saveToFile = true;
+    auto saveIt = params.find("save_to_file");
+    if (saveIt != params.end() && (saveIt->second == "false" || saveIt->second == "0")) {
+      saveToFile = false;
+    }
+
+    if (saveToFile) {
+      if (m_positionManager->SaveProduct()) {
+        std::cout << "[MotionCommandHandler] Saved product file with updated position" << std::endl;
+      } else {
+        errorMessage = "UpdatePositionAxis: Position updated but failed to save product file";
+        return false;
+      }
+    }
+
+    // Store result in context
+    context->SetValue("update_position.success", true);
+    context->SetValue("update_position.device", deviceName);
+    context->SetValue("update_position.position", positionName);
+    context->SetValue("update_position.axis", axis);
+    context->SetValue("update_position.value", static_cast<float>(newValue));
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

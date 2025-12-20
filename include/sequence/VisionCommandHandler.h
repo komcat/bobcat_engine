@@ -3,6 +3,10 @@
 
 #include "ICommandHandler.h"
 
+#ifdef HAS_OPENCV
+#include <opencv2/core.hpp>
+#endif
+
 // Forward declaration
 class ApplicationContext;
 
@@ -48,6 +52,15 @@ private:
     bool GetResult(const std::string& measurementKey, std::string& errorMessage, SequenceContext* context);
     bool ShowContextImage(const std::string& contextKey, const std::string& title,
                           int autoCloseMs, std::string& errorMessage, SequenceContext* context);
+
+    // Auto-focus command
+    bool ExecuteAutoFocus(const std::map<std::string, std::string>& params,
+                          std::string& errorMessage, SequenceContext* context);
+
+#ifdef HAS_OPENCV
+    // Focus measure calculation using Laplacian variance
+    double CalculateFocusMeasure(const cv::Mat& image, int roiX, int roiY, int roiWidth, int roiHeight);
+#endif
 
     // Helper to store VisionResult in context
     void StoreResultInContext(const struct VisionResult& result, SequenceContext* context);

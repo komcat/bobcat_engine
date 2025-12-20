@@ -243,6 +243,46 @@ bool SequenceContextCommandHandler::ExecuteCommand(
         return true;
     }
 
+    // =========================================================================
+    // CopyValue - Copy value from source key to destination key
+    // =========================================================================
+    if (methodName == "CopyValue") {
+        auto sourceKeyIt = params.find("source_key");
+        auto destKeyIt = params.find("dest_key");
+
+        if (sourceKeyIt == params.end() || destKeyIt == params.end()) {
+            errorMessage = "Missing parameters: source_key, dest_key";
+            return false;
+        }
+
+        std::string sourceKey = sourceKeyIt->second;
+        std::string destKey = destKeyIt->second;
+
+        if (!context->HasValue(sourceKey)) {
+            errorMessage = "Source key not found in context: " + sourceKey;
+            return false;
+        }
+
+        // Get the source value and copy to destination
+        auto value = context->GetValue(sourceKey);
+
+        // Copy based on value type
+        if (value.type == SequenceContext::ValueType::NUMERIC) {
+            context->SetValue(destKey, value.numericValue, "context", "CopyValue");
+        } else if (value.type == SequenceContext::ValueType::BOOLEAN) {
+            context->SetValue(destKey, value.booleanValue, "context", "CopyValue");
+        } else {
+            context->SetValue(destKey, value.stringValue, "context", "CopyValue");
+        }
+
+        if (m_logger) {
+            m_logger->Info("Copied context[" + sourceKey + "] -> context[" + destKey + "] = " + value.AsString(),
+                          "SequenceContext");
+        }
+
+        return true;
+    }
+
     errorMessage = "Unknown method: " + methodName;
     return false;
 }

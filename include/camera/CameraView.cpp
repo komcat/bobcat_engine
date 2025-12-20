@@ -190,7 +190,7 @@ void CameraView::setupUI()
 
   m_exposureSlider = new QSlider(Qt::Horizontal);
   m_exposureSlider->setMinimum(1);
-  m_exposureSlider->setMaximum(10000);
+  m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
   m_exposureSlider->setValue(1000);
   m_exposureSlider->setEnabled(false);
   connect(m_exposureSlider, &QSlider::valueChanged,
@@ -210,7 +210,7 @@ void CameraView::setupUI()
 
   m_gainSlider = new QSlider(Qt::Horizontal);
   m_gainSlider->setMinimum(0);
-  m_gainSlider->setMaximum(100); // 0-10 with 0.1 precision
+  m_gainSlider->setMaximum(240);  // 0-24 with 0.1 precision (ACE/ACE2 compatible)
   m_gainSlider->setValue(10);
   m_gainSlider->setEnabled(false);
   connect(m_gainSlider, &QSlider::valueChanged,
@@ -579,12 +579,12 @@ void CameraView::loadCurrentSettings()
 
   int exposureValue = static_cast<int>(settings.exposure_time);
   if (exposureValue < 1) exposureValue = 1;
-  if (exposureValue > 10000) exposureValue = 10000;
+  if (exposureValue > 100000) exposureValue = 100000;
   m_exposureSlider->setValue(exposureValue);
 
   int gainValue = static_cast<int>(settings.gain * 10);
   if (gainValue < 0) gainValue = 0;
-  if (gainValue > 100) gainValue = 100;
+  if (gainValue > 240) gainValue = 240;
   m_gainSlider->setValue(gainValue);
 
   // Update labels
@@ -610,7 +610,12 @@ void CameraView::loadCurrentSettings()
 
 void CameraView::updateExposureLabel(int microseconds)
 {
-  m_exposureValueLabel->setText(QString("%1 μs").arg(microseconds));
+  if (microseconds >= 1000) {
+    double ms = microseconds / 1000.0;
+    m_exposureValueLabel->setText(QString("%1 ms").arg(ms, 0, 'f', 2));
+  } else {
+    m_exposureValueLabel->setText(QString("%1 μs").arg(microseconds));
+  }
 }
 
 void CameraView::updateGainLabel(double gain)

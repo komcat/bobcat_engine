@@ -529,6 +529,7 @@ set(SOURCES
     include/camera/MultiCameraView.cpp
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
+    include/camera/CameraSettingsWidget.cpp
     include/AppUI/MainWindow.cpp
     include/AppUI/TopBar.cpp
     include/AppUI/DarkTheme.cpp
@@ -631,6 +632,8 @@ set(SOURCES
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
     include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
+    include/recipe/processes/AutoFocusProcesses.cpp
+    include/recipe/processes/UpdatePositionProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
     include/recipe/processes/DispenseProcesses.cpp
     include/recipe/processes/SMUProcesses.cpp

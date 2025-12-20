@@ -2125,6 +2125,12 @@ void RecipePage::onRunRecipe()
   m_runRecipeButton->setEnabled(false);
   m_runRecipeButton->setText("⏳ Recipe Running...");
 
+  // ✅ Create execution context for context viewer
+  if (m_currentContext) {
+    delete m_currentContext;
+  }
+  m_currentContext = new SequenceContext();
+
   // ✅ STEP 2: Create RecipeWorker with new signature
   m_recipeWorker = new RecipeWorker(
     m_sequenceEngine,
@@ -2134,6 +2140,9 @@ void RecipePage::onRunRecipe()
     recipeFilePath,  // ✅ Pass file path instead of RecipeManager
     this
   );
+
+  // ✅ Pass execution context to worker for context viewer
+  m_recipeWorker->setExternalContext(m_currentContext);
 
   // ✅ STEP 3: Set UserPrompt callback (using signal + QEventLoop pattern)
   connect(this, &RecipePage::showUserPrompt,
@@ -2336,13 +2345,15 @@ void RecipePage::onRunSelectedStep()
   RecipeManager tempRecipe;
   tempRecipe.setRecipeName("TempSingleStep");
 
-  // Copy the selected step to temporary recipe using insertStepAt
+  // Copy the selected step to temporary recipe, preserving the original uniqueId
+  // so that calibration data saved using this UID can be retrieved later
   tempRecipe.insertStepAt(
     0,                           // index
     step->processType,           // process type
     step->userNickname,          // nickname
     true,                        // enabled
-    step->parameters             // parameters
+    step->parameters,            // parameters
+    step->uniqueId               // preserve original UID
   );
 
   // Save to temporary file (use current directory to avoid path issues)
@@ -2363,6 +2374,11 @@ void RecipePage::onRunSelectedStep()
   m_runSelectedStepButton->setEnabled(false);
   m_runSelectedStepButton->setText("⏳ Running Step...");
 
+  // ✅ Create execution context for context viewer (if not already exists)
+  if (!m_currentContext) {
+    m_currentContext = new SequenceContext();
+  }
+
   // ✅ NEW: Use RecipeWorker for background thread execution (same as Run Recipe)
   m_recipeWorker = new RecipeWorker(
     m_sequenceEngine,
@@ -2373,10 +2389,8 @@ void RecipePage::onRunSelectedStep()
     this
   );
 
-  // Set external context if available (for sharing context between steps)
-  if (m_currentContext) {
-    m_recipeWorker->setExternalContext(m_currentContext);
-  }
+  // ✅ Pass execution context to worker for context viewer
+  m_recipeWorker->setExternalContext(m_currentContext);
 
   // Connect signals for UI updates (same as onRunRecipe and onStepButtonClicked)
   connect(m_recipeWorker, &RecipeWorker::executionStarted,
@@ -2561,6 +2575,12 @@ void RecipePage::onStepButtonClicked()
   m_runRecipeButton->setText("⏳ Step Mode...");
   m_stepButton->setText("Next Step");
 
+  // ✅ Create execution context for context viewer
+  if (m_currentContext) {
+    delete m_currentContext;
+  }
+  m_currentContext = new SequenceContext();
+
   // Create RecipeWorker
   m_recipeWorker = new RecipeWorker(
     m_sequenceEngine,
@@ -2570,6 +2590,9 @@ void RecipePage::onStepButtonClicked()
     recipeFilePath,
     this
   );
+
+  // ✅ Pass execution context to worker for context viewer
+  m_recipeWorker->setExternalContext(m_currentContext);
 
   // Enable step-by-step mode
   m_recipeWorker->setStepByStepMode(true);

@@ -7,6 +7,7 @@
 #include <QTabWidget>
 
 class CameraManager;
+class CameraSettingsWidget;
 class DataStore;
 class CameraClickToMoveWidget;
 class LiveChartWidget;
@@ -69,6 +70,7 @@ private:
   void setupTabs();
   QWidget* createLiveViewTab();    // Tab 1: Camera + Chart
   QWidget* createOverlayTab();     // Tab 2: World Overlay
+  QWidget* createExposureTab();    // Tab 3: Exposure Settings
 
   CameraManager* m_cameraManager;
   UnifiedMotionManager* m_motionManager;
@@ -86,4 +88,7 @@ private:
 
   // Tab 2: World Overlay widget
   WorldOverlayWidget* m_worldOverlayWidget = nullptr;
+
+  // Tab 3: Exposure settings widget
+  CameraSettingsWidget* m_cameraSettingsWidget = nullptr;
 };

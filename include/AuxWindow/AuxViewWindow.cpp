@@ -5,6 +5,7 @@
 #include "WorldOverlayWidget.h"
 #include "WorldOverlayManager.h"
 #include "CameraManager.h"
+#include "CameraSettingsWidget.h"
 #include "unified_motion_manager.h"
 #include "DataStore.h"
 #include "TcpClientManager.h"
@@ -91,6 +92,10 @@ void AuxViewWindow::setupTabs()
   // Tab 2: World Overlay (created later when position manager is set)
   QWidget* overlayTab = createOverlayTab();
   m_tabWidget->addTab(overlayTab, "🌐 World Overlay");
+
+  // Tab 3: Exposure Settings
+  QWidget* exposureTab = createExposureTab();
+  m_tabWidget->addTab(exposureTab, "☀ Exposure");
 }
 
 QWidget* AuxViewWindow::createLiveViewTab()
@@ -209,4 +214,25 @@ void AuxViewWindow::initializeCameraSelection()
   } else {
     std::cout << "[AuxViewWindow] ERROR: CameraClickToMoveWidget is null!" << std::endl;
   }
+}
+
+// =============================================================================
+// TAB 3: EXPOSURE SETTINGS
+// =============================================================================
+
+QWidget* AuxViewWindow::createExposureTab()
+{
+  QWidget* tab = new QWidget();
+  tab->setStyleSheet("QWidget { background-color: #1e1e1e; }");
+
+  QVBoxLayout* layout = new QVBoxLayout(tab);
+  layout->setContentsMargins(10, 10, 10, 10);
+
+  // Use the reusable CameraSettingsWidget
+  m_cameraSettingsWidget = new CameraSettingsWidget(m_cameraManager, tab);
+  layout->addWidget(m_cameraSettingsWidget);
+
+  std::cout << "[AuxViewWindow] Created Exposure tab with CameraSettingsWidget" << std::endl;
+
+  return tab;
 }

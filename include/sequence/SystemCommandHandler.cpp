@@ -6,7 +6,70 @@
 #include <chrono>
 #include <iostream>
 #include <filesystem>
+#include <regex>
+#include <sstream>
+#include <iomanip>
 #include <QImage>
+
+// Helper function to expand context references in strings
+// Replaces "context:variable_name" with actual values from context
+static std::string ExpandContextReferences(const std::string& input, SequenceContext* context)
+{
+  if (!context || input.find("context:") == std::string::npos) {
+    return input;  // No context or no references to expand
+  }
+
+  std::string result = input;
+  std::regex contextPattern("context:([a-zA-Z_][a-zA-Z0-9_]*)");
+  std::smatch match;
+  std::string::const_iterator searchStart(result.cbegin());
+
+  // Find all context:variable_name patterns and replace them
+  std::string expanded = result;
+  std::sregex_iterator iter(result.begin(), result.end(), contextPattern);
+  std::sregex_iterator end;
+
+  // Collect all matches first to avoid iterator invalidation
+  std::vector<std::pair<std::string, std::string>> replacements;
+  for (; iter != end; ++iter) {
+    std::string fullMatch = (*iter)[0].str();  // e.g., "context:offset_x"
+    std::string varName = (*iter)[1].str();    // e.g., "offset_x"
+
+    // Try to get the value from context
+    std::string valueStr;
+    if (context->HasValue(varName)) {
+      // Check if it's numeric or string
+      float numValue = context->GetNumeric(varName, 0.0f);
+      std::string strValue = context->GetString(varName, "");
+
+      if (!strValue.empty()) {
+        valueStr = strValue;
+      } else {
+        // Format numeric value nicely
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(4) << numValue;
+        valueStr = oss.str();
+        // Remove trailing zeros
+        valueStr.erase(valueStr.find_last_not_of('0') + 1, std::string::npos);
+        if (valueStr.back() == '.') valueStr.pop_back();
+      }
+    } else {
+      valueStr = "[" + varName + ": N/A]";  // Variable not found
+    }
+
+    replacements.push_back({fullMatch, valueStr});
+  }
+
+  // Apply replacements in reverse order to maintain string positions
+  for (const auto& [from, to] : replacements) {
+    size_t pos = expanded.find(from);
+    if (pos != std::string::npos) {
+      expanded.replace(pos, from.length(), to);
+    }
+  }
+
+  return expanded;
+}
 
 // Helper function to save frame data to file
 static bool SaveFrameDataToFile(const CameraFrameData& frameData,
@@ -140,8 +203,9 @@ bool SystemCommandHandler::ExecuteCommand(
       return false;
     }
 
-    std::string title = titleIt->second;
-    std::string message = messageIt->second;
+    // Expand context references in title and message (e.g., "context:offset_x" -> actual value)
+    std::string title = ExpandContextReferences(titleIt->second, context);
+    std::string message = ExpandContextReferences(messageIt->second, context);
     bool blocking = (blockingIt != params.end() && blockingIt->second == "true");
     bool allowCancel = (allowCancelIt != params.end() && allowCancelIt->second == "true");
     bool autoAccept = (autoAcceptIt != params.end() && autoAcceptIt->second == "true");
@@ -236,7 +300,8 @@ bool SystemCommandHandler::ExecuteCommand(
       return false;
     }
 
-    std::string message = messageIt->second;
+    // Expand context references in message
+    std::string message = ExpandContextReferences(messageIt->second, context);
     std::string deviceName = deviceIt->second;
     double stepSizeUm = std::stod(stepSizeIt->second);
     bool enableX = (enableXIt != params.end() && enableXIt->second == "true");

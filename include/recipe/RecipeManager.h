@@ -68,7 +68,10 @@ public:
   void addStep(const std::string& processType);
   void insertStep(int index, const std::string& processType);  // Insert new step at index with defaults
   void insertStepAt(int index, const std::string& processType, const std::string& nickname,
-                    bool enabled, const std::map<std::string, std::string>& parameters);  // Insert copy at index
+                    bool enabled, const std::map<std::string, std::string>& parameters);  // Insert copy at index (new UID)
+  void insertStepAt(int index, const std::string& processType, const std::string& nickname,
+                    bool enabled, const std::map<std::string, std::string>& parameters,
+                    const std::string& uniqueId);  // Insert copy at index (preserve UID)
   void removeStep(int index);
   bool moveStepUp(int index);
   bool moveStepDown(int index);

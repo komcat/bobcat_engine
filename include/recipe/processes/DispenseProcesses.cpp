@@ -253,7 +253,8 @@ public:
       // Manual adjust to position camera (either from scratch or to confirm auto-nav)
       sequence->AddAction("system", "ManualAdjust", {
         {"message", "Position camera over desired dispensing location.\n\n"
-                    "Adjust as needed, then click OK."},
+                    "Adjust X/Y as needed, then click OK.\n"
+                    "(Z height is calibrated separately)"},
         {"device_name", device},
         {"step_size_um", "100"},
         {"enable_x", "true"},
@@ -261,13 +262,36 @@ public:
         {"enable_z", "true"}
       });
 
-      // Capture camera position - this is physical dispensing position
+      // Capture current position to "adjusted" prefix (not overwriting original camera_z)
       sequence->AddAction("calibration", "CapturePosition", {
         {"device", device},
-        {"key_prefix", "camera"}
+        {"key_prefix", "adjusted"}
       });
 
-      // Save navigation data for future use
+      // Copy adjusted X/Y to camera_x/camera_y, but KEEP original camera_z if it exists
+      // This ensures Z height from prior calibration is preserved
+      sequence->AddAction("context", "CopyValue", {
+        {"source_key", "adjusted_x"},
+        {"dest_key", "camera_x"}
+      });
+      sequence->AddAction("context", "CopyValue", {
+        {"source_key", "adjusted_y"},
+        {"dest_key", "camera_y"}
+      });
+
+      // Only update camera_z if this is first-time setup (no prior navigation data)
+      sequence->BeginIf("navigation_exists", ConditionalBlock::ComparisonType::IS_FALSE);
+      {
+        // First time - use the adjusted Z position
+        sequence->AddAction("context", "CopyValue", {
+          {"source_key", "adjusted_z"},
+          {"dest_key", "camera_z"}
+        });
+      }
+      sequence->EndIf();
+      // If navigation_exists was true, camera_z keeps its loaded value from file
+
+      // Save navigation data for future use (new X/Y, preserved Z)
       sequence->AddAction("calibration", "SaveNavigationData", {
         {"uid", uid},
         {"device", device}
@@ -497,7 +521,7 @@ public:
     sequence->EndIf();
 
     // =========================================================================
-    // STEP 6: RETRACT AND RETURN TO SAFE
+    // STEP 6: RETRACT AND VERIFY DISPENSE RESULT
     // =========================================================================
 
     // Retract dispenser head
@@ -505,6 +529,30 @@ public:
       {"debounce_delay_ms", "300"},
       {"timeout_ms", "10000"}
     });
+
+    // Move camera back to dispensed location so user can verify
+    sequence->AddAction(device, "MoveToAbs", {
+      {"x", "context:camera_x"},
+      {"y", "context:camera_y"},
+      {"z", "context:camera_z"},
+      {"blocking", "true"}
+    });
+    sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    // Show verification prompt (unless auto-confirm mode)
+    if (!autoConfirm || !setupComplete) {
+      sequence->AddAction("system", "UserPrompt", {
+        {"title", "Verify Dispense Result"},
+        {"message", "Camera is now positioned over the dispense location.\n\n"
+                    "Please verify the dispense result.\n\n"
+                    "Click OK to move to safe position."},
+        {"blocking", "true"}
+      });
+    }
+
+    // =========================================================================
+    // STEP 7: RETURN TO SAFE
+    // =========================================================================
 
     // Move back to Safe position
     sequence->AddAction(device, "MoveToNamedPosition", {
