@@ -16,6 +16,7 @@ class LiveVideoSubscriber;
 class CameraFrameData;
 class WorldOverlayManager;
 class WorldOverlayRenderer;
+class ApplicationContext;
 
 /**
  * @brief Camera widget with click-to-move feature for gantry alignment
@@ -76,6 +77,7 @@ private slots:
   void onCrosshairToggled(bool checked);
   void onOverlayToggled(bool checked);
   void onZoomChanged(int zoomPercent);
+  void onAutoFocusClicked();
 
 protected:
   void paintEvent(QPaintEvent* event) override;
@@ -99,6 +101,7 @@ private:
 
   // UI Components
   QComboBox* m_cameraSelector;
+  QPushButton* m_autoFocusButton;
   QLabel* m_cameraInfoLabel;
   QLabel* m_imageLabel;  // Displays camera image
   QCheckBox* m_clickToMoveCheckbox;

@@ -15,9 +15,14 @@
 #include <QShowEvent>
 #include <QCoreApplication>
 #include <QFile>
+#include <QThread>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
+
+#ifdef HAS_OPENCV
+#include <opencv2/opencv.hpp>
+#endif
 
 // JSON config file for calibration (shared with VisionManager)
 static constexpr const char* CALIBRATION_CONFIG_FILE = "config/SYSTEM/val_pixelmm.json";
@@ -140,6 +145,24 @@ void CameraClickToMoveWidget::setupUI()
   connect(m_cameraSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &CameraClickToMoveWidget::onCameraSelected);
   selectorRow->addWidget(m_cameraSelector);
+
+  // Autofocus button
+  m_autoFocusButton = new QPushButton("🔍");
+  m_autoFocusButton->setToolTip("Auto-focus (Range: 2mm, Step: 0.2mm)");
+  m_autoFocusButton->setFixedSize(32, 32);
+  m_autoFocusButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3d3d3d; "
+    "  color: white; "
+    "  border: 1px solid #505050; "
+    "  border-radius: 4px; "
+    "  font-size: 16px; "
+    "} "
+    "QPushButton:hover { background-color: #4d4d4d; } "
+    "QPushButton:pressed { background-color: #0078d4; } "
+    "QPushButton:disabled { background-color: #2d2d2d; color: #666666; }");
+  connect(m_autoFocusButton, &QPushButton::clicked, this, &CameraClickToMoveWidget::onAutoFocusClicked);
+  selectorRow->addWidget(m_autoFocusButton);
 
   selectorRow->addStretch();
 
@@ -873,5 +896,110 @@ void CameraClickToMoveWidget::handleImageClick(const QPoint& pixmapClickPos)
   else {
     std::cerr << "[CameraClickToMoveWidget] Failed to send gantry move command!" << std::endl;
   }
+}
+
+void CameraClickToMoveWidget::onAutoFocusClicked()
+{
+  if (!m_motionManager || !m_cameraManager) {
+    std::cerr << "[CameraClickToMoveWidget] Cannot auto-focus - missing motion or camera manager" << std::endl;
+    return;
+  }
+
+  if (m_currentCameraId.empty()) {
+    std::cerr << "[CameraClickToMoveWidget] Cannot auto-focus - no camera selected" << std::endl;
+    return;
+  }
+
+  // Disable button during focus
+  m_autoFocusButton->setEnabled(false);
+  m_autoFocusButton->setText("...");
+
+  std::cout << "[CameraClickToMoveWidget] 🔍 Starting auto-focus..." << std::endl;
+  std::cout << "[CameraClickToMoveWidget]    Camera: " << m_currentCameraId << std::endl;
+  std::cout << "[CameraClickToMoveWidget]    Range: 2mm, Step: 0.2mm" << std::endl;
+
+  // Auto-focus parameters
+  const double zRangeMm = 1.0;   // +/- 1mm = 2mm total range
+  const double zStepMm = 0.2;    // 0.2mm step
+  const int settleTimeMs = 100;  // Wait for vibration to settle
+
+  // Get current Z position
+  PositionStruct startPos = m_motionManager->GetCurrentPosition("gantry-main");
+  double startZ = startPos.z;
+
+  std::cout << "[CameraClickToMoveWidget]    Start Z: " << startZ << "mm" << std::endl;
+
+  // Calculate Z positions to scan
+  double zMin = startZ - zRangeMm;
+  double zMax = startZ + zRangeMm;
+  int numSteps = static_cast<int>((zMax - zMin) / zStepMm) + 1;
+
+  std::cout << "[CameraClickToMoveWidget]    Scanning " << numSteps << " positions from "
+            << zMin << " to " << zMax << "mm" << std::endl;
+
+  // Use QtConcurrent or just run in a simple loop with processEvents
+  double bestZ = startZ;
+  double bestFocusValue = -1.0;
+
+  for (int i = 0; i < numSteps; i++) {
+    double currentZ = zMin + (i * zStepMm);
+
+    // Move to Z position
+    m_motionManager->MoveRelative("gantry-main", "Z", currentZ - m_motionManager->GetCurrentPosition("gantry-main").z, true);
+
+    // Wait for settle
+    QThread::msleep(settleTimeMs);
+    QCoreApplication::processEvents();
+
+    // Get current frame and calculate focus
+    if (m_subscriber && m_subscriber->HasNewFrame()) {
+      CameraFrameData frame = m_subscriber->GetLatestFrame();
+      m_subscriber->MarkFrameConsumed();
+
+#ifdef HAS_OPENCV
+      if (frame.IsValid() && !frame.imageData.empty()) {
+        // Convert imageData to cv::Mat
+        cv::Mat image(frame.height, frame.width,
+                      frame.channels == 3 ? CV_8UC3 : CV_8UC1,
+                      const_cast<uint8_t*>(frame.imageData.data()));
+
+        // Calculate Laplacian variance (focus measure)
+        cv::Mat gray;
+        if (frame.channels == 3) {
+          cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+        } else {
+          gray = image;
+        }
+
+        cv::Mat laplacian;
+        cv::Laplacian(gray, laplacian, CV_64F);
+
+        cv::Scalar mean, stddev;
+        cv::meanStdDev(laplacian, mean, stddev);
+        double focusValue = stddev.val[0] * stddev.val[0];
+
+        std::cout << "[CameraClickToMoveWidget]    Z=" << currentZ << "mm -> Focus=" << focusValue << std::endl;
+
+        if (focusValue > bestFocusValue) {
+          bestFocusValue = focusValue;
+          bestZ = currentZ;
+        }
+      }
+#else
+      (void)frame;  // Suppress unused warning
+      std::cerr << "[CameraClickToMoveWidget] OpenCV not available - cannot calculate focus" << std::endl;
+#endif
+    }
+  }
+
+  // Move to best focus position
+  std::cout << "[CameraClickToMoveWidget] ✅ Best focus at Z=" << bestZ << "mm (value=" << bestFocusValue << ")" << std::endl;
+  m_motionManager->MoveRelative("gantry-main", "Z", bestZ - m_motionManager->GetCurrentPosition("gantry-main").z, true);
+
+  // Re-enable button
+  m_autoFocusButton->setEnabled(true);
+  m_autoFocusButton->setText("🔍");
+
+  std::cout << "[CameraClickToMoveWidget] 🔍 Auto-focus complete!" << std::endl;
 }
 
