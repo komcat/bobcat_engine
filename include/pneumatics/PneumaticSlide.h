@@ -46,6 +46,7 @@ public:
   std::string GetName() const override { return m_config.Name; }
   void SetTimeout(uint32_t timeoutMs) override { m_config.TimeoutMs = timeoutMs; }
   uint32_t GetTimeout() const override { return m_config.TimeoutMs; }
+  bool IsIOConnected() const override;
 
   // ============================================================================
   // CALLBACKS

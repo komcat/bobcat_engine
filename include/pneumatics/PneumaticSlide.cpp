@@ -378,3 +378,34 @@ PneumaticError PneumaticSlide::WaitForPosition(PneumaticPosition targetPos, uint
     std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
   }
 }
+
+bool PneumaticSlide::IsIOConnected() const {
+  if (!m_ioManager) {
+    return false;
+  }
+
+  // Check if the output device is connected (primary device for this slide)
+  IEziIODevice* device = m_ioManager->GetDevice(m_config.Output.DeviceName);
+  if (!device || !device->IsConnected()) {
+    return false;
+  }
+
+  // Also check extended sensor device if different
+  if (m_config.ExtendedSensor.DeviceName != m_config.Output.DeviceName) {
+    IEziIODevice* extDevice = m_ioManager->GetDevice(m_config.ExtendedSensor.DeviceName);
+    if (!extDevice || !extDevice->IsConnected()) {
+      return false;
+    }
+  }
+
+  // Also check retracted sensor device if different
+  if (m_config.RetractedSensor.DeviceName != m_config.Output.DeviceName &&
+      m_config.RetractedSensor.DeviceName != m_config.ExtendedSensor.DeviceName) {
+    IEziIODevice* retDevice = m_ioManager->GetDevice(m_config.RetractedSensor.DeviceName);
+    if (!retDevice || !retDevice->IsConnected()) {
+      return false;
+    }
+  }
+
+  return true;
+}

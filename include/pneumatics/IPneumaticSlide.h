@@ -109,6 +109,12 @@ public:
    */
   virtual uint32_t GetTimeout() const = 0;
 
+  /**
+   * @brief Check if the underlying IO device is connected
+   * @return True if IO device is connected and available
+   */
+  virtual bool IsIOConnected() const = 0;
+
   // ============================================================================
   // CALLBACKS
   // ============================================================================

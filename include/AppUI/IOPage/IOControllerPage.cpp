@@ -438,6 +438,14 @@ void IOControllerPage::refreshIOPinTable()
   IEziIODevice* device = ioMgr->GetDevice(m_selectedDevice);
   if (!device) return;
 
+  // Don't show IO list if device is not connected
+  if (!device->IsConnected()) {
+    m_inputPinsTable->setRowCount(0);
+    m_outputPinsTable->setRowCount(0);
+    std::cout << "[IOControllerPage] Device not connected, hiding IO tables" << std::endl;
+    return;
+  }
+
   int inputCount = device->GetInputCount();
   int outputCount = device->GetOutputCount();
 

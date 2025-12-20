@@ -2,6 +2,7 @@
 #include "PneumaticControlPage.h"
 #include "ApplicationContext.h"
 #include "PneumaticManager.h"
+#include "IPneumaticSlide.h"
 #include "Pneumatic_Types.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -433,16 +434,37 @@ void PneumaticControlPage::onSlideSelected()
   // Check if pneumatic manager is available
   PneumaticManager* pneumaticMgr = getPneumaticManager();
   if (pneumaticMgr && pneumaticMgr->HasSlide(m_selectedSlide)) {
-    m_connectionStatusLabel->setText("Ready");
-    m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
-
-    m_extendButton->setEnabled(true);
-    m_retractButton->setEnabled(true);
-    m_stopButton->setEnabled(true);
-
-    // Update timeout display
     IPneumaticSlide* slide = pneumaticMgr->GetSlide(m_selectedSlide);
     if (slide) {
+      // Check if IO device is connected
+      if (!slide->IsIOConnected()) {
+        m_connectionStatusLabel->setText("IO Disconnected");
+        m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #e74c3c; }");
+        m_extendButton->setEnabled(false);
+        m_retractButton->setEnabled(false);
+        m_stopButton->setEnabled(false);
+        m_timeoutLabel->setText(QString::number(slide->GetTimeout()) + " ms");
+
+        // Reset status displays to show disconnected state
+        m_positionValueLabel->setText("Unknown");
+        m_positionValueLabel->setStyleSheet("QLabel { font-size: 13px; color: #666; }");
+        m_positionBar->setValue(0);
+        m_elapsedTimeValueLabel->setText("--");
+        m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+        m_outputStatusLabel->setText("--");
+        m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+        m_extendedSensorLabel->setText("--");
+        m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+        m_retractedSensorLabel->setText("--");
+        m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+        return;
+      }
+
+      m_connectionStatusLabel->setText("Ready");
+      m_connectionStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+      m_extendButton->setEnabled(true);
+      m_retractButton->setEnabled(true);
+      m_stopButton->setEnabled(true);
       m_timeoutLabel->setText(QString::number(slide->GetTimeout()) + " ms");
     }
   }
@@ -467,6 +489,13 @@ void PneumaticControlPage::updateSlideStatus()
 
   PneumaticManager* pneumaticMgr = getPneumaticManager();
   if (!pneumaticMgr) return;
+
+  // Check if IO is connected before polling
+  IPneumaticSlide* slide = pneumaticMgr->GetSlide(m_selectedSlide);
+  if (!slide || !slide->IsIOConnected()) {
+    // IO not connected - don't poll (would generate errors)
+    return;
+  }
 
   PneumaticStatus status = pneumaticMgr->GetStatus(m_selectedSlide);
   if (!status.Valid) {
