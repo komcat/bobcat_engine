@@ -13,6 +13,8 @@
 #include "../vision/VisionROI.h"
 #include "../motions/unified_motion_manager.h"  // For GetCurrentPosition
 #include "../motions/MotionTypes.h"              // For PositionStruct
+#include "../lighting/LightingManager.h"         // For lighting control
+#include "../lighting/LightingTypes.h"           // For Lighting::LightingResult
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <thread>
@@ -536,6 +538,60 @@ bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
                 } else if (!m_context || !m_context->cameraManager) {
                     std::cout << "[VisionCommandHandler] ⚠️ CameraManager not available" << std::endl;
                 }
+            }
+        }
+
+        // Load and apply lighting settings
+        if (j.contains("lighting")) {
+            auto lightJson = j["lighting"];
+            bool lightingEnabled = lightJson.value("enabled", false);
+
+            if (lightingEnabled && m_context && m_context->lightingManager) {
+                std::string controllerId = lightJson.value("controllerId", "");
+
+                // If no controllerId in profile, use first available controller
+                if (controllerId.empty()) {
+                    auto controllerIds = m_context->lightingManager->GetControllerIds();
+                    if (!controllerIds.empty()) {
+                        controllerId = controllerIds[0];
+                    }
+                }
+
+                if (!controllerId.empty() && lightJson.contains("channels") && lightJson["channels"].is_array()) {
+                    std::cout << "[VisionCommandHandler] 💡 Applying lighting settings (controller: " << controllerId << ")" << std::endl;
+
+                    // Wait for lighting controller to be ready
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+                    for (const auto& chJson : lightJson["channels"]) {
+                        int channel = chJson.value("channel", 0);
+                        int intensity = chJson.value("intensity", 0);
+                        bool on = chJson.value("on", false);
+
+                        // Set intensity first
+                        auto intensityResult = m_context->lightingManager->SetIntensity(controllerId, channel, intensity);
+                        if (intensityResult != Lighting::LightingResult::Success) {
+                            std::cout << "[VisionCommandHandler] ⚠️ Failed to set intensity for channel " << channel << std::endl;
+                        }
+
+                        // Set on/off state
+                        auto onResult = m_context->lightingManager->SetOn(controllerId, channel, on);
+                        if (onResult != Lighting::LightingResult::Success) {
+                            std::cout << "[VisionCommandHandler] ⚠️ Failed to set on/off for channel " << channel << std::endl;
+                        }
+
+                        std::cout << "[VisionCommandHandler] 💡 Channel " << channel
+                                  << ": intensity=" << intensity << ", on=" << (on ? "true" : "false") << std::endl;
+                    }
+
+                    // Wait for lighting to stabilize
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::cout << "[VisionCommandHandler] ✅ Lighting settings applied" << std::endl;
+                } else {
+                    std::cout << "[VisionCommandHandler] ⚠️ No lighting controller available or no channels specified" << std::endl;
+                }
+            } else if (lightingEnabled) {
+                std::cout << "[VisionCommandHandler] ⚠️ Lighting enabled in profile but LightingManager not available" << std::endl;
             }
         }
 

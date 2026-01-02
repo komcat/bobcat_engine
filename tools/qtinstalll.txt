@@ -1,0 +1,2 @@
+cd C:\Users\Admin\source\repos\komcat\bobcat_engine\out\build\x64-release-no-halcon
+C:\Qt\6.10.0\msvc2022_64\bin\windeployqt6 bobcat_engine.exe

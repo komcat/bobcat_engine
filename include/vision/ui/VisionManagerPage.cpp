@@ -343,6 +343,35 @@ void VisionManagerPage::onLoadRecipe()
                 resultText += "Calibration: " + QString::number(camSettings.pixelToMmX, 'f', 6) + " mm/px\n\n";
             }
 
+            // Load lighting settings
+            if (j.contains("lighting")) {
+                auto lightJson = j["lighting"];
+                VisionLightingSettings lightSettings;
+                lightSettings.enabled = lightJson.value("enabled", false);
+                lightSettings.controllerId = QString::fromStdString(lightJson.value("controllerId", ""));
+
+                if (lightJson.contains("channels") && lightJson["channels"].is_array()) {
+                    for (const auto& chJson : lightJson["channels"]) {
+                        int channel = chJson.value("channel", 0);
+                        int intensity = chJson.value("intensity", 0);
+                        bool on = chJson.value("on", false);
+                        lightSettings.channelIntensities[channel] = intensity;
+                        lightSettings.channelStates[channel] = on;
+                    }
+                }
+
+                m_rightPanel->setLightingSettings(lightSettings);
+
+                // Apply lighting settings to hardware immediately
+                m_rightPanel->applyLightingSettings();
+
+                resultText += "Lighting: " + QString(lightSettings.enabled ? "Enabled" : "Disabled") + "\n";
+                if (lightSettings.enabled) {
+                    resultText += "  Channels: " + QString::number(lightSettings.channelIntensities.size()) + "\n";
+                }
+                resultText += "\n";
+            }
+
             // Load plugin and parameters
             if (j.contains("plugin")) {
                 auto pluginJson = j["plugin"];
@@ -1648,6 +1677,21 @@ void VisionManagerPage::saveProfileToPath(const QString& filePath)
         j["camera"]["pixelToMmX"] = camSettings.pixelToMmX;
         j["camera"]["pixelToMmY"] = camSettings.pixelToMmY;
 
+        // Save lighting settings
+        VisionLightingSettings lightingSettings = m_rightPanel->getLightingSettings();
+        j["lighting"]["enabled"] = lightingSettings.enabled;
+        j["lighting"]["controllerId"] = lightingSettings.controllerId.toStdString();
+        nlohmann::json channelsJson = nlohmann::json::array();
+        for (const auto& [channel, intensity] : lightingSettings.channelIntensities) {
+            nlohmann::json chJson;
+            chJson["channel"] = channel;
+            chJson["intensity"] = intensity;
+            auto stateIt = lightingSettings.channelStates.find(channel);
+            chJson["on"] = (stateIt != lightingSettings.channelStates.end()) ? stateIt->second : false;
+            channelsJson.push_back(chJson);
+        }
+        j["lighting"]["channels"] = channelsJson;
+
         // Save plugin and parameters
         if (!m_selectedPluginName.isEmpty()) {
             auto plugin = VisionManager::instance().getPlugin(m_selectedPluginName);
@@ -1686,6 +1730,7 @@ void VisionManagerPage::saveProfileToPath(const QString& filePath)
         resultText += "Saved:\n";
         resultText += "- ROI settings\n";
         resultText += "- Camera: " + camSettings.cameraId + "\n";
+        resultText += "- Lighting: " + QString(lightingSettings.enabled ? "Enabled" : "Disabled") + "\n";
         resultText += "- Plugin: " + m_selectedPluginName + "\n";
         resultText += "- All plugin parameters\n";
 

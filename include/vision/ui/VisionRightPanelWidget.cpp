@@ -3,10 +3,13 @@
 #include "ApplicationContext.h"
 #include "CameraManager.h"
 #include "ICameraHardware.h"
+#include "lighting/LightingManager.h"
+#include "lighting/LightingTypes.h"
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QCoreApplication>
 #include <QFile>
+#include <QFrame>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -35,6 +38,9 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_roiEndXSpin(nullptr)
     , m_roiEndYSpin(nullptr)
     , m_roiSizeLabel(nullptr)
+    , m_lightingEnabledCheck(nullptr)
+    , m_lightingChannelsContainer(nullptr)
+    , m_lightingChannelsLayout(nullptr)
 {
     setupUI();
     loadCalibrationFromConfig();  // Load calibration values from JSON
@@ -369,6 +375,10 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     calibLayout->addRow("", configNote);
 
     tabLayout->addWidget(calibrationGroup);
+
+    // ========== Lighting Section ==========
+    setupLightingSection(tabLayout);
+
     tabLayout->addStretch();
 
     // No calibration change signal - values are read-only from JSON file
@@ -928,5 +938,328 @@ void VisionRightPanelWidget::loadCalibrationFromConfig()
     }
     if (m_pixelToMmYLabel) {
         m_pixelToMmYLabel->setText(QString("%1 mm/px").arg(m_pixelToMmY, 0, 'f', 5));
+    }
+}
+
+// ========== Lighting Section Implementation ==========
+
+void VisionRightPanelWidget::setupLightingSection(QVBoxLayout* parentLayout)
+{
+    QGroupBox* lightingGroup = new QGroupBox("Lighting Control", this);
+    QVBoxLayout* lightingLayout = new QVBoxLayout(lightingGroup);
+    lightingLayout->setSpacing(8);
+
+    // Enable checkbox
+    m_lightingEnabledCheck = new QCheckBox("Enable Lighting for this Profile");
+    m_lightingEnabledCheck->setToolTip("When enabled, lighting settings will be saved with the vision profile and applied when executing");
+    connect(m_lightingEnabledCheck, &QCheckBox::stateChanged,
+            this, &VisionRightPanelWidget::onLightingEnabledChanged);
+    lightingLayout->addWidget(m_lightingEnabledCheck);
+
+    // Container for channel widgets
+    m_lightingChannelsContainer = new QWidget();
+    m_lightingChannelsLayout = new QVBoxLayout(m_lightingChannelsContainer);
+    m_lightingChannelsLayout->setContentsMargins(0, 5, 0, 0);
+    m_lightingChannelsLayout->setSpacing(5);
+
+    // Load lighting channels from LightingManager
+    loadLightingChannels();
+
+    lightingLayout->addWidget(m_lightingChannelsContainer);
+    parentLayout->addWidget(lightingGroup);
+}
+
+void VisionRightPanelWidget::loadLightingChannels()
+{
+    // Clear existing widgets
+    m_lightingSliders.clear();
+    m_lightingValueLabels.clear();
+    m_lightingToggleButtons.clear();
+    m_lightingChannelNumbers.clear();
+
+    // Clear layout
+    while (m_lightingChannelsLayout->count() > 0) {
+        QLayoutItem* item = m_lightingChannelsLayout->takeAt(0);
+        if (item->widget()) {
+            item->widget()->deleteLater();
+        }
+        delete item;
+    }
+
+    if (!m_context || !m_context->lightingManager) {
+        QLabel* noLightingLabel = new QLabel("No lighting controller configured");
+        noLightingLabel->setStyleSheet("color: #888888; font-style: italic;");
+        m_lightingChannelsLayout->addWidget(noLightingLabel);
+        return;
+    }
+
+    auto controllerIds = m_context->lightingManager->GetControllerIds();
+    if (controllerIds.empty()) {
+        QLabel* noLightingLabel = new QLabel("No lighting controller configured");
+        noLightingLabel->setStyleSheet("color: #888888; font-style: italic;");
+        m_lightingChannelsLayout->addWidget(noLightingLabel);
+        return;
+    }
+
+    // Use first controller
+    m_lightingControllerId = controllerIds[0];
+    auto channels = m_context->lightingManager->GetChannelConfigs(m_lightingControllerId);
+
+    // Filter to only enabled channels
+    std::vector<Lighting::ChannelConfig> enabledChannels;
+    for (const auto& ch : channels) {
+        if (ch.enabled) {
+            enabledChannels.push_back(ch);
+        }
+    }
+
+    if (enabledChannels.empty()) {
+        QLabel* noChannelsLabel = new QLabel("No enabled lighting channels");
+        noChannelsLabel->setStyleSheet("color: #888888; font-style: italic;");
+        m_lightingChannelsLayout->addWidget(noChannelsLabel);
+        return;
+    }
+
+    // Create compact channel widgets
+    for (size_t i = 0; i < enabledChannels.size(); ++i) {
+        const auto& ch = enabledChannels[i];
+
+        QWidget* channelWidget = new QWidget();
+        QHBoxLayout* channelLayout = new QHBoxLayout(channelWidget);
+        channelLayout->setContentsMargins(0, 2, 0, 2);
+        channelLayout->setSpacing(8);
+
+        // Channel label (L1, L2, etc. + name)
+        QString labelText = QString("L%1").arg(ch.channelNumber + 1);
+        if (!ch.name.empty()) {
+            labelText += " " + QString::fromStdString(ch.name);
+        }
+        QLabel* channelLabel = new QLabel(labelText);
+        channelLabel->setFixedWidth(80);
+        channelLabel->setStyleSheet("font-size: 11px;");
+        channelLayout->addWidget(channelLabel);
+
+        // Intensity slider
+        QSlider* slider = new QSlider(Qt::Horizontal);
+        slider->setRange(0, 255);
+        slider->setValue(0);
+        slider->setMinimumWidth(100);
+        slider->setProperty("channelIndex", static_cast<int>(i));
+        connect(slider, &QSlider::valueChanged, this, [this, i](int value) {
+            if (i < m_lightingChannelNumbers.size()) {
+                onLightingChannelIntensityChanged(m_lightingChannelNumbers[i], value);
+            }
+        });
+        channelLayout->addWidget(slider, 1);
+        m_lightingSliders.push_back(slider);
+
+        // Intensity value label
+        QLabel* valueLabel = new QLabel("0");
+        valueLabel->setFixedWidth(30);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        valueLabel->setStyleSheet("font-size: 11px; color: #00aaff;");
+        channelLayout->addWidget(valueLabel);
+        m_lightingValueLabels.push_back(valueLabel);
+
+        // Toggle button
+        QPushButton* toggleBtn = new QPushButton("OFF");
+        toggleBtn->setFixedSize(45, 22);
+        toggleBtn->setCheckable(true);
+        toggleBtn->setStyleSheet(
+            "QPushButton { background-color: #555; color: #aaa; font-size: 10px; font-weight: bold; border: none; border-radius: 3px; }"
+            "QPushButton:checked { background-color: #00aa00; color: white; }"
+        );
+        connect(toggleBtn, &QPushButton::clicked, this, [this, i](bool checked) {
+            if (i < m_lightingChannelNumbers.size()) {
+                onLightingChannelToggleChanged(m_lightingChannelNumbers[i], checked);
+            }
+        });
+        channelLayout->addWidget(toggleBtn);
+        m_lightingToggleButtons.push_back(toggleBtn);
+
+        m_lightingChannelNumbers.push_back(ch.channelNumber);
+        m_lightingChannelsLayout->addWidget(channelWidget);
+
+        // Add separator (except for last)
+        if (i < enabledChannels.size() - 1) {
+            QFrame* line = new QFrame();
+            line->setFrameShape(QFrame::HLine);
+            line->setStyleSheet("background-color: #3a3a3a;");
+            line->setFixedHeight(1);
+            m_lightingChannelsLayout->addWidget(line);
+        }
+    }
+
+    std::cout << "[VisionRightPanelWidget] Loaded " << enabledChannels.size() << " lighting channels" << std::endl;
+}
+
+void VisionRightPanelWidget::onLightingEnabledChanged(int state)
+{
+    bool enabled = (state == Qt::Checked);
+    m_lightingChannelsContainer->setEnabled(enabled);
+
+    std::cout << "[VisionRightPanelWidget] Lighting " << (enabled ? "enabled" : "disabled") << std::endl;
+    emit lightingSettingsChanged();
+}
+
+void VisionRightPanelWidget::onLightingChannelIntensityChanged(int channel, int intensity)
+{
+    // Update label
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        if (m_lightingChannelNumbers[i] == channel && i < m_lightingValueLabels.size()) {
+            m_lightingValueLabels[i]->setText(QString::number(intensity));
+            break;
+        }
+    }
+
+    // Apply to hardware if enabled
+    if (m_lightingEnabledCheck && m_lightingEnabledCheck->isChecked()) {
+        if (m_context && m_context->lightingManager && !m_lightingControllerId.empty()) {
+            m_context->lightingManager->SetIntensity(m_lightingControllerId, channel, intensity);
+        }
+    }
+
+    emit lightingSettingsChanged();
+}
+
+void VisionRightPanelWidget::onLightingChannelToggleChanged(int channel, bool on)
+{
+    // Update button text
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        if (m_lightingChannelNumbers[i] == channel && i < m_lightingToggleButtons.size()) {
+            m_lightingToggleButtons[i]->setText(on ? "ON" : "OFF");
+            break;
+        }
+    }
+
+    // Apply to hardware if enabled
+    if (m_lightingEnabledCheck && m_lightingEnabledCheck->isChecked()) {
+        if (m_context && m_context->lightingManager && !m_lightingControllerId.empty()) {
+            m_context->lightingManager->SetOn(m_lightingControllerId, channel, on);
+        }
+    }
+
+    emit lightingSettingsChanged();
+}
+
+void VisionRightPanelWidget::updateLightingIntensityLabel(int channel, int intensity)
+{
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        if (m_lightingChannelNumbers[i] == channel && i < m_lightingValueLabels.size()) {
+            m_lightingValueLabels[i]->setText(QString::number(intensity));
+            break;
+        }
+    }
+}
+
+VisionLightingSettings VisionRightPanelWidget::getLightingSettings() const
+{
+    VisionLightingSettings settings;
+    settings.enabled = m_lightingEnabledCheck ? m_lightingEnabledCheck->isChecked() : false;
+    settings.controllerId = QString::fromStdString(m_lightingControllerId);
+
+    // Collect channel intensities and states
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        int channel = m_lightingChannelNumbers[i];
+        if (i < m_lightingSliders.size()) {
+            settings.channelIntensities[channel] = m_lightingSliders[i]->value();
+        }
+        if (i < m_lightingToggleButtons.size()) {
+            settings.channelStates[channel] = m_lightingToggleButtons[i]->isChecked();
+        }
+    }
+
+    return settings;
+}
+
+void VisionRightPanelWidget::setLightingSettings(const VisionLightingSettings& settings)
+{
+    // Block signals during restore
+    if (m_lightingEnabledCheck) {
+        m_lightingEnabledCheck->blockSignals(true);
+        m_lightingEnabledCheck->setChecked(settings.enabled);
+        m_lightingEnabledCheck->blockSignals(false);
+    }
+
+    // Set channel values
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        int channel = m_lightingChannelNumbers[i];
+
+        // Set intensity
+        auto intensityIt = settings.channelIntensities.find(channel);
+        if (intensityIt != settings.channelIntensities.end() && i < m_lightingSliders.size()) {
+            m_lightingSliders[i]->blockSignals(true);
+            m_lightingSliders[i]->setValue(intensityIt->second);
+            m_lightingSliders[i]->blockSignals(false);
+            if (i < m_lightingValueLabels.size()) {
+                m_lightingValueLabels[i]->setText(QString::number(intensityIt->second));
+            }
+        }
+
+        // Set on/off state
+        auto stateIt = settings.channelStates.find(channel);
+        if (stateIt != settings.channelStates.end() && i < m_lightingToggleButtons.size()) {
+            m_lightingToggleButtons[i]->blockSignals(true);
+            m_lightingToggleButtons[i]->setChecked(stateIt->second);
+            m_lightingToggleButtons[i]->setText(stateIt->second ? "ON" : "OFF");
+            m_lightingToggleButtons[i]->blockSignals(false);
+        }
+    }
+
+    // Update container enabled state
+    if (m_lightingChannelsContainer) {
+        m_lightingChannelsContainer->setEnabled(settings.enabled);
+    }
+
+    std::cout << "[VisionRightPanelWidget] Lighting settings restored: enabled=" << settings.enabled
+              << ", channels=" << settings.channelIntensities.size() << std::endl;
+}
+
+void VisionRightPanelWidget::applyLightingSettings()
+{
+    if (!m_lightingEnabledCheck || !m_lightingEnabledCheck->isChecked()) {
+        std::cout << "[VisionRightPanelWidget] Lighting not enabled, skipping apply" << std::endl;
+        return;
+    }
+
+    if (!m_context || !m_context->lightingManager || m_lightingControllerId.empty()) {
+        std::cerr << "[VisionRightPanelWidget] LightingManager not available" << std::endl;
+        return;
+    }
+
+    // Apply all channel settings to hardware
+    for (size_t i = 0; i < m_lightingChannelNumbers.size(); ++i) {
+        int channel = m_lightingChannelNumbers[i];
+
+        // Apply intensity
+        if (i < m_lightingSliders.size()) {
+            int intensity = m_lightingSliders[i]->value();
+            m_context->lightingManager->SetIntensity(m_lightingControllerId, channel, intensity);
+        }
+
+        // Apply on/off state
+        if (i < m_lightingToggleButtons.size()) {
+            bool isOn = m_lightingToggleButtons[i]->isChecked();
+            m_context->lightingManager->SetOn(m_lightingControllerId, channel, isOn);
+        }
+    }
+
+    std::cout << "[VisionRightPanelWidget] Applied lighting settings to hardware" << std::endl;
+}
+
+bool VisionRightPanelWidget::isLightingEnabled() const
+{
+    return m_lightingEnabledCheck ? m_lightingEnabledCheck->isChecked() : false;
+}
+
+void VisionRightPanelWidget::setLightingEnabled(bool enabled)
+{
+    if (m_lightingEnabledCheck) {
+        m_lightingEnabledCheck->blockSignals(true);
+        m_lightingEnabledCheck->setChecked(enabled);
+        m_lightingEnabledCheck->blockSignals(false);
+    }
+    if (m_lightingChannelsContainer) {
+        m_lightingChannelsContainer->setEnabled(enabled);
     }
 }
