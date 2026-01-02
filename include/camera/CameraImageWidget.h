@@ -5,6 +5,8 @@
 #include <QImage>
 #include <QPixmap>
 #include <QVBoxLayout>
+#include <QScrollArea>
+#include <QScrollBar>
 #include "CameraFrameData.h"
 #include <atomic>
 
@@ -15,6 +17,8 @@
  * - Reusable image buffer (no allocation per frame)
  * - Fast scaling for real-time display
  * - Optional zoom support
+ * - Pan with mouse drag
+ * - Scrollbars for navigation
  *
  * Usage:
  *   CameraImageWidget* viewport = new CameraImageWidget();
@@ -35,7 +39,7 @@ public:
   void clearDisplay();
 
   // Zoom control (optional)
-  void setZoomPercent(int percent);  // 100 = no zoom, 50 = 2x zoom, etc.
+  void setZoomPercent(int percent);  // 100 = no zoom, 200 = 2x zoom, 400 = 4x zoom
   int getZoomPercent() const { return m_zoomPercent.load(); }
 
   // Crosshair overlay
@@ -58,17 +62,24 @@ public:
   // Force refresh - useful when page is shown
   void forceRefresh();
 
+  // Reset pan position to center
+  void resetPan();
+
 signals:
   void frameDisplayed();  // Emitted after frame is rendered
   void renderError(QString error);
 
 protected:
   void resizeEvent(QResizeEvent* event) override;
-  void paintEvent(QPaintEvent* event) override;  // ✅ NEW - Ensure background is painted
-  void showEvent(QShowEvent* event) override;     // ✅ NEW - Force refresh on show
+  void paintEvent(QPaintEvent* event) override;
+  void showEvent(QShowEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
-  // UI Component
+  // UI Components
+  QScrollArea* m_scrollArea;
   QLabel* m_displayLabel;
 
   // Optimized rendering
@@ -79,6 +90,10 @@ private:
   // Crosshair overlay
   std::atomic<bool> m_crosshairEnabled;
   QColor m_crosshairColor;
+
+  // Panning state
+  bool m_isPanning;
+  QPoint m_lastPanPos;
 
   // Helper methods
   QImage applyZoom(const QImage& source);

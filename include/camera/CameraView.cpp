@@ -269,18 +269,18 @@ void CameraView::setupUI()
   zoomLayout->addWidget(m_zoomLabel);
 
   m_zoomSlider = new QSlider(Qt::Horizontal);
-  m_zoomSlider->setMinimum(1);
-  m_zoomSlider->setMaximum(100);
+  m_zoomSlider->setMinimum(100);
+  m_zoomSlider->setMaximum(400);  // 100% to 400% zoom
   m_zoomSlider->setValue(100);
   m_zoomSlider->setTickPosition(QSlider::TicksBelow);
-  m_zoomSlider->setTickInterval(10);
+  m_zoomSlider->setTickInterval(50);
   m_zoomSlider->setEnabled(false);
   connect(m_zoomSlider, &QSlider::valueChanged, this, &CameraView::onZoomSliderChanged);
   zoomLayout->addWidget(m_zoomSlider);
 
   m_zoomSpinBox = new QSpinBox();
-  m_zoomSpinBox->setMinimum(1);
-  m_zoomSpinBox->setMaximum(100);
+  m_zoomSpinBox->setMinimum(100);
+  m_zoomSpinBox->setMaximum(400);  // 100% to 400% zoom
   m_zoomSpinBox->setValue(100);
   m_zoomSpinBox->setSuffix("%");
   m_zoomSpinBox->setEnabled(false);
@@ -722,11 +722,17 @@ void CameraView::onZoomResetClicked()
 {
   m_zoomSlider->setValue(100);
   m_zoomSpinBox->setValue(100);
+
+  // Also reset pan position
+  if (m_viewport) {
+    m_viewport->resetPan();
+  }
 }
 
 void CameraView::updateZoomLabel(int zoomPercent)
 {
-  double zoomFactor = 100.0 / zoomPercent;
+  // 100% = 1.0x, 200% = 2.0x, etc.
+  double zoomFactor = zoomPercent / 100.0;
   m_zoomLabel->setText(QString("Zoom: %1% (%2x)")
     .arg(zoomPercent)
     .arg(zoomFactor, 0, 'f', 1));

@@ -168,11 +168,9 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
   // Add stretch to push buttons to top
   m_mainLayout->addStretch();
 
-  // Select first device by default
-  if (!devices.isEmpty()) {
-    m_buttonGroup->button(0)->setChecked(true);
-    m_currentDevice = devices.first();
-  }
+  // ✅ FIX: Do NOT auto-select first device on startup
+  // User must explicitly click a device button to select it
+  // m_currentDevice remains empty until user clicks
 }
 
 QString DeviceButtonStack::getCurrentDevice() const

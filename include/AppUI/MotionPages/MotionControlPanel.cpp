@@ -303,8 +303,12 @@ void MotionControlPanel::setupUI()
 
 void MotionControlPanel::setDevices(const QStringList& devices)
 {
+  // ✅ FIX: Block signals to prevent auto-selection from triggering deviceChanged
+  m_deviceCombo->blockSignals(true);
   m_deviceCombo->clear();
   m_deviceCombo->addItems(devices);
+  m_deviceCombo->setCurrentIndex(-1);  // ✅ No device selected initially
+  m_deviceCombo->blockSignals(false);
 }
 
 void MotionControlPanel::setSelectedPosition(const QString& name, double x, double y, double z,

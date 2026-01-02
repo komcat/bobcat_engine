@@ -709,12 +709,9 @@ void MotionPage::loadDevices()
 	// 	}
 	// }
 
-	if (!devices.isEmpty()) {
-		m_currentDevice = devices.first();
-		// m_scanDevice = devices.first();  // ✅ REMOVED: Scan device initialization
-		// m_scanPreset = "Coarse";  // ✅ REMOVED: Scan preset initialization
-		refreshPositionDisplay();
-	}
+	// ✅ FIX: Do NOT auto-select first device on startup
+	// User must explicitly select a device from the left side buttons
+	// m_currentDevice remains empty until user clicks a device button
 }
 
 // ✅ NEW: Refresh device list at runtime

@@ -4,14 +4,17 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QShowEvent>
+#include <QMouseEvent>
 
 CameraImageWidget::CameraImageWidget(QWidget* parent)
   : QWidget(parent)
+  , m_scrollArea(nullptr)
   , m_displayLabel(nullptr)
   , m_zoomPercent(100)
   , m_scalingMode(ScalingMode::Fast)
   , m_crosshairEnabled(false)
   , m_crosshairColor(Qt::green)
+  , m_isPanning(false)
 {
   // Performance optimizations - reduce repaints and improve rendering
   setAttribute(Qt::WA_OpaquePaintEvent, true);  // No need to erase background
@@ -22,34 +25,75 @@ CameraImageWidget::CameraImageWidget(QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
-  // Create display label
-  m_displayLabel = new QLabel("No camera feed");
+  // Create scroll area for panning and scrollbars
+  m_scrollArea = new QScrollArea(this);
+  m_scrollArea->setWidgetResizable(false);  // We control the size
+  m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  m_scrollArea->setFrameShape(QFrame::NoFrame);
+  m_scrollArea->setStyleSheet(
+    "QScrollArea { "
+    "  background-color: #1e1e1e; "
+    "  border: none; "
+    "} "
+    "QScrollBar:horizontal { "
+    "  background-color: #2d2d30; "
+    "  height: 12px; "
+    "  margin: 0; "
+    "} "
+    "QScrollBar::handle:horizontal { "
+    "  background-color: #5a5a5a; "
+    "  min-width: 30px; "
+    "  border-radius: 4px; "
+    "  margin: 2px; "
+    "} "
+    "QScrollBar::handle:horizontal:hover { "
+    "  background-color: #6a6a6a; "
+    "} "
+    "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { "
+    "  width: 0; "
+    "} "
+    "QScrollBar:vertical { "
+    "  background-color: #2d2d30; "
+    "  width: 12px; "
+    "  margin: 0; "
+    "} "
+    "QScrollBar::handle:vertical { "
+    "  background-color: #5a5a5a; "
+    "  min-height: 30px; "
+    "  border-radius: 4px; "
+    "  margin: 2px; "
+    "} "
+    "QScrollBar::handle:vertical:hover { "
+    "  background-color: #6a6a6a; "
+    "} "
+    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
+    "  height: 0; "
+    "}"
+  );
+
+  // Create display label inside scroll area
+  m_displayLabel = new QLabel();
+  m_displayLabel->setText("No camera feed");
   m_displayLabel->setAlignment(Qt::AlignCenter);
   m_displayLabel->setScaledContents(false);
-
-  // Performance optimizations for the label
-  m_displayLabel->setAttribute(Qt::WA_OpaquePaintEvent, true);
-
-  // Make label expand to fill available space
-  m_displayLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-
-  // Set minimum size to ensure the widget is visible
-  m_displayLabel->setMinimumSize(320, 240);
-
   m_displayLabel->setStyleSheet(
     "QLabel { "
-    "  background-color: #2b2b2b; "
+    "  background-color: #1e1e1e; "
     "  color: #888888; "
-    "  border: 1px solid #555555; "
     "}");
 
-  layout->addWidget(m_displayLabel);
+  m_scrollArea->setWidget(m_displayLabel);
+  layout->addWidget(m_scrollArea);
   setLayout(layout);
 
   // Set minimum size for the widget itself
   setMinimumSize(320, 240);
 
-  std::cout << "[CameraImageWidget] Created with performance optimizations" << std::endl;
+  // Set cursor to indicate panning is available
+  setCursor(Qt::OpenHandCursor);
+
+  std::cout << "[CameraImageWidget] Created with scrolling and panning support" << std::endl;
 }
 
 void CameraImageWidget::setFrame(const CameraFrameData& frameData)
@@ -70,10 +114,12 @@ void CameraImageWidget::setFrame(const CameraFrameData& frameData)
   QImage displayImage;
   int zoom = m_zoomPercent.load();
 
-  if (zoom < 100) {
+  if (zoom > 100) {
+    // Zoom in - crop and magnify
     displayImage = applyZoom(m_reusableBuffer);
   }
   else {
+    // 100% - show full image
     displayImage = m_reusableBuffer;
   }
 
@@ -87,16 +133,18 @@ void CameraImageWidget::clearDisplay()
 {
   m_displayLabel->clear();
   m_displayLabel->setText("No camera feed");
+  m_displayLabel->resize(320, 240);  // Reset to minimum size
   m_reusableBuffer = QImage();
+  resetPan();
 
   std::cout << "[CameraImageWidget] Display cleared" << std::endl;
 }
 
 void CameraImageWidget::setZoomPercent(int percent)
 {
-  // Clamp to valid range
-  if (percent < 1) percent = 1;
-  if (percent > 100) percent = 100;
+  // Clamp to valid range (100% to 400%)
+  if (percent < 100) percent = 100;
+  if (percent > 400) percent = 400;
 
   m_zoomPercent.store(percent);
 
@@ -105,10 +153,12 @@ void CameraImageWidget::setZoomPercent(int percent)
     QImage displayImage;
     int zoom = m_zoomPercent.load();
 
-    if (zoom < 100) {
+    if (zoom > 100) {
+      // Zoom in - crop and magnify
       displayImage = applyZoom(m_reusableBuffer);
     }
     else {
+      // 100% - show full image
       displayImage = m_reusableBuffer;
     }
 
@@ -118,7 +168,7 @@ void CameraImageWidget::setZoomPercent(int percent)
 
 void CameraImageWidget::setMinimumDisplaySize(int width, int height)
 {
-  m_displayLabel->setMinimumSize(width, height);
+  setMinimumSize(width, height);
 }
 
 void CameraImageWidget::setBackgroundColor(const QColor& color)
@@ -153,11 +203,33 @@ void CameraImageWidget::forceRefresh()
     m_displayLabel->repaint();
   }
 
+  // Force update of scroll area
+  if (m_scrollArea) {
+    m_scrollArea->update();
+    m_scrollArea->repaint();
+  }
+
   // Force update of entire widget
   update();
   repaint();
 
   std::cout << "[CameraImageWidget] Forced refresh" << std::endl;
+}
+
+void CameraImageWidget::resetPan()
+{
+  if (m_scrollArea) {
+    // Center the view
+    QScrollBar* hBar = m_scrollArea->horizontalScrollBar();
+    QScrollBar* vBar = m_scrollArea->verticalScrollBar();
+
+    if (hBar) {
+      hBar->setValue((hBar->maximum() + hBar->minimum()) / 2);
+    }
+    if (vBar) {
+      vBar->setValue((vBar->maximum() + vBar->minimum()) / 2);
+    }
+  }
 }
 
 void CameraImageWidget::setCrosshairEnabled(bool enabled)
@@ -168,7 +240,7 @@ void CameraImageWidget::setCrosshairEnabled(bool enabled)
     QImage displayImage;
     int zoom = m_zoomPercent.load();
 
-    if (zoom < 100) {
+    if (zoom > 100) {
       displayImage = applyZoom(m_reusableBuffer);
     }
     else {
@@ -187,7 +259,7 @@ void CameraImageWidget::setCrosshairColor(const QColor& color)
     QImage displayImage;
     int zoom = m_zoomPercent.load();
 
-    if (zoom < 100) {
+    if (zoom > 100) {
       displayImage = applyZoom(m_reusableBuffer);
     }
     else {
@@ -243,12 +315,15 @@ QImage CameraImageWidget::applyZoom(const QImage& source)
 {
   int zoom = m_zoomPercent.load();
 
-  if (zoom >= 100) {
+  if (zoom <= 100) {
+    // No zoom - return full image
     return source;
   }
 
-  // Calculate centered ROI
-  double zoomFactor = zoom / 100.0;
+  // Calculate centered ROI for zoom
+  // zoom 200% = show 50% of image (1/2)
+  // zoom 400% = show 25% of image (1/4)
+  double zoomFactor = 100.0 / zoom;  // Inverted: higher zoom = smaller ROI
   int roiWidth = static_cast<int>(source.width() * zoomFactor);
   int roiHeight = static_cast<int>(source.height() * zoomFactor);
 
@@ -275,18 +350,24 @@ void CameraImageWidget::renderFrame(const QImage& image)
     ? Qt::FastTransformation
     : Qt::SmoothTransformation;
 
-  // Get widget size for proper scaling
-  QSize widgetSize = this->size();
+  // Get scroll area viewport size for proper scaling
+  QSize viewportSize = m_scrollArea ? m_scrollArea->viewport()->size() : this->size();
 
   // Make sure we have a valid size
-  if (widgetSize.width() > 0 && widgetSize.height() > 0) {
-    // Scale to 90% of widget size to add uniform padding on all sides
-    QSize targetSize(
-      static_cast<int>(widgetSize.width() * 0.9),
-      static_cast<int>(widgetSize.height() * 0.9)
-    );
+  if (viewportSize.width() > 0 && viewportSize.height() > 0) {
+    // Scale to fill container width while maintaining aspect ratio
+    // Calculate target width (full viewport width)
+    int targetWidth = viewportSize.width();
 
-    pixmap = pixmap.scaled(targetSize, Qt::KeepAspectRatio, transformMode);
+    // Calculate height based on original aspect ratio
+    double aspectRatio = static_cast<double>(image.height()) / static_cast<double>(image.width());
+    int targetHeight = static_cast<int>(targetWidth * aspectRatio);
+
+    // Note: We always fill width and let height be proportional
+    // Scrollbars will appear if content exceeds viewport
+
+    QSize targetSize(targetWidth, targetHeight);
+    pixmap = pixmap.scaled(targetSize, Qt::IgnoreAspectRatio, transformMode);
   }
 
   // Draw crosshair overlay on pixmap if enabled
@@ -313,7 +394,9 @@ void CameraImageWidget::renderFrame(const QImage& image)
     painter.end();
   }
 
+  // Set pixmap and resize label to match pixmap size for scrolling
   m_displayLabel->setPixmap(pixmap);
+  m_displayLabel->resize(pixmap.size());
 }
 
 void CameraImageWidget::resizeEvent(QResizeEvent* event)
@@ -353,7 +436,7 @@ void CameraImageWidget::showEvent(QShowEvent* event)
     QImage displayImage;
     int zoom = m_zoomPercent.load();
 
-    if (zoom < 100) {
+    if (zoom > 100) {
       displayImage = applyZoom(m_reusableBuffer);
     }
     else {
@@ -367,4 +450,57 @@ void CameraImageWidget::showEvent(QShowEvent* event)
   repaint();
 
   std::cout << "[CameraImageWidget] Widget shown - forcing complete repaint" << std::endl;
+}
+
+// ============================================================================
+// MOUSE EVENT HANDLERS FOR PANNING
+// ============================================================================
+
+void CameraImageWidget::mousePressEvent(QMouseEvent* event)
+{
+  if (event->button() == Qt::LeftButton) {
+    m_isPanning = true;
+    m_lastPanPos = event->pos();
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
+  }
+  else {
+    QWidget::mousePressEvent(event);
+  }
+}
+
+void CameraImageWidget::mouseMoveEvent(QMouseEvent* event)
+{
+  if (m_isPanning && m_scrollArea) {
+    QPoint delta = event->pos() - m_lastPanPos;
+    m_lastPanPos = event->pos();
+
+    // Update scrollbar positions (inverted for natural panning)
+    QScrollBar* hBar = m_scrollArea->horizontalScrollBar();
+    QScrollBar* vBar = m_scrollArea->verticalScrollBar();
+
+    if (hBar) {
+      hBar->setValue(hBar->value() - delta.x());
+    }
+    if (vBar) {
+      vBar->setValue(vBar->value() - delta.y());
+    }
+
+    event->accept();
+  }
+  else {
+    QWidget::mouseMoveEvent(event);
+  }
+}
+
+void CameraImageWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+  if (event->button() == Qt::LeftButton && m_isPanning) {
+    m_isPanning = false;
+    setCursor(Qt::OpenHandCursor);
+    event->accept();
+  }
+  else {
+    QWidget::mouseReleaseEvent(event);
+  }
 }
