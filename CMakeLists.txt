@@ -1092,7 +1092,12 @@ endif()
 # ============================================================================
 # Create Executable
 # ============================================================================
-add_executable(bobcat_engine ${SOURCES} ${HEADERS})
+# Add Windows application icon
+if(WIN32)
+    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
+endif()
+
+add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE})
 
 # ============================================================================
 # Set Debugger Environment for Visual Studio
