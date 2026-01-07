@@ -3,7 +3,7 @@
     {
       "deviceId": 10,
       "name": "wago1",
-      "ip": "192.168.0.13",
+      "ip": "192.168.3.13",
       "inputCount": 8,
       "outputCount": 8,
       "enabled": true,

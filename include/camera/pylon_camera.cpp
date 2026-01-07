@@ -260,6 +260,20 @@ bool PylonCamera::ConnectToSerial(const std::string& serialNumber)
 		if (tlFactory.EnumerateDevices(devices, filter) == 0)
 		{
 			std::cerr << "Camera with serial " << serialNumber << " not found" << std::endl;
+
+			// Debug: List all available cameras to help diagnose the issue
+			Pylon::DeviceInfoList_t allDevices;
+			size_t numDevices = tlFactory.EnumerateDevices(allDevices);
+			std::cerr << "Available cameras (" << numDevices << " found):" << std::endl;
+			for (size_t i = 0; i < numDevices; i++) {
+				std::cerr << "  [" << i << "] Model: " << allDevices[i].GetModelName()
+				          << ", Serial: " << allDevices[i].GetSerialNumber()
+				          << ", Class: " << allDevices[i].GetDeviceClass() << std::endl;
+			}
+			if (numDevices == 0) {
+				std::cerr << "  (No cameras detected - check if Pylon Viewer or another app has exclusive access)" << std::endl;
+			}
+
 			return false; // Camera not found
 		}
 
