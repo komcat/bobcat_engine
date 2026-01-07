@@ -14,7 +14,6 @@ DeviceButtonStack::DeviceButtonStack(QWidget* parent)
   , m_posULabel(nullptr)
   , m_posVLabel(nullptr)
   , m_posWLabel(nullptr)
-  , m_waypointsLabel(nullptr)
 {
   setupUI();
 }
@@ -74,17 +73,16 @@ void DeviceButtonStack::setupPositionInfoSection()
   m_posULabel = new QLabel("U: -");
   m_posVLabel = new QLabel("V: -");
   m_posWLabel = new QLabel("W: -");
-  m_waypointsLabel = new QLabel("Waypoints: -");
-  m_waypointsLabel->setWordWrap(true);
-  m_waypointsLabel->setStyleSheet("QLabel { color: #0e639c; font-size: 11px; font-weight: bold; }");
 
-  QList<QLabel*> labels = { m_posNameLabel, m_posXLabel, m_posYLabel,
-                           m_posZLabel, m_posULabel, m_posVLabel, m_posWLabel,
-                           m_waypointsLabel };
-  for (auto* label : labels) {
-    if (label != m_waypointsLabel) {
-      label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; }");
-    }
+  // Position name label style
+  m_posNameLabel->setStyleSheet("QLabel { color: #d4d4d4; font-size: 14px; }");
+  posLayout->addWidget(m_posNameLabel);
+
+  // XYZUVW labels with larger font
+  QList<QLabel*> posLabels = { m_posXLabel, m_posYLabel, m_posZLabel,
+                               m_posULabel, m_posVLabel, m_posWLabel };
+  for (auto* label : posLabels) {
+    label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 16px; }");
     posLayout->addWidget(label);
   }
 
@@ -203,6 +201,7 @@ void DeviceButtonStack::setSelectedPosition(const QString& name, double x, doubl
   double u, double v, double w,
   const std::vector<std::string>& waypoints)
 {
+  Q_UNUSED(waypoints);  // Waypoints field removed from UI
   m_selectedPositionName = name;
 
   m_posNameLabel->setText(QString("<b>%1</b>").arg(name));
@@ -212,20 +211,6 @@ void DeviceButtonStack::setSelectedPosition(const QString& name, double x, doubl
   m_posULabel->setText(QString("U: %1").arg(u, 0, 'f', 3));
   m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
   m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
-
-  if (waypoints.empty()) {
-    m_waypointsLabel->setText("Waypoints: None");
-  }
-  else {
-    QString waypointStr = "WP: ";
-    for (size_t i = 0; i < waypoints.size(); ++i) {
-      waypointStr += QString::fromStdString(waypoints[i]);
-      if (i < waypoints.size() - 1) {
-        waypointStr += " → ";
-      }
-    }
-    m_waypointsLabel->setText(waypointStr);
-  }
 }
 
 void DeviceButtonStack::clearSelectedPosition()
@@ -239,7 +224,6 @@ void DeviceButtonStack::clearSelectedPosition()
   m_posULabel->setText("U: -");
   m_posVLabel->setText("V: -");
   m_posWLabel->setText("W: -");
-  m_waypointsLabel->setText("Waypoints: -");
 }
 
 void DeviceButtonStack::clearButtons()

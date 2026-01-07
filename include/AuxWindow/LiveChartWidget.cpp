@@ -244,6 +244,29 @@ void LiveChartWidget::setupUI()
   connect(m_refreshButton, &QPushButton::clicked, this, &LiveChartWidget::onRefreshChannels);
   selectorRow->addWidget(m_refreshButton);
 
+  // Clear data buffer button
+  m_clearDataButton = new QPushButton("🗑");
+  m_clearDataButton->setToolTip("Clear chart data buffer");
+  m_clearDataButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #8b4513; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 5px 12px; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #a0522d; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #6b3510; "
+    "}");
+  m_clearDataButton->setFixedWidth(40);
+  connect(m_clearDataButton, &QPushButton::clicked, this, &LiveChartWidget::onClearData);
+  selectorRow->addWidget(m_clearDataButton);
+
   selectorRow->addStretch();
 
   headerLayout->addLayout(selectorRow);
@@ -815,6 +838,32 @@ void LiveChartWidget::updateChart()
 void LiveChartWidget::onRefreshChannels()
 {
   refreshChannelList();
+}
+
+void LiveChartWidget::onClearData()
+{
+  // Clear data buffers
+  m_dataBuffer.clear();
+  m_targetDataBuffer.clear();
+
+  // Clear chart series
+  if (m_series) {
+    m_series->clear();
+  }
+  if (m_targetSeries) {
+    m_targetSeries->clear();
+  }
+
+  // Reset latest values
+  m_latestValue = 0.0f;
+  m_latestTargetValue = 0.0f;
+  m_hasNewValue = false;
+
+  // Update chart immediately
+  m_isDirty = true;
+  updateChart();
+
+  std::cout << "[LiveChartWidget] Data buffer cleared" << std::endl;
 }
 
 void LiveChartWidget::refreshChannelList()

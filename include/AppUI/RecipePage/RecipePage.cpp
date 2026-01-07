@@ -1007,9 +1007,17 @@ void RecipePage::onSaveRecipeAs()
 
   if (filename.isEmpty()) return;
 
+  // Extract filename without path and extension to use as recipe name
+  QFileInfo fileInfo(filename);
+  QString newRecipeName = fileInfo.completeBaseName();
+
+  // Update recipe name to match the saved file's name
+  m_recipeManager->setRecipeName(newRecipeName.toStdString());
+  m_recipeNameEdit->setText(newRecipeName);
+
   if (m_recipeManager->saveRecipe(filename.toStdString())) {
-    updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
-    // ✅ Also save to QSettings as last loaded recipe
+    updateRecipeFileNameDisplay();  // Update recipe file name label
+    // Also save to QSettings as last loaded recipe
     saveLastRecipeToSettings(filename);
 
     QMessageBox::information(this, "Success",

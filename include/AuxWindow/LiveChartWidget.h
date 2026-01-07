@@ -65,6 +65,7 @@ private slots:
   void onChannelSelected(int index);
   void onUpdateChart();
   void onRefreshChannels();
+  void onClearData();
   void onUpdateValueLabel();
   void onSetTarget();
   void onClearTarget();
@@ -97,6 +98,7 @@ private:
   // UI Components
   QComboBox* m_channelSelector;
   QPushButton* m_refreshButton;
+  QPushButton* m_clearDataButton;
   QPushButton* m_setTargetButton;
   QPushButton* m_clearTargetButton;
   QLabel* m_valueLabel;

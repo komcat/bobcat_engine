@@ -50,13 +50,13 @@ void ScanControlWidget::setupUI()
   m_valueLabel = new QLabel("-- --");
   m_valueLabel->setStyleSheet(
     "QLabel { "
-    "  background-color: #E3F2FD; "
-    "  border: 2px solid #2196F3; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
     "  border-radius: 4px; "
     "  padding: 8px 16px; "
     "  font-size: 24pt; "
     "  font-weight: bold; "
-    "  color: #1565C0; "
+    "  color: #ffffff; "
     "  min-height: 50px; "
     "}");
   m_valueLabel->setAlignment(Qt::AlignCenter);
@@ -321,7 +321,37 @@ void ScanControlWidget::setupRotationUI(QVBoxLayout* parentLayout)
   // Create collapsible group box
   m_rotationGroup = new QGroupBox("Rotation Optimization");
   m_rotationGroup->setCheckable(true);
-  m_rotationGroup->setChecked(false);  // Start collapsed
+  m_rotationGroup->setChecked(true);  // Start expanded so controls are visible
+  m_rotationGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-weight: bold; "
+    "  color: #ff9800; "
+    "  border: 1px solid #505050; "
+    "  border-radius: 4px; "
+    "  margin-top: 8px; "
+    "  padding-top: 8px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "} "
+    "QGroupBox::indicator { "
+    "  width: 16px; "
+    "  height: 16px; "
+    "} "
+    "QGroupBox::indicator:checked { "
+    "  image: none; "
+    "  background-color: #ff9800; "
+    "  border: 2px solid #ff9800; "
+    "  border-radius: 3px; "
+    "} "
+    "QGroupBox::indicator:unchecked { "
+    "  image: none; "
+    "  background-color: #3d3d3d; "
+    "  border: 2px solid #505050; "
+    "  border-radius: 3px; "
+    "}");
 
   QVBoxLayout* groupLayout = new QVBoxLayout(m_rotationGroup);
   groupLayout->setSpacing(4);
@@ -448,8 +478,8 @@ void ScanControlWidget::setupRotationUI(QVBoxLayout* parentLayout)
   // Add content widget to group
   groupLayout->addWidget(m_rotationContent);
 
-  // Start collapsed
-  m_rotationContent->setVisible(false);
+  // Start expanded (visible) - user can collapse by clicking checkbox
+  m_rotationContent->setVisible(true);
 
   parentLayout->addWidget(m_rotationGroup);
 

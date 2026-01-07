@@ -74,6 +74,5 @@ private:
   QLabel* m_posULabel;
   QLabel* m_posVLabel;
   QLabel* m_posWLabel;
-  QLabel* m_waypointsLabel;
   QString m_selectedPositionName;
 };

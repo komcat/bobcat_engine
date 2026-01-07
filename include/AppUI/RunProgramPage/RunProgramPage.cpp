@@ -373,6 +373,33 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "  padding-left: 12px; "
     "}"
   );
+  m_saveAsButton = new QPushButton("Save As");
+  m_saveAsButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
+    "  color: #d4d4d4; "
+    "  padding: 5px 10px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2c2c2c; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 7px; "
+    "  padding-left: 12px; "
+    "}"
+  );
   m_editButton = new QPushButton("Edit");
   m_editButton->setStyleSheet(
     "QPushButton { "
@@ -404,6 +431,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   fileButtonLayout->addWidget(m_newButton);
   fileButtonLayout->addWidget(m_loadButton);
   fileButtonLayout->addWidget(m_saveButton);
+  fileButtonLayout->addWidget(m_saveAsButton);
   fileButtonLayout->addWidget(m_editButton);
   fileLayout->addLayout(fileButtonLayout);
 
@@ -663,6 +691,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   connect(m_newButton, &QPushButton::clicked, this, &RunProgramPage::onNewProgram);
   connect(m_loadButton, &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
   connect(m_saveButton, &QPushButton::clicked, this, &RunProgramPage::onSaveProgram);
+  connect(m_saveAsButton, &QPushButton::clicked, this, &RunProgramPage::onSaveAsProgram);
   connect(m_editButton, &QPushButton::clicked, this, &RunProgramPage::onEditProgram);
   connect(m_executeButton, &QPushButton::clicked, this, &RunProgramPage::onExecuteProgram);
   connect(m_backButton, &QPushButton::clicked, this, &RunProgramPage::backToMainMenu);
@@ -1126,10 +1155,10 @@ void RunProgramPage::createExecutionWidget()
   QVBoxLayout* layout = new QVBoxLayout(m_executionWidget);
   layout->setContentsMargins(20, 20, 20, 20);
 
-  // Title
-  QLabel* titleLabel = new QLabel("Program Execution");
-  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
-  layout->addWidget(titleLabel);
+  // Title (shows program file name when loaded)
+  m_executionTitleLabel = new QLabel("Program Execution");
+  m_executionTitleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
+  layout->addWidget(m_executionTitleLabel);
 
   // Status
   m_executionStatusLabel = new QLabel("Ready to execute");
@@ -1494,6 +1523,48 @@ void RunProgramPage::onSaveProgram()
     QMessageBox::critical(this, "Save Error", "Failed to save program");
     return;
   }
+
+  QMessageBox::information(this, "Success",
+    QString("Program saved to:\n%1").arg(m_currentProgramPath));
+}
+
+void RunProgramPage::onSaveAsProgram()
+{
+  // Check if product is loaded
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before saving programs.\n\n"
+      "Use the 'Load Product' button in the main menu.");
+    return;
+  }
+
+  // Get product name and build path to product's programs folder
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  QString programsPath = QString("config/%1/programs").arg(productName);
+
+  // Ensure programs folder exists
+  QDir().mkpath(programsPath);
+
+  // Always prompt for new file location
+  QString filename = QFileDialog::getSaveFileName(
+    this,
+    "Save Program As",
+    programsPath,  // Start in product's programs folder
+    "Program Files (*.json)"
+  );
+
+  if (filename.isEmpty()) return;
+
+  // Update current path to the new location
+  m_currentProgramPath = filename;
+
+  if (!m_programManager->saveProgram(m_currentProgramPath.toStdString())) {
+    QMessageBox::critical(this, "Save Error", "Failed to save program");
+    return;
+  }
+
+  // Update UI to reflect new file
+  updateProgramInfo();
 
   QMessageBox::information(this, "Success",
     QString("Program saved to:\n%1").arg(m_currentProgramPath));
@@ -3027,6 +3098,13 @@ void RunProgramPage::updateProgramInfo()
 {
   QString programName = QString::fromStdString(m_programManager->getProgramName());
   m_programNameLabel->setText(programName);
+
+  // Update execution title label with program file name
+  if (!programName.isEmpty() && programName != "Untitled Program") {
+    m_executionTitleLabel->setText("Program file: " + programName);
+  } else {
+    m_executionTitleLabel->setText("Program Execution");
+  }
 
   // ✅ UPDATE: Display program file path
   if (!m_currentProgramPath.isEmpty()) {

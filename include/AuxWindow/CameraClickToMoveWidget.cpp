@@ -164,6 +164,43 @@ void CameraClickToMoveWidget::setupUI()
   connect(m_autoFocusButton, &QPushButton::clicked, this, &CameraClickToMoveWidget::onAutoFocusClicked);
   selectorRow->addWidget(m_autoFocusButton);
 
+  // Zoom buttons (moved here from separate row)
+  selectorRow->addSpacing(20);
+
+  QLabel* zoomLabel = new QLabel("Zoom:");
+  zoomLabel->setStyleSheet("QLabel { color: #aaaaaa; font-size: 13px; background: transparent; }");
+  selectorRow->addWidget(zoomLabel);
+
+  QString zoomButtonStyle =
+    "QPushButton { "
+    "  background-color: #3d3d3d; "
+    "  color: white; "
+    "  padding: 4px 12px; "
+    "  border: 1px solid #505050; "
+    "  border-radius: 3px; "
+    "  font-size: 13px; "
+    "} "
+    "QPushButton:hover { background-color: #4d4d4d; } "
+    "QPushButton:pressed { background-color: #0078d4; }";
+
+  m_zoom1xButton = new QPushButton("1.0x");
+  m_zoom1xButton->setStyleSheet(zoomButtonStyle);
+  m_zoom1xButton->setFixedWidth(50);
+  connect(m_zoom1xButton, &QPushButton::clicked, [this]() { onZoomChanged(100); });
+  selectorRow->addWidget(m_zoom1xButton);
+
+  m_zoom15xButton = new QPushButton("1.5x");
+  m_zoom15xButton->setStyleSheet(zoomButtonStyle);
+  m_zoom15xButton->setFixedWidth(50);
+  connect(m_zoom15xButton, &QPushButton::clicked, [this]() { onZoomChanged(67); });
+  selectorRow->addWidget(m_zoom15xButton);
+
+  m_zoom2xButton = new QPushButton("2.0x");
+  m_zoom2xButton->setStyleSheet(zoomButtonStyle);
+  m_zoom2xButton->setFixedWidth(50);
+  connect(m_zoom2xButton, &QPushButton::clicked, [this]() { onZoomChanged(50); });
+  selectorRow->addWidget(m_zoom2xButton);
+
   selectorRow->addStretch();
 
   headerLayout->addLayout(selectorRow);
@@ -196,47 +233,6 @@ void CameraClickToMoveWidget::setupUI()
   controls1Row->addStretch();
 
   headerLayout->addLayout(controls1Row);
-
-  // Controls row 2: Zoom buttons
-  QHBoxLayout* controls2Row = new QHBoxLayout();
-
-  QLabel* zoomLabel = new QLabel("Zoom:");
-  zoomLabel->setStyleSheet("QLabel { color: #aaaaaa; font-size: 13px; background: transparent; }");
-  controls2Row->addWidget(zoomLabel);
-
-  QString buttonStyle =
-    "QPushButton { "
-    "  background-color: #3d3d3d; "
-    "  color: white; "
-    "  padding: 4px 12px; "
-    "  border: 1px solid #505050; "
-    "  border-radius: 3px; "
-    "  font-size: 13px; "
-    "} "
-    "QPushButton:hover { background-color: #4d4d4d; } "
-    "QPushButton:pressed { background-color: #0078d4; }";
-
-  m_zoom1xButton = new QPushButton("1.0x");
-  m_zoom1xButton->setStyleSheet(buttonStyle);
-  m_zoom1xButton->setFixedWidth(50);
-  connect(m_zoom1xButton, &QPushButton::clicked, [this]() { onZoomChanged(100); });
-  controls2Row->addWidget(m_zoom1xButton);
-
-  m_zoom15xButton = new QPushButton("1.5x");
-  m_zoom15xButton->setStyleSheet(buttonStyle);
-  m_zoom15xButton->setFixedWidth(50);
-  connect(m_zoom15xButton, &QPushButton::clicked, [this]() { onZoomChanged(67); });
-  controls2Row->addWidget(m_zoom15xButton);
-
-  m_zoom2xButton = new QPushButton("2.0x");
-  m_zoom2xButton->setStyleSheet(buttonStyle);
-  m_zoom2xButton->setFixedWidth(50);
-  connect(m_zoom2xButton, &QPushButton::clicked, [this]() { onZoomChanged(50); });
-  controls2Row->addWidget(m_zoom2xButton);
-
-  controls2Row->addStretch();
-
-  headerLayout->addLayout(controls2Row);
 
   mainLayout->addWidget(headerWidget);
 

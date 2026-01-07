@@ -579,21 +579,30 @@ void GraphWidget::setupToolbar()
   connect(m_btnResetZoom, &QPushButton::clicked, this, &GraphWidget::onResetZoom);
   m_toolbar->addWidget(m_btnResetZoom);
 
+  // Toggle help button
+  m_btnToggleHelp = new QPushButton("Hide Help", this);
+  m_btnToggleHelp->setStyleSheet(
+    "QPushButton { background-color: #7f8c8d; color: white; border: none; padding: 5px 10px; font-weight: bold; }"
+    "QPushButton:hover { background-color: #95a5a6; }"
+  );
+  connect(m_btnToggleHelp, &QPushButton::clicked, this, &GraphWidget::onToggleHelp);
+  m_toolbar->addWidget(m_btnToggleHelp);
+
   m_mainLayout->addWidget(m_toolbar);
 
   // ============================================================================
   // HELP/DESCRIPTION PANEL FOR NEW USERS
   // ============================================================================
-  QWidget* helpPanel = new QWidget(this);
-  helpPanel->setStyleSheet(
+  m_helpPanel = new QWidget(this);
+  m_helpPanel->setStyleSheet(
     "QWidget { background-color: #1a3a4a; border: 1px solid #2980b9; border-radius: 4px; }"
   );
-  QVBoxLayout* helpLayout = new QVBoxLayout(helpPanel);
+  QVBoxLayout* helpLayout = new QVBoxLayout(m_helpPanel);
   helpLayout->setContentsMargins(12, 8, 12, 8);
   helpLayout->setSpacing(6);
 
   // Title with icon
-  QLabel* helpTitle = new QLabel("What is Motion Graph?", helpPanel);
+  QLabel* helpTitle = new QLabel("What is Motion Graph?", m_helpPanel);
   helpTitle->setStyleSheet(
     "QLabel { color: #3498db; font-weight: bold; font-size: 12px; border: none; background: transparent; }"
   );
@@ -609,7 +618,7 @@ void GraphWidget::setupToolbar()
     "<b>Quick Start:</b> Right-click on canvas to add nodes. "
     "Drag between nodes to create edges (paths). "
     "Use <b>Parallel Move</b> with <i>graphNode</i> type in recipes to utilize these paths.</p>",
-    helpPanel
+    m_helpPanel
   );
   helpText->setWordWrap(true);
   helpText->setStyleSheet("QLabel { border: none; background: transparent; }");
@@ -619,12 +628,12 @@ void GraphWidget::setupToolbar()
   QLabel* controlsHint = new QLabel(
     "<span style='color: #7f8c8d; font-size: 9px;'>"
     "Controls: Scroll=Zoom | Middle-drag=Pan | Right-click=Context menu</span>",
-    helpPanel
+    m_helpPanel
   );
   controlsHint->setStyleSheet("QLabel { border: none; background: transparent; }");
   helpLayout->addWidget(controlsHint);
 
-  m_mainLayout->addWidget(helpPanel);
+  m_mainLayout->addWidget(m_helpPanel);
 }
 
 void GraphWidget::setupScene()
@@ -1162,6 +1171,17 @@ void GraphWidget::onZoomOut()
 void GraphWidget::onResetZoom()
 {
   m_graphicsView->resetZoom();
+}
+
+void GraphWidget::onToggleHelp()
+{
+  if (m_helpPanel->isVisible()) {
+    m_helpPanel->hide();
+    m_btnToggleHelp->setText("Show Help");
+  } else {
+    m_helpPanel->show();
+    m_btnToggleHelp->setText("Hide Help");
+  }
 }
 
 // ============================================================================

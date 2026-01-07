@@ -62,6 +62,7 @@ private slots:
   void onNewProgram();
   void onLoadProgram();
   void onSaveProgram();
+  void onSaveAsProgram();
   void onEditProgram();
 
   // Execution
@@ -144,6 +145,7 @@ private:
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
+  QPushButton* m_saveAsButton;
   QPushButton* m_editButton;
   QPushButton* m_executeButton;
   QProgressBar* m_progressBar;
@@ -171,6 +173,7 @@ private:
   QPushButton* m_saveEditButton;
 
   // Execution widget components
+  QLabel* m_executionTitleLabel;  // Shows "Program Execution" or program file name
   QLabel* m_executionStatusLabel;
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;

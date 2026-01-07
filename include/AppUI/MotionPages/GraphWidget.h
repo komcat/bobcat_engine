@@ -121,6 +121,7 @@ private slots:
   void onZoomIn();
   void onZoomOut();
   void onResetZoom();
+  void onToggleHelp();
 
   // Scene events
   void onSceneSelectionChanged();
@@ -192,6 +193,10 @@ private:
   QPushButton* m_btnZoomIn;
   QPushButton* m_btnZoomOut;
   QPushButton* m_btnResetZoom;
+  QPushButton* m_btnToggleHelp;  // Toggle help panel visibility
+
+  // Help panel
+  QWidget* m_helpPanel;  // Toggleable help panel
 
   // Legend widget
   QWidget* m_legendWidget;
