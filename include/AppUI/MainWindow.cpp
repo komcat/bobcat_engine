@@ -18,6 +18,8 @@
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
+#include "safety/SafetyWatchManager.h"
+#include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
 #include <QApplication>
 #include <iostream>
@@ -68,6 +70,30 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   // Log window creation
   if (m_context->logManager) {
     m_context->logManager->Info("Main window ready", "MainWindow");
+  }
+
+  // Connect safety watch signals
+  if (m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+            this, [this](QString title, QString message, bool critical) {
+      // Show safety alert dialog on UI thread
+      QMetaObject::invokeMethod(this, [this, title, message, critical]() {
+        SafetyAlertDialog dialog(title, message, critical, this);
+        connect(&dialog, &SafetyAlertDialog::acknowledged, this, [this]() {
+          if (m_context->safetyWatchManager) {
+            m_context->safetyWatchManager->AcknowledgeSafetyFlag();
+          }
+        });
+        dialog.exec();
+      }, Qt::QueuedConnection);
+    });
+
+    // Connect TopBar safety indicator to SafetyWatchManager
+    if (m_topBar) {
+      m_topBar->connectSafetyManager(m_context->safetyWatchManager);
+    }
+
+    std::cout << "[MainWindow] Safety watch signals connected" << std::endl;
   }
 }
 

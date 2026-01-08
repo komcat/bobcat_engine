@@ -15,6 +15,7 @@
 #include "SMU/SMUPollingManager.h"  // ✅ ADD SMU Polling Manager
 #include "CoordinateSystemManager.h"
 #include "lighting/LightingManager.h"
+#include "safety/SafetyWatchManager.h"
 
 class QApplication;
 class MainWindow;
@@ -67,6 +68,7 @@ private:
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
   void initializeLightingManager();
+  void initializeSafetyWatch();
 
   void testMotionCommands();
   void testIOCommands();
@@ -102,6 +104,7 @@ private:
   std::unique_ptr<SMUPollingManager> m_smuPollingManager;  // ✅ ADD SMU Polling Manager
   std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
+  std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
 
   ApplicationContext m_context;
 

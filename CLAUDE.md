@@ -193,7 +193,26 @@ Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for run
 - `include/sequence/SequenceEngine.h` - Command execution engine
 - `include/recipe/RecipeManager.h` - Recipe data management
 - `config/*.json` - Hardware configuration files
-- i'll cmake build myself
-- i added #include <iostream> in the systemcommandhandler. please note
-- i'll make the program myself thanks. including compiler
-- I'll compile the application myself thanks
+
+## Camera Configuration
+
+Camera connection types in `camera_config.json`:
+- `ip` - GigE cameras via IP address (e.g., `"ip_address": "192.168.0.68"`)
+- `serial` - Any camera by serial number (works for USB cameras)
+- `index` - Any camera by device index (works for USB cameras)
+- `auto` - First available camera (works for USB cameras)
+
+Example USB Basler camera config:
+```json
+{
+  "id": "usb_camera",
+  "camera_type": "PYLON",
+  "connection_type": "serial",
+  "serial_number": "YOUR_SERIAL"
+}
+```
+
+## User Preferences
+
+- User will compile the application themselves - skip `cmake --build` commands
+- `#include <iostream>` has been added to SystemCommandHandler

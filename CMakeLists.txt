@@ -701,6 +701,9 @@ set(SOURCES
     # Lighting UI
     include/AppUI/LightingPage/LightingControlWidget.cpp
     include/AppUI/LightingPage/CameraLightingPage.cpp
+    # Safety system
+    include/safety/SafetyWatchManager.cpp
+    include/safety/SafetyAlertDialog.cpp
 )
 
 set(HEADERS
@@ -875,6 +878,9 @@ set(HEADERS
     # Lighting UI
     include/AppUI/LightingPage/LightingControlWidget.h
     include/AppUI/LightingPage/CameraLightingPage.h
+    # Safety system
+    include/safety/SafetyWatchManager.h
+    include/safety/SafetyAlertDialog.h
 )
 
 # Conditionally add ACS controller files if library is found
@@ -1292,6 +1298,9 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/lighting_config.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/lighting_config.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/safety_watch.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/safety_watch.json
     COMMENT "Copying config templates (preserving *.local.json files)"
 )
 

@@ -1,0 +1,26 @@
+{
+  "enabled": true,
+  "polling_interval_ms": 100,
+  "watched_inputs": [
+    {
+      "device": "IOTop",
+      "pin_name": "E_Stop",
+      "pin_number": 0,
+      "trigger": "rising",
+      "alert_title": "Emergency Stop Activated",
+      "alert_message": "E-Stop pressed. All operations halted. Acknowledge to resume.",
+      "critical": true,
+      "enabled": true
+    },
+    {
+      "device": "IOTop",
+      "pin_name": "DoorOpen",
+      "pin_number": 1,
+      "trigger": "rising",
+      "alert_title": "Safety Door Opened",
+      "alert_message": "Safety enclosure door has been opened.",
+      "critical": false,
+      "enabled": false
+    }
+  ]
+}

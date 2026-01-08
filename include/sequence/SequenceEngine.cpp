@@ -26,6 +26,7 @@
 #include "IOCommandHandler.h"
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
+#include "safety/SafetyWatchManager.h"
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
 #endif
@@ -94,6 +95,20 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   auto systemHandler = std::make_unique<SystemCommandHandler>();
   m_systemHandler = systemHandler.get();
   m_dispatcher.RegisterHandler("system", std::move(systemHandler));
+
+  // Subscribe to safety watch - auto-stop on critical safety flag
+  if (m_context->safetyWatchManager) {
+    QObject::connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+      [this](QString title, QString message, bool critical) {
+        Q_UNUSED(title);
+        Q_UNUSED(message);
+        if (critical) {
+          std::cout << "[SequenceEngine] Critical safety flag - requesting stop" << std::endl;
+          RequestStop();
+        }
+      });
+    std::cout << "[SequenceEngine] Subscribed to SafetyWatchManager" << std::endl;
+  }
 }
 
 SequenceEngine::~SequenceEngine()

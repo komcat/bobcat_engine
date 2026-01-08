@@ -1,6 +1,7 @@
 ﻿// unified_motion_manager.cpp - Complete Implementation
 #include "unified_motion_manager.h"
 #include "MotionJsonLoader.h"
+#include "safety/SafetyWatchManager.h"
 #include <iostream>
 #include <algorithm>
 
@@ -38,6 +39,26 @@ UnifiedMotionManager::UnifiedMotionManager() {
 UnifiedMotionManager::~UnifiedMotionManager() {
   std::cout << "[INFO] UnifiedMotionManager: Shutting down" << std::endl;
   DisconnectAll();
+}
+
+void UnifiedMotionManager::SetSafetyWatchManager(SafetyWatchManager* safetyManager) {
+  if (!safetyManager) {
+    std::cout << "[UnifiedMotionManager] Warning: SafetyWatchManager is null" << std::endl;
+    return;
+  }
+
+  // Subscribe to safety watch - emergency stop all axes on critical safety flag
+  QObject::connect(safetyManager, &SafetyWatchManager::safetyTriggered,
+    [this](QString title, QString message, bool critical) {
+      Q_UNUSED(title);
+      Q_UNUSED(message);
+      if (critical) {
+        std::cout << "[UnifiedMotionManager] Critical safety flag - EMERGENCY STOP ALL AXES" << std::endl;
+        EmergencyStopAll();
+      }
+    });
+
+  std::cout << "[UnifiedMotionManager] Subscribed to SafetyWatchManager for emergency stop" << std::endl;
 }
 
 void UnifiedMotionManager::RegisterManager(const std::string& type,

@@ -26,6 +26,7 @@ class UserInputWidget;
 class ScanControlWidget;
 class ScanExecutor;
 class TransformationMatrixLoader;
+class CameraClickToMoveWidget;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -177,7 +178,10 @@ private:
   QLabel* m_executionStatusLabel;
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
+  QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
   QTextEdit* m_logTextEdit;
+  QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
+  CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
 
   // Scanning controls (refactored)
   ScanControlWidget* m_scanWidget;

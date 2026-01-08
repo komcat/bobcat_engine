@@ -12,6 +12,7 @@ class RotationScanController;
 class UnifiedMotionManager;
 class DataStore;
 class ILogger;
+class SafetyWatchManager;
 struct ScanParameters;
 struct ScanResults;
 struct ScanProgressEvent;
@@ -46,6 +47,7 @@ public:
   void setMotionManager(UnifiedMotionManager* manager);
   void setDataStore(DataStore* dataStore);
   void setLogger(ILogger* logger);
+  void setSafetyWatchManager(SafetyWatchManager* safetyManager);
 
   /**
    * @brief Execute a hexapod translation scan
@@ -130,6 +132,7 @@ private:
   UnifiedMotionManager* m_motionManager;
   DataStore* m_dataStore;
   ILogger* m_logger;
+  SafetyWatchManager* m_safetyWatchManager;
 
   // Active scan controllers (created on-demand)
   AdaptiveScanController* m_scanController;

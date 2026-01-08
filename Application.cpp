@@ -313,6 +313,10 @@ void Application::initializeManagers()
     initializeLightingManager();
     completeSplash("LightingManager");
 
+    updateSplash("SafetyWatch");
+    initializeSafetyWatch();
+    completeSplash("SafetyWatch");
+
     // Optional: run test commands to verify managers
     //testMotionCommands();
     //testIOCommands();  // Test IO with Vacuum_Base
@@ -740,6 +744,12 @@ void Application::connectHardwareAsync()
       m_ioManager->StartPolling(100);
       m_logManager->Info("I/O polling started (100ms interval)", "Application");
       if (m_splashScreen) m_splashScreen->updateStatus("I/O Devices", "success");
+
+      // Start safety watch after IO is connected
+      if (m_safetyWatchManager && m_safetyWatchManager->IsEnabled()) {
+        m_safetyWatchManager->StartWatching();
+        m_logManager->Info("Safety watch started", "Application");
+      }
     }
 
     // 5. Connect TEC Devices
@@ -855,6 +865,12 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+  // Stop safety watch first
+  if (m_safetyWatchManager) {
+    std::cout << "[Application] Stopping safety watch..." << std::endl;
+    m_safetyWatchManager->StopWatching();
+  }
+
   // ✅ CRITICAL: Stop SMU polling FIRST and disconnect signals BEFORE touching DataStore
   // This prevents crash where polling thread tries to access destroyed DataStore
   if (m_smuPollingManager) {
@@ -910,6 +926,7 @@ void Application::shutdownManagers()
 
   // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
   m_smuPollingManager.reset();
+  m_safetyWatchManager.reset();
   m_powerSupplyManager.reset();
   m_smuManager.reset();
   m_lightingManager.reset();
@@ -1768,5 +1785,78 @@ void Application::initializeSMUSystem()
     std::cerr << "[Application] Warning: Failed to load SMU configuration" << std::endl;
     std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
     std::cerr << "[Application] SMU functionality will be unavailable" << std::endl;
+  }
+}
+
+void Application::initializeSafetyWatch()
+{
+  std::cout << "[Application] Initializing Safety Watch..." << std::endl;
+
+  try {
+    // Create SafetyWatchManager
+    m_safetyWatchManager = std::make_unique<SafetyWatchManager>(this);
+    m_context.safetyWatchManager = m_safetyWatchManager.get();
+
+    // Set dependencies
+    m_safetyWatchManager->SetIOManager(m_ioManager.get());
+    m_safetyWatchManager->SetLogManager(m_logManager.get());
+
+    // Try local config first, then fall back to default
+    std::string localConfigPath = "config/safety_watch.local.json";
+    std::string defaultConfigPath = "config/safety_watch.json";
+
+    bool configLoaded = false;
+
+    // Debug: Show which files we're checking
+    std::cout << "[Application] Safety watch config search:" << std::endl;
+    std::cout << "[Application]   Checking: " << localConfigPath << std::endl;
+
+    // Try local config first
+    std::ifstream localFile(localConfigPath);
+    if (localFile.good()) {
+      std::cout << "[Application]   ✓ Found local config" << std::endl;
+      localFile.close();
+      if (m_safetyWatchManager->LoadConfig(localConfigPath)) {
+        std::cout << "[Application] Safety watch configuration loaded from "
+                  << localConfigPath << std::endl;
+        configLoaded = true;
+      }
+    } else {
+      std::cout << "[Application]   ✗ Local config not found" << std::endl;
+    }
+
+    // Fall back to default config
+    if (!configLoaded) {
+      std::cout << "[Application]   Checking: " << defaultConfigPath << std::endl;
+      if (m_safetyWatchManager->LoadConfig(defaultConfigPath)) {
+        std::cout << "[Application] Safety watch configuration loaded from "
+                  << defaultConfigPath << std::endl;
+        configLoaded = true;
+      }
+    }
+
+    if (configLoaded) {
+      if (m_safetyWatchManager->IsEnabled()) {
+        m_logManager->Info("SafetyWatchManager initialized (watching will start after IO connects)", "Application");
+      } else {
+        m_logManager->Info("SafetyWatchManager initialized but disabled in config", "Application");
+      }
+    } else {
+      m_logManager->Warning("Safety watch config not found - safety monitoring disabled", "Application");
+    }
+
+    // Connect motion manager to safety watch for emergency stop
+    if (m_motionManager && m_safetyWatchManager) {
+      m_motionManager->SetSafetyWatchManager(m_safetyWatchManager.get());
+    }
+
+    std::cout << "[Application] Safety Watch initialized successfully" << std::endl;
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Safety watch initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without safety watch
   }
 }

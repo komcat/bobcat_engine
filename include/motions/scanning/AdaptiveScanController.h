@@ -15,6 +15,9 @@
 #include <thread>
 #include <functional>
 
+// Forward declaration
+class SafetyWatchManager;
+
 /**
  * @brief Modern adaptive scanning controller with state machine architecture
  *
@@ -44,8 +47,13 @@ public:
    * @brief Set logger for scan operations
    * @param logger Pointer to ILogger implementation
    */
-   // Change this line (around line 60):
   void SetLogger(ILogger* logger) { m_logger = logger; }
+
+  /**
+   * @brief Subscribe to SafetyWatchManager for emergency stop on critical safety
+   * @param safetyManager Pointer to SafetyWatchManager
+   */
+  void SetSafetyWatchManager(SafetyWatchManager* safetyManager);
 
 
 

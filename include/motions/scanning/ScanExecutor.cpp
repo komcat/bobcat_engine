@@ -7,6 +7,7 @@
 #include "unified_motion_manager.h"
 #include "DataStore.h"
 #include "ILogger.h"
+#include "safety/SafetyWatchManager.h"
 
 #include <QMetaObject>
 #include <iostream>
@@ -16,6 +17,7 @@ ScanExecutor::ScanExecutor(QObject* parent)
   , m_motionManager(nullptr)
   , m_dataStore(nullptr)
   , m_logger(nullptr)
+  , m_safetyWatchManager(nullptr)
   , m_scanController(nullptr)
   , m_rotationScanController(nullptr)
 {
@@ -35,6 +37,11 @@ void ScanExecutor::setMotionManager(UnifiedMotionManager* manager)
 void ScanExecutor::setDataStore(DataStore* dataStore)
 {
   m_dataStore = dataStore;
+}
+
+void ScanExecutor::setSafetyWatchManager(SafetyWatchManager* safetyManager)
+{
+  m_safetyWatchManager = safetyManager;
 }
 
 void ScanExecutor::setLogger(ILogger* logger)
@@ -71,6 +78,11 @@ bool ScanExecutor::executeScan(const QString& deviceName, bool isCoarse, const Q
   // Set logger if available
   if (m_logger) {
     m_scanController->SetLogger(m_logger);
+  }
+
+  // Connect to safety watch for emergency stop
+  if (m_safetyWatchManager) {
+    m_scanController->SetSafetyWatchManager(m_safetyWatchManager);
   }
 
   // Create scan parameters

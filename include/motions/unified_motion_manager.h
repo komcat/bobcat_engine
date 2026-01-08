@@ -12,6 +12,9 @@
 #include <memory>
 #include <queue>
 
+// Forward declaration
+class SafetyWatchManager;
+
 /**
  * @brief Unified Motion Manager - Manages multiple controller brands
  *
@@ -22,6 +25,16 @@ class UnifiedMotionManager {
 public:
 	UnifiedMotionManager();
 	~UnifiedMotionManager();
+
+	// ============================================================================
+	// SAFETY WATCH INTEGRATION
+	// ============================================================================
+
+	/**
+	 * @brief Subscribe to SafetyWatchManager for emergency stop on critical safety
+	 * @param safetyManager Pointer to SafetyWatchManager
+	 */
+	void SetSafetyWatchManager(SafetyWatchManager* safetyManager);
 
 	// ============================================================================
 	// DEBUG LOGGING CONTROL

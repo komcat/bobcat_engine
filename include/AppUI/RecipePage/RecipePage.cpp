@@ -5,6 +5,7 @@
 #include "RecipeTreeItemFactory.h"   // NEW: Tree item factory
 #include "RecipeClipboard.h"         // NEW: Clipboard
 #include "ApplicationContext.h"
+#include "safety/SafetyWatchManager.h"
 #include "unified_motion_manager.h"
 #include "SequenceEngine.h"
 #include "SequenceBuilder.h"
@@ -2295,6 +2296,16 @@ void RecipePage::onRunRecipe()
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
+  // Connect safety watch - auto-stop on critical safety flag
+  if (m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+            m_recipeWorker, [this](QString title, QString message, bool critical) {
+      if (critical && m_recipeWorker) {
+        m_recipeWorker->requestStop();
+      }
+    }, Qt::DirectConnection);
+  }
+
   // Start execution
   m_recipeWorker->start();
 }
@@ -2518,6 +2529,16 @@ void RecipePage::onRunSelectedStep()
     return result;
   });
 
+  // Connect safety watch - auto-stop on critical safety flag
+  if (m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+            m_recipeWorker, [this](QString title, QString message, bool critical) {
+      if (critical && m_recipeWorker) {
+        m_recipeWorker->requestStop();
+      }
+    }, Qt::DirectConnection);
+  }
+
   // Start background thread execution ✅
   m_recipeWorker->start();
 
@@ -2640,6 +2661,16 @@ void RecipePage::onStepButtonClicked()
     this, &RecipePage::onExecutionPaused);
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
+
+  // Connect safety watch - auto-stop on critical safety flag
+  if (m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+            m_recipeWorker, [this](QString title, QString message, bool critical) {
+      if (critical && m_recipeWorker) {
+        m_recipeWorker->requestStop();
+      }
+    }, Qt::DirectConnection);
+  }
 
   // Start execution
   m_recipeWorker->start();

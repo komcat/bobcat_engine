@@ -1,8 +1,10 @@
 ﻿// src/scanning/AdaptiveScanController.cpp
 #include "AdaptiveScanController.h"
 #include "ScanStrategy.h"
+#include "safety/SafetyWatchManager.h"
 #include <sstream>
 #include <iomanip>
+#include <iostream>
 
 AdaptiveScanController::AdaptiveScanController(
   UnifiedMotionManager& motionManager,
@@ -48,6 +50,26 @@ AdaptiveScanController::~AdaptiveScanController() {
   if (m_logger) {  // ✅ Check before use
     m_logger->LogInfo("AdaptiveScanController destroyed for device: " + m_deviceName);
   }
+}
+
+void AdaptiveScanController::SetSafetyWatchManager(SafetyWatchManager* safetyManager) {
+  if (!safetyManager) {
+    std::cout << "[AdaptiveScanController] Warning: SafetyWatchManager is null" << std::endl;
+    return;
+  }
+
+  // Subscribe to safety watch - emergency stop scan on critical safety flag
+  QObject::connect(safetyManager, &SafetyWatchManager::safetyTriggered,
+    [this](QString title, QString message, bool critical) {
+      Q_UNUSED(title);
+      Q_UNUSED(message);
+      if (critical) {
+        std::cout << "[AdaptiveScanController] Critical safety flag - EMERGENCY STOP SCAN" << std::endl;
+        EmergencyStop();
+      }
+    });
+
+  std::cout << "[AdaptiveScanController] Subscribed to SafetyWatchManager" << std::endl;
 }
 
 // ============================================================================

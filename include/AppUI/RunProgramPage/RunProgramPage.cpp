@@ -2,6 +2,7 @@
 #include "RunProgramPage.h"
 #include "ApplicationContext.h"
 #include "ProgramManager.h"
+#include "safety/SafetyWatchManager.h"
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
 #include "UserPromptWidget.h"
@@ -10,6 +11,7 @@
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
 #include "ScanExecutor.h"
+#include "CameraClickToMoveWidget.h"
 #include "ILogger.h"
 #include "LogManager.h"
 #include "DataStore.h"
@@ -90,6 +92,9 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   m_scanExecutor->setDataStore(m_context->dataStore);
   if (m_context->logManager) {
     m_scanExecutor->setLogger(m_context->logManager);
+  }
+  if (m_context->safetyWatchManager) {
+    m_scanExecutor->setSafetyWatchManager(m_context->safetyWatchManager);
   }
 
   setupUI();
@@ -291,7 +296,8 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   m_programPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);  // Allow text selection
   fileLayout->addWidget(m_programPathLabel);
 
-  QHBoxLayout* fileButtonLayout = new QHBoxLayout();
+  QVBoxLayout* fileButtonLayout = new QVBoxLayout();
+  fileButtonLayout->setSpacing(5);
   m_newButton = new QPushButton("New");
   m_newButton->setStyleSheet(
     "QPushButton { "
@@ -1155,12 +1161,33 @@ void RunProgramPage::createExecutionWidget()
   QVBoxLayout* layout = new QVBoxLayout(m_executionWidget);
   layout->setContentsMargins(20, 20, 20, 20);
 
-  // Title (shows program file name when loaded)
+  // === HEADER SECTION ===
+  // Title row: Program title on left, status on right
+  QHBoxLayout* titleRow = new QHBoxLayout();
+
   m_executionTitleLabel = new QLabel("Program Execution");
   m_executionTitleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
-  layout->addWidget(m_executionTitleLabel);
+  titleRow->addWidget(m_executionTitleLabel);
 
-  // Status
+  titleRow->addStretch();
+
+  // Program status indicator (Idle/Running/Stopped)
+  m_programStatusLabel = new QLabel("Idle");
+  m_programStatusLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #3f3f46; "
+    "  color: #888888; "
+    "  padding: 4px 12px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
+  titleRow->addWidget(m_programStatusLabel);
+
+  layout->addLayout(titleRow);
+
+  // Status row
   m_executionStatusLabel = new QLabel("Ready to execute");
   m_executionStatusLabel->setStyleSheet("font-size: 14px; color: #cccccc;");
   layout->addWidget(m_executionStatusLabel);
@@ -1170,19 +1197,42 @@ void RunProgramPage::createExecutionWidget()
   m_currentRecipeLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0e639c;");
   layout->addWidget(m_currentRecipeLabel);
 
-  layout->addSpacing(20);
+  layout->addSpacing(10);
 
-  // Create stacked widget to switch between log and prompt
-  m_executionStack = new QStackedWidget();
+  // === TAB WIDGET FOR LOG AND LIVE VIEW ===
+  m_executionTabWidget = new QTabWidget();
+  m_executionTabWidget->setStyleSheet(R"(
+    QTabWidget::pane {
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      background-color: #1e1e1e;
+    }
+    QTabBar::tab {
+      background-color: #2d2d2d;
+      color: #a0a0a0;
+      padding: 8px 16px;
+      margin-right: 2px;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      font-size: 12px;
+    }
+    QTabBar::tab:selected {
+      background-color: #0078d4;
+      color: white;
+    }
+    QTabBar::tab:hover:!selected {
+      background-color: #3d3d3d;
+    }
+  )");
 
-  // === LOG VIEW (Index 0) ===
-  QWidget* logWidget = new QWidget();
-  QVBoxLayout* logLayout = new QVBoxLayout(logWidget);
-  logLayout->setContentsMargins(0, 0, 0, 0);
+  // === EXECUTION LOG TAB ===
+  QWidget* logTab = new QWidget();
+  QVBoxLayout* logTabLayout = new QVBoxLayout(logTab);
+  logTabLayout->setContentsMargins(5, 5, 5, 5);
 
   QLabel* logLabel = new QLabel("Execution Log:");
   logLabel->setStyleSheet("font-weight: bold; color: #ffffff;");
-  logLayout->addWidget(logLabel);
+  logTabLayout->addWidget(logLabel);
 
   m_logTextEdit = new QTextEdit();
   m_logTextEdit->setReadOnly(true);
@@ -1196,9 +1246,34 @@ void RunProgramPage::createExecutionWidget()
     "  font-size: 14px; "
     "}"
   );
-  logLayout->addWidget(m_logTextEdit, 1);
+  logTabLayout->addWidget(m_logTextEdit, 1);
 
   m_executionLogLabel = logLabel;
+
+  m_executionTabWidget->addTab(logTab, "Execution Log");
+
+  // === LIVE VIEW TAB ===
+  QWidget* liveViewTab = new QWidget();
+  QVBoxLayout* liveViewTabLayout = new QVBoxLayout(liveViewTab);
+  liveViewTabLayout->setContentsMargins(5, 5, 5, 5);
+
+  if (m_context->cameraManager && m_context->motionManager) {
+    m_liveViewWidget = new CameraClickToMoveWidget(m_context->cameraManager, m_context->motionManager);
+    m_liveViewWidget->setClickToMoveEnabled(false);  // Disable click-to-move by default
+    m_liveViewWidget->setCrosshairEnabled(false);    // Disable crosshair by default
+    liveViewTabLayout->addWidget(m_liveViewWidget, 1);
+  } else {
+    QLabel* noCamera = new QLabel("Camera not available");
+    noCamera->setAlignment(Qt::AlignCenter);
+    noCamera->setStyleSheet("color: #888888; font-size: 14px;");
+    liveViewTabLayout->addWidget(noCamera, 1);
+    m_liveViewWidget = nullptr;
+  }
+
+  m_executionTabWidget->addTab(liveViewTab, "Live View");
+
+  // Create stacked widget to switch between tabs and prompt/input views
+  m_executionStack = new QStackedWidget();
 
   // === PROMPT VIEW (Index 1) ===
   m_promptWidget = new UserPromptWidget();
@@ -1254,12 +1329,12 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onUserInputResponse);
 
   // Add all views to stack
-  m_executionStack->addWidget(logWidget);                 // Index 0: Log
+  m_executionStack->addWidget(m_executionTabWidget);      // Index 0: Tabs (Log + Live View)
   m_executionStack->addWidget(m_promptWidget);            // Index 1: Prompt
   m_executionStack->addWidget(m_manualAdjustWidget);      // Index 2: Manual Adjust
   m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
   m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
-  m_executionStack->setCurrentIndex(0);                   // Start with log
+  m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
   layout->addWidget(m_executionStack, 1);
 
@@ -1707,6 +1782,19 @@ void RunProgramPage::onExecuteProgram()
     "  font-weight: bold; "
     "}");
 
+  // Update program status indicator
+  m_programStatusLabel->setText("Running");
+  m_programStatusLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #4caf50; "
+    "  color: white; "
+    "  padding: 4px 12px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
+
   m_autoRunNextCheckBox->setEnabled(false);
 
   // ✅ Set ManualAlignPoint callback on SequenceEngine (thread-aware)
@@ -1847,6 +1935,17 @@ void RunProgramPage::onExecuteProgram()
     this, &RunProgramPage::onSequenceExecutionStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::waitProgress,
     this, &RunProgramPage::onWaitProgress, Qt::QueuedConnection);
+
+  // Connect safety watch - auto-stop on critical safety flag
+  if (m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
+            m_programWorker, [this](QString title, QString message, bool critical) {
+      if (critical && m_programWorker) {
+        std::cout << "[RunProgramPage] Critical safety flag - stopping program worker" << std::endl;
+        m_programWorker->requestStop();
+      }
+    }, Qt::DirectConnection);  // Direct connection for immediate response
+  }
 
   std::cout << "[RunProgramPage] All signals connected, main thread ID: " << QThread::currentThreadId() << std::endl;
   std::cout.flush();
@@ -2094,6 +2193,19 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
     "  background-color: #cccccc; "
     "}");
 
+  // Update program status indicator
+  m_programStatusLabel->setText("Idle");
+  m_programStatusLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #3f3f46; "
+    "  color: #888888; "
+    "  padding: 4px 12px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
+
   std::cout << "[RunProgramPage] Enabling auto-run checkbox..." << std::endl;
   std::cout.flush();
   m_autoRunNextCheckBox->setEnabled(true);
@@ -2132,6 +2244,19 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 void RunProgramPage::onProgramStopped()
 {
   m_isExecuting = false;
+
+  // ✅ Update status label to "Stopped"
+  m_programStatusLabel->setText("Stopped");
+  m_programStatusLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #ef4444; "
+    "  color: white; "
+    "  padding: 4px 12px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
 
   // Re-enable execute button
   m_executeButton->setText("▶ Execute Program");
