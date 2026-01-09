@@ -248,4 +248,22 @@ private:
   SequenceContext* m_currentContext;     // ✅ Current execution context
   void updateVisionResultImage();        // ✅ Update vision result image from context
   void clearVisionResult();              // ✅ Clear stale vision result
+
+  // Context Tab Components (real-time context variable viewer)
+  QWidget* m_contextTabWidget;           // Container widget for context tab
+  QTableWidget* m_contextTable;          // Table showing context variables
+  QLineEdit* m_contextFilterEdit;        // Filter/search textbox
+  QLabel* m_contextStatusLabel;          // Status label (e.g., "12 variables")
+  QTimer* m_contextRefreshTimer;         // 500ms refresh timer
+  QPushButton* m_contextCopyButton;      // Copy to clipboard button
+  QPushButton* m_contextExportButton;    // Export to CSV button
+
+  // Context tab methods
+  void createContextTab();                             // Creates the context tab UI
+  void updateContextTable();                           // Refreshes table from context
+  void onContextFilterChanged(const QString& filter);  // Handles filter text changes
+  void startContextRefreshTimer();                     // Starts the 500ms timer
+  void stopContextRefreshTimer();                      // Stops the timer
+  void onContextCopyToClipboard();                     // Copy context to clipboard
+  void onContextExportToCsv();                         // Export context to CSV file
 };

@@ -18,6 +18,7 @@
 #include "RecipeManager.h"
 #include "product_position_manager.h"  // ✅ For product folder path
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
+#include "SequenceContext.h"     // For context tab
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -37,7 +38,10 @@
 #include <QTableWidgetItem>
 #include <QSettings>
 #include <QFile>
+#include <QTextStream>
 #include <QDir>
+#include <QClipboard>
+#include <QDateTime>
 #include <iostream>
 #include <cmath>
 #include <memory>  // For std::make_shared
@@ -82,6 +86,13 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_visionResultGroup(nullptr)       // ✅ Vision result group
   , m_visionResultImageLabel(nullptr)  // ✅ Vision result image
   , m_currentContext(nullptr)          // ✅ Execution context
+  , m_contextTabWidget(nullptr)        // Context tab container
+  , m_contextTable(nullptr)            // Context variables table
+  , m_contextFilterEdit(nullptr)       // Context filter textbox
+  , m_contextStatusLabel(nullptr)      // Context status label
+  , m_contextRefreshTimer(nullptr)     // Context refresh timer
+  , m_contextCopyButton(nullptr)       // Copy to clipboard button
+  , m_contextExportButton(nullptr)     // Export to CSV button
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -114,6 +125,9 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
 
 RunProgramPage::~RunProgramPage()
 {
+  // Stop context refresh timer
+  stopContextRefreshTimer();
+
   // ✅ ADDED: Unsubscribe from DataStore
   if (m_dataStore && !m_currentSubscribedChannel.isEmpty()) {
     m_dataStore->Unsubscribe(m_currentSubscribedChannel.toStdString());
@@ -1357,6 +1371,10 @@ void RunProgramPage::createExecutionWidget()
 
   m_executionTabWidget->addTab(liveViewTab, "Live View");
 
+  // === CONTEXT TAB (Index 2) ===
+  createContextTab();
+  m_executionTabWidget->addTab(m_contextTabWidget, "Context");
+
   // ✅ Connect tab change to initialize camera when Live View tab is selected
   connect(m_executionTabWidget, &QTabWidget::currentChanged, this, [this](int index) {
     std::cout << "[RunProgramPage] Tab changed to index: " << index << std::endl;
@@ -2055,6 +2073,9 @@ void RunProgramPage::onExecuteProgram()
   std::cout << "[RunProgramPage] ProgramWorker started" << std::endl;
   std::cout.flush();
 
+  // Start context refresh timer for real-time context tab updates
+  startContextRefreshTimer();
+
   // ✅ Workaround: Poll for thread completion using QTimer::singleShot chain
   // This is more reliable than regular timer for cross-thread scenarios
   auto checkCountPtr = std::make_shared<int>(0);
@@ -2276,6 +2297,9 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
             << ", message=" << message.toStdString() << std::endl;
   std::cout.flush();
 
+  // Stop context refresh timer
+  stopContextRefreshTimer();
+
   std::cout << "[RunProgramPage] Setting m_isExecuting to false..." << std::endl;
   std::cout.flush();
   m_isExecuting = false;
@@ -2357,6 +2381,9 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 
 void RunProgramPage::onProgramStopped()
 {
+  // Stop context refresh timer
+  stopContextRefreshTimer();
+
   m_isExecuting = false;
 
   // ✅ Reset command tracker
@@ -3654,4 +3681,402 @@ void RunProgramPage::clearVisionResult()
     );
     std::cout << "[RunProgramPage] ✅ Vision result label reset to initial state" << std::endl;
   }
+}
+
+// ============================================================================
+// CONTEXT TAB - Real-time Sequence Context Variable Viewer
+// ============================================================================
+
+void RunProgramPage::createContextTab()
+{
+  m_contextTabWidget = new QWidget();
+  QVBoxLayout* contextLayout = new QVBoxLayout(m_contextTabWidget);
+  contextLayout->setContentsMargins(5, 5, 5, 5);
+  contextLayout->setSpacing(8);
+
+  // Header row with filter and status
+  QHBoxLayout* headerLayout = new QHBoxLayout();
+
+  QLabel* filterLabel = new QLabel("Filter:");
+  filterLabel->setStyleSheet("color: #d4d4d4; font-weight: bold;");
+  headerLayout->addWidget(filterLabel);
+
+  m_contextFilterEdit = new QLineEdit();
+  m_contextFilterEdit->setPlaceholderText("Type to filter variables...");
+  m_contextFilterEdit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "  min-width: 200px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #0e639c; "
+    "}"
+  );
+  headerLayout->addWidget(m_contextFilterEdit, 1);
+
+  m_contextStatusLabel = new QLabel("No context data");
+  m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+  headerLayout->addWidget(m_contextStatusLabel);
+
+  contextLayout->addLayout(headerLayout);
+
+  // Context variables table
+  m_contextTable = new QTableWidget();
+  m_contextTable->setColumnCount(3);
+  m_contextTable->setHorizontalHeaderLabels({"Variable", "Value", "Type"});
+  m_contextTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_contextTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_contextTable->setAlternatingRowColors(true);
+
+  // Column widths
+  m_contextTable->setColumnWidth(0, 200);  // Variable name
+  m_contextTable->setColumnWidth(1, 300);  // Value
+  m_contextTable->horizontalHeader()->setStretchLastSection(true);  // Type stretches
+
+  m_contextTable->verticalHeader()->setVisible(false);
+  m_contextTable->setSortingEnabled(true);
+
+  m_contextTable->setStyleSheet(
+    "QTableWidget { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  gridline-color: #3f3f46; "
+    "  color: #d4d4d4; "
+    "} "
+    "QTableWidget::item { "
+    "  padding: 4px; "
+    "} "
+    "QTableWidget::item:alternate { "
+    "  background-color: #252526; "
+    "} "
+    "QTableWidget::item:selected { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "} "
+    "QHeaderView::section { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  padding: 6px; "
+    "  border: 1px solid #3f3f46; "
+    "  font-weight: bold; "
+    "}"
+  );
+
+  contextLayout->addWidget(m_contextTable, 1);
+
+  // Button row for copy/export
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->addStretch();
+
+  m_contextCopyButton = new QPushButton("Copy to Clipboard");
+  m_contextCopyButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 6px 12px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #606060; "
+    "}"
+  );
+  buttonLayout->addWidget(m_contextCopyButton);
+
+  m_contextExportButton = new QPushButton("Export to CSV");
+  m_contextExportButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 6px 12px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #606060; "
+    "}"
+  );
+  buttonLayout->addWidget(m_contextExportButton);
+
+  contextLayout->addLayout(buttonLayout);
+
+  // Connect filter textbox
+  connect(m_contextFilterEdit, &QLineEdit::textChanged,
+    this, &RunProgramPage::onContextFilterChanged);
+
+  // Connect buttons
+  connect(m_contextCopyButton, &QPushButton::clicked,
+    this, &RunProgramPage::onContextCopyToClipboard);
+  connect(m_contextExportButton, &QPushButton::clicked,
+    this, &RunProgramPage::onContextExportToCsv);
+
+  // Create refresh timer (but don't start yet)
+  m_contextRefreshTimer = new QTimer(this);
+  m_contextRefreshTimer->setInterval(500);  // 500ms update interval
+  connect(m_contextRefreshTimer, &QTimer::timeout,
+    this, &RunProgramPage::updateContextTable);
+
+  std::cout << "[RunProgramPage] Context tab created" << std::endl;
+}
+
+void RunProgramPage::updateContextTable()
+{
+  // Safety check: Don't access context if worker is not actively running
+  // This prevents race conditions during worker thread shutdown
+  // But preserve the existing table contents (don't clear them)
+  if (!m_programWorker || !m_programWorker->isRunning()) {
+    // Keep existing table data visible, just update status to show it's from last run
+    if (m_contextTable->rowCount() > 0) {
+      m_contextStatusLabel->setText(QString("%1 variables (last run)").arg(m_contextTable->rowCount()));
+      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+    } else {
+      m_contextStatusLabel->setText("No context data");
+      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+    }
+    return;
+  }
+
+  // Get context from ProgramWorker (thread-safe)
+  SequenceContext* context = m_programWorker->getCurrentContext();
+
+  if (!context) {
+    // Keep existing table data if we have any
+    if (m_contextTable->rowCount() > 0) {
+      m_contextStatusLabel->setText(QString("%1 variables (last run)").arg(m_contextTable->rowCount()));
+      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+    } else {
+      m_contextStatusLabel->setText("No context data");
+      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+    }
+    return;
+  }
+
+  // Get current filter text
+  QString filterText = m_contextFilterEdit->text().toLower().trimmed();
+
+  // Get summary from context (thread-safe via internal mutex)
+  auto summary = context->GetSummary();
+
+  // Temporarily disable sorting for performance
+  m_contextTable->setSortingEnabled(false);
+  m_contextTable->setRowCount(0);
+
+  int totalCount = 0;
+  int shownCount = 0;
+
+  for (const auto& [key, value] : summary.capturedValues) {
+    totalCount++;
+
+    // Apply filter
+    QString keyStr = QString::fromStdString(key);
+    if (!filterText.isEmpty() && !keyStr.toLower().contains(filterText)) {
+      continue;
+    }
+
+    shownCount++;
+    int row = m_contextTable->rowCount();
+    m_contextTable->insertRow(row);
+
+    // Variable name
+    QTableWidgetItem* keyItem = new QTableWidgetItem(keyStr);
+    keyItem->setForeground(QColor(86, 156, 214));  // Blue for variable names
+    m_contextTable->setItem(row, 0, keyItem);
+
+    // Value and type
+    QString valueStr;
+    QString typeStr;
+    QColor valueColor;
+
+    switch (value.type) {
+      case SequenceContext::ValueType::NUMERIC:
+        valueStr = QString::number(value.numericValue, 'g', 8);
+        typeStr = "Numeric";
+        valueColor = QColor(181, 206, 168);  // Green for numbers
+        break;
+      case SequenceContext::ValueType::STRING:
+        valueStr = QString::fromStdString(value.stringValue);
+        typeStr = "String";
+        valueColor = QColor(206, 145, 120);  // Orange for strings
+        break;
+      case SequenceContext::ValueType::BOOLEAN:
+        valueStr = value.booleanValue ? "true" : "false";
+        typeStr = "Boolean";
+        valueColor = QColor(86, 156, 214);  // Blue for booleans
+        break;
+      case SequenceContext::ValueType::IMAGE_FRAME:
+        valueStr = "[Image Frame]";
+        if (!value.tempFilePath.empty()) {
+          valueStr += QString(" (%1)").arg(QString::fromStdString(value.tempFilePath));
+        }
+        typeStr = "Image";
+        valueColor = QColor(220, 220, 170);  // Yellow for images
+        break;
+      default:
+        valueStr = "(none)";
+        typeStr = "None";
+        valueColor = QColor(128, 128, 128);  // Gray for none
+        break;
+    }
+
+    QTableWidgetItem* valueItem = new QTableWidgetItem(valueStr);
+    valueItem->setForeground(valueColor);
+    m_contextTable->setItem(row, 1, valueItem);
+
+    // Type
+    QTableWidgetItem* typeItem = new QTableWidgetItem(typeStr);
+    typeItem->setForeground(QColor(128, 128, 128));  // Gray for type
+    m_contextTable->setItem(row, 2, typeItem);
+  }
+
+  // Re-enable sorting
+  m_contextTable->setSortingEnabled(true);
+
+  // Update status label
+  m_contextStatusLabel->setStyleSheet("color: #4ec9b0;");  // Teal color
+  if (filterText.isEmpty()) {
+    m_contextStatusLabel->setText(QString("%1 variables").arg(totalCount));
+  } else {
+    m_contextStatusLabel->setText(QString("%1 of %2 variables").arg(shownCount).arg(totalCount));
+  }
+}
+
+void RunProgramPage::onContextFilterChanged(const QString& filter)
+{
+  Q_UNUSED(filter);
+  // Immediately update the table with new filter
+  updateContextTable();
+}
+
+void RunProgramPage::startContextRefreshTimer()
+{
+  if (m_contextRefreshTimer && !m_contextRefreshTimer->isActive()) {
+    std::cout << "[RunProgramPage] Starting context refresh timer (500ms)" << std::endl;
+    updateContextTable();  // Immediate update
+    m_contextRefreshTimer->start();
+  }
+}
+
+void RunProgramPage::stopContextRefreshTimer()
+{
+  if (m_contextRefreshTimer && m_contextRefreshTimer->isActive()) {
+    std::cout << "[RunProgramPage] Stopping context refresh timer" << std::endl;
+    m_contextRefreshTimer->stop();
+    // Final update to show end state
+    updateContextTable();
+  }
+}
+
+void RunProgramPage::onContextCopyToClipboard()
+{
+  if (!m_contextTable || m_contextTable->rowCount() == 0) {
+    std::cout << "[RunProgramPage] No context data to copy" << std::endl;
+    return;
+  }
+
+  // Build tab-separated text from table contents
+  QString clipboardText;
+  clipboardText += "Variable\tValue\tType\n";  // Header row
+
+  for (int row = 0; row < m_contextTable->rowCount(); ++row) {
+    QTableWidgetItem* varItem = m_contextTable->item(row, 0);
+    QTableWidgetItem* valueItem = m_contextTable->item(row, 1);
+    QTableWidgetItem* typeItem = m_contextTable->item(row, 2);
+
+    QString varName = varItem ? varItem->text() : "";
+    QString value = valueItem ? valueItem->text() : "";
+    QString type = typeItem ? typeItem->text() : "";
+
+    clipboardText += QString("%1\t%2\t%3\n").arg(varName, value, type);
+  }
+
+  // Copy to clipboard
+  QClipboard* clipboard = QApplication::clipboard();
+  clipboard->setText(clipboardText);
+
+  std::cout << "[RunProgramPage] Copied " << m_contextTable->rowCount() << " context variables to clipboard" << std::endl;
+
+  // Brief visual feedback - change button text temporarily
+  m_contextCopyButton->setText("Copied!");
+  QTimer::singleShot(1500, this, [this]() {
+    m_contextCopyButton->setText("Copy to Clipboard");
+  });
+}
+
+void RunProgramPage::onContextExportToCsv()
+{
+  if (!m_contextTable || m_contextTable->rowCount() == 0) {
+    std::cout << "[RunProgramPage] No context data to export" << std::endl;
+    return;
+  }
+
+  // Generate default filename with timestamp
+  QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+  QString defaultFileName = QString("context_export_%1.csv").arg(timestamp);
+
+  // Open file dialog
+  QString filePath = QFileDialog::getSaveFileName(
+    this,
+    "Export Context to CSV",
+    defaultFileName,
+    "CSV Files (*.csv);;All Files (*)"
+  );
+
+  if (filePath.isEmpty()) {
+    return;  // User cancelled
+  }
+
+  // Open file for writing
+  QFile file(filePath);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    std::cerr << "[RunProgramPage] Failed to open file for writing: " << filePath.toStdString() << std::endl;
+    return;
+  }
+
+  QTextStream stream(&file);
+
+  // Write CSV header
+  stream << "Variable,Value,Type\n";
+
+  // Write data rows
+  for (int row = 0; row < m_contextTable->rowCount(); ++row) {
+    QTableWidgetItem* varItem = m_contextTable->item(row, 0);
+    QTableWidgetItem* valueItem = m_contextTable->item(row, 1);
+    QTableWidgetItem* typeItem = m_contextTable->item(row, 2);
+
+    QString varName = varItem ? varItem->text() : "";
+    QString value = valueItem ? valueItem->text() : "";
+    QString type = typeItem ? typeItem->text() : "";
+
+    // Escape quotes in values and wrap in quotes if contains comma
+    auto escapeForCsv = [](const QString& str) -> QString {
+      QString escaped = str;
+      escaped.replace("\"", "\"\"");  // Double up quotes
+      if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n')) {
+        escaped = QString("\"%1\"").arg(escaped);
+      }
+      return escaped;
+    };
+
+    stream << escapeForCsv(varName) << "," << escapeForCsv(value) << "," << escapeForCsv(type) << "\n";
+  }
+
+  file.close();
+
+  std::cout << "[RunProgramPage] Exported " << m_contextTable->rowCount() << " context variables to: " << filePath.toStdString() << std::endl;
+
+  // Brief visual feedback
+  m_contextExportButton->setText("Exported!");
+  QTimer::singleShot(1500, this, [this]() {
+    m_contextExportButton->setText("Export to CSV");
+  });
 }
