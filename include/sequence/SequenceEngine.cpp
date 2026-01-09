@@ -45,7 +45,9 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   , m_stopRequested(false)  // ✅ Initialize stop flag
   , m_stepStartedCallback(nullptr)
   , m_stepCompletedCallback(nullptr)
+  , m_actionStartedCallback(nullptr)
   , m_currentStepIndex(-1)
+  , m_currentActionIndex(0)
   , m_breakpointCallback(nullptr)
   , m_stepByStepMode(false)
   , m_continueRequested(false)
@@ -337,6 +339,55 @@ void SequenceEngine::SetStepCompletedCallback(StepCompletedCallback callback)
   m_stepCompletedCallback = callback;
 }
 
+void SequenceEngine::SetActionStartedCallback(ActionStartedCallback callback)
+{
+  m_actionStartedCallback = callback;
+}
+
+void SequenceEngine::BuildActionList(SequenceBuilder* sequence)
+{
+  m_actionList.clear();
+  if (sequence) {
+    FlattenSteps(sequence->GetSteps());
+  }
+  std::cout << "[SequenceEngine] Built action list with " << m_actionList.size() << " actions" << std::endl;
+}
+
+void SequenceEngine::FlattenSteps(const std::vector<std::shared_ptr<ISequenceStep>>& steps)
+{
+  for (const auto& step : steps) {
+    if (!step) continue;
+
+    switch (step->GetType()) {
+    case ISequenceStep::Type::ACTION: {
+      Action* action = static_cast<Action*>(step.get());
+      m_actionList.emplace_back(action->deviceName, action->methodName);
+      break;
+    }
+    case ISequenceStep::Type::LOOP: {
+      LoopBlock* loop = static_cast<LoopBlock*>(step.get());
+      // For loops, we add actions for each iteration (approximate)
+      // This gives us a rough look-ahead for loops
+      for (int i = 0; i < loop->count; ++i) {
+        FlattenSteps(loop->actions);
+      }
+      break;
+    }
+    case ISequenceStep::Type::CONDITIONAL: {
+      ConditionalBlock* cond = static_cast<ConditionalBlock*>(step.get());
+      // For conditionals, add both branches (we don't know which will execute)
+      // This means look-ahead may not be 100% accurate for conditionals
+      FlattenSteps(cond->thenActions);
+      FlattenSteps(cond->elseActions);
+      break;
+    }
+    case ISequenceStep::Type::STEP_MARKER:
+      // Step markers don't add actions
+      break;
+    }
+  }
+}
+
 void SequenceEngine::SetBreakpointCallback(BreakpointCallback callback)
 {
   m_breakpointCallback = callback;
@@ -508,6 +559,10 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
   // Reset step tracking
   m_currentStepIndex = -1;
 
+  // ✅ Build action list for look-ahead
+  BuildActionList(sequence);
+  m_currentActionIndex = 0;
+
   try {
     for (size_t i = 0; i < sequence->GetSteps().size(); ++i) {
       // ✅ CHECK STOP FLAG BEFORE EACH STEP (check both engine and context flags)
@@ -568,6 +623,24 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     Action* action = static_cast<Action*>(step);
 
     LogInfo("⚙️ Executing: " + action->deviceName + "." + action->methodName);
+
+    // ✅ Notify action started callback with look-ahead info
+    if (m_actionStartedCallback) {
+      ActionInfo current(action->deviceName, action->methodName);
+      ActionInfo next;
+      ActionInfo afterNext;
+
+      // Look ahead in the action list
+      if (m_currentActionIndex + 1 < static_cast<int>(m_actionList.size())) {
+        next = m_actionList[m_currentActionIndex + 1];
+      }
+      if (m_currentActionIndex + 2 < static_cast<int>(m_actionList.size())) {
+        afterNext = m_actionList[m_currentActionIndex + 2];
+      }
+
+      m_actionStartedCallback(current, next, afterNext);
+      m_currentActionIndex++;
+    }
 
     // Get manager and type
     void* manager = ResolveManager(action->deviceName);

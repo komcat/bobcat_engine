@@ -1199,6 +1199,77 @@ void RunProgramPage::createExecutionWidget()
 
   layout->addSpacing(10);
 
+  // === COMMAND TRACKER ROW (4 cells: Past, Current, Next1, Next2) ===
+  m_commandTrackerRow = new QWidget();
+  QHBoxLayout* trackerLayout = new QHBoxLayout(m_commandTrackerRow);
+  trackerLayout->setContentsMargins(0, 0, 0, 0);
+  trackerLayout->setSpacing(4);
+
+  auto createTrackerCell = [](const QString& headerText, QLabel*& label) -> QWidget* {
+    QWidget* cell = new QWidget();
+    QVBoxLayout* cellLayout = new QVBoxLayout(cell);
+    cellLayout->setContentsMargins(8, 4, 8, 4);
+    cellLayout->setSpacing(2);
+
+    QLabel* header = new QLabel(headerText);
+    header->setStyleSheet("font-size: 10px; color: #888888; font-weight: bold;");
+    header->setAlignment(Qt::AlignCenter);
+    cellLayout->addWidget(header);
+
+    label = new QLabel("-");
+    label->setStyleSheet(
+      "QLabel { "
+      "  font-size: 11px; "
+      "  color: #cccccc; "
+      "  padding: 4px; "
+      "}"
+    );
+    label->setAlignment(Qt::AlignCenter);
+    label->setWordWrap(true);
+    label->setMinimumHeight(40);
+    cellLayout->addWidget(label);
+
+    cell->setStyleSheet(
+      "QWidget { "
+      "  background-color: #2d2d2d; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 4px; "
+      "}"
+    );
+    return cell;
+  };
+
+  // Create the 4 cells
+  QWidget* pastCell = createTrackerCell("PREVIOUS", m_cmdPastLabel);
+  QWidget* currentCell = createTrackerCell("CURRENT", m_cmdCurrentLabel);
+  QWidget* next1Cell = createTrackerCell("NEXT", m_cmdNext1Label);
+  QWidget* next2Cell = createTrackerCell("AFTER", m_cmdNext2Label);
+
+  // Style the current cell differently (highlighted)
+  currentCell->setStyleSheet(
+    "QWidget { "
+    "  background-color: #0e4f7c; "
+    "  border: 1px solid #0078d4; "
+    "  border-radius: 4px; "
+    "}"
+  );
+  m_cmdCurrentLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 11px; "
+    "  color: #ffffff; "
+    "  font-weight: bold; "
+    "  padding: 4px; "
+    "}"
+  );
+
+  trackerLayout->addWidget(pastCell, 1);
+  trackerLayout->addWidget(currentCell, 1);
+  trackerLayout->addWidget(next1Cell, 1);
+  trackerLayout->addWidget(next2Cell, 1);
+
+  layout->addWidget(m_commandTrackerRow);
+  layout->addSpacing(8);
+
   // === TAB WIDGET FOR LOG AND LIVE VIEW ===
   m_executionTabWidget = new QTabWidget();
   m_executionTabWidget->setStyleSheet(R"(
@@ -1258,10 +1329,24 @@ void RunProgramPage::createExecutionWidget()
   liveViewTabLayout->setContentsMargins(5, 5, 5, 5);
 
   if (m_context->cameraManager && m_context->motionManager) {
-    m_liveViewWidget = new CameraClickToMoveWidget(m_context->cameraManager, m_context->motionManager);
+    // Use unique subscriber ID for RunProgramPage's live view widget
+    m_liveViewWidget = new CameraClickToMoveWidget(
+      m_context->cameraManager,
+      m_context->motionManager,
+      nullptr,  // parent
+      "RunProgramPage_LiveView"  // unique subscriber ID
+    );
     m_liveViewWidget->setClickToMoveEnabled(false);  // Disable click-to-move by default
     m_liveViewWidget->setCrosshairEnabled(false);    // Disable crosshair by default
     liveViewTabLayout->addWidget(m_liveViewWidget, 1);
+
+    // ✅ FIX: Schedule camera initialization after widget is added to layout
+    QTimer::singleShot(1500, this, [this]() {
+      if (m_liveViewWidget) {
+        std::cout << "[RunProgramPage] Delayed init: calling selectFirstCameraDelayed()" << std::endl;
+        m_liveViewWidget->selectFirstCameraDelayed();
+      }
+    });
   } else {
     QLabel* noCamera = new QLabel("Camera not available");
     noCamera->setAlignment(Qt::AlignCenter);
@@ -1271,6 +1356,17 @@ void RunProgramPage::createExecutionWidget()
   }
 
   m_executionTabWidget->addTab(liveViewTab, "Live View");
+
+  // ✅ Connect tab change to initialize camera when Live View tab is selected
+  connect(m_executionTabWidget, &QTabWidget::currentChanged, this, [this](int index) {
+    std::cout << "[RunProgramPage] Tab changed to index: " << index << std::endl;
+    // Live View is at index 1
+    if (index == 1 && m_liveViewWidget) {
+      std::cout << "[RunProgramPage] Live View tab selected, triggering camera selection..." << std::endl;
+      // Trigger delayed camera selection when Live View tab is shown
+      m_liveViewWidget->selectFirstCameraDelayed();
+    }
+  });
 
   // Create stacked widget to switch between tabs and prompt/input views
   m_executionStack = new QStackedWidget();
@@ -1936,6 +2032,10 @@ void RunProgramPage::onExecuteProgram()
   connect(m_programWorker, &ProgramWorker::waitProgress,
     this, &RunProgramPage::onWaitProgress, Qt::QueuedConnection);
 
+  // ✅ Connect action-level signal for granular command tracking
+  connect(m_programWorker, &ProgramWorker::actionStarted,
+    this, &RunProgramPage::onActionStarted, Qt::QueuedConnection);
+
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
@@ -2058,6 +2158,13 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
   m_currentRecipeCompletedSteps = 0;
   m_progressBar->setValue(0);
 
+  // ✅ Reset command tracker
+  m_recipeStepNames.clear();
+  m_cmdPastLabel->setText("-");
+  m_cmdCurrentLabel->setText("Starting...");
+  m_cmdNext1Label->setText("-");
+  m_cmdNext2Label->setText("-");
+
   // Update list item to show running state
   QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
   if (item) {
@@ -2173,6 +2280,13 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   std::cout.flush();
   m_isExecuting = false;
 
+  // ✅ Reset command tracker
+  m_cmdPastLabel->setText("-");
+  m_cmdCurrentLabel->setText(success ? "Completed" : "Failed");
+  m_cmdNext1Label->setText("-");
+  m_cmdNext2Label->setText("-");
+  m_recipeStepNames.clear();
+
   std::cout << "[RunProgramPage] Updating execute button..." << std::endl;
   std::cout.flush();
 
@@ -2244,6 +2358,13 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 void RunProgramPage::onProgramStopped()
 {
   m_isExecuting = false;
+
+  // ✅ Reset command tracker
+  m_cmdPastLabel->setText("-");
+  m_cmdCurrentLabel->setText("Stopped");
+  m_cmdNext1Label->setText("-");
+  m_cmdNext2Label->setText("-");
+  m_recipeStepNames.clear();
 
   // ✅ Update status label to "Stopped"
   m_programStatusLabel->setText("Stopped");
@@ -2428,6 +2549,8 @@ void RunProgramPage::onStepBuildStarted(int recipeIndex, int stepIndex, QString 
     int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
     m_progressBar->setValue(progress);
   }
+
+  // Note: Command tracker is now updated by onActionStarted for more granular tracking
 }
 
 void RunProgramPage::onStepBuildCompleted(int recipeIndex, int stepIndex)
@@ -2440,6 +2563,23 @@ void RunProgramPage::onStepBuildCompleted(int recipeIndex, int stepIndex)
     int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
     m_progressBar->setValue(progress);
   }
+}
+
+void RunProgramPage::onActionStarted(int recipeIndex, QString current, QString next, QString afterNext)
+{
+  // Update the command tracker with the currently executing action and look-ahead
+  // The current step (from onStepBuildStarted) becomes the previous
+  QString prevCurrent = m_cmdCurrentLabel->text();
+  if (!prevCurrent.isEmpty() && prevCurrent != "Starting..." && prevCurrent != "-" && prevCurrent != "Completed") {
+    m_cmdPastLabel->setText(prevCurrent);
+  }
+
+  // Update current to show the executing action
+  m_cmdCurrentLabel->setText(current);
+
+  // Show next and after-next from look-ahead
+  m_cmdNext1Label->setText(next.isEmpty() ? "-" : next);
+  m_cmdNext2Label->setText(afterNext.isEmpty() ? "-" : afterNext);
 }
 
 void RunProgramPage::onSequenceExecutionStarted(int recipeIndex)

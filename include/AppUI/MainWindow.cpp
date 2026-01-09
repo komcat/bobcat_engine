@@ -401,27 +401,48 @@ void MainWindow::updateProductInfo()
 
 void MainWindow::onMainMenuProcess()
 {
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
   std::cout << "[MainWindow] Process clicked" << std::endl;
   m_context->logManager->Info("Navigating to Run Program page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_runProgramPage);  // ✅ CHANGED FROM WARNING
+  m_pageStack->setCurrentWidget(m_runProgramPage);
 }
 
 void MainWindow::onMainMenuRecipe()
 {
   std::cout << "[MainWindow] Recipe clicked" << std::endl;
   m_context->logManager->Info("Navigating to Recipe page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_recipePage);  // ✅ CHANGED FROM WARNING
+  m_pageStack->setCurrentWidget(m_recipePage);
 }
 
 void MainWindow::onMainMenuMotion()
 {
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
   std::cout << "[MainWindow] Motion clicked" << std::endl;
   m_context->logManager->Info("Navigating to Motion page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_motionPage);  // NEW - Navigate to motion page
+  m_pageStack->setCurrentWidget(m_motionPage);
 }
 
 void MainWindow::onMainMenuHardware()
 {
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
   std::cout << "[MainWindow] Hardware clicked" << std::endl;
   m_context->logManager->Info("Navigating to Hardware & Instrument page", "MainWindow");
   m_pageStack->setCurrentWidget(m_hardwarePage);
@@ -429,6 +450,13 @@ void MainWindow::onMainMenuHardware()
 
 void MainWindow::onMainMenuEditConfig()
 {
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
   std::cout << "[MainWindow] Edit Config clicked" << std::endl;
   m_context->logManager->Info("Navigating to Config Editor page", "MainWindow");
   m_pageStack->setCurrentWidget(m_configEditorPage);
@@ -436,6 +464,13 @@ void MainWindow::onMainMenuEditConfig()
 
 void MainWindow::onMainMenuFutureUpdate()
 {
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
   std::cout << "[MainWindow] Vision Manager clicked" << std::endl;
   m_context->logManager->Info("Navigating to Vision Manager page", "MainWindow");
   m_pageStack->setCurrentWidget(m_visionManagerPage);
@@ -468,6 +503,13 @@ void MainWindow::onOpenLogViewer()
     }
     m_previousPage = nullptr;
   } else {
+    // Check for unsaved changes if leaving RecipePage
+    if (m_pageStack->currentWidget() == m_recipePage) {
+      if (!m_recipePage->canLeavePage()) {
+        return;  // User cancelled navigation
+      }
+    }
+
     // Open log viewer and save current page
     std::cout << "[MainWindow] Opening log viewer" << std::endl;
     m_context->logManager->Info("Opening full log viewer", "MainWindow");

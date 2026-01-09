@@ -540,6 +540,12 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     emit sequenceExecutionStarted(recipeIndex);
   });
 
+  // Forward action started signals with look-ahead
+  connect(recipeWorker, &RecipeWorker::actionStarted,
+    this, [this, recipeIndex](QString current, QString next, QString afterNext) {
+    emit actionStarted(recipeIndex, current, next, afterNext);
+  });
+
   // Forward log messages
   connect(recipeWorker, &RecipeWorker::logMessage,
     this, &ProgramWorker::logMessage);

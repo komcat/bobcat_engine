@@ -29,11 +29,13 @@ static constexpr const char* CALIBRATION_CONFIG_FILE = "config/SYSTEM/val_pixelm
 
 CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
                                                    UnifiedMotionManager* motionManager,
-                                                   QWidget* parent)
+                                                   QWidget* parent,
+                                                   const std::string& subscriberId)
   : QWidget(parent)
   , m_cameraManager(cameraManager)
   , m_motionManager(motionManager)
   , m_subscriber(nullptr)
+  , m_subscriberId(subscriberId)  // ✅ Store unique subscriber ID
   , m_zoomPercent(100)
   , m_clickToMoveEnabled(false)
   , m_centerCrosshairEnabled(false)
@@ -42,6 +44,7 @@ CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
   , m_pixelToMmFactorY(0.00248)
   , m_initialCameraSelected(false)  // ✅ ADD: Initialize flag
 {
+  std::cout << "[CameraClickToMoveWidget] Created with subscriber ID: " << m_subscriberId << std::endl;
   // Load saved settings
   loadSettingsFromQSettings();
 
@@ -365,9 +368,15 @@ void CameraClickToMoveWidget::onCameraSelected(int index)
 
 void CameraClickToMoveWidget::setCamera(const std::string& cameraId)
 {
-  if (cameraId == m_currentCameraId) return;
+  std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] setCamera called with: '"
+            << cameraId << "' (current: '" << m_currentCameraId << "')" << std::endl;
 
-  std::cout << "[CameraClickToMoveWidget] Switching to camera: " << cameraId << std::endl;
+  if (cameraId == m_currentCameraId) {
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] Same camera, skipping" << std::endl;
+    return;
+  }
+
+  std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] Switching to camera: " << cameraId << std::endl;
 
   // Unsubscribe from previous camera
   unsubscribeFromCameraFeed();
@@ -414,20 +423,33 @@ std::string CameraClickToMoveWidget::getCurrentCamera() const
 
 void CameraClickToMoveWidget::subscribeToCameraFeed(const std::string& cameraId)
 {
-  if (!m_cameraManager || cameraId.empty()) return;
+  std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] subscribeToCameraFeed called for: " << cameraId << std::endl;
+
+  if (!m_cameraManager) {
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] ERROR: No camera manager!" << std::endl;
+    return;
+  }
+  if (cameraId.empty()) {
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] ERROR: Empty camera ID!" << std::endl;
+    return;
+  }
 
   // ✅ FIX: Only start grabbing if not already running (avoid unnecessary camera restart)
   ICameraHardware* camera = m_cameraManager->GetCameraHardware(cameraId);
   if (camera && !camera->IsGrabbing()) {
-    std::cout << "[CameraClickToMoveWidget] Camera not grabbing - starting now..." << std::endl;
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] Camera not grabbing - starting now..." << std::endl;
     m_cameraManager->StartGrabbing(cameraId);
+  } else if (!camera) {
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] WARNING: Camera hardware not found for: " << cameraId << std::endl;
+  } else {
+    std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] Camera already grabbing" << std::endl;
   }
 
-  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId, "AuxWindow_ClickToMove");
+  m_subscriber = std::make_shared<LiveVideoSubscriber>(cameraId, m_subscriberId);
   m_subscriber->InitializeStatusFromManager(m_cameraManager);
   m_cameraManager->SubscribeToFrames(m_subscriber);
 
-  std::cout << "[CameraClickToMoveWidget] Subscribed to camera: " << cameraId << std::endl;
+  std::cout << "[CameraClickToMoveWidget:" << m_subscriberId << "] ✓ Subscribed to camera: " << cameraId << std::endl;
 }
 
 void CameraClickToMoveWidget::unsubscribeFromCameraFeed()
@@ -807,20 +829,23 @@ void CameraClickToMoveWidget::selectFirstCameraDelayed()
           }
 
           if (camera1Index >= 0) {
-            QString cameraName = m_cameraSelector->itemData(camera1Index).toString();
+            QString cameraId = m_cameraSelector->itemData(camera1Index).toString();
             std::cout << "[CameraClickToMoveWidget] ✓ Found camera_1 at index " << camera1Index
                       << ", selecting now..." << std::endl;
-            std::cout << "[CameraClickToMoveWidget] About to call setCurrentIndex(" << camera1Index << ")" << std::endl;
             m_cameraSelector->setCurrentIndex(camera1Index);
-            std::cout << "[CameraClickToMoveWidget] setCurrentIndex() called, camera selection triggered" << std::endl;
+            // ✅ FIX: Directly call setCamera to ensure subscription happens
+            setCamera(cameraId.toStdString());
+            std::cout << "[CameraClickToMoveWidget] Camera selection completed: " << cameraId.toStdString() << std::endl;
           } else {
             // Fallback to first camera if camera_1 not found
-            QString cameraName = m_cameraSelector->itemData(0).toString();
+            QString cameraId = m_cameraSelector->itemData(0).toString();
             std::cout << "[CameraClickToMoveWidget] ✗ camera_1 NOT FOUND in dropdown!" << std::endl;
             std::cout << "[CameraClickToMoveWidget] Falling back to first camera: "
-                      << cameraName.toStdString() << " (index 0)" << std::endl;
+                      << cameraId.toStdString() << " (index 0)" << std::endl;
             m_cameraSelector->setCurrentIndex(0);
-            std::cout << "[CameraClickToMoveWidget] Fallback camera selection triggered" << std::endl;
+            // ✅ FIX: Directly call setCamera to ensure subscription happens
+            setCamera(cameraId.toStdString());
+            std::cout << "[CameraClickToMoveWidget] Fallback camera selection completed: " << cameraId.toStdString() << std::endl;
           }
         } else {
           std::cout << "[CameraClickToMoveWidget] Skipping selection - count: " << m_cameraSelector->count()

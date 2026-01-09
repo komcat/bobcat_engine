@@ -27,6 +27,25 @@ using UserPromptCallback = std::function<bool(const std::string& title, const st
 using StepStartedCallback = std::function<void(int stepIndex, const std::string& stepName, const std::string& stepType)>;
 using StepCompletedCallback = std::function<void(int stepIndex, bool success)>;
 
+// Action info for command tracker
+struct ActionInfo {
+  std::string deviceName;
+  std::string methodName;
+  bool isValid = false;
+
+  ActionInfo() = default;
+  ActionInfo(const std::string& dev, const std::string& method)
+    : deviceName(dev), methodName(method), isValid(true) {}
+
+  std::string toString() const {
+    return isValid ? (deviceName + "." + methodName) : "";
+  }
+};
+
+// Callback for individual action execution with look-ahead info
+// Parameters: current action, next action, after-next action
+using ActionStartedCallback = std::function<void(const ActionInfo& current, const ActionInfo& next, const ActionInfo& afterNext)>;
+
 //=============================================================================
 // SEQUENCE STEP INTERFACE
 //=============================================================================
@@ -148,6 +167,7 @@ public:
   // Step execution event callbacks (pub-sub)
   void SetStepStartedCallback(StepStartedCallback callback);
   void SetStepCompletedCallback(StepCompletedCallback callback);
+  void SetActionStartedCallback(ActionStartedCallback callback);
 
   // Breakpoint callback - called when execution hits a breakpoint (for UI notification)
   using BreakpointCallback = std::function<void(int stepIndex, const std::string& stepName)>;
@@ -201,7 +221,14 @@ private:
   // Step execution event callbacks
   StepStartedCallback m_stepStartedCallback;
   StepCompletedCallback m_stepCompletedCallback;
+  ActionStartedCallback m_actionStartedCallback;
   int m_currentStepIndex;  // Track current step for completion callback
+
+  // Action list for look-ahead (built before execution)
+  std::vector<ActionInfo> m_actionList;
+  int m_currentActionIndex;
+  void BuildActionList(SequenceBuilder* sequence);
+  void FlattenSteps(const std::vector<std::shared_ptr<ISequenceStep>>& steps);
 
   // Breakpoint support
   BreakpointCallback m_breakpointCallback;

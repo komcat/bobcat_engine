@@ -176,7 +176,7 @@ void RecipePage::setupUI()
   m_backButton = new QPushButton("← Back to Main Menu");
   m_backButton->setFixedHeight(28);
   m_backButton->setStyleSheet(RecipeStyles::backButton());
-  connect(m_backButton, &QPushButton::clicked, this, &RecipePage::backToMainMenu);
+  connect(m_backButton, &QPushButton::clicked, this, &RecipePage::onBackButtonClicked);
   titleLayout->addWidget(m_backButton);
 
   QLabel* titleLabel = new QLabel("Recipe Editor");
@@ -3946,5 +3946,80 @@ void RecipePage::showEvent(QShowEvent* event)
       std::cerr << "[RecipePage] Hot reload: Failed to reload product from '"
                 << productPath << "'" << std::endl;
     }
+  }
+}
+
+// ============================================================================
+// UNSAVED CHANGES HANDLING
+// ============================================================================
+
+void RecipePage::onBackButtonClicked()
+{
+  // Check for unsaved changes before allowing navigation
+  if (canLeavePage()) {
+    emit backToMainMenu();
+  }
+}
+
+bool RecipePage::canLeavePage()
+{
+  // Skip check if recipe is currently executing
+  if (m_recipeWorker && m_recipeWorker->isRunning()) {
+    QMessageBox::warning(this, "Recipe Running",
+      "Cannot leave while a recipe is executing.\nPlease stop the recipe first.");
+    return false;
+  }
+
+  // Check for unsaved changes
+  if (!m_recipeManager->hasUnsavedChanges()) {
+    return true;  // No changes, can leave
+  }
+
+  // Show dialog asking user what to do
+  QMessageBox msgBox(this);
+  msgBox.setWindowTitle("Unsaved Changes");
+  msgBox.setText("The recipe has unsaved changes.");
+  msgBox.setInformativeText("Do you want to save your changes before leaving?");
+  msgBox.setIcon(QMessageBox::Question);
+
+  QPushButton* saveButton = msgBox.addButton("Save", QMessageBox::AcceptRole);
+  QPushButton* discardButton = msgBox.addButton("Discard", QMessageBox::DestructiveRole);
+  QPushButton* cancelButton = msgBox.addButton("Cancel", QMessageBox::RejectRole);
+
+  msgBox.setDefaultButton(saveButton);
+
+  msgBox.exec();
+
+  QAbstractButton* clickedButton = msgBox.clickedButton();
+
+  if (clickedButton == saveButton) {
+    // Try to save the recipe
+    std::string recipeFilePath = m_recipeManager->getCurrentFilePath();
+    if (recipeFilePath.empty()) {
+      // No existing file path, use Save As
+      onSaveRecipeAs();
+      // Check if save was successful (file path should now be set)
+      if (m_recipeManager->getCurrentFilePath().empty()) {
+        return false;  // Save was cancelled
+      }
+    } else {
+      // Save to existing path
+      if (!m_recipeManager->saveRecipe(recipeFilePath)) {
+        QMessageBox::critical(this, "Save Failed",
+          "Failed to save the recipe.\nPlease try again.");
+        return false;
+      }
+      updateRecipeFileNameDisplay();
+      std::cout << "[RecipePage] Recipe saved before navigation" << std::endl;
+    }
+    return true;  // Saved successfully, can leave
+  }
+  else if (clickedButton == discardButton) {
+    std::cout << "[RecipePage] Discarding unsaved changes" << std::endl;
+    return true;  // User chose to discard changes, can leave
+  }
+  else {
+    // Cancel button or dialog closed
+    return false;  // Stay on page
   }
 }

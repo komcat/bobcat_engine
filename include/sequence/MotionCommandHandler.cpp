@@ -1956,6 +1956,91 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // UPDATE POSITION ALL FROM CURRENT DEVICE POSITION
+  // ============================================================================
+  // Updates all available axes of a named position with current device position
+  // Then saves the product file
+  // params: position_name, save_to_file (true/false)
+  else if (methodName == "UpdatePositionAll") {
+    auto posNameIt = params.find("position_name");
+
+    if (posNameIt == params.end()) {
+      errorMessage = "UpdatePositionAll: Missing required parameter (position_name)";
+      return false;
+    }
+
+    std::string positionName = posNameIt->second;
+
+    // Check if ProductPositionManager is available
+    if (!m_positionManager) {
+      errorMessage = "UpdatePositionAll: ProductPositionManager not available";
+      return false;
+    }
+
+    // Get current device position
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+
+    // Get installed axes for this device
+    std::string installedAxes = motionManager->GetInstalledAxes(deviceName);
+
+    // Get existing position (if any) to preserve waypoints
+    PositionStruct existingPos;
+    bool hasExisting = m_positionManager->GetPosition(deviceName, positionName, existingPos);
+
+    // Build updated position - only update axes that are installed
+    PositionStruct updatedPos;
+    if (hasExisting) {
+      updatedPos = existingPos;  // Preserve waypoints and other data
+    }
+
+    // Update each axis that exists in installedAxes
+    if (installedAxes.find('X') != std::string::npos) updatedPos.x = currentPos.x;
+    if (installedAxes.find('Y') != std::string::npos) updatedPos.y = currentPos.y;
+    if (installedAxes.find('Z') != std::string::npos) updatedPos.z = currentPos.z;
+    if (installedAxes.find('U') != std::string::npos) updatedPos.u = currentPos.u;
+    if (installedAxes.find('V') != std::string::npos) updatedPos.v = currentPos.v;
+    if (installedAxes.find('W') != std::string::npos) updatedPos.w = currentPos.w;
+
+    // Update position in ProductPositionManager
+    m_positionManager->AddPosition(deviceName, positionName, updatedPos);
+
+    // Also update in UnifiedMotionManager (runtime)
+    motionManager->AddNamedPosition(deviceName, positionName, updatedPos);
+
+    std::cout << "[MotionCommandHandler] Updated position '" << positionName
+              << "' with all axes from current position"
+              << " (Axes: " << installedAxes << ")" << std::endl;
+    std::cout << "  X=" << updatedPos.x << " Y=" << updatedPos.y << " Z=" << updatedPos.z
+              << " U=" << updatedPos.u << " V=" << updatedPos.v << " W=" << updatedPos.w << std::endl;
+
+    // Save to file if requested (default: true)
+    bool saveToFile = true;
+    auto saveIt = params.find("save_to_file");
+    if (saveIt != params.end() && (saveIt->second == "false" || saveIt->second == "0")) {
+      saveToFile = false;
+    }
+
+    if (saveToFile) {
+      if (m_positionManager->SaveProduct()) {
+        std::cout << "[MotionCommandHandler] Saved product file with updated position" << std::endl;
+      } else {
+        errorMessage = "UpdatePositionAll: Position updated but failed to save product file";
+        return false;
+      }
+    }
+
+    // Store result in context
+    if (context) {
+      context->SetValue("update_position_all.success", true);
+      context->SetValue("update_position_all.device", deviceName);
+      context->SetValue("update_position_all.position", positionName);
+      context->SetValue("update_position_all.axes", installedAxes);
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

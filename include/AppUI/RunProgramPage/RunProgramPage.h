@@ -14,6 +14,8 @@
 #include <QTimer>  // ✅ ADDED for periodic channel refresh
 #include <QTabWidget>  // ✅ ADDED for tab layout
 #include <QGroupBox>  // ✅ ADDED for vision result group
+#include <vector>
+#include <string>
 
 struct ApplicationContext;
 class ProgramManager;
@@ -85,6 +87,9 @@ private slots:
   void onSequenceExecutionStarted(int recipeIndex);
   void onWaitProgress(int remainingMs, int totalMs);
   void onWorkerFinished();  // ✅ Handle QThread::finished()
+
+  // ✅ Action-level tracking with look-ahead (granular command display)
+  void onActionStarted(int recipeIndex, QString current, QString next, QString afterNext);
 
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);
@@ -182,6 +187,14 @@ private:
   QTextEdit* m_logTextEdit;
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
   CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
+
+  // Command tracker row (4 cells: past, current, next1, next2)
+  QWidget* m_commandTrackerRow;
+  QLabel* m_cmdPastLabel;
+  QLabel* m_cmdCurrentLabel;
+  QLabel* m_cmdNext1Label;
+  QLabel* m_cmdNext2Label;
+  std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
   // Scanning controls (refactored)
   ScanControlWidget* m_scanWidget;

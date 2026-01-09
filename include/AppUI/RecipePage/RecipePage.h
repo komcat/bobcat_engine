@@ -45,6 +45,14 @@ public:
   explicit RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RecipePage();
 
+public:
+  /**
+   * @brief Check if user can leave the page (handles unsaved changes)
+   * @return true if user can leave, false if user cancelled navigation
+   * Shows a dialog if there are unsaved changes, offering to save/discard/cancel
+   */
+  bool canLeavePage();
+
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
 
@@ -177,6 +185,9 @@ private:
   void handleQuickAddCategoryKey(int key);
   void handleQuickAddProcessKey(int key);
   void updateQuickAddDisplay();
+
+  // Unsaved changes handling
+  void onBackButtonClicked();  // Handle back button with unsaved changes check
 
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;

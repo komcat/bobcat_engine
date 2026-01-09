@@ -40,7 +40,8 @@ class CameraClickToMoveWidget : public QWidget
 public:
   explicit CameraClickToMoveWidget(CameraManager* cameraManager,
                                     UnifiedMotionManager* motionManager,
-                                    QWidget* parent = nullptr);
+                                    QWidget* parent = nullptr,
+                                    const std::string& subscriberId = "AuxWindow_ClickToMove");
   ~CameraClickToMoveWidget();
 
   // Camera selection
@@ -116,6 +117,7 @@ private:
   QTimer* m_frameUpdateTimer;
   QTimer* m_refreshTimer;
   std::string m_currentCameraId;
+  std::string m_subscriberId;  // ✅ Unique subscriber ID for this widget instance
 
   // Image display
   QImage m_currentImage;

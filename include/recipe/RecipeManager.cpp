@@ -26,6 +26,7 @@ void RecipeManager::newRecipe()
 {
   m_currentRecipe = Recipe();
   m_currentFilePath.clear();
+  m_lastSavedStateJson.clear();  // Clear cached state for new recipe
   std::cout << "[RecipeManager] New recipe created" << std::endl;
 }
 
@@ -450,6 +451,56 @@ bool RecipeManager::validateRecipe(std::vector<std::string>& errors) const
   return errors.empty();
 }
 
+std::string RecipeManager::getCurrentStateAsJson() const
+{
+  QJsonObject root;
+  root["version"] = QString::fromStdString(m_currentRecipe.version);
+  root["recipe_name"] = QString::fromStdString(m_currentRecipe.name);
+  root["next_id_counter"] = m_currentRecipe.nextIdCounter;
+  root["product_file"] = QString::fromStdString(m_currentRecipe.productFile);
+
+  QJsonArray stepsArray;
+  for (const auto& step : m_currentRecipe.steps) {
+    QJsonObject stepObj;
+    stepObj["id"] = QString::fromStdString(step->uniqueId);
+    stepObj["type"] = QString::fromStdString(step->processType);
+    stepObj["nickname"] = QString::fromStdString(step->userNickname);
+    stepObj["enabled"] = step->enabled;
+    stepObj["breakpoint"] = step->breakpoint;
+    stepObj["background_color"] = QString::fromStdString(step->backgroundColor);
+
+    QJsonObject paramsObj;
+    for (const auto& [key, value] : step->parameters) {
+      paramsObj[QString::fromStdString(key)] = QString::fromStdString(value);
+    }
+    stepObj["parameters"] = paramsObj;
+
+    stepsArray.append(stepObj);
+  }
+
+  root["steps"] = stepsArray;
+
+  QJsonDocument doc(root);
+  return doc.toJson(QJsonDocument::Compact).toStdString();
+}
+
+bool RecipeManager::hasUnsavedChanges() const
+{
+  // If no file path and no steps, no changes to save
+  if (m_currentFilePath.empty() && m_currentRecipe.steps.empty()) {
+    return false;
+  }
+
+  // If no file path but has steps, there are unsaved changes (new recipe)
+  if (m_currentFilePath.empty() && !m_currentRecipe.steps.empty()) {
+    return true;
+  }
+
+  // Compare current state with last saved state
+  std::string currentState = getCurrentStateAsJson();
+  return currentState != m_lastSavedStateJson;
+}
+
 bool RecipeManager::loadRecipe(const std::string& filename)
 {
   return loadFromJson(filename);
@@ -459,6 +510,8 @@ bool RecipeManager::saveRecipe(const std::string& filename)
 {
   if (saveToJson(filename)) {
     m_currentFilePath = filename;
+    // Cache the current state as the "saved" state
+    m_lastSavedStateJson = getCurrentStateAsJson();
     return true;
   }
   return false;
@@ -581,6 +634,9 @@ bool RecipeManager::loadFromJson(const std::string& filename)
   // Replace current recipe
   m_currentRecipe = std::move(newRecipe);
   m_currentFilePath = filename;
+
+  // Cache the loaded state as the "saved" state
+  m_lastSavedStateJson = getCurrentStateAsJson();
 
   std::cout << "[RecipeManager] Loaded recipe '" << m_currentRecipe.name
     << "' with " << m_currentRecipe.steps.size() << " steps from "

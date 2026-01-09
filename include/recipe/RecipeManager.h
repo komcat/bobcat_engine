@@ -101,6 +101,10 @@ public:
   // Validation
   bool validateRecipe(std::vector<std::string>& errors) const;
 
+  // Unsaved changes detection
+  bool hasUnsavedChanges() const;
+  std::string getCurrentStateAsJson() const;
+
   // Indentation/hierarchy (NEW)
   int getStepIndentLevel(int index) const;
   static bool isBlockStart(const std::string& processType);
@@ -113,6 +117,7 @@ public:
 private:
   Recipe m_currentRecipe;
   std::string m_currentFilePath;
+  mutable std::string m_lastSavedStateJson;  // Cached JSON state after load/save
 
   std::string generateUniqueId(const std::string& processType);
 

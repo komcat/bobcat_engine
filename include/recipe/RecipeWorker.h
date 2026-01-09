@@ -92,6 +92,9 @@ signals:
   void stepExecutionStarted(int stepIndex, QString stepName, QString stepType);
   void stepExecutionCompleted(int stepIndex, bool success);
 
+  // Action execution event with look-ahead (granular - shows current and upcoming commands)
+  void actionStarted(QString current, QString next, QString afterNext);
+
   // Breakpoint/pause events
   void executionPaused(int stepIndex, QString stepName, bool isBreakpoint);
 

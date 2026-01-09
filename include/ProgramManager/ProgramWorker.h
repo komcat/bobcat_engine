@@ -94,6 +94,9 @@ signals:
   void stepBuildCompleted(int recipeIndex, int stepIndex);
   void sequenceExecutionStarted(int recipeIndex);
 
+  // Action-level signal with look-ahead (granular command tracking)
+  void actionStarted(int recipeIndex, QString current, QString next, QString afterNext);
+
   // Wait progress (from current recipe)
   void waitProgress(int remainingMs, int totalMs);
 
