@@ -36,6 +36,7 @@ signals:
 private slots:
   void onOkClicked();
   void onCancelClicked();
+  void onUseDummyClicked();
 
 private:
   void setupUI();
@@ -45,4 +46,5 @@ private:
   QLineEdit* m_inputField;
   QPushButton* m_okButton;
   QPushButton* m_cancelButton;
+  QPushButton* m_useDummyButton;  // Generate TEST_timestamp serial
 };

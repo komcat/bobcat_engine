@@ -2,6 +2,7 @@
 #include "RunProgramPage.h"
 #include "ApplicationContext.h"
 #include "ProgramManager.h"
+#include "ConditionExpressionEvaluator.h"
 #include "safety/SafetyWatchManager.h"
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
@@ -66,6 +67,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_isExecuting(false)
   , m_totalRecipes(0)
   , m_currentRecipeIndex(-1)
+  , m_pendingChainRecipeIndex(-1)
   , m_executionStack(nullptr)
   , m_promptWidget(nullptr)
   , m_manualAdjustWidget(nullptr)
@@ -235,7 +237,12 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}");
   leftLayout->addWidget(m_backButton);
 
-  // === Product Display ===
+  // === Product Display with Chain Indicator ===
+  QWidget* productRow = new QWidget();
+  QHBoxLayout* productRowLayout = new QHBoxLayout(productRow);
+  productRowLayout->setContentsMargins(0, 0, 0, 0);
+  productRowLayout->setSpacing(8);
+
   m_currentProductLabel = new QLabel("Product: None");
   m_currentProductLabel->setStyleSheet(
     "QLabel {"
@@ -245,7 +252,24 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}"
   );
   m_currentProductLabel->setWordWrap(true);
-  leftLayout->addWidget(m_currentProductLabel);
+  productRowLayout->addWidget(m_currentProductLabel);
+
+  // Chain execution indicator (orange circle when enabled)
+  m_chainIndicator = new QLabel();
+  m_chainIndicator->setFixedSize(16, 16);
+  m_chainIndicator->setToolTip("Chain execution enabled");
+  m_chainIndicator->setVisible(false);  // Hidden by default
+  m_chainIndicator->setStyleSheet(
+    "QLabel {"
+    "  background-color: #e69500;"
+    "  border-radius: 8px;"
+    "  border: 2px solid #ffaa00;"
+    "}"
+  );
+  productRowLayout->addWidget(m_chainIndicator);
+  productRowLayout->addStretch();
+
+  leftLayout->addWidget(productRow);
 
   // === TAB WIDGET ===
   m_tabWidget = new QTabWidget();
@@ -694,6 +718,46 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}"
   );
   optionLayout->addWidget(m_useDependenciesCheckBox);
+
+  // Chain Execution checkbox - auto-trigger dependent recipes after manual execution
+  m_chainExecutionCheckBox = new QCheckBox("Enable chain execution");
+  m_chainExecutionCheckBox->setChecked(false);
+  m_chainExecutionCheckBox->setToolTip("When enabled, completing a recipe will automatically trigger dependent recipes if conditions are met");
+  m_chainExecutionCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #e67e22; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #e67e22; "
+    "  border-color: #e67e22; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #f39c12; "
+    "  border-color: #f39c12; "
+    "} "
+    "QCheckBox::indicator:unchecked { "
+    "  background-color: #2d2d30; "
+    "  border-color: #555555; "
+    "}"
+  );
+  optionLayout->addWidget(m_chainExecutionCheckBox);
+
+  // Connect checkbox to show/hide the chain indicator
+  connect(m_chainExecutionCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+    m_chainIndicator->setVisible(checked);
+  });
 
   optionLayout->addStretch();
   optionTabLayout->addWidget(optionGroup);
@@ -1811,15 +1875,17 @@ void RunProgramPage::onExecuteProgram()
   // ✅ Reset completion tracking in auto-run mode (fresh start for entire program)
   if (autoRunMode) {
     std::fill(m_completedRecipes.begin(), m_completedRecipes.end(), false);
+    m_pendingChainRecipeIndex = -1;  // Clear chain execution in auto-run mode
   }
 
   // ✅ Check prerequisites in single-recipe mode with dependencies enabled
   if (!autoRunMode && m_useDependenciesCheckBox->isChecked()) {
-    std::vector<int> dependencies = m_programManager->getRecipeDependencies(selectedRecipeIndex);
+    std::vector<DependencyLink> dependencies = m_programManager->getRecipeDependencies(selectedRecipeIndex);
 
     if (!dependencies.empty()) {
       QStringList missingPrereqs;
-      for (int depIndex : dependencies) {
+      for (const auto& dep : dependencies) {
+        int depIndex = dep.predecessorIndex;
         if (depIndex >= 0 && depIndex < static_cast<int>(m_completedRecipes.size())) {
           if (!m_completedRecipes[depIndex]) {
             const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
@@ -2195,12 +2261,12 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
 
     // Show dependencies if using dependency mode
     if (m_useDependenciesCheckBox->isChecked()) {
-      std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+      std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
       if (!deps.empty()) {
         QString depsStr = " [Deps: ";
         for (size_t i = 0; i < deps.size(); ++i) {
           if (i > 0) depsStr += ", ";
-          depsStr += QString::number(deps[i] + 1);
+          depsStr += QString::number(deps[i].predecessorIndex + 1);
         }
         depsStr += "]";
         baseText += depsStr;
@@ -2228,12 +2294,12 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
 
       // Show dependencies if using dependency mode
       if (m_useDependenciesCheckBox->isChecked()) {
-        std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+        std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
         if (!deps.empty()) {
           QString depsStr = " [Deps: ";
           for (size_t i = 0; i < deps.size(); ++i) {
             if (i > 0) depsStr += ", ";
-            depsStr += QString::number(deps[i] + 1);
+            depsStr += QString::number(deps[i].predecessorIndex + 1);
           }
           depsStr += "]";
           baseText += depsStr;
@@ -2261,6 +2327,183 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   if (!success) {
     m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
   }
+
+  // ✅ Chain Execution: Find and queue dependent recipes
+  if (success && m_chainExecutionCheckBox->isChecked() && !m_autoRunNextCheckBox->isChecked()) {
+    // Get the current context from the worker for condition evaluation
+    SequenceContext* execContext = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
+
+    // Find recipes that depend on the just-completed recipe
+    int recipeCount = m_programManager->getRecipeCount();
+
+    for (int i = 0; i < recipeCount; ++i) {
+      if (i == recipeIndex) continue;  // Skip self
+
+      const RecipeReference* candidateRecipe = m_programManager->getRecipe(i);
+      if (!candidateRecipe || !candidateRecipe->enabled) continue;  // Skip disabled recipes
+
+      std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(i);
+
+      // Check if this recipe depends on the just-completed recipe
+      auto it = std::find_if(deps.begin(), deps.end(),
+        [recipeIndex](const DependencyLink& d) { return d.predecessorIndex == recipeIndex; });
+
+      if (it == deps.end()) continue;  // This recipe doesn't depend on the completed one
+
+      // Check if ALL prerequisites are met (not just this one)
+      bool allPrereqsMet = true;
+      std::string failedCondition;
+
+      for (const auto& dep : deps) {
+        int predIndex = dep.predecessorIndex;
+
+        // Check if predecessor is completed
+        if (predIndex < 0 || predIndex >= static_cast<int>(m_completedRecipes.size()) ||
+            !m_completedRecipes[predIndex]) {
+          allPrereqsMet = false;
+          break;
+        }
+
+        // Evaluate condition if present
+        if (!dep.condition.empty() && execContext) {
+          ConditionExpressionEvaluator evaluator;
+          std::string errorMsg;
+          bool conditionResult = evaluator.Evaluate(dep.condition, execContext, errorMsg);
+
+          if (!conditionResult) {
+            allPrereqsMet = false;
+            failedCondition = dep.condition;
+            break;
+          }
+        }
+      }
+
+      if (allPrereqsMet) {
+        // Show confirmation dialog with 10-second auto-continue
+        QString nextRecipeName = QString::fromStdString(candidateRecipe->displayName);
+
+        std::cout << "[RunProgramPage] Chain execution: Condition met for Recipe " << (i + 1)
+                  << " (" << candidateRecipe->displayName << "), showing confirmation..." << std::endl;
+        std::cout.flush();
+
+        // Create timed confirmation dialog
+        QDialog* confirmDialog = new QDialog(this);
+        confirmDialog->setWindowTitle("Chain Execution");
+        confirmDialog->setModal(true);
+        confirmDialog->setFixedSize(450, 200);
+        confirmDialog->setStyleSheet("QDialog { background-color: #2b2b2b; }");
+
+        QVBoxLayout* layout = new QVBoxLayout(confirmDialog);
+
+        // Message label
+        QLabel* messageLabel = new QLabel(
+          QString("Condition met! Continue to next recipe?\n\nNext: Recipe %1 - %2")
+          .arg(i + 1)
+          .arg(nextRecipeName));
+        messageLabel->setStyleSheet("color: white; font-size: 14px; padding: 10px;");
+        messageLabel->setAlignment(Qt::AlignCenter);
+        messageLabel->setWordWrap(true);
+        layout->addWidget(messageLabel);
+
+        // Countdown label
+        QLabel* countdownLabel = new QLabel("Auto-continue in 10 seconds...");
+        countdownLabel->setStyleSheet("color: #f39c12; font-size: 12px; padding: 5px;");
+        countdownLabel->setAlignment(Qt::AlignCenter);
+        layout->addWidget(countdownLabel);
+
+        // Buttons
+        QHBoxLayout* buttonLayout = new QHBoxLayout();
+        QPushButton* yesButton = new QPushButton("Continue");
+        yesButton->setStyleSheet(
+          "QPushButton { background-color: #27ae60; color: white; padding: 10px 30px; font-size: 14px; font-weight: bold; border-radius: 5px; }"
+          "QPushButton:hover { background-color: #2ecc71; }");
+        QPushButton* noButton = new QPushButton("Stop Chain");
+        noButton->setStyleSheet(
+          "QPushButton { background-color: #e74c3c; color: white; padding: 10px 30px; font-size: 14px; font-weight: bold; border-radius: 5px; }"
+          "QPushButton:hover { background-color: #c0392b; }");
+        buttonLayout->addWidget(yesButton);
+        buttonLayout->addWidget(noButton);
+        layout->addLayout(buttonLayout);
+
+        // Timer for auto-continue
+        int* countdown = new int(10);
+        QTimer* timer = new QTimer(confirmDialog);
+        timer->setInterval(1000);
+
+        connect(timer, &QTimer::timeout, [confirmDialog, countdownLabel, countdown, timer]() {
+          (*countdown)--;
+          if (*countdown <= 0) {
+            timer->stop();
+            confirmDialog->accept();  // Auto-accept after timeout
+          } else {
+            countdownLabel->setText(QString("Auto-continue in %1 seconds...").arg(*countdown));
+          }
+        });
+
+        connect(yesButton, &QPushButton::clicked, confirmDialog, &QDialog::accept);
+        connect(noButton, &QPushButton::clicked, confirmDialog, &QDialog::reject);
+
+        timer->start();
+        int result = confirmDialog->exec();
+        timer->stop();
+        delete countdown;
+        delete confirmDialog;
+
+        if (result == QDialog::Accepted) {
+          // Store recipe index for chain execution
+          int chainRecipeIndex = i;
+
+          std::cout << "[RunProgramPage] Chain execution: User confirmed, will start Recipe " << (i + 1) << std::endl;
+          std::cout.flush();
+
+          // Log to execution log
+          m_logTextEdit->append(QString("<span style='color: #f39c12;'>→ Chain: Recipe %1 (%2) will run next</span>")
+            .arg(i + 1)
+            .arg(nextRecipeName));
+
+          // Trigger chain execution directly (don't wait for onProgramExecutionCompleted)
+          // Use QTimer::singleShot to allow current event processing to complete first
+          QTimer::singleShot(200, this, [this, chainRecipeIndex]() {
+            if (!m_isExecuting && m_chainExecutionCheckBox->isChecked()) {
+              const RecipeReference* nextRecipe = m_programManager->getRecipe(chainRecipeIndex);
+              std::cout << "[RunProgramPage] Chain execution: Starting Recipe " << (chainRecipeIndex + 1)
+                        << " (" << (nextRecipe ? nextRecipe->displayName : "unknown") << ")" << std::endl;
+              std::cout.flush();
+
+              // Select the recipe in the list
+              m_recipeListWidget->setCurrentRow(chainRecipeIndex);
+
+              // Start execution
+              QTimer::singleShot(100, this, [this]() {
+                if (!m_isExecuting) {
+                  onExecuteProgram();
+                }
+              });
+            }
+          });
+        } else {
+          // User cancelled chain execution
+          std::cout << "[RunProgramPage] Chain execution: User cancelled" << std::endl;
+          std::cout.flush();
+
+          m_logTextEdit->append(QString("<span style='color: #e74c3c;'>✗ Chain execution stopped by user</span>"));
+        }
+
+        break;  // Only process one recipe at a time
+      } else if (!failedCondition.empty()) {
+        // Log skipped due to condition
+        std::cout << "[RunProgramPage] Chain execution: Recipe " << (i + 1)
+                  << " skipped - condition not met: " << failedCondition << std::endl;
+        std::cout.flush();
+
+        m_logTextEdit->append(QString("<span style='color: #95a5a6;'>⊘ Recipe %1 skipped - condition not met</span>")
+          .arg(i + 1));
+
+        // Mark as skipped in UI
+        onRecipeSkipped(i, QString::fromStdString(candidateRecipe->displayName));
+      }
+    }
+  }
 }
 
 void RunProgramPage::onRecipeSkipped(int recipeIndex, QString recipeName)
@@ -2274,12 +2517,12 @@ void RunProgramPage::onRecipeSkipped(int recipeIndex, QString recipeName)
 
     // Show dependencies if using dependency mode
     if (m_useDependenciesCheckBox->isChecked()) {
-      std::vector<int> deps = m_programManager->getRecipeDependencies(recipeIndex);
+      std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
       if (!deps.empty()) {
         QString depsStr = " [Deps: ";
         for (size_t i = 0; i < deps.size(); ++i) {
           if (i > 0) depsStr += ", ";
-          depsStr += QString::number(deps[i] + 1);
+          depsStr += QString::number(deps[i].predecessorIndex + 1);
         }
         depsStr += "]";
         baseText += depsStr;
@@ -2377,6 +2620,10 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 
   std::cout << "[RunProgramPage] UI update completed" << std::endl;
   std::cout.flush();
+
+  // Note: Chain execution is now triggered directly from onRecipeCompleted
+  // to avoid signal ordering issues where this handler runs before
+  // the chain recipe index is set.
 }
 
 void RunProgramPage::onProgramStopped()
@@ -2385,6 +2632,7 @@ void RunProgramPage::onProgramStopped()
   stopContextRefreshTimer();
 
   m_isExecuting = false;
+  m_pendingChainRecipeIndex = -1;  // ✅ Clear pending chain execution
 
   // ✅ Reset command tracker
   m_cmdPastLabel->setText("-");
@@ -3044,7 +3292,7 @@ void RunProgramPage::onManageDependencies()
   // Create dialog
   QDialog* dialog = new QDialog(this);
   dialog->setWindowTitle("Manage Recipe Dependencies");
-  dialog->setMinimumSize(800, 600);
+  dialog->setMinimumSize(900, 700);
   dialog->setStyleSheet("QDialog { background-color: #2b2b2b; }");
 
   QVBoxLayout* mainLayout = new QVBoxLayout(dialog);
@@ -3054,11 +3302,16 @@ void RunProgramPage::onManageDependencies()
   titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: white; padding: 10px;");
   mainLayout->addWidget(titleLabel);
 
-  // Info label
+  // Info label with condition help
   QLabel* infoLabel = new QLabel(
     "Define which recipes must complete before others can start.\n"
-    "Select a recipe below, then check the recipes it depends on.");
-  infoLabel->setStyleSheet("color: #cccccc; padding: 5px;");
+    "Optionally add conditions using SequenceContext variables.\n\n"
+    "Condition examples:\n"
+    "  - current > 5\n"
+    "  - current > 5 AND voltage < 10\n"
+    "  - status == \"pass\" OR override == true\n"
+    "Empty condition = always proceed when prerequisite completes.");
+  infoLabel->setStyleSheet("color: #cccccc; padding: 5px; font-size: 12px;");
   infoLabel->setWordWrap(true);
   mainLayout->addWidget(infoLabel);
 
@@ -3111,7 +3364,7 @@ void RunProgramPage::onManageDependencies()
   recipeLayout->addWidget(recipeCombo);
   mainLayout->addWidget(recipeGroup);
 
-  // Dependencies group
+  // Dependencies group with table
   QGroupBox* depsGroup = new QGroupBox("Dependencies (Prerequisites):");
   depsGroup->setStyleSheet(
     "QGroupBox { "
@@ -3130,30 +3383,143 @@ void RunProgramPage::onManageDependencies()
     "}");
   QVBoxLayout* depsLayout = new QVBoxLayout(depsGroup);
 
-  // Scrollable area for checkboxes
-  QScrollArea* scrollArea = new QScrollArea();
-  scrollArea->setWidgetResizable(true);
-  scrollArea->setStyleSheet("QScrollArea { background-color: #1e1e1e; border: none; }");
+  // Table for dependencies with conditions
+  QTableWidget* depsTable = new QTableWidget();
+  depsTable->setColumnCount(3);
+  depsTable->setHorizontalHeaderLabels({"Prerequisite", "Condition (optional)", "Enabled"});
+  depsTable->horizontalHeader()->setStretchLastSection(false);
+  depsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  depsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  depsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
+  depsTable->setColumnWidth(2, 80);
+  depsTable->verticalHeader()->setVisible(false);
+  depsTable->verticalHeader()->setDefaultSectionSize(44);  // Taller rows
+  depsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+  depsTable->setStyleSheet(
+    "QTableWidget { "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  gridline-color: #3c3c3c; "
+    "  border: 1px solid #3c3c3c; "
+    "  font-size: 13px; "
+    "} "
+    "QTableWidget::item { "
+    "  padding: 8px; "
+    "} "
+    "QHeaderView::section { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  padding: 8px; "
+    "  border: 1px solid #3c3c3c; "
+    "  font-weight: bold; "
+    "  font-size: 13px; "
+    "}");
+  depsLayout->addWidget(depsTable);
+  mainLayout->addWidget(depsGroup, 1);
 
-  QWidget* checkboxContainer = new QWidget();
-  checkboxContainer->setStyleSheet("QWidget { background-color: #1e1e1e; }");
-  QVBoxLayout* checkboxLayout = new QVBoxLayout(checkboxContainer);
+  // Temporary storage for all recipe dependencies (with conditions)
+  std::vector<std::vector<DependencyLink>> tempDependencies(recipeCount);
 
-  // Create checkboxes for each recipe
-  std::vector<QCheckBox*> checkboxes;
+  // Initialize with current dependencies from ProgramManager
   for (int i = 0; i < recipeCount; ++i) {
-    const RecipeReference* recipe = m_programManager->getRecipe(i);
-    if (recipe) {
-      QCheckBox* cb = new QCheckBox(QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
-      cb->setProperty("recipeIndex", i);
-      cb->setStyleSheet(
-        "QCheckBox { "
+    tempDependencies[i] = m_programManager->getRecipeDependencies(i);
+
+    // Debug: Log loaded dependencies
+    if (!tempDependencies[i].empty()) {
+      std::cout << "[ManageDeps] Recipe " << (i + 1) << " has " << tempDependencies[i].size() << " dependencies:" << std::endl;
+      for (const auto& dep : tempDependencies[i]) {
+        std::cout << "  -> depends on Recipe " << (dep.predecessorIndex + 1)
+                  << " with condition: '" << dep.condition << "'" << std::endl;
+      }
+    }
+  }
+
+  // Function to save current table state to temp storage
+  auto saveCurrentToTemp = [recipeCombo, depsTable, &tempDependencies, recipeCount]() {
+    int currentRecipe = recipeCombo->currentIndex();
+    if (currentRecipe < 0 || currentRecipe >= recipeCount) return;
+
+    tempDependencies[currentRecipe].clear();
+
+    for (int row = 0; row < depsTable->rowCount(); ++row) {
+      // Get checkbox
+      QWidget* checkWidget = depsTable->cellWidget(row, 2);
+      if (!checkWidget) continue;
+      QCheckBox* cb = checkWidget->findChild<QCheckBox*>();
+      if (!cb || !cb->isChecked()) continue;
+
+      // Get recipe index from row data
+      QTableWidgetItem* nameItem = depsTable->item(row, 0);
+      if (!nameItem) continue;
+      int predIndex = nameItem->data(Qt::UserRole).toInt();
+
+      // Get condition
+      QLineEdit* condEdit = qobject_cast<QLineEdit*>(depsTable->cellWidget(row, 1));
+      std::string condition = condEdit ? condEdit->text().trimmed().toStdString() : "";
+
+      tempDependencies[currentRecipe].emplace_back(predIndex, condition);
+    }
+  };
+
+  // Function to populate table for selected recipe
+  auto populateTable = [this, depsTable, recipeCombo, &tempDependencies, recipeCount]() {
+    int currentRecipe = recipeCombo->currentIndex();
+
+    std::cout << "[ManageDeps] populateTable for Recipe " << (currentRecipe + 1)
+              << ", has " << tempDependencies[currentRecipe].size() << " dependencies" << std::endl;
+
+    // Count rows needed (all recipes except current)
+    int rowCount = recipeCount - 1;
+    depsTable->setRowCount(rowCount);
+
+    int row = 0;
+    for (int i = 0; i < recipeCount; ++i) {
+      if (i == currentRecipe) continue;  // Skip self
+
+      const RecipeReference* recipe = m_programManager->getRecipe(i);
+      if (!recipe) continue;
+
+      // Find if this is a dependency of current recipe
+      const auto& deps = tempDependencies[currentRecipe];
+      auto it = std::find_if(deps.begin(), deps.end(),
+        [i](const DependencyLink& d) { return d.predecessorIndex == i; });
+      bool isDep = (it != deps.end());
+      std::string condition = isDep ? it->condition : "";
+
+      if (isDep) {
+        std::cout << "[ManageDeps]   Recipe " << (i + 1) << " is a dependency, condition='" << condition << "'" << std::endl;
+      }
+
+      // Prerequisite name (column 0)
+      QTableWidgetItem* nameItem = new QTableWidgetItem(
+        QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
+      nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+      nameItem->setData(Qt::UserRole, i);  // Store recipe index
+      depsTable->setItem(row, 0, nameItem);
+
+      // Condition text field (column 1)
+      QLineEdit* condEdit = new QLineEdit();
+      condEdit->setPlaceholderText("e.g., current > 5 AND voltage < 10");
+      condEdit->setText(QString::fromStdString(condition));
+      condEdit->setMinimumHeight(32);
+      condEdit->setStyleSheet(
+        "QLineEdit { "
+        "  background-color: #2d2d30; "
         "  color: white; "
-        "  padding: 5px; "
+        "  border: 1px solid #3c3c3c; "
+        "  padding: 8px; "
+        "  font-size: 13px; "
         "} "
+        "QLineEdit:focus { border: 1px solid #1177bb; }");
+      depsTable->setCellWidget(row, 1, condEdit);
+
+      // Enabled checkbox (column 2)
+      QCheckBox* cb = new QCheckBox();
+      cb->setChecked(isDep);
+      cb->setStyleSheet(
         "QCheckBox::indicator { "
-        "  width: 18px; "
-        "  height: 18px; "
+        "  width: 22px; "
+        "  height: 22px; "
         "  border: 2px solid #3c3c3c; "
         "  border-radius: 3px; "
         "  background-color: #2d2d30; "
@@ -3162,81 +3528,34 @@ void RunProgramPage::onManageDependencies()
         "  background-color: #27ae60; "
         "  border-color: #27ae60; "
         "}");
-      checkboxes.push_back(cb);
-      checkboxLayout->addWidget(cb);
-    }
-  }
-  checkboxLayout->addStretch();
+      QWidget* checkWidget = new QWidget();
+      QHBoxLayout* checkLayout = new QHBoxLayout(checkWidget);
+      checkLayout->addWidget(cb);
+      checkLayout->setAlignment(Qt::AlignCenter);
+      checkLayout->setContentsMargins(0, 0, 0, 0);
+      depsTable->setCellWidget(row, 2, checkWidget);
 
-  scrollArea->setWidget(checkboxContainer);
-  depsLayout->addWidget(scrollArea);
-  mainLayout->addWidget(depsGroup);
-
-  // Temporary storage for all recipe dependencies as we edit
-  std::vector<std::vector<int>> tempDependencies(recipeCount);
-
-  // Initialize with current dependencies from ProgramManager
-  for (int i = 0; i < recipeCount; ++i) {
-    tempDependencies[i] = m_programManager->getRecipeDependencies(i);
-  }
-
-  // Function to save current recipe's checkboxes to temp storage
-  auto saveCurrentToTemp = [recipeCombo, &checkboxes, &tempDependencies]() {
-    int currentRecipe = recipeCombo->currentIndex();
-    tempDependencies[currentRecipe].clear();
-
-    for (QCheckBox* cb : checkboxes) {
-      if (cb->isChecked() && cb->isEnabled()) {
-        int depIndex = cb->property("recipeIndex").toInt();
-        tempDependencies[currentRecipe].push_back(depIndex);
-      }
+      row++;
     }
   };
 
-  // Function to update checkboxes based on selected recipe
-  auto updateCheckboxes = [this, recipeCombo, &checkboxes, &tempDependencies, saveCurrentToTemp]() {
-    // First, save the current recipe's state before switching
-    static int previousRecipe = -1;
-    if (previousRecipe >= 0) {
-      saveCurrentToTemp();
-    }
-    previousRecipe = recipeCombo->currentIndex();
-    int currentRecipe = recipeCombo->currentIndex();
-
-    // Get dependencies from temp storage
-    const std::vector<int>& deps = tempDependencies[currentRecipe];
-
-    // Update checkboxes
-    for (size_t i = 0; i < checkboxes.size(); ++i) {
-      int cbRecipeIndex = checkboxes[i]->property("recipeIndex").toInt();
-
-      // Disable self-dependency
-      if (cbRecipeIndex == currentRecipe) {
-        checkboxes[i]->setEnabled(false);
-        checkboxes[i]->setChecked(false);
-        checkboxes[i]->setText(checkboxes[i]->text().split(":")[0] + ": (Current Recipe)");
-      }
-      else {
-        checkboxes[i]->setEnabled(true);
-        // Restore original text
-        const RecipeReference* recipe = m_programManager->getRecipe(cbRecipeIndex);
-        if (recipe) {
-          checkboxes[i]->setText(QString("Recipe %1: %2").arg(cbRecipeIndex + 1)
-            .arg(QString::fromStdString(recipe->displayName)));
-        }
-
-        // Check if this is a dependency
-        bool isDep = std::find(deps.begin(), deps.end(), cbRecipeIndex) != deps.end();
-        checkboxes[i]->setChecked(isDep);
-      }
-    }
-  };
+  // Track previous recipe for save-before-switch
+  int previousRecipe = -1;
 
   // Connect recipe selector change
-  connect(recipeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateCheckboxes);
+  connect(recipeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    [&previousRecipe, &saveCurrentToTemp, &populateTable, recipeCombo](int newIndex) {
+      // Save previous recipe's state before switching
+      if (previousRecipe >= 0) {
+        saveCurrentToTemp();
+      }
+      previousRecipe = newIndex;
+      populateTable();
+    });
 
-  // Initialize
-  updateCheckboxes();
+  // Initialize table
+  previousRecipe = 0;
+  populateTable();
 
   // Buttons
   QHBoxLayout* buttonLayout = new QHBoxLayout();
@@ -3266,19 +3585,43 @@ void RunProgramPage::onManageDependencies()
     "  border-radius: 4px; "
     "} "
     "QPushButton:hover { background-color: #2ecc71; }");
-  connect(saveButton, &QPushButton::clicked, [this, recipeCombo, &checkboxes, &tempDependencies, saveCurrentToTemp, dialog]() {
+  connect(saveButton, &QPushButton::clicked, [this, &saveCurrentToTemp, &tempDependencies, recipeCount, dialog]() {
     // Save current recipe's state to temp storage before saving
     saveCurrentToTemp();
 
+    // Validate all conditions before applying
+    ConditionExpressionEvaluator evaluator;
+    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
+      for (const auto& dep : tempDependencies[recipeIdx]) {
+        if (!dep.condition.empty()) {
+          std::string errorMsg;
+          if (!evaluator.Validate(dep.condition, errorMsg)) {
+            const RecipeReference* recipe = m_programManager->getRecipe(recipeIdx);
+            const RecipeReference* predRecipe = m_programManager->getRecipe(dep.predecessorIndex);
+            QString recipeName = recipe ? QString::fromStdString(recipe->displayName) : QString("Recipe %1").arg(recipeIdx + 1);
+            QString predName = predRecipe ? QString::fromStdString(predRecipe->displayName) : QString("Recipe %1").arg(dep.predecessorIndex + 1);
+
+            QMessageBox::critical(dialog, "Invalid Condition",
+              QString("Recipe '%1' has invalid condition for dependency on '%2':\n\n%3\n\nError: %4")
+              .arg(recipeName)
+              .arg(predName)
+              .arg(QString::fromStdString(dep.condition))
+              .arg(QString::fromStdString(errorMsg)));
+            return;
+          }
+        }
+      }
+    }
+
     // Clear all existing dependencies
-    for (int recipeIdx = 0; recipeIdx < m_programManager->getRecipeCount(); ++recipeIdx) {
+    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
       m_programManager->clearRecipeDependencies(recipeIdx);
     }
 
-    // Apply all dependencies from temp storage
-    for (int recipeIdx = 0; recipeIdx < static_cast<int>(tempDependencies.size()); ++recipeIdx) {
-      for (int depIndex : tempDependencies[recipeIdx]) {
-        m_programManager->addRecipeDependency(recipeIdx, depIndex);
+    // Apply all dependencies from temp storage (with conditions)
+    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
+      for (const auto& dep : tempDependencies[recipeIdx]) {
+        m_programManager->addRecipeDependency(recipeIdx, dep.predecessorIndex, dep.condition);
       }
     }
 
@@ -3293,7 +3636,11 @@ void RunProgramPage::onManageDependencies()
       return;
     }
 
-    QMessageBox::information(dialog, "Saved", "Dependencies have been saved.\n\nNote: Dependencies are saved with the program file.");
+    QMessageBox::information(dialog, "Saved",
+      "Dependencies have been saved.\n\n"
+      "Conditions will be evaluated against SequenceContext\n"
+      "values when recipes complete.\n\n"
+      "Note: Dependencies are saved with the program file.");
     dialog->accept();
   });
   buttonLayout->addWidget(saveButton);
@@ -3453,14 +3800,14 @@ void RunProgramPage::updateRecipeList()
     m_editRecipeTable->setItem(rowIndex, 1, nameItem);
 
     // Column 2: Dependencies
-    std::vector<int> deps = m_programManager->getRecipeDependencies(rowIndex);
+    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(rowIndex);
     QString depsText;
     if (deps.empty()) {
       depsText = "—";  // No dependencies
     } else {
       for (size_t i = 0; i < deps.size(); ++i) {
         if (i > 0) depsText += ", ";
-        depsText += QString::number(deps[i] + 1);  // Show 1-based index
+        depsText += QString::number(deps[i].predecessorIndex + 1);  // Show 1-based index
       }
     }
     QTableWidgetItem* depsItem = new QTableWidgetItem(depsText);

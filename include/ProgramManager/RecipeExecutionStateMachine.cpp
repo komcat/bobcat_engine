@@ -1,5 +1,7 @@
 // RecipeExecutionStateMachine.cpp
 #include "RecipeExecutionStateMachine.h"
+#include "ConditionExpressionEvaluator.h"
+#include "../sequence/SequenceContext.h"
 #include <algorithm>
 #include <sstream>
 #include <queue>
@@ -7,6 +9,7 @@
 
 RecipeExecutionStateMachine::RecipeExecutionStateMachine()
   : m_recipeCount(0)
+  , m_executionContext(nullptr)
 {
 }
 
@@ -31,7 +34,8 @@ void RecipeExecutionStateMachine::initialize(int recipeCount, const std::vector<
   std::cout << "[RecipeStateMachine] Initialized with " << recipeCount << " recipes" << std::endl;
 }
 
-bool RecipeExecutionStateMachine::addDependency(int recipeIndex, int prerequisiteIndex)
+bool RecipeExecutionStateMachine::addDependency(int recipeIndex, int prerequisiteIndex,
+                                                  const std::string& condition)
 {
   // Validate indices
   if (recipeIndex < 0 || recipeIndex >= m_recipeCount ||
@@ -55,21 +59,37 @@ bool RecipeExecutionStateMachine::addDependency(int recipeIndex, int prerequisit
 
   // Check if dependency already exists
   auto& predecessors = m_nodes[recipeIndex]->predecessors;
-  if (std::find(predecessors.begin(), predecessors.end(), prerequisiteIndex) != predecessors.end()) {
-    // Already exists
+  auto it = std::find_if(predecessors.begin(), predecessors.end(),
+    [prerequisiteIndex](const PredecessorInfo& p) {
+      return p.index == prerequisiteIndex;
+    });
+
+  if (it != predecessors.end()) {
+    // Update condition on existing dependency
+    it->condition = condition;
+    std::cout << "[RecipeStateMachine] Updated dependency condition: Recipe " << recipeIndex
+              << " depends on Recipe " << prerequisiteIndex
+              << " with condition: " << (condition.empty() ? "(none)" : condition) << std::endl;
     return true;
   }
 
-  // Add predecessor to recipe
-  m_nodes[recipeIndex]->predecessors.push_back(prerequisiteIndex);
+  // Add predecessor to recipe (with condition)
+  m_nodes[recipeIndex]->predecessors.emplace_back(prerequisiteIndex, condition);
 
   // Add successor to prerequisite
   m_nodes[prerequisiteIndex]->successors.push_back(recipeIndex);
 
   std::cout << "[RecipeStateMachine] Added dependency: Recipe " << recipeIndex
-            << " depends on Recipe " << prerequisiteIndex << std::endl;
+            << " depends on Recipe " << prerequisiteIndex
+            << " with condition: " << (condition.empty() ? "(none)" : condition) << std::endl;
 
   return true;
+}
+
+void RecipeExecutionStateMachine::setExecutionContext(SequenceContext* context)
+{
+  m_executionContext = context;
+  std::cout << "[RecipeStateMachine] Execution context set" << std::endl;
 }
 
 void RecipeExecutionStateMachine::removeDependency(int recipeIndex, int prerequisiteIndex)
@@ -81,7 +101,12 @@ void RecipeExecutionStateMachine::removeDependency(int recipeIndex, int prerequi
 
   // Remove predecessor from recipe
   auto& predecessors = m_nodes[recipeIndex]->predecessors;
-  predecessors.erase(std::remove(predecessors.begin(), predecessors.end(), prerequisiteIndex), predecessors.end());
+  predecessors.erase(
+    std::remove_if(predecessors.begin(), predecessors.end(),
+      [prerequisiteIndex](const PredecessorInfo& p) {
+        return p.index == prerequisiteIndex;
+      }),
+    predecessors.end());
 
   // Remove successor from prerequisite
   auto& successors = m_nodes[prerequisiteIndex]->successors;
@@ -98,8 +123,8 @@ void RecipeExecutionStateMachine::clearDependencies(int recipeIndex)
   }
 
   // Remove from all predecessors' successor lists
-  for (int predIndex : m_nodes[recipeIndex]->predecessors) {
-    auto& successors = m_nodes[predIndex]->successors;
+  for (const auto& pred : m_nodes[recipeIndex]->predecessors) {
+    auto& successors = m_nodes[pred.index]->successors;
     successors.erase(std::remove(successors.begin(), successors.end(), recipeIndex), successors.end());
   }
 
@@ -289,11 +314,68 @@ void RecipeExecutionStateMachine::updateReadyStates()
   for (auto& [index, node] : m_nodes) {
     if (node->state == RecipeExecutionState::Pending) {
       if (allPrerequisitesComplete(index)) {
-        node->state = RecipeExecutionState::Ready;
-        std::cout << "[RecipeStateMachine] Recipe " << index << " is now ready" << std::endl;
+        // Check if should skip due to condition evaluation
+        if (shouldSkipDueToCondition(index)) {
+          node->state = RecipeExecutionState::Skipped;
+          node->skippedDueToCondition = true;
+          std::cout << "[RecipeStateMachine] Recipe " << index
+                    << " skipped (condition not met)" << std::endl;
+          // Propagate skip to dependents
+          propagateSkipState(index);
+        } else {
+          node->state = RecipeExecutionState::Ready;
+          std::cout << "[RecipeStateMachine] Recipe " << index << " is now ready" << std::endl;
+        }
       }
     }
   }
+}
+
+bool RecipeExecutionStateMachine::shouldSkipDueToCondition(int recipeIndex) const
+{
+  if (!m_executionContext) {
+    // No context = no conditions to evaluate = proceed
+    return false;
+  }
+
+  auto it = m_nodes.find(recipeIndex);
+  if (it == m_nodes.end()) return false;
+
+  ConditionExpressionEvaluator evaluator;
+
+  for (const auto& pred : it->second->predecessors) {
+    // Only evaluate conditions from completed predecessors
+    auto predIt = m_nodes.find(pred.index);
+    if (predIt == m_nodes.end()) continue;
+    if (predIt->second->state != RecipeExecutionState::Completed) continue;
+
+    // If condition is empty, it's always satisfied
+    if (pred.condition.empty()) continue;
+
+    // Evaluate condition
+    std::string errorMsg;
+    bool conditionResult = evaluator.Evaluate(pred.condition, m_executionContext, errorMsg);
+
+    if (!errorMsg.empty()) {
+      std::cerr << "[RecipeStateMachine] Condition evaluation error for recipe " << recipeIndex
+                << " (predecessor " << pred.index << "): " << errorMsg << std::endl;
+      // On error, skip the recipe for safety
+      return true;
+    }
+
+    if (!conditionResult) {
+      // Condition not met - should skip
+      std::cout << "[RecipeStateMachine] Condition '" << pred.condition
+                << "' not met for recipe " << recipeIndex
+                << " (predecessor " << pred.index << ")" << std::endl;
+      return true;
+    } else {
+      std::cout << "[RecipeStateMachine] Condition '" << pred.condition
+                << "' met for recipe " << recipeIndex << std::endl;
+    }
+  }
+
+  return false;
 }
 
 std::vector<int> RecipeExecutionStateMachine::getReadyRecipes() const
@@ -381,8 +463,8 @@ bool RecipeExecutionStateMachine::allPrerequisitesComplete(int recipeIndex) cons
   auto it = m_nodes.find(recipeIndex);
   if (it == m_nodes.end()) return false;
 
-  for (int predIndex : it->second->predecessors) {
-    auto predIt = m_nodes.find(predIndex);
+  for (const auto& pred : it->second->predecessors) {
+    auto predIt = m_nodes.find(pred.index);
     if (predIt == m_nodes.end()) return false;
 
     if (predIt->second->state != RecipeExecutionState::Completed) {
@@ -403,8 +485,8 @@ bool RecipeExecutionStateMachine::anyPrerequisiteFailed(int recipeIndex) const
   auto it = m_nodes.find(recipeIndex);
   if (it == m_nodes.end()) return false;
 
-  for (int predIndex : it->second->predecessors) {
-    auto predIt = m_nodes.find(predIndex);
+  for (const auto& pred : it->second->predecessors) {
+    auto predIt = m_nodes.find(pred.index);
     if (predIt == m_nodes.end()) continue;
 
     if (predIt->second->state == RecipeExecutionState::Failed) {
@@ -483,7 +565,12 @@ std::vector<int> RecipeExecutionStateMachine::getPredecessors(int recipeIndex) c
     return {};
   }
 
-  return it->second->predecessors;
+  // Return just the indices (for backward compatibility)
+  std::vector<int> indices;
+  for (const auto& pred : it->second->predecessors) {
+    indices.push_back(pred.index);
+  }
+  return indices;
 }
 
 std::vector<int> RecipeExecutionStateMachine::getSuccessors(int recipeIndex) const
@@ -543,7 +630,11 @@ std::unordered_map<int, std::vector<int>> RecipeExecutionStateMachine::exportDep
 
   for (const auto& [index, node] : m_nodes) {
     if (!node->predecessors.empty()) {
-      result[index] = node->predecessors;
+      std::vector<int> indices;
+      for (const auto& pred : node->predecessors) {
+        indices.push_back(pred.index);
+      }
+      result[index] = indices;
     }
   }
 

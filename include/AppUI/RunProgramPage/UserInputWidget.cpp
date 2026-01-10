@@ -3,6 +3,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>
+#include <QDateTime>
 
 UserInputWidget::UserInputWidget(QWidget* parent)
   : QWidget(parent)
@@ -108,8 +109,30 @@ void UserInputWidget::setupUI()
     "  background-color: #c41c0c; "
     "}");
 
+  // Use Dummy button - generates TEST_timestamp serial
+  m_useDummyButton = new QPushButton("Use Dummy");
+  m_useDummyButton->setObjectName("useDummyButton");
+  m_useDummyButton->setMinimumHeight(50);
+  m_useDummyButton->setMinimumWidth(120);
+  m_useDummyButton->setToolTip("Generate a test serial number: TEST_YYYYMMDD_HHMMSS");
+  m_useDummyButton->setStyleSheet(
+    "QPushButton#useDummyButton { "
+    "  background-color: #f39c12; "
+    "  color: #1e1e1e; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  padding: 10px 20px; "
+    "} "
+    "QPushButton#useDummyButton:hover { "
+    "  background-color: #f5b041; "
+    "} "
+    "QPushButton#useDummyButton:pressed { "
+    "  background-color: #d68910; "
+    "}");
+
   buttonLayout->addStretch();
   buttonLayout->addWidget(m_okButton);
+  buttonLayout->addWidget(m_useDummyButton);
   buttonLayout->addWidget(m_cancelButton);
   buttonLayout->addStretch();
 
@@ -127,6 +150,7 @@ void UserInputWidget::setupUI()
   // Connect signals
   connect(m_okButton, &QPushButton::clicked, this, &UserInputWidget::onOkClicked);
   connect(m_cancelButton, &QPushButton::clicked, this, &UserInputWidget::onCancelClicked);
+  connect(m_useDummyButton, &QPushButton::clicked, this, &UserInputWidget::onUseDummyClicked);
 
   // Connect Enter key to OK button
   connect(m_inputField, &QLineEdit::returnPressed, this, &UserInputWidget::onOkClicked);
@@ -161,5 +185,15 @@ void UserInputWidget::onOkClicked()
 void UserInputWidget::onCancelClicked()
 {
   emit responseReceived(false, QString());
+  hideInput();
+}
+
+void UserInputWidget::onUseDummyClicked()
+{
+  // Generate dummy serial number: TEST_YYYYMMDD_HHMMSS
+  QString dummySerial = QString("TEST_%1")
+    .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+
+  emit responseReceived(true, dummySerial);
   hideInput();
 }

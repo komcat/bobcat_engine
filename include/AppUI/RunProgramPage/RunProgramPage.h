@@ -148,6 +148,7 @@ private:
   QWidget* m_rightPanel;  // ✅ Right panel for scanning controls
   QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
+  QLabel* m_chainIndicator;       // Chain execution indicator (orange dot)
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
@@ -161,6 +162,7 @@ private:
   QPushButton* m_backButton;
   QCheckBox* m_autoRunNextCheckBox;
   QCheckBox* m_useDependenciesCheckBox;  // ✅ NEW: Enable dependency-based execution
+  QCheckBox* m_chainExecutionCheckBox;   // ✅ NEW: Auto-trigger dependent recipes after completion
 
   // Right panel
   QStackedWidget* m_rightStack;
@@ -220,6 +222,7 @@ private:
   int m_totalRecipes;
   int m_currentRecipeIndex;
   std::vector<bool> m_completedRecipes;  // ✅ Track completed recipes (persists across executions)
+  int m_pendingChainRecipeIndex;         // ✅ Next recipe to run in chain execution mode (-1 = none)
 
   // ✅ Step-level progress tracking
   int m_currentRecipeTotalSteps;    // Total steps in current recipe

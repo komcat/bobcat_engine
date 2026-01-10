@@ -9,6 +9,10 @@
 #include <memory>
 #include <functional>
 
+// Forward declarations
+class SequenceContext;
+class ConditionExpressionEvaluator;
+
 /**
  * @brief Recipe execution states
  */
@@ -23,6 +27,17 @@ enum class RecipeExecutionState {
 };
 
 /**
+ * @brief Predecessor info with optional condition
+ */
+struct PredecessorInfo {
+  int index;               // Predecessor recipe index
+  std::string condition;   // Condition expression (empty = always proceed)
+
+  PredecessorInfo(int idx, const std::string& cond = "")
+    : index(idx), condition(cond) {}
+};
+
+/**
  * @brief Recipe node in the execution graph
  */
 struct RecipeNode {
@@ -30,18 +45,22 @@ struct RecipeNode {
   std::string recipeName;                    // Display name
   RecipeExecutionState state;                // Current execution state
 
-  std::vector<int> predecessors;             // Recipe indices that must complete before this
+  std::vector<PredecessorInfo> predecessors; // Recipe indices that must complete before this (with conditions)
   std::vector<int> successors;               // Recipe indices that depend on this
 
   // Execution results
   bool success;                              // Execution success flag
   std::string errorMessage;                  // Error message if failed
 
+  // Condition-based skip tracking
+  bool skippedDueToCondition;                // True if skipped due to condition evaluation
+
   RecipeNode(int index, const std::string& name)
     : recipeIndex(index)
     , recipeName(name)
     , state(RecipeExecutionState::Pending)
     , success(false)
+    , skippedDueToCondition(false)
   {}
 };
 
@@ -92,9 +111,17 @@ public:
    * @brief Add a dependency: recipeIndex depends on prerequisiteIndex
    * @param recipeIndex The recipe that has a dependency
    * @param prerequisiteIndex The recipe that must complete first
+   * @param condition Optional condition expression (empty = always proceed)
    * @return True if added successfully, false if it would create a cycle
    */
-  bool addDependency(int recipeIndex, int prerequisiteIndex);
+  bool addDependency(int recipeIndex, int prerequisiteIndex,
+                     const std::string& condition = "");
+
+  /**
+   * @brief Set the execution context for condition evaluation
+   * @param context The SequenceContext to use for evaluating conditions
+   */
+  void setExecutionContext(SequenceContext* context);
 
   /**
    * @brief Remove a dependency
@@ -269,6 +296,9 @@ private:
   // Total recipe count
   int m_recipeCount;
 
+  // Execution context for condition evaluation
+  SequenceContext* m_executionContext;
+
   // Helper functions
   bool detectCycleFromNode(int startNode,
                            std::unordered_set<int>& visited,
@@ -278,6 +308,9 @@ private:
   void propagateSkipState(int recipeIndex);
   bool allPrerequisitesComplete(int recipeIndex) const;
   bool anyPrerequisiteFailed(int recipeIndex) const;
+
+  // Condition evaluation
+  bool shouldSkipDueToCondition(int recipeIndex) const;
 };
 
 /**

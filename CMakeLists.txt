@@ -687,6 +687,7 @@ set(SOURCES
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp
     include/ProgramManager/RecipeExecutionStateMachine.cpp
+    include/ProgramManager/ConditionExpressionEvaluator.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
@@ -860,6 +861,7 @@ set(HEADERS
     include/SMU/SMUPollingManager.h
     include/ProgramManager/ProgramWorker.h
     include/ProgramManager/ProgramManager.h
+    include/ProgramManager/ConditionExpressionEvaluator.h
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
     include/AppUI/RunProgramPage/UserInputWidget.h
@@ -1344,3 +1346,36 @@ if(WIN32 AND MSVC)
 endif()
 
 message(STATUS "Config Editor utility: 'config_editor' - standalone JSON config file editor")
+
+# ============================================================================
+# Data Explorer Utility
+# ============================================================================
+# Browse and filter serial number result data
+add_executable(data_explorer
+    tools/data_explorer/main.cpp
+    tools/data_explorer/DataExplorerWindow.cpp
+    tools/data_explorer/SerialDataLoader.cpp
+    include/AppUI/DarkTheme.cpp
+)
+
+target_include_directories(data_explorer PRIVATE
+    ${CMAKE_SOURCE_DIR}/include/AppUI
+    ${CMAKE_SOURCE_DIR}/tools/data_explorer
+    ${NLOHMANN_JSON_DIR}
+)
+
+target_link_libraries(data_explorer PRIVATE Qt6::Widgets)
+
+set_target_properties(data_explorer PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+)
+
+if(WIN32 AND MSVC)
+    set_target_properties(data_explorer PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()
+
+message(STATUS "Data Explorer utility: 'data_explorer' - browse serial number result data")

@@ -870,6 +870,7 @@ void PropertyTableWidget::addDataChannelProperty(const std::string& key, const s
   }
 
   // Set current value
+  bool needsSync = false;
   if (!value.empty()) {
     int idx = combo->findText(QString::fromStdString(value));
     if (idx >= 0) {
@@ -877,6 +878,10 @@ void PropertyTableWidget::addDataChannelProperty(const std::string& key, const s
     } else {
       combo->setEditText(QString::fromStdString(value));
     }
+  } else if (combo->count() > 0) {
+    // Value is empty but channels are available - select first one and mark for sync
+    combo->setCurrentIndex(0);
+    needsSync = true;
   }
 
   connect(combo, &QComboBox::currentTextChanged, this, [this, key](const QString& text) {
@@ -885,6 +890,14 @@ void PropertyTableWidget::addDataChannelProperty(const std::string& key, const s
   });
 
   addPropertyRow(key, label, combo, tooltip);
+
+  // If value was empty but we have a displayed value, emit signal to sync it
+  if (needsSync && !combo->currentText().isEmpty()) {
+    QMetaObject::invokeMethod(this, [this, key, combo]() {
+      emit propertyChanged(QString::fromStdString(key), combo->currentText());
+      emit propertyChanged();
+    }, Qt::QueuedConnection);
+  }
 }
 
 void PropertyTableWidget::addCategoryHeader(const std::string& categoryName)

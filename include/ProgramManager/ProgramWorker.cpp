@@ -299,20 +299,24 @@ void ProgramWorker::runWithDependencies()
     emit logMessage("Initialized dependency state machine");
 
     // ============================================================================
-    // STEP 2: IMPORT DEPENDENCIES FROM PROGRAM
+    // STEP 2: IMPORT DEPENDENCIES FROM PROGRAM (with conditions)
     // ============================================================================
     for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
       const auto& deps = m_programManager->getRecipeDependencies(i);
 
-      for (int predIndex : deps) {
-        if (!stateMachine.addDependency(i, predIndex)) {
+      for (const auto& dep : deps) {
+        if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
           emit programExecutionCompleted(false,
             QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
-            .arg(i).arg(predIndex));
+            .arg(i).arg(dep.predecessorIndex));
           return;
         }
       }
     }
+
+    // Set execution context for condition evaluation
+    stateMachine.setExecutionContext(sharedContext.get());
+    emit logMessage("Execution context set for condition evaluation");
 
     // ============================================================================
     // STEP 3: VALIDATE DEPENDENCY GRAPH
@@ -616,7 +620,7 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
 {
   // Get dependencies for this recipe
-  std::vector<int> dependencies = m_programManager->getRecipeDependencies(recipeIndex);
+  auto dependencies = m_programManager->getRecipeDependencies(recipeIndex);
 
   if (dependencies.empty()) {
     // No prerequisites, can run
@@ -625,22 +629,22 @@ bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
 
   // Check if all prerequisites have been completed
   QStringList missingPrereqs;
-  for (int depIndex : dependencies) {
-    if (depIndex < 0 || depIndex >= static_cast<int>(m_completedRecipes.size())) {
+  for (const auto& dep : dependencies) {
+    if (dep.predecessorIndex < 0 || dep.predecessorIndex >= static_cast<int>(m_completedRecipes.size())) {
       // Invalid dependency index
-      missingPrereqs << QString("Recipe %1 (invalid index)").arg(depIndex + 1);
+      missingPrereqs << QString("Recipe %1 (invalid index)").arg(dep.predecessorIndex + 1);
       continue;
     }
 
-    if (!m_completedRecipes[depIndex]) {
+    if (!m_completedRecipes[dep.predecessorIndex]) {
       // Prerequisite not completed
-      const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
+      const RecipeReference* depRecipe = m_programManager->getRecipe(dep.predecessorIndex);
       if (depRecipe) {
         missingPrereqs << QString("Recipe %1: %2")
-          .arg(depIndex + 1)
+          .arg(dep.predecessorIndex + 1)
           .arg(QString::fromStdString(depRecipe->displayName));
       } else {
-        missingPrereqs << QString("Recipe %1").arg(depIndex + 1);
+        missingPrereqs << QString("Recipe %1").arg(dep.predecessorIndex + 1);
       }
     }
   }

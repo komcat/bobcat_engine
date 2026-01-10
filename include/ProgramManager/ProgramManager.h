@@ -6,13 +6,28 @@
 #include <memory>
 
 /**
+ * @brief DependencyLink - A dependency with optional condition
+ *
+ * Each dependency can have a condition expression that is evaluated
+ * against the SequenceContext when the prerequisite recipe completes.
+ * If the condition evaluates to false, the dependent recipe is skipped.
+ */
+struct DependencyLink {
+  int predecessorIndex;      // Recipe index that must complete before this
+  std::string condition;     // Condition expression (empty = always proceed)
+
+  DependencyLink(int predIdx, const std::string& cond = "")
+    : predecessorIndex(predIdx), condition(cond) {}
+};
+
+/**
  * @brief RecipeReference - Points to a recipe file
  */
 struct RecipeReference {
   std::string recipeFilePath;        // Path to recipe JSON file
   std::string displayName;           // Name shown in UI (extracted from recipe or filename)
   bool enabled;                      // Can disable recipe without removing it
-  std::vector<int> predecessorIndices; // Recipe indices that must complete before this (for dependency graph)
+  std::vector<DependencyLink> dependencies; // Dependencies with optional conditions
 
   RecipeReference(const std::string& path, const std::string& name, bool enable = true)
     : recipeFilePath(path), displayName(name), enabled(enable) {
@@ -70,11 +85,20 @@ public:
   void setRecipeDisplayName(int index, const std::string& name);
 
   // Dependency management
-  bool addRecipeDependency(int recipeIndex, int prerequisiteIndex);
+  bool addRecipeDependency(int recipeIndex, int prerequisiteIndex,
+                           const std::string& condition = "");
   void removeRecipeDependency(int recipeIndex, int prerequisiteIndex);
   void clearRecipeDependencies(int recipeIndex);
-  std::vector<int> getRecipeDependencies(int recipeIndex) const;
+  std::vector<DependencyLink> getRecipeDependencies(int recipeIndex) const;
   bool hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const;
+
+  // Condition management
+  void setDependencyCondition(int recipeIndex, int prerequisiteIndex,
+                              const std::string& condition);
+  std::string getDependencyCondition(int recipeIndex, int prerequisiteIndex) const;
+
+  // Helper: get just predecessor indices (for backward compatibility)
+  std::vector<int> getRecipePredecessorIndices(int recipeIndex) const;
 
   // Validation
   bool validateProgram(std::vector<std::string>& errors) const;

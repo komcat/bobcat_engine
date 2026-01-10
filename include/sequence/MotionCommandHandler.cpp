@@ -569,6 +569,10 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
     std::string channel = channelIt->second;
+    if (channel.empty()) {
+      errorMessage = "XCAN: Data channel cannot be empty - please select a data channel in the recipe configuration";
+      return false;
+    }
 
     // ✅ OPTIONAL PARAMETER: settling_time_ms (default 300)
     int settlingTimeMs = 300;
