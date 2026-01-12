@@ -8,7 +8,7 @@ This is a **CMake-based C++ Qt6 application** for industrial motion control and 
 
 ### Build Configuration
 ```bash
-# Configure build (x64 Debug - most commonly used)
+# Configure build (x64 Debug with Simulation - most commonly used for development)
 cmake --preset x64-debug
 
 # Build the project
@@ -19,10 +19,20 @@ cmake --build out/build/x64-debug
 ```
 
 ### Available Build Presets
-- `x64-debug` - 64-bit Debug build (default for development)
-- `x64-release` - 64-bit Release build
-- `x86-debug` - 32-bit Debug build
-- `x86-release` - 32-bit Release build
+| Preset | Description |
+|--------|-------------|
+| `x64-debug` | 64-bit Debug, **Simulation mode** (default for development) |
+| `x64-debug-hardware` | 64-bit Debug, connects to real hardware |
+| `x64-debug-hardware-no-halcon` | 64-bit Debug, hardware mode without Halcon SDK |
+| `x64-release` | 64-bit Release, hardware mode |
+| `x64-release-no-halcon` | 64-bit Release, hardware without Halcon |
+| `x86-debug` | 32-bit Debug, simulation mode |
+| `x86-debug-hardware` | 32-bit Debug, hardware mode |
+| `x86-release` | 32-bit Release, hardware mode |
+
+### Simulation vs Hardware Mode
+- **Simulation mode** (`BOBCAT_SIMULATION=ON`): Skips hardware connections, useful for UI development and testing
+- **Hardware mode** (`BOBCAT_SIMULATION=OFF`): Connects to physical devices
 
 ### Build Output Location
 Built executables and runtime files are located in: `out/build/<preset-name>/`
@@ -43,12 +53,16 @@ Application (main entry point)
     │   ├── PneumaticManager (pneumatic slides)
     │   ├── TECManager (thermoelectric cooler control)
     │   ├── PowerSupplyManager (power supply control)
+    │   ├── SMUManager (source measure units)
+    │   ├── LightingManager (lighting controllers)
     │   ├── TcpClientManager (network communication)
     │   ├── DataStore (application-wide data storage)
     │   ├── LogManager (logging system)
     │   ├── SequenceEngine (command sequencing)
     │   ├── RecipeManager (process recipes)
     │   ├── ProgramManager (program execution)
+    │   ├── VisionManager (image processing)
+    │   ├── SafetyWatchManager (I/O safety monitoring)
     │   └── AdaptiveScanController (scanning operations)
     │
     └── MainWindow (Qt UI)
@@ -119,6 +133,19 @@ Configuration: `config/camera_config.json`
 - Data collection and result storage
 - Location: `include/motions/scanning/AdaptiveScanController.h`
 
+#### 7. Vision System (OpenCV/Halcon)
+- **VisionManager** - Plugin-based image processing
+- **IVisionPlugin** - Interface for vision algorithms (circle detection, edge detection, pattern matching)
+- OpenCV plugins in `include/vision/plugins/`
+- Halcon plugins available when SDK present
+- Location: `include/vision/VisionManager.h`
+
+#### 8. Safety System
+- **SafetyWatchManager** - Monitors I/O states for safety conditions
+- Halts motion/scanning when configured safety signals trigger
+- Configuration: `config/safety_watch.json` (or `.local.json`)
+- Location: `include/safety/SafetyWatchManager.h`
+
 ### Key Design Patterns
 
 1. **Manager Pattern** - Each subsystem has a dedicated manager
@@ -138,21 +165,33 @@ All hardware configuration is JSON-based in the `config/` directory:
 - `power_supply_config.json` - Power supply settings
 - `tcp_clients.json` - TCP client connections
 - `transformation_matrix.json` - Coordinate transformation matrices
+- `lighting_config.json` - Lighting controller settings
+- `safety_watch.json` - Safety I/O monitoring configuration
+
+### Local Config Override Pattern
+The application uses a `*.local.json` pattern for user-specific configuration:
+- Application first tries `config/xxx.local.json`, then falls back to `config/xxx.json`
+- Local configs are gitignored - safe for machine-specific settings
+- Example: `motor_devices.local.json` overrides `motor_devices.json`
 
 Named positions for motion devices are stored in the motor_devices.json file under the `named_positions` section.
 
 ## Adding New Process Types to Recipe System
 
-See `include/recipe/new process addition.md` for detailed guide.
+The recipe system uses a **plugin-based architecture** for process types. See `docs/creating_recipe_plugins.md` for the comprehensive guide.
 
-Quick checklist:
-1. Add to `RecipeManager::getAvailableProcessTypes()`
-2. Add default parameters in `RecipeManager::getDefaultParameters()`
-3. Register builder in `ProcessSequenceFactory` constructor
-4. Create widget class in `ProcessConfigWidget.h`
-5. Implement widget in `ProcessConfigWidget.cpp`
-6. Register widget creation in `RecipePage::updateConfigurationForm()`
-7. (Optional) Create new command handler if new device type
+### Quick Plugin Creation
+1. Create plugin class implementing `IProcessPlugin` interface in `include/recipe/processes/`
+2. Define metadata: `GetName()`, `GetCategory()`, `GetDescription()`
+3. Implement `GetDefaultParameters()`, `CreateConfigUI()`, `BuildSequence()`
+4. Register in auto-registration section at file bottom
+5. If using a NEW category, add it to `RecipeManager::getProcessCategories()`
+6. Add source file to CMakeLists.txt
+
+Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`, `SystemProcesses.cpp`, etc.
+
+### Legacy Approach (non-plugin)
+See `include/recipe/new process addition.md` for the older manual approach requiring changes to multiple files.
 
 ## External Dependencies
 
@@ -162,13 +201,16 @@ Quick checklist:
 - **ACSC** - ACS motion controller library
 - **PI GCS2** - PI motion controller library
 - **EziIO** - Fastech I/O controller library
+- **NI-VISA** - VISA instrument communication (for TEC, SMU devices)
+- **OpenCV 4.12** - Computer vision (optional)
+- **Halcon** - Machine vision library (optional, delay-loaded)
 - **nlohmann/json** - JSON parsing (header-only)
 
 ### Qt6 Dependencies
 - Qt6::Widgets
 - Qt6::Charts
 
-CMake automatically detects which SDKs are present and enables/disables features accordingly.
+CMake automatically detects which SDKs are present and enables/disables features accordingly. Compile definitions `HAS_OPENCV` and `HAS_HALCON` indicate availability.
 
 ## Key Concepts
 
@@ -189,10 +231,28 @@ Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for run
 - `Application.cpp` - Application initialization and manager setup
 - `ApplicationContext.h` - Central dependency container
 - `CMakeLists.txt` - Build configuration and library linking
+- `CMakePresets.json` - Build preset definitions
 - `include/motions/unified_motion_manager.h` - Motion control interface
 - `include/sequence/SequenceEngine.h` - Command execution engine
+- `include/sequence/SequenceBuilder.h` - Sequence construction API
 - `include/recipe/RecipeManager.h` - Recipe data management
+- `include/recipe/IProcessPlugin.h` - Recipe plugin interface
+- `include/recipe/ProcessPluginRegistry.h` - Plugin registration
 - `config/*.json` - Hardware configuration files
+
+## Adding New Commands
+
+See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for adding commands to the sequence system.
+
+Command handlers are in `include/sequence/*CommandHandler.cpp`:
+- `MotionCommandHandler` - Motion device commands
+- `IOCommandHandler` - Digital I/O commands
+- `PneumaticCommandHandler` - Pneumatic slide commands
+- `CameraCommandHandler` - Camera capture commands
+- `TECCommandHandler` - Temperature controller commands
+- `SystemCommandHandler` - Wait, prompts, logging
+- `DataStoreCommandHandler` - Data storage operations
+- `VisionCommandHandler` - Vision processing commands (requires OpenCV)
 
 ## Camera Configuration
 

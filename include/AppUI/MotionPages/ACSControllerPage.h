@@ -5,12 +5,14 @@
 #include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QTimer>
+#include <QLabel>
+#include <map>
 
 /**
  * @brief Page for ACS Motion Control controllers
  *
- * Displays ACS stages with X, Y, Z axes (or X, Y for 2-axis stages)
- * Includes velocity controls for each axis
+ * Displays ACS stages with dynamic axis support based on device configuration.
+ * Only shows controls for axes that are actually installed on each device.
  */
 class ACSControllerPage : public MotionControllerPageBase
 {
@@ -42,19 +44,22 @@ private:
   void createAxisControlGroup();
   void updateVelocityDisplay();
   void updateAxisControlButtons();
+  void updateUIForSelectedDevice();
+  std::vector<std::string> getAvailableAxesForDevice(const std::string& deviceName);
 
-  // Velocity control widgets
+  // Velocity control widgets - dynamic per axis
   QComboBox* m_deviceSelector;
-  QDoubleSpinBox* m_velocityX;
-  QDoubleSpinBox* m_velocityY;
-  QDoubleSpinBox* m_velocityZ;
+  std::map<std::string, QLabel*> m_velocityLabels;      // "X" -> label widget
+  std::map<std::string, QDoubleSpinBox*> m_velocitySpinBoxes;  // "X" -> spinbox
   QPushButton* m_turtleButton;
   QPushButton* m_rabbitButton;
   QPushButton* m_applyButton;
 
-  // Axis enable/disable control widgets
-  QPushButton* m_enableX;
-  QPushButton* m_enableY;
-  QPushButton* m_enableZ;
+  // Axis enable/disable control widgets - dynamic per axis
+  std::map<std::string, QPushButton*> m_enableButtons;  // "X" -> button
   QTimer* m_axisStatusTimer;
+
+  // Styles for enable buttons
+  QString m_enabledStyle;
+  QString m_disabledStyle;
 };

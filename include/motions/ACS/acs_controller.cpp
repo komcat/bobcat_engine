@@ -93,13 +93,13 @@ void ACSController::CommunicationThreadFunc() {
 
       // Update motion status less frequently
       if (frameCounter % 3 == 0) {
-        for (const auto& axis : { "X", "Y", "Z" }) {
+        for (const auto& axis : m_availableAxes) {
           bool moving = IsMoving(axis);
           std::lock_guard<std::mutex> lock(m_mutex);
           m_axisMoving[axis] = moving;
         }
 
-        for (const auto& axis : { "X", "Y", "Z" }) {
+        for (const auto& axis : m_availableAxes) {
           bool enabled;
           if (IsServoEnabled(axis, enabled)) {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -175,11 +175,18 @@ void ACSController::UpdateMotorStatus() {
 }
 
 int ACSController::GetAxisIndex(const std::string& axis) {
-  if (axis == "X") return ACSC_AXIS_X;
-  if (axis == "Y") return ACSC_AXIS_Y;
-  if (axis == "Z") return ACSC_AXIS_Z;
+  // Map logical axis name to physical controller axis index
+  // The index is based on position in m_availableAxes (configured from JSON)
+  // Example: "axes": "Y" -> Y maps to physical axis 0
+  // Example: "axes": "X Y Z" -> X=0, Y=1, Z=2
+  for (size_t i = 0; i < m_availableAxes.size(); ++i) {
+    if (m_availableAxes[i] == axis) {
+      return static_cast<int>(i);
+    }
+  }
 
-  std::cout << "[WARNING] ACSController: Unknown axis identifier: " << axis << std::endl;
+  // Return -1 silently - callers should check for this
+  // This is expected behavior for partial axis configurations
   return -1;
 }
 
@@ -262,10 +269,30 @@ bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double 
     return false;
   }
 
-  // ✅ FIX: Use coordinated multi-axis motion instead of sequential moves
-  // This ensures all axes start together and reach their destinations simultaneously
-  std::vector<std::string> axes = {"X", "Y", "Z"};
-  std::vector<double> positions = {x, y, z};
+  // Build axes/positions list based on configured available axes only
+  // This handles single-axis or partial configurations (e.g., only Y installed)
+  std::vector<std::string> axes;
+  std::vector<double> positions;
+
+  for (const auto& axis : m_availableAxes) {
+    if (axis == "X") {
+      axes.push_back("X");
+      positions.push_back(x);
+    }
+    else if (axis == "Y") {
+      axes.push_back("Y");
+      positions.push_back(y);
+    }
+    else if (axis == "Z") {
+      axes.push_back("Z");
+      positions.push_back(z);
+    }
+  }
+
+  if (axes.empty()) {
+    std::cout << "[ERROR] ACSController: No valid axes configured for move" << std::endl;
+    return false;
+  }
 
   return MoveToPositionMultiAxis(axes, positions, blocking);
 }
@@ -474,25 +501,19 @@ PositionStruct ACSController::GetCurrentPosition() {
 bool ACSController::GetPositions(std::map<std::string, double>& positions) {
   if (!m_isConnected || m_availableAxes.empty()) return false;
 
-  int axisIndices[3] = {
-      GetAxisIndex("X"), GetAxisIndex("Y"), GetAxisIndex("Z")
-  };
-  double posArray[3] = { 0.0 };
-
   bool success = true;
-  for (int i = 0; i < 3; i++) {
-    if (axisIndices[i] >= 0) {
-      if (!acsc_GetFPosition(m_controllerId, axisIndices[i], &posArray[i], NULL)) {
-        success = false;
-      }
-    }
-  }
 
-  if (success) {
-    for (int i = 0; i < 3; i++) {
-      if (axisIndices[i] >= 0) {
-        positions[m_availableAxes[i]] = posArray[i];
-      }
+  // Iterate over configured available axes only
+  for (size_t i = 0; i < m_availableAxes.size(); ++i) {
+    const std::string& axis = m_availableAxes[i];
+    int axisIndex = static_cast<int>(i);  // Physical axis index = position in array
+    double pos = 0.0;
+
+    if (!acsc_GetFPosition(m_controllerId, axisIndex, &pos, NULL)) {
+      success = false;
+    }
+    else {
+      positions[axis] = pos;
     }
   }
 

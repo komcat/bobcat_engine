@@ -309,20 +309,25 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
 
-    // Build list of axes and positions based on installed axes
+    // Build list of axes and positions based on installed axes only
+    // This handles partial configurations (e.g., only Y installed for stage-main)
     std::string installedAxes = GetInstalledAxes(deviceName);
     std::vector<std::string> axes;
     std::vector<double> positions;
 
-    // Always include X, Y, Z
-    axes.push_back("X");
-    axes.push_back("Y");
-    axes.push_back("Z");
-    positions.push_back(pos.x);
-    positions.push_back(pos.y);
-    positions.push_back(pos.z);
-
-    // Add U, V, W if installed
+    // Only include axes that are actually installed
+    if (installedAxes.find('X') != std::string::npos) {
+      axes.push_back("X");
+      positions.push_back(pos.x);
+    }
+    if (installedAxes.find('Y') != std::string::npos) {
+      axes.push_back("Y");
+      positions.push_back(pos.y);
+    }
+    if (installedAxes.find('Z') != std::string::npos) {
+      axes.push_back("Z");
+      positions.push_back(pos.z);
+    }
     if (installedAxes.find('U') != std::string::npos) {
       axes.push_back("U");
       positions.push_back(pos.u);
@@ -334,6 +339,11 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
     if (installedAxes.find('W') != std::string::npos) {
       axes.push_back("W");
       positions.push_back(pos.w);
+    }
+
+    if (axes.empty()) {
+      std::cout << "[ERROR] MoveToAbs6: No valid axes configured for " << deviceName << std::endl;
+      return false;
     }
 
     return controller->MoveToPositionMultiAxis(axes, positions, blocking);
@@ -1382,20 +1392,24 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
 
-    // ✅ FIX: Move all axes together in coordinated motion
-    // Build list of axes and positions based on installed axes
+    // Build list of axes and positions based on installed axes only
+    // This handles partial configurations (e.g., only Y installed for stage-main)
     std::vector<std::string> axes;
     std::vector<double> positions;
 
-    // Always include X, Y, Z
-    axes.push_back("X");
-    axes.push_back("Y");
-    axes.push_back("Z");
-    positions.push_back(pos.x);
-    positions.push_back(pos.y);
-    positions.push_back(pos.z);
-
-    // Add U, V, W if installed
+    // Only include axes that are actually installed
+    if (installedAxes.find('X') != std::string::npos) {
+      axes.push_back("X");
+      positions.push_back(pos.x);
+    }
+    if (installedAxes.find('Y') != std::string::npos) {
+      axes.push_back("Y");
+      positions.push_back(pos.y);
+    }
+    if (installedAxes.find('Z') != std::string::npos) {
+      axes.push_back("Z");
+      positions.push_back(pos.z);
+    }
     if (installedAxes.find('U') != std::string::npos) {
       axes.push_back("U");
       positions.push_back(pos.u);
@@ -1407,6 +1421,11 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
     if (installedAxes.find('W') != std::string::npos) {
       axes.push_back("W");
       positions.push_back(pos.w);
+    }
+
+    if (axes.empty()) {
+      std::cout << "[ERROR] executeMoveToPosition: No valid axes configured for " << deviceName << std::endl;
+      return false;
     }
 
     // Move all axes together in coordinated motion

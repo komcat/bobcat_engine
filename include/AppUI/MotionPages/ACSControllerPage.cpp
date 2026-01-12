@@ -5,26 +5,46 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
-#include <QLabel>
 #include <QMessageBox>
-#include <map>
 #include <iostream>
+#include <sstream>
 
 ACSControllerPage::ACSControllerPage(ApplicationContext* context, QWidget* parent)
   : MotionControllerPageBase(context, parent)
   , m_deviceSelector(nullptr)
-  , m_velocityX(nullptr)
-  , m_velocityY(nullptr)
-  , m_velocityZ(nullptr)
   , m_turtleButton(nullptr)
   , m_rabbitButton(nullptr)
   , m_applyButton(nullptr)
-  , m_enableX(nullptr)
-  , m_enableY(nullptr)
-  , m_enableZ(nullptr)
   , m_axisStatusTimer(nullptr)
 {
   std::cout << "[ACSControllerPage] Initialized" << std::endl;
+
+  // Store button styles for later use
+  m_enabledStyle =
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #229954; }";
+
+  m_disabledStyle =
+    "QPushButton { "
+    "  background-color: #e74c3c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 20px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #c0392b; }";
 
   // NOW safe to call virtual functions - derived class is constructed
   initialize();
@@ -37,14 +57,41 @@ std::string ACSControllerPage::getControllerType() const
 
 std::vector<std::string> ACSControllerPage::getAxisNames() const
 {
-  // ACS can have X,Y,Z or just X,Y depending on config
-  // Show all 3 columns - will display "--" for missing axes
+  // Return axes for the currently selected device, or default X,Y,Z
+  std::string deviceName = m_deviceSelector ? m_deviceSelector->currentText().toStdString() : "";
+  if (!deviceName.empty()) {
+    return const_cast<ACSControllerPage*>(this)->getAvailableAxesForDevice(deviceName);
+  }
   return { "X", "Y", "Z" };
 }
 
 QString ACSControllerPage::getPageTitle() const
 {
   return "ACS Motion Controllers";
+}
+
+std::vector<std::string> ACSControllerPage::getAvailableAxesForDevice(const std::string& deviceName)
+{
+  std::vector<std::string> axes;
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr || deviceName.empty()) {
+    return axes;
+  }
+
+  std::string installedAxes = motionMgr->GetInstalledAxes(deviceName);
+  if (installedAxes.empty()) {
+    return axes;
+  }
+
+  // Parse space-separated axes string (e.g., "X Y Z" or "Y")
+  std::istringstream iss(installedAxes);
+  std::string axis;
+  while (iss >> axis) {
+    axes.push_back(axis);
+  }
+
+  return axes;
 }
 
 void ACSControllerPage::setupUI()
@@ -120,7 +167,7 @@ void ACSControllerPage::createVelocityControls()
 
   groupLayout->addLayout(deviceRow);
 
-  // Velocity spinboxes row
+  // Velocity spinboxes row - create all possible axes
   QHBoxLayout* velocityRow = new QHBoxLayout();
 
   QString spinBoxStyle =
@@ -139,51 +186,31 @@ void ACSControllerPage::createVelocityControls()
     "  background-color: #3c3c3c; "
     "}";
 
-  // X axis
-  QLabel* labelX = new QLabel("X Velocity:");
-  labelX->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
-  velocityRow->addWidget(labelX);
+  QString labelStyle = "QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }";
 
-  m_velocityX = new QDoubleSpinBox();
-  m_velocityX->setRange(1.0, 80.0);
-  m_velocityX->setValue(10.0);
-  m_velocityX->setSuffix(" mm/s");
-  m_velocityX->setDecimals(1);
-  m_velocityX->setStyleSheet(spinBoxStyle);
-  velocityRow->addWidget(m_velocityX);
+  // Create widgets for all possible axes (X, Y, Z, U, V, W)
+  std::vector<std::string> allAxes = {"X", "Y", "Z", "U", "V", "W"};
+  for (const auto& axis : allAxes) {
+    QLabel* label = new QLabel(QString::fromStdString(axis + " Velocity:"));
+    label->setStyleSheet(labelStyle);
+    label->setVisible(false);  // Initially hidden
+    m_velocityLabels[axis] = label;
+    velocityRow->addWidget(label);
 
-  velocityRow->addSpacing(20);
+    QDoubleSpinBox* spinBox = new QDoubleSpinBox();
+    spinBox->setRange(1.0, 80.0);
+    spinBox->setValue(10.0);
+    spinBox->setSuffix(" mm/s");
+    spinBox->setDecimals(1);
+    spinBox->setStyleSheet(spinBoxStyle);
+    spinBox->setVisible(false);  // Initially hidden
+    m_velocitySpinBoxes[axis] = spinBox;
+    velocityRow->addWidget(spinBox);
 
-  // Y axis
-  QLabel* labelY = new QLabel("Y Velocity:");
-  labelY->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
-  velocityRow->addWidget(labelY);
-
-  m_velocityY = new QDoubleSpinBox();
-  m_velocityY->setRange(1.0, 80.0);
-  m_velocityY->setValue(10.0);
-  m_velocityY->setSuffix(" mm/s");
-  m_velocityY->setDecimals(1);
-  m_velocityY->setStyleSheet(spinBoxStyle);
-  velocityRow->addWidget(m_velocityY);
-
-  velocityRow->addSpacing(20);
-
-  // Z axis
-  QLabel* labelZ = new QLabel("Z Velocity:");
-  labelZ->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
-  velocityRow->addWidget(labelZ);
-
-  m_velocityZ = new QDoubleSpinBox();
-  m_velocityZ->setRange(1.0, 80.0);
-  m_velocityZ->setValue(10.0);
-  m_velocityZ->setSuffix(" mm/s");
-  m_velocityZ->setDecimals(1);
-  m_velocityZ->setStyleSheet(spinBoxStyle);
-  velocityRow->addWidget(m_velocityZ);
+    velocityRow->addSpacing(20);
+  }
 
   velocityRow->addStretch();
-
   groupLayout->addLayout(velocityRow);
 
   // Preset buttons and apply button row
@@ -193,7 +220,7 @@ void ACSControllerPage::createVelocityControls()
   presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   buttonRow->addWidget(presetLabel);
 
-  m_turtleButton = new QPushButton("🐢 Turtle (10 mm/s)");
+  m_turtleButton = new QPushButton("Turtle (10 mm/s)");
   m_turtleButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #3498db; "
@@ -208,7 +235,7 @@ void ACSControllerPage::createVelocityControls()
   connect(m_turtleButton, &QPushButton::clicked, this, &ACSControllerPage::onPresetTurtleClicked);
   buttonRow->addWidget(m_turtleButton);
 
-  m_rabbitButton = new QPushButton("🐇 Rabbit (50 mm/s)");
+  m_rabbitButton = new QPushButton("Rabbit (50 mm/s)");
   m_rabbitButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #e74c3c; "
@@ -225,7 +252,7 @@ void ACSControllerPage::createVelocityControls()
 
   buttonRow->addStretch();
 
-  m_applyButton = new QPushButton("✓ Apply Velocity");
+  m_applyButton = new QPushButton("Apply Velocity");
   m_applyButton->setStyleSheet(
     "QPushButton { "
     "  background-color: #27ae60; "
@@ -260,12 +287,61 @@ void ACSControllerPage::updateVelocityDisplay()
   for (const auto& device : devices) {
     m_deviceSelector->addItem(QString::fromStdString(device));
   }
+
+  // Update UI for the first device if any
+  if (!devices.empty()) {
+    updateUIForSelectedDevice();
+  }
 }
 
 void ACSControllerPage::onDeviceSelected(const QString& deviceName)
 {
-  // Could load current velocity settings here if needed
   std::cout << "[ACSControllerPage] Device selected: " << deviceName.toStdString() << std::endl;
+  updateUIForSelectedDevice();
+}
+
+void ACSControllerPage::updateUIForSelectedDevice()
+{
+  std::string deviceName = m_deviceSelector->currentText().toStdString();
+  std::vector<std::string> availableAxes = getAvailableAxesForDevice(deviceName);
+
+  // Hide all velocity widgets first
+  for (auto& [axis, label] : m_velocityLabels) {
+    label->setVisible(false);
+  }
+  for (auto& [axis, spinBox] : m_velocitySpinBoxes) {
+    spinBox->setVisible(false);
+  }
+
+  // Show only available axes
+  for (const auto& axis : availableAxes) {
+    if (m_velocityLabels.count(axis)) {
+      m_velocityLabels[axis]->setVisible(true);
+    }
+    if (m_velocitySpinBoxes.count(axis)) {
+      m_velocitySpinBoxes[axis]->setVisible(true);
+    }
+  }
+
+  // Hide all enable buttons first
+  for (auto& [axis, btn] : m_enableButtons) {
+    btn->setVisible(false);
+  }
+
+  // Show only available axes
+  for (const auto& axis : availableAxes) {
+    if (m_enableButtons.count(axis)) {
+      m_enableButtons[axis]->setVisible(true);
+    }
+  }
+
+  std::cout << "[ACSControllerPage] Updated UI for device: " << deviceName
+            << " (axes: ";
+  for (size_t i = 0; i < availableAxes.size(); ++i) {
+    std::cout << availableAxes[i];
+    if (i < availableAxes.size() - 1) std::cout << ", ";
+  }
+  std::cout << ")" << std::endl;
 }
 
 void ACSControllerPage::onVelocityChanged()
@@ -275,17 +351,23 @@ void ACSControllerPage::onVelocityChanged()
 
 void ACSControllerPage::onPresetTurtleClicked()
 {
-  m_velocityX->setValue(10.0);
-  m_velocityY->setValue(10.0);
-  m_velocityZ->setValue(10.0);
+  // Set velocity for all visible spinboxes
+  for (auto& [axis, spinBox] : m_velocitySpinBoxes) {
+    if (spinBox->isVisible()) {
+      spinBox->setValue(10.0);
+    }
+  }
   std::cout << "[ACSControllerPage] Turtle preset applied (10 mm/s)" << std::endl;
 }
 
 void ACSControllerPage::onPresetRabbitClicked()
 {
-  m_velocityX->setValue(50.0);
-  m_velocityY->setValue(50.0);
-  m_velocityZ->setValue(50.0);
+  // Set velocity for all visible spinboxes
+  for (auto& [axis, spinBox] : m_velocitySpinBoxes) {
+    if (spinBox->isVisible()) {
+      spinBox->setValue(50.0);
+    }
+  }
   std::cout << "[ACSControllerPage] Rabbit preset applied (50 mm/s)" << std::endl;
 }
 
@@ -305,40 +387,36 @@ void ACSControllerPage::onApplyVelocityClicked()
     return;
   }
 
-  double velX = m_velocityX->value();
-  double velY = m_velocityY->value();
-  double velZ = m_velocityZ->value();
+  std::vector<std::string> availableAxes = getAvailableAxesForDevice(deviceName);
 
-  bool successX = motionMgr->SetVelocity(deviceName, "X", velX);
-  bool successY = motionMgr->SetVelocity(deviceName, "Y", velY);
-  bool successZ = motionMgr->SetVelocity(deviceName, "Z", velZ);
+  bool allSuccess = true;
+  QString successMsg = QString("Velocity set successfully for %1:\n\n").arg(QString::fromStdString(deviceName));
+  QString failMsg;
 
-  if (successX && successY && successZ) {
-    std::cout << "[ACSControllerPage] Velocity applied to " << deviceName
-              << " - X:" << velX << " Y:" << velY << " Z:" << velZ << " mm/s" << std::endl;
+  for (const auto& axis : availableAxes) {
+    if (m_velocitySpinBoxes.count(axis) && m_velocitySpinBoxes[axis]->isVisible()) {
+      double velocity = m_velocitySpinBoxes[axis]->value();
+      bool success = motionMgr->SetVelocity(deviceName, axis, velocity);
 
-    QMessageBox::information(this, "Success",
-      QString("Velocity set successfully for %1:\n\n"
-              "X: %2 mm/s\n"
-              "Y: %3 mm/s\n"
-              "Z: %4 mm/s")
-        .arg(QString::fromStdString(deviceName))
-        .arg(velX, 0, 'f', 1)
-        .arg(velY, 0, 'f', 1)
-        .arg(velZ, 0, 'f', 1));
+      if (success) {
+        successMsg += QString("%1: %2 mm/s\n").arg(QString::fromStdString(axis)).arg(velocity, 0, 'f', 1);
+        std::cout << "[ACSControllerPage] Velocity applied to " << deviceName
+                  << " - " << axis << ": " << velocity << " mm/s" << std::endl;
+      } else {
+        allSuccess = false;
+        failMsg += QString("- %1 axis failed\n").arg(QString::fromStdString(axis));
+        std::cerr << "[ACSControllerPage] Failed to apply velocity for " << axis << std::endl;
+      }
+    }
   }
-  else {
-    std::cerr << "[ACSControllerPage] Failed to apply velocity (X:"
-              << (successX ? "OK" : "FAIL") << " Y:" << (successY ? "OK" : "FAIL")
-              << " Z:" << (successZ ? "OK" : "FAIL") << ")" << std::endl;
 
-    QString errorMsg = QString("Failed to set velocity for %1:\n\n").arg(QString::fromStdString(deviceName));
-    if (!successX) errorMsg += "✗ X axis failed\n";
-    if (!successY) errorMsg += "✗ Y axis failed\n";
-    if (!successZ) errorMsg += "✗ Z axis failed\n";
-    errorMsg += "\nPlease check:\n- Device is connected\n- Device is ready";
-
-    QMessageBox::critical(this, "Error", errorMsg);
+  if (allSuccess) {
+    QMessageBox::information(this, "Success", successMsg);
+  } else {
+    QMessageBox::critical(this, "Error",
+      QString("Failed to set velocity for %1:\n\n%2\nPlease check:\n- Device is connected\n- Device is ready")
+        .arg(QString::fromStdString(deviceName))
+        .arg(failMsg));
   }
 }
 
@@ -370,72 +448,25 @@ void ACSControllerPage::createAxisControlGroup()
   QHBoxLayout* axisLayout = new QHBoxLayout(axisGroup);
   axisLayout->setSpacing(20);
 
-  // Common button style for enabled (green)
-  QString enabledStyle =
-    "QPushButton { "
-    "  background-color: #27ae60; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  padding: 10px 20px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  min-width: 120px; "
-    "} "
-    "QPushButton:hover { background-color: #229954; }";
+  // Create buttons for all possible axes (X, Y, Z, U, V, W)
+  std::vector<std::string> allAxes = {"X", "Y", "Z", "U", "V", "W"};
+  for (const auto& axis : allAxes) {
+    QPushButton* btn = new QPushButton(QString::fromStdString(axis + ": --"));
+    btn->setStyleSheet(m_disabledStyle);
+    btn->setProperty("axis", QString::fromStdString(axis));
+    btn->setProperty("servoOn", false);
+    btn->setVisible(false);  // Initially hidden
 
-  // Common button style for disabled (red)
-  QString disabledStyle =
-    "QPushButton { "
-    "  background-color: #e74c3c; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  padding: 10px 20px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  min-width: 120px; "
-    "} "
-    "QPushButton:hover { background-color: #c0392b; }";
+    connect(btn, &QPushButton::clicked, this, [this, axis]() {
+      if (m_enableButtons.count(axis)) {
+        bool currentState = m_enableButtons[axis]->property("servoOn").toBool();
+        onAxisEnableClicked(QString::fromStdString(axis), !currentState);
+      }
+    });
 
-  // X axis button
-  m_enableX = new QPushButton("X: --");
-  m_enableX->setStyleSheet(disabledStyle);
-  m_enableX->setProperty("axis", "X");
-  m_enableX->setProperty("servoOn", false);
-  m_enableX->setProperty("enabledStyle", enabledStyle);
-  m_enableX->setProperty("disabledStyle", disabledStyle);
-  connect(m_enableX, &QPushButton::clicked, this, [this]() {
-    bool currentState = m_enableX->property("servoOn").toBool();
-    onAxisEnableClicked("X", !currentState);
-  });
-  axisLayout->addWidget(m_enableX);
-
-  // Y axis button
-  m_enableY = new QPushButton("Y: --");
-  m_enableY->setStyleSheet(disabledStyle);
-  m_enableY->setProperty("axis", "Y");
-  m_enableY->setProperty("servoOn", false);
-  m_enableY->setProperty("enabledStyle", enabledStyle);
-  m_enableY->setProperty("disabledStyle", disabledStyle);
-  connect(m_enableY, &QPushButton::clicked, this, [this]() {
-    bool currentState = m_enableY->property("servoOn").toBool();
-    onAxisEnableClicked("Y", !currentState);
-  });
-  axisLayout->addWidget(m_enableY);
-
-  // Z axis button
-  m_enableZ = new QPushButton("Z: --");
-  m_enableZ->setStyleSheet(disabledStyle);
-  m_enableZ->setProperty("axis", "Z");
-  m_enableZ->setProperty("servoOn", false);
-  m_enableZ->setProperty("enabledStyle", enabledStyle);
-  m_enableZ->setProperty("disabledStyle", disabledStyle);
-  connect(m_enableZ, &QPushButton::clicked, this, [this]() {
-    bool currentState = m_enableZ->property("servoOn").toBool();
-    onAxisEnableClicked("Z", !currentState);
-  });
-  axisLayout->addWidget(m_enableZ);
+    m_enableButtons[axis] = btn;
+    axisLayout->addWidget(btn);
+  }
 
   axisLayout->addStretch();
 
@@ -455,40 +486,46 @@ void ACSControllerPage::updateAxisControlButtons()
 
   std::string deviceName = m_deviceSelector->currentText().toStdString();
   if (deviceName.empty()) {
-    // No device selected - show "--"
-    m_enableX->setText("X: --");
-    m_enableY->setText("Y: --");
-    m_enableZ->setText("Z: --");
+    // No device selected - show "--" for visible buttons
+    for (auto& [axis, btn] : m_enableButtons) {
+      if (btn->isVisible()) {
+        btn->setText(QString::fromStdString(axis + ": --"));
+      }
+    }
     return;
   }
 
   // Check connection status
   std::map<std::string, bool> status = motionMgr->GetConnectionStatus();
   if (!status[deviceName]) {
-    // Not connected
-    m_enableX->setText("X: N/C");
-    m_enableY->setText("Y: N/C");
-    m_enableZ->setText("Z: N/C");
+    // Not connected - show "N/C" for visible buttons
+    for (auto& [axis, btn] : m_enableButtons) {
+      if (btn->isVisible()) {
+        btn->setText(QString::fromStdString(axis + ": N/C"));
+      }
+    }
     return;
   }
 
-  // Helper lambda to update button state
-  auto updateButton = [&](QPushButton* btn, const QString& axis) {
-    bool isServoOn = motionMgr->IsServoEnabled(deviceName, axis.toStdString());
-    btn->setProperty("servoOn", isServoOn);
-    if (isServoOn) {
-      btn->setText(axis + ": Enabled");
-      btn->setStyleSheet(btn->property("enabledStyle").toString());
-    }
-    else {
-      btn->setText(axis + ": Disabled");
-      btn->setStyleSheet(btn->property("disabledStyle").toString());
-    }
-  };
+  // Get available axes for this device
+  std::vector<std::string> availableAxes = getAvailableAxesForDevice(deviceName);
 
-  updateButton(m_enableX, "X");
-  updateButton(m_enableY, "Y");
-  updateButton(m_enableZ, "Z");
+  // Only query status for available axes
+  for (const auto& axis : availableAxes) {
+    if (m_enableButtons.count(axis) && m_enableButtons[axis]->isVisible()) {
+      QPushButton* btn = m_enableButtons[axis];
+      bool isServoOn = motionMgr->IsServoEnabled(deviceName, axis);
+      btn->setProperty("servoOn", isServoOn);
+
+      if (isServoOn) {
+        btn->setText(QString::fromStdString(axis + ": Enabled"));
+        btn->setStyleSheet(m_enabledStyle);
+      } else {
+        btn->setText(QString::fromStdString(axis + ": Disabled"));
+        btn->setStyleSheet(m_disabledStyle);
+      }
+    }
+  }
 }
 
 void ACSControllerPage::onAxisEnableClicked(const QString& axis, bool enable)
