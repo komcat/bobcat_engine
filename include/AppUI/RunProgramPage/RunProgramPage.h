@@ -241,6 +241,8 @@ private:
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
   void loadRecipePreview(const std::string& recipeFilePath);
+  void onRecipeTableContextMenu(const QPoint& pos);  // Context menu for recipe table
+  void renameRecipe(int recipeIndex);                // Rename recipe dialog
 
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription
@@ -263,7 +265,7 @@ private:
 
   // Context tab methods
   void createContextTab();                             // Creates the context tab UI
-  void updateContextTable();                           // Refreshes table from context
+  void updateContextTable(bool forceUpdate = false);   // Refreshes table from context
   void onContextFilterChanged(const QString& filter);  // Handles filter text changes
   void startContextRefreshTimer();                     // Starts the 500ms timer
   void stopContextRefreshTimer();                      // Stops the timer

@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QTabWidget>
 #include <QGroupBox>
+#include <QSettings>
 #include <vector>
 #include <string>
 
@@ -84,6 +85,8 @@ private:
   void sendJogCommand(const std::string& axis, double direction);
   void updateStepSizeDisplay();
   void flashButton(QPushButton* button);
+  void saveWindowSettings();       // Save window position to settings
+  void restoreWindowSettings();    // Restore window position from settings
 
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;

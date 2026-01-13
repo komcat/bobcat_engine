@@ -865,13 +865,20 @@ void Application::shutdownManagers()
 {
   std::cout << "[Application] Shutting down managers..." << std::endl;
 
+  // ✅ CRITICAL: Mark DataStore as shutting down FIRST
+  // This prevents crash from pending callbacks trying to write during destruction
+  if (m_dataStore) {
+    std::cout << "[Application] Initiating DataStore shutdown..." << std::endl;
+    m_dataStore->BeginShutdown();
+  }
+
   // Stop safety watch first
   if (m_safetyWatchManager) {
     std::cout << "[Application] Stopping safety watch..." << std::endl;
     m_safetyWatchManager->StopWatching();
   }
 
-  // ✅ CRITICAL: Stop SMU polling FIRST and disconnect signals BEFORE touching DataStore
+  // ✅ CRITICAL: Stop SMU polling and disconnect signals BEFORE touching DataStore
   // This prevents crash where polling thread tries to access destroyed DataStore
   if (m_smuPollingManager) {
     std::cout << "[Application] Stopping SMU polling..." << std::endl;

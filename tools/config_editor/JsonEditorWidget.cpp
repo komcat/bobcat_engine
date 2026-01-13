@@ -239,7 +239,7 @@ QWidget* JsonEditorWidget::createValueEditor(const QJsonValue& value, const QStr
         info.type = "bool";
         QCheckBox* checkbox = new QCheckBox();
         checkbox->setChecked(value.toBool());
-        connect(checkbox, &QCheckBox::stateChanged, this, &JsonEditorWidget::onFieldChanged);
+        connect(checkbox, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState) { onFieldChanged(); });
         editor = checkbox;
     } else if (value.isDouble()) {
         info.type = "number";

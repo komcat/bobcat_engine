@@ -6,6 +6,7 @@
 #include "lighting/LightingManager.h"
 #include "lighting/LightingTypes.h"
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QGroupBox>
 #include <QCoreApplication>
 #include <QFile>
@@ -23,8 +24,10 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_autoExposureCheck(nullptr)
     , m_autoGainCheck(nullptr)
     , m_exposureSlider(nullptr)
+    , m_exposureSpinBox(nullptr)
     , m_exposureValueLabel(nullptr)
     , m_gainSlider(nullptr)
+    , m_gainSpinBox(nullptr)
     , m_gainValueLabel(nullptr)
     , m_pixelToMmXLabel(nullptr)
     , m_pixelToMmYLabel(nullptr)
@@ -112,7 +115,7 @@ void VisionRightPanelWidget::setupROITab(QWidget* roiTab)
 
     m_roiEnabledCheck = new QCheckBox("Enable ROI");
     m_roiEnabledCheck->setToolTip("Enable cropping to Region of Interest before processing");
-    connect(m_roiEnabledCheck, &QCheckBox::stateChanged,
+    connect(m_roiEnabledCheck, &QCheckBox::checkStateChanged,
             this, &VisionRightPanelWidget::onROIEnabledChanged);
     enableLayout->addWidget(m_roiEnabledCheck);
 
@@ -197,7 +200,7 @@ void VisionRightPanelWidget::setupSearchBoxTab(QWidget* searchBoxTab)
 
     m_searchBoxEnabledCheck = new QCheckBox("Enable Search Box");
     m_searchBoxEnabledCheck->setToolTip("Enable 3x3 grid search pattern within search area");
-    connect(m_searchBoxEnabledCheck, &QCheckBox::stateChanged,
+    connect(m_searchBoxEnabledCheck, &QCheckBox::checkStateChanged,
             this, &VisionRightPanelWidget::onSearchBoxEnabledChanged);
     searchEnableLayout->addWidget(m_searchBoxEnabledCheck);
 
@@ -319,6 +322,10 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     expLabel->setStyleSheet("QLabel { font-weight: bold; }");
     settingsLayout->addWidget(expLabel);
 
+    // Exposure slider + spinbox layout
+    QHBoxLayout* exposureLayout = new QHBoxLayout();
+    exposureLayout->setSpacing(8);
+
     m_exposureSlider = new QSlider(Qt::Horizontal);
     m_exposureSlider->setMinimum(1);
     m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
@@ -326,10 +333,27 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     m_exposureSlider->setToolTip("Camera exposure time in microseconds");
     connect(m_exposureSlider, &QSlider::valueChanged,
             this, &VisionRightPanelWidget::onExposureSliderChanged);
-    settingsLayout->addWidget(m_exposureSlider);
+    exposureLayout->addWidget(m_exposureSlider, 1);
 
-    m_exposureValueLabel = new QLabel("1000 \xce\xbcs");  // μs in UTF-8
+    m_exposureSpinBox = new QSpinBox();
+    m_exposureSpinBox->setMinimum(1);
+    m_exposureSpinBox->setMaximum(100000);
+    m_exposureSpinBox->setValue(1000);
+    m_exposureSpinBox->setSuffix(" us");
+    m_exposureSpinBox->setFixedWidth(100);
+    m_exposureSpinBox->setToolTip("Enter exposure time in microseconds");
+    m_exposureSpinBox->setStyleSheet(
+        "QSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; padding: 2px; }"
+        "QSpinBox:focus { border: 1px solid #0e639c; }");
+    connect(m_exposureSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &VisionRightPanelWidget::onExposureSpinBoxChanged);
+    exposureLayout->addWidget(m_exposureSpinBox);
+
+    settingsLayout->addLayout(exposureLayout);
+
+    m_exposureValueLabel = new QLabel("1000 us = 1.00 ms");
     m_exposureValueLabel->setAlignment(Qt::AlignCenter);
+    m_exposureValueLabel->setStyleSheet("color: #888888; font-size: 11px;");
     settingsLayout->addWidget(m_exposureValueLabel);
 
     settingsLayout->addSpacing(10);
@@ -339,6 +363,10 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     gainLabel->setStyleSheet("QLabel { font-weight: bold; }");
     settingsLayout->addWidget(gainLabel);
 
+    // Gain slider + spinbox layout
+    QHBoxLayout* gainLayout = new QHBoxLayout();
+    gainLayout->setSpacing(8);
+
     m_gainSlider = new QSlider(Qt::Horizontal);
     m_gainSlider->setMinimum(0);
     m_gainSlider->setMaximum(240);  // 0-24 with 0.1 precision (ACE/ACE2 compatible)
@@ -346,10 +374,28 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     m_gainSlider->setToolTip("Camera gain (0.0 - 24.0)");
     connect(m_gainSlider, &QSlider::valueChanged,
             this, &VisionRightPanelWidget::onGainSliderChanged);
-    settingsLayout->addWidget(m_gainSlider);
+    gainLayout->addWidget(m_gainSlider, 1);
+
+    m_gainSpinBox = new QDoubleSpinBox();
+    m_gainSpinBox->setMinimum(0.0);
+    m_gainSpinBox->setMaximum(24.0);
+    m_gainSpinBox->setValue(1.0);
+    m_gainSpinBox->setSingleStep(0.1);
+    m_gainSpinBox->setDecimals(1);
+    m_gainSpinBox->setFixedWidth(80);
+    m_gainSpinBox->setToolTip("Enter gain value (0.0 - 24.0)");
+    m_gainSpinBox->setStyleSheet(
+        "QDoubleSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; padding: 2px; }"
+        "QDoubleSpinBox:focus { border: 1px solid #0e639c; }");
+    connect(m_gainSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this, &VisionRightPanelWidget::onGainSpinBoxChanged);
+    gainLayout->addWidget(m_gainSpinBox);
+
+    settingsLayout->addLayout(gainLayout);
 
     m_gainValueLabel = new QLabel("1.0");
     m_gainValueLabel->setAlignment(Qt::AlignCenter);
+    m_gainValueLabel->setStyleSheet("color: #888888; font-size: 11px;");
     settingsLayout->addWidget(m_gainValueLabel);
 
     tabLayout->addWidget(cameraGroup);
@@ -525,6 +571,8 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
     m_autoGainCheck->blockSignals(true);
     m_exposureSlider->blockSignals(true);
     m_gainSlider->blockSignals(true);
+    if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(true);
+    if (m_gainSpinBox) m_gainSpinBox->blockSignals(true);
 
     m_autoExposureCheck->setChecked(settings.auto_exposure);
     m_autoGainCheck->setChecked(settings.auto_gain);
@@ -533,25 +581,31 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
     if (exposureValue < 1) exposureValue = 1;
     if (exposureValue > 100000) exposureValue = 100000;
     m_exposureSlider->setValue(exposureValue);
+    if (m_exposureSpinBox) m_exposureSpinBox->setValue(exposureValue);
 
     int gainValue = static_cast<int>(settings.gain * 10);
     if (gainValue < 0) gainValue = 0;
     if (gainValue > 240) gainValue = 240;
     m_gainSlider->setValue(gainValue);
+    if (m_gainSpinBox) m_gainSpinBox->setValue(settings.gain);
 
     // Update labels
     updateExposureLabel(exposureValue);
     updateGainLabel(settings.gain);
 
-    // Update slider enabled state
+    // Update slider and spinbox enabled state
     m_exposureSlider->setEnabled(!settings.auto_exposure);
     m_gainSlider->setEnabled(!settings.auto_gain);
+    if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.auto_exposure);
+    if (m_gainSpinBox) m_gainSpinBox->setEnabled(!settings.auto_gain);
 
     // Unblock signals
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
     m_exposureSlider->blockSignals(false);
     m_gainSlider->blockSignals(false);
+    if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(false);
+    if (m_gainSpinBox) m_gainSpinBox->blockSignals(false);
 
     std::cout << "[VisionRightPanelWidget] Loaded camera settings from " << cameraIdStr << std::endl;
 }
@@ -601,6 +655,8 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_autoGainCheck->blockSignals(true);
     m_exposureSlider->blockSignals(true);
     m_gainSlider->blockSignals(true);
+    if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(true);
+    if (m_gainSpinBox) m_gainSpinBox->blockSignals(true);
 
     // Set camera
     int cameraIndex = m_cameraSelector->findText(settings.cameraId);
@@ -613,6 +669,8 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_autoGainCheck->setChecked(settings.autoGain);
     m_exposureSlider->setValue(settings.exposureTime);
     m_gainSlider->setValue(static_cast<int>(settings.gain * 10));
+    if (m_exposureSpinBox) m_exposureSpinBox->setValue(settings.exposureTime);
+    if (m_gainSpinBox) m_gainSpinBox->setValue(settings.gain);
     updateExposureLabel(settings.exposureTime);
     updateGainLabel(settings.gain);
 
@@ -628,12 +686,16 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     // Update enabled states
     m_exposureSlider->setEnabled(!settings.autoExposure);
     m_gainSlider->setEnabled(!settings.autoGain);
+    if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.autoExposure);
+    if (m_gainSpinBox) m_gainSpinBox->setEnabled(!settings.autoGain);
 
     // Unblock signals
     m_cameraSelector->blockSignals(false);
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
     m_exposureSlider->blockSignals(false);
+    if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(false);
+    if (m_gainSpinBox) m_gainSpinBox->blockSignals(false);
     m_gainSlider->blockSignals(false);
 
     std::cout << "[VisionRightPanelWidget] Camera settings restored: "
@@ -644,6 +706,25 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
 
 void VisionRightPanelWidget::onExposureSliderChanged(int value)
 {
+    // Sync spinbox (block signals to prevent loop)
+    if (m_exposureSpinBox) {
+        m_exposureSpinBox->blockSignals(true);
+        m_exposureSpinBox->setValue(value);
+        m_exposureSpinBox->blockSignals(false);
+    }
+    updateExposureLabel(value);
+    applyCameraSettings();
+    emit cameraSettingsChanged();
+}
+
+void VisionRightPanelWidget::onExposureSpinBoxChanged(int value)
+{
+    // Sync slider (block signals to prevent loop)
+    if (m_exposureSlider) {
+        m_exposureSlider->blockSignals(true);
+        m_exposureSlider->setValue(value);
+        m_exposureSlider->blockSignals(false);
+    }
     updateExposureLabel(value);
     applyCameraSettings();
     emit cameraSettingsChanged();
@@ -651,24 +732,50 @@ void VisionRightPanelWidget::onExposureSliderChanged(int value)
 
 void VisionRightPanelWidget::onGainSliderChanged(int value)
 {
-    double gain = value / 10.0;  // Convert to 0.0 - 10.0 range
+    double gain = value / 10.0;  // Convert to 0.0 - 24.0 range
+    // Sync spinbox (block signals to prevent loop)
+    if (m_gainSpinBox) {
+        m_gainSpinBox->blockSignals(true);
+        m_gainSpinBox->setValue(gain);
+        m_gainSpinBox->blockSignals(false);
+    }
     updateGainLabel(gain);
     applyCameraSettings();
     emit cameraSettingsChanged();
 }
 
-void VisionRightPanelWidget::onAutoExposureChanged(int state)
+void VisionRightPanelWidget::onGainSpinBoxChanged(double value)
 {
-    bool autoEnabled = (state == Qt::Checked);
-    m_exposureSlider->setEnabled(!autoEnabled);
+    int sliderValue = static_cast<int>(value * 10);  // Convert to slider range
+    // Sync slider (block signals to prevent loop)
+    if (m_gainSlider) {
+        m_gainSlider->blockSignals(true);
+        m_gainSlider->setValue(sliderValue);
+        m_gainSlider->blockSignals(false);
+    }
+    updateGainLabel(value);
     applyCameraSettings();
     emit cameraSettingsChanged();
 }
 
-void VisionRightPanelWidget::onAutoGainChanged(int state)
+void VisionRightPanelWidget::onAutoExposureChanged(Qt::CheckState state)
+{
+    bool autoEnabled = (state == Qt::Checked);
+    m_exposureSlider->setEnabled(!autoEnabled);
+    if (m_exposureSpinBox) {
+        m_exposureSpinBox->setEnabled(!autoEnabled);
+    }
+    applyCameraSettings();
+    emit cameraSettingsChanged();
+}
+
+void VisionRightPanelWidget::onAutoGainChanged(Qt::CheckState state)
 {
     bool autoEnabled = (state == Qt::Checked);
     m_gainSlider->setEnabled(!autoEnabled);
+    if (m_gainSpinBox) {
+        m_gainSpinBox->setEnabled(!autoEnabled);
+    }
     applyCameraSettings();
     emit cameraSettingsChanged();
 }
@@ -677,15 +784,15 @@ void VisionRightPanelWidget::updateExposureLabel(int microseconds)
 {
     if (microseconds >= 1000) {
         double ms = microseconds / 1000.0;
-        m_exposureValueLabel->setText(QString("%1 ms").arg(ms, 0, 'f', 2));
+        m_exposureValueLabel->setText(QString("%1 us = %2 ms").arg(microseconds).arg(ms, 0, 'f', 2));
     } else {
-        m_exposureValueLabel->setText(QString("%1 \xce\xbcs").arg(microseconds));
+        m_exposureValueLabel->setText(QString("%1 us").arg(microseconds));
     }
 }
 
 void VisionRightPanelWidget::updateGainLabel(double gain)
 {
-    m_gainValueLabel->setText(QString::number(gain, 'f', 1));
+    m_gainValueLabel->setText(QString("Gain: %1").arg(gain, 0, 'f', 1));
 }
 
 void VisionRightPanelWidget::setPluginConfigWidget(QWidget* configWidget)
@@ -791,7 +898,7 @@ void VisionRightPanelWidget::onROIValueChanged()
     emit roiChanged(startX, startY, endX, endY);
 }
 
-void VisionRightPanelWidget::onROIEnabledChanged(int state)
+void VisionRightPanelWidget::onROIEnabledChanged(Qt::CheckState state)
 {
     bool enabled = (state == Qt::Checked);
     std::cout << "[VisionRightPanelWidget] ROI " << (enabled ? "enabled" : "disabled") << std::endl;
@@ -890,7 +997,7 @@ void VisionRightPanelWidget::onSearchBoxValueChanged()
     );
 }
 
-void VisionRightPanelWidget::onSearchBoxEnabledChanged(int state)
+void VisionRightPanelWidget::onSearchBoxEnabledChanged(Qt::CheckState state)
 {
     emit searchBoxEnabledChanged(state == Qt::Checked);
 }
@@ -952,7 +1059,7 @@ void VisionRightPanelWidget::setupLightingSection(QVBoxLayout* parentLayout)
     // Enable checkbox
     m_lightingEnabledCheck = new QCheckBox("Enable Lighting for this Profile");
     m_lightingEnabledCheck->setToolTip("When enabled, lighting settings will be saved with the vision profile and applied when executing");
-    connect(m_lightingEnabledCheck, &QCheckBox::stateChanged,
+    connect(m_lightingEnabledCheck, &QCheckBox::checkStateChanged,
             this, &VisionRightPanelWidget::onLightingEnabledChanged);
     lightingLayout->addWidget(m_lightingEnabledCheck);
 
@@ -1093,7 +1200,7 @@ void VisionRightPanelWidget::loadLightingChannels()
     std::cout << "[VisionRightPanelWidget] Loaded " << enabledChannels.size() << " lighting channels" << std::endl;
 }
 
-void VisionRightPanelWidget::onLightingEnabledChanged(int state)
+void VisionRightPanelWidget::onLightingEnabledChanged(Qt::CheckState state)
 {
     bool enabled = (state == Qt::Checked);
     m_lightingChannelsContainer->setEnabled(enabled);

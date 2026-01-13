@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QCloseEvent>
+#include <QSettings>
 
 struct ApplicationContext;
 class MainMenuPage;
@@ -59,6 +60,8 @@ private:
   void setupLogging();
   void setupJogPanel();
   void setupKeyboardShortcuts();  // ✅ NEW: Setup F1-F8 shortcuts
+  void saveWindowSettings();      // Save window geometry to settings
+  void restoreWindowSettings();   // Restore window geometry from settings
 
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;

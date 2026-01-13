@@ -436,7 +436,7 @@ void CameraView::disconnectCamera()
 // ✅ NEW - CAMERA SETTINGS SLOTS
 // ============================================================================
 
-void CameraView::onAutoExposureChanged(int state)
+void CameraView::onAutoExposureChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
 
@@ -449,7 +449,7 @@ void CameraView::onAutoExposureChanged(int state)
   std::cout << "[CameraView] Auto Exposure: " << (autoEnabled ? "ON" : "OFF") << std::endl;
 }
 
-void CameraView::onAutoGainChanged(int state)
+void CameraView::onAutoGainChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
 

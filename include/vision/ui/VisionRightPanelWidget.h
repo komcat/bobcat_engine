@@ -98,14 +98,16 @@ signals:
 private slots:
     void onCameraSelectionChanged(int index);
     void onExposureSliderChanged(int value);
+    void onExposureSpinBoxChanged(int value);
     void onGainSliderChanged(int value);
-    void onAutoExposureChanged(int state);
-    void onAutoGainChanged(int state);
+    void onGainSpinBoxChanged(double value);
+    void onAutoExposureChanged(Qt::CheckState state);
+    void onAutoGainChanged(Qt::CheckState state);
     void onROIValueChanged();
-    void onROIEnabledChanged(int state);
+    void onROIEnabledChanged(Qt::CheckState state);
     void onSearchBoxValueChanged();
-    void onSearchBoxEnabledChanged(int state);
-    void onLightingEnabledChanged(int state);
+    void onSearchBoxEnabledChanged(Qt::CheckState state);
+    void onLightingEnabledChanged(Qt::CheckState state);
     void onLightingChannelIntensityChanged(int channel, int intensity);
     void onLightingChannelToggleChanged(int channel, bool on);
 
@@ -136,8 +138,10 @@ private:
     QCheckBox* m_autoExposureCheck;
     QCheckBox* m_autoGainCheck;
     QSlider* m_exposureSlider;
+    QSpinBox* m_exposureSpinBox;
     QLabel* m_exposureValueLabel;
     QSlider* m_gainSlider;
+    QDoubleSpinBox* m_gainSpinBox;
     QLabel* m_gainValueLabel;
     QLabel* m_pixelToMmXLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)
     QLabel* m_pixelToMmYLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)

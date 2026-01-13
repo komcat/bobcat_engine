@@ -20,6 +20,7 @@
 #include "product_position_manager.h"  // ✅ For product folder path
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
 #include "SequenceContext.h"     // For context tab
+#include "DependencyGraphWindow.h"  // For visual dependency graph
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -30,6 +31,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QMenu>
 #include <QTextEdit>
 #include <QEventLoop>
 #include <QMetaObject>
@@ -43,6 +45,7 @@
 #include <QDir>
 #include <QClipboard>
 #include <QDateTime>
+#include <QRegularExpression>
 #include <iostream>
 #include <cmath>
 #include <memory>  // For std::make_shared
@@ -56,6 +59,79 @@
 #include <QImage>
 #include <QPixmap>
 #endif
+
+// Helper function to format numbers with SI prefixes for easier reading
+static QString formatNumberWithSIPrefix(double value) {
+  if (value == 0.0) return "0";
+
+  double absValue = std::abs(value);
+  QString sign = value < 0 ? "-" : "";
+
+  struct SIPrefix { double threshold; const char* prefix; double divisor; };
+  static const SIPrefix prefixes[] = {
+    {1e12, "T", 1e12},
+    {1e9,  "G", 1e9},
+    {1e6,  "M", 1e6},
+    {1e3,  "k", 1e3},
+    {1.0,  "",  1.0},
+    {1e-3, "m", 1e-3},
+    {1e-6, "u", 1e-6},  // µ shown as u for compatibility
+    {1e-9, "n", 1e-9},
+    {1e-12, "p", 1e-12},
+  };
+
+  for (const auto& p : prefixes) {
+    if (absValue >= p.threshold) {
+      double scaled = absValue / p.divisor;
+      // Format with up to 3 significant digits
+      if (scaled >= 100) {
+        return QString("%1%2%3").arg(sign).arg(scaled, 0, 'f', 0).arg(p.prefix);
+      } else if (scaled >= 10) {
+        return QString("%1%2%3").arg(sign).arg(scaled, 0, 'f', 1).arg(p.prefix);
+      } else {
+        return QString("%1%2%3").arg(sign).arg(scaled, 0, 'f', 2).arg(p.prefix);
+      }
+    }
+  }
+
+  // Very small numbers - use scientific notation
+  return QString("%1%2").arg(sign).arg(absValue, 0, 'e', 2);
+}
+
+// Helper function to parse condition string and format numbers with SI prefixes
+static QString formatConditionWithSIUnits(const QString& condition) {
+  QString result = condition;
+
+  // Regex to find decimal numbers (including scientific notation)
+  QRegularExpression numberRegex(R"([-+]?(?:\d+\.?\d*|\d*\.?\d+)(?:[eE][-+]?\d+)?)");
+  QRegularExpressionMatchIterator matchIter = numberRegex.globalMatch(condition);
+
+  // Process matches in reverse order to preserve string positions
+  QVector<QPair<int, int>> matches;  // start, length
+  QVector<QString> replacements;
+
+  while (matchIter.hasNext()) {
+    QRegularExpressionMatch match = matchIter.next();
+    QString numStr = match.captured(0);
+    bool ok;
+    double value = numStr.toDouble(&ok);
+
+    if (ok && numStr.contains('.')) {  // Only format decimal numbers
+      QString formatted = formatNumberWithSIPrefix(value);
+      if (formatted != numStr) {  // Only replace if different
+        matches.append({match.capturedStart(), match.capturedLength()});
+        replacements.append(formatted);
+      }
+    }
+  }
+
+  // Replace in reverse order
+  for (int i = matches.size() - 1; i >= 0; --i) {
+    result.replace(matches[i].first, matches[i].second, replacements[i]);
+  }
+
+  return result;
+}
 
 RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
@@ -997,6 +1073,11 @@ void RunProgramPage::createEditWidget()
   // Set minimum row height for better readability
   m_editRecipeTable->verticalHeader()->setDefaultSectionSize(42);
   m_editRecipeTable->verticalHeader()->setMinimumSectionSize(38);
+
+  // Enable context menu for right-click rename
+  m_editRecipeTable->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_editRecipeTable, &QTableWidget::customContextMenuRequested,
+          this, &RunProgramPage::onRecipeTableContextMenu);
 
   tableLayout->addWidget(m_editRecipeTable);
 
@@ -2016,6 +2097,8 @@ void RunProgramPage::onExecuteProgram()
     m_context->motionManager,
     this
   );
+  std::cout << "[RunProgramPage] Created m_programWorker=" << m_programWorker << std::endl;
+  std::cout.flush();
 
   m_programWorker->setAutoRunMode(autoRunMode);
   if (!autoRunMode) {
@@ -2176,11 +2259,8 @@ void RunProgramPage::onExecuteProgram()
             message = "Execution completed";
           }
           onProgramExecutionCompleted(success, message);
-          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
-          if (m_programWorker) {
-            m_programWorker->deleteLater();
-            m_programWorker = nullptr;
-          }
+          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
+          // This allows pending signals (like recipeCompleted with chain execution) to be processed first
         }
       }
     }
@@ -2329,9 +2409,20 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   }
 
   // ✅ Chain Execution: Find and queue dependent recipes
+  std::cout << "[RunProgramPage] Chain execution check: success=" << success
+            << ", chainEnabled=" << m_chainExecutionCheckBox->isChecked()
+            << ", autoRunNext=" << m_autoRunNextCheckBox->isChecked() << std::endl;
+  std::cout.flush();
+
   if (success && m_chainExecutionCheckBox->isChecked() && !m_autoRunNextCheckBox->isChecked()) {
     // Get the current context from the worker for condition evaluation
+    std::cout << "[RunProgramPage] Chain execution: m_programWorker=" << m_programWorker << std::endl;
+    std::cout.flush();
+
     SequenceContext* execContext = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
+
+    std::cout << "[RunProgramPage] Chain execution ENTERED, context=" << (execContext ? "valid" : "NULL") << std::endl;
+    std::cout.flush();
 
     // Find recipes that depend on the just-completed recipe
     int recipeCount = m_programManager->getRecipeCount();
@@ -2353,6 +2444,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
       // Check if ALL prerequisites are met (not just this one)
       bool allPrereqsMet = true;
       std::string failedCondition;
+      QStringList metConditions;  // Collect conditions that were met
 
       for (const auto& dep : deps) {
         int predIndex = dep.predecessorIndex;
@@ -2364,17 +2456,55 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
           break;
         }
 
-        // Evaluate condition if present
-        if (!dep.condition.empty() && execContext) {
-          ConditionExpressionEvaluator evaluator;
-          std::string errorMsg;
-          bool conditionResult = evaluator.Evaluate(dep.condition, execContext, errorMsg);
+        // Get predecessor recipe name for display
+        const RecipeReference* predRecipe = m_programManager->getRecipe(predIndex);
+        QString predName = predRecipe ? QString::fromStdString(predRecipe->displayName) : QString("Recipe %1").arg(predIndex + 1);
 
-          if (!conditionResult) {
+        // Evaluate condition if present
+        if (!dep.condition.empty()) {
+          if (execContext) {
+            ConditionExpressionEvaluator evaluator;
+            std::string errorMsg;
+
+            // Debug: Log condition evaluation attempt
+            std::cout << "[RunProgramPage] Evaluating condition: '" << dep.condition << "'" << std::endl;
+            std::cout.flush();
+
+            // Get the variable value for debugging
+            if (execContext->HasValue("DarkCurrent")) {
+              double val = execContext->GetNumeric("DarkCurrent", 0.0);
+              std::cout << "[RunProgramPage] DarkCurrent value in context: " << val << std::endl;
+              std::cout.flush();
+            } else {
+              std::cout << "[RunProgramPage] WARNING: DarkCurrent NOT found in context!" << std::endl;
+              std::cout.flush();
+            }
+
+            bool conditionResult = evaluator.Evaluate(dep.condition, execContext, errorMsg);
+
+            // Debug: Log evaluation result
+            std::cout << "[RunProgramPage] Condition result: " << (conditionResult ? "TRUE" : "FALSE")
+                      << (errorMsg.empty() ? "" : ", Error: " + errorMsg) << std::endl;
+            std::cout.flush();
+
+            if (!conditionResult) {
+              allPrereqsMet = false;
+              failedCondition = dep.condition + (errorMsg.empty() ? "" : " (error: " + errorMsg + ")");
+              break;
+            } else {
+              // Condition was met - add to list with predecessor info (formatted with SI units)
+              QString formattedCondition = formatConditionWithSIUnits(QString::fromStdString(dep.condition));
+              metConditions.append(QString("  %1: %2 = TRUE").arg(predName).arg(formattedCondition));
+            }
+          } else {
+            // No context available - can't evaluate condition, treat as failed
             allPrereqsMet = false;
-            failedCondition = dep.condition;
+            failedCondition = dep.condition + " (no context)";
             break;
           }
+        } else {
+          // Unconditional dependency - just show that the predecessor completed
+          metConditions.append(QString("  %1: completed").arg(predName));
         }
       }
 
@@ -2386,22 +2516,29 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
                   << " (" << candidateRecipe->displayName << "), showing confirmation..." << std::endl;
         std::cout.flush();
 
+        // Build message with prerequisites/conditions
+        QString conditionsText;
+        if (!metConditions.isEmpty()) {
+          conditionsText = QString("\n\nPrerequisites met:\n%1").arg(metConditions.join("\n"));
+        }
+
         // Create timed confirmation dialog
         QDialog* confirmDialog = new QDialog(this);
         confirmDialog->setWindowTitle("Chain Execution");
         confirmDialog->setModal(true);
-        confirmDialog->setFixedSize(450, 200);
+        confirmDialog->setFixedSize(500, metConditions.isEmpty() ? 200 : 280);
         confirmDialog->setStyleSheet("QDialog { background-color: #2b2b2b; }");
 
         QVBoxLayout* layout = new QVBoxLayout(confirmDialog);
 
         // Message label
         QLabel* messageLabel = new QLabel(
-          QString("Condition met! Continue to next recipe?\n\nNext: Recipe %1 - %2")
+          QString("Continue to next recipe?\n\nNext: Recipe %1 - %2%3")
           .arg(i + 1)
-          .arg(nextRecipeName));
-        messageLabel->setStyleSheet("color: white; font-size: 14px; padding: 10px;");
-        messageLabel->setAlignment(Qt::AlignCenter);
+          .arg(nextRecipeName)
+          .arg(conditionsText));
+        messageLabel->setStyleSheet("color: white; font-size: 13px; padding: 10px;");
+        messageLabel->setAlignment(Qt::AlignLeft);
         messageLabel->setWordWrap(true);
         layout->addWidget(messageLabel);
 
@@ -2690,6 +2827,12 @@ void RunProgramPage::onWorkerFinished()
 
   // Clean up worker after signals are processed
   if (m_programWorker) {
+    // ✅ FIX: Force final context table update before deleting worker
+    // This ensures the context view shows the final captured values
+    std::cout << "[RunProgramPage] Final context table update before worker deletion" << std::endl;
+    std::cout.flush();
+    updateContextTable(true);  // Force update even though worker isn't running
+
     std::cout << "[RunProgramPage] Scheduling worker deletion" << std::endl;
     std::cout.flush();
     m_programWorker->deleteLater();
@@ -2742,11 +2885,9 @@ void RunProgramPage::onWorkerLogMessage(QString message)
             actualMessage = "Execution completed";
           }
           onProgramExecutionCompleted(success, actualMessage);
-          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
-          if (m_programWorker) {
-            m_programWorker->deleteLater();
-            m_programWorker = nullptr;
-          }
+          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
+          // This allows pending signals (like recipeCompleted with chain execution) to be processed first
+          // The worker will be cleaned up when the thread finishes via onWorkerFinished
         }
       }
     } else {
@@ -2775,11 +2916,7 @@ void RunProgramPage::onWorkerLogMessage(QString message)
             actualMessage = "Execution completed";
           }
           onProgramExecutionCompleted(success, actualMessage);
-          // Only delete if still valid (onProgramExecutionCompleted may have triggered cleanup)
-          if (m_programWorker) {
-            m_programWorker->deleteLater();
-            m_programWorker = nullptr;
-          }
+          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
         }
       }
     }
@@ -2798,12 +2935,7 @@ void RunProgramPage::onWorkerLogMessage(QString message)
     std::cout << "[RunProgramPage] Forcing completion via log message workaround" << std::endl;
     std::cout.flush();
     onProgramExecutionCompleted(success, actualMessage);
-
-    // Clean up worker
-    if (m_programWorker) {
-      m_programWorker->deleteLater();
-      m_programWorker = nullptr;
-    }
+    // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
   }
 }
 
@@ -3289,371 +3421,13 @@ void RunProgramPage::onManageDependencies()
     return;
   }
 
-  // Create dialog
-  QDialog* dialog = new QDialog(this);
-  dialog->setWindowTitle("Manage Recipe Dependencies");
-  dialog->setMinimumSize(900, 700);
-  dialog->setStyleSheet("QDialog { background-color: #2b2b2b; }");
-
-  QVBoxLayout* mainLayout = new QVBoxLayout(dialog);
-
-  // Title
-  QLabel* titleLabel = new QLabel("Recipe Dependency Management");
-  titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: white; padding: 10px;");
-  mainLayout->addWidget(titleLabel);
-
-  // Info label with condition help
-  QLabel* infoLabel = new QLabel(
-    "Define which recipes must complete before others can start.\n"
-    "Optionally add conditions using SequenceContext variables.\n\n"
-    "Condition examples:\n"
-    "  - current > 5\n"
-    "  - current > 5 AND voltage < 10\n"
-    "  - status == \"pass\" OR override == true\n"
-    "Empty condition = always proceed when prerequisite completes.");
-  infoLabel->setStyleSheet("color: #cccccc; padding: 5px; font-size: 12px;");
-  infoLabel->setWordWrap(true);
-  mainLayout->addWidget(infoLabel);
-
-  // Recipe selector
-  QGroupBox* recipeGroup = new QGroupBox("Select Recipe to Configure:");
-  recipeGroup->setStyleSheet(
-    "QGroupBox { "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3c3c3c; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}");
-  QVBoxLayout* recipeLayout = new QVBoxLayout(recipeGroup);
-
-  QComboBox* recipeCombo = new QComboBox();
-  recipeCombo->setStyleSheet(
-    "QComboBox { "
-    "  background-color: #2d2d30; "
-    "  color: white; "
-    "  border: 1px solid #3c3c3c; "
-    "  border-radius: 4px; "
-    "  padding: 5px; "
-    "  font-size: 14px; "
-    "} "
-    "QComboBox:hover { border: 1px solid #1177bb; } "
-    "QComboBox::drop-down { "
-    "  border-left: 1px solid #3c3c3c; "
-    "  background: #3c3c3c; "
-    "} "
-    "QComboBox QAbstractItemView { "
-    "  background-color: #2d2d30; "
-    "  color: white; "
-    "  selection-background-color: #1177bb; "
-    "}");
-
-  for (int i = 0; i < recipeCount; ++i) {
-    const RecipeReference* recipe = m_programManager->getRecipe(i);
-    if (recipe) {
-      recipeCombo->addItem(QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
-    }
-  }
-  recipeLayout->addWidget(recipeCombo);
-  mainLayout->addWidget(recipeGroup);
-
-  // Dependencies group with table
-  QGroupBox* depsGroup = new QGroupBox("Dependencies (Prerequisites):");
-  depsGroup->setStyleSheet(
-    "QGroupBox { "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3c3c3c; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}");
-  QVBoxLayout* depsLayout = new QVBoxLayout(depsGroup);
-
-  // Table for dependencies with conditions
-  QTableWidget* depsTable = new QTableWidget();
-  depsTable->setColumnCount(3);
-  depsTable->setHorizontalHeaderLabels({"Prerequisite", "Condition (optional)", "Enabled"});
-  depsTable->horizontalHeader()->setStretchLastSection(false);
-  depsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-  depsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-  depsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Fixed);
-  depsTable->setColumnWidth(2, 80);
-  depsTable->verticalHeader()->setVisible(false);
-  depsTable->verticalHeader()->setDefaultSectionSize(44);  // Taller rows
-  depsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  depsTable->setStyleSheet(
-    "QTableWidget { "
-    "  background-color: #1e1e1e; "
-    "  color: white; "
-    "  gridline-color: #3c3c3c; "
-    "  border: 1px solid #3c3c3c; "
-    "  font-size: 13px; "
-    "} "
-    "QTableWidget::item { "
-    "  padding: 8px; "
-    "} "
-    "QHeaderView::section { "
-    "  background-color: #2d2d30; "
-    "  color: white; "
-    "  padding: 8px; "
-    "  border: 1px solid #3c3c3c; "
-    "  font-weight: bold; "
-    "  font-size: 13px; "
-    "}");
-  depsLayout->addWidget(depsTable);
-  mainLayout->addWidget(depsGroup, 1);
-
-  // Temporary storage for all recipe dependencies (with conditions)
-  std::vector<std::vector<DependencyLink>> tempDependencies(recipeCount);
-
-  // Initialize with current dependencies from ProgramManager
-  for (int i = 0; i < recipeCount; ++i) {
-    tempDependencies[i] = m_programManager->getRecipeDependencies(i);
-
-    // Debug: Log loaded dependencies
-    if (!tempDependencies[i].empty()) {
-      std::cout << "[ManageDeps] Recipe " << (i + 1) << " has " << tempDependencies[i].size() << " dependencies:" << std::endl;
-      for (const auto& dep : tempDependencies[i]) {
-        std::cout << "  -> depends on Recipe " << (dep.predecessorIndex + 1)
-                  << " with condition: '" << dep.condition << "'" << std::endl;
-      }
-    }
-  }
-
-  // Function to save current table state to temp storage
-  auto saveCurrentToTemp = [recipeCombo, depsTable, &tempDependencies, recipeCount]() {
-    int currentRecipe = recipeCombo->currentIndex();
-    if (currentRecipe < 0 || currentRecipe >= recipeCount) return;
-
-    tempDependencies[currentRecipe].clear();
-
-    for (int row = 0; row < depsTable->rowCount(); ++row) {
-      // Get checkbox
-      QWidget* checkWidget = depsTable->cellWidget(row, 2);
-      if (!checkWidget) continue;
-      QCheckBox* cb = checkWidget->findChild<QCheckBox*>();
-      if (!cb || !cb->isChecked()) continue;
-
-      // Get recipe index from row data
-      QTableWidgetItem* nameItem = depsTable->item(row, 0);
-      if (!nameItem) continue;
-      int predIndex = nameItem->data(Qt::UserRole).toInt();
-
-      // Get condition
-      QLineEdit* condEdit = qobject_cast<QLineEdit*>(depsTable->cellWidget(row, 1));
-      std::string condition = condEdit ? condEdit->text().trimmed().toStdString() : "";
-
-      tempDependencies[currentRecipe].emplace_back(predIndex, condition);
-    }
-  };
-
-  // Function to populate table for selected recipe
-  auto populateTable = [this, depsTable, recipeCombo, &tempDependencies, recipeCount]() {
-    int currentRecipe = recipeCombo->currentIndex();
-
-    std::cout << "[ManageDeps] populateTable for Recipe " << (currentRecipe + 1)
-              << ", has " << tempDependencies[currentRecipe].size() << " dependencies" << std::endl;
-
-    // Count rows needed (all recipes except current)
-    int rowCount = recipeCount - 1;
-    depsTable->setRowCount(rowCount);
-
-    int row = 0;
-    for (int i = 0; i < recipeCount; ++i) {
-      if (i == currentRecipe) continue;  // Skip self
-
-      const RecipeReference* recipe = m_programManager->getRecipe(i);
-      if (!recipe) continue;
-
-      // Find if this is a dependency of current recipe
-      const auto& deps = tempDependencies[currentRecipe];
-      auto it = std::find_if(deps.begin(), deps.end(),
-        [i](const DependencyLink& d) { return d.predecessorIndex == i; });
-      bool isDep = (it != deps.end());
-      std::string condition = isDep ? it->condition : "";
-
-      if (isDep) {
-        std::cout << "[ManageDeps]   Recipe " << (i + 1) << " is a dependency, condition='" << condition << "'" << std::endl;
-      }
-
-      // Prerequisite name (column 0)
-      QTableWidgetItem* nameItem = new QTableWidgetItem(
-        QString("Recipe %1: %2").arg(i + 1).arg(QString::fromStdString(recipe->displayName)));
-      nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
-      nameItem->setData(Qt::UserRole, i);  // Store recipe index
-      depsTable->setItem(row, 0, nameItem);
-
-      // Condition text field (column 1)
-      QLineEdit* condEdit = new QLineEdit();
-      condEdit->setPlaceholderText("e.g., current > 5 AND voltage < 10");
-      condEdit->setText(QString::fromStdString(condition));
-      condEdit->setMinimumHeight(32);
-      condEdit->setStyleSheet(
-        "QLineEdit { "
-        "  background-color: #2d2d30; "
-        "  color: white; "
-        "  border: 1px solid #3c3c3c; "
-        "  padding: 8px; "
-        "  font-size: 13px; "
-        "} "
-        "QLineEdit:focus { border: 1px solid #1177bb; }");
-      depsTable->setCellWidget(row, 1, condEdit);
-
-      // Enabled checkbox (column 2)
-      QCheckBox* cb = new QCheckBox();
-      cb->setChecked(isDep);
-      cb->setStyleSheet(
-        "QCheckBox::indicator { "
-        "  width: 22px; "
-        "  height: 22px; "
-        "  border: 2px solid #3c3c3c; "
-        "  border-radius: 3px; "
-        "  background-color: #2d2d30; "
-        "} "
-        "QCheckBox::indicator:checked { "
-        "  background-color: #27ae60; "
-        "  border-color: #27ae60; "
-        "}");
-      QWidget* checkWidget = new QWidget();
-      QHBoxLayout* checkLayout = new QHBoxLayout(checkWidget);
-      checkLayout->addWidget(cb);
-      checkLayout->setAlignment(Qt::AlignCenter);
-      checkLayout->setContentsMargins(0, 0, 0, 0);
-      depsTable->setCellWidget(row, 2, checkWidget);
-
-      row++;
-    }
-  };
-
-  // Track previous recipe for save-before-switch
-  int previousRecipe = -1;
-
-  // Connect recipe selector change
-  connect(recipeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-    [&previousRecipe, &saveCurrentToTemp, &populateTable, recipeCombo](int newIndex) {
-      // Save previous recipe's state before switching
-      if (previousRecipe >= 0) {
-        saveCurrentToTemp();
-      }
-      previousRecipe = newIndex;
-      populateTable();
-    });
-
-  // Initialize table
-  previousRecipe = 0;
-  populateTable();
-
-  // Buttons
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-  buttonLayout->addStretch();
-
-  QPushButton* cancelButton = new QPushButton("Cancel");
-  cancelButton->setMinimumWidth(100);
-  cancelButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: white; "
-    "  padding: 8px; "
-    "  border-radius: 4px; "
-    "} "
-    "QPushButton:hover { background-color: #4c4c4c; }");
-  connect(cancelButton, &QPushButton::clicked, dialog, &QDialog::reject);
-  buttonLayout->addWidget(cancelButton);
-
-  QPushButton* saveButton = new QPushButton("Save");
-  saveButton->setMinimumWidth(100);
-  saveButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #27ae60; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 8px; "
-    "  border-radius: 4px; "
-    "} "
-    "QPushButton:hover { background-color: #2ecc71; }");
-  connect(saveButton, &QPushButton::clicked, [this, &saveCurrentToTemp, &tempDependencies, recipeCount, dialog]() {
-    // Save current recipe's state to temp storage before saving
-    saveCurrentToTemp();
-
-    // Validate all conditions before applying
-    ConditionExpressionEvaluator evaluator;
-    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
-      for (const auto& dep : tempDependencies[recipeIdx]) {
-        if (!dep.condition.empty()) {
-          std::string errorMsg;
-          if (!evaluator.Validate(dep.condition, errorMsg)) {
-            const RecipeReference* recipe = m_programManager->getRecipe(recipeIdx);
-            const RecipeReference* predRecipe = m_programManager->getRecipe(dep.predecessorIndex);
-            QString recipeName = recipe ? QString::fromStdString(recipe->displayName) : QString("Recipe %1").arg(recipeIdx + 1);
-            QString predName = predRecipe ? QString::fromStdString(predRecipe->displayName) : QString("Recipe %1").arg(dep.predecessorIndex + 1);
-
-            QMessageBox::critical(dialog, "Invalid Condition",
-              QString("Recipe '%1' has invalid condition for dependency on '%2':\n\n%3\n\nError: %4")
-              .arg(recipeName)
-              .arg(predName)
-              .arg(QString::fromStdString(dep.condition))
-              .arg(QString::fromStdString(errorMsg)));
-            return;
-          }
-        }
-      }
-    }
-
-    // Clear all existing dependencies
-    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
-      m_programManager->clearRecipeDependencies(recipeIdx);
-    }
-
-    // Apply all dependencies from temp storage (with conditions)
-    for (int recipeIdx = 0; recipeIdx < recipeCount; ++recipeIdx) {
-      for (const auto& dep : tempDependencies[recipeIdx]) {
-        m_programManager->addRecipeDependency(recipeIdx, dep.predecessorIndex, dep.condition);
-      }
-    }
-
-    // Validate dependencies
-    std::vector<std::string> errors;
-    if (!m_programManager->validateDependencies(errors)) {
-      QString errorMsg = "Dependency validation failed:\n\n";
-      for (const auto& err : errors) {
-        errorMsg += "• " + QString::fromStdString(err) + "\n";
-      }
-      QMessageBox::critical(dialog, "Validation Error", errorMsg);
-      return;
-    }
-
-    QMessageBox::information(dialog, "Saved",
-      "Dependencies have been saved.\n\n"
-      "Conditions will be evaluated against SequenceContext\n"
-      "values when recipes complete.\n\n"
-      "Note: Dependencies are saved with the program file.");
-    dialog->accept();
-  });
-  buttonLayout->addWidget(saveButton);
-
-  mainLayout->addLayout(buttonLayout);
-
-  int result = dialog->exec();
-  delete dialog;
+  // Open the graphical dependency window
+  DependencyGraphWindow* graphWindow = new DependencyGraphWindow(m_programManager, this);
+  graphWindow->setAttribute(Qt::WA_DeleteOnClose);
+  graphWindow->exec();
 
   // Refresh the recipe table to show updated dependencies
-  if (result == QDialog::Accepted) {
-    updateRecipeList();
-  }
+  updateRecipeList();
 }
 
 void RunProgramPage::onSaveEdit()
@@ -3669,6 +3443,89 @@ void RunProgramPage::onSaveEdit()
 
   // Save the program
   onSaveProgram();
+}
+
+void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
+{
+  QTableWidgetItem* item = m_editRecipeTable->itemAt(pos);
+  if (!item) return;
+
+  int row = item->row();
+  if (row < 0 || row >= m_programManager->getRecipeCount()) return;
+
+  // Create context menu
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(
+    "QMenu { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  padding: 5px; "
+    "} "
+    "QMenu::item { "
+    "  padding: 8px 20px; "
+    "} "
+    "QMenu::item:selected { "
+    "  background-color: #0e639c; "
+    "}"
+  );
+
+  QAction* renameAction = contextMenu.addAction("Rename Recipe...");
+  QAction* selectedAction = contextMenu.exec(m_editRecipeTable->viewport()->mapToGlobal(pos));
+
+  if (selectedAction == renameAction) {
+    renameRecipe(row);
+  }
+}
+
+void RunProgramPage::renameRecipe(int recipeIndex)
+{
+  const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
+  if (!recipe) return;
+
+  QString currentName = QString::fromStdString(recipe->displayName);
+  QString recipeFilePath = QString::fromStdString(recipe->recipeFilePath);
+
+  // Show rename dialog
+  bool ok;
+  QString newName = QInputDialog::getText(
+    this,
+    "Rename Recipe",
+    "Enter new recipe name:",
+    QLineEdit::Normal,
+    currentName,
+    &ok
+  );
+
+  if (!ok || newName.trimmed().isEmpty()) return;
+
+  newName = newName.trimmed();
+  if (newName == currentName) return;  // No change
+
+  // Update display name in ProgramManager
+  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
+
+  // Also update the recipe file itself
+  RecipeManager tempRecipeManager;
+  if (tempRecipeManager.loadRecipe(recipeFilePath.toStdString())) {
+    tempRecipeManager.setRecipeName(newName.toStdString());
+    if (tempRecipeManager.saveRecipe(recipeFilePath.toStdString())) {
+      QMessageBox::information(this, "Recipe Renamed",
+        QString("Recipe renamed to \"%1\" and saved to file.").arg(newName));
+    } else {
+      QMessageBox::warning(this, "Save Failed",
+        "Recipe display name updated but failed to save to recipe file.");
+    }
+  } else {
+    QMessageBox::warning(this, "Load Failed",
+      "Recipe display name updated but failed to load recipe file for saving.");
+  }
+
+  // Refresh the table to show new name
+  updateRecipeList();
+
+  // Re-select the same row
+  m_editRecipeTable->selectRow(recipeIndex);
 }
 
 void RunProgramPage::onEditRecipeSelectionChanged()
@@ -4171,17 +4028,18 @@ void RunProgramPage::createContextTab()
   m_contextRefreshTimer = new QTimer(this);
   m_contextRefreshTimer->setInterval(500);  // 500ms update interval
   connect(m_contextRefreshTimer, &QTimer::timeout,
-    this, &RunProgramPage::updateContextTable);
+    this, [this]() { updateContextTable(false); });
 
   std::cout << "[RunProgramPage] Context tab created" << std::endl;
 }
 
-void RunProgramPage::updateContextTable()
+void RunProgramPage::updateContextTable(bool forceUpdate)
 {
   // Safety check: Don't access context if worker is not actively running
   // This prevents race conditions during worker thread shutdown
   // But preserve the existing table contents (don't clear them)
-  if (!m_programWorker || !m_programWorker->isRunning()) {
+  // UNLESS forceUpdate is true - used for final update before worker deletion
+  if (!forceUpdate && (!m_programWorker || !m_programWorker->isRunning())) {
     // Keep existing table data visible, just update status to show it's from last run
     if (m_contextTable->rowCount() > 0) {
       m_contextStatusLabel->setText(QString("%1 variables (last run)").arg(m_contextTable->rowCount()));
@@ -4194,7 +4052,7 @@ void RunProgramPage::updateContextTable()
   }
 
   // Get context from ProgramWorker (thread-safe)
-  SequenceContext* context = m_programWorker->getCurrentContext();
+  SequenceContext* context = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
 
   if (!context) {
     // Keep existing table data if we have any

@@ -6,6 +6,7 @@
 #include <QMutex>
 #include <atomic>
 #include <functional>
+#include <memory>
 
 class SequenceEngine;
 class ProgramManager;
@@ -132,7 +133,9 @@ private:
   std::vector<bool> m_completedRecipes;
 
   // ✅ Current execution context (shared across recipes in a program run)
-  SequenceContext* m_currentContext;
+  // Using unique_ptr to ensure context persists after runSequential()/runWithDependencies() returns
+  // This is needed for chain execution to evaluate conditions after recipe completion
+  std::unique_ptr<SequenceContext> m_ownedContext;
 
   // ✅ Store execution result for finished() signal handler
   bool m_executionSuccess = false;

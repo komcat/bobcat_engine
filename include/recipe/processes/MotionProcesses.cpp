@@ -857,6 +857,109 @@ public:
 };
 
 //=============================================================================
+// XCAN EXTENDED PLUGIN - Flexible Adaptive Scanning with Custom Parameters
+//=============================================================================
+
+class XCANExtendedPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "XCAN Extended";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Extended adaptive scanning with custom axes, step sizes, exit criteria, and result capture";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"axes", "XYZ"},                    // Default XYZ, can be "XY", "Z", etc.
+      {"step_sizes_um", "5,2,1,0.5"},     // Step sizes in microns
+      {"channel", ""},                    // Data channel to optimize
+      {"settling_time_ms", "300"},        // Wait time after each move
+      {"exit_threshold", ""},             // Stop if reading exceeds this value (empty = disabled)
+      {"capture_as", ""}                  // Store peak value to context field (empty = disabled)
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("axes", "Scan Axes (e.g., XYZ, XY, Z)", params.at("axes"));
+    widget->addParameterField("step_sizes_um", "Step Sizes (microns, comma-separated)", params.at("step_sizes_um"));
+    widget->addDataChannelSelector("channel", "Data Channel", params.at("channel"));
+    widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
+      params.at("settling_time_ms"), 50, 2000, 10, 0, "ms");
+    widget->addParameterField("exit_threshold", "Exit Threshold (empty = disabled)", params.at("exit_threshold"));
+    widget->addParameterField("capture_as", "Capture Peak As (context field)", params.at("capture_as"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device for scanning");
+
+    table->addCategoryHeader("Scan Configuration");
+    table->addDropdownProperty("axes", "Scan Axes", params.at("axes"),
+      {"XYZ", "XY", "XZ", "YZ", "X", "Y", "Z"},
+      "Axes to scan (XYZ = all three axes)");
+    table->addTextProperty("step_sizes_um", "Step Sizes", params.at("step_sizes_um"),
+      "Comma-separated step sizes in microns (e.g., 5,2,1,0.5). Scans from largest to smallest.");
+    table->addDataChannelProperty("channel", "Data Channel", params.at("channel"),
+      "DataStore channel to read scan feedback values");
+
+    table->addCategoryHeader("Timing");
+    table->addNumericProperty("settling_time_ms", "Settling Time",
+      std::stod(params.at("settling_time_ms")),
+      50, 2000, 10, 0, "ms",
+      "Wait time after each position move for signal stabilization");
+
+    table->addCategoryHeader("Exit Criteria");
+    table->addTextProperty("exit_threshold", "Exit Threshold", params.at("exit_threshold"),
+      "Stop and return to peak if reading exceeds this value (leave empty to disable)");
+
+    table->addCategoryHeader("Result Capture");
+    table->addTextProperty("capture_as", "Capture Peak As", params.at("capture_as"),
+      "Store peak reading value to sequence context field (leave empty to disable)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+
+    // Build XCANExtended command
+    std::map<std::string, std::string> actionParams = {
+      {"axes", params.at("axes")},
+      {"step_sizes_um", params.at("step_sizes_um")},
+      {"channel", params.at("channel")},
+      {"settling_time_ms", params.at("settling_time_ms")},
+      {"exit_threshold", params.at("exit_threshold")},
+      {"capture_as", params.at("capture_as")}
+    };
+
+    sequence->AddAction(device, "XCANExtended", actionParams);
+
+    std::cout << "[MotionProcesses] Built XCANExtended sequence for: " << step->userNickname
+              << " (axes=" << params.at("axes")
+              << ", steps=" << params.at("step_sizes_um")
+              << ", channel=" << params.at("channel") << ")"
+              << std::endl;
+  }
+};
+
+//=============================================================================
 // MOVE TO GRAPH NODE PLUGIN - Table-Based UI
 //=============================================================================
 
@@ -1287,11 +1390,12 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());
       registry.RegisterPlugin(std::make_unique<XCANPlugin>());
+      registry.RegisterPlugin(std::make_unique<XCANExtendedPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMovePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMoveRelativePlugin>());
 
-      std::cout << "[MotionProcesses] Registered 13 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 14 motion process plugins" << std::endl;
     }
   };
 

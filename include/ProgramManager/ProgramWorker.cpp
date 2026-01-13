@@ -30,7 +30,7 @@ ProgramWorker::ProgramWorker(
   , m_startRecipeIndex(0)     // ✅ Default: start from first
   , m_useDependencyGraph(false)  // ✅ Default: sequential execution
   , m_activeRecipeWorker(nullptr)  // ✅ No active worker initially
-  , m_currentContext(nullptr)  // ✅ Context created on first execution
+  , m_ownedContext(nullptr)  // ✅ Context created on first execution
 {
 }
 
@@ -110,8 +110,11 @@ void ProgramWorker::runSequential()
     const auto& allRecipes = m_programManager->getAllRecipes();
 
     // ✅ Create shared context for all recipes in this program run
-    auto sharedContext = std::make_unique<SequenceContext>();
-    m_currentContext = sharedContext.get();  // Store for external access
+    // Context is owned by m_ownedContext to persist after this function returns
+    // This is critical for chain execution to evaluate conditions
+    m_ownedContext = std::make_unique<SequenceContext>();
+    std::cout << "[ProgramWorker] Created m_ownedContext in runSequential(), ptr=" << m_ownedContext.get() << std::endl;
+    std::cout.flush();
 
     // ✅ Initialize completion tracking (only if not already initialized or in auto-run mode)
     if (m_completedRecipes.empty() || m_completedRecipes.size() != allRecipes.size() || m_autoRunMode) {
@@ -269,12 +272,11 @@ void ProgramWorker::runWithDependencies()
     const auto& allRecipes = m_programManager->getAllRecipes();
 
     // ✅ Create shared context for all recipes in this program run
-    auto sharedContext = std::make_unique<SequenceContext>();
-    m_currentContext = sharedContext.get();  // Store for external access
+    // Context is owned by m_ownedContext to persist after this function returns
+    m_ownedContext = std::make_unique<SequenceContext>();
 
     if (allRecipes.empty()) {
       emit programExecutionCompleted(false, "No recipes in program");
-      m_currentContext = nullptr;
       return;
     }
 
@@ -315,7 +317,7 @@ void ProgramWorker::runWithDependencies()
     }
 
     // Set execution context for condition evaluation
-    stateMachine.setExecutionContext(sharedContext.get());
+    stateMachine.setExecutionContext(m_ownedContext.get());
     emit logMessage("Execution context set for condition evaluation");
 
     // ============================================================================
@@ -523,8 +525,8 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   }
 
   // ✅ Set shared context for vision result storage
-  if (m_currentContext) {
-    recipeWorker->setExternalContext(m_currentContext);
+  if (m_ownedContext) {
+    recipeWorker->setExternalContext(m_ownedContext.get());
   }
 
   // ✅ Connect RecipeWorker signals to ProgramWorker signals
@@ -667,5 +669,12 @@ SequenceContext* ProgramWorker::getCurrentContext() const
   // ✅ Returns the shared context used across all recipes in this program run
   // Context is created at start of runSequential()/runWithDependencies()
   // and passed to each RecipeWorker via setExternalContext()
-  return m_currentContext;
+  // Context persists after run functions return to support chain execution
+  SequenceContext* ctx = m_ownedContext.get();
+  std::cout << "[ProgramWorker] getCurrentContext() called, returning "
+            << (ctx ? "valid context" : "NULL")
+            << ", isRunning=" << isRunning()
+            << ", isFinished=" << isFinished() << std::endl;
+  std::cout.flush();
+  return ctx;
 }

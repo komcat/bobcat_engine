@@ -31,6 +31,21 @@ RecipeWorker::RecipeWorker(
 {
 }
 
+RecipeWorker::~RecipeWorker()
+{
+  // ✅ CRITICAL: Clear callbacks to prevent use-after-free crashes
+  // These callbacks capture 'this' pointer and must be cleared before deletion
+  if (m_engine) {
+    m_engine->SetStepStartedCallback(nullptr);
+    m_engine->SetStepCompletedCallback(nullptr);
+    m_engine->SetActionStartedCallback(nullptr);
+    m_engine->SetUserPromptCallback(nullptr);
+    m_engine->SetManualAdjustCallback(nullptr);
+    m_engine->SetUserInputCallback(nullptr);
+  }
+  std::cout << "[RecipeWorker] Destroyed - callbacks cleared" << std::endl;
+}
+
 void RecipeWorker::requestStop()
 {
   m_stopRequested.store(true);

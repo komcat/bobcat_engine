@@ -10,8 +10,10 @@
 #include "DataStore.h"
 #include "TcpClientManager.h"
 #include <QCloseEvent>
+#include <QHideEvent>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QSettings>
 #include <iostream>
 
 AuxViewWindow::AuxViewWindow(CameraManager* cameraManager,
@@ -34,6 +36,7 @@ AuxViewWindow::AuxViewWindow(CameraManager* cameraManager,
   resize(400, 300);
 
   setupUI();
+  restoreWindowSettings();  // Restore saved window position and size
 
   std::cout << "[AuxViewWindow] Created with tabbed interface" << std::endl;
 }
@@ -199,10 +202,45 @@ void AuxViewWindow::switchToOverlayTab()
 
 void AuxViewWindow::closeEvent(QCloseEvent* event)
 {
+  // Save window geometry before hiding
+  saveWindowSettings();
+
   // Prevent closing - hide instead
   event->ignore();
   hide();
   std::cout << "[AuxViewWindow] Close prevented - window hidden instead" << std::endl;
+}
+
+void AuxViewWindow::hideEvent(QHideEvent* event)
+{
+  // Save window geometry when hiding
+  saveWindowSettings();
+  QMainWindow::hideEvent(event);
+}
+
+void AuxViewWindow::saveWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("AuxViewWindow/geometry", saveGeometry());
+  settings.setValue("AuxViewWindow/windowState", saveState());
+  std::cout << "[AuxViewWindow] Window settings saved" << std::endl;
+}
+
+void AuxViewWindow::restoreWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QByteArray geometry = settings.value("AuxViewWindow/geometry").toByteArray();
+  QByteArray state = settings.value("AuxViewWindow/windowState").toByteArray();
+
+  if (!geometry.isEmpty()) {
+    restoreGeometry(geometry);
+    std::cout << "[AuxViewWindow] Window geometry restored" << std::endl;
+  }
+
+  if (!state.isEmpty()) {
+    restoreState(state);
+    std::cout << "[AuxViewWindow] Window state restored" << std::endl;
+  }
 }
 
 void AuxViewWindow::initializeCameraSelection()

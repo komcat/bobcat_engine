@@ -18,6 +18,9 @@
 #include <condition_variable>         // ✅ NEW: For scan completion signaling
 #include <cmath>                      // ✅ NEW: For position distance calculation
 #include <vector>                     // ✅ NEW: For parallel workers
+#include <sstream>                    // ✅ NEW: For XCANExtended step size parsing
+#include <algorithm>                  // ✅ NEW: For std::sort, std::greater
+#include <limits>                     // ✅ NEW: For std::numeric_limits
 
 // Helper to resolve context: references or parse direct values
 double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
@@ -717,6 +720,305 @@ bool MotionCommandHandler::ExecuteCommand(
 
     if (m_logger) {
       m_logger->Info("XCAN: Scan completed successfully", "MotionHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // XCAN EXTENDED - FLEXIBLE ADAPTIVE SCANNING WITH CUSTOM PARAMETERS
+  // ============================================================================
+  else if (methodName == "XCANExtended") {
+    // ✅ REQUIRED PARAMETER: axes
+    auto axesIt = params.find("axes");
+    if (axesIt == params.end()) {
+      errorMessage = "XCANExtended: Missing required parameter 'axes'";
+      return false;
+    }
+    std::string axesStr = axesIt->second;
+
+    // Validate axes - must contain only valid axis characters (X, Y, Z)
+    std::vector<std::string> axesToScan;
+    for (char c : axesStr) {
+      char upper = std::toupper(c);
+      if (upper == 'X' || upper == 'Y' || upper == 'Z') {
+        axesToScan.push_back(std::string(1, upper));
+      } else if (c != ' ' && c != ',') {
+        errorMessage = "XCANExtended: Invalid axis character '" + std::string(1, c) + "' in axes '" + axesStr + "'. Valid axes are X, Y, Z.";
+        return false;
+      }
+    }
+
+    if (axesToScan.empty()) {
+      errorMessage = "XCANExtended: No valid axes specified in '" + axesStr + "'";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: step_sizes_um (comma-separated microns)
+    auto stepSizesIt = params.find("step_sizes_um");
+    if (stepSizesIt == params.end()) {
+      errorMessage = "XCANExtended: Missing required parameter 'step_sizes_um'";
+      return false;
+    }
+    std::string stepSizesStr = stepSizesIt->second;
+
+    // Parse step sizes
+    std::vector<double> stepSizesMm;
+    std::stringstream ss(stepSizesStr);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+      // Trim whitespace
+      token.erase(0, token.find_first_not_of(" \t"));
+      token.erase(token.find_last_not_of(" \t") + 1);
+
+      if (!token.empty()) {
+        try {
+          double stepUm = std::stod(token);
+          if (stepUm <= 0) {
+            errorMessage = "XCANExtended: Step size must be positive, got: " + token;
+            return false;
+          }
+          // Convert microns to mm
+          stepSizesMm.push_back(stepUm / 1000.0);
+        } catch (...) {
+          errorMessage = "XCANExtended: Invalid step size value: " + token;
+          return false;
+        }
+      }
+    }
+
+    if (stepSizesMm.empty()) {
+      errorMessage = "XCANExtended: No valid step sizes specified in '" + stepSizesStr + "'";
+      return false;
+    }
+
+    // Sort step sizes descending (largest first)
+    std::sort(stepSizesMm.begin(), stepSizesMm.end(), std::greater<double>());
+
+    // ✅ REQUIRED PARAMETER: channel
+    auto channelIt = params.find("channel");
+    if (channelIt == params.end()) {
+      errorMessage = "XCANExtended: Missing required parameter 'channel'";
+      return false;
+    }
+    std::string channel = channelIt->second;
+    if (channel.empty()) {
+      errorMessage = "XCANExtended: Data channel cannot be empty";
+      return false;
+    }
+
+    // ✅ OPTIONAL PARAMETER: settling_time_ms (default 300)
+    int settlingTimeMs = 300;
+    auto settlingIt = params.find("settling_time_ms");
+    if (settlingIt != params.end() && !settlingIt->second.empty()) {
+      settlingTimeMs = std::stoi(settlingIt->second);
+    }
+
+    // ✅ OPTIONAL PARAMETER: exit_threshold (early exit if value exceeds threshold)
+    double exitThreshold = std::numeric_limits<double>::max();
+    bool hasExitThreshold = false;
+    auto exitThresholdIt = params.find("exit_threshold");
+    if (exitThresholdIt != params.end() && !exitThresholdIt->second.empty()) {
+      try {
+        exitThreshold = std::stod(exitThresholdIt->second);
+        hasExitThreshold = true;
+      } catch (...) {
+        errorMessage = "XCANExtended: Invalid exit_threshold value: " + exitThresholdIt->second;
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL PARAMETER: capture_as (store result in context)
+    std::string captureAs;
+    auto captureAsIt = params.find("capture_as");
+    if (captureAsIt != params.end()) {
+      captureAs = captureAsIt->second;
+    }
+
+    // ✅ GET DATA STORE
+    if (!m_dataStore) {
+      errorMessage = "XCANExtended: DataStore not available";
+      return false;
+    }
+
+    if (m_logger) {
+      std::string axesLog;
+      for (const auto& axis : axesToScan) axesLog += axis;
+
+      std::string stepsLog;
+      for (size_t i = 0; i < stepSizesMm.size(); ++i) {
+        if (i > 0) stepsLog += ",";
+        stepsLog += std::to_string(stepSizesMm[i] * 1000.0) + "um";
+      }
+
+      m_logger->Info(
+        "XCANExtended: Starting scan on " + deviceName +
+        " (axes=" + axesLog + ", steps=" + stepsLog +
+        ", channel=" + channel +
+        ", settling=" + std::to_string(settlingTimeMs) + "ms" +
+        (hasExitThreshold ? ", exitThreshold=" + std::to_string(exitThreshold) : "") +
+        (!captureAs.empty() ? ", captureAs=" + captureAs : "") + ")",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ CREATE SCAN PARAMETERS
+    ScanParameters scanParams;
+    scanParams.axesToScan = axesToScan;
+    scanParams.stepSizes = stepSizesMm;
+    scanParams.motionSettleTimeMs = settlingTimeMs;
+    scanParams.velocityPercent = 50.0;
+
+    // Termination criteria
+    scanParams.consecutiveDecreasesLimit = 3;
+    scanParams.significantDecreaseThreshold = 0.05;  // 5%
+    scanParams.maxTotalDistance = 0.2;  // 200µm per direction
+
+    // Position optimization
+    scanParams.improvementThreshold = 0.01;  // 1%
+
+    // Measurement parameters
+    scanParams.averagingCount = 3;
+    scanParams.measurementTimeout = std::chrono::seconds(5);
+    scanParams.minValidValue = -1000.0;
+    scanParams.maxValidValue = 1000.0;
+
+    // Safety limits
+    scanParams.maxStepSize = 0.5;  // 500µm max
+    scanParams.scanTimeout = std::chrono::minutes(10);
+
+    // ✅ CREATE SCAN CONTROLLER
+    AdaptiveScanController scanController(
+      *motionManager,
+      *m_dataStore,
+      deviceName,
+      channel
+    );
+
+    if (m_logger) {
+      scanController.SetLogger(m_logger);
+    }
+
+    // ✅ COMPLETION TRACKING
+    std::atomic<bool> scanComplete{false};
+    std::atomic<bool> scanSuccess{false};
+    std::atomic<bool> earlyExit{false};
+    std::string scanErrorMsg;
+    double peakValue = 0.0;
+    std::mutex completionMutex;
+    std::condition_variable completionCV;
+
+    // Progress callback - check exit threshold
+    scanController.SetDataPointCallback(
+      [&](const ScanDataPoint& dataPoint) {
+        if (hasExitThreshold && dataPoint.value > exitThreshold && !earlyExit.load()) {
+          earlyExit.store(true);
+          if (m_logger) {
+            m_logger->Info(
+              "XCANExtended: Exit threshold reached (" + std::to_string(dataPoint.value) +
+              " > " + std::to_string(exitThreshold) + "), stopping scan",
+              "MotionHandler"
+            );
+          }
+          // The scan will halt and return to peak on next iteration
+          scanController.HaltScan();
+        }
+      }
+    );
+
+    // Completion callback
+    scanController.SetCompletionCallback(
+      [&](const ScanResults& results) {
+        std::lock_guard<std::mutex> lock(completionMutex);
+        scanComplete = true;
+        scanSuccess = results.globalPeak.valid;
+        peakValue = results.globalPeak.value;
+        if (m_logger) {
+          if (results.globalPeak.valid) {
+            m_logger->Info(
+              "XCANExtended: Scan complete - Peak value: " + std::to_string(results.globalPeak.value),
+              "MotionHandler"
+            );
+          } else {
+            m_logger->Warning("XCANExtended: Scan complete - No peak found", "MotionHandler");
+          }
+        }
+        completionCV.notify_one();
+      }
+    );
+
+    // Error callback
+    scanController.SetErrorCallback(
+      [&](const ScanError& error) {
+        std::lock_guard<std::mutex> lock(completionMutex);
+        scanComplete = true;
+        // Early exit due to threshold is not an error
+        if (earlyExit.load() && error.type == ScanErrorType::UserHalt) {
+          scanSuccess = true;  // Consider it a success
+        } else {
+          scanSuccess = false;
+          scanErrorMsg = error.message;
+          if (m_logger) {
+            m_logger->Error("XCANExtended: Scan error - " + error.message, "MotionHandler");
+          }
+        }
+        completionCV.notify_one();
+      }
+    );
+
+    // ✅ START SCAN
+    if (!scanController.StartScan(scanParams)) {
+      errorMessage = "XCANExtended: Failed to start scan";
+      return false;
+    }
+
+    // ✅ WAIT FOR COMPLETION WITH STOP FLAG MONITORING
+    while (!scanComplete) {
+      // Check if stop was requested
+      if (context && context->IsStopRequestedAny()) {
+        if (m_logger) {
+          m_logger->Info("XCANExtended: Stop requested, halting scan", "MotionHandler");
+        }
+        scanController.HaltScan();
+        errorMessage = "XCANExtended: Scan stopped by user";
+        return false;
+      }
+
+      // Wait for 100ms before checking again
+      std::unique_lock<std::mutex> lock(completionMutex);
+      completionCV.wait_for(lock, std::chrono::milliseconds(100));
+    }
+
+    // Get final peak value from scan results
+    ScanResults results = scanController.GetResults();
+    if (results.globalPeak.valid) {
+      peakValue = results.globalPeak.value;
+    }
+
+    // ✅ CAPTURE PEAK VALUE TO CONTEXT IF REQUESTED
+    if (!captureAs.empty() && context) {
+      context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "XCANExtended");
+      if (m_logger) {
+        m_logger->Info(
+          "XCANExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
+          "MotionHandler"
+        );
+      }
+    }
+
+    // ✅ CHECK FINAL RESULT
+    if (!scanSuccess && !earlyExit.load()) {
+      if (!scanErrorMsg.empty()) {
+        errorMessage = "XCANExtended: Scan failed - " + scanErrorMsg;
+      } else {
+        errorMessage = "XCANExtended: Scan completed but no peak found";
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      std::string completionReason = earlyExit.load() ? " (early exit - threshold reached)" : "";
+      m_logger->Info("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
     }
 
     return true;

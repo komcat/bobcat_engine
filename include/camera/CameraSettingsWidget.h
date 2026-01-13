@@ -12,6 +12,7 @@
 #include <QGroupBox>
 #include <QTimer>
 #include <QSplitter>
+#include <QLineEdit>
 #include <string>
 #include <memory>
 
@@ -59,9 +60,10 @@ signals:
 
 private slots:
   void onCameraSelectionChanged(int index);
-  void onAutoExposureChanged(int state);
-  void onAutoGainChanged(int state);
+  void onAutoExposureChanged(Qt::CheckState state);  // Qt6 uses Qt::CheckState
+  void onAutoGainChanged(Qt::CheckState state);      // Qt6 uses Qt::CheckState
   void onExposureSliderChanged(int value);
+  void onExposureInputChanged();
   void onGainSliderChanged(int value);
 
 private slots:
@@ -84,7 +86,8 @@ private:
   QCheckBox* m_autoExposureCheck;
   QCheckBox* m_autoGainCheck;
   QSlider* m_exposureSlider;
-  QLabel* m_exposureValueLabel;
+  QLineEdit* m_exposureInput;      // Text input for precise exposure value
+  QLabel* m_exposureUnitLabel;     // Unit label (us/ms)
   QSlider* m_gainSlider;
   QLabel* m_gainValueLabel;
 

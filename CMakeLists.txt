@@ -694,6 +694,10 @@ set(SOURCES
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
     include/AppUI/RunProgramPage/ManualAlignPointWidget.cpp
     include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
+    include/AppUI/RunProgramPage/RecipeNodeItem.cpp
+    include/AppUI/RunProgramPage/DependencyEdgeItem.cpp
+    include/AppUI/RunProgramPage/DependencyGraphScene.cpp
+    include/AppUI/RunProgramPage/DependencyGraphWindow.cpp
     include/motions/scanning/ScanExecutor.cpp
     # Lighting system
     src/lighting/CCSPD3Adapter.cpp
@@ -869,6 +873,10 @@ set(HEADERS
     include/AppUI/RunProgramPage/ManualAlignPointWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
+    include/AppUI/RunProgramPage/RecipeNodeItem.h
+    include/AppUI/RunProgramPage/DependencyEdgeItem.h
+    include/AppUI/RunProgramPage/DependencyGraphScene.h
+    include/AppUI/RunProgramPage/DependencyGraphWindow.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system

@@ -5,19 +5,43 @@
 
 DataStore::DataStore()
   : m_debugMode(false)
+  , m_shuttingDown(false)
 {
   std::cout << "[DataStore] Created" << std::endl;
 }
 
 DataStore::~DataStore()
 {
+  m_shuttingDown = true;  // Mark as shutting down
   std::cout << "[DataStore] Destroyed (had " << m_values.size() << " channels)" << std::endl;
+}
+
+void DataStore::BeginShutdown()
+{
+  m_shuttingDown = true;
+  std::cout << "[DataStore] Shutdown initiated - rejecting new writes" << std::endl;
+}
+
+bool DataStore::IsShuttingDown() const
+{
+  return m_shuttingDown.load();
 }
 
 void DataStore::SetValue(const std::string& channelId, float value)
 {
+  // ✅ CRITICAL: Check shutdown flag BEFORE locking mutex to prevent crash during destruction
+  if (m_shuttingDown.load()) {
+    // Silently ignore writes during shutdown - prevents mutex crash
+    return;
+  }
+
   {
     std::lock_guard<std::mutex> lock(m_mutex);
+
+    // Double-check after acquiring lock (in case shutdown started while waiting)
+    if (m_shuttingDown.load()) {
+      return;
+    }
 
     bool isNewChannel = (m_values.find(channelId) == m_values.end());
     m_values[channelId] = value;

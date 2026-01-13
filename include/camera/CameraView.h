@@ -52,8 +52,8 @@ private slots:
   void onZoomResetClicked();
 
   // ✅ NEW - Camera settings slots
-  void onAutoExposureChanged(int state);
-  void onAutoGainChanged(int state);
+  void onAutoExposureChanged(Qt::CheckState state);
+  void onAutoGainChanged(Qt::CheckState state);
   void onExposureSliderChanged(int value);
   void onGainSliderChanged(int value);
   void onSaveImageClicked();

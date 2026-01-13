@@ -96,6 +96,7 @@ JogPanelWindow::JogPanelWindow(
   }
 
   setupUI();
+  restoreWindowSettings();  // Restore saved window position and size
 
   // ✅ NEW: Setup position update timer
   m_positionUpdateTimer = new QTimer(this);
@@ -1069,6 +1070,9 @@ void JogPanelWindow::hidePanel()
     m_positionUpdateTimer->stop();
   }
 
+  // Save window position before hiding
+  saveWindowSettings();
+
   hide();
   emit visibilityChanged(false);
 }
@@ -1090,6 +1094,8 @@ double JogPanelWindow::getCurrentStepSize() const
 
 void JogPanelWindow::closeEvent(QCloseEvent* event)
 {
+  // Save window position before closing
+  saveWindowSettings();
   hidePanel();
   event->accept();
 }
@@ -1242,5 +1248,23 @@ void JogPanelWindow::cycleStepSizeDown()
         "JogPanel"
       );
     }
+  }
+}
+
+void JogPanelWindow::saveWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("JogPanelWindow/geometry", saveGeometry());
+  std::cout << "[JogPanelWindow] Window settings saved" << std::endl;
+}
+
+void JogPanelWindow::restoreWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QByteArray geometry = settings.value("JogPanelWindow/geometry").toByteArray();
+
+  if (!geometry.isEmpty()) {
+    restoreGeometry(geometry);
+    std::cout << "[JogPanelWindow] Window geometry restored" << std::endl;
   }
 }

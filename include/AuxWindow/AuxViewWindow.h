@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QTabWidget>
+#include <QSettings>
 
 class CameraManager;
 class CameraSettingsWidget;
@@ -61,9 +62,14 @@ public:
   void switchToLiveViewTab();
   void switchToOverlayTab();
 
+  // Window settings persistence
+  void saveWindowSettings();
+  void restoreWindowSettings();
+
 protected:
   // Override close event to prevent closing (hide instead)
   void closeEvent(QCloseEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
 
 private:
   void setupUI();

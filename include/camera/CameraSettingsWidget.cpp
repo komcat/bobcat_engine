@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
+#include <QIntValidator>
 #include <iostream>
 
 CameraSettingsWidget::CameraSettingsWidget(CameraManager* cameraManager, QWidget* parent)
@@ -195,9 +196,38 @@ void CameraSettingsWidget::setupUI()
           this, &CameraSettingsWidget::onExposureSliderChanged);
   settingsLayout->addWidget(m_exposureSlider);
 
-  m_exposureValueLabel = new QLabel("1000 us");
-  m_exposureValueLabel->setStyleSheet("QLabel { color: #00ff00; font-family: monospace; }");
-  settingsLayout->addWidget(m_exposureValueLabel);
+  // Exposure value input row (text input + unit label)
+  QHBoxLayout* exposureValueLayout = new QHBoxLayout();
+  exposureValueLayout->setContentsMargins(0, 0, 0, 0);
+  exposureValueLayout->setSpacing(5);
+
+  m_exposureInput = new QLineEdit();
+  m_exposureInput->setFixedWidth(80);
+  m_exposureInput->setValidator(new QIntValidator(1, 100000, this));  // Allow only integers 1-100000
+  m_exposureInput->setText("1000");
+  m_exposureInput->setStyleSheet(R"(
+    QLineEdit {
+      background-color: #3c3c3c;
+      color: #00ff00;
+      border: 1px solid #555555;
+      border-radius: 3px;
+      padding: 4px 6px;
+      font-family: monospace;
+    }
+    QLineEdit:focus {
+      border-color: #0e639c;
+    }
+  )");
+  connect(m_exposureInput, &QLineEdit::editingFinished,
+          this, &CameraSettingsWidget::onExposureInputChanged);
+  exposureValueLayout->addWidget(m_exposureInput);
+
+  m_exposureUnitLabel = new QLabel("us");
+  m_exposureUnitLabel->setStyleSheet("QLabel { color: #00ff00; font-family: monospace; }");
+  exposureValueLayout->addWidget(m_exposureUnitLabel);
+  exposureValueLayout->addStretch();
+
+  settingsLayout->addLayout(exposureValueLayout);
 
   settingsLayout->addSpacing(5);
 
@@ -274,16 +304,17 @@ void CameraSettingsWidget::onCameraSelectionChanged(int index)
   std::cout << "[CameraSettingsWidget] Camera changed to: " << m_currentCameraId << std::endl;
 }
 
-void CameraSettingsWidget::onAutoExposureChanged(int state)
+void CameraSettingsWidget::onAutoExposureChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
   m_exposureSlider->setEnabled(!autoEnabled);
+  m_exposureInput->setEnabled(!autoEnabled);
   applySettings();
 
   std::cout << "[CameraSettingsWidget] Auto Exposure: " << (autoEnabled ? "ON" : "OFF") << std::endl;
 }
 
-void CameraSettingsWidget::onAutoGainChanged(int state)
+void CameraSettingsWidget::onAutoGainChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
   m_gainSlider->setEnabled(!autoEnabled);
@@ -296,6 +327,37 @@ void CameraSettingsWidget::onExposureSliderChanged(int value)
 {
   updateExposureLabel(value);
   applySettings();
+}
+
+void CameraSettingsWidget::onExposureInputChanged()
+{
+  bool ok;
+  int value = m_exposureInput->text().toInt(&ok);
+  if (ok) {
+    // Clamp to valid range
+    if (value < 1) value = 1;
+    if (value > 100000) value = 100000;
+
+    // Update text if clamped
+    if (value != m_exposureInput->text().toInt()) {
+      m_exposureInput->setText(QString::number(value));
+    }
+
+    // Update slider (block signals to avoid circular updates)
+    m_exposureSlider->blockSignals(true);
+    m_exposureSlider->setValue(value);
+    m_exposureSlider->blockSignals(false);
+
+    // Update unit label
+    if (value >= 1000) {
+      double ms = value / 1000.0;
+      m_exposureUnitLabel->setText(QString("us (%1 ms)").arg(ms, 0, 'f', 2));
+    } else {
+      m_exposureUnitLabel->setText("us");
+    }
+
+    applySettings();
+  }
 }
 
 void CameraSettingsWidget::onGainSliderChanged(int value)
@@ -336,6 +398,7 @@ void CameraSettingsWidget::loadCurrentSettings()
   m_autoExposureCheck->blockSignals(true);
   m_autoGainCheck->blockSignals(true);
   m_exposureSlider->blockSignals(true);
+  m_exposureInput->blockSignals(true);
   m_gainSlider->blockSignals(true);
 
   m_autoExposureCheck->setChecked(settings.auto_exposure);
@@ -355,14 +418,16 @@ void CameraSettingsWidget::loadCurrentSettings()
   updateExposureLabel(exposureValue);
   updateGainLabel(settings.gain);
 
-  // Update slider enabled state
+  // Update slider/input enabled state
   m_exposureSlider->setEnabled(!settings.auto_exposure);
+  m_exposureInput->setEnabled(!settings.auto_exposure);
   m_gainSlider->setEnabled(!settings.auto_gain);
 
   // Unblock signals
   m_autoExposureCheck->blockSignals(false);
   m_autoGainCheck->blockSignals(false);
   m_exposureSlider->blockSignals(false);
+  m_exposureInput->blockSignals(false);
   m_gainSlider->blockSignals(false);
 
   std::cout << "[CameraSettingsWidget] Loaded settings for " << m_currentCameraId << ": "
@@ -374,11 +439,17 @@ void CameraSettingsWidget::loadCurrentSettings()
 
 void CameraSettingsWidget::updateExposureLabel(int microseconds)
 {
+  // Update the text input field (always shows microseconds)
+  m_exposureInput->blockSignals(true);
+  m_exposureInput->setText(QString::number(microseconds));
+  m_exposureInput->blockSignals(false);
+
+  // Update unit label to show helpful conversion for large values
   if (microseconds >= 1000) {
     double ms = microseconds / 1000.0;
-    m_exposureValueLabel->setText(QString("%1 ms").arg(ms, 0, 'f', 2));
+    m_exposureUnitLabel->setText(QString("us (%1 ms)").arg(ms, 0, 'f', 2));
   } else {
-    m_exposureValueLabel->setText(QString("%1 us").arg(microseconds));
+    m_exposureUnitLabel->setText("us");
   }
 }
 

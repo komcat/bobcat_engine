@@ -22,6 +22,8 @@
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
 #include <QApplication>
+#include <QSettings>
+#include <QScreen>
 #include <iostream>
 
 MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
@@ -56,6 +58,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   // Note: ProductPositionManager is created in Application.cpp and available via context
 
   setupUI();
+  restoreWindowSettings();  // Restore saved window position and size
   setupJogPanel();        // ✅ MUST be before createPages() - RunProgramPage needs m_matrixLoader!
   createPages();          // Now pages can use productPositionManager from context
   setupLogging();
@@ -112,6 +115,9 @@ MainWindow::~MainWindow()
 void MainWindow::closeEvent(QCloseEvent* event)
 {
   std::cout << "[MainWindow] Close event triggered - shutting down application..." << std::endl;
+
+  // Save window geometry before closing
+  saveWindowSettings();
 
   // Accept the close event
   event->accept();
@@ -557,5 +563,30 @@ void MainWindow::onToggleAuxWindow()
     if (m_context->logManager) {
       m_context->logManager->Info("Aux window shown", "MainWindow");
     }
+  }
+}
+
+void MainWindow::saveWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("MainWindow/geometry", saveGeometry());
+  settings.setValue("MainWindow/windowState", saveState());
+  std::cout << "[MainWindow] Window settings saved" << std::endl;
+}
+
+void MainWindow::restoreWindowSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QByteArray geometry = settings.value("MainWindow/geometry").toByteArray();
+  QByteArray state = settings.value("MainWindow/windowState").toByteArray();
+
+  if (!geometry.isEmpty()) {
+    restoreGeometry(geometry);
+    std::cout << "[MainWindow] Window geometry restored" << std::endl;
+  }
+
+  if (!state.isEmpty()) {
+    restoreState(state);
+    std::cout << "[MainWindow] Window state restored" << std::endl;
   }
 }

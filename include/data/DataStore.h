@@ -7,6 +7,7 @@
 #include <mutex>
 #include <functional>
 #include <memory>
+#include <atomic>
 
 /**
  * @brief Central data cache for real-time measurement values
@@ -20,6 +21,10 @@ class DataStore {
 public:
   DataStore();
   ~DataStore();
+
+  // ✅ Shutdown control - call before destruction to prevent crash from pending callbacks
+  void BeginShutdown();
+  bool IsShuttingDown() const;
 
   // Value operations
   void SetValue(const std::string& channelId, float value);
@@ -57,6 +62,7 @@ private:
   std::vector<DataCallback> m_globalSubscribers; // Subscribe to all channels
 
   bool m_debugMode;
+  std::atomic<bool> m_shuttingDown;  // ✅ Shutdown flag to reject writes during destruction
 
   void NotifySubscribers(const std::string& channelId, float value);
 };

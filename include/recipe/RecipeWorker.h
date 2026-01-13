@@ -40,6 +40,8 @@ public:
     QObject* parent = nullptr
   );
 
+  ~RecipeWorker();  // Clear callbacks to prevent use-after-free
+
   void requestStop();  // Request graceful stop
 
   // Step-by-step execution control
