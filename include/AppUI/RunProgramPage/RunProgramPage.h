@@ -91,6 +91,12 @@ private slots:
   // ✅ Action-level tracking with look-ahead (granular command display)
   void onActionStarted(int recipeIndex, QString current, QString next, QString afterNext);
 
+  // ✅ Loop execution tracking
+  void onLoopIterationStarted(int iteration);
+  void onLoopIterationCompleted(int iteration);
+  void onConfigureLoop();            // Open loop configuration dialog
+  void updateLoopStatusLabel();      // Update loop status display
+
   // User prompt handling
   void onShowUserPrompt(QString title, QString message);
   void onPromptResponse(bool accepted);
@@ -149,6 +155,7 @@ private:
   QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
   QLabel* m_chainIndicator;       // Chain execution indicator (orange dot)
+  QLabel* m_loopIndicator;        // Loop execution indicator (teal dot)
   QPushButton* m_newButton;
   QPushButton* m_loadButton;
   QPushButton* m_saveButton;
@@ -163,6 +170,10 @@ private:
   QCheckBox* m_autoRunNextCheckBox;
   QCheckBox* m_useDependenciesCheckBox;  // ✅ NEW: Enable dependency-based execution
   QCheckBox* m_chainExecutionCheckBox;   // ✅ NEW: Auto-trigger dependent recipes after completion
+  QCheckBox* m_loopEnabledCheckBox;      // ✅ NEW: Enable infinite loop execution
+  QCheckBox* m_ignoreDependenciesCheckBox; // ✅ NEW: Ignore dependencies, force sequential
+  QPushButton* m_configureLoopButton;    // ✅ NEW: Open loop configuration dialog
+  QLabel* m_loopStatusLabel;             // ✅ NEW: Shows loop status (e.g., "3 recipes in loop")
 
   // Right panel
   QStackedWidget* m_rightStack;
@@ -227,6 +238,9 @@ private:
   // ✅ Step-level progress tracking
   int m_currentRecipeTotalSteps;    // Total steps in current recipe
   int m_currentRecipeCompletedSteps; // Completed steps in current recipe
+
+  // ✅ Loop execution tracking
+  int m_currentLoopIteration;       // Current loop iteration (0 = not looping)
 
   void createEditWidget();
   void createExecutionWidget();

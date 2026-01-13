@@ -4,6 +4,7 @@
 #include "safety/SafetyWatchManager.h"
 #include <iostream>
 #include <algorithm>
+#include <limits>
 
 std::string UnifiedMotionManager::GetWaypointStateString(const std::string& deviceName) const {
   auto it = m_waypointStates.find(deviceName);
@@ -1454,17 +1455,31 @@ std::string UnifiedMotionManager::detectCurrentPositionName(const std::string& d
     return "";
   }
 
+  // Find the CLOSEST matching position (considering all 6 axes)
+  std::string closestName = "";
+  double closestDistance = std::numeric_limits<double>::max();
+
   for (const auto& [posName, pos] : deviceIt->second) {
     double dx = std::abs(currentPos.x - pos.x);
     double dy = std::abs(currentPos.y - pos.y);
     double dz = std::abs(currentPos.z - pos.z);
+    double du = std::abs(currentPos.u - pos.u);
+    double dv = std::abs(currentPos.v - pos.v);
+    double dw = std::abs(currentPos.w - pos.w);
 
-    if (dx < tolerance && dy < tolerance && dz < tolerance) {
-      return posName;
+    // Check if ALL axes are within tolerance
+    if (dx < tolerance && dy < tolerance && dz < tolerance &&
+        du < tolerance && dv < tolerance && dw < tolerance) {
+      // Calculate total distance to find closest match
+      double totalDistance = dx + dy + dz + du + dv + dw;
+      if (totalDistance < closestDistance) {
+        closestDistance = totalDistance;
+        closestName = posName;
+      }
     }
   }
 
-  return "";  // Not at any known position
+  return closestName;  // Empty if not at any known position
 }
 
 std::string UnifiedMotionManager::GetCurrentPositionName(const std::string& deviceName) const {

@@ -4,6 +4,7 @@
 #include "RecipeWorker.h"
 #include "RecipeExecutionStateMachine.h"
 #include "SequenceContext.h"
+#include <set>
 #include <QEventLoop>
 #include <QMutexLocker>
 #include <QStringList>
@@ -29,6 +30,9 @@ ProgramWorker::ProgramWorker(
   , m_autoRunMode(true)      // ✅ Default: run all recipes
   , m_startRecipeIndex(0)     // ✅ Default: start from first
   , m_useDependencyGraph(false)  // ✅ Default: sequential execution
+  , m_loopEnabled(false)         // ✅ Default: no loop
+  , m_ignoreDependencies(false)  // ✅ Default: respect dependencies
+  , m_loopIteration(0)           // ✅ No iterations yet
   , m_activeRecipeWorker(nullptr)  // ✅ No active worker initially
   , m_ownedContext(nullptr)  // ✅ Context created on first execution
 {
@@ -80,6 +84,25 @@ void ProgramWorker::setUseDependencyGraph(bool useDependencies)
   m_useDependencyGraph = useDependencies;
 }
 
+// ✅ Loop mode configuration
+void ProgramWorker::setLoopMode(bool enabled)
+{
+  m_loopEnabled = enabled;
+  std::cout << "[ProgramWorker] Loop mode: " << (enabled ? "enabled" : "disabled") << std::endl;
+}
+
+void ProgramWorker::setLoopRecipeIndices(const std::vector<int>& indices)
+{
+  m_loopRecipeIndices = indices;
+  std::cout << "[ProgramWorker] Loop recipe indices set: " << indices.size() << " recipes" << std::endl;
+}
+
+void ProgramWorker::setIgnoreDependencies(bool ignore)
+{
+  m_ignoreDependencies = ignore;
+  std::cout << "[ProgramWorker] Ignore dependencies: " << (ignore ? "yes" : "no") << std::endl;
+}
+
 // ✅ NEW: Reset completion tracking
 void ProgramWorker::resetCompletionTracking()
 {
@@ -90,8 +113,11 @@ void ProgramWorker::run()
 {
   std::cout << "[ProgramWorker] run() started, thread ID: " << QThread::currentThreadId() << std::endl;
   try {
-    // Choose execution mode based on dependency graph setting
-    if (m_useDependencyGraph) {
+    // Choose execution mode
+    if (m_loopEnabled && !m_loopRecipeIndices.empty()) {
+      // Loop mode: run non-loop recipes once, then loop the loop recipes
+      runWithLoop();
+    } else if (m_useDependencyGraph) {
       runWithDependencies();
     } else {
       runSequential();
@@ -677,4 +703,260 @@ SequenceContext* ProgramWorker::getCurrentContext() const
             << ", isFinished=" << isFinished() << std::endl;
   std::cout.flush();
   return ctx;
+}
+
+// ============================================================================
+// LOOP EXECUTION METHODS
+// ============================================================================
+
+void ProgramWorker::runWithLoop()
+{
+  std::cout << "[ProgramWorker] runWithLoop() started" << std::endl;
+
+  const auto& allRecipes = m_programManager->getAllRecipes();
+
+  // Create shared context for all recipes in this program run
+  m_ownedContext = std::make_unique<SequenceContext>();
+
+  // Initialize completion tracking
+  m_completedRecipes.clear();
+  m_completedRecipes.resize(allRecipes.size(), false);
+
+  // Build sets of loop and non-loop recipe indices
+  std::set<int> loopRecipeSet(m_loopRecipeIndices.begin(), m_loopRecipeIndices.end());
+
+  std::vector<int> nonLoopIndices;
+  for (size_t i = 0; i < allRecipes.size(); i++) {
+    if (loopRecipeSet.find(static_cast<int>(i)) == loopRecipeSet.end() && allRecipes[i]->enabled) {
+      nonLoopIndices.push_back(static_cast<int>(i));
+    }
+  }
+
+  int totalNonLoop = static_cast<int>(nonLoopIndices.size());
+  int totalLoop = static_cast<int>(m_loopRecipeIndices.size());
+
+  emit logMessage(QString("=== LOOP EXECUTION MODE %1 ===")
+    .arg(m_ignoreDependencies ? "(Sequential)" : "(with Dependencies)"));
+  emit logMessage(QString("Loop recipes: %1 (selected for loop)").arg(totalLoop));
+  emit logMessage(QString("Skipped recipes: %1 (not selected)").arg(totalNonLoop));
+  if (m_ignoreDependencies) {
+    emit logMessage("Dependencies ignored - running in sequential order");
+  }
+
+  // =========================================================================
+  // CREATE STATE MACHINE FOR ALL RECIPES
+  // =========================================================================
+  RecipeExecutionStateMachine stateMachine;
+
+  std::vector<std::string> recipeNames;
+  for (const auto& recipe : allRecipes) {
+    recipeNames.push_back(recipe->displayName);
+  }
+  stateMachine.initialize(allRecipes.size(), recipeNames);
+
+  // Import all dependencies
+  for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
+    const auto& deps = m_programManager->getRecipeDependencies(i);
+    for (const auto& dep : deps) {
+      if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
+        emit programExecutionCompleted(false,
+          QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
+          .arg(i + 1).arg(dep.predecessorIndex + 1));
+        return;
+      }
+    }
+  }
+
+  stateMachine.setExecutionContext(m_ownedContext.get());
+
+  // Validate dependency graph
+  std::vector<std::string> errors;
+  if (!stateMachine.validateGraph(errors)) {
+    QString errorMsg = "Dependency graph validation failed:\n";
+    for (const auto& err : errors) {
+      errorMsg += QString::fromStdString(err) + "\n";
+    }
+    emit programExecutionCompleted(false, errorMsg);
+    return;
+  }
+
+  // Mark disabled recipes
+  for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
+    if (!allRecipes[i]->enabled) {
+      stateMachine.markDisabled(i);
+    }
+  }
+
+  // =========================================================================
+  // LOOP EXECUTION: Only run selected loop recipes (non-selected are skipped)
+  // =========================================================================
+  if (m_loopRecipeIndices.empty()) {
+    emit logMessage("No loop recipes configured - execution complete");
+    emit programExecutionCompleted(true, "Program completed (no loop recipes)");
+    return;
+  }
+
+  emit logMessage(QString("\n--- Phase 2: Starting infinite loop with %1 recipe(s) ---").arg(totalLoop));
+  emit programExecutionStarted(totalLoop);
+
+  // ✅ Enable loop execution mode - auto-skip user interactions (prompts, manual adjust, etc.)
+  if (m_ownedContext) {
+    m_ownedContext->SetLoopExecutionMode(true);
+    emit logMessage("Loop mode enabled: User interactions will be auto-skipped");
+  }
+
+  m_loopIteration = 0;
+
+  while (!m_stopRequested.load()) {
+    m_loopIteration++;
+    emit loopIterationStarted(m_loopIteration);
+    emit logMessage(QString("\n========== LOOP ITERATION %1 ==========").arg(m_loopIteration));
+
+    // Reset only loop recipes in the state machine for this iteration
+    for (int idx : m_loopRecipeIndices) {
+      if (allRecipes[idx]->enabled) {
+        stateMachine.resetRecipeState(idx);
+      }
+    }
+
+    // Reset completion tracking for loop recipes
+    resetLoopRecipeCompletion();
+
+    // Run loop recipes
+    bool iterationSuccess = true;
+
+    if (m_ignoreDependencies) {
+      // ✅ SEQUENTIAL MODE: Run loop recipes in order, ignore dependencies
+      for (int recipeIndex : m_loopRecipeIndices) {
+        if (m_stopRequested.load()) break;
+
+        const auto& recipeRef = allRecipes[recipeIndex];
+        if (!recipeRef->enabled) continue;
+
+        emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
+        emit logMessage(QString("[Iter %1] Starting: %2")
+          .arg(m_loopIteration)
+          .arg(QString::fromStdString(recipeRef->displayName)));
+
+        bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+
+        if (success) {
+          m_completedRecipes[recipeIndex] = true;
+          emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
+        } else {
+          emit recipeCompleted(recipeIndex, false, "Recipe failed");
+          emit logMessage(QString("[Iter %1] Recipe '%2' failed")
+            .arg(m_loopIteration)
+            .arg(QString::fromStdString(recipeRef->displayName)));
+          iterationSuccess = false;
+          break;
+        }
+      }
+    } else {
+      // ✅ DEPENDENCY MODE: Use state machine for dependency-based execution
+      bool iterationComplete = false;
+
+      while (!iterationComplete && !m_stopRequested.load()) {
+        // Get recipes that are ready to run
+        std::vector<int> readyRecipes = stateMachine.getReadyRecipes();
+
+        // Filter to only loop recipes
+        std::vector<int> readyLoop;
+        for (int idx : readyRecipes) {
+          if (loopRecipeSet.find(idx) != loopRecipeSet.end()) {
+            readyLoop.push_back(idx);
+          }
+        }
+
+        if (readyLoop.empty()) {
+          // Check if all loop recipes are done for this iteration
+          bool allDone = true;
+          for (int idx : m_loopRecipeIndices) {
+            auto state = stateMachine.getRecipeState(idx);
+            if (state != RecipeExecutionState::Completed &&
+                state != RecipeExecutionState::Skipped &&
+                state != RecipeExecutionState::Failed &&
+                state != RecipeExecutionState::Disabled) {
+              allDone = false;
+              break;
+            }
+          }
+          iterationComplete = allDone;
+          break;
+        }
+
+        // Execute ready loop recipes
+        for (int recipeIndex : readyLoop) {
+          if (m_stopRequested.load()) break;
+
+          const auto& recipeRef = allRecipes[recipeIndex];
+          stateMachine.markRunning(recipeIndex);
+
+          emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
+          emit logMessage(QString("[Iter %1] Starting: %2")
+            .arg(m_loopIteration)
+            .arg(QString::fromStdString(recipeRef->displayName)));
+
+          bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+
+          if (success) {
+            m_completedRecipes[recipeIndex] = true;
+            stateMachine.markCompleted(recipeIndex);
+            emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
+          } else {
+            stateMachine.markFailed(recipeIndex);
+            emit recipeCompleted(recipeIndex, false, "Recipe failed");
+            emit logMessage(QString("[Iter %1] Recipe '%2' failed")
+              .arg(m_loopIteration)
+              .arg(QString::fromStdString(recipeRef->displayName)));
+            iterationSuccess = false;
+            iterationComplete = true;
+            break;
+          }
+        }
+      }
+    }
+
+    emit loopIterationCompleted(m_loopIteration);
+
+    if (!iterationSuccess) {
+      emit logMessage(QString("Loop stopped due to recipe failure at iteration %1").arg(m_loopIteration));
+      emit programExecutionCompleted(false, QString("Loop stopped: recipe failed at iteration %1").arg(m_loopIteration));
+      return;
+    }
+
+    if (m_stopRequested.load()) {
+      break;
+    }
+
+    emit logMessage(QString("Iteration %1 complete").arg(m_loopIteration));
+  }
+
+  // Loop was stopped by user
+  emit logMessage(QString("\n=== LOOP STOPPED ==="));
+  emit logMessage(QString("Completed %1 full iteration(s)").arg(m_loopIteration));
+  emit programStopped();
+  emit programExecutionCompleted(true, QString("Loop execution stopped after %1 iteration(s)").arg(m_loopIteration));
+}
+
+void ProgramWorker::runNonLoopRecipes()
+{
+  // This is a placeholder - the actual implementation is inline in runWithLoop()
+  // to avoid code duplication
+}
+
+void ProgramWorker::runLoopRecipesOnce()
+{
+  // This is a placeholder - the actual implementation is inline in runWithLoop()
+  // to avoid code duplication
+}
+
+void ProgramWorker::resetLoopRecipeCompletion()
+{
+  // Reset completion tracking only for recipes that are in the loop
+  for (int recipeIndex : m_loopRecipeIndices) {
+    if (recipeIndex >= 0 && recipeIndex < static_cast<int>(m_completedRecipes.size())) {
+      m_completedRecipes[recipeIndex] = false;
+    }
+  }
 }

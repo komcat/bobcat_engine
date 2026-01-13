@@ -698,6 +698,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/DependencyEdgeItem.cpp
     include/AppUI/RunProgramPage/DependencyGraphScene.cpp
     include/AppUI/RunProgramPage/DependencyGraphWindow.cpp
+    include/AppUI/RunProgramPage/LoopConfigDialog.cpp
     include/motions/scanning/ScanExecutor.cpp
     # Lighting system
     src/lighting/CCSPD3Adapter.cpp
@@ -877,6 +878,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/DependencyEdgeItem.h
     include/AppUI/RunProgramPage/DependencyGraphScene.h
     include/AppUI/RunProgramPage/DependencyGraphWindow.h
+    include/AppUI/RunProgramPage/LoopConfigDialog.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system

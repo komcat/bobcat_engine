@@ -102,6 +102,48 @@ void ProgramManager::setRecipeDisplayName(int index, const std::string& name)
   }
 }
 
+void ProgramManager::setRecipeIncludeInLoop(int index, bool include)
+{
+  RecipeReference* recipe = getRecipe(index);
+  if (recipe) {
+    recipe->includeInLoop = include;
+    std::cout << "[ProgramManager] Recipe " << index << " (" << recipe->displayName
+              << ") include in loop: " << (include ? "true" : "false") << std::endl;
+  }
+}
+
+std::vector<int> ProgramManager::getLoopRecipeIndices() const
+{
+  std::vector<int> indices;
+  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
+    if (m_currentProgram.recipes[i]->includeInLoop && m_currentProgram.recipes[i]->enabled) {
+      indices.push_back(static_cast<int>(i));
+    }
+  }
+  return indices;
+}
+
+std::vector<int> ProgramManager::getNonLoopRecipeIndices() const
+{
+  std::vector<int> indices;
+  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
+    if (!m_currentProgram.recipes[i]->includeInLoop && m_currentProgram.recipes[i]->enabled) {
+      indices.push_back(static_cast<int>(i));
+    }
+  }
+  return indices;
+}
+
+bool ProgramManager::hasLoopRecipes() const
+{
+  for (const auto& recipe : m_currentProgram.recipes) {
+    if (recipe->includeInLoop && recipe->enabled) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ============================================================================
 // DEPENDENCY MANAGEMENT
 // ============================================================================
@@ -317,6 +359,7 @@ bool ProgramManager::saveToJson(const std::string& filename) const
     recipeObj["recipe_file"] = QString::fromStdString(recipe->recipeFilePath);
     recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
     recipeObj["enabled"] = recipe->enabled;
+    recipeObj["include_in_loop"] = recipe->includeInLoop;
 
     // Save dependencies with conditions (new format)
     if (!recipe->dependencies.empty()) {
@@ -387,8 +430,10 @@ bool ProgramManager::loadFromJson(const std::string& filename)
     std::string filePath = recipeObj["recipe_file"].toString().toStdString();
     std::string displayName = recipeObj["display_name"].toString().toStdString();
     bool enabled = recipeObj["enabled"].toBool(true);
+    bool includeInLoop = recipeObj["include_in_loop"].toBool(false);  // Default false for backward compat
 
     auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
+    recipeRef->includeInLoop = includeInLoop;
 
     // Load dependencies (new format with conditions)
     if (recipeObj.contains("dependencies")) {

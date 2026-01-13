@@ -27,10 +27,11 @@ struct RecipeReference {
   std::string recipeFilePath;        // Path to recipe JSON file
   std::string displayName;           // Name shown in UI (extracted from recipe or filename)
   bool enabled;                      // Can disable recipe without removing it
+  bool includeInLoop;                // Include this recipe in infinite loop execution
   std::vector<DependencyLink> dependencies; // Dependencies with optional conditions
 
   RecipeReference(const std::string& path, const std::string& name, bool enable = true)
-    : recipeFilePath(path), displayName(name), enabled(enable) {
+    : recipeFilePath(path), displayName(name), enabled(enable), includeInLoop(false) {
   }
 };
 
@@ -83,6 +84,12 @@ public:
   // Recipe properties
   void setRecipeEnabled(int index, bool enabled);
   void setRecipeDisplayName(int index, const std::string& name);
+  void setRecipeIncludeInLoop(int index, bool include);
+
+  // Loop configuration
+  std::vector<int> getLoopRecipeIndices() const;  // Get indices of recipes marked for loop
+  std::vector<int> getNonLoopRecipeIndices() const;  // Get indices of recipes not in loop
+  bool hasLoopRecipes() const;  // Check if any recipes are marked for loop
 
   // Dependency management
   bool addRecipeDependency(int recipeIndex, int prerequisiteIndex,

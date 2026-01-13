@@ -74,7 +74,7 @@ void GraphMoveWorker::run()
     std::map<std::string, PositionStruct> allPositions =
         m_positionManager->GetAllPositions(m_deviceName);
 
-    // Find current position in graph
+    // Find current position in graph - check ALL 6 axes and find CLOSEST match
     PositionStruct currentPos = m_motionManager->GetCurrentPosition(m_deviceName);
     std::string currentPosName;
     double closestDistance = std::numeric_limits<double>::max();
@@ -83,14 +83,18 @@ void GraphMoveWorker::run()
         double dx = currentPos.x - pair.second.x;
         double dy = currentPos.y - pair.second.y;
         double dz = currentPos.z - pair.second.z;
-        double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+        double du = currentPos.u - pair.second.u;
+        double dv = currentPos.v - pair.second.v;
+        double dw = currentPos.w - pair.second.w;
 
-        if (distance < closestDistance) {
+        // Calculate 6-axis distance
+        double distance = std::sqrt(dx*dx + dy*dy + dz*dz + du*du + dv*dv + dw*dw);
+
+        // Check if within tolerance AND closer than previous best match
+        if (distance < POSITION_TOLERANCE && distance < closestDistance) {
             closestDistance = distance;
-            if (distance < POSITION_TOLERANCE) {
-                currentPosName = pair.first;
-                break;
-            }
+            currentPosName = pair.first;
+            // Don't break - continue to find the CLOSEST match
         }
     }
 
@@ -187,14 +191,17 @@ void GraphMoveWorker::run()
         QString waypointName = path.positionNames[i];
         std::string wpName = waypointName.toStdString();
 
-        // Check if already at this waypoint
+        // Check if already at this waypoint (all 6 axes for hexapods)
         PositionStruct wpCurrentPos = m_motionManager->GetCurrentPosition(m_deviceName);
         if (allPositions.count(wpName) > 0) {
             const PositionStruct& targetPos = allPositions[wpName];
             double dx = wpCurrentPos.x - targetPos.x;
             double dy = wpCurrentPos.y - targetPos.y;
             double dz = wpCurrentPos.z - targetPos.z;
-            double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+            double du = wpCurrentPos.u - targetPos.u;
+            double dv = wpCurrentPos.v - targetPos.v;
+            double dw = wpCurrentPos.w - targetPos.w;
+            double distance = std::sqrt(dx*dx + dy*dy + dz*dz + du*du + dv*dv + dw*dw);
 
             if (distance < POSITION_TOLERANCE) {
                 emit logMessage(QString("[GraphMoveWorker] %1: Already at waypoint '%2', skipping")

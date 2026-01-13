@@ -21,6 +21,7 @@
 #include "FileSelectorDialog.h"  // ✅ Custom file selector
 #include "SequenceContext.h"     // For context tab
 #include "DependencyGraphWindow.h"  // For visual dependency graph
+#include "LoopConfigDialog.h"        // For loop recipe configuration
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -144,6 +145,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_totalRecipes(0)
   , m_currentRecipeIndex(-1)
   , m_pendingChainRecipeIndex(-1)
+  , m_currentLoopIteration(0)
   , m_executionStack(nullptr)
   , m_promptWidget(nullptr)
   , m_manualAdjustWidget(nullptr)
@@ -343,6 +345,20 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}"
   );
   productRowLayout->addWidget(m_chainIndicator);
+
+  // Loop execution indicator (teal circle when enabled)
+  m_loopIndicator = new QLabel();
+  m_loopIndicator->setFixedSize(16, 16);
+  m_loopIndicator->setToolTip("Loop execution enabled");
+  m_loopIndicator->setVisible(false);  // Hidden by default
+  m_loopIndicator->setStyleSheet(
+    "QLabel {"
+    "  background-color: #4ec9b0;"
+    "  border-radius: 8px;"
+    "  border: 2px solid #5fd9c0;"
+    "}"
+  );
+  productRowLayout->addWidget(m_loopIndicator);
   productRowLayout->addStretch();
 
   leftLayout->addWidget(productRow);
@@ -834,6 +850,124 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   connect(m_chainExecutionCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
     m_chainIndicator->setVisible(checked);
   });
+
+  // Loop Execution section
+  QGroupBox* loopGroup = new QGroupBox("Loop Execution");
+  loopGroup->setStyleSheet(
+    "QGroupBox { "
+    "  color: #4ec9b0; "
+    "  font-weight: bold; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 5px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}"
+  );
+  QVBoxLayout* loopLayout = new QVBoxLayout(loopGroup);
+  loopLayout->setContentsMargins(10, 15, 10, 10);
+  loopLayout->setSpacing(8);
+
+  // Loop enabled checkbox
+  m_loopEnabledCheckBox = new QCheckBox("Enable infinite loop");
+  m_loopEnabledCheckBox->setChecked(false);
+  m_loopEnabledCheckBox->setToolTip("Run selected recipes in an infinite loop until stopped");
+  m_loopEnabledCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 20px; "
+    "  height: 20px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #4ec9b0; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #4ec9b0; "
+    "  border-color: #4ec9b0; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #5fd9c0; "
+    "  border-color: #5fd9c0; "
+    "}"
+  );
+  loopLayout->addWidget(m_loopEnabledCheckBox);
+
+  // Connect checkbox to show/hide the loop indicator
+  connect(m_loopEnabledCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+    // Only show indicator if loop is enabled AND there are loop recipes configured
+    m_loopIndicator->setVisible(checked && m_programManager->hasLoopRecipes());
+  });
+
+  // Configure loop button
+  m_configureLoopButton = new QPushButton("Configure Loop Recipes...");
+  m_configureLoopButton->setToolTip("Select which recipes to include in the loop");
+  m_configureLoopButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  padding: 6px 12px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "  border-color: #4ec9b0; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #4ec9b0; "
+    "}"
+  );
+  connect(m_configureLoopButton, &QPushButton::clicked, this, &RunProgramPage::onConfigureLoop);
+  loopLayout->addWidget(m_configureLoopButton);
+
+  // Loop status label
+  m_loopStatusLabel = new QLabel("No recipes configured for loop");
+  m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
+  loopLayout->addWidget(m_loopStatusLabel);
+
+  // Ignore dependencies checkbox
+  m_ignoreDependenciesCheckBox = new QCheckBox("Ignore dependencies");
+  m_ignoreDependenciesCheckBox->setChecked(false);
+  m_ignoreDependenciesCheckBox->setToolTip("Force sequential execution without checking dependency conditions");
+  m_ignoreDependenciesCheckBox->setStyleSheet(
+    "QCheckBox { "
+    "  spacing: 8px; "
+    "  padding: 5px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 18px; "
+    "  height: 18px; "
+    "  border: 2px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #e8a838; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #e8a838; "
+    "  border-color: #e8a838; "
+    "} "
+    "QCheckBox::indicator:checked:hover { "
+    "  background-color: #f0b848; "
+    "  border-color: #f0b848; "
+    "}"
+  );
+  loopLayout->addWidget(m_ignoreDependenciesCheckBox);
+
+  optionLayout->addWidget(loopGroup);
 
   optionLayout->addStretch();
   optionTabLayout->addWidget(optionGroup);
@@ -1808,6 +1942,7 @@ void RunProgramPage::onLoadProgram()
 
   updateProgramInfo();
   updateRecipeList();
+  updateLoopStatusLabel();  // ✅ Update loop status when loading program
 
   // ✅ Reset completion tracking when loading new program
   m_completedRecipes.clear();
@@ -2108,6 +2243,15 @@ void RunProgramPage::onExecuteProgram()
   // ✅ Set dependency execution mode
   m_programWorker->setUseDependencyGraph(m_useDependenciesCheckBox->isChecked());
 
+  // ✅ Set loop execution mode
+  bool loopEnabled = m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes();
+  m_programWorker->setLoopMode(loopEnabled);
+  if (loopEnabled) {
+    m_programWorker->setLoopRecipeIndices(m_programManager->getLoopRecipeIndices());
+    m_programWorker->setIgnoreDependencies(m_ignoreDependenciesCheckBox->isChecked());
+    m_currentLoopIteration = 0;
+  }
+
   // Set UserPrompt callback
   connect(this, &RunProgramPage::showUserPrompt,
     this, &RunProgramPage::onShowUserPrompt);
@@ -2202,6 +2346,12 @@ void RunProgramPage::onExecuteProgram()
   // ✅ Connect action-level signal for granular command tracking
   connect(m_programWorker, &ProgramWorker::actionStarted,
     this, &RunProgramPage::onActionStarted, Qt::QueuedConnection);
+
+  // ✅ Connect loop iteration signals
+  connect(m_programWorker, &ProgramWorker::loopIterationStarted,
+    this, &RunProgramPage::onLoopIterationStarted, Qt::QueuedConnection);
+  connect(m_programWorker, &ProgramWorker::loopIterationCompleted,
+    this, &RunProgramPage::onLoopIterationCompleted, Qt::QueuedConnection);
 
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
@@ -3430,6 +3580,84 @@ void RunProgramPage::onManageDependencies()
   updateRecipeList();
 }
 
+void RunProgramPage::onConfigureLoop()
+{
+  int recipeCount = m_programManager->getRecipeCount();
+  if (recipeCount == 0) {
+    QMessageBox::information(this, "No Recipes", "Please add recipes first before configuring loop");
+    return;
+  }
+
+  // Open the loop configuration dialog
+  LoopConfigDialog* dialog = new LoopConfigDialog(m_programManager, this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+  if (dialog->exec() == QDialog::Accepted) {
+    // Update the loop status label
+    updateLoopStatusLabel();
+
+    // Update the loop indicator visibility
+    m_loopIndicator->setVisible(m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes());
+
+    // Refresh the recipe list to show loop indicators
+    updateRecipeList();
+  }
+}
+
+void RunProgramPage::updateLoopStatusLabel()
+{
+  if (!m_programManager) {
+    m_loopStatusLabel->setText("No program loaded");
+    m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
+    return;
+  }
+
+  std::vector<int> loopRecipes = m_programManager->getLoopRecipeIndices();
+
+  if (loopRecipes.empty()) {
+    m_loopStatusLabel->setText("No recipes configured for loop");
+    m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
+  } else if (loopRecipes.size() == 1) {
+    m_loopStatusLabel->setText("1 recipe in loop");
+    m_loopStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
+  } else {
+    m_loopStatusLabel->setText(QString("%1 recipes in loop").arg(loopRecipes.size()));
+    m_loopStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
+  }
+}
+
+void RunProgramPage::onLoopIterationStarted(int iteration)
+{
+  m_currentLoopIteration = iteration;
+
+  // Update the execution status to show loop iteration
+  m_executionStatusLabel->setText(QString("Loop Iteration %1").arg(iteration));
+
+  // Update program status indicator
+  m_programStatusLabel->setText(QString("Loop #%1").arg(iteration));
+  m_programStatusLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #4ec9b0; "
+    "  color: #1e1e1e; "
+    "  padding: 4px 12px; "
+    "  border-radius: 4px; "
+    "  font-weight: bold; "
+    "  font-size: 12px; "
+    "}"
+  );
+
+  // Reset progress bar for new iteration
+  m_progressBar->setValue(0);
+}
+
+void RunProgramPage::onLoopIterationCompleted(int iteration)
+{
+  m_currentLoopIteration = iteration;
+
+  // Log iteration completion
+  std::cout << "[RunProgramPage] Loop iteration " << iteration << " completed" << std::endl;
+}
+
 void RunProgramPage::onSaveEdit()
 {
   // Save program name from edit field
@@ -3618,11 +3846,13 @@ void RunProgramPage::updateRecipeList()
   int recipeNumber = 1;
   for (const auto& recipe : m_programManager->getAllRecipes()) {
     QString displayText;
+    QString loopIndicator = recipe->includeInLoop ? " [L]" : "";
 
     if (recipe->enabled) {
-      displayText = QString("%1    %2")
+      displayText = QString("%1    %2%3")
         .arg(recipeNumber, 2, 10, QChar('0'))
-        .arg(QString::fromStdString(recipe->displayName));
+        .arg(QString::fromStdString(recipe->displayName))
+        .arg(loopIndicator);
     }
     else {
       displayText = QString("%1    %2 (disabled)")
@@ -3636,7 +3866,11 @@ void RunProgramPage::updateRecipeList()
       continue;
     }
 
-    m_recipeListWidget->addItem(displayText);
+    QListWidgetItem* item = new QListWidgetItem(displayText);
+    if (recipe->includeInLoop) {
+      item->setForeground(QColor(78, 201, 176));  // Teal color for loop recipes
+    }
+    m_recipeListWidget->addItem(item);
     recipeNumber++;
   }
 

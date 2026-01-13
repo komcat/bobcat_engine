@@ -184,6 +184,10 @@ public:
         return false;
     }
 
+    // Loop execution mode - auto-skip user interactions (prompts, manual adjust, etc.)
+    void SetLoopExecutionMode(bool enabled) { m_loopExecutionMode = enabled; }
+    bool IsLoopExecutionMode() const { return m_loopExecutionMode; }
+
     // Notify wait progress (used by SystemCommandHandler)
     void NotifyWaitProgress(int remainingMs, int totalMs) const {
         if (m_waitProgressCallback) {
@@ -232,6 +236,7 @@ private:
 
     // Execution control
     bool m_stopRequested = false;
+    bool m_loopExecutionMode = false;  // Auto-skip user interactions in loop mode
     StopFlagCallback m_engineStopCallback;
     WaitProgressCallback m_waitProgressCallback;
 };

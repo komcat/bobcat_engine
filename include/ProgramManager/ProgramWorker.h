@@ -69,6 +69,12 @@ public:
   void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
   void setUseDependencyGraph(bool useDependencies);  // true = use state machine, false = sequential
 
+  // ✅ Loop execution mode
+  void setLoopMode(bool enabled);  // Enable infinite loop execution
+  void setLoopRecipeIndices(const std::vector<int>& indices);  // Which recipes to loop
+  void setIgnoreDependencies(bool ignore);  // Force sequential without checking dependencies
+  int getLoopIteration() const { return m_loopIteration; }  // Current loop iteration
+
   // ✅ Reset completion tracking (call when loading new program)
   void resetCompletionTracking();
 
@@ -101,6 +107,10 @@ signals:
   // Wait progress (from current recipe)
   void waitProgress(int remainingMs, int totalMs);
 
+  // Loop execution signals
+  void loopIterationStarted(int iteration);  // Emitted when a new loop iteration begins
+  void loopIterationCompleted(int iteration);  // Emitted when a loop iteration finishes
+
   // Logging
   void logMessage(QString message);
 
@@ -125,6 +135,12 @@ private:
   int m_startRecipeIndex;    // Starting recipe index (for single mode)
   bool m_useDependencyGraph; // true = use state machine for dependencies, false = sequential
 
+  // ✅ Loop execution mode
+  bool m_loopEnabled;                     // true = loop the loop recipes indefinitely
+  bool m_ignoreDependencies;              // true = skip dependency checks, force sequential
+  std::vector<int> m_loopRecipeIndices;   // Indices of recipes to loop
+  int m_loopIteration;                    // Current loop iteration (1-based)
+
   // ✅ Track active RecipeWorker for stop forwarding
   RecipeWorker* m_activeRecipeWorker;
   QMutex m_activeWorkerMutex;  // Protect access to m_activeRecipeWorker
@@ -145,4 +161,10 @@ private:
   void runWithDependencies();
   void runSequential();
   bool checkPrerequisites(int recipeIndex, QString& errorMessage);
+
+  // Helper methods for loop execution
+  void runWithLoop();               // Main loop execution with pre-loop and loop phases
+  void runNonLoopRecipes();         // Run non-loop recipes once (Phase 1)
+  void runLoopRecipesOnce();        // Run loop recipes once (single iteration)
+  void resetLoopRecipeCompletion(); // Reset completion tracking for loop recipes only
 };

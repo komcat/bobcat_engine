@@ -183,16 +183,28 @@ public:
   void resetExecution();
 
   /**
+   * @brief Reset a single recipe to Pending state (for loop iterations)
+   * @param recipeIndex Recipe to reset
+   */
+  void resetRecipeState(int recipeIndex);
+
+  /**
    * @brief Get all recipes that are ready to execute
    * @return Vector of recipe indices that have all prerequisites met
    */
   std::vector<int> getReadyRecipes() const;
 
   /**
-   * @brief Mark a recipe as started
+   * @brief Mark a recipe as started (Running state)
    * @param recipeIndex Recipe being executed
    */
   void markRecipeStarted(int recipeIndex);
+
+  /**
+   * @brief Mark a recipe as running (alias for markRecipeStarted)
+   * @param recipeIndex Recipe being executed
+   */
+  void markRunning(int recipeIndex) { markRecipeStarted(recipeIndex); }
 
   /**
    * @brief Mark a recipe as completed
@@ -201,6 +213,27 @@ public:
    * @param errorMessage Error message if failed (optional)
    */
   void markRecipeCompleted(int recipeIndex, bool success, const std::string& errorMessage = "");
+
+  /**
+   * @brief Mark a recipe as successfully completed (convenience method)
+   * @param recipeIndex Recipe that completed
+   */
+  void markCompleted(int recipeIndex) { markRecipeCompleted(recipeIndex, true); }
+
+  /**
+   * @brief Mark a recipe as failed (convenience method)
+   * @param recipeIndex Recipe that failed
+   * @param errorMessage Error message (optional)
+   */
+  void markFailed(int recipeIndex, const std::string& errorMessage = "") {
+    markRecipeCompleted(recipeIndex, false, errorMessage);
+  }
+
+  /**
+   * @brief Mark a recipe as disabled (convenience method)
+   * @param recipeIndex Recipe to disable
+   */
+  void markDisabled(int recipeIndex) { setRecipeDisabled(recipeIndex); }
 
   /**
    * @brief Check if all recipes are in terminal state (completed/failed/skipped)

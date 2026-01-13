@@ -309,6 +309,25 @@ void RecipeExecutionStateMachine::resetExecution()
   std::cout << "[RecipeStateMachine] Execution state reset" << std::endl;
 }
 
+void RecipeExecutionStateMachine::resetRecipeState(int recipeIndex)
+{
+  auto it = m_nodes.find(recipeIndex);
+  if (it == m_nodes.end()) return;
+
+  auto& node = it->second;
+
+  // Only reset if not disabled
+  if (node->state != RecipeExecutionState::Disabled) {
+    node->state = RecipeExecutionState::Pending;
+    node->success = false;
+    node->errorMessage.clear();
+    node->skippedDueToCondition = false;
+  }
+
+  // Update ready states after reset
+  updateReadyStates();
+}
+
 void RecipeExecutionStateMachine::updateReadyStates()
 {
   for (auto& [index, node] : m_nodes) {

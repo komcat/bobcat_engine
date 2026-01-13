@@ -210,6 +210,14 @@ bool SystemCommandHandler::ExecuteCommand(
     bool allowCancel = (allowCancelIt != params.end() && allowCancelIt->second == "true");
     bool autoAccept = (autoAcceptIt != params.end() && autoAcceptIt->second == "true");
 
+    // ✅ LOOP MODE: Auto-accept when in loop execution mode
+    if (context && context->IsLoopExecutionMode()) {
+      autoAccept = true;
+      if (m_logger) {
+        m_logger->Info("Loop mode: Auto-accepting prompt: " + title, "SystemHandler");
+      }
+    }
+
     // ✅ AUTO-ACCEPT MODE: Skip user interaction entirely
     if (autoAccept) {
       if (m_logger) {
@@ -308,6 +316,14 @@ bool SystemCommandHandler::ExecuteCommand(
     bool enableY = (enableYIt != params.end() && enableYIt->second == "true");
     bool enableZ = (enableZIt != params.end() && enableZIt->second == "true");
 
+    // ✅ LOOP MODE: Auto-skip manual adjustment when in loop execution mode
+    if (context && context->IsLoopExecutionMode()) {
+      if (m_logger) {
+        m_logger->Info("Loop mode: Skipping manual adjustment for: " + deviceName, "SystemHandler");
+      }
+      return true;  // Continue without user interaction
+    }
+
     if (!m_manualAdjustCallback) {
       errorMessage = "ManualAdjust callback not configured";
       return false;
@@ -353,6 +369,16 @@ bool SystemCommandHandler::ExecuteCommand(
     std::string prompt = promptIt->second;
     std::string defaultValue = (defaultValueIt != params.end()) ? defaultValueIt->second : "";
     std::string contextKey = (contextKeyIt != params.end()) ? contextKeyIt->second : "user_input";
+
+    // ✅ LOOP MODE: Auto-accept with default value when in loop execution mode
+    if (context && context->IsLoopExecutionMode()) {
+      if (m_logger) {
+        m_logger->Info("Loop mode: Auto-accepting input with default value: " + defaultValue, "SystemHandler");
+      }
+      // Store default value in context
+      context->SetValue(contextKey, defaultValue, "system", "AskForInput");
+      return true;  // Continue without user interaction
+    }
 
     if (!m_userInputCallback) {
       errorMessage = "UserInput callback not configured";
