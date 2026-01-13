@@ -25,6 +25,13 @@
 #include <opencv2/imgcodecs.hpp>  // For cv::imwrite
 #include <QMetaObject>
 #include <QApplication>
+#include <QDir>
+#include "SequenceEngine.h"  // For VisionResultCallback
+
+// Static member definitions for vision history
+int VisionCommandHandler::s_historyIndex = 0;
+const int VisionCommandHandler::MAX_HISTORY;  // Defined in header as 10
+const std::string VisionCommandHandler::HISTORY_DIR = "logs/vision_history";
 
 bool VisionCommandHandler::ExecuteCommand(
     void* manager,
@@ -674,11 +681,8 @@ bool VisionCommandHandler::Execute(const std::string& pluginName,
             std::cout << "[VisionCommandHandler] 🖼️ Result image stored: "
                       << outputImage.cols << "x" << outputImage.rows << std::endl;
 
-            // ✅ Also save to temporary file for cross-thread access
-            std::string tempPath = "logs/vision_result_temp.png";
-            cv::imwrite(tempPath, outputImage);
-            context->SetValue("vision.result.image_path", tempPath);
-            std::cout << "[VisionCommandHandler] 🖼️ Result image saved to: " << tempPath << std::endl;
+            // ✅ Save to history and trigger callback for real-time UI update
+            SaveVisionResultWithHistory(outputImage, context);
         } else {
             std::cout << "[VisionCommandHandler] ⚠️ No output image available from VisionManager" << std::endl;
         }
@@ -1313,6 +1317,65 @@ bool VisionCommandHandler::ExecuteAutoFocus(const std::map<std::string, std::str
               << " mm (delta from start: " << (bestZ - startZ) << " mm)" << std::endl;
 
     return true;
+}
+
+// =============================================================================
+// VISION HISTORY MANAGEMENT
+// =============================================================================
+
+std::string VisionCommandHandler::SaveVisionResultWithHistory(const cv::Mat& image, SequenceContext* context)
+{
+    if (image.empty()) {
+        std::cout << "[VisionCommandHandler] ⚠️ Cannot save empty image to history" << std::endl;
+        return "";
+    }
+
+    // Ensure history directory exists
+    QDir dir(QString::fromStdString(HISTORY_DIR));
+    if (!dir.exists()) {
+        dir.mkpath(".");
+        std::cout << "[VisionCommandHandler] 📁 Created vision history directory: " << HISTORY_DIR << std::endl;
+    }
+
+    // Generate filename with current index (1-based for display: vision_001.png to vision_010.png)
+    std::ostringstream filename;
+    filename << HISTORY_DIR << "/vision_" << std::setfill('0') << std::setw(3) << (s_historyIndex + 1) << ".png";
+    std::string filePath = filename.str();
+
+    // Save the image
+    bool saved = cv::imwrite(filePath, image);
+    if (!saved) {
+        std::cout << "[VisionCommandHandler] ❌ Failed to save vision result to: " << filePath << std::endl;
+        return "";
+    }
+
+    std::cout << "[VisionCommandHandler] 🖼️ Vision result saved to history: " << filePath
+              << " (index " << (s_historyIndex + 1) << "/" << MAX_HISTORY << ")" << std::endl;
+
+    // Store the path and current index in context
+    if (context) {
+        context->SetValue("vision.result.image_path", filePath);
+        context->SetValue("vision.history.current_index", static_cast<float>(s_historyIndex));
+        context->SetValue("vision.history.total_count", static_cast<float>(std::min(s_historyIndex + 1, MAX_HISTORY)));
+    }
+
+    // Also save to the legacy temp file for backward compatibility
+    std::string tempPath = "logs/vision_result_temp.png";
+    cv::imwrite(tempPath, image);
+
+    // Advance the history index (circular buffer)
+    s_historyIndex = (s_historyIndex + 1) % MAX_HISTORY;
+
+    // Call the VisionResultCallback if registered (for real-time UI updates)
+    if (m_context && m_context->sequenceEngine) {
+        auto callback = m_context->sequenceEngine->GetVisionResultCallback();
+        if (callback) {
+            std::cout << "[VisionCommandHandler] 📤 Calling VisionResultCallback for: " << filePath << std::endl;
+            callback(filePath);
+        }
+    }
+
+    return filePath;
 }
 
 #endif // HAS_OPENCV

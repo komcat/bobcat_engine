@@ -22,6 +22,7 @@ void ProgramManager::newProgram()
 {
   m_currentProgram = Program();
   m_currentFilePath.clear();
+  m_graphPositions.clear();
   std::cout << "[ProgramManager] New program created" << std::endl;
 }
 
@@ -333,6 +334,41 @@ bool ProgramManager::validateProgram(std::vector<std::string>& errors) const
   return errors.empty();
 }
 
+// ============================================================================
+// GRAPH NODE POSITION MANAGEMENT
+// ============================================================================
+
+void ProgramManager::setNodePosition(int recipeIndex, double x, double y)
+{
+  if (recipeIndex < 0 || recipeIndex >= getRecipeCount()) {
+    return;
+  }
+  m_graphPositions[recipeIndex] = GraphNodePosition(x, y);
+  std::cout << "[ProgramManager] Set node position for recipe " << recipeIndex
+            << " to (" << x << ", " << y << ")" << std::endl;
+}
+
+GraphNodePosition ProgramManager::getNodePosition(int recipeIndex) const
+{
+  auto it = m_graphPositions.find(recipeIndex);
+  if (it != m_graphPositions.end()) {
+    return it->second;
+  }
+  return GraphNodePosition();  // Return default (hasPosition = false)
+}
+
+bool ProgramManager::hasNodePosition(int recipeIndex) const
+{
+  auto it = m_graphPositions.find(recipeIndex);
+  return (it != m_graphPositions.end() && it->second.hasPosition);
+}
+
+void ProgramManager::clearNodePositions()
+{
+  m_graphPositions.clear();
+  std::cout << "[ProgramManager] Cleared all node positions" << std::endl;
+}
+
 bool ProgramManager::loadProgram(const std::string& filename)
 {
   return loadFromJson(filename);
@@ -379,6 +415,22 @@ bool ProgramManager::saveToJson(const std::string& filename) const
   }
 
   root["recipes"] = recipesArray;
+
+  // Save graph node positions
+  if (!m_graphPositions.empty()) {
+    QJsonObject positionsObj;
+    for (const auto& [index, pos] : m_graphPositions) {
+      if (pos.hasPosition) {
+        QJsonObject posObj;
+        posObj["x"] = pos.x;
+        posObj["y"] = pos.y;
+        positionsObj[QString::number(index)] = posObj;
+      }
+    }
+    if (!positionsObj.isEmpty()) {
+      root["graph_positions"] = positionsObj;
+    }
+  }
 
   QJsonDocument doc(root);
 
@@ -461,6 +513,23 @@ bool ProgramManager::loadFromJson(const std::string& filename)
   // Replace current program
   m_currentProgram = std::move(newProgram);
   m_currentFilePath = filename;
+
+  // Load graph node positions
+  m_graphPositions.clear();
+  if (root.contains("graph_positions")) {
+    QJsonObject positionsObj = root["graph_positions"].toObject();
+    for (auto it = positionsObj.begin(); it != positionsObj.end(); ++it) {
+      bool ok;
+      int index = it.key().toInt(&ok);
+      if (ok && it.value().isObject()) {
+        QJsonObject posObj = it.value().toObject();
+        double x = posObj["x"].toDouble();
+        double y = posObj["y"].toDouble();
+        m_graphPositions[index] = GraphNodePosition(x, y);
+      }
+    }
+    std::cout << "[ProgramManager] Loaded " << m_graphPositions.size() << " graph node positions" << std::endl;
+  }
 
   std::cout << "[ProgramManager] Loaded program '" << m_currentProgram.name
     << "' with " << m_currentProgram.recipes.size() << " recipes from "

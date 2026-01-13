@@ -268,6 +268,23 @@ private:
   void updateVisionResultImage();        // ✅ Update vision result image from context
   void clearVisionResult();              // ✅ Clear stale vision result
 
+  // Vision history navigation
+  QWidget* m_visionNavWidget;            // Container for navigation controls
+  QPushButton* m_visionPrevButton;       // Previous result button
+  QPushButton* m_visionNextButton;       // Next result button
+  QLabel* m_visionIndexLabel;            // Shows "3 / 5" index
+  std::vector<QString> m_visionHistory;  // List of history image paths
+  int m_visionHistoryViewIndex;          // Currently viewed index (-1 = latest)
+  static const int MAX_VISION_HISTORY = 10;
+
+  // Vision history methods
+  void onVisionResultReady(QString imagePath);  // Slot for new vision result
+  void onVisionPrevious();                      // Show previous result
+  void onVisionNext();                          // Show next result
+  void updateVisionNavigation();                // Update nav button states and label
+  void loadVisionHistoryImage(int index);       // Load specific history image
+  void clearVisionHistory();                    // Clear history on new program run
+
   // Context Tab Components (real-time context variable viewer)
   QWidget* m_contextTabWidget;           // Container widget for context tab
   QTableWidget* m_contextTable;          // Table showing context variables

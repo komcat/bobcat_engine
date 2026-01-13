@@ -37,7 +37,17 @@ void DependencyGraphScene::loadFromProgram()
 
   createNodes();
   createEdges();
-  autoLayout();
+
+  // Only auto-layout if no saved positions exist
+  // If positions were saved, they were already applied in createNodes()
+  if (m_programManager->getAllNodePositions().empty()) {
+    autoLayout();
+  } else {
+    // Still need to update edges after positions are set
+    for (DependencyEdgeItem* edge : m_edges.values()) {
+      edge->updatePath();
+    }
+  }
 }
 
 void DependencyGraphScene::clearGraph()
@@ -70,6 +80,12 @@ void DependencyGraphScene::createNodes()
     node->setGraphScene(this);
     addItem(node);
     m_nodes[i] = node;
+
+    // Apply saved position if available
+    if (m_programManager->hasNodePosition(i)) {
+      GraphNodePosition pos = m_programManager->getNodePosition(i);
+      node->setPos(pos.x, pos.y);
+    }
   }
 }
 
@@ -132,11 +148,15 @@ void DependencyGraphScene::removeEdge(DependencyEdgeItem* edge)
 
 void DependencyGraphScene::onNodeMoved(RecipeNodeItem* node)
 {
-  Q_UNUSED(node);
-
   // Update all edges connected to any node
   for (DependencyEdgeItem* edge : m_edges.values()) {
     edge->updatePath();
+  }
+
+  // Emit position change for persistence
+  if (node) {
+    QPointF pos = node->pos();
+    emit nodePositionChanged(node->getRecipeIndex(), pos.x(), pos.y());
   }
 }
 

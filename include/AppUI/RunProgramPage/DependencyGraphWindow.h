@@ -79,6 +79,7 @@ private slots:
   void onDependencyCreated(int sourceIndex, int targetIndex);
   void onDependencyRemoved(int sourceIndex, int targetIndex);
   void onEditConditionRequested(int sourceIndex, int targetIndex);
+  void onNodePositionChanged(int recipeIndex, double x, double y);
 
 private:
   void setupUI();

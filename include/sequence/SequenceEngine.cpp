@@ -344,6 +344,11 @@ void SequenceEngine::SetActionStartedCallback(ActionStartedCallback callback)
   m_actionStartedCallback = callback;
 }
 
+void SequenceEngine::SetVisionResultCallback(VisionResultCallback callback)
+{
+  m_visionResultCallback = callback;
+}
+
 void SequenceEngine::BuildActionList(SequenceBuilder* sequence)
 {
   m_actionList.clear();

@@ -64,4 +64,15 @@ private:
 
     // Helper to store VisionResult in context
     void StoreResultInContext(const struct VisionResult& result, SequenceContext* context);
+
+#ifdef HAS_OPENCV
+    // Helper to save vision result with history management
+    // Returns the path to the saved file
+    std::string SaveVisionResultWithHistory(const cv::Mat& image, SequenceContext* context);
+#endif
+
+    // Static members for vision history management
+    static int s_historyIndex;           // Current index (0-9 for 10 results)
+    static const int MAX_HISTORY = 10;   // Maximum number of history entries
+    static const std::string HISTORY_DIR; // Directory for vision history
 };

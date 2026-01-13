@@ -182,6 +182,8 @@ void DependencyGraphWindow::setupUI()
           this, &DependencyGraphWindow::onDependencyRemoved);
   connect(m_scene, &DependencyGraphScene::editConditionRequested,
           this, &DependencyGraphWindow::onEditConditionRequested);
+  connect(m_scene, &DependencyGraphScene::nodePositionChanged,
+          this, &DependencyGraphWindow::onNodePositionChanged);
 }
 
 void DependencyGraphWindow::setupToolbar()
@@ -301,6 +303,10 @@ void DependencyGraphWindow::refreshGraph()
 
 void DependencyGraphWindow::onAutoLayout()
 {
+  // Clear saved positions so auto-layout is used
+  if (m_programManager) {
+    m_programManager->clearNodePositions();
+  }
   m_scene->autoLayout();
 }
 
@@ -387,5 +393,12 @@ void DependencyGraphWindow::onEditConditionRequested(int sourceIndex, int target
 
     m_statusLabel->setText(QString("Updated condition for dependency: Recipe %1 -> Recipe %2")
                            .arg(sourceIndex + 1).arg(targetIndex + 1));
+  }
+}
+
+void DependencyGraphWindow::onNodePositionChanged(int recipeIndex, double x, double y)
+{
+  if (m_programManager) {
+    m_programManager->setNodePosition(recipeIndex, x, y);
   }
 }

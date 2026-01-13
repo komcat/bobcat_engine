@@ -1342,8 +1342,11 @@ bool PylonCamera::IsGainAuto() const {
 	return false;
 }
 // Apply multiple settings at once (more efficient)
+// ✅ Adds 500ms settle delay after each exposure-related change for camera stability
 bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 	if (!ValidateConnection()) return false;
+
+	const int SETTLE_DELAY_MS = 500;  // Settle time after each exposure change
 
 	std::cout << "Applying camera settings:" << std::endl;
 	std::cout << "  Target Exposure: " << settings.exposure_time << " us" << std::endl;
@@ -1353,27 +1356,46 @@ bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 
 	bool success = true;
 
+	// ✅ Check current auto modes before making changes
+	bool wasExposureAuto = IsExposureAuto();
+	bool wasGainAuto = IsGainAuto();
+
+	std::cout << "  Current Exposure Auto: " << (wasExposureAuto ? "On" : "Off") << std::endl;
+	std::cout << "  Current Gain Auto: " << (wasGainAuto ? "On" : "Off") << std::endl;
+
 	// Set exposure mode first
 	if (!SetExposureMode()) {
 		success = false;
 	}
 
-	// Set auto modes first
+	// Set auto-exposure mode and wait for settle
 	if (!SetExposureAuto(settings.exposure_auto)) {
 		success = false;
+	} else {
+		if (wasExposureAuto != settings.exposure_auto) {
+			std::cout << "  [INFO] Exposure Auto changed: " << (wasExposureAuto ? "On" : "Off")
+			          << " -> " << (settings.exposure_auto ? "On" : "Off") << std::endl;
+		}
+		std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure auto setting..." << std::endl;
+		std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_DELAY_MS));
 	}
 
+	// Set auto-gain mode
 	if (!SetGainAuto(settings.gain_auto)) {
 		success = false;
 	}
 
-	// Set manual values only if auto modes are disabled
+	// Set manual exposure value and wait for settle (only if auto is disabled)
 	if (!settings.exposure_auto) {
 		if (!SetExposureTime(settings.exposure_time)) {
 			success = false;
+		} else {
+			std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure time setting..." << std::endl;
+			std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_DELAY_MS));
 		}
 	}
 
+	// Set manual gain value (only if auto is disabled)
 	if (!settings.gain_auto) {
 		if (!SetGain(settings.gain)) {
 			success = false;

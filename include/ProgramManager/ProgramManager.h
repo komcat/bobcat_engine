@@ -4,6 +4,19 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
+
+/**
+ * @brief GraphNodePosition - Position of a node in the dependency graph
+ */
+struct GraphNodePosition {
+  double x;
+  double y;
+  bool hasPosition;  // true if user has manually positioned this node
+
+  GraphNodePosition() : x(0), y(0), hasPosition(false) {}
+  GraphNodePosition(double px, double py) : x(px), y(py), hasPosition(true) {}
+};
 
 /**
  * @brief DependencyLink - A dependency with optional condition
@@ -111,9 +124,17 @@ public:
   bool validateProgram(std::vector<std::string>& errors) const;
   bool validateDependencies(std::vector<std::string>& errors) const;
 
+  // Graph node position management (for dependency graph visual layout)
+  void setNodePosition(int recipeIndex, double x, double y);
+  GraphNodePosition getNodePosition(int recipeIndex) const;
+  bool hasNodePosition(int recipeIndex) const;
+  void clearNodePositions();
+  const std::map<int, GraphNodePosition>& getAllNodePositions() const { return m_graphPositions; }
+
 private:
   Program m_currentProgram;
   std::string m_currentFilePath;
+  std::map<int, GraphNodePosition> m_graphPositions;  // Recipe index -> visual position
 
   // JSON serialization
   bool saveToJson(const std::string& filename) const;

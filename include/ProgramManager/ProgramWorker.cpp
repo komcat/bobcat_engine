@@ -578,6 +578,10 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     emit actionStarted(recipeIndex, current, next, afterNext);
   });
 
+  // Forward vision result ready for real-time UI updates
+  connect(recipeWorker, &RecipeWorker::visionResultReady,
+    this, &ProgramWorker::visionResultReady);
+
   // Forward log messages
   connect(recipeWorker, &RecipeWorker::logMessage,
     this, &ProgramWorker::logMessage);

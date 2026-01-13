@@ -97,6 +97,9 @@ signals:
   // Action execution event with look-ahead (granular - shows current and upcoming commands)
   void actionStarted(QString current, QString next, QString afterNext);
 
+  // Vision result ready (for real-time UI updates)
+  void visionResultReady(QString imagePath);
+
   // Breakpoint/pause events
   void executionPaused(int stepIndex, QString stepName, bool isBreakpoint);
 

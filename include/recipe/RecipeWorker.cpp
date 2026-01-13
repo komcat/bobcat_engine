@@ -39,6 +39,7 @@ RecipeWorker::~RecipeWorker()
     m_engine->SetStepStartedCallback(nullptr);
     m_engine->SetStepCompletedCallback(nullptr);
     m_engine->SetActionStartedCallback(nullptr);
+    m_engine->SetVisionResultCallback(nullptr);
     m_engine->SetUserPromptCallback(nullptr);
     m_engine->SetManualAdjustCallback(nullptr);
     m_engine->SetUserInputCallback(nullptr);
@@ -274,6 +275,12 @@ void RecipeWorker::run()
           Q_ARG(QString, QString::fromStdString(current.toString())),
           Q_ARG(QString, QString::fromStdString(next.toString())),
           Q_ARG(QString, QString::fromStdString(afterNext.toString())));
+      });
+
+      // Set up vision result callback for real-time UI updates
+      m_engine->SetVisionResultCallback([this](const std::string& imagePath) {
+        QMetaObject::invokeMethod(this, "visionResultReady", Qt::QueuedConnection,
+          Q_ARG(QString, QString::fromStdString(imagePath)));
       });
 
       // Set up breakpoints if provided

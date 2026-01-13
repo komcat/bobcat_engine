@@ -55,6 +55,9 @@ signals:
   // Emitted when user wants to edit condition
   void editConditionRequested(int sourceIndex, int targetIndex);
 
+  // Emitted when a node is moved (for position persistence)
+  void nodePositionChanged(int recipeIndex, double x, double y);
+
 protected:
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
   void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;

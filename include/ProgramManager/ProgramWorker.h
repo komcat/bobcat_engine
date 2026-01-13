@@ -104,6 +104,9 @@ signals:
   // Action-level signal with look-ahead (granular command tracking)
   void actionStarted(int recipeIndex, QString current, QString next, QString afterNext);
 
+  // Vision result ready (for real-time UI updates)
+  void visionResultReady(QString imagePath);
+
   // Wait progress (from current recipe)
   void waitProgress(int remainingMs, int totalMs);
 

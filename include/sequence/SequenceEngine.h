@@ -27,6 +27,9 @@ using UserPromptCallback = std::function<bool(const std::string& title, const st
 using StepStartedCallback = std::function<void(int stepIndex, const std::string& stepName, const std::string& stepType)>;
 using StepCompletedCallback = std::function<void(int stepIndex, bool success)>;
 
+// Callback for vision result ready (called after vision execution saves result image)
+using VisionResultCallback = std::function<void(const std::string& imagePath)>;
+
 // Action info for command tracker
 struct ActionInfo {
   std::string deviceName;
@@ -168,6 +171,8 @@ public:
   void SetStepStartedCallback(StepStartedCallback callback);
   void SetStepCompletedCallback(StepCompletedCallback callback);
   void SetActionStartedCallback(ActionStartedCallback callback);
+  void SetVisionResultCallback(VisionResultCallback callback);
+  VisionResultCallback GetVisionResultCallback() const { return m_visionResultCallback; }
 
   // Breakpoint callback - called when execution hits a breakpoint (for UI notification)
   using BreakpointCallback = std::function<void(int stepIndex, const std::string& stepName)>;
@@ -222,6 +227,7 @@ private:
   StepStartedCallback m_stepStartedCallback;
   StepCompletedCallback m_stepCompletedCallback;
   ActionStartedCallback m_actionStartedCallback;
+  VisionResultCallback m_visionResultCallback;
   int m_currentStepIndex;  // Track current step for completion callback
 
   // Action list for look-ahead (built before execution)

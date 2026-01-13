@@ -166,6 +166,11 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_visionResultGroup(nullptr)       // ✅ Vision result group
   , m_visionResultImageLabel(nullptr)  // ✅ Vision result image
   , m_currentContext(nullptr)          // ✅ Execution context
+  , m_visionNavWidget(nullptr)         // Vision nav container
+  , m_visionPrevButton(nullptr)        // Vision prev button
+  , m_visionNextButton(nullptr)        // Vision next button
+  , m_visionIndexLabel(nullptr)        // Vision index label
+  , m_visionHistoryViewIndex(-1)       // -1 = show latest
   , m_contextTabWidget(nullptr)        // Context tab container
   , m_contextTable(nullptr)            // Context variables table
   , m_contextFilterEdit(nullptr)       // Context filter textbox
@@ -1795,6 +1800,45 @@ void RunProgramPage::createExecutionWidget()
     );
     visionLayout->addWidget(m_visionResultImageLabel);
 
+    // ✅ Vision history navigation controls
+    m_visionNavWidget = new QWidget();
+    QHBoxLayout* navLayout = new QHBoxLayout(m_visionNavWidget);
+    navLayout->setContentsMargins(0, 5, 0, 0);
+    navLayout->setSpacing(10);
+
+    m_visionPrevButton = new QPushButton("◀ Prev");
+    m_visionPrevButton->setFixedWidth(70);
+    m_visionPrevButton->setEnabled(false);
+    m_visionPrevButton->setStyleSheet(
+      "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
+      "QPushButton:hover { background-color: #3d3d40; }"
+      "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
+    );
+    connect(m_visionPrevButton, &QPushButton::clicked, this, &RunProgramPage::onVisionPrevious);
+
+    m_visionIndexLabel = new QLabel("- / -");
+    m_visionIndexLabel->setAlignment(Qt::AlignCenter);
+    m_visionIndexLabel->setMinimumWidth(60);
+    m_visionIndexLabel->setStyleSheet("QLabel { color: #808080; }");
+
+    m_visionNextButton = new QPushButton("Next ▶");
+    m_visionNextButton->setFixedWidth(70);
+    m_visionNextButton->setEnabled(false);
+    m_visionNextButton->setStyleSheet(
+      "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
+      "QPushButton:hover { background-color: #3d3d40; }"
+      "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
+    );
+    connect(m_visionNextButton, &QPushButton::clicked, this, &RunProgramPage::onVisionNext);
+
+    navLayout->addStretch();
+    navLayout->addWidget(m_visionPrevButton);
+    navLayout->addWidget(m_visionIndexLabel);
+    navLayout->addWidget(m_visionNextButton);
+    navLayout->addStretch();
+
+    visionLayout->addWidget(m_visionNavWidget);
+
     rightLayout->addWidget(m_visionResultGroup);
     rightLayout->addStretch();  // Push controls to top
 
@@ -2352,6 +2396,10 @@ void RunProgramPage::onExecuteProgram()
     this, &RunProgramPage::onLoopIterationStarted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::loopIterationCompleted,
     this, &RunProgramPage::onLoopIterationCompleted, Qt::QueuedConnection);
+
+  // ✅ Connect vision result ready for real-time display updates
+  connect(m_programWorker, &ProgramWorker::visionResultReady,
+    this, &RunProgramPage::onVisionResultReady, Qt::QueuedConnection);
 
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
@@ -4119,6 +4167,159 @@ void RunProgramPage::clearVisionResult()
     );
     std::cout << "[RunProgramPage] ✅ Vision result label reset to initial state" << std::endl;
   }
+
+  // ✅ Also clear vision history
+  clearVisionHistory();
+}
+
+// ============================================================================
+// VISION HISTORY - Real-time vision result display with history navigation
+// ============================================================================
+
+void RunProgramPage::onVisionResultReady(QString imagePath)
+{
+  std::cout << "[RunProgramPage] 🖼️ Vision result ready: " << imagePath.toStdString() << std::endl;
+
+  // Add to history (FIFO - oldest gets removed when at max)
+  if (m_visionHistory.size() >= MAX_VISION_HISTORY) {
+    m_visionHistory.erase(m_visionHistory.begin());  // Remove oldest
+  }
+  m_visionHistory.push_back(imagePath);
+
+  // Reset view index to latest (-1 means show latest)
+  m_visionHistoryViewIndex = -1;
+
+  // Update navigation controls
+  updateVisionNavigation();
+
+  // Load and display the latest image
+  loadVisionHistoryImage(static_cast<int>(m_visionHistory.size()) - 1);
+}
+
+void RunProgramPage::onVisionPrevious()
+{
+  if (m_visionHistory.empty()) return;
+
+  int currentIndex = m_visionHistoryViewIndex;
+  if (currentIndex == -1) {
+    // Currently showing latest, go to second-to-last
+    currentIndex = static_cast<int>(m_visionHistory.size()) - 2;
+  } else if (currentIndex > 0) {
+    currentIndex--;
+  }
+
+  if (currentIndex >= 0) {
+    m_visionHistoryViewIndex = currentIndex;
+    loadVisionHistoryImage(currentIndex);
+    updateVisionNavigation();
+  }
+}
+
+void RunProgramPage::onVisionNext()
+{
+  if (m_visionHistory.empty()) return;
+
+  int currentIndex = m_visionHistoryViewIndex;
+  if (currentIndex == -1) {
+    // Already at latest, nothing to do
+    return;
+  }
+
+  if (currentIndex < static_cast<int>(m_visionHistory.size()) - 1) {
+    currentIndex++;
+    if (currentIndex == static_cast<int>(m_visionHistory.size()) - 1) {
+      // At latest, set to -1
+      m_visionHistoryViewIndex = -1;
+    } else {
+      m_visionHistoryViewIndex = currentIndex;
+    }
+    loadVisionHistoryImage(currentIndex);
+    updateVisionNavigation();
+  }
+}
+
+void RunProgramPage::updateVisionNavigation()
+{
+  int total = static_cast<int>(m_visionHistory.size());
+  int displayIndex = m_visionHistoryViewIndex;
+
+  if (displayIndex == -1) {
+    displayIndex = total - 1;  // Latest
+  }
+
+  // Update index label (1-based for display)
+  if (total > 0) {
+    m_visionIndexLabel->setText(QString("%1 / %2").arg(displayIndex + 1).arg(total));
+    m_visionIndexLabel->setStyleSheet("QLabel { color: #FFA500; font-weight: bold; }");
+  } else {
+    m_visionIndexLabel->setText("- / -");
+    m_visionIndexLabel->setStyleSheet("QLabel { color: #808080; }");
+  }
+
+  // Update button states
+  bool canGoPrev = total > 1 && (m_visionHistoryViewIndex != 0);
+  bool canGoNext = total > 1 && (m_visionHistoryViewIndex != -1);
+
+  m_visionPrevButton->setEnabled(canGoPrev);
+  m_visionNextButton->setEnabled(canGoNext);
+}
+
+void RunProgramPage::loadVisionHistoryImage(int index)
+{
+#ifdef HAS_OPENCV
+  if (index < 0 || index >= static_cast<int>(m_visionHistory.size())) {
+    return;
+  }
+
+  QString imagePath = m_visionHistory[index];
+  cv::Mat resultImage = cv::imread(imagePath.toStdString(), cv::IMREAD_COLOR);
+
+  if (resultImage.empty()) {
+    std::cout << "[RunProgramPage] ⚠️ Failed to load history image: " << imagePath.toStdString() << std::endl;
+    return;
+  }
+
+  // Convert cv::Mat to QImage (BGR -> RGB)
+  cv::Mat rgbImage;
+  cv::cvtColor(resultImage, rgbImage, cv::COLOR_BGR2RGB);
+  QImage qImage(rgbImage.data, rgbImage.cols, rgbImage.rows,
+                static_cast<int>(rgbImage.step), QImage::Format_RGB888);
+  qImage = qImage.copy();  // Deep copy to detach from cv::Mat memory
+
+  // Scale to fit the label while maintaining aspect ratio
+  QPixmap pixmap = QPixmap::fromImage(qImage);
+  pixmap = pixmap.scaled(m_visionResultImageLabel->size(),
+                         Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+  m_visionResultImageLabel->setPixmap(pixmap);
+
+  // Use orange border for current view, different shade if viewing history
+  QString borderColor = (m_visionHistoryViewIndex == -1) ? "#FFA500" : "#FF6B00";
+  m_visionResultImageLabel->setStyleSheet(
+    QString("QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 2px solid %1; "
+    "}").arg(borderColor)
+  );
+
+  std::cout << "[RunProgramPage] 📷 Loaded history image [" << (index + 1) << "/"
+            << m_visionHistory.size() << "]: " << imagePath.toStdString() << std::endl;
+#else
+  Q_UNUSED(index);
+#endif
+}
+
+void RunProgramPage::clearVisionHistory()
+{
+  std::cout << "[RunProgramPage] Clearing vision history..." << std::endl;
+
+  m_visionHistory.clear();
+  m_visionHistoryViewIndex = -1;
+
+  // Update navigation controls
+  updateVisionNavigation();
+
+  std::cout << "[RunProgramPage] ✅ Vision history cleared" << std::endl;
 }
 
 // ============================================================================
