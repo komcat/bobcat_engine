@@ -17,6 +17,8 @@
 #include "SequenceContextCommandHandler.h"
 #include "CalibrationCommandHandler.h"
 #include "AuxWindowCommandHandler.h"
+#include "RelativePositionCommandHandler.h"
+#include "CoordinateAlignCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
 #include "TECManager.h"
@@ -85,6 +87,18 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_dispatcher.RegisterHandler("context", std::make_unique<SequenceContextCommandHandler>());
   m_dispatcher.RegisterHandler("calibration", std::make_unique<CalibrationCommandHandler>(m_context));
   m_dispatcher.RegisterHandler("auxwindow", std::make_unique<AuxWindowCommandHandler>(m_context->auxWindowManager));
+
+  // Register relative position handler for parent-child position tracking
+  auto relPosHandler = std::make_unique<RelativePositionCommandHandler>();
+  relPosHandler->SetMotionManager(m_context->motionManager);
+  m_dispatcher.RegisterHandler("relpos", std::move(relPosHandler));
+
+  // Register coordinate alignment handler for 3-point vision-based alignment
+  auto coordAlignHandler = std::make_unique<CoordinateAlignCommandHandler>();
+  coordAlignHandler->SetContext(m_context);
+  coordAlignHandler->SetConfigPath("config/");
+  // Note: Files are read at runtime when needed (not loaded into memory at startup)
+  m_dispatcher.RegisterHandler("coordalign", std::move(coordAlignHandler));
 
 #ifdef HAS_OPENCV
   // Register vision command handler for vision profile execution
@@ -266,6 +280,16 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToManagerMap["vision"] = nullptr;
   m_deviceToTypeMap["vision"] = "vision";
   LogInfo("Registered vision command handler");
+
+  // Relative position commands (special case - uses motion manager internally)
+  m_deviceToManagerMap["relpos"] = nullptr;
+  m_deviceToTypeMap["relpos"] = "relpos";
+  LogInfo("Registered relative position command handler");
+
+  // Coordinate alignment commands (special case - uses ApplicationContext internally)
+  m_deviceToManagerMap["coordalign"] = nullptr;
+  m_deviceToTypeMap["coordalign"] = "coordalign";
+  LogInfo("Registered coordinate alignment command handler");
 
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
@@ -466,8 +490,8 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
       return false;
     }
 
-    // System, context, calibration, dut, and vision commands don't need a manager pointer, others do
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision") {
+    // System, context, calibration, dut, vision, relpos, and coordalign commands don't need a manager pointer, others do
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign") {
       void* manager = ResolveManager(action->deviceName);
       if (!manager) {
         errors.push_back("Manager not found for device: " + action->deviceName);
@@ -656,8 +680,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       return false;
     }
 
-    // System/context/calibration/dut/vision commands can have nullptr manager, others cannot
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && !manager) {
+    // System/context/calibration/dut/vision/relpos/coordalign commands can have nullptr manager, others cannot
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign" && !manager) {
       LogError("❓ Manager not found for device: " + action->deviceName);
       return false;
     }

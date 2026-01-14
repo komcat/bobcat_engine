@@ -630,6 +630,7 @@ set(SOURCES
     include/recipe/processes/DUTProcesses.cpp
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
+    include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
     include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
     include/recipe/processes/AutoFocusProcesses.cpp
@@ -659,6 +660,8 @@ set(SOURCES
     include/sequence/PSUCommandHandler.cpp
     include/sequence/SMUCommandHandler.cpp
     include/sequence/AuxWindowCommandHandler.cpp
+    include/sequence/RelativePositionCommandHandler.cpp
+    include/sequence/CoordinateAlignCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp

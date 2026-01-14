@@ -1372,6 +1372,76 @@ public:
 };
 
 //=============================================================================
+// MOVE TO CONTEXT XY PLUGIN - Move X/Y to positions from context, keep Z
+//=============================================================================
+
+class MoveToContextXYPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Move to Context XY";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Move device X/Y to coordinates from context variables, keeping current Z";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "gantry-main"},
+      {"x_key", "tgtSled.x"},
+      {"y_key", "tgtSled.y"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("x_key", "X Context Key", params.at("x_key"));
+    widget->addParameterField("y_key", "Y Context Key", params.at("y_key"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to move");
+
+    table->addCategoryHeader("Target Coordinates from Context");
+    table->addTextProperty("x_key", "X Context Key", params.at("x_key"),
+      "Context variable name for X coordinate (e.g., 'tgtSled.x' from TransformLocalPoint)");
+    table->addTextProperty("y_key", "Y Context Key", params.at("y_key"),
+      "Context variable name for Y coordinate (e.g., 'tgtSled.y' from TransformLocalPoint)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string xKey = params.at("x_key");
+    std::string yKey = params.at("y_key");
+
+    // Use MoveToContextXY command - it will read X/Y from context and keep current Z
+    sequence->AddAction(device, "MoveToContextXY", {
+      {"x_key", xKey},
+      {"y_key", yKey}
+    });
+
+    std::cout << "[MotionProcesses] Built Move to Context XY sequence for: " << step->userNickname
+              << " (x_key=" << xKey << ", y_key=" << yKey << ")" << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -1394,8 +1464,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMovePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMoveRelativePlugin>());
+      registry.RegisterPlugin(std::make_unique<MoveToContextXYPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 14 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 15 motion process plugins" << std::endl;
     }
   };
 

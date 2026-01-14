@@ -2159,6 +2159,101 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // MOVE TO CONTEXT XY - Move X and Y to positions from context, keep current Z
+  // ============================================================================
+  // This command moves to X/Y coordinates stored in context variables while
+  // keeping the current Z position unchanged. Useful for coordinate system
+  // alignment workflows where target positions come from transformation results.
+  //
+  // Required params:
+  //   x_key - Context key for X coordinate (e.g., "tgtSled.x" or "$tgtSled.x")
+  //   y_key - Context key for Y coordinate (e.g., "tgtSled.y" or "$tgtSled.y")
+  //
+  // Optional params:
+  //   blocking - "false" to return immediately without waiting (default: wait for completion)
+  else if (methodName == "MoveToContextXY") {
+    auto xKeyIt = params.find("x_key");
+    auto yKeyIt = params.find("y_key");
+
+    if (xKeyIt == params.end() || yKeyIt == params.end()) {
+      errorMessage = "MoveToContextXY: Missing required parameters: x_key, y_key";
+      return false;
+    }
+
+    if (!context) {
+      errorMessage = "MoveToContextXY: No sequence context available";
+      return false;
+    }
+
+    // Resolve context keys (strip $ prefix if present)
+    std::string xKey = xKeyIt->second;
+    std::string yKey = yKeyIt->second;
+    if (!xKey.empty() && xKey[0] == '$') {
+      xKey = xKey.substr(1);
+    }
+    if (!yKey.empty() && yKey[0] == '$') {
+      yKey = yKey.substr(1);
+    }
+
+    // Read positions from context
+    double targetX = static_cast<double>(context->GetNumeric(xKey, 0.0f));
+    double targetY = static_cast<double>(context->GetNumeric(yKey, 0.0f));
+
+    // Get current Z position
+    double currentZ = 0.0;
+    motionManager->GetPosition(deviceName, "Z", currentZ);
+
+    // Check if non-blocking mode requested
+    bool explicitNonBlocking = false;
+    auto blockingIt = params.find("blocking");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "MoveToContextXY: " + deviceName + " moving to X=" + std::to_string(targetX) +
+        " (from " + xKey + "), Y=" + std::to_string(targetY) +
+        " (from " + yKey + "), keeping Z=" + std::to_string(currentZ),
+        "MotionHandler"
+      );
+    }
+
+    std::cout << "[MotionCommandHandler] MoveToContextXY: " << deviceName
+              << " -> X=" << targetX << " (from " << xKey << "), Y=" << targetY
+              << " (from " << yKey << "), Z=" << currentZ << " (current)" << std::endl;
+
+    // Execute move (X and Y only, keep current Z)
+    bool moveSuccess = motionManager->MoveToAbs(deviceName, targetX, targetY, currentZ, 100.0, false);
+
+    if (!moveSuccess) {
+      errorMessage = "MoveToContextXY: Failed to start move";
+      return false;
+    }
+
+    // If explicit non-blocking requested, return immediately
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // Wait for completion with stop flag monitoring
+    TargetPosition target;
+    target.hasX = true;
+    target.hasY = true;
+    target.hasZ = true;
+    target.x = targetX;
+    target.y = targetY;
+    target.z = currentZ;
+
+    if (!WaitForMotionWithStopCheck(manager, deviceName, context, 30000, &target)) {
+      errorMessage = "MoveToContextXY: Motion stopped, timeout, or position verification failed";
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UPDATE POSITION AXIS FROM CONTEXT
   // ============================================================================
   // Updates a single axis of a named position with a value from context
