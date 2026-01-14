@@ -2,6 +2,28 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
+// Helper function to load camera settle delay from config
+static int loadCameraSettleDelay() {
+    const int DEFAULT_SETTLE_MS = 300;
+    try {
+        std::ifstream file("config/SYSTEM/systemdelay.json");
+        if (file.is_open()) {
+            nlohmann::json config = nlohmann::json::parse(file);
+            if (config.contains("camera_settle_ms")) {
+                int delay = config["camera_settle_ms"].get<int>();
+                std::cout << "[PylonCamera] Loaded camera_settle_ms from config: " << delay << "ms" << std::endl;
+                return delay;
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[PylonCamera] Failed to load systemdelay.json: " << e.what() << std::endl;
+    }
+    std::cout << "[PylonCamera] Using default camera_settle_ms: " << DEFAULT_SETTLE_MS << "ms" << std::endl;
+    return DEFAULT_SETTLE_MS;
+}
 
 // Implementation of PylonDeviceRemovalHandler
 
@@ -1346,7 +1368,8 @@ bool PylonCamera::IsGainAuto() const {
 bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 	if (!ValidateConnection()) return false;
 
-	const int SETTLE_DELAY_MS = 500;  // Settle time after each exposure change
+	// Load settle delay from config (cached after first call would be better, but simple for now)
+	static const int SETTLE_DELAY_MS = loadCameraSettleDelay();
 
 	std::cout << "Applying camera settings:" << std::endl;
 	std::cout << "  Target Exposure: " << settings.exposure_time << " us" << std::endl;

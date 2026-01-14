@@ -8,7 +8,25 @@
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QIntValidator>
+#include <QFile>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+// Helper function to load UI throttle delay from config
+static int loadUIThrottleDelay() {
+    const int DEFAULT_THROTTLE_MS = 350;
+    try {
+        QFile file("config/SYSTEM/systemdelay.json");
+        if (file.open(QIODevice::ReadOnly)) {
+            QByteArray data = file.readAll();
+            nlohmann::json config = nlohmann::json::parse(data.constData());
+            if (config.contains("ui_throttle_ms")) {
+                return config["ui_throttle_ms"].get<int>();
+            }
+        }
+    } catch (...) {}
+    return DEFAULT_THROTTLE_MS;
+}
 
 CameraSettingsWidget::CameraSettingsWidget(CameraManager* cameraManager, QWidget* parent)
   : QWidget(parent)
@@ -19,6 +37,12 @@ CameraSettingsWidget::CameraSettingsWidget(CameraManager* cameraManager, QWidget
   // Setup display timer for live preview (30 fps)
   m_displayTimer = new QTimer(this);
   connect(m_displayTimer, &QTimer::timeout, this, &CameraSettingsWidget::onDisplayTimer);
+
+  // Setup throttle timer for settings apply (500ms single-shot)
+  // This prevents flooding the camera with commands when dragging sliders
+  m_applySettingsTimer = new QTimer(this);
+  m_applySettingsTimer->setSingleShot(true);
+  connect(m_applySettingsTimer, &QTimer::timeout, this, &CameraSettingsWidget::onApplySettingsTimer);
 
   // Select first camera if available
   if (m_cameraCombo->count() > 0) {
@@ -191,6 +215,8 @@ void CameraSettingsWidget::setupUI()
   m_exposureSlider = new QSlider(Qt::Horizontal);
   m_exposureSlider->setMinimum(1);
   m_exposureSlider->setMaximum(100000);  // Up to 100ms
+  m_exposureSlider->setSingleStep(50);   // 50µs steps to reduce command frequency
+  m_exposureSlider->setPageStep(500);    // Page step 500µs
   m_exposureSlider->setValue(1000);
   connect(m_exposureSlider, &QSlider::valueChanged,
           this, &CameraSettingsWidget::onExposureSliderChanged);
@@ -326,7 +352,11 @@ void CameraSettingsWidget::onAutoGainChanged(Qt::CheckState state)
 void CameraSettingsWidget::onExposureSliderChanged(int value)
 {
   updateExposureLabel(value);
-  applySettings();
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  // This prevents flooding the camera with commands while dragging
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void CameraSettingsWidget::onExposureInputChanged()
@@ -364,7 +394,10 @@ void CameraSettingsWidget::onGainSliderChanged(int value)
 {
   double gain = value / 10.0;
   updateGainLabel(gain);
-  applySettings();
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void CameraSettingsWidget::applySettings()
@@ -531,5 +564,15 @@ void CameraSettingsWidget::onDisplayTimer()
 
     // Display the frame
     m_previewWidget->setFrame(frame);
+  }
+}
+
+void CameraSettingsWidget::onApplySettingsTimer()
+{
+  // Throttled apply - only called 500ms after last slider change
+  if (m_settingsPending) {
+    m_settingsPending = false;
+    applySettings();
+    std::cout << "[CameraSettingsWidget] Applied throttled settings" << std::endl;
   }
 }

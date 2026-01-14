@@ -15,6 +15,22 @@
 #include <fstream>
 #include <iostream>
 
+// Helper function to load UI throttle delay from config
+static int loadUIThrottleDelay() {
+    const int DEFAULT_THROTTLE_MS = 350;
+    try {
+        QFile file("config/SYSTEM/systemdelay.json");
+        if (file.open(QIODevice::ReadOnly)) {
+            QByteArray data = file.readAll();
+            nlohmann::json config = nlohmann::json::parse(data.constData());
+            if (config.contains("ui_throttle_ms")) {
+                return config["ui_throttle_ms"].get<int>();
+            }
+        }
+    } catch (...) {}
+    return DEFAULT_THROTTLE_MS;
+}
+
 VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWidget* parent)
     : QWidget(parent)
     , m_context(context)
@@ -46,6 +62,12 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_lightingChannelsLayout(nullptr)
 {
     setupUI();
+
+    // Setup throttle timer for settings apply (500ms single-shot)
+    m_applySettingsTimer = new QTimer(this);
+    m_applySettingsTimer->setSingleShot(true);
+    connect(m_applySettingsTimer, &QTimer::timeout, this, &VisionRightPanelWidget::onApplySettingsTimer);
+
     loadCalibrationFromConfig();  // Load calibration values from JSON
     loadCameraList();
 }
@@ -329,6 +351,8 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     m_exposureSlider = new QSlider(Qt::Horizontal);
     m_exposureSlider->setMinimum(1);
     m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
+    m_exposureSlider->setSingleStep(50);   // 50µs steps to reduce command frequency
+    m_exposureSlider->setPageStep(500);    // Page step 500µs
     m_exposureSlider->setValue(1000);
     m_exposureSlider->setToolTip("Camera exposure time in microseconds");
     connect(m_exposureSlider, &QSlider::valueChanged,
@@ -713,8 +737,10 @@ void VisionRightPanelWidget::onExposureSliderChanged(int value)
         m_exposureSpinBox->blockSignals(false);
     }
     updateExposureLabel(value);
-    applyCameraSettings();
-    emit cameraSettingsChanged();
+
+    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onExposureSpinBoxChanged(int value)
@@ -726,8 +752,10 @@ void VisionRightPanelWidget::onExposureSpinBoxChanged(int value)
         m_exposureSlider->blockSignals(false);
     }
     updateExposureLabel(value);
-    applyCameraSettings();
-    emit cameraSettingsChanged();
+
+    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onGainSliderChanged(int value)
@@ -740,8 +768,10 @@ void VisionRightPanelWidget::onGainSliderChanged(int value)
         m_gainSpinBox->blockSignals(false);
     }
     updateGainLabel(gain);
-    applyCameraSettings();
-    emit cameraSettingsChanged();
+
+    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onGainSpinBoxChanged(double value)
@@ -754,8 +784,10 @@ void VisionRightPanelWidget::onGainSpinBoxChanged(double value)
         m_gainSlider->blockSignals(false);
     }
     updateGainLabel(value);
-    applyCameraSettings();
-    emit cameraSettingsChanged();
+
+    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onAutoExposureChanged(Qt::CheckState state)
@@ -1368,5 +1400,16 @@ void VisionRightPanelWidget::setLightingEnabled(bool enabled)
     }
     if (m_lightingChannelsContainer) {
         m_lightingChannelsContainer->setEnabled(enabled);
+    }
+}
+
+void VisionRightPanelWidget::onApplySettingsTimer()
+{
+    // Throttled apply - only called 500ms after last slider change
+    if (m_settingsPending) {
+        m_settingsPending = false;
+        applyCameraSettings();
+        emit cameraSettingsChanged();
+        std::cout << "[VisionRightPanelWidget] Applied throttled camera settings" << std::endl;
     }
 }

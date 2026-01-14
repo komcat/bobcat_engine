@@ -42,6 +42,7 @@
 #include <QTableWidgetItem>
 #include <QSettings>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QDir>
 #include <QClipboard>
@@ -577,6 +578,57 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   fileLayout->addLayout(fileButtonLayout);
 
   fileTabLayout->addWidget(fileGroup);
+
+  // === RECENT PROGRAMS LIST ===
+  QGroupBox* recentGroup = new QGroupBox("Recent Programs");
+  recentGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
+  QVBoxLayout* recentLayout = new QVBoxLayout(recentGroup);
+  recentLayout->setContentsMargins(5, 5, 5, 5);
+  recentLayout->setSpacing(0);
+
+  m_recentProgramsList = new QListWidget();
+  m_recentProgramsList->setStyleSheet(
+    "QListWidget { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #3f3f46; "
+    "  color: #d4d4d4; "
+    "  font-size: 10px; "
+    "} "
+    "QListWidget::item { "
+    "  padding: 4px 6px; "
+    "  border-bottom: 1px solid #3f3f46; "
+    "} "
+    "QListWidget::item:hover { "
+    "  background-color: #3c3c3c; "
+    "} "
+    "QListWidget::item:selected { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "}"
+  );
+  m_recentProgramsList->setMaximumHeight(200);
+  m_recentProgramsList->setToolTip("Double-click to load a recent program");
+  connect(m_recentProgramsList, &QListWidget::itemDoubleClicked,
+          this, &RunProgramPage::onRecentProgramClicked);
+  recentLayout->addWidget(m_recentProgramsList);
+
+  fileTabLayout->addWidget(recentGroup);
   fileTabLayout->addStretch();
 
   m_tabWidget->addTab(fileTab, "File");
@@ -1893,6 +1945,9 @@ void RunProgramPage::onProductChanged()
     m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
 
     std::cout << "[RunProgramPage] Product changed to: " << productName << std::endl;
+
+    // ✅ Load recent programs list
+    loadRecentProgramsList();
 
     // ✅ Auto-load last program when product is loaded
     loadLastProgramFromSettings();
@@ -4014,6 +4069,79 @@ void RunProgramPage::saveRecentPrograms(const QString& programPath)
 
   std::cout << "[RunProgramPage] Updated recent programs list (size: "
             << recentPrograms.size() << ")" << std::endl;
+
+  // Update UI list
+  loadRecentProgramsList();
+}
+
+void RunProgramPage::loadRecentProgramsList()
+{
+  if (!m_recentProgramsList) return;
+
+  m_recentProgramsList->clear();
+
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QStringList recentPrograms = settings.value("RunProgramPage/recentPrograms").toStringList();
+
+  for (const QString& programPath : recentPrograms) {
+    // Get file info
+    QFileInfo fileInfo(programPath);
+    if (!fileInfo.exists()) continue;  // Skip non-existent files
+
+    // Get file name and modification time
+    QString fileName = fileInfo.completeBaseName();  // Without extension
+    QString modifiedTime = fileInfo.lastModified().toString("yyyy-MM-dd hh:mm");
+
+    // Create list item with name and datetime
+    QListWidgetItem* item = new QListWidgetItem();
+    item->setText(QString("%1\n%2").arg(fileName, modifiedTime));
+    item->setData(Qt::UserRole, programPath);  // Store full path
+    item->setToolTip(programPath);
+
+    m_recentProgramsList->addItem(item);
+  }
+
+  std::cout << "[RunProgramPage] Loaded " << m_recentProgramsList->count()
+            << " recent programs" << std::endl;
+}
+
+void RunProgramPage::onRecentProgramClicked(QListWidgetItem* item)
+{
+  if (!item) return;
+
+  QString programPath = item->data(Qt::UserRole).toString();
+  if (programPath.isEmpty()) return;
+
+  // Check if file exists
+  QFileInfo fileInfo(programPath);
+  if (!fileInfo.exists()) {
+    QMessageBox::warning(this, "File Not Found",
+      QString("The program file no longer exists:\n%1").arg(programPath));
+    loadRecentProgramsList();  // Refresh list
+    return;
+  }
+
+  std::cout << "[RunProgramPage] Loading recent program: "
+            << programPath.toStdString() << std::endl;
+
+  // Load the program
+  if (!m_programManager->loadProgram(programPath.toStdString())) {
+    QMessageBox::critical(this, "Load Error",
+      QString("Failed to load program:\n%1").arg(programPath));
+    return;
+  }
+
+  m_currentProgramPath = programPath;
+
+  // Save to settings for persistence
+  saveLastProgramToSettings(programPath);
+  saveRecentPrograms(programPath);
+
+  updateProgramInfo();
+  updateRecipeList();
+  updateLoopStatusLabel();
+
+  std::cout << "[RunProgramPage] Successfully loaded recent program" << std::endl;
 }
 
 void RunProgramPage::loadLastProgramFromSettings()

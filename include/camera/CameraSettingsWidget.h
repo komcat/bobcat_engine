@@ -68,6 +68,7 @@ private slots:
 
 private slots:
   void onDisplayTimer();
+  void onApplySettingsTimer();  // Throttled settings apply
 
 private:
   void setupUI();
@@ -96,4 +97,8 @@ private:
   CameraImageWidget* m_previewWidget = nullptr;
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayTimer = nullptr;
+
+  // Throttled settings apply (500ms delay to avoid flooding camera with commands)
+  QTimer* m_applySettingsTimer = nullptr;
+  bool m_settingsPending = false;
 };

@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QSlider>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QCheckBox>      // ✅ NEW
 #include <QGroupBox>      // ✅ NEW
 #include <QVBoxLayout>
@@ -55,8 +56,11 @@ private slots:
   void onAutoExposureChanged(Qt::CheckState state);
   void onAutoGainChanged(Qt::CheckState state);
   void onExposureSliderChanged(int value);
+  void onExposureSpinBoxChanged(int value);
   void onGainSliderChanged(int value);
+  void onGainSpinBoxChanged(double value);
   void onSaveImageClicked();
+  void onApplySettingsTimer();  // Throttled settings apply
 
 protected:
   void showEvent(QShowEvent* event) override;  // ✅ NEW - Force refresh on show
@@ -91,8 +95,10 @@ private:
   QCheckBox* m_autoExposureCheck;
   QCheckBox* m_autoGainCheck;
   QSlider* m_exposureSlider;
+  QSpinBox* m_exposureSpinBox;
   QLabel* m_exposureValueLabel;
   QSlider* m_gainSlider;
+  QDoubleSpinBox* m_gainSpinBox;
   QLabel* m_gainValueLabel;
   QPushButton* m_saveImageButton;
 
@@ -105,4 +111,8 @@ private:
   int m_frameCounter;
   double m_avgProcessingTime;
   uint64_t m_lastTotalFrames;
+
+  // Throttled settings apply (500ms delay)
+  QTimer* m_applySettingsTimer = nullptr;
+  bool m_settingsPending = false;
 };

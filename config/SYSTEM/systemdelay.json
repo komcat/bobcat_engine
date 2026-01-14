@@ -1,0 +1,9 @@
+{
+  "description": "System delay settings for camera and UI responsiveness",
+  "ui_throttle_ms": 350,
+  "camera_settle_ms": 300,
+  "notes": {
+    "ui_throttle_ms": "Delay before sending camera settings after slider/spinbox change (ms)",
+    "camera_settle_ms": "Delay after each camera exposure setting change for stabilization (ms)"
+  }
+}

@@ -14,6 +14,7 @@
 #include <QComboBox>
 #include <QSpinBox>
 #include <QPointer>
+#include <QTimer>
 #include <map>
 
 struct ApplicationContext;
@@ -110,6 +111,7 @@ private slots:
     void onLightingEnabledChanged(Qt::CheckState state);
     void onLightingChannelIntensityChanged(int channel, int intensity);
     void onLightingChannelToggleChanged(int channel, bool on);
+    void onApplySettingsTimer();  // Throttled settings apply
 
 private:
     void setupUI();
@@ -182,4 +184,8 @@ private:
     double m_pixelToMmX = 0.00248;
     double m_pixelToMmY = 0.00248;
     void loadCalibrationFromConfig();
+
+    // Throttled settings apply (500ms delay)
+    QTimer* m_applySettingsTimer = nullptr;
+    bool m_settingsPending = false;
 };

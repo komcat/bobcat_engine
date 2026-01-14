@@ -11,7 +11,25 @@
 #include <QDir>
 #include <QHBoxLayout>
 #include <QShowEvent>
+#include <QFile>
 #include <iostream>
+#include <nlohmann/json.hpp>
+
+// Helper function to load UI throttle delay from config
+static int loadUIThrottleDelay() {
+    const int DEFAULT_THROTTLE_MS = 350;
+    try {
+        QFile file("config/SYSTEM/systemdelay.json");
+        if (file.open(QIODevice::ReadOnly)) {
+            QByteArray data = file.readAll();
+            nlohmann::json config = nlohmann::json::parse(data.constData());
+            if (config.contains("ui_throttle_ms")) {
+                return config["ui_throttle_ms"].get<int>();
+            }
+        }
+    } catch (...) {}
+    return DEFAULT_THROTTLE_MS;
+}
 
 CameraView::CameraView(ApplicationContext* context,
   const std::string& cameraId,
@@ -28,6 +46,11 @@ CameraView::CameraView(ApplicationContext* context,
   , m_lastTotalFrames(0)
 {
   setupUI();
+
+  // Setup throttle timer for settings apply (500ms single-shot)
+  m_applySettingsTimer = new QTimer(this);
+  m_applySettingsTimer->setSingleShot(true);
+  connect(m_applySettingsTimer, &QTimer::timeout, this, &CameraView::onApplySettingsTimer);
 
   // ✅ NEW - Check if camera is already connected in CameraManager
   syncWithManagerState();
@@ -101,18 +124,20 @@ void CameraView::setupUI()
     "QSlider::handle:horizontal:hover { "
     "  background-color: #1177bb; "
     "} "
-    "QSpinBox { "
+    "QSpinBox, QDoubleSpinBox { "
     "  background-color: #3c3c3c; "
     "  color: #d4d4d4; "
     "  border: 1px solid #555555; "
     "  border-radius: 3px; "
     "  padding: 4px; "
     "} "
-    "QSpinBox::up-button, QSpinBox::down-button { "
+    "QSpinBox::up-button, QSpinBox::down-button, "
+    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { "
     "  background-color: #2d2d30; "
     "  border: 1px solid #555555; "
     "} "
-    "QSpinBox::up-button:hover, QSpinBox::down-button:hover { "
+    "QSpinBox::up-button:hover, QSpinBox::down-button:hover, "
+    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { "
     "  background-color: #3c3c3c; "
     "} "
     "QPushButton { "
@@ -191,15 +216,29 @@ void CameraView::setupUI()
   m_exposureSlider = new QSlider(Qt::Horizontal);
   m_exposureSlider->setMinimum(1);
   m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
+  m_exposureSlider->setSingleStep(50);   // 50µs steps to reduce command frequency
+  m_exposureSlider->setPageStep(500);    // Page step 500µs
   m_exposureSlider->setValue(1000);
   m_exposureSlider->setEnabled(false);
   connect(m_exposureSlider, &QSlider::valueChanged,
     this, &CameraView::onExposureSliderChanged);
   settingsLayout->addWidget(m_exposureSlider);
 
+  // Exposure spinbox for direct input
+  m_exposureSpinBox = new QSpinBox();
+  m_exposureSpinBox->setMinimum(1);
+  m_exposureSpinBox->setMaximum(100000);
+  m_exposureSpinBox->setSingleStep(50);
+  m_exposureSpinBox->setValue(1000);
+  m_exposureSpinBox->setSuffix(" μs");
+  m_exposureSpinBox->setEnabled(false);
+  connect(m_exposureSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+    this, &CameraView::onExposureSpinBoxChanged);
+  settingsLayout->addWidget(m_exposureSpinBox);
+
   m_exposureValueLabel = new QLabel("1000 μs");
   m_exposureValueLabel->setAlignment(Qt::AlignCenter);
-  settingsLayout->addWidget(m_exposureValueLabel);
+  m_exposureValueLabel->setVisible(false);  // Hidden - spinbox shows value now
 
   settingsLayout->addSpacing(15);
 
@@ -217,9 +256,21 @@ void CameraView::setupUI()
     this, &CameraView::onGainSliderChanged);
   settingsLayout->addWidget(m_gainSlider);
 
+  // Gain spinbox for direct input
+  m_gainSpinBox = new QDoubleSpinBox();
+  m_gainSpinBox->setMinimum(0.0);
+  m_gainSpinBox->setMaximum(24.0);
+  m_gainSpinBox->setSingleStep(0.1);
+  m_gainSpinBox->setDecimals(1);
+  m_gainSpinBox->setValue(1.0);
+  m_gainSpinBox->setEnabled(false);
+  connect(m_gainSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    this, &CameraView::onGainSpinBoxChanged);
+  settingsLayout->addWidget(m_gainSpinBox);
+
   m_gainValueLabel = new QLabel("1.0");
   m_gainValueLabel->setAlignment(Qt::AlignCenter);
-  settingsLayout->addWidget(m_gainValueLabel);
+  m_gainValueLabel->setVisible(false);  // Hidden - spinbox shows value now
 
   settingsLayout->addSpacing(20);
 
@@ -377,7 +428,9 @@ bool CameraView::connectCamera()
   m_autoExposureCheck->setEnabled(true);
   m_autoGainCheck->setEnabled(true);
   m_exposureSlider->setEnabled(true);
+  m_exposureSpinBox->setEnabled(true);
   m_gainSlider->setEnabled(true);
+  m_gainSpinBox->setEnabled(true);
   m_saveImageButton->setEnabled(true);
 
   // ✅ Load current camera settings
@@ -418,7 +471,9 @@ void CameraView::disconnectCamera()
   m_autoExposureCheck->setEnabled(false);
   m_autoGainCheck->setEnabled(false);
   m_exposureSlider->setEnabled(false);
+  m_exposureSpinBox->setEnabled(false);
   m_gainSlider->setEnabled(false);
+  m_gainSpinBox->setEnabled(false);
   m_saveImageButton->setEnabled(false);
 
   m_viewport->clearDisplay();
@@ -440,8 +495,9 @@ void CameraView::onAutoExposureChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
 
-  // Enable/disable manual slider
+  // Enable/disable manual slider and spinbox
   m_exposureSlider->setEnabled(!autoEnabled && m_isConnected);
+  m_exposureSpinBox->setEnabled(!autoEnabled && m_isConnected);
 
   // Apply setting immediately
   applyCameraSettings();
@@ -453,8 +509,9 @@ void CameraView::onAutoGainChanged(Qt::CheckState state)
 {
   bool autoEnabled = (state == Qt::Checked);
 
-  // Enable/disable manual slider
+  // Enable/disable manual slider and spinbox
   m_gainSlider->setEnabled(!autoEnabled && m_isConnected);
+  m_gainSpinBox->setEnabled(!autoEnabled && m_isConnected);
 
   // Apply setting immediately
   applyCameraSettings();
@@ -464,15 +521,61 @@ void CameraView::onAutoGainChanged(Qt::CheckState state)
 
 void CameraView::onExposureSliderChanged(int value)
 {
+  // Sync spinbox (bidirectional sync)
+  m_exposureSpinBox->blockSignals(true);
+  m_exposureSpinBox->setValue(value);
+  m_exposureSpinBox->blockSignals(false);
+
   updateExposureLabel(value);
-  applyCameraSettings(); // Auto-apply
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
+}
+
+void CameraView::onExposureSpinBoxChanged(int value)
+{
+  // Sync slider (bidirectional sync)
+  m_exposureSlider->blockSignals(true);
+  m_exposureSlider->setValue(value);
+  m_exposureSlider->blockSignals(false);
+
+  updateExposureLabel(value);
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void CameraView::onGainSliderChanged(int value)
 {
-  double gain = value / 10.0; // Convert to 0.0 - 10.0 range
+  double gain = value / 10.0; // Convert to 0.0 - 24.0 range
+
+  // Sync spinbox (bidirectional sync)
+  m_gainSpinBox->blockSignals(true);
+  m_gainSpinBox->setValue(gain);
+  m_gainSpinBox->blockSignals(false);
+
   updateGainLabel(gain);
-  applyCameraSettings(); // Auto-apply
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
+}
+
+void CameraView::onGainSpinBoxChanged(double value)
+{
+  // Sync slider (bidirectional sync)
+  int sliderValue = static_cast<int>(value * 10);
+  m_gainSlider->blockSignals(true);
+  m_gainSlider->setValue(sliderValue);
+  m_gainSlider->blockSignals(false);
+
+  updateGainLabel(value);
+
+  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
+  m_settingsPending = true;
+  m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void CameraView::onSaveImageClicked()
@@ -572,7 +675,9 @@ void CameraView::loadCurrentSettings()
   m_autoExposureCheck->blockSignals(true);
   m_autoGainCheck->blockSignals(true);
   m_exposureSlider->blockSignals(true);
+  m_exposureSpinBox->blockSignals(true);
   m_gainSlider->blockSignals(true);
+  m_gainSpinBox->blockSignals(true);
 
   m_autoExposureCheck->setChecked(settings.auto_exposure);
   m_autoGainCheck->setChecked(settings.auto_gain);
@@ -581,25 +686,31 @@ void CameraView::loadCurrentSettings()
   if (exposureValue < 1) exposureValue = 1;
   if (exposureValue > 100000) exposureValue = 100000;
   m_exposureSlider->setValue(exposureValue);
+  m_exposureSpinBox->setValue(exposureValue);
 
   int gainValue = static_cast<int>(settings.gain * 10);
   if (gainValue < 0) gainValue = 0;
   if (gainValue > 240) gainValue = 240;
   m_gainSlider->setValue(gainValue);
+  m_gainSpinBox->setValue(settings.gain);
 
   // Update labels
   updateExposureLabel(exposureValue);
   updateGainLabel(settings.gain);
 
-  // Update slider enabled state
+  // Update slider and spinbox enabled state
   m_exposureSlider->setEnabled(!settings.auto_exposure);
+  m_exposureSpinBox->setEnabled(!settings.auto_exposure);
   m_gainSlider->setEnabled(!settings.auto_gain);
+  m_gainSpinBox->setEnabled(!settings.auto_gain);
 
   // Unblock signals
   m_autoExposureCheck->blockSignals(false);
   m_autoGainCheck->blockSignals(false);
   m_exposureSlider->blockSignals(false);
+  m_exposureSpinBox->blockSignals(false);
   m_gainSlider->blockSignals(false);
+  m_gainSpinBox->blockSignals(false);
 
   std::cout << "[CameraView] Loaded camera settings: "
     << "Exposure=" << settings.exposure_time << "μs, "
@@ -854,7 +965,9 @@ void CameraView::syncWithManagerState()
     m_autoExposureCheck->setEnabled(true);
     m_autoGainCheck->setEnabled(true);
     m_exposureSlider->setEnabled(true);
+    m_exposureSpinBox->setEnabled(true);
     m_gainSlider->setEnabled(true);
+    m_gainSpinBox->setEnabled(true);
     m_saveImageButton->setEnabled(true);
 
     // Force refresh viewport after sync
@@ -878,12 +991,24 @@ void CameraView::syncWithManagerState()
     m_autoExposureCheck->setEnabled(false);
     m_autoGainCheck->setEnabled(false);
     m_exposureSlider->setEnabled(false);
+    m_exposureSpinBox->setEnabled(false);
     m_gainSlider->setEnabled(false);
+    m_gainSpinBox->setEnabled(false);
     m_saveImageButton->setEnabled(false);
 
     // Force refresh to show disconnected state
     if (m_viewport) {
       m_viewport->forceRefresh();
     }
+  }
+}
+
+void CameraView::onApplySettingsTimer()
+{
+  // Throttled apply - only called 500ms after last slider change
+  if (m_settingsPending) {
+    m_settingsPending = false;
+    applyCameraSettings();
+    std::cout << "[CameraView] Applied throttled settings" << std::endl;
   }
 }

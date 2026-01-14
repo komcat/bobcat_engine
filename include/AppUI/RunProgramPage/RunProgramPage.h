@@ -142,6 +142,8 @@ private:
   void saveLastProgramToSettings(const QString& programPath);
   void loadLastProgramFromSettings();
   void saveRecentPrograms(const QString& programPath);
+  void loadRecentProgramsList();
+  void onRecentProgramClicked(QListWidgetItem* item);
 
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
@@ -161,6 +163,7 @@ private:
   QPushButton* m_saveButton;
   QPushButton* m_saveAsButton;
   QPushButton* m_editButton;
+  QListWidget* m_recentProgramsList;  // Recent programs list in File tab
   QPushButton* m_executeButton;
   QProgressBar* m_progressBar;
   QLabel* m_programNameLabel;

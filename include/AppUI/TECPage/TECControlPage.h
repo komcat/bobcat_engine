@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QTimer>
 #include <QGroupBox>
+#include <QSpinBox>
+#include <QFrame>
 
 struct ApplicationContext;
 
@@ -38,12 +40,16 @@ private slots:
   void onDisconnectClicked();
 
   // TEC controls
-  void onTemperatureChanged(int value);
-  void onTECToggled();
+  void onTemperatureSliderChanged(int value);
+  void onTemperatureSpinBoxChanged(int value);
+  void onTECOnClicked();
+  void onTECOffClicked();
 
   // Laser controls
-  void onLaserCurrentChanged(int value);
-  void onLaserToggled();
+  void onLaserCurrentSliderChanged(int value);
+  void onLaserCurrentSpinBoxChanged(int value);
+  void onLaserOnClicked();
+  void onLaserOffClicked();
 
   // Presets
   void onPreset1Clicked();  // 25C, 150mA, TEC ON, Laser ON
@@ -79,24 +85,26 @@ private:
 
   // Right panel - TEC controls
   QSlider* m_temperatureSlider;
-  QLabel* m_temperatureValue;
+  QSpinBox* m_temperatureSpinBox;
   QLabel* m_currentTemperature;
   QLabel* m_currentTECCurrent;
-  QPushButton* m_tecToggle;
+  QPushButton* m_tecOnButton;
+  QPushButton* m_tecOffButton;
+  QFrame* m_tecStatusFrame;
+  QLabel* m_tecStatusLabel;
 
   // Right panel - Laser controls
   QSlider* m_laserCurrentSlider;
-  QLabel* m_laserCurrentValue;
+  QSpinBox* m_laserCurrentSpinBox;
   QLabel* m_actualLaserCurrent;
-  QPushButton* m_laserToggle;
+  QPushButton* m_laserOnButton;
+  QPushButton* m_laserOffButton;
+  QFrame* m_laserStatusFrame;
+  QLabel* m_laserStatusLabel;
 
   // Right panel - Presets
   QPushButton* m_preset1Button;
   QPushButton* m_preset2Button;
-
-  // Right panel - Status
-  QLabel* m_tecStatus;
-  QLabel* m_laserStatus;
 
   // Polling timer
   QTimer* m_pollTimer;
