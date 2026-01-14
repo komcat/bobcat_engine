@@ -107,7 +107,7 @@ if(MSVC)
 endif()
 
 # Find Qt
-find_package(Qt6 REQUIRED COMPONENTS Widgets Charts)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Charts OpenGLWidgets)
 
 # ============================================================================
 # nlohmann JSON Configuration
@@ -529,6 +529,7 @@ set(SOURCES
     include/camera/MultiCameraView.cpp
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
+    include/camera/CameraImageWidgetGL.cpp
     include/camera/CameraSettingsWidget.cpp
     include/AppUI/MainWindow.cpp
     include/AppUI/TopBar.cpp
@@ -730,6 +731,7 @@ set(HEADERS
     include/camera/LiveVideoSubscriber.h
     include/camera/FrameConverter.h
     include/camera/CameraImageWidget.h
+    include/camera/CameraImageWidgetGL.h
     include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
     include/AppUI/DarkTheme.h
@@ -1149,7 +1151,7 @@ endif()
 # ============================================================================
 
 # Link Qt
-target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets Qt6::Charts)
+target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets Qt6::Charts Qt6::OpenGLWidgets)
 
 # Link ACS library if found
 if(ACSC_FOUND)

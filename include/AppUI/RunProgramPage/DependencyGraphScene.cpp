@@ -297,7 +297,14 @@ void DependencyGraphScene::mousePressEvent(QGraphicsSceneMouseEvent* event)
   if (event->button() == Qt::LeftButton) {
     // Check if clicking on a node's right edge (output connection point)
     QGraphicsItem* item = itemAt(event->scenePos(), QTransform());
-    RecipeNodeItem* node = dynamic_cast<RecipeNodeItem*>(item);
+
+    // Walk up parent chain to find RecipeNodeItem (might have clicked on child text item)
+    RecipeNodeItem* node = nullptr;
+    while (item) {
+      node = dynamic_cast<RecipeNodeItem*>(item);
+      if (node) break;
+      item = item->parentItem();
+    }
 
     if (node) {
       // Check if click is near the right edge (connection point area)
@@ -339,7 +346,14 @@ void DependencyGraphScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   if (m_isConnecting && event->button() == Qt::LeftButton) {
     // Check if we released on a different node
     QGraphicsItem* item = itemAt(event->scenePos(), QTransform());
-    RecipeNodeItem* targetNode = dynamic_cast<RecipeNodeItem*>(item);
+
+    // Walk up parent chain to find RecipeNodeItem (might have released on child text item)
+    RecipeNodeItem* targetNode = nullptr;
+    while (item) {
+      targetNode = dynamic_cast<RecipeNodeItem*>(item);
+      if (targetNode) break;
+      item = item->parentItem();
+    }
 
     if (targetNode && targetNode != m_connectSourceNode) {
       int sourceIndex = m_connectSourceNode->getRecipeIndex();
