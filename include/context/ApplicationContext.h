@@ -20,6 +20,7 @@ class SMUPollingManager;  // ✅ ADD SMU Polling Manager
 class CoordinateSystemManager;
 class DeviceUnderTest;
 class SafetyWatchManager;
+class DeviceLinkManager;
 
 namespace Lighting {
 class LightingManager;
@@ -47,6 +48,7 @@ struct ApplicationContext
   DeviceUnderTest* currentDUT = nullptr;  // Current active Device Under Test
   Lighting::LightingManager* lightingManager = nullptr;  // LED lighting controller
   SafetyWatchManager* safetyWatchManager = nullptr;  // Safety monitoring layer
+  DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

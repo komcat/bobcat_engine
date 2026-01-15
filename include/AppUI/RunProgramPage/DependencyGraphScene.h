@@ -45,6 +45,9 @@ public:
   // Auto-layout the graph
   void autoLayout();
 
+  // Create link from selected nodes (returns error message, empty on success)
+  QString linkSelectedNodes();
+
 signals:
   // Emitted when dependency is created
   void dependencyCreated(int sourceIndex, int targetIndex);

@@ -16,6 +16,7 @@
 #include "CoordinateSystemManager.h"
 #include "lighting/LightingManager.h"
 #include "safety/SafetyWatchManager.h"
+#include "motions/DeviceLinkManager.h"
 
 class QApplication;
 class MainWindow;
@@ -69,6 +70,7 @@ private:
   void initializeCoordinateSystemManager();
   void initializeLightingManager();
   void initializeSafetyWatch();
+  void initializeDeviceLinkManager();
 
   void testMotionCommands();
   void testIOCommands();
@@ -105,6 +107,7 @@ private:
   std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
+  std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
 
   ApplicationContext m_context;
 

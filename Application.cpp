@@ -10,6 +10,7 @@
 #include "CameraConfigManager.h"
 #include "AuxWindowManager.h"
 #include "MotionJsonLoader.h"
+#include "TransformationMatrixLoader.h"
 #include "SequenceBuilder.h"
 #include "SequenceContext.h"
 #include "TECManager.h"
@@ -316,6 +317,10 @@ void Application::initializeManagers()
     updateSplash("SafetyWatch");
     initializeSafetyWatch();
     completeSplash("SafetyWatch");
+
+    updateSplash("DeviceLinkManager");
+    initializeDeviceLinkManager();
+    completeSplash("DeviceLinkManager");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -940,6 +945,7 @@ void Application::shutdownManagers()
   // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
   m_smuPollingManager.reset();
   m_safetyWatchManager.reset();
+  m_deviceLinkManager.reset();
   m_powerSupplyManager.reset();
   m_smuManager.reset();
   m_lightingManager.reset();
@@ -1874,5 +1880,48 @@ void Application::initializeSafetyWatch()
       "Application"
     );
     // Don't throw - allow app to continue without safety watch
+  }
+}
+
+void Application::initializeDeviceLinkManager()
+{
+  std::cout << "[Application] Initializing Device Link Manager..." << std::endl;
+
+  try {
+    // Create DeviceLinkManager
+    m_deviceLinkManager = std::make_unique<DeviceLinkManager>();
+    m_context.deviceLinkManager = m_deviceLinkManager.get();
+
+    // Set motion manager dependency
+    if (m_motionManager) {
+      m_deviceLinkManager->SetMotionManager(m_motionManager.get());
+    }
+
+    // Create and load transformation matrix loader
+    static TransformationMatrixLoader matrixLoader;
+    std::string matrixPath = "config/transformation_matrix.json";
+    if (matrixLoader.LoadFromFile(matrixPath)) {
+      m_deviceLinkManager->SetMatrixLoader(&matrixLoader);
+      std::cout << "[Application] Transformation matrices loaded for DeviceLinkManager" << std::endl;
+    } else {
+      m_logManager->Warning("DeviceLinkManager: Could not load transformation matrices", "Application");
+    }
+
+    // Try to load existing device links
+    std::string linksPath = "config/device_links.json";
+    if (m_deviceLinkManager->LoadFromFile(linksPath)) {
+      std::cout << "[Application] Device links loaded from " << linksPath << std::endl;
+    } else {
+      std::cout << "[Application] No existing device links found (will be created on first registration)" << std::endl;
+    }
+
+    std::cout << "[Application] Device Link Manager initialized successfully" << std::endl;
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("Device Link Manager initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without device link manager
   }
 }

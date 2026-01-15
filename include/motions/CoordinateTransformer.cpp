@@ -22,6 +22,35 @@ CoordinateTransformer::Vector6D CoordinateTransformer::TransformGlobalToLocal(
   return result;
 }
 
+CoordinateTransformer::Vector6D CoordinateTransformer::TransformLocalToGlobal(
+  const Vector6D& localCoords,
+  const Matrix3x3& matrix)
+{
+  Vector6D result;
+
+  // For orthogonal rotation matrices, the inverse is the transpose.
+  // Matrix is stored in row-major order:
+  // [0 1 2]   [M11 M12 M13]
+  // [3 4 5] = [M21 M22 M23]
+  // [6 7 8]   [M31 M32 M33]
+  //
+  // Transpose (inverse) multiplication:
+  // Global_X = M11*Local_X + M21*Local_Y + M31*Local_Z (column 1)
+  // Global_Y = M12*Local_X + M22*Local_Y + M32*Local_Z (column 2)
+  // Global_Z = M13*Local_X + M23*Local_Y + M33*Local_Z (column 3)
+
+  result.x = matrix[0] * localCoords.x + matrix[3] * localCoords.y + matrix[6] * localCoords.z;
+  result.y = matrix[1] * localCoords.x + matrix[4] * localCoords.y + matrix[7] * localCoords.z;
+  result.z = matrix[2] * localCoords.x + matrix[5] * localCoords.y + matrix[8] * localCoords.z;
+
+  // UVW pass through unchanged (no transformation)
+  result.u = localCoords.u;
+  result.v = localCoords.v;
+  result.w = localCoords.w;
+
+  return result;
+}
+
 void CoordinateTransformer::MultiplyMatrixVector3(
   const Matrix3x3& matrix,
   double inX, double inY, double inZ,

@@ -161,8 +161,8 @@ void DependencyGraphWindow::setupUI()
   QHBoxLayout* statusLayout = new QHBoxLayout(statusBar);
   statusLayout->setContentsMargins(10, 5, 10, 5);
 
-  m_statusLabel = new QLabel("Drag from right edge of a recipe to left edge of another to create dependency. "
-                             "Right-click on arrows to edit or delete.");
+  m_statusLabel = new QLabel("Select 2 nodes and click Link, or drag from right edge to left edge. "
+                             "Right-click arrows to edit or delete.");
   m_statusLabel->setStyleSheet("color: #888888;");
   statusLayout->addWidget(m_statusLabel);
 
@@ -197,6 +197,12 @@ void DependencyGraphWindow::setupToolbar()
   m_btnAutoLayout->setToolTip("Automatically arrange nodes in layers");
   connect(m_btnAutoLayout, &QPushButton::clicked, this, &DependencyGraphWindow::onAutoLayout);
   m_toolbar->addWidget(m_btnAutoLayout);
+
+  // Link button
+  m_btnLink = new QPushButton("Link");
+  m_btnLink->setToolTip("Create dependency from first selected node to second selected node");
+  connect(m_btnLink, &QPushButton::clicked, this, &DependencyGraphWindow::onLinkSelected);
+  m_toolbar->addWidget(m_btnLink);
 
   m_toolbar->addSeparator();
 
@@ -310,6 +316,17 @@ void DependencyGraphWindow::onAutoLayout()
   m_scene->autoLayout();
 }
 
+void DependencyGraphWindow::onLinkSelected()
+{
+  QString error = m_scene->linkSelectedNodes();
+
+  if (error.isEmpty()) {
+    m_statusLabel->setText("Dependency created successfully");
+  } else {
+    m_statusLabel->setText(error);
+  }
+}
+
 void DependencyGraphWindow::onZoomIn()
 {
   m_graphicsView->zoomIn();
@@ -329,7 +346,8 @@ void DependencyGraphWindow::onShowHelp()
 {
   QMessageBox::information(this, "Dependency Graph Help",
     "<b>Creating Dependencies:</b><br>"
-    "Drag from the <b>right edge</b> of a source recipe to the <b>left edge</b> of a target recipe.<br><br>"
+    "1. <b>Link button:</b> Select 2 nodes (Ctrl+click), then click Link<br>"
+    "2. <b>Drag:</b> From <b>right edge</b> of source to <b>left edge</b> of target<br><br>"
     "<b>Editing Dependencies:</b><br>"
     "Right-click on an arrow to edit its condition or delete it.<br><br>"
     "<b>Navigation:</b><br>"

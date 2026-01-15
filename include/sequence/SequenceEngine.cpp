@@ -59,10 +59,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   }
 
   // Register all command handlers
-  // ✅ UPDATED: Set DataStore and ProductPositionManager on MotionCommandHandler
+  // ✅ UPDATED: Set DataStore, ProductPositionManager, and DeviceLinkManager on MotionCommandHandler
   auto motionHandler = std::make_unique<MotionCommandHandler>();
   motionHandler->SetDataStore(m_context->dataStore);
   motionHandler->SetProductPositionManager(m_context->productPositionManager);
+  motionHandler->SetDeviceLinkManager(m_context->deviceLinkManager);
   m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
 
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());

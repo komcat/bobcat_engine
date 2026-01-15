@@ -160,6 +160,53 @@ void DependencyGraphScene::onNodeMoved(RecipeNodeItem* node)
   }
 }
 
+QString DependencyGraphScene::linkSelectedNodes()
+{
+  // Get selected items and filter for RecipeNodeItems
+  QList<QGraphicsItem*> selectedItems = this->selectedItems();
+  QList<RecipeNodeItem*> selectedNodes;
+
+  for (QGraphicsItem* item : selectedItems) {
+    RecipeNodeItem* node = dynamic_cast<RecipeNodeItem*>(item);
+    if (node) {
+      selectedNodes.append(node);
+    }
+  }
+
+  // Need exactly 2 nodes selected
+  if (selectedNodes.size() != 2) {
+    return QString("Select exactly 2 nodes. Currently selected: %1").arg(selectedNodes.size());
+  }
+
+  // First selected = source (predecessor), second = target (successor)
+  RecipeNodeItem* sourceNode = selectedNodes[0];
+  RecipeNodeItem* targetNode = selectedNodes[1];
+
+  int sourceIndex = sourceNode->getRecipeIndex();
+  int targetIndex = targetNode->getRecipeIndex();
+
+  // Check if edge already exists
+  if (findEdge(sourceIndex, targetIndex)) {
+    return QString("Dependency from #%1 to #%2 already exists").arg(sourceIndex).arg(targetIndex);
+  }
+
+  // Check for cycle
+  if (wouldCreateCycle(sourceIndex, targetIndex)) {
+    return QString("Cannot create dependency - would create a cycle");
+  }
+
+  // Create the dependency edge
+  DependencyEdgeItem* edge = new DependencyEdgeItem(sourceNode, targetNode);
+  addItem(edge);
+
+  QString edgeKey = QString("%1_%2").arg(sourceIndex).arg(targetIndex);
+  m_edges[edgeKey] = edge;
+
+  emit dependencyCreated(sourceIndex, targetIndex);
+
+  return QString();  // Success - empty string
+}
+
 void DependencyGraphScene::autoLayout()
 {
   if (m_nodes.isEmpty()) {

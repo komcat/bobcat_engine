@@ -575,6 +575,7 @@ set(SOURCES
     include/sequence/CommandDispatcher.cpp
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
+    include/motions/DeviceLinkManager.cpp
     src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogKeyBindingHandler.cpp
@@ -624,6 +625,7 @@ set(SOURCES
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
     include/recipe/processes/MotionProcesses.cpp
+    include/recipe/processes/DeviceLinkProcesses.cpp
     include/recipe/processes/IOProcesses.cpp
     include/recipe/processes/TECProcesses.cpp
     include/recipe/processes/PSUProcesses.cpp
@@ -783,6 +785,7 @@ set(HEADERS
     include/sequence/CommandDispatcher.h
     include/motions/TransformationMatrixLoader.h
     include/motions/CoordinateTransformer.h
+    include/motions/DeviceLinkManager.h
     include/AppUI/JogWindow/JogPanelWindow.h
     include/AppUI/JogWindow/JogKeyBindingHandler.h
     include/AppUI/JogWindow/QuickOutputWidget.h

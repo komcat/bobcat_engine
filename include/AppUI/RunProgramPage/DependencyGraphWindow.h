@@ -70,6 +70,7 @@ public slots:
 private slots:
   // Toolbar actions
   void onAutoLayout();
+  void onLinkSelected();
   void onZoomIn();
   void onZoomOut();
   void onFitToView();
@@ -93,6 +94,7 @@ private:
   // Toolbar widgets
   QToolBar* m_toolbar;
   QPushButton* m_btnAutoLayout;
+  QPushButton* m_btnLink;
   QPushButton* m_btnZoomIn;
   QPushButton* m_btnZoomOut;
   QPushButton* m_btnFitToView;

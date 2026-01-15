@@ -7,6 +7,7 @@
 // Forward declarations
 class DataStore;
 class ProductPositionManager;
+class DeviceLinkManager;
 
 class MotionCommandHandler : public ICommandHandler
 {
@@ -27,6 +28,9 @@ public:
 
   // ✅ NEW: Set ProductPositionManager for MoveToGraphNode command
   void SetProductPositionManager(ProductPositionManager* positionManager) { m_positionManager = positionManager; }
+
+  // Set DeviceLinkManager for linked device commands
+  void SetDeviceLinkManager(DeviceLinkManager* linkManager) { m_linkManager = linkManager; }
 
 private:
   // Helper to resolve context: references or parse direct values
@@ -93,4 +97,7 @@ private:
 
   // ✅ NEW: ProductPositionManager for MoveToGraphNode command
   ProductPositionManager* m_positionManager = nullptr;
+
+  // DeviceLinkManager for linked device commands
+  DeviceLinkManager* m_linkManager = nullptr;
 };

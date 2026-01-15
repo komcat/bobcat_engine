@@ -35,6 +35,14 @@ public:
   static Vector6D TransformGlobalToLocal(const Vector6D& globalCoords,
     const Matrix3x3& matrix);
 
+  // Transform local device coordinates to global coordinates
+  // Uses the transpose of the matrix (inverse for orthogonal rotation matrices)
+  // matrix: 3x3 transformation matrix (applies to XYZ only, UVW pass through unchanged)
+  // localCoords: Input vector in local device coordinate system
+  // Returns: Transformed vector in global coordinates
+  static Vector6D TransformLocalToGlobal(const Vector6D& localCoords,
+    const Matrix3x3& matrix);
+
   // Helper: Print matrix (for debugging)
   static void PrintMatrix(const Matrix3x3& matrix);
 
