@@ -20,6 +20,10 @@ DependencyGraphScene::DependencyGraphScene(ProgramManager* programManager, QObje
 {
   // Dark background
   setBackgroundBrush(QColor("#1e1e1e"));
+
+  // Connect to track selection order
+  connect(this, &QGraphicsScene::selectionChanged,
+          this, &DependencyGraphScene::onSelectionChanged);
 }
 
 DependencyGraphScene::~DependencyGraphScene()
@@ -54,6 +58,9 @@ void DependencyGraphScene::clearGraph()
 {
   // Clear temp line
   clearTempLine();
+
+  // Clear selection order tracking
+  m_selectionOrder.clear();
 
   // Remove all items
   clear();
@@ -162,25 +169,14 @@ void DependencyGraphScene::onNodeMoved(RecipeNodeItem* node)
 
 QString DependencyGraphScene::linkSelectedNodes()
 {
-  // Get selected items and filter for RecipeNodeItems
-  QList<QGraphicsItem*> selectedItems = this->selectedItems();
-  QList<RecipeNodeItem*> selectedNodes;
-
-  for (QGraphicsItem* item : selectedItems) {
-    RecipeNodeItem* node = dynamic_cast<RecipeNodeItem*>(item);
-    if (node) {
-      selectedNodes.append(node);
-    }
+  // Need exactly 2 nodes selected (use tracked selection order)
+  if (m_selectionOrder.size() != 2) {
+    return QString("Select exactly 2 nodes. Currently selected: %1").arg(m_selectionOrder.size());
   }
 
-  // Need exactly 2 nodes selected
-  if (selectedNodes.size() != 2) {
-    return QString("Select exactly 2 nodes. Currently selected: %1").arg(selectedNodes.size());
-  }
-
-  // First selected = source (predecessor), second = target (successor)
-  RecipeNodeItem* sourceNode = selectedNodes[0];
-  RecipeNodeItem* targetNode = selectedNodes[1];
+  // First selected (pink) = source, second selected (yellow) = target
+  RecipeNodeItem* sourceNode = m_selectionOrder[0];
+  RecipeNodeItem* targetNode = m_selectionOrder[1];
 
   int sourceIndex = sourceNode->getRecipeIndex();
   int targetIndex = targetNode->getRecipeIndex();
@@ -481,5 +477,39 @@ void DependencyGraphScene::clearTempLine()
     removeItem(m_tempLine);
     delete m_tempLine;
     m_tempLine = nullptr;
+  }
+}
+
+void DependencyGraphScene::onSelectionChanged()
+{
+  // Get currently selected nodes
+  QList<QGraphicsItem*> selected = selectedItems();
+  QSet<RecipeNodeItem*> currentlySelected;
+
+  for (QGraphicsItem* item : selected) {
+    RecipeNodeItem* node = dynamic_cast<RecipeNodeItem*>(item);
+    if (node) {
+      currentlySelected.insert(node);
+    }
+  }
+
+  // Remove deselected nodes from order list
+  for (int i = m_selectionOrder.size() - 1; i >= 0; --i) {
+    if (!currentlySelected.contains(m_selectionOrder[i])) {
+      m_selectionOrder[i]->setSelectionOrder(0);
+      m_selectionOrder.removeAt(i);
+    }
+  }
+
+  // Add newly selected nodes to end of order list
+  for (RecipeNodeItem* node : currentlySelected) {
+    if (!m_selectionOrder.contains(node)) {
+      m_selectionOrder.append(node);
+    }
+  }
+
+  // Update selection order visual for all tracked nodes
+  for (int i = 0; i < m_selectionOrder.size(); ++i) {
+    m_selectionOrder[i]->setSelectionOrder(i + 1);  // 1-based: 1=first(pink), 2=second(yellow)
   }
 }

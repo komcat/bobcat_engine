@@ -7,9 +7,12 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QListWidget>
+#include <QSplitter>
 
 class ProgramManager;
 class DependencyGraphScene;
+class RecipeManager;
 
 /**
  * @brief Custom QGraphicsView with pan and zoom support
@@ -82,10 +85,17 @@ private slots:
   void onEditConditionRequested(int sourceIndex, int targetIndex);
   void onNodePositionChanged(int recipeIndex, double x, double y);
 
+  // Selection events
+  void onSelectionChanged();
+  void onVariableItemClicked(QListWidgetItem* item);
+
 private:
   void setupUI();
   void setupToolbar();
+  void setupContextVariablePanel();
   void applyDarkTheme();
+  void updateContextVariablesForRecipe(int recipeIndex);
+  QStringList extractContextVariablesFromRecipe(const std::string& recipeFilePath);
 
   ProgramManager* m_programManager;
   DependencyGraphScene* m_scene;
@@ -102,4 +112,13 @@ private:
 
   // Status bar
   QLabel* m_statusLabel;
+
+  // Context variable panel
+  QWidget* m_contextVarPanel;
+  QLabel* m_selectedRecipeLabel;
+  QListWidget* m_contextVarList;
+  QSplitter* m_splitter;
+
+  // Parameter keys that define context variables
+  static const QStringList CONTEXT_PARAM_KEYS;
 };

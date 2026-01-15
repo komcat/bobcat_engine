@@ -263,8 +263,8 @@ void RunProgramPage::setupUI()
 
   // Left panel (20%) - Execution controls
   m_leftPanel = new QWidget();
-  m_leftPanel->setMinimumWidth(250);
-  m_leftPanel->setMaximumWidth(350);
+  m_leftPanel->setMinimumWidth(500);
+  m_leftPanel->setMaximumWidth(700);
   QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
   createLeftPanel(leftLayout);
 
@@ -3678,6 +3678,13 @@ void RunProgramPage::onManageDependencies()
   DependencyGraphWindow* graphWindow = new DependencyGraphWindow(m_programManager, this);
   graphWindow->setAttribute(Qt::WA_DeleteOnClose);
   graphWindow->exec();
+
+  // Auto-save program when dialog closes (if we have a save path)
+  if (!m_currentProgramPath.isEmpty()) {
+    if (m_programManager->saveProgram(m_currentProgramPath.toStdString())) {
+      std::cout << "[RunProgramPage] Auto-saved program after dependency changes" << std::endl;
+    }
+  }
 
   // Refresh the recipe table to show updated dependencies
   updateRecipeList();

@@ -36,6 +36,7 @@ class ContextViewerWindow;
 class SequenceContext;
 class RecipeTreeItemFactory;  // NEW: Factory for tree items
 class RecipeClipboard;        // NEW: Clipboard for copy/paste
+class ContextVariablePreviewWidget;  // NEW: Shows context variables from recipe
 
 class RecipePage : public QWidget
 {
@@ -256,6 +257,10 @@ private:
   QGroupBox* m_visionResultGroup;
   QLabel* m_visionResultImageLabel;
   void updateVisionResultImage();
+
+  // Context variable preview (shows variables that will be available)
+  ContextVariablePreviewWidget* m_contextVariablePreview;
+  void updateContextVariablePreview();  // NEW: Update context variable display
 
   // Refactored components
   std::unique_ptr<RecipeTreeItemFactory> m_treeItemFactory;  // Factory for tree items

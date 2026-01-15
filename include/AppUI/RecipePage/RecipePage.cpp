@@ -26,6 +26,7 @@
 #include "FileSelectorDialog.h"
 #include "RecipeSaveAsDialog.h"
 #include "ContextViewerWindow.h"
+#include "ContextVariablePreviewWidget.h"
 #include <QSplitter>
 #include <QLabel>
 #include <QHBoxLayout>
@@ -38,6 +39,7 @@
 #include <QTimer>
 #include <QEventLoop>
 #include <QApplication>
+#include <QClipboard>
 #include <QHeaderView>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -89,6 +91,7 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_quickAddMode(false)            // Quick add mode off by default
   , m_quickAddSelectedCategory(-1)   // No category selected
   , m_quickAddOverlay(nullptr)       // Overlay created on demand
+  , m_contextVariablePreview(nullptr) // Context variable preview widget
 {
   setupUI();
   setupSequenceEngine();
@@ -692,6 +695,17 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   QLabel* title = new QLabel("Process Configuration");
   title->setStyleSheet(RecipeStyles::sectionLabel());
   layout->addWidget(title);
+
+  // Context variable preview widget (shows variables available in recipe)
+  m_contextVariablePreview = new ContextVariablePreviewWidget();
+  m_contextVariablePreview->setMaximumHeight(200);
+  connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
+    [](const QString& varName) {
+      // Copy variable name to clipboard when clicked
+      QApplication::clipboard()->setText(varName);
+      std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
+    });
+  layout->addWidget(m_contextVariablePreview);
 
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
@@ -1589,6 +1603,16 @@ void RecipePage::refreshRecipeList()
   selectStepByIndex(previousSelection);
 
   m_recipeTree->blockSignals(false);
+
+  // Update context variable preview
+  updateContextVariablePreview();
+}
+
+void RecipePage::updateContextVariablePreview()
+{
+  if (m_contextVariablePreview) {
+    m_contextVariablePreview->updateFromRecipe(m_recipeManager->getAllSteps());
+  }
 }
 
 void RecipePage::selectStepByIndex(int index)

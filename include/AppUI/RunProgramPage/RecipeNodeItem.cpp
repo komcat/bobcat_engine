@@ -15,6 +15,7 @@ RecipeNodeItem::RecipeNodeItem(int recipeIndex,
   , m_enabled(enabled)
   , m_isSelected(false)
   , m_isPrerequisiteHighlight(false)
+  , m_selectionOrder(0)
   , m_graphScene(nullptr)
 {
   // Make node draggable and selectable
@@ -81,6 +82,12 @@ void RecipeNodeItem::setHighlightAsPrerequisite(bool highlight)
   updateAppearance();
 }
 
+void RecipeNodeItem::setSelectionOrder(int order)
+{
+  m_selectionOrder = order;
+  updateAppearance();
+}
+
 QPointF RecipeNodeItem::getOutputConnectionPoint() const
 {
   return pos() + QPointF(NODE_WIDTH / 2, 0);
@@ -119,10 +126,18 @@ void RecipeNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
     painter->drawRoundedRect(nodeRect.adjusted(-6, -6, 6, 6), CORNER_RADIUS + 4, CORNER_RADIUS + 4);
   }
 
-  // Draw selection shadow if selected
+  // Draw selection shadow if selected (color depends on selection order)
   if (m_isSelected || isSelected()) {
     painter->setPen(Qt::NoPen);
-    painter->setBrush(QColor(17, 119, 187, 100));  // Semi-transparent blue
+    QColor shadowColor;
+    if (m_selectionOrder == 1) {
+      shadowColor = QColor(255, 105, 180, 100);  // Pink for first/source
+    } else if (m_selectionOrder == 2) {
+      shadowColor = QColor(255, 215, 0, 100);    // Yellow/gold for second/target
+    } else {
+      shadowColor = QColor(17, 119, 187, 100);   // Blue default
+    }
+    painter->setBrush(shadowColor);
     painter->drawRoundedRect(nodeRect.adjusted(-4, -4, 4, 4), CORNER_RADIUS + 2, CORNER_RADIUS + 2);
   }
 
@@ -140,9 +155,17 @@ void RecipeNodeItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
   painter->setPen(Qt::NoPen);
   painter->drawRoundedRect(nodeRect, CORNER_RADIUS, CORNER_RADIUS);
 
-  // Draw selection ring
+  // Draw selection ring (color depends on selection order)
   if (m_isSelected || isSelected()) {
-    painter->setPen(QPen(QColor("#1177bb"), 3));
+    QColor ringColor;
+    if (m_selectionOrder == 1) {
+      ringColor = QColor("#ff69b4");  // Pink for first/source
+    } else if (m_selectionOrder == 2) {
+      ringColor = QColor("#ffd700");  // Yellow/gold for second/target
+    } else {
+      ringColor = QColor("#1177bb");  // Blue default
+    }
+    painter->setPen(QPen(ringColor, 3));
     painter->setBrush(Qt::NoBrush);
     painter->drawRoundedRect(nodeRect.adjusted(-2, -2, 2, 2), CORNER_RADIUS + 1, CORNER_RADIUS + 1);
   }

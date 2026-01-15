@@ -4,6 +4,7 @@
 #include <QGraphicsScene>
 #include <QMap>
 #include <QPointF>
+#include <QList>
 
 class RecipeNodeItem;
 class DependencyEdgeItem;
@@ -61,6 +62,10 @@ signals:
   // Emitted when a node is moved (for position persistence)
   void nodePositionChanged(int recipeIndex, double x, double y);
 
+private slots:
+  // Track selection order for colored highlighting
+  void onSelectionChanged();
+
 protected:
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
   void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
@@ -94,4 +99,7 @@ private:
   bool m_isConnecting;
   RecipeNodeItem* m_connectSourceNode;
   QGraphicsLineItem* m_tempLine;
+
+  // Selection order tracking (first selected = source, second = target)
+  QList<RecipeNodeItem*> m_selectionOrder;
 };

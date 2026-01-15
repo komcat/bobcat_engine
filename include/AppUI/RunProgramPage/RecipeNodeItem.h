@@ -35,6 +35,8 @@ public:
   void setEnabled(bool enabled);
   void setSelected(bool selected);
   void setHighlightAsPrerequisite(bool highlight);
+  void setSelectionOrder(int order);  // 0=none, 1=first(pink), 2=second(yellow)
+  int getSelectionOrder() const { return m_selectionOrder; }
   void setGraphScene(DependencyGraphScene* scene) { m_graphScene = scene; }
 
   // Connection points
@@ -60,6 +62,7 @@ private:
   bool m_enabled;
   bool m_isSelected;
   bool m_isPrerequisiteHighlight;
+  int m_selectionOrder;  // 0=none, 1=first(pink/source), 2=second(yellow/target)
 
   QGraphicsTextItem* m_indexLabel;  // Shows recipe index
   QGraphicsTextItem* m_nameLabel;   // Shows recipe name

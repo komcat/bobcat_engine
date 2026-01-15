@@ -649,6 +649,7 @@ set(SOURCES
     include/recipe/RecipeWorker.cpp
     include/AppUI/RecipePage/RecipeProgressWidget.cpp
     include/AppUI/RecipePage/ContextViewerWindow.cpp
+    include/AppUI/RecipePage/ContextVariablePreviewWidget.cpp
     include/AppUI/MotionPages/EditPositionDialog.cpp
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.cpp
     include/AppUI/RecipePage/MotionDeviceSelectorDialog.cpp
@@ -827,6 +828,7 @@ set(HEADERS
     include/recipe/RecipeWorker.h
     include/AppUI/RecipePage/RecipeProgressWidget.h
     include/AppUI/RecipePage/ContextViewerWindow.h
+    include/AppUI/RecipePage/ContextVariablePreviewWidget.h
     include/sequence/SequenceBuilder.h
     include/AppUI/MotionPages/EditPositionDialog.h
     include/AppUI/RecipePage/PneumaticSlideSelectorDialog.h
