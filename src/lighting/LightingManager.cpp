@@ -1,4 +1,5 @@
 #include "lighting/LightingManager.h"
+#include "lighting/LightingJsonLoader.h"
 #include "lighting/CCSPD3Adapter.h"
 #include <iostream>
 #include <algorithm>
@@ -298,6 +299,58 @@ const ControllerConfig* LightingManager::GetControllerConfig(const std::string& 
         return nullptr;
     }
     return &it->second;
+}
+
+void LightingManager::SetConfigFilePath(const std::string& path) {
+    m_configFilePath = path;
+    std::cout << "[LightingManager] Config file path set to: " << path << std::endl;
+}
+
+void LightingManager::UpdateChannelDefaultIntensity(const std::string& deviceId, int channel, int intensity) {
+    auto it = m_configs.find(deviceId);
+    if (it == m_configs.end()) {
+        std::cerr << "[LightingManager] Device not found for update: " << deviceId << std::endl;
+        return;
+    }
+
+    for (auto& ch : it->second.channels) {
+        if (ch.channelNumber == channel) {
+            ch.defaultIntensity = intensity;
+            return;
+        }
+    }
+}
+
+void LightingManager::ApplyDefaultIntensities(const std::string& deviceId) {
+    auto* controller = GetController(deviceId);
+    if (!controller || !controller->IsConnected()) {
+        std::cerr << "[LightingManager] Cannot apply defaults - not connected: " << deviceId << std::endl;
+        return;
+    }
+
+    auto it = m_configs.find(deviceId);
+    if (it == m_configs.end()) {
+        return;
+    }
+
+    std::cout << "[LightingManager] Applying saved intensities for: " << deviceId << std::endl;
+    for (const auto& ch : it->second.channels) {
+        if (ch.enabled && ch.defaultIntensity > 0) {
+            controller->SetChannelIntensity(ch.channelNumber, ch.defaultIntensity);
+            controller->SetChannelOn(ch.channelNumber, true);
+            std::cout << "  Channel " << ch.channelNumber << " (" << ch.name
+                      << "): " << ch.defaultIntensity << std::endl;
+        }
+    }
+}
+
+bool LightingManager::SaveConfig() {
+    if (m_configFilePath.empty()) {
+        std::cerr << "[LightingManager] Cannot save - no config file path set" << std::endl;
+        return false;
+    }
+
+    return LightingJsonLoader::SaveToFile(*this, m_configFilePath);
 }
 
 } // namespace Lighting

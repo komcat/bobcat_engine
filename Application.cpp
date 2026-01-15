@@ -831,6 +831,12 @@ void Application::connectHardwareAsync()
         m_lightingManager->AllOff();
         std::cout << "[Lighting] Startup test complete - All channels OFF" << std::endl;
         m_logManager->Info("Lighting startup test complete - All channels OFF", "Application");
+
+        // Apply saved default intensities from config
+        std::cout << "[Lighting] Applying saved default intensities..." << std::endl;
+        for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
+          m_lightingManager->ApplyDefaultIntensities(deviceId);
+        }
       }
 
       if (m_splashScreen) m_splashScreen->updateStatus("Lighting", "success");
@@ -1662,6 +1668,9 @@ void Application::initializeLightingManager()
                 << defaultConfigPath << " (" << loadedCount << " controllers)" << std::endl;
     }
   }
+
+  // Set config file path for saving (always save to local config for user changes)
+  m_lightingManager->SetConfigFilePath(localConfigPath);
 
   if (loadedCount == 0) {
     std::cout << "[Application] No lighting controllers configured" << std::endl;

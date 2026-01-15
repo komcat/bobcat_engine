@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QLabel>
+#include <QLineEdit>
 #include <QTimer>
 #include <QScrollArea>
 #include <vector>
@@ -45,12 +46,17 @@ signals:
 
 private slots:
     void onSliderChanged(int value);
+    void onSliderPressed();
+    void onSliderReleased();
+    void onDebounceTimeout();
     void onToggleClicked();
+    void onPercentInputFinished();
 
 private:
     void setupUI();
     void updateButtonState();
     QColor getColorFromString(const QString& colorStr);
+    void sendIntensityUpdate();
 
     int m_channelNumber;
     QString m_channelName;
@@ -60,12 +66,18 @@ private:
     QLabel* m_channelLabel;
     QSlider* m_intensitySlider;
     QLabel* m_intensityValue;
-    QLabel* m_percentLabel;
+    QLineEdit* m_percentInput;
     QPushButton* m_toggleButton;
 
     bool m_isOn;
     bool m_isConnected;
     bool m_isUpdating;  // Prevent feedback loops
+    bool m_isDragging;  // True while user is dragging slider
+
+    // Debounce timer to throttle hardware updates
+    QTimer* m_debounceTimer;
+    int m_pendingIntensity;
+    bool m_hasPendingUpdate;
 };
 
 /**

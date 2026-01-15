@@ -56,11 +56,18 @@ public:
     // Configuration Access
     const ControllerConfig* GetControllerConfig(const std::string& deviceId) const;
 
+    // Persistence
+    void SetConfigFilePath(const std::string& path);
+    void UpdateChannelDefaultIntensity(const std::string& deviceId, int channel, int intensity);
+    void ApplyDefaultIntensities(const std::string& deviceId);
+    bool SaveConfig();
+
 private:
     std::unique_ptr<ILightingController> CreateController(const std::string& type);
 
     std::map<std::string, std::unique_ptr<ILightingController>> m_controllers;
     std::map<std::string, ControllerConfig> m_configs;
+    std::string m_configFilePath;
 };
 
 } // namespace Lighting

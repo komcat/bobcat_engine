@@ -23,7 +23,17 @@ LightingChannelWidget::LightingChannelWidget(int channelNumber,
     , m_isOn(false)
     , m_isConnected(false)
     , m_isUpdating(false)
+    , m_isDragging(false)
+    , m_debounceTimer(nullptr)
+    , m_pendingIntensity(0)
+    , m_hasPendingUpdate(false)
 {
+    // Create debounce timer - sends update 150ms after slider stops moving
+    m_debounceTimer = new QTimer(this);
+    m_debounceTimer->setSingleShot(true);
+    m_debounceTimer->setInterval(150);
+    connect(m_debounceTimer, &QTimer::timeout, this, &LightingChannelWidget::onDebounceTimeout);
+
     setupUI();
 }
 
@@ -90,6 +100,8 @@ void LightingChannelWidget::setupUI()
         "QSlider::handle:horizontal:disabled { background: #555; }"
     );
     connect(m_intensitySlider, &QSlider::valueChanged, this, &LightingChannelWidget::onSliderChanged);
+    connect(m_intensitySlider, &QSlider::sliderPressed, this, &LightingChannelWidget::onSliderPressed);
+    connect(m_intensitySlider, &QSlider::sliderReleased, this, &LightingChannelWidget::onSliderReleased);
     mainLayout->addWidget(m_intensitySlider, 1);
 
     // Intensity value display
@@ -99,12 +111,29 @@ void LightingChannelWidget::setupUI()
     m_intensityValue->setStyleSheet("font-size: 13px; color: #00aaff; font-weight: bold;");
     mainLayout->addWidget(m_intensityValue);
 
-    // Percent display
-    m_percentLabel = new QLabel("(0%)");
-    m_percentLabel->setFixedWidth(55);
-    m_percentLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_percentLabel->setStyleSheet("font-size: 12px; color: #888;");
-    mainLayout->addWidget(m_percentLabel);
+    // Percent input field
+    m_percentInput = new QLineEdit("0.0");
+    m_percentInput->setFixedWidth(55);
+    m_percentInput->setAlignment(Qt::AlignRight);
+    m_percentInput->setStyleSheet(
+        "QLineEdit {"
+        "  background-color: #2a2a2a;"
+        "  color: #00aaff;"
+        "  border: 1px solid #555;"
+        "  border-radius: 3px;"
+        "  padding: 2px 4px;"
+        "  font-size: 12px;"
+        "}"
+        "QLineEdit:focus { border-color: #00aaff; }"
+        "QLineEdit:disabled { background-color: #1a1a1a; color: #555; }"
+    );
+    connect(m_percentInput, &QLineEdit::editingFinished, this, &LightingChannelWidget::onPercentInputFinished);
+    mainLayout->addWidget(m_percentInput);
+
+    // Percent symbol label
+    QLabel* percentSymbol = new QLabel("%");
+    percentSymbol->setStyleSheet("font-size: 12px; color: #888;");
+    mainLayout->addWidget(percentSymbol);
 
     // Toggle button
     m_toggleButton = new QPushButton("OFF");
@@ -133,11 +162,14 @@ QColor LightingChannelWidget::getColorFromString(const QString& colorStr)
 
 void LightingChannelWidget::setIntensity(int intensity)
 {
+    // Don't update while user is dragging - prevents jumping
+    if (m_isDragging) return;
+
     m_isUpdating = true;
     m_intensitySlider->setValue(intensity);
     m_intensityValue->setText(QString::number(intensity));
     double percent = Lighting::IntensityToPercent(intensity);
-    m_percentLabel->setText(QString("(%1%)").arg(QString::number(percent, 'f', 1)));
+    m_percentInput->setText(QString::number(percent, 'f', 1));
     m_isUpdating = false;
 }
 
@@ -160,11 +192,77 @@ void LightingChannelWidget::onSliderChanged(int value)
 {
     if (m_isUpdating) return;
 
+    // Update UI immediately for responsive feedback
     m_intensityValue->setText(QString::number(value));
     double percent = Lighting::IntensityToPercent(value);
-    m_percentLabel->setText(QString("(%1%)").arg(QString::number(percent, 'f', 1)));
+    m_percentInput->setText(QString::number(percent, 'f', 1));
 
-    emit intensityChanged(m_channelNumber, value);
+    // Queue the hardware update with debouncing
+    m_pendingIntensity = value;
+    m_hasPendingUpdate = true;
+    m_debounceTimer->start();  // Restart timer on each change
+}
+
+void LightingChannelWidget::onSliderPressed()
+{
+    m_isDragging = true;
+}
+
+void LightingChannelWidget::onSliderReleased()
+{
+    m_isDragging = false;
+
+    // When slider is released, send update immediately if there's a pending one
+    if (m_hasPendingUpdate) {
+        m_debounceTimer->stop();
+        sendIntensityUpdate();
+    }
+}
+
+void LightingChannelWidget::onDebounceTimeout()
+{
+    // Timer expired - user stopped moving slider, send the update
+    sendIntensityUpdate();
+}
+
+void LightingChannelWidget::sendIntensityUpdate()
+{
+    if (m_hasPendingUpdate) {
+        m_hasPendingUpdate = false;
+        emit intensityChanged(m_channelNumber, m_pendingIntensity);
+    }
+}
+
+void LightingChannelWidget::onPercentInputFinished()
+{
+    if (m_isUpdating) return;
+
+    bool ok;
+    double percent = m_percentInput->text().toDouble(&ok);
+
+    if (!ok) {
+        // Invalid input - restore current slider value
+        double currentPercent = Lighting::IntensityToPercent(m_intensitySlider->value());
+        m_percentInput->setText(QString::number(currentPercent, 'f', 1));
+        return;
+    }
+
+    // Clamp to valid range
+    if (percent < 0.0) percent = 0.0;
+    if (percent > 100.0) percent = 100.0;
+
+    // Convert to intensity and update UI
+    int intensity = Lighting::PercentToIntensity(percent);
+
+    m_isUpdating = true;
+    m_intensitySlider->setValue(intensity);
+    m_intensityValue->setText(QString::number(intensity));
+    // Update text field with clamped/normalized value
+    m_percentInput->setText(QString::number(Lighting::IntensityToPercent(intensity), 'f', 1));
+    m_isUpdating = false;
+
+    // Send update to hardware immediately
+    emit intensityChanged(m_channelNumber, intensity);
 }
 
 void LightingChannelWidget::onToggleClicked()
@@ -571,6 +669,10 @@ void LightingControlWidget::onChannelIntensityChanged(int channel, int intensity
     if (result != Lighting::LightingResult::Success) {
         std::cerr << "[LightingControlWidget] Failed to set intensity for channel "
                   << channel << ": " << Lighting::LightingResultToString(result) << std::endl;
+    } else {
+        // Save the new intensity as default for persistence
+        m_lightingManager->UpdateChannelDefaultIntensity(m_currentDeviceId, channel, intensity);
+        m_lightingManager->SaveConfig();
     }
 }
 
@@ -597,6 +699,8 @@ void LightingControlWidget::onConnectClicked()
     bool success = m_lightingManager->Connect(m_currentDeviceId);
     if (success) {
         std::cout << "[LightingControlWidget] Connected successfully" << std::endl;
+        // Apply saved default intensities after connection
+        m_lightingManager->ApplyDefaultIntensities(m_currentDeviceId);
     } else {
         std::cerr << "[LightingControlWidget] Connection failed" << std::endl;
     }
