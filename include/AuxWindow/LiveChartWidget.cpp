@@ -7,6 +7,8 @@
 #include <QFontMetrics>
 #include <QFile>
 #include <QInputDialog>
+#include <QOpenGLWidget>
+#include <QPen>
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -85,7 +87,7 @@ LiveChartWidget::LiveChartWidget(DataStore* dataStore, TcpClientManager* tcpMana
       }
     }
   });
-  pollTimer->start(100);  // Poll at 10 Hz
+  pollTimer->start(50);  // Poll at 20 Hz for smooth chart updates
 
   // Chart update timer - 10 Hz
   m_chartUpdateTimer = new QTimer(this);
@@ -438,12 +440,16 @@ void LiveChartWidget::setupUI()
   // Chart
   m_series = new QLineSeries();
   m_series->setName("Reading");
-  m_series->setColor(QColor(0, 217, 255));  // Cyan
+  QPen seriesPen(QColor(0, 217, 255));  // Cyan
+  seriesPen.setWidth(3);  // Thicker line for better visibility
+  m_series->setPen(seriesPen);
 
   // Target series (for percentage mode)
   m_targetSeries = new QLineSeries();
   m_targetSeries->setName("Target");
-  m_targetSeries->setColor(QColor(255, 170, 0));  // Orange
+  QPen targetPen(QColor(255, 170, 0));  // Orange
+  targetPen.setWidth(3);  // Match thickness
+  m_targetSeries->setPen(targetPen);
   m_targetSeries->setVisible(false);  // Hidden by default
 
   m_chart = new QChart();
@@ -478,6 +484,7 @@ void LiveChartWidget::setupUI()
   m_targetSeries->attachAxis(m_axisY);
 
   m_chartView = new QChartView(m_chart);
+  m_chartView->setViewport(new QOpenGLWidget());  // Enable OpenGL hardware acceleration
   m_chartView->setRenderHint(QPainter::Antialiasing);
 
   // ✅ Add chart with stretch factor 1 (takes remaining space, ~50% or more)

@@ -24,9 +24,9 @@ class TcpClientManager;
  *
  * Features:
  * - Dropdown to select which channel to display
- * - Real-time chart updates (throttled at ~60 FPS)
- * - Circular buffer (last 1000 points)
- * - 10-second time window
+ * - Real-time chart updates (~30 FPS with OpenGL acceleration)
+ * - Circular buffer (last 2000 points)
+ * - 5-second time window
  * - Auto-scaled Y-axis with SI prefixes
  *
  * Usage:
@@ -141,8 +141,8 @@ private:
 
   static constexpr size_t MAX_POINTS = 2000;  // Support up to 200 Hz for 10 seconds
   static constexpr qint64 TIME_WINDOW_MS = 5000;  // 5 seconds display window
-  static constexpr int CHART_UPDATE_INTERVAL_MS = 100;  // 10 Hz
-  static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 100;  // 10 Hz (reduced throttle)
+  static constexpr int CHART_UPDATE_INTERVAL_MS = 33;  // ~30 Hz for smooth OpenGL rendering
+  static constexpr int VALUE_LABEL_UPDATE_INTERVAL_MS = 50;  // 20 Hz for value display
 
   // Y-axis hard limits to prevent unrealistic spike rescaling
   // Increased limits to support multi-channel data with various ranges (µA, mA, V, etc.)

@@ -1748,15 +1748,11 @@ void Application::initializeSMUSystem()
   // This is the primary path for polling data (thread-safe architecture)
   connect(m_smuPollingManager.get(), &SMUPollingManager::measurementReady,
           this, [this](QString deviceName, int channel, double value, QString timestamp) {
+      // Guard against pending signals during shutdown
+      if (!m_context.dataStore) return;
+
       QString channelName = QString("SMU_%1_Ch%2").arg(deviceName).arg(channel);
       m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
-
-      // Debug output (disabled - too verbose)
-      // static int debugCounter = 0;
-      // if (debugCounter++ < 5 || debugCounter % 10 == 0) {
-      //   std::cout << "[SMU→DataStore] " << channelName.toStdString()
-      //             << " = " << value << " A (count=" << debugCounter << ")" << std::endl;
-      // }
   });
 
   std::cout << "[Application] SMU Polling Manager initialized" << std::endl;
@@ -1765,16 +1761,11 @@ void Application::initializeSMUSystem()
   // Note: This may be redundant now that polling uses SMUPollingManager
   connect(m_smuManager.get(), &SMUManager::measurementReady,
           this, [this](QString deviceName, int channel, double value, QString timestamp) {
-      // Add to DataStore with channel naming: "SMU_DeviceName_Ch1"
+      // Guard against pending signals during shutdown
+      if (!m_context.dataStore) return;
+
       QString channelName = QString("SMU_%1_Ch%2").arg(deviceName).arg(channel);
       m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
-
-      // Debug output (disabled - too verbose)
-      // static int debugCounter = 0;
-      // if (debugCounter++ < 5 || debugCounter % 10 == 0) {  // Log first 5, then every 10th
-      //   std::cout << "[SMU→DataStore] " << channelName.toStdString()
-      //             << " = " << value << " A (count=" << debugCounter << ")" << std::endl;
-      // }
   });
 
   std::cout << "[Application] SMU measurements auto-subscribed to DataStore" << std::endl;

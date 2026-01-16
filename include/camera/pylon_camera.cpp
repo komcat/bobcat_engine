@@ -96,16 +96,11 @@ PylonCamera::~PylonCamera() {
 			m_camera.StopGrabbing();
 		}
 
-		// Close camera if open
-		if (m_camera.IsOpen()) {
-			std::cout << "Closing camera..." << std::endl;
-			m_camera.Close();
-		}
-
-		// ✅ CRITICAL FIX: DEREGISTER handler BEFORE deleting it
-		if (m_pDeviceRemovalHandler && m_camera.IsPylonDeviceAttached()) {
+		// ✅ CRITICAL FIX: DEREGISTER handler BEFORE closing camera (must be done while camera is open)
+		if (m_pDeviceRemovalHandler) {
 			std::cout << "Deregistering event handler..." << std::endl;
 			try {
+				// Try to deregister even if camera state is uncertain
 				m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
 				std::cout << "Event handler deregistered successfully" << std::endl;
 			}
@@ -114,13 +109,19 @@ PylonCamera::~PylonCamera() {
 			}
 		}
 
+		// Close camera if open (AFTER deregistering handler)
+		if (m_camera.IsOpen()) {
+			std::cout << "Closing camera..." << std::endl;
+			m_camera.Close();
+		}
+
 		// Detach device
 		if (m_camera.IsPylonDeviceAttached()) {
 			std::cout << "Detaching camera device..." << std::endl;
 			m_camera.DetachDevice();
 		}
 
-		// NOW safe to delete handler
+		// NOW safe to delete handler (after deregistration)
 		if (m_pDeviceRemovalHandler) {
 			std::cout << "Deleting device removal handler..." << std::endl;
 			delete m_pDeviceRemovalHandler;
