@@ -1,0 +1,56 @@
+{
+  "description": "Configuration for parallel hardware connection system",
+  "default_timeout_ms": 10000,
+  "managers": {
+    "TcpClientManager": {
+      "display_name": "TCP Clients",
+      "timeout_ms": 5000,
+      "phase": 0,
+      "enabled": true
+    },
+    "CameraManager": {
+      "display_name": "Cameras",
+      "timeout_ms": 15000,
+      "phase": 0,
+      "enabled": true
+    },
+    "MotionManager": {
+      "display_name": "Motion Controllers",
+      "timeout_ms": 20000,
+      "phase": 1,
+      "enabled": true
+    },
+    "IOManager": {
+      "display_name": "I/O Devices",
+      "timeout_ms": 10000,
+      "phase": 1,
+      "enabled": true
+    },
+    "TECManager": {
+      "display_name": "TEC Devices",
+      "timeout_ms": 10000,
+      "phase": 2,
+      "enabled": true
+    },
+    "LightingManager": {
+      "display_name": "Lighting",
+      "timeout_ms": 8000,
+      "phase": 2,
+      "enabled": true
+    }
+  },
+  "phases": {
+    "0": {
+      "name": "Network & Cameras",
+      "description": "Independent connections that can run in parallel"
+    },
+    "1": {
+      "name": "Motion & I/O",
+      "description": "Motion controllers and I/O devices (IO needed before safety watch)"
+    },
+    "2": {
+      "name": "Auxiliary Devices",
+      "description": "TEC and Lighting controllers (after IO for safety watch dependency)"
+    }
+  }
+}

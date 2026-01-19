@@ -17,6 +17,7 @@
 #include "lighting/LightingManager.h"
 #include "safety/SafetyWatchManager.h"
 #include "motions/DeviceLinkManager.h"
+#include "startup/ConnectionWorkerPool.h"
 
 class QApplication;
 class MainWindow;
@@ -80,8 +81,12 @@ private:
   void testScanController();            // ✅ ADD THIS (optional)
   void testOpenCV();                    // ✅ OpenCV integration test
 
-  // ✅ NEW: Background hardware connection
+  // ✅ NEW: Background hardware connection (parallel)
   void connectHardwareAsync();
+  void addConnectionTasks();
+  void onConnectionTaskStarted(const QString& displayName);
+  void onConnectionTaskCompleted(const Startup::ConnectionResult& result);
+  void onAllConnectionsCompleted(const Startup::ConnectionSummary& summary);
 
   void shutdownManagers();
 
@@ -108,6 +113,7 @@ private:
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
+  std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
 
   ApplicationContext m_context;
 

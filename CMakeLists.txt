@@ -717,6 +717,10 @@ set(SOURCES
     # Safety system
     include/safety/SafetyWatchManager.cpp
     include/safety/SafetyAlertDialog.cpp
+    # Startup/Connection system
+    include/startup/ConnectionTask.cpp
+    include/startup/ConnectionConfig.cpp
+    include/startup/ConnectionWorkerPool.cpp
 )
 
 set(HEADERS
@@ -903,6 +907,11 @@ set(HEADERS
     # Safety system
     include/safety/SafetyWatchManager.h
     include/safety/SafetyAlertDialog.h
+    # Startup/Connection system
+    include/startup/ConnectionResult.h
+    include/startup/ConnectionTask.h
+    include/startup/ConnectionConfig.h
+    include/startup/ConnectionWorkerPool.h
 )
 
 # Conditionally add ACS controller files if library is found

@@ -27,6 +27,9 @@
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
+#include "startup/ConnectionConfig.h"
+#include "startup/ConnectionWorkerPool.h"
+#include "startup/ConnectionResult.h"
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
@@ -691,184 +694,311 @@ void Application::testIOCommands()
 }
 
 // ============================================================================
-// BACKGROUND HARDWARE CONNECTION
+// BACKGROUND HARDWARE CONNECTION (PARALLEL)
 // ============================================================================
 
 void Application::connectHardwareAsync()
 {
   std::cout << "\n[Application] ========================================" << std::endl;
-  std::cout << "[Application] BACKGROUND HARDWARE CONNECTION STARTING" << std::endl;
+  std::cout << "[Application] PARALLEL HARDWARE CONNECTION STARTING" << std::endl;
   std::cout << "[Application] ========================================\n" << std::endl;
 
-  m_logManager->Info("Starting background hardware connections...", "Application");
+  m_logManager->Info("Starting parallel hardware connections...", "Application");
 
   try {
-    // 1. Connect TCP Clients
-    if (m_splashScreen) m_splashScreen->updateStatus("TCP Clients", "connecting");
-    if (m_tcpClientManager) {
-      m_logManager->Info("Connecting TCP clients...", "Application");
-      m_tcpClientManager->ConnectAutoClients();
-      if (m_splashScreen) m_splashScreen->updateStatus("TCP Clients", "success");
-    }
+    // Load connection configuration
+    auto& config = Startup::ConnectionConfig::instance();
+    config.loadFromFile("config/connection_config.json");
 
-    // 2. Connect Cameras
-    if (m_splashScreen) m_splashScreen->updateStatus("Cameras", "connecting");
-    if (m_cameraManager) {
-      m_logManager->Info("Connecting cameras...", "Application");
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      m_cameraManager->ConnectAllCameras();
-      m_cameraManager->StartBroadcastSystem();
-      m_cameraManager->StartGrabbingAll();
-      m_logManager->Info("Cameras connected and broadcasting", "Application");
-      if (m_splashScreen) m_splashScreen->updateStatus("Cameras", "success");
-    }
+    // Create connection worker pool
+    m_connectionPool = std::make_unique<Startup::ConnectionWorkerPool>(this);
 
-    // 3. Connect Motion Devices
-    if (m_splashScreen) m_splashScreen->updateStatus("Motion Controllers", "connecting");
-    if (m_motionManager) {
-      m_logManager->Info("Connecting motion controllers...", "Application");
-      int connectedCount = m_motionManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " motion devices",
-        "Application"
-      );
-      if (m_splashScreen) m_splashScreen->updateStatus("Motion Controllers", "success");
-    }
+    // Connect signals for splash screen updates
+    connect(m_connectionPool.get(), &Startup::ConnectionWorkerPool::taskStarted,
+            this, &Application::onConnectionTaskStarted);
+    connect(m_connectionPool.get(), &Startup::ConnectionWorkerPool::taskCompleted,
+            this, &Application::onConnectionTaskCompleted);
+    connect(m_connectionPool.get(), &Startup::ConnectionWorkerPool::allTasksCompleted,
+            this, &Application::onAllConnectionsCompleted);
 
-    // 4. Connect IO Devices
-    if (m_splashScreen) m_splashScreen->updateStatus("I/O Devices", "connecting");
-    if (m_ioManager) {
-      m_logManager->Info("Connecting I/O devices...", "Application");
-      int connectedCount = m_ioManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " I/O devices",
-        "Application"
-      );
+    // Add all connection tasks
+    addConnectionTasks();
 
-      // Start polling
-      m_ioManager->StartPolling(100);
-      m_logManager->Info("I/O polling started (100ms interval)", "Application");
-      if (m_splashScreen) m_splashScreen->updateStatus("I/O Devices", "success");
+    // Execute all tasks asynchronously (parallel within phases)
+    m_connectionPool->executeAllAsync();
 
-      // Start safety watch after IO is connected
-      if (m_safetyWatchManager && m_safetyWatchManager->IsEnabled()) {
-        m_safetyWatchManager->StartWatching();
-        m_logManager->Info("Safety watch started", "Application");
-      }
-    }
-
-    // 5. Connect TEC Devices
-    if (m_splashScreen) m_splashScreen->updateStatus("TEC Devices", "connecting");
-    if (m_tecManager) {
-      m_logManager->Info("Connecting TEC devices...", "Application");
-      int connectedCount = m_tecManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " TEC devices",
-        "Application"
-      );
-      if (m_splashScreen) m_splashScreen->updateStatus("TEC Devices", "success");
-    }
-
-    // 6. Connect Lighting Controllers
-    if (m_splashScreen) m_splashScreen->updateStatus("Lighting", "connecting");
-    if (m_lightingManager) {
-      m_logManager->Info("Connecting lighting controllers...", "Application");
-      int connectedCount = m_lightingManager->ConnectEnabledDevices();
-      m_logManager->Info(
-        "Connected " + std::to_string(connectedCount) + " lighting controllers",
-        "Application"
-      );
-
-      // Print status report for all channels
-      if (connectedCount > 0) {
-        std::cout << "\n[Lighting] ========================================" << std::endl;
-        std::cout << "[Lighting] LIGHTING STATUS REPORT" << std::endl;
-        std::cout << "[Lighting] ========================================" << std::endl;
-
-        auto allStatus = m_lightingManager->GetAllStatus();
-        for (const auto& ctrlStatus : allStatus) {
-          std::cout << "\n[Lighting] Controller: " << ctrlStatus.deviceName
-                    << " (" << ctrlStatus.deviceId << ")" << std::endl;
-          std::cout << "[Lighting] Connected: " << (ctrlStatus.connected ? "YES" : "NO") << std::endl;
-
-          if (ctrlStatus.connected) {
-            std::cout << "[Lighting] Channels:" << std::endl;
-            for (const auto& chStatus : ctrlStatus.channelStatuses) {
-              double percent = Lighting::IntensityToPercent(chStatus.intensity);
-              std::cout << "  L" << (chStatus.channelNumber + 1)
-                        << " [" << chStatus.name << "]: "
-                        << (chStatus.isOn ? "ON " : "OFF")
-                        << " | Intensity: " << chStatus.intensity
-                        << " (" << std::fixed << std::setprecision(1) << percent << "%)"
-                        << " | Mode: " << chStatus.mode << std::endl;
-            }
-          }
-        }
-        std::cout << "[Lighting] ========================================\n" << std::endl;
-
-        // Startup test: Cycle through Red, Green, Blue - 1 second each
-        std::cout << "[Lighting] Running startup test: RGB cycle..." << std::endl;
-        m_logManager->Info("Lighting startup test: RGB cycle", "Application");
-
-        int intensity50 = Lighting::PercentToIntensity(50.0);  // 50% intensity
-
-        for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
-          // Red (channel 1) - 1 second
-          std::cout << "[Lighting] RED ON" << std::endl;
-          m_lightingManager->SetIntensityByName(deviceId, "Red", intensity50);
-          std::this_thread::sleep_for(std::chrono::seconds(1));
-          m_lightingManager->SetIntensityByName(deviceId, "Red", 0);
-
-          // Green (channel 2) - 1 second
-          std::cout << "[Lighting] GREEN ON" << std::endl;
-          m_lightingManager->SetIntensityByName(deviceId, "Green", intensity50);
-          std::this_thread::sleep_for(std::chrono::seconds(1));
-          m_lightingManager->SetIntensityByName(deviceId, "Green", 0);
-
-          // Blue (channel 3) - 1 second
-          std::cout << "[Lighting] BLUE ON" << std::endl;
-          m_lightingManager->SetIntensityByName(deviceId, "Blue", intensity50);
-          std::this_thread::sleep_for(std::chrono::seconds(1));
-          m_lightingManager->SetIntensityByName(deviceId, "Blue", 0);
-        }
-
-        // Ensure all off
-        m_lightingManager->AllOff();
-        std::cout << "[Lighting] Startup test complete - All channels OFF" << std::endl;
-        m_logManager->Info("Lighting startup test complete - All channels OFF", "Application");
-
-        // Apply saved default intensities from config
-        std::cout << "[Lighting] Applying saved default intensities..." << std::endl;
-        for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
-          m_lightingManager->ApplyDefaultIntensities(deviceId);
-        }
-      }
-
-      if (m_splashScreen) m_splashScreen->updateStatus("Lighting", "success");
-    }
-
-    std::cout << "\n[Application] ========================================" << std::endl;
-    std::cout << "[Application] BACKGROUND HARDWARE CONNECTION COMPLETE" << std::endl;
-    std::cout << "[Application] ========================================\n" << std::endl;
-
-    m_logManager->Info("All hardware connections completed successfully", "Application");
-
-    // ✅ Notify splash screen that all connections are complete
-    if (m_splashScreen) {
-      m_splashScreen->onConnectionsComplete();
-    }
+    std::cout << "[Application] Parallel connections started in background" << std::endl;
   }
   catch (const std::exception& e) {
     m_logManager->Error(
-      std::string("Background hardware connection failed: ") + e.what(),
+      std::string("Failed to start parallel connections: ") + e.what(),
       "Application"
     );
-    std::cerr << "[Application] Background connection error: " << e.what() << std::endl;
+    std::cerr << "[Application] Connection error: " << e.what() << std::endl;
 
     // Close splash on error
     if (m_splashScreen) {
       m_splashScreen->close();
     }
+  }
+}
+
+void Application::addConnectionTasks()
+{
+  auto& config = Startup::ConnectionConfig::instance();
+
+  // Phase 0: TCP Clients
+  if (m_tcpClientManager && config.isEnabled("TcpClientManager")) {
+    m_connectionPool->addTask(
+      "TcpClientManager",
+      "TCP Clients",
+      [this]() -> int {
+        m_logManager->Info("Connecting TCP clients...", "Application");
+        m_tcpClientManager->ConnectAutoClients();
+        return 1;  // Consider it success
+      },
+      static_cast<int>(config.getTimeout("TcpClientManager").count()),
+      config.getPhase("TcpClientManager")
+    );
+  }
+
+  // Phase 0: Cameras
+  if (m_cameraManager && config.isEnabled("CameraManager")) {
+    m_connectionPool->addTask(
+      "CameraManager",
+      "Cameras",
+      [this]() -> int {
+        m_logManager->Info("Connecting cameras...", "Application");
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));  // Settle time
+        int count = m_cameraManager->ConnectAllCameras();
+        m_cameraManager->StartBroadcastSystem();
+        m_cameraManager->StartGrabbingAll();
+        m_logManager->Info("Cameras connected and broadcasting", "Application");
+        return count;
+      },
+      static_cast<int>(config.getTimeout("CameraManager").count()),
+      config.getPhase("CameraManager")
+    );
+  }
+
+  // Phase 1: Motion Controllers
+  if (m_motionManager && config.isEnabled("MotionManager")) {
+    m_connectionPool->addTask(
+      "MotionManager",
+      "Motion Controllers",
+      [this]() -> int {
+        m_logManager->Info("Connecting motion controllers...", "Application");
+        int count = m_motionManager->ConnectEnabledDevices();
+        m_logManager->Info(
+          "Connected " + std::to_string(count) + " motion devices",
+          "Application"
+        );
+        return count;
+      },
+      static_cast<int>(config.getTimeout("MotionManager").count()),
+      config.getPhase("MotionManager")
+    );
+  }
+
+  // Phase 1: I/O Devices
+  if (m_ioManager && config.isEnabled("IOManager")) {
+    m_connectionPool->addTask(
+      "IOManager",
+      "I/O Devices",
+      [this]() -> int {
+        m_logManager->Info("Connecting I/O devices...", "Application");
+        int count = m_ioManager->ConnectEnabledDevices();
+        m_logManager->Info(
+          "Connected " + std::to_string(count) + " I/O devices",
+          "Application"
+        );
+        // Start polling
+        m_ioManager->StartPolling(100);
+        m_logManager->Info("I/O polling started (100ms interval)", "Application");
+        return count;
+      },
+      static_cast<int>(config.getTimeout("IOManager").count()),
+      config.getPhase("IOManager")
+    );
+  }
+
+  // Phase 2: TEC Devices
+  if (m_tecManager && config.isEnabled("TECManager")) {
+    m_connectionPool->addTask(
+      "TECManager",
+      "TEC Devices",
+      [this]() -> int {
+        m_logManager->Info("Connecting TEC devices...", "Application");
+        int count = m_tecManager->ConnectEnabledDevices();
+        m_logManager->Info(
+          "Connected " + std::to_string(count) + " TEC devices",
+          "Application"
+        );
+        return count;
+      },
+      static_cast<int>(config.getTimeout("TECManager").count()),
+      config.getPhase("TECManager")
+    );
+  }
+
+  // Phase 2: Lighting Controllers
+  if (m_lightingManager && config.isEnabled("LightingManager")) {
+    m_connectionPool->addTask(
+      "LightingManager",
+      "Lighting",
+      [this]() -> int {
+        m_logManager->Info("Connecting lighting controllers...", "Application");
+        int count = m_lightingManager->ConnectEnabledDevices();
+        m_logManager->Info(
+          "Connected " + std::to_string(count) + " lighting controllers",
+          "Application"
+        );
+
+        // Print status report for all channels
+        if (count > 0) {
+          std::cout << "\n[Lighting] ========================================" << std::endl;
+          std::cout << "[Lighting] LIGHTING STATUS REPORT" << std::endl;
+          std::cout << "[Lighting] ========================================" << std::endl;
+
+          auto allStatus = m_lightingManager->GetAllStatus();
+          for (const auto& ctrlStatus : allStatus) {
+            std::cout << "\n[Lighting] Controller: " << ctrlStatus.deviceName
+                      << " (" << ctrlStatus.deviceId << ")" << std::endl;
+            std::cout << "[Lighting] Connected: " << (ctrlStatus.connected ? "YES" : "NO") << std::endl;
+
+            if (ctrlStatus.connected) {
+              std::cout << "[Lighting] Channels:" << std::endl;
+              for (const auto& chStatus : ctrlStatus.channelStatuses) {
+                double percent = Lighting::IntensityToPercent(chStatus.intensity);
+                std::cout << "  L" << (chStatus.channelNumber + 1)
+                          << " [" << chStatus.name << "]: "
+                          << (chStatus.isOn ? "ON " : "OFF")
+                          << " | Intensity: " << chStatus.intensity
+                          << " (" << std::fixed << std::setprecision(1) << percent << "%)"
+                          << " | Mode: " << chStatus.mode << std::endl;
+              }
+            }
+          }
+          std::cout << "[Lighting] ========================================\n" << std::endl;
+
+          // Startup test: Cycle through Red, Green, Blue - 1 second each
+          std::cout << "[Lighting] Running startup test: RGB cycle..." << std::endl;
+          m_logManager->Info("Lighting startup test: RGB cycle", "Application");
+
+          int intensity50 = Lighting::PercentToIntensity(50.0);  // 50% intensity
+
+          for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
+            // Red (channel 1) - 1 second
+            std::cout << "[Lighting] RED ON" << std::endl;
+            m_lightingManager->SetIntensityByName(deviceId, "Red", intensity50);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            m_lightingManager->SetIntensityByName(deviceId, "Red", 0);
+
+            // Green (channel 2) - 1 second
+            std::cout << "[Lighting] GREEN ON" << std::endl;
+            m_lightingManager->SetIntensityByName(deviceId, "Green", intensity50);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            m_lightingManager->SetIntensityByName(deviceId, "Green", 0);
+
+            // Blue (channel 3) - 1 second
+            std::cout << "[Lighting] BLUE ON" << std::endl;
+            m_lightingManager->SetIntensityByName(deviceId, "Blue", intensity50);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            m_lightingManager->SetIntensityByName(deviceId, "Blue", 0);
+          }
+
+          // Ensure all off
+          m_lightingManager->AllOff();
+          std::cout << "[Lighting] Startup test complete - All channels OFF" << std::endl;
+          m_logManager->Info("Lighting startup test complete - All channels OFF", "Application");
+
+          // Apply saved default intensities from config
+          std::cout << "[Lighting] Applying saved default intensities..." << std::endl;
+          for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
+            m_lightingManager->ApplyDefaultIntensities(deviceId);
+          }
+        }
+
+        return count;
+      },
+      static_cast<int>(config.getTimeout("LightingManager").count()),
+      config.getPhase("LightingManager")
+    );
+  }
+}
+
+void Application::onConnectionTaskStarted(const QString& displayName)
+{
+  if (m_splashScreen) {
+    m_splashScreen->startStep(displayName);
+  }
+}
+
+void Application::onConnectionTaskCompleted(const Startup::ConnectionResult& result)
+{
+  if (m_splashScreen) {
+    m_splashScreen->completeStep(result.displayName, result.isSuccess());
+  }
+
+  // Log the result
+  if (result.isSuccess()) {
+    m_logManager->Info(
+      result.managerName.toStdString() + " connected (" +
+      std::to_string(result.devicesConnected) + " devices, " +
+      std::to_string(result.duration.count()) + "ms)",
+      "Application"
+    );
+  }
+  else if (result.status == Startup::ConnectionStatus::TimedOut) {
+    m_logManager->Warning(
+      result.managerName.toStdString() + " timed out after " +
+      std::to_string(result.duration.count()) + "ms",
+      "Application"
+    );
+  }
+  else {
+    m_logManager->Error(
+      result.managerName.toStdString() + " failed: " +
+      result.errorMessage.toStdString(),
+      "Application"
+    );
+  }
+
+  // Start safety watch after IO is connected (regardless of phase completion)
+  if (result.managerName == "IOManager" && result.isSuccess()) {
+    if (m_safetyWatchManager && m_safetyWatchManager->IsEnabled()) {
+      m_safetyWatchManager->StartWatching();
+      m_logManager->Info("Safety watch started", "Application");
+    }
+  }
+}
+
+void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& summary)
+{
+  std::cout << "\n[Application] ========================================" << std::endl;
+  std::cout << "[Application] PARALLEL HARDWARE CONNECTION COMPLETE" << std::endl;
+  std::cout << "[Application] Total: " << summary.totalTasks << " tasks" << std::endl;
+  std::cout << "[Application] Success: " << summary.successfulTasks << std::endl;
+  std::cout << "[Application] Failed: " << summary.failedTasks << std::endl;
+  std::cout << "[Application] Timed Out: " << summary.timedOutTasks << std::endl;
+  std::cout << "[Application] Duration: " << summary.totalDuration.count() << "ms" << std::endl;
+  std::cout << "[Application] ========================================\n" << std::endl;
+
+  if (summary.allSuccessful()) {
+    m_logManager->Info("All hardware connections completed successfully", "Application");
+  }
+  else {
+    m_logManager->Warning(
+      "Hardware connections completed with " +
+      std::to_string(summary.failedTasks) + " failures and " +
+      std::to_string(summary.timedOutTasks) + " timeouts",
+      "Application"
+    );
+  }
+
+  // Notify splash screen that all connections are complete
+  if (m_splashScreen) {
+    m_splashScreen->onConnectionsComplete();
   }
 }
 
