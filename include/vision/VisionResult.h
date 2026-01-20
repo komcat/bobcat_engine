@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <cstdio>
 #include <opencv2/core.hpp>
 
 /**
@@ -278,7 +279,16 @@ struct VisionResult {
         if (!measurements.empty()) {
             summary += "Measurements:\n";
             for (const auto& [key, val] : measurements) {
-                summary += "  " + key + ": " + std::to_string(val) + "\n";
+                char buf[64];
+                // Use 6 decimals for mm_per_pixel, 4 for um_per_pixel, 4 for others
+                if (key == "mm_per_pixel") {
+                    snprintf(buf, sizeof(buf), "%.6f", val);
+                } else if (key == "um_per_pixel" || key.find("_mm") != std::string::npos) {
+                    snprintf(buf, sizeof(buf), "%.4f", val);
+                } else {
+                    snprintf(buf, sizeof(buf), "%.4f", val);
+                }
+                summary += "  " + key + ": " + std::string(buf) + "\n";
             }
         }
 

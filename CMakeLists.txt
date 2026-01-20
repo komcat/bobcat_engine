@@ -1065,6 +1065,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/PatternMatchingEdgePlugin.cpp
         include/vision/plugins/TemplateMatchingBase.cpp
         include/vision/plugins/ImageProcessingPlugin.cpp
+        include/vision/plugins/CalibrationPlatePlugin.cpp
         include/vision/VisionProcessingWorker.cpp
         include/sequence/VisionCommandHandler.cpp
         include/sequence/ContextImageViewer.cpp
@@ -1089,6 +1090,7 @@ if(OPENCV_FOUND)
         include/vision/plugins/LineDetectorPlugin.h
         include/vision/plugins/TemplateMatchingBase.h
         include/vision/plugins/ImageProcessingPlugin.h
+        include/vision/plugins/CalibrationPlatePlugin.h
         include/vision/VisionProcessingWorker.h
         include/sequence/VisionCommandHandler.h
         include/sequence/ContextImageViewer.h

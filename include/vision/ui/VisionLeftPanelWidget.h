@@ -17,7 +17,8 @@ public:
     void updatePluginList(const QStringList& plugins);
     void updatePluginsByCategory(const QStringList& prPlugins,
                                   const QStringList& measurePlugins,
-                                  const QStringList& filterPlugins);
+                                  const QStringList& filterPlugins,
+                                  const QStringList& calibrationPlugins = QStringList());
     void displayResult(const QString& resultText);
     QString getSelectedPlugin() const;
     void clearPluginLists();
@@ -35,6 +36,7 @@ private:
     QListWidget* m_prList;
     QListWidget* m_measureList;
     QListWidget* m_filterList;
+    QListWidget* m_calibrationList;  // Calibration plugins tab
     QListWidget* m_lightingList;  // Lighting commands tab
     QTextEdit* m_resultsDisplay;
 };

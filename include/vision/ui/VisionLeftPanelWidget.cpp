@@ -10,6 +10,7 @@ VisionLeftPanelWidget::VisionLeftPanelWidget(QWidget* parent)
     , m_prList(nullptr)
     , m_measureList(nullptr)
     , m_filterList(nullptr)
+    , m_calibrationList(nullptr)
     , m_lightingList(nullptr)
     , m_resultsDisplay(nullptr)
 {
@@ -51,6 +52,11 @@ void VisionLeftPanelWidget::setupUI()
     m_filterList->setToolTip("Image filter plugins");
     m_pluginTabs->addTab(m_filterList, "Filter");
 
+    // Calibration tab
+    m_calibrationList = new QListWidget();
+    m_calibrationList->setToolTip("Camera calibration plugins");
+    m_pluginTabs->addTab(m_calibrationList, "Calib");
+
     // Lighting tab
     m_lightingList = new QListWidget();
     m_lightingList->setToolTip("Lighting control commands");
@@ -82,6 +88,7 @@ void VisionLeftPanelWidget::setupUI()
     connectList(m_prList);
     connectList(m_measureList);
     connectList(m_filterList);
+    connectList(m_calibrationList);
     connectList(m_lightingList);
 
     // Set fixed width
@@ -133,12 +140,14 @@ void VisionLeftPanelWidget::updatePluginList(const QStringList& plugins)
 
 void VisionLeftPanelWidget::updatePluginsByCategory(const QStringList& prPlugins,
                                                      const QStringList& measurePlugins,
-                                                     const QStringList& filterPlugins)
+                                                     const QStringList& filterPlugins,
+                                                     const QStringList& calibrationPlugins)
 {
     // Clear current lists
     m_prList->clear();
     m_measureList->clear();
     m_filterList->clear();
+    m_calibrationList->clear();
 
     // Populate by category
     for (const QString& plugin : prPlugins) {
@@ -150,6 +159,9 @@ void VisionLeftPanelWidget::updatePluginsByCategory(const QStringList& prPlugins
     for (const QString& plugin : filterPlugins) {
         m_filterList->addItem(plugin);
     }
+    for (const QString& plugin : calibrationPlugins) {
+        m_calibrationList->addItem(plugin);
+    }
 }
 
 void VisionLeftPanelWidget::clearPluginLists()
@@ -157,6 +169,7 @@ void VisionLeftPanelWidget::clearPluginLists()
     m_prList->clear();
     m_measureList->clear();
     m_filterList->clear();
+    m_calibrationList->clear();
     m_lightingList->clear();
 }
 
@@ -175,6 +188,7 @@ QString VisionLeftPanelWidget::getSelectedPlugin() const
     case 0: currentList = m_prList; break;
     case 1: currentList = m_measureList; break;
     case 2: currentList = m_filterList; break;
+    case 3: currentList = m_calibrationList; break;
     }
 
     if (currentList && currentList->currentItem()) {

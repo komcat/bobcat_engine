@@ -21,6 +21,7 @@
 #include "../plugins/PatternMatchingPlugin.h"
 #include "../plugins/PatternMatchingEdgePlugin.h"
 #include "../plugins/ImageProcessingPlugin.h"
+#include "../plugins/CalibrationPlatePlugin.h"
 #ifdef HAS_HALCON
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
@@ -1471,6 +1472,10 @@ void VisionManagerPage::registerPlugins()
     auto imageProcessingPlugin = std::make_shared<ImageProcessingPlugin>();
     VisionManager::instance().registerPlugin(imageProcessingPlugin);
 
+    // Register Calibration Plate Plugin (MVTec calibration plate mm/pixel calculation)
+    auto calibrationPlatePlugin = std::make_shared<CalibrationPlatePlugin>();
+    VisionManager::instance().registerPlugin(calibrationPlatePlugin);
+
 #ifdef HAS_HALCON
     // Register Halcon Circle Detection Plugin
     auto halconCirclePlugin = std::make_shared<HalconCircleDetectionPlugin>();
@@ -1510,13 +1515,15 @@ void VisionManagerPage::updatePluginList()
     QStringList prPlugins = vm.getPluginsByCategory("PR");
     QStringList measurePlugins = vm.getPluginsByCategory("Measurement");
     QStringList filterPlugins = vm.getPluginsByCategory("Filter");
+    QStringList calibrationPlugins = vm.getPluginsByCategory("Calibration");
 
     // Update the left panel
-    m_leftPanel->updatePluginsByCategory(prPlugins, measurePlugins, filterPlugins);
+    m_leftPanel->updatePluginsByCategory(prPlugins, measurePlugins, filterPlugins, calibrationPlugins);
 
     std::cout << "[VisionManagerPage] Plugin list: PR=" << prPlugins.size()
               << ", Measure=" << measurePlugins.size()
-              << ", Filter=" << filterPlugins.size() << std::endl;
+              << ", Filter=" << filterPlugins.size()
+              << ", Calibration=" << calibrationPlugins.size() << std::endl;
 }
 
 void VisionManagerPage::loadPluginConfig(const QString& pluginName)
