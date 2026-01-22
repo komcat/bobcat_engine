@@ -644,13 +644,13 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   QGridLayout* xyzGrid = new QGridLayout();
   xyzGrid->setSpacing(4);
 
-  // Y+ (top)
-  m_btnYPlus = new QPushButton("Y+");
-  m_btnYPlus->setMinimumSize(30, 28);
-  xyzGrid->addWidget(m_btnYPlus, 0, 1);
-  connect(m_btnYPlus, &QPushButton::clicked, this, [this]() {
-    flashButton(m_btnYPlus);
-    sendJogCommand("Y", 1.0);
+  // Y- (top)
+  m_btnYMinus = new QPushButton("Y-");
+  m_btnYMinus->setMinimumSize(30, 28);
+  xyzGrid->addWidget(m_btnYMinus, 0, 1);
+  connect(m_btnYMinus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnYMinus);
+    sendJogCommand("Y", -1.0);
   });
 
   // X-, X+
@@ -670,13 +670,13 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
     sendJogCommand("X", 1.0);
   });
 
-  // Y- (bottom)
-  m_btnYMinus = new QPushButton("Y-");
-  m_btnYMinus->setMinimumSize(30, 28);
-  xyzGrid->addWidget(m_btnYMinus, 2, 1);
-  connect(m_btnYMinus, &QPushButton::clicked, this, [this]() {
-    flashButton(m_btnYMinus);
-    sendJogCommand("Y", -1.0);
+  // Y+ (bottom)
+  m_btnYPlus = new QPushButton("Y+");
+  m_btnYPlus->setMinimumSize(30, 28);
+  xyzGrid->addWidget(m_btnYPlus, 2, 1);
+  connect(m_btnYPlus, &QPushButton::clicked, this, [this]() {
+    flashButton(m_btnYPlus);
+    sendJogCommand("Y", 1.0);
   });
 
   // Z controls

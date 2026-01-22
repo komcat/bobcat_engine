@@ -151,6 +151,35 @@ public:
 	std::string GetLastErrorMessage(const std::string& deviceName);
 
 	// ============================================================================
+	// ACS BUFFER PROGRAM CONTROL
+	// ============================================================================
+
+	/**
+	 * @brief Run a buffer program on an ACS controller
+	 * @param deviceName Name of the ACS device
+	 * @param bufferNumber Buffer number (0-63)
+	 * @param labelName Optional label name to start from
+	 * @return true if successful
+	 */
+	bool RunBuffer(const std::string& deviceName, int bufferNumber,
+		const std::string& labelName = "");
+
+	/**
+	 * @brief Stop a buffer program on an ACS controller
+	 * @param deviceName Name of the ACS device
+	 * @param bufferNumber Buffer number (0-63)
+	 * @return true if successful
+	 */
+	bool StopBuffer(const std::string& deviceName, int bufferNumber);
+
+	/**
+	 * @brief Stop all buffer programs on an ACS controller
+	 * @param deviceName Name of the ACS device
+	 * @return true if successful
+	 */
+	bool StopAllBuffers(const std::string& deviceName);
+
+	// ============================================================================
 	// NAMED POSITION MANAGEMENT
 	// ============================================================================
 

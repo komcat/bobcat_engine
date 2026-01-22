@@ -16,6 +16,9 @@ ACSControllerPage::ACSControllerPage(ApplicationContext* context, QWidget* paren
   , m_rabbitButton(nullptr)
   , m_applyButton(nullptr)
   , m_axisStatusTimer(nullptr)
+  , m_bufferNumberSpinBox(nullptr)
+  , m_runBufferButton(nullptr)
+  , m_stopBufferButton(nullptr)
 {
   std::cout << "[ACSControllerPage] Initialized" << std::endl;
 
@@ -104,6 +107,9 @@ void ACSControllerPage::setupUI()
 
   // Add axis enable/disable controls
   createAxisControlGroup();
+
+  // Add buffer program control
+  createBufferControlGroup();
 }
 
 void ACSControllerPage::createVelocityControls()
@@ -568,5 +574,190 @@ void ACSControllerPage::onAxisEnableClicked(const QString& axis, bool enable)
 
     // Still update the buttons to show actual state
     QTimer::singleShot(100, this, &ACSControllerPage::updateAxisControlButtons);
+  }
+}
+
+void ACSControllerPage::createBufferControlGroup()
+{
+  QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
+  if (!mainLayout) return;
+
+  // Create buffer program control group
+  QGroupBox* bufferGroup = new QGroupBox("Buffer Program Control");
+  bufferGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #ffffff; "
+    "}");
+
+  QHBoxLayout* bufferLayout = new QHBoxLayout(bufferGroup);
+  bufferLayout->setSpacing(15);
+
+  // Label for buffer number
+  QLabel* bufferLabel = new QLabel("Buffer Program #:");
+  bufferLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
+  bufferLayout->addWidget(bufferLabel);
+
+  // Spinbox for buffer number (1-5)
+  m_bufferNumberSpinBox = new QSpinBox();
+  m_bufferNumberSpinBox->setRange(1, 5);
+  m_bufferNumberSpinBox->setValue(1);
+  m_bufferNumberSpinBox->setStyleSheet(
+    "QSpinBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 4px; "
+    "  padding: 8px; "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  min-width: 60px; "
+    "} "
+    "QSpinBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QSpinBox::up-button, QSpinBox::down-button { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "  width: 20px; "
+    "} "
+    "QSpinBox::up-button:hover, QSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "}");
+  bufferLayout->addWidget(m_bufferNumberSpinBox);
+
+  bufferLayout->addSpacing(20);
+
+  // Run Buffer button
+  m_runBufferButton = new QPushButton("Run Buffer");
+  m_runBufferButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 25px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #229954; }");
+  connect(m_runBufferButton, &QPushButton::clicked, this, &ACSControllerPage::onRunBufferClicked);
+  bufferLayout->addWidget(m_runBufferButton);
+
+  // Stop Buffer button
+  m_stopBufferButton = new QPushButton("Stop Buffer");
+  m_stopBufferButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #e74c3c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 10px 25px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  min-width: 120px; "
+    "} "
+    "QPushButton:hover { background-color: #c0392b; }");
+  connect(m_stopBufferButton, &QPushButton::clicked, this, &ACSControllerPage::onStopBufferClicked);
+  bufferLayout->addWidget(m_stopBufferButton);
+
+  bufferLayout->addStretch();
+
+  // Insert buffer control group after axis controls (index 3)
+  mainLayout->insertWidget(3, bufferGroup);
+}
+
+void ACSControllerPage::onRunBufferClicked()
+{
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) {
+    QMessageBox::critical(this, "Error", "Motion manager not available!");
+    return;
+  }
+
+  std::string deviceName = m_deviceSelector->currentText().toStdString();
+  if (deviceName.empty()) {
+    QMessageBox::warning(this, "Warning", "Please select a device first!");
+    return;
+  }
+
+  int bufferNumber = m_bufferNumberSpinBox->value();
+
+  std::cout << "[ACSControllerPage] Running buffer program " << bufferNumber
+            << " on device: " << deviceName << std::endl;
+
+  bool success = motionMgr->RunBuffer(deviceName, bufferNumber);
+
+  if (success) {
+    std::cout << "[ACSControllerPage] Buffer " << bufferNumber << " started successfully" << std::endl;
+    QMessageBox::information(this, "Success",
+      QString("Buffer program %1 started on %2")
+        .arg(bufferNumber)
+        .arg(QString::fromStdString(deviceName)));
+  }
+  else {
+    std::cerr << "[ACSControllerPage] Failed to run buffer " << bufferNumber << std::endl;
+    QMessageBox::critical(this, "Error",
+      QString("Failed to run buffer program %1 on %2.\n\n"
+              "Possible causes:\n"
+              "- Device not connected\n"
+              "- Buffer program not loaded\n"
+              "- Controller error")
+        .arg(bufferNumber)
+        .arg(QString::fromStdString(deviceName)));
+  }
+}
+
+void ACSControllerPage::onStopBufferClicked()
+{
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) {
+    QMessageBox::critical(this, "Error", "Motion manager not available!");
+    return;
+  }
+
+  std::string deviceName = m_deviceSelector->currentText().toStdString();
+  if (deviceName.empty()) {
+    QMessageBox::warning(this, "Warning", "Please select a device first!");
+    return;
+  }
+
+  int bufferNumber = m_bufferNumberSpinBox->value();
+
+  std::cout << "[ACSControllerPage] Stopping buffer program " << bufferNumber
+            << " on device: " << deviceName << std::endl;
+
+  bool success = motionMgr->StopBuffer(deviceName, bufferNumber);
+
+  if (success) {
+    std::cout << "[ACSControllerPage] Buffer " << bufferNumber << " stopped successfully" << std::endl;
+    QMessageBox::information(this, "Success",
+      QString("Buffer program %1 stopped on %2")
+        .arg(bufferNumber)
+        .arg(QString::fromStdString(deviceName)));
+  }
+  else {
+    std::cerr << "[ACSControllerPage] Failed to stop buffer " << bufferNumber << std::endl;
+    QMessageBox::critical(this, "Error",
+      QString("Failed to stop buffer program %1 on %2.\n\n"
+              "Possible causes:\n"
+              "- Device not connected\n"
+              "- Buffer not running\n"
+              "- Controller error")
+        .arg(bufferNumber)
+        .arg(QString::fromStdString(deviceName)));
   }
 }

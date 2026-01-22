@@ -3,6 +3,7 @@
 
 #include "MotionControllerPageBase.h"
 #include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QComboBox>
 #include <QTimer>
 #include <QLabel>
@@ -38,10 +39,13 @@ private slots:
   void onDeviceSelected(const QString& deviceName);
   void onApplyVelocityClicked();
   void onAxisEnableClicked(const QString& axis, bool enable);
+  void onRunBufferClicked();
+  void onStopBufferClicked();
 
 private:
   void createVelocityControls();
   void createAxisControlGroup();
+  void createBufferControlGroup();
   void updateVelocityDisplay();
   void updateAxisControlButtons();
   void updateUIForSelectedDevice();
@@ -62,4 +66,9 @@ private:
   // Styles for enable buttons
   QString m_enabledStyle;
   QString m_disabledStyle;
+
+  // Buffer program control widgets
+  QSpinBox* m_bufferNumberSpinBox;
+  QPushButton* m_runBufferButton;
+  QPushButton* m_stopBufferButton;
 };
