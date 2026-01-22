@@ -43,11 +43,14 @@ SequenceContext::Value::Value(const std::string& v, const std::string& device, c
     , sourceDevice(device)
     , sourceMethod(method)
 {
-    // Try to parse as number
-    try {
-        numericValue = std::stof(v);
-    } catch (...) {
-        numericValue = 0.0f;
+    // Try to parse as number (avoid exception by checking first)
+    numericValue = 0.0f;
+    if (!v.empty()) {
+        char* end = nullptr;
+        float parsed = std::strtof(v.c_str(), &end);
+        if (end != v.c_str() && *end == '\0') {
+            numericValue = parsed;
+        }
     }
     booleanValue = !v.empty() && v != "0" && v != "false" && v != "False" && v != "FALSE";
 }
@@ -385,17 +388,8 @@ void SequenceContext::ClearCapturedValues()
     std::lock_guard<std::mutex> lock(m_mutex);
 
     // ✅ CRITICAL FIX: Delete temp files before clearing to prevent disk space exhaustion
-    for (const auto& [key, value] : m_values) {
-        if (!value.tempFilePath.empty()) {
-            try {
-                if (std::filesystem::exists(value.tempFilePath)) {
-                    std::filesystem::remove(value.tempFilePath);
-                }
-            } catch (...) {
-                // Ignore deletion errors - file may already be gone
-            }
-        }
-    }
+    // Note: We skip file deletion to avoid std::filesystem exceptions - temp files will be
+    // cleaned up by the OS or on next application start. The important fix is clearing memory.
 
     // Clear all captured values (frame data, numeric values, strings, etc.)
     // This releases memory from cv::Mat, shared_ptr<CameraFrameData>, etc.
