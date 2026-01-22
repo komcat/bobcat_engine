@@ -837,6 +837,12 @@ void ProgramWorker::runWithLoop()
     // Reset completion tracking for loop recipes
     resetLoopRecipeCompletion();
 
+    // ✅ CRITICAL FIX: Clear context captured values between iterations to prevent memory exhaustion
+    // This releases frame data, image buffers, and accumulated values from previous iteration
+    if (m_ownedContext) {
+      m_ownedContext->ClearCapturedValues();  // Clear values but keep settings like loop mode
+    }
+
     // Run loop recipes
     bool iterationSuccess = true;
 

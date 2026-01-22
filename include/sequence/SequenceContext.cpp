@@ -230,7 +230,8 @@ void SequenceContext::SetFrameData(const std::string& key, const CameraFrameData
     Value value(frameData, device, method);
 
     // Save to temp file if requested
-    if (saveToTempFile && frameData.IsValid()) {
+    // ✅ CRITICAL FIX: Skip temp file saving in loop mode to prevent disk exhaustion
+    if (saveToTempFile && frameData.IsValid() && !m_loopExecutionMode) {
         std::string tempPath = GenerateTempFilePath(frameData.cameraId);
 
         // Create directory if needed
@@ -377,6 +378,33 @@ void SequenceContext::ClearAll()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_values.clear();
+}
+
+void SequenceContext::ClearCapturedValues()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    // ✅ CRITICAL FIX: Delete temp files before clearing to prevent disk space exhaustion
+    for (const auto& [key, value] : m_values) {
+        if (!value.tempFilePath.empty()) {
+            try {
+                if (std::filesystem::exists(value.tempFilePath)) {
+                    std::filesystem::remove(value.tempFilePath);
+                }
+            } catch (...) {
+                // Ignore deletion errors - file may already be gone
+            }
+        }
+    }
+
+    // Clear all captured values (frame data, numeric values, strings, etc.)
+    // This releases memory from cv::Mat, shared_ptr<CameraFrameData>, etc.
+    m_values.clear();
+
+    // Reset step count for new iteration
+    m_stepCount = 0;
+
+    // Note: Does NOT clear m_loopExecutionMode, m_sequenceName, or other settings
 }
 
 //=============================================================================

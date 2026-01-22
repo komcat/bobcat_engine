@@ -43,6 +43,12 @@ RecipeWorker::~RecipeWorker()
     m_engine->SetUserPromptCallback(nullptr);
     m_engine->SetManualAdjustCallback(nullptr);
     m_engine->SetUserInputCallback(nullptr);
+
+    // ✅ CRITICAL FIX: Also clear LogManager callback to prevent memory leak
+    LogManager* logger = m_engine->GetLogger();
+    if (logger) {
+      logger->ClearUICallback();
+    }
   }
   std::cout << "[RecipeWorker] Destroyed - callbacks cleared" << std::endl;
 }

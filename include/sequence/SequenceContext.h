@@ -123,6 +123,7 @@ public:
     // Clear operations
     void ClearValue(const std::string& key);
     void ClearAll();
+    void ClearCapturedValues();  // Clear values but keep execution settings (for loop iterations)
 
     // ======================================================================
     // EXECUTION METADATA
