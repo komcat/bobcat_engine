@@ -147,6 +147,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_currentRecipeIndex(-1)
   , m_pendingChainRecipeIndex(-1)
   , m_currentLoopIteration(0)
+  , m_isLoopExecution(false)
   , m_executionStack(nullptr)
   , m_promptWidget(nullptr)
   , m_manualAdjustWidget(nullptr)
@@ -1655,10 +1656,12 @@ void RunProgramPage::createExecutionWidget()
   logLabel->setStyleSheet("font-weight: bold; color: #ffffff;");
   logTabLayout->addWidget(logLabel);
 
-  m_logTextEdit = new QTextEdit();
+  // ✅ Using QPlainTextEdit for better performance with large logs
+  m_logTextEdit = new QPlainTextEdit();
   m_logTextEdit->setReadOnly(true);
+  m_logTextEdit->setMaximumBlockCount(200);  // Auto-limit to ~5 pages (oldest removed automatically)
   m_logTextEdit->setStyleSheet(
-    "QTextEdit { "
+    "QPlainTextEdit { "
     "  background-color: #1e1e1e; "
     "  color: #d4d4d4; "
     "  border: 1px solid #3f3f46; "
@@ -2345,6 +2348,7 @@ void RunProgramPage::onExecuteProgram()
   // ✅ Set loop execution mode
   bool loopEnabled = m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes();
   m_programWorker->setLoopMode(loopEnabled);
+  m_isLoopExecution = loopEnabled;  // Track loop mode for UI optimization
   if (loopEnabled) {
     m_programWorker->setLoopRecipeIndices(m_programManager->getLoopRecipeIndices());
     m_programWorker->setIgnoreDependencies(m_ignoreDependenciesCheckBox->isChecked());
@@ -2655,17 +2659,30 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   }
 
   // ✅ Update vision result image if available
-  updateVisionResultImage();
+  // Skip during loop execution to avoid UI freeze - use deferred update instead
+  if (!m_isLoopExecution) {
+    updateVisionResultImage();
+  } else {
+    // Defer heavy image processing to avoid blocking UI during rapid loop iterations
+    QTimer::singleShot(50, this, [this]() {
+      if (m_isExecuting) {
+        updateVisionResultImage();
+      }
+    });
+  }
 
   if (!success) {
     m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
   }
 
   // ✅ Chain Execution: Find and queue dependent recipes
-  std::cout << "[RunProgramPage] Chain execution check: success=" << success
-            << ", chainEnabled=" << m_chainExecutionCheckBox->isChecked()
-            << ", autoRunNext=" << m_autoRunNextCheckBox->isChecked() << std::endl;
-  std::cout.flush();
+  // Skip verbose logging during loop execution
+  if (!m_isLoopExecution) {
+    std::cout << "[RunProgramPage] Chain execution check: success=" << success
+              << ", chainEnabled=" << m_chainExecutionCheckBox->isChecked()
+              << ", autoRunNext=" << m_autoRunNextCheckBox->isChecked() << std::endl;
+    std::cout.flush();
+  }
 
   if (success && m_chainExecutionCheckBox->isChecked() && !m_autoRunNextCheckBox->isChecked()) {
     // Get the current context from the worker for condition evaluation
@@ -2847,7 +2864,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
           std::cout.flush();
 
           // Log to execution log
-          m_logTextEdit->append(QString("<span style='color: #f39c12;'>→ Chain: Recipe %1 (%2) will run next</span>")
+          m_logTextEdit->appendPlainText(QString("→ Chain: Recipe %1 (%2) will run next")
             .arg(i + 1)
             .arg(nextRecipeName));
 
@@ -2876,7 +2893,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
           std::cout << "[RunProgramPage] Chain execution: User cancelled" << std::endl;
           std::cout.flush();
 
-          m_logTextEdit->append(QString("<span style='color: #e74c3c;'>✗ Chain execution stopped by user</span>"));
+          m_logTextEdit->appendPlainText(QString("✗ Chain execution stopped by user"));
         }
 
         break;  // Only process one recipe at a time
@@ -2886,7 +2903,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
                   << " skipped - condition not met: " << failedCondition << std::endl;
         std::cout.flush();
 
-        m_logTextEdit->append(QString("<span style='color: #95a5a6;'>⊘ Recipe %1 skipped - condition not met</span>")
+        m_logTextEdit->appendPlainText(QString("⊘ Recipe %1 skipped - condition not met")
           .arg(i + 1));
 
         // Mark as skipped in UI
@@ -2936,6 +2953,7 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   std::cout << "[RunProgramPage] Setting m_isExecuting to false..." << std::endl;
   std::cout.flush();
   m_isExecuting = false;
+  m_isLoopExecution = false;  // Reset loop mode flag
 
   // ✅ Reset command tracker
   m_cmdPastLabel->setText("-");
@@ -3022,6 +3040,7 @@ void RunProgramPage::onProgramStopped()
   stopContextRefreshTimer();
 
   m_isExecuting = false;
+  m_isLoopExecution = false;  // Reset loop mode flag
   m_pendingChainRecipeIndex = -1;  // ✅ Clear pending chain execution
 
   // ✅ Reset command tracker
@@ -3096,12 +3115,20 @@ void RunProgramPage::onWorkerFinished()
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
   // Display in execution log
-  m_logTextEdit->append(message);
+  // Note: QPlainTextEdit with setMaximumBlockCount(2000) automatically trims oldest lines
+  m_logTextEdit->appendPlainText(message);
 
-  // Also print to console for debugging
-  std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
+  // Skip verbose console logging during loop execution to reduce I/O overhead
+  if (!m_isLoopExecution) {
+    std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
+  }
 
   // ✅ WORKAROUND: Detect completion markers since normal signals aren't being delivered
+  // Skip this heavy processing during loop execution - loop uses different completion path
+  if (m_isLoopExecution) {
+    return;  // Loop mode handles completion differently via loopIterationCompleted signal
+  }
+
   // Check for both program-level and recipe-level completion markers
   bool shouldComplete = false;
 
@@ -3463,7 +3490,7 @@ void RunProgramPage::onRotationScanRequested(QString deviceName, QString rotatio
 void RunProgramPage::onScanLogMessage(QString message)
 {
   // Forward log messages to execution log
-  m_logTextEdit->append(message);
+  m_logTextEdit->appendPlainText(message);
 }
 
 void RunProgramPage::onScanCompleted(QString deviceName, double peakValue, bool success)
@@ -3499,7 +3526,7 @@ void RunProgramPage::onScanError(QString errorMessage)
 void RunProgramPage::onStopScanRequested()
 {
   // Log the stop action - note: device will return to global peak position
-  m_logTextEdit->append("Stopping scan - returning to global peak position...");
+  m_logTextEdit->appendPlainText("Stopping scan - returning to global peak position...");
 
   // Stop any active scan (this will block until return to peak is complete)
   m_scanExecutor->stopScan();
@@ -3509,7 +3536,7 @@ void RunProgramPage::onStopScanRequested()
   m_scanWidget->setStopButtonEnabled(false);
 
   // Log completion
-  m_logTextEdit->append("Scan stopped - device returned to peak position");
+  m_logTextEdit->appendPlainText("Scan stopped - device returned to peak position");
 }
 
 // ✅ ADDED: Handle channel change from scan widget
@@ -4642,6 +4669,9 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
   // Get summary from context (thread-safe via internal mutex)
   auto summary = context->GetSummary();
 
+  // ✅ Batch UI updates to prevent flicker and improve performance
+  m_contextTable->setUpdatesEnabled(false);
+
   // Temporarily disable sorting for performance
   m_contextTable->setSortingEnabled(false);
   m_contextTable->setRowCount(0);
@@ -4716,6 +4746,9 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
   // Re-enable sorting
   m_contextTable->setSortingEnabled(true);
 
+  // ✅ Re-enable UI updates (batched for performance)
+  m_contextTable->setUpdatesEnabled(true);
+
   // Update status label
   m_contextStatusLabel->setStyleSheet("color: #4ec9b0;");  // Teal color
   if (filterText.isEmpty()) {
@@ -4735,7 +4768,10 @@ void RunProgramPage::onContextFilterChanged(const QString& filter)
 void RunProgramPage::startContextRefreshTimer()
 {
   if (m_contextRefreshTimer && !m_contextRefreshTimer->isActive()) {
-    std::cout << "[RunProgramPage] Starting context refresh timer (500ms)" << std::endl;
+    // Use longer interval during loop execution to reduce UI overhead
+    int interval = m_isLoopExecution ? 1000 : 500;
+    m_contextRefreshTimer->setInterval(interval);
+    std::cout << "[RunProgramPage] Starting context refresh timer (" << interval << "ms)" << std::endl;
     updateContextTable();  // Immediate update
     m_contextRefreshTimer->start();
   }

@@ -964,6 +964,88 @@ bool PIController::FSM(const std::string& axis1, double length1,
   return true;
 }
 
+bool PIController::FLM(const std::string& axis, double length, double threshold,
+  int analogInput, int direction) {
+  if (!m_isConnected) {
+    std::cout << "[ERROR] PIController: Cannot perform FLM - not connected" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] PIController: Starting FLM (Fast Line Maximum) scan on axis " << axis
+    << ", length=" << length << ", threshold=" << threshold
+    << ", analogInput=" << analogInput << ", direction=" << direction << std::endl;
+
+  bool result = PI_FLM(m_controllerId,
+    axis.c_str(),
+    length,
+    threshold,
+    analogInput,
+    direction);
+
+  if (!result) {
+    int error = PI_GetError(m_controllerId);
+    char errorText[256] = { 0 };
+    PI_TranslateError(error, errorText, sizeof(errorText));
+    std::cout << "[ERROR] PIController: FLM failed. Error: " << error
+      << " - " << errorText << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] PIController: FLM scan started successfully" << std::endl;
+  return true;
+}
+
+bool PIController::FLS(const std::string& axis, double length, double threshold,
+  int analogInput, int direction) {
+  if (!m_isConnected) {
+    std::cout << "[ERROR] PIController: Cannot perform FLS - not connected" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] PIController: Starting FLS (Fast Line Scan) on axis " << axis
+    << ", length=" << length << ", threshold=" << threshold
+    << ", analogInput=" << analogInput << ", direction=" << direction << std::endl;
+
+  bool result = PI_FLS(m_controllerId,
+    axis.c_str(),
+    length,
+    threshold,
+    analogInput,
+    direction);
+
+  if (!result) {
+    int error = PI_GetError(m_controllerId);
+    char errorText[256] = { 0 };
+    PI_TranslateError(error, errorText, sizeof(errorText));
+    std::cout << "[ERROR] PIController: FLS failed. Error: " << error
+      << " - " << errorText << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] PIController: FLS scan started successfully" << std::endl;
+  return true;
+}
+
+bool PIController::GetFastScanStatus(int& status) {
+  if (!m_isConnected) {
+    std::cout << "[ERROR] PIController: Cannot query scan status - not connected" << std::endl;
+    return false;
+  }
+
+  if (!PI_qFSS(m_controllerId, &status)) {
+    int error = PI_GetError(m_controllerId);
+    std::cout << "[ERROR] PIController: qFSS failed. Error: " << error << std::endl;
+    return false;
+  }
+
+  if (m_debugVerbose) {
+    std::cout << "[DEBUG] PIController: Fast scan status = " << status
+      << (status == 0 ? " (idle)" : status > 0 ? " (running)" : " (error)") << std::endl;
+  }
+
+  return true;
+}
+
 bool PIController::SetSystemVelocity(double velocity) {
   if (!m_isConnected) {
     std::cout << "[ERROR] PIController: Cannot set system velocity - not connected" << std::endl;

@@ -151,6 +151,105 @@ public:
 	std::string GetLastErrorMessage(const std::string& deviceName);
 
 	// ============================================================================
+	// PI FAST SCAN / ACTIVE ALIGNMENT (analog feedback based)
+	// ============================================================================
+
+	/**
+	 * @brief Fast Line Maximum - 1D scan to find position of maximum analog signal
+	 * Moves to the position where maximum signal is found after scan completes
+	 * @param deviceName PI device name
+	 * @param axis Axis to scan ("X", "Y", "Z", etc.)
+	 * @param length Scan range in mm
+	 * @param threshold Minimum signal threshold (voltage)
+	 * @param analogInput Analog input channel number
+	 * @param direction Scan direction: +1 (positive) or -1 (negative)
+	 * @return true if scan started successfully
+	 */
+	bool FLM(const std::string& deviceName, const std::string& axis,
+		double length, double threshold, int analogInput, int direction = 1);
+
+	/**
+	 * @brief Fast Line Scan - 1D scan along axis (returns to start after scan)
+	 * @param deviceName PI device name
+	 * @param axis Axis to scan
+	 * @param length Scan range in mm
+	 * @param threshold Minimum signal threshold (voltage)
+	 * @param analogInput Analog input channel number
+	 * @param direction Scan direction: +1 (positive) or -1 (negative)
+	 * @return true if scan started successfully
+	 */
+	bool FLS(const std::string& deviceName, const std::string& axis,
+		double length, double threshold, int analogInput, int direction = 1);
+
+	/**
+	 * @brief Fast Scan Area - 2D area scan with alignment
+	 * @param deviceName PI device name
+	 * @param axis1 First axis to scan
+	 * @param length1 Scan range for first axis (mm)
+	 * @param axis2 Second axis to scan
+	 * @param length2 Scan range for second axis (mm)
+	 * @param threshold Minimum signal threshold (voltage)
+	 * @param distance Step distance between scan lines (mm)
+	 * @param alignStep Alignment step size (mm)
+	 * @param analogInput Analog input channel number
+	 * @return true if scan started successfully
+	 */
+	bool FSA(const std::string& deviceName,
+		const std::string& axis1, double length1,
+		const std::string& axis2, double length2,
+		double threshold, double distance, double alignStep, int analogInput);
+
+	/**
+	 * @brief Fast Scan Circle - 2D circular scan pattern
+	 * @param deviceName PI device name
+	 * @param axis1 First axis
+	 * @param length1 Scan range for first axis (mm)
+	 * @param axis2 Second axis
+	 * @param length2 Scan range for second axis (mm)
+	 * @param threshold Minimum signal threshold (voltage)
+	 * @param distance Circle radius/distance (mm)
+	 * @param analogInput Analog input channel number
+	 * @return true if scan started successfully
+	 */
+	bool FSC(const std::string& deviceName,
+		const std::string& axis1, double length1,
+		const std::string& axis2, double length2,
+		double threshold, double distance, int analogInput);
+
+	/**
+	 * @brief Fast Scan Maximum - 2D scan to find maximum signal position
+	 * @param deviceName PI device name
+	 * @param axis1 First axis
+	 * @param length1 Scan range for first axis (mm)
+	 * @param axis2 Second axis
+	 * @param length2 Scan range for second axis (mm)
+	 * @param threshold Minimum signal threshold (voltage)
+	 * @param distance Step distance (mm)
+	 * @param analogInput Analog input channel number
+	 * @return true if scan started successfully
+	 */
+	bool FSM(const std::string& deviceName,
+		const std::string& axis1, double length1,
+		const std::string& axis2, double length2,
+		double threshold, double distance, int analogInput);
+
+	/**
+	 * @brief Query fast scan status
+	 * @param deviceName PI device name
+	 * @param status Output: 0=idle, >0=running, <0=error
+	 * @return true if query successful
+	 */
+	bool GetFastScanStatus(const std::string& deviceName, int& status);
+
+	/**
+	 * @brief Wait for fast scan to complete
+	 * @param deviceName PI device name
+	 * @param timeoutSeconds Maximum time to wait
+	 * @return true if scan completed successfully, false on timeout or error
+	 */
+	bool WaitForFastScanComplete(const std::string& deviceName, double timeoutSeconds = 30.0);
+
+	// ============================================================================
 	// ACS BUFFER PROGRAM CONTROL
 	// ============================================================================
 

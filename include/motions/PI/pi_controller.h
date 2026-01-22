@@ -86,13 +86,21 @@ public:
   bool DefineHome(const std::string& axis);
   bool DefineHomeAll();
 
-  // Scanning functions
+  // Scanning functions - 2D
   bool FSA(const std::string& axis1, double length1, const std::string& axis2, double length2,
     double threshold, double distance, double alignStep, int analogInput);
   bool FSC(const std::string& axis1, double length1, const std::string& axis2, double length2,
     double threshold, double distance, int analogInput);
   bool FSM(const std::string& axis1, double length1, const std::string& axis2, double length2,
     double threshold, double distance, int analogInput);
+
+  // Fast Line Scan functions - 1D (for active alignment with analog feedback)
+  // FLM: Fast Line Maximum - scans and moves to position of maximum signal
+  bool FLM(const std::string& axis, double length, double threshold, int analogInput, int direction = 1);
+  // FLS: Fast Line Scan - scans along a line (returns to start after scan)
+  bool FLS(const std::string& axis, double length, double threshold, int analogInput, int direction = 1);
+  // Query fast scan status: 0=idle, 1=running, negative=error
+  bool GetFastScanStatus(int& status);
 
   // Analog reading
   bool GetAnalogChannelCount(int& numChannels);

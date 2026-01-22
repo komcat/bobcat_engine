@@ -2687,6 +2687,12 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
   PositionStruct startingPos = motionManager->GetCurrentPosition(deviceName);
   bool hasMovedFromStart = false;
 
+  // ✅ FIX: Track "stuck" state - controller reports done but position is wrong
+  std::chrono::steady_clock::time_point stuckDetectedTime;
+  PositionStruct stuckPosition;
+  bool isStuckDetected = false;
+  const int STUCK_TIMEOUT_MS = 2000;  // Fail after 2 seconds of no position change
+
   // ✅ FIX: Small delay to ensure motion actually starts (avoid race condition)
   // When non-blocking motion is initiated, there's a brief window where the command
   // has been sent but the motor hasn't started moving yet
@@ -2793,13 +2799,48 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
 
         const double TARGET_THRESHOLD = 0.05;  // Must be within 0.05mm of target
         if (distanceFromTarget > TARGET_THRESHOLD) {
-          if (m_logger) {
-            std::string msg = "WaitForMotion: Controller reports done but still " + std::to_string(distanceFromTarget) +
-                             "mm from target - continuing to wait";
-            m_logger->Info(msg, "MotionHandler");
+          // ✅ FIX: Track stuck state to detect when controller is done but position won't change
+          if (!isStuckDetected) {
+            // First time detecting this stuck state
+            isStuckDetected = true;
+            stuckDetectedTime = std::chrono::steady_clock::now();
+            stuckPosition = currentPos;
+            if (m_logger) {
+              m_logger->Warning("WaitForMotion: Controller reports done but still " + std::to_string(distanceFromTarget) +
+                               "mm from target - monitoring for stuck condition", "MotionHandler");
+            }
+          } else {
+            // Check if position has changed since we detected stuck state
+            double dx = currentPos.x - stuckPosition.x;
+            double dy = currentPos.y - stuckPosition.y;
+            double dz = currentPos.z - stuckPosition.z;
+            double positionChange = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+            if (positionChange > 0.01) {  // Position changed > 10 microns - reset stuck timer
+              stuckPosition = currentPos;
+              stuckDetectedTime = std::chrono::steady_clock::now();
+            } else {
+              // Position hasn't changed - check if we've been stuck too long
+              auto stuckDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - stuckDetectedTime
+              ).count();
+
+              if (stuckDuration > STUCK_TIMEOUT_MS) {
+                if (m_logger) {
+                  m_logger->Error("WaitForMotion: STUCK - Controller reports done, position unchanged for " +
+                                 std::to_string(stuckDuration) + "ms, still " + std::to_string(distanceFromTarget) +
+                                 "mm from target. Motion may have hit a limit or encountered an error.", "MotionHandler");
+                }
+                motionManager->ClearPendingTarget(deviceName);
+                return false;  // Fail - motion is stuck
+              }
+            }
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(50));
-          continue;  // Keep waiting until closer to target
+          continue;  // Keep waiting briefly
+        } else {
+          // Position is now within threshold - clear stuck state
+          isStuckDetected = false;
         }
       }
 

@@ -115,14 +115,18 @@ void RecipeWorker::run()
       return;
     }
 
-    emit logMessage(QString("Loaded recipe: %1")
-      .arg(QString::fromStdString(recipeManager.getRecipeName())));
+    if (!m_loopMode) {
+      emit logMessage(QString("Loaded recipe: %1")
+        .arg(QString::fromStdString(recipeManager.getRecipeName())));
+    }
 
     // ✅ Step 2: Load product positions if specified
     std::string productFile = recipeManager.getProductFile();
     if (!productFile.empty()) {
-      emit logMessage(QString("Loading product positions from: %1")
-        .arg(QString::fromStdString(productFile)));
+      if (!m_loopMode) {
+        emit logMessage(QString("Loading product positions from: %1")
+          .arg(QString::fromStdString(productFile)));
+      }
 
       if (!m_positionManager->LoadProduct(productFile)) {
         emit executionCompleted(false, "Failed to load product positions: " + QString::fromStdString(productFile));
@@ -132,18 +136,20 @@ void RecipeWorker::run()
       // ✅ Export positions to motion manager
       m_positionManager->ExportToMotionManager(*m_motionManager);
 
-      emit logMessage(QString("Loaded %1 positions for %2 devices")
-        .arg(m_positionManager->GetTotalPositionCount())
-        .arg(m_positionManager->GetAllDeviceNames().size()));
+      if (!m_loopMode) {
+        emit logMessage(QString("Loaded %1 positions for %2 devices")
+          .arg(m_positionManager->GetTotalPositionCount())
+          .arg(m_positionManager->GetAllDeviceNames().size()));
+      }
     }
     else {
-      emit logMessage("Warning: Recipe has no product_file specified");
+      if (!m_loopMode) emit logMessage("Warning: Recipe has no product_file specified");
     }
 
     // ✅ Step 3: Build device registry (registers all devices including TEC/laser)
-    emit logMessage("Building device registry...");
+    if (!m_loopMode) emit logMessage("Building device registry...");
     m_engine->BuildDeviceRegistry();
-    emit logMessage("Device registry built successfully");
+    if (!m_loopMode) emit logMessage("Device registry built successfully");
 
     // ✅ Step 3.5: Set up LogManager callback to forward command logs to execution log
     LogManager* logger = m_engine->GetLogger();
@@ -164,65 +170,71 @@ void RecipeWorker::run()
         QMetaObject::invokeMethod(this, "logMessage", Qt::QueuedConnection,
           Q_ARG(QString, logText));
       });
-      emit logMessage("Log forwarding enabled for execution log");
+      if (!m_loopMode) emit logMessage("Log forwarding enabled for execution log");
     }
 
     // ✅ Step 4: Set up UserPrompt callback
     if (m_userPromptCallback) {
       // User provided callback - use it
       m_engine->SetUserPromptCallback(m_userPromptCallback);
-      emit logMessage("UserPrompt callback configured");
+      if (!m_loopMode) emit logMessage("UserPrompt callback configured");
     }
     else {
       // No callback - auto-accept all prompts for automated execution
       m_engine->SetUserPromptCallback(
         [this](const std::string& title, const std::string& message) -> bool {
-        emit logMessage(QString("Auto-accepting prompt: %1 - %2")
-          .arg(QString::fromStdString(title))
-          .arg(QString::fromStdString(message)));
+        if (!m_loopMode) {
+          emit logMessage(QString("Auto-accepting prompt: %1 - %2")
+            .arg(QString::fromStdString(title))
+            .arg(QString::fromStdString(message)));
+        }
         return true;  // Auto-accept
       }
       );
-      emit logMessage("UserPrompt auto-accept mode enabled");
+      if (!m_loopMode) emit logMessage("UserPrompt auto-accept mode enabled");
     }
 
     // ✅ Step 4.5: Set up ManualAdjust callback
     if (m_manualAdjustCallback) {
       // User provided callback - use it
       m_engine->SetManualAdjustCallback(m_manualAdjustCallback);
-      emit logMessage("ManualAdjust callback configured");
+      if (!m_loopMode) emit logMessage("ManualAdjust callback configured");
     }
     else {
       // No callback - auto-accept all adjustments for automated execution
       m_engine->SetManualAdjustCallback(
         [this](const std::string& message, const std::string& deviceName,
                double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
-        emit logMessage(QString("Auto-accepting manual adjust: %1 (device: %2)")
-          .arg(QString::fromStdString(message))
-          .arg(QString::fromStdString(deviceName)));
+        if (!m_loopMode) {
+          emit logMessage(QString("Auto-accepting manual adjust: %1 (device: %2)")
+            .arg(QString::fromStdString(message))
+            .arg(QString::fromStdString(deviceName)));
+        }
         return true;  // Auto-accept
       }
       );
-      emit logMessage("ManualAdjust auto-accept mode enabled");
+      if (!m_loopMode) emit logMessage("ManualAdjust auto-accept mode enabled");
     }
 
     // ✅ Step 4.6: Set up UserInput callback
     if (m_userInputCallback) {
       // User provided callback - use it
       m_engine->SetUserInputCallback(m_userInputCallback);
-      emit logMessage("UserInput callback configured");
+      if (!m_loopMode) emit logMessage("UserInput callback configured");
     }
     else {
       // No callback - return empty string (fail the input)
       m_engine->SetUserInputCallback(
         [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
-        emit logMessage(QString("Auto-failing user input (no callback): %1 - %2")
-          .arg(QString::fromStdString(title))
-          .arg(QString::fromStdString(prompt)));
+        if (!m_loopMode) {
+          emit logMessage(QString("Auto-failing user input (no callback): %1 - %2")
+            .arg(QString::fromStdString(title))
+            .arg(QString::fromStdString(prompt)));
+        }
         return std::make_pair(false, "");  // Auto-fail
       }
       );
-      emit logMessage("UserInput auto-fail mode enabled (no callback configured)");
+      if (!m_loopMode) emit logMessage("UserInput auto-fail mode enabled (no callback configured)");
     }
 
     // Count enabled steps
@@ -234,14 +246,14 @@ void RecipeWorker::run()
     }
 
     emit executionStarted(totalEnabledSteps);
-    emit logMessage(QString("Recipe has %1 enabled step(s)").arg(totalEnabledSteps));
+    if (!m_loopMode) emit logMessage(QString("Recipe has %1 enabled step(s)").arg(totalEnabledSteps));
 
     // ✅ Step 5: Build sequence
     std::string recipeName = recipeManager.getRecipeName();
     SequenceBuilder* sequence = m_engine->CreateSequence(recipeName);
 
     try {
-      emit logMessage("Building sequence...");
+      if (!m_loopMode) emit logMessage("Building sequence...");
       buildSequenceFromRecipe(sequence, &recipeManager);
 
       // Check if stopped during build
@@ -254,7 +266,7 @@ void RecipeWorker::run()
 
       // ✅ Step 6: Execute sequence (SequenceEngine will check stop flag internally)
       emit sequenceExecutionStarted();
-      emit logMessage("Executing sequence...");
+      if (!m_loopMode) emit logMessage("Executing sequence...");
 
       // Set up step execution callbacks (pub-sub) to forward events to signals
       m_engine->SetStepStartedCallback([this](int stepIndex, const std::string& stepName, const std::string& stepType) {
@@ -286,7 +298,7 @@ void RecipeWorker::run()
       // Set up breakpoints if provided
       if (!m_breakpoints.empty()) {
         m_engine->SetBreakpoints(m_breakpoints);
-        emit logMessage(QString("Breakpoints set for %1 steps").arg(m_breakpoints.size()));
+        if (!m_loopMode) emit logMessage(QString("Breakpoints set for %1 steps").arg(m_breakpoints.size()));
       }
 
       // Set up breakpoint callback to notify UI when paused
@@ -319,8 +331,8 @@ void RecipeWorker::run()
       delete sequence;
       sequence = nullptr;
 
-      // ✅ Log execution context summary
-      if (context) {
+      // ✅ Log execution context summary (skip verbose logging in loop mode)
+      if (context && !m_loopMode) {
         auto summary = context->GetSummary();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
           summary.endTime - summary.startTime).count();

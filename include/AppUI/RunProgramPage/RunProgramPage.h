@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QTextEdit>
+#include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QTimer>  // ✅ ADDED for periodic channel refresh
 #include <QTabWidget>  // ✅ ADDED for tab layout
@@ -200,7 +201,7 @@ private:
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
   QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
-  QTextEdit* m_logTextEdit;
+  QPlainTextEdit* m_logTextEdit;  // Using QPlainTextEdit for better performance with large logs
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
   CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
 
@@ -244,6 +245,7 @@ private:
 
   // ✅ Loop execution tracking
   int m_currentLoopIteration;       // Current loop iteration (0 = not looping)
+  bool m_isLoopExecution;           // True when running in loop mode (skip heavy UI updates)
 
   void createEditWidget();
   void createExecutionWidget();

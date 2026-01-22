@@ -555,6 +555,11 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     recipeWorker->setExternalContext(m_ownedContext.get());
   }
 
+  // ✅ Set loop mode to reduce verbose logging during rapid iterations
+  if (m_loopEnabled) {
+    recipeWorker->setLoopMode(true);
+  }
+
   // ✅ Connect RecipeWorker signals to ProgramWorker signals
   // Forward step-level signals with recipeIndex prefix
   connect(recipeWorker, &RecipeWorker::stepBuildStarted,
@@ -814,7 +819,13 @@ void ProgramWorker::runWithLoop()
   while (!m_stopRequested.load()) {
     m_loopIteration++;
     emit loopIterationStarted(m_loopIteration);
-    emit logMessage(QString("\n========== LOOP ITERATION %1 ==========").arg(m_loopIteration));
+
+    // ✅ PERFORMANCE: Reduce log verbosity during rapid loop execution
+    // Only emit detailed iteration headers every 10 iterations to reduce signal flood
+    bool verboseLogging = (m_loopIteration <= 5) || (m_loopIteration % 10 == 0);
+    if (verboseLogging) {
+      emit logMessage(QString("\n========== LOOP ITERATION %1 ==========").arg(m_loopIteration));
+    }
 
     // Reset only loop recipes in the state machine for this iteration
     for (int idx : m_loopRecipeIndices) {
@@ -838,9 +849,12 @@ void ProgramWorker::runWithLoop()
         if (!recipeRef->enabled) continue;
 
         emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
-        emit logMessage(QString("[Iter %1] Starting: %2")
-          .arg(m_loopIteration)
-          .arg(QString::fromStdString(recipeRef->displayName)));
+        // Reduce log verbosity during rapid iterations
+        if (verboseLogging) {
+          emit logMessage(QString("[Iter %1] Starting: %2")
+            .arg(m_loopIteration)
+            .arg(QString::fromStdString(recipeRef->displayName)));
+        }
 
         bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
 
@@ -849,6 +863,7 @@ void ProgramWorker::runWithLoop()
           emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
         } else {
           emit recipeCompleted(recipeIndex, false, "Recipe failed");
+          // Always log failures
           emit logMessage(QString("[Iter %1] Recipe '%2' failed")
             .arg(m_loopIteration)
             .arg(QString::fromStdString(recipeRef->displayName)));
@@ -897,9 +912,12 @@ void ProgramWorker::runWithLoop()
           stateMachine.markRunning(recipeIndex);
 
           emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
-          emit logMessage(QString("[Iter %1] Starting: %2")
-            .arg(m_loopIteration)
-            .arg(QString::fromStdString(recipeRef->displayName)));
+          // Reduce log verbosity during rapid iterations
+          if (verboseLogging) {
+            emit logMessage(QString("[Iter %1] Starting: %2")
+              .arg(m_loopIteration)
+              .arg(QString::fromStdString(recipeRef->displayName)));
+          }
 
           bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
 
@@ -910,6 +928,7 @@ void ProgramWorker::runWithLoop()
           } else {
             stateMachine.markFailed(recipeIndex);
             emit recipeCompleted(recipeIndex, false, "Recipe failed");
+            // Always log failures
             emit logMessage(QString("[Iter %1] Recipe '%2' failed")
               .arg(m_loopIteration)
               .arg(QString::fromStdString(recipeRef->displayName)));
@@ -933,7 +952,10 @@ void ProgramWorker::runWithLoop()
       break;
     }
 
-    emit logMessage(QString("Iteration %1 complete").arg(m_loopIteration));
+    // Reduce log verbosity during rapid iterations
+    if (verboseLogging) {
+      emit logMessage(QString("Iteration %1 complete").arg(m_loopIteration));
+    }
   }
 
   // Loop was stopped by user

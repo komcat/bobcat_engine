@@ -9,7 +9,7 @@ LogManager::LogManager()
   : m_consoleEnabled(true)
   , m_fileEnabled(false)
   , m_minimumLevel(Level::DEBUG)
-  , m_maxHistorySize(10000)
+  , m_maxHistorySize(5000)  // Reduced from 10000 to prevent memory issues
   , m_errorCount(0)
   , m_warningCount(0)
 {

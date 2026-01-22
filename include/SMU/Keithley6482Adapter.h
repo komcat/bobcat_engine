@@ -99,6 +99,34 @@ public:
   bool PerformZeroCorrection() override;
 
   /**
+   * @brief Set measurement range for a specific channel
+   * @param channel Channel number (1 or 2)
+   * @param range Range value in amperes (e.g., 2e-6 for 2µA, 2e-3 for 2mA)
+   * @param autoRange If true, enable auto-ranging for this channel
+   * @return true if successful
+   *
+   * Available ranges for Keithley 6482:
+   *   2e-9  (2nA), 20e-9 (20nA), 200e-9 (200nA),
+   *   2e-6  (2µA), 20e-6 (20µA), 200e-6 (200µA),
+   *   2e-3  (2mA), 20e-3 (20mA)
+   *
+   * Example for active alignment with PI FLM:
+   *   // Phase 1: Coarse alignment (low signal)
+   *   SetChannelMeasurementRange(1, 200e-6, false);  // 200µA range
+   *   // Phase 2: Fine alignment (high signal)
+   *   SetChannelMeasurementRange(1, 20e-3, false);   // 20mA range
+   */
+  bool SetChannelMeasurementRange(int channel, double range, bool autoRange = false);
+
+  /**
+   * @brief Get current measurement range for a specific channel
+   * @param channel Channel number (1 or 2)
+   * @param range Output: current range value in amperes
+   * @return true if successful
+   */
+  bool GetChannelMeasurementRange(int channel, double& range);
+
+  /**
    * @brief Speed/accuracy mode for measurements
    */
   enum class MeasurementMode {

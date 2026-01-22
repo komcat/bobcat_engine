@@ -5,6 +5,8 @@
 #include <iostream>
 #include <algorithm>
 #include <limits>
+#include <thread>
+#include <chrono>
 
 std::string UnifiedMotionManager::GetWaypointStateString(const std::string& deviceName) const {
   auto it = m_waypointStates.find(deviceName);
@@ -664,6 +666,199 @@ bool UnifiedMotionManager::GetSystemVelocity(const std::string& deviceName, doub
   }
 
   return false;
+}
+
+// ============================================================================
+// PI Fast Scan / Active Alignment
+// ============================================================================
+
+bool UnifiedMotionManager::FLM(const std::string& deviceName, const std::string& axis,
+  double length, double threshold, int analogInput, int direction) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::FLM: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::FLM: Only supported for PI controllers (device: "
+      << deviceName << " is type: " << type << ")" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::FLM: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->FLM(axis, length, threshold, analogInput, direction);
+}
+
+bool UnifiedMotionManager::FLS(const std::string& deviceName, const std::string& axis,
+  double length, double threshold, int analogInput, int direction) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::FLS: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::FLS: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::FLS: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->FLS(axis, length, threshold, analogInput, direction);
+}
+
+bool UnifiedMotionManager::FSA(const std::string& deviceName,
+  const std::string& axis1, double length1,
+  const std::string& axis2, double length2,
+  double threshold, double distance, double alignStep, int analogInput) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSA: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::FSA: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSA: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->FSA(axis1, length1, axis2, length2, threshold, distance, alignStep, analogInput);
+}
+
+bool UnifiedMotionManager::FSC(const std::string& deviceName,
+  const std::string& axis1, double length1,
+  const std::string& axis2, double length2,
+  double threshold, double distance, int analogInput) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSC: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::FSC: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSC: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->FSC(axis1, length1, axis2, length2, threshold, distance, analogInput);
+}
+
+bool UnifiedMotionManager::FSM(const std::string& deviceName,
+  const std::string& axis1, double length1,
+  const std::string& axis2, double length2,
+  double threshold, double distance, int analogInput) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSM: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::FSM: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::FSM: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->FSM(axis1, length1, axis2, length2, threshold, distance, analogInput);
+}
+
+bool UnifiedMotionManager::GetFastScanStatus(const std::string& deviceName, int& status) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->GetFastScanStatus(status);
+}
+
+bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName, double timeoutSeconds) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Device not found: " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "PI") {
+    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Only supported for PI controllers" << std::endl;
+    return false;
+  }
+
+  PIController* controller = GetPIController(deviceName);
+  if (!controller) {
+    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: PI controller not found for " << deviceName << std::endl;
+    return false;
+  }
+
+  auto startTime = std::chrono::steady_clock::now();
+  int status = 1;
+
+  while (true) {
+    if (!controller->GetFastScanStatus(status)) {
+      std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Failed to query scan status" << std::endl;
+      return false;
+    }
+
+    // status: 0=idle (complete), >0=running, <0=error
+    if (status == 0) {
+      std::cout << "[INFO] UnifiedMotionManager::WaitForFastScanComplete: Scan completed successfully" << std::endl;
+      return true;
+    }
+
+    if (status < 0) {
+      std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Scan failed with error: " << status << std::endl;
+      return false;
+    }
+
+    // Check timeout
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::steady_clock::now() - startTime).count();
+    if (elapsed > timeoutSeconds) {
+      std::cout << "[WARNING] UnifiedMotionManager::WaitForFastScanComplete: Timeout after "
+        << timeoutSeconds << " seconds" << std::endl;
+      return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
 }
 
 bool UnifiedMotionManager::EnableServo(const std::string& deviceName,

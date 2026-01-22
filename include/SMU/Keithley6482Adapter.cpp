@@ -492,6 +492,72 @@ bool Keithley6482Adapter::SetMeasurementRange(double range, bool autoRange)
   return SetMeasurementRangeInternal(range, autoRange);
 }
 
+bool Keithley6482Adapter::SetChannelMeasurementRange(int channel, double range, bool autoRange)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  if (channel < 1 || channel > 2) {
+    SetLastError("Invalid channel number (must be 1 or 2)");
+    return false;
+  }
+
+  std::ostringstream cmd;
+  if (autoRange) {
+    cmd << ":SENS" << channel << ":CURR:RANG:AUTO ON";
+    std::cout << "[Keithley6482] Setting channel " << channel << " to auto-range" << std::endl;
+  }
+  else {
+    cmd << ":SENS" << channel << ":CURR:RANG " << std::scientific << range;
+    std::cout << "[Keithley6482] Setting channel " << channel << " range to " << range << " A" << std::endl;
+  }
+
+  if (!WriteCommandInternal(cmd.str())) {
+    SetLastError("Failed to set measurement range for channel " + std::to_string(channel));
+    return false;
+  }
+
+  std::cout << "[Keithley6482] Channel " << channel << " range set successfully" << std::endl;
+  return true;
+}
+
+bool Keithley6482Adapter::GetChannelMeasurementRange(int channel, double& range)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  if (!m_connected) {
+    SetLastError("Device not connected");
+    return false;
+  }
+
+  if (channel < 1 || channel > 2) {
+    SetLastError("Invalid channel number (must be 1 or 2)");
+    return false;
+  }
+
+  std::ostringstream cmd;
+  cmd << ":SENS" << channel << ":CURR:RANG?";
+
+  std::string response;
+  if (!QueryCommandInternal(cmd.str(), response)) {
+    SetLastError("Failed to query measurement range for channel " + std::to_string(channel));
+    return false;
+  }
+
+  try {
+    range = std::stod(response);
+    return true;
+  }
+  catch (const std::exception& e) {
+    SetLastError("Failed to parse range response: " + std::string(e.what()));
+    return false;
+  }
+}
+
 bool Keithley6482Adapter::SetIntegrationTime(double nplc)
 {
   std::lock_guard<std::mutex> lock(m_mutex);

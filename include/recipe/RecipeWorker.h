@@ -79,6 +79,9 @@ public:
   // If set, this context will be used instead of creating a local one
   void setExternalContext(SequenceContext* context);
 
+  // ✅ NEW: Set loop mode (reduces verbose logging during rapid iterations)
+  void setLoopMode(bool enabled) { m_loopMode = enabled; }
+
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
@@ -120,4 +123,5 @@ private:
   UserInputCallback m_userInputCallback;
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
   std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
+  bool m_loopMode = false;                       // ✅ NEW: Loop mode (reduces logging)
 };
