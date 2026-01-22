@@ -696,6 +696,80 @@ bool UnifiedMotionManager::IsServoEnabled(const std::string& deviceName,
 }
 
 // ============================================================================
+// ACS Buffer Program Control
+// ============================================================================
+
+bool UnifiedMotionManager::RunBuffer(const std::string& deviceName, int bufferNumber,
+  const std::string& labelName) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cerr << "[UnifiedMotionManager] RunBuffer: Unknown device " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "ACS") {
+    std::cerr << "[UnifiedMotionManager] RunBuffer: Device " << deviceName
+              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    return false;
+  }
+
+  ACSController* controller = GetACSController(deviceName);
+  if (!controller) {
+    std::cerr << "[UnifiedMotionManager] RunBuffer: Could not get ACS controller for "
+              << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->RunBuffer(bufferNumber, labelName);
+}
+
+bool UnifiedMotionManager::StopBuffer(const std::string& deviceName, int bufferNumber) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cerr << "[UnifiedMotionManager] StopBuffer: Unknown device " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "ACS") {
+    std::cerr << "[UnifiedMotionManager] StopBuffer: Device " << deviceName
+              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    return false;
+  }
+
+  ACSController* controller = GetACSController(deviceName);
+  if (!controller) {
+    std::cerr << "[UnifiedMotionManager] StopBuffer: Could not get ACS controller for "
+              << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->StopBuffer(bufferNumber);
+}
+
+bool UnifiedMotionManager::StopAllBuffers(const std::string& deviceName) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Unknown device " << deviceName << std::endl;
+    return false;
+  }
+
+  if (NormalizeType(type) != "ACS") {
+    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Device " << deviceName
+              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    return false;
+  }
+
+  ACSController* controller = GetACSController(deviceName);
+  if (!controller) {
+    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Could not get ACS controller for "
+              << deviceName << std::endl;
+    return false;
+  }
+
+  return controller->StopAllBuffers();
+}
+
+// ============================================================================
 // Device Queries
 // ============================================================================
 
