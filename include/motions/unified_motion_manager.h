@@ -146,6 +146,10 @@ public:
 	bool IsServoEnabled(const std::string& deviceName,
 		const std::string& axis);
 
+	// Error information (for debugging)
+	int GetLastErrorCode(const std::string& deviceName);
+	std::string GetLastErrorMessage(const std::string& deviceName);
+
 	// ============================================================================
 	// NAMED POSITION MANAGEMENT
 	// ============================================================================

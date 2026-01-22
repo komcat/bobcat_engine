@@ -395,6 +395,9 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   const std::string& axis,
   double distance,
   bool blocking) {
+  std::cout << "[DEBUG] UnifiedMotionManager::MoveRelative START - device=" << deviceName
+    << " axis=" << axis << " distance=" << distance << " blocking=" << blocking << std::endl;
+
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
     std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
@@ -403,19 +406,32 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   }
 
   std::cout << "[INFO] UnifiedMotionManager: MoveRelative on " << deviceName
-    << " axis " << axis << " by " << distance << std::endl;
+    << " axis " << axis << " by " << distance << " (type=" << type << ")" << std::endl;
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
-    if (!controller) return false;
-    return controller->MoveRelative(axis, distance, blocking);
+    if (!controller) {
+      std::cout << "[ERROR] UnifiedMotionManager: GetACSController returned null for " << deviceName << std::endl;
+      return false;
+    }
+    std::cout << "[DEBUG] UnifiedMotionManager: Calling ACSController::MoveRelative" << std::endl;
+    bool result = controller->MoveRelative(axis, distance, blocking);
+    std::cout << "[DEBUG] UnifiedMotionManager: ACSController::MoveRelative returned " << result << std::endl;
+    return result;
   }
   else if (NormalizeType(type) == "PI") {
     PIController* controller = GetPIController(deviceName);
-    if (!controller) return false;
-    return controller->MoveRelative(axis, distance, blocking);
+    if (!controller) {
+      std::cout << "[ERROR] UnifiedMotionManager: GetPIController returned null for " << deviceName << std::endl;
+      return false;
+    }
+    std::cout << "[DEBUG] UnifiedMotionManager: Calling PIController::MoveRelative" << std::endl;
+    bool result = controller->MoveRelative(axis, distance, blocking);
+    std::cout << "[DEBUG] UnifiedMotionManager: PIController::MoveRelative returned " << result << std::endl;
+    return result;
   }
 
+  std::cout << "[ERROR] UnifiedMotionManager: Unknown device type " << type << std::endl;
   return false;
 }
 
@@ -693,6 +709,32 @@ bool UnifiedMotionManager::IsServoEnabled(const std::string& deviceName,
   }
 
   return false;
+}
+
+int UnifiedMotionManager::GetLastErrorCode(const std::string& deviceName) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) return -999;
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) return -998;
+    return controller->GetLastErrorCode();
+  }
+
+  return 0;
+}
+
+std::string UnifiedMotionManager::GetLastErrorMessage(const std::string& deviceName) {
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) return "Device not found: " + deviceName;
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) return "Controller not found for: " + deviceName;
+    return controller->GetLastErrorMessage();
+  }
+
+  return "";
 }
 
 // ============================================================================

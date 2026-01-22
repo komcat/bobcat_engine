@@ -79,6 +79,10 @@ public:
   // Expose available axes
   const std::vector<std::string>& GetAvailableAxes() const { return m_availableAxes; }
 
+  // Error tracking for debugging
+  int GetLastErrorCode() const { return m_lastErrorCode; }
+  std::string GetLastErrorMessage() const { return m_lastErrorMessage; }
+
   // Communication thread control
   void StartCommunicationThread();
   void StopCommunicationThread();
@@ -136,4 +140,8 @@ private:
 
   // Debug flag
   bool m_enableDebug = false;
+
+  // Error tracking
+  mutable int m_lastErrorCode = 0;
+  mutable std::string m_lastErrorMessage;
 };

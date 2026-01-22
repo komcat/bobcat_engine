@@ -285,10 +285,35 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
+    // DEBUG: Check if axis is currently moving before starting new move
+    if (m_logger) {
+      bool isMoving = motionManager->IsMoving(deviceName, axis);
+      bool isEnabled = motionManager->IsServoEnabled(deviceName, axis);
+      m_logger->Info(
+        "[DEBUG] Pre-move state for " + deviceName + " axis " + axis +
+        ": isMoving=" + std::to_string(isMoving) +
+        ", servoEnabled=" + std::to_string(isEnabled),
+        "MotionHandler"
+      );
+    }
+
     // ✅ SAFETY: Always use non-blocking mode + stop checking
+    if (m_logger) {
+      m_logger->Info("[DEBUG] Calling MoveRelative on " + deviceName + " axis " + axis, "MotionHandler");
+    }
     if (!motionManager->MoveRelative(deviceName, axis, distance, false)) {
-      errorMessage = "MoveRelative failed to start";
+      // Get detailed error info from the controller
+      int errorCode = motionManager->GetLastErrorCode(deviceName);
+      std::string errorDetail = motionManager->GetLastErrorMessage(deviceName);
+      if (m_logger) {
+        m_logger->Error("[DEBUG] MoveRelative FAILED for " + deviceName + " axis " + axis +
+          " - errorCode=" + std::to_string(errorCode) + " detail=" + errorDetail, "MotionHandler");
+      }
+      errorMessage = "MoveRelative failed to start (code=" + std::to_string(errorCode) + "): " + errorDetail;
       return false;
+    }
+    if (m_logger) {
+      m_logger->Info("[DEBUG] MoveRelative returned true for " + deviceName + " axis " + axis, "MotionHandler");
     }
 
     // If explicit non-blocking requested, return immediately
