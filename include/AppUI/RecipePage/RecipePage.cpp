@@ -696,22 +696,78 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   title->setStyleSheet(RecipeStyles::sectionLabel());
   layout->addWidget(title);
 
-  // Context variable preview widget (shows variables available in recipe)
+  // ========================================
+  // Horizontal splitter: Parameters (full height) | Context Variables + Vision Result
+  // ========================================
+  QSplitter* mainSplitter = new QSplitter(Qt::Horizontal);
+  mainSplitter->setHandleWidth(3);
+  mainSplitter->setStyleSheet(
+    "QSplitter::handle { background-color: #3f3f46; }"
+    "QSplitter::handle:hover { background-color: #007acc; }"
+  );
+
+  // LEFT side (Right.1): Process parameters - FULL HEIGHT
+  m_configScrollArea = new QScrollArea();
+  m_configScrollArea->setWidgetResizable(true);
+  m_configScrollArea->setStyleSheet(RecipeStyles::configScrollArea());
+  mainSplitter->addWidget(m_configScrollArea);
+
+  // RIGHT side (Right.2): Container for Context Variables + Vision Result
+  QWidget* rightContainer = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightContainer);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
+  rightLayout->setSpacing(5);
+
+  // Context variable preview widget (top of right side)
   m_contextVariablePreview = new ContextVariablePreviewWidget();
-  m_contextVariablePreview->setMaximumHeight(200);
   connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
     [](const QString& varName) {
       // Copy variable name to clipboard when clicked
       QApplication::clipboard()->setText(varName);
       std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
     });
-  layout->addWidget(m_contextVariablePreview);
+  rightLayout->addWidget(m_contextVariablePreview, 1);  // Stretch factor 1
 
-  m_configScrollArea = new QScrollArea();
-  m_configScrollArea->setWidgetResizable(true);
-  m_configScrollArea->setStyleSheet(RecipeStyles::configScrollArea());
+  // Vision result image display (bottom of right side)
+  m_visionResultGroup = new QGroupBox("Vision Result");
+  m_visionResultGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-weight: bold; "
+    "  color: #FFA500; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 5px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}"
+  );
+  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+  visionLayout->setContentsMargins(5, 15, 5, 5);
 
-  layout->addWidget(m_configScrollArea);
+  m_visionResultImageLabel = new QLabel("No vision result");
+  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+  m_visionResultImageLabel->setMinimumHeight(150);
+  m_visionResultImageLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 1px solid #3f3f46; "
+    "  color: #808080; "
+    "  font-style: italic; "
+    "}"
+  );
+  visionLayout->addWidget(m_visionResultImageLabel);
+  rightLayout->addWidget(m_visionResultGroup, 1);  // Stretch factor 1
+
+  mainSplitter->addWidget(rightContainer);
+
+  // Set initial sizes (60% parameters, 40% context+vision)
+  mainSplitter->setSizes({600, 400});
+
+  layout->addWidget(mainSplitter, 1);  // Stretch factor 1 to fill available space
 
   // Create manual adjust widget (will be shown when needed)
   m_manualAdjustWidget = new ManualAdjustWidget(
@@ -744,41 +800,6 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RecipePage::onUserInputResponse);
-
-  // ✅ Vision result image display
-  m_visionResultGroup = new QGroupBox("Vision Result");
-  m_visionResultGroup->setStyleSheet(
-    "QGroupBox { "
-    "  font-weight: bold; "
-    "  color: #FFA500; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}"
-  );
-  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
-  visionLayout->setContentsMargins(5, 15, 5, 5);
-
-  m_visionResultImageLabel = new QLabel("No vision result");
-  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
-  m_visionResultImageLabel->setMinimumHeight(200);
-  m_visionResultImageLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #0f0f0f; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #808080; "
-    "  font-style: italic; "
-    "}"
-  );
-  visionLayout->addWidget(m_visionResultImageLabel);
-
-  layout->addWidget(m_visionResultGroup);
 
   clearConfigurationForm();
 }

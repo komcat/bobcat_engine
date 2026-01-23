@@ -91,7 +91,7 @@ void ContextVariablePreviewWidget::setupUI()
 
   // Variable list
   m_variableList = new QListWidget();
-  m_variableList->setMaximumHeight(150);
+  // No max height - let parent splitter control sizing
   m_variableList->setStyleSheet(
     "QListWidget { "
     "  background-color: #1e1e1e; "

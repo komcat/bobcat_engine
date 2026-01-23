@@ -58,6 +58,7 @@ PylonCamera::PylonCamera()
 	, m_threadRunning(false)
 	, m_newFrameReady(false)
 	, m_pDeviceRemovalHandler(nullptr)
+	, m_handlerRegistered(false)  // Track handler registration state
 	, m_deviceRemovalCallback(nullptr)
 	, m_newFrameCallback(nullptr)
 	, m_targetFPS(30)
@@ -97,15 +98,23 @@ PylonCamera::~PylonCamera() {
 		}
 
 		// ✅ CRITICAL FIX: DEREGISTER handler BEFORE closing camera (must be done while camera is open)
-		if (m_pDeviceRemovalHandler) {
+		if (m_pDeviceRemovalHandler && m_handlerRegistered) {
 			std::cout << "Deregistering event handler..." << std::endl;
 			try {
-				// Try to deregister even if camera state is uncertain
-				m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
-				std::cout << "Event handler deregistered successfully" << std::endl;
+				// Only deregister if camera is open and handler is registered
+				if (m_camera.IsOpen()) {
+					m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
+					m_handlerRegistered = false;
+					std::cout << "Event handler deregistered successfully" << std::endl;
+				}
+				else {
+					std::cout << "Camera not open, skipping deregistration (handler may already be detached)" << std::endl;
+					m_handlerRegistered = false;  // Mark as unregistered anyway
+				}
 			}
 			catch (const Pylon::GenericException& e) {
 				std::cerr << "Warning: Failed to deregister handler: " << e.GetDescription() << std::endl;
+				m_handlerRegistered = false;  // Mark as unregistered to prevent issues
 			}
 		}
 
@@ -203,8 +212,11 @@ bool PylonCamera::Connect()
 		m_lastDeviceSerialNumber = m_camera.GetDeviceInfo().GetSerialNumber();
 		m_lastDeviceClass = m_camera.GetDeviceInfo().GetDeviceClass();
 
-		// Register the device removal handler with the camera
-		m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+		// Register the device removal handler with the camera (only if not already registered)
+		if (!m_handlerRegistered) {
+			m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+			m_handlerRegistered = true;
+		}
 
 		// Open the camera
 		m_camera.Open();
@@ -307,8 +319,11 @@ bool PylonCamera::ConnectToSerial(const std::string& serialNumber)
 		m_lastDeviceSerialNumber = m_camera.GetDeviceInfo().GetSerialNumber();
 		m_lastDeviceClass = m_camera.GetDeviceInfo().GetDeviceClass();
 
-		// Register the device removal handler with the camera
-		m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+		// Register the device removal handler with the camera (only if not already registered)
+		if (!m_handlerRegistered) {
+			m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+			m_handlerRegistered = true;
+		}
 
 		// Open the camera
 		m_camera.Open();
@@ -360,6 +375,19 @@ void PylonCamera::Disconnect()
 
 		// Now acquire lock for camera close operation
 		std::lock_guard<std::mutex> lock(m_cameraMutex);
+
+		// ✅ CRITICAL: Deregister event handler BEFORE closing camera
+		if (m_pDeviceRemovalHandler && m_handlerRegistered && m_camera.IsOpen())
+		{
+			try {
+				m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
+				m_handlerRegistered = false;
+				std::cout << "Event handler deregistered during disconnect" << std::endl;
+			}
+			catch (const Pylon::GenericException& e) {
+				std::cerr << "Warning: Failed to deregister handler during disconnect: " << e.GetDescription() << std::endl;
+			}
+		}
 
 		// Close camera
 		if (m_camera.IsOpen())
@@ -559,6 +587,19 @@ bool PylonCamera::DisconnectWithResult()
 
 		// Now acquire lock for camera close operation
 		std::lock_guard<std::mutex> lock(m_cameraMutex);
+
+		// ✅ CRITICAL: Deregister event handler BEFORE closing camera
+		if (m_pDeviceRemovalHandler && m_handlerRegistered && m_camera.IsOpen())
+		{
+			try {
+				m_camera.DeregisterConfiguration(m_pDeviceRemovalHandler);
+				m_handlerRegistered = false;
+				std::cout << "Event handler deregistered during disconnect" << std::endl;
+			}
+			catch (const Pylon::GenericException& e) {
+				std::cerr << "Warning: Failed to deregister handler during disconnect: " << e.GetDescription() << std::endl;
+			}
+		}
 
 		// Close camera
 		if (m_camera.IsOpen())
@@ -1489,8 +1530,11 @@ bool PylonCamera::ConnectToIP(const std::string& ipAddress) {
 		m_lastIPAddress = ipAddress;  // Store IP for reconnection
 		m_lastDeviceIndex = -1;       // Clear device index
 
-		// Register the device removal handler
-		m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+		// Register the device removal handler (only if not already registered)
+		if (!m_handlerRegistered) {
+			m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+			m_handlerRegistered = true;
+		}
 
 		// Open the camera
 		m_camera.Open();
@@ -1555,8 +1599,11 @@ bool PylonCamera::ConnectToIndex(int deviceIndex) {
 		m_lastDeviceIndex = deviceIndex;  // Store index for reconnection
 		m_lastIPAddress = "";             // Clear IP address
 
-		// Register the device removal handler
-		m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+		// Register the device removal handler (only if not already registered)
+		if (!m_handlerRegistered) {
+			m_camera.RegisterConfiguration(m_pDeviceRemovalHandler, Pylon::RegistrationMode_Append, Pylon::Cleanup_None);
+			m_handlerRegistered = true;
+		}
 
 		// Open the camera
 		m_camera.Open();

@@ -216,6 +216,7 @@ private:
 
   // Device removal handler
   PylonDeviceRemovalHandler* m_pDeviceRemovalHandler;
+  bool m_handlerRegistered;  // Track if handler is currently registered with camera
 
   // Callbacks
   DeviceRemovalCallback m_deviceRemovalCallback;
