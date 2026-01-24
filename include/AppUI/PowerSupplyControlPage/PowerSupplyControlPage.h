@@ -15,6 +15,7 @@
 
 struct ApplicationContext;
 class PowerSupplyManager;
+class PSUParameterWorker;
 
 /**
  * @brief Per-channel control widgets
@@ -56,7 +57,7 @@ class PowerSupplyControlPage : public QWidget
 
 public:
   explicit PowerSupplyControlPage(ApplicationContext* context, QWidget* parent = nullptr);
-  ~PowerSupplyControlPage() = default;
+  ~PowerSupplyControlPage();
 
 protected:
   void showEvent(QShowEvent* event) override;
@@ -79,6 +80,17 @@ private slots:
   // Measurement update
   void onRefreshClicked();
   void updateMeasurements();
+
+  // Worker signal handlers
+  void onWorkerVoltageApplied(int channel, double voltage);
+  void onWorkerCurrentApplied(int channel, double current);
+  void onWorkerOVPApplied(int channel, double ovp);
+  void onWorkerOCPApplied(int channel, double ocp);
+  void onWorkerOutputChanged(int channel, bool on);
+  void onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn);
+  void onWorkerError(int channel, QString operation, QString error);
+  void onWorkerDeviceConnected(QString deviceName);
+  void onWorkerDeviceDisconnected(QString deviceName);
 
 private:
   void setupUI();
@@ -125,4 +137,8 @@ private:
   // Current device
   QString m_currentDevice;
   int m_currentChannelCount = 1;
+
+  // Background worker for non-blocking operations
+  PSUParameterWorker* m_parameterWorker = nullptr;
+  bool m_useParameterWorker = true;
 };

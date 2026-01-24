@@ -2,6 +2,7 @@
 #include "PowerSupplyControlPage.h"
 #include "ApplicationContext.h"
 #include "PowerSupplyManager.h"
+#include "PSUParameterWorker.h"
 #include "IPowerSupply.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -19,9 +20,51 @@ PowerSupplyControlPage::PowerSupplyControlPage(ApplicationContext* context, QWid
   , m_refreshTimer(new QTimer(this))
 {
   setupUI();
+
+  // Create parameter worker for non-blocking operations BEFORE loadDevices
+  // so that onDeviceSelected can set the device on the worker
+  if (m_psuManager && m_useParameterWorker) {
+    m_parameterWorker = new PSUParameterWorker(m_psuManager, nullptr);
+
+    // Connect worker signals to UI handlers (using Qt::QueuedConnection for thread safety)
+    connect(m_parameterWorker, &PSUParameterWorker::voltageApplied,
+      this, &PowerSupplyControlPage::onWorkerVoltageApplied, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::currentApplied,
+      this, &PowerSupplyControlPage::onWorkerCurrentApplied, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::ovpApplied,
+      this, &PowerSupplyControlPage::onWorkerOVPApplied, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::ocpApplied,
+      this, &PowerSupplyControlPage::onWorkerOCPApplied, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::outputStateChanged,
+      this, &PowerSupplyControlPage::onWorkerOutputChanged, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::measurementsUpdated,
+      this, &PowerSupplyControlPage::onWorkerMeasurementsUpdated, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::commandError,
+      this, &PowerSupplyControlPage::onWorkerError, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::deviceConnected,
+      this, &PowerSupplyControlPage::onWorkerDeviceConnected, Qt::QueuedConnection);
+    connect(m_parameterWorker, &PSUParameterWorker::deviceDisconnected,
+      this, &PowerSupplyControlPage::onWorkerDeviceDisconnected, Qt::QueuedConnection);
+
+    m_parameterWorker->start();
+    std::cout << "[PowerSupplyControlPage] Parameter worker started" << std::endl;
+  }
+
+  // Load devices after worker is ready
   loadDevices();
 
+  // Connect refresh timer - now used only when worker is disabled
   connect(m_refreshTimer, &QTimer::timeout, this, &PowerSupplyControlPage::updateMeasurements);
+}
+
+PowerSupplyControlPage::~PowerSupplyControlPage()
+{
+  if (m_parameterWorker) {
+    m_parameterWorker->stop();
+    delete m_parameterWorker;
+    m_parameterWorker = nullptr;
+    std::cout << "[PowerSupplyControlPage] Parameter worker stopped and deleted" << std::endl;
+  }
 }
 
 QString PowerSupplyControlPage::createStyleSheet()
@@ -525,6 +568,12 @@ void PowerSupplyControlPage::onDeviceSelected(int row)
     rebuildMeasurementPanel();
   }
 
+  // Update worker with new device
+  if (m_parameterWorker) {
+    m_parameterWorker->setCurrentDevice(m_currentDevice.toStdString());
+    m_parameterWorker->setChannelCount(m_currentChannelCount);
+  }
+
   updateConnectionStatus();
 }
 
@@ -545,7 +594,12 @@ void PowerSupplyControlPage::onConnectClicked()
     showSuccess("Connected to " + m_currentDevice);
     updateConnectionStatus();
     updateDeviceList();
-    m_refreshTimer->start(2000);
+
+    // Only start the old refresh timer if NOT using the worker
+    // Worker has its own measurement polling
+    if (!m_parameterWorker || !m_useParameterWorker) {
+      m_refreshTimer->start(2000);
+    }
   }
   else {
     showError("Connection failed: " + QString::fromStdString(psu->getLastError()));
@@ -572,6 +626,13 @@ void PowerSupplyControlPage::onDisconnectClicked()
 
 void PowerSupplyControlPage::onOutputOnClicked(int channel)
 {
+  if (m_parameterWorker && m_useParameterWorker) {
+    // Non-blocking request via worker
+    m_parameterWorker->requestOutputOn(channel);
+    return;
+  }
+
+  // Fallback to direct blocking call
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu || !psu->isConnected()) {
     showError("Device not connected");
@@ -588,6 +649,13 @@ void PowerSupplyControlPage::onOutputOnClicked(int channel)
 
 void PowerSupplyControlPage::onOutputOffClicked(int channel)
 {
+  if (m_parameterWorker && m_useParameterWorker) {
+    // Non-blocking request via worker
+    m_parameterWorker->requestOutputOff(channel);
+    return;
+  }
+
+  // Fallback to direct blocking call
   auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
   if (!psu || !psu->isConnected()) {
     showError("Device not connected");
@@ -604,16 +672,24 @@ void PowerSupplyControlPage::onOutputOffClicked(int channel)
 
 void PowerSupplyControlPage::onSetVoltageClicked(int channel)
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu || !psu->isConnected()) {
-    showError("Device not connected");
-    return;
-  }
-
   // Find the control widgets for this channel
   for (const auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double voltage = ctrl.voltageSpinBox->value();
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        // Non-blocking request via worker
+        m_parameterWorker->requestSetVoltage(channel, voltage);
+        return;
+      }
+
+      // Fallback to direct blocking call
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
       if (psu->setVoltage(voltage, channel)) {
         showSuccess(QString("Ch %1: Voltage -> %2 V").arg(channel).arg(voltage, 0, 'f', 2));
       }
@@ -627,15 +703,23 @@ void PowerSupplyControlPage::onSetVoltageClicked(int channel)
 
 void PowerSupplyControlPage::onSetCurrentClicked(int channel)
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu || !psu->isConnected()) {
-    showError("Device not connected");
-    return;
-  }
-
   for (const auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double current = ctrl.currentSpinBox->value();
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        // Non-blocking request via worker
+        m_parameterWorker->requestSetCurrent(channel, current);
+        return;
+      }
+
+      // Fallback to direct blocking call
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
       if (psu->setCurrent(current, channel)) {
         showSuccess(QString("Ch %1: Current -> %2 A").arg(channel).arg(current, 0, 'f', 3));
       }
@@ -649,15 +733,23 @@ void PowerSupplyControlPage::onSetCurrentClicked(int channel)
 
 void PowerSupplyControlPage::onSetOVPClicked(int channel)
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu || !psu->isConnected()) {
-    showError("Device not connected");
-    return;
-  }
-
   for (const auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double ovp = ctrl.ovpSpinBox->value();
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        // Non-blocking request via worker
+        m_parameterWorker->requestSetOVP(channel, ovp);
+        return;
+      }
+
+      // Fallback to direct blocking call
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
       if (psu->setOVP(ovp, channel)) {
         showSuccess(QString("Ch %1: OVP -> %2 V").arg(channel).arg(ovp, 0, 'f', 2));
       }
@@ -671,15 +763,23 @@ void PowerSupplyControlPage::onSetOVPClicked(int channel)
 
 void PowerSupplyControlPage::onSetOCPClicked(int channel)
 {
-  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
-  if (!psu || !psu->isConnected()) {
-    showError("Device not connected");
-    return;
-  }
-
   for (const auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double ocp = ctrl.ocpSpinBox->value();
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        // Non-blocking request via worker
+        m_parameterWorker->requestSetOCP(channel, ocp);
+        return;
+      }
+
+      // Fallback to direct blocking call
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
       if (psu->setOCP(ocp, channel)) {
         showSuccess(QString("Ch %1: OCP -> %2 A").arg(channel).arg(ocp, 0, 'f', 3));
       }
@@ -798,7 +898,10 @@ void PowerSupplyControlPage::showEvent(QShowEvent* event)
   if (!m_currentDevice.isEmpty()) {
     auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
     if (psu && psu->isConnected()) {
-      m_refreshTimer->start(2000);
+      // Only start the old refresh timer if NOT using the worker
+      if (!m_parameterWorker || !m_useParameterWorker) {
+        m_refreshTimer->start(2000);
+      }
     }
   }
 }
@@ -807,4 +910,96 @@ void PowerSupplyControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
   m_refreshTimer->stop();
+}
+
+// ============================================================================
+// Worker Signal Handlers
+// ============================================================================
+
+void PowerSupplyControlPage::onWorkerVoltageApplied(int channel, double voltage)
+{
+  showSuccess(QString("Ch %1: Voltage -> %2 V").arg(channel).arg(voltage, 0, 'f', 2));
+}
+
+void PowerSupplyControlPage::onWorkerCurrentApplied(int channel, double current)
+{
+  showSuccess(QString("Ch %1: Current -> %2 A").arg(channel).arg(current, 0, 'f', 3));
+}
+
+void PowerSupplyControlPage::onWorkerOVPApplied(int channel, double ovp)
+{
+  showSuccess(QString("Ch %1: OVP -> %2 V").arg(channel).arg(ovp, 0, 'f', 2));
+}
+
+void PowerSupplyControlPage::onWorkerOCPApplied(int channel, double ocp)
+{
+  showSuccess(QString("Ch %1: OCP -> %2 A").arg(channel).arg(ocp, 0, 'f', 3));
+}
+
+void PowerSupplyControlPage::onWorkerOutputChanged(int channel, bool on)
+{
+  showSuccess(QString("Ch %1: Output %2").arg(channel).arg(on ? "ON" : "OFF"));
+}
+
+void PowerSupplyControlPage::onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
+{
+  // Find the measurement widgets for this channel and update them
+  for (auto& meas : m_channelMeasurements) {
+    if (meas.channel == channel) {
+      // Update output state
+      if (outputOn) {
+        meas.outputStateLabel->setText("Output: ON");
+        meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #27ae60;");
+      }
+      else {
+        meas.outputStateLabel->setText("Output: OFF");
+        meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #e74c3c;");
+      }
+
+      // Update voltage
+      if (voltage >= 0) {
+        meas.voltageLabel->setText(QString("V: %1 V").arg(voltage, 0, 'f', 3));
+        meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;");
+      }
+      else {
+        meas.voltageLabel->setText("V: Error");
+        meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+      }
+
+      // Update current
+      if (current >= 0) {
+        meas.currentLabel->setText(QString("I: %1 A").arg(current, 0, 'f', 4));
+        meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #3498db;");
+      }
+      else {
+        meas.currentLabel->setText("I: Error");
+        meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+      }
+      break;
+    }
+  }
+}
+
+void PowerSupplyControlPage::onWorkerError(int channel, QString operation, QString error)
+{
+  if (channel > 0) {
+    showError(QString("Ch %1: %2 failed - %3").arg(channel).arg(operation).arg(error));
+  }
+  else {
+    showError(QString("%1 failed - %2").arg(operation).arg(error));
+  }
+}
+
+void PowerSupplyControlPage::onWorkerDeviceConnected(QString deviceName)
+{
+  showSuccess("Connected to " + deviceName);
+  updateConnectionStatus();
+  updateDeviceList();
+}
+
+void PowerSupplyControlPage::onWorkerDeviceDisconnected(QString deviceName)
+{
+  showSuccess("Disconnected from " + deviceName);
+  updateConnectionStatus();
+  updateDeviceList();
 }

@@ -687,6 +687,7 @@ set(SOURCES
     include/PSU/KeysightPSUAdapter.cpp
     include/PSU/KeysightE36103B.cpp
     include/PSU/KeysightE36441A.cpp
+    include/PSU/PSUParameterWorker.cpp
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.cpp
     include/AppUI/SMUControlPage/SMUControlPage.cpp
     include/SMU/SMUManager.cpp
@@ -873,6 +874,7 @@ set(HEADERS
     include/PSU/KeysightPSUAdapter.h
     include/PSU/KeysightE36103B.h
     include/PSU/KeysightE36441A.h
+    include/PSU/PSUParameterWorker.h
     include/AppUI/PowerSupplyControlPage/PowerSupplyControlPage.h
     include/AppUI/SMUControlPage/SMUControlPage.h
     include/SMU/ISMUDevice.h
