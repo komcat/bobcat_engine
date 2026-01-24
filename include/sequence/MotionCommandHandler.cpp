@@ -1051,6 +1051,679 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // GRID SCAN - 2D PLANAR GRID SCANNING WITH PRESET MODES
+  // ============================================================================
+  else if (methodName == "GridScan") {
+    // ✅ VALIDATE DEVICE NAME (must match hex-*)
+    std::regex hexPattern("^hex-.*");
+    if (!std::regex_match(deviceName, hexPattern)) {
+      errorMessage = "GridScan: Device must be a PI hexapod (hex-*), got: " + deviceName;
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: mode (coarse/fine/ultrafine)
+    auto modeIt = params.find("mode");
+    if (modeIt == params.end()) {
+      errorMessage = "GridScan: Missing required parameter 'mode' (coarse/fine/ultrafine)";
+      return false;
+    }
+    std::string mode = modeIt->second;
+
+    // Determine grid parameters from mode
+    double rangeUm, stepUm;
+    if (mode == "coarse") {
+      rangeUm = 200.0;  // 200 µm total range
+      stepUm = 20.0;    // 20 µm step -> 11x11 = 121 points
+    } else if (mode == "fine") {
+      rangeUm = 100.0;  // 100 µm total range
+      stepUm = 10.0;    // 10 µm step -> 11x11 = 121 points
+    } else if (mode == "ultrafine") {
+      rangeUm = 50.0;   // 50 µm total range
+      stepUm = 5.0;     // 5 µm step -> 11x11 = 121 points
+    } else {
+      errorMessage = "GridScan: Invalid mode '" + mode + "' (must be 'coarse', 'fine', or 'ultrafine')";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
+    auto planeIt = params.find("plane");
+    if (planeIt == params.end()) {
+      errorMessage = "GridScan: Missing required parameter 'plane' (XY/XZ/YZ)";
+      return false;
+    }
+    std::string plane = planeIt->second;
+
+    // Parse plane into axis names
+    std::string axis1, axis2;
+    if (plane == "XY" || plane == "xy") {
+      axis1 = "X"; axis2 = "Y";
+    } else if (plane == "XZ" || plane == "xz") {
+      axis1 = "X"; axis2 = "Z";
+    } else if (plane == "YZ" || plane == "yz") {
+      axis1 = "Y"; axis2 = "Z";
+    } else {
+      errorMessage = "GridScan: Invalid plane '" + plane + "' (must be 'XY', 'XZ', or 'YZ')";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: channel
+    auto channelIt = params.find("channel");
+    if (channelIt == params.end()) {
+      errorMessage = "GridScan: Missing required parameter 'channel'";
+      return false;
+    }
+    std::string channel = channelIt->second;
+    if (channel.empty()) {
+      errorMessage = "GridScan: Data channel cannot be empty - please select a data channel in the recipe configuration";
+      return false;
+    }
+
+    // ✅ OPTIONAL PARAMETER: settling_time_ms (default 300)
+    int settlingTimeMs = 300;
+    auto settlingIt = params.find("settling_time_ms");
+    if (settlingIt != params.end() && !settlingIt->second.empty()) {
+      settlingTimeMs = std::stoi(settlingIt->second);
+    }
+
+    // ✅ OPTIONAL PARAMETER: capture_as
+    std::string captureAs;
+    auto captureAsIt = params.find("capture_as");
+    if (captureAsIt != params.end()) {
+      captureAs = captureAsIt->second;
+    }
+
+    // ✅ GET DATA STORE
+    if (!m_dataStore) {
+      errorMessage = "GridScan: DataStore not available";
+      return false;
+    }
+
+    // Convert to mm
+    double rangeMm = rangeUm / 1000.0;
+    double stepMm = stepUm / 1000.0;
+    int gridPoints = static_cast<int>(rangeUm / stepUm) + 1;
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScan: Starting " + mode + " scan on " + deviceName +
+        " (plane=" + plane + ", range=" + std::to_string(rangeUm) + "um" +
+        ", step=" + std::to_string(stepUm) + "um" +
+        ", grid=" + std::to_string(gridPoints) + "x" + std::to_string(gridPoints) +
+        ", channel='" + channel + "', settling=" + std::to_string(settlingTimeMs) + "ms)",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ GET CURRENT POSITION (center of grid)
+    double centerAxis1 = 0.0, centerAxis2 = 0.0;
+    PositionStruct currentPos = motionManager->GetCurrentPosition(deviceName);
+    if (axis1 == "X") centerAxis1 = currentPos.x;
+    else if (axis1 == "Y") centerAxis1 = currentPos.y;
+    else if (axis1 == "Z") centerAxis1 = currentPos.z;
+
+    if (axis2 == "X") centerAxis2 = currentPos.x;
+    else if (axis2 == "Y") centerAxis2 = currentPos.y;
+    else if (axis2 == "Z") centerAxis2 = currentPos.z;
+
+    // ✅ EXECUTE GRID SCAN
+    double peakValue = std::numeric_limits<double>::lowest();
+    double peakAxis1 = centerAxis1;
+    double peakAxis2 = centerAxis2;
+    int totalPoints = gridPoints * gridPoints;
+    int currentPoint = 0;
+
+    // Start position (corner of grid)
+    double startAxis1 = centerAxis1 - rangeMm / 2.0;
+    double startAxis2 = centerAxis2 - rangeMm / 2.0;
+
+    for (int row = 0; row < gridPoints; ++row) {
+      // Snake pattern: alternate direction each row
+      bool reverse = (row % 2 == 1);
+
+      for (int col = 0; col < gridPoints; ++col) {
+        // Check stop flag
+        if (context && context->IsStopRequestedAny()) {
+          if (m_logger) {
+            m_logger->Info("GridScan: Stop requested, halting scan", "MotionHandler");
+          }
+          errorMessage = "GridScan: Scan stopped by user";
+          return false;
+        }
+
+        int actualCol = reverse ? (gridPoints - 1 - col) : col;
+
+        double targetAxis1 = startAxis1 + actualCol * stepMm;
+        double targetAxis2 = startAxis2 + row * stepMm;
+
+        // Move to position (axis1 first, then axis2 for predictability)
+        if (!motionManager->MoveToPosition(deviceName, axis1, targetAxis1, false)) {
+          errorMessage = "GridScan: Failed to start move on " + axis1;
+          return false;
+        }
+        // Wait for axis1 move
+        auto start = std::chrono::steady_clock::now();
+        while (motionManager->IsMoving(deviceName, axis1)) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScan: Scan stopped by user during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
+            errorMessage = "GridScan: Timeout waiting for " + axis1 + " motion";
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
+          errorMessage = "GridScan: Failed to start move on " + axis2;
+          return false;
+        }
+        // Wait for axis2 move
+        start = std::chrono::steady_clock::now();
+        while (motionManager->IsMoving(deviceName, axis2)) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScan: Scan stopped by user during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
+            errorMessage = "GridScan: Timeout waiting for " + axis2 + " motion";
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Settling time
+        std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+        // Read channel value
+        double value = static_cast<double>(m_dataStore->GetValue(channel, 0.0f));
+
+        // Track peak (maximize)
+        if (value > peakValue) {
+          peakValue = value;
+          peakAxis1 = targetAxis1;
+          peakAxis2 = targetAxis2;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScan: New peak at (" + std::to_string(targetAxis1) + ", " +
+              std::to_string(targetAxis2) + ") = " + std::to_string(value),
+              "MotionHandler"
+            );
+          }
+        }
+
+        currentPoint++;
+        if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
+          m_logger->Info(
+            "GridScan: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
+            " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
+            "MotionHandler"
+          );
+        }
+      }
+    }
+
+    // ✅ RETURN TO PEAK POSITION
+    if (m_logger) {
+      m_logger->Info(
+        "GridScan: Returning to peak position (" + std::to_string(peakAxis1) + ", " +
+        std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue),
+        "MotionHandler"
+      );
+    }
+
+    if (!motionManager->MoveToPosition(deviceName, axis1, peakAxis1, false)) {
+      errorMessage = "GridScan: Failed to return to peak on " + axis1;
+      return false;
+    }
+    auto startReturn = std::chrono::steady_clock::now();
+    while (motionManager->IsMoving(deviceName, axis1)) {
+      if (std::chrono::steady_clock::now() - startReturn > std::chrono::seconds(10)) {
+        errorMessage = "GridScan: Timeout returning to peak on " + axis1;
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    if (!motionManager->MoveToPosition(deviceName, axis2, peakAxis2, false)) {
+      errorMessage = "GridScan: Failed to return to peak on " + axis2;
+      return false;
+    }
+    startReturn = std::chrono::steady_clock::now();
+    while (motionManager->IsMoving(deviceName, axis2)) {
+      if (std::chrono::steady_clock::now() - startReturn > std::chrono::seconds(10)) {
+        errorMessage = "GridScan: Timeout returning to peak on " + axis2;
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // ✅ CAPTURE PEAK VALUE TO CONTEXT IF REQUESTED
+    if (!captureAs.empty() && context) {
+      context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScan");
+      if (m_logger) {
+        m_logger->Info(
+          "GridScan: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
+          "MotionHandler"
+        );
+      }
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScan: Completed successfully - Peak value: " + std::to_string(peakValue) +
+        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")",
+        "MotionHandler"
+      );
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // GRID SCAN EXTENDED - FULL CONTROL 2D GRID SCANNING
+  // ============================================================================
+  else if (methodName == "GridScanExtended") {
+    // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
+    auto planeIt = params.find("plane");
+    if (planeIt == params.end()) {
+      errorMessage = "GridScanExtended: Missing required parameter 'plane' (XY/XZ/YZ)";
+      return false;
+    }
+    std::string plane = planeIt->second;
+
+    // Parse plane into axis names
+    std::string axis1, axis2;
+    if (plane == "XY" || plane == "xy") {
+      axis1 = "X"; axis2 = "Y";
+    } else if (plane == "XZ" || plane == "xz") {
+      axis1 = "X"; axis2 = "Z";
+    } else if (plane == "YZ" || plane == "yz") {
+      axis1 = "Y"; axis2 = "Z";
+    } else {
+      errorMessage = "GridScanExtended: Invalid plane '" + plane + "' (must be 'XY', 'XZ', or 'YZ')";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: range_axis1_um
+    auto range1It = params.find("range_axis1_um");
+    if (range1It == params.end() || range1It->second.empty()) {
+      errorMessage = "GridScanExtended: Missing required parameter 'range_axis1_um'";
+      return false;
+    }
+    double rangeAxis1Um = std::stod(range1It->second);
+    if (rangeAxis1Um <= 0 || rangeAxis1Um > 1000) {
+      errorMessage = "GridScanExtended: range_axis1_um must be between 1 and 1000 um";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: range_axis2_um
+    auto range2It = params.find("range_axis2_um");
+    if (range2It == params.end() || range2It->second.empty()) {
+      errorMessage = "GridScanExtended: Missing required parameter 'range_axis2_um'";
+      return false;
+    }
+    double rangeAxis2Um = std::stod(range2It->second);
+    if (rangeAxis2Um <= 0 || rangeAxis2Um > 1000) {
+      errorMessage = "GridScanExtended: range_axis2_um must be between 1 and 1000 um";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: step_size_um
+    auto stepIt = params.find("step_size_um");
+    if (stepIt == params.end() || stepIt->second.empty()) {
+      errorMessage = "GridScanExtended: Missing required parameter 'step_size_um'";
+      return false;
+    }
+    double stepSizeUm = std::stod(stepIt->second);
+    if (stepSizeUm < 1 || stepSizeUm > 100) {
+      errorMessage = "GridScanExtended: step_size_um must be between 1 and 100 um";
+      return false;
+    }
+
+    // ✅ REQUIRED PARAMETER: channel
+    auto channelIt = params.find("channel");
+    if (channelIt == params.end()) {
+      errorMessage = "GridScanExtended: Missing required parameter 'channel'";
+      return false;
+    }
+    std::string channel = channelIt->second;
+    if (channel.empty()) {
+      errorMessage = "GridScanExtended: Data channel cannot be empty";
+      return false;
+    }
+
+    // ✅ OPTIONAL PARAMETER: settling_time_ms (default 300)
+    int settlingTimeMs = 300;
+    auto settlingIt = params.find("settling_time_ms");
+    if (settlingIt != params.end() && !settlingIt->second.empty()) {
+      settlingTimeMs = std::stoi(settlingIt->second);
+      if (settlingTimeMs < 50 || settlingTimeMs > 2000) {
+        errorMessage = "GridScanExtended: settling_time_ms must be between 50 and 2000";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL PARAMETER: snake_pattern (default true)
+    bool snakePattern = true;
+    auto snakeIt = params.find("snake_pattern");
+    if (snakeIt != params.end()) {
+      snakePattern = (snakeIt->second == "true" || snakeIt->second == "1");
+    }
+
+    // ✅ OPTIONAL PARAMETER: return_to_peak (default true)
+    bool returnToPeak = true;
+    auto returnIt = params.find("return_to_peak");
+    if (returnIt != params.end()) {
+      returnToPeak = (returnIt->second == "true" || returnIt->second == "1");
+    }
+
+    // ✅ OPTIONAL PARAMETER: direction_axis1 (centered/positive/negative)
+    std::string directionAxis1 = "centered";
+    auto dir1It = params.find("direction_axis1");
+    if (dir1It != params.end() && !dir1It->second.empty()) {
+      directionAxis1 = dir1It->second;
+      if (directionAxis1 != "centered" && directionAxis1 != "positive" && directionAxis1 != "negative") {
+        errorMessage = "GridScanExtended: Invalid direction_axis1 '" + directionAxis1 + "' (must be centered/positive/negative)";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL PARAMETER: direction_axis2 (centered/positive/negative)
+    std::string directionAxis2 = "centered";
+    auto dir2It = params.find("direction_axis2");
+    if (dir2It != params.end() && !dir2It->second.empty()) {
+      directionAxis2 = dir2It->second;
+      if (directionAxis2 != "centered" && directionAxis2 != "positive" && directionAxis2 != "negative") {
+        errorMessage = "GridScanExtended: Invalid direction_axis2 '" + directionAxis2 + "' (must be centered/positive/negative)";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL PARAMETER: exit_threshold
+    double exitThreshold = std::numeric_limits<double>::max();
+    bool hasExitThreshold = false;
+    auto exitIt = params.find("exit_threshold");
+    if (exitIt != params.end() && !exitIt->second.empty()) {
+      try {
+        exitThreshold = std::stod(exitIt->second);
+        hasExitThreshold = true;
+      } catch (...) {
+        errorMessage = "GridScanExtended: Invalid exit_threshold value: " + exitIt->second;
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL PARAMETER: capture_as
+    std::string captureAs;
+    auto captureAsIt = params.find("capture_as");
+    if (captureAsIt != params.end()) {
+      captureAs = captureAsIt->second;
+    }
+
+    // ✅ OPTIONAL PARAMETER: capture_position_as
+    std::string capturePositionAs;
+    auto capturePosIt = params.find("capture_position_as");
+    if (capturePosIt != params.end()) {
+      capturePositionAs = capturePosIt->second;
+    }
+
+    // ✅ GET DATA STORE
+    if (!m_dataStore) {
+      errorMessage = "GridScanExtended: DataStore not available";
+      return false;
+    }
+
+    // Convert to mm
+    double rangeAxis1Mm = rangeAxis1Um / 1000.0;
+    double rangeAxis2Mm = rangeAxis2Um / 1000.0;
+    double stepMm = stepSizeUm / 1000.0;
+
+    // Calculate grid dimensions (asymmetric supported)
+    int numPoints1 = static_cast<int>(rangeAxis1Um / stepSizeUm) + 1;
+    int numPoints2 = static_cast<int>(rangeAxis2Um / stepSizeUm) + 1;
+    int totalPoints = numPoints1 * numPoints2;
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScanExtended: Starting scan on " + deviceName +
+        " (plane=" + plane +
+        ", axis1=" + std::to_string(rangeAxis1Um) + "um/" + directionAxis1 +
+        ", axis2=" + std::to_string(rangeAxis2Um) + "um/" + directionAxis2 +
+        ", step=" + std::to_string(stepSizeUm) + "um" +
+        ", grid=" + std::to_string(numPoints1) + "x" + std::to_string(numPoints2) +
+        " = " + std::to_string(totalPoints) + " points" +
+        ", channel='" + channel + "'" +
+        ", settling=" + std::to_string(settlingTimeMs) + "ms" +
+        ", snake=" + (snakePattern ? "true" : "false") +
+        ", returnToPeak=" + (returnToPeak ? "true" : "false") +
+        (hasExitThreshold ? ", exitThreshold=" + std::to_string(exitThreshold) : "") + ")",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ GET CURRENT POSITION (center of grid)
+    double centerAxis1 = 0.0, centerAxis2 = 0.0;
+    PositionStruct currentPosExt = motionManager->GetCurrentPosition(deviceName);
+    if (axis1 == "X") centerAxis1 = currentPosExt.x;
+    else if (axis1 == "Y") centerAxis1 = currentPosExt.y;
+    else if (axis1 == "Z") centerAxis1 = currentPosExt.z;
+
+    if (axis2 == "X") centerAxis2 = currentPosExt.x;
+    else if (axis2 == "Y") centerAxis2 = currentPosExt.y;
+    else if (axis2 == "Z") centerAxis2 = currentPosExt.z;
+
+    // ✅ EXECUTE GRID SCAN
+    double peakValue = std::numeric_limits<double>::lowest();
+    double peakAxis1 = centerAxis1;
+    double peakAxis2 = centerAxis2;
+    int currentPoint = 0;
+    bool earlyExit = false;
+
+    // Calculate start position based on direction
+    // centered: current - range/2 to current + range/2
+    // positive: current to current + range
+    // negative: current - range to current
+    double startAxis1, startAxis2;
+    if (directionAxis1 == "positive") {
+      startAxis1 = centerAxis1;  // Scan from current to current + range
+    } else if (directionAxis1 == "negative") {
+      startAxis1 = centerAxis1 - rangeAxis1Mm;  // Scan from current - range to current
+    } else {  // centered
+      startAxis1 = centerAxis1 - rangeAxis1Mm / 2.0;
+    }
+
+    if (directionAxis2 == "positive") {
+      startAxis2 = centerAxis2;  // Scan from current to current + range
+    } else if (directionAxis2 == "negative") {
+      startAxis2 = centerAxis2 - rangeAxis2Mm;  // Scan from current - range to current
+    } else {  // centered
+      startAxis2 = centerAxis2 - rangeAxis2Mm / 2.0;
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScanExtended: Axis1(" + axis1 + ") dir=" + directionAxis1 +
+        " start=" + std::to_string(startAxis1) +
+        ", Axis2(" + axis2 + ") dir=" + directionAxis2 +
+        " start=" + std::to_string(startAxis2),
+        "MotionHandler"
+      );
+    }
+
+    for (int row = 0; row < numPoints2 && !earlyExit; ++row) {
+      // Snake pattern: alternate direction each row
+      bool reverse = snakePattern && (row % 2 == 1);
+
+      for (int col = 0; col < numPoints1 && !earlyExit; ++col) {
+        // Check stop flag
+        if (context && context->IsStopRequestedAny()) {
+          if (m_logger) {
+            m_logger->Info("GridScanExtended: Stop requested, halting scan", "MotionHandler");
+          }
+          errorMessage = "GridScanExtended: Scan stopped by user";
+          return false;
+        }
+
+        int actualCol = reverse ? (numPoints1 - 1 - col) : col;
+
+        double targetAxis1 = startAxis1 + actualCol * stepMm;
+        double targetAxis2 = startAxis2 + row * stepMm;
+
+        // Move to position (axis1 first, then axis2 for predictability)
+        if (!motionManager->MoveToPosition(deviceName, axis1, targetAxis1, false)) {
+          errorMessage = "GridScanExtended: Failed to start move on " + axis1;
+          return false;
+        }
+        // Wait for axis1 move
+        auto startMove = std::chrono::steady_clock::now();
+        while (motionManager->IsMoving(deviceName, axis1)) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScanExtended: Scan stopped by user during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - startMove > std::chrono::seconds(10)) {
+            errorMessage = "GridScanExtended: Timeout waiting for " + axis1 + " motion";
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
+          errorMessage = "GridScanExtended: Failed to start move on " + axis2;
+          return false;
+        }
+        // Wait for axis2 move
+        startMove = std::chrono::steady_clock::now();
+        while (motionManager->IsMoving(deviceName, axis2)) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScanExtended: Scan stopped by user during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - startMove > std::chrono::seconds(10)) {
+            errorMessage = "GridScanExtended: Timeout waiting for " + axis2 + " motion";
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Settling time
+        std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+        // Read channel value
+        double value = static_cast<double>(m_dataStore->GetValue(channel, 0.0f));
+
+        // Track peak (maximize)
+        if (value > peakValue) {
+          peakValue = value;
+          peakAxis1 = targetAxis1;
+          peakAxis2 = targetAxis2;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScanExtended: New peak at (" + std::to_string(targetAxis1) + ", " +
+              std::to_string(targetAxis2) + ") = " + std::to_string(value),
+              "MotionHandler"
+            );
+          }
+        }
+
+        // Check exit threshold
+        if (hasExitThreshold && value > exitThreshold) {
+          earlyExit = true;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScanExtended: Exit threshold reached (" + std::to_string(value) +
+              " > " + std::to_string(exitThreshold) + "), stopping scan",
+              "MotionHandler"
+            );
+          }
+        }
+
+        currentPoint++;
+        if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
+          m_logger->Info(
+            "GridScanExtended: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
+            " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
+            "MotionHandler"
+          );
+        }
+      }
+    }
+
+    // ✅ RETURN TO PEAK POSITION IF ENABLED
+    if (returnToPeak) {
+      if (m_logger) {
+        m_logger->Info(
+          "GridScanExtended: Returning to peak position (" + std::to_string(peakAxis1) + ", " +
+          std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue),
+          "MotionHandler"
+        );
+      }
+
+      if (!motionManager->MoveToPosition(deviceName, axis1, peakAxis1, false)) {
+        errorMessage = "GridScanExtended: Failed to return to peak on " + axis1;
+        return false;
+      }
+      auto startReturnExt = std::chrono::steady_clock::now();
+      while (motionManager->IsMoving(deviceName, axis1)) {
+        if (std::chrono::steady_clock::now() - startReturnExt > std::chrono::seconds(10)) {
+          errorMessage = "GridScanExtended: Timeout returning to peak on " + axis1;
+          return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
+      if (!motionManager->MoveToPosition(deviceName, axis2, peakAxis2, false)) {
+        errorMessage = "GridScanExtended: Failed to return to peak on " + axis2;
+        return false;
+      }
+      startReturnExt = std::chrono::steady_clock::now();
+      while (motionManager->IsMoving(deviceName, axis2)) {
+        if (std::chrono::steady_clock::now() - startReturnExt > std::chrono::seconds(10)) {
+          errorMessage = "GridScanExtended: Timeout returning to peak on " + axis2;
+          return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+
+    // ✅ CAPTURE PEAK VALUE TO CONTEXT IF REQUESTED
+    if (!captureAs.empty() && context) {
+      context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScanExtended");
+      if (m_logger) {
+        m_logger->Info(
+          "GridScanExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
+          "MotionHandler"
+        );
+      }
+    }
+
+    // ✅ CAPTURE PEAK POSITION TO CONTEXT IF REQUESTED
+    if (!capturePositionAs.empty() && context) {
+      std::string positionStr = std::to_string(peakAxis1) + "," + std::to_string(peakAxis2);
+      context->SetValue(capturePositionAs, positionStr, deviceName, "GridScanExtended");
+      if (m_logger) {
+        m_logger->Info(
+          "GridScanExtended: Captured peak position " + positionStr + " to context:" + capturePositionAs,
+          "MotionHandler"
+        );
+      }
+    }
+
+    if (m_logger) {
+      std::string completionReason = earlyExit ? " (early exit - threshold reached)" : "";
+      m_logger->Info(
+        "GridScanExtended: Completed successfully" + completionReason +
+        " - Peak value: " + std::to_string(peakValue) +
+        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")",
+        "MotionHandler"
+      );
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // MOVE TO GRAPH NODE - Execute graph-based path planning
   // ============================================================================
   else if (methodName == "MoveToGraphNode") {

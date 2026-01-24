@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 3)
+set(BOBCAT_VERSION_MINOR 4)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -526,6 +526,7 @@ set(SOURCES
     include/camera/CameraHardwareFactory.cpp
     include/camera/CameraWorker.cpp
     include/camera/CameraView.cpp
+    include/camera/CameraParameterWorker.cpp
     include/camera/MultiCameraView.cpp
     include/camera/LiveVideoSubscriber.cpp
     include/camera/CameraImageWidget.cpp
@@ -734,6 +735,7 @@ set(HEADERS
     include/camera/CameraFrameData.h
     include/camera/CameraWorker.h
     include/camera/CameraView.h
+    include/camera/CameraParameterWorker.h
     include/camera/MultiCameraView.h
     include/camera/LiveVideoSubscriber.h
     include/camera/FrameConverter.h

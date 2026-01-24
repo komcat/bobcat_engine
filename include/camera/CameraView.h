@@ -19,6 +19,7 @@
 struct ApplicationContext;
 class LiveVideoSubscriber;
 class CameraImageWidget;
+class CameraParameterWorker;
 
 class CameraView : public QWidget
 {
@@ -59,8 +60,18 @@ private slots:
   void onExposureSpinBoxChanged(int value);
   void onGainSliderChanged(int value);
   void onGainSpinBoxChanged(double value);
+  void onFrameRateSliderChanged(int value);
+  void onFrameRateSpinBoxChanged(double value);
   void onSaveImageClicked();
   void onApplySettingsTimer();  // Throttled settings apply
+
+  // Slots for CameraParameterWorker signals (value read-back)
+  void onWorkerExposureUpdated(int microseconds);
+  void onWorkerGainUpdated(double gain);
+  void onWorkerFrameRateUpdated(double fps);
+  void onWorkerAutoExposureChanged(bool enabled);
+  void onWorkerAutoGainChanged(bool enabled);
+  void onWorkerError(QString error);
 
 protected:
   void showEvent(QShowEvent* event) override;  // ✅ NEW - Force refresh on show
@@ -71,8 +82,11 @@ private:
   void updateZoomLabel(int zoomPercent);
   void updateExposureLabel(int microseconds);  // ✅ NEW
   void updateGainLabel(double gain);           // ✅ NEW
-  void applyCameraSettings();                  // ✅ NEW
+  void updateFrameRateLabel(double fps);       // ✅ NEW
+  void applyCameraSettings();                  // ✅ NEW (legacy - kept for compatibility)
   void loadCurrentSettings();                  // ✅ NEW
+  void setupParameterWorker();                 // Setup background worker
+  void connectWorkerSignals();                 // Connect worker signals to UI
   QString generateSaveFilename();              // ✅ NEW
 
   ApplicationContext* m_context;
@@ -100,6 +114,9 @@ private:
   QSlider* m_gainSlider;
   QDoubleSpinBox* m_gainSpinBox;
   QLabel* m_gainValueLabel;
+  QSlider* m_frameRateSlider = nullptr;
+  QDoubleSpinBox* m_frameRateSpinBox = nullptr;
+  QLabel* m_frameRateValueLabel = nullptr;
   QPushButton* m_saveImageButton;
 
   QSlider* m_zoomSlider;
@@ -115,4 +132,15 @@ private:
   // Throttled settings apply (500ms delay)
   QTimer* m_applySettingsTimer = nullptr;
   bool m_settingsPending = false;
+
+  // Background parameter worker for non-blocking camera updates
+  CameraParameterWorker* m_parameterWorker = nullptr;
+  bool m_useParameterWorker = true;  // Enable/disable worker (for debugging)
+
+  // Track active slider interaction to prevent read-back jumps
+  bool m_exposureSliderActive = false;
+  bool m_gainSliderActive = false;
+  bool m_frameRateSliderActive = false;
+  QTimer* m_sliderCooldownTimer = nullptr;
+  static constexpr int SLIDER_COOLDOWN_MS = 500;  // Block read-back for 500ms after slider release
 };

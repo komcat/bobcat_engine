@@ -45,10 +45,11 @@ public:
     double gain = 1.0;              // gain value
     bool auto_exposure = false;     // auto exposure enabled
     bool auto_gain = false;         // auto gain enabled
+    double frame_rate = 30.0;       // frames per second (0 = unlimited/max)
 
     ExposureSettings() = default;
-    ExposureSettings(double exp, double g, bool autoExp = false, bool autoG = false)
-      : exposure_time(exp), gain(g), auto_exposure(autoExp), auto_gain(autoG) {
+    ExposureSettings(double exp, double g, bool autoExp = false, bool autoG = false, double fps = 30.0)
+      : exposure_time(exp), gain(g), auto_exposure(autoExp), auto_gain(autoG), frame_rate(fps) {
     }
   };
 

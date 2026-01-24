@@ -5,6 +5,7 @@
 #include "LiveVideoSubscriber.h"
 #include "CameraImageWidget.h"
 #include "ICameraHardware.h"
+#include "CameraParameterWorker.h"
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QDateTime>
@@ -52,6 +53,18 @@ CameraView::CameraView(ApplicationContext* context,
   m_applySettingsTimer->setSingleShot(true);
   connect(m_applySettingsTimer, &QTimer::timeout, this, &CameraView::onApplySettingsTimer);
 
+  // Setup slider cooldown timer - resets active flags after slider release
+  m_sliderCooldownTimer = new QTimer(this);
+  m_sliderCooldownTimer->setSingleShot(true);
+  connect(m_sliderCooldownTimer, &QTimer::timeout, this, [this]() {
+    m_exposureSliderActive = false;
+    m_gainSliderActive = false;
+    m_frameRateSliderActive = false;
+  });
+
+  // Setup background parameter worker for non-blocking camera updates
+  setupParameterWorker();
+
   // ✅ NEW - Check if camera is already connected in CameraManager
   syncWithManagerState();
 
@@ -61,6 +74,14 @@ CameraView::CameraView(ApplicationContext* context,
 CameraView::~CameraView()
 {
   std::cout << "[CameraView] Destructor for: " << m_cameraId << std::endl;
+
+  // Stop parameter worker first
+  if (m_parameterWorker) {
+    m_parameterWorker->stop();
+    delete m_parameterWorker;
+    m_parameterWorker = nullptr;
+  }
+
   disconnectCamera();
 }
 
@@ -222,6 +243,12 @@ void CameraView::setupUI()
   m_exposureSlider->setEnabled(false);
   connect(m_exposureSlider, &QSlider::valueChanged,
     this, &CameraView::onExposureSliderChanged);
+  // Track slider interaction to prevent read-back jumps
+  connect(m_exposureSlider, &QSlider::sliderPressed, this, [this]() { m_exposureSliderActive = true; });
+  connect(m_exposureSlider, &QSlider::sliderReleased, this, [this]() {
+    // Keep active for cooldown period to allow camera to settle
+    if (m_sliderCooldownTimer) m_sliderCooldownTimer->start(SLIDER_COOLDOWN_MS);
+  });
   settingsLayout->addWidget(m_exposureSlider);
 
   // Exposure spinbox for direct input
@@ -254,6 +281,11 @@ void CameraView::setupUI()
   m_gainSlider->setEnabled(false);
   connect(m_gainSlider, &QSlider::valueChanged,
     this, &CameraView::onGainSliderChanged);
+  // Track slider interaction to prevent read-back jumps
+  connect(m_gainSlider, &QSlider::sliderPressed, this, [this]() { m_gainSliderActive = true; });
+  connect(m_gainSlider, &QSlider::sliderReleased, this, [this]() {
+    if (m_sliderCooldownTimer) m_sliderCooldownTimer->start(SLIDER_COOLDOWN_MS);
+  });
   settingsLayout->addWidget(m_gainSlider);
 
   // Gain spinbox for direct input
@@ -271,6 +303,43 @@ void CameraView::setupUI()
   m_gainValueLabel = new QLabel("1.0");
   m_gainValueLabel->setAlignment(Qt::AlignCenter);
   m_gainValueLabel->setVisible(false);  // Hidden - spinbox shows value now
+
+  settingsLayout->addSpacing(15);
+
+  // Frame Rate control
+  QLabel* fpsLabel = new QLabel("Frame Rate:");
+  fpsLabel->setStyleSheet("QLabel { font-weight: bold; }");
+  settingsLayout->addWidget(fpsLabel);
+
+  m_frameRateSlider = new QSlider(Qt::Horizontal);
+  m_frameRateSlider->setMinimum(1);     // 0.1 fps
+  m_frameRateSlider->setMaximum(300);   // 30.0 fps
+  m_frameRateSlider->setValue(80);      // 8.0 fps default
+  m_frameRateSlider->setEnabled(false);
+  connect(m_frameRateSlider, &QSlider::valueChanged,
+    this, &CameraView::onFrameRateSliderChanged);
+  // Track slider interaction to prevent read-back jumps
+  connect(m_frameRateSlider, &QSlider::sliderPressed, this, [this]() { m_frameRateSliderActive = true; });
+  connect(m_frameRateSlider, &QSlider::sliderReleased, this, [this]() {
+    if (m_sliderCooldownTimer) m_sliderCooldownTimer->start(SLIDER_COOLDOWN_MS);
+  });
+  settingsLayout->addWidget(m_frameRateSlider);
+
+  m_frameRateSpinBox = new QDoubleSpinBox();
+  m_frameRateSpinBox->setMinimum(0.1);
+  m_frameRateSpinBox->setMaximum(30.0);
+  m_frameRateSpinBox->setSingleStep(0.5);
+  m_frameRateSpinBox->setDecimals(1);
+  m_frameRateSpinBox->setValue(8.0);
+  m_frameRateSpinBox->setSuffix(" fps");
+  m_frameRateSpinBox->setEnabled(false);
+  connect(m_frameRateSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    this, &CameraView::onFrameRateSpinBoxChanged);
+  settingsLayout->addWidget(m_frameRateSpinBox);
+
+  m_frameRateValueLabel = new QLabel("8.0 fps");
+  m_frameRateValueLabel->setAlignment(Qt::AlignCenter);
+  m_frameRateValueLabel->setVisible(false);  // Hidden - spinbox shows value now
 
   settingsLayout->addSpacing(20);
 
@@ -431,10 +500,16 @@ bool CameraView::connectCamera()
   m_exposureSpinBox->setEnabled(true);
   m_gainSlider->setEnabled(true);
   m_gainSpinBox->setEnabled(true);
+  if (m_frameRateSlider) m_frameRateSlider->setEnabled(true);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->setEnabled(true);
   m_saveImageButton->setEnabled(true);
 
-  // ✅ Load current camera settings
-  loadCurrentSettings();
+  // ✅ Load current camera settings (use worker if available)
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestReadAll();  // Non-blocking read via worker
+  } else {
+    loadCurrentSettings();  // Fallback to direct read
+  }
 
   emit cameraConnected(QString::fromStdString(m_cameraId));
   std::cout << "[CameraView] Camera connected: " << m_cameraId << std::endl;
@@ -474,6 +549,8 @@ void CameraView::disconnectCamera()
   m_exposureSpinBox->setEnabled(false);
   m_gainSlider->setEnabled(false);
   m_gainSpinBox->setEnabled(false);
+  if (m_frameRateSlider) m_frameRateSlider->setEnabled(false);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->setEnabled(false);
   m_saveImageButton->setEnabled(false);
 
   m_viewport->clearDisplay();
@@ -499,8 +576,13 @@ void CameraView::onAutoExposureChanged(Qt::CheckState state)
   m_exposureSlider->setEnabled(!autoEnabled && m_isConnected);
   m_exposureSpinBox->setEnabled(!autoEnabled && m_isConnected);
 
-  // Apply setting immediately
-  applyCameraSettings();
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestAutoExposure(autoEnabled);
+  } else {
+    // Fallback to direct apply
+    applyCameraSettings();
+  }
 
   std::cout << "[CameraView] Auto Exposure: " << (autoEnabled ? "ON" : "OFF") << std::endl;
 }
@@ -513,8 +595,13 @@ void CameraView::onAutoGainChanged(Qt::CheckState state)
   m_gainSlider->setEnabled(!autoEnabled && m_isConnected);
   m_gainSpinBox->setEnabled(!autoEnabled && m_isConnected);
 
-  // Apply setting immediately
-  applyCameraSettings();
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestAutoGain(autoEnabled);
+  } else {
+    // Fallback to direct apply
+    applyCameraSettings();
+  }
 
   std::cout << "[CameraView] Auto Gain: " << (autoEnabled ? "ON" : "OFF") << std::endl;
 }
@@ -528,9 +615,14 @@ void CameraView::onExposureSliderChanged(int value)
 
   updateExposureLabel(value);
 
-  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-  m_settingsPending = true;
-  m_applySettingsTimer->start(loadUIThrottleDelay());
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestExposure(value);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
+  }
 }
 
 void CameraView::onExposureSpinBoxChanged(int value)
@@ -542,9 +634,14 @@ void CameraView::onExposureSpinBoxChanged(int value)
 
   updateExposureLabel(value);
 
-  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-  m_settingsPending = true;
-  m_applySettingsTimer->start(loadUIThrottleDelay());
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestExposure(value);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
+  }
 }
 
 void CameraView::onGainSliderChanged(int value)
@@ -558,9 +655,14 @@ void CameraView::onGainSliderChanged(int value)
 
   updateGainLabel(gain);
 
-  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-  m_settingsPending = true;
-  m_applySettingsTimer->start(loadUIThrottleDelay());
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestGain(gain);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
+  }
 }
 
 void CameraView::onGainSpinBoxChanged(double value)
@@ -573,9 +675,14 @@ void CameraView::onGainSpinBoxChanged(double value)
 
   updateGainLabel(value);
 
-  // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-  m_settingsPending = true;
-  m_applySettingsTimer->start(loadUIThrottleDelay());
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestGain(value);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    m_applySettingsTimer->start(loadUIThrottleDelay());
+  }
 }
 
 void CameraView::onSaveImageClicked()
@@ -654,6 +761,7 @@ void CameraView::applyCameraSettings()
   settings.auto_gain = m_autoGainCheck->isChecked();
   settings.exposure_time = m_exposureSlider->value();
   settings.gain = m_gainSlider->value() / 10.0;
+  settings.frame_rate = m_frameRateSlider ? m_frameRateSlider->value() / 10.0 : 8.0;
 
   if (m_context->cameraManager->ApplyExposureSettings(m_cameraId, settings)) {
     // Success - settings applied
@@ -678,6 +786,8 @@ void CameraView::loadCurrentSettings()
   m_exposureSpinBox->blockSignals(true);
   m_gainSlider->blockSignals(true);
   m_gainSpinBox->blockSignals(true);
+  if (m_frameRateSlider) m_frameRateSlider->blockSignals(true);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
 
   m_autoExposureCheck->setChecked(settings.auto_exposure);
   m_autoGainCheck->setChecked(settings.auto_gain);
@@ -694,15 +804,26 @@ void CameraView::loadCurrentSettings()
   m_gainSlider->setValue(gainValue);
   m_gainSpinBox->setValue(settings.gain);
 
+  // Load frame rate
+  int frameRateValue = static_cast<int>(settings.frame_rate * 10);
+  if (frameRateValue < 1) frameRateValue = 1;
+  if (frameRateValue > 300) frameRateValue = 300;
+  if (m_frameRateSlider) m_frameRateSlider->setValue(frameRateValue);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->setValue(settings.frame_rate);
+
   // Update labels
   updateExposureLabel(exposureValue);
   updateGainLabel(settings.gain);
+  updateFrameRateLabel(settings.frame_rate);
 
   // Update slider and spinbox enabled state
   m_exposureSlider->setEnabled(!settings.auto_exposure);
   m_exposureSpinBox->setEnabled(!settings.auto_exposure);
   m_gainSlider->setEnabled(!settings.auto_gain);
   m_gainSpinBox->setEnabled(!settings.auto_gain);
+  // Frame rate is always manually controlled
+  if (m_frameRateSlider) m_frameRateSlider->setEnabled(true);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->setEnabled(true);
 
   // Unblock signals
   m_autoExposureCheck->blockSignals(false);
@@ -711,10 +832,13 @@ void CameraView::loadCurrentSettings()
   m_exposureSpinBox->blockSignals(false);
   m_gainSlider->blockSignals(false);
   m_gainSpinBox->blockSignals(false);
+  if (m_frameRateSlider) m_frameRateSlider->blockSignals(false);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
 
   std::cout << "[CameraView] Loaded camera settings: "
     << "Exposure=" << settings.exposure_time << "μs, "
     << "Gain=" << settings.gain << ", "
+    << "FrameRate=" << settings.frame_rate << "fps, "
     << "AutoExp=" << (settings.auto_exposure ? "ON" : "OFF") << ", "
     << "AutoGain=" << (settings.auto_gain ? "ON" : "OFF") << std::endl;
 }
@@ -732,6 +856,190 @@ void CameraView::updateExposureLabel(int microseconds)
 void CameraView::updateGainLabel(double gain)
 {
   m_gainValueLabel->setText(QString::number(gain, 'f', 1));
+}
+
+void CameraView::updateFrameRateLabel(double fps)
+{
+  if (m_frameRateValueLabel) {
+    m_frameRateValueLabel->setText(QString("%1 fps").arg(fps, 0, 'f', 1));
+  }
+}
+
+void CameraView::onFrameRateSliderChanged(int value)
+{
+  double fps = value / 10.0;  // Convert to 0.1 - 30.0 range
+  // Sync spinbox (block signals to prevent loop)
+  if (m_frameRateSpinBox) {
+    m_frameRateSpinBox->blockSignals(true);
+    m_frameRateSpinBox->setValue(fps);
+    m_frameRateSpinBox->blockSignals(false);
+  }
+  updateFrameRateLabel(fps);
+
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestFrameRate(fps);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    if (m_applySettingsTimer) {
+      m_applySettingsTimer->start(350);
+    }
+  }
+}
+
+void CameraView::onFrameRateSpinBoxChanged(double value)
+{
+  int sliderValue = static_cast<int>(value * 10);  // Convert to slider range
+  // Sync slider (block signals to prevent loop)
+  if (m_frameRateSlider) {
+    m_frameRateSlider->blockSignals(true);
+    m_frameRateSlider->setValue(sliderValue);
+    m_frameRateSlider->blockSignals(false);
+  }
+  updateFrameRateLabel(value);
+
+  // Use worker for non-blocking camera update
+  if (m_parameterWorker && m_useParameterWorker) {
+    m_parameterWorker->requestFrameRate(value);
+  } else {
+    // Fallback to throttled timer
+    m_settingsPending = true;
+    if (m_applySettingsTimer) {
+      m_applySettingsTimer->start(350);
+    }
+  }
+}
+
+// ============================================================================
+// CAMERA PARAMETER WORKER - Background processing for UI responsiveness
+// ============================================================================
+
+void CameraView::setupParameterWorker()
+{
+  if (!m_useParameterWorker) {
+    std::cout << "[CameraView] Parameter worker disabled" << std::endl;
+    return;
+  }
+
+  m_parameterWorker = new CameraParameterWorker(m_context, m_cameraId);
+  connectWorkerSignals();
+  m_parameterWorker->start();
+
+  std::cout << "[CameraView] Parameter worker started for: " << m_cameraId << std::endl;
+}
+
+void CameraView::connectWorkerSignals()
+{
+  if (!m_parameterWorker) {
+    return;
+  }
+
+  // Connect worker signals to UI update slots (Qt::QueuedConnection for thread safety)
+  connect(m_parameterWorker, &CameraParameterWorker::exposureUpdated,
+          this, &CameraView::onWorkerExposureUpdated, Qt::QueuedConnection);
+  connect(m_parameterWorker, &CameraParameterWorker::gainUpdated,
+          this, &CameraView::onWorkerGainUpdated, Qt::QueuedConnection);
+  connect(m_parameterWorker, &CameraParameterWorker::frameRateUpdated,
+          this, &CameraView::onWorkerFrameRateUpdated, Qt::QueuedConnection);
+  connect(m_parameterWorker, &CameraParameterWorker::autoExposureChanged,
+          this, &CameraView::onWorkerAutoExposureChanged, Qt::QueuedConnection);
+  connect(m_parameterWorker, &CameraParameterWorker::autoGainChanged,
+          this, &CameraView::onWorkerAutoGainChanged, Qt::QueuedConnection);
+  connect(m_parameterWorker, &CameraParameterWorker::workerError,
+          this, &CameraView::onWorkerError, Qt::QueuedConnection);
+}
+
+void CameraView::onWorkerExposureUpdated(int microseconds)
+{
+  // Skip update if slider is being actively dragged (prevents jumping)
+  if (m_exposureSliderActive) {
+    return;
+  }
+
+  // Update UI with actual value from camera (block signals to prevent loop)
+  m_exposureSlider->blockSignals(true);
+  m_exposureSpinBox->blockSignals(true);
+
+  m_exposureSlider->setValue(microseconds);
+  m_exposureSpinBox->setValue(microseconds);
+  updateExposureLabel(microseconds);
+
+  m_exposureSlider->blockSignals(false);
+  m_exposureSpinBox->blockSignals(false);
+}
+
+void CameraView::onWorkerGainUpdated(double gain)
+{
+  // Skip update if slider is being actively dragged (prevents jumping)
+  if (m_gainSliderActive) {
+    return;
+  }
+
+  // Update UI with actual value from camera
+  m_gainSlider->blockSignals(true);
+  m_gainSpinBox->blockSignals(true);
+
+  int sliderValue = static_cast<int>(gain * 10);
+  m_gainSlider->setValue(sliderValue);
+  m_gainSpinBox->setValue(gain);
+  updateGainLabel(gain);
+
+  m_gainSlider->blockSignals(false);
+  m_gainSpinBox->blockSignals(false);
+}
+
+void CameraView::onWorkerFrameRateUpdated(double fps)
+{
+  // Skip update if slider is being actively dragged (prevents jumping)
+  if (m_frameRateSliderActive) {
+    return;
+  }
+
+  // Update UI with actual value from camera
+  if (m_frameRateSlider) m_frameRateSlider->blockSignals(true);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
+
+  if (m_frameRateSlider) {
+    int sliderValue = static_cast<int>(fps * 10);
+    m_frameRateSlider->setValue(sliderValue);
+  }
+  if (m_frameRateSpinBox) {
+    m_frameRateSpinBox->setValue(fps);
+  }
+  updateFrameRateLabel(fps);
+
+  if (m_frameRateSlider) m_frameRateSlider->blockSignals(false);
+  if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
+}
+
+void CameraView::onWorkerAutoExposureChanged(bool enabled)
+{
+  // Update checkbox state
+  m_autoExposureCheck->blockSignals(true);
+  m_autoExposureCheck->setChecked(enabled);
+  m_autoExposureCheck->blockSignals(false);
+
+  // Update control enabled state
+  m_exposureSlider->setEnabled(!enabled && m_isConnected);
+  m_exposureSpinBox->setEnabled(!enabled && m_isConnected);
+}
+
+void CameraView::onWorkerAutoGainChanged(bool enabled)
+{
+  // Update checkbox state
+  m_autoGainCheck->blockSignals(true);
+  m_autoGainCheck->setChecked(enabled);
+  m_autoGainCheck->blockSignals(false);
+
+  // Update control enabled state
+  m_gainSlider->setEnabled(!enabled && m_isConnected);
+  m_gainSpinBox->setEnabled(!enabled && m_isConnected);
+}
+
+void CameraView::onWorkerError(QString error)
+{
+  std::cerr << "[CameraView] Worker error: " << error.toStdString() << std::endl;
 }
 
 QString CameraView::generateSaveFilename()
@@ -949,8 +1257,12 @@ void CameraView::syncWithManagerState()
       m_frameCounter = 0;
       m_lastTotalFrames = 0;
 
-      // Load current camera settings
-      loadCurrentSettings();
+      // Load current camera settings (use worker if available)
+      if (m_parameterWorker && m_useParameterWorker) {
+        m_parameterWorker->requestReadAll();  // Non-blocking read via worker
+      } else {
+        loadCurrentSettings();  // Fallback to direct read
+      }
 
       emit cameraConnected(QString::fromStdString(m_cameraId));
     }
@@ -968,6 +1280,8 @@ void CameraView::syncWithManagerState()
     m_exposureSpinBox->setEnabled(true);
     m_gainSlider->setEnabled(true);
     m_gainSpinBox->setEnabled(true);
+    if (m_frameRateSlider) m_frameRateSlider->setEnabled(true);
+    if (m_frameRateSpinBox) m_frameRateSpinBox->setEnabled(true);
     m_saveImageButton->setEnabled(true);
 
     // Force refresh viewport after sync
@@ -994,6 +1308,8 @@ void CameraView::syncWithManagerState()
     m_exposureSpinBox->setEnabled(false);
     m_gainSlider->setEnabled(false);
     m_gainSpinBox->setEnabled(false);
+    if (m_frameRateSlider) m_frameRateSlider->setEnabled(false);
+    if (m_frameRateSpinBox) m_frameRateSpinBox->setEnabled(false);
     m_saveImageButton->setEnabled(false);
 
     // Force refresh to show disconnected state

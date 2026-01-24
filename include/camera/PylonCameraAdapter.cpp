@@ -564,6 +564,7 @@ void PylonCameraAdapter::ConvertPylonExposureToCommon(
   commonSettings.gain = pylonSettings.gain;
   commonSettings.auto_exposure = pylonSettings.exposure_auto;
   commonSettings.auto_gain = pylonSettings.gain_auto;
+  commonSettings.frame_rate = pylonSettings.frame_rate;
 }
 
 void PylonCameraAdapter::ConvertCommonExposureToPylon(
@@ -574,6 +575,7 @@ void PylonCameraAdapter::ConvertCommonExposureToPylon(
   pylonSettings.gain = commonSettings.gain;
   pylonSettings.exposure_auto = commonSettings.auto_exposure;
   pylonSettings.gain_auto = commonSettings.auto_gain;
+  pylonSettings.frame_rate = commonSettings.frame_rate;
 }
 
 void PylonCameraAdapter::SetupFrameCallbackIntegration() {

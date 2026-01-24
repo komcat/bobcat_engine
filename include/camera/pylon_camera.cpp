@@ -1418,6 +1418,7 @@ bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 	std::cout << "  Target Gain: " << settings.gain << " (0-10 scale)" << std::endl;
 	std::cout << "  Exposure Auto: " << (settings.exposure_auto ? "On" : "Off") << std::endl;
 	std::cout << "  Gain Auto: " << (settings.gain_auto ? "On" : "Off") << std::endl;
+	std::cout << "  Target Frame Rate: " << settings.frame_rate << " fps" << std::endl;
 
 	bool success = true;
 
@@ -1467,6 +1468,14 @@ bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 		}
 	}
 
+	// Set frame rate (0 means unlimited/max)
+	if (settings.frame_rate > 0) {
+		if (!SetFrameRate(settings.frame_rate)) {
+			std::cout << "  [WARNING] Failed to set frame rate (camera may not support it)" << std::endl;
+			// Don't fail the whole operation for frame rate
+		}
+	}
+
 	if (success) {
 		std::cout << "Camera settings applied successfully" << std::endl;
 	}
@@ -1485,8 +1494,90 @@ PylonCamera::ExposureSettings PylonCamera::GetCurrentExposureSettings() const {
 	settings.gain = GetGain();
 	settings.exposure_auto = IsExposureAuto();
 	settings.gain_auto = IsGainAuto();
+	settings.frame_rate = GetFrameRate();
 
 	return settings;
+}
+
+// Set frame rate (fps)
+bool PylonCamera::SetFrameRate(double fps) {
+	if (!ValidateConnection()) return false;
+
+	try {
+		std::lock_guard<std::mutex> lock(m_cameraMutex);
+
+		// Try to enable frame rate control first
+		if (GenApi::IsWritable(m_camera.GetNodeMap().GetNode("AcquisitionFrameRateEnable"))) {
+			GenApi::CBooleanPtr pFrameRateEnable(m_camera.GetNodeMap().GetNode("AcquisitionFrameRateEnable"));
+			if (pFrameRateEnable) {
+				pFrameRateEnable->SetValue(true);
+			}
+		}
+
+		// Try AcquisitionFrameRate first (ace2 cameras)
+		GenApi::CFloatPtr pFrameRate(m_camera.GetNodeMap().GetNode("AcquisitionFrameRate"));
+		if (pFrameRate && GenApi::IsWritable(pFrameRate)) {
+			double minFps = pFrameRate->GetMin();
+			double maxFps = pFrameRate->GetMax();
+			double clampedFps = std::max(minFps, std::min(fps, maxFps));
+			pFrameRate->SetValue(clampedFps);
+			std::cout << "Frame rate set to: " << clampedFps << " fps (requested: " << fps << ", range: " << minFps << "-" << maxFps << ")" << std::endl;
+			return true;
+		}
+
+		// Try AcquisitionFrameRateAbs (older ace cameras)
+		GenApi::CFloatPtr pFrameRateAbs(m_camera.GetNodeMap().GetNode("AcquisitionFrameRateAbs"));
+		if (pFrameRateAbs && GenApi::IsWritable(pFrameRateAbs)) {
+			double minFps = pFrameRateAbs->GetMin();
+			double maxFps = pFrameRateAbs->GetMax();
+			double clampedFps = std::max(minFps, std::min(fps, maxFps));
+			pFrameRateAbs->SetValue(clampedFps);
+			std::cout << "Frame rate (Abs) set to: " << clampedFps << " fps (requested: " << fps << ", range: " << minFps << "-" << maxFps << ")" << std::endl;
+			return true;
+		}
+
+		std::cerr << "Camera does not support frame rate control" << std::endl;
+		return false;
+	}
+	catch (const Pylon::GenericException& e) {
+		std::cerr << "Error setting frame rate: " << e.GetDescription() << std::endl;
+		return false;
+	}
+}
+
+// Get current frame rate (fps)
+double PylonCamera::GetFrameRate() const {
+	if (!ValidateConnectionForRead()) return 30.0;  // Default value
+
+	try {
+		// Cast away const for lock (common pattern in Pylon code)
+		PylonCamera* self = const_cast<PylonCamera*>(this);
+		std::lock_guard<std::mutex> lock(self->m_cameraMutex);
+
+		// Try AcquisitionFrameRate first (ace2 cameras)
+		GenApi::CFloatPtr pFrameRate(self->m_camera.GetNodeMap().GetNode("AcquisitionFrameRate"));
+		if (pFrameRate && GenApi::IsReadable(pFrameRate)) {
+			return pFrameRate->GetValue();
+		}
+
+		// Try AcquisitionFrameRateAbs (older ace cameras)
+		GenApi::CFloatPtr pFrameRateAbs(self->m_camera.GetNodeMap().GetNode("AcquisitionFrameRateAbs"));
+		if (pFrameRateAbs && GenApi::IsReadable(pFrameRateAbs)) {
+			return pFrameRateAbs->GetValue();
+		}
+
+		// Try ResultingFrameRate (read-only, actual achieved rate)
+		GenApi::CFloatPtr pResultingRate(self->m_camera.GetNodeMap().GetNode("ResultingFrameRate"));
+		if (pResultingRate && GenApi::IsReadable(pResultingRate)) {
+			return pResultingRate->GetValue();
+		}
+
+		return 30.0;  // Default if not readable
+	}
+	catch (const Pylon::GenericException& e) {
+		std::cerr << "Error getting frame rate: " << e.GetDescription() << std::endl;
+		return 30.0;
+	}
 }
 
 

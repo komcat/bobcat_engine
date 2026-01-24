@@ -32,6 +32,7 @@ struct VisionCameraSettings {
     double gain = 1.0;            // 0.0 - 10.0
     bool autoExposure = false;
     bool autoGain = false;
+    double frameRate = 8.0;       // frames per second
     double pixelToMmX = 0.00248;  // mm per pixel
     double pixelToMmY = 0.00248;
 };
@@ -104,6 +105,8 @@ private slots:
     void onGainSpinBoxChanged(double value);
     void onAutoExposureChanged(Qt::CheckState state);
     void onAutoGainChanged(Qt::CheckState state);
+    void onFrameRateSliderChanged(int value);
+    void onFrameRateSpinBoxChanged(double value);
     void onROIValueChanged();
     void onROIEnabledChanged(Qt::CheckState state);
     void onSearchBoxValueChanged();
@@ -122,6 +125,7 @@ private:
     void setupLightingSection(QVBoxLayout* parentLayout);
     void updateExposureLabel(int microseconds);
     void updateGainLabel(double gain);
+    void updateFrameRateLabel(double fps);
     void updateROISizeLabel();
     void updateSearchBoxSizeLabel();
     void loadLightingChannels();
@@ -145,6 +149,9 @@ private:
     QSlider* m_gainSlider;
     QDoubleSpinBox* m_gainSpinBox;
     QLabel* m_gainValueLabel;
+    QSlider* m_frameRateSlider;
+    QDoubleSpinBox* m_frameRateSpinBox;
+    QLabel* m_frameRateValueLabel;
     QLabel* m_pixelToMmXLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)
     QLabel* m_pixelToMmYLabel;  // Display-only (loaded from config/SYSTEM/val_pixelmm.json)
 
