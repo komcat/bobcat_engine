@@ -6,6 +6,8 @@
 #include "SMUTypes.h"  // For SMUMode enum
 #include "Keithley6482Adapter.h"
 #include "SMUPollingManager.h"
+#include "SMUConnectionWorker.h"
+#include "SMUParameterWorker.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -19,9 +21,61 @@ SMUControlPage::SMUControlPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_smuManager(context->smuManager)
+  , m_connectionWorker(nullptr)
+  , m_connectionPending(false)
+  , m_parameterWorker(nullptr)
 {
   setupUI();
   loadDevices();
+
+  // Initialize connection worker
+  m_connectionWorker = new SMUConnectionWorker(m_smuManager, nullptr);
+
+  // Connect connection worker signals (use Qt::QueuedConnection for cross-thread safety)
+  connect(m_connectionWorker, &SMUConnectionWorker::connectionSuccess,
+          this, &SMUControlPage::onConnectionSuccess, Qt::QueuedConnection);
+  connect(m_connectionWorker, &SMUConnectionWorker::connectionFailed,
+          this, &SMUControlPage::onConnectionFailed, Qt::QueuedConnection);
+  connect(m_connectionWorker, &SMUConnectionWorker::disconnectionComplete,
+          this, &SMUControlPage::onDisconnectionComplete, Qt::QueuedConnection);
+  connect(m_connectionWorker, &SMUConnectionWorker::operationStarted,
+          this, &SMUControlPage::onConnectionOperationStarted, Qt::QueuedConnection);
+
+  // Start the connection worker thread
+  m_connectionWorker->start();
+
+  // Initialize parameter worker
+  m_parameterWorker = new SMUParameterWorker(m_smuManager, nullptr);
+
+  // Connect parameter worker signals
+  connect(m_parameterWorker, &SMUParameterWorker::measurementsUpdated,
+          this, &SMUControlPage::onMeasurementsUpdated, Qt::QueuedConnection);
+  connect(m_parameterWorker, &SMUParameterWorker::outputStateChanged,
+          this, &SMUControlPage::onOutputStateChangedByWorker, Qt::QueuedConnection);
+  connect(m_parameterWorker, &SMUParameterWorker::commandError,
+          this, &SMUControlPage::onParameterCommandError, Qt::QueuedConnection);
+  connect(m_parameterWorker, &SMUParameterWorker::commandSuccess,
+          this, &SMUControlPage::onParameterCommandSuccess, Qt::QueuedConnection);
+
+  // Start the parameter worker thread
+  m_parameterWorker->start();
+}
+
+SMUControlPage::~SMUControlPage()
+{
+  // Stop the connection worker thread
+  if (m_connectionWorker) {
+    m_connectionWorker->stop();
+    delete m_connectionWorker;
+    m_connectionWorker = nullptr;
+  }
+
+  // Stop the parameter worker thread
+  if (m_parameterWorker) {
+    m_parameterWorker->stop();
+    delete m_parameterWorker;
+    m_parameterWorker = nullptr;
+  }
 }
 
 QString SMUControlPage::createStyleSheet()
@@ -241,8 +295,14 @@ void SMUControlPage::setupUI()
 void SMUControlPage::createConnectionTab()
 {
   QWidget* tab = new QWidget();
-  QVBoxLayout* layout = new QVBoxLayout(tab);
-  layout->setContentsMargins(20, 20, 20, 20);
+  QHBoxLayout* tabLayout = new QHBoxLayout(tab);
+  tabLayout->setContentsMargins(20, 20, 20, 20);
+
+  // Fixed-width content container
+  QWidget* contentWidget = new QWidget();
+  contentWidget->setMaximumWidth(450);
+  QVBoxLayout* layout = new QVBoxLayout(contentWidget);
+  layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(15);
 
   // Title
@@ -292,6 +352,10 @@ void SMUControlPage::createConnectionTab()
 
   layout->addStretch();
 
+  // Align content to left
+  tabLayout->addWidget(contentWidget, 0, Qt::AlignLeft | Qt::AlignTop);
+  tabLayout->addStretch();
+
   m_tabWidget->addTab(tab, "Connection");
 }
 
@@ -305,9 +369,16 @@ void SMUControlPage::createSimpleTab()
   scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
+  // Container for horizontal layout (align left)
+  QWidget* outerTab = new QWidget();
+  QHBoxLayout* outerLayout = new QHBoxLayout(outerTab);
+  outerLayout->setContentsMargins(20, 20, 20, 20);
+
+  // Fixed-width content container
   QWidget* tab = new QWidget();
+  tab->setMaximumWidth(450);
   QVBoxLayout* layout = new QVBoxLayout(tab);
-  layout->setContentsMargins(20, 20, 20, 20);
+  layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(15);
 
   // Title
@@ -495,8 +566,12 @@ void SMUControlPage::createSimpleTab()
 
   layout->addStretch();
 
+  // Align content to left
+  outerLayout->addWidget(tab, 0, Qt::AlignLeft | Qt::AlignTop);
+  outerLayout->addStretch();
+
   // Set tab as scroll area content
-  scrollArea->setWidget(tab);
+  scrollArea->setWidget(outerTab);
   m_tabWidget->addTab(scrollArea, "Simple");
 }
 
@@ -510,9 +585,16 @@ void SMUControlPage::createPollingTab()
   scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
+  // Container for horizontal layout (align left)
+  QWidget* outerTab = new QWidget();
+  QHBoxLayout* outerLayout = new QHBoxLayout(outerTab);
+  outerLayout->setContentsMargins(20, 20, 20, 20);
+
+  // Fixed-width content container
   QWidget* tab = new QWidget();
+  tab->setMaximumWidth(450);
   QVBoxLayout* layout = new QVBoxLayout(tab);
-  layout->setContentsMargins(20, 20, 20, 20);
+  layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(15);
 
   // Title
@@ -624,8 +706,12 @@ void SMUControlPage::createPollingTab()
 
   layout->addStretch();
 
+  // Align content to left
+  outerLayout->addWidget(tab, 0, Qt::AlignLeft | Qt::AlignTop);
+  outerLayout->addStretch();
+
   // Set tab as scroll area content
-  scrollArea->setWidget(tab);
+  scrollArea->setWidget(outerTab);
   m_tabWidget->addTab(scrollArea, "Polling");
 }
 
@@ -655,12 +741,17 @@ void SMUControlPage::onDeviceSelected(int row)
   m_currentDevice = m_deviceList->item(row)->text();
   std::cout << "[SMUControlPage] Selected device: " << m_currentDevice.toStdString() << std::endl;
 
+  // Update workers with selected device
+  if (m_parameterWorker) {
+    m_parameterWorker->setCurrentDevice(m_currentDevice.toStdString());
+  }
+
   updateConnectionStatus();
   updateChannelList();
   updateOutputState();
   updateDeviceCapabilities();  // Update UI based on device capabilities
   updateDeviceLabels();  // Update device name labels in Simple and Polling tabs
-  refreshActiveSessionsList();  // ✅ NEW: Refresh polling sessions list to highlight current device
+  refreshActiveSessionsList();  // Refresh polling sessions list to highlight current device
 }
 
 void SMUControlPage::onConnectClicked()
@@ -670,43 +761,54 @@ void SMUControlPage::onConnectClicked()
     return;
   }
 
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu) {
-    showError("Device not found");
+  if (m_connectionPending) {
+    showError("Connection operation in progress...");
     return;
   }
 
-  if (smu->Connect()) {
-    showSuccess("Connected to " + m_currentDevice);
-    updateConnectionStatus();
-    updateChannelList();
-    updateOutputState();
-    updateDeviceLabels();  // ✅ NEW: Update device labels to show "Connected"
-    updateDeviceCapabilities();  // Update UI based on device capabilities
-  } else {
-    showError(QString::fromStdString(smu->GetLastError()));
-  }
+  // Disable buttons and show connecting status
+  m_connectionPending = true;
+  m_connectButton->setEnabled(false);
+  m_disconnectButton->setEnabled(false);
+  m_connectionStatus->setText("● Connecting...");
+  m_connectionStatus->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #f39c12; padding: 10px; }");
+
+  // Request connection via worker thread (non-blocking)
+  m_connectionWorker->requestConnect(m_currentDevice);
 }
 
 void SMUControlPage::onDisconnectClicked()
 {
   if (m_currentDevice.isEmpty()) return;
 
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (smu) {
-    smu->Disconnect();
-    showSuccess("Disconnected from " + m_currentDevice);
-    updateConnectionStatus();
-    updateOutputState();
-    updateDeviceLabels();  // ✅ NEW: Update device labels to show "Disconnected"
+  if (m_connectionPending) {
+    showError("Connection operation in progress...");
+    return;
   }
+
+  // Disable buttons and show disconnecting status
+  m_connectionPending = true;
+  m_connectButton->setEnabled(false);
+  m_disconnectButton->setEnabled(false);
+  m_connectionStatus->setText("● Disconnecting...");
+  m_connectionStatus->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #f39c12; padding: 10px; }");
+
+  // Request disconnection via worker thread (non-blocking)
+  m_connectionWorker->requestDisconnect(m_currentDevice);
 }
 
 // Channel selection
 void SMUControlPage::onChannelSelected(int index)
 {
-  std::cout << "[SMUControlPage] Channel selected: " << (index + 1) << std::endl;
-  updateMeasurements();
+  int channel = index + 1;
+  std::cout << "[SMUControlPage] Channel selected: " << channel << std::endl;
+
+  // Update parameter worker with selected channel
+  if (m_parameterWorker) {
+    m_parameterWorker->setPollingChannel(channel);
+    // Request measurements for the newly selected channel
+    m_parameterWorker->requestRefreshAll(channel);
+  }
 }
 
 // Measurement mode
@@ -772,11 +874,9 @@ void SMUControlPage::onOutputOnClicked()
     return;
   }
 
-  if (smu->SetOutputOn()) {
-    showSuccess("Output turned ON");
-    updateOutputState();
-  } else {
-    showError("Failed to turn output ON: " + QString::fromStdString(smu->GetLastError()));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestOutputOn();
   }
 }
 
@@ -793,11 +893,9 @@ void SMUControlPage::onOutputOffClicked()
     return;
   }
 
-  if (smu->SetOutputOff()) {
-    showSuccess("Output turned OFF");
-    updateOutputState();
-  } else {
-    showError("Failed to turn output OFF: " + QString::fromStdString(smu->GetLastError()));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestOutputOff();
   }
 }
 
@@ -863,23 +961,12 @@ void SMUControlPage::onSetVoltageClicked()
 
   double voltage = m_setVoltageSpinBox->value();
 
-  if (smu->SetVoltage(voltage)) {
-    showSuccess(QString("Voltage set to %1 V").arg(voltage, 0, 'f', 3));
-
-    // Update voltage reading
-    QTimer::singleShot(100, this, [this]() {
-      if (!m_currentDevice.isEmpty()) {
-        auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-        if (smu && smu->IsConnected()) {
-          double readVoltage = smu->ReadVoltage();
-          if (readVoltage != -999.0) {
-            m_voltageReadLabel->setText(QString::number(readVoltage, 'f', 3) + " V");
-          }
-        }
-      }
-    });
-  } else {
-    showError("Failed to set voltage: " + QString::fromStdString(smu->GetLastError()));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestSetVoltage(voltage);
+    // Request a refresh after setting
+    int channel = m_channelComboBox->currentIndex() + 1;
+    m_parameterWorker->requestRefreshAll(channel);
   }
 }
 
@@ -898,17 +985,12 @@ void SMUControlPage::onSetCurrentClicked()
 
   double current = m_setCurrentSpinBox->value();
 
-  if (smu->SetCurrent(current)) {
-    showSuccess(QString("Current set to %1 A").arg(current, 0, 'e', 3));
-
-    // Update current reading
-    QTimer::singleShot(100, this, [this]() {
-      if (!m_currentDevice.isEmpty()) {
-        updateMeasurements();
-      }
-    });
-  } else {
-    showError("Failed to set current: " + QString::fromStdString(smu->GetLastError()));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestSetCurrent(current);
+    // Request a refresh after setting
+    int channel = m_channelComboBox->currentIndex() + 1;
+    m_parameterWorker->requestRefreshAll(channel);
   }
 }
 
@@ -927,11 +1009,10 @@ void SMUControlPage::onSetVoltageComplianceClicked()
 
   double voltageCompliance = m_voltageComplianceSpinBox->value();
 
-  std::cout << "[SMUControlPage] Setting voltage compliance to " << voltageCompliance << " V" << std::endl;
-
-  // NOTE: Voltage compliance is stored in context but not yet implemented in device interface
-  // This is a placeholder for future full SMU device support
-  showSuccess(QString("Voltage compliance: %1 V (stored, full device support pending)").arg(voltageCompliance, 0, 'f', 3));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestSetVoltageCompliance(voltageCompliance);
+  }
 }
 
 void SMUControlPage::onSetCurrentComplianceClicked()
@@ -949,10 +1030,9 @@ void SMUControlPage::onSetCurrentComplianceClicked()
 
   double currentCompliance = m_currentComplianceSpinBox->value();
 
-  if (smu->SetCompliance(currentCompliance)) {
-    showSuccess(QString("Current compliance set to %1 A").arg(currentCompliance, 0, 'e', 3));
-  } else {
-    showError("Failed to set current compliance: " + QString::fromStdString(smu->GetLastError()));
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    m_parameterWorker->requestSetCurrentCompliance(currentCompliance);
   }
 }
 
@@ -1097,36 +1177,60 @@ void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, doubl
 // Measurement update
 void SMUControlPage::onRefreshClicked()
 {
-  updateMeasurements();
-  updateOutputState();
-}
-
-void SMUControlPage::updateMeasurements()
-{
-  if (m_currentDevice.isEmpty()) return;
+  if (m_currentDevice.isEmpty()) {
+    showError("No device selected");
+    return;
+  }
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
     m_voltageReadLabel->setText("--- V");
     m_currentReadLabel->setText("--- A");
+    showError("Device not connected");
     return;
   }
 
-  // Read voltage (device-wide)
-  double voltage = smu->ReadVoltage();
-  if (voltage != -999.0) {
-    m_voltageReadLabel->setText(QString::number(voltage, 'f', 3) + " V");
-  } else {
-    m_voltageReadLabel->setText("Error");
+  // Use parameter worker for non-blocking operation
+  if (m_parameterWorker) {
+    int channel = m_channelComboBox->currentIndex() + 1;
+    m_parameterWorker->requestRefreshAll(channel);
   }
+}
 
-  // Read current from selected channel
-  int selectedChannel = m_channelComboBox->currentIndex() + 1;
-  double current = smu->ReadChannel(selectedChannel);
-  if (current != -999.0) {
-    m_currentReadLabel->setText(QString::number(current, 'e', 3) + " A");
+void SMUControlPage::updateMeasurements()
+{
+  // This is now handled by the parameter worker callback
+  // Keep for initial load or when worker is not available
+  if (!m_parameterWorker) {
+    if (m_currentDevice.isEmpty()) return;
+
+    auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+    if (!smu || !smu->IsConnected()) {
+      m_voltageReadLabel->setText("--- V");
+      m_currentReadLabel->setText("--- A");
+      return;
+    }
+
+    // Read voltage (device-wide)
+    double voltage = smu->ReadVoltage();
+    if (voltage != -999.0) {
+      m_voltageReadLabel->setText(QString::number(voltage, 'f', 3) + " V");
+    } else {
+      m_voltageReadLabel->setText("Error");
+    }
+
+    // Read current from selected channel
+    int selectedChannel = m_channelComboBox->currentIndex() + 1;
+    double current = smu->ReadChannel(selectedChannel);
+    if (current != -999.0) {
+      m_currentReadLabel->setText(QString::number(current, 'e', 3) + " A");
+    } else {
+      m_currentReadLabel->setText("Error");
+    }
   } else {
-    m_currentReadLabel->setText("Error");
+    // Request refresh via worker
+    int channel = m_channelComboBox->currentIndex() + 1;
+    m_parameterWorker->requestRefreshAll(channel);
   }
 }
 
@@ -1290,4 +1394,164 @@ void SMUControlPage::showSuccess(const QString& message)
   m_statusLabel->setText("✅ " + message);
   m_statusLabel->setStyleSheet("QLabel { color: #27ae60; font-size: 12px; padding: 8px; }");
   std::cout << "[SMUControlPage] Success: " << message.toStdString() << std::endl;
+}
+
+// ========== CONNECTION WORKER CALLBACKS ==========
+
+void SMUControlPage::onConnectionSuccess(QString deviceName, QString deviceId)
+{
+  std::cout << "[SMUControlPage] Connection success: " << deviceName.toStdString()
+            << " (ID: " << deviceId.toStdString() << ")" << std::endl;
+
+  m_connectionPending = false;
+
+  // Only update UI if this is still the selected device
+  if (deviceName == m_currentDevice) {
+    showSuccess("Connected to " + deviceName);
+    updateConnectionStatus();
+    updateChannelList();
+    updateDeviceLabels();
+    updateDeviceCapabilities();
+
+    // Configure parameter worker for this device
+    if (m_parameterWorker) {
+      m_parameterWorker->setCurrentDevice(deviceName.toStdString());
+
+      // Get channel count and set on worker
+      auto smu = m_smuManager->GetDevice(deviceName.toStdString());
+      if (smu) {
+        m_parameterWorker->setChannelCount(smu->GetChannelCount());
+      }
+
+      // Request initial measurements
+      int channel = m_channelComboBox->currentIndex() + 1;
+      m_parameterWorker->requestRefreshAll(channel);
+    }
+  }
+}
+
+void SMUControlPage::onConnectionFailed(QString deviceName, QString error)
+{
+  std::cerr << "[SMUControlPage] Connection failed: " << deviceName.toStdString()
+            << " - " << error.toStdString() << std::endl;
+
+  m_connectionPending = false;
+
+  // Only update UI if this is still the selected device
+  if (deviceName == m_currentDevice) {
+    showError("Connection failed: " + error);
+    updateConnectionStatus();
+  }
+}
+
+void SMUControlPage::onDisconnectionComplete(QString deviceName)
+{
+  std::cout << "[SMUControlPage] Disconnection complete: " << deviceName.toStdString() << std::endl;
+
+  m_connectionPending = false;
+
+  // Only update UI if this is still the selected device
+  if (deviceName == m_currentDevice) {
+    showSuccess("Disconnected from " + deviceName);
+    updateConnectionStatus();
+    updateOutputState();
+    updateDeviceLabels();
+  }
+}
+
+void SMUControlPage::onConnectionOperationStarted(QString operation, QString deviceName)
+{
+  std::cout << "[SMUControlPage] " << operation.toStdString()
+            << " started for: " << deviceName.toStdString() << std::endl;
+
+  m_statusLabel->setText("⏳ " + operation + " " + deviceName + "...");
+  m_statusLabel->setStyleSheet("QLabel { color: #f39c12; font-size: 12px; padding: 8px; }");
+}
+
+// ========== PARAMETER WORKER CALLBACKS ==========
+
+void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
+{
+  // Update voltage display
+  if (voltage != -999.0) {
+    m_voltageReadLabel->setText(QString::number(voltage, 'f', 3) + " V");
+  } else {
+    m_voltageReadLabel->setText("--- V");
+  }
+
+  // Update current display
+  if (current != -999.0) {
+    m_currentReadLabel->setText(QString::number(current, 'e', 3) + " A");
+  } else {
+    m_currentReadLabel->setText("--- A");
+  }
+
+  // Update output state display
+  if (outputOn) {
+    m_outputStateLabel->setText("ON");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #27ae60; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #27ae60; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  } else {
+    m_outputStateLabel->setText("OFF");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #e74c3c; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #e74c3c; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  }
+}
+
+void SMUControlPage::onOutputStateChangedByWorker(bool on)
+{
+  // Update output state display
+  if (on) {
+    m_outputStateLabel->setText("ON");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #27ae60; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #27ae60; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  } else {
+    m_outputStateLabel->setText("OFF");
+    m_outputStateLabel->setStyleSheet("QLabel { "
+      "font-size: 20px; "
+      "font-weight: bold; "
+      "color: #e74c3c; "
+      "background-color: #1e1e1e; "
+      "border: 2px solid #e74c3c; "
+      "border-radius: 4px; "
+      "padding: 8px; "
+      "}");
+  }
+
+  // Request a full measurement refresh after output state change
+  if (m_parameterWorker && !m_currentDevice.isEmpty()) {
+    int channel = m_channelComboBox->currentIndex() + 1;
+    m_parameterWorker->requestRefreshAll(channel);
+  }
+}
+
+void SMUControlPage::onParameterCommandError(QString operation, QString error)
+{
+  showError(operation + ": " + error);
+}
+
+void SMUControlPage::onParameterCommandSuccess(QString operation, QString message)
+{
+  showSuccess(message);
 }

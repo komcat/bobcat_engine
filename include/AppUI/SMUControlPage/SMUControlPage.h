@@ -15,6 +15,8 @@
 
 struct ApplicationContext;
 class SMUManager;
+class SMUConnectionWorker;
+class SMUParameterWorker;
 
 /**
  * @brief Control page for SMU devices
@@ -27,7 +29,7 @@ class SMUControlPage : public QWidget
 
 public:
   explicit SMUControlPage(ApplicationContext* context, QWidget* parent = nullptr);
-  ~SMUControlPage() = default;
+  ~SMUControlPage();
 
 private slots:
   // Device management
@@ -67,6 +69,18 @@ private slots:
 
   // Polling measurement callback
   void onPollingMeasurement(QString deviceName, int channel, double current, QString timestamp);
+
+  // Connection worker callbacks
+  void onConnectionSuccess(QString deviceName, QString deviceId);
+  void onConnectionFailed(QString deviceName, QString error);
+  void onDisconnectionComplete(QString deviceName);
+  void onConnectionOperationStarted(QString operation, QString deviceName);
+
+  // Parameter worker callbacks
+  void onMeasurementsUpdated(int channel, double voltage, double current, bool outputOn);
+  void onOutputStateChangedByWorker(bool on);
+  void onParameterCommandError(QString operation, QString error);
+  void onParameterCommandSuccess(QString operation, QString message);
 
 private:
   void setupUI();
@@ -148,4 +162,11 @@ private:
   // ===== SHARED =====
   QLabel* m_statusLabel;
   QString m_currentDevice;
+
+  // ===== CONNECTION WORKER =====
+  SMUConnectionWorker* m_connectionWorker;
+  bool m_connectionPending;  // True when waiting for connection result
+
+  // ===== PARAMETER WORKER =====
+  SMUParameterWorker* m_parameterWorker;
 };

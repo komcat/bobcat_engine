@@ -693,6 +693,8 @@ set(SOURCES
     include/SMU/SMUManager.cpp
     include/SMU/SMUJsonLoader.cpp
     include/SMU/SMUPollingManager.cpp
+    include/SMU/SMUConnectionWorker.cpp
+    include/SMU/SMUParameterWorker.cpp
     include/ProgramManager/ProgramWorker.cpp
     include/ProgramManager/ProgramManager.cpp
     include/ProgramManager/RecipeExecutionStateMachine.cpp
@@ -882,6 +884,8 @@ set(HEADERS
     include/SMU/SMUManager.h
     include/SMU/SMUJsonLoader.h
     include/SMU/SMUPollingManager.h
+    include/SMU/SMUConnectionWorker.h
+    include/SMU/SMUParameterWorker.h
     include/ProgramManager/ProgramWorker.h
     include/ProgramManager/ProgramManager.h
     include/ProgramManager/ConditionExpressionEvaluator.h
