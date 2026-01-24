@@ -2,6 +2,8 @@
 #include "TECControlPage.h"
 #include "ApplicationContext.h"
 #include "TECManager.h"
+#include "TECConnectionWorker.h"
+#include "TECParameterWorker.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGroupBox>
@@ -16,6 +18,9 @@ TECControlPage::TECControlPage(ApplicationContext* context, QWidget* parent)
   , m_context(context)
   , m_isConnected(false)
   , m_isUpdatingFromDevice(false)
+  , m_connectionWorker(nullptr)
+  , m_parameterWorker(nullptr)
+  , m_connectionPending(false)
 {
   setupUI();
   updateDeviceList();
@@ -24,12 +29,48 @@ TECControlPage::TECControlPage(ApplicationContext* context, QWidget* parent)
   // Timer will start in showEvent() when page becomes visible
   m_pollTimer = new QTimer(this);
   connect(m_pollTimer, &QTimer::timeout, this, &TECControlPage::onPollTimer);
+
+  // Initialize workers if TEC manager is available
+  if (m_context && m_context->tecManager) {
+    // Initialize connection worker
+    m_connectionWorker = new TECConnectionWorker(m_context->tecManager, nullptr);
+    connect(m_connectionWorker, &TECConnectionWorker::connectionSuccess,
+            this, &TECControlPage::onConnectionSuccess, Qt::QueuedConnection);
+    connect(m_connectionWorker, &TECConnectionWorker::connectionFailed,
+            this, &TECControlPage::onConnectionFailed, Qt::QueuedConnection);
+    connect(m_connectionWorker, &TECConnectionWorker::disconnectionComplete,
+            this, &TECControlPage::onDisconnectionComplete, Qt::QueuedConnection);
+    connect(m_connectionWorker, &TECConnectionWorker::operationStarted,
+            this, &TECControlPage::onConnectionOperationStarted, Qt::QueuedConnection);
+    m_connectionWorker->start();
+
+    // Initialize parameter worker
+    m_parameterWorker = new TECParameterWorker(m_context->tecManager, nullptr);
+    connect(m_parameterWorker, &TECParameterWorker::statusUpdated,
+            this, &TECControlPage::onStatusUpdated, Qt::QueuedConnection);
+    connect(m_parameterWorker, &TECParameterWorker::commandError,
+            this, &TECControlPage::onParameterCommandError, Qt::QueuedConnection);
+    m_parameterWorker->start();
+  }
 }
 
 TECControlPage::~TECControlPage()
 {
   if (m_pollTimer) {
     m_pollTimer->stop();
+  }
+
+  // Stop and clean up workers
+  if (m_connectionWorker) {
+    m_connectionWorker->stop();
+    delete m_connectionWorker;
+    m_connectionWorker = nullptr;
+  }
+
+  if (m_parameterWorker) {
+    m_parameterWorker->stop();
+    delete m_parameterWorker;
+    m_parameterWorker = nullptr;
   }
 }
 
@@ -497,38 +538,41 @@ void TECControlPage::onDeviceSelected()
 void TECControlPage::onConnectClicked()
 {
   QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager) {
+  if (device.isEmpty() || !m_connectionWorker || m_connectionPending) {
     return;
   }
 
-  bool success = m_context->tecManager->ConnectDevice(device.toStdString());
+  m_connectionPending = true;
+  m_connectButton->setEnabled(false);
+  m_connectionStatus->setText("Connecting...");
+  m_connectionStatus->setStyleSheet("QLabel { color: #f39c12; font-weight: bold; background-color: transparent; }");
 
-  if (success) {
-    m_isConnected = true;
-    m_connectionStatus->setText("Connected");
-    m_connectionStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; background-color: transparent; }");
-    enableControls(true);
-    std::cout << "[TECControlPage] Connected to " << device.toStdString() << std::endl;
+  // Set device for parameter worker
+  if (m_parameterWorker) {
+    m_parameterWorker->setCurrentDevice(device.toStdString());
   }
-  else {
-    m_connectionStatus->setText("Connection Failed");
-    m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; background-color: transparent; }");
-  }
+
+  m_connectionWorker->requestConnect(device);
 }
 
 void TECControlPage::onDisconnectClicked()
 {
   QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager) {
+  if (device.isEmpty() || !m_connectionWorker || m_connectionPending) {
     return;
   }
 
-  m_context->tecManager->DisconnectDevice(device.toStdString());
-  m_isConnected = false;
-  m_connectionStatus->setText("Disconnected");
-  m_connectionStatus->setStyleSheet("QLabel { color: #888888; font-weight: bold; background-color: transparent; }");
-  enableControls(false);
-  std::cout << "[TECControlPage] Disconnected from " << device.toStdString() << std::endl;
+  m_connectionPending = true;
+  m_disconnectButton->setEnabled(false);
+  m_connectionStatus->setText("Disconnecting...");
+  m_connectionStatus->setStyleSheet("QLabel { color: #f39c12; font-weight: bold; background-color: transparent; }");
+
+  // Stop parameter worker polling during disconnect
+  if (m_parameterWorker) {
+    m_parameterWorker->setStatusPollingEnabled(false);
+  }
+
+  m_connectionWorker->requestDisconnect(device);
 }
 
 void TECControlPage::onTemperatureSliderChanged(int value)
@@ -540,12 +584,11 @@ void TECControlPage::onTemperatureSliderChanged(int value)
   m_temperatureSpinBox->setValue(value);
   m_temperatureSpinBox->blockSignals(false);
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->SetTemperature(device.toStdString(), value);
+  m_parameterWorker->requestSetTemperature(static_cast<double>(value));
 }
 
 void TECControlPage::onTemperatureSpinBoxChanged(int value)
@@ -557,38 +600,35 @@ void TECControlPage::onTemperatureSpinBoxChanged(int value)
   m_temperatureSlider->setValue(value);
   m_temperatureSlider->blockSignals(false);
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->SetTemperature(device.toStdString(), value);
+  m_parameterWorker->requestSetTemperature(static_cast<double>(value));
 }
 
 void TECControlPage::onTECOnClicked()
 {
   if (m_isUpdatingFromDevice) return;
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->TEC_On(device.toStdString());
-  std::cout << "[TECControlPage] TEC ON clicked for " << device.toStdString() << std::endl;
+  m_parameterWorker->requestTECOn();
+  std::cout << "[TECControlPage] TEC ON clicked" << std::endl;
 }
 
 void TECControlPage::onTECOffClicked()
 {
   if (m_isUpdatingFromDevice) return;
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->TEC_Off(device.toStdString());
-  std::cout << "[TECControlPage] TEC OFF clicked for " << device.toStdString() << std::endl;
+  m_parameterWorker->requestTECOff();
+  std::cout << "[TECControlPage] TEC OFF clicked" << std::endl;
 }
 
 void TECControlPage::onLaserCurrentSliderChanged(int value)
@@ -600,12 +640,11 @@ void TECControlPage::onLaserCurrentSliderChanged(int value)
   m_laserCurrentSpinBox->setValue(value);
   m_laserCurrentSpinBox->blockSignals(false);
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->SetLaserCurrent(device.toStdString(), value);
+  m_parameterWorker->requestSetLaserCurrent(static_cast<double>(value));
 }
 
 void TECControlPage::onLaserCurrentSpinBoxChanged(int value)
@@ -617,38 +656,35 @@ void TECControlPage::onLaserCurrentSpinBoxChanged(int value)
   m_laserCurrentSlider->setValue(value);
   m_laserCurrentSlider->blockSignals(false);
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->SetLaserCurrent(device.toStdString(), value);
+  m_parameterWorker->requestSetLaserCurrent(static_cast<double>(value));
 }
 
 void TECControlPage::onLaserOnClicked()
 {
   if (m_isUpdatingFromDevice) return;
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->Laser_On(device.toStdString());
-  std::cout << "[TECControlPage] Laser ON clicked for " << device.toStdString() << std::endl;
+  m_parameterWorker->requestLaserOn();
+  std::cout << "[TECControlPage] Laser ON clicked" << std::endl;
 }
 
 void TECControlPage::onLaserOffClicked()
 {
   if (m_isUpdatingFromDevice) return;
 
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
-  m_context->tecManager->Laser_Off(device.toStdString());
-  std::cout << "[TECControlPage] Laser OFF clicked for " << device.toStdString() << std::endl;
+  m_parameterWorker->requestLaserOff();
+  std::cout << "[TECControlPage] Laser OFF clicked" << std::endl;
 }
 
 void TECControlPage::onPreset1Clicked()
@@ -663,8 +699,7 @@ void TECControlPage::onPreset2Clicked()
 
 void TECControlPage::applyPreset(double temp, double current, bool tecOn, bool laserOn)
 {
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  if (!m_parameterWorker || !m_isConnected) {
     return;
   }
 
@@ -672,41 +707,28 @@ void TECControlPage::applyPreset(double temp, double current, bool tecOn, bool l
     << current << "mA, TEC:" << (tecOn ? "ON" : "OFF")
     << ", Laser:" << (laserOn ? "ON" : "OFF") << std::endl;
 
-  // Set temperature (update both slider and spinbox)
+  // Update UI controls (block signals to prevent redundant commands)
+  m_isUpdatingFromDevice = true;
   m_temperatureSlider->setValue(static_cast<int>(temp));
   m_temperatureSpinBox->setValue(static_cast<int>(temp));
-  m_context->tecManager->SetTemperature(device.toStdString(), temp);
-
-  // Set laser current (update both slider and spinbox)
   m_laserCurrentSlider->setValue(static_cast<int>(current));
   m_laserCurrentSpinBox->setValue(static_cast<int>(current));
-  m_context->tecManager->SetLaserCurrent(device.toStdString(), current);
+  m_isUpdatingFromDevice = false;
 
-  // Set TEC state
-  if (tecOn) {
-    m_context->tecManager->TEC_On(device.toStdString());
-  }
-  else {
-    m_context->tecManager->TEC_Off(device.toStdString());
-  }
-
-  // Set laser state
-  if (laserOn) {
-    m_context->tecManager->Laser_On(device.toStdString());
-  }
-  else {
-    m_context->tecManager->Laser_Off(device.toStdString());
-  }
+  // Send preset command via worker
+  m_parameterWorker->requestApplyPreset(temp, current, tecOn, laserOn);
 }
 
 void TECControlPage::onPollTimer()
 {
-  QString device = getCurrentDevice();
-  if (device.isEmpty() || !m_context || !m_context->tecManager || !m_isConnected) {
+  // Use parameter worker's built-in polling when connected
+  // This method is now only used as a backup/fallback
+  if (!m_isConnected || !m_parameterWorker) {
     return;
   }
 
-  updateStatusDisplay();
+  // Request status refresh via worker (non-blocking)
+  m_parameterWorker->requestRefreshStatus();
 }
 
 void TECControlPage::updateControls()
@@ -865,7 +887,12 @@ void TECControlPage::showEvent(QShowEvent* event)
   // Refresh device list
   updateDeviceList();
 
-  // Start polling timer (500ms)
+  // Enable parameter worker polling when page is visible
+  if (m_parameterWorker) {
+    m_parameterWorker->setStatusPollingEnabled(true);
+  }
+
+  // Start backup polling timer (500ms)
   m_pollTimer->start(500);
 }
 
@@ -875,8 +902,137 @@ void TECControlPage::hideEvent(QHideEvent* event)
 
   std::cout << "[TECControlPage] Page hidden - stopping polling" << std::endl;
 
+  // Disable parameter worker polling when page is hidden
+  if (m_parameterWorker) {
+    m_parameterWorker->setStatusPollingEnabled(false);
+  }
+
   // Stop polling to prevent timeouts when page is not visible
   m_pollTimer->stop();
+}
+
+// ============================================================================
+// Connection Worker Callbacks
+// ============================================================================
+
+void TECControlPage::onConnectionSuccess(QString deviceName)
+{
+  std::cout << "[TECControlPage] Connection success: " << deviceName.toStdString() << std::endl;
+
+  m_connectionPending = false;
+  m_isConnected = true;
+  m_connectionStatus->setText("Connected");
+  m_connectionStatus->setStyleSheet("QLabel { color: #27ae60; font-weight: bold; background-color: transparent; }");
+  enableControls(true);
+
+  // Enable parameter worker polling
+  if (m_parameterWorker) {
+    m_parameterWorker->setStatusPollingEnabled(true);
+  }
+}
+
+void TECControlPage::onConnectionFailed(QString deviceName, QString error)
+{
+  std::cout << "[TECControlPage] Connection failed: " << deviceName.toStdString()
+            << " - " << error.toStdString() << std::endl;
+
+  m_connectionPending = false;
+  m_isConnected = false;
+  m_connectionStatus->setText("Connection Failed");
+  m_connectionStatus->setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; background-color: transparent; }");
+  enableControls(false);
+}
+
+void TECControlPage::onDisconnectionComplete(QString deviceName)
+{
+  std::cout << "[TECControlPage] Disconnection complete: " << deviceName.toStdString() << std::endl;
+
+  m_connectionPending = false;
+  m_isConnected = false;
+  m_connectionStatus->setText("Disconnected");
+  m_connectionStatus->setStyleSheet("QLabel { color: #888888; font-weight: bold; background-color: transparent; }");
+  enableControls(false);
+
+  // Reset status displays
+  m_currentTemperature->setText("-- °C");
+  m_currentTECCurrent->setText("-- A");
+  m_actualLaserCurrent->setText("-- mA");
+}
+
+void TECControlPage::onConnectionOperationStarted(QString operation, QString deviceName)
+{
+  std::cout << "[TECControlPage] Operation started: " << operation.toStdString()
+            << " on " << deviceName.toStdString() << std::endl;
+}
+
+// ============================================================================
+// Parameter Worker Callbacks
+// ============================================================================
+
+void TECControlPage::onStatusUpdated(double currentTemp, double tecCurrent, double laserCurrent,
+                                      bool tecOn, bool laserOn)
+{
+  // Prevent triggering slot handlers during status update
+  m_isUpdatingFromDevice = true;
+
+  // Update temperature display
+  if (currentTemp >= -50.0 && currentTemp <= 100.0) {
+    m_currentTemperature->setText(QString::number(currentTemp, 'f', 2) + " °C");
+    m_currentTemperature->setStyleSheet("QLabel { color: #1177bb; font-weight: bold; font-size: 24px; background-color: transparent; }");
+  } else {
+    m_currentTemperature->setText("-- °C");
+    m_currentTemperature->setStyleSheet("QLabel { color: #888888; font-weight: bold; font-size: 24px; background-color: transparent; }");
+  }
+
+  // Update TEC current display
+  if (tecCurrent >= -5.0 && tecCurrent <= 5.0) {
+    m_currentTECCurrent->setText(QString::number(tecCurrent, 'f', 3) + " A");
+  } else {
+    m_currentTECCurrent->setText("-- A");
+  }
+
+  // Update laser current display
+  if (laserCurrent >= 0.0 && laserCurrent <= 500.0) {
+    m_actualLaserCurrent->setText(QString::number(laserCurrent, 'f', 2) + " mA");
+    m_actualLaserCurrent->setStyleSheet("QLabel { color: #1177bb; font-weight: bold; font-size: 24px; background-color: transparent; }");
+  } else {
+    m_actualLaserCurrent->setText("-- mA");
+    m_actualLaserCurrent->setStyleSheet("QLabel { color: #888888; font-weight: bold; font-size: 24px; background-color: transparent; }");
+  }
+
+  // Update TEC status indicator
+  if (tecOn) {
+    m_tecStatusFrame->setStyleSheet(
+      "QFrame { background-color: #27ae60; border-radius: 3px; border: 1px solid #1e8449; }");
+    m_tecStatusLabel->setText("ON");
+    m_tecStatusLabel->setStyleSheet("QLabel { color: white; font-weight: bold; font-size: 14px; background: transparent; }");
+  } else {
+    m_tecStatusFrame->setStyleSheet(
+      "QFrame { background-color: #3c3c3c; border-radius: 3px; border: 1px solid #555555; }");
+    m_tecStatusLabel->setText("OFF");
+    m_tecStatusLabel->setStyleSheet("QLabel { color: #888888; font-weight: bold; font-size: 14px; background: transparent; }");
+  }
+
+  // Update laser status indicator
+  if (laserOn) {
+    m_laserStatusFrame->setStyleSheet(
+      "QFrame { background-color: #27ae60; border-radius: 3px; border: 1px solid #1e8449; }");
+    m_laserStatusLabel->setText("ON");
+    m_laserStatusLabel->setStyleSheet("QLabel { color: white; font-weight: bold; font-size: 14px; background: transparent; }");
+  } else {
+    m_laserStatusFrame->setStyleSheet(
+      "QFrame { background-color: #3c3c3c; border-radius: 3px; border: 1px solid #555555; }");
+    m_laserStatusLabel->setText("OFF");
+    m_laserStatusLabel->setStyleSheet("QLabel { color: #888888; font-weight: bold; font-size: 14px; background: transparent; }");
+  }
+
+  m_isUpdatingFromDevice = false;
+}
+
+void TECControlPage::onParameterCommandError(QString operation, QString error)
+{
+  std::cerr << "[TECControlPage] Parameter command error: " << operation.toStdString()
+            << " - " << error.toStdString() << std::endl;
 }
 
 void TECControlPage::enableControls(bool enabled)

@@ -12,6 +12,8 @@
 #include <QFrame>
 
 struct ApplicationContext;
+class TECConnectionWorker;
+class TECParameterWorker;
 
 /**
  * @brief TEC Control Page
@@ -57,6 +59,16 @@ private slots:
 
   // Polling
   void onPollTimer();
+
+  // Connection worker callbacks
+  void onConnectionSuccess(QString deviceName);
+  void onConnectionFailed(QString deviceName, QString error);
+  void onDisconnectionComplete(QString deviceName);
+  void onConnectionOperationStarted(QString operation, QString deviceName);
+
+  // Parameter worker callbacks
+  void onStatusUpdated(double currentTemp, double tecCurrent, double laserCurrent, bool tecOn, bool laserOn);
+  void onParameterCommandError(QString operation, QString error);
 
 private:
   void setupUI();
@@ -112,4 +124,9 @@ private:
   // State tracking
   bool m_isConnected;
   bool m_isUpdatingFromDevice;  // Prevent loops during polling updates
+
+  // Workers for non-blocking operations
+  TECConnectionWorker* m_connectionWorker;
+  TECParameterWorker* m_parameterWorker;
+  bool m_connectionPending;
 };

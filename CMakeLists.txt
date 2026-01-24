@@ -657,6 +657,8 @@ set(SOURCES
     include/TEC/CLD101xAdapter.cpp
     include/TEC/TECManager.cpp
     include/TEC/TECJsonLoader.cpp
+    include/TEC/TECConnectionWorker.cpp
+    include/TEC/TECParameterWorker.cpp
     include/sequence/TECCommandHandler.cpp
     include/sequence/LightingCommandHandler.cpp
     include/AppUI/TECPage/TECControlPage.cpp
@@ -848,6 +850,8 @@ set(HEADERS
     include/TEC/Cld101xadapter.h
     include/TEC/TECManager.h
     include/TEC/TECJsonLoader.h
+    include/TEC/TECConnectionWorker.h
+    include/TEC/TECParameterWorker.h
     include/sequence/TECCommandHandler.h
     include/sequence/LightingCommandHandler.h
     include/AppUI/TECPage/TECControlPage.h
