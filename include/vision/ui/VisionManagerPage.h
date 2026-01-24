@@ -9,6 +9,7 @@
 
 struct ApplicationContext;
 class VisionToolbarWidget;
+class VisionProfileListWidget;
 class VisionLeftPanelWidget;
 class VisionImageWidget;
 class VisionRightPanelWidget;
@@ -72,6 +73,11 @@ private slots:
     // Template Selection actions
     void onTemplateSelectionDragged(int startX, int startY, int endX, int endY);
 
+    // Profile list actions
+    void onProfileLoadRequested(const QString& filePath);
+    void onProfileDeleted(const QString& filePath);
+    void onProfileRenamed(const QString& oldPath, const QString& newPath);
+
     // Worker thread callbacks
     void onProcessingStarted(const QString& pluginName);
     void onProcessingProgress(int percent, const QString& message);
@@ -96,10 +102,15 @@ private:
     void setupWorker();
     void setUIProcessingState(bool isProcessing);
 
+    // Profile list management
+    void refreshProfileList();
+    void updateVisionDirectory();
+
     ApplicationContext* m_context;
 
     // Child widgets
     VisionToolbarWidget* m_toolbar;
+    VisionProfileListWidget* m_profileListWidget;
     VisionLeftPanelWidget* m_leftPanel;
     VisionImageWidget* m_imageWidget;
     VisionRightPanelWidget* m_rightPanel;

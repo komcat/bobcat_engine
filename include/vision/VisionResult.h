@@ -61,6 +61,44 @@ struct RectangleResult {
     double heightMm = 0.0;
 };
 
+/**
+ * @brief Result structure for beam/spot detection
+ *
+ * Contains position, size, intensity, and ellipse axis information
+ * for detected beam spots (e.g., laser beams, light spots).
+ */
+struct BeamResult {
+    std::string name = "";
+
+    // Position (intensity-weighted centroid / photocenter)
+    cv::Point2d centerPx = {0, 0};       // Center in pixels
+    cv::Point2d centerMm = {0, 0};       // Center in mm (calibrated)
+
+    // Area measurements
+    double areaPx = 0.0;                 // Total beam area in pixels²
+    double areaMm2 = 0.0;                // Total beam area in mm²
+
+    // Intensity measurements
+    double meanIntensity = 0.0;          // Mean gray value (0-255)
+    double maxIntensity = 0.0;           // Peak intensity value
+    double minIntensity = 0.0;           // Minimum intensity in beam region
+    bool isSaturated = false;            // True if maxIntensity >= saturation threshold
+
+    // FWHM (Full Width at Half Maximum) ellipse axes
+    double fwhmMajorPx = 0.0;            // Major axis FWHM in pixels
+    double fwhmMinorPx = 0.0;            // Minor axis FWHM in pixels
+    double fwhmMajorMm = 0.0;            // Major axis FWHM in mm
+    double fwhmMinorMm = 0.0;            // Minor axis FWHM in mm
+
+    // Orientation
+    double angleDeg = 0.0;               // Orientation angle in degrees (from horizontal, CCW)
+    double angleRad = 0.0;               // Orientation angle in radians
+
+    // Quality metrics
+    double ellipticity = 0.0;            // Ratio of minor/major axis (1.0 = circular)
+    double confidence = 1.0;             // Detection confidence
+};
+
 // ============================================================================
 // Overlay Drawing Commands
 // ============================================================================
@@ -70,6 +108,7 @@ struct OverlayCommand {
         DrawPoint,
         DrawLine,
         DrawCircle,
+        DrawEllipse,        // Rotated ellipse (for beam FWHM visualization)
         DrawRectangle,
         DrawFilledRect,     // Semi-transparent filled rectangle (axis-aligned)
         DrawFilledPolygon,  // Semi-transparent filled polygon (rotated/tilted)
@@ -88,6 +127,8 @@ struct OverlayCommand {
     cv::Point2d p1 = {0, 0};
     cv::Point2d p2 = {0, 0};
     double radius = 0.0;
+    double radius2 = 0.0;   // Second radius for ellipses (minor axis)
+    double angle = 0.0;     // Rotation angle in degrees (for ellipses)
     cv::Rect2d rect = {0, 0, 0, 0};
     std::string text = "";
     std::vector<cv::Point> contour;
@@ -109,6 +150,7 @@ struct VisionResult {
     std::vector<LineResult> lines;
     std::vector<CircleResult> circles;
     std::vector<RectangleResult> rectangles;
+    std::vector<BeamResult> beams;
 
     // Generic measurements (key-value pairs)
     std::map<std::string, double> measurements;
@@ -132,6 +174,7 @@ struct VisionResult {
         lines.clear();
         circles.clear();
         rectangles.clear();
+        beams.clear();
         measurements.clear();
         metadata.clear();
         overlays.clear();
@@ -174,6 +217,10 @@ struct VisionResult {
         lines.push_back(l);
     }
 
+    void addBeam(const BeamResult& beam) {
+        beams.push_back(beam);
+    }
+
     void addMeasurement(const std::string& key, double value) {
         measurements[key] = value;
     }
@@ -198,6 +245,20 @@ struct VisionResult {
         cmd.type = OverlayCommand::DrawCircle;
         cmd.p1 = center;
         cmd.radius = radius;
+        cmd.color = color;
+        cmd.thickness = thickness;
+        overlays.push_back(cmd);
+    }
+
+    void addEllipseOverlay(const cv::Point2d& center, double majorAxis, double minorAxis,
+                           double angleDeg, const cv::Scalar& color = cv::Scalar(0, 255, 0),
+                           int thickness = 2) {
+        OverlayCommand cmd;
+        cmd.type = OverlayCommand::DrawEllipse;
+        cmd.p1 = center;
+        cmd.radius = majorAxis;    // Major axis (semi-axis)
+        cmd.radius2 = minorAxis;   // Minor axis (semi-axis)
+        cmd.angle = angleDeg;      // Rotation angle
         cmd.color = color;
         cmd.thickness = thickness;
         overlays.push_back(cmd);
@@ -273,6 +334,19 @@ struct VisionResult {
                 summary += "  " + l.name + ": length=" +
                            std::to_string(l.lengthPx) + " px, angle=" +
                            std::to_string(l.angleDeg) + " deg\n";
+            }
+        }
+
+        if (!beams.empty()) {
+            summary += "Beams: " + std::to_string(beams.size()) + "\n";
+            for (const auto& b : beams) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "  %s: center=(%.1f, %.1f)px, FWHM=%.1fx%.1fpx, "
+                         "intensity=%.1f%s\n",
+                         b.name.c_str(), b.centerPx.x, b.centerPx.y,
+                         b.fwhmMajorPx, b.fwhmMinorPx, b.meanIntensity,
+                         b.isSaturated ? " [SATURATED]" : "");
+                summary += buf;
             }
         }
 

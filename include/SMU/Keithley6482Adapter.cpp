@@ -59,10 +59,11 @@ bool Keithley6482Adapter::Connect()
     return false;
   }
 
-  // Open instrument session
-  status = viOpen(m_defaultRM, m_visaResource.c_str(), VI_NULL, VI_NULL, &m_instrument);
+  // Open instrument session with timeout (5 seconds)
+  constexpr unsigned long CONNECTION_TIMEOUT_MS = 5000;
+  status = viOpen(m_defaultRM, m_visaResource.c_str(), VI_NULL, CONNECTION_TIMEOUT_MS, &m_instrument);
   if (status < VI_SUCCESS) {
-    SetLastError("Failed to open instrument: " + GetVISAErrorDescription(status));
+    SetLastError("Failed to open instrument (timeout=" + std::to_string(CONNECTION_TIMEOUT_MS) + "ms): " + GetVISAErrorDescription(status));
     std::cerr << "[Keithley6482] " << m_lastError << std::endl;
     viClose(m_defaultRM);
     m_defaultRM = VI_NULL;

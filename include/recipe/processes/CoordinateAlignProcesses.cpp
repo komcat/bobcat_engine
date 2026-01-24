@@ -88,6 +88,7 @@ public:
 
     sequence->AddAction("coordalign", "TeachCoordinateSystem", {
       {"uid", params.at("uid")},
+      {"process_uid", step->uniqueId},
       {"fid1_prefix", params.at("fid1_prefix")},
       {"fid2_prefix", params.at("fid2_prefix")},
       {"fid3_prefix", params.at("fid3_prefix")},
@@ -100,7 +101,7 @@ public:
     });
 
     std::cout << "[TeachCoordinateSystemPlugin] Built sequence for: "
-      << step->userNickname << " (UID: " << params.at("uid") << ")" << std::endl;
+      << step->userNickname << " (UID: " << params.at("uid") << "_" << step->uniqueId << ")" << std::endl;
   }
 };
 
@@ -134,8 +135,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    // Taught system UID (reference)
-    widget->addParameterField("taught_uid", "Taught System UID",
+    // Taught system UID (reference) - with browse button to select from available systems
+    widget->addTaughtCoordinateSystemSelector("taught_uid", "Taught System UID",
                              params.at("taught_uid"));
 
     // Live system UID (output)
@@ -290,7 +291,7 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("uid", "Coordinate System UID",
+    widget->addTaughtCoordinateSystemSelector("uid", "Coordinate System UID",
                              params.at("uid"));
     widget->addDropdownParameter("type", "Type to Clear",
                                 params.at("type"),
@@ -345,7 +346,7 @@ public:
 
     widget->addParameterField("uid", "Local Point UID",
                              params.at("uid"));
-    widget->addParameterField("coord_system_uid", "Coordinate System UID",
+    widget->addTaughtCoordinateSystemSelector("coord_system_uid", "Coordinate System UID",
                              params.at("coord_system_uid"));
     widget->addDeviceSelector("motion_device", "Motion Device",
                               params.at("motion_device"),
@@ -361,8 +362,11 @@ public:
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
+    // Combine user-provided UID with process unique ID to ensure uniqueness
+    std::string combinedUid = params.at("uid") + "_" + step->uniqueId;
+
     std::map<std::string, std::string> actionParams = {
-      {"uid", params.at("uid")},
+      {"uid", combinedUid},
       {"coord_system_uid", params.at("coord_system_uid")},
       {"motion_device", params.at("motion_device")},
       {"description", params.at("description")}
@@ -379,7 +383,7 @@ public:
     sequence->AddAction("coordalign", "TeachLocalPoint", actionParams);
 
     std::cout << "[TeachLocalPointPlugin] Built sequence for: "
-      << step->userNickname << " (UID: " << params.at("uid") << ")" << std::endl;
+      << step->userNickname << " (UID: " << combinedUid << ")" << std::endl;
   }
 };
 
@@ -413,7 +417,8 @@ public:
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
 
-    widget->addParameterField("point_uid", "Local Point UID",
+    // Local point UID - with browse button to select from available points
+    widget->addLocalPointSelector("point_uid", "Local Point UID",
                              params.at("point_uid"));
     widget->addParameterField("live_uid", "Live System UID",
                              params.at("live_uid"));
@@ -497,7 +502,7 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addParameterField("uid", "Local Point UID",
+    widget->addLocalPointSelector("uid", "Local Point UID",
                              params.at("uid"));
   }
 
@@ -549,7 +554,7 @@ public:
                               static_cast<int>(DeviceComboBox::DeviceType::Motion));
 
     // Coordinate system UID (can be live or taught - live is preferred)
-    widget->addParameterField("coord_system_uid", "Coordinate System UID",
+    widget->addTaughtCoordinateSystemSelector("coord_system_uid", "Coordinate System UID",
                              params.at("coord_system_uid"));
 
     // Local coordinates (can be numeric or context reference)

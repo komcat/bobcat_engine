@@ -50,10 +50,11 @@ bool KeithleySMUAdapter::Connect()
 
   std::cout << "[KeithleySMUAdapter] Connecting to: " << m_visaResource << std::endl;
 
-  // Open instrument connection
-  status = viOpen(m_defaultRM, m_visaResource.c_str(), VI_NULL, VI_NULL, &m_instrument);
+  // Open instrument connection with timeout (5 seconds)
+  constexpr unsigned long CONNECTION_TIMEOUT_MS = 5000;
+  status = viOpen(m_defaultRM, m_visaResource.c_str(), VI_NULL, CONNECTION_TIMEOUT_MS, &m_instrument);
   if (status < VI_SUCCESS) {
-    SetLastError("Failed to open device: " + GetVISAErrorDescription(status));
+    SetLastError("Failed to open device (timeout=" + std::to_string(CONNECTION_TIMEOUT_MS) + "ms): " + GetVISAErrorDescription(status));
     std::cerr << "[KeithleySMUAdapter] " << m_lastError << std::endl;
     viClose(m_defaultRM);
     m_defaultRM = VI_NULL;

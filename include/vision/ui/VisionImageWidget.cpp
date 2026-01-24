@@ -656,6 +656,24 @@ void VisionImageWidget::updateDisplayImage()
                         );
                         break;
 
+                    case OverlayCommand::DrawEllipse:
+                        {
+                            // Draw rotated ellipse (for beam FWHM visualization)
+                            painter.save();
+                            // Translate to ellipse center, rotate, then draw
+                            double cx = overlay.p1.x * scaleX;
+                            double cy = overlay.p1.y * scaleY;
+                            painter.translate(cx, cy);
+                            painter.rotate(overlay.angle);  // angle in degrees
+                            painter.drawEllipse(
+                                QPointF(0, 0),
+                                overlay.radius * scaleX,   // major semi-axis
+                                overlay.radius2 * scaleY   // minor semi-axis
+                            );
+                            painter.restore();
+                        }
+                        break;
+
                     case OverlayCommand::DrawRectangle:
                         painter.drawRect(
                             static_cast<int>(overlay.rect.x * scaleX),

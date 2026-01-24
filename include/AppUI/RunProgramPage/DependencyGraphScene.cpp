@@ -14,6 +14,7 @@
 DependencyGraphScene::DependencyGraphScene(ProgramManager* programManager, QObject* parent)
   : QGraphicsScene(parent)
   , m_programManager(programManager)
+  , m_dependencySetIndex(0)  // Default to first set
   , m_isConnecting(false)
   , m_connectSourceNode(nullptr)
   , m_tempLine(nullptr)
@@ -24,6 +25,18 @@ DependencyGraphScene::DependencyGraphScene(ProgramManager* programManager, QObje
   // Connect to track selection order
   connect(this, &QGraphicsScene::selectionChanged,
           this, &DependencyGraphScene::onSelectionChanged);
+}
+
+void DependencyGraphScene::setDependencySetIndex(int index)
+{
+  if (m_programManager && index >= 0 && index < m_programManager->getDependencySetCount()) {
+    m_dependencySetIndex = index;
+  }
+}
+
+int DependencyGraphScene::getDependencySetIndex() const
+{
+  return m_dependencySetIndex;
 }
 
 DependencyGraphScene::~DependencyGraphScene()
@@ -105,7 +118,8 @@ void DependencyGraphScene::createEdges()
   int recipeCount = m_programManager->getRecipeCount();
 
   for (int i = 0; i < recipeCount; ++i) {
-    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(i);
+    // Use the current dependency set index
+    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(m_dependencySetIndex, i);
 
     for (const DependencyLink& dep : deps) {
       int sourceIndex = dep.predecessorIndex;
@@ -262,7 +276,8 @@ QVector<int> DependencyGraphScene::calculateLayers() const
   QVector<int> inDegree(nodeCount, 0);
 
   for (int i = 0; i < nodeCount; ++i) {
-    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(i);
+    // Use the current dependency set index
+    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(m_dependencySetIndex, i);
     for (const DependencyLink& dep : deps) {
       successors[dep.predecessorIndex].append(i);
       inDegree[i]++;
@@ -323,8 +338,8 @@ bool DependencyGraphScene::wouldCreateCycle(int sourceIndex, int targetIndex) co
     }
     visited.insert(current);
 
-    // Follow existing dependencies from current
-    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(current);
+    // Follow existing dependencies from current (use current set index)
+    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(m_dependencySetIndex, current);
     for (const DependencyLink& dep : deps) {
       if (!visited.contains(dep.predecessorIndex)) {
         queue.enqueue(dep.predecessorIndex);

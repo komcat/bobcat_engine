@@ -49,6 +49,9 @@
 #include <QSettings>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <iostream>
 #include <chrono>
 
@@ -92,6 +95,11 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_quickAddSelectedCategory(-1)   // No category selected
   , m_quickAddOverlay(nullptr)       // Overlay created on demand
   , m_contextVariablePreview(nullptr) // Context variable preview widget
+  , m_pageState(PageState::Editing)  // Start in editing mode
+  , m_middleTabWidget(nullptr)       // Middle panel tab widget
+  , m_recipeListWidget(nullptr)      // Recipe list widget
+  , m_refreshRecipeListButton(nullptr) // Refresh button
+  , m_recipeCountLabel(nullptr)      // Recipe count label
 {
   setupUI();
   setupSequenceEngine();
@@ -134,6 +142,9 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
     m_productStatusLabel->setText(QString("Product: %1")
       .arg(QString::fromStdString(productName)));
     m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
+
+    // Populate recipe list for loaded product
+    populateRecipeListWidget();
   }
 
   std::cout << "[RecipePage] Initialized" << std::endl;
@@ -252,13 +263,13 @@ void RecipePage::setupUI()
   connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
   titleLayout->addWidget(m_runSelectedStepButton);
 
-  // Step button (cyan/teal)
-  m_stepButton = new QPushButton("Step");
-  m_stepButton->setToolTip("Run recipe step-by-step (pause at each step)");
-  m_stepButton->setFixedHeight(28);
-  m_stepButton->setStyleSheet(
+  // Breakpoint button - toggle breakpoint on selected step
+  m_breakpointButton = new QPushButton("B");
+  m_breakpointButton->setToolTip("Toggle breakpoint on selected step");
+  m_breakpointButton->setFixedSize(40, 28);
+  m_breakpointButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #17a2b8, stop:1 #138496); "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dc3545, stop:1 #c82333); "
     "  color: white; "
     "  font-weight: bold; "
     "  padding: 4px 10px; "
@@ -268,48 +279,14 @@ void RecipePage::setupUI()
     "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1fc8e3, stop:1 #17a2b8); "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e4606d, stop:1 #dc3545); "
     "} "
     "QPushButton:pressed { "
-    "  background-color: #117a8b; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #6c757d; "
-    "  color: #adb5bd; "
+    "  background-color: #bd2130; "
     "}"
   );
-  connect(m_stepButton, &QPushButton::clicked, this, &RecipePage::onStepButtonClicked);
-  titleLayout->addWidget(m_stepButton);
-
-  // Continue button (green - only enabled when paused)
-  m_continueButton = new QPushButton("Continue");
-  m_continueButton->setToolTip("Continue execution (or run to end)");
-  m_continueButton->setEnabled(false);
-  m_continueButton->setFixedHeight(28);
-  m_continueButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #28a745, stop:1 #1e7e34); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 10px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34ce57, stop:1 #28a745); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1c7430; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #6c757d; "
-    "  color: #adb5bd; "
-    "}"
-  );
-  connect(m_continueButton, &QPushButton::clicked, this, &RecipePage::onContinueButtonClicked);
-  titleLayout->addWidget(m_continueButton);
+  connect(m_breakpointButton, &QPushButton::clicked, this, &RecipePage::onBreakpointButtonClicked);
+  titleLayout->addWidget(m_breakpointButton);
 
   titleLayout->addSpacing(10);
 
@@ -479,6 +456,127 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   QLabel* title = new QLabel("Recipe Steps");
   title->setStyleSheet(RecipeStyles::titleLabel());
   layout->addWidget(title);
+
+  // ========== TAB WIDGET ==========
+  m_middleTabWidget = new QTabWidget();
+  m_middleTabWidget->setStyleSheet(
+    "QTabWidget::pane { border: none; background-color: #2d2d30; }"
+    "QTabBar { background-color: #2d2d30; border: none; }"
+    "QTabBar::tab {"
+    "  background-color: #1e1e1e;"
+    "  color: #888888;"
+    "  padding: 8px 16px;"
+    "  margin-right: 2px;"
+    "  border: none;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  border-top-left-radius: 3px;"
+    "  border-top-right-radius: 3px;"
+    "  border-bottom: 3px solid transparent;"
+    "}"
+    "QTabBar::tab:selected {"
+    "  background-color: #0e639c;"
+    "  color: #ffffff;"
+    "  font-weight: bold;"
+    "  border-bottom: 3px solid #0e639c;"
+    "}"
+    "QTabBar::tab:hover {"
+    "  background-color: #2a2d2e;"
+    "  color: #d4d4d4;"
+    "}"
+  );
+
+  // Create tabs
+  QWidget* recipesTab = new QWidget();
+  QWidget* stepsTab = new QWidget();
+
+  createRecipesTab(recipesTab);
+  createStepsTab(stepsTab);
+
+  m_middleTabWidget->addTab(recipesTab, "Recipes");
+  m_middleTabWidget->addTab(stepsTab, "Steps");
+
+  // Start on Steps tab by default
+  m_middleTabWidget->setCurrentIndex(1);
+
+  layout->addWidget(m_middleTabWidget, 1);
+}
+
+void RecipePage::createRecipesTab(QWidget* recipesTab)
+{
+  QVBoxLayout* layout = new QVBoxLayout(recipesTab);
+  layout->setContentsMargins(5, 5, 5, 5);
+  layout->setSpacing(5);
+
+  // Header row: count label + Refresh button
+  QHBoxLayout* headerLayout = new QHBoxLayout();
+  m_recipeCountLabel = new QLabel("0 recipe(s)");
+  m_recipeCountLabel->setStyleSheet("font-size: 12px; color: #a0a0a0;");
+  headerLayout->addWidget(m_recipeCountLabel);
+  headerLayout->addStretch();
+
+  m_refreshRecipeListButton = new QPushButton("Refresh");
+  m_refreshRecipeListButton->setToolTip("Refresh recipe list");
+  m_refreshRecipeListButton->setFixedSize(70, 28);
+  m_refreshRecipeListButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  font-size: 11px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2d2d30; "
+    "}"
+  );
+  connect(m_refreshRecipeListButton, &QPushButton::clicked, this, &RecipePage::onRefreshRecipeList);
+  headerLayout->addWidget(m_refreshRecipeListButton);
+
+  layout->addLayout(headerLayout);
+
+  // Recipe list widget
+  m_recipeListWidget = new QListWidget();
+  m_recipeListWidget->setStyleSheet(
+    "QListWidget { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 3px; "
+    "  font-size: 12px; "
+    "} "
+    "QListWidget::item { "
+    "  padding: 8px 10px; "
+    "  border-bottom: 1px solid #2d2d30; "
+    "} "
+    "QListWidget::item:selected { "
+    "  background-color: #0e639c; "
+    "  color: #ffffff; "
+    "} "
+    "QListWidget::item:hover { "
+    "  background-color: #2a2d2e; "
+    "}"
+  );
+  m_recipeListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_recipeListWidget, &QListWidget::itemDoubleClicked, this, &RecipePage::onRecipeListItemDoubleClicked);
+  connect(m_recipeListWidget, &QListWidget::customContextMenuRequested, this, &RecipePage::onRecipeListContextMenu);
+  layout->addWidget(m_recipeListWidget, 1);
+
+  // Help text
+  QLabel* helpLabel = new QLabel("Double-click to load | Right-click for options");
+  helpLabel->setStyleSheet("font-size: 10px; color: #808080; font-style: italic;");
+  helpLabel->setAlignment(Qt::AlignCenter);
+  layout->addWidget(helpLabel);
+}
+
+void RecipePage::createStepsTab(QWidget* stepsTab)
+{
+  QVBoxLayout* layout = new QVBoxLayout(stepsTab);
+  layout->setContentsMargins(5, 5, 5, 5);
+  layout->setSpacing(5);
 
   QHBoxLayout* nameLayout = new QHBoxLayout();
   nameLayout->setSpacing(5);
@@ -860,6 +958,9 @@ void RecipePage::onProductChanged()
     std::cout << "[RecipePage] Product changed to: " << productName << std::endl;
   }
 
+  // Refresh recipe list for new product
+  populateRecipeListWidget();
+
   // Clear current recipe if any (user should load recipe from new product)
   if (m_recipeManager->getStepCount() > 0) {
     m_recipeManager->newRecipe();
@@ -1005,7 +1106,9 @@ void RecipePage::onSaveRecipe()
 
   // ✅ Recipe already has path - save directly without prompting
   if (m_recipeManager->saveRecipe(currentRecipePath)) {
-    updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
+    updateRecipeFileNameDisplay();  // Update recipe file name label
+    // Refresh recipe list after save
+    populateRecipeListWidget();
     // Show brief success message in status bar or small notification
     // Using information dialog but could be replaced with statusbar message
     QMessageBox::information(this, "Saved",
@@ -1062,6 +1165,297 @@ void RecipePage::onSaveRecipeAs()
   else {
     QMessageBox::critical(this, "Error", "Failed to save recipe file.");
   }
+
+  // Refresh recipe list after save
+  populateRecipeListWidget();
+}
+
+// ============================================================================
+// RECIPES TAB METHODS
+// ============================================================================
+
+QString RecipePage::getRecipeFolderPath()
+{
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    return QString();
+  }
+
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+  return QString("config/%1/recipes").arg(productName);
+}
+
+void RecipePage::populateRecipeListWidget()
+{
+  if (!m_recipeListWidget) return;
+
+  m_recipeListWidget->clear();
+
+  QString folderPath = getRecipeFolderPath();
+  if (folderPath.isEmpty()) {
+    m_recipeCountLabel->setText("No product loaded");
+    return;
+  }
+
+  // Ensure the folder exists
+  QDir().mkpath(folderPath);
+
+  QDir dir(folderPath);
+  if (!dir.exists()) {
+    m_recipeCountLabel->setText("0 recipe(s)");
+    return;
+  }
+
+  QStringList filters;
+  filters << "*.json";
+  dir.setNameFilters(filters);
+  dir.setFilter(QDir::Files);
+  dir.setSorting(QDir::Time | QDir::Reversed);  // Newest first
+
+  QFileInfoList fileList = dir.entryInfoList();
+
+  for (const QFileInfo& fileInfo : fileList) {
+    QString recipeName = fileInfo.baseName();
+
+    // Try to extract recipe name from JSON
+    QFile file(fileInfo.absoluteFilePath());
+    if (file.open(QIODevice::ReadOnly)) {
+      QByteArray data = file.readAll();
+      QJsonDocument doc = QJsonDocument::fromJson(data);
+      if (doc.isObject()) {
+        QJsonObject obj = doc.object();
+        QString jsonName = obj.value("recipe_name").toString();
+        if (!jsonName.isEmpty()) {
+          recipeName = jsonName;
+        }
+      }
+      file.close();
+    }
+
+    QListWidgetItem* item = new QListWidgetItem(recipeName);
+    item->setData(Qt::UserRole, fileInfo.absoluteFilePath());  // Store full path
+    item->setToolTip(QString("%1\nModified: %2")
+      .arg(fileInfo.fileName())
+      .arg(fileInfo.lastModified().toString("yyyy-MM-dd hh:mm")));
+    m_recipeListWidget->addItem(item);
+  }
+
+  m_recipeCountLabel->setText(QString("%1 recipe(s)").arg(fileList.size()));
+}
+
+void RecipePage::onRefreshRecipeList()
+{
+  populateRecipeListWidget();
+}
+
+void RecipePage::onRecipeListItemDoubleClicked(QListWidgetItem* item)
+{
+  if (!item) return;
+  onLoadSelectedRecipe();
+}
+
+void RecipePage::onRecipeListContextMenu(const QPoint& pos)
+{
+  QListWidgetItem* item = m_recipeListWidget->itemAt(pos);
+  if (!item) return;
+
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(
+    "QMenu { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "  padding: 4px; "
+    "} "
+    "QMenu::item { "
+    "  background-color: transparent; "
+    "  padding: 6px 20px; "
+    "  color: #d4d4d4; "
+    "} "
+    "QMenu::item:selected { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "} "
+    "QMenu::separator { "
+    "  height: 1px; "
+    "  background: #555555; "
+    "  margin: 4px 10px; "
+    "}"
+  );
+
+  QAction* loadAction = contextMenu.addAction("Load Recipe");
+  contextMenu.addSeparator();
+  QAction* renameAction = contextMenu.addAction("Rename...");
+  QAction* deleteAction = contextMenu.addAction("Delete");
+
+  QAction* selectedAction = contextMenu.exec(m_recipeListWidget->mapToGlobal(pos));
+
+  if (selectedAction == loadAction) {
+    onLoadSelectedRecipe();
+  }
+  else if (selectedAction == renameAction) {
+    onRenameSelectedRecipe();
+  }
+  else if (selectedAction == deleteAction) {
+    onDeleteSelectedRecipe();
+  }
+}
+
+void RecipePage::onLoadSelectedRecipe()
+{
+  QListWidgetItem* item = m_recipeListWidget->currentItem();
+  if (!item) return;
+
+  QString filePath = item->data(Qt::UserRole).toString();
+  if (filePath.isEmpty()) return;
+
+  if (m_recipeManager->loadRecipe(filePath.toStdString())) {
+    m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
+    refreshRecipeList();
+    clearConfigurationForm();
+    updateRecipeFileNameDisplay();
+
+    // Save to settings for persistence
+    saveLastRecipeToSettings(filePath);
+
+    // Auto-load associated product file
+    std::string productFile = m_recipeManager->getProductFile();
+    if (!productFile.empty()) {
+      if (m_context->productPositionManager) {
+        if (m_context->productPositionManager->LoadProduct(productFile)) {
+          m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+
+          std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+          m_productStatusLabel->setText(QString("Product: %1")
+            .arg(QString::fromStdString(productName)));
+          m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
+
+          if (m_loadedProductLabel) {
+            m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+              .arg(QString::fromStdString(productName))
+              .arg(QString::fromStdString(productFile)));
+            m_loadedProductLabel->setStyleSheet(
+              "font-size: 11px; "
+              "color: #4ec9b0; "
+              "font-weight: bold; "
+              "padding: 5px; "
+              "border: 1px solid #4ec9b0; "
+              "border-radius: 3px; "
+              "background-color: #1e3a32;"
+            );
+          }
+
+          std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
+        }
+      }
+    }
+
+    // Switch to Steps tab after loading
+    if (m_middleTabWidget) {
+      m_middleTabWidget->setCurrentIndex(1);
+    }
+
+    std::cout << "[RecipePage] Loaded recipe from list: " << filePath.toStdString() << std::endl;
+  }
+  else {
+    QMessageBox::critical(this, "Error", "Failed to load recipe file.");
+  }
+}
+
+void RecipePage::onDeleteSelectedRecipe()
+{
+  QListWidgetItem* item = m_recipeListWidget->currentItem();
+  if (!item) return;
+
+  QString filePath = item->data(Qt::UserRole).toString();
+  QString recipeName = item->text();
+
+  QMessageBox::StandardButton reply = QMessageBox::question(
+    this,
+    "Delete Recipe",
+    QString("Are you sure you want to delete '%1'?\n\nThis action cannot be undone.").arg(recipeName),
+    QMessageBox::Yes | QMessageBox::No,
+    QMessageBox::No
+  );
+
+  if (reply != QMessageBox::Yes) return;
+
+  if (QFile::remove(filePath)) {
+    populateRecipeListWidget();
+    std::cout << "[RecipePage] Deleted recipe: " << filePath.toStdString() << std::endl;
+  }
+  else {
+    QMessageBox::critical(this, "Error", "Failed to delete recipe file.");
+  }
+}
+
+void RecipePage::onRenameSelectedRecipe()
+{
+  QListWidgetItem* item = m_recipeListWidget->currentItem();
+  if (!item) return;
+
+  QString filePath = item->data(Qt::UserRole).toString();
+  QString currentName = item->text();
+
+  bool ok;
+  QString newName = QInputDialog::getText(
+    this,
+    "Rename Recipe",
+    "Enter new recipe name:",
+    QLineEdit::Normal,
+    currentName,
+    &ok
+  );
+
+  if (!ok || newName.isEmpty() || newName == currentName) return;
+
+  // Validate filename
+  QString invalidChars = "<>:\"/\\|?*";
+  for (QChar c : invalidChars) {
+    if (newName.contains(c)) {
+      QMessageBox::warning(this, "Invalid Name",
+        "Recipe name contains invalid characters.\n\nInvalid characters: < > : \" / \\ | ? *");
+      return;
+    }
+  }
+
+  QFileInfo oldFileInfo(filePath);
+  QString newFilePath = oldFileInfo.absolutePath() + "/" + newName + ".json";
+
+  // Check if file already exists
+  if (QFile::exists(newFilePath)) {
+    QMessageBox::warning(this, "Name Exists",
+      QString("A recipe named '%1' already exists.").arg(newName));
+    return;
+  }
+
+  // Update recipe name in JSON content
+  QFile file(filePath);
+  if (file.open(QIODevice::ReadOnly)) {
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (doc.isObject()) {
+      QJsonObject obj = doc.object();
+      obj["recipe_name"] = newName;
+
+      QFile newFile(newFilePath);
+      if (newFile.open(QIODevice::WriteOnly)) {
+        newFile.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        newFile.close();
+
+        // Remove old file
+        QFile::remove(filePath);
+
+        populateRecipeListWidget();
+        std::cout << "[RecipePage] Renamed recipe: " << currentName.toStdString()
+                  << " -> " << newName.toStdString() << std::endl;
+        return;
+      }
+    }
+  }
+
+  QMessageBox::critical(this, "Error", "Failed to rename recipe file.");
 }
 
 void RecipePage::onAddProcess()
@@ -2172,11 +2566,13 @@ void RecipePage::onRunRecipe()
     << recipeName.toStdString() << std::endl;
   std::cout << "[RecipePage] Recipe file: " << recipeFilePath << std::endl;
 
+  // Switch to executing state - disables editing controls
+  setPageState(PageState::Executing);
+
   // Switch to progress panel
   showProgressPanel();
 
-  // Disable run button while executing
-  m_runRecipeButton->setEnabled(false);
+  // Update run button text
   m_runRecipeButton->setText("⏳ Recipe Running...");
 
   // ✅ Create execution context for context viewer
@@ -2430,12 +2826,13 @@ void RecipePage::onRunSelectedStep()
 
   std::cout << "[RecipePage] Created temporary recipe: " << tempRecipePath << std::endl;
 
+  // Switch to executing state - disables editing controls
+  setPageState(PageState::Executing);
+
   // Switch to progress panel
   showProgressPanel();
 
-  // Disable buttons during execution
-  m_runRecipeButton->setEnabled(false);
-  m_runSelectedStepButton->setEnabled(false);
+  // Update button text
   m_runSelectedStepButton->setText("⏳ Running Step...");
 
   // ✅ Create execution context for context viewer (if not already exists)
@@ -2594,149 +2991,32 @@ void RecipePage::onRunSelectedStep()
 // ✅ STEP-BY-STEP EXECUTION
 // ============================================================================
 
-void RecipePage::onStepButtonClicked()
+void RecipePage::onBreakpointButtonClicked()
 {
-  // Check if already running - if paused, this acts as "step to next"
-  if (m_recipeWorker && m_recipeWorker->isRunning()) {
-    // Recipe is running and paused - step to next
-    std::cout << "[RecipePage] Step button clicked - continuing to next step" << std::endl;
-    m_recipeWorker->requestContinue();
-    m_continueButton->setEnabled(false);  // Disable until paused again
+  // Get selected step
+  QList<QTreeWidgetItem*> selectedItems = m_recipeTree->selectedItems();
+  if (selectedItems.isEmpty()) {
+    QMessageBox::information(this, "No Selection", "Please select a step to toggle breakpoint.");
     return;
   }
 
-  // Start recipe in step-by-step mode
-  // Validate recipe first
-  std::vector<std::string> errors;
-  if (!m_recipeManager->validateRecipe(errors)) {
-    QString errorMsg = "Recipe validation failed:\n\n";
-    for (const auto& err : errors) {
-      errorMsg += "• " + QString::fromStdString(err) + "\n";
-    }
-    QMessageBox::critical(this, "Validation Error", errorMsg);
+  // Toggle breakpoint on selected step
+  QTreeWidgetItem* item = selectedItems.first();
+  int row = m_recipeTree->indexOfTopLevelItem(item);
+  if (row < 0 || row >= m_recipeManager->getStepCount()) {
     return;
   }
 
-  // Save recipe if needed (same logic as onRunRecipe)
-  std::string recipeFilePath = m_recipeManager->getCurrentFilePath();
-  if (recipeFilePath.empty()) {
-    QMessageBox::StandardButton saveReply = QMessageBox::question(
-      this, "Save Recipe",
-      "Recipe must be saved before execution. Save now?",
-      QMessageBox::Yes | QMessageBox::No
-    );
-    if (saveReply != QMessageBox::Yes) return;
-    onSaveRecipe();
-    recipeFilePath = m_recipeManager->getCurrentFilePath();
-    if (recipeFilePath.empty()) {
-      QMessageBox::warning(this, "Save Required", "Recipe must be saved before execution.");
-      return;
-    }
-  } else {
-    if (!m_recipeManager->saveRecipe(recipeFilePath)) {
-      QMessageBox::critical(this, "Save Error", "Failed to save recipe before execution.");
-      return;
-    }
+  ProcessInstance* step = m_recipeManager->getStep(row);
+  if (step) {
+    step->breakpoint = !step->breakpoint;
+    std::cout << "[RecipePage] Toggled breakpoint on step " << (row + 1)
+              << " (" << step->userNickname << "): "
+              << (step->breakpoint ? "ON" : "OFF") << std::endl;
+
+    // Update the single item to show updated breakpoint state
+    updateSingleStepItem(row);
   }
-
-  std::cout << "[RecipePage] Starting step-by-step execution" << std::endl;
-
-  // Switch to progress panel
-  showProgressPanel();
-
-  // Update button states
-  m_runRecipeButton->setEnabled(false);
-  m_runRecipeButton->setText("⏳ Step Mode...");
-  m_stepButton->setText("Next Step");
-
-  // ✅ Create execution context for context viewer
-  if (m_currentContext) {
-    delete m_currentContext;
-  }
-  m_currentContext = new SequenceContext();
-
-  // Create RecipeWorker
-  m_recipeWorker = new RecipeWorker(
-    m_sequenceEngine,
-    m_processFactory,
-    m_context->productPositionManager,
-    m_context->motionManager,
-    recipeFilePath,
-    this
-  );
-
-  // ✅ Pass execution context to worker for context viewer
-  m_recipeWorker->setExternalContext(m_currentContext);
-
-  // Enable step-by-step mode
-  m_recipeWorker->setStepByStepMode(true);
-
-  // Build breakpoints vector from ProcessInstance breakpoint flags
-  std::vector<bool> breakpoints;
-  for (int i = 0; i < m_recipeManager->getStepCount(); ++i) {
-    ProcessInstance* step = m_recipeManager->getStep(i);
-    if (step && step->enabled) {
-      breakpoints.push_back(step->breakpoint);
-    }
-  }
-  m_recipeWorker->setBreakpoints(breakpoints);
-
-  // Connect signals (same as onRunRecipe)
-  connect(m_recipeWorker, &RecipeWorker::executionStarted,
-    this, &RecipePage::onExecutionStarted);
-  connect(m_recipeWorker, &RecipeWorker::stepBuildStarted,
-    this, &RecipePage::onStepBuildStarted);
-  connect(m_recipeWorker, &RecipeWorker::stepBuildCompleted,
-    this, &RecipePage::onStepBuildCompleted);
-  connect(m_recipeWorker, &RecipeWorker::sequenceExecutionStarted,
-    this, &RecipePage::onSequenceExecutionStarted);
-  connect(m_recipeWorker, &RecipeWorker::executionCompleted,
-    this, &RecipePage::onExecutionCompleted);
-  connect(m_recipeWorker, &RecipeWorker::executionStopped,
-    this, &RecipePage::onExecutionStopped);
-  connect(m_recipeWorker, &RecipeWorker::logMessage,
-    this, &RecipePage::onWorkerLogMessage);
-  connect(m_recipeWorker, &RecipeWorker::waitProgress,
-    this, &RecipePage::onWaitProgress);
-  connect(m_recipeWorker, &RecipeWorker::stepExecutionStarted,
-    this, &RecipePage::onStepExecutionStarted);
-  connect(m_recipeWorker, &RecipeWorker::stepExecutionCompleted,
-    this, &RecipePage::onStepExecutionCompleted);
-  connect(m_recipeWorker, &RecipeWorker::executionPaused,
-    this, &RecipePage::onExecutionPaused);
-  connect(m_recipeWorker, &RecipeWorker::finished,
-    m_recipeWorker, &QObject::deleteLater);
-
-  // Connect safety watch - auto-stop on critical safety flag
-  if (m_context->safetyWatchManager) {
-    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
-            m_recipeWorker, [this](QString title, QString message, bool critical) {
-      if (critical && m_recipeWorker) {
-        m_recipeWorker->requestStop();
-      }
-    }, Qt::DirectConnection);
-  }
-
-  // Start execution
-  m_recipeWorker->start();
-}
-
-void RecipePage::onContinueButtonClicked()
-{
-  if (!m_recipeWorker || !m_recipeWorker->isRunning()) {
-    std::cout << "[RecipePage] Continue clicked but no running worker" << std::endl;
-    return;
-  }
-
-  std::cout << "[RecipePage] Continue button clicked - running to end" << std::endl;
-
-  // Disable step-by-step mode and continue running to end (or next breakpoint)
-  m_recipeWorker->requestRunToEnd();
-
-  // Update button states
-  m_continueButton->setEnabled(false);
-  m_stepButton->setText("Step");
-  m_runRecipeButton->setText("⏳ Running...");
 }
 
 void RecipePage::onExecutionPaused(int stepIndex, QString stepName, bool isBreakpoint)
@@ -2745,19 +3025,11 @@ void RecipePage::onExecutionPaused(int stepIndex, QString stepName, bool isBreak
             << ": " << stepName.toStdString()
             << (isBreakpoint ? " (breakpoint)" : " (step-by-step)") << std::endl;
 
-  // Enable continue button
-  m_continueButton->setEnabled(true);
-
   // Update progress widget status
   if (m_progressWidget) {
-    QString statusMsg = isBreakpoint ?
-      QString("⏸️ Paused at breakpoint: %1").arg(stepName) :
-      QString("⏸️ Step %1: %2").arg(stepIndex + 1).arg(stepName);
+    QString statusMsg = QString("⏸️ Paused at breakpoint: %1").arg(stepName);
     m_progressWidget->setStatusText(statusMsg);
   }
-
-  // Update step button text
-  m_stepButton->setText("Next Step");
 }
 
 // Legacy slots (kept for compatibility but not used with new system)
@@ -2936,16 +3208,8 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
     }
   }
 
-  m_runRecipeButton->setEnabled(true);
-  m_runRecipeButton->setText("▶ Run Recipe");
-
-  // ✅ Reset "Run Selected Step" button
-  m_runSelectedStepButton->setEnabled(true);
-  m_runSelectedStepButton->setText("▶ Run Selected Step");
-
-  // Reset step-by-step button states
-  m_stepButton->setText("Step");
-  m_continueButton->setEnabled(false);
+  // Switch back to editing state - re-enables all editing controls
+  setPageState(PageState::Editing);
 
   // ✅ SUPPRESSED: Result popup after execution
   // Show result dialog
@@ -3000,16 +3264,8 @@ void RecipePage::onExecutionStopped()
   // ✅ Clear step highlighting when execution is stopped
   clearExecutingStepHighlight();
 
-  // ✅ Re-enable all execution buttons
-  m_runRecipeButton->setEnabled(true);
-  m_runRecipeButton->setText("▶ Run Recipe");
-
-  m_runSelectedStepButton->setEnabled(true);
-  m_runSelectedStepButton->setText("▶ Run Selected Step");
-
-  // Reset step-by-step button states
-  m_stepButton->setText("Step");
-  m_continueButton->setEnabled(false);
+  // Switch back to editing state - re-enables all editing controls
+  setPageState(PageState::Editing);
 
   if (m_progressWidget) {
     m_progressWidget->setStatusText("Stopped by user");
@@ -3266,6 +3522,71 @@ void RecipePage::onStopRecipeRequested()
   }
 
   std::cout << "[RecipePage] Emergency stop completed" << std::endl;
+}
+
+// ============================================================================
+// ✅ PAGE STATE MANAGEMENT
+// ============================================================================
+
+void RecipePage::setPageState(PageState state)
+{
+  m_pageState = state;
+
+  bool isEditing = (state == PageState::Editing);
+
+  std::cout << "[RecipePage] Page state changed to: "
+            << (isEditing ? "Editing" : "Executing") << std::endl;
+
+  // Recipe tree - disable selection and interaction during execution
+  if (m_recipeTree) m_recipeTree->setEnabled(isEditing);
+
+  // Recipes tab - disable during execution
+  if (m_middleTabWidget) {
+    // Disable Recipes tab (index 0) during execution
+    m_middleTabWidget->setTabEnabled(0, isEditing);
+    if (m_recipeListWidget) m_recipeListWidget->setEnabled(isEditing);
+    if (m_refreshRecipeListButton) m_refreshRecipeListButton->setEnabled(isEditing);
+  }
+
+  // File operations
+  if (m_newButton) m_newButton->setEnabled(isEditing);
+  if (m_loadButton) m_loadButton->setEnabled(isEditing);
+  if (m_saveButton) m_saveButton->setEnabled(isEditing);
+  if (m_saveAsButton) m_saveAsButton->setEnabled(isEditing);
+
+  // Step manipulation
+  if (m_moveUpButton) m_moveUpButton->setEnabled(isEditing);
+  if (m_moveDownButton) m_moveDownButton->setEnabled(isEditing);
+  if (m_removeButton) m_removeButton->setEnabled(isEditing);
+  if (m_copyButton) m_copyButton->setEnabled(isEditing);
+  if (m_pasteButton) m_pasteButton->setEnabled(isEditing);
+
+  // Process selection
+  if (m_selectAllButton) m_selectAllButton->setEnabled(isEditing);
+  if (m_deselectAllButton) m_deselectAllButton->setEnabled(isEditing);
+  if (m_toggleSelectedButton) m_toggleSelectedButton->setEnabled(isEditing);
+
+  // Process template list (middle panel)
+  if (m_processTemplateList) m_processTemplateList->setEnabled(isEditing);
+  if (m_addButton) m_addButton->setEnabled(isEditing);
+
+  // Other controls
+  if (m_breakpointButton) m_breakpointButton->setEnabled(isEditing);
+  if (m_updateProductFileButton) m_updateProductFileButton->setEnabled(isEditing);
+  if (m_recipeNameEdit) m_recipeNameEdit->setEnabled(isEditing);
+
+  // Run buttons - special handling
+  if (isEditing) {
+    if (m_runRecipeButton) {
+      m_runRecipeButton->setEnabled(true);
+      m_runRecipeButton->setText("▶ Run Recipe");
+    }
+    if (m_runSelectedStepButton) {
+      m_runSelectedStepButton->setEnabled(true);
+      m_runSelectedStepButton->setText("▶ Run Selected Step");
+    }
+  }
+  // Note: During execution, run buttons text is managed by execution handlers
 }
 
 // ============================================================================

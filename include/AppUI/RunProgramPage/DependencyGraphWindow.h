@@ -9,6 +9,8 @@
 #include <QVBoxLayout>
 #include <QListWidget>
 #include <QSplitter>
+#include <QTabWidget>
+#include <QMap>
 
 class ProgramManager;
 class DependencyGraphScene;
@@ -89,13 +91,25 @@ private slots:
   void onSelectionChanged();
   void onVariableItemClicked(QListWidgetItem* item);
 
+  // Dependency set management
+  void onAddSet();
+  void onDeleteSet();
+  void onDuplicateSet();
+  void onSetAsPOR();
+  void onRenameSet();
+  void onSetTabChanged(int tabIndex);
+  void refreshSetTabs();
+
 private:
   void setupUI();
   void setupToolbar();
+  void setupSetManagementBar();
   void setupContextVariablePanel();
   void applyDarkTheme();
   void updateContextVariablesForRecipe(int recipeIndex);
   QStringList extractContextVariablesFromRecipe(const std::string& recipeFilePath);
+  void updateSetButtonStates();
+  void updateTabStyles();
 
   ProgramManager* m_programManager;
   DependencyGraphScene* m_scene;
@@ -112,6 +126,20 @@ private:
 
   // Status bar
   QLabel* m_statusLabel;
+
+  // Dependency set management
+  QWidget* m_setManagementBar;
+  QTabWidget* m_setTabWidget;
+  QPushButton* m_btnAddSet;
+  QPushButton* m_btnDeleteSet;
+  QPushButton* m_btnDuplicateSet;
+  QPushButton* m_btnSetAsPOR;
+  QPushButton* m_btnRenameSet;
+  int m_currentSetIndex;
+
+  // Per-tab scenes and views
+  QMap<int, DependencyGraphScene*> m_setScenes;
+  QMap<int, DependencyGraphView*> m_setViews;
 
   // Context variable panel
   QWidget* m_contextVarPanel;

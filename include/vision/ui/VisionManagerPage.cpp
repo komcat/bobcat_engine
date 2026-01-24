@@ -1,6 +1,7 @@
 // VisionManagerPage.cpp
 #include "VisionManagerPage.h"
 #include "VisionToolbarWidget.h"
+#include "VisionProfileListWidget.h"
 #include "VisionLeftPanelWidget.h"
 #include "VisionImageWidget.h"
 #include "VisionRightPanelWidget.h"
@@ -27,6 +28,7 @@
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
 #include "../plugins/HalconLineDetectionPlugin.h"
 #include "../plugins/HalconPatternMatchingEdgePlugin.h"
+#include "../plugins/HalconBeamDetectionPlugin.h"
 #endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -114,8 +116,12 @@ void VisionManagerPage::setupUI()
     m_toolbar = new VisionToolbarWidget(this);
     mainLayout->addWidget(m_toolbar);
 
-    // Main content: 3-column splitter
+    // Main content: 4-column splitter
     m_mainSplitter = new QSplitter(Qt::Horizontal, this);
+
+    // Profile list panel - existing vision profiles
+    m_profileListWidget = new VisionProfileListWidget(m_context, this);
+    m_mainSplitter->addWidget(m_profileListWidget);
 
     // Left panel - plugin list and results
     m_leftPanel = new VisionLeftPanelWidget(this);
@@ -129,10 +135,14 @@ void VisionManagerPage::setupUI()
     m_rightPanel = new VisionRightPanelWidget(m_context, this);
     m_mainSplitter->addWidget(m_rightPanel);
 
-    // Set splitter sizes (left: 250px fixed, middle: flexible, right: 300px fixed)
-    m_mainSplitter->setStretchFactor(0, 0);  // Left - fixed
-    m_mainSplitter->setStretchFactor(1, 1);  // Middle - stretch
-    m_mainSplitter->setStretchFactor(2, 0);  // Right - fixed
+    // Set splitter sizes (profile: 180px fixed, left: 250px fixed, middle: flexible, right: 300px fixed)
+    m_mainSplitter->setStretchFactor(0, 0);  // Profile list - fixed
+    m_mainSplitter->setStretchFactor(1, 0);  // Left - fixed
+    m_mainSplitter->setStretchFactor(2, 1);  // Middle - stretch
+    m_mainSplitter->setStretchFactor(3, 0);  // Right - fixed
+
+    // Initialize the profile list with current vision directory
+    updateVisionDirectory();
 
     mainLayout->addWidget(m_mainSplitter, 1);
 
@@ -160,6 +170,14 @@ void VisionManagerPage::connectSignals()
             this, &VisionManagerPage::onAddToNode);
     connect(m_leftPanel, &VisionLeftPanelWidget::pluginSelected,
             this, &VisionManagerPage::onPluginSelected);
+
+    // Profile list signals
+    connect(m_profileListWidget, &VisionProfileListWidget::profileLoadRequested,
+            this, &VisionManagerPage::onProfileLoadRequested);
+    connect(m_profileListWidget, &VisionProfileListWidget::profileDeleted,
+            this, &VisionManagerPage::onProfileDeleted);
+    connect(m_profileListWidget, &VisionProfileListWidget::profileRenamed,
+            this, &VisionManagerPage::onProfileRenamed);
 
     // Image widget signals
     connect(m_imageWidget, &VisionImageWidget::captureClicked,
@@ -1497,6 +1515,11 @@ void VisionManagerPage::registerPlugins()
     halconPatternEdgePlugin->setVisionManagerPage(this);
     VisionManager::instance().registerPlugin(halconPatternEdgePlugin);
     std::cout << "[VisionManagerPage] Registered Halcon Pattern Matching Edge plugin" << std::endl;
+
+    // Register Halcon Beam Detection Plugin
+    auto halconBeamPlugin = std::make_shared<HalconBeamDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconBeamPlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon Beam Detection plugin" << std::endl;
 #endif
 
     if (m_context && m_context->logManager) {
@@ -1742,6 +1765,9 @@ void VisionManagerPage::saveProfileToPath(const QString& filePath)
         resultText += "- All plugin parameters\n";
 
         m_leftPanel->displayResult(resultText);
+
+        // Refresh profile list to show the new/updated profile
+        refreshProfileList();
 
     } catch (const std::exception& e) {
         m_leftPanel->displayResult("Error saving profile:\n" + QString::fromStdString(e.what()));
@@ -2092,5 +2118,225 @@ void VisionManagerPage::onProcessingCancelled()
 
     if (m_context && m_context->logManager) {
         m_context->logManager->Warning("Processing cancelled", "VisionManagerPage");
+    }
+}
+
+// Profile list slot implementations
+void VisionManagerPage::onProfileLoadRequested(const QString& filePath)
+{
+    std::cout << "[VisionManagerPage] Loading profile from list: " << filePath.toStdString() << std::endl;
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    try {
+        std::ifstream file(filePath.toStdString());
+        if (!file.is_open()) {
+            m_leftPanel->displayResult("Error: Cannot open file\n" + filePath);
+            return;
+        }
+
+        nlohmann::json j;
+        file >> j;
+        file.close();
+
+        QString resultText = "Vision Profile Loaded:\n" + filePath + "\n\n";
+
+        // Show profile metadata if available
+        if (j.contains("name")) {
+            resultText += "Profile: " + QString::fromStdString(j["name"].get<std::string>()) + "\n";
+        }
+        if (j.contains("product")) {
+            resultText += "Product: " + QString::fromStdString(j["product"].get<std::string>()) + "\n";
+        }
+        if (j.contains("version")) {
+            resultText += "Version: " + QString::fromStdString(j["version"].get<std::string>()) + "\n";
+        }
+        resultText += "\n";
+
+        // Load ROI settings
+        if (j.contains("roi")) {
+            auto roiJson = j["roi"];
+            int startX = roiJson.value("startX", 0);
+            int startY = roiJson.value("startY", 0);
+            int endX = roiJson.value("endX", 640);
+            int endY = roiJson.value("endY", 480);
+            bool enabled = roiJson.value("enabled", false);
+
+            m_rightPanel->setROI(startX, startY, endX, endY);
+            m_rightPanel->setROIEnabled(enabled);
+            m_imageWidget->setROI(startX, startY, endX, endY);
+            m_imageWidget->setROIEnabled(enabled);
+
+            VisionROI roi(startX, startY, endX, endY);
+            roi.setEnabled(enabled);
+            VisionManager::instance().setROI(roi);
+
+            resultText += "ROI: (" + QString::number(startX) + "," + QString::number(startY) + ") to ("
+                       + QString::number(endX) + "," + QString::number(endY) + ")\n";
+            resultText += "ROI Enabled: " + QString(enabled ? "Yes" : "No") + "\n\n";
+        }
+
+        // Load Search Box settings
+        if (j.contains("searchBox")) {
+            auto searchJson = j["searchBox"];
+            int startX = searchJson.value("startX", 0);
+            int startY = searchJson.value("startY", 0);
+            int endX = searchJson.value("endX", 800);
+            int endY = searchJson.value("endY", 600);
+            bool enabled = searchJson.value("enabled", false);
+
+            m_rightPanel->setSearchBox(startX, startY, endX, endY);
+            m_rightPanel->setSearchBoxEnabled(enabled);
+            m_imageWidget->setSearchBox(startX, startY, endX, endY);
+            m_imageWidget->setSearchBoxEnabled(enabled);
+
+            resultText += "Search Box: (" + QString::number(startX) + "," + QString::number(startY) + ") to ("
+                       + QString::number(endX) + "," + QString::number(endY) + ")\n";
+            resultText += "Search Box Enabled: " + QString(enabled ? "Yes" : "No") + "\n\n";
+        }
+
+        // Load camera settings
+        if (j.contains("camera")) {
+            auto camJson = j["camera"];
+            VisionCameraSettings camSettings;
+            camSettings.cameraId = QString::fromStdString(camJson.value("cameraId", ""));
+            camSettings.exposureTime = camJson.value("exposureTime", 1000);
+            camSettings.gain = camJson.value("gain", 1.0);
+            camSettings.autoExposure = camJson.value("autoExposure", false);
+            camSettings.autoGain = camJson.value("autoGain", false);
+            camSettings.pixelToMmX = camJson.value("pixelToMmX", 0.00248);
+            camSettings.pixelToMmY = camJson.value("pixelToMmY", 0.00248);
+
+            m_rightPanel->setCameraSettings(camSettings);
+            VisionManager::instance().setPixelToMm(camSettings.pixelToMmX, camSettings.pixelToMmY);
+
+            // Apply camera settings to hardware immediately
+            m_rightPanel->applyCameraSettings();
+
+            resultText += "Camera: " + camSettings.cameraId + "\n";
+            resultText += "Exposure: " + QString::number(camSettings.exposureTime) + " us\n";
+            resultText += "Gain: " + QString::number(camSettings.gain, 'f', 1) + "\n";
+            resultText += "Calibration: " + QString::number(camSettings.pixelToMmX, 'f', 6) + " mm/px\n\n";
+        }
+
+        // Load lighting settings
+        if (j.contains("lighting")) {
+            auto lightJson = j["lighting"];
+            VisionLightingSettings lightSettings;
+            lightSettings.enabled = lightJson.value("enabled", false);
+            lightSettings.controllerId = QString::fromStdString(lightJson.value("controllerId", ""));
+
+            if (lightJson.contains("channels") && lightJson["channels"].is_array()) {
+                for (const auto& chJson : lightJson["channels"]) {
+                    int channel = chJson.value("channel", 0);
+                    int intensity = chJson.value("intensity", 0);
+                    bool on = chJson.value("on", false);
+                    lightSettings.channelIntensities[channel] = intensity;
+                    lightSettings.channelStates[channel] = on;
+                }
+            }
+
+            m_rightPanel->setLightingSettings(lightSettings);
+
+            // Apply lighting settings to hardware immediately
+            m_rightPanel->applyLightingSettings();
+
+            resultText += "Lighting: " + QString(lightSettings.enabled ? "Enabled" : "Disabled") + "\n";
+            if (lightSettings.enabled) {
+                resultText += "  Channels: " + QString::number(lightSettings.channelIntensities.size()) + "\n";
+            }
+            resultText += "\n";
+        }
+
+        // Load plugin and parameters
+        if (j.contains("plugin")) {
+            auto pluginJson = j["plugin"];
+            QString pluginName = QString::fromStdString(pluginJson.value("name", ""));
+
+            if (!pluginName.isEmpty()) {
+                auto plugin = VisionManager::instance().getPlugin(pluginName);
+                if (plugin && pluginJson.contains("parameters")) {
+                    plugin->setParameters(pluginJson["parameters"]);
+                    m_selectedPluginName = pluginName;
+                    loadPluginConfig(pluginName);
+                    resultText += "Plugin: " + pluginName + "\nParameters loaded\n";
+                }
+            }
+        }
+
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Info("Loaded vision profile: " + filePath.toStdString(), "VisionManagerPage");
+        }
+
+        // Store the current profile path
+        m_currentProfilePath = filePath;
+        m_currentRecipePath.clear();
+        m_profileModified = false;
+        updateProfileDisplay();
+
+        m_leftPanel->displayResult(resultText);
+
+    } catch (const std::exception& e) {
+        m_leftPanel->displayResult("Error loading profile:\n" + QString::fromStdString(e.what()));
+    }
+}
+
+void VisionManagerPage::onProfileDeleted(const QString& filePath)
+{
+    std::cout << "[VisionManagerPage] Profile deleted: " << filePath.toStdString() << std::endl;
+
+    // If the deleted profile was the current one, clear the path
+    if (m_currentProfilePath == filePath) {
+        m_currentProfilePath.clear();
+        m_profileModified = false;
+        updateProfileDisplay();
+    }
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Deleted vision profile: " + filePath.toStdString(), "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::onProfileRenamed(const QString& oldPath, const QString& newPath)
+{
+    std::cout << "[VisionManagerPage] Profile renamed: " << oldPath.toStdString()
+              << " -> " << newPath.toStdString() << std::endl;
+
+    // If the renamed profile was the current one, update the path
+    if (m_currentProfilePath == oldPath) {
+        m_currentProfilePath = newPath;
+        updateProfileDisplay();
+    }
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Renamed vision profile: " + QFileInfo(oldPath).baseName().toStdString()
+                                    + " -> " + QFileInfo(newPath).baseName().toStdString(), "VisionManagerPage");
+    }
+}
+
+void VisionManagerPage::refreshProfileList()
+{
+    if (m_profileListWidget) {
+        m_profileListWidget->refreshProfileList();
+    }
+}
+
+void VisionManagerPage::updateVisionDirectory()
+{
+    QString visionDir;
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+        QString productFilePath = QString::fromStdString(
+            m_context->productPositionManager->GetCurrentProductPath());
+        QString productDir = QFileInfo(productFilePath).path();
+        visionDir = productDir + "/vision";
+    } else {
+        visionDir = "config/vision";
+    }
+
+    if (m_profileListWidget) {
+        m_profileListWidget->setVisionDirectory(visionDir);
     }
 }

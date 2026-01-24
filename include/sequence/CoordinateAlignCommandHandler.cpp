@@ -116,18 +116,16 @@ bool CoordinateAlignCommandHandler::HandleTeachCoordinateSystem(
 
     const std::string& uid = uidIt->second;
 
-    // Check if UID already exists
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_taughtSystems.find(uid) != m_taughtSystems.end()) {
-            errorMessage = "TeachCoordinateSystem: Taught system '" + uid + "' already exists";
-            return false;
-        }
+    // Get process unique ID for file naming (allows each process instance to have its own file)
+    auto processUidIt = params.find("process_uid");
+    std::string storageKey = uid;
+    if (processUidIt != params.end() && !processUidIt->second.empty()) {
+        storageKey = uid + "_" + processUidIt->second;
     }
 
     // Read fiducial data from context
     TaughtCoordinateSystem taught;
-    taught.uid = uid;
+    taught.uid = storageKey;  // Use combined key as the storage UID
     taught.motionDevice = motionDeviceIt->second;
     taught.cameraName = cameraNameIt->second;
     taught.createdAt = GetCurrentTimestamp();
@@ -184,10 +182,10 @@ bool CoordinateAlignCommandHandler::HandleTeachCoordinateSystem(
         taught.xAxisX, taught.xAxisY,
         taught.yAxisX, taught.yAxisY);
 
-    // Store taught system in memory
+    // Store taught system in memory (overwrites existing if present)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_taughtSystems[uid] = taught;
+        m_taughtSystems[storageKey] = taught;
     }
 
     // Save to disk for persistence
@@ -195,7 +193,7 @@ bool CoordinateAlignCommandHandler::HandleTeachCoordinateSystem(
 
     // Log success
     std::ostringstream msg;
-    msg << "Created Taught coordinate system '" << uid << "'\n"
+    msg << "Created Taught coordinate system '" << storageKey << "'\n"
         << "  Origin (F1): (" << taught.originX_mm << ", " << taught.originY_mm << ")\n"
         << "  X-axis: (" << taught.xAxisX << ", " << taught.xAxisY << ")\n"
         << "  Y-axis: (" << taught.yAxisX << ", " << taught.yAxisY << ")\n"
@@ -213,14 +211,14 @@ bool CoordinateAlignCommandHandler::HandleTeachCoordinateSystem(
     }
     std::cout << "[CoordAlign] " << msg.str() << std::endl;
 
-    // Store taught system info in context
-    context->SetValue(uid + ".taught", true, "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid1_world_x", static_cast<float>(taught.fid1.worldX_mm), "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid1_world_y", static_cast<float>(taught.fid1.worldY_mm), "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid2_world_x", static_cast<float>(taught.fid2.worldX_mm), "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid2_world_y", static_cast<float>(taught.fid2.worldY_mm), "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid3_world_x", static_cast<float>(taught.fid3.worldX_mm), "coordalign", "TeachCoordinateSystem");
-    context->SetValue(uid + ".fid3_world_y", static_cast<float>(taught.fid3.worldY_mm), "coordalign", "TeachCoordinateSystem");
+    // Store taught system info in context (use storageKey for unique per-process values)
+    context->SetValue(storageKey + ".taught", true, "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid1_world_x", static_cast<float>(taught.fid1.worldX_mm), "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid1_world_y", static_cast<float>(taught.fid1.worldY_mm), "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid2_world_x", static_cast<float>(taught.fid2.worldX_mm), "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid2_world_y", static_cast<float>(taught.fid2.worldY_mm), "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid3_world_x", static_cast<float>(taught.fid3.worldX_mm), "coordalign", "TeachCoordinateSystem");
+    context->SetValue(storageKey + ".fid3_world_y", static_cast<float>(taught.fid3.worldY_mm), "coordalign", "TeachCoordinateSystem");
 
     return true;
 }
@@ -1135,6 +1133,22 @@ bool CoordinateAlignCommandHandler::ExecuteVisionAtPosition(
         return false;
     }
 
+    // Get current position BEFORE move for debugging
+    PositionStruct posBefore = m_appContext->motionManager->GetCurrentPosition(motionDevice);
+    std::cout << "[DEBUG] [CoordAlign] ExecuteVisionAtPosition START" << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   Device: " << motionDevice << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   Current position BEFORE move: ("
+              << posBefore.x << ", " << posBefore.y << ", " << posBefore.z << ")" << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   Target position: ("
+              << deviceX << ", " << deviceY << ", " << deviceZ << ")" << std::endl;
+
+    // Calculate distance to target
+    double dx = deviceX - posBefore.x;
+    double dy = deviceY - posBefore.y;
+    double dz = deviceZ - posBefore.z;
+    double distanceToTarget = std::sqrt(dx*dx + dy*dy + dz*dz);
+    std::cout << "[DEBUG] [CoordAlign]   Distance to target: " << distanceToTarget << " mm" << std::endl;
+
     // 1. Move to device position (blocking)
     if (m_logger) {
         std::ostringstream msg;
@@ -1142,16 +1156,49 @@ bool CoordinateAlignCommandHandler::ExecuteVisionAtPosition(
         m_logger->Info(msg.str(), "CoordAlign");
     }
 
+    auto moveStartTime = std::chrono::steady_clock::now();
+    std::cout << "[DEBUG] [CoordAlign] Calling MoveToAbs with blocking=true..." << std::endl;
+
     bool moveOk = m_appContext->motionManager->MoveToAbs(
         motionDevice, deviceX, deviceY, deviceZ, 100.0, true);  // velocity=100, blocking=true
+
+    auto moveEndTime = std::chrono::steady_clock::now();
+    auto moveElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        moveEndTime - moveStartTime).count();
+
+    std::cout << "[DEBUG] [CoordAlign] MoveToAbs returned: " << (moveOk ? "SUCCESS" : "FAILED")
+              << " after " << moveElapsedMs << " ms" << std::endl;
 
     if (!moveOk) {
         errorMessage = "Failed to move to position (" +
             std::to_string(deviceX) + ", " +
             std::to_string(deviceY) + ", " +
             std::to_string(deviceZ) + ")";
+        std::cout << "[ERROR] [CoordAlign] " << errorMessage << std::endl;
         return false;
     }
+
+    // Verify position AFTER move
+    PositionStruct posAfter = m_appContext->motionManager->GetCurrentPosition(motionDevice);
+    double dxAfter = deviceX - posAfter.x;
+    double dyAfter = deviceY - posAfter.y;
+    double dzAfter = deviceZ - posAfter.z;
+    double distanceAfterMove = std::sqrt(dxAfter*dxAfter + dyAfter*dyAfter + dzAfter*dzAfter);
+
+    std::cout << "[DEBUG] [CoordAlign]   Position AFTER move: ("
+              << posAfter.x << ", " << posAfter.y << ", " << posAfter.z << ")" << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   Distance from target after move: " << distanceAfterMove << " mm" << std::endl;
+
+    // Check if we're actually at target (within tolerance)
+    const double positionTolerance = 0.5;  // 0.5mm tolerance
+    if (distanceAfterMove > positionTolerance) {
+        std::cout << "[WARNING] [CoordAlign] Motion returned success but device is "
+                  << distanceAfterMove << " mm from target (tolerance: "
+                  << positionTolerance << " mm)" << std::endl;
+        std::cout << "[WARNING] [CoordAlign] This may indicate premature motion completion!" << std::endl;
+    }
+
+    std::cout << "[DEBUG] [CoordAlign] Starting vision execution for capture_as='" << captureAs << "'" << std::endl;
 
     // 2. Execute vision profile using VisionCommandHandler directly
 #ifdef HAS_OPENCV
@@ -1167,26 +1214,38 @@ bool CoordinateAlignCommandHandler::ExecuteVisionAtPosition(
     visionParams["motion_device"] = motionDevice;
 
     std::string visionError;
+    auto visionStartTime = std::chrono::steady_clock::now();
+
     bool visionOk = visionHandler.ExecuteCommand(
         nullptr, "vision", "execute_profile",
         visionParams, visionError, context);
 
+    auto visionEndTime = std::chrono::steady_clock::now();
+    auto visionElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        visionEndTime - visionStartTime).count();
+
+    std::cout << "[DEBUG] [CoordAlign] VisionCommandHandler.ExecuteCommand returned: "
+              << (visionOk ? "SUCCESS" : "FAILED") << " after " << visionElapsedMs << " ms" << std::endl;
+
     if (!visionOk) {
         errorMessage = "Vision execution failed: " + visionError;
+        std::cout << "[ERROR] [CoordAlign] Vision execution failed: " << visionError << std::endl;
         return false;
     }
 
     // VisionCommandHandler always returns true, so check context for actual result
     // First check vision.result.success (base key before capture_as copy)
     bool visionSuccess = context->GetBoolean("vision.result.success", false);
+    std::cout << "[DEBUG] [CoordAlign] vision.result.success = " << (visionSuccess ? "true" : "false") << std::endl;
+
     if (!visionSuccess) {
         std::string visionErr = context->GetString("vision.result.error", "Unknown vision error");
         errorMessage = "Vision detection failed: " + visionErr;
-        std::cout << "[CoordAlign] Vision failed: " << visionErr << std::endl;
+        std::cout << "[ERROR] [CoordAlign] Vision detection failed: " << visionErr << std::endl;
         return false;
     }
 
-    std::cout << "[CoordAlign] Vision succeeded for " << captureAs << std::endl;
+    std::cout << "[DEBUG] [CoordAlign] Vision succeeded for " << captureAs << std::endl;
 #else
     (void)cameraName;
     (void)visionProfilePath;
@@ -1197,11 +1256,42 @@ bool CoordinateAlignCommandHandler::ExecuteVisionAtPosition(
 
     // Verify captured results exist with the prefix
     std::string worldXKey = captureAs + ".detected.world_x_mm";
+    std::string worldYKey = captureAs + ".detected.world_y_mm";
+
+    std::cout << "[DEBUG] [CoordAlign] Checking for vision results with prefix: " << captureAs << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   Looking for key: " << worldXKey << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   HasValue(worldXKey) = " << (context->HasValue(worldXKey) ? "true" : "false") << std::endl;
+    std::cout << "[DEBUG] [CoordAlign]   HasValue(worldYKey) = " << (context->HasValue(worldYKey) ? "true" : "false") << std::endl;
+
+    // Debug: List all keys that start with the capture_as prefix
+    std::cout << "[DEBUG] [CoordAlign] Searching context for keys starting with '" << captureAs << "'..." << std::endl;
+    auto allKeys = context->GetAllKeys();
+    bool foundAny = false;
+    for (const auto& key : allKeys) {
+        if (key.find(captureAs) == 0) {
+            std::cout << "[DEBUG] [CoordAlign]   Found key: " << key << std::endl;
+            foundAny = true;
+        }
+    }
+    if (!foundAny) {
+        std::cout << "[DEBUG] [CoordAlign]   NO keys found with prefix '" << captureAs << "'" << std::endl;
+
+        // Also check for 'vision.result' keys
+        std::cout << "[DEBUG] [CoordAlign] Checking 'vision.result' keys..." << std::endl;
+        for (const auto& key : allKeys) {
+            if (key.find("vision.result") == 0 || key.find("vision.") == 0) {
+                std::cout << "[DEBUG] [CoordAlign]   Found key: " << key << std::endl;
+            }
+        }
+    }
+
     if (!context->HasValue(worldXKey)) {
         errorMessage = "Vision results not found with prefix: " + captureAs;
+        std::cout << "[ERROR] [CoordAlign] " << errorMessage << std::endl;
         return false;
     }
 
+    std::cout << "[DEBUG] [CoordAlign] ExecuteVisionAtPosition completed successfully" << std::endl;
     return true;
 }
 

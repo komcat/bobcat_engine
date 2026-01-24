@@ -131,6 +131,14 @@ public:
   void addPSUChannelSelector(const std::string& key, const std::string& label,
     const std::string& value, const std::string& psuDeviceParamKey);
 
+  // Helper to add taught coordinate system selector (with browse button showing available systems)
+  void addTaughtCoordinateSystemSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
+  // Helper to add local point selector (with browse button showing available local points)
+  void addLocalPointSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

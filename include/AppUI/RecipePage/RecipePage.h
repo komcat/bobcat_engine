@@ -16,6 +16,7 @@
 #include <QGroupBox>
 #include <QKeyEvent>
 #include <QShowEvent>
+#include <QTabWidget>
 #include <map>
 #include <memory>
 
@@ -43,6 +44,12 @@ class RecipePage : public QWidget
   Q_OBJECT
 
 public:
+  // Page state enum - controls what the user can interact with
+  enum class PageState {
+    Editing,    // Normal editing mode - all controls enabled
+    Executing   // Recipe is running - editing controls disabled
+  };
+
   explicit RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent = nullptr);
   ~RecipePage();
 
@@ -88,8 +95,7 @@ private slots:
   void onRemoveStep();
   void onRunRecipe();
   void onRunSelectedStep();  // ✅ NEW: Run single selected step
-  void onStepButtonClicked();      // ✅ Step-by-step execution
-  void onContinueButtonClicked();  // ✅ Continue from pause/breakpoint
+  void onBreakpointButtonClicked();  // ✅ Toggle breakpoint on selected step
   void onLoadProductClicked();
   void onSelectAllProcesses();
   void onDeselectAllProcesses();
@@ -147,11 +153,25 @@ private slots:
   void onShowContextViewer();
   void onContextRefreshRequested();
 
+  // Recipes tab slots
+  void onRecipeListItemDoubleClicked(QListWidgetItem* item);
+  void onRecipeListContextMenu(const QPoint& pos);
+  void onRefreshRecipeList();
+  void onLoadSelectedRecipe();
+  void onDeleteSelectedRecipe();
+  void onRenameSelectedRecipe();
+
 private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
   void createRightPanel(QWidget* rightPanel);
+
+  // Middle panel tab creation
+  void createRecipesTab(QWidget* recipesTab);
+  void createStepsTab(QWidget* stepsTab);
+  void populateRecipeListWidget();
+  QString getRecipeFolderPath();
 
   // UI refresh
   void refreshRecipeList();
@@ -210,8 +230,7 @@ private:
   QPushButton* m_removeButton;
   QPushButton* m_runRecipeButton;
   QPushButton* m_runSelectedStepButton;  // ✅ NEW: Run single selected step
-  QPushButton* m_stepButton;             // ✅ Step-by-step execution
-  QPushButton* m_continueButton;         // ✅ Continue from pause/breakpoint
+  QPushButton* m_breakpointButton;       // ✅ Toggle breakpoint on selected step
   QPushButton* m_selectAllButton;
   QPushButton* m_deselectAllButton;
   QPushButton* m_toggleSelectedButton;
@@ -221,9 +240,15 @@ private:
   QLabel* m_loadedProductLabel;
 
   // Middle panel widgets
+  QTabWidget* m_middleTabWidget;
   QTreeWidget* m_processTemplateList;
   QPushButton* m_addButton;
-  QLabel* m_selectedProcessLabel;  // ✅ NEW: Shows currently selected process type
+  QLabel* m_selectedProcessLabel;  // Shows currently selected process type
+
+  // Recipes tab widgets
+  QListWidget* m_recipeListWidget;
+  QPushButton* m_refreshRecipeListButton;
+  QLabel* m_recipeCountLabel;
 
   // Right panel widgets
   QScrollArea* m_configScrollArea;
@@ -270,6 +295,10 @@ private:
   bool m_quickAddMode;                    // Whether quick add mode is active
   int m_quickAddSelectedCategory;         // Selected category index (-1 = none)
   QLabel* m_quickAddOverlay;              // Overlay showing quick add instructions
+
+  // Page state management
+  PageState m_pageState;                  // Current page state (Editing/Executing)
+  void setPageState(PageState state);     // Switch between editing and executing modes
 
 protected:
   void keyPressEvent(QKeyEvent* event) override;

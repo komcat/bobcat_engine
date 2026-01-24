@@ -19,7 +19,15 @@
 #include <QPushButton>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDialog>
+#include <QListWidget>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <iostream>
+#include <filesystem>
 
 // ============================================================================
 // BASE CLASS: ProcessConfigWidget
@@ -984,6 +992,367 @@ void ProcessConfigWidget::addPSUChannelSelector(const std::string& key,
 
   m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
   m_parameterCombos[key] = combo;
+}
+
+// Helper to add taught coordinate system selector (with browse button)
+void ProcessConfigWidget::addTaughtCoordinateSystemSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Select...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    // Create selection dialog
+    QDialog dialog(this->window());
+    dialog.setWindowTitle("Select Taught Coordinate System");
+    dialog.setMinimumSize(400, 350);
+    dialog.setStyleSheet(
+      "QDialog { background-color: #2d2d30; }"
+      "QLabel { color: #d4d4d4; }"
+    );
+
+    QVBoxLayout* dialogLayout = new QVBoxLayout(&dialog);
+
+    // Header
+    QLabel* headerLabel = new QLabel("Available Taught Coordinate Systems:");
+    headerLabel->setStyleSheet("font-weight: bold; font-size: 12px; color: #d4d4d4;");
+    dialogLayout->addWidget(headerLabel);
+
+    // List widget
+    QListWidget* listWidget = new QListWidget();
+    listWidget->setStyleSheet(
+      "QListWidget { "
+      "  background-color: #1e1e1e; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 3px; "
+      "  font-size: 12px; "
+      "} "
+      "QListWidget::item { "
+      "  padding: 8px 10px; "
+      "  border-bottom: 1px solid #2d2d30; "
+      "} "
+      "QListWidget::item:selected { "
+      "  background-color: #0e639c; "
+      "  color: #ffffff; "
+      "} "
+      "QListWidget::item:hover { "
+      "  background-color: #2a2d2e; "
+      "}"
+    );
+
+    // Load taught systems from disk
+    std::filesystem::path taughtDir = "config/coordalign/taught_systems";
+    if (std::filesystem::exists(taughtDir)) {
+      for (const auto& entry : std::filesystem::directory_iterator(taughtDir)) {
+        if (entry.path().extension() == ".json") {
+          std::string uid = entry.path().stem().string();
+
+          // Try to read description from JSON
+          QString displayText = QString::fromStdString(uid);
+          try {
+            QFile file(QString::fromStdString(entry.path().string()));
+            if (file.open(QIODevice::ReadOnly)) {
+              QByteArray data = file.readAll();
+              QJsonDocument doc = QJsonDocument::fromJson(data);
+              if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                QString desc = obj.value("description").toString();
+                if (!desc.isEmpty()) {
+                  displayText = QString("%1  (%2)").arg(QString::fromStdString(uid), desc);
+                }
+              }
+              file.close();
+            }
+          } catch (...) {
+            // Ignore parsing errors
+          }
+
+          QListWidgetItem* item = new QListWidgetItem(displayText);
+          item->setData(Qt::UserRole, QString::fromStdString(uid));  // Store UID
+          listWidget->addItem(item);
+        }
+      }
+    }
+
+    if (listWidget->count() == 0) {
+      QListWidgetItem* emptyItem = new QListWidgetItem("(No taught systems found)");
+      emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
+      emptyItem->setForeground(QBrush(QColor("#808080")));
+      listWidget->addItem(emptyItem);
+    }
+
+    // Select current value if it exists
+    QString currentValue = edit->text();
+    for (int i = 0; i < listWidget->count(); ++i) {
+      QListWidgetItem* item = listWidget->item(i);
+      if (item->data(Qt::UserRole).toString() == currentValue) {
+        listWidget->setCurrentItem(item);
+        break;
+      }
+    }
+
+    dialogLayout->addWidget(listWidget);
+
+    // Info label
+    QLabel* infoLabel = new QLabel("Taught systems are stored in config/coordalign/taught_systems/");
+    infoLabel->setStyleSheet("font-size: 10px; color: #808080; font-style: italic;");
+    dialogLayout->addWidget(infoLabel);
+
+    // Buttons
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #3c3c3c; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #555555; "
+      "  border-radius: 3px; "
+      "  padding: 6px 16px; "
+      "  min-width: 80px; "
+      "} "
+      "QPushButton:hover { background-color: #4a4a4a; } "
+      "QPushButton:default { background-color: #0e639c; border-color: #0e639c; }"
+    );
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    dialogLayout->addWidget(buttonBox);
+
+    // Double-click to accept
+    connect(listWidget, &QListWidget::itemDoubleClicked, [&dialog](QListWidgetItem* item) {
+      if (item && (item->flags() & Qt::ItemIsSelectable)) {
+        dialog.accept();
+      }
+    });
+
+    if (dialog.exec() == QDialog::Accepted) {
+      QListWidgetItem* selectedItem = listWidget->currentItem();
+      if (selectedItem && (selectedItem->flags() & Qt::ItemIsSelectable)) {
+        QString uid = selectedItem->data(Qt::UserRole).toString();
+        edit->setText(uid);
+      }
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+// Helper to add local point selector (with browse button)
+void ProcessConfigWidget::addLocalPointSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Select...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    // Create selection dialog
+    QDialog dialog(this->window());
+    dialog.setWindowTitle("Select Local Point");
+    dialog.setMinimumSize(500, 400);
+    dialog.setStyleSheet(
+      "QDialog { background-color: #2d2d30; }"
+      "QLabel { color: #d4d4d4; }"
+    );
+
+    QVBoxLayout* dialogLayout = new QVBoxLayout(&dialog);
+
+    // Header
+    QLabel* headerLabel = new QLabel("Available Taught Local Points:");
+    headerLabel->setStyleSheet("font-weight: bold; font-size: 12px; color: #d4d4d4;");
+    dialogLayout->addWidget(headerLabel);
+
+    // List widget
+    QListWidget* listWidget = new QListWidget();
+    listWidget->setStyleSheet(
+      "QListWidget { "
+      "  background-color: #1e1e1e; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 3px; "
+      "  font-size: 12px; "
+      "} "
+      "QListWidget::item { "
+      "  padding: 8px 10px; "
+      "  border-bottom: 1px solid #2d2d30; "
+      "} "
+      "QListWidget::item:selected { "
+      "  background-color: #0e639c; "
+      "  color: #ffffff; "
+      "} "
+      "QListWidget::item:hover { "
+      "  background-color: #2a2d2e; "
+      "}"
+    );
+
+    // Load local points from disk
+    std::filesystem::path localPointsDir = "config/coordalign/local_points";
+    if (std::filesystem::exists(localPointsDir)) {
+      for (const auto& entry : std::filesystem::directory_iterator(localPointsDir)) {
+        if (entry.path().extension() == ".json") {
+          std::string uid = entry.path().stem().string();
+
+          // Try to read details from JSON
+          QString displayText = QString::fromStdString(uid);
+          QString tooltip;
+          try {
+            QFile file(QString::fromStdString(entry.path().string()));
+            if (file.open(QIODevice::ReadOnly)) {
+              QByteArray data = file.readAll();
+              QJsonDocument doc = QJsonDocument::fromJson(data);
+              if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                QString coordSys = obj.value("coord_system_uid").toString();
+                QString desc = obj.value("description").toString();
+                double localX = obj.value("local_x_mm").toDouble();
+                double localY = obj.value("local_y_mm").toDouble();
+
+                if (!coordSys.isEmpty()) {
+                  displayText = QString("%1  [%2]").arg(QString::fromStdString(uid), coordSys);
+                }
+                tooltip = QString("Coord System: %1\nLocal: (%.3f, %.3f)")
+                  .arg(coordSys)
+                  .arg(localX)
+                  .arg(localY);
+                if (!desc.isEmpty()) {
+                  tooltip += QString("\nDescription: %1").arg(desc);
+                }
+              }
+              file.close();
+            }
+          } catch (...) {
+            // Ignore parsing errors
+          }
+
+          QListWidgetItem* item = new QListWidgetItem(displayText);
+          item->setData(Qt::UserRole, QString::fromStdString(uid));  // Store UID
+          if (!tooltip.isEmpty()) {
+            item->setToolTip(tooltip);
+          }
+          listWidget->addItem(item);
+        }
+      }
+    }
+
+    if (listWidget->count() == 0) {
+      QListWidgetItem* emptyItem = new QListWidgetItem("(No local points found)");
+      emptyItem->setFlags(emptyItem->flags() & ~Qt::ItemIsSelectable);
+      emptyItem->setForeground(QBrush(QColor("#808080")));
+      listWidget->addItem(emptyItem);
+    }
+
+    // Select current value if it exists
+    QString currentValue = edit->text();
+    for (int i = 0; i < listWidget->count(); ++i) {
+      QListWidgetItem* item = listWidget->item(i);
+      if (item->data(Qt::UserRole).toString() == currentValue) {
+        listWidget->setCurrentItem(item);
+        break;
+      }
+    }
+
+    dialogLayout->addWidget(listWidget);
+
+    // Info label
+    QLabel* infoLabel = new QLabel("Local points are stored in config/coordalign/local_points/");
+    infoLabel->setStyleSheet("font-size: 10px; color: #808080; font-style: italic;");
+    dialogLayout->addWidget(infoLabel);
+
+    // Buttons
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #3c3c3c; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #555555; "
+      "  border-radius: 3px; "
+      "  padding: 6px 16px; "
+      "  min-width: 80px; "
+      "} "
+      "QPushButton:hover { background-color: #4a4a4a; } "
+      "QPushButton:default { background-color: #0e639c; border-color: #0e639c; }"
+    );
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    dialogLayout->addWidget(buttonBox);
+
+    // Double-click to accept
+    connect(listWidget, &QListWidget::itemDoubleClicked, [&dialog](QListWidgetItem* item) {
+      if (item && (item->flags() & Qt::ItemIsSelectable)) {
+        dialog.accept();
+      }
+    });
+
+    if (dialog.exec() == QDialog::Accepted) {
+      QListWidgetItem* selectedItem = listWidget->currentItem();
+      if (selectedItem && (selectedItem->flags() & Qt::ItemIsSelectable)) {
+        QString uid = selectedItem->data(Qt::UserRole).toString();
+        edit->setText(uid);
+      }
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
 }
 
 std::map<std::string, std::string> ProcessConfigWidget::getParameters() const

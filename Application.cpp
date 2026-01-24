@@ -301,6 +301,12 @@ void Application::initializeManagers()
     initializeProductPositionManager();
     completeSplash("ProductPositionManager");
 
+    // DeviceLinkManager must be initialized BEFORE SequenceEngine
+    // because SequenceEngine's MotionCommandHandler needs it
+    updateSplash("DeviceLinkManager");
+    initializeDeviceLinkManager();
+    completeSplash("DeviceLinkManager");
+
     updateSplash("SequenceEngine");
     initializeSequenceEngine();
     completeSplash("SequenceEngine");
@@ -320,10 +326,6 @@ void Application::initializeManagers()
     updateSplash("SafetyWatch");
     initializeSafetyWatch();
     completeSplash("SafetyWatch");
-
-    updateSplash("DeviceLinkManager");
-    initializeDeviceLinkManager();
-    completeSplash("DeviceLinkManager");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();

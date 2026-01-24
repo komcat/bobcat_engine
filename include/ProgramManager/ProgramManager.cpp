@@ -21,9 +21,10 @@ ProgramManager::~ProgramManager()
 void ProgramManager::newProgram()
 {
   m_currentProgram = Program();
+  // Program() constructor initializes with one "Default" dependency set
   m_currentFilePath.clear();
   m_graphPositions.clear();
-  std::cout << "[ProgramManager] New program created" << std::endl;
+  std::cout << "[ProgramManager] New program created with 1 default dependency set" << std::endl;
 }
 
 void ProgramManager::addRecipe(const std::string& recipeFilePath, const std::string& displayName)
@@ -146,12 +147,133 @@ bool ProgramManager::hasLoopRecipes() const
 }
 
 // ============================================================================
-// DEPENDENCY MANAGEMENT
+// DEPENDENCY SET MANAGEMENT
 // ============================================================================
 
-bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
+int ProgramManager::createDependencySet(const std::string& name)
+{
+  if (static_cast<int>(m_currentProgram.dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
+    std::cerr << "[ProgramManager] Cannot create dependency set: max " << MAX_DEPENDENCY_SETS << " reached" << std::endl;
+    return -1;
+  }
+
+  m_currentProgram.dependencySets.emplace_back(name);
+  int newIndex = static_cast<int>(m_currentProgram.dependencySets.size()) - 1;
+
+  std::cout << "[ProgramManager] Created dependency set '" << name << "' at index " << newIndex << std::endl;
+  return newIndex;
+}
+
+bool ProgramManager::deleteDependencySet(int setIndex)
+{
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
+    return false;
+  }
+
+  if (m_currentProgram.dependencySets.size() == 1) {
+    std::cerr << "[ProgramManager] Cannot delete last dependency set" << std::endl;
+    return false;
+  }
+
+  if (setIndex == m_currentProgram.activeDependencySetIndex) {
+    std::cerr << "[ProgramManager] Cannot delete active (POR) dependency set" << std::endl;
+    return false;
+  }
+
+  std::string deletedName = m_currentProgram.dependencySets[setIndex].name;
+  m_currentProgram.dependencySets.erase(m_currentProgram.dependencySets.begin() + setIndex);
+
+  // Adjust active index if needed
+  if (m_currentProgram.activeDependencySetIndex > setIndex) {
+    m_currentProgram.activeDependencySetIndex--;
+  }
+
+  std::cout << "[ProgramManager] Deleted dependency set '" << deletedName << "'" << std::endl;
+  return true;
+}
+
+bool ProgramManager::renameDependencySet(int setIndex, const std::string& name)
+{
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
+    return false;
+  }
+
+  std::string oldName = m_currentProgram.dependencySets[setIndex].name;
+  m_currentProgram.dependencySets[setIndex].name = name;
+
+  std::cout << "[ProgramManager] Renamed dependency set from '" << oldName << "' to '" << name << "'" << std::endl;
+  return true;
+}
+
+int ProgramManager::duplicateDependencySet(int sourceIndex, const std::string& name)
+{
+  if (sourceIndex < 0 || sourceIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    std::cerr << "[ProgramManager] Invalid source set index: " << sourceIndex << std::endl;
+    return -1;
+  }
+
+  if (static_cast<int>(m_currentProgram.dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
+    std::cerr << "[ProgramManager] Cannot duplicate: max " << MAX_DEPENDENCY_SETS << " reached" << std::endl;
+    return -1;
+  }
+
+  // Create new set with copied dependencies
+  DependencySet newSet(name);
+  newSet.dependencies = m_currentProgram.dependencySets[sourceIndex].dependencies;
+  m_currentProgram.dependencySets.push_back(newSet);
+
+  int newIndex = static_cast<int>(m_currentProgram.dependencySets.size()) - 1;
+  std::cout << "[ProgramManager] Duplicated dependency set '"
+            << m_currentProgram.dependencySets[sourceIndex].name
+            << "' to '" << name << "' at index " << newIndex << std::endl;
+  return newIndex;
+}
+
+int ProgramManager::getDependencySetCount() const
+{
+  return static_cast<int>(m_currentProgram.dependencySets.size());
+}
+
+std::string ProgramManager::getDependencySetName(int setIndex) const
+{
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return "";
+  }
+  return m_currentProgram.dependencySets[setIndex].name;
+}
+
+bool ProgramManager::setActiveDependencySet(int setIndex)
+{
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
+    return false;
+  }
+
+  m_currentProgram.activeDependencySetIndex = setIndex;
+  std::cout << "[ProgramManager] Set active dependency set to index " << setIndex
+            << " ('" << m_currentProgram.dependencySets[setIndex].name << "')" << std::endl;
+  return true;
+}
+
+int ProgramManager::getActiveDependencySetIndex() const
+{
+  return m_currentProgram.activeDependencySetIndex;
+}
+
+// ============================================================================
+// DEPENDENCY MANAGEMENT (with set index)
+// ============================================================================
+
+bool ProgramManager::addRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex,
                                           const std::string& condition)
 {
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
+    return false;
+  }
+
   if (recipeIndex < 0 || recipeIndex >= getRecipeCount() ||
       prerequisiteIndex < 0 || prerequisiteIndex >= getRecipeCount()) {
     std::cerr << "[ProgramManager] Invalid indices for dependency" << std::endl;
@@ -163,11 +285,9 @@ bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
     return false;
   }
 
-  RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return false;
+  auto& deps = m_currentProgram.dependencySets[setIndex].dependencies[recipeIndex];
 
   // Check if dependency already exists
-  auto& deps = recipe->dependencies;
   auto it = std::find_if(deps.begin(), deps.end(),
     [prerequisiteIndex](const DependencyLink& d) {
       return d.predecessorIndex == prerequisiteIndex;
@@ -176,7 +296,7 @@ bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
   if (it != deps.end()) {
     // Update condition on existing dependency
     it->condition = condition;
-    std::cout << "[ProgramManager] Updated dependency condition: Recipe " << recipeIndex
+    std::cout << "[ProgramManager] Set " << setIndex << ": Updated dependency condition: Recipe " << recipeIndex
               << " depends on Recipe " << prerequisiteIndex
               << " with condition: " << (condition.empty() ? "(none)" : condition) << std::endl;
     return true;
@@ -185,18 +305,23 @@ bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
   // Add new dependency
   deps.emplace_back(prerequisiteIndex, condition);
 
-  std::cout << "[ProgramManager] Added dependency: Recipe " << recipeIndex
+  std::cout << "[ProgramManager] Set " << setIndex << ": Added dependency: Recipe " << recipeIndex
             << " depends on Recipe " << prerequisiteIndex
             << " with condition: " << (condition.empty() ? "(none)" : condition) << std::endl;
   return true;
 }
 
-void ProgramManager::removeRecipeDependency(int recipeIndex, int prerequisiteIndex)
+void ProgramManager::removeRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex)
 {
-  RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return;
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return;
+  }
 
-  auto& deps = recipe->dependencies;
+  auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto mapIt = depsMap.find(recipeIndex);
+  if (mapIt == depsMap.end()) return;
+
+  auto& deps = mapIt->second;
   deps.erase(
     std::remove_if(deps.begin(), deps.end(),
       [prerequisiteIndex](const DependencyLink& d) {
@@ -204,45 +329,68 @@ void ProgramManager::removeRecipeDependency(int recipeIndex, int prerequisiteInd
       }),
     deps.end());
 
-  std::cout << "[ProgramManager] Removed dependency: Recipe " << recipeIndex
+  // Clean up empty entries
+  if (deps.empty()) {
+    depsMap.erase(mapIt);
+  }
+
+  std::cout << "[ProgramManager] Set " << setIndex << ": Removed dependency: Recipe " << recipeIndex
             << " no longer depends on Recipe " << prerequisiteIndex << std::endl;
 }
 
-void ProgramManager::clearRecipeDependencies(int recipeIndex)
+void ProgramManager::clearRecipeDependencies(int setIndex, int recipeIndex)
 {
-  RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return;
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return;
+  }
 
-  recipe->dependencies.clear();
-  std::cout << "[ProgramManager] Cleared all dependencies for Recipe " << recipeIndex << std::endl;
+  m_currentProgram.dependencySets[setIndex].dependencies.erase(recipeIndex);
+  std::cout << "[ProgramManager] Set " << setIndex << ": Cleared all dependencies for Recipe " << recipeIndex << std::endl;
 }
 
-std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int recipeIndex) const
+std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int setIndex, int recipeIndex) const
 {
-  const RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return {};
-  return recipe->dependencies;
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return {};
+  }
+
+  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto it = depsMap.find(recipeIndex);
+  if (it != depsMap.end()) {
+    return it->second;
+  }
+  return {};
 }
 
-bool ProgramManager::hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const
+bool ProgramManager::hasRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex) const
 {
-  const RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return false;
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return false;
+  }
 
-  const auto& deps = recipe->dependencies;
+  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto mapIt = depsMap.find(recipeIndex);
+  if (mapIt == depsMap.end()) return false;
+
+  const auto& deps = mapIt->second;
   return std::find_if(deps.begin(), deps.end(),
     [prerequisiteIndex](const DependencyLink& d) {
       return d.predecessorIndex == prerequisiteIndex;
     }) != deps.end();
 }
 
-void ProgramManager::setDependencyCondition(int recipeIndex, int prerequisiteIndex,
+void ProgramManager::setDependencyCondition(int setIndex, int recipeIndex, int prerequisiteIndex,
                                              const std::string& condition)
 {
-  RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return;
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return;
+  }
 
-  auto& deps = recipe->dependencies;
+  auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto mapIt = depsMap.find(recipeIndex);
+  if (mapIt == depsMap.end()) return;
+
+  auto& deps = mapIt->second;
   auto it = std::find_if(deps.begin(), deps.end(),
     [prerequisiteIndex](const DependencyLink& d) {
       return d.predecessorIndex == prerequisiteIndex;
@@ -250,18 +398,23 @@ void ProgramManager::setDependencyCondition(int recipeIndex, int prerequisiteInd
 
   if (it != deps.end()) {
     it->condition = condition;
-    std::cout << "[ProgramManager] Set condition for dependency: Recipe " << recipeIndex
+    std::cout << "[ProgramManager] Set " << setIndex << ": Set condition for dependency: Recipe " << recipeIndex
               << " -> Recipe " << prerequisiteIndex
               << " condition: " << (condition.empty() ? "(none)" : condition) << std::endl;
   }
 }
 
-std::string ProgramManager::getDependencyCondition(int recipeIndex, int prerequisiteIndex) const
+std::string ProgramManager::getDependencyCondition(int setIndex, int recipeIndex, int prerequisiteIndex) const
 {
-  const RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return "";
+  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+    return "";
+  }
 
-  const auto& deps = recipe->dependencies;
+  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto mapIt = depsMap.find(recipeIndex);
+  if (mapIt == depsMap.end()) return "";
+
+  const auto& deps = mapIt->second;
   auto it = std::find_if(deps.begin(), deps.end(),
     [prerequisiteIndex](const DependencyLink& d) {
       return d.predecessorIndex == prerequisiteIndex;
@@ -273,13 +426,57 @@ std::string ProgramManager::getDependencyCondition(int recipeIndex, int prerequi
   return "";
 }
 
+// ============================================================================
+// BACKWARD-COMPATIBLE DEPENDENCY METHODS (use active set)
+// ============================================================================
+
+bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
+                                          const std::string& condition)
+{
+  return addRecipeDependency(m_currentProgram.activeDependencySetIndex,
+                             recipeIndex, prerequisiteIndex, condition);
+}
+
+void ProgramManager::removeRecipeDependency(int recipeIndex, int prerequisiteIndex)
+{
+  removeRecipeDependency(m_currentProgram.activeDependencySetIndex,
+                         recipeIndex, prerequisiteIndex);
+}
+
+void ProgramManager::clearRecipeDependencies(int recipeIndex)
+{
+  clearRecipeDependencies(m_currentProgram.activeDependencySetIndex, recipeIndex);
+}
+
+std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int recipeIndex) const
+{
+  return getRecipeDependencies(m_currentProgram.activeDependencySetIndex, recipeIndex);
+}
+
+bool ProgramManager::hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const
+{
+  return hasRecipeDependency(m_currentProgram.activeDependencySetIndex,
+                             recipeIndex, prerequisiteIndex);
+}
+
+void ProgramManager::setDependencyCondition(int recipeIndex, int prerequisiteIndex,
+                                             const std::string& condition)
+{
+  setDependencyCondition(m_currentProgram.activeDependencySetIndex,
+                         recipeIndex, prerequisiteIndex, condition);
+}
+
+std::string ProgramManager::getDependencyCondition(int recipeIndex, int prerequisiteIndex) const
+{
+  return getDependencyCondition(m_currentProgram.activeDependencySetIndex,
+                                recipeIndex, prerequisiteIndex);
+}
+
 std::vector<int> ProgramManager::getRecipePredecessorIndices(int recipeIndex) const
 {
-  const RecipeReference* recipe = getRecipe(recipeIndex);
-  if (!recipe) return {};
-
+  std::vector<DependencyLink> deps = getRecipeDependencies(recipeIndex);
   std::vector<int> indices;
-  for (const auto& dep : recipe->dependencies) {
+  for (const auto& dep : deps) {
     indices.push_back(dep.predecessorIndex);
   }
   return indices;
@@ -289,15 +486,25 @@ bool ProgramManager::validateDependencies(std::vector<std::string>& errors) cons
 {
   errors.clear();
 
-  // Check that all dependency indices are valid
-  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
-    const auto& recipe = m_currentProgram.recipes[i];
+  // Validate all dependency sets
+  for (size_t setIdx = 0; setIdx < m_currentProgram.dependencySets.size(); setIdx++) {
+    const auto& depSet = m_currentProgram.dependencySets[setIdx];
 
-    for (const auto& dep : recipe->dependencies) {
-      if (dep.predecessorIndex < 0 ||
-          dep.predecessorIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
-        errors.push_back("Recipe " + std::to_string(i) +
-                         " has invalid dependency index: " + std::to_string(dep.predecessorIndex));
+    for (const auto& [recipeIndex, deps] : depSet.dependencies) {
+      // Check recipe index is valid
+      if (recipeIndex < 0 || recipeIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
+        errors.push_back("Set '" + depSet.name + "': Invalid recipe index " +
+                         std::to_string(recipeIndex));
+        continue;
+      }
+
+      // Check each dependency
+      for (const auto& dep : deps) {
+        if (dep.predecessorIndex < 0 ||
+            dep.predecessorIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
+          errors.push_back("Set '" + depSet.name + "': Recipe " + std::to_string(recipeIndex) +
+                           " has invalid dependency index: " + std::to_string(dep.predecessorIndex));
+        }
       }
     }
   }
@@ -388,7 +595,9 @@ bool ProgramManager::saveToJson(const std::string& filename) const
   QJsonObject root;
   root["version"] = QString::fromStdString(m_currentProgram.version);
   root["program_name"] = QString::fromStdString(m_currentProgram.name);
+  root["active_dependency_set_index"] = m_currentProgram.activeDependencySetIndex;
 
+  // Save recipes (without dependencies - they're in dependency_sets now)
   QJsonArray recipesArray;
   for (const auto& recipe : m_currentProgram.recipes) {
     QJsonObject recipeObj;
@@ -396,25 +605,37 @@ bool ProgramManager::saveToJson(const std::string& filename) const
     recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
     recipeObj["enabled"] = recipe->enabled;
     recipeObj["include_in_loop"] = recipe->includeInLoop;
-
-    // Save dependencies with conditions (new format)
-    if (!recipe->dependencies.empty()) {
-      QJsonArray dependenciesArray;
-      for (const auto& dep : recipe->dependencies) {
-        QJsonObject depObj;
-        depObj["predecessor_index"] = dep.predecessorIndex;
-        if (!dep.condition.empty()) {
-          depObj["condition"] = QString::fromStdString(dep.condition);
-        }
-        dependenciesArray.append(depObj);
-      }
-      recipeObj["dependencies"] = dependenciesArray;
-    }
-
     recipesArray.append(recipeObj);
   }
-
   root["recipes"] = recipesArray;
+
+  // Save dependency sets (new format)
+  QJsonArray dependencySetsArray;
+  for (const auto& depSet : m_currentProgram.dependencySets) {
+    QJsonObject setObj;
+    setObj["name"] = QString::fromStdString(depSet.name);
+
+    // Save dependencies as { "recipeIndex": [ {predecessor_index, condition}, ... ] }
+    QJsonObject depsObj;
+    for (const auto& [recipeIndex, deps] : depSet.dependencies) {
+      if (!deps.empty()) {
+        QJsonArray depsArray;
+        for (const auto& dep : deps) {
+          QJsonObject depObj;
+          depObj["predecessor_index"] = dep.predecessorIndex;
+          if (!dep.condition.empty()) {
+            depObj["condition"] = QString::fromStdString(dep.condition);
+          }
+          depsArray.append(depObj);
+        }
+        depsObj[QString::number(recipeIndex)] = depsArray;
+      }
+    }
+    setObj["dependencies"] = depsObj;
+
+    dependencySetsArray.append(setObj);
+  }
+  root["dependency_sets"] = dependencySetsArray;
 
   // Save graph node positions
   if (!m_graphPositions.empty()) {
@@ -444,7 +665,8 @@ bool ProgramManager::saveToJson(const std::string& filename) const
   file.close();
 
   std::cout << "[ProgramManager] Saved program '" << m_currentProgram.name
-    << "' with " << m_currentProgram.recipes.size() << " recipes to "
+    << "' with " << m_currentProgram.recipes.size() << " recipes and "
+    << m_currentProgram.dependencySets.size() << " dependency set(s) to "
     << filename << std::endl;
 
   return true;
@@ -474,7 +696,17 @@ bool ProgramManager::loadFromJson(const std::string& filename)
   newProgram.version = root["version"].toString("1.0").toStdString();
   newProgram.name = root["program_name"].toString("Untitled Program").toStdString();
 
+  // Check if new format (has dependency_sets array)
+  bool hasNewFormat = root.contains("dependency_sets");
+
+  // Load active dependency set index
+  newProgram.activeDependencySetIndex = root["active_dependency_set_index"].toInt(0);
+
+  // Storage for migrating old format dependencies
+  std::map<int, std::vector<DependencyLink>> legacyDependencies;
+
   QJsonArray recipesArray = root["recipes"].toArray();
+  int recipeIndex = 0;
 
   for (const QJsonValue& val : recipesArray) {
     QJsonObject recipeObj = val.toObject();
@@ -482,32 +714,93 @@ bool ProgramManager::loadFromJson(const std::string& filename)
     std::string filePath = recipeObj["recipe_file"].toString().toStdString();
     std::string displayName = recipeObj["display_name"].toString().toStdString();
     bool enabled = recipeObj["enabled"].toBool(true);
-    bool includeInLoop = recipeObj["include_in_loop"].toBool(false);  // Default false for backward compat
+    bool includeInLoop = recipeObj["include_in_loop"].toBool(false);
 
     auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
     recipeRef->includeInLoop = includeInLoop;
 
-    // Load dependencies (new format with conditions)
-    if (recipeObj.contains("dependencies")) {
-      QJsonArray depsArray = recipeObj["dependencies"].toArray();
-      for (const QJsonValue& depVal : depsArray) {
-        if (depVal.isObject()) {
-          QJsonObject depObj = depVal.toObject();
-          int predIndex = depObj["predecessor_index"].toInt();
-          std::string condition = depObj.value("condition").toString("").toStdString();
-          recipeRef->dependencies.emplace_back(predIndex, condition);
+    // If old format, collect dependencies for migration
+    if (!hasNewFormat) {
+      if (recipeObj.contains("dependencies")) {
+        QJsonArray depsArray = recipeObj["dependencies"].toArray();
+        for (const QJsonValue& depVal : depsArray) {
+          if (depVal.isObject()) {
+            QJsonObject depObj = depVal.toObject();
+            int predIndex = depObj["predecessor_index"].toInt();
+            std::string condition = depObj.value("condition").toString("").toStdString();
+            legacyDependencies[recipeIndex].emplace_back(predIndex, condition);
+          }
         }
       }
-    }
-    // Legacy format: "predecessors" array of ints (backward compatibility)
-    else if (recipeObj.contains("predecessors")) {
-      QJsonArray predecessorsArray = recipeObj["predecessors"].toArray();
-      for (const QJsonValue& predVal : predecessorsArray) {
-        recipeRef->dependencies.emplace_back(predVal.toInt(), "");  // No condition
+      // Legacy format: "predecessors" array of ints
+      else if (recipeObj.contains("predecessors")) {
+        QJsonArray predecessorsArray = recipeObj["predecessors"].toArray();
+        for (const QJsonValue& predVal : predecessorsArray) {
+          legacyDependencies[recipeIndex].emplace_back(predVal.toInt(), "");
+        }
       }
     }
 
     newProgram.recipes.push_back(std::move(recipeRef));
+    recipeIndex++;
+  }
+
+  // Load dependency sets (new format) or migrate from legacy
+  newProgram.dependencySets.clear();
+
+  if (hasNewFormat) {
+    // New format: load dependency_sets array
+    QJsonArray dependencySetsArray = root["dependency_sets"].toArray();
+
+    for (const QJsonValue& setVal : dependencySetsArray) {
+      QJsonObject setObj = setVal.toObject();
+      std::string setName = setObj["name"].toString("Default").toStdString();
+
+      DependencySet depSet(setName);
+
+      // Load dependencies from the "dependencies" object
+      QJsonObject depsObj = setObj["dependencies"].toObject();
+      for (auto it = depsObj.begin(); it != depsObj.end(); ++it) {
+        bool ok;
+        int recipeIdx = it.key().toInt(&ok);
+        if (ok && it.value().isArray()) {
+          QJsonArray depsArray = it.value().toArray();
+          for (const QJsonValue& depVal : depsArray) {
+            if (depVal.isObject()) {
+              QJsonObject depObj = depVal.toObject();
+              int predIndex = depObj["predecessor_index"].toInt();
+              std::string condition = depObj.value("condition").toString("").toStdString();
+              depSet.dependencies[recipeIdx].emplace_back(predIndex, condition);
+            }
+          }
+        }
+      }
+
+      newProgram.dependencySets.push_back(depSet);
+    }
+
+    std::cout << "[ProgramManager] Loaded " << newProgram.dependencySets.size()
+              << " dependency set(s)" << std::endl;
+  }
+  else {
+    // Legacy format: migrate to a single "Default" dependency set
+    DependencySet defaultSet("Default");
+    defaultSet.dependencies = legacyDependencies;
+    newProgram.dependencySets.push_back(defaultSet);
+    newProgram.activeDependencySetIndex = 0;
+
+    std::cout << "[ProgramManager] Migrated legacy dependencies to 'Default' set" << std::endl;
+  }
+
+  // Ensure at least one dependency set exists
+  if (newProgram.dependencySets.empty()) {
+    newProgram.dependencySets.emplace_back("Default");
+  }
+
+  // Validate active index
+  if (newProgram.activeDependencySetIndex < 0 ||
+      newProgram.activeDependencySetIndex >= static_cast<int>(newProgram.dependencySets.size())) {
+    newProgram.activeDependencySetIndex = 0;
   }
 
   // Replace current program
@@ -532,7 +825,8 @@ bool ProgramManager::loadFromJson(const std::string& filename)
   }
 
   std::cout << "[ProgramManager] Loaded program '" << m_currentProgram.name
-    << "' with " << m_currentProgram.recipes.size() << " recipes from "
+    << "' with " << m_currentProgram.recipes.size() << " recipes and "
+    << m_currentProgram.dependencySets.size() << " dependency set(s) from "
     << filename << std::endl;
 
   return true;

@@ -299,31 +299,102 @@ bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double 
 }
 
 bool ACSController::MoveToPosition(const std::string& axis, double position, bool blocking) {
+  // Clear previous error
+  m_lastErrorCode = 0;
+  m_lastErrorMessage.clear();
+
+  std::cout << "[DEBUG] ACSController::MoveToPosition START - axis=" << axis
+            << " position=" << position << " blocking=" << blocking << std::endl;
+
   if (!m_isConnected) {
+    m_lastErrorCode = -1;
+    m_lastErrorMessage = "Not connected";
     std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
-  if (axisIndex < 0) return false;
+  if (axisIndex < 0) {
+    m_lastErrorCode = -2;
+    m_lastErrorMessage = "Invalid axis: " + axis;
+    std::cout << "[ERROR] ACSController: Invalid axis index for " << axis << std::endl;
+    return false;
+  }
+
+  // Wait for axis to be idle before starting new motion (prevents error 3065)
+  const int maxWaitMs = 5000;  // 5 second timeout
+  const int pollIntervalMs = 10;
+  int waitedMs = 0;
+  bool isEnabled = false;
+  bool isMoving = true;
+
+  while (waitedMs < maxWaitMs) {
+    int motorState = 0;
+    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+      isEnabled = (motorState & ACSC_MST_ENABLE) != 0;
+      isMoving = (motorState & ACSC_MST_MOVE) != 0;
+
+      if (!isMoving) {
+        if (waitedMs > 0) {
+          std::cout << "[DEBUG] ACSController: Axis " << axis << " became idle after "
+                    << waitedMs << "ms wait" << std::endl;
+        }
+        break;  // Axis is idle, proceed with move
+      }
+    } else {
+      // State query failed, proceed anyway and let acsc_ToPointM handle it
+      std::cout << "[DEBUG] ACSController: Motor state query failed, proceeding anyway" << std::endl;
+      isMoving = false;
+      break;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
+    waitedMs += pollIntervalMs;
+  }
+
+  if (isMoving) {
+    m_lastErrorCode = -3;
+    m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
+                         std::to_string(maxWaitMs) + "ms)";
+    std::cout << "[ERROR] ACSController: " << m_lastErrorMessage << std::endl;
+    return false;
+  }
 
   std::cout << "[INFO] ACSController: Moving " << axis << " to " << position << std::endl;
 
   int axes[2] = { axisIndex, -1 };
   double points[1] = { position };
 
+  std::cout << "[DEBUG] ACSController: Calling acsc_ToPointM with controllerId=" << m_controllerId
+            << " axisIndex=" << axisIndex << std::endl;
+
   if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axes, points, NULL)) {
-    int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to move. Error: " << error << std::endl;
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode) +
+                         " (wasMoving=" + std::to_string(isMoving) +
+                         " wasEnabled=" + std::to_string(isEnabled) + ")";
+    std::cout << "[ERROR] ACSController: acsc_ToPointM failed. Error code: " << m_lastErrorCode << std::endl;
     return false;
   }
+  std::cout << "[DEBUG] ACSController: acsc_ToPointM succeeded" << std::endl;
 
-  if (!StartMotion(axis)) return false;
+  std::cout << "[DEBUG] ACSController: Calling StartMotion for axis " << axis << std::endl;
+  if (!StartMotion(axis)) {
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_GoM (StartMotion) failed: error=" + std::to_string(m_lastErrorCode) +
+                         " (wasMoving=" + std::to_string(isMoving) +
+                         " wasEnabled=" + std::to_string(isEnabled) + ")";
+    std::cout << "[ERROR] ACSController: StartMotion failed for axis " << axis << std::endl;
+    return false;
+  }
+  std::cout << "[DEBUG] ACSController: StartMotion succeeded" << std::endl;
 
   if (blocking) {
+    std::cout << "[DEBUG] ACSController: Waiting for motion completion" << std::endl;
     return WaitForMotionCompletion(axis);
   }
 
+  std::cout << "[DEBUG] ACSController::MoveToPosition END - success" << std::endl;
   return true;
 }
 
@@ -692,16 +763,55 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[INFO] ACSController: Waiting for " << axis << " completion" << std::endl;
+  std::cout << "[DEBUG] ACSController: WaitForMotionCompletion START for " << axis << std::endl;
 
   auto startTime = std::chrono::steady_clock::now();
 
-  while (true) {
-    bool stillMoving = IsMoving(axis);
+  // Phase 1: Wait for motion to START (motor flag becomes MOVING)
+  // This prevents false "completed" when motion hasn't begun yet
+  const int motionStartTimeoutMs = 500;  // 500ms to start moving
+  int waitedForStartMs = 0;
+  bool motionStarted = false;
 
-    if (!stillMoving) {
-      std::cout << "[INFO] ACSController: Motion completed on " << axis << std::endl;
-      return true;
+  while (waitedForStartMs < motionStartTimeoutMs) {
+    int motorState = 0;
+    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+      bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
+      if (isMoving) {
+        motionStarted = true;
+        std::cout << "[DEBUG] ACSController: Axis " << axis << " motion started after "
+                  << waitedForStartMs << "ms" << std::endl;
+        break;
+      }
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    waitedForStartMs += 10;
+  }
+
+  if (!motionStarted) {
+    // Motion never started - check if we're already at target (position didn't change)
+    std::cout << "[DEBUG] ACSController: Axis " << axis << " motion flag never set after "
+              << motionStartTimeoutMs << "ms - checking if already at target" << std::endl;
+    // Proceed to completion check anyway - might be a very short move
+  }
+
+  // Phase 2: Wait for motion to COMPLETE (motor flag becomes NOT MOVING)
+  std::cout << "[DEBUG] ACSController: Waiting for " << axis << " motion completion" << std::endl;
+
+  while (true) {
+    int motorState = 0;
+    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+      bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
+
+      if (!isMoving) {
+        auto endTime = std::chrono::steady_clock::now();
+        auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+          endTime - startTime).count();
+        std::cout << "[DEBUG] ACSController: Axis " << axis << " motion completed after "
+                  << totalMs << "ms total" << std::endl;
+        return true;
+      }
     }
 
     auto currentTime = std::chrono::steady_clock::now();
@@ -709,7 +819,8 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
       currentTime - startTime).count();
 
     if (elapsedSeconds > timeoutSeconds) {
-      std::cout << "[WARNING] ACSController: Timeout waiting for " << axis << std::endl;
+      std::cout << "[WARNING] ACSController: Timeout waiting for " << axis
+                << " after " << timeoutSeconds << " seconds" << std::endl;
       return false;
     }
 
@@ -797,12 +908,22 @@ bool ACSController::StartMotion(const std::string& axis) {
 bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
   const std::vector<double>& positions,
   bool blocking) {
+  // Clear previous error
+  m_lastErrorCode = 0;
+  m_lastErrorMessage.clear();
+
+  std::cout << "[DEBUG] ACSController::MoveToPositionMultiAxis START - blocking=" << blocking << std::endl;
+
   if (!m_isConnected) {
+    m_lastErrorCode = -1;
+    m_lastErrorMessage = "Not connected";
     std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
     return false;
   }
 
   if (axes.size() != positions.size() || axes.empty()) {
+    m_lastErrorCode = -2;
+    m_lastErrorMessage = "Invalid axes/positions arrays";
     std::cout << "[ERROR] ACSController: Invalid axes/positions arrays" << std::endl;
     return false;
   }
@@ -813,10 +934,54 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   for (const auto& axis : axes) {
     int axisIndex = GetAxisIndex(axis);
     if (axisIndex < 0) {
+      m_lastErrorCode = -2;
+      m_lastErrorMessage = "Invalid axis: " + axis;
       std::cout << "[ERROR] ACSController: Invalid axis: " << axis << std::endl;
       return false;
     }
     axisIndices.push_back(axisIndex);
+  }
+
+  // Wait for all axes to be idle before starting new motion (prevents error 3065)
+  const int maxWaitMs = 5000;  // 5 second timeout
+  const int pollIntervalMs = 10;
+
+  for (size_t i = 0; i < axisIndices.size(); i++) {
+    int axisIndex = axisIndices[i];
+    const std::string& axis = axes[i];
+    int waitedMs = 0;
+    bool isMoving = true;
+
+    while (waitedMs < maxWaitMs) {
+      int motorState = 0;
+      if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+        isMoving = (motorState & ACSC_MST_MOVE) != 0;
+
+        if (!isMoving) {
+          if (waitedMs > 0) {
+            std::cout << "[DEBUG] ACSController: Axis " << axis << " became idle after "
+                      << waitedMs << "ms wait" << std::endl;
+          }
+          break;  // Axis is idle, proceed to next axis
+        }
+      } else {
+        // State query failed, proceed anyway and let acsc_ToPointM handle it
+        std::cout << "[DEBUG] ACSController: Motor state query failed for " << axis << ", proceeding anyway" << std::endl;
+        isMoving = false;
+        break;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
+      waitedMs += pollIntervalMs;
+    }
+
+    if (isMoving) {
+      m_lastErrorCode = -3;
+      m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
+                           std::to_string(maxWaitMs) + "ms)";
+      std::cout << "[ERROR] ACSController: " << m_lastErrorMessage << std::endl;
+      return false;
+    }
   }
 
   std::vector<int> axesArray(axisIndices.size() + 1);
@@ -825,20 +990,28 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   }
   axesArray[axisIndices.size()] = -1;
 
+  std::cout << "[DEBUG] ACSController: Calling acsc_ToPointM for multi-axis move" << std::endl;
+
   if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axesArray.data(),
     const_cast<double*>(positions.data()), NULL)) {
-    int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to move. Error: " << error << std::endl;
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode);
+    std::cout << "[ERROR] ACSController: acsc_ToPointM failed. Error code: " << m_lastErrorCode << std::endl;
     return false;
   }
+  std::cout << "[DEBUG] ACSController: acsc_ToPointM succeeded" << std::endl;
 
+  std::cout << "[DEBUG] ACSController: Calling acsc_GoM for multi-axis move" << std::endl;
   if (!acsc_GoM(m_controllerId, axesArray.data(), NULL)) {
-    int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to start motion. Error: " << error << std::endl;
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(m_lastErrorCode);
+    std::cout << "[ERROR] ACSController: acsc_GoM failed. Error code: " << m_lastErrorCode << std::endl;
     return false;
   }
+  std::cout << "[DEBUG] ACSController: acsc_GoM succeeded" << std::endl;
 
   if (blocking) {
+    std::cout << "[DEBUG] ACSController: Waiting for motion completion on all axes" << std::endl;
     bool allCompleted = true;
     for (const auto& axis : axes) {
       if (!WaitForMotionCompletion(axis)) {
@@ -848,6 +1021,7 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
     return allCompleted;
   }
 
+  std::cout << "[DEBUG] ACSController::MoveToPositionMultiAxis END - success" << std::endl;
   return true;
 }
 

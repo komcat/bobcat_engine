@@ -202,13 +202,12 @@ inline QString processNameLabel(const QString& bgColor, bool enabled, bool isCom
     "  color: %2; "
     "  padding: 4px 8px; "
     "  font-family: %3; "
-    "  font-weight: bold; "
     "  font-size: %4px; "
     "  %5"
     "  %6"
     "}"
   ).arg(bgColor, color, Fonts::MONOSPACE,
-        QString::number(Fonts::SIZE_MEDIUM), textDecoration, fontStyle);
+        QString::number(Fonts::SIZE_NORMAL), textDecoration, fontStyle);
 }
 
 //=============================================================================

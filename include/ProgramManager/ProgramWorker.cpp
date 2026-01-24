@@ -328,9 +328,14 @@ void ProgramWorker::runWithDependencies()
 
     // ============================================================================
     // STEP 2: IMPORT DEPENDENCIES FROM PROGRAM (with conditions)
+    // Use the active POR (Plan of Record) dependency set
     // ============================================================================
+    int activeSetIndex = m_programManager->getActiveDependencySetIndex();
+    emit logMessage(QString("Using dependency set: %1 (POR)")
+      .arg(QString::fromStdString(m_programManager->getDependencySetName(activeSetIndex))));
+
     for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
-      const auto& deps = m_programManager->getRecipeDependencies(i);
+      const auto& deps = m_programManager->getRecipeDependencies(activeSetIndex, i);
 
       for (const auto& dep : deps) {
         if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
@@ -656,8 +661,9 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 
 bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
 {
-  // Get dependencies for this recipe
-  auto dependencies = m_programManager->getRecipeDependencies(recipeIndex);
+  // Get dependencies for this recipe from the active POR set
+  int activeSetIndex = m_programManager->getActiveDependencySetIndex();
+  auto dependencies = m_programManager->getRecipeDependencies(activeSetIndex, recipeIndex);
 
   if (dependencies.empty()) {
     // No prerequisites, can run
@@ -763,9 +769,13 @@ void ProgramWorker::runWithLoop()
   }
   stateMachine.initialize(allRecipes.size(), recipeNames);
 
-  // Import all dependencies
+  // Import all dependencies from the active POR set
+  int activeSetIndex = m_programManager->getActiveDependencySetIndex();
+  emit logMessage(QString("Using dependency set: %1 (POR)")
+    .arg(QString::fromStdString(m_programManager->getDependencySetName(activeSetIndex))));
+
   for (int i = 0; i < static_cast<int>(allRecipes.size()); ++i) {
-    const auto& deps = m_programManager->getRecipeDependencies(i);
+    const auto& deps = m_programManager->getRecipeDependencies(activeSetIndex, i);
     for (const auto& dep : deps) {
       if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
         emit programExecutionCompleted(false,

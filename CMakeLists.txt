@@ -1073,6 +1073,7 @@ if(OPENCV_FOUND)
         # UI files (Phase 2)
         include/vision/ui/VisionManagerPage.cpp
         include/vision/ui/VisionToolbarWidget.cpp
+        include/vision/ui/VisionProfileListWidget.cpp
         include/vision/ui/VisionLeftPanelWidget.cpp
         include/vision/ui/VisionImageWidget.cpp
         include/vision/ui/VisionRightPanelWidget.cpp
@@ -1097,6 +1098,7 @@ if(OPENCV_FOUND)
         # UI headers (Phase 2)
         include/vision/ui/VisionManagerPage.h
         include/vision/ui/VisionToolbarWidget.h
+        include/vision/ui/VisionProfileListWidget.h
         include/vision/ui/VisionLeftPanelWidget.h
         include/vision/ui/VisionImageWidget.h
         include/vision/ui/VisionRightPanelWidget.h
@@ -1114,12 +1116,14 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
         include/vision/plugins/HalconLineDetectionPlugin.cpp
         include/vision/plugins/HalconPatternMatchingEdgePlugin.cpp
+        include/vision/plugins/HalconBeamDetectionPlugin.cpp
     )
     list(APPEND HEADERS
         include/vision/plugins/HalconCircleDetectionPlugin.h
         include/vision/plugins/HalconCircleDetectionRobustPlugin.h
         include/vision/plugins/HalconLineDetectionPlugin.h
         include/vision/plugins/HalconPatternMatchingEdgePlugin.h
+        include/vision/plugins/HalconBeamDetectionPlugin.h
     )
     message(STATUS "Halcon vision plugins enabled")
 else()

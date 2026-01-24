@@ -27,6 +27,10 @@ public:
   explicit DependencyGraphScene(ProgramManager* programManager, QObject* parent = nullptr);
   ~DependencyGraphScene();
 
+  // Dependency set index management
+  void setDependencySetIndex(int index);
+  int getDependencySetIndex() const;
+
   // Load graph from ProgramManager
   void loadFromProgram();
 
@@ -88,6 +92,9 @@ private:
   QVector<int> calculateLayers() const;
 
   ProgramManager* m_programManager;
+
+  // Which dependency set this scene displays (index 0 to MAX_DEPENDENCY_SETS-1)
+  int m_dependencySetIndex;
 
   // Node tracking: recipeIndex -> node item
   QMap<int, RecipeNodeItem*> m_nodes;

@@ -145,6 +145,10 @@ void DependencyGraphView::mouseReleaseEvent(QMouseEvent* event)
 DependencyGraphWindow::DependencyGraphWindow(ProgramManager* programManager, QWidget* parent)
   : QDialog(parent)
   , m_programManager(programManager)
+  , m_scene(nullptr)
+  , m_graphicsView(nullptr)
+  , m_setTabWidget(nullptr)
+  , m_currentSetIndex(0)
 {
   setWindowTitle("Recipe Dependency Graph");
   setMinimumSize(800, 600);
@@ -153,14 +157,25 @@ DependencyGraphWindow::DependencyGraphWindow(ProgramManager* programManager, QWi
   setupUI();
   applyDarkTheme();
 
+  // Initialize with current active set
+  if (m_programManager) {
+    m_currentSetIndex = m_programManager->getActiveDependencySetIndex();
+  }
+
   // Load initial graph
-  refreshGraph();
+  refreshSetTabs();
 }
 
 DependencyGraphWindow::~DependencyGraphWindow()
 {
-  // Disconnect selection signal before scene cleanup to prevent crash
+  // Disconnect selection signals before scene cleanup to prevent crash
   // during destruction when clearGraph() triggers selectionChanged
+  for (auto scene : m_setScenes.values()) {
+    if (scene) {
+      disconnect(scene, &QGraphicsScene::selectionChanged,
+                 this, &DependencyGraphWindow::onSelectionChanged);
+    }
+  }
   if (m_scene) {
     disconnect(m_scene, &QGraphicsScene::selectionChanged,
                this, &DependencyGraphWindow::onSelectionChanged);
@@ -177,16 +192,23 @@ void DependencyGraphWindow::setupUI()
   setupToolbar();
   mainLayout->addWidget(m_toolbar);
 
-  // Create scene and view
-  m_scene = new DependencyGraphScene(m_programManager, this);
-  m_graphicsView = new DependencyGraphView(m_scene, this);
+  // Create set management bar
+  setupSetManagementBar();
+  mainLayout->addWidget(m_setManagementBar);
+
+  // Create tab widget for dependency sets
+  m_setTabWidget = new QTabWidget();
+  m_setTabWidget->setTabPosition(QTabWidget::North);
+  m_setTabWidget->setDocumentMode(true);
+  connect(m_setTabWidget, &QTabWidget::currentChanged,
+          this, &DependencyGraphWindow::onSetTabChanged);
 
   // Create context variable panel
   setupContextVariablePanel();
 
-  // Create splitter with graph view and context panel
+  // Create splitter with tab widget and context panel
   m_splitter = new QSplitter(Qt::Horizontal);
-  m_splitter->addWidget(m_graphicsView);
+  m_splitter->addWidget(m_setTabWidget);
   m_splitter->addWidget(m_contextVarPanel);
   m_splitter->setStretchFactor(0, 3);  // Graph gets 75%
   m_splitter->setStretchFactor(1, 1);  // Context panel gets 25%
@@ -212,20 +234,6 @@ void DependencyGraphWindow::setupUI()
   statusLayout->addWidget(closeBtn);
 
   mainLayout->addWidget(statusBar);
-
-  // Connect scene signals
-  connect(m_scene, &DependencyGraphScene::dependencyCreated,
-          this, &DependencyGraphWindow::onDependencyCreated);
-  connect(m_scene, &DependencyGraphScene::dependencyRemoved,
-          this, &DependencyGraphWindow::onDependencyRemoved);
-  connect(m_scene, &DependencyGraphScene::editConditionRequested,
-          this, &DependencyGraphWindow::onEditConditionRequested);
-  connect(m_scene, &DependencyGraphScene::nodePositionChanged,
-          this, &DependencyGraphWindow::onNodePositionChanged);
-
-  // Connect selection changed signal
-  connect(m_scene, &QGraphicsScene::selectionChanged,
-          this, &DependencyGraphWindow::onSelectionChanged);
 }
 
 void DependencyGraphWindow::setupToolbar()
@@ -288,6 +296,55 @@ void DependencyGraphWindow::setupToolbar()
   }
 }
 
+void DependencyGraphWindow::setupSetManagementBar()
+{
+  m_setManagementBar = new QWidget();
+  QHBoxLayout* barLayout = new QHBoxLayout(m_setManagementBar);
+  barLayout->setContentsMargins(10, 4, 10, 4);
+  barLayout->setSpacing(8);
+
+  // Add Set button
+  m_btnAddSet = new QPushButton("+ New Set");
+  m_btnAddSet->setToolTip("Create a new dependency set");
+  connect(m_btnAddSet, &QPushButton::clicked, this, &DependencyGraphWindow::onAddSet);
+  barLayout->addWidget(m_btnAddSet);
+
+  // Duplicate Set button
+  m_btnDuplicateSet = new QPushButton("Duplicate");
+  m_btnDuplicateSet->setToolTip("Duplicate the current dependency set");
+  connect(m_btnDuplicateSet, &QPushButton::clicked, this, &DependencyGraphWindow::onDuplicateSet);
+  barLayout->addWidget(m_btnDuplicateSet);
+
+  // Delete Set button
+  m_btnDeleteSet = new QPushButton("Delete");
+  m_btnDeleteSet->setToolTip("Delete the current dependency set (cannot delete POR set)");
+  connect(m_btnDeleteSet, &QPushButton::clicked, this, &DependencyGraphWindow::onDeleteSet);
+  barLayout->addWidget(m_btnDeleteSet);
+
+  // Rename Set button
+  m_btnRenameSet = new QPushButton("Rename");
+  m_btnRenameSet->setToolTip("Rename the current dependency set");
+  connect(m_btnRenameSet, &QPushButton::clicked, this, &DependencyGraphWindow::onRenameSet);
+  barLayout->addWidget(m_btnRenameSet);
+
+  barLayout->addSpacing(20);
+
+  // Set as POR button
+  m_btnSetAsPOR = new QPushButton("Set as Executing");
+  m_btnSetAsPOR->setToolTip("Mark this set as the Plan of Record (used for actual execution)");
+  m_btnSetAsPOR->setStyleSheet(
+    "QPushButton { background-color: #2e7d32; border: 1px solid #1b5e20; }"
+    "QPushButton:hover { background-color: #388e3c; }"
+    "QPushButton:disabled { background-color: #3c3c3c; border: 1px solid #555555; color: #888888; }"
+  );
+  connect(m_btnSetAsPOR, &QPushButton::clicked, this, &DependencyGraphWindow::onSetAsPOR);
+  barLayout->addWidget(m_btnSetAsPOR);
+
+  barLayout->addStretch();
+
+  m_setManagementBar->setStyleSheet("background-color: #2d2d2d;");
+}
+
 void DependencyGraphWindow::applyDarkTheme()
 {
   setStyleSheet(R"(
@@ -343,10 +400,314 @@ void DependencyGraphWindow::applyDarkTheme()
 
 void DependencyGraphWindow::refreshGraph()
 {
-  m_scene->loadFromProgram();
+  // Refresh the current tab's scene
+  if (m_scene) {
+    m_scene->loadFromProgram();
+  }
 
   // Fit to view after loading
   QTimer::singleShot(100, this, &DependencyGraphWindow::onFitToView);
+}
+
+void DependencyGraphWindow::refreshSetTabs()
+{
+  if (!m_programManager || !m_setTabWidget) return;
+
+  // Block signals during rebuild
+  m_setTabWidget->blockSignals(true);
+
+  // Clear existing tabs
+  while (m_setTabWidget->count() > 0) {
+    QWidget* widget = m_setTabWidget->widget(0);
+    m_setTabWidget->removeTab(0);
+    // Don't delete - we manage these separately
+  }
+
+  // Clear scene/view maps
+  for (auto scene : m_setScenes.values()) {
+    if (scene) {
+      disconnect(scene, nullptr, this, nullptr);
+      delete scene;
+    }
+  }
+  m_setScenes.clear();
+
+  for (auto view : m_setViews.values()) {
+    if (view) delete view;
+  }
+  m_setViews.clear();
+
+  int setCount = m_programManager->getDependencySetCount();
+  int activeIndex = m_programManager->getActiveDependencySetIndex();
+
+  // Create tabs for each dependency set
+  for (int i = 0; i < setCount; ++i) {
+    QString setName = QString::fromStdString(m_programManager->getDependencySetName(i));
+
+    // Create scene for this set
+    DependencyGraphScene* scene = new DependencyGraphScene(m_programManager, this);
+    scene->setDependencySetIndex(i);
+    m_setScenes[i] = scene;
+
+    // Create view for this set
+    DependencyGraphView* view = new DependencyGraphView(scene, this);
+    m_setViews[i] = view;
+
+    // Connect scene signals
+    connect(scene, &DependencyGraphScene::dependencyCreated,
+            this, &DependencyGraphWindow::onDependencyCreated);
+    connect(scene, &DependencyGraphScene::dependencyRemoved,
+            this, &DependencyGraphWindow::onDependencyRemoved);
+    connect(scene, &DependencyGraphScene::editConditionRequested,
+            this, &DependencyGraphWindow::onEditConditionRequested);
+    connect(scene, &DependencyGraphScene::nodePositionChanged,
+            this, &DependencyGraphWindow::onNodePositionChanged);
+    connect(scene, &QGraphicsScene::selectionChanged,
+            this, &DependencyGraphWindow::onSelectionChanged);
+
+    // Add tab with POR suffix for active set
+    QString tabTitle = (i == activeIndex) ? setName + " [POR]" : setName;
+    m_setTabWidget->addTab(view, tabTitle);
+
+    // Load the graph
+    scene->loadFromProgram();
+  }
+
+  // Set current tab
+  m_currentSetIndex = activeIndex;
+  if (m_currentSetIndex >= 0 && m_currentSetIndex < m_setTabWidget->count()) {
+    m_setTabWidget->setCurrentIndex(m_currentSetIndex);
+  }
+
+  // Update current scene reference
+  if (m_setScenes.contains(m_currentSetIndex)) {
+    m_scene = m_setScenes[m_currentSetIndex];
+    m_graphicsView = m_setViews[m_currentSetIndex];
+  }
+
+  m_setTabWidget->blockSignals(false);
+
+  // Update button states and tab styles
+  updateSetButtonStates();
+  updateTabStyles();
+
+  std::cout << "[DependencyGraph] Refreshed " << setCount << " dependency set tabs" << std::endl;
+}
+
+void DependencyGraphWindow::onSetTabChanged(int tabIndex)
+{
+  if (tabIndex < 0 || !m_programManager) return;
+
+  m_currentSetIndex = tabIndex;
+
+  // Update current scene and view references
+  if (m_setScenes.contains(tabIndex)) {
+    m_scene = m_setScenes[tabIndex];
+  }
+  if (m_setViews.contains(tabIndex)) {
+    m_graphicsView = m_setViews[tabIndex];
+  }
+
+  // Update button states
+  updateSetButtonStates();
+
+  m_statusLabel->setText(QString("Viewing dependency set: %1")
+    .arg(QString::fromStdString(m_programManager->getDependencySetName(tabIndex))));
+}
+
+void DependencyGraphWindow::onAddSet()
+{
+  if (!m_programManager) return;
+
+  // Check if we can add more sets
+  if (m_programManager->getDependencySetCount() >= MAX_DEPENDENCY_SETS) {
+    QMessageBox::warning(this, "Cannot Add Set",
+      QString("Maximum of %1 dependency sets allowed.").arg(MAX_DEPENDENCY_SETS));
+    return;
+  }
+
+  bool ok;
+  QString name = QInputDialog::getText(this, "New Dependency Set",
+    "Enter name for the new dependency set:",
+    QLineEdit::Normal, "New Set", &ok);
+
+  if (ok && !name.isEmpty()) {
+    int newIndex = m_programManager->createDependencySet(name.toStdString());
+    if (newIndex >= 0) {
+      refreshSetTabs();
+      m_setTabWidget->setCurrentIndex(newIndex);
+      m_statusLabel->setText(QString("Created dependency set: %1").arg(name));
+    }
+  }
+}
+
+void DependencyGraphWindow::onDeleteSet()
+{
+  if (!m_programManager) return;
+
+  int currentIndex = m_setTabWidget->currentIndex();
+  int activeIndex = m_programManager->getActiveDependencySetIndex();
+
+  // Check if trying to delete active set
+  if (currentIndex == activeIndex) {
+    QMessageBox::warning(this, "Cannot Delete",
+      "Cannot delete the active (POR) dependency set.\n"
+      "Please set another set as executing first.");
+    return;
+  }
+
+  // Check if only one set remains
+  if (m_programManager->getDependencySetCount() <= 1) {
+    QMessageBox::warning(this, "Cannot Delete",
+      "Cannot delete the last dependency set.");
+    return;
+  }
+
+  QString setName = QString::fromStdString(m_programManager->getDependencySetName(currentIndex));
+
+  QMessageBox::StandardButton reply = QMessageBox::question(this, "Delete Dependency Set",
+    QString("Are you sure you want to delete '%1'?\n\n"
+            "This will permanently remove all dependencies in this set.")
+    .arg(setName),
+    QMessageBox::Yes | QMessageBox::No);
+
+  if (reply == QMessageBox::Yes) {
+    if (m_programManager->deleteDependencySet(currentIndex)) {
+      refreshSetTabs();
+      m_statusLabel->setText(QString("Deleted dependency set: %1").arg(setName));
+    }
+  }
+}
+
+void DependencyGraphWindow::onDuplicateSet()
+{
+  if (!m_programManager) return;
+
+  // Check if we can add more sets
+  if (m_programManager->getDependencySetCount() >= MAX_DEPENDENCY_SETS) {
+    QMessageBox::warning(this, "Cannot Duplicate",
+      QString("Maximum of %1 dependency sets allowed.").arg(MAX_DEPENDENCY_SETS));
+    return;
+  }
+
+  int currentIndex = m_setTabWidget->currentIndex();
+  QString currentName = QString::fromStdString(m_programManager->getDependencySetName(currentIndex));
+
+  bool ok;
+  QString name = QInputDialog::getText(this, "Duplicate Dependency Set",
+    QString("Enter name for the copy of '%1':").arg(currentName),
+    QLineEdit::Normal, currentName + " (Copy)", &ok);
+
+  if (ok && !name.isEmpty()) {
+    int newIndex = m_programManager->duplicateDependencySet(currentIndex, name.toStdString());
+    if (newIndex >= 0) {
+      refreshSetTabs();
+      m_setTabWidget->setCurrentIndex(newIndex);
+      m_statusLabel->setText(QString("Duplicated dependency set as: %1").arg(name));
+    }
+  }
+}
+
+void DependencyGraphWindow::onSetAsPOR()
+{
+  if (!m_programManager) return;
+
+  int currentIndex = m_setTabWidget->currentIndex();
+
+  if (currentIndex == m_programManager->getActiveDependencySetIndex()) {
+    // Already the active set
+    return;
+  }
+
+  QString setName = QString::fromStdString(m_programManager->getDependencySetName(currentIndex));
+
+  if (m_programManager->setActiveDependencySet(currentIndex)) {
+    refreshSetTabs();
+    m_statusLabel->setText(QString("'%1' is now the executing dependency set").arg(setName));
+  }
+}
+
+void DependencyGraphWindow::onRenameSet()
+{
+  if (!m_programManager) return;
+
+  int currentIndex = m_setTabWidget->currentIndex();
+  QString currentName = QString::fromStdString(m_programManager->getDependencySetName(currentIndex));
+
+  bool ok;
+  QString name = QInputDialog::getText(this, "Rename Dependency Set",
+    "Enter new name:",
+    QLineEdit::Normal, currentName, &ok);
+
+  if (ok && !name.isEmpty() && name != currentName) {
+    if (m_programManager->renameDependencySet(currentIndex, name.toStdString())) {
+      refreshSetTabs();
+      m_statusLabel->setText(QString("Renamed dependency set to: %1").arg(name));
+    }
+  }
+}
+
+void DependencyGraphWindow::updateSetButtonStates()
+{
+  if (!m_programManager) return;
+
+  int currentIndex = m_setTabWidget->currentIndex();
+  int activeIndex = m_programManager->getActiveDependencySetIndex();
+  int setCount = m_programManager->getDependencySetCount();
+
+  // Add button - disabled if max sets reached
+  m_btnAddSet->setEnabled(setCount < MAX_DEPENDENCY_SETS);
+
+  // Delete button - disabled if only 1 set or current is POR
+  m_btnDeleteSet->setEnabled(setCount > 1 && currentIndex != activeIndex);
+
+  // Duplicate button - disabled if max sets reached
+  m_btnDuplicateSet->setEnabled(setCount < MAX_DEPENDENCY_SETS);
+
+  // Set as POR button - disabled if already POR
+  m_btnSetAsPOR->setEnabled(currentIndex != activeIndex);
+}
+
+void DependencyGraphWindow::updateTabStyles()
+{
+  if (!m_programManager || !m_setTabWidget) return;
+
+  int activeIndex = m_programManager->getActiveDependencySetIndex();
+
+  // Update tab bar styling to highlight POR
+  QString tabStyle = QString(
+    "QTabBar::tab { "
+    "  background-color: #3c3c3c; "
+    "  color: #cccccc; "
+    "  padding: 8px 16px; "
+    "  margin-right: 2px; "
+    "  border-top-left-radius: 4px; "
+    "  border-top-right-radius: 4px; "
+    "} "
+    "QTabBar::tab:selected { "
+    "  background-color: #1e1e1e; "
+    "} "
+    "QTabBar::tab:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QTabWidget::pane { "
+    "  border: none; "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
+
+  m_setTabWidget->setStyleSheet(tabStyle);
+
+  // Update tab texts with POR indicator
+  for (int i = 0; i < m_setTabWidget->count(); ++i) {
+    QString name = QString::fromStdString(m_programManager->getDependencySetName(i));
+    if (i == activeIndex) {
+      m_setTabWidget->setTabText(i, name + " [POR]");
+      // Use stylesheet for green color on POR tab
+    } else {
+      m_setTabWidget->setTabText(i, name);
+    }
+  }
 }
 
 void DependencyGraphWindow::onAutoLayout()
@@ -355,11 +716,15 @@ void DependencyGraphWindow::onAutoLayout()
   if (m_programManager) {
     m_programManager->clearNodePositions();
   }
-  m_scene->autoLayout();
+  if (m_scene) {
+    m_scene->autoLayout();
+  }
 }
 
 void DependencyGraphWindow::onLinkSelected()
 {
+  if (!m_scene) return;
+
   QString error = m_scene->linkSelectedNodes();
 
   if (error.isEmpty()) {
@@ -371,17 +736,23 @@ void DependencyGraphWindow::onLinkSelected()
 
 void DependencyGraphWindow::onZoomIn()
 {
-  m_graphicsView->zoomIn();
+  if (m_graphicsView) {
+    m_graphicsView->zoomIn();
+  }
 }
 
 void DependencyGraphWindow::onZoomOut()
 {
-  m_graphicsView->zoomOut();
+  if (m_graphicsView) {
+    m_graphicsView->zoomOut();
+  }
 }
 
 void DependencyGraphWindow::onFitToView()
 {
-  m_graphicsView->fitToContents();
+  if (m_graphicsView) {
+    m_graphicsView->fitToContents();
+  }
 }
 
 void DependencyGraphWindow::onShowHelp()
@@ -408,8 +779,10 @@ void DependencyGraphWindow::onShowHelp()
 void DependencyGraphWindow::onDependencyCreated(int sourceIndex, int targetIndex)
 {
   if (m_programManager) {
-    m_programManager->addRecipeDependency(targetIndex, sourceIndex);
-    m_statusLabel->setText(QString("Created dependency: Recipe %1 -> Recipe %2")
+    // Use the current set index
+    m_programManager->addRecipeDependency(m_currentSetIndex, targetIndex, sourceIndex);
+    m_statusLabel->setText(QString("Created dependency in '%1': Recipe %2 -> Recipe %3")
+                           .arg(QString::fromStdString(m_programManager->getDependencySetName(m_currentSetIndex)))
                            .arg(sourceIndex + 1).arg(targetIndex + 1));
   }
 }
@@ -417,8 +790,10 @@ void DependencyGraphWindow::onDependencyCreated(int sourceIndex, int targetIndex
 void DependencyGraphWindow::onDependencyRemoved(int sourceIndex, int targetIndex)
 {
   if (m_programManager) {
-    m_programManager->removeRecipeDependency(targetIndex, sourceIndex);
-    m_statusLabel->setText(QString("Removed dependency: Recipe %1 -> Recipe %2")
+    // Use the current set index
+    m_programManager->removeRecipeDependency(m_currentSetIndex, targetIndex, sourceIndex);
+    m_statusLabel->setText(QString("Removed dependency from '%1': Recipe %2 -> Recipe %3")
+                           .arg(QString::fromStdString(m_programManager->getDependencySetName(m_currentSetIndex)))
                            .arg(sourceIndex + 1).arg(targetIndex + 1));
   }
 }
@@ -427,8 +802,9 @@ void DependencyGraphWindow::onEditConditionRequested(int sourceIndex, int target
 {
   if (!m_programManager) return;
 
+  // Use the current set index
   QString currentCondition = QString::fromStdString(
-    m_programManager->getDependencyCondition(targetIndex, sourceIndex));
+    m_programManager->getDependencyCondition(m_currentSetIndex, targetIndex, sourceIndex));
 
   bool ok;
   QString newCondition = QInputDialog::getText(
@@ -443,7 +819,7 @@ void DependencyGraphWindow::onEditConditionRequested(int sourceIndex, int target
   );
 
   if (ok) {
-    m_programManager->setDependencyCondition(targetIndex, sourceIndex, newCondition.toStdString());
+    m_programManager->setDependencyCondition(m_currentSetIndex, targetIndex, sourceIndex, newCondition.toStdString());
 
     // Update the edge label
     DependencyEdgeItem* edge = m_scene->findEdge(sourceIndex, targetIndex);
@@ -569,6 +945,8 @@ void DependencyGraphWindow::setupContextVariablePanel()
 
 void DependencyGraphWindow::onSelectionChanged()
 {
+  if (!m_scene) return;
+
   QList<QGraphicsItem*> selectedItems = m_scene->selectedItems();
 
   // Find selected recipe nodes

@@ -48,15 +48,17 @@ bool CLD101xDirectAdapter::Connect() {
     return false;
   }
 
-  // Open instrument session
+  // Open instrument session with timeout (5 seconds)
+  // Using TIMEOUT_MS * 2 for connection timeout to allow device time to respond
+  constexpr unsigned long CONNECTION_TIMEOUT_MS = 5000;
   status = viOpen(m_defaultRM,
                   const_cast<char*>(m_config.VISAResource.c_str()),
                   VI_NULL,
-                  VI_NULL,
+                  CONNECTION_TIMEOUT_MS,
                   &m_instrument);
   if (status < VI_SUCCESS) {
-    std::cerr << "[ERROR] " << m_config.Name << ": Failed to open instrument: "
-      << GetVISAErrorDescription(status) << std::endl;
+    std::cerr << "[ERROR] " << m_config.Name << ": Failed to open instrument (timeout="
+      << CONNECTION_TIMEOUT_MS << "ms): " << GetVISAErrorDescription(status) << std::endl;
     viClose(m_defaultRM);
     m_defaultRM = 0;
     return false;
