@@ -15,6 +15,7 @@
 #include <string>
 
 struct ApplicationContext;
+class LightingParameterWorker;
 
 namespace Lighting {
 class LightingManager;
@@ -104,6 +105,14 @@ private slots:
     void onAllOffClicked();
     void onRefreshClicked();
 
+    // Worker callbacks
+    void onWorkerConnectionSuccess(QString deviceId);
+    void onWorkerConnectionFailed(QString deviceId, QString error);
+    void onWorkerDisconnectionComplete(QString deviceId);
+    void onWorkerStatusUpdated(QString deviceId, std::vector<int> intensities, std::vector<bool> onStates);
+    void onWorkerAllOffComplete();
+    void onWorkerCommandError(QString operation, QString error);
+
 private:
     void setupUI();
     void createHeaderSection();
@@ -132,4 +141,8 @@ private:
     // State
     std::string m_currentDeviceId;
     bool m_isConnected;
+
+    // Parameter worker for non-blocking operations
+    LightingParameterWorker* m_parameterWorker;
+    bool m_connectionPending;
 };

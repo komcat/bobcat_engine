@@ -3,6 +3,7 @@
 #include "ApplicationContext.h"
 #include "lighting/LightingManager.h"
 #include "lighting/LightingTypes.h"
+#include "lighting/LightingParameterWorker.h"
 #include <QScrollArea>
 #include <QFrame>
 #include <iostream>
@@ -312,6 +313,8 @@ LightingControlWidget::LightingControlWidget(ApplicationContext* context, QWidge
     , m_context(context)
     , m_lightingManager(nullptr)
     , m_isConnected(false)
+    , m_parameterWorker(nullptr)
+    , m_connectionPending(false)
 {
     if (m_context) {
         m_lightingManager = m_context->lightingManager;
@@ -330,24 +333,73 @@ LightingControlWidget::LightingControlWidget(ApplicationContext* context, QWidge
 
     setupUI();
     updateStatus();
+
+    // Initialize parameter worker
+    if (m_lightingManager) {
+        m_parameterWorker = new LightingParameterWorker(m_lightingManager, nullptr);
+
+        // Connect worker signals (use Qt::QueuedConnection for cross-thread safety)
+        connect(m_parameterWorker, &LightingParameterWorker::connectionSuccess,
+                this, &LightingControlWidget::onWorkerConnectionSuccess, Qt::QueuedConnection);
+        connect(m_parameterWorker, &LightingParameterWorker::connectionFailed,
+                this, &LightingControlWidget::onWorkerConnectionFailed, Qt::QueuedConnection);
+        connect(m_parameterWorker, &LightingParameterWorker::disconnectionComplete,
+                this, &LightingControlWidget::onWorkerDisconnectionComplete, Qt::QueuedConnection);
+        connect(m_parameterWorker, &LightingParameterWorker::statusUpdated,
+                this, &LightingControlWidget::onWorkerStatusUpdated, Qt::QueuedConnection);
+        connect(m_parameterWorker, &LightingParameterWorker::allOffComplete,
+                this, &LightingControlWidget::onWorkerAllOffComplete, Qt::QueuedConnection);
+        connect(m_parameterWorker, &LightingParameterWorker::commandError,
+                this, &LightingControlWidget::onWorkerCommandError, Qt::QueuedConnection);
+
+        // Set current device on worker
+        if (!m_currentDeviceId.empty()) {
+            m_parameterWorker->setCurrentDevice(m_currentDeviceId);
+        }
+
+        // Start the worker thread
+        m_parameterWorker->start();
+    }
 }
 
 LightingControlWidget::~LightingControlWidget()
 {
     m_pollTimer->stop();
+
+    // Stop the parameter worker thread
+    if (m_parameterWorker) {
+        m_parameterWorker->stop();
+        delete m_parameterWorker;
+        m_parameterWorker = nullptr;
+    }
 }
 
 void LightingControlWidget::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
     updateStatus();
-    updateChannelWidgets();
-    m_pollTimer->start(500);  // Poll every 500ms
+
+    // Enable worker polling when visible
+    if (m_parameterWorker) {
+        m_parameterWorker->setStatusPollingEnabled(true);
+        // Request initial status refresh
+        if (m_isConnected) {
+            m_parameterWorker->requestRefreshStatus();
+        }
+    }
+
+    m_pollTimer->start(500);  // Poll every 500ms for connection status
 }
 
 void LightingControlWidget::hideEvent(QHideEvent* event)
 {
     m_pollTimer->stop();
+
+    // Disable worker polling when hidden
+    if (m_parameterWorker) {
+        m_parameterWorker->setStatusPollingEnabled(false);
+    }
+
     QWidget::hideEvent(event);
 }
 
@@ -665,14 +717,9 @@ void LightingControlWidget::onChannelIntensityChanged(int channel, int intensity
         return;
     }
 
-    auto result = m_lightingManager->SetIntensity(m_currentDeviceId, channel, intensity);
-    if (result != Lighting::LightingResult::Success) {
-        std::cerr << "[LightingControlWidget] Failed to set intensity for channel "
-                  << channel << ": " << Lighting::LightingResultToString(result) << std::endl;
-    } else {
-        // Save the new intensity as default for persistence
-        m_lightingManager->UpdateChannelDefaultIntensity(m_currentDeviceId, channel, intensity);
-        m_lightingManager->SaveConfig();
+    // Use parameter worker for non-blocking operation
+    if (m_parameterWorker) {
+        m_parameterWorker->requestSetIntensity(channel, intensity);
     }
 }
 
@@ -682,10 +729,9 @@ void LightingControlWidget::onChannelToggleChanged(int channel, bool on)
         return;
     }
 
-    auto result = m_lightingManager->SetOn(m_currentDeviceId, channel, on);
-    if (result != Lighting::LightingResult::Success) {
-        std::cerr << "[LightingControlWidget] Failed to toggle channel "
-                  << channel << ": " << Lighting::LightingResultToString(result) << std::endl;
+    // Use parameter worker for non-blocking operation
+    if (m_parameterWorker) {
+        m_parameterWorker->requestSetOn(channel, on);
     }
 }
 
@@ -695,18 +741,23 @@ void LightingControlWidget::onConnectClicked()
         return;
     }
 
-    std::cout << "[LightingControlWidget] Connecting to " << m_currentDeviceId << std::endl;
-    bool success = m_lightingManager->Connect(m_currentDeviceId);
-    if (success) {
-        std::cout << "[LightingControlWidget] Connected successfully" << std::endl;
-        // Apply saved default intensities after connection
-        m_lightingManager->ApplyDefaultIntensities(m_currentDeviceId);
-    } else {
-        std::cerr << "[LightingControlWidget] Connection failed" << std::endl;
+    if (m_connectionPending) {
+        return;  // Already connecting
     }
 
-    updateStatus();
-    updateChannelWidgets();
+    std::cout << "[LightingControlWidget] Connecting to " << m_currentDeviceId << std::endl;
+
+    // Disable buttons and show connecting status
+    m_connectionPending = true;
+    m_connectButton->setEnabled(false);
+    m_disconnectButton->setEnabled(false);
+    m_connectionStatus->setText("Connecting...");
+    m_connectionStatus->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 13px;");
+
+    // Use parameter worker for non-blocking operation
+    if (m_parameterWorker) {
+        m_parameterWorker->requestConnect(QString::fromStdString(m_currentDeviceId));
+    }
 }
 
 void LightingControlWidget::onDisconnectClicked()
@@ -715,9 +766,23 @@ void LightingControlWidget::onDisconnectClicked()
         return;
     }
 
+    if (m_connectionPending) {
+        return;  // Operation in progress
+    }
+
     std::cout << "[LightingControlWidget] Disconnecting from " << m_currentDeviceId << std::endl;
-    m_lightingManager->Disconnect(m_currentDeviceId);
-    updateStatus();
+
+    // Disable buttons and show disconnecting status
+    m_connectionPending = true;
+    m_connectButton->setEnabled(false);
+    m_disconnectButton->setEnabled(false);
+    m_connectionStatus->setText("Disconnecting...");
+    m_connectionStatus->setStyleSheet("color: #ffaa00; font-weight: bold; font-size: 13px;");
+
+    // Use parameter worker for non-blocking operation
+    if (m_parameterWorker) {
+        m_parameterWorker->requestDisconnect(QString::fromStdString(m_currentDeviceId));
+    }
 }
 
 void LightingControlWidget::onAllOffClicked()
@@ -727,12 +792,99 @@ void LightingControlWidget::onAllOffClicked()
     }
 
     std::cout << "[LightingControlWidget] Turning all channels OFF" << std::endl;
-    m_lightingManager->SetAllOff(m_currentDeviceId);
-    updateChannelWidgets();
+
+    // Use parameter worker for non-blocking operation
+    if (m_parameterWorker) {
+        m_parameterWorker->requestAllOff();
+    }
 }
 
 void LightingControlWidget::onRefreshClicked()
 {
     updateStatus();
-    updateChannelWidgets();
+    // Use parameter worker for non-blocking status refresh
+    if (m_parameterWorker && m_isConnected) {
+        m_parameterWorker->requestRefreshStatus();
+    }
+}
+
+// ============================================================================
+// Worker Callback Implementations
+// ============================================================================
+
+void LightingControlWidget::onWorkerConnectionSuccess(QString deviceId)
+{
+    std::cout << "[LightingControlWidget] Connection success: " << deviceId.toStdString() << std::endl;
+
+    m_connectionPending = false;
+
+    if (deviceId.toStdString() == m_currentDeviceId) {
+        updateStatus();
+        // Request status refresh to get current channel states
+        if (m_parameterWorker) {
+            m_parameterWorker->requestRefreshStatus();
+        }
+    }
+}
+
+void LightingControlWidget::onWorkerConnectionFailed(QString deviceId, QString error)
+{
+    std::cerr << "[LightingControlWidget] Connection failed: " << deviceId.toStdString()
+              << " - " << error.toStdString() << std::endl;
+
+    m_connectionPending = false;
+
+    if (deviceId.toStdString() == m_currentDeviceId) {
+        m_connectionStatus->setText("Connection Failed");
+        m_connectionStatus->setStyleSheet("color: #ff6666; font-weight: bold; font-size: 13px;");
+        updateStatus();
+    }
+}
+
+void LightingControlWidget::onWorkerDisconnectionComplete(QString deviceId)
+{
+    std::cout << "[LightingControlWidget] Disconnection complete: " << deviceId.toStdString() << std::endl;
+
+    m_connectionPending = false;
+
+    if (deviceId.toStdString() == m_currentDeviceId) {
+        updateStatus();
+    }
+}
+
+void LightingControlWidget::onWorkerStatusUpdated(QString deviceId, std::vector<int> intensities, std::vector<bool> onStates)
+{
+    if (deviceId.toStdString() != m_currentDeviceId) {
+        return;
+    }
+
+    // Update channel widgets with new status
+    for (size_t i = 0; i < m_channelWidgets.size() && i < intensities.size(); ++i) {
+        auto* widget = m_channelWidgets[i];
+        int channelNum = widget->channelNumber();
+
+        // Find matching channel in status arrays
+        if (channelNum < static_cast<int>(intensities.size())) {
+            widget->setIntensity(intensities[channelNum]);
+        }
+        if (channelNum < static_cast<int>(onStates.size())) {
+            widget->setOn(onStates[channelNum]);
+        }
+    }
+}
+
+void LightingControlWidget::onWorkerAllOffComplete()
+{
+    std::cout << "[LightingControlWidget] All OFF complete" << std::endl;
+
+    // Request status refresh to update UI
+    if (m_parameterWorker) {
+        m_parameterWorker->requestRefreshStatus();
+    }
+}
+
+void LightingControlWidget::onWorkerCommandError(QString operation, QString error)
+{
+    std::cerr << "[LightingControlWidget] Command error - " << operation.toStdString()
+              << ": " << error.toStdString() << std::endl;
 }

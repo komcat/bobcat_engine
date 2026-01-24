@@ -715,6 +715,7 @@ set(SOURCES
     src/lighting/CCSPD3Adapter.cpp
     src/lighting/LightingManager.cpp
     src/lighting/LightingJsonLoader.cpp
+    src/lighting/LightingParameterWorker.cpp
     # Lighting UI
     include/AppUI/LightingPage/LightingControlWidget.cpp
     include/AppUI/LightingPage/CameraLightingPage.cpp
@@ -909,6 +910,7 @@ set(HEADERS
     include/lighting/CCSPD3Adapter.h
     include/lighting/LightingManager.h
     include/lighting/LightingJsonLoader.h
+    include/lighting/LightingParameterWorker.h
     # Lighting UI
     include/AppUI/LightingPage/LightingControlWidget.h
     include/AppUI/LightingPage/CameraLightingPage.h
