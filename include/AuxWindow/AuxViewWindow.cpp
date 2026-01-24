@@ -106,49 +106,77 @@ QWidget* AuxViewWindow::createLiveViewTab()
   QWidget* tab = new QWidget();
   tab->setStyleSheet("QWidget { background-color: #1e1e1e; }");
 
-  QHBoxLayout* layout = new QHBoxLayout(tab);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(2);
+  QVBoxLayout* mainLayout = new QVBoxLayout(tab);
+  mainLayout->setContentsMargins(0, 0, 0, 0);
+  mainLayout->setSpacing(0);
 
-  // Left panel - Camera view
-  QWidget* leftPanel = new QWidget();
-  leftPanel->setStyleSheet("QWidget { background-color: #252525; }");
-  leftPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  leftPanel->setMinimumWidth(200);
+  // --- Toolbar with layout toggle button ---
+  QWidget* toolbar = new QWidget();
+  toolbar->setFixedHeight(28);
+  toolbar->setStyleSheet("QWidget { background-color: #2d2d2d; }");
 
-  QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
-  leftLayout->setContentsMargins(0, 0, 0, 0);
-  leftLayout->setSpacing(0);
+  QHBoxLayout* toolbarLayout = new QHBoxLayout(toolbar);
+  toolbarLayout->setContentsMargins(4, 2, 4, 2);
+  toolbarLayout->addStretch();
 
+  m_layoutToggleButton = new QPushButton();
+  m_layoutToggleButton->setText(QString::fromUtf8("\xe2\xac\x8c"));  // Horizontal arrows
+  m_layoutToggleButton->setToolTip("Layout: Horizontal (click to switch to Vertical)");
+  m_layoutToggleButton->setFixedSize(24, 24);
+  m_layoutToggleButton->setStyleSheet(R"(
+    QPushButton {
+      background-color: #3d3d3d;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    QPushButton:hover { background-color: #4d4d4d; }
+    QPushButton:pressed { background-color: #0078d4; }
+  )");
+  connect(m_layoutToggleButton, &QPushButton::clicked,
+          this, &AuxViewWindow::toggleLiveViewLayout);
+  toolbarLayout->addWidget(m_layoutToggleButton);
+
+  mainLayout->addWidget(toolbar);
+
+  // --- Splitter for Camera and Chart ---
+  m_liveViewSplitter = new QSplitter(Qt::Horizontal);  // Default: horizontal
+  m_liveViewSplitter->setStyleSheet(R"(
+    QSplitter::handle {
+      background-color: #3d3d3d;
+    }
+    QSplitter::handle:horizontal { width: 4px; }
+    QSplitter::handle:vertical { height: 4px; }
+  )");
+
+  // Camera widget
   m_cameraClickToMoveWidget = new CameraClickToMoveWidget(m_cameraManager, m_motionManager);
   m_cameraClickToMoveWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  leftLayout->addWidget(m_cameraClickToMoveWidget, 1);
+  m_cameraClickToMoveWidget->setMinimumSize(200, 150);
+  m_liveViewSplitter->addWidget(m_cameraClickToMoveWidget);
 
-  layout->addWidget(leftPanel, 1);
-
-  // Right panel - Chart view
-  QWidget* rightPanel = new QWidget();
-  rightPanel->setStyleSheet("QWidget { background-color: #252525; }");
-  rightPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-  rightPanel->setMinimumWidth(200);
-
-  QVBoxLayout* rightLayout = new QVBoxLayout(rightPanel);
-  rightLayout->setContentsMargins(0, 0, 0, 0);
-  rightLayout->setSpacing(0);
-
+  // Chart widget
   if (m_dataStore && m_tcpManager) {
     m_liveChartWidget = new LiveChartWidget(m_dataStore, m_tcpManager);
     m_liveChartWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    rightLayout->addWidget(m_liveChartWidget, 1);
+    m_liveChartWidget->setMinimumSize(200, 150);
+    m_liveViewSplitter->addWidget(m_liveChartWidget);
   } else {
     QLabel* errorLabel = new QLabel("Live Chart\n(DataStore or TcpClientManager not available)");
     errorLabel->setAlignment(Qt::AlignCenter);
     errorLabel->setStyleSheet("QLabel { color: #ff4444; font-size: 18px; }");
-    rightLayout->addWidget(errorLabel, 1);
+    m_liveViewSplitter->addWidget(errorLabel);
     std::cout << "[AuxViewWindow] ERROR: Cannot create LiveChartWidget - missing dependencies" << std::endl;
   }
 
-  layout->addWidget(rightPanel, 1);
+  // Set initial splitter sizes (50/50)
+  m_liveViewSplitter->setSizes({500, 500});
+
+  mainLayout->addWidget(m_liveViewSplitter, 1);
+
+  // Restore saved layout preference
+  restoreLiveViewLayoutSettings();
 
   return tab;
 }
@@ -223,6 +251,7 @@ void AuxViewWindow::saveWindowSettings()
   QSettings settings("Fabrinet", "BobcatEngine");
   settings.setValue("AuxViewWindow/geometry", saveGeometry());
   settings.setValue("AuxViewWindow/windowState", saveState());
+  saveLiveViewLayoutSettings();  // Save layout and splitter state
   std::cout << "[AuxViewWindow] Window settings saved" << std::endl;
 }
 
@@ -251,6 +280,79 @@ void AuxViewWindow::initializeCameraSelection()
     m_cameraClickToMoveWidget->selectFirstCameraDelayed();
   } else {
     std::cout << "[AuxViewWindow] ERROR: CameraClickToMoveWidget is null!" << std::endl;
+  }
+}
+
+// =============================================================================
+// LIVE VIEW LAYOUT SWITCHING
+// =============================================================================
+
+void AuxViewWindow::toggleLiveViewLayout()
+{
+  if (m_liveViewLayout == LiveViewLayout::Horizontal) {
+    setLiveViewLayout(LiveViewLayout::Vertical);
+  } else {
+    setLiveViewLayout(LiveViewLayout::Horizontal);
+  }
+}
+
+void AuxViewWindow::setLiveViewLayout(LiveViewLayout layout, bool saveSettings)
+{
+  if (!m_liveViewSplitter || !m_layoutToggleButton) return;
+
+  m_liveViewLayout = layout;
+
+  if (layout == LiveViewLayout::Horizontal) {
+    m_liveViewSplitter->setOrientation(Qt::Horizontal);
+    m_layoutToggleButton->setText(QString::fromUtf8("\xe2\xac\x8c"));  // Horizontal arrows
+    m_layoutToggleButton->setToolTip("Layout: Horizontal (click to switch to Vertical)");
+  } else {
+    m_liveViewSplitter->setOrientation(Qt::Vertical);
+    m_layoutToggleButton->setText(QString::fromUtf8("\xe2\xac\x8d"));  // Vertical arrows
+    m_layoutToggleButton->setToolTip("Layout: Vertical (click to switch to Horizontal)");
+  }
+
+  // Save preference (skip during restore to avoid redundant writes)
+  if (saveSettings) {
+    saveLiveViewLayoutSettings();
+  }
+
+  std::cout << "[AuxViewWindow] Layout changed to "
+            << (layout == LiveViewLayout::Horizontal ? "Horizontal" : "Vertical")
+            << std::endl;
+}
+
+void AuxViewWindow::saveLiveViewLayoutSettings()
+{
+  if (!m_liveViewSplitter) return;  // Guard against null pointer
+
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue("AuxViewWindow/liveViewLayout",
+                    static_cast<int>(m_liveViewLayout));
+
+  // Also save splitter sizes for each orientation
+  QString key = (m_liveViewLayout == LiveViewLayout::Horizontal)
+                ? "AuxViewWindow/splitterHorizontal"
+                : "AuxViewWindow/splitterVertical";
+  settings.setValue(key, m_liveViewSplitter->saveState());
+}
+
+void AuxViewWindow::restoreLiveViewLayoutSettings()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+
+  // Restore layout orientation (don't save during restore)
+  int savedLayout = settings.value("AuxViewWindow/liveViewLayout", 0).toInt();
+  LiveViewLayout layout = static_cast<LiveViewLayout>(savedLayout);
+  setLiveViewLayout(layout, false);  // false = don't save during restore
+
+  // Restore splitter sizes for current orientation
+  QString key = (layout == LiveViewLayout::Horizontal)
+                ? "AuxViewWindow/splitterHorizontal"
+                : "AuxViewWindow/splitterVertical";
+  QByteArray splitterState = settings.value(key).toByteArray();
+  if (!splitterState.isEmpty()) {
+    m_liveViewSplitter->restoreState(splitterState);
   }
 }
 

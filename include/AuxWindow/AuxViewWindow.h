@@ -6,6 +6,14 @@
 #include <QWidget>
 #include <QTabWidget>
 #include <QSettings>
+#include <QSplitter>
+#include <QPushButton>
+
+// Enum for Live View layout orientation
+enum class LiveViewLayout {
+    Horizontal,  // Camera left, Chart right
+    Vertical     // Camera top, Chart bottom
+};
 
 class CameraManager;
 class CameraSettingsWidget;
@@ -62,9 +70,16 @@ public:
   void switchToLiveViewTab();
   void switchToOverlayTab();
 
+  // Layout control for Live View tab
+  void setLiveViewLayout(LiveViewLayout layout, bool saveSettings = true);
+  LiveViewLayout liveViewLayout() const { return m_liveViewLayout; }
+
   // Window settings persistence
   void saveWindowSettings();
   void restoreWindowSettings();
+
+private slots:
+  void toggleLiveViewLayout();
 
 protected:
   // Override close event to prevent closing (hide instead)
@@ -77,6 +92,8 @@ private:
   QWidget* createLiveViewTab();    // Tab 1: Camera + Chart
   QWidget* createOverlayTab();     // Tab 2: World Overlay
   QWidget* createExposureTab();    // Tab 3: Exposure Settings
+  void saveLiveViewLayoutSettings();
+  void restoreLiveViewLayoutSettings();
 
   CameraManager* m_cameraManager;
   UnifiedMotionManager* m_motionManager;
@@ -91,6 +108,9 @@ private:
   // Tab 1: Live View widgets
   CameraClickToMoveWidget* m_cameraClickToMoveWidget;
   LiveChartWidget* m_liveChartWidget;
+  QSplitter* m_liveViewSplitter = nullptr;
+  LiveViewLayout m_liveViewLayout = LiveViewLayout::Horizontal;
+  QPushButton* m_layoutToggleButton = nullptr;
 
   // Tab 2: World Overlay widget
   WorldOverlayWidget* m_worldOverlayWidget = nullptr;

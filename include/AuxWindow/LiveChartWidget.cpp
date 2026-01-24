@@ -273,7 +273,7 @@ void LiveChartWidget::setupUI()
 
   headerLayout->addLayout(selectorRow);
 
-  // === PERCENTAGE MODE ROW ===
+  // === PERCENTAGE MODE ROW (with unit label) ===
   QHBoxLayout* percentModeRow = new QHBoxLayout();
 
   m_percentageModeCheckbox = new QCheckBox("% Mode");
@@ -300,6 +300,31 @@ void LiveChartWidget::setupUI()
     "}");
   connect(m_percentageModeCheckbox, &QCheckBox::toggled, this, &LiveChartWidget::onPercentageModeToggled);
   percentModeRow->addWidget(m_percentageModeCheckbox);
+
+  // Unit label - moved to top row next to % Mode checkbox
+  m_unitLabel = new QLabel("");
+  m_unitLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  m_unitLabel->setWordWrap(false);
+
+  QFont unitFont("Consolas", 18);
+  if (!unitFont.exactMatch()) {
+    unitFont.setFamily("Courier New");
+  }
+  unitFont.setBold(true);
+  m_unitLabel->setFont(unitFont);
+
+  m_unitLabel->setStyleSheet(
+    "QLabel { "
+    "  color: #888888; "
+    "  font-weight: bold; "
+    "  font-size: 18pt; "
+    "  font-family: 'Consolas', 'Courier New', monospace; "
+    "  background: transparent; "
+    "  padding: 0px 10px; "
+    "  white-space: nowrap; "
+    "}");
+  m_unitLabel->setMinimumWidth(60);
+  percentModeRow->addWidget(m_unitLabel);
 
   // Target channel selector (initially hidden)
   m_targetChannelRow = new QWidget();
@@ -338,12 +363,12 @@ void LiveChartWidget::setupUI()
 
   headerLayout->addLayout(percentModeRow);
 
-  // ✅ Current value display - TWO ROWS (value on top, unit on bottom)
+  // ✅ Current value display - value + percentage (unit is now in top row)
   QVBoxLayout* valueLayout = new QVBoxLayout();
-  valueLayout->setSpacing(0);  // No spacing between value and unit
+  valueLayout->setSpacing(0);
   valueLayout->setAlignment(Qt::AlignCenter);
 
-  // Value label (numeric part only) - TOP ROW
+  // Value label (numeric part only) - takes full space now that unit moved to top
   m_valueLabel = new QLabel("--");
   m_valueLabel->setAlignment(Qt::AlignCenter);
   m_valueLabel->setWordWrap(false);
@@ -366,38 +391,11 @@ void LiveChartWidget::setupUI()
     "  white-space: nowrap; "
     "}");
 
-  m_valueLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-  m_valueLabel->setMaximumHeight(90);  // Limit height for value
+  m_valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-  // Unit label - BOTTOM ROW
-  m_unitLabel = new QLabel("");
-  m_unitLabel->setAlignment(Qt::AlignCenter);
-  m_unitLabel->setWordWrap(false);
-
-  QFont unitFont("Consolas", 36);  // Smaller font for unit
-  if (!unitFont.exactMatch()) {
-    unitFont.setFamily("Courier New");
-  }
-  unitFont.setBold(true);
-  m_unitLabel->setFont(unitFont);
-
-  m_unitLabel->setStyleSheet(
-    "QLabel { "
-    "  color: #888888; "  // Dimmer color for unit
-    "  font-weight: bold; "
-    "  font-size: 36pt; "
-    "  font-family: 'Consolas', 'Courier New', monospace; "
-    "  background: transparent; "
-    "  padding: 0px; "
-    "  white-space: nowrap; "
-    "}");
-
-  m_unitLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-  m_unitLabel->setMaximumHeight(50);  // Limit height for unit
-
-  // Percentage label - shows when target is set (value + percentage)
+  // Percentage label - shows when target is set (status + percentage)
   m_percentageLabel = new QLabel("");
-  m_percentageLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  m_percentageLabel->setAlignment(Qt::AlignCenter);
   m_percentageLabel->setWordWrap(false);
 
   QFont percentFont("Consolas", 48);
@@ -422,20 +420,19 @@ void LiveChartWidget::setupUI()
   m_percentageLabel->setMaximumHeight(60);
   m_percentageLabel->hide();  // Hidden by default
 
-  // Add to vertical layout (value on top, unit in middle, percentage on bottom)
-  valueLayout->addWidget(m_valueLabel);
-  valueLayout->addWidget(m_unitLabel);
+  // Add to vertical layout (value on top, percentage on bottom)
+  valueLayout->addWidget(m_valueLabel, 1);  // Give value label stretch
   valueLayout->addWidget(m_percentageLabel);
 
-  headerLayout->addLayout(valueLayout);
+  headerLayout->addLayout(valueLayout, 1);  // Give value layout stretch within header
 
   // Channel info label
   m_channelInfoLabel = new QLabel("No channel selected");
   m_channelInfoLabel->setStyleSheet("QLabel { color: #888888; font-size: 12px; background: transparent; }");
   headerLayout->addWidget(m_channelInfoLabel);
 
-  // ✅ Add header with stretch factor 0 (don't expand)
-  mainLayout->addWidget(headerWidget, 0);
+  // ✅ Add header with stretch factor 1 (allow expansion for larger value display)
+  mainLayout->addWidget(headerWidget, 1);
 
   // Chart
   m_series = new QLineSeries();
@@ -1120,15 +1117,16 @@ void LiveChartWidget::resizeEvent(QResizeEvent* event)
 
 void LiveChartWidget::updateValueFontSize()
 {
-  if (!m_valueLabel || !m_unitLabel) return;
+  if (!m_valueLabel) return;
 
   // Calculate font size based on widget height
+  // Since unit is now in top row, value can use more space
   int widgetHeight = height();
-  int valueFontSize = static_cast<int>(widgetHeight * 0.20);  // 20% of height for value
+  int valueFontSize = static_cast<int>(widgetHeight * 0.25);  // 25% of height for value (increased from 20%)
 
   // Set minimum and maximum bounds for readability
-  if (valueFontSize < 72) valueFontSize = 72;
-  if (valueFontSize > 200) valueFontSize = 200;
+  if (valueFontSize < 48) valueFontSize = 48;  // Lower minimum for smaller windows
+  if (valueFontSize > 250) valueFontSize = 250;  // Higher maximum for larger displays
 
   // Update value label font
   QFont valueFont = m_valueLabel->font();
@@ -1136,34 +1134,26 @@ void LiveChartWidget::updateValueFontSize()
   valueFont.setBold(true);
   m_valueLabel->setFont(valueFont);
 
-  // Update max height for value label
-  QFontMetrics valueFm(valueFont);
-  int valueHeight = valueFm.height();
-  m_valueLabel->setMaximumHeight(valueHeight + 10);
+  // Don't set maximum height - let it expand naturally
+  // m_valueLabel->setMaximumHeight(valueHeight + 10);
 
-  // ✅ Update unit label font (smaller, proportional to value font)
-  int unitFontSize = static_cast<int>(valueFontSize * 0.5);  // Half of value font size
-  if (unitFontSize < 36) unitFontSize = 36;
-  if (unitFontSize > 100) unitFontSize = 100;
+  // Unit label is now in top row with fixed smaller font - update it too
+  if (m_unitLabel) {
+    int unitFontSize = static_cast<int>(valueFontSize * 0.25);  // 25% of value font size (compact)
+    if (unitFontSize < 14) unitFontSize = 14;
+    if (unitFontSize > 24) unitFontSize = 24;  // Keep unit label compact
 
-  QFont unitFont = m_unitLabel->font();
-  unitFont.setPointSize(unitFontSize);
-  unitFont.setBold(true);
-  m_unitLabel->setFont(unitFont);
-
-  // Update max height for unit label
-  QFontMetrics unitFm(unitFont);
-  int unitHeight = unitFm.height();
-  m_unitLabel->setMaximumHeight(unitHeight + 10);
-
-  // Debug log suppressed - was spamming during resize events
-  // std::cout << "[LiveChartWidget] Font sizes updated - Value: " << valueFontSize << "pt (height: " << valueHeight << "px), Unit: " << unitFontSize << "pt (height: " << unitHeight << "px)" << std::endl;
+    QFont unitFont = m_unitLabel->font();
+    unitFont.setPointSize(unitFontSize);
+    unitFont.setBold(true);
+    m_unitLabel->setFont(unitFont);
+  }
 
   // Update percentage label font size
   if (m_percentageLabel) {
     int percentFontSize = static_cast<int>(valueFontSize * 0.67);  // 2/3 of value font size
-    if (percentFontSize < 48) percentFontSize = 48;
-    if (percentFontSize > 130) percentFontSize = 130;
+    if (percentFontSize < 36) percentFontSize = 36;
+    if (percentFontSize > 150) percentFontSize = 150;
 
     QFont percentFont = m_percentageLabel->font();
     percentFont.setPointSize(percentFontSize);
