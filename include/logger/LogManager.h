@@ -86,6 +86,8 @@ private:
   void WriteToConsole(const LogEntry& entry);
   void WriteToFile(const LogEntry& entry);
   std::string GetTimestamp() const;
+  std::string GetDateString() const;  // Returns YYYY-MM-DD for log file naming
+  void CheckAndRotateLogFile();       // Rotate log file if date changed
 
   mutable std::mutex m_mutex;
   std::vector<LogEntry> m_history;
@@ -95,6 +97,8 @@ private:
   bool m_fileEnabled;
   std::ofstream m_logFile;
   std::string m_logFilePath;
+  std::string m_logDirectory;     // Base directory for log files
+  std::string m_currentLogDate;   // Current log file date (YYYY-MM-DD)
   Level m_minimumLevel;
 
   size_t m_maxHistorySize;

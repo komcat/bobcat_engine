@@ -145,19 +145,28 @@ void LogManager::EnableFileOutput(bool enable, const std::string& filePath)
   std::lock_guard<std::mutex> lock(m_mutex);
 
   if (enable) {
-    // Create directory if needed
+    // Extract directory from the provided path (e.g., "logs/bobcat.log" -> "logs")
     std::filesystem::path path(filePath);
-    std::filesystem::create_directories(path.parent_path());
+    m_logDirectory = path.parent_path().string();
+    if (m_logDirectory.empty()) {
+      m_logDirectory = "logs";
+    }
+
+    // Create directory if needed
+    std::filesystem::create_directories(m_logDirectory);
+
+    // Get current date and create date-stamped filename
+    m_currentLogDate = GetDateString();
+    m_logFilePath = m_logDirectory + "/bobcat_" + m_currentLogDate + ".log";
 
     // Open log file
-    m_logFile.open(filePath, std::ios::app);
+    m_logFile.open(m_logFilePath, std::ios::app);
     if (m_logFile.is_open()) {
       m_fileEnabled = true;
-      m_logFilePath = filePath;
-      std::cout << "[LogManager] File logging enabled: " << filePath << std::endl;
+      std::cout << "[LogManager] File logging enabled: " << m_logFilePath << std::endl;
     }
     else {
-      std::cerr << "[LogManager] Failed to open log file: " << filePath << std::endl;
+      std::cerr << "[LogManager] Failed to open log file: " << m_logFilePath << std::endl;
     }
   }
   else {
@@ -262,6 +271,13 @@ void LogManager::WriteToConsole(const LogEntry& entry)
 
 void LogManager::WriteToFile(const LogEntry& entry)
 {
+  // Check if we need to rotate to a new date-based log file
+  CheckAndRotateLogFile();
+
+  if (!m_logFile.is_open()) {
+    return;
+  }
+
   m_logFile << "[" << entry.timestamp << "] "
     << "[" << LevelToString(entry.level) << "] ";
 
@@ -288,4 +304,45 @@ std::string LogManager::GetTimestamp() const
   ss << "." << std::setfill('0') << std::setw(3) << ms.count();
 
   return ss.str();
+}
+
+std::string LogManager::GetDateString() const
+{
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+
+  std::tm timeinfo;
+  localtime_s(&timeinfo, &time_t);
+
+  std::stringstream ss;
+  ss << std::put_time(&timeinfo, "%Y-%m-%d");
+
+  return ss.str();
+}
+
+void LogManager::CheckAndRotateLogFile()
+{
+  // Check if date has changed since last log
+  std::string currentDate = GetDateString();
+
+  if (currentDate != m_currentLogDate) {
+    // Date changed - close old file and open new one
+    if (m_logFile.is_open()) {
+      m_logFile << "[" << GetTimestamp() << "] [INFO] Log file rotating to new date: " << currentDate << std::endl;
+      m_logFile.close();
+    }
+
+    m_currentLogDate = currentDate;
+    m_logFilePath = m_logDirectory + "/bobcat_" + m_currentLogDate + ".log";
+
+    m_logFile.open(m_logFilePath, std::ios::app);
+    if (m_logFile.is_open()) {
+      std::cout << "[LogManager] Rotated to new log file: " << m_logFilePath << std::endl;
+      m_logFile << "[" << GetTimestamp() << "] [INFO] Log file started (rotated from previous date)" << std::endl;
+    }
+    else {
+      std::cerr << "[LogManager] Failed to open rotated log file: " << m_logFilePath << std::endl;
+      m_fileEnabled = false;
+    }
+  }
 }
