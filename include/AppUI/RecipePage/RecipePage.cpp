@@ -108,14 +108,6 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   m_treeItemFactory = std::make_unique<RecipeTreeItemFactory>(
     m_recipeTree,
     m_recipeManager,
-    // Breakpoint callback - optimized to update single item only
-    [this](int stepIndex, bool checked) {
-      ProcessInstance* step = m_recipeManager->getStep(stepIndex);
-      if (step) {
-        step->breakpoint = checked;
-        updateSingleStepItem(stepIndex);  // Fast: only update this item
-      }
-    },
     // Enabled callback - optimized to update single item only
     [this](int stepIndex, bool enabled) {
       m_recipeManager->setStepEnabled(stepIndex, enabled);
@@ -312,6 +304,8 @@ void RecipePage::setupUI()
   mainLayout->addLayout(titleLayout);
 
   QSplitter* splitter = new QSplitter(Qt::Horizontal);
+  splitter->setOpaqueResize(false);  // Defer resize until drag complete for smoother performance
+  splitter->setHandleWidth(5);
 
   QWidget* leftPanel = new QWidget();
   createLeftPanel(leftPanel);
@@ -762,20 +756,25 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
 
   // ========== PROCESS INSTANCE LIST ==========
   m_recipeTree = new QTreeWidget();
-  m_recipeTree->setColumnCount(5);
-  m_recipeTree->setHeaderLabels({ "", "#", "", "Process Instance", "Run" });  // Column 0 = breakpoint, 2 = symbol
+  m_recipeTree->setColumnCount(4);
+  m_recipeTree->setHeaderLabels({ "#", "", "Process Instance", "Run" });  // Column 1 = symbol
   m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_recipeTree->setRootIsDecorated(false);  // Hide expand arrows for clean look
   m_recipeTree->setIndentation(24);          // Indent for nesting clarity
 
+  // Performance optimizations
+  m_recipeTree->setUniformRowHeights(true);  // Major performance boost - enables height caching
+  m_recipeTree->viewport()->setAttribute(Qt::WA_StaticContents);  // Reduce repaints
+
   m_recipeTree->header()->setStretchLastSection(false);
-  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Interactive);       // Breakpoint column - manual drag
-  m_recipeTree->setColumnWidth(0, 30);                                             // Default width for breakpoint
-  m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);  // Step number auto-fit
-  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);  // Symbol column auto-fit
-  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Stretch);           // Process Instance stretches
-  m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::ResizeToContents);  // Run checkbox auto-fit
+  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);             // Step number fixed width
+  m_recipeTree->setColumnWidth(0, 35);
+  m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Fixed);             // Symbol column fixed
+  m_recipeTree->setColumnWidth(1, 30);
+  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);           // Process Instance stretches
+  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Fixed);             // Run checkbox fixed
+  m_recipeTree->setColumnWidth(3, 50);
 
   m_recipeTree->setStyleSheet(RecipeStyles::recipeStepsTree());
 
@@ -798,7 +797,8 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Horizontal splitter: Parameters (full height) | Context Variables + Vision Result
   // ========================================
   QSplitter* mainSplitter = new QSplitter(Qt::Horizontal);
-  mainSplitter->setHandleWidth(3);
+  mainSplitter->setHandleWidth(5);
+  mainSplitter->setOpaqueResize(false);  // Smoother resize performance
   mainSplitter->setStyleSheet(
     "QSplitter::handle { background-color: #3f3f46; }"
     "QSplitter::handle:hover { background-color: #007acc; }"
@@ -1970,8 +1970,9 @@ void RecipePage::onProcessTemplateSelected(QTreeWidgetItem* item, int column)
 
 void RecipePage::refreshRecipeList()
 {
-  // Block signals during refresh
+  // Block signals and updates during refresh for performance
   m_recipeTree->blockSignals(true);
+  m_recipeTree->setUpdatesEnabled(false);
 
   // Store currently selected item index before clearing
   int previousSelection = m_selectedStepIndex;
@@ -2017,6 +2018,8 @@ void RecipePage::refreshRecipeList()
   // Restore selection
   selectStepByIndex(previousSelection);
 
+  // Re-enable updates and signals
+  m_recipeTree->setUpdatesEnabled(true);
   m_recipeTree->blockSignals(false);
 
   // Update context variable preview

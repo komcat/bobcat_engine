@@ -272,7 +272,7 @@ void LogViewerPage::RefreshLogs()
   size_t errors = m_logManager->GetErrorCount();
 
   // Show if display is truncated
-  static const size_t MAX_DISPLAY_ENTRIES = 1000;
+  static const size_t MAX_DISPLAY_ENTRIES = 100;
   if (total > MAX_DISPLAY_ENTRIES) {
     m_statsLabel->setText(QString("Total: %1 (showing last %2) | Warnings: %3 | Errors: %4")
       .arg(total).arg(MAX_DISPLAY_ENTRIES).arg(warnings).arg(errors));
@@ -286,8 +286,8 @@ void LogViewerPage::displayLogs(const std::vector<LogManager::LogEntry>& entries
 {
   m_logDisplay->clear();
 
-  // ✅ PERFORMANCE: Limit display to last 1000 entries to prevent UI slowdown
-  static const size_t MAX_DISPLAY_ENTRIES = 1000;
+  // ✅ PERFORMANCE: Limit display to last 100 entries to prevent UI slowdown
+  static const size_t MAX_DISPLAY_ENTRIES = 100;
   size_t startIndex = 0;
   if (entries.size() > MAX_DISPLAY_ENTRIES) {
     startIndex = entries.size() - MAX_DISPLAY_ENTRIES;

@@ -18,13 +18,12 @@ struct ProcessInstance;
  * @brief Factory for creating tree widget items for recipe steps
  *
  * Encapsulates all the widget creation logic for recipe step rows,
- * including breakpoint checkbox, step number, symbol, process name, and run checkbox.
+ * including step number, symbol, process name, and run checkbox.
  */
 class RecipeTreeItemFactory
 {
 public:
   // Callback types for user interactions
-  using BreakpointCallback = std::function<void(int stepIndex, bool checked)>;
   using EnabledCallback = std::function<void(int stepIndex, bool enabled)>;
 
   /**
@@ -33,7 +32,6 @@ public:
   RecipeTreeItemFactory(
     QTreeWidget* treeWidget,
     RecipeManager* recipeManager,
-    BreakpointCallback onBreakpointChanged,
     EnabledCallback onEnabledChanged
   );
 
@@ -72,7 +70,6 @@ public:
 
 private:
   // Widget creation helpers
-  QWidget* createBreakpointWidget(const ProcessInstance* step, int stepIndex, const QString& bgColor);
   QWidget* createStepNumberWidget(int stepIndex, const QString& bgColor, bool enabled);
   QWidget* createSymbolWidget(const ProcessInstance* step, const QString& bgColor);
   QWidget* createProcessNameWidget(const ProcessInstance* step, const QString& bgColor);
@@ -89,6 +86,5 @@ private:
 
   QTreeWidget* m_treeWidget;
   RecipeManager* m_recipeManager;
-  BreakpointCallback m_onBreakpointChanged;
   EnabledCallback m_onEnabledChanged;
 };

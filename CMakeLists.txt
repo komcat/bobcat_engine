@@ -636,6 +636,7 @@ set(SOURCES
     include/sequence/GripperSequenceHelpers.cpp
     include/AppUI/RecipePage/RecipePage.cpp
     include/AppUI/RecipePage/RecipeTreeItemFactory.cpp
+    include/AppUI/RecipePage/RecipeStepDelegate.cpp
     include/AppUI/RecipePage/RecipeClipboard.cpp
     include/AppUI/RecipePage/PropertyTableWidget.cpp
     include/recipe/RecipeManager.cpp

@@ -9,11 +9,9 @@
 RecipeTreeItemFactory::RecipeTreeItemFactory(
   QTreeWidget* treeWidget,
   RecipeManager* recipeManager,
-  BreakpointCallback onBreakpointChanged,
   EnabledCallback onEnabledChanged)
   : m_treeWidget(treeWidget)
   , m_recipeManager(recipeManager)
-  , m_onBreakpointChanged(onBreakpointChanged)
   , m_onEnabledChanged(onEnabledChanged)
 {
 }
@@ -133,26 +131,23 @@ QTreeWidgetItem* RecipeTreeItemFactory::createStepItem(
   item->setData(0, Qt::UserRole, stepIndex);
 
   // Clear all column text to prevent any default text from showing
-  for (int col = 0; col < 5; ++col) {
+  for (int col = 0; col < 4; ++col) {
     item->setText(col, "");
   }
 
   QString bgColor = getBackgroundColor(step);
 
-  // Column 0: Breakpoint checkbox
-  m_treeWidget->setItemWidget(item, 0, createBreakpointWidget(step, stepIndex, bgColor));
+  // Column 0: Step number
+  m_treeWidget->setItemWidget(item, 0, createStepNumberWidget(stepIndex, bgColor, step->enabled));
 
-  // Column 1: Step number
-  m_treeWidget->setItemWidget(item, 1, createStepNumberWidget(stepIndex, bgColor, step->enabled));
+  // Column 1: Category symbol
+  m_treeWidget->setItemWidget(item, 1, createSymbolWidget(step, bgColor));
 
-  // Column 2: Category symbol
-  m_treeWidget->setItemWidget(item, 2, createSymbolWidget(step, bgColor));
+  // Column 2: Process name
+  m_treeWidget->setItemWidget(item, 2, createProcessNameWidget(step, bgColor));
 
-  // Column 3: Process name
-  m_treeWidget->setItemWidget(item, 3, createProcessNameWidget(step, bgColor));
-
-  // Column 4: Run checkbox
-  m_treeWidget->setItemWidget(item, 4, createRunCheckboxWidget(step, stepIndex, bgColor));
+  // Column 3: Run checkbox
+  m_treeWidget->setItemWidget(item, 3, createRunCheckboxWidget(step, stepIndex, bgColor));
 
   return item;
 }
@@ -161,8 +156,8 @@ void RecipeTreeItemFactory::updateProcessNameLabel(QTreeWidgetItem* item, const 
 {
   if (!item) return;
 
-  // Get the label widget from column 3
-  QWidget* widget = m_treeWidget->itemWidget(item, 3);
+  // Get the label widget from column 2
+  QWidget* widget = m_treeWidget->itemWidget(item, 2);
   QLabel* processLabel = qobject_cast<QLabel*>(widget);
   if (processLabel) {
     processLabel->setText(getDisplayText(step));
@@ -178,30 +173,16 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
 
   QString bgColor = getBackgroundColor(step);
 
-  // Column 0: Update breakpoint checkbox
-  QWidget* bpContainer = m_treeWidget->itemWidget(item, 0);
-  if (bpContainer) {
-    QCheckBox* bpChk = bpContainer->findChild<QCheckBox*>();
-    if (bpChk) {
-      bpChk->blockSignals(true);
-      bpChk->setChecked(step->breakpoint);
-      bpChk->setProperty("stepIndex", stepIndex);
-      bpChk->setToolTip(step->breakpoint ? "Breakpoint set - click to remove" : "Click to set breakpoint");
-      bpChk->blockSignals(false);
-    }
-    bpContainer->setStyleSheet(RecipeStyles::rowContainer(bgColor));
-  }
-
-  // Column 1: Update step number label
-  QWidget* numWidget = m_treeWidget->itemWidget(item, 1);
+  // Column 0: Update step number label
+  QWidget* numWidget = m_treeWidget->itemWidget(item, 0);
   QLabel* numLabel = qobject_cast<QLabel*>(numWidget);
   if (numLabel) {
     numLabel->setText(QString::number(stepIndex + 1));
     numLabel->setStyleSheet(RecipeStyles::stepNumberLabel(bgColor, step->enabled));
   }
 
-  // Column 2: Update symbol label
-  QWidget* symWidget = m_treeWidget->itemWidget(item, 2);
+  // Column 1: Update symbol label
+  QWidget* symWidget = m_treeWidget->itemWidget(item, 1);
   QLabel* symLabel = qobject_cast<QLabel*>(symWidget);
   if (symLabel) {
     std::string category = m_recipeManager->getProcessCategory(step->processType);
@@ -210,8 +191,8 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
     symLabel->setToolTip(QString::fromStdString(category));
   }
 
-  // Column 3: Update process name label
-  QWidget* nameWidget = m_treeWidget->itemWidget(item, 3);
+  // Column 2: Update process name label
+  QWidget* nameWidget = m_treeWidget->itemWidget(item, 2);
   QLabel* nameLabel = qobject_cast<QLabel*>(nameWidget);
   if (nameLabel) {
     bool isComment = (step->processType == "Comment");
@@ -219,8 +200,8 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
     nameLabel->setStyleSheet(RecipeStyles::processNameLabel(bgColor, step->enabled, isComment));
   }
 
-  // Column 4: Update run checkbox
-  QWidget* runContainer = m_treeWidget->itemWidget(item, 4);
+  // Column 3: Update run checkbox
+  QWidget* runContainer = m_treeWidget->itemWidget(item, 3);
   if (runContainer) {
     QCheckBox* runChk = runContainer->findChild<QCheckBox*>();
     if (runChk) {
@@ -232,36 +213,6 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
     }
     runContainer->setStyleSheet(RecipeStyles::rowContainer(bgColor));
   }
-}
-
-QWidget* RecipeTreeItemFactory::createBreakpointWidget(
-  const ProcessInstance* step,
-  int stepIndex,
-  const QString& bgColor)
-{
-  QCheckBox* breakpointChk = new QCheckBox();
-  breakpointChk->setChecked(step->breakpoint);
-  breakpointChk->setProperty("stepIndex", stepIndex);
-  breakpointChk->setCursor(Qt::PointingHandCursor);
-  breakpointChk->setToolTip(step->breakpoint ? "Breakpoint set - click to remove" : "Click to set breakpoint");
-  breakpointChk->setStyleSheet(RecipeStyles::breakpointCheckbox());
-
-  // Connect callback
-  if (m_onBreakpointChanged) {
-    QObject::connect(breakpointChk, &QCheckBox::toggled,
-      [this, stepIndex](bool checked) {
-        m_onBreakpointChanged(stepIndex, checked);
-      });
-  }
-
-  QWidget* container = new QWidget();
-  container->setStyleSheet(RecipeStyles::rowContainer(bgColor));
-  QHBoxLayout* layout = new QHBoxLayout(container);
-  layout->addWidget(breakpointChk);
-  layout->setAlignment(Qt::AlignCenter);
-  layout->setContentsMargins(0, 0, 0, 0);
-
-  return container;
 }
 
 QWidget* RecipeTreeItemFactory::createStepNumberWidget(

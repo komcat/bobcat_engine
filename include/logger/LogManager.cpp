@@ -10,6 +10,11 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/ansicolor_sink.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // Constants for file rotation
 constexpr size_t MAX_FILE_SIZE = 3 * 1024 * 1024;  // 3 MB
@@ -38,8 +43,24 @@ LogManager::~LogManager()
 void LogManager::InitializeSpdlog()
 {
   try {
-    // Create console sink with colors
+#ifdef _WIN32
+    // Enable ANSI escape codes (Virtual Terminal Processing) on Windows 10+
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+      DWORD dwMode = 0;
+      if (GetConsoleMode(hOut, &dwMode)) {
+        dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(hOut, dwMode);
+      }
+    }
+
+    // Use ANSI color sink (works with VT processing enabled)
+    auto ansiSink = std::make_shared<spdlog::sinks::ansicolor_stdout_sink_mt>();
+    m_consoleSink = ansiSink;
+#else
+    // Create console sink with colors for non-Windows
     m_consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+#endif
 
     // Create logger with console sink only (file sink added later via EnableFileOutput)
     m_logger = std::make_shared<spdlog::logger>("bobcat", m_consoleSink);
