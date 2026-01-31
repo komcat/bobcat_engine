@@ -876,9 +876,7 @@ void SequenceEngine::LogInfo(const std::string& message)
   if (m_logger) {
     m_logger->Info(message, "SequenceEngine");
   }
-  else {
-    std::cout << "[SequenceEngine] " << message << std::endl;
-  }
+  // Note: spdlog is always available now, no fallback needed
 }
 
 void SequenceEngine::LogWarning(const std::string& message)
@@ -888,9 +886,6 @@ void SequenceEngine::LogWarning(const std::string& message)
   if (m_logger) {
     m_logger->Warning(message, "SequenceEngine");
   }
-  else {
-    std::cout << "[SequenceEngine] WARNING: " << message << std::endl;
-  }
 }
 
 void SequenceEngine::LogError(const std::string& message)
@@ -899,9 +894,6 @@ void SequenceEngine::LogError(const std::string& message)
 
   if (m_logger) {
     m_logger->Error(message, "SequenceEngine");
-  }
-  else {
-    std::cerr << "[SequenceEngine] ERROR: " << message << std::endl;
   }
 }
 

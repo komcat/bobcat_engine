@@ -2,6 +2,7 @@
 #include "SMUParameterWorker.h"
 #include "SMUManager.h"
 #include "ISMUDevice.h"
+#include "SMUTypes.h"
 #include <QMutexLocker>
 #include <algorithm>
 #include <iostream>
@@ -486,9 +487,21 @@ void SMUParameterWorker::readMeasurements(const std::string& deviceName, int cha
     }
 
     try {
-        double voltage = smu->ReadVoltage();
-        double current = smu->ReadChannel(channel);
-        bool outputOn = smu->IsOutputOn();
+        double voltage = -999.0;
+        double current = -999.0;
+        bool outputOn = false;
+
+        // Check device mode to avoid sending unsupported commands
+        SMUMode mode = smu->GetSupportedMode();
+
+        // Read current from specified channel (always supported)
+        current = smu->ReadChannel(channel);
+
+        // Only read voltage and output state for devices that support sourcing
+        if (mode == SMUMode::VOLTAGE_SOURCE || mode == SMUMode::CURRENT_SOURCE) {
+            voltage = smu->ReadVoltage();
+            outputOn = smu->IsOutputOn();
+        }
 
         emit measurementsUpdated(channel, voltage, current, outputOn);
     }

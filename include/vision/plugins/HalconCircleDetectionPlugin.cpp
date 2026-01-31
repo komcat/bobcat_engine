@@ -3,6 +3,7 @@
 #if defined(HAS_OPENCV) && defined(HAS_HALCON)
 
 #include "HalconCircleDetectionPlugin.h"
+#include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
 #include <halconcpp/HalconCpp.h>
 #include <iostream>
@@ -66,7 +67,9 @@ bool HalconCircleDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output,
 
         // Check if we have any edges
         Hlong numContours = edges.CountObj();
-        std::cout << "[HalconCircleDetection] Found " << numContours << " edge contours" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleDetection] Found " << numContours << " edge contours" << std::endl;
+        }
 
         if (numContours == 0) {
             // No edges found - return success but with 0 circles
@@ -78,7 +81,9 @@ bool HalconCircleDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output,
             result.addMeasurement("circle_count", 0.0);
             result.addMetadata("algorithm", "Halcon_EdgeBased");
             result.addMetadata("note", "No edges detected");
-            std::cout << "[HalconCircleDetection] No edges found" << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconCircleDetection] No edges found" << std::endl;
+            }
             return true;
         }
 
@@ -87,7 +92,9 @@ bool HalconCircleDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output,
             static_cast<double>(m_minRadius * 2), static_cast<double>(m_maxRadius * 6.28), 0, 0);
 
         numContours = selectedContours.CountObj();
-        std::cout << "[HalconCircleDetection] After length filter: " << numContours << " contours" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleDetection] After length filter: " << numContours << " contours" << std::endl;
+        }
 
         if (numContours == 0) {
             if (input.channels() == 1) {
@@ -202,7 +209,9 @@ bool HalconCircleDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output,
         result.addMetadata("threshold", std::to_string(m_threshold));
         result.addMetadata("polarity", m_polarity == 0 ? "dark" : "bright");
 
-        std::cout << "[HalconCircleDetection] Found " << circleCount << " circles" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleDetection] Found " << circleCount << " circles" << std::endl;
+        }
         return true;
     }
     catch (HException& ex) {

@@ -4,11 +4,11 @@
 #include "IMotionControllerManager.h"
 #include "pi_controller.h"
 #include "MotionTypes.h"
+#include "ILogger.h"
 #include <string>
 #include <map>
 #include <vector>
 #include <memory>
-#include <iostream>
 
 /**
  * @brief PI Controller Manager
@@ -20,6 +20,16 @@ class PIControllerManager : public IMotionControllerManager {
 public:
   PIControllerManager();
   ~PIControllerManager() override;
+
+  // ============================================================================
+  // LOGGER SUPPORT
+  // ============================================================================
+
+  /**
+   * @brief Set logger for this manager and propagate to all controllers
+   * @param logger Pointer to ILogger interface
+   */
+  void SetLogger(ILogger* logger);
 
   // ============================================================================
   // IMotionControllerManager Interface Implementation
@@ -126,4 +136,7 @@ private:
   PIController* CreateController(const MotionDevice& device);
   bool ValidateDeviceConfig(const MotionDevice& device) const;
   void LogDeviceInfo(const std::string& deviceName, const std::string& message) const;
+
+  // Logger for spdlog integration
+  ILogger* m_logger = nullptr;
 };

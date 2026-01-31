@@ -4,13 +4,30 @@
 #include <algorithm>
 #include <cmath>
 
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "PIControllerManager")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "PIControllerManager")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "PIControllerManager")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "PIControllerManager")
+
 PIControllerManager::PIControllerManager() {
-  std::cout << "[INFO] PIControllerManager: Initialized" << std::endl;
+  LOG_INFO("Initialized");
 }
 
 PIControllerManager::~PIControllerManager() {
-  std::cout << "[INFO] PIControllerManager: Shutting down" << std::endl;
+  LOG_INFO("Shutting down");
   DisconnectAll();
+}
+
+void PIControllerManager::SetLogger(ILogger* logger)
+{
+    m_logger = logger;
+    // Propagate to all controllers
+    for (auto& [name, controller] : m_controllers) {
+        if (controller) {
+            controller->SetLogger(logger);
+        }
+    }
+    LOG_INFO("Logger initialized");
 }
 
 // ============================================================================
@@ -19,19 +36,17 @@ PIControllerManager::~PIControllerManager() {
 
 void PIControllerManager::AddDevice(const MotionDevice& device) {
   if (!ValidateDeviceConfig(device)) {
-    std::cout << "[ERROR] PIControllerManager: Invalid device configuration for "
-      << device.Name << std::endl;
+    LOG_ERROR("Invalid device configuration for " + device.Name);
     return;
   }
 
   if (m_controllers.find(device.Name) != m_controllers.end()) {
-    std::cout << "[WARNING] PIControllerManager: Device " << device.Name
-      << " already exists. Updating configuration." << std::endl;
+    LOG_WARNING("Device " + device.Name + " already exists. Updating configuration.");
     UpdateDeviceConfig(device);
     return;
   }
 
-  std::cout << "[INFO] PIControllerManager: Adding device " << device.Name << std::endl;
+  LOG_INFO("Adding device " + device.Name);
 
   // Store configuration
   m_deviceConfigs[device.Name] = device;
@@ -45,20 +60,18 @@ void PIControllerManager::AddDevice(const MotionDevice& device) {
     LogDeviceInfo(device.Name, "Device added successfully");
   }
   else {
-    std::cout << "[ERROR] PIControllerManager: Failed to create controller for "
-      << device.Name << std::endl;
+    LOG_ERROR("Failed to create controller for " + device.Name);
   }
 }
 
 void PIControllerManager::RemoveDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[WARNING] PIControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_WARNING("Device " + deviceName + " not found");
     return;
   }
 
-  std::cout << "[INFO] PIControllerManager: Removing device " << deviceName << std::endl;
+  LOG_INFO("Removing device " + deviceName);
 
   // Disconnect if connected
   if (m_connectionStatus[deviceName]) {
@@ -83,7 +96,7 @@ bool PIControllerManager::HasDevice(const std::string& deviceName) const {
 // ============================================================================
 
 bool PIControllerManager::ConnectAll() {
-  std::cout << "[INFO] PIControllerManager: Connecting all devices" << std::endl;
+  LOG_INFO("Connecting all devices");
 
   bool allSuccess = true;
   int successCount = 0;
@@ -99,14 +112,13 @@ bool PIControllerManager::ConnectAll() {
     }
   }
 
-  std::cout << "[INFO] PIControllerManager: Connect all complete. "
-    << "Success: " << successCount << ", Failed: " << failCount << std::endl;
+  LOG_INFO("Connect all complete. Success: " + std::to_string(successCount) + ", Failed: " + std::to_string(failCount));
 
   return allSuccess;
 }
 
 void PIControllerManager::DisconnectAll() {
-  std::cout << "[INFO] PIControllerManager: Disconnecting all devices" << std::endl;
+  LOG_INFO("Disconnecting all devices");
 
   for (auto& [deviceName, controller] : m_controllers) {
     if (controller && controller->IsConnected()) {
@@ -116,39 +128,35 @@ void PIControllerManager::DisconnectAll() {
     }
   }
 
-  std::cout << "[INFO] PIControllerManager: All devices disconnected" << std::endl;
+  LOG_INFO("All devices disconnected");
 }
 
 bool PIControllerManager::ConnectDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[ERROR] PIControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
   PIController* controller = it->second.get();
   if (!controller) {
-    std::cout << "[ERROR] PIControllerManager: Controller instance is null for "
-      << deviceName << std::endl;
+    LOG_ERROR("Controller instance is null for " + deviceName);
     return false;
   }
 
   // Already connected?
   if (controller->IsConnected()) {
-    std::cout << "[INFO] PIControllerManager: Device " << deviceName
-      << " already connected" << std::endl;
+    LOG_INFO("Device " + deviceName + " already connected");
     m_connectionStatus[deviceName] = true;
     return true;
   }
 
-  std::cout << "[INFO] PIControllerManager: Connecting device " << deviceName << std::endl;
+  LOG_INFO("Connecting device " + deviceName);
 
   // Get device config
   auto configIt = m_deviceConfigs.find(deviceName);
   if (configIt == m_deviceConfigs.end()) {
-    std::cout << "[ERROR] PIControllerManager: No configuration found for "
-      << deviceName << std::endl;
+    LOG_ERROR("No configuration found for " + deviceName);
     return false;
   }
 
@@ -168,7 +176,7 @@ bool PIControllerManager::ConnectDevice(const std::string& deviceName) {
   else {
     m_connectionStatus[deviceName] = false;
     m_connectionErrors[deviceName] = "Connection failed";
-    std::cout << "[ERROR] PIControllerManager: Failed to connect " << deviceName << std::endl;
+    LOG_ERROR("Failed to connect " + deviceName);
   }
 
   return success;
@@ -177,8 +185,7 @@ bool PIControllerManager::ConnectDevice(const std::string& deviceName) {
 bool PIControllerManager::DisconnectDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[ERROR] PIControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
@@ -187,7 +194,7 @@ bool PIControllerManager::DisconnectDevice(const std::string& deviceName) {
     return false;
   }
 
-  std::cout << "[INFO] PIControllerManager: Disconnecting device " << deviceName << std::endl;
+  LOG_INFO("Disconnecting device " + deviceName);
 
   controller->Disconnect();
   m_connectionStatus[deviceName] = false;
@@ -197,7 +204,7 @@ bool PIControllerManager::DisconnectDevice(const std::string& deviceName) {
 }
 
 bool PIControllerManager::ReconnectDevice(const std::string& deviceName) {
-  std::cout << "[INFO] PIControllerManager: Reconnecting device " << deviceName << std::endl;
+  LOG_INFO("Reconnecting device " + deviceName);
 
   // Disconnect first
   DisconnectDevice(deviceName);
@@ -210,7 +217,7 @@ bool PIControllerManager::ReconnectDevice(const std::string& deviceName) {
 }
 
 int PIControllerManager::ConnectEnabledDevices() {
-  std::cout << "[INFO] PIControllerManager: Connecting enabled devices" << std::endl;
+  LOG_INFO("Connecting enabled devices");
 
   int connectedCount = 0;
 
@@ -221,13 +228,11 @@ int PIControllerManager::ConnectEnabledDevices() {
       }
     }
     else {
-      std::cout << "[INFO] PIControllerManager: Skipping disabled device "
-        << deviceName << std::endl;
+      LOG_INFO("Skipping disabled device " + deviceName);
     }
   }
 
-  std::cout << "[INFO] PIControllerManager: Connected " << connectedCount
-    << " enabled devices" << std::endl;
+  LOG_INFO("Connected " + std::to_string(connectedCount) + " enabled devices");
 
   return connectedCount;
 }
@@ -294,8 +299,7 @@ PIController* PIControllerManager::GetPIController(const std::string& deviceName
     return it->second.get();
   }
 
-  std::cout << "[WARNING] PIControllerManager: Controller " << deviceName
-    << " not found" << std::endl;
+  LOG_WARNING("Controller " + deviceName + " not found");
   return nullptr;
 }
 
@@ -332,26 +336,23 @@ MotionDevice PIControllerManager::GetDeviceConfig(const std::string& deviceName)
 
 bool PIControllerManager::UpdateDeviceConfig(const MotionDevice& device) {
   if (!HasDevice(device.Name)) {
-    std::cout << "[ERROR] PIControllerManager: Cannot update config for non-existent device "
-      << device.Name << std::endl;
+    LOG_ERROR("Cannot update config for non-existent device " + device.Name);
     return false;
   }
 
   if (!ValidateDeviceConfig(device)) {
-    std::cout << "[ERROR] PIControllerManager: Invalid device configuration" << std::endl;
+    LOG_ERROR("Invalid device configuration");
     return false;
   }
 
-  std::cout << "[INFO] PIControllerManager: Updating configuration for "
-    << device.Name << std::endl;
+  LOG_INFO("Updating configuration for " + device.Name);
 
   // Update configuration
   m_deviceConfigs[device.Name] = device;
 
   // If connected, may need to reconnect with new config
   if (IsDeviceConnected(device.Name)) {
-    std::cout << "[INFO] PIControllerManager: Device is connected. "
-      << "Reconnection may be needed for changes to take effect." << std::endl;
+    LOG_INFO("Device is connected. Reconnection may be needed for changes to take effect.");
   }
 
   return true;
@@ -385,39 +386,34 @@ PIController* PIControllerManager::CreateController(const MotionDevice& device) 
     }
     else {
       delete controller;
-      std::cout << "[ERROR] PIControllerManager: Failed to configure controller for "
-        << device.Name << std::endl;
+      LOG_ERROR("Failed to configure controller for " + device.Name);
       return nullptr;
     }
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] PIControllerManager: Exception creating controller: "
-      << e.what() << std::endl;
+    LOG_ERROR("Exception creating controller: " + std::string(e.what()));
     return nullptr;
   }
 }
 
 bool PIControllerManager::ValidateDeviceConfig(const MotionDevice& device) const {
   if (device.Name.empty()) {
-    std::cout << "[ERROR] PIControllerManager: Device name cannot be empty" << std::endl;
+    LOG_ERROR("Device name cannot be empty");
     return false;
   }
 
   if (device.TypeController != "PI" && device.TypeController != "pi") {
-    std::cout << "[ERROR] PIControllerManager: Invalid controller type: "
-      << device.TypeController << " (expected PI)" << std::endl;
+    LOG_ERROR("Invalid controller type: " + device.TypeController + " (expected PI)");
     return false;
   }
 
   if (device.IpAddress.empty()) {
-    std::cout << "[ERROR] PIControllerManager: IP address cannot be empty for "
-      << device.Name << std::endl;
+    LOG_ERROR("IP address cannot be empty for " + device.Name);
     return false;
   }
 
   if (device.Port <= 0 || device.Port > 65535) {
-    std::cout << "[ERROR] PIControllerManager: Invalid port " << device.Port
-      << " for " << device.Name << std::endl;
+    LOG_ERROR("Invalid port " + std::to_string(device.Port) + " for " + device.Name);
     return false;
   }
 
@@ -426,23 +422,20 @@ bool PIControllerManager::ValidateDeviceConfig(const MotionDevice& device) const
 
 void PIControllerManager::LogDeviceInfo(const std::string& deviceName,
   const std::string& message) const {
-  std::cout << "[INFO] PIControllerManager [" << deviceName << "]: "
-    << message << std::endl;
+  LOG_INFO("[" + deviceName + "]: " + message);
 }
 
 bool PIControllerManager::LoadPivotConfigurations(const std::string& filepath) {
-  std::cout << "📂 [INFO] PIControllerManager: Loading pivot configurations from "
-    << filepath << std::endl;
+  LOG_INFO("Loading pivot configurations from " + filepath);
 
   m_pivotConfigs = PIPivotJsonLoader::LoadFromFile(filepath);
 
   if (m_pivotConfigs.empty()) {
-    std::cout << "⚠️ [WARNING] PIControllerManager: No pivot configurations loaded" << std::endl;
+    LOG_WARNING("No pivot configurations loaded");
     return false;
   }
 
-  std::cout << "✅ [INFO] PIControllerManager: Loaded " << m_pivotConfigs.size()
-    << " pivot configurations" << std::endl;
+  LOG_INFO("Loaded " + std::to_string(m_pivotConfigs.size()) + " pivot configurations");
 
   return true;
 }
@@ -451,35 +444,31 @@ bool PIControllerManager::VerifyAndSetPivotPoint(const std::string& deviceName) 
   // Check if device exists
   auto controllerIt = m_controllers.find(deviceName);
   if (controllerIt == m_controllers.end()) {
-    std::cout << "❌ [ERROR] PIControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
   PIController* controller = controllerIt->second.get();
   if (!controller || !controller->IsConnected()) {
-    std::cout << "❌ [ERROR] PIControllerManager: Device " << deviceName
-      << " is not connected" << std::endl;
+    LOG_ERROR("Device " + deviceName + " is not connected");
     return false;
   }
 
   // Check if pivot configuration exists for this device
   auto pivotIt = m_pivotConfigs.find(deviceName);
   if (pivotIt == m_pivotConfigs.end()) {
-    std::cout << "ℹ️ [INFO] PIControllerManager: No pivot configuration found for "
-      << deviceName << ". Skipping pivot verification." << std::endl;
+    LOG_INFO("No pivot configuration found for " + deviceName + ". Skipping pivot verification.");
     return true; // Not an error - just no config for this device
   }
 
   const PIPivotConfig& expectedPivot = pivotIt->second;
 
-  std::cout << "🔍 [INFO] PIControllerManager: Verifying pivot point for " << deviceName << std::endl;
+  LOG_INFO("Verifying pivot point for " + deviceName);
 
   // Read current pivot point from controller
   double currentX = 0.0, currentY = 0.0, currentZ = 0.0;
   if (!controller->GetPivotPoint(currentX, currentY, currentZ)) {
-    std::cout << "❌ [ERROR] PIControllerManager: Failed to read pivot point from "
-      << deviceName << std::endl;
+    LOG_ERROR("Failed to read pivot point from " + deviceName);
     return false;
   }
 
@@ -490,26 +479,22 @@ bool PIControllerManager::VerifyAndSetPivotPoint(const std::string& deviceName) 
   bool zMatch = std::abs(currentZ - expectedPivot.PivotZ) < tolerance;
 
   if (xMatch && yMatch && zMatch) {
-    std::cout << "✅ [INFO] PIControllerManager: Pivot point for " << deviceName
-      << " matches expected values" << std::endl;
+    LOG_INFO("Pivot point for " + deviceName + " matches expected values");
     return true;
   }
 
   // Pivot doesn't match - set the correct values
-  std::cout << "⚠️ [WARNING] PIControllerManager: Pivot point mismatch for " << deviceName << std::endl;
-  std::cout << "📍 [INFO] Current: X=" << currentX << ", Y=" << currentY << ", Z=" << currentZ << std::endl;
-  std::cout << "🎯 [INFO] Expected: X=" << expectedPivot.PivotX << ", Y=" << expectedPivot.PivotY
-    << ", Z=" << expectedPivot.PivotZ << std::endl;
-  std::cout << "📝 [INFO] PIControllerManager: Setting correct pivot point for " << deviceName << std::endl;
+  LOG_WARNING("Pivot point mismatch for " + deviceName);
+  LOG_INFO("Current: X=" + std::to_string(currentX) + ", Y=" + std::to_string(currentY) + ", Z=" + std::to_string(currentZ));
+  LOG_INFO("Expected: X=" + std::to_string(expectedPivot.PivotX) + ", Y=" + std::to_string(expectedPivot.PivotY) + ", Z=" + std::to_string(expectedPivot.PivotZ));
+  LOG_INFO("Setting correct pivot point for " + deviceName);
 
   if (!controller->SetPivotPoint(expectedPivot.PivotX, expectedPivot.PivotY, expectedPivot.PivotZ)) {
-    std::cout << "❌ [ERROR] PIControllerManager: Failed to set pivot point for "
-      << deviceName << std::endl;
+    LOG_ERROR("Failed to set pivot point for " + deviceName);
     return false;
   }
 
-  std::cout << "✅ [INFO] PIControllerManager: Pivot point updated successfully for "
-    << deviceName << std::endl;
+  LOG_INFO("Pivot point updated successfully for " + deviceName);
 
   return true;
 }

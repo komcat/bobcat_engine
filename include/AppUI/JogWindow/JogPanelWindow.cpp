@@ -11,6 +11,7 @@
 #include "EziIOManager.h"
 #include "LogManager.h"
 
+#include <iostream>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>

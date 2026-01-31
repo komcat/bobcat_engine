@@ -1,13 +1,21 @@
-﻿// LogManager.h - Thread-safe logging system
+﻿// LogManager.h - Thread-safe logging system with spdlog backend
 #pragma once
 
-#include "ILogger.h"  // ✅ ADD THIS
+#include "ILogger.h"
 #include <string>
 #include <vector>
 #include <mutex>
 #include <functional>
-#include <fstream>
 #include <chrono>
+#include <memory>
+
+// Forward declarations for spdlog
+namespace spdlog {
+    class logger;
+    namespace sinks {
+        class sink;
+    }
+}
 
 /**
  * @brief Centralized logging system
@@ -84,19 +92,23 @@ public:
 
 private:
   void WriteToConsole(const LogEntry& entry);
-  void WriteToFile(const LogEntry& entry);
   std::string GetTimestamp() const;
   std::string GetDateString() const;  // Returns YYYY-MM-DD for log file naming
   void CheckAndRotateLogFile();       // Rotate log file if date changed
+  void InitializeSpdlog();            // Initialize spdlog backend
+  void CreateFileSink();              // Create/recreate rotating file sink
 
   mutable std::mutex m_mutex;
   std::vector<LogEntry> m_history;
   LogCallback m_uiCallback;
 
+  // spdlog components
+  std::shared_ptr<spdlog::logger> m_logger;
+  std::shared_ptr<spdlog::sinks::sink> m_consoleSink;
+  std::shared_ptr<spdlog::sinks::sink> m_fileSink;
+
   bool m_consoleEnabled;
   bool m_fileEnabled;
-  std::ofstream m_logFile;
-  std::string m_logFilePath;
   std::string m_logDirectory;     // Base directory for log files
   std::string m_currentLogDate;   // Current log file date (YYYY-MM-DD)
   Level m_minimumLevel;

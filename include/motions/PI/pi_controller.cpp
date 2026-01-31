@@ -5,6 +5,12 @@
 #include <sstream>
 #include <algorithm>
 
+// Logging macros
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "PIController")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "PIController")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "PIController")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "PIController")
+
 PIController::PIController()
   : m_controllerId(-1),
   m_port(50000) {
@@ -14,7 +20,7 @@ PIController::PIController()
   m_terminateThread.store(false);
   m_enableAnalogReading.store(true);
 
-  std::cout << "[INFO] PIController: Initializing controller" << std::endl;
+  LOG_INFO("Initializing controller");
 
   m_availableAxes = { "X", "Y", "Z", "U", "V", "W" };
   m_lastStatusUpdate = std::chrono::steady_clock::now();
@@ -24,7 +30,7 @@ PIController::PIController()
 }
 
 PIController::~PIController() {
-  std::cout << "[INFO] PIController: Shutting down controller" << std::endl;
+  LOG_INFO("Shutting down controller");
   StopCommunicationThread();
   if (m_isConnected) {
     Disconnect();
@@ -36,7 +42,7 @@ void PIController::StartCommunicationThread() {
     m_threadRunning.store(true);
     m_terminateThread.store(false);
     m_communicationThread = std::thread(&PIController::CommunicationThreadFunc, this);
-    std::cout << "[INFO] PIController: Communication thread started" << std::endl;
+    LOG_INFO("Communication thread started");
   }
 }
 
@@ -53,7 +59,7 @@ void PIController::StopCommunicationThread() {
     }
 
     m_threadRunning.store(false);
-    std::cout << "[INFO] PIController: Communication thread stopped" << std::endl;
+    LOG_INFO("Communication thread stopped");
   }
 }
 
@@ -128,8 +134,7 @@ bool PIController::GetAnalogChannelCount(int& numChannels) {
   if (!PI_qTAC(m_controllerId, &numChannels)) {
     if (m_debugVerbose) {
       int error = PI_GetError(m_controllerId);
-      std::cout << "[ERROR] PIController: Failed to get analog channel count. Error: "
-        << error << std::endl;
+      LOG_DEBUG("Failed to get analog channel count. Error: " + std::to_string(error));
     }
     return false;
   }
@@ -144,8 +149,7 @@ bool PIController::GetAnalogVoltage(int channel, double& voltage) {
   if (!PI_qTAV(m_controllerId, &channelId, &voltage, 1)) {
     if (m_debugVerbose) {
       int error = PI_GetError(m_controllerId);
-      std::cout << "[ERROR] PIController: Failed to read analog channel " << channel
-        << ". Error: " << error << std::endl;
+      LOG_DEBUG("Failed to read analog channel " + std::to_string(channel) + ". Error: " + std::to_string(error));
     }
     return false;
   }
@@ -162,8 +166,7 @@ bool PIController::GetAnalogVoltages(std::vector<int> channels, std::map<int, do
   if (!PI_qTAV(m_controllerId, channelIds.data(), values.data(), static_cast<int>(channels.size()))) {
     if (m_debugVerbose) {
       int error = PI_GetError(m_controllerId);
-      std::cout << "[ERROR] PIController: Failed to read analog channels. Error: "
-        << error << std::endl;
+      LOG_DEBUG("Failed to read analog channels. Error: " + std::to_string(error));
     }
     return false;
   }
@@ -178,11 +181,11 @@ bool PIController::GetAnalogVoltages(std::vector<int> channels, std::map<int, do
 
 bool PIController::Connect(const std::string& ipAddress, int port) {
   if (m_isConnected) {
-    std::cout << "[WARNING] PIController: Already connected" << std::endl;
+    LOG_WARNING("Already connected");
     return true;
   }
 
-  std::cout << "[INFO] PIController: Connecting to " << ipAddress << ":" << port << std::endl;
+  LOG_INFO("Connecting to " + ipAddress + ":" + std::to_string(port));
 
   m_ipAddress = ipAddress;
   m_port = port;
@@ -191,12 +194,12 @@ bool PIController::Connect(const std::string& ipAddress, int port) {
 
   if (m_controllerId < 0) {
     int errorCode = PI_GetInitError();
-    std::cout << "[ERROR] PIController: Failed to connect. Error: " << errorCode << std::endl;
+    LOG_ERROR("Failed to connect. Error: " + std::to_string(errorCode));
     return false;
   }
 
   m_isConnected.store(true);
-  std::cout << "[INFO] PIController: Successfully connected (ID: " << m_controllerId << ")" << std::endl;
+  LOG_INFO("Successfully connected (ID: " + std::to_string(m_controllerId) + ")");
 
   // Initialize status maps
   {
@@ -230,8 +233,7 @@ void PIController::InitializeAnalogChannels() {
   if (!m_isConnected || !m_enableAnalogReading) return;
 
   if (GetAnalogChannelCount(m_numAnalogChannels)) {
-    std::cout << "[INFO] PIController: Found " << m_numAnalogChannels
-      << " analog channels" << std::endl;
+    LOG_INFO("Found " + std::to_string(m_numAnalogChannels) + " analog channels");
 
     std::lock_guard<std::mutex> lock(m_mutex);
     for (int channel : m_activeAnalogChannels) {
@@ -246,7 +248,7 @@ void PIController::Disconnect() {
   if (!m_isConnected) return;
 
   StopCommunicationThread();
-  std::cout << "[INFO] PIController: Disconnecting" << std::endl;
+  LOG_INFO("Disconnecting");
 
   StopAllAxes();
   PI_CloseConnection(m_controllerId);
@@ -254,17 +256,17 @@ void PIController::Disconnect() {
   m_isConnected.store(false);
   m_controllerId = -1;
 
-  std::cout << "[INFO] PIController: Disconnected" << std::endl;
+  LOG_INFO("Disconnected");
 }
 
 bool PIController::MoveToPosition(const std::string& axis, double position, bool blocking) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
   if (m_enableDebug) {
-    std::cout << "[INFO] PIController: Moving " << axis << " to " << position << std::endl;
+    LOG_INFO("Moving " + axis + " to " + std::to_string(position));
   }
 
   const char* axes = axis.c_str();
@@ -273,7 +275,7 @@ bool PIController::MoveToPosition(const std::string& axis, double position, bool
   if (!PI_MOV(m_controllerId, axes, positions)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to move. Error: " << error << std::endl;
+    LOG_ERROR("Failed to move. Error: " + std::to_string(error));
     return false;
   }
 
@@ -291,12 +293,12 @@ bool PIController::MoveToPosition(const std::string& axis, double position, bool
 
 bool PIController::MoveRelative(const std::string& axis, double distance, bool blocking) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
   if (m_debugVerbose) {
-    std::cout << "[INFO] PIController: Moving " << axis << " relative " << distance << std::endl;
+    LOG_DEBUG("Moving " + axis + " relative " + std::to_string(distance));
   }
 
   const char* axes = axis.c_str();
@@ -305,7 +307,7 @@ bool PIController::MoveRelative(const std::string& axis, double distance, bool b
   if (m_debugVerbose) {
     double currentPos = 0.0;
     if (GetPosition(axis, currentPos)) {
-      std::cout << "[DEBUG] Pre-move position: " << axis << " = " << currentPos << std::endl;
+      LOG_DEBUG("Pre-move position: " + axis + " = " + std::to_string(currentPos));
     }
   }
 
@@ -314,12 +316,12 @@ bool PIController::MoveRelative(const std::string& axis, double distance, bool b
   if (!moveResult) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to move. Error: " << error << std::endl;
+    LOG_ERROR("Failed to move. Error: " + std::to_string(error));
 
     if (m_debugVerbose) {
       char errorText[256] = { 0 };
       if (PI_TranslateError(error, errorText, sizeof(errorText))) {
-        std::cout << "[ERROR] Translation: " << errorText << std::endl;
+        LOG_ERROR("Translation: " + std::string(errorText));
       }
     }
     return false;
@@ -339,18 +341,18 @@ bool PIController::MoveRelative(const std::string& axis, double distance, bool b
 
 bool PIController::HomeAxis(const std::string& axis) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot home - not connected" << std::endl;
+    LOG_ERROR("Cannot home - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Homing axis " << axis << std::endl;
+  LOG_INFO("Homing axis " + axis);
 
   const char* axes = axis.c_str();
 
   if (!PI_FRF(m_controllerId, axes)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to home. Error: " << error << std::endl;
+    LOG_ERROR("Failed to home. Error: " + std::to_string(error));
     return false;
   }
 
@@ -359,18 +361,18 @@ bool PIController::HomeAxis(const std::string& axis) {
 
 bool PIController::StopAxis(const std::string& axis) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot stop - not connected" << std::endl;
+    LOG_ERROR("Cannot stop - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Stopping axis " << axis << std::endl;
+  LOG_INFO("Stopping axis " + axis);
 
   const char* axes = axis.c_str();
 
   if (!PI_HLT(m_controllerId, axes)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to stop. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop. Error: " + std::to_string(error));
     return false;
   }
 
@@ -379,16 +381,16 @@ bool PIController::StopAxis(const std::string& axis) {
 
 bool PIController::StopAllAxes() {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot stop - not connected" << std::endl;
+    LOG_ERROR("Cannot stop - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Stopping all axes" << std::endl;
+  LOG_INFO("Stopping all axes");
 
   if (!PI_STP(m_controllerId)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to stop all. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop all. Error: " + std::to_string(error));
     return false;
   }
 
@@ -405,8 +407,7 @@ bool PIController::IsMoving(const std::string& axis) {
 
   if (success) {
     if (m_debugVerbose) {
-      std::cout << "[DEBUG] IsMoving " << axis << ": "
-        << (isMovingArray[0] ? "TRUE" : "FALSE") << std::endl;
+      LOG_DEBUG("IsMoving " + axis + ": " + (isMovingArray[0] ? "TRUE" : "FALSE"));
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -416,7 +417,7 @@ bool PIController::IsMoving(const std::string& axis) {
 
   if (m_debugVerbose) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] IsMoving query failed for " << axis << ". Error: " << error << std::endl;
+    LOG_DEBUG("IsMoving query failed for " + axis + ". Error: " + std::to_string(error));
   }
 
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -446,12 +447,11 @@ bool PIController::GetPositions(std::map<std::string, double>& positions) {
 
 bool PIController::EnableServo(const std::string& axis, bool enable) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot change servo - not connected" << std::endl;
+    LOG_ERROR("Cannot change servo - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Setting servo " << axis << " to "
-    << (enable ? "enabled" : "disabled") << std::endl;
+  LOG_INFO("Setting servo " + axis + " to " + (enable ? "enabled" : "disabled"));
 
   const char* axes = axis.c_str();
   BOOL states[1] = { enable ? TRUE : FALSE };
@@ -459,7 +459,7 @@ bool PIController::EnableServo(const std::string& axis, bool enable) {
   if (!PI_SVO(m_controllerId, axes, states)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to set servo. Error: " << error << std::endl;
+    LOG_ERROR("Failed to set servo. Error: " + std::to_string(error));
     return false;
   }
 
@@ -500,11 +500,11 @@ bool PIController::IsServoEnabled(const std::string& axis, bool& enabled) {
 
 bool PIController::SetVelocity(const std::string& axis, double velocity) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot set velocity - not connected" << std::endl;
+    LOG_ERROR("Cannot set velocity - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Setting velocity " << axis << " to " << velocity << std::endl;
+  LOG_INFO("Setting velocity " + axis + " to " + std::to_string(velocity));
 
   const char* axes = axis.c_str();
   double velocities[1] = { velocity };
@@ -512,7 +512,7 @@ bool PIController::SetVelocity(const std::string& axis, double velocity) {
   if (!PI_VEL(m_controllerId, axes, velocities)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to set velocity. Error: " << error << std::endl;
+    LOG_ERROR("Failed to set velocity. Error: " + std::to_string(error));
     return false;
   }
 
@@ -535,12 +535,12 @@ bool PIController::GetVelocity(const std::string& axis, double& velocity) {
 
 bool PIController::WaitForMotionCompletion(const std::string& axis, double timeoutSeconds) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot wait - not connected" << std::endl;
+    LOG_ERROR("Cannot wait - not connected");
     return false;
   }
 
   if (m_debugVerbose) {
-    std::cout << "[DEBUG] Waiting for " << axis << " completion" << std::endl;
+    LOG_DEBUG("Waiting for " + axis + " completion");
   }
 
   auto startTime = std::chrono::steady_clock::now();
@@ -552,8 +552,7 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
 
     if (!stillMoving) {
       if (m_enableDebug) {
-        std::cout << "[INFO] Motion completed on " << axis << " after "
-          << checkCount << " checks" << std::endl;
+        LOG_INFO("Motion completed on " + axis + " after " + std::to_string(checkCount) + " checks");
       }
       return true;
     }
@@ -563,7 +562,7 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
       currentTime - startTime).count();
 
     if (elapsedSeconds > timeoutSeconds) {
-      std::cout << "[WARNING] Timeout waiting for " << axis << std::endl;
+      LOG_WARNING("Timeout waiting for " + axis);
       return false;
     }
 
@@ -576,11 +575,11 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
 
 bool PIController::ConfigureFromDevice(const MotionDevice& device) {
   if (m_isConnected) {
-    std::cout << "[WARNING] PIController: Cannot configure while connected" << std::endl;
+    LOG_WARNING("Cannot configure while connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Configuring from device: " << device.Name << std::endl;
+  LOG_INFO("Configuring from device: " + device.Name);
 
   m_deviceName = device.Name;
   m_ipAddress = device.IpAddress;
@@ -605,19 +604,18 @@ bool PIController::ConfigureFromDevice(const MotionDevice& device) {
       m_availableAxes.push_back(axisStr);
     }
 
-    std::cout << "[INFO] PIController: Configured axes: " << device.InstalledAxes << std::endl;
+    LOG_INFO("Configured axes: " + device.InstalledAxes);
   }
   else {
     m_availableAxes = { "X", "Y", "Z", "U", "V", "W" };
-    std::cout << "[INFO] PIController: Using default hexapod axes" << std::endl;
+    LOG_INFO("Using default hexapod axes");
   }
 
   return true;
 }
 
 bool PIController::MoveToNamedPosition(const std::string& deviceName, const std::string& positionName) {
-  std::cout << "[INFO] PIController: Moving to named position " << positionName
-    << " for " << deviceName << std::endl;
+  LOG_INFO("Moving to named position " + positionName + " for " + deviceName);
   return true;
 }
 
@@ -657,19 +655,18 @@ bool PIController::GetPosition(const std::string& axis, double& position) {
 
 bool PIController::MoveToPositionAll(double x, double y, double z, double u, double v, double w, bool blocking) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Moving all axes to X=" << x << ", Y=" << y
-    << ", Z=" << z << ", U=" << u << ", V=" << v << ", W=" << w << std::endl;
+  LOG_INFO("Moving all axes to X=" + std::to_string(x) + ", Y=" + std::to_string(y) + ", Z=" + std::to_string(z) + ", U=" + std::to_string(u) + ", V=" + std::to_string(v) + ", W=" + std::to_string(w));
 
   const char* szAxes = "X Y Z U V W";
   double pdValueArray[6] = { x, y, z, u, v, w };
 
   if (!PI_MOV(m_controllerId, szAxes, pdValueArray)) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: Failed to move all axes. Error: " << error << std::endl;
+    LOG_ERROR("Failed to move all axes. Error: " + std::to_string(error));
     return false;
   }
 
@@ -677,7 +674,7 @@ bool PIController::MoveToPositionAll(double x, double y, double z, double u, dou
     bool success = true;
     for (const auto& axis : { "X", "Y", "Z", "U", "V", "W" }) {
       if (!WaitForMotionCompletion(axis)) {
-        std::cout << "[ERROR] Timeout waiting for " << axis << std::endl;
+        LOG_ERROR("Timeout waiting for " + std::string(axis));
         success = false;
       }
     }
@@ -691,16 +688,16 @@ bool PIController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
   const std::vector<double>& positions,
   bool blocking) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
   if (axes.size() != positions.size() || axes.empty()) {
-    std::cout << "[ERROR] PIController: Invalid axes/positions arrays" << std::endl;
+    LOG_ERROR("Invalid axes/positions arrays");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Moving multiple axes" << std::endl;
+  LOG_INFO("Moving multiple axes");
 
   std::string axesStr;
   for (size_t i = 0; i < axes.size(); i++) {
@@ -715,7 +712,7 @@ bool PIController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
 
   if (!PI_MOV(m_controllerId, szAxes, posArray.data())) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: Failed to move. Error: " << error << std::endl;
+    LOG_ERROR("Failed to move. Error: " + std::to_string(error));
     return false;
   }
 
@@ -723,7 +720,7 @@ bool PIController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
     bool success = true;
     for (const auto& axis : axes) {
       if (!WaitForMotionCompletion(axis)) {
-        std::cout << "[ERROR] Timeout waiting for " << axis << std::endl;
+        LOG_ERROR("Timeout waiting for " + axis);
         success = false;
       }
     }
@@ -735,133 +732,132 @@ bool PIController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
 
 bool PIController::Home(const std::string& axis) {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::Home: Not connected" << std::endl;
+    LOG_ERROR("Home: Not connected");
     return false;
   }
 
   if (axis.empty()) {
-    std::cout << "[ERROR] PIController::Home: Empty axis name" << std::endl;
+    LOG_ERROR("Home: Empty axis name");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Homing axis " << axis << std::endl;
+  LOG_INFO("Homing axis " + axis);
 
   BOOL result = PI_GOH(m_controllerId, axis.c_str());
 
   if (!result) {
     int errorCode = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController::Home failed for " << axis
-      << ". PI error: " << errorCode << std::endl;
+    LOG_ERROR("Home failed for " + axis + ". PI error: " + std::to_string(errorCode));
     return false;
   }
 
-  std::cout << "[INFO] PIController: Successfully started homing for " << axis << std::endl;
+  LOG_INFO("Successfully started homing for " + axis);
   return true;
 }
 
 bool PIController::HomeAll() {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::HomeAll: Not connected" << std::endl;
+    LOG_ERROR("HomeAll: Not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Homing all axes" << std::endl;
+  LOG_INFO("Homing all axes");
 
   BOOL result = PI_GOH(m_controllerId, "");
 
   if (!result) {
     int errorCode = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController::HomeAll failed. PI error: " << errorCode << std::endl;
+    LOG_ERROR("HomeAll failed. PI error: " + std::to_string(errorCode));
     return false;
   }
 
-  std::cout << "[INFO] PIController: Successfully started homing all axes" << std::endl;
+  LOG_INFO("Successfully started homing all axes");
   return true;
 }
 
 bool PIController::HomeAxes(const std::vector<std::string>& axes) {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::HomeAxes: Not connected" << std::endl;
+    LOG_ERROR("HomeAxes: Not connected");
     return false;
   }
 
   if (axes.empty()) {
-    std::cout << "[ERROR] PIController::HomeAxes: Empty axes list" << std::endl;
+    LOG_ERROR("HomeAxes: Empty axes list");
     return false;
   }
 
   std::string axesString = AxesToString(axes);
-  std::cout << "[INFO] PIController: Homing axes: " << axesString << std::endl;
+  LOG_INFO("Homing axes: " + axesString);
 
   BOOL result = PI_GOH(m_controllerId, axesString.c_str());
 
   if (!result) {
     int errorCode = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController::HomeAxes failed. PI error: " << errorCode << std::endl;
+    LOG_ERROR("HomeAxes failed. PI error: " + std::to_string(errorCode));
     return false;
   }
 
-  std::cout << "[INFO] PIController: Successfully started homing" << std::endl;
+  LOG_INFO("Successfully started homing");
   return true;
 }
 
 bool PIController::HomeAxes(const std::string& axesString) {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::HomeAxes: Not connected" << std::endl;
+    LOG_ERROR("HomeAxes: Not connected");
     return false;
   }
 
   if (axesString.empty()) {
-    std::cout << "[ERROR] PIController::HomeAxes: Empty axes string" << std::endl;
+    LOG_ERROR("HomeAxes: Empty axes string");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Homing axes: " << axesString << std::endl;
+  LOG_INFO("Homing axes: " + axesString);
 
   BOOL result = PI_GOH(m_controllerId, axesString.c_str());
 
   if (!result) {
     int errorCode = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController::HomeAxes failed. PI error: " << errorCode << std::endl;
+    LOG_ERROR("HomeAxes failed. PI error: " + std::to_string(errorCode));
     return false;
   }
 
-  std::cout << "[INFO] PIController: Successfully started homing" << std::endl;
+  LOG_INFO("Successfully started homing");
   return true;
 }
 
 bool PIController::DefineHome(const std::string& axis) {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::DefineHome: Not connected" << std::endl;
+    LOG_ERROR("DefineHome: Not connected");
     return false;
   }
 
   if (axis.empty()) {
-    std::cout << "[ERROR] PIController::DefineHome: Empty axis name" << std::endl;
+    LOG_ERROR("DefineHome: Empty axis name");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Defining home for " << axis << std::endl;
+  LOG_INFO("Defining home for " + axis);
 
   BOOL result = PI_DFH(m_controllerId, axis.c_str());
 
   if (!result) {
     int errorCode = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController::DefineHome failed. PI error: " << errorCode << std::endl;
+    LOG_ERROR("DefineHome failed. PI error: " + std::to_string(errorCode));
     return false;
   }
 
-  std::cout << "[INFO] PIController: Successfully defined home for " << axis << std::endl;
+  LOG_INFO("Successfully defined home for " + axis);
   return true;
 }
 
 bool PIController::DefineHomeAll() {
   if (!IsConnected()) {
-    std::cout << "[ERROR] PIController::DefineHomeAll: Not connected" << std::endl;
+    LOG_ERROR("DefineHomeAll: Not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Defining home for all axes" << std::endl;
+  LOG_INFO("Defining home for all axes");
 
   auto axes = GetAvailableAxes();
   bool success = true;
@@ -870,14 +866,13 @@ bool PIController::DefineHomeAll() {
     BOOL result = PI_DFH(m_controllerId, axis.c_str());
     if (!result) {
       int errorCode = PI_GetError(m_controllerId);
-      std::cout << "[ERROR] DefineHomeAll failed for " << axis
-        << ". PI error: " << errorCode << std::endl;
+      LOG_ERROR("DefineHomeAll failed for " + axis + ". PI error: " + std::to_string(errorCode));
       success = false;
     }
   }
 
   if (success) {
-    std::cout << "[INFO] PIController: Successfully defined home for all axes" << std::endl;
+    LOG_INFO("Successfully defined home for all axes");
   }
 
   return success;
@@ -888,11 +883,11 @@ bool PIController::FSA(const std::string& axis1, double length1,
   double threshold, double distance,
   double alignStep, int analogInput) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot perform FSA - not connected" << std::endl;
+    LOG_ERROR("Cannot perform FSA - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Starting FSA scan" << std::endl;
+  LOG_INFO("Starting FSA scan");
 
   bool result = PI_FSA(m_controllerId,
     axis1.c_str(), length1,
@@ -902,11 +897,11 @@ bool PIController::FSA(const std::string& axis1, double length1,
 
   if (!result) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: FSA failed. Error: " << error << std::endl;
+    LOG_ERROR("FSA failed. Error: " + std::to_string(error));
     return false;
   }
 
-  std::cout << "[INFO] PIController: FSA scan started successfully" << std::endl;
+  LOG_INFO("FSA scan started successfully");
   return true;
 }
 
@@ -915,11 +910,11 @@ bool PIController::FSC(const std::string& axis1, double length1,
   double threshold, double distance,
   int analogInput) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot perform FSC - not connected" << std::endl;
+    LOG_ERROR("Cannot perform FSC - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Starting FSC scan" << std::endl;
+  LOG_INFO("Starting FSC scan");
 
   bool result = PI_FSC(m_controllerId,
     axis1.c_str(), length1,
@@ -929,11 +924,11 @@ bool PIController::FSC(const std::string& axis1, double length1,
 
   if (!result) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: FSC failed. Error: " << error << std::endl;
+    LOG_ERROR("FSC failed. Error: " + std::to_string(error));
     return false;
   }
 
-  std::cout << "[INFO] PIController: FSC scan started successfully" << std::endl;
+  LOG_INFO("FSC scan started successfully");
   return true;
 }
 
@@ -942,11 +937,11 @@ bool PIController::FSM(const std::string& axis1, double length1,
   double threshold, double distance,
   int analogInput) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot perform FSM - not connected" << std::endl;
+    LOG_ERROR("Cannot perform FSM - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Starting FSM scan" << std::endl;
+  LOG_INFO("Starting FSM scan");
 
   bool result = PI_FSM(m_controllerId,
     axis1.c_str(), length1,
@@ -956,24 +951,22 @@ bool PIController::FSM(const std::string& axis1, double length1,
 
   if (!result) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: FSM failed. Error: " << error << std::endl;
+    LOG_ERROR("FSM failed. Error: " + std::to_string(error));
     return false;
   }
 
-  std::cout << "[INFO] PIController: FSM scan started successfully" << std::endl;
+  LOG_INFO("FSM scan started successfully");
   return true;
 }
 
 bool PIController::FLM(const std::string& axis, double length, double threshold,
   int analogInput, int direction) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot perform FLM - not connected" << std::endl;
+    LOG_ERROR("Cannot perform FLM - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Starting FLM (Fast Line Maximum) scan on axis " << axis
-    << ", length=" << length << ", threshold=" << threshold
-    << ", analogInput=" << analogInput << ", direction=" << direction << std::endl;
+  LOG_INFO("Starting FLM (Fast Line Maximum) scan on axis " + axis + ", length=" + std::to_string(length) + ", threshold=" + std::to_string(threshold) + ", analogInput=" + std::to_string(analogInput) + ", direction=" + std::to_string(direction));
 
   bool result = PI_FLM(m_controllerId,
     axis.c_str(),
@@ -986,25 +979,22 @@ bool PIController::FLM(const std::string& axis, double length, double threshold,
     int error = PI_GetError(m_controllerId);
     char errorText[256] = { 0 };
     PI_TranslateError(error, errorText, sizeof(errorText));
-    std::cout << "[ERROR] PIController: FLM failed. Error: " << error
-      << " - " << errorText << std::endl;
+    LOG_ERROR("FLM failed. Error: " + std::to_string(error) + " - " + std::string(errorText));
     return false;
   }
 
-  std::cout << "[INFO] PIController: FLM scan started successfully" << std::endl;
+  LOG_INFO("FLM scan started successfully");
   return true;
 }
 
 bool PIController::FLS(const std::string& axis, double length, double threshold,
   int analogInput, int direction) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot perform FLS - not connected" << std::endl;
+    LOG_ERROR("Cannot perform FLS - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Starting FLS (Fast Line Scan) on axis " << axis
-    << ", length=" << length << ", threshold=" << threshold
-    << ", analogInput=" << analogInput << ", direction=" << direction << std::endl;
+  LOG_INFO("Starting FLS (Fast Line Scan) on axis " + axis + ", length=" + std::to_string(length) + ", threshold=" + std::to_string(threshold) + ", analogInput=" + std::to_string(analogInput) + ", direction=" + std::to_string(direction));
 
   bool result = PI_FLS(m_controllerId,
     axis.c_str(),
@@ -1017,30 +1007,28 @@ bool PIController::FLS(const std::string& axis, double length, double threshold,
     int error = PI_GetError(m_controllerId);
     char errorText[256] = { 0 };
     PI_TranslateError(error, errorText, sizeof(errorText));
-    std::cout << "[ERROR] PIController: FLS failed. Error: " << error
-      << " - " << errorText << std::endl;
+    LOG_ERROR("FLS failed. Error: " + std::to_string(error) + " - " + std::string(errorText));
     return false;
   }
 
-  std::cout << "[INFO] PIController: FLS scan started successfully" << std::endl;
+  LOG_INFO("FLS scan started successfully");
   return true;
 }
 
 bool PIController::GetFastScanStatus(int& status) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot query scan status - not connected" << std::endl;
+    LOG_ERROR("Cannot query scan status - not connected");
     return false;
   }
 
   if (!PI_qFSS(m_controllerId, &status)) {
     int error = PI_GetError(m_controllerId);
-    std::cout << "[ERROR] PIController: qFSS failed. Error: " << error << std::endl;
+    LOG_ERROR("qFSS failed. Error: " + std::to_string(error));
     return false;
   }
 
   if (m_debugVerbose) {
-    std::cout << "[DEBUG] PIController: Fast scan status = " << status
-      << (status == 0 ? " (idle)" : status > 0 ? " (running)" : " (error)") << std::endl;
+    LOG_DEBUG("Fast scan status = " + std::to_string(status) + (status == 0 ? " (idle)" : status > 0 ? " (running)" : " (error)"));
   }
 
   return true;
@@ -1048,17 +1036,16 @@ bool PIController::GetFastScanStatus(int& status) {
 
 bool PIController::SetSystemVelocity(double velocity) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot set system velocity - not connected" << std::endl;
+    LOG_ERROR("Cannot set system velocity - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Setting system velocity to " << velocity << std::endl;
+  LOG_INFO("Setting system velocity to " + std::to_string(velocity));
 
   if (!PI_VLS(m_controllerId, velocity)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to set system velocity. Error: "
-      << error << std::endl;
+    LOG_ERROR("Failed to set system velocity. Error: " + std::to_string(error));
     return false;
   }
 
@@ -1071,8 +1058,7 @@ bool PIController::GetSystemVelocity(double& velocity) {
   if (!PI_qVLS(m_controllerId, &velocity)) {
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    std::cout << "[ERROR] PIController: Failed to get system velocity. Error: "
-      << error << std::endl;
+    LOG_ERROR("Failed to get system velocity. Error: " + std::to_string(error));
     return false;
   }
 
@@ -1118,11 +1104,11 @@ PositionStruct PIController::GetCurrentPosition() {
 
 bool PIController::GetPivotPoint(double& pivotX, double& pivotY, double& pivotZ) {
   if (!m_isConnected) {
-    std::cout << "❌ [ERROR] PIController: Cannot get pivot point - not connected" << std::endl;
+    LOG_ERROR("Cannot get pivot point - not connected");
     return false;
   }
 
-  std::cout << "🔍 [INFO] PIController: Reading pivot point from controller" << std::endl;
+  LOG_INFO("Reading pivot point from controller");
 
   // Use PI_qSPI to query pivot point coordinates
   // Try both "X Y Z" and "R S T" axis naming conventions
@@ -1136,30 +1122,27 @@ bool PIController::GetPivotPoint(double& pivotX, double& pivotY, double& pivotZ)
       pivotY = values[1];
       pivotZ = values[2];
 
-      std::cout << "✅ [INFO] PIController: Successfully read pivot point using axes: " << axes << std::endl;
-      std::cout << "📍 [INFO] PIController: Current pivot point: X=" << pivotX
-                << ", Y=" << pivotY << ", Z=" << pivotZ << std::endl;
+      LOG_INFO("Successfully read pivot point using axes: " + std::string(axes));
+      LOG_INFO("Current pivot point: X=" + std::to_string(pivotX) + ", Y=" + std::to_string(pivotY) + ", Z=" + std::to_string(pivotZ));
       return true;
     }
     else {
       int error = PI_GetError(m_controllerId);
-      std::cout << "⚠️ [DEBUG] PIController: Failed to read pivot with axes '" << axes
-                << "' (Error: " << error << ")" << std::endl;
+      LOG_DEBUG("Failed to read pivot with axes '" + std::string(axes) + "' (Error: " + std::to_string(error) + ")");
     }
   }
 
-  std::cout << "❌ [ERROR] PIController: Failed to read pivot point" << std::endl;
+  LOG_ERROR("Failed to read pivot point");
   return false;
 }
 
 bool PIController::SetPivotPoint(double pivotX, double pivotY, double pivotZ) {
   if (!m_isConnected) {
-    std::cout << "❌ [ERROR] PIController: Cannot set pivot point - not connected" << std::endl;
+    LOG_ERROR("Cannot set pivot point - not connected");
     return false;
   }
 
-  std::cout << "📝 [INFO] PIController: Setting pivot point: X=" << pivotX
-            << ", Y=" << pivotY << ", Z=" << pivotZ << std::endl;
+  LOG_INFO("Setting pivot point: X=" + std::to_string(pivotX) + ", Y=" + std::to_string(pivotY) + ", Z=" + std::to_string(pivotZ));
 
   // Use PI_SPI to set pivot point coordinates
   // Try both "X Y Z" and "R S T" axis naming conventions
@@ -1169,33 +1152,32 @@ bool PIController::SetPivotPoint(double pivotX, double pivotY, double pivotZ) {
     double values[3] = { pivotX, pivotY, pivotZ };
 
     if (PI_SPI(m_controllerId, axes, values)) {
-      std::cout << "✅ [INFO] PIController: Successfully set pivot point using axes: " << axes << std::endl;
+      LOG_INFO("Successfully set pivot point using axes: " + std::string(axes));
       return true;
     }
     else {
       int error = PI_GetError(m_controllerId);
-      std::cout << "⚠️ [DEBUG] PIController: Failed to set pivot with axes '" << axes
-                << "' (Error: " << error << ")" << std::endl;
+      LOG_DEBUG("Failed to set pivot with axes '" + std::string(axes) + "' (Error: " + std::to_string(error) + ")");
     }
   }
 
-  std::cout << "❌ [ERROR] PIController: Failed to set pivot point" << std::endl;
+  LOG_ERROR("Failed to set pivot point");
   return false;
 }
 
 bool PIController::QueryAvailableParameters(int itemId) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] PIController: Cannot query parameters - not connected" << std::endl;
+    LOG_ERROR("Cannot query parameters - not connected");
     return false;
   }
 
-  std::cout << "[INFO] PIController: Querying available parameters for item " << itemId << std::endl;
+  LOG_INFO("Querying available parameters for item " + std::to_string(itemId));
 
   // PI_qHPA (Hardware Parameter Available) can list available parameters
   // This is a simplified version - full implementation would require more GCS2 commands
 
   // Try to query some common parameter ranges
-  std::cout << "[INFO] PIController: Testing common pivot-related parameter IDs..." << std::endl;
+  LOG_INFO("Testing common pivot-related parameter IDs...");
 
   unsigned int testParams[] = {
     0x50, 0x51, 0x52,           // Common pivot params
@@ -1207,8 +1189,9 @@ bool PIController::QueryAvailableParameters(int itemId) {
   for (unsigned int paramId : testParams) {
     double value = 0.0;
     if (GetParameterValue(itemId, paramId, value)) {
-      std::cout << "[INFO]   Parameter 0x" << std::hex << paramId << std::dec
-                << " (" << paramId << ") = " << value << std::endl;
+      std::ostringstream oss;
+      oss << "  Parameter 0x" << std::hex << paramId << std::dec << " (" << paramId << ") = " << value;
+      LOG_INFO(oss.str());
     }
   }
 

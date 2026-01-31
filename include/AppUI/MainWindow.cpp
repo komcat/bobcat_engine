@@ -13,6 +13,7 @@
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
 #include "AuxWindowManager.h"
+#include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
@@ -146,6 +147,7 @@ void MainWindow::setupUI()
   m_topBar = new TopBar(m_context, this);
   connect(m_topBar, &TopBar::jogButtonClicked, this, &MainWindow::onToggleJogPanel);
   connect(m_topBar, &TopBar::auxWindowButtonClicked, this, &MainWindow::onToggleAuxWindow);
+  connect(m_topBar, &TopBar::rtlmButtonClicked, this, &MainWindow::onToggleRtlmWindow);
   mainLayout->addWidget(m_topBar, 0);
 
   // Page stack (main content area)
@@ -378,10 +380,15 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutCtrlK, &QShortcut::activated, this, &MainWindow::onToggleAuxWindow);
   std::cout << "[MainWindow]   Ctrl+K -> Toggle Aux Window" << std::endl;
 
+  // Ctrl+R - Toggle Realtime Camera Monitor (GDI)
+  m_shortcutCtrlR = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_R), this);
+  connect(m_shortcutCtrlR, &QShortcut::activated, this, &MainWindow::onToggleRtlmWindow);
+  std::cout << "[MainWindow]   Ctrl+R -> Toggle Realtime Camera Monitor" << std::endl;
+
   std::cout << "[MainWindow] Keyboard shortcuts setup complete!" << std::endl;
 
   if (m_context->logManager) {
-    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K) registered", "MainWindow");
+    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K, Ctrl+R) registered", "MainWindow");
   }
 }
 
@@ -562,6 +569,29 @@ void MainWindow::onToggleAuxWindow()
     std::cout << "[MainWindow] Aux window shown (Ctrl+K)" << std::endl;
     if (m_context->logManager) {
       m_context->logManager->Info("Aux window shown", "MainWindow");
+    }
+  }
+}
+
+void MainWindow::onToggleRtlmWindow()
+{
+  if (!m_context || !m_context->gdiCameraWindowManager) {
+    std::cerr << "[MainWindow] GDI Camera window manager not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_context->gdiCameraWindowManager->isVisible()) {
+    m_context->gdiCameraWindowManager->hide();
+    std::cout << "[MainWindow] Realtime camera monitor hidden (Ctrl+R)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Realtime camera monitor hidden", "MainWindow");
+    }
+  }
+  else {
+    m_context->gdiCameraWindowManager->show();
+    std::cout << "[MainWindow] Realtime camera monitor shown (Ctrl+R)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Realtime camera monitor shown", "MainWindow");
     }
   }
 }

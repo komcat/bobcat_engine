@@ -3,7 +3,6 @@
 #include "SequenceEngine.h"
 #include "SequenceBuilder.h"
 #include "SequenceContext.h"
-#include <iostream>
 
 SequenceWorker::SequenceWorker(
   SequenceEngine* engine,
@@ -40,10 +39,8 @@ void SequenceWorker::requestStop()
 void SequenceWorker::run()
 {
   try {
-    std::cout << "[SequenceWorker] Starting sequence execution in background thread" << std::endl;
-
     emit executionStarted();
-    emit logMessage("Starting sequence execution...");
+    emit logMessage("Starting sequence execution in background thread");
 
     // Check stop flag before starting
     if (m_stopRequested.load()) {
@@ -68,7 +65,6 @@ void SequenceWorker::run()
     if (m_stopRequested.load() || context.IsStopRequested()) {
       emit executionStopped();
       emit logMessage("Execution stopped by user");
-      std::cout << "[SequenceWorker] Execution stopped by user" << std::endl;
       return;
     }
 
@@ -76,17 +72,14 @@ void SequenceWorker::run()
     if (success) {
       emit executionCompleted(true, "");
       emit logMessage("Sequence completed successfully");
-      std::cout << "[SequenceWorker] Sequence completed successfully" << std::endl;
     } else {
       emit executionCompleted(false, "Sequence execution failed - check console output");
       emit logMessage("Sequence execution failed");
-      std::cout << "[SequenceWorker] Sequence execution failed" << std::endl;
     }
 
   } catch (const std::exception& e) {
-    std::cerr << "[SequenceWorker] Exception during execution: " << e.what() << std::endl;
+    emit logMessage(QString("Exception during execution: %1").arg(e.what()));
     emit executionCompleted(false, QString("Exception: %1").arg(e.what()));
-    emit logMessage(QString("Error: %1").arg(e.what()));
 
     // Clean up on exception
     if (m_sequence) {

@@ -5,6 +5,7 @@
 #include "acs_controller_manager.h"
 #include "pi_controller_manager.h"
 #include "MotionTypes.h"
+#include "ILogger.h"
 
 #include <string>
 #include <map>
@@ -35,6 +36,16 @@ public:
 	 * @param safetyManager Pointer to SafetyWatchManager
 	 */
 	void SetSafetyWatchManager(SafetyWatchManager* safetyManager);
+
+	// ============================================================================
+	// LOGGER SUPPORT
+	// ============================================================================
+
+	/**
+	 * @brief Set logger for this manager and propagate to child managers
+	 * @param logger Pointer to ILogger interface (LogManager implements this)
+	 */
+	void SetLogger(ILogger* logger);
 
 	// ============================================================================
 	// DEBUG LOGGING CONTROL
@@ -458,6 +469,9 @@ private:
 
 	// Debug logging flag
 	bool m_debugLogging = false;  // Set to true to enable verbose waypoint logging
+
+	// Logger for spdlog integration
+	ILogger* m_logger = nullptr;
 
 	// Pending target tracking for non-blocking moves
 	// Stores the target position name for each device when a non-blocking move starts

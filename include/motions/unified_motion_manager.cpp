@@ -2,11 +2,16 @@
 #include "unified_motion_manager.h"
 #include "MotionJsonLoader.h"
 #include "safety/SafetyWatchManager.h"
-#include <iostream>
 #include <algorithm>
 #include <limits>
 #include <thread>
 #include <chrono>
+
+// Logging helper macros
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "UnifiedMotionManager")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "UnifiedMotionManager")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "UnifiedMotionManager")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "UnifiedMotionManager")
 
 std::string UnifiedMotionManager::GetWaypointStateString(const std::string& deviceName) const {
   auto it = m_waypointStates.find(deviceName);
@@ -23,8 +28,6 @@ std::string UnifiedMotionManager::GetWaypointStateString(const std::string& devi
 }
 
 UnifiedMotionManager::UnifiedMotionManager() {
-  std::cout << "[INFO] UnifiedMotionManager: Initializing" << std::endl;
-
   // Register ACS manager
   RegisterManager("ACS", std::make_unique<ACSControllerManager>());
 
@@ -35,18 +38,34 @@ UnifiedMotionManager::UnifiedMotionManager() {
   // RegisterManager("NEWPORT", std::make_unique<NewportControllerManager>());
   // RegisterManager("THORLABS", std::make_unique<ThorlabsControllerManager>());
 
-  std::cout << "[INFO] UnifiedMotionManager: Initialized with "
-    << m_managers.size() << " controller managers" << std::endl;
+  // Note: Can't log here - logger not set yet
+}
+
+void UnifiedMotionManager::SetLogger(ILogger* logger) {
+  m_logger = logger;
+
+  LOG_INFO("Initialized with " + std::to_string(m_managers.size()) + " controller managers");
+
+  // Propagate logger to child managers
+  ACSControllerManager* acsManager = GetACSManager();
+  if (acsManager) {
+    acsManager->SetLogger(logger);
+  }
+
+  PIControllerManager* piManager = GetPIManager();
+  if (piManager) {
+    piManager->SetLogger(logger);
+  }
 }
 
 UnifiedMotionManager::~UnifiedMotionManager() {
-  std::cout << "[INFO] UnifiedMotionManager: Shutting down" << std::endl;
+  LOG_INFO("Shutting down");
   DisconnectAll();
 }
 
 void UnifiedMotionManager::SetSafetyWatchManager(SafetyWatchManager* safetyManager) {
   if (!safetyManager) {
-    std::cout << "[UnifiedMotionManager] Warning: SafetyWatchManager is null" << std::endl;
+    LOG_WARNING("SafetyWatchManager is null");
     return;
   }
 
@@ -56,19 +75,19 @@ void UnifiedMotionManager::SetSafetyWatchManager(SafetyWatchManager* safetyManag
       Q_UNUSED(title);
       Q_UNUSED(message);
       if (critical) {
-        std::cout << "[UnifiedMotionManager] Critical safety flag - EMERGENCY STOP ALL AXES" << std::endl;
+        LOG_WARNING("Critical safety flag - EMERGENCY STOP ALL AXES");
         EmergencyStopAll();
       }
     });
 
-  std::cout << "[UnifiedMotionManager] Subscribed to SafetyWatchManager for emergency stop" << std::endl;
+  LOG_INFO("Subscribed to SafetyWatchManager for emergency stop");
 }
 
 void UnifiedMotionManager::RegisterManager(const std::string& type,
   std::unique_ptr<IMotionControllerManager> manager) {
   std::string normalizedType = NormalizeType(type);
   m_managers[normalizedType] = std::move(manager);
-  std::cout << "[INFO] UnifiedMotionManager: Registered " << type << " manager" << std::endl;
+  LOG_DEBUG("Registered " + type + " manager");
 }
 
 std::string UnifiedMotionManager::NormalizeType(const std::string& type) const {
@@ -105,8 +124,7 @@ std::string UnifiedMotionManager::GetDeviceType(const std::string& deviceName) c
 // ============================================================================
 
 void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
-  std::cout << "[INFO] UnifiedMotionManager: Adding device " << device.Name
-    << " (Type: " << device.TypeController << ")" << std::endl;
+  LOG_INFO("Adding device " + device.Name + " (Type: " + device.TypeController + ")");
 
   // Store full device configuration
   m_deviceConfigs[device.Name] = device;
@@ -120,17 +138,15 @@ void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
 
   if (managerIt != m_managers.end()) {
     managerIt->second->AddDevice(device);
-    std::cout << "[INFO] UnifiedMotionManager: Routed " << device.Name
-      << " to " << normalizedType << " manager" << std::endl;
+    LOG_INFO("Routed " + device.Name + " to " + normalizedType + " manager");
   }
   else {
-    std::cout << "[ERROR] UnifiedMotionManager: No manager found for type '"
-      << device.TypeController << "'" << std::endl;
-    std::cout << "[ERROR] UnifiedMotionManager: Supported types: ";
+    LOG_ERROR("No manager found for type '" + device.TypeController + "'");
+    std::string supportedTypes;
     for (const auto& [type, _] : m_managers) {
-      std::cout << type << " ";
+      supportedTypes += type + " ";
     }
-    std::cout << std::endl;
+    LOG_ERROR("Supported types: " + supportedTypes);
   }
 }
 
@@ -138,21 +154,19 @@ void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
 void UnifiedMotionManager::RemoveDevice(const std::string& deviceName) {
   IMotionControllerManager* manager = GetManagerForDevice(deviceName);
   if (!manager) {
-    std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_WARNING("Device " + deviceName + " not found");
     return;
   }
 
   std::string type = m_deviceTypes[deviceName];
-  std::cout << "[INFO] UnifiedMotionManager: Removing device " << deviceName
-    << " (Type: " << type << ")" << std::endl;
+  LOG_INFO("Removing device " + deviceName + " (Type: " + type + ")");
 
   manager->RemoveDevice(deviceName);
   m_deviceTypes.erase(deviceName);
   m_deviceConfigs.erase(deviceName);  // Remove config
   m_namedPositions.erase(deviceName); // Remove named positions
 
-  std::cout << "[INFO] UnifiedMotionManager: Removed device " << deviceName << std::endl;
+  LOG_INFO("Removed device " + deviceName);
 }
 
 
@@ -183,7 +197,7 @@ bool UnifiedMotionManager::HasDevice(const std::string& deviceName) const {
 // ============================================================================
 
 bool UnifiedMotionManager::ConnectAll() {
-  std::cout << "[INFO] UnifiedMotionManager: Connecting all enabled devices" << std::endl;
+  LOG_INFO("Connecting all enabled devices");
 
   bool allSuccess = true;
   for (auto& [type, manager] : m_managers) {
@@ -193,39 +207,36 @@ bool UnifiedMotionManager::ConnectAll() {
     }
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: Connect all "
-    << (allSuccess ? "succeeded" : "completed with errors") << std::endl;
+  LOG_INFO("Connect all " + std::string(allSuccess ? "succeeded" : "completed with errors"));
 
   return allSuccess;
 }
 
 void UnifiedMotionManager::DisconnectAll() {
-  std::cout << "[INFO] UnifiedMotionManager: Disconnecting all devices" << std::endl;
+  LOG_INFO("Disconnecting all devices");
 
   for (auto& [type, manager] : m_managers) {
     manager->DisconnectAll();
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: All devices disconnected" << std::endl;
+  LOG_INFO("All devices disconnected");
 }
 
 bool UnifiedMotionManager::ConnectDevice(const std::string& deviceName) {
   IMotionControllerManager* manager = GetManagerForDevice(deviceName);
   if (!manager) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: Connecting device " << deviceName << std::endl;
+  LOG_INFO("Connecting device " + deviceName);
   return manager->ConnectDevice(deviceName);
 }
 
 bool UnifiedMotionManager::DisconnectDevice(const std::string& deviceName) {
   IMotionControllerManager* manager = GetManagerForDevice(deviceName);
   if (!manager) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
@@ -235,8 +246,7 @@ bool UnifiedMotionManager::DisconnectDevice(const std::string& deviceName) {
 bool UnifiedMotionManager::ReconnectDevice(const std::string& deviceName) {
   IMotionControllerManager* manager = GetManagerForDevice(deviceName);
   if (!manager) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
@@ -244,17 +254,16 @@ bool UnifiedMotionManager::ReconnectDevice(const std::string& deviceName) {
 }
 
 int UnifiedMotionManager::ConnectEnabledDevices() {
-  std::cout << "[INFO] UnifiedMotionManager: Connecting enabled devices" << std::endl;
+  LOG_INFO("Connecting enabled devices");
 
   int totalCount = 0;
   for (auto& [type, manager] : m_managers) {
     int count = manager->ConnectEnabledDevices();
-    std::cout << "[INFO] UnifiedMotionManager: Connected " << count
-      << " " << type << " devices" << std::endl;
+    LOG_INFO("Connected " + std::to_string(count) + " " + type + " devices");
     totalCount += count;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: Total connected: " << totalCount << std::endl;
+  LOG_INFO("Total connected: " + std::to_string(totalCount));
   return totalCount;
 }
 
@@ -268,13 +277,11 @@ bool UnifiedMotionManager::MoveToAbs(const std::string& deviceName,
   bool blocking) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: MoveToAbs on " << deviceName
-    << " to (" << x << ", " << y << ", " << z << ")" << std::endl;
+  LOG_INFO("MoveToAbs on " + deviceName + " to (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
@@ -299,14 +306,11 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
   bool blocking) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: MoveToAbs6 on " << deviceName
-    << " to (" << pos.x << ", " << pos.y << ", " << pos.z
-    << ", " << pos.u << ", " << pos.v << ", " << pos.w << ")" << std::endl;
+  LOG_INFO("MoveToAbs6 on " + deviceName + " to (" + std::to_string(pos.x) + ", " + std::to_string(pos.y) + ", " + std::to_string(pos.z) + ", " + std::to_string(pos.u) + ", " + std::to_string(pos.v) + ", " + std::to_string(pos.w) + ")");
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
@@ -345,7 +349,7 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
     }
 
     if (axes.empty()) {
-      std::cout << "[ERROR] MoveToAbs6: No valid axes configured for " << deviceName << std::endl;
+      LOG_ERROR("MoveToAbs6: No valid axes configured for " + deviceName);
       return false;
     }
 
@@ -369,13 +373,11 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
   bool blocking) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: MoveToPosition on " << deviceName
-    << " axis " << axis << " to " << position << std::endl;
+  LOG_INFO("MoveToPosition on " + deviceName + " axis " + axis + " to " + std::to_string(position));
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
@@ -397,55 +399,51 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   const std::string& axis,
   double distance,
   bool blocking) {
-  std::cout << "[DEBUG] UnifiedMotionManager::MoveRelative START - device=" << deviceName
-    << " axis=" << axis << " distance=" << distance << " blocking=" << blocking << std::endl;
+  LOG_DEBUG("MoveRelative START - device=" + deviceName + " axis=" + axis + " distance=" + std::to_string(distance) + " blocking=" + std::string(blocking ? "true" : "false"));
 
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[INFO] UnifiedMotionManager: MoveRelative on " << deviceName
-    << " axis " << axis << " by " << distance << " (type=" << type << ")" << std::endl;
+  LOG_INFO("MoveRelative on " + deviceName + " axis " + axis + " by " + std::to_string(distance) + " (type=" + type + ")");
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
     if (!controller) {
-      std::cout << "[ERROR] UnifiedMotionManager: GetACSController returned null for " << deviceName << std::endl;
+      LOG_ERROR("GetACSController returned null for " + deviceName);
       return false;
     }
-    std::cout << "[DEBUG] UnifiedMotionManager: Calling ACSController::MoveRelative" << std::endl;
+    LOG_DEBUG("Calling ACSController::MoveRelative");
     bool result = controller->MoveRelative(axis, distance, blocking);
-    std::cout << "[DEBUG] UnifiedMotionManager: ACSController::MoveRelative returned " << result << std::endl;
+    LOG_DEBUG("ACSController::MoveRelative returned " + std::string(result ? "true" : "false"));
     return result;
   }
   else if (NormalizeType(type) == "PI") {
     PIController* controller = GetPIController(deviceName);
     if (!controller) {
-      std::cout << "[ERROR] UnifiedMotionManager: GetPIController returned null for " << deviceName << std::endl;
+      LOG_ERROR("GetPIController returned null for " + deviceName);
       return false;
     }
-    std::cout << "[DEBUG] UnifiedMotionManager: Calling PIController::MoveRelative" << std::endl;
+    LOG_DEBUG("Calling PIController::MoveRelative");
     bool result = controller->MoveRelative(axis, distance, blocking);
-    std::cout << "[DEBUG] UnifiedMotionManager: PIController::MoveRelative returned " << result << std::endl;
+    LOG_DEBUG("PIController::MoveRelative returned " + std::string(result ? "true" : "false"));
     return result;
   }
 
-  std::cout << "[ERROR] UnifiedMotionManager: Unknown device type " << type << std::endl;
+  LOG_ERROR("Unknown device type " + type);
   return false;
 }
 
 bool UnifiedMotionManager::EmergencyStop(const std::string& deviceName) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
-  std::cout << "[WARNING] UnifiedMotionManager: EMERGENCY STOP on " << deviceName << std::endl;
+  LOG_WARNING("EMERGENCY STOP on " + deviceName);
 
   // ✅ Clear waypoint state after stopping motion
   stopWaypointSequence(deviceName);
@@ -465,7 +463,7 @@ bool UnifiedMotionManager::EmergencyStop(const std::string& deviceName) {
 }
 
 bool UnifiedMotionManager::EmergencyStopAll() {
-  std::cout << "[WARNING] UnifiedMotionManager: EMERGENCY STOP ALL DEVICES" << std::endl;
+  LOG_WARNING("EMERGENCY STOP ALL DEVICES");
 
   bool success = true;
 
@@ -634,23 +632,20 @@ bool UnifiedMotionManager::GetVelocity(const std::string& deviceName,
 bool UnifiedMotionManager::SetSystemVelocity(const std::string& deviceName, double velocity) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::SetSystemVelocity: Device not found: "
-      << deviceName << std::endl;
+    LOG_ERROR("SetSystemVelocity: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) == "PI") {
     PIController* controller = GetPIController(deviceName);
     if (!controller) {
-      std::cout << "[ERROR] UnifiedMotionManager::SetSystemVelocity: PI controller not found for "
-        << deviceName << std::endl;
+      LOG_ERROR("SetSystemVelocity: PI controller not found for " + deviceName);
       return false;
     }
     return controller->SetSystemVelocity(velocity);
   }
   else {
-    std::cout << "[WARNING] UnifiedMotionManager::SetSystemVelocity: System velocity only supported for PI controllers"
-      << std::endl;
+    LOG_WARNING("SetSystemVelocity: System velocity only supported for PI controllers");
     return false;
   }
 }
@@ -676,19 +671,18 @@ bool UnifiedMotionManager::FLM(const std::string& deviceName, const std::string&
   double length, double threshold, int analogInput, int direction) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::FLM: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("FLM: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::FLM: Only supported for PI controllers (device: "
-      << deviceName << " is type: " << type << ")" << std::endl;
+    LOG_ERROR("FLM: Only supported for PI controllers (device: " + deviceName + " is type: " + type + ")");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::FLM: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("FLM: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -699,18 +693,18 @@ bool UnifiedMotionManager::FLS(const std::string& deviceName, const std::string&
   double length, double threshold, int analogInput, int direction) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::FLS: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("FLS: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::FLS: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("FLS: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::FLS: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("FLS: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -723,18 +717,18 @@ bool UnifiedMotionManager::FSA(const std::string& deviceName,
   double threshold, double distance, double alignStep, int analogInput) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSA: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("FSA: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::FSA: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("FSA: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSA: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("FSA: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -747,18 +741,18 @@ bool UnifiedMotionManager::FSC(const std::string& deviceName,
   double threshold, double distance, int analogInput) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSC: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("FSC: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::FSC: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("FSC: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSC: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("FSC: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -771,18 +765,18 @@ bool UnifiedMotionManager::FSM(const std::string& deviceName,
   double threshold, double distance, int analogInput) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSM: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("FSM: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::FSM: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("FSM: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::FSM: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("FSM: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -792,18 +786,18 @@ bool UnifiedMotionManager::FSM(const std::string& deviceName,
 bool UnifiedMotionManager::GetFastScanStatus(const std::string& deviceName, int& status) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("GetFastScanStatus: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("GetFastScanStatus: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::GetFastScanStatus: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("GetFastScanStatus: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -813,18 +807,18 @@ bool UnifiedMotionManager::GetFastScanStatus(const std::string& deviceName, int&
 bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName, double timeoutSeconds) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Device not found: " << deviceName << std::endl;
+    LOG_ERROR("WaitForFastScanComplete: Device not found: " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "PI") {
-    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Only supported for PI controllers" << std::endl;
+    LOG_ERROR("WaitForFastScanComplete: Only supported for PI controllers");
     return false;
   }
 
   PIController* controller = GetPIController(deviceName);
   if (!controller) {
-    std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: PI controller not found for " << deviceName << std::endl;
+    LOG_ERROR("WaitForFastScanComplete: PI controller not found for " + deviceName);
     return false;
   }
 
@@ -833,18 +827,18 @@ bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName
 
   while (true) {
     if (!controller->GetFastScanStatus(status)) {
-      std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Failed to query scan status" << std::endl;
+      LOG_ERROR("WaitForFastScanComplete: Failed to query scan status");
       return false;
     }
 
     // status: 0=idle (complete), >0=running, <0=error
     if (status == 0) {
-      std::cout << "[INFO] UnifiedMotionManager::WaitForFastScanComplete: Scan completed successfully" << std::endl;
+      LOG_INFO("WaitForFastScanComplete: Scan completed successfully");
       return true;
     }
 
     if (status < 0) {
-      std::cout << "[ERROR] UnifiedMotionManager::WaitForFastScanComplete: Scan failed with error: " << status << std::endl;
+      LOG_ERROR("WaitForFastScanComplete: Scan failed with error: " + std::to_string(status));
       return false;
     }
 
@@ -852,8 +846,7 @@ bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
       std::chrono::steady_clock::now() - startTime).count();
     if (elapsed > timeoutSeconds) {
-      std::cout << "[WARNING] UnifiedMotionManager::WaitForFastScanComplete: Timeout after "
-        << timeoutSeconds << " seconds" << std::endl;
+      LOG_WARNING("WaitForFastScanComplete: Timeout after " + std::to_string(timeoutSeconds) + " seconds");
       return false;
     }
 
@@ -940,20 +933,18 @@ bool UnifiedMotionManager::RunBuffer(const std::string& deviceName, int bufferNu
   const std::string& labelName) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cerr << "[UnifiedMotionManager] RunBuffer: Unknown device " << deviceName << std::endl;
+    LOG_ERROR("RunBuffer: Unknown device " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "ACS") {
-    std::cerr << "[UnifiedMotionManager] RunBuffer: Device " << deviceName
-              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    LOG_ERROR("RunBuffer: Device " + deviceName + " is not an ACS controller (type: " + type + ")");
     return false;
   }
 
   ACSController* controller = GetACSController(deviceName);
   if (!controller) {
-    std::cerr << "[UnifiedMotionManager] RunBuffer: Could not get ACS controller for "
-              << deviceName << std::endl;
+    LOG_ERROR("RunBuffer: Could not get ACS controller for " + deviceName);
     return false;
   }
 
@@ -963,20 +954,18 @@ bool UnifiedMotionManager::RunBuffer(const std::string& deviceName, int bufferNu
 bool UnifiedMotionManager::StopBuffer(const std::string& deviceName, int bufferNumber) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cerr << "[UnifiedMotionManager] StopBuffer: Unknown device " << deviceName << std::endl;
+    LOG_ERROR("StopBuffer: Unknown device " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "ACS") {
-    std::cerr << "[UnifiedMotionManager] StopBuffer: Device " << deviceName
-              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    LOG_ERROR("StopBuffer: Device " + deviceName + " is not an ACS controller (type: " + type + ")");
     return false;
   }
 
   ACSController* controller = GetACSController(deviceName);
   if (!controller) {
-    std::cerr << "[UnifiedMotionManager] StopBuffer: Could not get ACS controller for "
-              << deviceName << std::endl;
+    LOG_ERROR("StopBuffer: Could not get ACS controller for " + deviceName);
     return false;
   }
 
@@ -986,20 +975,18 @@ bool UnifiedMotionManager::StopBuffer(const std::string& deviceName, int bufferN
 bool UnifiedMotionManager::StopAllBuffers(const std::string& deviceName) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
-    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Unknown device " << deviceName << std::endl;
+    LOG_ERROR("StopAllBuffers: Unknown device " + deviceName);
     return false;
   }
 
   if (NormalizeType(type) != "ACS") {
-    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Device " << deviceName
-              << " is not an ACS controller (type: " << type << ")" << std::endl;
+    LOG_ERROR("StopAllBuffers: Device " + deviceName + " is not an ACS controller (type: " + type + ")");
     return false;
   }
 
   ACSController* controller = GetACSController(deviceName);
   if (!controller) {
-    std::cerr << "[UnifiedMotionManager] StopAllBuffers: Could not get ACS controller for "
-              << deviceName << std::endl;
+    LOG_ERROR("StopAllBuffers: Could not get ACS controller for " + deviceName);
     return false;
   }
 
@@ -1120,8 +1107,7 @@ ACSController* UnifiedMotionManager::GetACSController(const std::string& deviceN
   std::string type = GetDeviceType(deviceName);
   if (NormalizeType(type) != "ACS") {
     if (!type.empty()) {
-      std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
-        << " is not an ACS controller (Type: " << type << ")" << std::endl;
+      LOG_WARNING("Device " + deviceName + " is not an ACS controller (Type: " + type + ")");
     }
     return nullptr;
   }
@@ -1136,8 +1122,7 @@ PIController* UnifiedMotionManager::GetPIController(const std::string& deviceNam
   std::string type = GetDeviceType(deviceName);
   if (NormalizeType(type) != "PI") {
     if (!type.empty()) {
-      std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
-        << " is not a PI controller (Type: " << type << ")" << std::endl;
+      LOG_WARNING("Device " + deviceName + " is not a PI controller (Type: " + type + ")");
     }
     return nullptr;
   }
@@ -1177,17 +1162,17 @@ void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
   m_namedPositions[deviceName][positionName] = position;
 
   // ✅ UPDATED - Log waypoints if present
-  std::cout << "[INFO] UnifiedMotionManager: Added named position '" << positionName
-    << "' for device " << deviceName
-    << " -> (" << position.x << ", " << position.y << ", " << position.z << ")";
+  std::string logMsg = "Added named position '" + positionName + "' for device " + deviceName +
+                       " -> (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z) + ")";
 
   if (!position.waypoints.empty()) {
-    std::cout << " with " << position.waypoints.size() << " entry waypoint(s)";
+    logMsg += " with " + std::to_string(position.waypoints.size()) + " entry waypoint(s)";
   }
   if (!position.exit_waypoints.empty()) {
-    std::cout << " with " << position.exit_waypoints.size() << " exit waypoint(s)";
+    logMsg += " with " + std::to_string(position.exit_waypoints.size()) + " exit waypoint(s)";
   }
-  std::cout << std::endl;
+
+  LOG_INFO(logMsg);
 }
 
 void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
@@ -1206,21 +1191,18 @@ bool UnifiedMotionManager::RemoveNamedPosition(const std::string& deviceName,
   const std::string& positionName) {
   auto deviceIt = m_namedPositions.find(deviceName);
   if (deviceIt == m_namedPositions.end()) {
-    std::cout << "[WARNING] UnifiedMotionManager: No named positions for device "
-      << deviceName << std::endl;
+    LOG_WARNING("No named positions for device " + deviceName);
     return false;
   }
 
   auto posIt = deviceIt->second.find(positionName);
   if (posIt == deviceIt->second.end()) {
-    std::cout << "[WARNING] UnifiedMotionManager: Position '" << positionName
-      << "' not found for device " << deviceName << std::endl;
+    LOG_WARNING("Position '" + positionName + "' not found for device " + deviceName);
     return false;
   }
 
   deviceIt->second.erase(posIt);
-  std::cout << "[INFO] UnifiedMotionManager: Removed named position '" << positionName
-    << "' from device " << deviceName << std::endl;
+  LOG_INFO("Removed named position '" + positionName + "' from device " + deviceName);
   return true;
 }
 
@@ -1255,8 +1237,7 @@ std::vector<std::string> UnifiedMotionManager::GetNamedPositionList(const std::s
 }
 
 bool UnifiedMotionManager::ReloadNamedPositions(const std::string& configPath) {
-  std::cout << "[INFO] UnifiedMotionManager: Reloading named positions from "
-    << configPath << std::endl;
+  LOG_INFO("Reloading named positions from " + configPath);
 
   // Clear existing positions
   m_namedPositions.clear();
@@ -1269,7 +1250,7 @@ void UnifiedMotionManager::ClearNamedPositions(const std::string& deviceName) {
   auto it = m_namedPositions.find(deviceName);
   if (it != m_namedPositions.end()) {
     m_namedPositions.erase(it);
-    std::cout << "[INFO] Cleared named positions for " << deviceName << std::endl;
+    LOG_INFO("Cleared named positions for " + deviceName);
   }
 }
 
@@ -1288,22 +1269,20 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   bool blocking) {
   // Check if device exists
   if (!HasDevice(deviceName)) {
-    std::cout << "[ERROR] UnifiedMotionManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
   // ✅ FIX: Check if position exists OR can be calculated
   PositionStruct testPos;
   if (!GetPositionWithCalculation(deviceName, positionName, testPos)) {
-    std::cout << "[ERROR] UnifiedMotionManager: Position '" << positionName
-      << "' not found for device " << deviceName << std::endl;
+    LOG_ERROR("Position '" + positionName + "' not found for device " + deviceName);
     return false;
   }
 
   // ✅ BLOCKING MODE - Use old direct implementation
   if (blocking) {
-    std::cout << "[INFO] UnifiedMotionManager: Blocking move - executing directly" << std::endl;
+    LOG_INFO("Blocking move - executing directly");
     return executeMoveToPosition(deviceName, positionName, true);
   }
 
@@ -1312,7 +1291,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   // Get target position first to check for waypoints
   PositionStruct targetPos;
   if (!GetPositionWithCalculation(deviceName, positionName, targetPos)) {
-    std::cout << "[ERROR] UnifiedMotionManager: Failed to get position '" << positionName << "'" << std::endl;
+    LOG_ERROR("Failed to get position '" + positionName + "'");
     return false;
   }
 
@@ -1336,7 +1315,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
 
   // ✅ SIMPLE PATH: No waypoints - just do direct move without state machine
   if (!hasEntryWaypoints && !hasExitWaypoints) {
-    std::cout << "[INFO] UnifiedMotionManager: Direct point-to-point move (no waypoints)" << std::endl;
+    LOG_INFO("Direct point-to-point move (no waypoints)");
 
     // ✅ Store pending target for position verification by WaitForMotionComplete
     m_pendingTargets[deviceName] = positionName;
@@ -1358,13 +1337,13 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   }
 
   // ✅ WAYPOINT PATH: Has waypoints - use full state machine
-  std::cout << "[INFO] UnifiedMotionManager: Non-blocking move - using waypoint system" << std::endl;
+  LOG_INFO("Non-blocking move - using waypoint system");
 
   // Initialize waypoint state for this device if needed
   if (m_waypointStates.find(deviceName) == m_waypointStates.end()) {
     m_waypointStates[deviceName] = DeviceWaypointState();
     if (m_debugLogging) {
-      std::cout << "[DEBUG] UnifiedMotionManager: Created new waypoint state for " << deviceName << std::endl;
+      LOG_DEBUG("Created new waypoint state for " + deviceName);
     }
   }
 
@@ -1372,20 +1351,16 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
 
   // ✅ DEBUG: Log current state before checking
   if (m_debugLogging) {
-    std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
-      << " current waypoint state = " << GetWaypointStateString(deviceName)
-      << ", target = '" << state.targetPositionName << "'"
-      << ", current = '" << state.currentPositionName << "'"
-      << ", queue size = " << state.waypointQueue.size()
-      << ", IsDeviceInMotion = " << (IsDeviceInMotion(deviceName) ? "true" : "false")
-      << std::endl;
+    LOG_DEBUG(deviceName + " current waypoint state = " + GetWaypointStateString(deviceName) +
+              ", target = '" + state.targetPositionName + "'" +
+              ", current = '" + state.currentPositionName + "'" +
+              ", queue size = " + std::to_string(state.waypointQueue.size()) +
+              ", IsDeviceInMotion = " + std::string(IsDeviceInMotion(deviceName) ? "true" : "false"));
   }
 
   // Don't allow new movement if already in motion
   if (state.state != WaypointState::Idle) {
-    std::cout << "[WARNING] UnifiedMotionManager: Device " << deviceName
-      << " already in waypoint motion (state=" << GetWaypointStateString(deviceName) << ")"
-      << std::endl;
+    LOG_WARNING("Device " + deviceName + " already in waypoint motion (state=" + GetWaypointStateString(deviceName) + ")");
     return false;
   }
 
@@ -1402,8 +1377,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   if (state.currentPositionName.empty()) {
     state.currentPositionName = detectCurrentPositionName(deviceName);
     if (!state.currentPositionName.empty()) {
-      std::cout << "[INFO] UnifiedMotionManager: Auto-detected current position: "
-        << state.currentPositionName << std::endl;
+      LOG_INFO("Auto-detected current position: " + state.currentPositionName);
     }
   }
 
@@ -1413,9 +1387,8 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
 
     PositionStruct currentPos;
     if (GetNamedPosition(deviceName, state.currentPositionName, currentPos)) {
-      std::cout << "[INFO] UnifiedMotionManager: Queueing "
-        << currentPos.exit_waypoints.size()
-        << " exit waypoints from " << state.currentPositionName << std::endl;
+      LOG_INFO("Queueing " + std::to_string(currentPos.exit_waypoints.size()) +
+               " exit waypoints from " + state.currentPositionName);
 
       for (const auto& wp : currentPos.exit_waypoints) {
         state.waypointQueue.push(wp);
@@ -1426,9 +1399,8 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
 
   // Queue entry waypoints to target
   if (hasEntryWaypoints) {
-    std::cout << "[INFO] UnifiedMotionManager: Queueing "
-      << targetPos.waypoints.size()
-      << " entry waypoints to " << positionName << std::endl;
+    LOG_INFO("Queueing " + std::to_string(targetPos.waypoints.size()) +
+             " entry waypoints to " + positionName);
 
     for (const auto& wp : targetPos.waypoints) {
       state.waypointQueue.push(wp);
@@ -1446,7 +1418,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   }
   else {
     // This shouldn't happen now (handled by SIMPLE PATH above)
-    std::cout << "[INFO] UnifiedMotionManager: No waypoints, moving directly to target" << std::endl;
+    LOG_INFO("No waypoints, moving directly to target");
     state.state = WaypointState::MovingToFinalTarget;
     bool success = executeMoveToPosition(deviceName, positionName, false);
     if (success) {
@@ -1467,8 +1439,7 @@ bool UnifiedMotionManager::startWaypointSequence(const std::string& deviceName) 
   DeviceWaypointState& state = it->second;
 
   if (state.waypointQueue.empty()) {
-    std::cout << "[ERROR] UnifiedMotionManager: startWaypointSequence called with empty queue"
-      << std::endl;
+    LOG_ERROR("startWaypointSequence called with empty queue");
     state.state = WaypointState::Idle;
     return false;
   }
@@ -1477,14 +1448,13 @@ bool UnifiedMotionManager::startWaypointSequence(const std::string& deviceName) 
   std::string nextWaypoint = state.waypointQueue.front();
   state.waypointQueue.pop();
 
-  std::cout << "[INFO] UnifiedMotionManager: Moving to waypoint: " << nextWaypoint << std::endl;
+  LOG_INFO("Moving to waypoint: " + nextWaypoint);
 
   // Execute move
   bool success = executeMoveToPosition(deviceName, nextWaypoint, false);
 
   if (!success) {
-    std::cout << "[ERROR] UnifiedMotionManager: Failed to move to waypoint: "
-      << nextWaypoint << std::endl;
+    LOG_ERROR("Failed to move to waypoint: " + nextWaypoint);
     stopWaypointSequence(deviceName);
     return false;
   }
@@ -1497,8 +1467,8 @@ void UnifiedMotionManager::Update() {
   for (auto& [deviceName, state] : m_waypointStates) {
     if (state.state != WaypointState::Idle) {
       if (m_debugLogging) {
-        std::cout << "[DEBUG] Update(): Processing " << deviceName
-          << " (state=" << GetWaypointStateString(deviceName) << ")" << std::endl;
+        LOG_DEBUG("Update(): Processing " + deviceName +
+                  " (state=" + GetWaypointStateString(deviceName) + ")");
       }
       updateDeviceWaypoints(deviceName);
     }
@@ -1520,8 +1490,8 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
     if (m_debugLogging) {
       static int skipCount = 0;
       if (++skipCount % 20 == 0) {  // Log every 20th check to reduce spam
-        std::cout << "[DEBUG] updateDeviceWaypoints: " << deviceName
-          << " still in motion, waiting... (state=" << oldStateStr << ")" << std::endl;
+        LOG_DEBUG("updateDeviceWaypoints: " + deviceName +
+                  " still in motion, waiting... (state=" + oldStateStr + ")");
       }
     }
     return;  // Still moving, wait
@@ -1582,9 +1552,8 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
       // Only log warning every 1 second to reduce spam
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime).count();
       if (count == 0 || elapsed > 1000) {
-        std::cout << "[DEBUG] UnifiedMotionManager: Device " << deviceName
-                  << " moving to " << currentTargetName
-                  << " (error: X=" << dx << ", Y=" << dy << ", Z=" << dz << "mm)" << std::endl;
+        LOG_DEBUG("Device " + deviceName + " moving to " + currentTargetName +
+                  " (error: X=" + std::to_string(dx) + ", Y=" + std::to_string(dy) + ", Z=" + std::to_string(dz) + "mm)");
         lastTime = now;
         count++;
       }
@@ -1605,11 +1574,11 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
   switch (state.state) {
 
   case WaypointState::MovingThroughExitWaypoints:
-    std::cout << "[INFO] UnifiedMotionManager: Exit waypoint reached" << std::endl;
+    LOG_INFO("Exit waypoint reached");
     state.exitWaypointsProcessed++;
 
     if (state.exitWaypointsProcessed >= state.exitWaypointCount) {
-      std::cout << "[INFO] UnifiedMotionManager: All exit waypoints complete" << std::endl;
+      LOG_INFO("All exit waypoints complete");
 
       if (state.waypointQueue.empty()) {
         // No entry waypoints - go to final target
@@ -1629,12 +1598,11 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
     break;
 
   case WaypointState::MovingThroughEntryWaypoints:
-    std::cout << "[INFO] UnifiedMotionManager: Entry waypoint reached" << std::endl;
+    LOG_INFO("Entry waypoint reached");
 
     if (state.waypointQueue.empty()) {
       // All entry waypoints done - move to final target
-      std::cout << "[INFO] UnifiedMotionManager: Moving to final target: "
-        << state.targetPositionName << std::endl;
+      LOG_INFO("Moving to final target: " + state.targetPositionName);
       state.state = WaypointState::MovingToFinalTarget;
       executeMoveToPosition(deviceName, state.targetPositionName, false);
     }
@@ -1645,22 +1613,19 @@ void UnifiedMotionManager::updateDeviceWaypoints(const std::string& deviceName) 
     break;
 
   case WaypointState::MovingToFinalTarget:
-    std::cout << "[INFO] UnifiedMotionManager: Final target reached: "
-      << state.targetPositionName << std::endl;
+    LOG_INFO("Final target reached: " + state.targetPositionName);
     state.currentPositionName = state.targetPositionName;
     state.state = WaypointState::Idle;
     if (m_debugLogging) {
-      std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
-        << " STATE TRANSITION: " << oldStateStr << " -> Idle"
-        << " (target was " << state.targetPositionName << ")" << std::endl;
+      LOG_DEBUG(deviceName + " STATE TRANSITION: " + oldStateStr + " -> Idle" +
+                " (target was " + state.targetPositionName + ")");
     }
     break;
 
   case WaypointState::Idle:
     // Already idle - this shouldn't happen in normal flow
     if (m_debugLogging) {
-      std::cout << "[DEBUG] UnifiedMotionManager: " << deviceName
-        << " updateDeviceWaypoints called while already Idle (unexpected)" << std::endl;
+      LOG_DEBUG(deviceName + " updateDeviceWaypoints called while already Idle (unexpected)");
     }
     break;
   }
@@ -1674,8 +1639,7 @@ void UnifiedMotionManager::stopWaypointSequence(const std::string& deviceName) {
 
   DeviceWaypointState& state = it->second;
 
-  std::cout << "[INFO] UnifiedMotionManager: Stopping waypoint sequence for "
-    << deviceName << std::endl;
+  LOG_INFO("Stopping waypoint sequence for " + deviceName);
 
   // Clear queue
   while (!state.waypointQueue.empty()) {
@@ -1691,8 +1655,7 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
   // ✅ Use GetPositionWithCalculation instead of GetNamedPosition
   PositionStruct pos;
   if (!GetPositionWithCalculation(deviceName, positionName, pos)) {
-    std::cout << "[ERROR] executeMoveToPosition: Position '" << positionName
-      << "' not found for device " << deviceName << std::endl;
+    LOG_ERROR("executeMoveToPosition: Position '" + positionName + "' not found for device " + deviceName);
     return false;
   }
 
@@ -1736,7 +1699,7 @@ bool UnifiedMotionManager::executeMoveToPosition(const std::string& deviceName,
     }
 
     if (axes.empty()) {
-      std::cout << "[ERROR] executeMoveToPosition: No valid axes configured for " << deviceName << std::endl;
+      LOG_ERROR("executeMoveToPosition: No valid axes configured for " + deviceName);
       return false;
     }
 
@@ -1807,8 +1770,7 @@ void UnifiedMotionManager::SetCurrentPositionName(const std::string& deviceName,
     m_waypointStates[deviceName] = DeviceWaypointState();
   }
   m_waypointStates[deviceName].currentPositionName = positionName;
-  std::cout << "[INFO] UnifiedMotionManager: Set current position of "
-    << deviceName << " to " << positionName << std::endl;
+  LOG_INFO("Set current position of " + deviceName + " to " + positionName);
 }
 
 bool UnifiedMotionManager::IsWaypointSystemActive(const std::string& deviceName) const {
@@ -1862,8 +1824,8 @@ bool UnifiedMotionManager::ParseCalculatedPosition(const std::string& positionNa
 
     char axis = std::toupper(remaining[pos]);
     if (axis != 'X' && axis != 'Y' && axis != 'Z') {
-      std::cout << "[ERROR] ParseCalculatedPosition: Invalid axis '" << axis
-        << "' in position name: " << positionName << std::endl;
+      LOG_ERROR("ParseCalculatedPosition: Invalid axis '" + std::string(1, axis) +
+                "' in position name: " + positionName);
       return false;
     }
     pos++;
@@ -1899,8 +1861,8 @@ bool UnifiedMotionManager::ParseCalculatedPosition(const std::string& positionNa
 
     }
     catch (const std::exception& e) {
-      std::cout << "[ERROR] ParseCalculatedPosition: Invalid value '" << valueStr
-        << "' for axis " << axis << " in: " << positionName << std::endl;
+      LOG_ERROR("ParseCalculatedPosition: Invalid value '" + valueStr +
+                "' for axis " + std::string(1, axis) + " in: " + positionName);
       return false;
     }
 
@@ -1908,9 +1870,9 @@ bool UnifiedMotionManager::ParseCalculatedPosition(const std::string& positionNa
     pos = nextPlus;  // Move to next '+' position
   }
 
-  std::cout << "[DEBUG] ParseCalculatedPosition: '" << positionName
-    << "' -> base='" << baseName << "' offsets=("
-    << offsetX << ", " << offsetY << ", " << offsetZ << ")" << std::endl;
+  LOG_DEBUG("ParseCalculatedPosition: '" + positionName +
+            "' -> base='" + baseName + "' offsets=(" +
+            std::to_string(offsetX) + ", " + std::to_string(offsetY) + ", " + std::to_string(offsetZ) + ")");
 
   return true;
 }
@@ -1927,8 +1889,8 @@ bool UnifiedMotionManager::GetPositionWithCalculation(const std::string& deviceN
     // Get base position
     PositionStruct basePos;
     if (!GetNamedPosition(deviceName, baseName, basePos)) {
-      std::cout << "[ERROR] GetPositionWithCalculation: Base position '"
-        << baseName << "' not found for device " << deviceName << std::endl;
+      LOG_ERROR("GetPositionWithCalculation: Base position '" + baseName +
+                "' not found for device " + deviceName);
       return false;
     }
 
@@ -1943,11 +1905,10 @@ bool UnifiedMotionManager::GetPositionWithCalculation(const std::string& deviceN
     outPosition.waypoints.clear();
     outPosition.exit_waypoints.clear();
 
-    std::cout << "[INFO] GetPositionWithCalculation: Calculated position '"
-      << positionName << "' from base '" << baseName << "'"
-      << " with offset (" << offsetX << ", " << offsetY << ", " << offsetZ << ")"
-      << " -> (" << outPosition.x << ", " << outPosition.y << ", " << outPosition.z << ")"
-      << std::endl;
+    LOG_INFO("GetPositionWithCalculation: Calculated position '" + positionName +
+             "' from base '" + baseName + "'" +
+             " with offset (" + std::to_string(offsetX) + ", " + std::to_string(offsetY) + ", " + std::to_string(offsetZ) + ")" +
+             " -> (" + std::to_string(outPosition.x) + ", " + std::to_string(outPosition.y) + ", " + std::to_string(outPosition.z) + ")");
 
     return true;
   }
@@ -1982,7 +1943,7 @@ void UnifiedMotionManager::ClearPendingTarget(const std::string& deviceName) {
     }
     m_pendingTargets.erase(it);
     if (m_debugLogging) {
-      std::cout << "[DEBUG] UnifiedMotionManager: Cleared pending target for " << deviceName << std::endl;
+      LOG_DEBUG("Cleared pending target for " + deviceName);
     }
   }
 }

@@ -4,11 +4,11 @@
 #include "IMotionControllerManager.h"
 #include "acs_controller.h"
 #include "MotionTypes.h"
+#include "ILogger.h"
 #include <string>
 #include <map>
 #include <vector>
 #include <memory>
-#include <iostream>
 
 /**
  * @brief ACS Controller Manager
@@ -20,6 +20,16 @@ class ACSControllerManager : public IMotionControllerManager {
 public:
   ACSControllerManager();
   ~ACSControllerManager() override;
+
+  // ============================================================================
+  // LOGGER SUPPORT
+  // ============================================================================
+
+  /**
+   * @brief Set logger for this manager and propagate to all controllers
+   * @param logger Pointer to ILogger interface
+   */
+  void SetLogger(ILogger* logger);
 
   // ============================================================================
   // IMotionControllerManager Interface Implementation
@@ -114,4 +124,7 @@ private:
   ACSController* CreateController(const MotionDevice& device);
   bool ValidateDeviceConfig(const MotionDevice& device) const;
   void LogDeviceInfo(const std::string& deviceName, const std::string& message) const;
+
+  // Logger for spdlog integration
+  ILogger* m_logger = nullptr;
 };

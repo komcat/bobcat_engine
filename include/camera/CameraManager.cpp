@@ -17,6 +17,15 @@
 #include <sstream>
 
 // ============================================================================
+// LOGGING MACROS
+// ============================================================================
+
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "CameraManager")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "CameraManager")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "CameraManager")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "CameraManager")
+
+// ============================================================================
 // BMP FILE STRUCTURES
 // ============================================================================
 
@@ -53,7 +62,7 @@ CameraManager::CameraManager()
   , m_shouldStopBroadcast(false)
   , m_globalBroadcastRate(30.0f) {
 
-  std::cout << "[INFO] CameraManager created" << std::endl;
+  LOG_INFO("CameraManager created");
 }
 
 CameraManager::~CameraManager() {
@@ -61,7 +70,7 @@ CameraManager::~CameraManager() {
   StopGrabbingAll();
   m_cameras.clear();
 
-  std::cout << "[INFO] CameraManager destroyed" << std::endl;
+  LOG_INFO("CameraManager destroyed");
 }
 
 // ============================================================================
@@ -77,6 +86,7 @@ CameraManager::ManagedCamera::ManagedCamera(const ExtendedCameraInfo& cameraInfo
 
   std::string typeName = CameraHardwareFactory::GetCameraTypeName(cameraInfo.type);
   if (camera) {
+    // Note: Using std::cout here since ManagedCamera doesn't have access to m_logger
     std::cout << "[INFO] Created " << typeName << " camera: " << cameraInfo.id
       << " (" << cameraInfo.GetConnectionInfo() << ")" << std::endl;
   }
@@ -100,14 +110,14 @@ bool CameraManager::AddCamera(const ExtendedCameraInfo& cameraInfo) {
 
   // Check if camera already exists
   if (m_cameras.find(cameraInfo.id) != m_cameras.end()) {
-    std::cout << "[WARNING] Camera already exists: " << cameraInfo.id << std::endl;
+    LOG_WARNING("Camera already exists: " + cameraInfo.id);
     return false;
   }
 
   try {
     auto managedCamera = std::make_unique<ManagedCamera>(cameraInfo);
     if (!managedCamera->camera) {
-      std::cout << "[ERROR] Failed to create camera instance for: " << cameraInfo.id << std::endl;
+      LOG_ERROR("Failed to create camera instance for: " + cameraInfo.id);
       return false;
     }
 
@@ -119,13 +129,13 @@ bool CameraManager::AddCamera(const ExtendedCameraInfo& cameraInfo) {
     m_cameras[cameraInfo.id] = std::move(managedCamera);
 
     std::string typeStr = CameraHardwareFactory::GetCameraTypeName(cameraInfo.type);
-    std::cout << "[INFO] Added " << typeStr << " camera: " << cameraInfo.id << std::endl;
+    LOG_INFO("Added " + typeStr + " camera: " + cameraInfo.id);
 
     return true;
 
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] Exception adding camera [" << cameraInfo.id << "]: " << e.what() << std::endl;
+    LOG_ERROR("Exception adding camera [" + cameraInfo.id + "]: " + std::string(e.what()));
     return false;
   }
 }
@@ -144,7 +154,7 @@ bool CameraManager::AddCameraAutoDetect(const CameraInfo& cameraInfo, const std:
   ICameraHardware::CameraType detectedType = CameraHardwareFactory::DetectCameraType(deviceInfo);
 
   if (detectedType == ICameraHardware::CameraType::UNKNOWN) {
-    std::cout << "[WARNING] Could not auto-detect camera type for: " << cameraInfo.id << ", defaulting to Pylon" << std::endl;
+    LOG_WARNING("Could not auto-detect camera type for: " + cameraInfo.id + ", defaulting to Pylon");
     detectedType = ICameraHardware::CameraType::PYLON;
   }
 
@@ -169,7 +179,7 @@ bool CameraManager::RemoveCamera(const std::string& cameraId) {
 
     m_cameras.erase(it);
 
-    std::cout << "[INFO] Removed camera: " << cameraId << std::endl;
+    LOG_INFO("Removed camera: " + cameraId);
     return true;
   }
 
@@ -224,10 +234,10 @@ bool CameraManager::InitializeAllCameras() {
     if (managedCamera->camera) {
       if (!managedCamera->camera->Initialize()) {
         allSuccess = false;
-        std::cout << "[ERROR] Failed to initialize camera: " << id << std::endl;
+        LOG_ERROR("Failed to initialize camera: " + id);
         if (!managedCamera->camera->Connect())
         {
-          std::cout << "[ERROR] Failed to connect camera: " << id << std::endl;
+          LOG_ERROR("Failed to connect camera: " + id);
         }
         // Try to connect anyway for error reporting
 
@@ -284,14 +294,14 @@ bool CameraManager::ConnectAllCameras() {
 
   bool allSuccess = true;
   for (const auto& cameraId : cameraIds) {
-    std::cout << "[INFO] Connecting camera: " << cameraId << std::endl;
+    LOG_INFO("Connecting camera: " + cameraId);
 
     if (!ConnectCamera(cameraId)) {
       allSuccess = false;
-      std::cout << "[ERROR] Failed to connect camera: " << cameraId << std::endl;
+      LOG_ERROR("Failed to connect camera: " + cameraId);
     }
     else {
-      std::cout << "[INFO] Successfully connected camera: " << cameraId << std::endl;
+      LOG_INFO("Successfully connected camera: " + cameraId);
     }
 
     // Add 500ms delay between camera connections
@@ -343,7 +353,7 @@ bool CameraManager::StartGrabbingAll() {
     if (managedCamera->camera && managedCamera->camera->IsConnected()) {
       if (!managedCamera->camera->StartGrabbing()) {
         allSuccess = false;
-        std::cout << "[ERROR] Failed to start grabbing for camera: " << id << std::endl;
+        LOG_ERROR("Failed to start grabbing for camera: " + id);
       }
     }
   }
@@ -359,7 +369,7 @@ bool CameraManager::StopGrabbingAll() {
     if (managedCamera->camera && managedCamera->camera->IsGrabbing()) {
       if (!managedCamera->camera->StopGrabbing()) {
         allSuccess = false;
-        std::cout << "[ERROR] Failed to stop grabbing for camera: " << id << std::endl;
+        LOG_ERROR("Failed to stop grabbing for camera: " + id);
       }
     }
   }
@@ -383,11 +393,11 @@ bool CameraManager::StartGrabbingWithBroadcast(const std::string& cameraId) {
 bool CameraManager::ApplyExposureSettings(const std::string& cameraId, const ICameraHardware::ExposureSettings& settings) {
   auto camera = GetCameraHardware(cameraId);
   if (camera) {
-    std::cout << "[INFO] Applying exposure settings to camera: " << cameraId << std::endl;
-    std::cout << "[INFO]   Exposure: " << settings.exposure_time << " μs" << std::endl;
-    std::cout << "[INFO]   Gain: " << settings.gain << std::endl;
-    std::cout << "[INFO]   Auto Exposure: " << (settings.auto_exposure ? "On" : "Off") << std::endl;
-    std::cout << "[INFO]   Auto Gain: " << (settings.auto_gain ? "On" : "Off") << std::endl;
+    LOG_INFO("Applying exposure settings to camera: " + cameraId);
+    LOG_INFO("  Exposure: " + std::to_string(settings.exposure_time) + " μs");
+    LOG_INFO("  Gain: " + std::to_string(settings.gain));
+    LOG_INFO("  Auto Exposure: " + std::string(settings.auto_exposure ? "On" : "Off"));
+    LOG_INFO("  Auto Gain: " + std::string(settings.auto_gain ? "On" : "Off"));
     return camera->SetExposureSettings(settings);
   }
   return false;
@@ -503,7 +513,7 @@ void CameraManager::StartBroadcastSystem() {
   m_shouldStopBroadcast.store(false);
   m_broadcastThread = std::thread(&CameraManager::BroadcastThreadFunction, this);
 
-  std::cout << "[INFO] Camera broadcasting system started" << std::endl;
+  LOG_INFO("Camera broadcasting system started");
 }
 
 void CameraManager::StopBroadcastSystem() {
@@ -517,7 +527,7 @@ void CameraManager::StopBroadcastSystem() {
     m_broadcastThread.join();
   }
 
-  std::cout << "[INFO] Camera broadcasting system stopped" << std::endl;
+  LOG_INFO("Camera broadcasting system stopped");
 }
 
 void CameraManager::SubscribeToFrames(std::shared_ptr<CameraFrameSubscriber> subscriber) {
@@ -528,7 +538,7 @@ void CameraManager::SubscribeToFrames(std::shared_ptr<CameraFrameSubscriber> sub
   std::lock_guard<std::mutex> lock(m_subscribersMutex);
   m_subscribers[subscriber->GetSubscriberId()] = SubscriberInfo(subscriber);
 
-  std::cout << "[INFO] Subscriber added: " << subscriber->GetSubscriberId() << std::endl;
+  LOG_INFO("Subscriber added: " + subscriber->GetSubscriberId());
 }
 
 void CameraManager::UnsubscribeFromFrames(const std::string& subscriberId) {
@@ -538,7 +548,7 @@ void CameraManager::UnsubscribeFromFrames(const std::string& subscriberId) {
   if (it != m_subscribers.end()) {
     m_subscribers.erase(it);
 
-    std::cout << "[INFO] Subscriber removed: " << subscriberId << std::endl;
+    LOG_INFO("Subscriber removed: " + subscriberId);
   }
 }
 
@@ -594,13 +604,13 @@ void CameraManager::BroadcastFrame(const CameraFrameData& frameData) {
       subscriberInfo.lastBroadcast = now;
     }
     catch (const std::exception& e) {
-      std::cout << "[ERROR] Exception in subscriber [" << id << "]: " << e.what() << std::endl;
+      LOG_ERROR("Exception in subscriber [" + id + "]: " + std::string(e.what()));
     }
   }
 }
 
 void CameraManager::BroadcastThreadFunction() {
-  std::cout << "[INFO] Camera broadcast thread started" << std::endl;
+  LOG_INFO("Camera broadcast thread started");
 
   while (!m_shouldStopBroadcast.load()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -608,7 +618,7 @@ void CameraManager::BroadcastThreadFunction() {
     // This thread just keeps the system alive
   }
 
-  std::cout << "[INFO] Camera broadcast thread stopped" << std::endl;
+  LOG_INFO("Camera broadcast thread stopped");
 }
 
 // ============================================================================
@@ -618,6 +628,7 @@ void CameraManager::BroadcastThreadFunction() {
 std::vector<CameraInfo> CameraManager::DiscoverPylonCameras() {
   std::vector<CameraInfo> pylonCameras;
 
+  // Note: Static method - using std::cout since no m_logger available
   std::cout << "[INFO] Discovering Pylon cameras..." << std::endl;
 
   try {
@@ -693,6 +704,7 @@ std::vector<CameraInfo> CameraManager::DiscoverPylonCameras() {
 std::vector<ExtendedCameraInfo> CameraManager::DiscoverIDSCameras() {
   std::vector<ExtendedCameraInfo> idsCameras;
 
+  // Note: Static method - using std::cout since no m_logger available
   std::cout << "[INFO] Discovering IDS cameras..." << std::endl;
 
   try {
@@ -738,6 +750,7 @@ std::vector<ExtendedCameraInfo> CameraManager::DiscoverIDSCameras() {
 std::vector<ExtendedCameraInfo> CameraManager::DiscoverAllCameras() {
   std::vector<ExtendedCameraInfo> allCameras;
 
+  // Note: Static method - using std::cout since no m_logger available
   std::cout << "[INFO] Discovering all cameras..." << std::endl;
 
   // Discover Pylon cameras (convert CameraInfo to ExtendedCameraInfo)
@@ -767,7 +780,7 @@ std::vector<ExtendedCameraInfo> CameraManager::DiscoverAllCameras() {
 }
 
 bool CameraManager::DiscoverAndAddAllCameras() {
-  std::cout << "[INFO] Starting camera discovery and addition..." << std::endl;
+  LOG_INFO("Starting camera discovery and addition...");
 
   auto discoveredCameras = DiscoverAllCameras();
 
@@ -775,11 +788,11 @@ bool CameraManager::DiscoverAndAddAllCameras() {
   for (const auto& cameraInfo : discoveredCameras) {
     if (!AddCamera(cameraInfo)) {
       allSuccess = false;
-      std::cout << "[WARNING] Failed to add discovered camera: " << cameraInfo.id << std::endl;
+      LOG_WARNING("Failed to add discovered camera: " + cameraInfo.id);
     }
   }
 
-  std::cout << "[INFO] Camera discovery completed. Added " << GetCameraCount() << " cameras." << std::endl;
+  LOG_INFO("Camera discovery completed. Added " + std::to_string(GetCameraCount()) + " cameras.");
 
   return allSuccess;
 }
@@ -790,20 +803,20 @@ bool CameraManager::DiscoverAndAddAllCameras() {
 
 bool CameraManager::SaveFrameToBMP(const CameraFrameData& frameData, const std::string& filePath) {
   if (!frameData.IsValid()) {
-    std::cout << "[ERROR] Cannot save invalid frame data to BMP" << std::endl;
+    LOG_ERROR("Cannot save invalid frame data to BMP");
     return false;
   }
 
   // Only support RGB images for now
   if (frameData.channels != 3) {
-    std::cout << "[ERROR] BMP save only supports RGB images (3 channels), got " << frameData.channels << " channels" << std::endl;
+    LOG_ERROR("BMP save only supports RGB images (3 channels), got " + std::to_string(frameData.channels) + " channels");
     return false;
   }
 
   try {
     std::ofstream file(filePath, std::ios::binary);
     if (!file.is_open()) {
-      std::cout << "[ERROR] Failed to open file for writing: " << filePath << std::endl;
+      LOG_ERROR("Failed to open file for writing: " + filePath);
       return false;
     }
 
@@ -848,12 +861,12 @@ bool CameraManager::SaveFrameToBMP(const CameraFrameData& frameData, const std::
 
     file.close();
 
-    std::cout << "[INFO] Saved image to: " << filePath << std::endl;
+    LOG_INFO("Saved image to: " + filePath);
 
     return true;
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] Exception saving BMP file: " << e.what() << std::endl;
+    LOG_ERROR("Exception saving BMP file: " + std::string(e.what()));
     return false;
   }
 }
@@ -892,11 +905,11 @@ std::string CameraManager::GetImageOutputDirectory() {
     if (!std::filesystem::exists(defaultDir)) {
       std::filesystem::create_directories(defaultDir);
 
-      std::cout << "[INFO] Created image output directory: " << defaultDir << std::endl;
+      LOG_INFO("Created image output directory: " + defaultDir);
     }
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] Failed to create output directory: " << e.what() << std::endl;
+    LOG_ERROR("Failed to create output directory: " + std::string(e.what()));
     // Fall back to current directory
     return ".";
   }
@@ -912,18 +925,18 @@ void CameraManager::SetImageOutputDirectory(const std::string& directory) {
     if (!std::filesystem::exists(directory)) {
       std::filesystem::create_directories(directory);
 
-      std::cout << "[INFO] Created image output directory: " << directory << std::endl;
+      LOG_INFO("Created image output directory: " + directory);
     }
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] Failed to create output directory: " << e.what() << std::endl;
+    LOG_ERROR("Failed to create output directory: " + std::string(e.what()));
   }
 }
 
 bool CameraManager::CaptureImage(const std::string& cameraId) {
   auto camera = GetCameraHardware(cameraId);
   if (!camera) {
-    std::cout << "[ERROR] Camera not found: " << cameraId << std::endl;
+    LOG_ERROR("Camera not found: " + cameraId);
     return false;
   }
 
@@ -932,7 +945,7 @@ bool CameraManager::CaptureImage(const std::string& cameraId) {
   frameData.cameraId = cameraId;
 
   if (!camera->CaptureFrame(frameData)) {
-    std::cout << "[ERROR] Failed to capture frame from camera: " << cameraId << std::endl;
+    LOG_ERROR("Failed to capture frame from camera: " + cameraId);
     return false;
   }
 
@@ -943,14 +956,14 @@ bool CameraManager::CaptureImage(const std::string& cameraId) {
 
   // Save to BMP file
   if (!SaveFrameToBMP(frameData, fullPath)) {
-    std::cout << "[ERROR] Failed to save captured image to file" << std::endl;
+    LOG_ERROR("Failed to save captured image to file");
     return false;
   }
 
   // Store the last captured image path for reference
   m_lastCapturedImagePath = fullPath;
 
-  std::cout << "[INFO] Image captured and saved: " << fullPath << std::endl;
+  LOG_INFO("Image captured and saved: " + fullPath);
 
   return true;
 }
@@ -977,7 +990,7 @@ bool CameraManager::CaptureImage(const std::string& cameraId, const std::string&
 
   m_lastCapturedImagePath = fullPath;
 
-  std::cout << "[INFO] Image captured with custom name: " << fullPath << std::endl;
+  LOG_INFO("Image captured with custom name: " + fullPath);
 
   return true;
 }
@@ -1001,7 +1014,7 @@ bool CameraManager::CaptureImageAll() {
 
         if (SaveFrameToBMP(frameData, fullPath)) {
           captureCount++;
-          std::cout << "[INFO] Captured image from " << id << ": " << fullPath << std::endl;
+          LOG_INFO("Captured image from " + id + ": " + fullPath);
         }
         else {
           allSuccess = false;
@@ -1009,12 +1022,12 @@ bool CameraManager::CaptureImageAll() {
       }
       else {
         allSuccess = false;
-        std::cout << "[ERROR] Failed to capture frame from camera: " << id << std::endl;
+        LOG_ERROR("Failed to capture frame from camera: " + id);
       }
     }
   }
 
-  std::cout << "[INFO] Captured " << captureCount << " images from all cameras" << std::endl;
+  LOG_INFO("Captured " + std::to_string(captureCount) + " images from all cameras");
 
   return allSuccess;
 }

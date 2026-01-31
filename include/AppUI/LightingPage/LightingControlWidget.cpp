@@ -24,17 +24,8 @@ LightingChannelWidget::LightingChannelWidget(int channelNumber,
     , m_isOn(false)
     , m_isConnected(false)
     , m_isUpdating(false)
-    , m_isDragging(false)
-    , m_debounceTimer(nullptr)
-    , m_pendingIntensity(0)
-    , m_hasPendingUpdate(false)
+    , m_currentIntensity(0)
 {
-    // Create debounce timer - sends update 150ms after slider stops moving
-    m_debounceTimer = new QTimer(this);
-    m_debounceTimer->setSingleShot(true);
-    m_debounceTimer->setInterval(150);
-    connect(m_debounceTimer, &QTimer::timeout, this, &LightingChannelWidget::onDebounceTimeout);
-
     setupUI();
 }
 
@@ -42,7 +33,7 @@ void LightingChannelWidget::setupUI()
 {
     QHBoxLayout* mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(10, 5, 10, 5);
-    mainLayout->setSpacing(15);
+    mainLayout->setSpacing(10);
 
     // Channel number label (L1, L2, etc.)
     m_channelLabel = new QLabel(QString("L%1").arg(m_channelNumber + 1));
@@ -76,54 +67,39 @@ void LightingChannelWidget::setupUI()
     nameContainer->setFixedWidth(130);
     mainLayout->addWidget(nameContainer);
 
-    // Intensity slider
-    m_intensitySlider = new QSlider(Qt::Horizontal);
-    m_intensitySlider->setRange(0, 255);
-    m_intensitySlider->setValue(0);
-    m_intensitySlider->setMinimumWidth(200);
-    m_intensitySlider->setStyleSheet(
-        "QSlider::groove:horizontal {"
-        "  background: #3a3a3a;"
-        "  height: 8px;"
+    // Decrement button (-2.5%)
+    m_decrementButton = new QPushButton("-");
+    m_decrementButton->setFixedSize(32, 28);
+    m_decrementButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #444;"
+        "  color: white;"
+        "  font-weight: bold;"
+        "  font-size: 16px;"
+        "  border: none;"
         "  border-radius: 4px;"
         "}"
-        "QSlider::handle:horizontal {"
-        "  background: #00aaff;"
-        "  width: 18px;"
-        "  margin: -5px 0;"
-        "  border-radius: 9px;"
-        "}"
-        "QSlider::sub-page:horizontal {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0066aa, stop:1 #00aaff);"
-        "  border-radius: 4px;"
-        "}"
-        "QSlider::groove:horizontal:disabled { background: #2a2a2a; }"
-        "QSlider::handle:horizontal:disabled { background: #555; }"
+        "QPushButton:hover { background-color: #555; }"
+        "QPushButton:pressed { background-color: #333; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
     );
-    connect(m_intensitySlider, &QSlider::valueChanged, this, &LightingChannelWidget::onSliderChanged);
-    connect(m_intensitySlider, &QSlider::sliderPressed, this, &LightingChannelWidget::onSliderPressed);
-    connect(m_intensitySlider, &QSlider::sliderReleased, this, &LightingChannelWidget::onSliderReleased);
-    mainLayout->addWidget(m_intensitySlider, 1);
-
-    // Intensity value display
-    m_intensityValue = new QLabel("0");
-    m_intensityValue->setFixedWidth(35);
-    m_intensityValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_intensityValue->setStyleSheet("font-size: 13px; color: #00aaff; font-weight: bold;");
-    mainLayout->addWidget(m_intensityValue);
+    m_decrementButton->setToolTip("-2.5%");
+    connect(m_decrementButton, &QPushButton::clicked, this, &LightingChannelWidget::onDecrementClicked);
+    mainLayout->addWidget(m_decrementButton);
 
     // Percent input field
     m_percentInput = new QLineEdit("0.0");
-    m_percentInput->setFixedWidth(55);
-    m_percentInput->setAlignment(Qt::AlignRight);
+    m_percentInput->setFixedWidth(60);
+    m_percentInput->setAlignment(Qt::AlignCenter);
     m_percentInput->setStyleSheet(
         "QLineEdit {"
         "  background-color: #2a2a2a;"
         "  color: #00aaff;"
         "  border: 1px solid #555;"
         "  border-radius: 3px;"
-        "  padding: 2px 4px;"
-        "  font-size: 12px;"
+        "  padding: 4px;"
+        "  font-size: 13px;"
+        "  font-weight: bold;"
         "}"
         "QLineEdit:focus { border-color: #00aaff; }"
         "QLineEdit:disabled { background-color: #1a1a1a; color: #555; }"
@@ -136,13 +112,64 @@ void LightingChannelWidget::setupUI()
     percentSymbol->setStyleSheet("font-size: 12px; color: #888;");
     mainLayout->addWidget(percentSymbol);
 
+    // Increment button (+2.5%)
+    m_incrementButton = new QPushButton("+");
+    m_incrementButton->setFixedSize(32, 28);
+    m_incrementButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #444;"
+        "  color: white;"
+        "  font-weight: bold;"
+        "  font-size: 16px;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "}"
+        "QPushButton:hover { background-color: #555; }"
+        "QPushButton:pressed { background-color: #333; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    m_incrementButton->setToolTip("+2.5%");
+    connect(m_incrementButton, &QPushButton::clicked, this, &LightingChannelWidget::onIncrementClicked);
+    mainLayout->addWidget(m_incrementButton);
+
+    // Apply button
+    m_applyButton = new QPushButton("Apply");
+    m_applyButton->setFixedSize(60, 28);
+    m_applyButton->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #0066aa;"
+        "  color: white;"
+        "  font-weight: bold;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "}"
+        "QPushButton:hover { background-color: #0088cc; }"
+        "QPushButton:pressed { background-color: #005599; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    connect(m_applyButton, &QPushButton::clicked, this, &LightingChannelWidget::onApplyClicked);
+    mainLayout->addWidget(m_applyButton);
+
+    mainLayout->addSpacing(10);
+
+    // Intensity value display (raw 0-255)
+    m_intensityValue = new QLabel("(0)");
+    m_intensityValue->setFixedWidth(40);
+    m_intensityValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_intensityValue->setStyleSheet("font-size: 11px; color: #666;");
+    mainLayout->addWidget(m_intensityValue);
+
+    mainLayout->addSpacing(10);
+
     // Toggle button
     m_toggleButton = new QPushButton("OFF");
-    m_toggleButton->setFixedSize(70, 30);
+    m_toggleButton->setFixedSize(70, 28);
     m_toggleButton->setCheckable(true);
     updateButtonState();
     connect(m_toggleButton, &QPushButton::clicked, this, &LightingChannelWidget::onToggleClicked);
     mainLayout->addWidget(m_toggleButton);
+
+    mainLayout->addStretch();
 
     setEnabled(false);  // Disabled until connected
 }
@@ -163,12 +190,9 @@ QColor LightingChannelWidget::getColorFromString(const QString& colorStr)
 
 void LightingChannelWidget::setIntensity(int intensity)
 {
-    // Don't update while user is dragging - prevents jumping
-    if (m_isDragging) return;
-
     m_isUpdating = true;
-    m_intensitySlider->setValue(intensity);
-    m_intensityValue->setText(QString::number(intensity));
+    m_currentIntensity = intensity;
+    m_intensityValue->setText(QString("(%1)").arg(intensity));
     double percent = Lighting::IntensityToPercent(intensity);
     m_percentInput->setText(QString::number(percent, 'f', 1));
     m_isUpdating = false;
@@ -189,49 +213,73 @@ void LightingChannelWidget::setConnected(bool connected)
     setEnabled(connected);
 }
 
-void LightingChannelWidget::onSliderChanged(int value)
+void LightingChannelWidget::onApplyClicked()
 {
     if (m_isUpdating) return;
 
-    // Update UI immediately for responsive feedback
-    m_intensityValue->setText(QString::number(value));
-    double percent = Lighting::IntensityToPercent(value);
-    m_percentInput->setText(QString::number(percent, 'f', 1));
+    bool ok;
+    double percent = m_percentInput->text().toDouble(&ok);
 
-    // Queue the hardware update with debouncing
-    m_pendingIntensity = value;
-    m_hasPendingUpdate = true;
-    m_debounceTimer->start();  // Restart timer on each change
-}
-
-void LightingChannelWidget::onSliderPressed()
-{
-    m_isDragging = true;
-}
-
-void LightingChannelWidget::onSliderReleased()
-{
-    m_isDragging = false;
-
-    // When slider is released, send update immediately if there's a pending one
-    if (m_hasPendingUpdate) {
-        m_debounceTimer->stop();
-        sendIntensityUpdate();
+    if (!ok) {
+        // Invalid input - restore current value
+        double currentPercent = Lighting::IntensityToPercent(m_currentIntensity);
+        m_percentInput->setText(QString::number(currentPercent, 'f', 1));
+        return;
     }
+
+    // Clamp to valid range
+    if (percent < 0.0) percent = 0.0;
+    if (percent > 100.0) percent = 100.0;
+
+    // Convert to intensity and send update
+    int intensity = Lighting::PercentToIntensity(percent);
+    sendIntensityUpdate(intensity);
 }
 
-void LightingChannelWidget::onDebounceTimeout()
+void LightingChannelWidget::onIncrementClicked()
 {
-    // Timer expired - user stopped moving slider, send the update
-    sendIntensityUpdate();
+    if (m_isUpdating) return;
+
+    // Increment by 2.5%
+    double currentPercent = Lighting::IntensityToPercent(m_currentIntensity);
+    double newPercent = currentPercent + 2.5;
+    if (newPercent > 100.0) newPercent = 100.0;
+
+    int intensity = Lighting::PercentToIntensity(newPercent);
+
+    // Update UI immediately
+    m_isUpdating = true;
+    m_percentInput->setText(QString::number(newPercent, 'f', 1));
+    m_intensityValue->setText(QString("(%1)").arg(intensity));
+    m_isUpdating = false;
+
+    sendIntensityUpdate(intensity);
 }
 
-void LightingChannelWidget::sendIntensityUpdate()
+void LightingChannelWidget::onDecrementClicked()
 {
-    if (m_hasPendingUpdate) {
-        m_hasPendingUpdate = false;
-        emit intensityChanged(m_channelNumber, m_pendingIntensity);
-    }
+    if (m_isUpdating) return;
+
+    // Decrement by 2.5%
+    double currentPercent = Lighting::IntensityToPercent(m_currentIntensity);
+    double newPercent = currentPercent - 2.5;
+    if (newPercent < 0.0) newPercent = 0.0;
+
+    int intensity = Lighting::PercentToIntensity(newPercent);
+
+    // Update UI immediately
+    m_isUpdating = true;
+    m_percentInput->setText(QString::number(newPercent, 'f', 1));
+    m_intensityValue->setText(QString("(%1)").arg(intensity));
+    m_isUpdating = false;
+
+    sendIntensityUpdate(intensity);
+}
+
+void LightingChannelWidget::sendIntensityUpdate(int intensity)
+{
+    m_currentIntensity = intensity;
+    emit intensityChanged(m_channelNumber, intensity);
 }
 
 void LightingChannelWidget::onPercentInputFinished()
@@ -242,8 +290,8 @@ void LightingChannelWidget::onPercentInputFinished()
     double percent = m_percentInput->text().toDouble(&ok);
 
     if (!ok) {
-        // Invalid input - restore current slider value
-        double currentPercent = Lighting::IntensityToPercent(m_intensitySlider->value());
+        // Invalid input - restore current value
+        double currentPercent = Lighting::IntensityToPercent(m_currentIntensity);
         m_percentInput->setText(QString::number(currentPercent, 'f', 1));
         return;
     }
@@ -256,14 +304,13 @@ void LightingChannelWidget::onPercentInputFinished()
     int intensity = Lighting::PercentToIntensity(percent);
 
     m_isUpdating = true;
-    m_intensitySlider->setValue(intensity);
-    m_intensityValue->setText(QString::number(intensity));
+    m_intensityValue->setText(QString("(%1)").arg(intensity));
     // Update text field with clamped/normalized value
     m_percentInput->setText(QString::number(Lighting::IntensityToPercent(intensity), 'f', 1));
     m_isUpdating = false;
 
-    // Send update to hardware immediately
-    emit intensityChanged(m_channelNumber, intensity);
+    // Note: Don't send update here - user needs to click Apply
+    // This just validates and normalizes the input
 }
 
 void LightingChannelWidget::onToggleClicked()
@@ -410,6 +457,7 @@ void LightingControlWidget::setupUI()
     mainLayout->setSpacing(15);
 
     createHeaderSection();
+    createPresetsSection();
     createChannelWidgets();
 }
 
@@ -529,6 +577,158 @@ void LightingControlWidget::createHeaderSection()
     }
 }
 
+void LightingControlWidget::createPresetsSection()
+{
+    QGroupBox* presetsGroup = new QGroupBox("Presets");
+    presetsGroup->setStyleSheet(
+        "QGroupBox {"
+        "  font-weight: bold;"
+        "  font-size: 14px;"
+        "  color: white;"
+        "  border: 1px solid #555;"
+        "  border-radius: 5px;"
+        "  margin-top: 10px;"
+        "  padding-top: 10px;"
+        "}"
+        "QGroupBox::title {"
+        "  subcontrol-origin: margin;"
+        "  subcontrol-position: top left;"
+        "  left: 10px;"
+        "  padding: 0 5px;"
+        "}"
+    );
+
+    QVBoxLayout* presetsLayout = new QVBoxLayout(presetsGroup);
+    presetsLayout->setSpacing(10);
+
+    // Row 1: Intensity presets (0% - 100% in 10% increments)
+    QLabel* intensityLabel = new QLabel("Intensity Presets:");
+    intensityLabel->setStyleSheet("color: #aaa; font-size: 12px; font-weight: normal;");
+    presetsLayout->addWidget(intensityLabel);
+
+    QHBoxLayout* intensityRow = new QHBoxLayout();
+    intensityRow->setSpacing(5);
+
+    QString presetBtnStyle =
+        "QPushButton {"
+        "  background-color: #3a3a3a;"
+        "  color: white;"
+        "  font-size: 11px;"
+        "  font-weight: bold;"
+        "  border: 1px solid #555;"
+        "  border-radius: 3px;"
+        "  padding: 4px 8px;"
+        "  min-width: 35px;"
+        "}"
+        "QPushButton:hover { background-color: #4a4a4a; border-color: #00aaff; }"
+        "QPushButton:pressed { background-color: #2a2a2a; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }";
+
+    for (int percent = 0; percent <= 100; percent += 10) {
+        QPushButton* btn = new QPushButton(QString("%1%").arg(percent));
+        btn->setStyleSheet(presetBtnStyle);
+        btn->setProperty("presetPercent", percent);
+        connect(btn, &QPushButton::clicked, this, [this, percent]() {
+            onPresetClicked(percent);
+        });
+        intensityRow->addWidget(btn);
+    }
+    intensityRow->addStretch();
+    presetsLayout->addLayout(intensityRow);
+
+    // Row 2: Color presets (Collimate, Red, Green, Blue)
+    QLabel* colorLabel = new QLabel("Color Presets:");
+    colorLabel->setStyleSheet("color: #aaa; font-size: 12px; font-weight: normal;");
+    presetsLayout->addWidget(colorLabel);
+
+    QHBoxLayout* colorRow = new QHBoxLayout();
+    colorRow->setSpacing(8);
+
+    // Collimate Light preset
+    QPushButton* collimateBtn = new QPushButton("Collimate");
+    collimateBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #4a4a4a;"
+        "  color: white;"
+        "  font-size: 12px;"
+        "  font-weight: bold;"
+        "  border: 1px solid #888;"
+        "  border-radius: 4px;"
+        "  padding: 6px 15px;"
+        "}"
+        "QPushButton:hover { background-color: #5a5a5a; border-color: #aaa; }"
+        "QPushButton:pressed { background-color: #3a3a3a; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    connect(collimateBtn, &QPushButton::clicked, this, &LightingControlWidget::onCollimatePreset);
+    colorRow->addWidget(collimateBtn);
+
+    // Red preset
+    QPushButton* redBtn = new QPushButton("Red");
+    redBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #8a2a2a;"
+        "  color: white;"
+        "  font-size: 12px;"
+        "  font-weight: bold;"
+        "  border: 1px solid #aa4444;"
+        "  border-radius: 4px;"
+        "  padding: 6px 15px;"
+        "}"
+        "QPushButton:hover { background-color: #aa3a3a; }"
+        "QPushButton:pressed { background-color: #6a1a1a; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    connect(redBtn, &QPushButton::clicked, this, &LightingControlWidget::onRedPreset);
+    colorRow->addWidget(redBtn);
+
+    // Green preset
+    QPushButton* greenBtn = new QPushButton("Green");
+    greenBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2a6a2a;"
+        "  color: white;"
+        "  font-size: 12px;"
+        "  font-weight: bold;"
+        "  border: 1px solid #44aa44;"
+        "  border-radius: 4px;"
+        "  padding: 6px 15px;"
+        "}"
+        "QPushButton:hover { background-color: #3a8a3a; }"
+        "QPushButton:pressed { background-color: #1a4a1a; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    connect(greenBtn, &QPushButton::clicked, this, &LightingControlWidget::onGreenPreset);
+    colorRow->addWidget(greenBtn);
+
+    // Blue preset
+    QPushButton* blueBtn = new QPushButton("Blue");
+    blueBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2a4a8a;"
+        "  color: white;"
+        "  font-size: 12px;"
+        "  font-weight: bold;"
+        "  border: 1px solid #4466aa;"
+        "  border-radius: 4px;"
+        "  padding: 6px 15px;"
+        "}"
+        "QPushButton:hover { background-color: #3a5aaa; }"
+        "QPushButton:pressed { background-color: #1a3a6a; }"
+        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+    );
+    connect(blueBtn, &QPushButton::clicked, this, &LightingControlWidget::onBluePreset);
+    colorRow->addWidget(blueBtn);
+
+    colorRow->addStretch();
+    presetsLayout->addLayout(colorRow);
+
+    QVBoxLayout* parentLayout = qobject_cast<QVBoxLayout*>(layout());
+    if (parentLayout) {
+        parentLayout->addWidget(presetsGroup);
+    }
+}
+
 void LightingControlWidget::createChannelWidgets()
 {
     QGroupBox* channelsGroup = new QGroupBox("Channels");
@@ -584,6 +784,8 @@ void LightingControlWidget::createChannelWidgets()
                 QString::fromStdString(ch.color),
                 this
             );
+            // Store color as property for preset functionality
+            widget->setProperty("channelColor", QString::fromStdString(ch.color));
             connect(widget, &LightingChannelWidget::intensityChanged,
                     this, &LightingControlWidget::onChannelIntensityChanged);
             connect(widget, &LightingChannelWidget::toggleChanged,
@@ -805,6 +1007,94 @@ void LightingControlWidget::onRefreshClicked()
     // Use parameter worker for non-blocking status refresh
     if (m_parameterWorker && m_isConnected) {
         m_parameterWorker->requestRefreshStatus();
+    }
+}
+
+// ============================================================================
+// Preset Implementations
+// ============================================================================
+
+void LightingControlWidget::onPresetClicked(int percent)
+{
+    if (!m_isConnected) return;
+
+    int intensity = Lighting::PercentToIntensity(static_cast<double>(percent));
+    setAllChannelsIntensity(intensity);
+
+    std::cout << "[LightingControlWidget] Applied preset: " << percent << "% (" << intensity << ")" << std::endl;
+}
+
+void LightingControlWidget::onCollimatePreset()
+{
+    // Collimate light - typically white/neutral, set all channels to same value
+    setColorPreset("white", 50);  // 50% intensity for all channels
+    std::cout << "[LightingControlWidget] Applied Collimate preset (50% all)" << std::endl;
+}
+
+void LightingControlWidget::onRedPreset()
+{
+    setColorPreset("red", 100);  // Full red
+    std::cout << "[LightingControlWidget] Applied Red preset" << std::endl;
+}
+
+void LightingControlWidget::onGreenPreset()
+{
+    setColorPreset("green", 100);  // Full green
+    std::cout << "[LightingControlWidget] Applied Green preset" << std::endl;
+}
+
+void LightingControlWidget::onBluePreset()
+{
+    setColorPreset("blue", 100);  // Full blue
+    std::cout << "[LightingControlWidget] Applied Blue preset" << std::endl;
+}
+
+void LightingControlWidget::setAllChannelsIntensity(int intensity)
+{
+    if (!m_parameterWorker || !m_isConnected) return;
+
+    for (auto* widget : m_channelWidgets) {
+        int channel = widget->channelNumber();
+        m_parameterWorker->requestSetIntensity(channel, intensity);
+        widget->setIntensity(intensity);
+    }
+}
+
+void LightingControlWidget::setColorPreset(const QString& color, int percentIntensity)
+{
+    if (!m_parameterWorker || !m_isConnected) return;
+
+    QString targetColor = color.toLower();
+    int intensity = Lighting::PercentToIntensity(static_cast<double>(percentIntensity));
+
+    for (auto* widget : m_channelWidgets) {
+        int channel = widget->channelNumber();
+        QString channelColor = widget->property("channelColor").toString().toLower();
+
+        // If no color property, try to get from channel name
+        if (channelColor.isEmpty()) {
+            QString name = widget->channelName().toLower();
+            if (name.contains("red")) channelColor = "red";
+            else if (name.contains("green")) channelColor = "green";
+            else if (name.contains("blue")) channelColor = "blue";
+            else if (name.contains("white")) channelColor = "white";
+        }
+
+        int targetIntensity = 0;
+
+        if (targetColor == "white") {
+            // White/Collimate - set all channels to same intensity
+            targetIntensity = intensity;
+        } else if (channelColor == targetColor) {
+            // This channel matches the target color - full intensity
+            targetIntensity = intensity;
+        } else {
+            // Different color - turn off
+            targetIntensity = 0;
+        }
+
+        m_parameterWorker->requestSetIntensity(channel, targetIntensity);
+        widget->setIntensity(targetIntensity);
     }
 }
 

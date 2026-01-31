@@ -9,6 +9,7 @@
 #endif
 
 #include "HalconPatternMatchingEdgePlugin.h"
+#include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <QThread>
@@ -102,7 +103,9 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
 
         int numMatches = static_cast<int>(score.Length());
 
-        std::cout << "[HalconPatternMatchEdge] Found " << numMatches << " matches" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconPatternMatchEdge] Found " << numMatches << " matches" << std::endl;
+        }
 
         if (numMatches == 0) {
             result.addMeasurement("num_matches", 0.0);
@@ -173,8 +176,10 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
                 }
             } catch (HException& contourEx) {
                 // Contour visualization failed, but match was found - continue without visualization
-                std::cout << "[HalconPatternMatchEdge] Warning: Could not visualize contours: "
-                          << contourEx.ErrorMessage().Text() << std::endl;
+                if (VisionManager::instance().isVerboseLogging()) {
+                    std::cout << "[HalconPatternMatchEdge] Warning: Could not visualize contours: "
+                              << contourEx.ErrorMessage().Text() << std::endl;
+                }
             }
 
             // Add center crosshair (yellow)
@@ -210,8 +215,10 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
             result.measurements[pointName + "_row"] = matchRow;
             result.measurements[pointName + "_col"] = matchCol;
 
-            std::cout << "[HalconPatternMatchEdge] Match " << i << " at (" << anchorPoint.x << ", " << anchorPoint.y
-                      << ") score=" << matchScore << " angle=" << matchAngle << " deg" << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconPatternMatchEdge] Match " << i << " at (" << anchorPoint.x << ", " << anchorPoint.y
+                          << ") score=" << matchScore << " angle=" << matchAngle << " deg" << std::endl;
+            }
         }
 
         // Store overall results

@@ -20,6 +20,7 @@
 #include <vector>
 #include <map>
 #include "MotionTypes.h"
+#include "ILogger.h"
 
 // Include PI GCS2 library
 #include "PI_GCS2_DLL.h"
@@ -28,6 +29,9 @@ class PIController {
 public:
   PIController();
   ~PIController();
+
+  // Logger support
+  void SetLogger(ILogger* logger) { m_logger = logger; }
 
   // Debug control
   void SetDebugVerbose(bool enabled) { m_debugVerbose = enabled; }
@@ -171,4 +175,7 @@ private:
   std::chrono::steady_clock::time_point m_lastStatusUpdate;
   std::chrono::steady_clock::time_point m_lastPositionUpdate;
   const int m_statusUpdateInterval = 200;
+
+  // Logger for spdlog integration
+  ILogger* m_logger = nullptr;
 };

@@ -65,7 +65,9 @@ bool HalconBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
         // Count detected beams
         Hlong numBeams = beamRegions.CountObj();
 
-        std::cout << "[HalconBeamDetection] Found " << numBeams << " beam candidate regions" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconBeamDetection] Found " << numBeams << " beam candidate regions" << std::endl;
+        }
 
         // Prepare output image (convert grayscale to BGR for overlays)
         if (input.channels() == 1) {
@@ -275,7 +277,9 @@ bool HalconBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
         result.addMetadata("saturation_threshold", std::to_string(m_saturationThreshold));
         result.addMetadata("mm_per_pixel", std::to_string(mmPerPixel));
 
-        std::cout << "[HalconBeamDetection] Detected " << beamCount << " beams" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconBeamDetection] Detected " << beamCount << " beams" << std::endl;
+        }
         return true;
     }
     catch (HException& ex) {

@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <QTabWidget>
 #include <QDoubleSpinBox>
+#include <QPointer>
 #include <vector>
 
 struct ApplicationContext;
@@ -39,6 +40,7 @@ private slots:
 
   // Channel selection
   void onChannelSelected(int index);
+  void onChannelTabChanged(int index);
 
   // Measurement mode
   void onModeChanged(int index);
@@ -114,8 +116,13 @@ private:
   // ===== SIMPLE TAB =====
   // Device indicator
   QLabel* m_simpleDeviceLabel;
+  QLabel* m_simpleConnectionLabel;
 
-  // Channel selection
+  // Channel tabs (replacing dropdown)
+  QTabWidget* m_channelTabWidget;
+  QPointer<QWidget> m_channelControlsWidget;  // Shared controls widget that moves between tabs (QPointer for safety)
+
+  // Channel selection (hidden, for compatibility)
   QComboBox* m_channelComboBox;
   QLabel* m_channelCountLabel;
 
@@ -148,6 +155,7 @@ private:
   QComboBox* m_pollingChannelComboBox;
   QComboBox* m_pollingModeComboBox;
   QComboBox* m_pollingTypeComboBox;
+  QComboBox* m_pollingRangeComboBox;  // Measurement range selection
   QPushButton* m_addPollingButton;
 
   // Active polling sessions list

@@ -9,6 +9,7 @@
 #endif
 
 #include "HalconLineDetectionPlugin.h"
+#include "../VisionManager.h"
 #include <halconcpp/HalconCpp.h>
 #include <opencv2/imgproc.hpp>
 #include <iostream>
@@ -97,7 +98,9 @@ bool HalconLineDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
         CountObj(longLines, &numContours);
         int contourCount = static_cast<int>(numContours.D());
 
-        std::cout << "[HalconLineDetection] Found " << contourCount << " line segments after filtering" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconLineDetection] Found " << contourCount << " line segments after filtering" << std::endl;
+        }
 
         // Fit lines and collect results
         std::vector<std::tuple<double, double, double, double, double>> detectedLines; // x1, y1, x2, y2, length
@@ -200,12 +203,16 @@ bool HalconLineDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
                 lineIdx++;
             }
 
-            std::cout << "[HalconLineDetection] Result: " << detectedLines.size() << " lines detected" << std::endl;
-            std::cout << "[HalconLineDetection] Longest line: (" << x1 << "," << y1 << ") to ("
-                      << x2 << "," << y2 << "), length=" << length << "px, angle=" << angle << " deg" << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconLineDetection] Result: " << detectedLines.size() << " lines detected" << std::endl;
+                std::cout << "[HalconLineDetection] Longest line: (" << x1 << "," << y1 << ") to ("
+                          << x2 << "," << y2 << "), length=" << length << "px, angle=" << angle << " deg" << std::endl;
+            }
         } else {
             result.addMetadata("note", "No lines detected");
-            std::cout << "[HalconLineDetection] No lines found matching criteria" << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconLineDetection] No lines found matching criteria" << std::endl;
+            }
         }
 
         // Store metadata

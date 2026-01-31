@@ -53,6 +53,7 @@ private slots:
   void onOpenLogViewer();
   void onToggleJogPanel();
   void onToggleAuxWindow();  // ✅ NEW: Toggle aux window visibility
+  void onToggleRtlmWindow(); // Toggle realtime camera monitor (GDI)
 
 private:
   void setupUI();
@@ -95,4 +96,5 @@ private:
   // ✅ NEW: Keyboard shortcuts for window toggles
   QShortcut* m_shortcutCtrlJ;  // Toggle Jog Panel
   QShortcut* m_shortcutCtrlK;  // Toggle Aux Window
+  QShortcut* m_shortcutCtrlR;  // Toggle Realtime Camera Monitor
 };

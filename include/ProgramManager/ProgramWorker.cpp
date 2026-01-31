@@ -9,7 +9,6 @@
 #include <QMutexLocker>
 #include <QStringList>
 #include <QMetaObject>  // ✅ For invokeMethod
-#include <iostream>
 #include <memory>  // ✅ For std::make_unique
 
 ProgramWorker::ProgramWorker(
@@ -88,19 +87,19 @@ void ProgramWorker::setUseDependencyGraph(bool useDependencies)
 void ProgramWorker::setLoopMode(bool enabled)
 {
   m_loopEnabled = enabled;
-  std::cout << "[ProgramWorker] Loop mode: " << (enabled ? "enabled" : "disabled") << std::endl;
+  emit logMessage(QString("Loop mode: %1").arg(enabled ? "enabled" : "disabled"));
 }
 
 void ProgramWorker::setLoopRecipeIndices(const std::vector<int>& indices)
 {
   m_loopRecipeIndices = indices;
-  std::cout << "[ProgramWorker] Loop recipe indices set: " << indices.size() << " recipes" << std::endl;
+  emit logMessage(QString("Loop recipe indices set: %1 recipes").arg(indices.size()));
 }
 
 void ProgramWorker::setIgnoreDependencies(bool ignore)
 {
   m_ignoreDependencies = ignore;
-  std::cout << "[ProgramWorker] Ignore dependencies: " << (ignore ? "yes" : "no") << std::endl;
+  emit logMessage(QString("Ignore dependencies: %1").arg(ignore ? "yes" : "no"));
 }
 
 // ✅ NEW: Reset completion tracking
@@ -111,7 +110,7 @@ void ProgramWorker::resetCompletionTracking()
 
 void ProgramWorker::run()
 {
-  std::cout << "[ProgramWorker] run() started, thread ID: " << QThread::currentThreadId() << std::endl;
+  emit logMessage("ProgramWorker run() started");
   try {
     // Choose execution mode
     if (m_loopEnabled && !m_loopRecipeIndices.empty()) {
@@ -124,10 +123,10 @@ void ProgramWorker::run()
     }
   }
   catch (const std::exception& e) {
-    std::cout << "[ProgramWorker] Top-level exception: " << e.what() << std::endl;
+    emit logMessage(QString("Top-level exception: %1").arg(e.what()));
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
   }
-  std::cout << "[ProgramWorker] run() finished, about to exit thread" << std::endl;
+  emit logMessage("ProgramWorker run() finished");
 }
 
 void ProgramWorker::runSequential()
@@ -139,8 +138,7 @@ void ProgramWorker::runSequential()
     // Context is owned by m_ownedContext to persist after this function returns
     // This is critical for chain execution to evaluate conditions
     m_ownedContext = std::make_unique<SequenceContext>();
-    std::cout << "[ProgramWorker] Created m_ownedContext in runSequential(), ptr=" << m_ownedContext.get() << std::endl;
-    std::cout.flush();
+    emit logMessage("Created shared context for program run");
 
     // ✅ Initialize completion tracking (only if not already initialized or in auto-run mode)
     if (m_completedRecipes.empty() || m_completedRecipes.size() != allRecipes.size() || m_autoRunMode) {
@@ -220,7 +218,6 @@ void ProgramWorker::runSequential()
         .arg(QString::fromStdString(recipeRef->displayName)));
 
       bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
-      std::cout << "[ProgramWorker] executeRecipe returned: " << success << std::endl;
 
       if (success) {
         // ✅ Mark recipe as completed
@@ -228,7 +225,6 @@ void ProgramWorker::runSequential()
           m_completedRecipes[recipeIndex] = true;
         }
 
-        std::cout << "[ProgramWorker] Emitting recipeCompleted signal" << std::endl;
         emit recipeCompleted(recipeIndex, true, "Recipe completed successfully");
         emit logMessage(QString("Recipe '%1' completed successfully")
           .arg(QString::fromStdString(recipeRef->displayName)));
@@ -261,35 +257,23 @@ void ProgramWorker::runSequential()
     m_executionSuccess = true;
     m_executionMessage = completionMsg;
 
-    std::cout << "[ProgramWorker] All recipes completed, emitting programExecutionCompleted: "
-              << completionMsg.toStdString() << std::endl;
-    std::cout.flush();
-
     // ✅ Emit log message first to trigger event processing (this works!)
-    emit logMessage(QString("✅ PROGRAM COMPLETED: %1").arg(completionMsg));
+    emit logMessage(QString("PROGRAM COMPLETED: %1").arg(completionMsg));
 
     emit programExecutionCompleted(true, completionMsg);
 
     // ✅ Also invoke parent's slot directly if parent exists (more reliable than signal)
     if (parent()) {
-      std::cout << "[ProgramWorker] Invoking parent's slot via QMetaObject..." << std::endl;
-      std::cout.flush();
       QMetaObject::invokeMethod(parent(), "onProgramExecutionCompleted",
         Qt::QueuedConnection,
         Q_ARG(bool, true),
         Q_ARG(QString, completionMsg));
-      std::cout << "[ProgramWorker] QMetaObject::invokeMethod called" << std::endl;
-      std::cout.flush();
     }
-
-    std::cout << "[ProgramWorker] programExecutionCompleted signal emitted, runSequential() returning" << std::endl;
-    std::cout.flush();
   }
   catch (const std::exception& e) {
-    std::cout << "[ProgramWorker] Exception in runSequential(): " << e.what() << std::endl;
+    emit logMessage(QString("Exception in runSequential(): %1").arg(e.what()));
     emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
   }
-  std::cout << "[ProgramWorker] runSequential() completed" << std::endl;
 }
 
 void ProgramWorker::runWithDependencies()
@@ -608,11 +592,9 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // Connect completion signal to event loop (use Qt::QueuedConnection for cross-thread safety)
   connect(recipeWorker, &RecipeWorker::executionCompleted,
     &loop, [&loop, &success, &errorMessage](bool s, QString msg) {
-    std::cout << "[ProgramWorker] executionCompleted signal received: " << msg.toStdString() << std::endl;
     success = s;
     errorMessage = msg;
     loop.quit();  // Exit event loop
-    std::cout << "[ProgramWorker] loop.quit() called" << std::endl;
   }, Qt::QueuedConnection);
 
   // Also quit on stopped signal
@@ -637,9 +619,7 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   loop.exec();
 
   // Wait for thread to actually finish
-  std::cout << "[ProgramWorker] loop.exec() returned, waiting for thread to finish..." << std::endl;
   recipeWorker->wait();
-  std::cout << "[ProgramWorker] Thread finished, cleaning up" << std::endl;
 
   // ✅ Clear active worker (thread-safe)
   {
@@ -649,13 +629,12 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 
   // ✅ Emit completion marker BEFORE deleting worker (signal forwarding still active)
   if (success) {
-    emit logMessage(QString("✅ RECIPE EXECUTION COMPLETED"));
+    emit logMessage(QString("RECIPE EXECUTION COMPLETED"));
   }
 
   // Cleanup
   delete recipeWorker;
 
-  std::cout << "[ProgramWorker] executeRecipe() returning success=" << success << std::endl;
   return success;
 }
 
@@ -711,13 +690,7 @@ SequenceContext* ProgramWorker::getCurrentContext() const
   // Context is created at start of runSequential()/runWithDependencies()
   // and passed to each RecipeWorker via setExternalContext()
   // Context persists after run functions return to support chain execution
-  SequenceContext* ctx = m_ownedContext.get();
-  std::cout << "[ProgramWorker] getCurrentContext() called, returning "
-            << (ctx ? "valid context" : "NULL")
-            << ", isRunning=" << isRunning()
-            << ", isFinished=" << isFinished() << std::endl;
-  std::cout.flush();
-  return ctx;
+  return m_ownedContext.get();
 }
 
 // ============================================================================
@@ -726,7 +699,7 @@ SequenceContext* ProgramWorker::getCurrentContext() const
 
 void ProgramWorker::runWithLoop()
 {
-  std::cout << "[ProgramWorker] runWithLoop() started" << std::endl;
+  emit logMessage("runWithLoop() started");
 
   const auto& allRecipes = m_programManager->getAllRecipes();
 

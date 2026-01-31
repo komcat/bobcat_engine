@@ -12,6 +12,7 @@
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
 #include "TECManager.h"    // ✅ ADD THIS
 #include "AuxWindowManager.h"  // ✅ ADD THIS
+#include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor window
 #include "SMU/SMUPollingManager.h"  // ✅ ADD SMU Polling Manager
 #include "CoordinateSystemManager.h"
 #include "lighting/LightingManager.h"
@@ -66,6 +67,7 @@ private:
 	void initializeProductPositionManager();  // ✅ ADD THIS
   void initializeTECManager();  // ✅ ADD THIS LINE
   void initializeAuxWindowManager();  // ✅ ADD THIS
+  void initializeGdiCameraWindow();  // GDI camera monitor window
   void initializePowerSupplySystem();
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
@@ -113,6 +115,7 @@ private:
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
+  std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;  // GDI camera monitor
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
 
   ApplicationContext m_context;

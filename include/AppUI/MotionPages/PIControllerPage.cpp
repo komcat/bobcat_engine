@@ -2,7 +2,8 @@
 #include "PIControllerPage.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
-#include "pi_controller.h"  // ✅ NEW: For GetPivotPoint
+#include "pi_controller.h"
+#include "PIAlignExecutor.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -12,7 +13,7 @@
 
 PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
   : MotionControllerPageBase(context, parent)
-  , m_tabWidget(nullptr)  // ✅ NEW: Initialize tab widget
+  , m_tabWidget(nullptr)
   , m_deviceSelector(nullptr)
   , m_systemVelocity(nullptr)
   , m_turtleButton(nullptr)
@@ -20,11 +21,48 @@ PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
   , m_applyButton(nullptr)
   , m_pivotDisplayWidget(nullptr)
   , m_pivotDisplayLayout(nullptr)
+  , m_analogDisplayWidget(nullptr)
+  , m_analogDisplayLayout(nullptr)
+  , m_analogDeviceSelector(nullptr)
+  , m_analogRefreshButton(nullptr)
+  , m_analogPollTimer(nullptr)
+  , m_fsmSettingsGroup(nullptr)
+  , m_fsmAxis1Selector(nullptr)
+  , m_fsmLength1SpinBox(nullptr)
+  , m_fsmAxis2Selector(nullptr)
+  , m_fsmLength2SpinBox(nullptr)
+  , m_fsmThresholdSpinBox(nullptr)
+  , m_fsmDistanceSpinBox(nullptr)
+  , m_zDirectionSelector(nullptr)
+  , m_zRangeSpinBox(nullptr)
+  , m_zStepSpinBox(nullptr)
+  , m_alignExecutor(nullptr)
+  , m_currentAlignChannel(0)
+  , m_zScanProgressWidget(nullptr)
+  , m_zScanProgressBar(nullptr)
+  , m_zScanPeakLabel(nullptr)
 {
   std::cout << "[PIControllerPage] Initialized" << std::endl;
 
   // NOW safe to call virtual functions - derived class is constructed
   initialize();
+}
+
+PIControllerPage::~PIControllerPage()
+{
+  // Stop analog poll timer
+  if (m_analogPollTimer) {
+    m_analogPollTimer->stop();
+  }
+
+  // Clean up align executor
+  if (m_alignExecutor) {
+    m_alignExecutor->requestStop();
+    delete m_alignExecutor;
+    m_alignExecutor = nullptr;
+  }
+
+  std::cout << "[PIControllerPage] Destroyed" << std::endl;
 }
 
 std::string PIControllerPage::getControllerType() const
@@ -79,6 +117,7 @@ void PIControllerPage::setupUI()
   // Create tabs
   createMainTab();
   createPivotPointTab();
+  createAnalogInputTab();
 
   // Connect tab change signal
   connect(m_tabWidget, &QTabWidget::currentChanged, this, &PIControllerPage::onTabChanged);
@@ -316,7 +355,396 @@ void PIControllerPage::createPivotPointTab()
   updatePivotPointDisplay();
 }
 
-// ✅ NEW: Handle tab changes
+// Create analog input tab
+void PIControllerPage::createAnalogInputTab()
+{
+  QWidget* analogTab = new QWidget();
+  QVBoxLayout* analogTabLayout = new QVBoxLayout(analogTab);
+  analogTabLayout->setContentsMargins(10, 10, 10, 10);
+  analogTabLayout->setSpacing(10);
+
+  // ===== FSM Alignment Settings Group =====
+  m_fsmSettingsGroup = new QGroupBox("FSM Alignment Settings (Fast Scan Maximum)");
+  m_fsmSettingsGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  color: #14ffec; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #0e639c; "
+    "  border-radius: 8px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #14ffec; "
+    "}");
+
+  QVBoxLayout* fsmLayout = new QVBoxLayout(m_fsmSettingsGroup);
+  fsmLayout->setSpacing(8);
+
+  // Common spinbox stylesheet
+  QString spinBoxStyle =
+    "QDoubleSpinBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 3px; "
+    "  min-width: 70px; "
+    "} "
+    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #555555; "
+    "} "
+    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "}";
+
+  QString comboBoxStyle =
+    "QComboBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 3px; "
+    "  min-width: 50px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  border: 1px solid #3f3f46; "
+    "}";
+
+  QString labelStyle = "QLabel { font-size: 13px; font-weight: normal; color: #d4d4d4; }";
+
+  // Row 1: Axis selectors and lengths
+  QHBoxLayout* axisRow = new QHBoxLayout();
+
+  QLabel* axis1Label = new QLabel("Axis 1:");
+  axis1Label->setStyleSheet(labelStyle);
+  axisRow->addWidget(axis1Label);
+
+  m_fsmAxis1Selector = new QComboBox();
+  m_fsmAxis1Selector->addItems({"X", "Y", "Z"});
+  m_fsmAxis1Selector->setCurrentText("X");
+  m_fsmAxis1Selector->setStyleSheet(comboBoxStyle);
+  axisRow->addWidget(m_fsmAxis1Selector);
+
+  QLabel* length1Label = new QLabel("Length:");
+  length1Label->setStyleSheet(labelStyle);
+  axisRow->addWidget(length1Label);
+
+  m_fsmLength1SpinBox = new QDoubleSpinBox();
+  m_fsmLength1SpinBox->setRange(0.001, 10.0);
+  m_fsmLength1SpinBox->setValue(0.020);  // Default: 0.020 mm
+  m_fsmLength1SpinBox->setDecimals(3);
+  m_fsmLength1SpinBox->setSuffix(" mm");
+  m_fsmLength1SpinBox->setStyleSheet(spinBoxStyle);
+  axisRow->addWidget(m_fsmLength1SpinBox);
+
+  axisRow->addSpacing(20);
+
+  QLabel* axis2Label = new QLabel("Axis 2:");
+  axis2Label->setStyleSheet(labelStyle);
+  axisRow->addWidget(axis2Label);
+
+  m_fsmAxis2Selector = new QComboBox();
+  m_fsmAxis2Selector->addItems({"X", "Y", "Z"});
+  m_fsmAxis2Selector->setCurrentText("Y");
+  m_fsmAxis2Selector->setStyleSheet(comboBoxStyle);
+  axisRow->addWidget(m_fsmAxis2Selector);
+
+  QLabel* length2Label = new QLabel("Length:");
+  length2Label->setStyleSheet(labelStyle);
+  axisRow->addWidget(length2Label);
+
+  m_fsmLength2SpinBox = new QDoubleSpinBox();
+  m_fsmLength2SpinBox->setRange(0.001, 10.0);
+  m_fsmLength2SpinBox->setValue(0.020);  // Default: 0.020 mm
+  m_fsmLength2SpinBox->setDecimals(3);
+  m_fsmLength2SpinBox->setSuffix(" mm");
+  m_fsmLength2SpinBox->setStyleSheet(spinBoxStyle);
+  axisRow->addWidget(m_fsmLength2SpinBox);
+
+  axisRow->addStretch();
+  fsmLayout->addLayout(axisRow);
+
+  // Row 2: Threshold, Distance
+  QHBoxLayout* paramRow = new QHBoxLayout();
+
+  QLabel* thresholdLabel = new QLabel("Threshold:");
+  thresholdLabel->setStyleSheet(labelStyle);
+  paramRow->addWidget(thresholdLabel);
+
+  m_fsmThresholdSpinBox = new QDoubleSpinBox();
+  m_fsmThresholdSpinBox->setRange(0.0, 10.0);
+  m_fsmThresholdSpinBox->setValue(0.01);
+  m_fsmThresholdSpinBox->setDecimals(3);
+  m_fsmThresholdSpinBox->setSuffix(" V");
+  m_fsmThresholdSpinBox->setStyleSheet(spinBoxStyle);
+  paramRow->addWidget(m_fsmThresholdSpinBox);
+
+  paramRow->addSpacing(15);
+
+  QLabel* distanceLabel = new QLabel("Line Dist:");
+  distanceLabel->setStyleSheet(labelStyle);
+  paramRow->addWidget(distanceLabel);
+
+  m_fsmDistanceSpinBox = new QDoubleSpinBox();
+  m_fsmDistanceSpinBox->setRange(0.001, 1.0);
+  m_fsmDistanceSpinBox->setValue(0.001);  // Default: 0.001 mm
+  m_fsmDistanceSpinBox->setDecimals(3);
+  m_fsmDistanceSpinBox->setSuffix(" mm");
+  m_fsmDistanceSpinBox->setStyleSheet(spinBoxStyle);
+  paramRow->addWidget(m_fsmDistanceSpinBox);
+
+  paramRow->addStretch();
+  fsmLayout->addLayout(paramRow);
+
+  // Row 3: Z-scan parameters (for 3D search)
+  QHBoxLayout* zScanRow = new QHBoxLayout();
+
+  QLabel* zDirLabel = new QLabel("Z Dir:");
+  zDirLabel->setStyleSheet(labelStyle);
+  zScanRow->addWidget(zDirLabel);
+
+  m_zDirectionSelector = new QComboBox();
+  m_zDirectionSelector->addItems({"Z+", "Z-"});
+  m_zDirectionSelector->setCurrentText("Z-");
+  m_zDirectionSelector->setStyleSheet(comboBoxStyle);
+  zScanRow->addWidget(m_zDirectionSelector);
+
+  zScanRow->addSpacing(15);
+
+  QLabel* zRangeLabel = new QLabel("Z Range:");
+  zRangeLabel->setStyleSheet(labelStyle);
+  zScanRow->addWidget(zRangeLabel);
+
+  m_zRangeSpinBox = new QDoubleSpinBox();
+  m_zRangeSpinBox->setRange(0.001, 1.0);
+  m_zRangeSpinBox->setValue(0.005);  // Default: 0.005 mm
+  m_zRangeSpinBox->setDecimals(4);
+  m_zRangeSpinBox->setSuffix(" mm");
+  m_zRangeSpinBox->setStyleSheet(spinBoxStyle);
+  zScanRow->addWidget(m_zRangeSpinBox);
+
+  zScanRow->addSpacing(15);
+
+  QLabel* zStepLabel = new QLabel("Z Step:");
+  zStepLabel->setStyleSheet(labelStyle);
+  zScanRow->addWidget(zStepLabel);
+
+  m_zStepSpinBox = new QDoubleSpinBox();
+  m_zStepSpinBox->setRange(0.0001, 0.1);
+  m_zStepSpinBox->setValue(0.001);  // Default: 0.001 mm
+  m_zStepSpinBox->setDecimals(4);
+  m_zStepSpinBox->setSuffix(" mm");
+  m_zStepSpinBox->setStyleSheet(spinBoxStyle);
+  zScanRow->addWidget(m_zStepSpinBox);
+
+  zScanRow->addStretch();
+  fsmLayout->addLayout(zScanRow);
+
+  // Z-scan progress display (hidden by default, shown during Z-scan)
+  m_zScanProgressWidget = new QWidget();
+  QHBoxLayout* progressLayout = new QHBoxLayout(m_zScanProgressWidget);
+  progressLayout->setContentsMargins(0, 5, 0, 5);
+  progressLayout->setSpacing(10);
+
+  QLabel* progressLabel = new QLabel("Progress:");
+  progressLabel->setStyleSheet(labelStyle);
+  progressLayout->addWidget(progressLabel);
+
+  m_zScanProgressBar = new QProgressBar();
+  m_zScanProgressBar->setRange(0, 100);
+  m_zScanProgressBar->setValue(0);
+  m_zScanProgressBar->setTextVisible(true);
+  m_zScanProgressBar->setFormat("%v / %m");
+  m_zScanProgressBar->setStyleSheet(
+    "QProgressBar { "
+    "  background-color: #3c3c3c; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 4px; "
+    "  height: 20px; "
+    "  text-align: center; "
+    "  color: #ffffff; "
+    "  min-width: 120px; "
+    "} "
+    "QProgressBar::chunk { "
+    "  background-color: #27ae60; "
+    "  border-radius: 3px; "
+    "}");
+  progressLayout->addWidget(m_zScanProgressBar);
+
+  progressLayout->addSpacing(20);
+
+  QLabel* peakLabel = new QLabel("Peak:");
+  peakLabel->setStyleSheet(labelStyle);
+  progressLayout->addWidget(peakLabel);
+
+  m_zScanPeakLabel = new QLabel("-- V @ Z=-- mm");
+  m_zScanPeakLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  font-family: monospace; "
+    "  color: #f1c40f; "
+    "  background-color: #2d2d30; "
+    "  border: 1px solid #f1c40f; "
+    "  border-radius: 4px; "
+    "  padding: 4px 10px; "
+    "  min-width: 180px; "
+    "}");
+  progressLayout->addWidget(m_zScanPeakLabel);
+
+  progressLayout->addStretch();
+
+  m_zScanProgressWidget->setVisible(false);  // Hidden by default
+  fsmLayout->addWidget(m_zScanProgressWidget);
+
+  analogTabLayout->addWidget(m_fsmSettingsGroup);
+
+  // ===== Analog Input Channels Group =====
+  QGroupBox* analogGroup = new QGroupBox("Analog Input Channels");
+  analogGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-size: 16px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "  color: #ffffff; "
+    "}");
+
+  QVBoxLayout* groupLayout = new QVBoxLayout(analogGroup);
+  groupLayout->setSpacing(10);
+
+  // Device selector row
+  QHBoxLayout* deviceRow = new QHBoxLayout();
+  QLabel* deviceLabel = new QLabel("Device:");
+  deviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
+  deviceRow->addWidget(deviceLabel);
+
+  m_analogDeviceSelector = new QComboBox();
+  m_analogDeviceSelector->setMinimumWidth(200);
+  m_analogDeviceSelector->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 4px; "
+    "  padding: 5px; "
+    "  font-size: 14px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #1e1e1e; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  border: 1px solid #3f3f46; "
+    "}");
+  connect(m_analogDeviceSelector, &QComboBox::currentTextChanged, this, [this](const QString&) {
+    updateAnalogDisplay();
+  });
+  deviceRow->addWidget(m_analogDeviceSelector);
+
+  deviceRow->addSpacing(20);
+
+  m_analogRefreshButton = new QPushButton("Refresh");
+  m_analogRefreshButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 5px; "
+    "  padding: 8px 15px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #1177bb; }");
+  connect(m_analogRefreshButton, &QPushButton::clicked, this, &PIControllerPage::onAnalogRefreshClicked);
+  deviceRow->addWidget(m_analogRefreshButton);
+
+  deviceRow->addStretch();
+
+  groupLayout->addLayout(deviceRow);
+
+  // Create container widget for analog channel values
+  m_analogDisplayWidget = new QWidget();
+  m_analogDisplayLayout = new QVBoxLayout(m_analogDisplayWidget);
+  m_analogDisplayLayout->setSpacing(8);
+  m_analogDisplayLayout->setContentsMargins(0, 10, 0, 0);
+
+  groupLayout->addWidget(m_analogDisplayWidget);
+
+  // Add note
+  QLabel* noteLabel = new QLabel("ℹ️ Analog channels show voltage readings from PI controller ADC inputs");
+  noteLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  font-style: italic; "
+    "  color: #888888; "
+    "  margin-top: 10px; "
+    "}");
+  noteLabel->setWordWrap(true);
+  groupLayout->addWidget(noteLabel);
+
+  analogTabLayout->addWidget(analogGroup);
+  analogTabLayout->addStretch();
+
+  // Add tab to tab widget
+  m_tabWidget->addTab(analogTab, "Analog Inputs");
+
+  // Setup poll timer (updates every 500ms when tab is visible)
+  m_analogPollTimer = new QTimer(this);
+  connect(m_analogPollTimer, &QTimer::timeout, this, &PIControllerPage::onAnalogPollTimer);
+
+  // Populate device selector
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (motionMgr) {
+    std::vector<std::string> piDevices = motionMgr->GetDeviceNamesByType("PI");
+    for (const auto& device : piDevices) {
+      m_analogDeviceSelector->addItem(QString::fromStdString(device));
+    }
+
+    // Create FSM alignment executor (thread-safe execution)
+    m_alignExecutor = new PIAlignExecutor(motionMgr, this);
+
+    // Connect executor signals for thread-safe UI updates
+    connect(m_alignExecutor, &PIAlignExecutor::alignmentStarted,
+            this, &PIControllerPage::onAlignmentStarted, Qt::QueuedConnection);
+    connect(m_alignExecutor, &PIAlignExecutor::alignmentCompleted,
+            this, &PIControllerPage::onAlignmentCompleted, Qt::QueuedConnection);
+    connect(m_alignExecutor, &PIAlignExecutor::alignmentFailed,
+            this, &PIControllerPage::onAlignmentFailed, Qt::QueuedConnection);
+    connect(m_alignExecutor, &PIAlignExecutor::busyStateChanged,
+            this, &PIControllerPage::onAlignBusyStateChanged, Qt::QueuedConnection);
+    connect(m_alignExecutor, &PIAlignExecutor::zScanProgress,
+            this, &PIControllerPage::onZScanProgress, Qt::QueuedConnection);
+
+    std::cout << "[PIControllerPage] FSM Executor created and connected" << std::endl;
+  }
+}
+
+// Handle tab changes
 void PIControllerPage::onTabChanged(int index)
 {
   std::cout << "[PIControllerPage] Tab changed to index: " << index << std::endl;
@@ -324,6 +752,19 @@ void PIControllerPage::onTabChanged(int index)
   // If switching to pivot point tab (index 1), refresh the display
   if (index == 1) {
     updatePivotPointDisplay();
+  }
+
+  // If switching to analog input tab (index 2), start polling
+  if (index == 2) {
+    updateAnalogDisplay();
+    if (m_analogPollTimer && !m_analogPollTimer->isActive()) {
+      m_analogPollTimer->start(500);  // Poll every 500ms
+    }
+  } else {
+    // Stop polling when not on analog tab
+    if (m_analogPollTimer && m_analogPollTimer->isActive()) {
+      m_analogPollTimer->stop();
+    }
   }
 }
 
@@ -526,4 +967,454 @@ void PIControllerPage::updatePivotPointDisplay()
   }
 
   m_pivotDisplayLayout->addStretch();
+}
+
+// Update analog channel display
+void PIControllerPage::updateAnalogDisplay()
+{
+  if (!m_analogDisplayLayout || !m_analogDeviceSelector) {
+    return;
+  }
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) {
+    return;
+  }
+
+  std::string deviceName = m_analogDeviceSelector->currentText().toStdString();
+  if (deviceName.empty()) {
+    return;
+  }
+
+  // Get PI controller
+  PIController* piController = motionMgr->GetPIController(deviceName);
+
+  if (!piController || !piController->IsConnected()) {
+    // Clear existing and show not connected message
+    QLayoutItem* item;
+    while ((item = m_analogDisplayLayout->takeAt(0)) != nullptr) {
+      if (item->widget()) delete item->widget();
+      delete item;
+    }
+    m_analogValueLabels.clear();
+
+    QLabel* errorLabel = new QLabel("Device not connected");
+    errorLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+    m_analogDisplayLayout->addWidget(errorLabel);
+    return;
+  }
+
+  // Get number of analog channels
+  int numChannels = 0;
+  if (!piController->GetAnalogChannelCount(numChannels)) {
+    // Clear and show error
+    QLayoutItem* item;
+    while ((item = m_analogDisplayLayout->takeAt(0)) != nullptr) {
+      if (item->widget()) delete item->widget();
+      delete item;
+    }
+    m_analogValueLabels.clear();
+
+    QLabel* errorLabel = new QLabel("Failed to query analog channels");
+    errorLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+    m_analogDisplayLayout->addWidget(errorLabel);
+    return;
+  }
+
+  // If we don't have labels created yet, create them
+  if (m_analogValueLabels.empty()) {
+    // Clear existing widgets first
+    QLayoutItem* item;
+    while ((item = m_analogDisplayLayout->takeAt(0)) != nullptr) {
+      if (item->widget()) delete item->widget();
+      delete item;
+    }
+    m_fsmAlignButtons.clear();
+    m_zScanButtons.clear();
+
+    // Header label
+    QLabel* headerLabel = new QLabel(QString("Found %1 analog channel(s)").arg(numChannels));
+    headerLabel->setStyleSheet("QLabel { font-size: 13px; color: #27ae60; font-weight: bold; margin-bottom: 5px; }");
+    m_analogDisplayLayout->addWidget(headerLabel);
+
+    // Create label for each channel
+    for (int ch = 1; ch <= numChannels; ++ch) {
+      QHBoxLayout* channelRow = new QHBoxLayout();
+      channelRow->setSpacing(15);
+
+      // Channel name
+      QLabel* channelLabel = new QLabel(QString("Channel %1:").arg(ch));
+      channelLabel->setStyleSheet(
+        "QLabel { "
+        "  font-size: 14px; "
+        "  font-weight: bold; "
+        "  color: #14ffec; "
+        "  min-width: 100px; "
+        "}");
+      channelRow->addWidget(channelLabel);
+
+      // Value label
+      QLabel* valueLabel = new QLabel("-- V");
+      valueLabel->setStyleSheet(
+        "QLabel { "
+        "  font-size: 16px; "
+        "  font-weight: bold; "
+        "  font-family: monospace; "
+        "  color: #ffffff; "
+        "  background-color: #3c3c3c; "
+        "  border: 1px solid #555555; "
+        "  border-radius: 4px; "
+        "  padding: 5px 15px; "
+        "  min-width: 100px; "
+        "}");
+      channelRow->addWidget(valueLabel);
+      m_analogValueLabels[ch] = valueLabel;
+
+      // Only show Align and Z Scan buttons for channels 5 and 6
+      if (ch == 5 || ch == 6) {
+        // FSM Align button
+        QPushButton* alignButton = new QPushButton("Align");
+        alignButton->setStyleSheet(
+          "QPushButton { "
+          "  background-color: #9b59b6; "
+          "  color: white; "
+          "  border: none; "
+          "  border-radius: 4px; "
+          "  padding: 5px 12px; "
+          "  font-size: 13px; "
+          "  font-weight: bold; "
+          "} "
+          "QPushButton:hover { background-color: #8e44ad; } "
+          "QPushButton:disabled { background-color: #555555; color: #888888; }");
+        alignButton->setToolTip(QString("Start FSM (Fast Scan Maximum) alignment using Channel %1").arg(ch));
+        m_fsmAlignButtons[ch] = alignButton;
+
+        // Capture channel value for lambda
+        int channel = ch;
+        connect(alignButton, &QPushButton::clicked, this, [this, channel]() {
+          onFSMAlignClicked(channel);
+        });
+        channelRow->addWidget(alignButton);
+
+        // Z Scan button (iterative FSM at multiple Z levels)
+        QPushButton* zScanButton = new QPushButton("Z Scan");
+        zScanButton->setStyleSheet(
+          "QPushButton { "
+          "  background-color: #e67e22; "
+          "  color: white; "
+          "  border: none; "
+          "  border-radius: 4px; "
+          "  padding: 5px 12px; "
+          "  font-size: 13px; "
+          "  font-weight: bold; "
+          "} "
+          "QPushButton:hover { background-color: #d35400; } "
+          "QPushButton:disabled { background-color: #555555; color: #888888; }");
+        zScanButton->setToolTip(QString("3D alignment: FSM at multiple Z levels using Channel %1").arg(ch));
+        m_zScanButtons[ch] = zScanButton;
+
+        connect(zScanButton, &QPushButton::clicked, this, [this, channel]() {
+          onZScanClicked(channel);
+        });
+        channelRow->addWidget(zScanButton);
+      }
+
+      channelRow->addStretch();
+
+      QWidget* rowWidget = new QWidget();
+      rowWidget->setLayout(channelRow);
+      m_analogDisplayLayout->addWidget(rowWidget);
+    }
+
+    m_analogDisplayLayout->addStretch();
+  }
+
+  // Read and update voltage values
+  for (int ch = 1; ch <= numChannels; ++ch) {
+    double voltage = 0.0;
+    if (piController->GetAnalogVoltage(ch, voltage)) {
+      if (m_analogValueLabels.count(ch)) {
+        m_analogValueLabels[ch]->setText(QString("%1 V").arg(voltage, 0, 'f', 4));
+      }
+    } else {
+      if (m_analogValueLabels.count(ch)) {
+        m_analogValueLabels[ch]->setText("Read Error");
+        m_analogValueLabels[ch]->setStyleSheet(
+          m_analogValueLabels[ch]->styleSheet().replace("color: #ffffff", "color: #e74c3c"));
+      }
+    }
+  }
+}
+
+void PIControllerPage::onAnalogRefreshClicked()
+{
+  // Clear cached labels to force rebuild
+  m_analogValueLabels.clear();
+  updateAnalogDisplay();
+  std::cout << "[PIControllerPage] Analog display refreshed" << std::endl;
+}
+
+void PIControllerPage::onAnalogPollTimer()
+{
+  // Only update values, don't rebuild UI
+  if (m_analogValueLabels.empty()) {
+    updateAnalogDisplay();
+    return;
+  }
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) return;
+
+  std::string deviceName = m_analogDeviceSelector->currentText().toStdString();
+  if (deviceName.empty()) return;
+
+  PIController* piController = motionMgr->GetPIController(deviceName);
+  if (!piController || !piController->IsConnected()) return;
+
+  // Update values only
+  for (auto& [channel, label] : m_analogValueLabels) {
+    double voltage = 0.0;
+    if (piController->GetAnalogVoltage(channel, voltage)) {
+      label->setText(QString("%1 V").arg(voltage, 0, 'f', 4));
+      // Ensure normal styling
+      if (!label->styleSheet().contains("color: #ffffff")) {
+        label->setStyleSheet(
+          "QLabel { "
+          "  font-size: 16px; "
+          "  font-weight: bold; "
+          "  font-family: monospace; "
+          "  color: #ffffff; "
+          "  background-color: #3c3c3c; "
+          "  border: 1px solid #555555; "
+          "  border-radius: 4px; "
+          "  padding: 5px 15px; "
+          "  min-width: 100px; "
+          "}");
+      }
+    }
+  }
+}
+
+void PIControllerPage::onFSMAlignClicked(int channel)
+{
+  if (!m_alignExecutor) {
+    std::cerr << "[PIControllerPage] Align executor not initialized!" << std::endl;
+    QMessageBox::critical(this, "Error", "Alignment executor not available!");
+    return;
+  }
+
+  if (m_alignExecutor->isRunning()) {
+    QMessageBox::warning(this, "Alignment In Progress",
+      "An alignment is already running. Please wait for it to complete.");
+    return;
+  }
+
+  QString deviceName = m_analogDeviceSelector->currentText();
+  if (deviceName.isEmpty()) {
+    QMessageBox::warning(this, "Warning", "Please select a device first!");
+    return;
+  }
+
+  // Validate axes are different
+  QString axis1 = m_fsmAxis1Selector->currentText();
+  QString axis2 = m_fsmAxis2Selector->currentText();
+  if (axis1 == axis2) {
+    QMessageBox::warning(this, "Invalid Parameters",
+      "Axis 1 and Axis 2 must be different for 2D alignment!");
+    return;
+  }
+
+  // Build FSM parameters from UI
+  FSMParameters params;
+  params.axis1 = axis1.toStdString();
+  params.length1 = m_fsmLength1SpinBox->value();
+  params.axis2 = axis2.toStdString();
+  params.length2 = m_fsmLength2SpinBox->value();
+  params.threshold = m_fsmThresholdSpinBox->value();
+  params.distance = m_fsmDistanceSpinBox->value();
+  params.analogChannel = channel;
+
+  // Track which channel is being aligned
+  m_currentAlignChannel = channel;
+
+  std::cout << "[PIControllerPage] Requesting FSM alignment on " << deviceName.toStdString()
+            << " using Channel " << channel << std::endl;
+
+  // Start alignment in background thread
+  m_alignExecutor->startAlignment(deviceName, params);
+}
+
+// ============================================================================
+// FSM Executor Signal Handlers (called on UI thread via QueuedConnection)
+// ============================================================================
+
+void PIControllerPage::onAlignmentStarted(QString deviceName, int channel)
+{
+  std::cout << "[PIControllerPage] Alignment started on " << deviceName.toStdString()
+            << " Channel " << channel << std::endl;
+
+  // Disable the button and show status
+  if (m_fsmAlignButtons.count(channel)) {
+    m_fsmAlignButtons[channel]->setEnabled(false);
+    m_fsmAlignButtons[channel]->setText("Aligning...");
+  }
+
+  // Disable all other align buttons while one is running
+  for (auto& [ch, btn] : m_fsmAlignButtons) {
+    if (ch != channel) {
+      btn->setEnabled(false);
+    }
+  }
+}
+
+void PIControllerPage::onAlignmentCompleted(QString deviceName, int channel)
+{
+  std::cout << "[PIControllerPage] Alignment completed on " << deviceName.toStdString()
+            << " Channel " << channel << std::endl;
+
+  QMessageBox::information(this, "FSM Completed",
+    QString("Fast Scan Maximum completed successfully!\n\n"
+            "Device: %1\n"
+            "Channel: %2\n\n"
+            "The hexapod has moved to the position of maximum signal.")
+      .arg(deviceName)
+      .arg(channel));
+
+  m_currentAlignChannel = 0;
+}
+
+void PIControllerPage::onAlignmentFailed(QString deviceName, int channel, QString errorMessage)
+{
+  std::cerr << "[PIControllerPage] Alignment failed on " << deviceName.toStdString()
+            << " Channel " << channel << ": " << errorMessage.toStdString() << std::endl;
+
+  QMessageBox::critical(this, "FSM Failed",
+    QString("Fast Scan Maximum failed!\n\n"
+            "Device: %1\n"
+            "Channel: %2\n"
+            "Error: %3")
+      .arg(deviceName)
+      .arg(channel)
+      .arg(errorMessage));
+
+  m_currentAlignChannel = 0;
+}
+
+void PIControllerPage::onAlignBusyStateChanged(bool busy)
+{
+  std::cout << "[PIControllerPage] Align busy state: " << (busy ? "busy" : "idle") << std::endl;
+
+  // Re-enable all Align buttons when not busy
+  for (auto& [channel, btn] : m_fsmAlignButtons) {
+    btn->setEnabled(!busy);
+    if (!busy) {
+      btn->setText("Align");
+    }
+  }
+
+  // Re-enable all Z Scan buttons when not busy
+  for (auto& [channel, btn] : m_zScanButtons) {
+    btn->setEnabled(!busy);
+    if (!busy) {
+      btn->setText("Z Scan");
+    }
+  }
+
+  // Hide Z-scan progress widget when finished
+  if (!busy && m_zScanProgressWidget) {
+    // Keep it visible for a moment so user can see final result
+    // It will be hidden when starting next scan
+  }
+}
+
+void PIControllerPage::onZScanClicked(int channel)
+{
+  if (!m_alignExecutor) {
+    std::cerr << "[PIControllerPage] Align executor not initialized!" << std::endl;
+    QMessageBox::critical(this, "Error", "Alignment executor not available!");
+    return;
+  }
+
+  if (m_alignExecutor->isRunning()) {
+    QMessageBox::warning(this, "Alignment In Progress",
+      "An alignment is already running. Please wait for it to complete.");
+    return;
+  }
+
+  QString deviceName = m_analogDeviceSelector->currentText();
+  if (deviceName.isEmpty()) {
+    QMessageBox::warning(this, "Warning", "Please select a device first!");
+    return;
+  }
+
+  // Validate axes are different
+  QString axis1 = m_fsmAxis1Selector->currentText();
+  QString axis2 = m_fsmAxis2Selector->currentText();
+  if (axis1 == axis2) {
+    QMessageBox::warning(this, "Invalid Parameters",
+      "Axis 1 and Axis 2 must be different for 2D alignment!");
+    return;
+  }
+
+  // Build FSM parameters with Z-scan enabled
+  FSMParameters params;
+  params.axis1 = axis1.toStdString();
+  params.length1 = m_fsmLength1SpinBox->value();
+  params.axis2 = axis2.toStdString();
+  params.length2 = m_fsmLength2SpinBox->value();
+  params.threshold = m_fsmThresholdSpinBox->value();
+  params.distance = m_fsmDistanceSpinBox->value();
+  params.analogChannel = channel;
+
+  // Z-scan specific parameters
+  params.zScanEnabled = true;
+  params.zDirection = (m_zDirectionSelector->currentText() == "Z+") ? 1 : -1;
+  params.zRange = m_zRangeSpinBox->value();
+  params.zStep = m_zStepSpinBox->value();
+
+  int numIterations = static_cast<int>(params.zRange / params.zStep) + 1;
+
+  // Track which channel is being aligned
+  m_currentAlignChannel = channel;
+
+  std::cout << "[PIControllerPage] Requesting Z-scan FSM on " << deviceName.toStdString()
+            << " using Channel " << channel << std::endl;
+  std::cout << "  Z Direction: " << (params.zDirection > 0 ? "Z+" : "Z-") << std::endl;
+  std::cout << "  Z Range: " << params.zRange << " mm" << std::endl;
+  std::cout << "  Z Step: " << params.zStep << " mm" << std::endl;
+  std::cout << "  Iterations: " << numIterations << std::endl;
+
+  // Update button to show scanning
+  if (m_zScanButtons.count(channel)) {
+    m_zScanButtons[channel]->setText("Scanning...");
+  }
+
+  // Show progress widget for Z-scan
+  if (m_zScanProgressWidget) {
+    m_zScanProgressBar->setRange(0, numIterations);
+    m_zScanProgressBar->setValue(0);
+    m_zScanPeakLabel->setText("-- V @ Z=-- mm");
+    m_zScanProgressWidget->setVisible(true);
+  }
+
+  // Start alignment in background thread
+  m_alignExecutor->startAlignment(deviceName, params);
+}
+
+void PIControllerPage::onZScanProgress(QString deviceName, int iteration, int total, double currentZ, double peakZ, double peakVoltage)
+{
+  // Update progress bar
+  if (m_zScanProgressBar) {
+    m_zScanProgressBar->setRange(0, total);
+    m_zScanProgressBar->setValue(iteration);
+  }
+
+  // Update peak value label
+  if (m_zScanPeakLabel) {
+    if (peakVoltage > -9990.0) {  // Check if we have a valid peak
+      m_zScanPeakLabel->setText(QString("%1 V @ Z=%2 mm")
+        .arg(peakVoltage, 0, 'f', 4)
+        .arg(peakZ, 0, 'f', 4));
+    }
+  }
 }

@@ -20,6 +20,7 @@
 #include <vector>
 #include <map>
 #include "MotionTypes.h"
+#include "ILogger.h"
 
 // Include ACS controller library
 #include "ACSC_wrapper.h"
@@ -28,6 +29,9 @@ class ACSController {
 public:
   ACSController();
   ~ACSController();
+
+  // Logger support
+  void SetLogger(ILogger* logger) { m_logger = logger; }
 
   // Connection methods
   bool Connect(const std::string& ipAddress, int port = ACSC_SOCKET_STREAM_PORT);
@@ -144,4 +148,7 @@ private:
   // Error tracking
   mutable int m_lastErrorCode = 0;
   mutable std::string m_lastErrorMessage;
+
+  // Logger for spdlog integration
+  ILogger* m_logger = nullptr;
 };

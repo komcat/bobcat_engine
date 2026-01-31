@@ -1,10 +1,14 @@
 ﻿// acs_controller.cpp
 #include "acs_controller.h"
-#include <iostream>
 #include <chrono>
 #include <thread>
 #include <sstream>
 #include <algorithm>
+
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "ACSController")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "ACSController")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "ACSController")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "ACSController")
 
 // Constructor
 ACSController::ACSController()
@@ -15,14 +19,14 @@ ACSController::ACSController()
   m_threadRunning.store(false);
   m_terminateThread.store(false);
 
-  std::cout << "[INFO] ACSController: Initializing controller" << std::endl;
+  LOG_INFO("Initializing controller");
 
   m_availableAxes = { "X", "Y", "Z" };
   StartCommunicationThread();
 }
 
 ACSController::~ACSController() {
-  std::cout << "[INFO] ACSController: Shutting down controller" << std::endl;
+  LOG_INFO("Shutting down controller");
   StopCommunicationThread();
   if (m_isConnected) {
     Disconnect();
@@ -34,7 +38,7 @@ void ACSController::StartCommunicationThread() {
     m_threadRunning.store(true);
     m_terminateThread.store(false);
     m_communicationThread = std::thread(&ACSController::CommunicationThreadFunc, this);
-    std::cout << "[INFO] ACSController: Communication thread started" << std::endl;
+    LOG_INFO("Communication thread started");
   }
 }
 
@@ -51,7 +55,7 @@ void ACSController::StopCommunicationThread() {
     }
 
     m_threadRunning.store(false);
-    std::cout << "[INFO] ACSController: Communication thread stopped" << std::endl;
+    LOG_INFO("Communication thread stopped");
   }
 }
 
@@ -193,11 +197,11 @@ int ACSController::GetAxisIndex(const std::string& axis) {
 
 bool ACSController::Connect(const std::string& ipAddress, int port) {
   if (m_isConnected) {
-    std::cout << "[WARNING] ACSController: Already connected" << std::endl;
+    LOG_WARNING("Already connected");
     return true;
   }
 
-  std::cout << "[INFO] ACSController: Connecting to " << ipAddress << ":" << port << std::endl;
+  LOG_INFO("Connecting to " + ipAddress + ":" + std::to_string(port));
 
   m_ipAddress = ipAddress;
   m_port = port;
@@ -209,24 +213,23 @@ bool ACSController::Connect(const std::string& ipAddress, int port) {
 
   if (m_controllerId == ACSC_INVALID) {
     int errorCode = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to connect. Error: " << errorCode << std::endl;
+    LOG_ERROR("Failed to connect. Error: " + std::to_string(errorCode));
     return false;
   }
 
   m_isConnected.store(true);
-  std::cout << "[INFO] ACSController: Successfully connected" << std::endl;
+  LOG_INFO("Successfully connected");
 
   // Enable all axes
   for (const auto& axis : m_availableAxes) {
     int axisIndex = GetAxisIndex(axis);
     if (axisIndex >= 0) {
       if (acsc_Enable(m_controllerId, axisIndex, NULL)) {
-        std::cout << "[INFO] ACSController: Enabled axis " << axis << std::endl;
+        LOG_INFO("Enabled axis " + axis);
       }
       else {
         int error = acsc_GetLastError();
-        std::cout << "[ERROR] ACSController: Failed to enable axis " << axis
-          << ". Error: " << error << std::endl;
+        LOG_ERROR("Failed to enable axis " + axis + ". Error: " + std::to_string(error));
       }
     }
   }
@@ -239,11 +242,11 @@ bool ACSController::Connect(const std::string& ipAddress, int port) {
     m_lastPositionUpdate = std::chrono::steady_clock::now();
 
     if (m_enableDebug) {
-      std::cout << "[DEBUG] Initial positions: ";
+      std::string posStr = "Initial positions: ";
       for (const auto& [axis, pos] : initialPositions) {
-        std::cout << axis << "=" << pos << " ";
+        posStr += axis + "=" + std::to_string(pos) + " ";
       }
-      std::cout << std::endl;
+      LOG_DEBUG(posStr);
     }
   }
 
@@ -253,7 +256,7 @@ bool ACSController::Connect(const std::string& ipAddress, int port) {
 void ACSController::Disconnect() {
   if (!m_isConnected) return;
 
-  std::cout << "[INFO] ACSController: Disconnecting" << std::endl;
+  LOG_INFO("Disconnecting");
 
   StopAllAxes();
   acsc_CloseComm(m_controllerId);
@@ -261,12 +264,12 @@ void ACSController::Disconnect() {
   m_isConnected.store(false);
   m_controllerId = ACSC_INVALID;
 
-  std::cout << "[INFO] ACSController: Disconnected" << std::endl;
+  LOG_INFO("Disconnected");
 }
 
 bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double velocity, bool blocking) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
@@ -291,7 +294,7 @@ bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double 
   }
 
   if (axes.empty()) {
-    std::cout << "[ERROR] ACSController: No valid axes configured for move" << std::endl;
+    LOG_ERROR("No valid axes configured for move");
     return false;
   }
 
@@ -303,13 +306,12 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
   m_lastErrorCode = 0;
   m_lastErrorMessage.clear();
 
-  std::cout << "[DEBUG] ACSController::MoveToPosition START - axis=" << axis
-            << " position=" << position << " blocking=" << blocking << std::endl;
+  LOG_DEBUG("MoveToPosition START - axis=" + axis + " position=" + std::to_string(position) + " blocking=" + (blocking ? "true" : "false"));
 
   if (!m_isConnected) {
     m_lastErrorCode = -1;
     m_lastErrorMessage = "Not connected";
-    std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
@@ -317,7 +319,7 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
   if (axisIndex < 0) {
     m_lastErrorCode = -2;
     m_lastErrorMessage = "Invalid axis: " + axis;
-    std::cout << "[ERROR] ACSController: Invalid axis index for " << axis << std::endl;
+    LOG_ERROR("Invalid axis index for " + axis);
     return false;
   }
 
@@ -336,14 +338,13 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
 
       if (!isMoving) {
         if (waitedMs > 0) {
-          std::cout << "[DEBUG] ACSController: Axis " << axis << " became idle after "
-                    << waitedMs << "ms wait" << std::endl;
+          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
         }
         break;  // Axis is idle, proceed with move
       }
     } else {
       // State query failed, proceed anyway and let acsc_ToPointM handle it
-      std::cout << "[DEBUG] ACSController: Motor state query failed, proceeding anyway" << std::endl;
+      LOG_DEBUG("Motor state query failed, proceeding anyway");
       isMoving = false;
       break;
     }
@@ -356,45 +357,44 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
     m_lastErrorCode = -3;
     m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
                          std::to_string(maxWaitMs) + "ms)";
-    std::cout << "[ERROR] ACSController: " << m_lastErrorMessage << std::endl;
+    LOG_ERROR(m_lastErrorMessage);
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Moving " << axis << " to " << position << std::endl;
+  LOG_INFO("Moving " + axis + " to " + std::to_string(position));
 
   int axes[2] = { axisIndex, -1 };
   double points[1] = { position };
 
-  std::cout << "[DEBUG] ACSController: Calling acsc_ToPointM with controllerId=" << m_controllerId
-            << " axisIndex=" << axisIndex << std::endl;
+  LOG_DEBUG("Calling acsc_ToPointM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
 
   if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axes, points, NULL)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + std::to_string(isMoving) +
-                         " wasEnabled=" + std::to_string(isEnabled) + ")";
-    std::cout << "[ERROR] ACSController: acsc_ToPointM failed. Error code: " << m_lastErrorCode << std::endl;
+                         " (wasMoving=" + (isMoving ? "true" : "false") +
+                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
+    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
     return false;
   }
-  std::cout << "[DEBUG] ACSController: acsc_ToPointM succeeded" << std::endl;
+  LOG_DEBUG("acsc_ToPointM succeeded");
 
-  std::cout << "[DEBUG] ACSController: Calling StartMotion for axis " << axis << std::endl;
+  LOG_DEBUG("Calling StartMotion for axis " + axis);
   if (!StartMotion(axis)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_GoM (StartMotion) failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + std::to_string(isMoving) +
-                         " wasEnabled=" + std::to_string(isEnabled) + ")";
-    std::cout << "[ERROR] ACSController: StartMotion failed for axis " << axis << std::endl;
+                         " (wasMoving=" + (isMoving ? "true" : "false") +
+                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
+    LOG_ERROR("StartMotion failed for axis " + axis);
     return false;
   }
-  std::cout << "[DEBUG] ACSController: StartMotion succeeded" << std::endl;
+  LOG_DEBUG("StartMotion succeeded");
 
   if (blocking) {
-    std::cout << "[DEBUG] ACSController: Waiting for motion completion" << std::endl;
+    LOG_DEBUG("Waiting for motion completion");
     return WaitForMotionCompletion(axis);
   }
 
-  std::cout << "[DEBUG] ACSController::MoveToPosition END - success" << std::endl;
+  LOG_DEBUG("MoveToPosition END - success");
   return true;
 }
 
@@ -403,13 +403,12 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
   m_lastErrorCode = 0;
   m_lastErrorMessage.clear();
 
-  std::cout << "[DEBUG] ACSController::MoveRelative START - axis=" << axis
-            << " distance=" << distance << " blocking=" << blocking << std::endl;
+  LOG_DEBUG("MoveRelative START - axis=" + axis + " distance=" + std::to_string(distance) + " blocking=" + (blocking ? "true" : "false"));
 
   if (!m_isConnected) {
     m_lastErrorCode = -1;
     m_lastErrorMessage = "Not connected";
-    std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
@@ -417,7 +416,7 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
   if (axisIndex < 0) {
     m_lastErrorCode = -2;
     m_lastErrorMessage = "Invalid axis: " + axis;
-    std::cout << "[ERROR] ACSController: Invalid axis index for " << axis << std::endl;
+    LOG_ERROR("Invalid axis index for " + axis);
     return false;
   }
 
@@ -436,14 +435,13 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
 
       if (!isMoving) {
         if (waitedMs > 0) {
-          std::cout << "[DEBUG] ACSController: Axis " << axis << " became idle after "
-                    << waitedMs << "ms wait" << std::endl;
+          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
         }
         break;  // Axis is idle, proceed with move
       }
     } else {
       // State query failed, proceed anyway and let acsc_ToPointM handle it
-      std::cout << "[DEBUG] ACSController: Motor state query failed, proceeding anyway" << std::endl;
+      LOG_DEBUG("Motor state query failed, proceeding anyway");
       isMoving = false;
       break;
     }
@@ -456,62 +454,61 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
     m_lastErrorCode = -3;
     m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
                          std::to_string(maxWaitMs) + "ms)";
-    std::cout << "[ERROR] ACSController: " << m_lastErrorMessage << std::endl;
+    LOG_ERROR(m_lastErrorMessage);
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Moving " << axis << " relative " << distance << std::endl;
+  LOG_INFO("Moving " + axis + " relative " + std::to_string(distance));
 
   int axes[2] = { axisIndex, -1 };
   double distances[1] = { distance };
 
-  std::cout << "[DEBUG] ACSController: Calling acsc_ToPointM with controllerId=" << m_controllerId
-            << " axisIndex=" << axisIndex << std::endl;
+  LOG_DEBUG("Calling acsc_ToPointM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
 
   if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT | ACSC_AMF_RELATIVE, axes, distances, NULL)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + std::to_string(isMoving) +
-                         " wasEnabled=" + std::to_string(isEnabled) + ")";
-    std::cout << "[ERROR] ACSController: acsc_ToPointM failed. Error code: " << m_lastErrorCode << std::endl;
+                         " (wasMoving=" + (isMoving ? "true" : "false") +
+                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
+    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
     return false;
   }
-  std::cout << "[DEBUG] ACSController: acsc_ToPointM succeeded" << std::endl;
+  LOG_DEBUG("acsc_ToPointM succeeded");
 
-  std::cout << "[DEBUG] ACSController: Calling StartMotion for axis " << axis << std::endl;
+  LOG_DEBUG("Calling StartMotion for axis " + axis);
   if (!StartMotion(axis)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_GoM (StartMotion) failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + std::to_string(isMoving) +
-                         " wasEnabled=" + std::to_string(isEnabled) + ")";
-    std::cout << "[ERROR] ACSController: StartMotion failed for axis " << axis << std::endl;
+                         " (wasMoving=" + (isMoving ? "true" : "false") +
+                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
+    LOG_ERROR("StartMotion failed for axis " + axis);
     return false;
   }
-  std::cout << "[DEBUG] ACSController: StartMotion succeeded" << std::endl;
+  LOG_DEBUG("StartMotion succeeded");
 
   if (blocking) {
-    std::cout << "[DEBUG] ACSController: Waiting for motion completion" << std::endl;
+    LOG_DEBUG("Waiting for motion completion");
     return WaitForMotionCompletion(axis);
   }
 
-  std::cout << "[DEBUG] ACSController::MoveRelative END - success" << std::endl;
+  LOG_DEBUG("MoveRelative END - success");
   return true;
 }
 
 bool ACSController::HomeAxis(const std::string& axis) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot home - not connected" << std::endl;
+    LOG_ERROR("Cannot home - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[INFO] ACSController: Homing axis " << axis << std::endl;
+  LOG_INFO("Homing axis " + axis);
 
   if (!acsc_FaultClear(m_controllerId, axisIndex, NULL)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to clear faults. Error: " << error << std::endl;
+    LOG_ERROR("Failed to clear faults. Error: " + std::to_string(error));
   }
 
   return WaitForMotionCompletion(axis);
@@ -519,18 +516,18 @@ bool ACSController::HomeAxis(const std::string& axis) {
 
 bool ACSController::StopAxis(const std::string& axis) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot stop - not connected" << std::endl;
+    LOG_ERROR("Cannot stop - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[INFO] ACSController: Stopping axis " << axis << std::endl;
+  LOG_INFO("Stopping axis " + axis);
 
   if (!acsc_Halt(m_controllerId, axisIndex, NULL)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to stop. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop. Error: " + std::to_string(error));
     return false;
   }
 
@@ -543,15 +540,15 @@ bool ACSController::StopAllMotion() {
 
 bool ACSController::StopAllAxes() {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot stop - not connected" << std::endl;
+    LOG_ERROR("Cannot stop - not connected");
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Stopping all axes" << std::endl;
+  LOG_INFO("Stopping all axes");
 
   if (!acsc_KillAll(m_controllerId, NULL)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to stop all. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop all. Error: " + std::to_string(error));
     return false;
   }
 
@@ -622,7 +619,7 @@ bool ACSController::GetPosition(const std::string& axis, double& position) {
   if (!acsc_GetFPosition(m_controllerId, axisIndex, &position, NULL)) {
     if (m_enableDebug) {
       int error = acsc_GetLastError();
-      std::cout << "[DEBUG] Error getting position for " << axis << ": " << error << std::endl;
+      LOG_DEBUG("Error getting position for " + axis + ": " + std::to_string(error));
     }
     return false;
   }
@@ -665,22 +662,21 @@ bool ACSController::GetPositions(std::map<std::string, double>& positions) {
 
 bool ACSController::EnableServo(const std::string& axis, bool enable) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot change servo - not connected" << std::endl;
+    LOG_ERROR("Cannot change servo - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[INFO] ACSController: Setting servo " << axis << " to "
-    << (enable ? "enabled" : "disabled") << std::endl;
+  LOG_INFO("Setting servo " + axis + " to " + (enable ? "enabled" : "disabled"));
 
   bool result = false;
   if (enable) {
     // First, clear any faults on the axis before enabling
     // This is required by ACS controllers - motors cannot be enabled if faults are present
     if (acsc_FaultClear(m_controllerId, axisIndex, NULL) == 0) {
-      std::cout << "[WARN] ACSController: FaultClear returned 0 for axis " << axis << std::endl;
+      LOG_WARNING("FaultClear returned 0 for axis " + axis);
       // Continue anyway - might not have any faults
     }
 
@@ -696,11 +692,10 @@ bool ACSController::EnableServo(const std::string& axis, bool enable) {
 
   if (!result) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to set servo. Error code: " << error << std::endl;
+    LOG_ERROR("Failed to set servo. Error code: " + std::to_string(error));
   }
   else {
-    std::cout << "[INFO] ACSController: Servo " << axis << " "
-      << (enable ? "enabled" : "disabled") << " successfully" << std::endl;
+    LOG_INFO("Servo " + axis + " " + (enable ? "enabled" : "disabled") + " successfully");
   }
 
   return result;
@@ -723,18 +718,18 @@ bool ACSController::IsServoEnabled(const std::string& axis, bool& enabled) {
 
 bool ACSController::SetVelocity(const std::string& axis, double velocity) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot set velocity - not connected" << std::endl;
+    LOG_ERROR("Cannot set velocity - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[INFO] ACSController: Setting velocity " << axis << " to " << velocity << std::endl;
+  LOG_INFO("Setting velocity " + axis + " to " + std::to_string(velocity));
 
   if (!acsc_SetVelocity(m_controllerId, axisIndex, velocity, NULL)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to set velocity. Error: " << error << std::endl;
+    LOG_ERROR("Failed to set velocity. Error: " + std::to_string(error));
     return false;
   }
 
@@ -756,14 +751,14 @@ bool ACSController::GetVelocity(const std::string& axis, double& velocity) {
 
 bool ACSController::WaitForMotionCompletion(const std::string& axis, double timeoutSeconds) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot wait - not connected" << std::endl;
+    LOG_ERROR("Cannot wait - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  std::cout << "[DEBUG] ACSController: WaitForMotionCompletion START for " << axis << std::endl;
+  LOG_DEBUG("WaitForMotionCompletion START for " + axis);
 
   auto startTime = std::chrono::steady_clock::now();
 
@@ -779,8 +774,7 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
       bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
       if (isMoving) {
         motionStarted = true;
-        std::cout << "[DEBUG] ACSController: Axis " << axis << " motion started after "
-                  << waitedForStartMs << "ms" << std::endl;
+        LOG_DEBUG("Axis " + axis + " motion started after " + std::to_string(waitedForStartMs) + "ms");
         break;
       }
     }
@@ -791,13 +785,12 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
 
   if (!motionStarted) {
     // Motion never started - check if we're already at target (position didn't change)
-    std::cout << "[DEBUG] ACSController: Axis " << axis << " motion flag never set after "
-              << motionStartTimeoutMs << "ms - checking if already at target" << std::endl;
+    LOG_DEBUG("Axis " + axis + " motion flag never set after " + std::to_string(motionStartTimeoutMs) + "ms - checking if already at target");
     // Proceed to completion check anyway - might be a very short move
   }
 
   // Phase 2: Wait for motion to COMPLETE (motor flag becomes NOT MOVING)
-  std::cout << "[DEBUG] ACSController: Waiting for " << axis << " motion completion" << std::endl;
+  LOG_DEBUG("Waiting for " + axis + " motion completion");
 
   while (true) {
     int motorState = 0;
@@ -808,8 +801,7 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
         auto endTime = std::chrono::steady_clock::now();
         auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
           endTime - startTime).count();
-        std::cout << "[DEBUG] ACSController: Axis " << axis << " motion completed after "
-                  << totalMs << "ms total" << std::endl;
+        LOG_DEBUG("Axis " + axis + " motion completed after " + std::to_string(totalMs) + "ms total");
         return true;
       }
     }
@@ -819,8 +811,7 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
       currentTime - startTime).count();
 
     if (elapsedSeconds > timeoutSeconds) {
-      std::cout << "[WARNING] ACSController: Timeout waiting for " << axis
-                << " after " << timeoutSeconds << " seconds" << std::endl;
+      LOG_WARNING("Timeout waiting for " + axis + " after " + std::to_string(timeoutSeconds) + " seconds");
       return false;
     }
 
@@ -830,12 +821,12 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
 
 bool ACSController::ConfigureFromDevice(const MotionDevice& device) {
   if (m_isConnected) {
-    std::cout << "[WARNING] ACSController: Cannot configure while connected" << std::endl;
+    LOG_WARNING("Cannot configure while connected");
     return false;
   }
 
   m_deviceName = device.Name;
-  std::cout << "[INFO] ACSController: Configuring from device: " << device.Name << std::endl;
+  LOG_INFO("Configuring from device: " + device.Name);
 
   m_ipAddress = device.IpAddress;
   m_port = device.Port;
@@ -860,48 +851,46 @@ bool ACSController::ConfigureFromDevice(const MotionDevice& device) {
       m_availableAxes.push_back(axisStr);
     }
 
-    std::cout << "[INFO] ACSController: Configured axes: " << device.InstalledAxes << std::endl;
+    LOG_INFO("Configured axes: " + device.InstalledAxes);
   }
   else {
     m_availableAxes = { "X", "Y", "Z" };
-    std::cout << "[INFO] ACSController: Using default axes (X Y Z)" << std::endl;
+    LOG_INFO("Using default axes (X Y Z)");
   }
 
   return true;
 }
 
 bool ACSController::MoveToNamedPosition(const std::string& deviceName, const std::string& positionName) {
-  std::cout << "[INFO] ACSController: Moving to named position " << positionName
-    << " for " << deviceName << std::endl;
+  LOG_INFO("Moving to named position " + positionName + " for " + deviceName);
   return true;
 }
 
 bool ACSController::StartMotion(const std::string& axis) {
-  std::cout << "[DEBUG] ACSController::StartMotion START - axis=" << axis << std::endl;
+  LOG_DEBUG("StartMotion START - axis=" + axis);
 
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot start motion - not connected" << std::endl;
+    LOG_ERROR("Cannot start motion - not connected");
     return false;
   }
 
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) {
-    std::cout << "[ERROR] ACSController: Invalid axis: " << axis << std::endl;
+    LOG_ERROR("Invalid axis: " + axis);
     return false;
   }
 
   int axes[2] = { axisIndex, -1 };
 
-  std::cout << "[DEBUG] ACSController: Calling acsc_GoM with controllerId=" << m_controllerId
-            << " axisIndex=" << axisIndex << std::endl;
+  LOG_DEBUG("Calling acsc_GoM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
 
   if (!acsc_GoM(m_controllerId, axes, NULL)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: acsc_GoM failed. Error code: " << error << std::endl;
+    LOG_ERROR("acsc_GoM failed. Error code: " + std::to_string(error));
     return false;
   }
 
-  std::cout << "[DEBUG] ACSController::StartMotion END - success" << std::endl;
+  LOG_DEBUG("StartMotion END - success");
   return true;
 }
 
@@ -912,23 +901,23 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   m_lastErrorCode = 0;
   m_lastErrorMessage.clear();
 
-  std::cout << "[DEBUG] ACSController::MoveToPositionMultiAxis START - blocking=" << blocking << std::endl;
+  LOG_DEBUG("MoveToPositionMultiAxis START - blocking=" + std::string(blocking ? "true" : "false"));
 
   if (!m_isConnected) {
     m_lastErrorCode = -1;
     m_lastErrorMessage = "Not connected";
-    std::cout << "[ERROR] ACSController: Cannot move - not connected" << std::endl;
+    LOG_ERROR("Cannot move - not connected");
     return false;
   }
 
   if (axes.size() != positions.size() || axes.empty()) {
     m_lastErrorCode = -2;
     m_lastErrorMessage = "Invalid axes/positions arrays";
-    std::cout << "[ERROR] ACSController: Invalid axes/positions arrays" << std::endl;
+    LOG_ERROR("Invalid axes/positions arrays");
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Moving multiple axes" << std::endl;
+  LOG_INFO("Moving multiple axes");
 
   std::vector<int> axisIndices;
   for (const auto& axis : axes) {
@@ -936,7 +925,7 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
     if (axisIndex < 0) {
       m_lastErrorCode = -2;
       m_lastErrorMessage = "Invalid axis: " + axis;
-      std::cout << "[ERROR] ACSController: Invalid axis: " << axis << std::endl;
+      LOG_ERROR("Invalid axis: " + axis);
       return false;
     }
     axisIndices.push_back(axisIndex);
@@ -959,14 +948,13 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
 
         if (!isMoving) {
           if (waitedMs > 0) {
-            std::cout << "[DEBUG] ACSController: Axis " << axis << " became idle after "
-                      << waitedMs << "ms wait" << std::endl;
+            LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
           }
           break;  // Axis is idle, proceed to next axis
         }
       } else {
         // State query failed, proceed anyway and let acsc_ToPointM handle it
-        std::cout << "[DEBUG] ACSController: Motor state query failed for " << axis << ", proceeding anyway" << std::endl;
+        LOG_DEBUG("Motor state query failed for " + axis + ", proceeding anyway");
         isMoving = false;
         break;
       }
@@ -979,7 +967,7 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
       m_lastErrorCode = -3;
       m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
                            std::to_string(maxWaitMs) + "ms)";
-      std::cout << "[ERROR] ACSController: " << m_lastErrorMessage << std::endl;
+      LOG_ERROR(m_lastErrorMessage);
       return false;
     }
   }
@@ -990,28 +978,28 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   }
   axesArray[axisIndices.size()] = -1;
 
-  std::cout << "[DEBUG] ACSController: Calling acsc_ToPointM for multi-axis move" << std::endl;
+  LOG_DEBUG("Calling acsc_ToPointM for multi-axis move");
 
   if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axesArray.data(),
     const_cast<double*>(positions.data()), NULL)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode);
-    std::cout << "[ERROR] ACSController: acsc_ToPointM failed. Error code: " << m_lastErrorCode << std::endl;
+    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
     return false;
   }
-  std::cout << "[DEBUG] ACSController: acsc_ToPointM succeeded" << std::endl;
+  LOG_DEBUG("acsc_ToPointM succeeded");
 
-  std::cout << "[DEBUG] ACSController: Calling acsc_GoM for multi-axis move" << std::endl;
+  LOG_DEBUG("Calling acsc_GoM for multi-axis move");
   if (!acsc_GoM(m_controllerId, axesArray.data(), NULL)) {
     m_lastErrorCode = acsc_GetLastError();
     m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(m_lastErrorCode);
-    std::cout << "[ERROR] ACSController: acsc_GoM failed. Error code: " << m_lastErrorCode << std::endl;
+    LOG_ERROR("acsc_GoM failed. Error code: " + std::to_string(m_lastErrorCode));
     return false;
   }
-  std::cout << "[DEBUG] ACSController: acsc_GoM succeeded" << std::endl;
+  LOG_DEBUG("acsc_GoM succeeded");
 
   if (blocking) {
-    std::cout << "[DEBUG] ACSController: Waiting for motion completion on all axes" << std::endl;
+    LOG_DEBUG("Waiting for motion completion on all axes");
     bool allCompleted = true;
     for (const auto& axis : axes) {
       if (!WaitForMotionCompletion(axis)) {
@@ -1021,18 +1009,18 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
     return allCompleted;
   }
 
-  std::cout << "[DEBUG] ACSController::MoveToPositionMultiAxis END - success" << std::endl;
+  LOG_DEBUG("MoveToPositionMultiAxis END - success");
   return true;
 }
 
 bool ACSController::RunBuffer(int bufferNumber, const std::string& labelName) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot run buffer - not connected" << std::endl;
+    LOG_ERROR("Cannot run buffer - not connected");
     return false;
   }
 
   if (bufferNumber < 0 || bufferNumber > 63) {
-    std::cout << "[ERROR] ACSController: Invalid buffer number " << bufferNumber << std::endl;
+    LOG_ERROR("Invalid buffer number " + std::to_string(bufferNumber));
     return false;
   }
 
@@ -1044,23 +1032,22 @@ bool ACSController::RunBuffer(int bufferNumber, const std::string& labelName) {
     std::transform(upperLabel.begin(), upperLabel.end(), upperLabel.begin(), ::toupper);
 
     if (upperLabel[0] != '_' && (upperLabel[0] < 'A' || upperLabel[0] > 'Z')) {
-      std::cout << "[ERROR] ACSController: Invalid label name: " << labelName << std::endl;
+      LOG_ERROR("Invalid label name: " + labelName);
       return false;
     }
 
     strncpy_s(labelBuffer, sizeof(labelBuffer), upperLabel.c_str(), _TRUNCATE);
     labelPtr = labelBuffer;
 
-    std::cout << "[INFO] ACSController: Running buffer " << bufferNumber
-      << " from label " << labelName << std::endl;
+    LOG_INFO("Running buffer " + std::to_string(bufferNumber) + " from label " + labelName);
   }
   else {
-    std::cout << "[INFO] ACSController: Running buffer " << bufferNumber << std::endl;
+    LOG_INFO("Running buffer " + std::to_string(bufferNumber));
   }
 
   if (!acsc_RunBuffer(m_controllerId, bufferNumber, labelPtr, ACSC_SYNCHRONOUS)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to run buffer. Error: " << error << std::endl;
+    LOG_ERROR("Failed to run buffer. Error: " + std::to_string(error));
     return false;
   }
 
@@ -1069,20 +1056,20 @@ bool ACSController::RunBuffer(int bufferNumber, const std::string& labelName) {
 
 bool ACSController::StopBuffer(int bufferNumber) {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot stop buffer - not connected" << std::endl;
+    LOG_ERROR("Cannot stop buffer - not connected");
     return false;
   }
 
   if (bufferNumber < 0 || bufferNumber > 63) {
-    std::cout << "[ERROR] ACSController: Invalid buffer number" << std::endl;
+    LOG_ERROR("Invalid buffer number");
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Stopping buffer " << bufferNumber << std::endl;
+  LOG_INFO("Stopping buffer " + std::to_string(bufferNumber));
 
   if (!acsc_StopBuffer(m_controllerId, bufferNumber, ACSC_SYNCHRONOUS)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to stop buffer. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop buffer. Error: " + std::to_string(error));
     return false;
   }
 
@@ -1091,15 +1078,15 @@ bool ACSController::StopBuffer(int bufferNumber) {
 
 bool ACSController::StopAllBuffers() {
   if (!m_isConnected) {
-    std::cout << "[ERROR] ACSController: Cannot stop buffers - not connected" << std::endl;
+    LOG_ERROR("Cannot stop buffers - not connected");
     return false;
   }
 
-  std::cout << "[INFO] ACSController: Stopping all buffers" << std::endl;
+  LOG_INFO("Stopping all buffers");
 
   if (!acsc_StopBuffer(m_controllerId, ACSC_NONE, ACSC_SYNCHRONOUS)) {
     int error = acsc_GetLastError();
-    std::cout << "[ERROR] ACSController: Failed to stop all buffers. Error: " << error << std::endl;
+    LOG_ERROR("Failed to stop all buffers. Error: " + std::to_string(error));
     return false;
   }
 

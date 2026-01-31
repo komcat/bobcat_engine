@@ -21,6 +21,7 @@ class CoordinateSystemManager;
 class DeviceUnderTest;
 class SafetyWatchManager;
 class DeviceLinkManager;
+class GdiCameraWindowManager;  // GDI-based camera monitor window
 
 namespace Lighting {
 class LightingManager;
@@ -49,6 +50,7 @@ struct ApplicationContext
   Lighting::LightingManager* lightingManager = nullptr;  // LED lighting controller
   SafetyWatchManager* safetyWatchManager = nullptr;  // Safety monitoring layer
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
+  GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

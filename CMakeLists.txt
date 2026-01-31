@@ -110,6 +110,18 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts OpenGLWidgets)
 
 # ============================================================================
+# spdlog Configuration (header-only)
+# ============================================================================
+set(SPDLOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog/include")
+if(EXISTS "${SPDLOG_INCLUDE_DIR}/spdlog/spdlog.h")
+    message(STATUS "spdlog found at: ${SPDLOG_INCLUDE_DIR}")
+    set(SPDLOG_FOUND TRUE)
+else()
+    message(WARNING "spdlog not found at ${SPDLOG_INCLUDE_DIR}")
+    set(SPDLOG_FOUND FALSE)
+endif()
+
+# ============================================================================
 # nlohmann JSON Configuration
 # ============================================================================
 set(NLOHMANN_JSON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external")
@@ -474,6 +486,11 @@ if(NLOHMANN_JSON_FOUND)
     include_directories(${NLOHMANN_JSON_DIR})
 endif()
 
+# Add spdlog include directory if found
+if(SPDLOG_FOUND)
+    include_directories(${SPDLOG_INCLUDE_DIR})
+endif()
+
 # Add ACS include directory if found
 if(ACSC_FOUND)
     include_directories(${ACSC_DIR})
@@ -684,6 +701,8 @@ set(SOURCES
     include/AuxWindow/WorldOverlayRenderer.cpp
     include/AuxWindow/ShapeCreatorDialog.cpp
     include/AuxWindow/AlignmentWizardDialog.cpp
+    include/GdiWindow/GdiCameraWindow.cpp
+    include/GdiWindow/GdiCameraWindowManager.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp
@@ -951,12 +970,14 @@ if(PI_FOUND)
         include/motions/PI/pi_controller_manager.cpp
         include/motions/PI/pi_controller.cpp
         include/motions/PI/PIPivotJsonLoader.cpp
+        include/motions/PI/PIAlignExecutor.cpp
     )
     list(APPEND HEADERS
         include/motions/PI/pi_controller_manager.h
         include/motions/PI/pi_controller.h
         include/motions/PI/PI_GCS2_DLL.h
         include/motions/PI/PIPivotJsonLoader.h
+        include/motions/PI/PIAlignExecutor.h
     )
     message(STATUS "PI Controller support enabled")
 else()

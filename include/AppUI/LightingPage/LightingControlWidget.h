@@ -6,7 +6,6 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QPushButton>
-#include <QSlider>
 #include <QLabel>
 #include <QLineEdit>
 #include <QTimer>
@@ -46,10 +45,9 @@ signals:
     void toggleChanged(int channel, bool on);
 
 private slots:
-    void onSliderChanged(int value);
-    void onSliderPressed();
-    void onSliderReleased();
-    void onDebounceTimeout();
+    void onApplyClicked();
+    void onIncrementClicked();
+    void onDecrementClicked();
     void onToggleClicked();
     void onPercentInputFinished();
 
@@ -57,7 +55,7 @@ private:
     void setupUI();
     void updateButtonState();
     QColor getColorFromString(const QString& colorStr);
-    void sendIntensityUpdate();
+    void sendIntensityUpdate(int intensity);
 
     int m_channelNumber;
     QString m_channelName;
@@ -65,20 +63,17 @@ private:
 
     QLabel* m_nameLabel;
     QLabel* m_channelLabel;
-    QSlider* m_intensitySlider;
     QLabel* m_intensityValue;
     QLineEdit* m_percentInput;
+    QPushButton* m_applyButton;
+    QPushButton* m_incrementButton;
+    QPushButton* m_decrementButton;
     QPushButton* m_toggleButton;
 
     bool m_isOn;
     bool m_isConnected;
     bool m_isUpdating;  // Prevent feedback loops
-    bool m_isDragging;  // True while user is dragging slider
-
-    // Debounce timer to throttle hardware updates
-    QTimer* m_debounceTimer;
-    int m_pendingIntensity;
-    bool m_hasPendingUpdate;
+    int m_currentIntensity;  // Current intensity value (0-255)
 };
 
 /**
@@ -105,6 +100,13 @@ private slots:
     void onAllOffClicked();
     void onRefreshClicked();
 
+    // Preset slots
+    void onPresetClicked(int percent);
+    void onCollimatePreset();
+    void onRedPreset();
+    void onGreenPreset();
+    void onBluePreset();
+
     // Worker callbacks
     void onWorkerConnectionSuccess(QString deviceId);
     void onWorkerConnectionFailed(QString deviceId, QString error);
@@ -116,9 +118,12 @@ private slots:
 private:
     void setupUI();
     void createHeaderSection();
+    void createPresetsSection();
     void createChannelWidgets();
     void updateStatus();
     void updateChannelWidgets();
+    void setAllChannelsIntensity(int intensity);
+    void setColorPreset(const QString& color, int intensity);
 
     ApplicationContext* m_context;
     Lighting::LightingManager* m_lightingManager;

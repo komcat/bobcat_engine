@@ -347,27 +347,36 @@ double Keithley6482Adapter::ReadChannel(int channel)
     return -999.0;
   }
 
-  // Select the channel if not already selected
-  if (channel != m_currentChannel) {
-    std::ostringstream cmd;
-    cmd << ":SENS:FUNC:CONC OFF;:SENS:FUNC 'CURR:DC', (@" << channel << ")";
-    if (!WriteCommandInternal(cmd.str())) {
-      SetLastError("Failed to select channel " + std::to_string(channel));
-      return -999.0;
-    }
-    m_currentChannel = channel;
-  }
-
-  // Read from selected channel
+  // For 6482, use :READ? which returns comma-separated values for all channels
+  // Then extract the requested channel from the response
   std::string response;
   if (!QueryCommandInternal(":READ?", response)) {
     SetLastError("Failed to read current from channel " + std::to_string(channel));
     return -999.0;
   }
 
+  m_currentChannel = channel;
+
   try {
-    double current = std::stod(response);
-    return current;
+    // Parse comma-separated response: "1.234e-6,5.678e-7" (ch1,ch2)
+    std::vector<double> values;
+    std::stringstream ss(response);
+    std::string value;
+    while (std::getline(ss, value, ',')) {
+      values.push_back(std::stod(value));
+    }
+
+    // Get the requested channel (1-indexed, array is 0-indexed)
+    int idx = channel - 1;
+    if (idx >= 0 && idx < static_cast<int>(values.size())) {
+      return values[idx];
+    } else if (!values.empty()) {
+      // If channel index out of range, return first value
+      return values[0];
+    } else {
+      SetLastError("No values in response");
+      return -999.0;
+    }
   }
   catch (const std::exception& e) {
     SetLastError(std::string("Failed to parse current value: ") + e.what());
@@ -424,13 +433,9 @@ std::vector<double> Keithley6482Adapter::ReadAllChannels()
     }
   }
   else if (m_config.EnabledChannels.size() == 1) {
-    // Single channel
+    // Single channel - still use :READ? and parse first value
     int channel = m_config.EnabledChannels[0];
-
-    // Select the channel
-    std::ostringstream cmd;
-    cmd << ":SENS:FUNC:CONC OFF;:SENS:FUNC 'CURR:DC', (@" << channel << ")";
-    WriteCommandInternal(cmd.str());
+    m_currentChannel = channel;
 
     std::string response;
     if (!QueryCommandInternal(":READ?", response)) {
@@ -438,11 +443,31 @@ std::vector<double> Keithley6482Adapter::ReadAllChannels()
       return results;
     }
 
-    try {
-      results.push_back(std::stod(response));
+    // Parse comma-separated response and get the requested channel
+    std::stringstream ss(response);
+    std::string value;
+    int idx = 0;
+    int targetIdx = channel - 1;
+    while (std::getline(ss, value, ',')) {
+      if (idx == targetIdx) {
+        try {
+          results.push_back(std::stod(value));
+        }
+        catch (const std::exception&) {
+          results.push_back(-999.0);
+        }
+        break;
+      }
+      idx++;
     }
-    catch (const std::exception&) {
-      results.push_back(-999.0);
+    // If we didn't find the channel, try first value
+    if (results.empty()) {
+      try {
+        results.push_back(std::stod(response));
+      }
+      catch (const std::exception&) {
+        results.push_back(-999.0);
+      }
     }
   }
 
@@ -802,16 +827,11 @@ bool Keithley6482Adapter::SelectChannel(int channel)
     return false;
   }
 
-  std::ostringstream cmd;
-  cmd << ":SENS:FUNC:CONC OFF;:SENS:FUNC 'CURR:DC', (@" << channel << ")";
-
-  if (WriteCommandInternal(cmd.str())) {
-    m_currentChannel = channel;
-    std::cout << "[Keithley6482] Selected channel " << channel << std::endl;
-    return true;
-  }
-
-  return false;
+  // For 6482, channel selection is just tracking which channel to read from
+  // The actual reading is done via :READ? which returns all channels
+  m_currentChannel = channel;
+  std::cout << "[Keithley6482] Selected channel " << channel << std::endl;
+  return true;
 }
 
 bool Keithley6482Adapter::QueryCommand(const std::string& command, std::string& response)

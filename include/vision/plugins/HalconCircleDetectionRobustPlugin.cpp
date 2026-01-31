@@ -3,6 +3,7 @@
 #if defined(HAS_OPENCV) && defined(HAS_HALCON)
 
 #include "HalconCircleDetectionRobustPlugin.h"
+#include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
 #include <halconcpp/HalconCpp.h>
 #include <iostream>
@@ -76,7 +77,9 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
 
         // Check if we have any regions
         Hlong numRegions = selectedRegions.CountObj();
-        std::cout << "[HalconCircleRobust] Found " << numRegions << " circular regions" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleRobust] Found " << numRegions << " circular regions" << std::endl;
+        }
 
         // Prepare output image
         if (input.channels() == 1) {
@@ -89,7 +92,9 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
             result.addMeasurement("circle_count", 0.0);
             result.addMetadata("algorithm", "Halcon_RobustBlob");
             result.addMetadata("note", "No circular regions found");
-            std::cout << "[HalconCircleRobust] No circular regions found" << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconCircleRobust] No circular regions found" << std::endl;
+            }
             return true;
         }
 
@@ -108,7 +113,9 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
 
         // Check contour length
         HTuple contourLength = contour.LengthXld();
-        std::cout << "[HalconCircleRobust] Contour length: " << contourLength.D() << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleRobust] Contour length: " << contourLength.D() << std::endl;
+        }
 
         if (contourLength.D() < 10) {
             result.addMeasurement("circle_count", 0.0);
@@ -132,7 +139,9 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
             result.addMeasurement("circle_count", 0.0);
             result.addMetadata("algorithm", "Halcon_RobustBlob");
             result.addMetadata("note", "Circle fitting failed: " + std::string(ex.ErrorMessage().Text()));
-            std::cout << "[HalconCircleRobust] Circle fitting failed: " << ex.ErrorMessage().Text() << std::endl;
+            if (VisionManager::instance().isVerboseLogging()) {
+                std::cout << "[HalconCircleRobust] Circle fitting failed: " << ex.ErrorMessage().Text() << std::endl;
+            }
             return true;
         }
 
@@ -148,8 +157,10 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
         double centerCol = col.D();
         double circleRadius = radius.D();
 
-        std::cout << "[HalconCircleRobust] Detected circle: center=(" << centerCol << ", " << centerRow
-                  << "), radius=" << circleRadius << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleRobust] Detected circle: center=(" << centerCol << ", " << centerRow
+                      << "), radius=" << circleRadius << std::endl;
+        }
 
         // Create result (Halcon uses row,col - convert to x,y for OpenCV)
         cv::Point2d center(centerCol, centerRow);
@@ -197,7 +208,9 @@ bool HalconCircleDetectionRobustPlugin::execute(const cv::Mat& input, cv::Mat& o
         result.addMetadata("threshold_range", std::to_string(m_thresholdMin) + "-" + std::to_string(m_thresholdMax));
         result.addMetadata("closing_radius", std::to_string(m_closingRadius));
 
-        std::cout << "[HalconCircleRobust] Successfully detected 1 circle" << std::endl;
+        if (VisionManager::instance().isVerboseLogging()) {
+            std::cout << "[HalconCircleRobust] Successfully detected 1 circle" << std::endl;
+        }
         return true;
     }
     catch (HException& ex) {

@@ -2,12 +2,17 @@
 #include "acs_controller_manager.h"
 #include <algorithm>
 
+#define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "ACSControllerManager")
+#define LOG_INFO(msg) if (m_logger) m_logger->LogInfo(msg, "ACSControllerManager")
+#define LOG_WARNING(msg) if (m_logger) m_logger->LogWarning(msg, "ACSControllerManager")
+#define LOG_ERROR(msg) if (m_logger) m_logger->LogError(msg, "ACSControllerManager")
+
 ACSControllerManager::ACSControllerManager() {
-  std::cout << "[INFO] ACSControllerManager: Initialized" << std::endl;
+  LOG_INFO("Initialized");
 }
 
 ACSControllerManager::~ACSControllerManager() {
-  std::cout << "[INFO] ACSControllerManager: Shutting down" << std::endl;
+  LOG_INFO("Shutting down");
   DisconnectAll();
 }
 
@@ -17,19 +22,17 @@ ACSControllerManager::~ACSControllerManager() {
 
 void ACSControllerManager::AddDevice(const MotionDevice& device) {
   if (!ValidateDeviceConfig(device)) {
-    std::cout << "[ERROR] ACSControllerManager: Invalid device configuration for "
-      << device.Name << std::endl;
+    LOG_ERROR("Invalid device configuration for " + device.Name);
     return;
   }
 
   if (m_controllers.find(device.Name) != m_controllers.end()) {
-    std::cout << "[WARNING] ACSControllerManager: Device " << device.Name
-      << " already exists. Updating configuration." << std::endl;
+    LOG_WARNING("Device " + device.Name + " already exists. Updating configuration.");
     UpdateDeviceConfig(device);
     return;
   }
 
-  std::cout << "[INFO] ACSControllerManager: Adding device " << device.Name << std::endl;
+  LOG_INFO("Adding device " + device.Name);
 
   // Store configuration
   m_deviceConfigs[device.Name] = device;
@@ -43,20 +46,18 @@ void ACSControllerManager::AddDevice(const MotionDevice& device) {
     LogDeviceInfo(device.Name, "Device added successfully");
   }
   else {
-    std::cout << "[ERROR] ACSControllerManager: Failed to create controller for "
-      << device.Name << std::endl;
+    LOG_ERROR("Failed to create controller for " + device.Name);
   }
 }
 
 void ACSControllerManager::RemoveDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[WARNING] ACSControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_WARNING("Device " + deviceName + " not found");
     return;
   }
 
-  std::cout << "[INFO] ACSControllerManager: Removing device " << deviceName << std::endl;
+  LOG_INFO("Removing device " + deviceName);
 
   // Disconnect if connected
   if (m_connectionStatus[deviceName]) {
@@ -81,7 +82,7 @@ bool ACSControllerManager::HasDevice(const std::string& deviceName) const {
 // ============================================================================
 
 bool ACSControllerManager::ConnectAll() {
-  std::cout << "[INFO] ACSControllerManager: Connecting all devices" << std::endl;
+  LOG_INFO("Connecting all devices");
 
   bool allSuccess = true;
   int successCount = 0;
@@ -97,14 +98,13 @@ bool ACSControllerManager::ConnectAll() {
     }
   }
 
-  std::cout << "[INFO] ACSControllerManager: Connect all complete. "
-    << "Success: " << successCount << ", Failed: " << failCount << std::endl;
+  LOG_INFO("Connect all complete. Success: " + std::to_string(successCount) + ", Failed: " + std::to_string(failCount));
 
   return allSuccess;
 }
 
 void ACSControllerManager::DisconnectAll() {
-  std::cout << "[INFO] ACSControllerManager: Disconnecting all devices" << std::endl;
+  LOG_INFO("Disconnecting all devices");
 
   for (auto& [deviceName, controller] : m_controllers) {
     if (controller && controller->IsConnected()) {
@@ -114,39 +114,35 @@ void ACSControllerManager::DisconnectAll() {
     }
   }
 
-  std::cout << "[INFO] ACSControllerManager: All devices disconnected" << std::endl;
+  LOG_INFO("All devices disconnected");
 }
 
 bool ACSControllerManager::ConnectDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[ERROR] ACSControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
   ACSController* controller = it->second.get();
   if (!controller) {
-    std::cout << "[ERROR] ACSControllerManager: Controller instance is null for "
-      << deviceName << std::endl;
+    LOG_ERROR("Controller instance is null for " + deviceName);
     return false;
   }
 
   // Already connected?
   if (controller->IsConnected()) {
-    std::cout << "[INFO] ACSControllerManager: Device " << deviceName
-      << " already connected" << std::endl;
+    LOG_INFO("Device " + deviceName + " already connected");
     m_connectionStatus[deviceName] = true;
     return true;
   }
 
-  std::cout << "[INFO] ACSControllerManager: Connecting device " << deviceName << std::endl;
+  LOG_INFO("Connecting device " + deviceName);
 
   // Get device config
   auto configIt = m_deviceConfigs.find(deviceName);
   if (configIt == m_deviceConfigs.end()) {
-    std::cout << "[ERROR] ACSControllerManager: No configuration found for "
-      << deviceName << std::endl;
+    LOG_ERROR("No configuration found for " + deviceName);
     return false;
   }
 
@@ -163,7 +159,7 @@ bool ACSControllerManager::ConnectDevice(const std::string& deviceName) {
   else {
     m_connectionStatus[deviceName] = false;
     m_connectionErrors[deviceName] = "Connection failed";
-    std::cout << "[ERROR] ACSControllerManager: Failed to connect " << deviceName << std::endl;
+    LOG_ERROR("Failed to connect " + deviceName);
   }
 
   return success;
@@ -172,8 +168,7 @@ bool ACSControllerManager::ConnectDevice(const std::string& deviceName) {
 bool ACSControllerManager::DisconnectDevice(const std::string& deviceName) {
   auto it = m_controllers.find(deviceName);
   if (it == m_controllers.end()) {
-    std::cout << "[ERROR] ACSControllerManager: Device " << deviceName
-      << " not found" << std::endl;
+    LOG_ERROR("Device " + deviceName + " not found");
     return false;
   }
 
@@ -182,7 +177,7 @@ bool ACSControllerManager::DisconnectDevice(const std::string& deviceName) {
     return false;
   }
 
-  std::cout << "[INFO] ACSControllerManager: Disconnecting device " << deviceName << std::endl;
+  LOG_INFO("Disconnecting device " + deviceName);
 
   controller->Disconnect();
   m_connectionStatus[deviceName] = false;
@@ -192,7 +187,7 @@ bool ACSControllerManager::DisconnectDevice(const std::string& deviceName) {
 }
 
 bool ACSControllerManager::ReconnectDevice(const std::string& deviceName) {
-  std::cout << "[INFO] ACSControllerManager: Reconnecting device " << deviceName << std::endl;
+  LOG_INFO("Reconnecting device " + deviceName);
 
   // Disconnect first
   DisconnectDevice(deviceName);
@@ -205,7 +200,7 @@ bool ACSControllerManager::ReconnectDevice(const std::string& deviceName) {
 }
 
 int ACSControllerManager::ConnectEnabledDevices() {
-  std::cout << "[INFO] ACSControllerManager: Connecting enabled devices" << std::endl;
+  LOG_INFO("Connecting enabled devices");
 
   int connectedCount = 0;
 
@@ -216,13 +211,11 @@ int ACSControllerManager::ConnectEnabledDevices() {
       }
     }
     else {
-      std::cout << "[INFO] ACSControllerManager: Skipping disabled device "
-        << deviceName << std::endl;
+      LOG_INFO("Skipping disabled device " + deviceName);
     }
   }
 
-  std::cout << "[INFO] ACSControllerManager: Connected " << connectedCount
-    << " enabled devices" << std::endl;
+  LOG_INFO("Connected " + std::to_string(connectedCount) + " enabled devices");
 
   return connectedCount;
 }
@@ -289,8 +282,7 @@ ACSController* ACSControllerManager::GetACSController(const std::string& deviceN
     return it->second.get();
   }
 
-  std::cout << "[WARNING] ACSControllerManager: Controller " << deviceName
-    << " not found" << std::endl;
+  LOG_WARNING("Controller " + deviceName + " not found");
   return nullptr;
 }
 
@@ -327,26 +319,23 @@ MotionDevice ACSControllerManager::GetDeviceConfig(const std::string& deviceName
 
 bool ACSControllerManager::UpdateDeviceConfig(const MotionDevice& device) {
   if (!HasDevice(device.Name)) {
-    std::cout << "[ERROR] ACSControllerManager: Cannot update config for non-existent device "
-      << device.Name << std::endl;
+    LOG_ERROR("Cannot update config for non-existent device " + device.Name);
     return false;
   }
 
   if (!ValidateDeviceConfig(device)) {
-    std::cout << "[ERROR] ACSControllerManager: Invalid device configuration" << std::endl;
+    LOG_ERROR("Invalid device configuration");
     return false;
   }
 
-  std::cout << "[INFO] ACSControllerManager: Updating configuration for "
-    << device.Name << std::endl;
+  LOG_INFO("Updating configuration for " + device.Name);
 
   // Update configuration
   m_deviceConfigs[device.Name] = device;
 
   // If connected, may need to reconnect with new config
   if (IsDeviceConnected(device.Name)) {
-    std::cout << "[INFO] ACSControllerManager: Device is connected. "
-      << "Reconnection may be needed for changes to take effect." << std::endl;
+    LOG_INFO("Device is connected. Reconnection may be needed for changes to take effect.");
   }
 
   return true;
@@ -367,7 +356,7 @@ void ACSControllerManager::ClearConnectionError(const std::string& deviceName) {
 }
 
 bool ACSControllerManager::EmergencyStopAll() {
-  std::cout << "[WARNING] ACSControllerManager: EMERGENCY STOP ALL DEVICES" << std::endl;
+  LOG_WARNING("EMERGENCY STOP ALL DEVICES");
 
   bool allSuccess = true;
 
@@ -375,7 +364,7 @@ bool ACSControllerManager::EmergencyStopAll() {
     if (controller && controller->IsConnected()) {
       if (!controller->StopAllMotion()) {
         allSuccess = false;
-        std::cout << "[ERROR] ACSControllerManager: Failed to stop " << deviceName << std::endl;
+        LOG_ERROR("Failed to stop " + deviceName);
       }
       else {
         LogDeviceInfo(deviceName, "Emergency stopped");
@@ -394,45 +383,45 @@ ACSController* ACSControllerManager::CreateController(const MotionDevice& device
   try {
     auto controller = new ACSController();
 
+    // Propagate logger to new controller
+    if (m_logger) {
+      controller->SetLogger(m_logger);
+    }
+
     // Configure controller with device settings
     if (controller->ConfigureFromDevice(device)) {
       return controller;
     }
     else {
       delete controller;
-      std::cout << "[ERROR] ACSControllerManager: Failed to configure controller for "
-        << device.Name << std::endl;
+      LOG_ERROR("Failed to configure controller for " + device.Name);
       return nullptr;
     }
   }
   catch (const std::exception& e) {
-    std::cout << "[ERROR] ACSControllerManager: Exception creating controller: "
-      << e.what() << std::endl;
+    LOG_ERROR("Exception creating controller: " + std::string(e.what()));
     return nullptr;
   }
 }
 
 bool ACSControllerManager::ValidateDeviceConfig(const MotionDevice& device) const {
   if (device.Name.empty()) {
-    std::cout << "[ERROR] ACSControllerManager: Device name cannot be empty" << std::endl;
+    LOG_ERROR("Device name cannot be empty");
     return false;
   }
 
   if (device.TypeController != "ACS" && device.TypeController != "acs") {
-    std::cout << "[ERROR] ACSControllerManager: Invalid controller type: "
-      << device.TypeController << " (expected ACS)" << std::endl;
+    LOG_ERROR("Invalid controller type: " + device.TypeController + " (expected ACS)");
     return false;
   }
 
   if (device.IpAddress.empty()) {
-    std::cout << "[ERROR] ACSControllerManager: IP address cannot be empty for "
-      << device.Name << std::endl;
+    LOG_ERROR("IP address cannot be empty for " + device.Name);
     return false;
   }
 
   if (device.Port <= 0 || device.Port > 65535) {
-    std::cout << "[ERROR] ACSControllerManager: Invalid port " << device.Port
-      << " for " << device.Name << std::endl;
+    LOG_ERROR("Invalid port " + std::to_string(device.Port) + " for " + device.Name);
     return false;
   }
 
@@ -441,6 +430,14 @@ bool ACSControllerManager::ValidateDeviceConfig(const MotionDevice& device) cons
 
 void ACSControllerManager::LogDeviceInfo(const std::string& deviceName,
   const std::string& message) const {
-  std::cout << "[INFO] ACSControllerManager [" << deviceName << "]: "
-    << message << std::endl;
+  LOG_INFO("[" + deviceName + "]: " + message);
+}
+
+void ACSControllerManager::SetLogger(ILogger* logger) {
+  m_logger = logger;
+  // Propagate to all controllers
+  for (auto& [name, controller] : m_controllers) {
+    controller->SetLogger(logger);
+  }
+  LOG_INFO("Logger set for ACSControllerManager");
 }

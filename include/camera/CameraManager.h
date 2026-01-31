@@ -3,6 +3,7 @@
 #include "CameraFrameData.h"
 #include "ICameraHardware.h"
 #include "CameraHardwareFactory.h"
+#include "ILogger.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -111,6 +112,9 @@ class CameraManager {
 public:
   CameraManager();
   ~CameraManager();
+
+  // Logger support
+  void SetLogger(ILogger* logger) { m_logger = logger; }
 
   // ============================================================================
   // CAMERA MANAGEMENT
@@ -254,6 +258,9 @@ private:
 
   std::string m_imageOutputDirectory;
   std::string m_lastCapturedImagePath;
+
+  // Logger for spdlog integration
+  ILogger* m_logger = nullptr;
 
   // ============================================================================
   // HELPER METHODS

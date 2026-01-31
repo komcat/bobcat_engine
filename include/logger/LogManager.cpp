@@ -1,27 +1,57 @@
-﻿// LogManager.cpp
+// LogManager.cpp - spdlog-based logging implementation
 #include "LogManager.h"
 #include <iostream>
 #include <iomanip>
 #include <sstream>
 #include <filesystem>
+#include <algorithm>
+
+// spdlog includes
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/rotating_file_sink.h>
+
+// Constants for file rotation
+constexpr size_t MAX_FILE_SIZE = 3 * 1024 * 1024;  // 3 MB
+constexpr size_t MAX_ROTATING_FILES = 5;           // Keep 5 rotated files per day
 
 LogManager::LogManager()
   : m_consoleEnabled(true)
   , m_fileEnabled(false)
   , m_minimumLevel(Level::DEBUG)
-  , m_maxHistorySize(2000)  // Reduced from 5000 to prevent memory issues in long loops
+  , m_maxHistorySize(2000)
   , m_errorCount(0)
   , m_warningCount(0)
 {
-  std::cout << "[LogManager] Initialized" << std::endl;
+  InitializeSpdlog();
 }
 
 LogManager::~LogManager()
 {
-  if (m_logFile.is_open()) {
-    m_logFile.close();
+  if (m_logger) {
+    m_logger->flush();
   }
+  spdlog::drop("bobcat");
   std::cout << "[LogManager] Shutdown" << std::endl;
+}
+
+void LogManager::InitializeSpdlog()
+{
+  try {
+    // Create console sink with colors
+    m_consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+
+    // Create logger with console sink only (file sink added later via EnableFileOutput)
+    m_logger = std::make_shared<spdlog::logger>("bobcat", m_consoleSink);
+    m_logger->set_level(spdlog::level::trace);
+    m_logger->set_pattern("[%H:%M:%S.%e] [%l] %v");
+
+    spdlog::register_logger(m_logger);
+    std::cout << "[LogManager] Initialized with spdlog backend" << std::endl;
+  }
+  catch (const spdlog::spdlog_ex& ex) {
+    std::cerr << "[LogManager] spdlog initialization failed: " << ex.what() << std::endl;
+  }
 }
 
 // ============================================================================
@@ -92,6 +122,11 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
     return;
   }
 
+  // Check for date rotation if file logging is enabled
+  if (m_fileEnabled) {
+    CheckAndRotateLogFile();
+  }
+
   LogEntry entry;
   entry.level = level;
   entry.message = message;
@@ -119,20 +154,23 @@ void LogManager::Log(Level level, const std::string& message, const std::string&
       m_warningCount++;
     }
 
-    // Output to console
-    if (m_consoleEnabled) {
-      WriteToConsole(entry);
-    }
-
-    // Output to file
-    if (m_fileEnabled && m_logFile.is_open()) {
-      WriteToFile(entry);
-    }
-
     // Copy callback while still locked
     callbackCopy = m_uiCallback;
   }
-  // Mutex is NOW unlocked - safe to call callback
+  // Mutex is NOW unlocked
+
+  // Log via spdlog (thread-safe internally)
+  if (m_logger) {
+    std::string formattedMsg = source.empty() ? message : "[" + source + "] " + message;
+
+    switch (level) {
+      case Level::DEBUG:    m_logger->debug(formattedMsg); break;
+      case Level::INFO:     m_logger->info(formattedMsg); break;
+      case Level::WARNING:  m_logger->warn(formattedMsg); break;
+      case Level::FAILURE:  m_logger->error(formattedMsg); break;
+      case Level::CRITICAL: m_logger->critical(formattedMsg); break;
+    }
+  }
 
   // Call UI callback OUTSIDE the lock
   if (callbackCopy) {
@@ -155,25 +193,68 @@ void LogManager::EnableFileOutput(bool enable, const std::string& filePath)
     // Create directory if needed
     std::filesystem::create_directories(m_logDirectory);
 
-    // Get current date and create date-stamped filename
+    // Get current date for date-stamped filename
     m_currentLogDate = GetDateString();
-    m_logFilePath = m_logDirectory + "/bobcat_" + m_currentLogDate + ".log";
-
-    // Open log file
-    m_logFile.open(m_logFilePath, std::ios::app);
-    if (m_logFile.is_open()) {
-      m_fileEnabled = true;
-      std::cout << "[LogManager] File logging enabled: " << m_logFilePath << std::endl;
-    }
-    else {
-      std::cerr << "[LogManager] Failed to open log file: " << m_logFilePath << std::endl;
-    }
+    CreateFileSink();
+    m_fileEnabled = true;
   }
   else {
-    if (m_logFile.is_open()) {
-      m_logFile.close();
+    // Remove file sink from logger
+    if (m_fileSink && m_logger) {
+      auto& sinks = m_logger->sinks();
+      sinks.erase(std::remove(sinks.begin(), sinks.end(), m_fileSink), sinks.end());
+      m_fileSink.reset();
     }
     m_fileEnabled = false;
+  }
+}
+
+void LogManager::CreateFileSink()
+{
+  try {
+    std::string logFileName = m_logDirectory + "/bobcat_" + m_currentLogDate + ".log";
+
+    // Remove old file sink if exists
+    if (m_fileSink && m_logger) {
+      auto& sinks = m_logger->sinks();
+      sinks.erase(std::remove(sinks.begin(), sinks.end(), m_fileSink), sinks.end());
+    }
+
+    // Create rotating file sink: 3MB max, 5 backup files
+    m_fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+      logFileName, MAX_FILE_SIZE, MAX_ROTATING_FILES);
+
+    m_logger->sinks().push_back(m_fileSink);
+    std::cout << "[LogManager] File logging enabled: " << logFileName
+              << " (max 3MB, " << MAX_ROTATING_FILES << " rolling files)" << std::endl;
+  }
+  catch (const spdlog::spdlog_ex& ex) {
+    std::cerr << "[LogManager] Failed to create file sink: " << ex.what() << std::endl;
+    m_fileEnabled = false;
+  }
+}
+
+void LogManager::CheckAndRotateLogFile()
+{
+  // Check if date has changed since last log
+  std::string currentDate = GetDateString();
+
+  if (currentDate != m_currentLogDate && m_fileEnabled) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    // Log rotation message before switching
+    if (m_logger) {
+      m_logger->info("Log file rotating to new date: {}", currentDate);
+    }
+
+    m_currentLogDate = currentDate;
+    CreateFileSink();
+
+    if (m_logger) {
+      m_logger->info("Log file started (rotated from previous date)");
+    }
+
+    std::cout << "[LogManager] Rotated to new log file for date: " << currentDate << std::endl;
   }
 }
 
@@ -259,6 +340,8 @@ std::string LogManager::LevelToColorCode(Level level)
 
 void LogManager::WriteToConsole(const LogEntry& entry)
 {
+  // This method is kept for backward compatibility but spdlog handles console output now
+  // Only used if spdlog is not initialized
   std::cout << "[" << entry.timestamp << "] "
     << "[" << LevelToString(entry.level) << "] ";
 
@@ -267,26 +350,6 @@ void LogManager::WriteToConsole(const LogEntry& entry)
   }
 
   std::cout << entry.message << std::endl;
-}
-
-void LogManager::WriteToFile(const LogEntry& entry)
-{
-  // Check if we need to rotate to a new date-based log file
-  CheckAndRotateLogFile();
-
-  if (!m_logFile.is_open()) {
-    return;
-  }
-
-  m_logFile << "[" << entry.timestamp << "] "
-    << "[" << LevelToString(entry.level) << "] ";
-
-  if (!entry.source.empty()) {
-    m_logFile << "[" << entry.source << "] ";
-  }
-
-  m_logFile << entry.message << std::endl;
-  m_logFile.flush();
 }
 
 std::string LogManager::GetTimestamp() const
@@ -318,31 +381,4 @@ std::string LogManager::GetDateString() const
   ss << std::put_time(&timeinfo, "%Y-%m-%d");
 
   return ss.str();
-}
-
-void LogManager::CheckAndRotateLogFile()
-{
-  // Check if date has changed since last log
-  std::string currentDate = GetDateString();
-
-  if (currentDate != m_currentLogDate) {
-    // Date changed - close old file and open new one
-    if (m_logFile.is_open()) {
-      m_logFile << "[" << GetTimestamp() << "] [INFO] Log file rotating to new date: " << currentDate << std::endl;
-      m_logFile.close();
-    }
-
-    m_currentLogDate = currentDate;
-    m_logFilePath = m_logDirectory + "/bobcat_" + m_currentLogDate + ".log";
-
-    m_logFile.open(m_logFilePath, std::ios::app);
-    if (m_logFile.is_open()) {
-      std::cout << "[LogManager] Rotated to new log file: " << m_logFilePath << std::endl;
-      m_logFile << "[" << GetTimestamp() << "] [INFO] Log file started (rotated from previous date)" << std::endl;
-    }
-    else {
-      std::cerr << "[LogManager] Failed to open rotated log file: " << m_logFilePath << std::endl;
-      m_fileEnabled = false;
-    }
-  }
 }

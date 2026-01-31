@@ -128,8 +128,10 @@ void VisionManager::setInputImage(const cv::Mat& image)
 
     m_inputImage = image.clone();
     m_outputImage = cv::Mat();  // Clear output
-    std::cout << "[VisionManager] Input image set: " << image.cols << "x" << image.rows
-              << " channels=" << image.channels() << std::endl;
+    if (m_verboseLogging) {
+        std::cout << "[VisionManager] Input image set: " << image.cols << "x" << image.rows
+                  << " channels=" << image.channels() << std::endl;
+    }
 
     emit imageUpdated();
 }
@@ -204,7 +206,9 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
         return result;
     }
 
-    std::cout << "[VisionManager] Executing plugin: " << pluginName.toStdString() << std::endl;
+    if (m_verboseLogging) {
+        std::cout << "[VisionManager] Executing plugin: " << pluginName.toStdString() << std::endl;
+    }
     emit executionStarted(pluginName);
 
     // Time the execution
@@ -225,7 +229,9 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
         }
         roiOffset = m_roi.getOffset();
         usingROI = true;
-        std::cout << "[VisionManager] Using ROI: " << m_roi.toString() << std::endl;
+        if (m_verboseLogging) {
+            std::cout << "[VisionManager] Using ROI: " << m_roi.toString() << std::endl;
+        }
         result.addMetadata("roi_used", "true");
         result.addMetadata("roi_offset_x", std::to_string(roiOffset.x));
         result.addMetadata("roi_offset_y", std::to_string(roiOffset.y));
@@ -272,7 +278,9 @@ VisionResult VisionManager::executePlugin(const QString& pluginName, const nlohm
         // Render result overlays (already offset-corrected to full image coordinates)
         renderOverlaysOnImage(result, m_outputImage);
 
-        std::cout << "[VisionManager] Plugin succeeded in " << result.processingTimeMs << " ms" << std::endl;
+        if (m_verboseLogging) {
+            std::cout << "[VisionManager] Plugin succeeded in " << result.processingTimeMs << " ms" << std::endl;
+        }
     }
 
     m_lastResult = result;
@@ -514,7 +522,9 @@ VisionROI VisionManager::getROI() const
 void VisionManager::setROIEnabled(bool enabled)
 {
     m_roi.setEnabled(enabled);
-    std::cout << "[VisionManager] ROI " << (enabled ? "enabled" : "disabled") << std::endl;
+    if (m_verboseLogging) {
+        std::cout << "[VisionManager] ROI " << (enabled ? "enabled" : "disabled") << std::endl;
+    }
     emit roiChanged(m_roi);
 }
 
@@ -793,7 +803,9 @@ void VisionManager::renderOverlaysOnImage(const VisionResult& result, cv::Mat& i
     // Update the image reference
     image = colorImage;
 
-    std::cout << "[VisionManager] Rendered " << result.overlays.size() << " overlays on output image" << std::endl;
+    if (m_verboseLogging) {
+        std::cout << "[VisionManager] Rendered " << result.overlays.size() << " overlays on output image" << std::endl;
+    }
 }
 
 void VisionManager::renderROIRectangle(cv::Mat& image)
@@ -848,7 +860,9 @@ void VisionManager::renderROIRectangle(cv::Mat& image)
 
     image = colorImage;
 
-    std::cout << "[VisionManager] Rendered ROI rectangle: " << m_roi.toString() << std::endl;
+    if (m_verboseLogging) {
+        std::cout << "[VisionManager] Rendered ROI rectangle: " << m_roi.toString() << std::endl;
+    }
 }
 
 #endif // HAS_OPENCV

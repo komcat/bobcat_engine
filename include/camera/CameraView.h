@@ -49,19 +49,15 @@ private slots:
   void onConnectClicked();
   void onDisconnectClicked();
   void onUpdateDisplay();
-  void onZoomSliderChanged(int value);
-  void onZoomSpinBoxChanged(int value);
+  void onZoomUpdateClicked();
   void onZoomResetClicked();
 
-  // ✅ NEW - Camera settings slots
+  // Camera settings slots
   void onAutoExposureChanged(Qt::CheckState state);
   void onAutoGainChanged(Qt::CheckState state);
-  void onExposureSliderChanged(int value);
-  void onExposureSpinBoxChanged(int value);
-  void onGainSliderChanged(int value);
-  void onGainSpinBoxChanged(double value);
-  void onFrameRateSliderChanged(int value);
-  void onFrameRateSpinBoxChanged(double value);
+  void onExposureUpdateClicked();
+  void onGainUpdateClicked();
+  void onFrameRateUpdateClicked();
   void onSaveImageClicked();
   void onApplySettingsTimer();  // Throttled settings apply
 
@@ -108,19 +104,19 @@ private:
   QGroupBox* m_settingsGroup;
   QCheckBox* m_autoExposureCheck;
   QCheckBox* m_autoGainCheck;
-  QSlider* m_exposureSlider;
   QSpinBox* m_exposureSpinBox;
+  QPushButton* m_exposureUpdateBtn = nullptr;
   QLabel* m_exposureValueLabel;
-  QSlider* m_gainSlider;
   QDoubleSpinBox* m_gainSpinBox;
+  QPushButton* m_gainUpdateBtn = nullptr;
   QLabel* m_gainValueLabel;
-  QSlider* m_frameRateSlider = nullptr;
   QDoubleSpinBox* m_frameRateSpinBox = nullptr;
+  QPushButton* m_frameRateUpdateBtn = nullptr;
   QLabel* m_frameRateValueLabel = nullptr;
   QPushButton* m_saveImageButton;
 
-  QSlider* m_zoomSlider;
   QSpinBox* m_zoomSpinBox;
+  QPushButton* m_zoomUpdateBtn = nullptr;
   QPushButton* m_zoomResetButton;
   QLabel* m_zoomLabel;
 
@@ -137,10 +133,4 @@ private:
   CameraParameterWorker* m_parameterWorker = nullptr;
   bool m_useParameterWorker = true;  // Enable/disable worker (for debugging)
 
-  // Track active slider interaction to prevent read-back jumps
-  bool m_exposureSliderActive = false;
-  bool m_gainSliderActive = false;
-  bool m_frameRateSliderActive = false;
-  QTimer* m_sliderCooldownTimer = nullptr;
-  static constexpr int SLIDER_COOLDOWN_MS = 500;  // Block read-back for 500ms after slider release
 };

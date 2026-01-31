@@ -1,11 +1,10 @@
 // CameraSettingsWidget.h
-// Standalone camera exposure/gain settings widget with live preview
+// Standalone camera exposure settings widget with live preview
 // Reusable in CameraView, AuxViewWindow, etc.
 
 #pragma once
 
 #include <QWidget>
-#include <QSlider>
 #include <QCheckBox>
 #include <QLabel>
 #include <QComboBox>
@@ -13,6 +12,7 @@
 #include <QTimer>
 #include <QSplitter>
 #include <QLineEdit>
+#include <QPushButton>
 #include <string>
 #include <memory>
 
@@ -21,15 +21,13 @@ class LiveVideoSubscriber;
 class CameraImageWidget;
 
 /**
- * @brief Standalone widget for camera exposure and gain settings with live preview
+ * @brief Standalone widget for camera exposure settings with live preview
  *
  * Features:
  * - Live camera preview (updates in real-time)
  * - Camera selector dropdown
  * - Auto Exposure checkbox
- * - Auto Gain checkbox
- * - Exposure slider (μs)
- * - Gain slider
+ * - Exposure text input with Apply button (μs)
  * - Handles ACE/ACE2 camera models correctly
  */
 class CameraSettingsWidget : public QWidget
@@ -61,19 +59,12 @@ signals:
 private slots:
   void onCameraSelectionChanged(int index);
   void onAutoExposureChanged(Qt::CheckState state);  // Qt6 uses Qt::CheckState
-  void onAutoGainChanged(Qt::CheckState state);      // Qt6 uses Qt::CheckState
-  void onExposureSliderChanged(int value);
-  void onExposureInputChanged();
-  void onGainSliderChanged(int value);
-
-private slots:
+  void onExposureApplyClicked();
   void onDisplayTimer();
-  void onApplySettingsTimer();  // Throttled settings apply
 
 private:
   void setupUI();
   void updateExposureLabel(int microseconds);
-  void updateGainLabel(double gain);
   void applySettings();
   void loadCurrentSettings();
   void startPreview();
@@ -85,20 +76,13 @@ private:
   // UI elements
   QComboBox* m_cameraCombo;
   QCheckBox* m_autoExposureCheck;
-  QCheckBox* m_autoGainCheck;
-  QSlider* m_exposureSlider;
-  QLineEdit* m_exposureInput;      // Text input for precise exposure value
-  QLabel* m_exposureUnitLabel;     // Unit label (us/ms)
-  QSlider* m_gainSlider;
-  QLabel* m_gainValueLabel;
+  QLineEdit* m_exposureInput;        // Text input for exposure value
+  QLabel* m_exposureUnitLabel;       // Unit label (us/ms)
+  QPushButton* m_exposureApplyBtn;   // Apply button
 
   // Live preview
   bool m_previewEnabled = true;
   CameraImageWidget* m_previewWidget = nullptr;
   std::shared_ptr<LiveVideoSubscriber> m_subscriber;
   QTimer* m_displayTimer = nullptr;
-
-  // Throttled settings apply (500ms delay to avoid flooding camera with commands)
-  QTimer* m_applySettingsTimer = nullptr;
-  bool m_settingsPending = false;
 };

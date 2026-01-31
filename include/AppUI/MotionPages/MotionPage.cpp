@@ -11,6 +11,7 @@
 #include "TestSystemWidget.h"
 #include "SequenceBuilder.h"     // ✅ NEW: For sequence execution
 #include "SequenceContext.h"     // ✅ NEW: For sequence execution
+#include <iostream>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMessageBox>

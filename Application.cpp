@@ -64,8 +64,7 @@ Application::Application(int argc, char* argv[])
 #ifdef _WIN32
   SetConsoleOutputCP(CP_UTF8);  // ← ADD HERE (inside constructor)
 #endif
-
-  std::cout << "[Application] Creating Bobcat Engine..." << std::endl;
+  // Note: m_logManager not yet initialized, use std::cout here only
 }
 
 Application::~Application()
@@ -77,36 +76,35 @@ Application::~Application()
   }
 
   shutdown();
-  std::cout << "[Application] Bobcat Engine destroyed" << std::endl;
+  // Note: m_logManager may already be destroyed, use std::cout for final message
 }
 
 int Application::run()
 {
   if (!initialize()) {
-    std::cerr << "[Application] Failed to initialize" << std::endl;
+    if (m_logManager) m_logManager->Error("Failed to initialize", "Application");
     return -1;
   }
 
-  std::cout << "[Application] Starting " << getApplicationName() << "..." << std::endl;
+  m_logManager->Info("Starting " + getApplicationName() + "...", "Application");
 
   // Initialize plugin registry (triggers static registration in plugin files)
   auto& pluginRegistry = ProcessPluginRegistry::Instance();
-  std::cout << "[Application] Plugin registry initialized with "
-            << pluginRegistry.GetAllProcessTypes().size() << " plugins" << std::endl;
+  m_logManager->Info("Plugin registry initialized with " +
+            std::to_string(pluginRegistry.GetAllProcessTypes().size()) + " plugins", "Application");
 
-  std::cout << "[Application] About to call exec()..." << std::endl;
-  std::cout << "[Application] m_qApplication pointer: " << m_qApplication << std::endl;
+  m_logManager->Debug("About to call exec()...", "Application");
 
   if (!m_qApplication) {
-    std::cerr << "[Application] ERROR: m_qApplication is NULL!" << std::endl;
+    m_logManager->Error("m_qApplication is NULL!", "Application");
     return -1;
   }
 
-  std::cout << "[Application] Calling exec()..." << std::endl;
+  m_logManager->Debug("Calling exec()...", "Application");
   int result = m_qApplication->exec();
-  std::cout << "[Application] exec() returned: " << result << std::endl;
+  m_logManager->Debug("exec() returned: " + std::to_string(result), "Application");
 
-  std::cout << "[Application] Exited with code: " << result << std::endl;
+  m_logManager->Info("Exited with code: " + std::to_string(result), "Application");
   return result;
 }
 
@@ -114,7 +112,7 @@ void Application::shutdown()
 {
   if (!m_initialized) return;
 
-  std::cout << "[Application] Shutting down..." << std::endl;
+  if (m_logManager) m_logManager->Info("Shutting down...", "Application");
 
   if (m_mainWindow) {
     m_mainWindow->close();
@@ -144,17 +142,14 @@ bool Application::initialize()
       if (!fontFamilies.isEmpty()) {
         QFont appFont(fontFamilies.at(0), 11);  // Use loaded Roboto font, size 9
         m_qApplication->setFont(appFont);
-        std::cout << "[Application] Custom font loaded: " << fontFamilies.at(0).toStdString() << std::endl;
+        // Note: m_logManager not yet initialized here
       }
       else {
-        std::cerr << "[Application] Warning: Could not get font family from " << fontPath.toStdString() << std::endl;
         QFont fallbackFont("Segoe UI", 11);
         m_qApplication->setFont(fallbackFont);
       }
     }
     else {
-      std::cerr << "[Application] Warning: Could not load custom font from " << fontPath.toStdString() << std::endl;
-      std::cerr << "[Application] Using fallback font: Segoe UI" << std::endl;
       QFont fallbackFont("Segoe UI", 9);
       m_qApplication->setFont(fallbackFont);
     }
@@ -165,26 +160,22 @@ bool Application::initialize()
     // ✅ UPDATED: Apply centralized dark theme globally to all Qt widgets
     m_qApplication->setStyleSheet(DarkTheme::getStyleSheet());
 
-    std::cout << "[Application] " << getApplicationName()
-      << " v" << getVersion() << std::endl;
+    // Note: Logging version info happens after LogManager init in initializeManagers()
 
     // ✅ Check BOBCAT_SIMULATION environment variable
     const char* simEnv = std::getenv("BOBCAT_SIMULATION");
     if (simEnv != nullptr) {
       std::string simValue(simEnv);
       m_context.simulationMode = (simValue == "1" || simValue == "true" || simValue == "TRUE");
-      std::cout << "[Application] BOBCAT_SIMULATION environment variable: " << simValue << std::endl;
     } else {
       // Default to false if environment variable not set
       m_context.simulationMode = false;
-      std::cout << "[Application] BOBCAT_SIMULATION not set - defaulting to HARDWARE MODE" << std::endl;
     }
 
     // ✅ NEW: Show splash screen BEFORE initialization (immediate user feedback)
     if (!m_context.simulationMode) {
       m_splashScreen = new ConnectionSplashScreen();
       // Splash auto-shows in constructor
-      std::cout << "[Application] Splash screen shown for startup progress" << std::endl;
 
       // Start loading phase (15 managers total)
       m_splashScreen->startPhase(
@@ -210,34 +201,26 @@ bool Application::initialize()
       QTimer::singleShot(100, [this]() {
         connectHardwareAsync();
       });
-      std::cout << "[Application] Hardware connections scheduled for background (with splash screen)" << std::endl;
+      m_logManager->Info("Hardware connections scheduled for background (with splash screen)", "Application");
     } else {
-      std::cout << "[Application] Simulation mode: Hardware connections skipped" << std::endl;
+      m_logManager->Info("Simulation mode: Hardware connections skipped", "Application");
     }
 
     m_initialized = true;
-    std::cout << "[Application] Initialization complete (UI shown, hardware connecting in background)" << std::endl;
+    m_logManager->Info("Initialization complete (UI shown, hardware connecting in background)", "Application");
 
     return true;
   }
   catch (const std::exception& e) {
-    std::cerr << "[Application] Init failed: " << e.what() << std::endl;
+    if (m_logManager) m_logManager->Critical(std::string("Init failed: ") + e.what(), "Application");
     return false;
   }
 }
 
 void Application::initializeManagers()
 {
-  std::cout << "[Application] Initializing managers..." << std::endl;
-
-  // Check for simulation mode
-  if (m_context.simulationMode) {
-    std::cout << "======================================" << std::endl;
-    std::cout << "  🔧 SIMULATION MODE ENABLED 🔧" << std::endl;
-    std::cout << "  Hardware connections will be SKIPPED" << std::endl;
-    std::cout << "  Use this mode for UI/file development" << std::endl;
-    std::cout << "======================================" << std::endl;
-  }
+  // LogManager will be initialized first in this function
+  // Check for simulation mode - logged after LogManager init
 
   // Helper lambda for splash updates (no-op if simulation mode)
   auto updateSplash = [this](const QString& name) {
@@ -256,6 +239,17 @@ void Application::initializeManagers()
     updateSplash("LogManager");
     initializeLogManager();
     completeSplash("LogManager");
+
+    // Now we can log properly
+    m_logManager->Info("Initializing managers...", "Application");
+    m_logManager->Info(getApplicationName() + " v" + getVersion(), "Application");
+
+    // Log simulation mode status
+    if (m_context.simulationMode) {
+      m_logManager->Warning("SIMULATION MODE ENABLED - Hardware connections will be SKIPPED", "Application");
+    } else {
+      m_logManager->Info("Hardware mode - will connect to physical devices", "Application");
+    }
 
     updateSplash("DataStore");
     initializeDataStore();
@@ -296,6 +290,10 @@ void Application::initializeManagers()
     updateSplash("AuxWindowManager");
     initializeAuxWindowManager();
     completeSplash("AuxWindowManager");
+
+    updateSplash("GdiCameraWindow");
+    initializeGdiCameraWindow();
+    completeSplash("GdiCameraWindow");
 
     updateSplash("ProductPositionManager");
     initializeProductPositionManager();
@@ -342,10 +340,9 @@ void Application::initializeManagers()
     // ✅ OpenCV Integration Test - uncomment to verify OpenCV is working
     testOpenCV();
 
-    std::cout << "[Application] All managers initialized successfully" << std::endl;
+    m_logManager->Info("All managers initialized successfully", "Application");
   }
   catch (const std::exception& e) {
-    std::cerr << "[Application] Manager initialization failed: " << e.what() << std::endl;
     if (m_logManager) {
       m_logManager->Critical(std::string("Manager init failed: ") + e.what(), "Application");
     }
@@ -401,6 +398,9 @@ void Application::initializeCameraManager()
   m_cameraManager = std::make_unique<CameraManager>();
   m_context.cameraManager = m_cameraManager.get();
 
+  // Set logger for CameraManager
+  m_cameraManager->SetLogger(m_logManager.get());
+
   // Load cameras from JSON config - try local first, then default
   bool configLoaded = false;
   std::string configPath;
@@ -440,7 +440,7 @@ void Application::initializeCameraManager()
 
 void Application::initializeMotionManager()
 {
-  std::cout << "[Application] Initializing motion manager..." << std::endl;
+  m_logManager->Debug("Initializing motion manager...", "Application");
 
   try {
     // 1. Create UnifiedMotionManager
@@ -503,12 +503,8 @@ void Application::initializeMotionManager()
     // ✅ DEFERRED: Motion device connection moved to connectHardwareAsync()
     m_logManager->Info("Motion device connection deferred to background thread", "Application");
 
-		/*
-		TODO: Set logger for motion manager if needed
-    ILogger* logger = m_logManager.get();
-		m_motionManager->SetLogger(logger);
-
-    */
+    // Set logger for motion manager (propagates to ACS/PI controllers)
+    m_motionManager->SetLogger(m_logManager.get());
 
     m_logManager->Info("Motion manager initialized (connections deferred)", "Application");
   }
@@ -524,7 +520,7 @@ void Application::initializeMotionManager()
 
 void Application::initializeIOManager()
 {
-  std::cout << "[Application] Initializing IO manager..." << std::endl;
+  m_logManager->Debug("Initializing IO manager...", "Application");
 
   try {
     // 1. Create EziIOManager
@@ -542,84 +538,24 @@ void Application::initializeIOManager()
     std::string configPath;
     int loadedCount = 0;
 
-    // ADD DEBUG: Check which file exists
-    std::cout << "[Application] Checking for IO config files..." << std::endl;
-    std::ifstream testFile1("config/io_devices.local.json");
-    if (testFile1.good()) {
-      std::cout << "[Application] ✓ Found: config/io_devices.local.json" << std::endl;
-      testFile1.close();
-    }
-    else {
-      std::cout << "[Application] ✗ Not found: config/io_devices.local.json" << std::endl;
-    }
-
-    std::ifstream testFile2("config/io_devices.json");
-    if (testFile2.good()) {
-      std::cout << "[Application] ✓ Found: config/io_devices.json" << std::endl;
-      testFile2.close();
-    }
-    else {
-      std::cout << "[Application] ✗ Not found: config/io_devices.json" << std::endl;
-    }
-
     // Try local config first (not in git)
-    std::cout << "[Application] Attempting to load LOCAL config..." << std::endl;
     loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.local.json");
     if (loadedCount > 0) {
       configPath = "config/io_devices.local.json";
       m_logManager->Info("Loading IO config from LOCAL file", "Application");
-      std::cout << "[Application] ✓ Loaded " << loadedCount << " devices from LOCAL config" << std::endl;
     }
     else {
       // Fall back to default config
-      std::cout << "[Application] LOCAL config not found, trying DEFAULT config..." << std::endl;
       loadedCount = EziIOJsonLoader::LoadFromFile(*m_ioManager, "config/io_devices.json");
       if (loadedCount > 0) {
         configPath = "config/io_devices.json";
         m_logManager->Info("Loading IO config from DEFAULT file", "Application");
-        std::cout << "[Application] ✓ Loaded " << loadedCount << " devices from DEFAULT config" << std::endl;
       }
       else {
         m_logManager->Warning("No IO config found - IO control not configured", "Application");
-        std::cout << "[Application] ✗ No IO config could be loaded!" << std::endl;
         return;
       }
     }
-
-    // ADD DEBUG: Test pin name retrieval
-    std::cout << "\n[Application] ===== TESTING PIN NAME MAPPINGS =====" << std::endl;
-    IEziIODevice* ioBottomDevice = m_ioManager->GetDevice("IOBottom");
-    if (ioBottomDevice) {
-      std::cout << "[Application] IOBottom device found" << std::endl;
-
-      // Test a few output pin names
-      std::string pin0Name = ioBottomDevice->GetOutputPinName(0);
-      std::string pin4Name = ioBottomDevice->GetOutputPinName(4);
-      std::string pin10Name = ioBottomDevice->GetOutputPinName(10);
-
-      std::cout << "[Application]   Output Pin 0: " << pin0Name << " (should be L_Gripper)" << std::endl;
-      std::cout << "[Application]   Output Pin 4: " << pin4Name << " (should be UV_Head)" << std::endl;
-      std::cout << "[Application]   Output Pin 10: " << pin10Name << " (should be Vacuum_Base)" << std::endl;
-    }
-    else {
-      std::cout << "[Application] ERROR: IOBottom device NOT FOUND!" << std::endl;
-    }
-
-    IEziIODevice* ioTopDevice = m_ioManager->GetDevice("IOTop");
-    if (ioTopDevice) {
-      std::cout << "[Application] IOTop device found" << std::endl;
-
-      // Test a few input pin names
-      std::string pin1Name = ioTopDevice->GetInputPinName(1);
-      std::string pin2Name = ioTopDevice->GetInputPinName(2);
-
-      std::cout << "[Application]   Input Pin 1: " << pin1Name << " (should be UV_Head_Up)" << std::endl;
-      std::cout << "[Application]   Input Pin 2: " << pin2Name << " (should be UV_Head_Down)" << std::endl;
-    }
-    else {
-      std::cout << "[Application] ERROR: IOTop device NOT FOUND!" << std::endl;
-    }
-    std::cout << "[Application] ===== END PIN NAME TEST =====\n" << std::endl;
 
     m_logManager->Info(
       "Loaded " + std::to_string(loadedCount) + " IO devices from " + configPath,
@@ -701,11 +637,9 @@ void Application::testIOCommands()
 
 void Application::connectHardwareAsync()
 {
-  std::cout << "\n[Application] ========================================" << std::endl;
-  std::cout << "[Application] PARALLEL HARDWARE CONNECTION STARTING" << std::endl;
-  std::cout << "[Application] ========================================\n" << std::endl;
-
-  m_logManager->Info("Starting parallel hardware connections...", "Application");
+  m_logManager->Info("========================================", "Application");
+  m_logManager->Info("PARALLEL HARDWARE CONNECTION STARTING", "Application");
+  m_logManager->Info("========================================", "Application");
 
   try {
     // Load connection configuration
@@ -729,14 +663,13 @@ void Application::connectHardwareAsync()
     // Execute all tasks asynchronously (parallel within phases)
     m_connectionPool->executeAllAsync();
 
-    std::cout << "[Application] Parallel connections started in background" << std::endl;
+    m_logManager->Info("Parallel connections started in background", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(
       std::string("Failed to start parallel connections: ") + e.what(),
       "Application"
     );
-    std::cerr << "[Application] Connection error: " << e.what() << std::endl;
 
     // Close splash on error
     if (m_splashScreen) {
@@ -858,52 +791,52 @@ void Application::addConnectionTasks()
 
         // Print status report for all channels
         if (count > 0) {
-          std::cout << "\n[Lighting] ========================================" << std::endl;
-          std::cout << "[Lighting] LIGHTING STATUS REPORT" << std::endl;
-          std::cout << "[Lighting] ========================================" << std::endl;
+          m_logManager->Info("========================================", "Lighting");
+          m_logManager->Info("LIGHTING STATUS REPORT", "Lighting");
+          m_logManager->Info("========================================", "Lighting");
 
           auto allStatus = m_lightingManager->GetAllStatus();
           for (const auto& ctrlStatus : allStatus) {
-            std::cout << "\n[Lighting] Controller: " << ctrlStatus.deviceName
-                      << " (" << ctrlStatus.deviceId << ")" << std::endl;
-            std::cout << "[Lighting] Connected: " << (ctrlStatus.connected ? "YES" : "NO") << std::endl;
+            m_logManager->Info("Controller: " + ctrlStatus.deviceName +
+                      " (" + ctrlStatus.deviceId + ")", "Lighting");
+            m_logManager->Info(std::string("Connected: ") + (ctrlStatus.connected ? "YES" : "NO"), "Lighting");
 
             if (ctrlStatus.connected) {
-              std::cout << "[Lighting] Channels:" << std::endl;
               for (const auto& chStatus : ctrlStatus.channelStatuses) {
                 double percent = Lighting::IntensityToPercent(chStatus.intensity);
-                std::cout << "  L" << (chStatus.channelNumber + 1)
-                          << " [" << chStatus.name << "]: "
-                          << (chStatus.isOn ? "ON " : "OFF")
-                          << " | Intensity: " << chStatus.intensity
-                          << " (" << std::fixed << std::setprecision(1) << percent << "%)"
-                          << " | Mode: " << chStatus.mode << std::endl;
+                std::stringstream ss;
+                ss << "  L" << (chStatus.channelNumber + 1)
+                   << " [" << chStatus.name << "]: "
+                   << (chStatus.isOn ? "ON " : "OFF")
+                   << " | Intensity: " << chStatus.intensity
+                   << " (" << std::fixed << std::setprecision(1) << percent << "%)"
+                   << " | Mode: " << chStatus.mode;
+                m_logManager->Info(ss.str(), "Lighting");
               }
             }
           }
-          std::cout << "[Lighting] ========================================\n" << std::endl;
+          m_logManager->Info("========================================", "Lighting");
 
           // Startup test: Cycle through Red, Green, Blue - 1 second each
-          std::cout << "[Lighting] Running startup test: RGB cycle..." << std::endl;
-          m_logManager->Info("Lighting startup test: RGB cycle", "Application");
+          m_logManager->Info("Running startup test: RGB cycle...", "Lighting");
 
           int intensity50 = Lighting::PercentToIntensity(50.0);  // 50% intensity
 
           for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
             // Red (channel 1) - 1 second
-            std::cout << "[Lighting] RED ON" << std::endl;
+            m_logManager->Debug("RED ON", "Lighting");
             m_lightingManager->SetIntensityByName(deviceId, "Red", intensity50);
             std::this_thread::sleep_for(std::chrono::seconds(1));
             m_lightingManager->SetIntensityByName(deviceId, "Red", 0);
 
             // Green (channel 2) - 1 second
-            std::cout << "[Lighting] GREEN ON" << std::endl;
+            m_logManager->Debug("GREEN ON", "Lighting");
             m_lightingManager->SetIntensityByName(deviceId, "Green", intensity50);
             std::this_thread::sleep_for(std::chrono::seconds(1));
             m_lightingManager->SetIntensityByName(deviceId, "Green", 0);
 
             // Blue (channel 3) - 1 second
-            std::cout << "[Lighting] BLUE ON" << std::endl;
+            m_logManager->Debug("BLUE ON", "Lighting");
             m_lightingManager->SetIntensityByName(deviceId, "Blue", intensity50);
             std::this_thread::sleep_for(std::chrono::seconds(1));
             m_lightingManager->SetIntensityByName(deviceId, "Blue", 0);
@@ -911,11 +844,10 @@ void Application::addConnectionTasks()
 
           // Ensure all off
           m_lightingManager->AllOff();
-          std::cout << "[Lighting] Startup test complete - All channels OFF" << std::endl;
-          m_logManager->Info("Lighting startup test complete - All channels OFF", "Application");
+          m_logManager->Info("Startup test complete - All channels OFF", "Lighting");
 
           // Apply saved default intensities from config
-          std::cout << "[Lighting] Applying saved default intensities..." << std::endl;
+          m_logManager->Debug("Applying saved default intensities...", "Lighting");
           for (const auto& deviceId : m_lightingManager->GetControllerIds()) {
             m_lightingManager->ApplyDefaultIntensities(deviceId);
           }
@@ -977,14 +909,14 @@ void Application::onConnectionTaskCompleted(const Startup::ConnectionResult& res
 
 void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& summary)
 {
-  std::cout << "\n[Application] ========================================" << std::endl;
-  std::cout << "[Application] PARALLEL HARDWARE CONNECTION COMPLETE" << std::endl;
-  std::cout << "[Application] Total: " << summary.totalTasks << " tasks" << std::endl;
-  std::cout << "[Application] Success: " << summary.successfulTasks << std::endl;
-  std::cout << "[Application] Failed: " << summary.failedTasks << std::endl;
-  std::cout << "[Application] Timed Out: " << summary.timedOutTasks << std::endl;
-  std::cout << "[Application] Duration: " << summary.totalDuration.count() << "ms" << std::endl;
-  std::cout << "[Application] ========================================\n" << std::endl;
+  m_logManager->Info("========================================", "Application");
+  m_logManager->Info("PARALLEL HARDWARE CONNECTION COMPLETE", "Application");
+  m_logManager->Info("Total: " + std::to_string(summary.totalTasks) + " tasks", "Application");
+  m_logManager->Info("Success: " + std::to_string(summary.successfulTasks), "Application");
+  m_logManager->Info("Failed: " + std::to_string(summary.failedTasks), "Application");
+  m_logManager->Info("Timed Out: " + std::to_string(summary.timedOutTasks), "Application");
+  m_logManager->Info("Duration: " + std::to_string(summary.totalDuration.count()) + "ms", "Application");
+  m_logManager->Info("========================================", "Application");
 
   if (summary.allSuccessful()) {
     m_logManager->Info("All hardware connections completed successfully", "Application");
@@ -1006,25 +938,25 @@ void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& su
 
 void Application::shutdownManagers()
 {
-  std::cout << "[Application] Shutting down managers..." << std::endl;
+  if (m_logManager) m_logManager->Info("Shutting down managers...", "Application");
 
   // ✅ CRITICAL: Mark DataStore as shutting down FIRST
   // This prevents crash from pending callbacks trying to write during destruction
   if (m_dataStore) {
-    std::cout << "[Application] Initiating DataStore shutdown..." << std::endl;
+    if (m_logManager) m_logManager->Debug("Initiating DataStore shutdown...", "Application");
     m_dataStore->BeginShutdown();
   }
 
   // Stop safety watch first
   if (m_safetyWatchManager) {
-    std::cout << "[Application] Stopping safety watch..." << std::endl;
+    if (m_logManager) m_logManager->Debug("Stopping safety watch...", "Application");
     m_safetyWatchManager->StopWatching();
   }
 
   // ✅ CRITICAL: Stop SMU polling and disconnect signals BEFORE touching DataStore
   // This prevents crash where polling thread tries to access destroyed DataStore
   if (m_smuPollingManager) {
-    std::cout << "[Application] Stopping SMU polling..." << std::endl;
+    if (m_logManager) m_logManager->Debug("Stopping SMU polling...", "Application");
     m_smuPollingManager->StopAllPolling();
     m_smuPollingManager->disconnect();  // Disconnect all Qt signals
   }
@@ -1042,6 +974,11 @@ void Application::shutdownManagers()
 
 
   // Shutdown in reverse order
+  if (m_gdiCameraWindowManager) {
+    m_gdiCameraWindowManager->shutdown();
+    m_gdiCameraWindowManager.reset();
+  }
+
   if (m_auxWindowManager) {
     m_auxWindowManager->shutdown();
     m_auxWindowManager.reset();
@@ -1091,30 +1028,26 @@ void Application::shutdownManagers()
   m_tcpClientManager.reset();
   m_dataStore.reset();
   m_sequenceEngine.reset();
+  // Note: Log final message before resetting logger
+  if (m_logManager) m_logManager->Info("All managers shut down", "Application");
   m_logManager.reset();
-
-  std::cout << "[Application] All managers shut down" << std::endl;
 }
 
 
 void Application::createMainWindow()
 {
-  std::cout << "[Application] Creating main window..." << std::endl;
+  m_logManager->Debug("Creating main window...", "Application");
 
   m_mainWindow = std::make_unique<MainWindow>(&m_context);
   m_mainWindow->setWindowTitle(QString::fromStdString(
     getApplicationName() + " v" + getVersion()));
   m_mainWindow->show();
 
-  std::cout << "[Application] Main window created" << std::endl;
-
   // ✅ AuxWindowManager is now initialized earlier (before SequenceEngine)
   // This ensures the AuxWindowCommandHandler gets a valid pointer
   // The window should already be visible at this point
 
-  if (m_logManager) {
-    m_logManager->Info("Main window created", "Application");
-  }
+  m_logManager->Info("Main window created", "Application");
 }
 
 void Application::testMotionCommands()
@@ -1144,7 +1077,7 @@ void Application::testMotionCommands()
 
 void Application::initializePneumaticManager()
 {
-  std::cout << "[Application] Initializing Pneumatic manager..." << std::endl;
+  m_logManager->Debug("Initializing Pneumatic manager...", "Application");
 
   try {
     // IMPORTANT: Pneumatic manager requires IO manager to be initialized first!
@@ -1318,7 +1251,7 @@ void Application::testPneumaticCommands()
 // ✅ ADD THIS FUNCTION
 void Application::initializeSequenceEngine()
 {
-  std::cout << "[Application] Initializing Sequence Engine..." << std::endl;
+  m_logManager->Debug("Initializing Sequence Engine...", "Application");
 
   try {
     // Create SequenceEngine
@@ -1483,7 +1416,7 @@ void Application::testPneumaticSequence()
 
 void Application::initializeScanController()
 {
-  std::cout << "[Application] Initializing Scan Controller..." << std::endl;
+  m_logManager->Debug("Initializing Scan Controller...", "Application");
 
   try {
     // Check prerequisites
@@ -1632,26 +1565,18 @@ void Application::testScanController()
 void Application::testOpenCV()
 {
 #ifdef HAS_OPENCV
-  std::cout << "[Application] Running OpenCV Integration Tests..." << std::endl;
+  m_logManager->Debug("Running OpenCV Integration Tests...", "Application");
 
   OpenCVTest cvTest;
   bool passed = cvTest.runAllTests();
 
   if (passed) {
-    if (m_logManager) {
-      m_logManager->Info("OpenCV integration tests PASSED", "Application");
-    }
+    m_logManager->Info("OpenCV integration tests PASSED", "Application");
   } else {
-    std::cerr << "[Application] OpenCV test failed: " << cvTest.getLastError() << std::endl;
-    if (m_logManager) {
-      m_logManager->Error("OpenCV test failed: " + cvTest.getLastError(), "Application");
-    }
+    m_logManager->Error("OpenCV test failed: " + cvTest.getLastError(), "Application");
   }
 #else
-  std::cout << "[Application] OpenCV not available (HAS_OPENCV not defined)" << std::endl;
-  if (m_logManager) {
-    m_logManager->Warning("OpenCV not available", "Application");
-  }
+  m_logManager->Warning("OpenCV not available (HAS_OPENCV not defined)", "Application");
 #endif
 }
 
@@ -1659,35 +1584,30 @@ void Application::testOpenCV()
 void Application::initializeProductPositionManager()
 {
   // Initialize product position manager
-  std::cout << "[Application] Initializing ProductPositionManager..." << std::endl;
+  m_logManager->Debug("Initializing ProductPositionManager...", "Application");
   m_productPositionManager = std::make_unique<ProductPositionManager>();
   m_context.productPositionManager = m_productPositionManager.get();
-  std::cout << "[Application] ProductPositionManager initialized" << std::endl;
+  m_logManager->Info("ProductPositionManager initialized", "Application");
 
   // Auto-load last used product from settings
   QSettings settings("Fabrinet", "BobcatEngine");
   QString lastProductPath = settings.value("Application/lastProductFile", "").toString();
   if (!lastProductPath.isEmpty()) {
-    std::cout << "[Application] Attempting to auto-load last product: "
-              << lastProductPath.toStdString() << std::endl;
+    m_logManager->Debug("Attempting to auto-load last product: " +
+              lastProductPath.toStdString(), "Application");
 
     if (m_productPositionManager->LoadProduct(lastProductPath.toStdString())) {
-      std::cout << "[Application] Product loaded successfully: "
-                << m_productPositionManager->GetCurrentProductName() << std::endl;
-
-      if (m_logManager) {
-        m_logManager->Info("Auto-loaded product: " + m_productPositionManager->GetCurrentProductName(),
-                           "Application");
-      }
+      m_logManager->Info("Auto-loaded product: " + m_productPositionManager->GetCurrentProductName(),
+                         "Application");
     } else {
-      std::cout << "[Application] Failed to auto-load product (file may not exist)" << std::endl;
+      m_logManager->Debug("Failed to auto-load product (file may not exist)", "Application");
     }
   }
 }
 
 void Application::initializeTECManager()
 {
-  std::cout << "[Application] Initializing TEC manager..." << std::endl;
+  m_logManager->Debug("Initializing TEC manager...", "Application");
 
   try {
     // 1. Create TECManager
@@ -1739,7 +1659,7 @@ void Application::initializeTECManager()
 
 void Application::initializeAuxWindowManager()
 {
-  std::cout << "[Application] Initializing AuxWindowManager..." << std::endl;
+  m_logManager->Debug("Initializing AuxWindowManager...", "Application");
 
   m_auxWindowManager = std::make_unique<AuxWindowManager>();
 
@@ -1755,23 +1675,56 @@ void Application::initializeAuxWindowManager()
   // Add to context
   m_context.auxWindowManager = m_auxWindowManager.get();
 
-  std::cout << "[Application] AuxWindowManager initialized successfully" << std::endl;
+  m_logManager->Info("AuxWindowManager initialized", "Application");
+}
+
+void Application::initializeGdiCameraWindow()
+{
+  m_logManager->Debug("Initializing GdiCameraWindow...", "Application");
+
+  m_gdiCameraWindowManager = std::make_unique<GdiCameraWindowManager>();
+
+  // Set camera manager (required)
+  m_gdiCameraWindowManager->setCameraManager(m_cameraManager.get());
+
+  // Set DataStore for chart overlay
+  m_gdiCameraWindowManager->setDataStore(m_dataStore.get());
+
+  // Set motion manager for click-to-move
+  m_gdiCameraWindowManager->setMotionManager(m_motionManager.get());
+
+  // Configure window title
+  m_gdiCameraWindowManager->setWindowTitle("Camera Monitor (GDI)");
+
+  // Initialize the window (position/size loaded from saved settings)
+  if (m_gdiCameraWindowManager->initialize()) {
+    m_context.gdiCameraWindowManager = m_gdiCameraWindowManager.get();
+
+    // Restore visibility from last session
+    if (m_gdiCameraWindowManager->shouldRestoreVisible()) {
+      m_gdiCameraWindowManager->show();
+      m_logManager->Info("GdiCameraWindow initialized and shown (restored from last session)", "Application");
+    } else {
+      m_logManager->Info("GdiCameraWindow initialized (hidden - restored from last session)", "Application");
+    }
+  } else {
+    m_logManager->Warning("GdiCameraWindow failed to initialize", "Application");
+  }
 }
 
 void Application::initializeCoordinateSystemManager()
 {
-  std::cout << "[Application] Initializing CoordinateSystemManager..." << std::endl;
+  m_logManager->Debug("Initializing CoordinateSystemManager...", "Application");
 
   m_coordinateSystemManager = std::make_unique<CoordinateSystemManager>();
   m_context.coordinateSystemManager = m_coordinateSystemManager.get();
 
   m_logManager->Info("CoordinateSystemManager initialized", "Application");
-  std::cout << "[Application] CoordinateSystemManager initialized successfully" << std::endl;
 }
 
 void Application::initializeLightingManager()
 {
-  std::cout << "[Application] Initializing LightingManager..." << std::endl;
+  m_logManager->Debug("Initializing LightingManager...", "Application");
 
   m_lightingManager = std::make_unique<Lighting::LightingManager>();
   m_context.lightingManager = m_lightingManager.get();
@@ -1790,11 +1743,11 @@ void Application::initializeLightingManager()
     localFileExists = true;
     loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, localConfigPath);
     if (loadedCount > 0) {
-      std::cout << "[Application] Lighting configuration loaded from "
-                << localConfigPath << " (" << loadedCount << " controllers)" << std::endl;
+      m_logManager->Info("Lighting configuration loaded from " +
+                localConfigPath + " (" + std::to_string(loadedCount) + " controllers)", "Application");
     } else {
-      std::cout << "[Application] Lighting configuration loaded from "
-                << localConfigPath << " (0 controllers - lighting disabled)" << std::endl;
+      m_logManager->Info("Lighting configuration loaded from " +
+                localConfigPath + " (0 controllers - lighting disabled)", "Application");
     }
   }
 
@@ -1802,8 +1755,8 @@ void Application::initializeLightingManager()
   if (!localFileExists) {
     loadedCount = Lighting::LightingJsonLoader::LoadFromFile(*m_lightingManager, defaultConfigPath);
     if (loadedCount > 0) {
-      std::cout << "[Application] Lighting configuration loaded from "
-                << defaultConfigPath << " (" << loadedCount << " controllers)" << std::endl;
+      m_logManager->Info("Lighting configuration loaded from " +
+                defaultConfigPath + " (" + std::to_string(loadedCount) + " controllers)", "Application");
     }
   }
 
@@ -1811,17 +1764,16 @@ void Application::initializeLightingManager()
   m_lightingManager->SetConfigFilePath(localConfigPath);
 
   if (loadedCount == 0) {
-    std::cout << "[Application] No lighting controllers configured" << std::endl;
+    m_logManager->Info("No lighting controllers configured", "Application");
   }
 
   m_logManager->Info("LightingManager initialized with " + std::to_string(loadedCount) + " controllers", "Application");
-  std::cout << "[Application] LightingManager initialized successfully" << std::endl;
 }
 
 // In your Application constructor or initialization function:
 void Application::initializePowerSupplySystem()
 {
-  std::cout << "[Application] Initializing Power Supply system..." << std::endl;
+  m_logManager->Debug("Initializing Power Supply system...", "Application");
 
   // Create PowerSupplyManager using unique_ptr (matches your .h declaration)
   m_powerSupplyManager = std::make_unique<PowerSupplyManager>(this);
@@ -1837,34 +1789,32 @@ void Application::initializePowerSupplySystem()
 
   // Try local config first
   if (PowerSupplyJsonLoader::loadConfiguration(localConfigPath, m_context.powerSupplyManager)) {
-    std::cout << "[Application] Power Supply configuration loaded from "
-      << localConfigPath << std::endl;
+    m_logManager->Info("Power Supply configuration loaded from " + localConfigPath, "Application");
     configLoaded = true;
   }
   // Fall back to default config
   else if (PowerSupplyJsonLoader::loadConfiguration(defaultConfigPath, m_context.powerSupplyManager)) {
-    std::cout << "[Application] Power Supply configuration loaded from "
-      << defaultConfigPath << std::endl;
+    m_logManager->Info("Power Supply configuration loaded from " + defaultConfigPath, "Application");
     configLoaded = true;
   }
 
   if (configLoaded) {
-    std::cout << "[Application] Power Supply system ready (use UI to connect)" << std::endl;
+    m_logManager->Info("Power Supply system ready (use UI to connect)", "Application");
 
     // ⚠️ DO NOT auto-connect at startup - it blocks the UI thread!
     // Let users connect via the PowerSupplyControlPage UI instead
     // m_context.powerSupplyManager->connectAll();
   }
   else {
-    std::cerr << "[Application] Warning: Failed to load Power Supply configuration" << std::endl;
-    std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
-    std::cerr << "[Application] Power Supply functionality will be limited" << std::endl;
+    m_logManager->Warning("Failed to load Power Supply configuration", "Application");
+    m_logManager->Warning("Tried: " + localConfigPath + ", " + defaultConfigPath, "Application");
+    m_logManager->Warning("Power Supply functionality will be limited", "Application");
   }
 }
 
 void Application::initializeSMUSystem()
 {
-  std::cout << "[Application] Initializing SMU system..." << std::endl;
+  m_logManager->Debug("Initializing SMU system...", "Application");
 
   // Create SMUManager
   m_smuManager = std::make_unique<SMUManager>(this);
@@ -1887,7 +1837,7 @@ void Application::initializeSMUSystem()
       m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
   });
 
-  std::cout << "[Application] SMU Polling Manager initialized" << std::endl;
+  m_logManager->Debug("SMU Polling Manager initialized", "Application");
 
   // ========== Legacy: Direct SMU Manager connection (for non-polling measurements) ==========
   // Note: This may be redundant now that polling uses SMUPollingManager
@@ -1900,7 +1850,7 @@ void Application::initializeSMUSystem()
       m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
   });
 
-  std::cout << "[Application] SMU measurements auto-subscribed to DataStore" << std::endl;
+  m_logManager->Debug("SMU measurements auto-subscribed to DataStore", "Application");
 
   // Try local config first, then fall back to default
   std::string localConfigPath = "config/smu_devices.local.json";
@@ -1910,32 +1860,30 @@ void Application::initializeSMUSystem()
 
   // Try local config first
   if (SMUJsonLoader::LoadConfiguration(localConfigPath, m_context.smuManager)) {
-    std::cout << "[Application] SMU configuration loaded from "
-      << localConfigPath << std::endl;
+    m_logManager->Info("SMU configuration loaded from " + localConfigPath, "Application");
     configLoaded = true;
   }
   // Fall back to default config
   else if (SMUJsonLoader::LoadConfiguration(defaultConfigPath, m_context.smuManager)) {
-    std::cout << "[Application] SMU configuration loaded from "
-      << defaultConfigPath << std::endl;
+    m_logManager->Info("SMU configuration loaded from " + defaultConfigPath, "Application");
     configLoaded = true;
   }
 
   if (configLoaded) {
-    std::cout << "[Application] SMU system ready" << std::endl;
-    std::cout << "[Application] Found " << m_context.smuManager->GetDeviceCount()
-              << " SMU device(s)" << std::endl;
+    m_logManager->Info("SMU system ready", "Application");
+    m_logManager->Info("Found " + std::to_string(m_context.smuManager->GetDeviceCount()) +
+              " SMU device(s)", "Application");
   }
   else {
-    std::cerr << "[Application] Warning: Failed to load SMU configuration" << std::endl;
-    std::cerr << "[Application] Tried: " << localConfigPath << ", " << defaultConfigPath << std::endl;
-    std::cerr << "[Application] SMU functionality will be unavailable" << std::endl;
+    m_logManager->Warning("Failed to load SMU configuration", "Application");
+    m_logManager->Warning("Tried: " + localConfigPath + ", " + defaultConfigPath, "Application");
+    m_logManager->Warning("SMU functionality will be unavailable", "Application");
   }
 }
 
 void Application::initializeSafetyWatch()
 {
-  std::cout << "[Application] Initializing Safety Watch..." << std::endl;
+  m_logManager->Debug("Initializing Safety Watch...", "Application");
 
   try {
     // Create SafetyWatchManager
@@ -1952,30 +1900,20 @@ void Application::initializeSafetyWatch()
 
     bool configLoaded = false;
 
-    // Debug: Show which files we're checking
-    std::cout << "[Application] Safety watch config search:" << std::endl;
-    std::cout << "[Application]   Checking: " << localConfigPath << std::endl;
-
     // Try local config first
     std::ifstream localFile(localConfigPath);
     if (localFile.good()) {
-      std::cout << "[Application]   ✓ Found local config" << std::endl;
       localFile.close();
       if (m_safetyWatchManager->LoadConfig(localConfigPath)) {
-        std::cout << "[Application] Safety watch configuration loaded from "
-                  << localConfigPath << std::endl;
+        m_logManager->Info("Safety watch configuration loaded from " + localConfigPath, "Application");
         configLoaded = true;
       }
-    } else {
-      std::cout << "[Application]   ✗ Local config not found" << std::endl;
     }
 
     // Fall back to default config
     if (!configLoaded) {
-      std::cout << "[Application]   Checking: " << defaultConfigPath << std::endl;
       if (m_safetyWatchManager->LoadConfig(defaultConfigPath)) {
-        std::cout << "[Application] Safety watch configuration loaded from "
-                  << defaultConfigPath << std::endl;
+        m_logManager->Info("Safety watch configuration loaded from " + defaultConfigPath, "Application");
         configLoaded = true;
       }
     }
@@ -1995,7 +1933,7 @@ void Application::initializeSafetyWatch()
       m_motionManager->SetSafetyWatchManager(m_safetyWatchManager.get());
     }
 
-    std::cout << "[Application] Safety Watch initialized successfully" << std::endl;
+    m_logManager->Info("Safety Watch initialized", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(
@@ -2008,7 +1946,7 @@ void Application::initializeSafetyWatch()
 
 void Application::initializeDeviceLinkManager()
 {
-  std::cout << "[Application] Initializing Device Link Manager..." << std::endl;
+  m_logManager->Debug("Initializing Device Link Manager...", "Application");
 
   try {
     // Create DeviceLinkManager
@@ -2025,7 +1963,7 @@ void Application::initializeDeviceLinkManager()
     std::string matrixPath = "config/transformation_matrix.json";
     if (matrixLoader.LoadFromFile(matrixPath)) {
       m_deviceLinkManager->SetMatrixLoader(&matrixLoader);
-      std::cout << "[Application] Transformation matrices loaded for DeviceLinkManager" << std::endl;
+      m_logManager->Info("Transformation matrices loaded for DeviceLinkManager", "Application");
     } else {
       m_logManager->Warning("DeviceLinkManager: Could not load transformation matrices", "Application");
     }
@@ -2033,12 +1971,12 @@ void Application::initializeDeviceLinkManager()
     // Try to load existing device links
     std::string linksPath = "config/device_links.json";
     if (m_deviceLinkManager->LoadFromFile(linksPath)) {
-      std::cout << "[Application] Device links loaded from " << linksPath << std::endl;
+      m_logManager->Info("Device links loaded from " + linksPath, "Application");
     } else {
-      std::cout << "[Application] No existing device links found (will be created on first registration)" << std::endl;
+      m_logManager->Debug("No existing device links found (will be created on first registration)", "Application");
     }
 
-    std::cout << "[Application] Device Link Manager initialized successfully" << std::endl;
+    m_logManager->Info("Device Link Manager initialized", "Application");
   }
   catch (const std::exception& e) {
     m_logManager->Error(

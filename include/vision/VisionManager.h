@@ -123,6 +123,12 @@ public:
      */
     VisionResult getLastResult() const;
 
+    /**
+     * @brief Enable/disable verbose logging (for continuous mode)
+     */
+    void setVerboseLogging(bool enabled) { m_verboseLogging = enabled; }
+    bool isVerboseLogging() const { return m_verboseLogging; }
+
     // ========== Calibration ==========
 
     /**
@@ -314,6 +320,9 @@ private:
     std::vector<RecipeStep> m_recipe;
     QString m_currentRecipePath;
     bool m_unsavedChanges = false;
+
+    // Logging control (for continuous mode)
+    bool m_verboseLogging = true;
 
     // Helper to update result coordinates with calibration
     void applyCalibrationToResult(VisionResult& result);
