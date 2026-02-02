@@ -363,8 +363,14 @@ void SMUControlPage::createConnectionTab()
 void SMUControlPage::createSimpleTab()
 {
   QWidget* tab = new QWidget();
-  QVBoxLayout* mainLayout = new QVBoxLayout(tab);
-  mainLayout->setContentsMargins(15, 15, 15, 15);
+  QHBoxLayout* outerLayout = new QHBoxLayout(tab);
+  outerLayout->setContentsMargins(15, 15, 15, 15);
+
+  // Fixed-width content container (aligned left)
+  QWidget* contentWidget = new QWidget();
+  contentWidget->setMaximumWidth(550);
+  QVBoxLayout* mainLayout = new QVBoxLayout(contentWidget);
+  mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(10);
 
   // ===== DEVICE INFO (Top) =====
@@ -408,7 +414,7 @@ void SMUControlPage::createSimpleTab()
     }
   )");
   connect(m_channelTabWidget, &QTabWidget::currentChanged, this, &SMUControlPage::onChannelTabChanged);
-  mainLayout->addWidget(m_channelTabWidget, 1);  // stretch factor 1 to expand
+  mainLayout->addWidget(m_channelTabWidget);  // No stretch - fixed width container
 
   // Create a template widget with controls (will be shown in each channel tab)
   // We'll create the controls here and they'll be shared across channel tabs
@@ -555,17 +561,21 @@ void SMUControlPage::createSimpleTab()
   connect(m_setVoltageComplianceButton, &QPushButton::clicked, this, &SMUControlPage::onSetVoltageComplianceClicked);
   m_setVoltageComplianceButton->hide();
 
-  m_setCurrentComplianceButton = new QPushButton(tab);
+  m_setCurrentComplianceButton = new QPushButton(contentWidget);
   connect(m_setCurrentComplianceButton, &QPushButton::clicked, this, &SMUControlPage::onSetCurrentComplianceClicked);
   m_setCurrentComplianceButton->hide();
 
   // Hidden channel combo and label (for compatibility)
-  m_channelComboBox = new QComboBox(tab);
+  m_channelComboBox = new QComboBox(contentWidget);
   connect(m_channelComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SMUControlPage::onChannelSelected);
   m_channelComboBox->hide();
-  m_channelCountLabel = new QLabel(tab);
+  m_channelCountLabel = new QLabel(contentWidget);
   m_channelCountLabel->hide();
+
+  // Align content to left (don't stretch to fill width)
+  outerLayout->addWidget(contentWidget, 0, Qt::AlignLeft | Qt::AlignTop);
+  outerLayout->addStretch();
 
   m_tabWidget->addTab(tab, "Simple");
 }

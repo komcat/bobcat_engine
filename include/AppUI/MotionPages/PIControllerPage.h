@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QGroupBox>
 #include <QTabWidget>
 #include <QTimer>
@@ -40,6 +41,9 @@ public:
 protected:
   // Override to add velocity controls and tabs
   void setupUI() override;
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
+  void updatePositions() override;  // Override base class - we don't use m_deviceTable
 
 private slots:
   void onTabChanged(int index);
@@ -51,6 +55,7 @@ private slots:
   void onAnalogPollTimer();
   void onFSMAlignClicked(int channel);
   void onZScanClicked(int channel);
+  void onPositionPollTimer();  // Update positions in device status cards
 
   // FSM Executor signal handlers
   void onAlignmentStarted(QString deviceName, int channel);
@@ -61,9 +66,11 @@ private slots:
 
 private:
   void createMainTab();
+  void createDeviceStatusTab();  // New: Device status with vertical table
   void createPivotPointTab();
   void createAnalogInputTab();
   void updateVelocityDisplay();
+  void updateDeviceStatusDisplay();  // New: Update vertical device table
   void updatePivotPointDisplay();
   void updateAnalogDisplay();
 
@@ -76,6 +83,12 @@ private:
   QPushButton* m_turtleButton;
   QPushButton* m_rabbitButton;
   QPushButton* m_applyButton;
+
+  // Device status display - vertical cards arranged horizontally
+  QWidget* m_deviceStatusWidget;
+  QHBoxLayout* m_deviceStatusLayout;
+  // Map: deviceName -> (axis -> label) for efficient position updates
+  std::map<std::string, std::map<std::string, QLabel*>> m_positionLabels;
 
   // Pivot point display - container for all devices
   QWidget* m_pivotDisplayWidget;

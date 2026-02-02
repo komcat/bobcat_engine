@@ -51,7 +51,7 @@ protected:
   // Data updates
   void refreshDeviceList();
   void updateDeviceRow(int row, const std::string& deviceName);
-  void updatePositions();
+  virtual void updatePositions();  // Virtual so derived classes can override
 
   // Button actions
   void onConnectClicked(const std::string& deviceName);

@@ -9,6 +9,8 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QMessageBox>
+#include <QScrollArea>
+#include <QFrame>
 #include <iostream>
 
 PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
@@ -19,6 +21,8 @@ PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
   , m_turtleButton(nullptr)
   , m_rabbitButton(nullptr)
   , m_applyButton(nullptr)
+  , m_deviceStatusWidget(nullptr)
+  , m_deviceStatusLayout(nullptr)
   , m_pivotDisplayWidget(nullptr)
   , m_pivotDisplayLayout(nullptr)
   , m_analogDisplayWidget(nullptr)
@@ -81,16 +85,76 @@ QString PIControllerPage::getPageTitle() const
   return "PI Hexapod Controllers";
 }
 
+void PIControllerPage::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+  std::cout << "[PIControllerPage] Page shown - refreshing device status" << std::endl;
+
+  // Refresh device status display
+  updateDeviceStatusDisplay();
+
+  // Start position polling
+  if (m_pollTimer) {
+    m_pollTimer->start(POLL_INTERVAL_MS);
+  }
+}
+
+void PIControllerPage::hideEvent(QHideEvent* event)
+{
+  QWidget::hideEvent(event);
+  std::cout << "[PIControllerPage] Page hidden - stopping polling" << std::endl;
+
+  // Stop polling
+  if (m_pollTimer) {
+    m_pollTimer->stop();
+  }
+}
+
+// Override base class updatePositions - we use vertical cards instead of m_deviceTable
+void PIControllerPage::updatePositions()
+{
+  // Redirect to our custom position update method
+  onPositionPollTimer();
+}
+
 void PIControllerPage::setupUI()
 {
-  // Call base class to setup the device table
-  MotionControllerPageBase::setupUI();
+  // Create our own main layout (don't call base class setupUI which adds horizontal table)
+  QVBoxLayout* mainLayout = new QVBoxLayout(this);
+  mainLayout->setContentsMargins(20, 20, 20, 20);
+  mainLayout->setSpacing(15);
 
-  // Get main layout (created by base class)
-  QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
-  if (!mainLayout) return;
+  // Title bar with refresh button
+  QHBoxLayout* titleLayout = new QHBoxLayout();
 
-  // ✅ NEW: Create tab widget
+  QLabel* titleLabel = new QLabel(getPageTitle());
+  titleLabel->setStyleSheet("QLabel { font-size: 20px; font-weight: bold; color: #ffffff; }");
+  titleLayout->addWidget(titleLabel);
+
+  titleLayout->addStretch();
+
+  m_refreshButton = new QPushButton("🔄 Refresh");
+  m_refreshButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: 1px solid #0c5280; "
+    "  border-radius: 5px; "
+    "  padding: 8px 15px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { background-color: #1177bb; }");
+  connect(m_refreshButton, &QPushButton::clicked, this, [this]() {
+    std::cout << "[PIControllerPage] Manual refresh requested" << std::endl;
+    updateDeviceStatusDisplay();
+    updateVelocityDisplay();
+  });
+  titleLayout->addWidget(m_refreshButton);
+
+  mainLayout->addLayout(titleLayout);
+
+  // Create tab widget
   m_tabWidget = new QTabWidget();
   m_tabWidget->setStyleSheet(
     "QTabWidget::pane { "
@@ -114,16 +178,22 @@ void PIControllerPage::setupUI()
     "  background-color: #3c3c3c; "
     "}");
 
-  // Create tabs
-  createMainTab();
+  // Create tabs - Device Status first, then others
+  createDeviceStatusTab();  // New: Vertical table with positions and connection
+  createMainTab();          // Velocity Control
   createPivotPointTab();
   createAnalogInputTab();
 
   // Connect tab change signal
   connect(m_tabWidget, &QTabWidget::currentChanged, this, &PIControllerPage::onTabChanged);
 
-  // Insert tab widget before the device table (position 1)
-  mainLayout->insertWidget(1, m_tabWidget);
+  mainLayout->addWidget(m_tabWidget);
+
+  // Dark background
+  setStyleSheet("QWidget { background-color: #2d2d30; color: #d4d4d4; }");
+
+  // Note: Base class initialize() will call setupPolling() after setupUI()
+  // which creates m_pollTimer and connects to updatePositions() (our override)
 }
 
 // ✅ NEW: Create main tab with velocity controls
@@ -289,7 +359,261 @@ void PIControllerPage::createMainTab()
   updateVelocityDisplay();
 }
 
-// ✅ NEW: Create pivot point tab
+// Create device status tab with vertical table (transposed layout)
+void PIControllerPage::createDeviceStatusTab()
+{
+  QWidget* statusTab = new QWidget();
+  QHBoxLayout* statusTabLayout = new QHBoxLayout(statusTab);
+  statusTabLayout->setContentsMargins(10, 10, 10, 10);
+  statusTabLayout->setSpacing(10);
+  statusTabLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);  // Align to left, don't stretch
+
+  // Create scroll area for device cards
+  QScrollArea* scrollArea = new QScrollArea();
+  scrollArea->setWidgetResizable(true);
+  scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scrollArea->setStyleSheet(
+    "QScrollArea { "
+    "  background-color: transparent; "
+    "  border: none; "
+    "} "
+    "QScrollArea > QWidget > QWidget { "
+    "  background-color: transparent; "
+    "}");
+
+  // Container widget for all device cards
+  m_deviceStatusWidget = new QWidget();
+  m_deviceStatusLayout = new QHBoxLayout(m_deviceStatusWidget);
+  m_deviceStatusLayout->setContentsMargins(0, 0, 0, 0);
+  m_deviceStatusLayout->setSpacing(15);
+  m_deviceStatusLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);  // Left-align cards
+
+  scrollArea->setWidget(m_deviceStatusWidget);
+  statusTabLayout->addWidget(scrollArea);
+
+  // Add tab to tab widget
+  m_tabWidget->addTab(statusTab, "Device Status");
+
+  // Initial population
+  updateDeviceStatusDisplay();
+}
+
+// Update device status display with vertical cards per device
+void PIControllerPage::updateDeviceStatusDisplay()
+{
+  if (!m_deviceStatusLayout) return;
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) return;
+
+  // Clear existing widgets and label references
+  QLayoutItem* item;
+  while ((item = m_deviceStatusLayout->takeAt(0)) != nullptr) {
+    if (item->widget()) {
+      delete item->widget();
+    }
+    delete item;
+  }
+  m_positionLabels.clear();
+
+  // Get PI devices
+  std::vector<std::string> piDevices = motionMgr->GetDeviceNamesByType("PI");
+
+  if (piDevices.empty()) {
+    QLabel* noDevicesLabel = new QLabel("No PI devices found");
+    noDevicesLabel->setStyleSheet("QLabel { color: #e74c3c; font-size: 14px; font-style: italic; }");
+    m_deviceStatusLayout->addWidget(noDevicesLabel);
+    return;
+  }
+
+  // Get connection status
+  std::map<std::string, bool> connectionStatus = motionMgr->GetConnectionStatus();
+
+  // Style definitions
+  QString cardStyle =
+    "QWidget { "
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "}";
+
+  QString labelStyle = "QLabel { font-size: 13px; color: #888888; border: none; background: transparent; }";
+  QString valueStyle =
+    "QLabel { "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  font-family: monospace; "
+    "  color: #d4d4d4; "
+    "  border: none; "
+    "  background: transparent; "
+    "  min-width: 80px; "
+    "}";
+
+  std::vector<std::string> axisNames = getAxisNames();  // X, Y, Z, U, V, W
+
+  // Create a vertical card for each device
+  for (const auto& deviceName : piDevices) {
+    bool isConnected = connectionStatus[deviceName];
+
+    // Card container
+    QWidget* deviceCard = new QWidget();
+    deviceCard->setStyleSheet(cardStyle);
+    deviceCard->setFixedWidth(200);  // Fixed width for consistent sizing
+
+    QVBoxLayout* cardLayout = new QVBoxLayout(deviceCard);
+    cardLayout->setContentsMargins(12, 12, 12, 12);
+    cardLayout->setSpacing(8);
+
+    // Device name header
+    QLabel* nameLabel = new QLabel(QString::fromStdString(deviceName));
+    nameLabel->setStyleSheet(
+      "QLabel { "
+      "  font-size: 16px; "
+      "  font-weight: bold; "
+      "  color: #14ffec; "
+      "  border: none; "
+      "  background: transparent; "
+      "  padding-bottom: 5px; "
+      "  border-bottom: 1px solid #3f3f46; "
+      "}");
+    cardLayout->addWidget(nameLabel);
+
+    // Connection status row
+    QHBoxLayout* connRow = new QHBoxLayout();
+    QLabel* connLabel = new QLabel("Status:");
+    connLabel->setStyleSheet(labelStyle);
+    connRow->addWidget(connLabel);
+
+    QLabel* connValue = new QLabel(isConnected ? "● Connected" : "● Disconnected");
+    connValue->setStyleSheet(
+      QString("QLabel { font-size: 13px; font-weight: bold; color: %1; border: none; background: transparent; }")
+        .arg(isConnected ? "#27ae60" : "#e74c3c"));
+    connRow->addWidget(connValue);
+    connRow->addStretch();
+    cardLayout->addLayout(connRow);
+
+    // Separator
+    QFrame* separator = new QFrame();
+    separator->setFrameShape(QFrame::HLine);
+    separator->setStyleSheet("QFrame { background-color: #3f3f46; max-height: 1px; border: none; }");
+    cardLayout->addWidget(separator);
+
+    // Initialize position labels map for this device
+    m_positionLabels[deviceName] = std::map<std::string, QLabel*>();
+
+    // Position rows - one row per axis (vertical layout)
+    for (const auto& axis : axisNames) {
+      QHBoxLayout* axisRow = new QHBoxLayout();
+
+      QLabel* axisLabel = new QLabel(QString::fromStdString(axis) + ":");
+      axisLabel->setStyleSheet(labelStyle);
+      axisLabel->setFixedWidth(25);
+      axisRow->addWidget(axisLabel);
+
+      // Get position value
+      QString posText = "--";
+      if (isConnected) {
+        double position = 0.0;
+        if (motionMgr->GetPosition(deviceName, axis, position)) {
+          posText = QString::number(position, 'f', 3);
+        }
+      }
+
+      QLabel* posValue = new QLabel(posText);
+      posValue->setStyleSheet(valueStyle);
+      posValue->setAlignment(Qt::AlignRight);
+      axisRow->addWidget(posValue);
+
+      // Store reference for polling updates
+      m_positionLabels[deviceName][axis] = posValue;
+
+      cardLayout->addLayout(axisRow);
+    }
+
+    // Spacer
+    cardLayout->addSpacing(5);
+
+    // Connect/Disconnect button
+    QPushButton* actionButton = new QPushButton(isConnected ? "Disconnect" : "Connect");
+    actionButton->setStyleSheet(
+      QString(
+        "QPushButton { "
+        "  background-color: %1; "
+        "  color: white; "
+        "  border: none; "
+        "  border-radius: 4px; "
+        "  padding: 8px 16px; "
+        "  font-weight: bold; "
+        "  font-size: 13px; "
+        "} "
+        "QPushButton:hover { "
+        "  background-color: %2; "
+        "}")
+        .arg(isConnected ? "#e74c3c" : "#27ae60")
+        .arg(isConnected ? "#c0392b" : "#229954"));
+
+    // Capture device name for lambda
+    std::string devName = deviceName;
+    if (isConnected) {
+      connect(actionButton, &QPushButton::clicked, this, [this, devName]() {
+        onDisconnectClicked(devName);
+        updateDeviceStatusDisplay();  // Refresh after action
+      });
+    } else {
+      connect(actionButton, &QPushButton::clicked, this, [this, devName]() {
+        onConnectClicked(devName);
+        updateDeviceStatusDisplay();  // Refresh after action
+      });
+    }
+    cardLayout->addWidget(actionButton);
+
+    cardLayout->addStretch();
+
+    // Add card to layout
+    m_deviceStatusLayout->addWidget(deviceCard);
+  }
+
+  // Add stretch at end to keep cards left-aligned
+  m_deviceStatusLayout->addStretch();
+}
+
+// Update positions in device status cards (called by poll timer)
+void PIControllerPage::onPositionPollTimer()
+{
+  // Only update if Device Status tab is active (index 0)
+  if (m_tabWidget && m_tabWidget->currentIndex() != 0) {
+    return;
+  }
+
+  UnifiedMotionManager* motionMgr = getMotionManager();
+  if (!motionMgr) return;
+
+  std::map<std::string, bool> connectionStatus = motionMgr->GetConnectionStatus();
+
+  // Update each device's position labels
+  for (auto& [deviceName, axisLabels] : m_positionLabels) {
+    bool isConnected = connectionStatus[deviceName];
+
+    for (auto& [axis, label] : axisLabels) {
+      if (!label) continue;
+
+      if (!isConnected) {
+        label->setText("--");
+        continue;
+      }
+
+      double position = 0.0;
+      if (motionMgr->GetPosition(deviceName, axis, position)) {
+        label->setText(QString::number(position, 'f', 3));
+      } else {
+        label->setText("--");
+      }
+    }
+  }
+}
+
+// Create pivot point tab
 void PIControllerPage::createPivotPointTab()
 {
   QWidget* pivotTab = new QWidget();
@@ -745,17 +1069,23 @@ void PIControllerPage::createAnalogInputTab()
 }
 
 // Handle tab changes
+// Tab indices: 0=Device Status, 1=Velocity Control, 2=Pivot Point, 3=Analog Inputs
 void PIControllerPage::onTabChanged(int index)
 {
   std::cout << "[PIControllerPage] Tab changed to index: " << index << std::endl;
 
-  // If switching to pivot point tab (index 1), refresh the display
-  if (index == 1) {
+  // If switching to Device Status tab (index 0), refresh the display
+  if (index == 0) {
+    updateDeviceStatusDisplay();
+  }
+
+  // If switching to pivot point tab (index 2), refresh the display
+  if (index == 2) {
     updatePivotPointDisplay();
   }
 
-  // If switching to analog input tab (index 2), start polling
-  if (index == 2) {
+  // If switching to analog input tab (index 3), start polling
+  if (index == 3) {
     updateAnalogDisplay();
     if (m_analogPollTimer && !m_analogPollTimer->isActive()) {
       m_analogPollTimer->start(500);  // Poll every 500ms
