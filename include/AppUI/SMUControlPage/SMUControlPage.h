@@ -12,6 +12,8 @@
 #include <QTabWidget>
 #include <QDoubleSpinBox>
 #include <QPointer>
+#include <QShowEvent>
+#include <QHideEvent>
 #include <vector>
 
 struct ApplicationContext;
@@ -31,6 +33,10 @@ class SMUControlPage : public QWidget
 public:
   explicit SMUControlPage(ApplicationContext* context, QWidget* parent = nullptr);
   ~SMUControlPage();
+
+protected:
+  void showEvent(QShowEvent* event) override;
+  void hideEvent(QHideEvent* event) override;
 
 private slots:
   // Device management
@@ -177,4 +183,7 @@ private:
 
   // ===== PARAMETER WORKER =====
   SMUParameterWorker* m_parameterWorker;
+
+  // ===== CACHED STATE (updated by worker) =====
+  bool m_cachedOutputOn = false;  // Cached output state from worker
 };

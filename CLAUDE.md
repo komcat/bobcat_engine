@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **CMake-based C++ Qt6 application** for industrial motion control and automation.
 
-### Build Configuration
+### Build Commands
 ```bash
 # Configure build (x64 Debug with Simulation - most commonly used for development)
 cmake --preset x64-debug
@@ -16,6 +16,12 @@ cmake --build out/build/x64-debug
 
 # Run the executable
 ./out/build/x64-debug/bobcat_engine.exe
+```
+
+### Version System
+The build version auto-increments via `build_number.txt`. Override with:
+```bash
+cmake --preset x64-debug -DBOBCAT_VERSION_BUILD_OVERRIDE=123
 ```
 
 ### Available Build Presets
@@ -54,16 +60,21 @@ Application (main entry point)
     │   ├── TECManager (thermoelectric cooler control)
     │   ├── PowerSupplyManager (power supply control)
     │   ├── SMUManager (source measure units)
+    │   ├── SMUPollingManager (SMU data polling)
     │   ├── LightingManager (lighting controllers)
     │   ├── TcpClientManager (network communication)
     │   ├── DataStore (application-wide data storage)
     │   ├── LogManager (logging system)
     │   ├── SequenceEngine (command sequencing)
     │   ├── RecipeManager (process recipes)
-    │   ├── ProgramManager (program execution)
     │   ├── VisionManager (image processing)
     │   ├── SafetyWatchManager (I/O safety monitoring)
-    │   └── AdaptiveScanController (scanning operations)
+    │   ├── AdaptiveScanController (scanning operations)
+    │   ├── CoordinateSystemManager (coordinate transformations)
+    │   ├── DeviceUnderTest (current DUT instance)
+    │   ├── AuxWindowManager (auxiliary window controls)
+    │   ├── DeviceLinkManager (linked device motion)
+    │   └── GdiCameraWindowManager (GDI camera monitor)
     │
     └── MainWindow (Qt UI)
         ├── MotionPages (motion control UI)
@@ -95,6 +106,16 @@ Configuration: `config/motor_devices.json`
   - `TECCommandHandler` - TEC device commands
   - `SystemCommandHandler` - system operations (prompts, delays)
   - `DataStoreCommandHandler` - data storage operations
+  - `PSUCommandHandler` - power supply commands
+  - `SMUCommandHandler` - source measure unit commands
+  - `LightingCommandHandler` - lighting control commands
+  - `VisionCommandHandler` - vision processing commands
+  - `CalibrationCommandHandler` - calibration procedures
+  - `DUTCommandHandler` - device under test operations
+  - `AuxWindowCommandHandler` - auxiliary window controls
+  - `CoordinateAlignCommandHandler` - coordinate alignment
+  - `RelativePositionCommandHandler` - relative position calculations
+  - `SequenceContextCommandHandler` - context variable operations
 - Stop/pause capability with atomic flags
 - Location: `include/sequence/SequenceEngine.h`
 
@@ -245,14 +266,23 @@ Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for run
 See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for adding commands to the sequence system.
 
 Command handlers are in `include/sequence/*CommandHandler.cpp`:
-- `MotionCommandHandler` - Motion device commands
+- `MotionCommandHandler` - Motion device commands (move, home, scan)
 - `IOCommandHandler` - Digital I/O commands
 - `PneumaticCommandHandler` - Pneumatic slide commands
 - `CameraCommandHandler` - Camera capture commands
 - `TECCommandHandler` - Temperature controller commands
 - `SystemCommandHandler` - Wait, prompts, logging
 - `DataStoreCommandHandler` - Data storage operations
+- `PSUCommandHandler` - Power supply control
+- `SMUCommandHandler` - Source measure unit control
+- `LightingCommandHandler` - Lighting controller commands
 - `VisionCommandHandler` - Vision processing commands (requires OpenCV)
+- `CalibrationCommandHandler` - Calibration procedures
+- `DUTCommandHandler` - Device under test operations
+- `AuxWindowCommandHandler` - Auxiliary window commands
+- `CoordinateAlignCommandHandler` - Coordinate alignment operations
+- `RelativePositionCommandHandler` - Relative position calculations
+- `SequenceContextCommandHandler` - Context variable manipulation
 
 ## Camera Configuration
 
@@ -270,6 +300,24 @@ Example USB Basler camera config:
   "connection_type": "serial",
   "serial_number": "YOUR_SERIAL"
 }
+```
+
+## Sequence Context System
+
+Commands can store and retrieve values at runtime using `SequenceContext`:
+- Use `captureAs` parameter to store command results in context
+- Reference context values with `context:variable_name` syntax
+- See `docs/sequence_context_usage_guide.md` for details
+
+Example:
+```cpp
+// In command handler - store result
+context->Set("measured_value", std::to_string(result));
+
+// In plugin - reference context value
+sequence->AddAction(device, "MoveToAbs", {
+  {"x", "context:calculated_x"}  // Uses value from context
+});
 ```
 
 ## User Preferences

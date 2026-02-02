@@ -807,39 +807,45 @@ void PowerSupplyControlPage::updateMeasurements()
     return;
   }
 
-  // Update all channel measurements
-  for (auto& meas : m_channelMeasurements) {
-    // Read output state
-    bool outputOn = psu->readOutputState(meas.channel);
-    if (outputOn) {
-      meas.outputStateLabel->setText("Output: ON");
-      meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #27ae60;");
-    }
-    else {
-      meas.outputStateLabel->setText("Output: OFF");
-      meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #e74c3c;");
-    }
+  // Use worker for non-blocking measurement reads (off UI thread)
+  if (m_parameterWorker && m_useParameterWorker) {
+    // Request measurements via worker - UI update happens in onWorkerMeasurementsUpdated()
+    m_parameterWorker->requestReadAllChannels();
+  } else {
+    // Fallback: direct calls (blocks UI - only used if worker not available)
+    for (auto& meas : m_channelMeasurements) {
+      // Read output state
+      bool outputOn = psu->readOutputState(meas.channel);
+      if (outputOn) {
+        meas.outputStateLabel->setText("Output: ON");
+        meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #27ae60;");
+      }
+      else {
+        meas.outputStateLabel->setText("Output: OFF");
+        meas.outputStateLabel->setStyleSheet("font-size: 12px; font-weight: bold; color: #e74c3c;");
+      }
 
-    // Read voltage
-    double voltage = psu->readVoltage(meas.channel);
-    if (voltage >= 0) {
-      meas.voltageLabel->setText(QString("V: %1 V").arg(voltage, 0, 'f', 3));
-      meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;");
-    }
-    else {
-      meas.voltageLabel->setText("V: Error");
-      meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
-    }
+      // Read voltage
+      double voltage = psu->readVoltage(meas.channel);
+      if (voltage >= 0) {
+        meas.voltageLabel->setText(QString("V: %1 V").arg(voltage, 0, 'f', 3));
+        meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;");
+      }
+      else {
+        meas.voltageLabel->setText("V: Error");
+        meas.voltageLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+      }
 
-    // Read current
-    double current = psu->readCurrent(meas.channel);
-    if (current >= 0) {
-      meas.currentLabel->setText(QString("I: %1 A").arg(current, 0, 'f', 4));
-      meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #3498db;");
-    }
-    else {
-      meas.currentLabel->setText("I: Error");
-      meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+      // Read current
+      double current = psu->readCurrent(meas.channel);
+      if (current >= 0) {
+        meas.currentLabel->setText(QString("I: %1 A").arg(current, 0, 'f', 4));
+        meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #3498db;");
+      }
+      else {
+        meas.currentLabel->setText("I: Error");
+        meas.currentLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #e74c3c;");
+      }
     }
   }
 }
@@ -898,8 +904,12 @@ void PowerSupplyControlPage::showEvent(QShowEvent* event)
   if (!m_currentDevice.isEmpty()) {
     auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
     if (psu && psu->isConnected()) {
-      // Only start the old refresh timer if NOT using the worker
-      if (!m_parameterWorker || !m_useParameterWorker) {
+      // Enable worker polling when page is visible
+      if (m_parameterWorker && m_useParameterWorker) {
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+        std::cout << "[PowerSupplyControlPage] Page shown - enabled status polling" << std::endl;
+      } else {
+        // Fallback to old refresh timer if NOT using the worker
         m_refreshTimer->start(2000);
       }
     }
@@ -909,6 +919,13 @@ void PowerSupplyControlPage::showEvent(QShowEvent* event)
 void PowerSupplyControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
+
+  // Disable worker polling when page is hidden to save resources
+  if (m_parameterWorker) {
+    m_parameterWorker->setMeasurementPollingEnabled(false);
+    std::cout << "[PowerSupplyControlPage] Page hidden - disabled status polling" << std::endl;
+  }
+
   m_refreshTimer->stop();
 }
 
@@ -995,11 +1012,24 @@ void PowerSupplyControlPage::onWorkerDeviceConnected(QString deviceName)
   showSuccess("Connected to " + deviceName);
   updateConnectionStatus();
   updateDeviceList();
+
+  // Enable polling if page is visible
+  if (m_parameterWorker && isVisible()) {
+    m_parameterWorker->setMeasurementPollingEnabled(true);
+    std::cout << "[PowerSupplyControlPage] Enabled status polling after connection" << std::endl;
+  }
 }
 
 void PowerSupplyControlPage::onWorkerDeviceDisconnected(QString deviceName)
 {
   showSuccess("Disconnected from " + deviceName);
+
+  // Disable polling since device is disconnected
+  if (m_parameterWorker) {
+    m_parameterWorker->setMeasurementPollingEnabled(false);
+    std::cout << "[PowerSupplyControlPage] Disabled status polling after disconnection" << std::endl;
+  }
+
   updateConnectionStatus();
   updateDeviceList();
 }

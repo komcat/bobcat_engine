@@ -907,10 +907,9 @@ void LightingControlWidget::updateChannelWidgets()
 
 void LightingControlWidget::onPollTimer()
 {
+    // Only update connection status UI (non-blocking config/flag checks)
+    // Channel widget updates are handled by the worker's statusUpdated signal -> onWorkerStatusUpdated
     updateStatus();
-    if (m_isConnected) {
-        updateChannelWidgets();
-    }
 }
 
 void LightingControlWidget::onChannelIntensityChanged(int channel, int intensity)

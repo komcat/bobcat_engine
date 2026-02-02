@@ -951,7 +951,11 @@ void SMUControlPage::onOutputOffClicked()
 
 void SMUControlPage::updateOutputState()
 {
-  if (m_currentDevice.isEmpty()) return;
+  if (m_currentDevice.isEmpty()) {
+    m_outputStateLabel->setText("---");
+    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #888888; }");
+    return;
+  }
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
@@ -960,14 +964,21 @@ void SMUControlPage::updateOutputState()
     return;
   }
 
-  bool isOn = smu->IsOutputOn();
-
-  if (isOn) {
+  // Use cached state from worker instead of direct SMU call (non-blocking)
+  // The cached state is updated by onMeasurementsUpdated() callback
+  if (m_cachedOutputOn) {
     m_outputStateLabel->setText("ON");
     m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #27ae60; }");
   } else {
     m_outputStateLabel->setText("OFF");
     m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
+  }
+
+  // Request fresh data from worker (off-thread)
+  if (m_parameterWorker) {
+    int channel = m_channelTabWidget->currentIndex() + 1;
+    if (channel <= 0) channel = 1;
+    m_parameterWorker->requestRefreshAll(channel);
   }
 }
 
@@ -1244,40 +1255,32 @@ void SMUControlPage::onRefreshClicked()
 
 void SMUControlPage::updateMeasurements()
 {
-  // This is now handled by the parameter worker callback
-  // Keep for initial load or when worker is not available
-  if (!m_parameterWorker) {
-    if (m_currentDevice.isEmpty()) return;
+  // All SMU reads are now handled by the parameter worker (off-thread)
+  // This function only requests a refresh - actual UI update happens in onMeasurementsUpdated()
 
-    auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-    if (!smu || !smu->IsConnected()) {
-      m_voltageReadLabel->setText("Voltage = --- V");
-      m_currentReadLabel->setText("Current = --- A");
-      return;
-    }
+  if (m_currentDevice.isEmpty()) {
+    m_voltageReadLabel->setText("Voltage = --- V");
+    m_currentReadLabel->setText("Current = --- A");
+    return;
+  }
 
-    // Read voltage (device-wide)
-    double voltage = smu->ReadVoltage();
-    if (voltage != -999.0) {
-      m_voltageReadLabel->setText(QString("Voltage = %1 V").arg(QString::number(voltage, 'f', 3)));
-    } else {
-      m_voltageReadLabel->setText("Voltage = Error");
-    }
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu || !smu->IsConnected()) {
+    m_voltageReadLabel->setText("Voltage = --- V");
+    m_currentReadLabel->setText("Current = --- A");
+    return;
+  }
 
-    // Read current from selected channel
-    int selectedChannel = m_channelTabWidget->currentIndex() + 1;
-    if (selectedChannel <= 0) selectedChannel = m_channelComboBox->currentIndex() + 1;
-    double current = smu->ReadChannel(selectedChannel);
-    if (current != -999.0) {
-      m_currentReadLabel->setText(QString("Current = %1 A").arg(QString::number(current, 'f', 3)));
-    } else {
-      m_currentReadLabel->setText("Current = Error");
-    }
-  } else {
-    // Request refresh via worker
+  // Request refresh via worker (non-blocking, off UI thread)
+  if (m_parameterWorker) {
     int channel = m_channelTabWidget->currentIndex() + 1;
     if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
     m_parameterWorker->requestRefreshAll(channel);
+  } else {
+    // Worker not available - show placeholder (don't block UI with direct calls)
+    m_voltageReadLabel->setText("Voltage = --- V");
+    m_currentReadLabel->setText("Current = --- A");
+    std::cerr << "[SMUControlPage] Warning: Parameter worker not available" << std::endl;
   }
 }
 
@@ -1513,6 +1516,12 @@ void SMUControlPage::onConnectionSuccess(QString deviceName, QString deviceId)
         m_parameterWorker->setChannelCount(smu->GetChannelCount());
       }
 
+      // Enable status polling if page is visible
+      if (isVisible()) {
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+        std::cout << "[SMUControlPage] Enabled status polling after connection" << std::endl;
+      }
+
       // Request initial measurements
       int channel = m_channelTabWidget->currentIndex() + 1;
       if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
@@ -1544,6 +1553,16 @@ void SMUControlPage::onDisconnectionComplete(QString deviceName)
   // Only update UI if this is still the selected device
   if (deviceName == m_currentDevice) {
     showSuccess("Disconnected from " + deviceName);
+
+    // Disable polling since device is disconnected
+    if (m_parameterWorker) {
+      m_parameterWorker->setMeasurementPollingEnabled(false);
+      std::cout << "[SMUControlPage] Disabled status polling after disconnection" << std::endl;
+    }
+
+    // Reset cached state
+    m_cachedOutputOn = false;
+
     updateConnectionStatus();
     updateOutputState();
     updateDeviceLabels();
@@ -1563,6 +1582,9 @@ void SMUControlPage::onConnectionOperationStarted(QString operation, QString dev
 
 void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
 {
+  // Update cached output state (for use by updateOutputState())
+  m_cachedOutputOn = outputOn;
+
   // Update voltage display (new format: "Voltage = X.XXX V")
   if (voltage != -999.0) {
     m_voltageReadLabel->setText(QString("Voltage = %1 V").arg(QString::number(voltage, 'f', 3)));
@@ -1589,6 +1611,9 @@ void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double c
 
 void SMUControlPage::onOutputStateChangedByWorker(bool on)
 {
+  // Update cached output state
+  m_cachedOutputOn = on;
+
   // Update output state display (simplified)
   if (on) {
     m_outputStateLabel->setText("ON");
@@ -1614,4 +1639,38 @@ void SMUControlPage::onParameterCommandError(QString operation, QString error)
 void SMUControlPage::onParameterCommandSuccess(QString operation, QString message)
 {
   showSuccess(message);
+}
+
+// ============================================================================
+// PAGE VISIBILITY - Enable/disable status polling
+// ============================================================================
+
+void SMUControlPage::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+
+  // Enable measurement polling when page becomes visible
+  if (m_parameterWorker && !m_currentDevice.isEmpty()) {
+    auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+    if (smu && smu->IsConnected()) {
+      m_parameterWorker->setMeasurementPollingEnabled(true);
+      std::cout << "[SMUControlPage] Page shown - enabled status polling" << std::endl;
+
+      // Request initial measurements
+      int channel = m_channelTabWidget->currentIndex() + 1;
+      if (channel <= 0) channel = 1;
+      m_parameterWorker->requestRefreshAll(channel);
+    }
+  }
+}
+
+void SMUControlPage::hideEvent(QHideEvent* event)
+{
+  QWidget::hideEvent(event);
+
+  // Disable measurement polling when page is hidden to save resources
+  if (m_parameterWorker) {
+    m_parameterWorker->setMeasurementPollingEnabled(false);
+    std::cout << "[SMUControlPage] Page hidden - disabled status polling" << std::endl;
+  }
 }
