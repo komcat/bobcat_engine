@@ -1,5 +1,6 @@
 ﻿// JogPanelWindow.cpp - Tabbed interface with Jog, Quick Output, and Lighting
 #include "JogPanelWindow.h"
+#include "JogWorker.h"
 #include "QuickOutputWidget.h"
 #include "QuickOutputManager.h"
 #include "QuickOutput_JsonLoader.h"
@@ -50,6 +51,7 @@ JogPanelWindow::JogPanelWindow(
   , m_quickOutputManager(nullptr)
   , m_quickOutputWidget(nullptr)
   , m_lightingWidget(nullptr)
+  , m_jogWorker(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
   , m_keyboardActive(false)
 {
@@ -99,7 +101,26 @@ JogPanelWindow::JogPanelWindow(
   setupUI();
   restoreWindowSettings();  // Restore saved window position and size
 
-  // ✅ NEW: Setup position update timer
+  // Create and start jog worker for async motion commands
+  if (m_context && m_context->motionManager && m_matrixLoader) {
+    m_jogWorker = new JogWorker(m_context->motionManager, m_matrixLoader, this);
+
+    // Connect worker signals
+    connect(m_jogWorker, &JogWorker::jogStarted,
+            this, &JogPanelWindow::onJogStarted);
+    connect(m_jogWorker, &JogWorker::jogCompleted,
+            this, &JogPanelWindow::onJogCompleted);
+    connect(m_jogWorker, &JogWorker::logMessage,
+            this, &JogPanelWindow::onJogWorkerLog);
+
+    m_jogWorker->start();
+
+    if (m_context->logManager) {
+      m_context->logManager->Info("JogWorker started", "JogPanel");
+    }
+  }
+
+  // Setup position update timer
   m_positionUpdateTimer = new QTimer(this);
   connect(m_positionUpdateTimer, &QTimer::timeout, this, &JogPanelWindow::updatePositionDisplay);
   m_positionUpdateTimer->setInterval(200);  // Update every 200ms
@@ -110,6 +131,14 @@ JogPanelWindow::JogPanelWindow(
 
 JogPanelWindow::~JogPanelWindow()
 {
+  // Stop and clean up jog worker
+  if (m_jogWorker) {
+    m_jogWorker->requestStop();
+    m_jogWorker->wait(3000);  // Wait up to 3 seconds
+    delete m_jogWorker;
+    m_jogWorker = nullptr;
+  }
+
   if (m_quickOutputManager) {
     delete m_quickOutputManager;
     m_quickOutputManager = nullptr;
@@ -959,88 +988,46 @@ void JogPanelWindow::sendJogCommand(const std::string& axis, double direction)
     return;
   }
 
-  if (!m_context || !m_context->motionManager || !m_matrixLoader) {
-    return;
-  }
-
-  // Create global movement vector (in microns)
-  CoordinateTransformer::Vector6D globalMove(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-  double stepInMicrons = m_currentStepSize * direction;
-
-  if (axis == "X") {
-    globalMove.x = stepInMicrons;
-  }
-  else if (axis == "Y") {
-    globalMove.y = stepInMicrons;
-  }
-  else if (axis == "Z") {
-    globalMove.z = stepInMicrons;
-  }
-  else if (axis == "U") {
-    globalMove.u = stepInMicrons;
-  }
-  else if (axis == "V") {
-    globalMove.v = stepInMicrons;
-  }
-  else if (axis == "W") {
-    globalMove.w = stepInMicrons;
-  }
-
-  // Get device transformation matrix
-  auto matrix = m_matrixLoader->GetMatrix(m_selectedDevice);
-  if (!matrix) {
-    if (m_context->logManager) {
-      m_context->logManager->Error(
-        "No transformation matrix for device: " + m_selectedDevice,
-        "JogPanel"
-      );
+  if (!m_jogWorker) {
+    // Fallback: Worker not available, log error
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Error("JogWorker not initialized", "JogPanel");
     }
     return;
   }
 
-  // Transform to local coordinates
-  auto localMove = CoordinateTransformer::TransformGlobalToLocal(globalMove, *matrix);
+  // Queue the jog command to the worker thread
+  // This returns immediately, motion happens asynchronously
+  m_jogWorker->queueJogCommand(m_selectedDevice, axis, direction, m_currentStepSize);
+}
 
-  // Convert microns to millimeters
-  double xMM = localMove.x / 1000.0;
-  double yMM = localMove.y / 1000.0;
-  double zMM = localMove.z / 1000.0;
-  double uMM = localMove.u / 1000.0;
-  double vMM = localMove.v / 1000.0;
-  double wMM = localMove.w / 1000.0;
+void JogPanelWindow::onJogStarted(QString deviceName, QString axis, double direction)
+{
+  // Optional: Could update UI to show jog in progress
+  Q_UNUSED(deviceName);
+  Q_UNUSED(axis);
+  Q_UNUSED(direction);
+}
 
-  // Send commands for each non-zero axis
-  bool success = true;
-  if (std::abs(xMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "X", xMM, false);
-  }
-  if (std::abs(yMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "Y", yMM, false);
-  }
-  if (std::abs(zMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "Z", zMM, false);
-  }
-  if (std::abs(uMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "U", uMM, false);
-  }
-  if (std::abs(vMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "V", vMM, false);
-  }
-  if (std::abs(wMM) > 0.0001) {
-    success &= m_context->motionManager->MoveRelative(m_selectedDevice, "W", wMM, false);
-  }
+void JogPanelWindow::onJogCompleted(QString deviceName, QString axis, bool success, QString message)
+{
+  Q_UNUSED(deviceName);
+  Q_UNUSED(axis);
 
-  if (m_context->logManager) {
+  if (m_context && m_context->logManager) {
     if (success) {
-      std::string dirStr = (direction > 0) ? "+" : "-";
-      m_context->logManager->Info(
-        "Jog " + axis + dirStr + " " + std::to_string(m_currentStepSize) + "µm",
-        "JogPanel"
-      );
+      m_context->logManager->Info(message.toStdString(), "JogPanel");
     }
     else {
-      m_context->logManager->Error("Jog command failed", "JogPanel");
+      m_context->logManager->Error(message.toStdString(), "JogPanel");
     }
+  }
+}
+
+void JogPanelWindow::onJogWorkerLog(QString message)
+{
+  if (m_context && m_context->logManager) {
+    m_context->logManager->Info(message.toStdString(), "JogPanel");
   }
 }
 

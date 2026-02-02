@@ -19,6 +19,7 @@ class JogKeyBindingHandler;
 class QuickOutputWidget;
 class QuickOutputManager;
 class LightingControlWidget;
+class JogWorker;
 
 class JogPanelWindow : public QWidget
 {
@@ -72,6 +73,11 @@ private slots:
   void onStepSizeSelected();
   void updatePositionDisplay();  // Update position labels
   void updateUVWButtonState();   // Enable/disable U/V/W buttons based on device axes
+
+  // JogWorker signal handlers
+  void onJogStarted(QString deviceName, QString axis, double direction);
+  void onJogCompleted(QString deviceName, QString axis, bool success, QString message);
+  void onJogWorkerLog(QString message);
 
 private:
   void setupUI();
@@ -134,6 +140,9 @@ private:
 
   // Lighting tab
   LightingControlWidget* m_lightingWidget;
+
+  // Jog worker for async motion commands
+  JogWorker* m_jogWorker;
 
   // State
   std::string m_selectedDevice;

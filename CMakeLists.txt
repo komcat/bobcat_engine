@@ -596,6 +596,7 @@ set(SOURCES
     include/motions/DeviceLinkManager.cpp
     src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
+    include/AppUI/JogWindow/JogWorker.cpp
     include/AppUI/JogWindow/JogKeyBindingHandler.cpp
     include/AppUI/JogWindow/QuickOutputWidget.cpp
     include/AppUI/MotionPages/PositionDot.cpp
@@ -820,6 +821,7 @@ set(HEADERS
     include/motions/CoordinateTransformer.h
     include/motions/DeviceLinkManager.h
     include/AppUI/JogWindow/JogPanelWindow.h
+    include/AppUI/JogWindow/JogWorker.h
     include/AppUI/JogWindow/JogKeyBindingHandler.h
     include/AppUI/JogWindow/QuickOutputWidget.h
     include/AppUI/MotionPages/PositionDot.h 
