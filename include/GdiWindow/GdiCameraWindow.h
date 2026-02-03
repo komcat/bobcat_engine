@@ -28,6 +28,7 @@
 
 class DataStore;
 class UnifiedMotionManager;
+class CameraManager;
 
 // Menu IDs
 #define IDM_SHOW_MENU_BASE      6000
@@ -43,6 +44,12 @@ class UnifiedMotionManager;
 #define IDM_TOOLS_MENU_BASE         8000
 #define IDM_TOOLS_CROSSHAIR         8001
 #define IDM_TOOLS_CLICK_TO_MOVE     8002
+
+// Camera Menu IDs
+#define IDM_CAMERA_MENU_BASE        9000
+#define IDM_CAMERA_DUAL_MODE        9001
+#define IDM_CAMERA_PRIMARY_BASE     9100  // Primary camera selection (max 50)
+#define IDM_CAMERA_SECONDARY_BASE   9200  // Secondary camera selection (max 50)
 
 // Custom Windows messages
 #define WM_VISION_RESULT_READY      (WM_USER + 101)
@@ -157,6 +164,16 @@ public:
     void SetTargetCamera(const std::string& cameraId);
     std::string GetTargetCamera() const;
 
+    // Camera manager integration (for camera switching menu)
+    void SetCameraManager(CameraManager* cameraManager);
+    void RefreshCameraMenu();
+
+    // Dual camera mode
+    void SetDualCameraMode(bool enabled);
+    bool IsDualCameraMode() const { return m_dualCameraMode; }
+    void SetSecondaryCameraId(const std::string& cameraId);
+    std::string GetSecondaryCameraId() const;
+
     // DataStore integration
     void SetDataStore(DataStore* dataStore);
     void RefreshChannelMenu();
@@ -195,6 +212,7 @@ private:
     void CreateMenuBar();
     void UpdateShowMenu();
     void UpdateToolsMenu();
+    void UpdateCameraMenu();
 #ifdef HAS_OPENCV
     void UpdateVisionMenu();
 #endif
@@ -238,6 +256,7 @@ private:
     HMENU m_showMenu = nullptr;
     HMENU m_visionMenu = nullptr;
     HMENU m_toolsMenu = nullptr;
+    HMENU m_cameraMenu = nullptr;
 
     // Frame data (thread-safe)
     mutable std::mutex m_frameMutex;
@@ -247,8 +266,24 @@ private:
     std::atomic<bool> m_hasNewFrame{false};
 
     // Camera selection
-    std::string m_targetCameraId;  // Empty = accept all cameras
+    std::string m_targetCameraId;  // Empty = accept all cameras (primary camera for dual mode)
     mutable std::mutex m_cameraMutex;
+
+    // Camera manager for menu population
+    CameraManager* m_cameraManager = nullptr;
+    std::vector<std::string> m_availableCameraIds;
+    mutable std::mutex m_cameraListMutex;
+
+    // Dual camera mode
+    bool m_dualCameraMode = false;
+    std::string m_secondaryCameraId;  // Second camera for split view
+
+    // Secondary frame data (for dual camera mode)
+    mutable std::mutex m_secondaryFrameMutex;
+    std::vector<uint8_t> m_secondaryFrameBuffer;  // BGR format for GDI
+    uint32_t m_secondaryFrameWidth = 0;
+    uint32_t m_secondaryFrameHeight = 0;
+    std::atomic<bool> m_hasSecondaryNewFrame{false};
 
     // Status
     std::atomic<bool> m_cameraConnected{false};
@@ -283,10 +318,17 @@ private:
     double m_pixelToMmFactorY = 0.00248;
 
     // Frame destination info for overlay drawing (crosshair, vision)
+    // Primary camera (left in dual mode, full in single mode)
     int m_lastDestX = 0;
     int m_lastDestY = 0;
     int m_lastDestWidth = 0;
     int m_lastDestHeight = 0;
+
+    // Secondary camera destination info (right side in dual mode)
+    int m_lastSecondaryDestX = 0;
+    int m_lastSecondaryDestY = 0;
+    int m_lastSecondaryDestWidth = 0;
+    int m_lastSecondaryDestHeight = 0;
 
     // Vision overlay and processing
 #ifdef HAS_OPENCV

@@ -35,9 +35,23 @@ std::string CalibrationCommandHandler::GetNeedleZCalibrationFilePath() const
   return "config/SYSTEM/needle_z_calibration.json";
 }
 
-std::string CalibrationCommandHandler::GetCameraToNeedleOffsetFilePath() const
+std::string CalibrationCommandHandler::GetCameraToNeedleOffsetFilePath(bool forWriting) const
 {
-  // ✅ Use SYSTEM folder for factory offset (read-only reference)
+  // ✅ Local override pattern: .local.json takes precedence over base .json
+  // For WRITING: Always write to .local.json (preserves factory default)
+  // For READING: Check .local.json first, caller handles fallback
+
+  if (forWriting) {
+    return "config/SYSTEM/needlexyoffset.local.json";
+  }
+
+  // For reading: check if .local.json exists first
+  std::string localPath = "config/SYSTEM/needlexyoffset.local.json";
+  if (std::filesystem::exists(localPath)) {
+    return localPath;
+  }
+
+  // Fall back to base file
   return "config/SYSTEM/needlexyoffset.json";
 }
 
@@ -179,10 +193,12 @@ bool CalibrationCommandHandler::LoadNeedleZCalibrationGlobal(
 }
 
 bool CalibrationCommandHandler::LoadCameraToNeedleOffset(
-  double& offsetX, double& offsetY, double& offsetZ)
+  double& offsetX, double& offsetY, double& offsetZ,
+  std::string& loadedFromPath)
 {
   try {
-    std::string filePath = GetCameraToNeedleOffsetFilePath();
+    std::string filePath = GetCameraToNeedleOffsetFilePath(false);  // false = for reading
+    loadedFromPath = filePath;  // Report which file was used
 
     if (!std::filesystem::exists(filePath)) {
       return false;  // Factory offset file doesn't exist
@@ -279,8 +295,8 @@ bool CalibrationCommandHandler::SaveCameraToNeedleOffset(
 
     j["notes"] = "XY offset calculated from needle imprint to camera center. Z offset is handled by separate needle Z calibration.";
 
-    // Write to file
-    std::string filePath = GetCameraToNeedleOffsetFilePath();
+    // Write to .local.json file (preserves factory default in base file)
+    std::string filePath = GetCameraToNeedleOffsetFilePath(true);  // true = for writing
     std::ofstream file(filePath);
 
     if (!file.is_open()) {
@@ -662,18 +678,21 @@ bool CalibrationCommandHandler::ExecuteCommand(
   else if (methodName == "LoadCameraToNeedleOffset") {
     double offsetX = 0.0, offsetY = 0.0, offsetZ = 0.0;
     bool exists = false;
-    std::string source = "none";
+    std::string loadedFromPath;
 
-    // ✅ ALWAYS load from SYSTEM folder only (latest calibration result)
-    exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ);
+    // ✅ Load from .local.json if exists, otherwise fall back to base .json
+    exists = LoadCameraToNeedleOffset(offsetX, offsetY, offsetZ, loadedFromPath);
+
+    // Determine source label for logging
+    std::string source = "none";
     if (exists) {
-      source = "SYSTEM";
+      source = (loadedFromPath.find(".local.json") != std::string::npos) ? "LOCAL" : "FACTORY";
     }
 
     // Log which offset was loaded
     if (m_logger && exists) {
       m_logger->Info(
-        "Loaded " + source + " needle XY offset: (" +
+        "Loaded " + source + " needle XY offset from " + loadedFromPath + ": (" +
         std::to_string(offsetX) + ", " + std::to_string(offsetY) + ")",
         "CalibrationHandler"
       );

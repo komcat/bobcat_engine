@@ -54,6 +54,10 @@ bool GdiCameraWindowManager::initialize() {
         m_window->SetTargetCamera(m_targetCameraId);
     }
 
+    // Set camera manager for menu population
+    std::cout << "[GdiCameraWindowManager] Setting camera manager for menu..." << std::endl;
+    m_window->SetCameraManager(m_cameraManager);
+
     // Subscribe to camera frames
     std::cout << "[GdiCameraWindowManager] Subscribing to camera frames..." << std::endl;
     m_cameraManager->SubscribeToFrames(m_window);
@@ -138,6 +142,32 @@ std::string GdiCameraWindowManager::getTargetCamera() const {
         return m_window->GetTargetCamera();
     }
     return m_targetCameraId;
+}
+
+void GdiCameraWindowManager::setDualCameraMode(bool enabled) {
+    if (m_window) {
+        m_window->SetDualCameraMode(enabled);
+    }
+}
+
+bool GdiCameraWindowManager::isDualCameraMode() const {
+    if (m_window) {
+        return m_window->IsDualCameraMode();
+    }
+    return false;
+}
+
+void GdiCameraWindowManager::setSecondaryCameraId(const std::string& cameraId) {
+    if (m_window) {
+        m_window->SetSecondaryCameraId(cameraId);
+    }
+}
+
+std::string GdiCameraWindowManager::getSecondaryCameraId() const {
+    if (m_window) {
+        return m_window->GetSecondaryCameraId();
+    }
+    return "";
 }
 
 void GdiCameraWindowManager::show() {

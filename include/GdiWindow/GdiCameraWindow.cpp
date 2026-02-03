@@ -2,12 +2,14 @@
 #include "GdiCameraWindow.h"
 #include "data/DataStore.h"
 #include "motions/unified_motion_manager.h"
+#include "camera/CameraManager.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <set>
 
 #ifdef HAS_OPENCV
 #include "vision/VisionManager.h"
@@ -574,8 +576,17 @@ void GdiCameraWindow::CreateMenuBar() {
     m_showMenu = CreatePopupMenu();
     m_visionMenu = CreatePopupMenu();
     m_toolsMenu = CreatePopupMenu();
+    m_cameraMenu = CreatePopupMenu();
 
     if (m_menuBar && m_showMenu) {
+        // Camera menu (first, most important)
+        if (m_cameraMenu) {
+            AppendMenuW(m_cameraMenu, MF_STRING, IDM_CAMERA_DUAL_MODE, L"Dual Camera Mode (Split View)");
+            AppendMenuW(m_cameraMenu, MF_SEPARATOR, 0, nullptr);
+            // Camera list will be populated dynamically
+            AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_cameraMenu, L"Camera");
+        }
+
         // Add "Enable Chart" item at top
         AppendMenuW(m_showMenu, MF_STRING, IDM_SHOW_CHART_ENABLED, L"Enable Chart Overlay");
         AppendMenuW(m_showMenu, MF_SEPARATOR, 0, nullptr);
@@ -651,6 +662,90 @@ void GdiCameraWindow::UpdateToolsMenu() {
                   m_crosshairEnabled ? MF_CHECKED : MF_UNCHECKED);
     CheckMenuItem(m_toolsMenu, IDM_TOOLS_CLICK_TO_MOVE,
                   m_clickToMoveEnabled ? MF_CHECKED : MF_UNCHECKED);
+
+    DrawMenuBar(m_hwnd);
+}
+
+void GdiCameraWindow::UpdateCameraMenu() {
+    if (!m_cameraMenu) return;
+
+    // Remove old camera items (keep first 2: "Dual Camera Mode" and separator)
+    int count = GetMenuItemCount(m_cameraMenu);
+    while (count > 2) {
+        DeleteMenu(m_cameraMenu, count - 1, MF_BYPOSITION);
+        count--;
+    }
+
+    // Update dual mode checkbox
+    CheckMenuItem(m_cameraMenu, IDM_CAMERA_DUAL_MODE,
+                  m_dualCameraMode ? MF_CHECKED : MF_UNCHECKED);
+
+    // Get available cameras
+    std::vector<std::string> cameras;
+    {
+        std::lock_guard<std::mutex> lock(m_cameraListMutex);
+        cameras = m_availableCameraIds;
+    }
+
+    // Get current selections
+    std::string primaryCamera;
+    std::string secondaryCamera;
+    {
+        std::lock_guard<std::mutex> lock(m_cameraMutex);
+        primaryCamera = m_targetCameraId;
+        secondaryCamera = m_secondaryCameraId;
+    }
+
+    if (cameras.empty()) {
+        AppendMenuW(m_cameraMenu, MF_STRING | MF_GRAYED, 0, L"(No cameras available)");
+    } else {
+        // Primary camera submenu
+        HMENU primarySubmenu = CreatePopupMenu();
+        if (primarySubmenu) {
+            for (size_t i = 0; i < cameras.size() && i < 50; ++i) {
+                std::wstring wCameraId(cameras[i].begin(), cameras[i].end());
+                UINT flags = MF_STRING;
+                if (cameras[i] == primaryCamera || (primaryCamera.empty() && i == 0)) {
+                    flags |= MF_CHECKED;
+                }
+                AppendMenuW(primarySubmenu, flags,
+                            IDM_CAMERA_PRIMARY_BASE + static_cast<UINT>(i),
+                            wCameraId.c_str());
+            }
+            AppendMenuW(m_cameraMenu, MF_POPUP, (UINT_PTR)primarySubmenu,
+                        m_dualCameraMode ? L"Left Camera (Primary)" : L"Select Camera");
+        }
+
+        // Secondary camera submenu (only in dual mode)
+        if (m_dualCameraMode) {
+            HMENU secondarySubmenu = CreatePopupMenu();
+            if (secondarySubmenu) {
+                // Add "None" option
+                UINT noneFlags = MF_STRING;
+                if (secondaryCamera.empty()) {
+                    noneFlags |= MF_CHECKED;
+                }
+                AppendMenuW(secondarySubmenu, noneFlags, IDM_CAMERA_SECONDARY_BASE, L"(None)");
+                AppendMenuW(secondarySubmenu, MF_SEPARATOR, 0, nullptr);
+
+                for (size_t i = 0; i < cameras.size() && i < 50; ++i) {
+                    std::wstring wCameraId(cameras[i].begin(), cameras[i].end());
+                    UINT flags = MF_STRING;
+                    if (cameras[i] == secondaryCamera) {
+                        flags |= MF_CHECKED;
+                    }
+                    // Grey out if same as primary
+                    if (cameras[i] == primaryCamera) {
+                        flags |= MF_GRAYED;
+                    }
+                    AppendMenuW(secondarySubmenu, flags,
+                                IDM_CAMERA_SECONDARY_BASE + 1 + static_cast<UINT>(i),
+                                wCameraId.c_str());
+                }
+                AppendMenuW(m_cameraMenu, MF_POPUP, (UINT_PTR)secondarySubmenu, L"Right Camera (Secondary)");
+            }
+        }
+    }
 
     DrawMenuBar(m_hwnd);
 }
@@ -889,6 +984,78 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         UpdateToolsMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
     }
+    // Camera menu commands
+    else if (commandId == IDM_CAMERA_DUAL_MODE) {
+        SetDualCameraMode(!m_dualCameraMode);
+        UpdateCameraMenu();
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    else if (commandId >= IDM_CAMERA_PRIMARY_BASE && commandId < IDM_CAMERA_PRIMARY_BASE + 50) {
+        // Primary camera selection
+        size_t index = commandId - IDM_CAMERA_PRIMARY_BASE;
+        std::vector<std::string> cameras;
+        {
+            std::lock_guard<std::mutex> lock(m_cameraListMutex);
+            cameras = m_availableCameraIds;
+        }
+        if (index < cameras.size()) {
+            std::string newCameraId = cameras[index];
+            {
+                std::lock_guard<std::mutex> lock(m_cameraMutex);
+                m_targetCameraId = newCameraId;
+                // If secondary is same as new primary, clear secondary
+                if (m_secondaryCameraId == newCameraId) {
+                    m_secondaryCameraId.clear();
+                }
+            }
+            std::cout << "[GdiCameraWindow] Primary camera set to: " << newCameraId << std::endl;
+            // Clear primary frame buffer to show "Waiting for camera..."
+            {
+                std::lock_guard<std::mutex> lock(m_frameMutex);
+                m_frameWidth = 0;
+                m_frameHeight = 0;
+            }
+            UpdateCameraMenu();
+            InvalidateRect(m_hwnd, nullptr, FALSE);
+        }
+    }
+    else if (commandId >= IDM_CAMERA_SECONDARY_BASE && commandId < IDM_CAMERA_SECONDARY_BASE + 51) {
+        // Secondary camera selection
+        if (commandId == IDM_CAMERA_SECONDARY_BASE) {
+            // "None" selected
+            {
+                std::lock_guard<std::mutex> lock(m_cameraMutex);
+                m_secondaryCameraId.clear();
+            }
+            std::cout << "[GdiCameraWindow] Secondary camera cleared" << std::endl;
+        } else {
+            size_t index = commandId - IDM_CAMERA_SECONDARY_BASE - 1;
+            std::vector<std::string> cameras;
+            {
+                std::lock_guard<std::mutex> lock(m_cameraListMutex);
+                cameras = m_availableCameraIds;
+            }
+            if (index < cameras.size()) {
+                std::string newCameraId = cameras[index];
+                {
+                    std::lock_guard<std::mutex> lock(m_cameraMutex);
+                    // Don't set if same as primary
+                    if (newCameraId != m_targetCameraId) {
+                        m_secondaryCameraId = newCameraId;
+                    }
+                }
+                std::cout << "[GdiCameraWindow] Secondary camera set to: " << newCameraId << std::endl;
+            }
+        }
+        // Clear secondary frame buffer
+        {
+            std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
+            m_secondaryFrameWidth = 0;
+            m_secondaryFrameHeight = 0;
+        }
+        UpdateCameraMenu();
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
 }
 
 void GdiCameraWindow::Destroy() {
@@ -1007,6 +1174,14 @@ void GdiCameraWindow::OnDataStoreValueChanged(const std::string& channelId, floa
 
 bool GdiCameraWindow::WantsFramesFromCamera(const std::string& cameraId) const {
     std::lock_guard<std::mutex> lock(m_cameraMutex);
+    // In dual mode, accept frames from both primary and secondary cameras
+    if (m_dualCameraMode) {
+        if (m_targetCameraId.empty()) return true;
+        if (m_targetCameraId == cameraId) return true;
+        if (!m_secondaryCameraId.empty() && m_secondaryCameraId == cameraId) return true;
+        return false;
+    }
+    // Single mode: accept all if no target, or only target camera
     if (m_targetCameraId.empty()) return true;
     return m_targetCameraId == cameraId;
 }
@@ -1014,14 +1189,37 @@ bool GdiCameraWindow::WantsFramesFromCamera(const std::string& cameraId) const {
 void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
     if (!frameData.IsValid()) return;
 
-    static bool firstFrame = true;
-    if (firstFrame) {
-        std::cout << "[GdiCameraWindow] First frame received from camera: " << frameData.cameraId
-                  << " (" << frameData.width << "x" << frameData.height << ")" << std::endl;
-        firstFrame = false;
+    // Determine if this is primary or secondary camera
+    bool isPrimaryCamera = false;
+    bool isSecondaryCamera = false;
+    {
+        std::lock_guard<std::mutex> lock(m_cameraMutex);
+        if (m_dualCameraMode) {
+            // In dual mode, check if this matches primary or secondary
+            if (m_targetCameraId.empty() || frameData.cameraId == m_targetCameraId) {
+                isPrimaryCamera = true;
+            } else if (!m_secondaryCameraId.empty() && frameData.cameraId == m_secondaryCameraId) {
+                isSecondaryCamera = true;
+            }
+        } else {
+            // Single mode: all frames go to primary
+            if (m_targetCameraId.empty() || frameData.cameraId == m_targetCameraId) {
+                isPrimaryCamera = true;
+            }
+        }
     }
 
-    {
+    static std::set<std::string> loggedCameras;
+    if (loggedCameras.find(frameData.cameraId) == loggedCameras.end()) {
+        std::cout << "[GdiCameraWindow] First frame received from camera: " << frameData.cameraId
+                  << " (" << frameData.width << "x" << frameData.height << ")"
+                  << (isPrimaryCamera ? " [Primary]" : "")
+                  << (isSecondaryCamera ? " [Secondary]" : "") << std::endl;
+        loggedCameras.insert(frameData.cameraId);
+    }
+
+    // Store frame in appropriate buffer
+    if (isPrimaryCamera) {
         std::lock_guard<std::mutex> lock(m_frameMutex);
 
         size_t requiredSize = frameData.width * frameData.height * 3;
@@ -1051,10 +1249,42 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
 
         m_hasNewFrame = true;
     }
+    else if (isSecondaryCamera) {
+        std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
+
+        size_t requiredSize = frameData.width * frameData.height * 3;
+        if (m_secondaryFrameBuffer.size() < requiredSize) {
+            m_secondaryFrameBuffer.resize(requiredSize);
+        }
+
+        m_secondaryFrameWidth = frameData.width;
+        m_secondaryFrameHeight = frameData.height;
+
+        const uint8_t* src = frameData.imageData.data();
+        uint8_t* dst = m_secondaryFrameBuffer.data();
+
+        for (uint32_t y = 0; y < frameData.height; ++y) {
+            uint32_t srcRow = y;
+            uint32_t dstRow = frameData.height - 1 - y;
+
+            const uint8_t* srcLine = src + srcRow * frameData.width * 3;
+            uint8_t* dstLine = dst + dstRow * frameData.width * 3;
+
+            for (uint32_t x = 0; x < frameData.width; ++x) {
+                dstLine[x * 3 + 0] = srcLine[x * 3 + 2];
+                dstLine[x * 3 + 1] = srcLine[x * 3 + 1];
+                dstLine[x * 3 + 2] = srcLine[x * 3 + 0];
+            }
+        }
+
+        m_hasSecondaryNewFrame = true;
+    } else {
+        return; // Frame not for us
+    }
 
 #ifdef HAS_OPENCV
-    // Queue frame for vision processing if enabled
-    if (m_visionEnabled && m_visionThreadRunning) {
+    // Queue frame for vision processing if enabled (only for primary camera)
+    if (isPrimaryCamera && m_visionEnabled && m_visionThreadRunning) {
         std::lock_guard<std::mutex> lock(m_frameQueueMutex);
         // Keep max 2 frames in queue to avoid lag
         while (m_frameQueue.size() >= 2) {
@@ -1074,21 +1304,41 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
 }
 
 void GdiCameraWindow::OnCameraStatusChanged(const std::string& cameraId, bool connected, bool grabbing) {
+    bool isPrimaryCamera = false;
+    bool isSecondaryCamera = false;
     {
         std::lock_guard<std::mutex> lock(m_cameraMutex);
-        if (!m_targetCameraId.empty() && m_targetCameraId != cameraId) {
-            return;
+        if (m_dualCameraMode) {
+            if (m_targetCameraId.empty() || m_targetCameraId == cameraId) {
+                isPrimaryCamera = true;
+            } else if (!m_secondaryCameraId.empty() && m_secondaryCameraId == cameraId) {
+                isSecondaryCamera = true;
+            }
+        } else {
+            if (m_targetCameraId.empty() || m_targetCameraId == cameraId) {
+                isPrimaryCamera = true;
+            }
         }
     }
 
-    m_cameraConnected = connected;
-    m_cameraGrabbing = grabbing;
+    if (!isPrimaryCamera && !isSecondaryCamera) {
+        return;
+    }
+
+    // Only update main status for primary camera
+    if (isPrimaryCamera) {
+        m_cameraConnected = connected;
+        m_cameraGrabbing = grabbing;
+    }
 
     if (m_hwnd) {
         std::string title = "Camera Monitor (GDI)";
-        if (!connected) {
+        if (m_dualCameraMode) {
+            title += " [Dual View]";
+        }
+        if (!m_cameraConnected) {
             title += " [Disconnected]";
-        } else if (!grabbing) {
+        } else if (!m_cameraGrabbing) {
             title += " [Stopped]";
         } else {
             title += " [Live]";
@@ -1157,6 +1407,10 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
 #endif
         else if ((HMENU)wParam == m_toolsMenu) {
             UpdateToolsMenu();
+        }
+        else if ((HMENU)wParam == m_cameraMenu) {
+            RefreshCameraMenu();
+            UpdateCameraMenu();
         }
         return 0;
 
@@ -1301,66 +1555,245 @@ void GdiCameraWindow::OnPaint() {
 }
 
 void GdiCameraWindow::RenderFrame(HDC hdc) {
-    std::lock_guard<std::mutex> lock(m_frameMutex);
+    if (m_dualCameraMode) {
+        // Dual camera mode: split view 50/50
+        int halfWidth = m_bufferWidth / 2;
 
-    if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, RGB(128, 128, 128));
+        // Render primary (left side)
+        {
+            std::lock_guard<std::mutex> lock(m_frameMutex);
 
-        RECT rect = {0, 0, m_bufferWidth, m_bufferHeight};
-        DrawTextW(hdc, L"Waiting for camera...", -1, &rect,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        return;
-    }
+            if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, RGB(128, 128, 128));
 
-    BITMAPINFOHEADER& bih = m_bitmapInfo->bmiHeader;
-    bih.biSize = sizeof(BITMAPINFOHEADER);
-    bih.biWidth = m_frameWidth;
-    bih.biHeight = m_frameHeight;
-    bih.biPlanes = 1;
-    bih.biBitCount = 24;
-    bih.biCompression = BI_RGB;
-    bih.biSizeImage = 0;
-    bih.biXPelsPerMeter = 0;
-    bih.biYPelsPerMeter = 0;
-    bih.biClrUsed = 0;
-    bih.biClrImportant = 0;
+                RECT rect = {0, 0, halfWidth, m_bufferHeight};
+                DrawTextW(hdc, L"Left: Waiting for camera...", -1, &rect,
+                          DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                m_lastDestX = 0;
+                m_lastDestY = 0;
+                m_lastDestWidth = 0;
+                m_lastDestHeight = 0;
+            } else {
+                BITMAPINFOHEADER& bih = m_bitmapInfo->bmiHeader;
+                bih.biSize = sizeof(BITMAPINFOHEADER);
+                bih.biWidth = m_frameWidth;
+                bih.biHeight = m_frameHeight;
+                bih.biPlanes = 1;
+                bih.biBitCount = 24;
+                bih.biCompression = BI_RGB;
+                bih.biSizeImage = 0;
+                bih.biXPelsPerMeter = 0;
+                bih.biYPelsPerMeter = 0;
+                bih.biClrUsed = 0;
+                bih.biClrImportant = 0;
 
-    float frameAspect = static_cast<float>(m_frameWidth) / m_frameHeight;
-    float windowAspect = static_cast<float>(m_bufferWidth) / m_bufferHeight;
+                float frameAspect = static_cast<float>(m_frameWidth) / m_frameHeight;
+                float windowAspect = static_cast<float>(halfWidth) / m_bufferHeight;
 
-    int destWidth, destHeight, destX, destY;
+                int destWidth, destHeight, destX, destY;
 
-    if (frameAspect > windowAspect) {
-        destWidth = m_bufferWidth;
-        destHeight = static_cast<int>(m_bufferWidth / frameAspect);
-        destX = 0;
-        destY = (m_bufferHeight - destHeight) / 2;
+                if (frameAspect > windowAspect) {
+                    destWidth = halfWidth;
+                    destHeight = static_cast<int>(halfWidth / frameAspect);
+                    destX = 0;
+                    destY = (m_bufferHeight - destHeight) / 2;
+                } else {
+                    destHeight = m_bufferHeight;
+                    destWidth = static_cast<int>(m_bufferHeight * frameAspect);
+                    destX = (halfWidth - destWidth) / 2;
+                    destY = 0;
+                }
+
+                SetStretchBltMode(hdc, COLORONCOLOR);
+                StretchDIBits(
+                    hdc,
+                    destX, destY, destWidth, destHeight,
+                    0, 0, m_frameWidth, m_frameHeight,
+                    m_frameBuffer.data(),
+                    m_bitmapInfo,
+                    DIB_RGB_COLORS,
+                    SRCCOPY
+                );
+
+                m_lastDestX = destX;
+                m_lastDestY = destY;
+                m_lastDestWidth = destWidth;
+                m_lastDestHeight = destHeight;
+            }
+            m_hasNewFrame = false;
+        }
+
+        // Draw divider line
+        Gdiplus::Graphics gfx(hdc);
+        Gdiplus::Pen dividerPen(Gdiplus::Color(255, 80, 80, 80), 2.0f);
+        gfx.DrawLine(&dividerPen, halfWidth, 0, halfWidth, m_bufferHeight);
+
+        // Render secondary (right side)
+        {
+            std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
+
+            if (m_secondaryFrameWidth == 0 || m_secondaryFrameHeight == 0 || m_secondaryFrameBuffer.empty()) {
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, RGB(128, 128, 128));
+
+                RECT rect = {halfWidth, 0, m_bufferWidth, m_bufferHeight};
+
+                // Check if secondary camera is selected
+                std::string secondaryCam;
+                {
+                    std::lock_guard<std::mutex> camLock(m_cameraMutex);
+                    secondaryCam = m_secondaryCameraId;
+                }
+                if (secondaryCam.empty()) {
+                    DrawTextW(hdc, L"Right: Select secondary camera", -1, &rect,
+                              DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                } else {
+                    DrawTextW(hdc, L"Right: Waiting for camera...", -1, &rect,
+                              DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                }
+                m_lastSecondaryDestX = 0;
+                m_lastSecondaryDestY = 0;
+                m_lastSecondaryDestWidth = 0;
+                m_lastSecondaryDestHeight = 0;
+            } else {
+                // Use a separate BITMAPINFO for secondary to avoid conflicts
+                BITMAPINFO bitmapInfo2 = {};
+                BITMAPINFOHEADER& bih2 = bitmapInfo2.bmiHeader;
+                bih2.biSize = sizeof(BITMAPINFOHEADER);
+                bih2.biWidth = m_secondaryFrameWidth;
+                bih2.biHeight = m_secondaryFrameHeight;
+                bih2.biPlanes = 1;
+                bih2.biBitCount = 24;
+                bih2.biCompression = BI_RGB;
+
+                float frameAspect = static_cast<float>(m_secondaryFrameWidth) / m_secondaryFrameHeight;
+                float windowAspect = static_cast<float>(halfWidth) / m_bufferHeight;
+
+                int destWidth, destHeight, destX, destY;
+
+                if (frameAspect > windowAspect) {
+                    destWidth = halfWidth;
+                    destHeight = static_cast<int>(halfWidth / frameAspect);
+                    destX = halfWidth;  // Start at right half
+                    destY = (m_bufferHeight - destHeight) / 2;
+                } else {
+                    destHeight = m_bufferHeight;
+                    destWidth = static_cast<int>(m_bufferHeight * frameAspect);
+                    destX = halfWidth + (halfWidth - destWidth) / 2;
+                    destY = 0;
+                }
+
+                SetStretchBltMode(hdc, COLORONCOLOR);
+                StretchDIBits(
+                    hdc,
+                    destX, destY, destWidth, destHeight,
+                    0, 0, m_secondaryFrameWidth, m_secondaryFrameHeight,
+                    m_secondaryFrameBuffer.data(),
+                    &bitmapInfo2,
+                    DIB_RGB_COLORS,
+                    SRCCOPY
+                );
+
+                m_lastSecondaryDestX = destX;
+                m_lastSecondaryDestY = destY;
+                m_lastSecondaryDestWidth = destWidth;
+                m_lastSecondaryDestHeight = destHeight;
+            }
+            m_hasSecondaryNewFrame = false;
+        }
+
+        // Draw camera labels
+        {
+            Gdiplus::Graphics gfx2(hdc);
+            gfx2.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+            Gdiplus::Font labelFont(L"Segoe UI", 10.0f, Gdiplus::FontStyleBold);
+            Gdiplus::SolidBrush labelBrush(Gdiplus::Color(220, 255, 255, 255));
+            Gdiplus::SolidBrush bgBrush(Gdiplus::Color(160, 0, 0, 0));
+
+            // Get camera IDs for labels
+            std::string primaryId, secondaryId;
+            {
+                std::lock_guard<std::mutex> camLock(m_cameraMutex);
+                primaryId = m_targetCameraId.empty() ? "Primary" : m_targetCameraId;
+                secondaryId = m_secondaryCameraId.empty() ? "(None)" : m_secondaryCameraId;
+            }
+
+            // Left label
+            std::wstring leftLabel = L"L: " + std::wstring(primaryId.begin(), primaryId.end());
+            Gdiplus::RectF leftLabelRect(5, 5, 200, 20);
+            gfx2.FillRectangle(&bgBrush, leftLabelRect);
+            gfx2.DrawString(leftLabel.c_str(), -1, &labelFont, Gdiplus::PointF(8, 5), &labelBrush);
+
+            // Right label
+            std::wstring rightLabel = L"R: " + std::wstring(secondaryId.begin(), secondaryId.end());
+            Gdiplus::RectF rightLabelRect(static_cast<float>(halfWidth + 5), 5, 200, 20);
+            gfx2.FillRectangle(&bgBrush, rightLabelRect);
+            gfx2.DrawString(rightLabel.c_str(), -1, &labelFont, Gdiplus::PointF(static_cast<float>(halfWidth + 8), 5), &labelBrush);
+        }
     } else {
-        destHeight = m_bufferHeight;
-        destWidth = static_cast<int>(m_bufferHeight * frameAspect);
-        destX = (m_bufferWidth - destWidth) / 2;
-        destY = 0;
+        // Single camera mode (original behavior)
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(128, 128, 128));
+
+            RECT rect = {0, 0, m_bufferWidth, m_bufferHeight};
+            DrawTextW(hdc, L"Waiting for camera...", -1, &rect,
+                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            return;
+        }
+
+        BITMAPINFOHEADER& bih = m_bitmapInfo->bmiHeader;
+        bih.biSize = sizeof(BITMAPINFOHEADER);
+        bih.biWidth = m_frameWidth;
+        bih.biHeight = m_frameHeight;
+        bih.biPlanes = 1;
+        bih.biBitCount = 24;
+        bih.biCompression = BI_RGB;
+        bih.biSizeImage = 0;
+        bih.biXPelsPerMeter = 0;
+        bih.biYPelsPerMeter = 0;
+        bih.biClrUsed = 0;
+        bih.biClrImportant = 0;
+
+        float frameAspect = static_cast<float>(m_frameWidth) / m_frameHeight;
+        float windowAspect = static_cast<float>(m_bufferWidth) / m_bufferHeight;
+
+        int destWidth, destHeight, destX, destY;
+
+        if (frameAspect > windowAspect) {
+            destWidth = m_bufferWidth;
+            destHeight = static_cast<int>(m_bufferWidth / frameAspect);
+            destX = 0;
+            destY = (m_bufferHeight - destHeight) / 2;
+        } else {
+            destHeight = m_bufferHeight;
+            destWidth = static_cast<int>(m_bufferHeight * frameAspect);
+            destX = (m_bufferWidth - destWidth) / 2;
+            destY = 0;
+        }
+
+        SetStretchBltMode(hdc, COLORONCOLOR);
+        StretchDIBits(
+            hdc,
+            destX, destY, destWidth, destHeight,
+            0, 0, m_frameWidth, m_frameHeight,
+            m_frameBuffer.data(),
+            m_bitmapInfo,
+            DIB_RGB_COLORS,
+            SRCCOPY
+        );
+
+        // Store destination info for overlays (vision overlay and crosshair)
+        m_lastDestX = destX;
+        m_lastDestY = destY;
+        m_lastDestWidth = destWidth;
+        m_lastDestHeight = destHeight;
+
+        m_hasNewFrame = false;
     }
-
-    SetStretchBltMode(hdc, COLORONCOLOR);
-    StretchDIBits(
-        hdc,
-        destX, destY, destWidth, destHeight,
-        0, 0, m_frameWidth, m_frameHeight,
-        m_frameBuffer.data(),
-        m_bitmapInfo,
-        DIB_RGB_COLORS,
-        SRCCOPY
-    );
-
-    // Store destination info for overlays (vision overlay and crosshair)
-    m_lastDestX = destX;
-    m_lastDestY = destY;
-    m_lastDestWidth = destWidth;
-    m_lastDestHeight = destHeight;
-
-    m_hasNewFrame = false;
 }
 
 // ============================================================================
@@ -1404,6 +1837,71 @@ void GdiCameraWindow::LoadCalibrationFactors() {
 void GdiCameraWindow::SetMotionManager(UnifiedMotionManager* motionManager) {
     m_motionManager = motionManager;
     std::cout << "[GdiCameraWindow] Motion manager set" << std::endl;
+}
+
+void GdiCameraWindow::SetCameraManager(CameraManager* cameraManager) {
+    m_cameraManager = cameraManager;
+    if (m_cameraManager) {
+        RefreshCameraMenu();
+        std::cout << "[GdiCameraWindow] Camera manager set" << std::endl;
+    }
+}
+
+void GdiCameraWindow::RefreshCameraMenu() {
+    if (!m_cameraManager) return;
+
+    std::vector<std::string> cameras = m_cameraManager->GetCameraIds();
+    {
+        std::lock_guard<std::mutex> lock(m_cameraListMutex);
+        m_availableCameraIds = cameras;
+    }
+
+    std::cout << "[GdiCameraWindow] Refreshed camera list: " << cameras.size() << " cameras available" << std::endl;
+}
+
+void GdiCameraWindow::SetDualCameraMode(bool enabled) {
+    m_dualCameraMode = enabled;
+    std::cout << "[GdiCameraWindow] Dual camera mode " << (enabled ? "enabled" : "disabled") << std::endl;
+
+    if (!enabled) {
+        // Clear secondary camera data
+        {
+            std::lock_guard<std::mutex> lock(m_cameraMutex);
+            m_secondaryCameraId.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
+            m_secondaryFrameWidth = 0;
+            m_secondaryFrameHeight = 0;
+        }
+    }
+
+    // Update window title
+    if (m_hwnd) {
+        std::string title = "Camera Monitor (GDI)";
+        if (enabled) {
+            title += " [Dual View]";
+        }
+        if (m_cameraConnected && m_cameraGrabbing) {
+            title += " [Live]";
+        }
+        SetTitle(title);
+    }
+
+    if (m_hwnd) {
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+}
+
+void GdiCameraWindow::SetSecondaryCameraId(const std::string& cameraId) {
+    std::lock_guard<std::mutex> lock(m_cameraMutex);
+    m_secondaryCameraId = cameraId;
+    std::cout << "[GdiCameraWindow] Secondary camera set to: " << (cameraId.empty() ? "(none)" : cameraId) << std::endl;
+}
+
+std::string GdiCameraWindow::GetSecondaryCameraId() const {
+    std::lock_guard<std::mutex> lock(m_cameraMutex);
+    return m_secondaryCameraId;
 }
 
 void GdiCameraWindow::SetClickToMoveEnabled(bool enabled) {

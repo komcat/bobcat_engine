@@ -53,6 +53,12 @@ public:
     void setTargetCamera(const std::string& cameraId);
     std::string getTargetCamera() const;
 
+    // Dual camera mode
+    void setDualCameraMode(bool enabled);
+    bool isDualCameraMode() const;
+    void setSecondaryCameraId(const std::string& cameraId);
+    std::string getSecondaryCameraId() const;
+
     // Window control
     void show();
     void hide();

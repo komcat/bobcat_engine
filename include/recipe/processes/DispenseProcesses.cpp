@@ -43,10 +43,13 @@ public:
       {"io_device", "EziIO-1"},
       {"dispense_pin", "0"},
       {"dispense_interval_ms", "300"},
+      {"delay_before_dispense_ms", "0"},
+      {"delay_after_dispense_ms", "0"},
       {"velocity_approach", "20.0"},
       {"safety_height", "1.0"},
       {"velocity_safety", "5.0"},
-      {"auto_confirm", "false"}  // Auto-confirm after first-time setup
+      {"auto_confirm", "false"},  // Auto-confirm after first-time setup
+      {"skip_camera_verify", "false"}  // Skip camera view over dispensing position
     };
   }
 
@@ -81,6 +84,12 @@ public:
     widget->addParameterField("dispense_interval_ms", "Dispense Interval (ms)",
                              getParam("dispense_interval_ms"));
 
+    widget->addParameterField("delay_before_dispense_ms", "Delay Before Dispense (ms)",
+                             getParam("delay_before_dispense_ms"));
+
+    widget->addParameterField("delay_after_dispense_ms", "Delay After Dispense (ms)",
+                             getParam("delay_after_dispense_ms"));
+
     // Motion parameters
     widget->addParameterField("velocity_approach", "Approach Velocity (mm/s)",
                              getParam("velocity_approach"));
@@ -97,6 +106,12 @@ public:
                                 "Automatically confirm all prompts after first-time setup. "
                                 "Only works if camera position, Z-height, and needle offset are calibrated.");
 
+    // Skip camera verify checkbox
+    widget->addCheckboxParameter("skip_camera_verify", "Skip camera verification after dispense",
+                                getParam("skip_camera_verify"),
+                                "Skip moving camera back to dispensing position for visual verification. "
+                                "Useful for faster cycle times when verification is not needed.");
+
     // ✅ Add validation when user toggles auto_confirm checkbox
     QCheckBox* autoConfirmCheckbox = widget->getCheckbox("auto_confirm");
     if (autoConfirmCheckbox) {
@@ -108,9 +123,12 @@ public:
           std::string uid = instance->uniqueId;
           std::string navigationFile = "config/SYSTEM/navigation_" + uid + ".json";
           std::string zHeightFile = "config/SYSTEM/dispense_z_" + uid + ".json";
-          std::string systemOffsetFile = "config/SYSTEM/needlexyoffset.json";
+          std::string systemOffsetFileLocal = "config/SYSTEM/needlexyoffset.local.json";
+          std::string systemOffsetFileBase = "config/SYSTEM/needlexyoffset.json";
 
-          bool offsetExists = std::filesystem::exists(systemOffsetFile);
+          // Check .local.json first, then fall back to base .json
+          bool offsetExists = std::filesystem::exists(systemOffsetFileLocal) ||
+                              std::filesystem::exists(systemOffsetFileBase);
           bool navigationExists = std::filesystem::exists(navigationFile);
           bool zHeightExists = std::filesystem::exists(zHeightFile);
           bool setupComplete = offsetExists && navigationExists && zHeightExists;
@@ -156,10 +174,13 @@ public:
     std::string ioDevice = getParam("io_device");
     std::string dispensePin = getParam("dispense_pin");
     std::string dispenseInterval = getParam("dispense_interval_ms");
+    std::string delayBeforeDispense = getParam("delay_before_dispense_ms");
+    std::string delayAfterDispense = getParam("delay_after_dispense_ms");
     std::string velocityApproach = getParam("velocity_approach");
     std::string safetyHeight = getParam("safety_height");
     std::string velocitySafety = getParam("velocity_safety");
     bool autoConfirm = (getParam("auto_confirm") == "true");
+    bool skipCameraVerify = (getParam("skip_camera_verify") == "true");
 
     // Get the process instance UID for unique dispense position files
     std::string uid = step->uniqueId;
@@ -173,9 +194,12 @@ public:
       // Check if all required calibration files exist
       std::string navigationFile = "config/SYSTEM/navigation_" + uid + ".json";
       std::string zHeightFile = "config/SYSTEM/dispense_z_" + uid + ".json";  // ✅ Fixed: no "_height"
-      std::string systemOffsetFile = "config/SYSTEM/needlexyoffset.json";  // ✅ Fixed: lowercase "xy", no "Camera"
+      std::string systemOffsetFileLocal = "config/SYSTEM/needlexyoffset.local.json";
+      std::string systemOffsetFileBase = "config/SYSTEM/needlexyoffset.json";
 
-      bool offsetExists = std::filesystem::exists(systemOffsetFile);
+      // Check .local.json first, then fall back to base .json
+      bool offsetExists = std::filesystem::exists(systemOffsetFileLocal) ||
+                          std::filesystem::exists(systemOffsetFileBase);
       bool navigationExists = std::filesystem::exists(navigationFile);
       bool zHeightExists = std::filesystem::exists(zHeightFile);
 
@@ -217,39 +241,45 @@ public:
     // Check if prior position exists
     sequence->BeginIf("navigation_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
-      // Ask user if they want to use previous position
-      sequence->AddAction("system", "UserPrompt", {
-        {"title", "Use Previous Dispense Position?"},
-        {"message", "Previous dispense position found:\n"
-                    "  X: context:camera_x mm\n"
-                    "  Y: context:camera_y mm\n"
-                    "  Z: context:camera_z mm\n\n"
-                    "OK: Auto-navigate to saved position\n"
-                    "Cancel: Position manually"},
-        {"blocking", "true"},
-        {"allow_cancel", "true"},
-        {"auto_accept", autoAcceptValue}
-      });
-
-      // User chose to use previous position
-      sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
-      {
-        // Auto-navigate to saved camera position
-        sequence->AddAction(device, "MoveToAbs", {
-          {"x", "context:camera_x"},
-          {"y", "context:camera_y"},
-          {"z", "context:camera_z"},
-          {"blocking", "true"}
+      // If skip_camera_verify is enabled, don't move to camera position - go directly to needle
+      if (!skipCameraVerify) {
+        // Ask user if they want to use previous position
+        sequence->AddAction("system", "UserPrompt", {
+          {"title", "Use Previous Dispense Position?"},
+          {"message", "Previous dispense position found:\n"
+                      "  X: context:camera_x mm\n"
+                      "  Y: context:camera_y mm\n"
+                      "  Z: context:camera_z mm\n\n"
+                      "OK: Auto-navigate to saved position\n"
+                      "Cancel: Position manually"},
+          {"blocking", "true"},
+          {"allow_cancel", "true"},
+          {"auto_accept", autoAcceptValue}
         });
-        sequence->AddAction(device, "WaitForMotionComplete", {});
+
+        // User chose to use previous position
+        sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
+        {
+          // Auto-navigate to saved camera position
+          sequence->AddAction(device, "MoveToAbs", {
+            {"x", "context:camera_x"},
+            {"y", "context:camera_y"},
+            {"z", "context:camera_z"},
+            {"blocking", "true"}
+          });
+          sequence->AddAction(device, "WaitForMotionComplete", {});
+        }
+        sequence->EndIf();
       }
-      sequence->EndIf();
+      // When skipCameraVerify is true, camera_x/y/z are already loaded from file
+      // and will be used to calculate needle position without moving to camera first
     }
     sequence->EndIf();
 
     // ✅ Only show manual adjust if NOT in auto-confirm mode with complete setup
+    // AND NOT skipping camera verification (which implies using saved positions directly)
     // When auto-confirm is enabled and position exists, skip manual adjustment
-    if (!setupComplete || !autoConfirm) {
+    if ((!setupComplete || !autoConfirm) && !skipCameraVerify) {
       // Manual adjust to position camera (either from scratch or to confirm auto-nav)
       sequence->AddAction("system", "ManualAdjust", {
         {"message", "Position camera over desired dispensing location.\n\n"
@@ -483,6 +513,13 @@ public:
     // Check if user confirmed
     sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
     {
+      // Delay before dispense (if configured)
+      if (std::stoi(delayBeforeDispense) > 0) {
+        sequence->AddAction("system", "Wait", {
+          {"milliseconds", delayBeforeDispense}
+        });
+      }
+
       // User confirmed - trigger dispense
       sequence->AddAction(ioDevice, "SetOutput", {
         {"pinName", dispensePin},
@@ -497,6 +534,13 @@ public:
         {"pinName", dispensePin},
         {"state", "false"}
       });
+
+      // Delay after dispense (if configured)
+      if (std::stoi(delayAfterDispense) > 0) {
+        sequence->AddAction("system", "Wait", {
+          {"milliseconds", delayAfterDispense}
+        });
+      }
 
       // Only show completion notification if NOT in auto-confirm mode
       if (!autoConfirm || !setupComplete) {
@@ -530,24 +574,26 @@ public:
       {"timeout_ms", "10000"}
     });
 
-    // Move camera back to dispensed location so user can verify
-    sequence->AddAction(device, "MoveToAbs", {
-      {"x", "context:camera_x"},
-      {"y", "context:camera_y"},
-      {"z", "context:camera_z"},
-      {"blocking", "true"}
-    });
-    sequence->AddAction(device, "WaitForMotionComplete", {});
-
-    // Show verification prompt (unless auto-confirm mode)
-    if (!autoConfirm || !setupComplete) {
-      sequence->AddAction("system", "UserPrompt", {
-        {"title", "Verify Dispense Result"},
-        {"message", "Camera is now positioned over the dispense location.\n\n"
-                    "Please verify the dispense result.\n\n"
-                    "Click OK to move to safe position."},
+    // Move camera back to dispensed location so user can verify (unless skipped)
+    if (!skipCameraVerify) {
+      sequence->AddAction(device, "MoveToAbs", {
+        {"x", "context:camera_x"},
+        {"y", "context:camera_y"},
+        {"z", "context:camera_z"},
         {"blocking", "true"}
       });
+      sequence->AddAction(device, "WaitForMotionComplete", {});
+
+      // Show verification prompt (unless auto-confirm mode)
+      if (!autoConfirm || !setupComplete) {
+        sequence->AddAction("system", "UserPrompt", {
+          {"title", "Verify Dispense Result"},
+          {"message", "Camera is now positioned over the dispense location.\n\n"
+                      "Please verify the dispense result.\n\n"
+                      "Click OK to move to safe position."},
+          {"blocking", "true"}
+        });
+      }
     }
 
     // =========================================================================
@@ -575,7 +621,9 @@ public:
     sequence->EndIf();
 
     std::cout << "[DispensePlugin] Built dispense sequence for: "
-      << step->userNickname << " (Device: " << device << ", Slide: " << pneumaticSlide << ")" << std::endl;
+      << step->userNickname << " (Device: " << device << ", Slide: " << pneumaticSlide
+      << ", DelayBefore: " << delayBeforeDispense << "ms, DelayAfter: " << delayAfterDispense << "ms"
+      << ", SkipCameraVerify: " << (skipCameraVerify ? "yes" : "no") << ")" << std::endl;
   }
 };
 

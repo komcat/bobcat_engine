@@ -61,7 +61,8 @@ private:
   );
 
   bool LoadCameraToNeedleOffset(
-    double& offsetX, double& offsetY, double& offsetZ
+    double& offsetX, double& offsetY, double& offsetZ,
+    std::string& loadedFromPath
   );
 
   bool SaveDispenseZHeight(
@@ -78,7 +79,7 @@ private:
 
   std::string GetNavigationFilePath(const std::string& uid) const;
   std::string GetNeedleZCalibrationFilePath() const;
-  std::string GetCameraToNeedleOffsetFilePath() const;
+  std::string GetCameraToNeedleOffsetFilePath(bool forWriting = false) const;
   std::string GetDispenseZFilePath(const std::string& uid) const;
   std::string GetYawCorrectionFilePath(const std::string& uid) const;
   std::string GetCurrentDateTime(bool dateOnly = false) const;

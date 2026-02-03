@@ -155,18 +155,19 @@ public:
     // STEP 3: LOAD FACTORY OFFSET & MOVE TO NEEDLE POSITION
     // =========================================================================
 
-    // Load factory offset from /config/SYSTEM/needlexyoffset.json
+    // Load offset from .local.json (if exists) or fall back to base .json
     sequence->AddAction("calibration", "LoadCameraToNeedleOffset", {});
 
-    // Check if factory offset file exists
+    // Check if offset file exists
     sequence->BeginIf("system_offset_exists", ConditionalBlock::ComparisonType::IS_FALSE);
     {
-      // Factory offset file missing - abort
+      // Offset file missing - abort
       sequence->AddAction("system", "UserPrompt", {
-        {"title", "❌ Factory Offset Missing"},
-        {"message", "Factory needle XY offset file not found!\n\n"
-                    "File: config/SYSTEM/needlexyoffset.json\n\n"
-                    "This file must exist with factory-calibrated offset values.\n\n"
+        {"title", "❌ Needle XY Offset Missing"},
+        {"message", "Needle XY offset file not found!\n\n"
+                    "Checked: config/SYSTEM/needlexyoffset.local.json\n"
+                    "         config/SYSTEM/needlexyoffset.json\n\n"
+                    "Run 'Calibrate Camera-to-Needle Offset' first.\n\n"
                     "Calibration aborted."},
         {"blocking", "true"}
       });
