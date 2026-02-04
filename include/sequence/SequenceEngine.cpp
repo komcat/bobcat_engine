@@ -45,6 +45,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   , m_logger(nullptr)
   , m_systemHandler(nullptr)
   , m_stopRequested(false)  // ✅ Initialize stop flag
+  , m_retraceEditMode(false)  // ✅ Initialize retrace edit mode
   , m_stepStartedCallback(nullptr)
   , m_stepCompletedCallback(nullptr)
   , m_actionStartedCallback(nullptr)
@@ -64,6 +65,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   motionHandler->SetDataStore(m_context->dataStore);
   motionHandler->SetProductPositionManager(m_context->productPositionManager);
   motionHandler->SetDeviceLinkManager(m_context->deviceLinkManager);
+  m_motionHandler = motionHandler.get();  // ✅ Store raw pointer before move
   m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
 
   m_dispatcher.RegisterHandler("io", std::make_unique<IOCommandHandler>());
@@ -449,6 +451,49 @@ void SequenceEngine::RequestRunToEnd()
   m_stepByStepMode.store(false);
   m_continueRequested.store(true);
   m_pauseCondition.notify_all();
+}
+
+// ============================================================================
+// RETRACE EDIT MODE IMPLEMENTATION
+// ============================================================================
+
+void SequenceEngine::SetRetraceEditMode(bool enabled)
+{
+  m_retraceEditMode.store(enabled);
+
+  // Propagate to MotionCommandHandler
+  if (m_motionHandler) {
+    m_motionHandler->SetRetraceEditMode(enabled);
+    if (enabled) {
+      m_motionHandler->ResetRetraceStatistics();
+    }
+  }
+
+  if (enabled) {
+    // Reset statistics when starting a new retrace session
+    m_retracePositionsVisited = 0;
+    m_retracePositionsSaved = 0;
+    LogInfo("Retrace Edit Mode ENABLED - will pause after each named position move");
+  }
+  else {
+    LogInfo("Retrace Edit Mode DISABLED");
+  }
+}
+
+void SequenceEngine::SetRetraceEditCallback(RetraceEditCallback callback)
+{
+  m_retraceEditCallback = callback;
+
+  // Convert to MotionCommandHandler callback format and propagate
+  if (m_motionHandler && callback) {
+    m_motionHandler->SetRetraceEditCallback(
+      [callback](const RetraceMotionInfo& info,
+                 RetraceCurrentPosition& currentPosition,
+                 bool& saveRequested) -> bool {
+        return callback(info, currentPosition, saveRequested);
+      }
+    );
+  }
 }
 
 bool SequenceEngine::ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors)

@@ -78,6 +78,38 @@ public:
   // ✅ Reset completion tracking (call when loading new program)
   void resetCompletionTracking();
 
+  // ============================================================================
+  // RETRACE EDIT MODE
+  // ============================================================================
+
+  /**
+   * @brief Enable/disable retrace edit mode for the next recipe execution
+   *
+   * When enabled, recipes will pause after each motion command for position adjustment.
+   */
+  void setRetraceEditMode(bool enabled) { m_retraceEditMode = enabled; }
+  bool isRetraceEditMode() const { return m_retraceEditMode; }
+
+  /**
+   * @brief Set the callback for retrace edit pause
+   */
+  using RetraceEditCallback = std::function<bool(
+    const std::string& deviceName,
+    const std::string& positionName,
+    double originalX, double originalY, double originalZ,
+    double originalU, double originalV, double originalW,
+    double currentX, double currentY, double currentZ,
+    double currentU, double currentV, double currentW,
+    bool& saveRequested
+  )>;
+  void setRetraceEditCallback(RetraceEditCallback callback) { m_retraceEditCallback = callback; }
+
+  /**
+   * @brief Get retrace edit statistics
+   */
+  int getRetracePositionsVisited() const { return m_retracePositionsVisited; }
+  int getRetracePositionsSaved() const { return m_retracePositionsSaved; }
+
   // ✅ Get current execution context (for vision result display)
   SequenceContext* getCurrentContext() const;
 
@@ -113,6 +145,14 @@ signals:
   // Loop execution signals
   void loopIterationStarted(int iteration);  // Emitted when a new loop iteration begins
   void loopIterationCompleted(int iteration);  // Emitted when a loop iteration finishes
+
+  // ✅ Retrace edit signals
+  void retraceEditPause(QString deviceName, QString positionName,
+                        double origX, double origY, double origZ,
+                        double origU, double origV, double origW,
+                        double currX, double currY, double currZ,
+                        double currU, double currV, double currW);
+  void retraceEditCompleted(int positionsVisited, int positionsSaved);
 
   // Logging
   void logMessage(QString message);
@@ -159,6 +199,12 @@ private:
   // ✅ Store execution result for finished() signal handler
   bool m_executionSuccess = false;
   QString m_executionMessage;
+
+  // ✅ Retrace edit mode
+  bool m_retraceEditMode = false;
+  RetraceEditCallback m_retraceEditCallback;
+  int m_retracePositionsVisited = 0;
+  int m_retracePositionsSaved = 0;
 
   // Helper methods for state machine execution
   void runWithDependencies();

@@ -371,6 +371,25 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
+    // ✅ Store retrace info in context for later retrieval by WaitForMotionComplete
+    if (context && m_retraceEditMode.load()) {
+      // Get the target position coordinates before moving
+      PositionStruct targetPos;
+      if (motionManager->GetPositionWithCalculation(deviceName, positionName, targetPos)) {
+        context->SetValue("_retrace_pending_device", deviceName);
+        context->SetValue("_retrace_pending_position", positionName);
+        context->SetValue("_retrace_original_x", static_cast<float>(targetPos.x));
+        context->SetValue("_retrace_original_y", static_cast<float>(targetPos.y));
+        context->SetValue("_retrace_original_z", static_cast<float>(targetPos.z));
+        context->SetValue("_retrace_original_u", static_cast<float>(targetPos.u));
+        context->SetValue("_retrace_original_v", static_cast<float>(targetPos.v));
+        context->SetValue("_retrace_original_w", static_cast<float>(targetPos.w));
+        if (m_logger) {
+          m_logger->Info("Retrace: Stored pending move info for " + deviceName + "/" + positionName, "MotionHandler");
+        }
+      }
+    }
+
     // ✅ SAFETY: Start motion in non-blocking mode (blocking=false is default)
     // Recipe plugins typically follow this with WaitForMotionComplete for safety stop checking
     if (!motionManager->MoveToNamedPosition(deviceName, positionName, false)) {
@@ -558,6 +577,34 @@ bool MotionCommandHandler::ExecuteCommand(
 
     if (m_logger) {
       m_logger->Info("Motion complete for: " + deviceName, "MotionHandler");
+    }
+
+    // ✅ RETRACE EDIT: Check if we have pending retrace info for this device
+    if (m_retraceEditMode.load() && m_retraceEditCallback && context) {
+      std::string pendingDevice = context->GetString("_retrace_pending_device", "");
+      std::string pendingPosition = context->GetString("_retrace_pending_position", "");
+
+      if (pendingDevice == deviceName && !pendingPosition.empty()) {
+        // Retrieve original target coordinates
+        double originalX = static_cast<double>(context->GetNumeric("_retrace_original_x", 0.0f));
+        double originalY = static_cast<double>(context->GetNumeric("_retrace_original_y", 0.0f));
+        double originalZ = static_cast<double>(context->GetNumeric("_retrace_original_z", 0.0f));
+        double originalU = static_cast<double>(context->GetNumeric("_retrace_original_u", 0.0f));
+        double originalV = static_cast<double>(context->GetNumeric("_retrace_original_v", 0.0f));
+        double originalW = static_cast<double>(context->GetNumeric("_retrace_original_w", 0.0f));
+
+        // Clear pending retrace info
+        context->SetValue("_retrace_pending_device", std::string(""));
+        context->SetValue("_retrace_pending_position", std::string(""));
+
+        // Invoke retrace edit callback
+        if (!InvokeRetraceEditCallback(
+          manager, deviceName, pendingPosition, "MoveToNamedPosition", params,
+          originalX, originalY, originalZ, originalU, originalV, originalW)) {
+          errorMessage = "Retrace edit stopped by user";
+          return false;
+        }
+      }
     }
 
     return true;
@@ -3892,4 +3939,81 @@ bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
   }
 
   return true;
+}
+
+// =============================================================================
+// HELPER: Invoke retrace edit callback after motion completes
+// =============================================================================
+bool MotionCommandHandler::InvokeRetraceEditCallback(
+  void* motionManager,
+  const std::string& deviceName,
+  const std::string& positionName,
+  const std::string& methodName,
+  const std::map<std::string, std::string>& params,
+  double originalX, double originalY, double originalZ,
+  double originalU, double originalV, double originalW)
+{
+  if (!m_retraceEditCallback) {
+    return true;  // No callback, continue
+  }
+
+  UnifiedMotionManager* manager = static_cast<UnifiedMotionManager*>(motionManager);
+
+  // Build motion info
+  RetraceMotionInfo info;
+  info.deviceName = deviceName;
+  info.positionName = positionName;
+  info.methodName = methodName;
+  info.originalX = originalX;
+  info.originalY = originalY;
+  info.originalZ = originalZ;
+  info.originalU = originalU;
+  info.originalV = originalV;
+  info.originalW = originalW;
+  info.params = params;
+
+  // Get current position
+  PositionStruct currentPos = manager->GetCurrentPosition(deviceName);
+  RetraceCurrentPosition current;
+  current.x = currentPos.x;
+  current.y = currentPos.y;
+  current.z = currentPos.z;
+  current.u = currentPos.u;
+  current.v = currentPos.v;
+  current.w = currentPos.w;
+
+  // Track statistics
+  m_retracePositionsVisited++;
+
+  if (m_logger) {
+    m_logger->Info("Retrace: Invoking callback for " + deviceName + "/" + positionName +
+                   " (position " + std::to_string(m_retracePositionsVisited) + ")", "MotionHandler");
+  }
+
+  // Invoke callback - this blocks until user responds
+  bool saveRequested = false;
+  bool continueExecution = m_retraceEditCallback(info, current, saveRequested);
+
+  if (saveRequested) {
+    // User wants to save the adjusted position
+    m_retracePositionsSaved++;
+
+    // Get updated current position (user may have jogged)
+    PositionStruct updatedPos = manager->GetCurrentPosition(deviceName);
+
+    // Save to file
+    if (manager->SaveNamedPositionToFile(deviceName, positionName, updatedPos, true)) {
+      if (m_logger) {
+        m_logger->Info("Retrace: Saved position '" + positionName + "' for device " + deviceName +
+                       " -> (" + std::to_string(updatedPos.x) + ", " + std::to_string(updatedPos.y) +
+                       ", " + std::to_string(updatedPos.z) + ")", "MotionHandler");
+      }
+    } else {
+      if (m_logger) {
+        m_logger->Error("Retrace: Failed to save position '" + positionName + "'", "MotionHandler");
+      }
+    }
+  }
+
+  return continueExecution;
 }

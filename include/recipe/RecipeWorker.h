@@ -82,6 +82,41 @@ public:
   // ✅ NEW: Set loop mode (reduces verbose logging during rapid iterations)
   void setLoopMode(bool enabled) { m_loopMode = enabled; }
 
+  // ============================================================================
+  // RETRACE EDIT MODE
+  // ============================================================================
+
+  /**
+   * @brief Enable/disable retrace edit mode for this recipe execution
+   *
+   * When enabled, the recipe will pause after each motion command (that moves
+   * to a named position) to allow position adjustment.
+   */
+  void setRetraceEditMode(bool enabled) { m_retraceEditMode = enabled; }
+  bool isRetraceEditMode() const { return m_retraceEditMode; }
+
+  /**
+   * @brief Set the callback for retrace edit pause
+   *
+   * The callback is invoked after each motion completes to allow adjustment.
+   */
+  using RetraceEditCallback = std::function<bool(
+    const std::string& deviceName,
+    const std::string& positionName,
+    double originalX, double originalY, double originalZ,
+    double originalU, double originalV, double originalW,
+    double currentX, double currentY, double currentZ,
+    double currentU, double currentV, double currentW,
+    bool& saveRequested
+  )>;
+  void setRetraceEditCallback(RetraceEditCallback callback) { m_retraceEditCallback = callback; }
+
+  /**
+   * @brief Get retrace edit statistics
+   */
+  int getRetracePositionsVisited() const { return m_retracePositionsVisited; }
+  int getRetracePositionsSaved() const { return m_retracePositionsSaved; }
+
 signals:
   // ✅ RAW DATA ONLY - No UI concepts
   void executionStarted(int totalEnabledSteps);
@@ -106,6 +141,14 @@ signals:
   // Breakpoint/pause events
   void executionPaused(int stepIndex, QString stepName, bool isBreakpoint);
 
+  // ✅ Retrace edit events
+  void retraceEditPause(QString deviceName, QString positionName,
+                        double origX, double origY, double origZ,
+                        double origU, double origV, double origW,
+                        double currX, double currY, double currZ,
+                        double currU, double currV, double currW);
+  void retraceEditCompleted(int positionsVisited, int positionsSaved);
+
 protected:
   void run() override;
 
@@ -124,4 +167,10 @@ private:
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
   std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
   bool m_loopMode = false;                       // ✅ NEW: Loop mode (reduces logging)
+
+  // ✅ Retrace edit mode
+  bool m_retraceEditMode = false;
+  RetraceEditCallback m_retraceEditCallback;
+  int m_retracePositionsVisited = 0;
+  int m_retracePositionsSaved = 0;
 };

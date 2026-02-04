@@ -54,6 +54,35 @@ public:
    */
   static int LoadFromFile(UnifiedMotionManager& manager, const std::string& filepath);
 
+  // ============================================================================
+  // ✅ NEW - POSITION SAVE HELPER (for RetraceEdit feature)
+  // ============================================================================
+
+  /**
+   * @brief Save a single position to the local config file
+   *
+   * This method handles the JSON read-modify-write cycle for saving a position.
+   * If the .local.json file doesn't exist, it creates one from the base .json file.
+   *
+   * @param localConfigPath Path to .local.json file to write to
+   * @param baseConfigPath Path to base .json file (used if local doesn't exist)
+   * @param deviceName Device name (e.g., "gantry-main")
+   * @param positionName Position name (e.g., "lensgrip")
+   * @param position Position coordinates to save
+   * @param preserveWaypoints If true, keeps existing waypoints; if false, clears them
+   * @param errorMessage Output: error description if failed
+   * @return true if save succeeded, false on error
+   */
+  static bool SavePositionToFile(
+    const std::string& localConfigPath,
+    const std::string& baseConfigPath,
+    const std::string& deviceName,
+    const std::string& positionName,
+    const PositionStruct& position,
+    bool preserveWaypoints,
+    std::string& errorMessage
+  );
+
 private:
   /**
    * @brief Load motion devices from JSON config

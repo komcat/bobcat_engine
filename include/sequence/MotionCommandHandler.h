@@ -2,12 +2,16 @@
 #pragma once
 
 #include "ICommandHandler.h"
+#include "SequenceEngine.h"  // For RetraceMotionInfo, RetraceEditCallback
 #include <vector>
+#include <functional>
+#include <atomic>
 
 // Forward declarations
 class DataStore;
 class ProductPositionManager;
 class DeviceLinkManager;
+class UnifiedMotionManager;
 
 class MotionCommandHandler : public ICommandHandler
 {
@@ -31,6 +35,34 @@ public:
 
   // Set DeviceLinkManager for linked device commands
   void SetDeviceLinkManager(DeviceLinkManager* linkManager) { m_linkManager = linkManager; }
+
+  // ============================================================================
+  // RETRACE EDIT MODE
+  // ============================================================================
+
+  /**
+   * @brief Enable/disable retrace edit mode
+   *
+   * When enabled, the handler will invoke the callback after each motion
+   * that moves to a named position, allowing position adjustment.
+   */
+  void SetRetraceEditMode(bool enabled) { m_retraceEditMode.store(enabled); }
+  bool IsRetraceEditMode() const { return m_retraceEditMode.load(); }
+
+  /**
+   * @brief Set the callback for retrace edit
+   *
+   * The callback is invoked after motion completes (for named position moves).
+   * It should return true to continue, false to stop.
+   */
+  void SetRetraceEditCallback(RetraceEditCallback callback) { m_retraceEditCallback = callback; }
+
+  /**
+   * @brief Get retrace statistics
+   */
+  int GetRetracePositionsVisited() const { return m_retracePositionsVisited; }
+  int GetRetracePositionsSaved() const { return m_retracePositionsSaved; }
+  void ResetRetraceStatistics() { m_retracePositionsVisited = 0; m_retracePositionsSaved = 0; }
 
 private:
   // Helper to resolve context: references or parse direct values
@@ -100,4 +132,22 @@ private:
 
   // DeviceLinkManager for linked device commands
   DeviceLinkManager* m_linkManager = nullptr;
+
+  // ✅ Retrace edit mode
+  std::atomic<bool> m_retraceEditMode{false};
+  RetraceEditCallback m_retraceEditCallback;
+  int m_retracePositionsVisited = 0;
+  int m_retracePositionsSaved = 0;
+
+  // ✅ Helper to invoke retrace edit callback after motion completes
+  // Returns true to continue, false to stop execution
+  bool InvokeRetraceEditCallback(
+    void* motionManager,
+    const std::string& deviceName,
+    const std::string& positionName,
+    const std::string& methodName,
+    const std::map<std::string, std::string>& params,
+    double originalX, double originalY, double originalZ,
+    double originalU, double originalV, double originalW
+  );
 };

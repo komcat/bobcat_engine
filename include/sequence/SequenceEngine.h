@@ -30,6 +30,64 @@ using StepCompletedCallback = std::function<void(int stepIndex, bool success)>;
 // Callback for vision result ready (called after vision execution saves result image)
 using VisionResultCallback = std::function<void(const std::string& imagePath)>;
 
+// ============================================================================
+// RETRACE EDIT TYPES (for position re-teach workflow)
+// ============================================================================
+
+/**
+ * @brief Information about a completed motion for retrace edit
+ *
+ * Passed to the retrace edit callback after each motion command completes,
+ * allowing the user to adjust the position and optionally save it back to config.
+ */
+struct RetraceMotionInfo {
+  std::string deviceName;         // Device that moved (e.g., "gantry-main", "hex-left")
+  std::string positionName;       // Named position (empty if not a named position move)
+  std::string methodName;         // Command method (e.g., "MoveToNamedPosition", "MoveToAbs")
+  double originalX = 0.0;         // Original target X
+  double originalY = 0.0;         // Original target Y
+  double originalZ = 0.0;         // Original target Z
+  double originalU = 0.0;         // Original target U (rotation)
+  double originalV = 0.0;         // Original target V (rotation)
+  double originalW = 0.0;         // Original target W (rotation)
+  std::map<std::string, std::string> params;  // Original command parameters
+
+  // Check if this is a named position move (saveable)
+  bool IsNamedPosition() const { return !positionName.empty(); }
+};
+
+/**
+ * @brief Current position data for retrace edit
+ */
+struct RetraceCurrentPosition {
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+  double u = 0.0;
+  double v = 0.0;
+  double w = 0.0;
+};
+
+/**
+ * @brief Callback for retrace edit mode
+ *
+ * Called after each motion command completes (in retrace edit mode only).
+ * The callback should:
+ * 1. Show UI allowing user to jog and adjust position
+ * 2. Wait for user to click Save/Skip/Stop
+ * 3. Return the action taken
+ *
+ * @param info Information about the completed motion
+ * @param currentPosition Current position after the move (can be adjusted by jogging)
+ * @param saveRequested Output: true if user wants to save the adjusted position
+ * @return true to continue sequence, false to stop
+ */
+using RetraceEditCallback = std::function<bool(
+  const RetraceMotionInfo& info,
+  RetraceCurrentPosition& currentPosition,
+  bool& saveRequested
+)>;
+
 // Action info for command tracker
 struct ActionInfo {
   std::string deviceName;
@@ -186,6 +244,39 @@ public:
   void ClearStopFlag();      // Reset stop flag before execution
   bool IsStopRequested() const { return m_stopRequested.load(); }
 
+  // ============================================================================
+  // RETRACE EDIT MODE (for position re-teach workflow)
+  // ============================================================================
+
+  /**
+   * @brief Enable/disable retrace edit mode
+   *
+   * When enabled, the sequence will pause after each motion command (that moves
+   * to a named position) to allow the user to adjust the position and optionally
+   * save it back to the config file.
+   */
+  void SetRetraceEditMode(bool enabled);
+  bool IsRetraceEditMode() const { return m_retraceEditMode.load(); }
+
+  /**
+   * @brief Set the callback for retrace edit pause
+   *
+   * This callback is invoked after each motion command completes (in retrace mode).
+   * The UI should use this to show the adjustment widget.
+   */
+  void SetRetraceEditCallback(RetraceEditCallback callback);
+
+  /**
+   * @brief Get retrace edit statistics from last run
+   */
+  int GetRetracePositionsVisited() const { return m_retracePositionsVisited; }
+  int GetRetracePositionsSaved() const { return m_retracePositionsSaved; }
+
+  /**
+   * @brief Get the MotionCommandHandler (for setting retrace callback directly)
+   */
+  class MotionCommandHandler* GetMotionCommandHandler() const { return m_motionHandler; }
+
   // Step-by-step execution control
   void SetStepByStepMode(bool enabled);  // Enable/disable step-by-step mode
   bool IsStepByStepMode() const { return m_stepByStepMode.load(); }
@@ -222,6 +313,15 @@ private:
 
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
+
+  // Retrace edit mode
+  std::atomic<bool> m_retraceEditMode;
+  RetraceEditCallback m_retraceEditCallback;
+  int m_retracePositionsVisited = 0;  // Count of named positions visited during retrace
+  int m_retracePositionsSaved = 0;    // Count of positions saved during retrace
+
+  // MotionCommandHandler pointer for retrace edit integration
+  class MotionCommandHandler* m_motionHandler = nullptr;
 
   // Step execution event callbacks
   StepStartedCallback m_stepStartedCallback;

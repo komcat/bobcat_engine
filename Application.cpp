@@ -24,6 +24,7 @@
 #include "lighting/LightingManager.h"
 #include "lighting/LightingJsonLoader.h"
 #include "lighting/LightingTypes.h"
+#include "settings/ApplicationSettings.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
@@ -239,6 +240,11 @@ void Application::initializeManagers()
     updateSplash("LogManager");
     initializeLogManager();
     completeSplash("LogManager");
+
+    // Load application settings early (before other managers)
+    updateSplash("ApplicationSettings");
+    initializeApplicationSettings();
+    completeSplash("ApplicationSettings");
 
     // Now we can log properly
     m_logManager->Info("Initializing managers...", "Application");
@@ -475,6 +481,9 @@ void Application::initializeMotionManager()
       "Loaded " + std::to_string(loadedCount) + " motion devices from " + configPath,
       "Application"
     );
+
+    // Store config path for position save operations (RetraceEdit feature)
+    m_motionManager->SetConfigFilePath(configPath);
 
     // 3. Load PI pivot point configurations
     PIControllerManager* piManager = m_motionManager->GetPIManager();
@@ -1985,4 +1994,28 @@ void Application::initializeDeviceLinkManager()
     );
     // Don't throw - allow app to continue without device link manager
   }
+}
+
+void Application::initializeApplicationSettings()
+{
+  m_logManager->Debug("Initializing Application Settings...", "Application");
+
+  m_applicationSettings = std::make_unique<ApplicationSettings>();
+  m_context.applicationSettings = m_applicationSettings.get();
+
+  // Try local config first, then default
+  std::string localPath = "config/system/applicationSettings.local.ini";
+  std::string defaultPath = "config/system/applicationSettings.ini";
+
+  if (m_applicationSettings->LoadFromFile(localPath)) {
+    m_logManager->Info("Application settings loaded from local config: " + localPath, "Application");
+  } else if (m_applicationSettings->LoadFromFile(defaultPath)) {
+    m_logManager->Info("Application settings loaded from: " + defaultPath, "Application");
+  } else {
+    m_logManager->Warning("No application settings file found - using defaults", "Application");
+  }
+
+  // Log key settings for verification
+  int chainTimeout = m_applicationSettings->GetChainExecutionTimeoutSeconds();
+  m_logManager->Debug("  ChainExecution.AutoContinueSeconds = " + std::to_string(chainTimeout), "Application");
 }

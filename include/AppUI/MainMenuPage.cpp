@@ -285,8 +285,7 @@ void MainMenuPage::setupUI()
   m_recipeButton = createMenuButton("Recipe", "assets/icons/recipe.png");
   m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
   m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
-  m_editConfigButton = createMenuButton("Reserved", "assets/icons/config.png");
-  m_editConfigButton->setEnabled(false);  // Disabled - reserved for future use
+  m_editConfigButton = createMenuButton("Settings", "assets/icons/config.png");
   m_futureUpdateButton = createMenuButton("Vision Manager", "assets/icons/future.png");
 
   // Add to grid (3 columns, 2 rows)

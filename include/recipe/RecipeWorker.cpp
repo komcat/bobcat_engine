@@ -1,6 +1,7 @@
 ﻿// RecipeWorker.cpp
 #include "RecipeWorker.h"
 #include "SequenceEngine.h"
+#include "MotionCommandHandler.h"  // For GetMotionCommandHandler retrace stats
 #include "RecipeManager.h"
 #include "ProcessSequenceFactory.h"
 #include "SequenceBuilder.h"
@@ -316,6 +317,31 @@ void RecipeWorker::run()
           Q_ARG(bool, true));  // isBreakpoint = true
       });
 
+      // ✅ Set up retrace edit mode if enabled
+      if (m_retraceEditMode) {
+        m_engine->SetRetraceEditMode(true);
+        if (!m_loopMode) emit logMessage("Retrace Edit Mode ENABLED");
+
+        // Set up retrace edit callback
+        if (m_retraceEditCallback) {
+          m_engine->SetRetraceEditCallback(
+            [this](const RetraceMotionInfo& info,
+                   RetraceCurrentPosition& currentPosition,
+                   bool& saveRequested) -> bool {
+              // Forward to our callback using the simpler interface
+              return m_retraceEditCallback(
+                info.deviceName, info.positionName,
+                info.originalX, info.originalY, info.originalZ,
+                info.originalU, info.originalV, info.originalW,
+                currentPosition.x, currentPosition.y, currentPosition.z,
+                currentPosition.u, currentPosition.v, currentPosition.w,
+                saveRequested
+              );
+            }
+          );
+        }
+      }
+
       // Create execution context for value capture and conditionals
       // ✅ Use external context if provided (for ProgramWorker integration)
       std::unique_ptr<SequenceContext> localContext;
@@ -384,6 +410,19 @@ void RecipeWorker::run()
       QString resultMsg = success
         ? QString("Recipe '%1' completed successfully!").arg(QString::fromStdString(recipeName))
         : "Recipe execution failed! Check logs for details.";
+
+      // ✅ Emit retrace edit completion if in retrace mode
+      if (m_retraceEditMode) {
+        // Get statistics from MotionCommandHandler through SequenceEngine
+        auto* motionHandler = m_engine->GetMotionCommandHandler();
+        if (motionHandler) {
+          m_retracePositionsVisited = motionHandler->GetRetracePositionsVisited();
+          m_retracePositionsSaved = motionHandler->GetRetracePositionsSaved();
+        }
+        emit retraceEditCompleted(m_retracePositionsVisited, m_retracePositionsSaved);
+        emit logMessage(QString("Retrace completed: %1 positions visited, %2 saved")
+          .arg(m_retracePositionsVisited).arg(m_retracePositionsSaved));
+      }
 
       // ✅ Clear LogManager callback before exiting
       LogManager* logger = m_engine->GetLogger();

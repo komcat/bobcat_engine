@@ -1254,6 +1254,89 @@ void UnifiedMotionManager::ClearNamedPositions(const std::string& deviceName) {
   }
 }
 
+// ============================================================================
+// POSITION SAVE TO FILE (for RetraceEdit feature)
+// ============================================================================
+
+bool UnifiedMotionManager::SaveNamedPositionToFile(
+  const std::string& deviceName,
+  const std::string& positionName,
+  const PositionStruct& newPosition,
+  bool preserveWaypoints
+) {
+  LOG_INFO("SaveNamedPositionToFile: " + deviceName + "/" + positionName);
+
+  // Determine config paths
+  std::string localConfigPath = "config/motor_devices.local.json";
+  std::string baseConfigPath = "config/motor_devices.json";
+
+  // If we have a stored config path, use it to determine the base
+  if (!m_configFilePath.empty()) {
+    // If currently using local config, that's our target
+    if (m_configFilePath.find(".local.json") != std::string::npos) {
+      localConfigPath = m_configFilePath;
+      // Derive base config path
+      size_t pos = m_configFilePath.find(".local.json");
+      baseConfigPath = m_configFilePath.substr(0, pos) + ".json";
+    }
+    else {
+      // Currently using base config, will create local version
+      baseConfigPath = m_configFilePath;
+      size_t pos = m_configFilePath.find(".json");
+      if (pos != std::string::npos) {
+        localConfigPath = m_configFilePath.substr(0, pos) + ".local.json";
+      }
+    }
+  }
+
+  LOG_INFO("  Local config: " + localConfigPath);
+  LOG_INFO("  Base config: " + baseConfigPath);
+
+  // Use MotionJsonLoader helper to save
+  std::string errorMessage;
+  bool success = MotionJsonLoader::SavePositionToFile(
+    localConfigPath,
+    baseConfigPath,
+    deviceName,
+    positionName,
+    newPosition,
+    preserveWaypoints,
+    errorMessage
+  );
+
+  if (!success) {
+    LOG_ERROR("Failed to save position to file: " + errorMessage);
+    return false;
+  }
+
+  // Update runtime map
+  if (preserveWaypoints) {
+    // Preserve existing waypoints in runtime map
+    auto deviceIt = m_namedPositions.find(deviceName);
+    if (deviceIt != m_namedPositions.end()) {
+      auto posIt = deviceIt->second.find(positionName);
+      if (posIt != deviceIt->second.end()) {
+        // Keep waypoints, update coordinates
+        PositionStruct updatedPos = newPosition;
+        updatedPos.waypoints = posIt->second.waypoints;
+        updatedPos.exit_waypoints = posIt->second.exit_waypoints;
+        m_namedPositions[deviceName][positionName] = updatedPos;
+        LOG_INFO("Updated runtime position (preserved waypoints)");
+        return true;
+      }
+    }
+  }
+
+  // Direct update (new position or no waypoints to preserve)
+  m_namedPositions[deviceName][positionName] = newPosition;
+  LOG_INFO("Updated runtime position");
+
+  // Update config file path to point to local file (since we just wrote to it)
+  m_configFilePath = localConfigPath;
+
+  return true;
+}
+
 
 // unified_motion_manager.cpp
 // ✅ ADD THESE IMPLEMENTATIONS AT THE END OF YOUR FILE

@@ -19,6 +19,7 @@
 #include "safety/SafetyWatchManager.h"
 #include "motions/DeviceLinkManager.h"
 #include "startup/ConnectionWorkerPool.h"
+#include "settings/ApplicationSettings.h"
 
 class QApplication;
 class MainWindow;
@@ -74,6 +75,7 @@ private:
   void initializeLightingManager();
   void initializeSafetyWatch();
   void initializeDeviceLinkManager();
+  void initializeApplicationSettings();
 
   void testMotionCommands();
   void testIOCommands();
@@ -117,6 +119,7 @@ private:
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;  // GDI camera monitor
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
+  std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
 
   ApplicationContext m_context;
 

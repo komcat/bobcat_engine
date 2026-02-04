@@ -7,11 +7,11 @@ class DataStore;
 class TcpClientManager;
 class UnifiedMotionManager;
 class EziIOManager;
-class PneumaticManager;  
-class SequenceEngine;  
+class PneumaticManager;
+class SequenceEngine;
 class ProductPositionManager;
-class AdaptiveScanController;  
-class ProductPositionManager;  
+class AdaptiveScanController;
+class ProductPositionManager;
 class TECManager;
 class AuxWindowManager;  // ✅ ADD THIS
 class PowerSupplyManager;
@@ -22,6 +22,7 @@ class DeviceUnderTest;
 class SafetyWatchManager;
 class DeviceLinkManager;
 class GdiCameraWindowManager;  // GDI-based camera monitor window
+class ApplicationSettings;  // Application-wide configurable settings
 
 namespace Lighting {
 class LightingManager;
@@ -51,6 +52,7 @@ struct ApplicationContext
   SafetyWatchManager* safetyWatchManager = nullptr;  // Safety monitoring layer
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
+  ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

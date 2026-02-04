@@ -22,6 +22,7 @@ class TransformationMatrixLoader;
 class RunProgramPage;
 class TopBar;
 class VisionManagerPage;       // Vision Manager UI
+class ApplicationSettingsPage; // Application Settings editor
 
 class MainWindow : public QMainWindow
 {
@@ -78,6 +79,7 @@ private:
   RecipePage* m_recipePage;      // ✅ ADD THIS
   RunProgramPage* m_runProgramPage;
   VisionManagerPage* m_visionManagerPage;  // Vision Manager page
+  ApplicationSettingsPage* m_applicationSettingsPage;  // Application Settings page
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;

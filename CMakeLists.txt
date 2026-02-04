@@ -457,6 +457,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/PowerSupplyControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/SMUControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/SettingsPage
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -479,6 +480,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/vision
     ${CMAKE_SOURCE_DIR}/include/vision/ui
     ${CMAKE_SOURCE_DIR}/include/lighting
+    ${CMAKE_SOURCE_DIR}/include/settings
 )
 
 # Add nlohmann json include directory if found
@@ -727,6 +729,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
     include/AppUI/RunProgramPage/ManualAlignPointWidget.cpp
+    include/AppUI/RunProgramPage/RetraceEditWidget.cpp
     include/AppUI/RunProgramPage/CaptureConfirmWidget.cpp
     include/AppUI/RunProgramPage/RecipeNodeItem.cpp
     include/AppUI/RunProgramPage/DependencyEdgeItem.cpp
@@ -745,6 +748,10 @@ set(SOURCES
     # Safety system
     include/safety/SafetyWatchManager.cpp
     include/safety/SafetyAlertDialog.cpp
+    # Application settings
+    include/settings/ApplicationSettings.cpp
+    # Settings UI page
+    include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -921,6 +928,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/UserInputWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h
     include/AppUI/RunProgramPage/ManualAlignPointWidget.h
+    include/AppUI/RunProgramPage/RetraceEditWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/RecipeNodeItem.h
@@ -943,6 +951,10 @@ set(HEADERS
     # Safety system
     include/safety/SafetyWatchManager.h
     include/safety/SafetyAlertDialog.h
+    # Application settings
+    include/settings/ApplicationSettings.h
+    # Settings UI page
+    include/AppUI/SettingsPage/ApplicationSettingsPage.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
@@ -1337,9 +1349,13 @@ endif()
 add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:bobcat_engine>/config
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:bobcat_engine>/config/SYSTEM
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:bobcat_engine>/config/system
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/SYSTEM/needlexyoffset.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/SYSTEM/needlexyoffset.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/system/applicationSettings.ini
+        $<TARGET_FILE_DIR:bobcat_engine>/config/system/applicationSettings.ini
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/camera_config.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/camera_config.json

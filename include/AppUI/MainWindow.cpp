@@ -19,6 +19,7 @@
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
+#include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
@@ -42,6 +43,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_recipePage(nullptr)        // ✅ ADD THIS
   , m_runProgramPage(nullptr)
   , m_visionManagerPage(nullptr) // Vision Manager page
+  , m_applicationSettingsPage(nullptr) // Application Settings page
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -252,6 +254,12 @@ void MainWindow::createPages()
   connect(m_visionManagerPage, &VisionManagerPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_visionManagerPage);
+
+  // Application Settings page
+  m_applicationSettingsPage = new ApplicationSettingsPage(m_context, this);
+  connect(m_applicationSettingsPage, &ApplicationSettingsPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_applicationSettingsPage);
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
@@ -470,9 +478,9 @@ void MainWindow::onMainMenuEditConfig()
     }
   }
 
-  std::cout << "[MainWindow] Edit Config clicked" << std::endl;
-  m_context->logManager->Info("Navigating to Config Editor page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_configEditorPage);
+  std::cout << "[MainWindow] Application Settings clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Application Settings page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_applicationSettingsPage);
 }
 
 void MainWindow::onMainMenuFutureUpdate()

@@ -1,6 +1,7 @@
 ﻿// RunProgramPage.cpp
 #include "RunProgramPage.h"
 #include "ApplicationContext.h"
+#include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
 #include "ConditionExpressionEvaluator.h"
 #include "safety/SafetyWatchManager.h"
@@ -13,6 +14,7 @@
 #include "ScanControlWidget.h"
 #include "ScanExecutor.h"
 #include "CameraClickToMoveWidget.h"
+#include "RetraceEditWidget.h"
 #include "ILogger.h"
 #include "LogManager.h"
 #include "DataStore.h"
@@ -180,6 +182,11 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_contextRefreshTimer(nullptr)     // Context refresh timer
   , m_contextCopyButton(nullptr)       // Copy to clipboard button
   , m_contextExportButton(nullptr)     // Export to CSV button
+  , m_retraceEditWidget(nullptr)       // ✅ Retrace edit widget
+  , m_retraceEditContinue(false)       // ✅ Retrace edit continue status
+  , m_retraceEditSave(false)           // ✅ Retrace edit save status
+  , m_isRetraceEditMode(false)         // ✅ Retrace edit mode flag
+  , m_retraceEditRecipeIndex(-1)       // ✅ Retrace edit recipe index
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -269,19 +276,12 @@ void RunProgramPage::setupUI()
   QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
   createLeftPanel(leftLayout);
 
-  // Right panel (20%) - Scanning controls (create BEFORE createRightPanel)
-  m_rightPanel = new QWidget();
-  m_rightPanel->setMinimumWidth(300);
-  m_rightPanel->setMaximumWidth(400);
-  m_rightPanel->setStyleSheet("QWidget { background-color: #252526; }");
-
-  // Center panel (60%) - Execution view (calls createExecutionWidget which needs m_rightPanel)
+  // Center panel - Execution view (scanning is now a tab inside)
   createRightPanel();
 
-  // Add to main layout with stretch factors (20/60/20 split)
-  mainLayout->addWidget(m_leftPanel, 2);     // Left: 20%
-  mainLayout->addWidget(m_rightStack, 6);    // Center: 60%
-  mainLayout->addWidget(m_rightPanel, 2);    // Right: 20%
+  // Add to main layout with stretch factors (25/75 split - no right panel)
+  mainLayout->addWidget(m_leftPanel, 1);     // Left: 25%
+  mainLayout->addWidget(m_rightStack, 3);    // Center: 75%
 
   // Start with edit widget visible
   showEditWidget();
@@ -769,6 +769,11 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "  color: white; "
     "}"
   );
+
+  // Enable context menu for retrace edit
+  m_recipeListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_recipeListWidget, &QListWidget::customContextMenuRequested,
+          this, &RunProgramPage::onRecipeListContextMenu);
 
   recipeLayout->addWidget(m_recipeListWidget);
 
@@ -1781,145 +1786,158 @@ void RunProgramPage::createExecutionWidget()
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RunProgramPage::onUserInputResponse);
 
+  // === RETRACE EDIT VIEW (Index 5) ===
+  m_retraceEditWidget = new RetraceEditWidget(
+    m_context->motionManager,
+    m_matrixLoader);
+  m_retraceEditWidget->setStyleSheet(
+    "RetraceEditWidget { "
+    "  background-color: #1e1e1e; "
+    "}"
+  );
+
+  // Connect retrace edit response
+  connect(m_retraceEditWidget, &RetraceEditWidget::responseReceived,
+    this, &RunProgramPage::onRetraceEditResponse);
+
   // Add all views to stack
   m_executionStack->addWidget(m_executionTabWidget);      // Index 0: Tabs (Log + Live View)
   m_executionStack->addWidget(m_promptWidget);            // Index 1: Prompt
   m_executionStack->addWidget(m_manualAdjustWidget);      // Index 2: Manual Adjust
   m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
   m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
+  m_executionStack->addWidget(m_retraceEditWidget);       // Index 5: Retrace Edit
   m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
   layout->addWidget(m_executionStack, 1);
 
-  // === SCANNING CONTROLS (Moved to Right Panel) ===
-  if (m_rightPanel) {
-    QVBoxLayout* rightLayout = new QVBoxLayout(m_rightPanel);
-    rightLayout->setContentsMargins(10, 10, 10, 10);
-    rightLayout->setSpacing(10);
+  // === SCANNING TAB (Index 3) ===
+  QWidget* scanningTab = new QWidget();
+  QVBoxLayout* scanTabLayout = new QVBoxLayout(scanningTab);
+  scanTabLayout->setContentsMargins(10, 10, 10, 10);
+  scanTabLayout->setSpacing(10);
 
-    // Title for right panel
-    QLabel* scanTitle = new QLabel("Hexapod Scanning");
-    scanTitle->setStyleSheet(
-      "QLabel { "
-      "  font-size: 16px; "
-      "  font-weight: bold; "
-      "  color: #ffffff; "
-      "  padding: 5px; "
-      "}");
-    rightLayout->addWidget(scanTitle);
+  // Scan widget
+  m_scanWidget = new ScanControlWidget();
 
-    // Scan widget
-    m_scanWidget = new ScanControlWidget();
+  // Populate channels from DataStore (initial load)
+  refreshDataStoreChannels();
 
-    // Populate channels from DataStore (initial load)
-    refreshDataStoreChannels();
+  // Set up periodic channel refresh (every 3 seconds)
+  // This ensures new channels (e.g., SMU channels added when polling starts) appear in the dropdown
+  m_channelRefreshTimer = new QTimer(this);
+  connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
+  m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
 
-    // ✅ ADDED: Set up periodic channel refresh (every 3 seconds)
-    // This ensures new channels (e.g., SMU channels added when polling starts) appear in the dropdown
-    m_channelRefreshTimer = new QTimer(this);
-    connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
-    m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
+  scanTabLayout->addWidget(m_scanWidget);
+  scanTabLayout->addStretch();  // Push controls to top
 
-    rightLayout->addWidget(m_scanWidget);
+  m_executionTabWidget->addTab(scanningTab, "Scanning");
 
-    // ✅ Vision result image display
-    m_visionResultGroup = new QGroupBox("Vision Result");
-    m_visionResultGroup->setStyleSheet(
-      "QGroupBox { "
-      "  font-weight: bold; "
-      "  color: #FFA500; "
-      "  border: 1px solid #3f3f46; "
-      "  border-radius: 4px; "
-      "  margin-top: 10px; "
-      "  padding-top: 10px; "
-      "} "
-      "QGroupBox::title { "
-      "  subcontrol-origin: margin; "
-      "  left: 10px; "
-      "  padding: 0 5px; "
-      "}"
-    );
-    QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
-    visionLayout->setContentsMargins(5, 15, 5, 5);
+  // === VISION TAB (Index 4) ===
+  QWidget* visionTab = new QWidget();
+  QVBoxLayout* visionTabLayout = new QVBoxLayout(visionTab);
+  visionTabLayout->setContentsMargins(10, 10, 10, 10);
+  visionTabLayout->setSpacing(10);
 
-    m_visionResultImageLabel = new QLabel("No vision result");
-    m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
-    m_visionResultImageLabel->setMinimumHeight(200);
-    m_visionResultImageLabel->setStyleSheet(
-      "QLabel { "
-      "  background-color: #0f0f0f; "
-      "  border: 1px solid #3f3f46; "
-      "  color: #808080; "
-      "  font-style: italic; "
-      "}"
-    );
-    visionLayout->addWidget(m_visionResultImageLabel);
+  // Vision result image display
+  m_visionResultGroup = new QGroupBox("Vision Result");
+  m_visionResultGroup->setStyleSheet(
+    "QGroupBox { "
+    "  font-weight: bold; "
+    "  color: #FFA500; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 10px; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  left: 10px; "
+    "  padding: 0 5px; "
+    "}"
+  );
+  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+  visionLayout->setContentsMargins(5, 15, 5, 5);
 
-    // ✅ Vision history navigation controls
-    m_visionNavWidget = new QWidget();
-    QHBoxLayout* navLayout = new QHBoxLayout(m_visionNavWidget);
-    navLayout->setContentsMargins(0, 5, 0, 0);
-    navLayout->setSpacing(10);
+  m_visionResultImageLabel = new QLabel("No vision result");
+  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+  m_visionResultImageLabel->setMinimumHeight(300);
+  m_visionResultImageLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #0f0f0f; "
+    "  border: 1px solid #3f3f46; "
+    "  color: #808080; "
+    "  font-style: italic; "
+    "}"
+  );
+  visionLayout->addWidget(m_visionResultImageLabel, 1);  // Give image area stretch
 
-    m_visionPrevButton = new QPushButton("◀ Prev");
-    m_visionPrevButton->setFixedWidth(70);
-    m_visionPrevButton->setEnabled(false);
-    m_visionPrevButton->setStyleSheet(
-      "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
-      "QPushButton:hover { background-color: #3d3d40; }"
-      "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
-    );
-    connect(m_visionPrevButton, &QPushButton::clicked, this, &RunProgramPage::onVisionPrevious);
+  // Vision history navigation controls
+  m_visionNavWidget = new QWidget();
+  QHBoxLayout* navLayout = new QHBoxLayout(m_visionNavWidget);
+  navLayout->setContentsMargins(0, 5, 0, 0);
+  navLayout->setSpacing(10);
 
-    m_visionIndexLabel = new QLabel("- / -");
-    m_visionIndexLabel->setAlignment(Qt::AlignCenter);
-    m_visionIndexLabel->setMinimumWidth(60);
-    m_visionIndexLabel->setStyleSheet("QLabel { color: #808080; }");
+  m_visionPrevButton = new QPushButton("◀ Prev");
+  m_visionPrevButton->setFixedWidth(70);
+  m_visionPrevButton->setEnabled(false);
+  m_visionPrevButton->setStyleSheet(
+    "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
+    "QPushButton:hover { background-color: #3d3d40; }"
+    "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
+  );
+  connect(m_visionPrevButton, &QPushButton::clicked, this, &RunProgramPage::onVisionPrevious);
 
-    m_visionNextButton = new QPushButton("Next ▶");
-    m_visionNextButton->setFixedWidth(70);
-    m_visionNextButton->setEnabled(false);
-    m_visionNextButton->setStyleSheet(
-      "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
-      "QPushButton:hover { background-color: #3d3d40; }"
-      "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
-    );
-    connect(m_visionNextButton, &QPushButton::clicked, this, &RunProgramPage::onVisionNext);
+  m_visionIndexLabel = new QLabel("- / -");
+  m_visionIndexLabel->setAlignment(Qt::AlignCenter);
+  m_visionIndexLabel->setMinimumWidth(60);
+  m_visionIndexLabel->setStyleSheet("QLabel { color: #808080; }");
 
-    navLayout->addStretch();
-    navLayout->addWidget(m_visionPrevButton);
-    navLayout->addWidget(m_visionIndexLabel);
-    navLayout->addWidget(m_visionNextButton);
-    navLayout->addStretch();
+  m_visionNextButton = new QPushButton("Next ▶");
+  m_visionNextButton->setFixedWidth(70);
+  m_visionNextButton->setEnabled(false);
+  m_visionNextButton->setStyleSheet(
+    "QPushButton { background-color: #2d2d30; color: #cccccc; border: 1px solid #3f3f46; padding: 4px 8px; }"
+    "QPushButton:hover { background-color: #3d3d40; }"
+    "QPushButton:disabled { color: #606060; background-color: #1e1e1e; }"
+  );
+  connect(m_visionNextButton, &QPushButton::clicked, this, &RunProgramPage::onVisionNext);
 
-    visionLayout->addWidget(m_visionNavWidget);
+  navLayout->addStretch();
+  navLayout->addWidget(m_visionPrevButton);
+  navLayout->addWidget(m_visionIndexLabel);
+  navLayout->addWidget(m_visionNextButton);
+  navLayout->addStretch();
 
-    rightLayout->addWidget(m_visionResultGroup);
-    rightLayout->addStretch();  // Push controls to top
+  visionLayout->addWidget(m_visionNavWidget);
 
-    // Connect scan widget to this page
-    connect(m_scanWidget, &ScanControlWidget::scanRequested,
-      this, &RunProgramPage::onScanRequested);
-    connect(m_scanWidget, &ScanControlWidget::rotationScanRequested,
-      this, &RunProgramPage::onRotationScanRequested);
-    connect(m_scanWidget, &ScanControlWidget::stopRequested,
-      this, &RunProgramPage::onStopScanRequested);
-    connect(m_scanWidget, &ScanControlWidget::channelChanged,
-      this, &RunProgramPage::onChannelChanged);  // ✅ ADDED
+  visionTabLayout->addWidget(m_visionResultGroup, 1);  // Give vision group stretch
 
-    // ✅ ADDED: Trigger subscription for initial channel
-    if (!m_scanWidget->currentChannel().isEmpty()) {
-      onChannelChanged(m_scanWidget->currentChannel());
-    }
+  m_executionTabWidget->addTab(visionTab, "Vision");
 
-    // Connect executor signals to UI
-    connect(m_scanExecutor, &ScanExecutor::logMessage,
-      this, &RunProgramPage::onScanLogMessage);
-    connect(m_scanExecutor, &ScanExecutor::scanCompleted,
-      this, &RunProgramPage::onScanCompleted);
-    connect(m_scanExecutor, &ScanExecutor::scanError,
-      this, &RunProgramPage::onScanError);
+  // Connect scan widget to this page
+  connect(m_scanWidget, &ScanControlWidget::scanRequested,
+    this, &RunProgramPage::onScanRequested);
+  connect(m_scanWidget, &ScanControlWidget::rotationScanRequested,
+    this, &RunProgramPage::onRotationScanRequested);
+  connect(m_scanWidget, &ScanControlWidget::stopRequested,
+    this, &RunProgramPage::onStopScanRequested);
+  connect(m_scanWidget, &ScanControlWidget::channelChanged,
+    this, &RunProgramPage::onChannelChanged);
+
+  // Trigger subscription for initial channel
+  if (!m_scanWidget->currentChannel().isEmpty()) {
+    onChannelChanged(m_scanWidget->currentChannel());
   }
+
+  // Connect executor signals to UI
+  connect(m_scanExecutor, &ScanExecutor::logMessage,
+    this, &RunProgramPage::onScanLogMessage);
+  connect(m_scanExecutor, &ScanExecutor::scanCompleted,
+    this, &RunProgramPage::onScanCompleted);
+  connect(m_scanExecutor, &ScanExecutor::scanError,
+    this, &RunProgramPage::onScanError);
 }
 
 void RunProgramPage::showEditWidget()
@@ -2812,8 +2830,14 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
         messageLabel->setWordWrap(true);
         layout->addWidget(messageLabel);
 
+        // Get configurable timeout from application settings (default: 3 seconds)
+        int timeoutSeconds = 3;  // Default fallback
+        if (m_context && m_context->applicationSettings) {
+          timeoutSeconds = m_context->applicationSettings->GetChainExecutionTimeoutSeconds();
+        }
+
         // Countdown label
-        QLabel* countdownLabel = new QLabel("Auto-continue in 10 seconds...");
+        QLabel* countdownLabel = new QLabel(QString("Auto-continue in %1 seconds...").arg(timeoutSeconds));
         countdownLabel->setStyleSheet("color: #f39c12; font-size: 12px; padding: 5px;");
         countdownLabel->setAlignment(Qt::AlignCenter);
         layout->addWidget(countdownLabel);
@@ -2833,7 +2857,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
         layout->addLayout(buttonLayout);
 
         // Timer for auto-continue
-        int* countdown = new int(10);
+        int* countdown = new int(timeoutSeconds);
         QTimer* timer = new QTimer(confirmDialog);
         timer->setInterval(1000);
 
@@ -2954,6 +2978,8 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   std::cout.flush();
   m_isExecuting = false;
   m_isLoopExecution = false;  // Reset loop mode flag
+  m_isRetraceEditMode = false;  // ✅ Reset retrace edit mode flag
+  m_retraceEditRecipeIndex = -1;
 
   // ✅ Reset command tracker
   m_cmdPastLabel->setText("-");
@@ -2966,6 +2992,7 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   std::cout.flush();
 
   // Re-enable execute button
+  updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
   m_executeButton->setText("▶ Execute Program");
   m_executeButton->setStyleSheet(
     "QPushButton { "
@@ -3041,6 +3068,8 @@ void RunProgramPage::onProgramStopped()
 
   m_isExecuting = false;
   m_isLoopExecution = false;  // Reset loop mode flag
+  m_isRetraceEditMode = false;  // ✅ Reset retrace edit mode flag
+  m_retraceEditRecipeIndex = -1;
   m_pendingChainRecipeIndex = -1;  // ✅ Clear pending chain execution
 
   // ✅ Reset command tracker
@@ -3064,6 +3093,7 @@ void RunProgramPage::onProgramStopped()
   );
 
   // Re-enable execute button
+  updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
   m_executeButton->setText("▶ Execute Program");
   m_executeButton->setStyleSheet(
     "QPushButton { "
@@ -3094,7 +3124,18 @@ void RunProgramPage::onWorkerFinished()
   if (m_isExecuting) {
     std::cout << "[RunProgramPage] Still executing, forcing completion from finished handler" << std::endl;
     std::cout.flush();
-    onProgramExecutionCompleted(true, "Execution completed (via finished signal)");
+
+    // ✅ FIX: Use actual execution result from worker instead of always assuming success
+    bool success = true;
+    QString message = "Execution completed (via finished signal)";
+    if (m_programWorker) {
+      success = m_programWorker->getExecutionSuccess();
+      QString workerMessage = m_programWorker->getExecutionMessage();
+      if (!workerMessage.isEmpty()) {
+        message = workerMessage;
+      }
+    }
+    onProgramExecutionCompleted(success, message);
   }
 
   // Clean up worker after signals are processed
@@ -3836,10 +3877,64 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
   );
 
   QAction* renameAction = contextMenu.addAction("Rename Recipe...");
+
+  // Add retrace edit option (only if not currently running)
+  QAction* retraceAction = nullptr;
+  if (!m_isExecuting) {
+    contextMenu.addSeparator();
+    retraceAction = contextMenu.addAction("Retrace Edit This Recipe...");
+    retraceAction->setToolTip("Run through recipe and pause at each motion for position adjustment");
+  }
+
   QAction* selectedAction = contextMenu.exec(m_editRecipeTable->viewport()->mapToGlobal(pos));
 
   if (selectedAction == renameAction) {
     renameRecipe(row);
+  }
+  else if (retraceAction && selectedAction == retraceAction) {
+    onStartRetraceEdit(row);
+  }
+}
+
+void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
+{
+  QListWidgetItem* item = m_recipeListWidget->itemAt(pos);
+  if (!item) return;
+
+  int row = m_recipeListWidget->row(item);
+  if (row < 0 || row >= m_programManager->getRecipeCount()) return;
+
+  // Create context menu
+  QMenu contextMenu(this);
+  contextMenu.setStyleSheet(
+    "QMenu { "
+    "  background-color: #2d2d30; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  padding: 5px; "
+    "} "
+    "QMenu::item { "
+    "  padding: 8px 20px; "
+    "} "
+    "QMenu::item:selected { "
+    "  background-color: #0e639c; "
+    "}"
+  );
+
+  // Add retrace edit option (only if not currently running)
+  QAction* retraceAction = nullptr;
+  if (!m_isExecuting) {
+    retraceAction = contextMenu.addAction("Retrace Edit This Recipe...");
+    retraceAction->setToolTip("Run through recipe and pause at each motion for position adjustment");
+  } else {
+    QAction* disabledAction = contextMenu.addAction("Retrace Edit (disabled during execution)");
+    disabledAction->setEnabled(false);
+  }
+
+  QAction* selectedAction = contextMenu.exec(m_recipeListWidget->viewport()->mapToGlobal(pos));
+
+  if (retraceAction && selectedAction == retraceAction) {
+    onStartRetraceEdit(row);
   }
 }
 
@@ -3891,6 +3986,185 @@ void RunProgramPage::renameRecipe(int recipeIndex)
 
   // Re-select the same row
   m_editRecipeTable->selectRow(recipeIndex);
+}
+
+// ============================================================================
+// RETRACE EDIT MODE
+// ============================================================================
+
+void RunProgramPage::onStartRetraceEdit(int recipeIndex)
+{
+  const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
+  if (!recipe) {
+    QMessageBox::warning(this, "Error", "Recipe not found");
+    return;
+  }
+
+  // Confirm with user
+  int result = QMessageBox::question(this, "Retrace Edit",
+    QString("Retrace Edit will run '%1' and pause after each motion move.\n\n"
+            "At each pause you can:\n"
+            "  - Jog to adjust the position\n"
+            "  - Save the adjusted position to config\n"
+            "  - Skip to continue without saving\n"
+            "  - Stop to exit retrace mode\n\n"
+            "Continue?")
+      .arg(QString::fromStdString(recipe->displayName)),
+    QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+  if (result != QMessageBox::Yes) {
+    return;
+  }
+
+  // Switch to execution view
+  showExecutionWidget();
+
+  // Clear log
+  m_logTextEdit->clear();
+  m_logTextEdit->appendPlainText(QString("=== Retrace Edit: %1 ===")
+    .arg(QString::fromStdString(recipe->displayName)));
+
+  // Set up retrace edit state
+  m_isRetraceEditMode = true;
+  m_retraceEditRecipeIndex = recipeIndex;
+  m_isExecuting = true;
+  m_currentRecipeIndex = recipeIndex;
+  updateExecuteButton();
+
+  // Create worker
+  m_programWorker = new ProgramWorker(
+    m_context->sequenceEngine,
+    m_programManager,
+    m_processFactory,
+    m_context->productPositionManager,
+    m_context->motionManager,
+    this
+  );
+
+  // Configure for retrace edit mode - single recipe only
+  m_programWorker->setAutoRunMode(false);
+  m_programWorker->setStartRecipeIndex(recipeIndex);
+  m_programWorker->setRetraceEditMode(true);
+
+  // Set up retrace edit callback - this runs in worker thread, so we use signals
+  // ✅ FIX: Use shared_ptr to avoid dangling reference when function returns
+  auto positionCounter = std::make_shared<int>(0);
+  m_programWorker->setRetraceEditCallback(
+    [this, positionCounter](
+      const std::string& deviceName,
+      const std::string& positionName,
+      double origX, double origY, double origZ,
+      double origU, double origV, double origW,
+      double currX, double currY, double currZ,
+      double currU, double currV, double currW,
+      bool& saveRequested) -> bool {
+
+      (*positionCounter)++;
+      int currentPosition = *positionCounter;
+
+      // Show the retrace edit widget (must be done on GUI thread)
+      QMetaObject::invokeMethod(this, [this, deviceName, positionName,
+        origX, origY, origZ, origU, origV, origW,
+        currX, currY, currZ, currU, currV, currW, currentPosition]() {
+
+        m_executionStack->setCurrentIndex(5);  // Index 5 = retrace edit widget
+        m_retraceEditWidget->showRetraceEdit(
+          QString::fromStdString(deviceName),
+          QString::fromStdString(positionName),
+          origX, origY, origZ, origU, origV, origW,
+          currX, currY, currZ, currU, currV, currW,
+          currentPosition, 0);  // 0 = unknown total
+
+      }, Qt::BlockingQueuedConnection);
+
+      // Wait for user response using event loop
+      QEventLoop loop;
+      m_retraceEditContinue = false;
+      m_retraceEditSave = false;
+
+      connect(m_retraceEditWidget, &RetraceEditWidget::responseReceived, &loop,
+        [&loop, this](bool continueExec, bool save) {
+          m_retraceEditContinue = continueExec;
+          m_retraceEditSave = save;
+          loop.quit();
+        });
+
+      loop.exec();
+
+      // Return results
+      saveRequested = m_retraceEditSave;
+
+      // Switch back to log view
+      QMetaObject::invokeMethod(this, [this]() {
+        m_executionStack->setCurrentIndex(0);
+      }, Qt::QueuedConnection);
+
+      return m_retraceEditContinue;
+    }
+  );
+
+  // Connect signals
+  connect(m_programWorker, &ProgramWorker::logMessage,
+    this, &RunProgramPage::onWorkerLogMessage);
+  connect(m_programWorker, &ProgramWorker::recipeStarted,
+    this, &RunProgramPage::onRecipeStarted);
+  connect(m_programWorker, &ProgramWorker::recipeCompleted,
+    this, &RunProgramPage::onRecipeCompleted);
+  connect(m_programWorker, &ProgramWorker::programExecutionCompleted,
+    this, [this](bool success, QString message) {
+      if (m_isRetraceEditMode) {
+        // Show retrace summary
+        showRetraceEditSummary(
+          m_programWorker->getRetracePositionsVisited(),
+          m_programWorker->getRetracePositionsSaved());
+      }
+      onProgramExecutionCompleted(success, message);
+    });
+  connect(m_programWorker, &ProgramWorker::programStopped,
+    this, &RunProgramPage::onProgramStopped);
+  connect(m_programWorker, &QThread::finished,
+    this, &RunProgramPage::onWorkerFinished);
+
+  // Start execution
+  m_programWorker->start();
+}
+
+void RunProgramPage::onRetraceEditResponse(bool continueExecution, bool saveRequested)
+{
+  m_retraceEditContinue = continueExecution;
+  m_retraceEditSave = saveRequested;
+
+  // Log the action
+  if (saveRequested) {
+    m_logTextEdit->appendPlainText("  [SAVE] Position saved");
+  } else if (continueExecution) {
+    m_logTextEdit->appendPlainText("  [SKIP] Position skipped");
+  } else {
+    m_logTextEdit->appendPlainText("  [STOP] Retrace stopped by user");
+  }
+}
+
+void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsSaved)
+{
+  QString summary = QString(
+    "Retrace Edit Complete!\n\n"
+    "Positions visited: %1\n"
+    "Positions saved: %2\n\n")
+    .arg(positionsVisited)
+    .arg(positionsSaved);
+
+  if (positionsSaved > 0) {
+    summary += QString("The %1 saved position(s) have been written to:\n"
+                       "  config/motor_devices.local.json\n\n"
+                       "These positions will take effect immediately and\n"
+                       "persist across application restarts.")
+               .arg(positionsSaved);
+  }
+
+  QMessageBox::information(this, "Retrace Edit Complete", summary);
+
+  m_isRetraceEditMode = false;
+  m_retraceEditRecipeIndex = -1;
 }
 
 void RunProgramPage::onEditRecipeSelectionChanged()

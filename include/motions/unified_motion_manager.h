@@ -358,6 +358,44 @@ public:
 	void ClearNamedPositions(const std::string& deviceName);
 
 	// ============================================================================
+	// ✅ NEW - POSITION SAVE TO FILE (for RetraceEdit feature)
+	// ============================================================================
+
+	/**
+	 * @brief Save a named position to the local config file (motor_devices.local.json)
+	 *
+	 * Used by RetraceEdit to persist position adjustments. This method:
+	 * 1. Reads motor_devices.local.json (creates from .json if not exists)
+	 * 2. Updates the position coordinates for the specified position
+	 * 3. Preserves existing waypoints if preserveWaypoints=true
+	 * 4. Writes back to motor_devices.local.json
+	 * 5. Updates the runtime m_namedPositions map
+	 *
+	 * @param deviceName Device name (e.g., "gantry-main", "hex-left")
+	 * @param positionName Position name (e.g., "lensgrip", "safe")
+	 * @param newPosition New coordinates to save
+	 * @param preserveWaypoints If true, keeps existing waypoints; if false, clears them
+	 * @return true if save succeeded, false on error
+	 */
+	bool SaveNamedPositionToFile(
+		const std::string& deviceName,
+		const std::string& positionName,
+		const PositionStruct& newPosition,
+		bool preserveWaypoints = true
+	);
+
+	/**
+	 * @brief Get the config file path currently in use
+	 * @return Path to motor_devices.local.json or motor_devices.json
+	 */
+	std::string GetConfigFilePath() const { return m_configFilePath; }
+
+	/**
+	 * @brief Set the config file path (called during loading)
+	 */
+	void SetConfigFilePath(const std::string& path) { m_configFilePath = path; }
+
+	// ============================================================================
 	// ✅ NEW - WAYPOINT SYSTEM (Non-blocking with automatic entry/exit handling)
 	// ============================================================================
 
@@ -472,6 +510,9 @@ private:
 
 	// Logger for spdlog integration
 	ILogger* m_logger = nullptr;
+
+	// Config file path (set during loading)
+	std::string m_configFilePath;
 
 	// Pending target tracking for non-blocking moves
 	// Stores the target position name for each device when a non-blocking move starts

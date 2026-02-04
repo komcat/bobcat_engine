@@ -123,8 +123,11 @@ void ProgramWorker::run()
     }
   }
   catch (const std::exception& e) {
+    QString failMsg = QString("Program exception: %1").arg(e.what());
     emit logMessage(QString("Top-level exception: %1").arg(e.what()));
-    emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
+    m_executionSuccess = false;
+    m_executionMessage = failMsg;
+    emit programExecutionCompleted(false, failMsg);
   }
   emit logMessage("ProgramWorker run() finished");
 }
@@ -157,6 +160,8 @@ void ProgramWorker::runSequential()
 
       // Validate index
       if (startIndex < 0 || startIndex >= static_cast<int>(allRecipes.size())) {
+        m_executionSuccess = false;
+        m_executionMessage = "Invalid recipe index";
         emit programExecutionCompleted(false, "Invalid recipe index");
         return;
       }
@@ -165,6 +170,8 @@ void ProgramWorker::runSequential()
       if (m_useDependencyGraph) {
         QString errorMessage;
         if (!checkPrerequisites(startIndex, errorMessage)) {
+          m_executionSuccess = false;
+          m_executionMessage = errorMessage;
           emit programExecutionCompleted(false, errorMessage);
           emit logMessage(QString("Cannot run recipe: %1").arg(errorMessage));
           return;
@@ -199,6 +206,8 @@ void ProgramWorker::runSequential()
       if (m_stopRequested.load()) {
         emit logMessage("Program execution stopped by user");
         emit programStopped();
+        m_executionSuccess = false;
+        m_executionMessage = "Program stopped by user";
         emit programExecutionCompleted(false, "Program stopped by user");
         return;
       }
@@ -236,9 +245,11 @@ void ProgramWorker::runSequential()
         emit logMessage(errorMsg);
 
         // Stop program if a recipe fails
-        emit programExecutionCompleted(false,
-          QString("Program stopped: Recipe '%1' failed")
-          .arg(QString::fromStdString(recipeRef->displayName)));
+        QString failMsg = QString("Program stopped: Recipe '%1' failed")
+          .arg(QString::fromStdString(recipeRef->displayName));
+        m_executionSuccess = false;
+        m_executionMessage = failMsg;
+        emit programExecutionCompleted(false, failMsg);
         return;
       }
 
@@ -271,8 +282,11 @@ void ProgramWorker::runSequential()
     }
   }
   catch (const std::exception& e) {
+    QString failMsg = QString("Program exception: %1").arg(e.what());
     emit logMessage(QString("Exception in runSequential(): %1").arg(e.what()));
-    emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
+    m_executionSuccess = false;
+    m_executionMessage = failMsg;
+    emit programExecutionCompleted(false, failMsg);
   }
 }
 
@@ -286,6 +300,8 @@ void ProgramWorker::runWithDependencies()
     m_ownedContext = std::make_unique<SequenceContext>();
 
     if (allRecipes.empty()) {
+      m_executionSuccess = false;
+      m_executionMessage = "No recipes in program";
       emit programExecutionCompleted(false, "No recipes in program");
       return;
     }
@@ -323,9 +339,11 @@ void ProgramWorker::runWithDependencies()
 
       for (const auto& dep : deps) {
         if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
-          emit programExecutionCompleted(false,
-            QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
-            .arg(i).arg(dep.predecessorIndex));
+          QString failMsg = QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
+            .arg(i).arg(dep.predecessorIndex);
+          m_executionSuccess = false;
+          m_executionMessage = failMsg;
+          emit programExecutionCompleted(false, failMsg);
           return;
         }
       }
@@ -344,6 +362,8 @@ void ProgramWorker::runWithDependencies()
       for (const auto& err : errors) {
         errorMsg += "• " + QString::fromStdString(err) + "\n";
       }
+      m_executionSuccess = false;
+      m_executionMessage = errorMsg;
       emit programExecutionCompleted(false, errorMsg);
       return;
     }
@@ -387,6 +407,8 @@ void ProgramWorker::runWithDependencies()
       if (m_stopRequested.load()) {
         emit logMessage("Program execution stopped by user");
         emit programStopped();
+        m_executionSuccess = false;
+        m_executionMessage = "Program stopped by user";
         emit programExecutionCompleted(false, "Program stopped by user");
         return;
       }
@@ -402,8 +424,10 @@ void ProgramWorker::runWithDependencies()
 
         if (pending > 0 && ready == 0 && running == 0) {
           // Deadlock - recipes are waiting but nothing can proceed
-          emit programExecutionCompleted(false,
-            QString("Execution deadlock: %1 recipes pending but none ready").arg(pending));
+          QString failMsg = QString("Execution deadlock: %1 recipes pending but none ready").arg(pending);
+          m_executionSuccess = false;
+          m_executionMessage = failMsg;
+          emit programExecutionCompleted(false, failMsg);
           return;
         }
 
@@ -419,6 +443,8 @@ void ProgramWorker::runWithDependencies()
         if (m_stopRequested.load()) {
           emit logMessage("Program execution stopped by user");
           emit programStopped();
+          m_executionSuccess = false;
+          m_executionMessage = "Program stopped by user";
           emit programExecutionCompleted(false, "Program stopped by user");
           return;
         }
@@ -489,20 +515,27 @@ void ProgramWorker::runWithDependencies()
     emit logMessage(QString("  Skipped: %1").arg(skipped));
 
     if (failed > 0) {
-      emit programExecutionCompleted(false,
-        QString("Program '%1' completed with %2 failure(s)")
+      QString failMsg = QString("Program '%1' completed with %2 failure(s)")
         .arg(QString::fromStdString(m_programManager->getProgramName()))
-        .arg(failed));
+        .arg(failed);
+      m_executionSuccess = false;
+      m_executionMessage = failMsg;
+      emit programExecutionCompleted(false, failMsg);
     }
     else {
-      emit programExecutionCompleted(true,
-        QString("Program '%1' completed successfully! Executed %2 recipe(s)")
+      QString successMsg = QString("Program '%1' completed successfully! Executed %2 recipe(s)")
         .arg(QString::fromStdString(m_programManager->getProgramName()))
-        .arg(completed));
+        .arg(completed);
+      m_executionSuccess = true;
+      m_executionMessage = successMsg;
+      emit programExecutionCompleted(true, successMsg);
     }
   }
   catch (const std::exception& e) {
-    emit programExecutionCompleted(false, QString("Program exception: %1").arg(e.what()));
+    QString failMsg = QString("Program exception: %1").arg(e.what());
+    m_executionSuccess = false;
+    m_executionMessage = failMsg;
+    emit programExecutionCompleted(false, failMsg);
   }
 }
 
@@ -549,6 +582,14 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     recipeWorker->setLoopMode(true);
   }
 
+  // ✅ Set retrace edit mode if enabled
+  if (m_retraceEditMode) {
+    recipeWorker->setRetraceEditMode(true);
+    if (m_retraceEditCallback) {
+      recipeWorker->setRetraceEditCallback(m_retraceEditCallback);
+    }
+  }
+
   // ✅ Connect RecipeWorker signals to ProgramWorker signals
   // Forward step-level signals with recipeIndex prefix
   connect(recipeWorker, &RecipeWorker::stepBuildStarted,
@@ -583,6 +624,16 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // Forward wait progress updates
   connect(recipeWorker, &RecipeWorker::waitProgress,
     this, &ProgramWorker::waitProgress);
+
+  // ✅ Forward retrace edit signals
+  connect(recipeWorker, &RecipeWorker::retraceEditPause,
+    this, &ProgramWorker::retraceEditPause);
+  connect(recipeWorker, &RecipeWorker::retraceEditCompleted,
+    this, [this](int visited, int saved) {
+      m_retracePositionsVisited += visited;
+      m_retracePositionsSaved += saved;
+      emit retraceEditCompleted(visited, saved);
+    });
 
   // ✅ Use QEventLoop to properly wait for completion
   bool success = false;
@@ -751,9 +802,11 @@ void ProgramWorker::runWithLoop()
     const auto& deps = m_programManager->getRecipeDependencies(activeSetIndex, i);
     for (const auto& dep : deps) {
       if (!stateMachine.addDependency(i, dep.predecessorIndex, dep.condition)) {
-        emit programExecutionCompleted(false,
-          QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
-          .arg(i + 1).arg(dep.predecessorIndex + 1));
+        QString failMsg = QString("Failed to add dependency: Recipe %1 depends on Recipe %2")
+          .arg(i + 1).arg(dep.predecessorIndex + 1);
+        m_executionSuccess = false;
+        m_executionMessage = failMsg;
+        emit programExecutionCompleted(false, failMsg);
         return;
       }
     }
@@ -768,6 +821,8 @@ void ProgramWorker::runWithLoop()
     for (const auto& err : errors) {
       errorMsg += QString::fromStdString(err) + "\n";
     }
+    m_executionSuccess = false;
+    m_executionMessage = errorMsg;
     emit programExecutionCompleted(false, errorMsg);
     return;
   }
@@ -784,6 +839,8 @@ void ProgramWorker::runWithLoop()
   // =========================================================================
   if (m_loopRecipeIndices.empty()) {
     emit logMessage("No loop recipes configured - execution complete");
+    m_executionSuccess = true;
+    m_executionMessage = "Program completed (no loop recipes)";
     emit programExecutionCompleted(true, "Program completed (no loop recipes)");
     return;
   }
@@ -932,8 +989,11 @@ void ProgramWorker::runWithLoop()
     emit loopIterationCompleted(m_loopIteration);
 
     if (!iterationSuccess) {
+      QString failMsg = QString("Loop stopped: recipe failed at iteration %1").arg(m_loopIteration);
       emit logMessage(QString("Loop stopped due to recipe failure at iteration %1").arg(m_loopIteration));
-      emit programExecutionCompleted(false, QString("Loop stopped: recipe failed at iteration %1").arg(m_loopIteration));
+      m_executionSuccess = false;
+      m_executionMessage = failMsg;
+      emit programExecutionCompleted(false, failMsg);
       return;
     }
 
@@ -951,7 +1011,10 @@ void ProgramWorker::runWithLoop()
   emit logMessage(QString("\n=== LOOP STOPPED ==="));
   emit logMessage(QString("Completed %1 full iteration(s)").arg(m_loopIteration));
   emit programStopped();
-  emit programExecutionCompleted(true, QString("Loop execution stopped after %1 iteration(s)").arg(m_loopIteration));
+  QString completionMsg = QString("Loop execution stopped after %1 iteration(s)").arg(m_loopIteration);
+  m_executionSuccess = true;
+  m_executionMessage = completionMsg;
+  emit programExecutionCompleted(true, completionMsg);
 }
 
 void ProgramWorker::runNonLoopRecipes()

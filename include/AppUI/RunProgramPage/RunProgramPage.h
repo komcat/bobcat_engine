@@ -26,6 +26,7 @@ class UserPromptWidget;
 class ManualAdjustWidget;
 class ManualAlignPointWidget;
 class UserInputWidget;
+class RetraceEditWidget;
 class ScanControlWidget;
 class ScanExecutor;
 class TransformationMatrixLoader;
@@ -154,7 +155,6 @@ private:
 
   // Left panel widgets
   QWidget* m_leftPanel;
-  QWidget* m_rightPanel;  // ✅ Right panel for scanning controls
   QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
   QLabel* m_currentProductLabel;  // Product display
   QLabel* m_chainIndicator;       // Chain execution indicator (orange dot)
@@ -224,12 +224,17 @@ private:
   ManualAdjustWidget* m_manualAdjustWidget;
   ManualAlignPointWidget* m_manualAlignPointWidget;  // ✅ Manual align point widget
   UserInputWidget* m_userInputWidget;
+  RetraceEditWidget* m_retraceEditWidget;  // ✅ Retrace edit widget
   QEventLoop* m_promptEventLoop;     // For blocking until response
   bool m_promptResponse;             // Store user's response
   bool m_manualAdjustResponse;       // Store manual adjust response
   bool m_manualAlignPointResponse;   // ✅ Store manual align point response
   bool m_userInputAccepted;          // Store user input accepted status
   QString m_userInputText;           // Store user input text
+  bool m_retraceEditContinue;        // ✅ Store retrace edit continue status
+  bool m_retraceEditSave;            // ✅ Store retrace edit save status
+  bool m_isRetraceEditMode;          // ✅ Currently in retrace edit mode
+  int m_retraceEditRecipeIndex;      // ✅ Recipe index being retrace-edited
 
   // State
   QString m_currentProgramPath;
@@ -260,8 +265,14 @@ private:
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
   void loadRecipePreview(const std::string& recipeFilePath);
-  void onRecipeTableContextMenu(const QPoint& pos);  // Context menu for recipe table
+  void onRecipeTableContextMenu(const QPoint& pos);  // Context menu for recipe table (edit view)
+  void onRecipeListContextMenu(const QPoint& pos);   // Context menu for recipe list (execution view)
   void renameRecipe(int recipeIndex);                // Rename recipe dialog
+
+  // ✅ Retrace edit mode
+  void onStartRetraceEdit(int recipeIndex);          // Start retrace edit for a recipe
+  void onRetraceEditResponse(bool continueExecution, bool saveRequested);
+  void showRetraceEditSummary(int positionsVisited, int positionsSaved);
 
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription
