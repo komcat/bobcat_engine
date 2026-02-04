@@ -216,7 +216,7 @@ private:
   // Scanning controls (refactored)
   ScanControlWidget* m_scanWidget;
   ScanExecutor* m_scanExecutor;
-  QTimer* m_channelRefreshTimer;  // ✅ ADDED: Periodic refresh of DataStore channels
+  QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
   // Prompt system
   QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust/input
