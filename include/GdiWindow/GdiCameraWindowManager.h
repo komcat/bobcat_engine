@@ -82,6 +82,10 @@ signals:
 private slots:
     void processMessages();
 
+public slots:
+    // Reload and apply application settings (call when settings change)
+    void applyApplicationSettings();
+
 private:
     void saveWindowGeometry();
     void loadWindowGeometry();

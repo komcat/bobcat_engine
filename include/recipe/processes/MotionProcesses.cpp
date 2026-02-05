@@ -1701,6 +1701,261 @@ public:
 };
 
 //=============================================================================
+// FAST ALIGN XY PLUGIN - PI hexapod FSM 2D alignment
+//=============================================================================
+
+class FastAlignXYPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Fast Align XY";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "PI hexapod Fast Scan Maximum (FSM) 2D alignment using analog feedback";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"axis1", "X"},
+      {"length1_um", "20"},
+      {"axis2", "Y"},
+      {"length2_um", "20"},
+      {"threshold", "0.01"},
+      {"line_distance_um", "1"},
+      {"analog_channel", "5"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("axis1", "Axis 1", params.at("axis1"), {"X", "Y", "Z"});
+    widget->addNumericParameter("length1_um", "Scan Length 1 (um)", params.at("length1_um"),
+      1, 500, 1, 0, "um");
+    widget->addDropdownParameter("axis2", "Axis 2", params.at("axis2"), {"X", "Y", "Z"});
+    widget->addNumericParameter("length2_um", "Scan Length 2 (um)", params.at("length2_um"),
+      1, 500, 1, 0, "um");
+    widget->addNumericParameter("threshold", "Signal Threshold (V)", params.at("threshold"),
+      0.001, 10, 0.001, 3, "V");
+    widget->addNumericParameter("line_distance_um", "Line Distance (um)", params.at("line_distance_um"),
+      0.1, 50, 0.1, 1, "um");
+    widget->addDropdownParameter("analog_channel", "Analog Channel", params.at("analog_channel"),
+      {"1", "2", "3", "4", "5", "6"});
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "PI Hexapod", params.at("device"),
+      "Select the PI hexapod device (hex-* naming required)");
+
+    table->addCategoryHeader("Axis 1 Configuration");
+    table->addDropdownProperty("axis1", "Axis", params.at("axis1"),
+      {"X", "Y", "Z"},
+      "First scan axis (typically X for line-to-line movement)");
+    table->addNumericProperty("length1_um", "Scan Length",
+      std::stod(params.at("length1_um")), 1, 500, 1, 0, "um",
+      "Scan range along axis 1 (in micrometers)");
+
+    table->addCategoryHeader("Axis 2 Configuration");
+    table->addDropdownProperty("axis2", "Axis", params.at("axis2"),
+      {"X", "Y", "Z"},
+      "Second scan axis (typically Y for scanning lines)");
+    table->addNumericProperty("length2_um", "Scan Length",
+      std::stod(params.at("length2_um")), 1, 500, 1, 0, "um",
+      "Scan range along axis 2 (in micrometers)");
+
+    table->addCategoryHeader("Scan Parameters");
+    table->addNumericProperty("threshold", "Signal Threshold",
+      std::stod(params.at("threshold")), 0.001, 10.0, 0.001, 3, "V",
+      "Minimum signal level to consider valid (voltage threshold)");
+    table->addNumericProperty("line_distance_um", "Line Spacing",
+      std::stod(params.at("line_distance_um")), 0.1, 50.0, 0.1, 1, "um",
+      "Distance between scan lines (affects scan resolution)");
+
+    table->addCategoryHeader("Analog Input");
+    table->addDropdownProperty("analog_channel", "ADC Channel", params.at("analog_channel"),
+      {"1", "2", "3", "4", "5", "6"},
+      "Analog input channel for signal feedback (1-6)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+
+    // Build FastAlignXY command
+    sequence->AddAction(device, "FastAlignXY", {
+      {"axis1", params.at("axis1")},
+      {"length1_um", params.at("length1_um")},
+      {"axis2", params.at("axis2")},
+      {"length2_um", params.at("length2_um")},
+      {"threshold", params.at("threshold")},
+      {"line_distance_um", params.at("line_distance_um")},
+      {"analog_channel", params.at("analog_channel")}
+    });
+
+    std::cout << "[MotionProcesses] Built Fast Align XY sequence for: " << step->userNickname
+              << " (device=" << device
+              << ", axis1=" << params.at("axis1") << "/" << params.at("length1_um") << "um"
+              << ", axis2=" << params.at("axis2") << "/" << params.at("length2_um") << "um"
+              << ", ch=" << params.at("analog_channel") << ")"
+              << std::endl;
+  }
+};
+
+//=============================================================================
+// FAST ALIGN Z-XY PLUGIN - PI hexapod FSM with Z-iteration (3D alignment)
+//=============================================================================
+
+class FastAlignZXYPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Fast Align Z-XY";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "PI hexapod FSM with Z-iteration: scans multiple Z levels to find optimal 3D position";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"axis1", "X"},
+      {"length1_um", "20"},
+      {"axis2", "Y"},
+      {"length2_um", "20"},
+      {"threshold", "0.01"},
+      {"line_distance_um", "1"},
+      {"analog_channel", "5"},
+      {"z_direction", "Z-"},
+      {"z_range_um", "5"},
+      {"z_step_um", "1"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("axis1", "Axis 1", params.at("axis1"), {"X", "Y", "Z"});
+    widget->addNumericParameter("length1_um", "Scan Length 1 (um)", params.at("length1_um"),
+      1, 500, 1, 0, "um");
+    widget->addDropdownParameter("axis2", "Axis 2", params.at("axis2"), {"X", "Y", "Z"});
+    widget->addNumericParameter("length2_um", "Scan Length 2 (um)", params.at("length2_um"),
+      1, 500, 1, 0, "um");
+    widget->addNumericParameter("threshold", "Signal Threshold (V)", params.at("threshold"),
+      0.001, 10, 0.001, 3, "V");
+    widget->addNumericParameter("line_distance_um", "Line Distance (um)", params.at("line_distance_um"),
+      0.1, 50, 0.1, 1, "um");
+    widget->addDropdownParameter("analog_channel", "Analog Channel", params.at("analog_channel"),
+      {"1", "2", "3", "4", "5", "6"});
+    widget->addDropdownParameter("z_direction", "Z Direction", params.at("z_direction"),
+      {"Z+", "Z-"});
+    widget->addNumericParameter("z_range_um", "Z Range (um)", params.at("z_range_um"),
+      1, 100, 1, 0, "um");
+    widget->addNumericParameter("z_step_um", "Z Step (um)", params.at("z_step_um"),
+      0.1, 10, 0.1, 1, "um");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "PI Hexapod", params.at("device"),
+      "Select the PI hexapod device (hex-* naming required)");
+
+    table->addCategoryHeader("XY Axis 1 Configuration");
+    table->addDropdownProperty("axis1", "Axis", params.at("axis1"),
+      {"X", "Y", "Z"},
+      "First XY scan axis (typically X for line-to-line movement)");
+    table->addNumericProperty("length1_um", "Scan Length",
+      std::stod(params.at("length1_um")), 1, 500, 1, 0, "um",
+      "Scan range along axis 1 (in micrometers)");
+
+    table->addCategoryHeader("XY Axis 2 Configuration");
+    table->addDropdownProperty("axis2", "Axis", params.at("axis2"),
+      {"X", "Y", "Z"},
+      "Second XY scan axis (typically Y for scanning lines)");
+    table->addNumericProperty("length2_um", "Scan Length",
+      std::stod(params.at("length2_um")), 1, 500, 1, 0, "um",
+      "Scan range along axis 2 (in micrometers)");
+
+    table->addCategoryHeader("XY Scan Parameters");
+    table->addNumericProperty("threshold", "Signal Threshold",
+      std::stod(params.at("threshold")), 0.001, 10.0, 0.001, 3, "V",
+      "Minimum signal level to consider valid (voltage threshold)");
+    table->addNumericProperty("line_distance_um", "Line Spacing",
+      std::stod(params.at("line_distance_um")), 0.1, 50.0, 0.1, 1, "um",
+      "Distance between scan lines (affects XY scan resolution)");
+
+    table->addCategoryHeader("Z-Iteration Parameters");
+    table->addDropdownProperty("z_direction", "Z Direction", params.at("z_direction"),
+      {"Z+", "Z-"},
+      "Z+ scans upward, Z- scans downward from current position");
+    table->addNumericProperty("z_range_um", "Z Range",
+      std::stod(params.at("z_range_um")), 1, 100, 1, 0, "um",
+      "Total Z distance to scan (in micrometers)");
+    table->addNumericProperty("z_step_um", "Z Step",
+      std::stod(params.at("z_step_um")), 0.1, 10.0, 0.1, 1, "um",
+      "Z increment between FSM iterations (smaller = more precise, slower)");
+
+    table->addCategoryHeader("Analog Input");
+    table->addDropdownProperty("analog_channel", "ADC Channel", params.at("analog_channel"),
+      {"1", "2", "3", "4", "5", "6"},
+      "Analog input channel for signal feedback (1-6)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+
+    // Build FastAlignZXY command
+    sequence->AddAction(device, "FastAlignZXY", {
+      {"axis1", params.at("axis1")},
+      {"length1_um", params.at("length1_um")},
+      {"axis2", params.at("axis2")},
+      {"length2_um", params.at("length2_um")},
+      {"threshold", params.at("threshold")},
+      {"line_distance_um", params.at("line_distance_um")},
+      {"analog_channel", params.at("analog_channel")},
+      {"z_direction", params.at("z_direction")},
+      {"z_range_um", params.at("z_range_um")},
+      {"z_step_um", params.at("z_step_um")}
+    });
+
+    std::cout << "[MotionProcesses] Built Fast Align Z-XY sequence for: " << step->userNickname
+              << " (device=" << device
+              << ", XY: " << params.at("axis1") << "/" << params.at("length1_um") << "um"
+              << " x " << params.at("axis2") << "/" << params.at("length2_um") << "um"
+              << ", Z: " << params.at("z_direction") << "/" << params.at("z_range_um") << "um"
+              << " step=" << params.at("z_step_um") << "um"
+              << ", ch=" << params.at("analog_channel") << ")"
+              << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -1726,8 +1981,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<ParallelMovePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMoveRelativePlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToContextXYPlugin>());
+      registry.RegisterPlugin(std::make_unique<FastAlignXYPlugin>());
+      registry.RegisterPlugin(std::make_unique<FastAlignZXYPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 17 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 19 motion process plugins" << std::endl;
     }
   };
 

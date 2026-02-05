@@ -12,9 +12,10 @@
 #include <QTextEdit>
 #include <QPlainTextEdit>
 #include <QLineEdit>
-#include <QTimer>  // ✅ ADDED for periodic channel refresh
-#include <QTabWidget>  // ✅ ADDED for tab layout
-#include <QGroupBox>  // ✅ ADDED for vision result group
+#include <QTimer>  // For periodic channel refresh
+#include <QTabWidget>  // For tab layout
+#include <QGroupBox>  // For vision result group
+#include <QComboBox>  // For slot selector
 #include <vector>
 #include <string>
 
@@ -236,13 +237,24 @@ private:
   bool m_isRetraceEditMode;          // ✅ Currently in retrace edit mode
   int m_retraceEditRecipeIndex;      // ✅ Recipe index being retrace-edited
 
+  // Slot System UI - Execute Tab (left panel)
+  QComboBox* m_slotSelector = nullptr;
+  QLabel* m_slotInfoLabel = nullptr;  // "X recipes in this slot"
+
+  // Slot System UI - Edit Widget
+  QComboBox* m_editSlotSelector = nullptr;
+  QPushButton* m_renameSlotButton = nullptr;
+  QPushButton* m_addSlotButton = nullptr;
+  QPushButton* m_deleteSlotButton = nullptr;
+  QPushButton* m_duplicateSlotButton = nullptr;
+
   // State
   QString m_currentProgramPath;
   bool m_isExecuting;
   int m_totalRecipes;
   int m_currentRecipeIndex;
-  std::vector<bool> m_completedRecipes;  // ✅ Track completed recipes (persists across executions)
-  int m_pendingChainRecipeIndex;         // ✅ Next recipe to run in chain execution mode (-1 = none)
+  std::vector<bool> m_completedRecipes;  // Track completed recipes (persists across executions)
+  int m_pendingChainRecipeIndex;         // Next recipe to run in chain execution mode (-1 = none)
 
   // ✅ Step-level progress tracking
   int m_currentRecipeTotalSteps;    // Total steps in current recipe
@@ -255,13 +267,23 @@ private:
   void createEditWidget();
   void createExecutionWidget();
 
+  // Slot System handlers
+  void onSlotSelectionChanged(int index);      // Execute tab slot dropdown
+  void onEditSlotSelectionChanged(int index);  // Edit widget slot dropdown
+  void onRenameSlot();
+  void onAddSlot();
+  void onDeleteSlot();
+  void onDuplicateSlot();
+  void updateSlotSelectors();  // Refresh both slot dropdowns
+  void updateSlotInfo();       // Update "X recipes" label
+
   // Edit widget slots
   void onAddRecipe();
   void onRemoveRecipe();
   void onMoveRecipeUp();
   void onMoveRecipeDown();
-  void onToggleRecipeEnabled();  // ✅ NEW: Toggle enable/disable for selected recipe
-  void onManageDependencies();    // ✅ NEW: Open dependency management dialog
+  void onToggleRecipeEnabled();  // Toggle enable/disable for selected recipe
+  void onManageDependencies();   // Open dependency management dialog
   void onSaveEdit();
   void onEditRecipeSelectionChanged();
   void loadRecipePreview(const std::string& recipeFilePath);

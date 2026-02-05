@@ -6,12 +6,25 @@
 #include <QSettings>
 #include <iostream>
 
-// QSettings keys for window geometry
+// QSettings keys for window geometry and camera selection
 static constexpr const char* SETTINGS_KEY_X = "GdiCameraWindow/x";
 static constexpr const char* SETTINGS_KEY_Y = "GdiCameraWindow/y";
 static constexpr const char* SETTINGS_KEY_WIDTH = "GdiCameraWindow/width";
 static constexpr const char* SETTINGS_KEY_HEIGHT = "GdiCameraWindow/height";
 static constexpr const char* SETTINGS_KEY_VISIBLE = "GdiCameraWindow/visible";
+static constexpr const char* SETTINGS_KEY_TARGET_CAMERA = "GdiCameraWindow/targetCamera";
+
+// Application Settings keys (shared with ApplicationSettingsPage)
+static constexpr const char* SETTINGS_KEY_VIEW_MODE = "CameraMonitor/ViewMode";
+static constexpr const char* SETTINGS_KEY_PRIMARY_CAMERA = "CameraMonitor/PrimaryCamera";
+static constexpr const char* SETTINGS_KEY_SECONDARY_CAMERA = "CameraMonitor/SecondaryCamera";
+static constexpr const char* SETTINGS_KEY_CHART_ENABLED = "ChartOverlay/Enabled";
+static constexpr const char* SETTINGS_KEY_CHART_CHANNEL = "ChartOverlay/LastChannel";
+static constexpr const char* SETTINGS_KEY_CHART_SCALE = "ChartOverlay/Scale";
+static constexpr const char* SETTINGS_KEY_VISION_ENABLED = "Vision/Enabled";
+static constexpr const char* SETTINGS_KEY_VISION_PROFILE = "Vision/LastProfile";
+static constexpr const char* SETTINGS_KEY_CROSSHAIR = "Tools/CrosshairEnabled";
+static constexpr const char* SETTINGS_KEY_CLICK_TO_MOVE = "Tools/ClickToMoveEnabled";
 
 GdiCameraWindowManager::GdiCameraWindowManager(QObject* parent)
     : QObject(parent) {
@@ -48,15 +61,39 @@ bool GdiCameraWindowManager::initialize() {
         return false;
     }
 
-    // Set target camera if specified
+    // Set camera manager for menu population
+    std::cout << "[GdiCameraWindowManager] Setting camera manager for menu..." << std::endl;
+    m_window->SetCameraManager(m_cameraManager);
+
+    // Auto-select first camera if none specified (prevents flickering with multiple cameras)
+    if (m_targetCameraId.empty()) {
+        auto cameraIds = m_cameraManager->GetCameraIds();
+        if (!cameraIds.empty()) {
+            m_targetCameraId = cameraIds.front();
+            std::cout << "[GdiCameraWindowManager] Auto-selecting first camera: " << m_targetCameraId << std::endl;
+        }
+    } else {
+        // Validate saved camera still exists
+        auto cameraIds = m_cameraManager->GetCameraIds();
+        bool found = false;
+        for (const auto& id : cameraIds) {
+            if (id == m_targetCameraId) {
+                found = true;
+                break;
+            }
+        }
+        if (!found && !cameraIds.empty()) {
+            std::cout << "[GdiCameraWindowManager] Saved camera '" << m_targetCameraId
+                      << "' not found, selecting first available: " << cameraIds.front() << std::endl;
+            m_targetCameraId = cameraIds.front();
+        }
+    }
+
+    // Set target camera
     if (!m_targetCameraId.empty()) {
         std::cout << "[GdiCameraWindowManager] Setting target camera: " << m_targetCameraId << std::endl;
         m_window->SetTargetCamera(m_targetCameraId);
     }
-
-    // Set camera manager for menu population
-    std::cout << "[GdiCameraWindowManager] Setting camera manager for menu..." << std::endl;
-    m_window->SetCameraManager(m_cameraManager);
 
     // Subscribe to camera frames
     std::cout << "[GdiCameraWindowManager] Subscribing to camera frames..." << std::endl;
@@ -73,6 +110,9 @@ bool GdiCameraWindowManager::initialize() {
         std::cout << "[GdiCameraWindowManager] Setting motion manager for click-to-move..." << std::endl;
         m_window->SetMotionManager(m_motionManager);
     }
+
+    // Apply application settings (view mode, overlays, etc.)
+    applyApplicationSettings();
 
     // Setup timer for Win32 message processing
     // This integrates the Win32 message loop with Qt's event loop
@@ -229,6 +269,67 @@ void GdiCameraWindowManager::processMessages() {
     GdiCameraWindow::ProcessMessages();
 }
 
+void GdiCameraWindowManager::applyApplicationSettings() {
+    if (!m_window) return;
+
+    QSettings settings("Fabrinet", "BobcatEngine");
+
+    // View Mode
+    QString viewMode = settings.value(SETTINGS_KEY_VIEW_MODE, "single").toString();
+    bool dualMode = (viewMode == "dual");
+    m_window->SetDualCameraMode(dualMode);
+    std::cout << "[GdiCameraWindowManager] View mode: " << (dualMode ? "dual" : "single") << std::endl;
+
+    // Primary Camera (override if set in app settings)
+    QString primaryCamera = settings.value(SETTINGS_KEY_PRIMARY_CAMERA, "").toString();
+    if (!primaryCamera.isEmpty() && primaryCamera != m_targetCameraId.c_str()) {
+        m_targetCameraId = primaryCamera.toStdString();
+        m_window->SetTargetCamera(m_targetCameraId);
+        std::cout << "[GdiCameraWindowManager] Primary camera from settings: " << m_targetCameraId << std::endl;
+    }
+
+    // Secondary Camera (for dual mode)
+    QString secondaryCamera = settings.value(SETTINGS_KEY_SECONDARY_CAMERA, "").toString();
+    if (!secondaryCamera.isEmpty()) {
+        m_window->SetSecondaryCameraId(secondaryCamera.toStdString());
+        std::cout << "[GdiCameraWindowManager] Secondary camera: " << secondaryCamera.toStdString() << std::endl;
+    }
+
+    // Chart Overlay
+    bool chartEnabled = settings.value(SETTINGS_KEY_CHART_ENABLED, "false").toString() == "true";
+    m_window->GetChartOverlay().SetEnabled(chartEnabled);
+    if (chartEnabled) {
+        QString lastChannel = settings.value(SETTINGS_KEY_CHART_CHANNEL, "").toString();
+        if (!lastChannel.isEmpty()) {
+            m_window->GetChartOverlay().SetChannelEnabled(lastChannel.toStdString(), true);
+            std::cout << "[GdiCameraWindowManager] Chart overlay enabled, channel: " << lastChannel.toStdString() << std::endl;
+        }
+    }
+
+    // Chart Overlay Scale
+    float overlayScale = settings.value(SETTINGS_KEY_CHART_SCALE, 1.0f).toFloat();
+    m_window->SetOverlayScale(overlayScale);
+    std::cout << "[GdiCameraWindowManager] Chart overlay scale: " << overlayScale << std::endl;
+
+    // Setup callback to save overlay scale when changed via menu
+    m_window->SetOverlayScaleChangedCallback([](float newScale) {
+        QSettings settings("Fabrinet", "BobcatEngine");
+        settings.setValue(SETTINGS_KEY_CHART_SCALE, newScale);
+        settings.sync();
+        std::cout << "[GdiCameraWindowManager] Saved overlay scale: " << newScale << std::endl;
+    });
+
+    // Tools
+    bool crosshairEnabled = settings.value(SETTINGS_KEY_CROSSHAIR, "false").toString() == "true";
+    m_window->SetCrosshairEnabled(crosshairEnabled);
+
+    bool clickToMoveEnabled = settings.value(SETTINGS_KEY_CLICK_TO_MOVE, "false").toString() == "true";
+    m_window->SetClickToMoveEnabled(clickToMoveEnabled);
+
+    std::cout << "[GdiCameraWindowManager] Crosshair: " << (crosshairEnabled ? "on" : "off")
+              << ", Click-to-move: " << (clickToMoveEnabled ? "on" : "off") << std::endl;
+}
+
 void GdiCameraWindowManager::saveWindowGeometry() {
     if (!m_window || !m_window->GetHwnd()) {
         return;
@@ -250,9 +351,36 @@ void GdiCameraWindowManager::saveWindowGeometry() {
         settings.setValue(SETTINGS_KEY_HEIGHT, height);
         settings.setValue(SETTINGS_KEY_VISIBLE, visible);
 
+        // Save the current target camera selection
+        std::string currentCamera = m_window->GetTargetCamera();
+        settings.setValue(SETTINGS_KEY_TARGET_CAMERA, QString::fromStdString(currentCamera));
+
+        // Save current application settings state
+        // View mode
+        settings.setValue(SETTINGS_KEY_VIEW_MODE, m_window->IsDualCameraMode() ? "dual" : "single");
+
+        // Cameras
+        settings.setValue(SETTINGS_KEY_PRIMARY_CAMERA, QString::fromStdString(m_window->GetTargetCamera()));
+        settings.setValue(SETTINGS_KEY_SECONDARY_CAMERA, QString::fromStdString(m_window->GetSecondaryCameraId()));
+
+        // Chart overlay
+        settings.setValue(SETTINGS_KEY_CHART_ENABLED, m_window->GetChartOverlay().IsEnabled() ? "true" : "false");
+        auto enabledChannels = m_window->GetChartOverlay().GetEnabledChannels();
+        if (!enabledChannels.empty()) {
+            settings.setValue(SETTINGS_KEY_CHART_CHANNEL, QString::fromStdString(enabledChannels.front()));
+        }
+        settings.setValue(SETTINGS_KEY_CHART_SCALE, m_window->GetOverlayScale());
+
+        // Tools
+        settings.setValue(SETTINGS_KEY_CROSSHAIR, m_window->IsCrosshairEnabled() ? "true" : "false");
+        settings.setValue(SETTINGS_KEY_CLICK_TO_MOVE, m_window->IsClickToMoveEnabled() ? "true" : "false");
+
+        settings.sync();
+
         std::cout << "[GdiCameraWindowManager] Saved window geometry: "
                   << x << "," << y << " " << width << "x" << height
-                  << " visible=" << (visible ? "true" : "false") << std::endl;
+                  << " visible=" << (visible ? "true" : "false")
+                  << " camera=" << (currentCamera.empty() ? "(none)" : currentCamera) << std::endl;
     }
 }
 
@@ -272,6 +400,11 @@ void GdiCameraWindowManager::loadWindowGeometry() {
     m_initialHeight = settings.value(SETTINGS_KEY_HEIGHT, 600).toInt();
     m_restoreVisible = settings.value(SETTINGS_KEY_VISIBLE, true).toBool();
 
+    // Load saved target camera selection
+    if (settings.contains(SETTINGS_KEY_TARGET_CAMERA)) {
+        m_targetCameraId = settings.value(SETTINGS_KEY_TARGET_CAMERA).toString().toStdString();
+    }
+
     // Validate position is on screen (in case screen configuration changed)
     if (m_initialX < -100) m_initialX = 100;
     if (m_initialY < -100) m_initialY = 100;
@@ -281,5 +414,6 @@ void GdiCameraWindowManager::loadWindowGeometry() {
     std::cout << "[GdiCameraWindowManager] Loaded window geometry: "
               << m_initialX << "," << m_initialY << " "
               << m_initialWidth << "x" << m_initialHeight
-              << " visible=" << (m_restoreVisible ? "true" : "false") << std::endl;
+              << " visible=" << (m_restoreVisible ? "true" : "false")
+              << " camera=" << (m_targetCameraId.empty() ? "(none)" : m_targetCameraId) << std::endl;
 }

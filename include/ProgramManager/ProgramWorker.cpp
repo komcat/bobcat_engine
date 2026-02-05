@@ -111,6 +111,12 @@ void ProgramWorker::resetCompletionTracking()
 void ProgramWorker::run()
 {
   emit logMessage("ProgramWorker run() started");
+
+  // Log active slot info
+  int activeSlotIndex = m_programManager->getActiveSlotIndex();
+  QString slotName = QString::fromStdString(m_programManager->getSlotName(activeSlotIndex));
+  emit logMessage(QString("Executing slot: %1 (index %2)").arg(slotName).arg(activeSlotIndex));
+
   try {
     // Choose execution mode
     if (m_loopEnabled && !m_loopRecipeIndices.empty()) {

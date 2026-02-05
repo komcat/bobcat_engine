@@ -259,6 +259,11 @@ void MainWindow::createPages()
   m_applicationSettingsPage = new ApplicationSettingsPage(m_context, this);
   connect(m_applicationSettingsPage, &ApplicationSettingsPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
+  // Connect settings changes to GDI camera window manager
+  if (m_context && m_context->gdiCameraWindowManager) {
+    connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+      m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
+  }
   m_pageStack->addWidget(m_applicationSettingsPage);
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;

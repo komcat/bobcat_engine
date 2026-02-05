@@ -21,71 +21,370 @@ ProgramManager::~ProgramManager()
 void ProgramManager::newProgram()
 {
   m_currentProgram = Program();
-  // Program() constructor initializes with one "Default" dependency set
+  // Program() constructor initializes with one default slot containing one "Default" dependency set
   m_currentFilePath.clear();
-  m_graphPositions.clear();
-  std::cout << "[ProgramManager] New program created with 1 default dependency set" << std::endl;
+  std::cout << "[ProgramManager] New program created with 1 default slot" << std::endl;
+}
+
+// ============================================================================
+// RECIPE SLOT MANAGEMENT
+// ============================================================================
+
+int ProgramManager::createSlot(const std::string& name)
+{
+  if (static_cast<int>(m_currentProgram.recipeSlots.size()) >= MAX_RECIPE_SLOTS) {
+    std::cerr << "[ProgramManager] Cannot create slot: max " << MAX_RECIPE_SLOTS << " reached" << std::endl;
+    return -1;
+  }
+
+  std::string slotName = name.empty()
+    ? "Slot " + std::to_string(m_currentProgram.recipeSlots.size() + 1)
+    : name;
+
+  m_currentProgram.recipeSlots.emplace_back(slotName);
+  int newIndex = static_cast<int>(m_currentProgram.recipeSlots.size()) - 1;
+
+  std::cout << "[ProgramManager] Created slot '" << slotName << "' at index " << newIndex << std::endl;
+  return newIndex;
+}
+
+bool ProgramManager::deleteSlot(int slotIndex)
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid slot index: " << slotIndex << std::endl;
+    return false;
+  }
+
+  if (m_currentProgram.recipeSlots.size() == 1) {
+    std::cerr << "[ProgramManager] Cannot delete last slot" << std::endl;
+    return false;
+  }
+
+  std::string deletedName = m_currentProgram.recipeSlots[slotIndex].name;
+  m_currentProgram.recipeSlots.erase(m_currentProgram.recipeSlots.begin() + slotIndex);
+
+  // Adjust active index if needed
+  if (m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    m_currentProgram.activeSlotIndex = static_cast<int>(m_currentProgram.recipeSlots.size()) - 1;
+  } else if (m_currentProgram.activeSlotIndex > slotIndex) {
+    m_currentProgram.activeSlotIndex--;
+  }
+
+  std::cout << "[ProgramManager] Deleted slot '" << deletedName << "'" << std::endl;
+  return true;
+}
+
+bool ProgramManager::renameSlot(int slotIndex, const std::string& name)
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid slot index: " << slotIndex << std::endl;
+    return false;
+  }
+
+  std::string oldName = m_currentProgram.recipeSlots[slotIndex].name;
+  m_currentProgram.recipeSlots[slotIndex].name = name;
+
+  std::cout << "[ProgramManager] Renamed slot from '" << oldName << "' to '" << name << "'" << std::endl;
+  return true;
+}
+
+int ProgramManager::duplicateSlot(int sourceIndex, const std::string& name)
+{
+  if (sourceIndex < 0 || sourceIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid source slot index: " << sourceIndex << std::endl;
+    return -1;
+  }
+
+  if (static_cast<int>(m_currentProgram.recipeSlots.size()) >= MAX_RECIPE_SLOTS) {
+    std::cerr << "[ProgramManager] Cannot duplicate: max " << MAX_RECIPE_SLOTS << " reached" << std::endl;
+    return -1;
+  }
+
+  const RecipeSlot& source = m_currentProgram.recipeSlots[sourceIndex];
+  std::string slotName = name.empty() ? source.name + " (Copy)" : name;
+
+  // Create new slot
+  m_currentProgram.recipeSlots.emplace_back(slotName);
+  RecipeSlot& newSlot = m_currentProgram.recipeSlots.back();
+
+  // Copy recipes
+  for (const auto& recipe : source.recipes) {
+    auto newRecipe = std::make_unique<RecipeReference>(
+      recipe->recipeFilePath, recipe->displayName, recipe->enabled);
+    newRecipe->includeInLoop = recipe->includeInLoop;
+    newSlot.recipes.push_back(std::move(newRecipe));
+  }
+
+  // Copy dependency sets
+  newSlot.dependencySets = source.dependencySets;
+  newSlot.activeDependencySetIndex = source.activeDependencySetIndex;
+
+  // Copy graph positions
+  newSlot.graphPositions = source.graphPositions;
+
+  int newIndex = static_cast<int>(m_currentProgram.recipeSlots.size()) - 1;
+  std::cout << "[ProgramManager] Duplicated slot '" << source.name
+            << "' to '" << slotName << "' at index " << newIndex << std::endl;
+  return newIndex;
+}
+
+int ProgramManager::getSlotCount() const
+{
+  return static_cast<int>(m_currentProgram.recipeSlots.size());
+}
+
+std::string ProgramManager::getSlotName(int slotIndex) const
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return "";
+  }
+  return m_currentProgram.recipeSlots[slotIndex].name;
+}
+
+bool ProgramManager::setActiveSlot(int slotIndex)
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid slot index: " << slotIndex << std::endl;
+    return false;
+  }
+
+  m_currentProgram.activeSlotIndex = slotIndex;
+  std::cout << "[ProgramManager] Set active slot to index " << slotIndex
+            << " ('" << m_currentProgram.recipeSlots[slotIndex].name << "')" << std::endl;
+  return true;
+}
+
+int ProgramManager::getActiveSlotIndex() const
+{
+  return m_currentProgram.activeSlotIndex;
+}
+
+RecipeSlot* ProgramManager::getSlot(int slotIndex)
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return nullptr;
+  }
+  return &m_currentProgram.recipeSlots[slotIndex];
+}
+
+const RecipeSlot* ProgramManager::getSlot(int slotIndex) const
+{
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return nullptr;
+  }
+  return &m_currentProgram.recipeSlots[slotIndex];
+}
+
+std::vector<std::string> ProgramManager::getSlotNames() const
+{
+  std::vector<std::string> names;
+  for (const auto& slot : m_currentProgram.recipeSlots) {
+    names.push_back(slot.name);
+  }
+  return names;
+}
+
+bool ProgramManager::moveRecipeToSlot(int recipeIndex, int targetSlotIndex)
+{
+  // Validate source (active slot)
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid active slot index" << std::endl;
+    return false;
+  }
+
+  // Validate target slot
+  if (targetSlotIndex < 0 ||
+      targetSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid target slot index: " << targetSlotIndex << std::endl;
+    return false;
+  }
+
+  // Cannot move to same slot
+  if (targetSlotIndex == m_currentProgram.activeSlotIndex) {
+    std::cerr << "[ProgramManager] Cannot move recipe to the same slot" << std::endl;
+    return false;
+  }
+
+  auto& sourceSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  auto& targetSlot = m_currentProgram.recipeSlots[targetSlotIndex];
+
+  // Validate recipe index
+  if (recipeIndex < 0 || recipeIndex >= static_cast<int>(sourceSlot.recipes.size())) {
+    std::cerr << "[ProgramManager] Invalid recipe index: " << recipeIndex << std::endl;
+    return false;
+  }
+
+  // Get recipe info before moving
+  std::string recipeName = sourceSlot.recipes[recipeIndex]->displayName;
+
+  // Move the recipe (transfer ownership)
+  targetSlot.recipes.push_back(std::move(sourceSlot.recipes[recipeIndex]));
+  sourceSlot.recipes.erase(sourceSlot.recipes.begin() + recipeIndex);
+
+  // Clean up dependencies in source slot that reference this recipe
+  for (auto& depSet : sourceSlot.dependencySets) {
+    // Remove dependencies where this recipe was a dependent
+    depSet.dependencies.erase(recipeIndex);
+
+    // Update indices for remaining recipes and remove references to moved recipe
+    std::map<int, std::vector<DependencyLink>> updatedDeps;
+    for (auto& [depRecipeIdx, links] : depSet.dependencies) {
+      int newIdx = (depRecipeIdx > recipeIndex) ? depRecipeIdx - 1 : depRecipeIdx;
+
+      // Filter out links to the moved recipe and update remaining indices
+      std::vector<DependencyLink> updatedLinks;
+      for (auto& link : links) {
+        if (link.predecessorIndex != recipeIndex) {
+          int newPredIdx = (link.predecessorIndex > recipeIndex) ? link.predecessorIndex - 1 : link.predecessorIndex;
+          updatedLinks.emplace_back(newPredIdx, link.condition);
+        }
+      }
+
+      if (!updatedLinks.empty()) {
+        updatedDeps[newIdx] = std::move(updatedLinks);
+      }
+    }
+    depSet.dependencies = std::move(updatedDeps);
+  }
+
+  // Update graph positions in source slot
+  std::map<int, GraphNodePosition> updatedPositions;
+  for (auto& [posIdx, pos] : sourceSlot.graphPositions) {
+    if (posIdx != recipeIndex) {
+      int newIdx = (posIdx > recipeIndex) ? posIdx - 1 : posIdx;
+      updatedPositions[newIdx] = pos;
+    }
+  }
+  sourceSlot.graphPositions = std::move(updatedPositions);
+
+  std::cout << "[ProgramManager] Moved recipe '" << recipeName
+            << "' from slot '" << sourceSlot.name
+            << "' to slot '" << targetSlot.name << "'" << std::endl;
+
+  return true;
+}
+
+// ============================================================================
+// RECIPE COUNT (active slot)
+// ============================================================================
+
+int ProgramManager::getRecipeCount() const
+{
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return 0;
+  }
+  return static_cast<int>(m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex].recipes.size());
+}
+
+const std::vector<std::unique_ptr<RecipeReference>>& ProgramManager::getAllRecipes() const
+{
+  static std::vector<std::unique_ptr<RecipeReference>> emptyVec;
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return emptyVec;
+  }
+  return m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex].recipes;
 }
 
 void ProgramManager::addRecipe(const std::string& recipeFilePath, const std::string& displayName)
 {
-  auto recipeRef = std::make_unique<RecipeReference>(recipeFilePath, displayName);
-  m_currentProgram.recipes.push_back(std::move(recipeRef));
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid active slot index" << std::endl;
+    return;
+  }
 
-  std::cout << "[ProgramManager] Added recipe: " << displayName
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  auto recipeRef = std::make_unique<RecipeReference>(recipeFilePath, displayName);
+  activeSlot.recipes.push_back(std::move(recipeRef));
+
+  std::cout << "[ProgramManager] Added recipe to slot '" << activeSlot.name << "': " << displayName
     << " (" << recipeFilePath << ")" << std::endl;
 }
 
 void ProgramManager::removeRecipe(int index)
 {
-  if (index < 0 || index >= static_cast<int>(m_currentProgram.recipes.size())) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid active slot index" << std::endl;
+    return;
+  }
+
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  if (index < 0 || index >= static_cast<int>(activeSlot.recipes.size())) {
     std::cerr << "[ProgramManager] Invalid index for removeRecipe: " << index << std::endl;
     return;
   }
 
-  std::string removedName = m_currentProgram.recipes[index]->displayName;
-  m_currentProgram.recipes.erase(m_currentProgram.recipes.begin() + index);
+  std::string removedName = activeSlot.recipes[index]->displayName;
+  activeSlot.recipes.erase(activeSlot.recipes.begin() + index);
 
   std::cout << "[ProgramManager] Removed recipe at index " << index
-    << " (" << removedName << ")" << std::endl;
+    << " (" << removedName << ") from slot '" << activeSlot.name << "'" << std::endl;
 }
 
 bool ProgramManager::moveRecipeUp(int index)
 {
-  if (index <= 0 || index >= static_cast<int>(m_currentProgram.recipes.size())) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
     return false;
   }
 
-  std::swap(m_currentProgram.recipes[index], m_currentProgram.recipes[index - 1]);
-  std::cout << "[ProgramManager] Moved recipe " << index << " up" << std::endl;
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  if (index <= 0 || index >= static_cast<int>(activeSlot.recipes.size())) {
+    return false;
+  }
+
+  std::swap(activeSlot.recipes[index], activeSlot.recipes[index - 1]);
+  std::cout << "[ProgramManager] Moved recipe " << index << " up in slot '" << activeSlot.name << "'" << std::endl;
   return true;
 }
 
 bool ProgramManager::moveRecipeDown(int index)
 {
-  if (index < 0 || index >= static_cast<int>(m_currentProgram.recipes.size()) - 1) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
     return false;
   }
 
-  std::swap(m_currentProgram.recipes[index], m_currentProgram.recipes[index + 1]);
-  std::cout << "[ProgramManager] Moved recipe " << index << " down" << std::endl;
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  if (index < 0 || index >= static_cast<int>(activeSlot.recipes.size()) - 1) {
+    return false;
+  }
+
+  std::swap(activeSlot.recipes[index], activeSlot.recipes[index + 1]);
+  std::cout << "[ProgramManager] Moved recipe " << index << " down in slot '" << activeSlot.name << "'" << std::endl;
   return true;
 }
 
 RecipeReference* ProgramManager::getRecipe(int index)
 {
-  if (index < 0 || index >= static_cast<int>(m_currentProgram.recipes.size())) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
     return nullptr;
   }
-  return m_currentProgram.recipes[index].get();
+
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  if (index < 0 || index >= static_cast<int>(activeSlot.recipes.size())) {
+    return nullptr;
+  }
+  return activeSlot.recipes[index].get();
 }
 
 const RecipeReference* ProgramManager::getRecipe(int index) const
 {
-  if (index < 0 || index >= static_cast<int>(m_currentProgram.recipes.size())) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
     return nullptr;
   }
-  return m_currentProgram.recipes[index].get();
+
+  const auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  if (index < 0 || index >= static_cast<int>(activeSlot.recipes.size())) {
+    return nullptr;
+  }
+  return activeSlot.recipes[index].get();
 }
 
 void ProgramManager::setRecipeEnabled(int index, bool enabled)
@@ -117,8 +416,14 @@ void ProgramManager::setRecipeIncludeInLoop(int index, bool include)
 std::vector<int> ProgramManager::getLoopRecipeIndices() const
 {
   std::vector<int> indices;
-  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
-    if (m_currentProgram.recipes[i]->includeInLoop && m_currentProgram.recipes[i]->enabled) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return indices;
+  }
+
+  const auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  for (size_t i = 0; i < activeSlot.recipes.size(); i++) {
+    if (activeSlot.recipes[i]->includeInLoop && activeSlot.recipes[i]->enabled) {
       indices.push_back(static_cast<int>(i));
     }
   }
@@ -128,8 +433,14 @@ std::vector<int> ProgramManager::getLoopRecipeIndices() const
 std::vector<int> ProgramManager::getNonLoopRecipeIndices() const
 {
   std::vector<int> indices;
-  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
-    if (!m_currentProgram.recipes[i]->includeInLoop && m_currentProgram.recipes[i]->enabled) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return indices;
+  }
+
+  const auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  for (size_t i = 0; i < activeSlot.recipes.size(); i++) {
+    if (!activeSlot.recipes[i]->includeInLoop && activeSlot.recipes[i]->enabled) {
       indices.push_back(static_cast<int>(i));
     }
   }
@@ -138,7 +449,13 @@ std::vector<int> ProgramManager::getNonLoopRecipeIndices() const
 
 bool ProgramManager::hasLoopRecipes() const
 {
-  for (const auto& recipe : m_currentProgram.recipes) {
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    return false;
+  }
+
+  const auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  for (const auto& recipe : activeSlot.recipes) {
     if (recipe->includeInLoop && recipe->enabled) {
       return true;
     }
@@ -150,43 +467,75 @@ bool ProgramManager::hasLoopRecipes() const
 // DEPENDENCY SET MANAGEMENT
 // ============================================================================
 
+// Helper to get active slot (internal use)
+static RecipeSlot* getActiveSlotMutable(Program& program)
+{
+  if (program.activeSlotIndex < 0 ||
+      program.activeSlotIndex >= static_cast<int>(program.recipeSlots.size())) {
+    return nullptr;
+  }
+  return &program.recipeSlots[program.activeSlotIndex];
+}
+
+static const RecipeSlot* getActiveSlotConst(const Program& program)
+{
+  if (program.activeSlotIndex < 0 ||
+      program.activeSlotIndex >= static_cast<int>(program.recipeSlots.size())) {
+    return nullptr;
+  }
+  return &program.recipeSlots[program.activeSlotIndex];
+}
+
 int ProgramManager::createDependencySet(const std::string& name)
 {
-  if (static_cast<int>(m_currentProgram.dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return -1;
+  }
+
+  if (static_cast<int>(activeSlot->dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
     std::cerr << "[ProgramManager] Cannot create dependency set: max " << MAX_DEPENDENCY_SETS << " reached" << std::endl;
     return -1;
   }
 
-  m_currentProgram.dependencySets.emplace_back(name);
-  int newIndex = static_cast<int>(m_currentProgram.dependencySets.size()) - 1;
+  activeSlot->dependencySets.emplace_back(name);
+  int newIndex = static_cast<int>(activeSlot->dependencySets.size()) - 1;
 
-  std::cout << "[ProgramManager] Created dependency set '" << name << "' at index " << newIndex << std::endl;
+  std::cout << "[ProgramManager] Created dependency set '" << name << "' at index " << newIndex
+            << " in slot '" << activeSlot->name << "'" << std::endl;
   return newIndex;
 }
 
 bool ProgramManager::deleteDependencySet(int setIndex)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return false;
+  }
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
     return false;
   }
 
-  if (m_currentProgram.dependencySets.size() == 1) {
+  if (activeSlot->dependencySets.size() == 1) {
     std::cerr << "[ProgramManager] Cannot delete last dependency set" << std::endl;
     return false;
   }
 
-  if (setIndex == m_currentProgram.activeDependencySetIndex) {
+  if (setIndex == activeSlot->activeDependencySetIndex) {
     std::cerr << "[ProgramManager] Cannot delete active (POR) dependency set" << std::endl;
     return false;
   }
 
-  std::string deletedName = m_currentProgram.dependencySets[setIndex].name;
-  m_currentProgram.dependencySets.erase(m_currentProgram.dependencySets.begin() + setIndex);
+  std::string deletedName = activeSlot->dependencySets[setIndex].name;
+  activeSlot->dependencySets.erase(activeSlot->dependencySets.begin() + setIndex);
 
   // Adjust active index if needed
-  if (m_currentProgram.activeDependencySetIndex > setIndex) {
-    m_currentProgram.activeDependencySetIndex--;
+  if (activeSlot->activeDependencySetIndex > setIndex) {
+    activeSlot->activeDependencySetIndex--;
   }
 
   std::cout << "[ProgramManager] Deleted dependency set '" << deletedName << "'" << std::endl;
@@ -195,13 +544,19 @@ bool ProgramManager::deleteDependencySet(int setIndex)
 
 bool ProgramManager::renameDependencySet(int setIndex, const std::string& name)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return false;
+  }
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
     return false;
   }
 
-  std::string oldName = m_currentProgram.dependencySets[setIndex].name;
-  m_currentProgram.dependencySets[setIndex].name = name;
+  std::string oldName = activeSlot->dependencySets[setIndex].name;
+  activeSlot->dependencySets[setIndex].name = name;
 
   std::cout << "[ProgramManager] Renamed dependency set from '" << oldName << "' to '" << name << "'" << std::endl;
   return true;
@@ -209,57 +564,76 @@ bool ProgramManager::renameDependencySet(int setIndex, const std::string& name)
 
 int ProgramManager::duplicateDependencySet(int sourceIndex, const std::string& name)
 {
-  if (sourceIndex < 0 || sourceIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return -1;
+  }
+
+  if (sourceIndex < 0 || sourceIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     std::cerr << "[ProgramManager] Invalid source set index: " << sourceIndex << std::endl;
     return -1;
   }
 
-  if (static_cast<int>(m_currentProgram.dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
+  if (static_cast<int>(activeSlot->dependencySets.size()) >= MAX_DEPENDENCY_SETS) {
     std::cerr << "[ProgramManager] Cannot duplicate: max " << MAX_DEPENDENCY_SETS << " reached" << std::endl;
     return -1;
   }
 
   // Create new set with copied dependencies
   DependencySet newSet(name);
-  newSet.dependencies = m_currentProgram.dependencySets[sourceIndex].dependencies;
-  m_currentProgram.dependencySets.push_back(newSet);
+  newSet.dependencies = activeSlot->dependencySets[sourceIndex].dependencies;
+  activeSlot->dependencySets.push_back(newSet);
 
-  int newIndex = static_cast<int>(m_currentProgram.dependencySets.size()) - 1;
+  int newIndex = static_cast<int>(activeSlot->dependencySets.size()) - 1;
   std::cout << "[ProgramManager] Duplicated dependency set '"
-            << m_currentProgram.dependencySets[sourceIndex].name
+            << activeSlot->dependencySets[sourceIndex].name
             << "' to '" << name << "' at index " << newIndex << std::endl;
   return newIndex;
 }
 
 int ProgramManager::getDependencySetCount() const
 {
-  return static_cast<int>(m_currentProgram.dependencySets.size());
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return 0;
+  return static_cast<int>(activeSlot->dependencySets.size());
 }
 
 std::string ProgramManager::getDependencySetName(int setIndex) const
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return "";
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return "";
   }
-  return m_currentProgram.dependencySets[setIndex].name;
+  return activeSlot->dependencySets[setIndex].name;
 }
 
 bool ProgramManager::setActiveDependencySet(int setIndex)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return false;
+  }
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
     return false;
   }
 
-  m_currentProgram.activeDependencySetIndex = setIndex;
+  activeSlot->activeDependencySetIndex = setIndex;
   std::cout << "[ProgramManager] Set active dependency set to index " << setIndex
-            << " ('" << m_currentProgram.dependencySets[setIndex].name << "')" << std::endl;
+            << " ('" << activeSlot->dependencySets[setIndex].name << "')" << std::endl;
   return true;
 }
 
 int ProgramManager::getActiveDependencySetIndex() const
 {
-  return m_currentProgram.activeDependencySetIndex;
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return 0;
+  return activeSlot->activeDependencySetIndex;
 }
 
 // ============================================================================
@@ -269,7 +643,13 @@ int ProgramManager::getActiveDependencySetIndex() const
 bool ProgramManager::addRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex,
                                           const std::string& condition)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) {
+    std::cerr << "[ProgramManager] No active slot" << std::endl;
+    return false;
+  }
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     std::cerr << "[ProgramManager] Invalid set index: " << setIndex << std::endl;
     return false;
   }
@@ -285,7 +665,7 @@ bool ProgramManager::addRecipeDependency(int setIndex, int recipeIndex, int prer
     return false;
   }
 
-  auto& deps = m_currentProgram.dependencySets[setIndex].dependencies[recipeIndex];
+  auto& deps = activeSlot->dependencySets[setIndex].dependencies[recipeIndex];
 
   // Check if dependency already exists
   auto it = std::find_if(deps.begin(), deps.end(),
@@ -313,11 +693,14 @@ bool ProgramManager::addRecipeDependency(int setIndex, int recipeIndex, int prer
 
 void ProgramManager::removeRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) return;
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return;
   }
 
-  auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto& depsMap = activeSlot->dependencySets[setIndex].dependencies;
   auto mapIt = depsMap.find(recipeIndex);
   if (mapIt == depsMap.end()) return;
 
@@ -340,21 +723,27 @@ void ProgramManager::removeRecipeDependency(int setIndex, int recipeIndex, int p
 
 void ProgramManager::clearRecipeDependencies(int setIndex, int recipeIndex)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) return;
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return;
   }
 
-  m_currentProgram.dependencySets[setIndex].dependencies.erase(recipeIndex);
+  activeSlot->dependencySets[setIndex].dependencies.erase(recipeIndex);
   std::cout << "[ProgramManager] Set " << setIndex << ": Cleared all dependencies for Recipe " << recipeIndex << std::endl;
 }
 
 std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int setIndex, int recipeIndex) const
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return {};
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return {};
   }
 
-  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  const auto& depsMap = activeSlot->dependencySets[setIndex].dependencies;
   auto it = depsMap.find(recipeIndex);
   if (it != depsMap.end()) {
     return it->second;
@@ -364,11 +753,14 @@ std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int setIndex, 
 
 bool ProgramManager::hasRecipeDependency(int setIndex, int recipeIndex, int prerequisiteIndex) const
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return false;
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return false;
   }
 
-  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  const auto& depsMap = activeSlot->dependencySets[setIndex].dependencies;
   auto mapIt = depsMap.find(recipeIndex);
   if (mapIt == depsMap.end()) return false;
 
@@ -382,11 +774,14 @@ bool ProgramManager::hasRecipeDependency(int setIndex, int recipeIndex, int prer
 void ProgramManager::setDependencyCondition(int setIndex, int recipeIndex, int prerequisiteIndex,
                                              const std::string& condition)
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) return;
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return;
   }
 
-  auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  auto& depsMap = activeSlot->dependencySets[setIndex].dependencies;
   auto mapIt = depsMap.find(recipeIndex);
   if (mapIt == depsMap.end()) return;
 
@@ -406,11 +801,14 @@ void ProgramManager::setDependencyCondition(int setIndex, int recipeIndex, int p
 
 std::string ProgramManager::getDependencyCondition(int setIndex, int recipeIndex, int prerequisiteIndex) const
 {
-  if (setIndex < 0 || setIndex >= static_cast<int>(m_currentProgram.dependencySets.size())) {
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return "";
+
+  if (setIndex < 0 || setIndex >= static_cast<int>(activeSlot->dependencySets.size())) {
     return "";
   }
 
-  const auto& depsMap = m_currentProgram.dependencySets[setIndex].dependencies;
+  const auto& depsMap = activeSlot->dependencySets[setIndex].dependencies;
   auto mapIt = depsMap.find(recipeIndex);
   if (mapIt == depsMap.end()) return "";
 
@@ -433,42 +831,42 @@ std::string ProgramManager::getDependencyCondition(int setIndex, int recipeIndex
 bool ProgramManager::addRecipeDependency(int recipeIndex, int prerequisiteIndex,
                                           const std::string& condition)
 {
-  return addRecipeDependency(m_currentProgram.activeDependencySetIndex,
+  return addRecipeDependency(getActiveDependencySetIndex(),
                              recipeIndex, prerequisiteIndex, condition);
 }
 
 void ProgramManager::removeRecipeDependency(int recipeIndex, int prerequisiteIndex)
 {
-  removeRecipeDependency(m_currentProgram.activeDependencySetIndex,
+  removeRecipeDependency(getActiveDependencySetIndex(),
                          recipeIndex, prerequisiteIndex);
 }
 
 void ProgramManager::clearRecipeDependencies(int recipeIndex)
 {
-  clearRecipeDependencies(m_currentProgram.activeDependencySetIndex, recipeIndex);
+  clearRecipeDependencies(getActiveDependencySetIndex(), recipeIndex);
 }
 
 std::vector<DependencyLink> ProgramManager::getRecipeDependencies(int recipeIndex) const
 {
-  return getRecipeDependencies(m_currentProgram.activeDependencySetIndex, recipeIndex);
+  return getRecipeDependencies(getActiveDependencySetIndex(), recipeIndex);
 }
 
 bool ProgramManager::hasRecipeDependency(int recipeIndex, int prerequisiteIndex) const
 {
-  return hasRecipeDependency(m_currentProgram.activeDependencySetIndex,
+  return hasRecipeDependency(getActiveDependencySetIndex(),
                              recipeIndex, prerequisiteIndex);
 }
 
 void ProgramManager::setDependencyCondition(int recipeIndex, int prerequisiteIndex,
                                              const std::string& condition)
 {
-  setDependencyCondition(m_currentProgram.activeDependencySetIndex,
+  setDependencyCondition(getActiveDependencySetIndex(),
                          recipeIndex, prerequisiteIndex, condition);
 }
 
 std::string ProgramManager::getDependencyCondition(int recipeIndex, int prerequisiteIndex) const
 {
-  return getDependencyCondition(m_currentProgram.activeDependencySetIndex,
+  return getDependencyCondition(getActiveDependencySetIndex(),
                                 recipeIndex, prerequisiteIndex);
 }
 
@@ -486,13 +884,19 @@ bool ProgramManager::validateDependencies(std::vector<std::string>& errors) cons
 {
   errors.clear();
 
-  // Validate all dependency sets
-  for (size_t setIdx = 0; setIdx < m_currentProgram.dependencySets.size(); setIdx++) {
-    const auto& depSet = m_currentProgram.dependencySets[setIdx];
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) {
+    errors.push_back("No active slot");
+    return false;
+  }
+
+  // Validate all dependency sets in active slot
+  for (size_t setIdx = 0; setIdx < activeSlot->dependencySets.size(); setIdx++) {
+    const auto& depSet = activeSlot->dependencySets[setIdx];
 
     for (const auto& [recipeIndex, deps] : depSet.dependencies) {
       // Check recipe index is valid
-      if (recipeIndex < 0 || recipeIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
+      if (recipeIndex < 0 || recipeIndex >= static_cast<int>(activeSlot->recipes.size())) {
         errors.push_back("Set '" + depSet.name + "': Invalid recipe index " +
                          std::to_string(recipeIndex));
         continue;
@@ -501,7 +905,7 @@ bool ProgramManager::validateDependencies(std::vector<std::string>& errors) cons
       // Check each dependency
       for (const auto& dep : deps) {
         if (dep.predecessorIndex < 0 ||
-            dep.predecessorIndex >= static_cast<int>(m_currentProgram.recipes.size())) {
+            dep.predecessorIndex >= static_cast<int>(activeSlot->recipes.size())) {
           errors.push_back("Set '" + depSet.name + "': Recipe " + std::to_string(recipeIndex) +
                            " has invalid dependency index: " + std::to_string(dep.predecessorIndex));
         }
@@ -518,13 +922,19 @@ bool ProgramManager::validateProgram(std::vector<std::string>& errors) const
 {
   errors.clear();
 
-  if (m_currentProgram.recipes.empty()) {
-    errors.push_back("Program has no recipes");
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) {
+    errors.push_back("No active slot");
+    return false;
+  }
+
+  if (activeSlot->recipes.empty()) {
+    errors.push_back("Active slot has no recipes");
   }
 
   // Check if recipe files exist
-  for (size_t i = 0; i < m_currentProgram.recipes.size(); i++) {
-    const auto& recipe = m_currentProgram.recipes[i];
+  for (size_t i = 0; i < activeSlot->recipes.size(); i++) {
+    const auto& recipe = activeSlot->recipes[i];
     QFileInfo fileInfo(QString::fromStdString(recipe->recipeFilePath));
 
     if (!fileInfo.exists()) {
@@ -542,23 +952,29 @@ bool ProgramManager::validateProgram(std::vector<std::string>& errors) const
 }
 
 // ============================================================================
-// GRAPH NODE POSITION MANAGEMENT
+// GRAPH NODE POSITION MANAGEMENT (now per-slot)
 // ============================================================================
 
 void ProgramManager::setNodePosition(int recipeIndex, double x, double y)
 {
-  if (recipeIndex < 0 || recipeIndex >= getRecipeCount()) {
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) return;
+
+  if (recipeIndex < 0 || recipeIndex >= static_cast<int>(activeSlot->recipes.size())) {
     return;
   }
-  m_graphPositions[recipeIndex] = GraphNodePosition(x, y);
+  activeSlot->graphPositions[recipeIndex] = GraphNodePosition(x, y);
   std::cout << "[ProgramManager] Set node position for recipe " << recipeIndex
-            << " to (" << x << ", " << y << ")" << std::endl;
+            << " to (" << x << ", " << y << ") in slot '" << activeSlot->name << "'" << std::endl;
 }
 
 GraphNodePosition ProgramManager::getNodePosition(int recipeIndex) const
 {
-  auto it = m_graphPositions.find(recipeIndex);
-  if (it != m_graphPositions.end()) {
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return GraphNodePosition();
+
+  auto it = activeSlot->graphPositions.find(recipeIndex);
+  if (it != activeSlot->graphPositions.end()) {
     return it->second;
   }
   return GraphNodePosition();  // Return default (hasPosition = false)
@@ -566,14 +982,29 @@ GraphNodePosition ProgramManager::getNodePosition(int recipeIndex) const
 
 bool ProgramManager::hasNodePosition(int recipeIndex) const
 {
-  auto it = m_graphPositions.find(recipeIndex);
-  return (it != m_graphPositions.end() && it->second.hasPosition);
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return false;
+
+  auto it = activeSlot->graphPositions.find(recipeIndex);
+  return (it != activeSlot->graphPositions.end() && it->second.hasPosition);
 }
 
 void ProgramManager::clearNodePositions()
 {
-  m_graphPositions.clear();
-  std::cout << "[ProgramManager] Cleared all node positions" << std::endl;
+  RecipeSlot* activeSlot = getActiveSlotMutable(m_currentProgram);
+  if (!activeSlot) return;
+
+  activeSlot->graphPositions.clear();
+  std::cout << "[ProgramManager] Cleared all node positions in slot '" << activeSlot->name << "'" << std::endl;
+}
+
+const std::map<int, GraphNodePosition>& ProgramManager::getAllNodePositions() const
+{
+  static std::map<int, GraphNodePosition> emptyMap;
+  const RecipeSlot* activeSlot = getActiveSlotConst(m_currentProgram);
+  if (!activeSlot) return emptyMap;
+
+  return activeSlot->graphPositions;
 }
 
 bool ProgramManager::loadProgram(const std::string& filename)
@@ -595,63 +1026,74 @@ bool ProgramManager::saveToJson(const std::string& filename) const
   QJsonObject root;
   root["version"] = QString::fromStdString(m_currentProgram.version);
   root["program_name"] = QString::fromStdString(m_currentProgram.name);
-  root["active_dependency_set_index"] = m_currentProgram.activeDependencySetIndex;
+  root["active_slot_index"] = m_currentProgram.activeSlotIndex;
 
-  // Save recipes (without dependencies - they're in dependency_sets now)
-  QJsonArray recipesArray;
-  for (const auto& recipe : m_currentProgram.recipes) {
-    QJsonObject recipeObj;
-    recipeObj["recipe_file"] = QString::fromStdString(recipe->recipeFilePath);
-    recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
-    recipeObj["enabled"] = recipe->enabled;
-    recipeObj["include_in_loop"] = recipe->includeInLoop;
-    recipesArray.append(recipeObj);
-  }
-  root["recipes"] = recipesArray;
+  // Save recipe slots (new format with slot system)
+  QJsonArray recipeSlotsArray;
+  for (const auto& slot : m_currentProgram.recipeSlots) {
+    QJsonObject slotObj;
+    slotObj["name"] = QString::fromStdString(slot.name);
+    slotObj["active_dependency_set_index"] = slot.activeDependencySetIndex;
 
-  // Save dependency sets (new format)
-  QJsonArray dependencySetsArray;
-  for (const auto& depSet : m_currentProgram.dependencySets) {
-    QJsonObject setObj;
-    setObj["name"] = QString::fromStdString(depSet.name);
+    // Save recipes in this slot
+    QJsonArray recipesArray;
+    for (const auto& recipe : slot.recipes) {
+      QJsonObject recipeObj;
+      recipeObj["recipe_file"] = QString::fromStdString(recipe->recipeFilePath);
+      recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
+      recipeObj["enabled"] = recipe->enabled;
+      recipeObj["include_in_loop"] = recipe->includeInLoop;
+      recipesArray.append(recipeObj);
+    }
+    slotObj["recipes"] = recipesArray;
 
-    // Save dependencies as { "recipeIndex": [ {predecessor_index, condition}, ... ] }
-    QJsonObject depsObj;
-    for (const auto& [recipeIndex, deps] : depSet.dependencies) {
-      if (!deps.empty()) {
-        QJsonArray depsArray;
-        for (const auto& dep : deps) {
-          QJsonObject depObj;
-          depObj["predecessor_index"] = dep.predecessorIndex;
-          if (!dep.condition.empty()) {
-            depObj["condition"] = QString::fromStdString(dep.condition);
+    // Save dependency sets for this slot
+    QJsonArray dependencySetsArray;
+    for (const auto& depSet : slot.dependencySets) {
+      QJsonObject setObj;
+      setObj["name"] = QString::fromStdString(depSet.name);
+
+      // Save dependencies as { "recipeIndex": [ {predecessor_index, condition}, ... ] }
+      QJsonObject depsObj;
+      for (const auto& [recipeIndex, deps] : depSet.dependencies) {
+        if (!deps.empty()) {
+          QJsonArray depsArray;
+          for (const auto& dep : deps) {
+            QJsonObject depObj;
+            depObj["predecessor_index"] = dep.predecessorIndex;
+            if (!dep.condition.empty()) {
+              depObj["condition"] = QString::fromStdString(dep.condition);
+            }
+            depsArray.append(depObj);
           }
-          depsArray.append(depObj);
+          depsObj[QString::number(recipeIndex)] = depsArray;
         }
-        depsObj[QString::number(recipeIndex)] = depsArray;
+      }
+      setObj["dependencies"] = depsObj;
+
+      dependencySetsArray.append(setObj);
+    }
+    slotObj["dependency_sets"] = dependencySetsArray;
+
+    // Save graph node positions for this slot
+    if (!slot.graphPositions.empty()) {
+      QJsonObject positionsObj;
+      for (const auto& [index, pos] : slot.graphPositions) {
+        if (pos.hasPosition) {
+          QJsonObject posObj;
+          posObj["x"] = pos.x;
+          posObj["y"] = pos.y;
+          positionsObj[QString::number(index)] = posObj;
+        }
+      }
+      if (!positionsObj.isEmpty()) {
+        slotObj["graph_positions"] = positionsObj;
       }
     }
-    setObj["dependencies"] = depsObj;
 
-    dependencySetsArray.append(setObj);
+    recipeSlotsArray.append(slotObj);
   }
-  root["dependency_sets"] = dependencySetsArray;
-
-  // Save graph node positions
-  if (!m_graphPositions.empty()) {
-    QJsonObject positionsObj;
-    for (const auto& [index, pos] : m_graphPositions) {
-      if (pos.hasPosition) {
-        QJsonObject posObj;
-        posObj["x"] = pos.x;
-        posObj["y"] = pos.y;
-        positionsObj[QString::number(index)] = posObj;
-      }
-    }
-    if (!positionsObj.isEmpty()) {
-      root["graph_positions"] = positionsObj;
-    }
-  }
+  root["recipe_slots"] = recipeSlotsArray;
 
   QJsonDocument doc(root);
 
@@ -664,10 +1106,14 @@ bool ProgramManager::saveToJson(const std::string& filename) const
   file.write(doc.toJson(QJsonDocument::Indented));
   file.close();
 
+  int totalRecipes = 0;
+  for (const auto& slot : m_currentProgram.recipeSlots) {
+    totalRecipes += static_cast<int>(slot.recipes.size());
+  }
+
   std::cout << "[ProgramManager] Saved program '" << m_currentProgram.name
-    << "' with " << m_currentProgram.recipes.size() << " recipes and "
-    << m_currentProgram.dependencySets.size() << " dependency set(s) to "
-    << filename << std::endl;
+    << "' with " << m_currentProgram.recipeSlots.size() << " slot(s) and "
+    << totalRecipes << " total recipes to " << filename << std::endl;
 
   return true;
 }
@@ -696,138 +1142,257 @@ bool ProgramManager::loadFromJson(const std::string& filename)
   newProgram.version = root["version"].toString("1.0").toStdString();
   newProgram.name = root["program_name"].toString("Untitled Program").toStdString();
 
-  // Check if new format (has dependency_sets array)
-  bool hasNewFormat = root.contains("dependency_sets");
+  // Check format: new format has "recipe_slots", old format has "recipes" at root level
+  bool hasSlotFormat = root.contains("recipe_slots");
 
-  // Load active dependency set index
-  newProgram.activeDependencySetIndex = root["active_dependency_set_index"].toInt(0);
+  if (hasSlotFormat) {
+    // =========================================================================
+    // NEW FORMAT: Load recipe_slots array
+    // =========================================================================
+    newProgram.activeSlotIndex = root["active_slot_index"].toInt(0);
+    newProgram.recipeSlots.clear();
 
-  // Storage for migrating old format dependencies
-  std::map<int, std::vector<DependencyLink>> legacyDependencies;
+    QJsonArray slotsArray = root["recipe_slots"].toArray();
+    for (const QJsonValue& slotVal : slotsArray) {
+      QJsonObject slotObj = slotVal.toObject();
 
-  QJsonArray recipesArray = root["recipes"].toArray();
-  int recipeIndex = 0;
+      std::string slotName = slotObj["name"].toString("Slot 1").toStdString();
+      RecipeSlot newSlot(slotName);
+      newSlot.activeDependencySetIndex = slotObj["active_dependency_set_index"].toInt(0);
 
-  for (const QJsonValue& val : recipesArray) {
-    QJsonObject recipeObj = val.toObject();
+      // Load recipes for this slot
+      QJsonArray recipesArray = slotObj["recipes"].toArray();
+      for (const QJsonValue& recipeVal : recipesArray) {
+        QJsonObject recipeObj = recipeVal.toObject();
 
-    std::string filePath = recipeObj["recipe_file"].toString().toStdString();
-    std::string displayName = recipeObj["display_name"].toString().toStdString();
-    bool enabled = recipeObj["enabled"].toBool(true);
-    bool includeInLoop = recipeObj["include_in_loop"].toBool(false);
+        std::string filePath = recipeObj["recipe_file"].toString().toStdString();
+        std::string displayName = recipeObj["display_name"].toString().toStdString();
+        bool enabled = recipeObj["enabled"].toBool(true);
+        bool includeInLoop = recipeObj["include_in_loop"].toBool(false);
 
-    auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
-    recipeRef->includeInLoop = includeInLoop;
+        auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
+        recipeRef->includeInLoop = includeInLoop;
+        newSlot.recipes.push_back(std::move(recipeRef));
+      }
 
-    // If old format, collect dependencies for migration
-    if (!hasNewFormat) {
-      if (recipeObj.contains("dependencies")) {
-        QJsonArray depsArray = recipeObj["dependencies"].toArray();
-        for (const QJsonValue& depVal : depsArray) {
-          if (depVal.isObject()) {
-            QJsonObject depObj = depVal.toObject();
-            int predIndex = depObj["predecessor_index"].toInt();
-            std::string condition = depObj.value("condition").toString("").toStdString();
-            legacyDependencies[recipeIndex].emplace_back(predIndex, condition);
+      // Load dependency sets for this slot
+      newSlot.dependencySets.clear();
+      QJsonArray dependencySetsArray = slotObj["dependency_sets"].toArray();
+      for (const QJsonValue& setVal : dependencySetsArray) {
+        QJsonObject setObj = setVal.toObject();
+        std::string setName = setObj["name"].toString("Default").toStdString();
+
+        DependencySet depSet(setName);
+
+        QJsonObject depsObj = setObj["dependencies"].toObject();
+        for (auto it = depsObj.begin(); it != depsObj.end(); ++it) {
+          bool ok;
+          int recipeIdx = it.key().toInt(&ok);
+          if (ok && it.value().isArray()) {
+            QJsonArray depsArray = it.value().toArray();
+            for (const QJsonValue& depVal : depsArray) {
+              if (depVal.isObject()) {
+                QJsonObject depObj = depVal.toObject();
+                int predIndex = depObj["predecessor_index"].toInt();
+                std::string condition = depObj.value("condition").toString("").toStdString();
+                depSet.dependencies[recipeIdx].emplace_back(predIndex, condition);
+              }
+            }
+          }
+        }
+
+        newSlot.dependencySets.push_back(depSet);
+      }
+
+      // Ensure at least one dependency set exists
+      if (newSlot.dependencySets.empty()) {
+        newSlot.dependencySets.emplace_back("Default");
+      }
+
+      // Validate active dependency set index
+      if (newSlot.activeDependencySetIndex < 0 ||
+          newSlot.activeDependencySetIndex >= static_cast<int>(newSlot.dependencySets.size())) {
+        newSlot.activeDependencySetIndex = 0;
+      }
+
+      // Load graph node positions for this slot
+      if (slotObj.contains("graph_positions")) {
+        QJsonObject positionsObj = slotObj["graph_positions"].toObject();
+        for (auto it = positionsObj.begin(); it != positionsObj.end(); ++it) {
+          bool ok;
+          int index = it.key().toInt(&ok);
+          if (ok && it.value().isObject()) {
+            QJsonObject posObj = it.value().toObject();
+            double x = posObj["x"].toDouble();
+            double y = posObj["y"].toDouble();
+            newSlot.graphPositions[index] = GraphNodePosition(x, y);
           }
         }
       }
-      // Legacy format: "predecessors" array of ints
-      else if (recipeObj.contains("predecessors")) {
-        QJsonArray predecessorsArray = recipeObj["predecessors"].toArray();
-        for (const QJsonValue& predVal : predecessorsArray) {
-          legacyDependencies[recipeIndex].emplace_back(predVal.toInt(), "");
-        }
-      }
+
+      newProgram.recipeSlots.push_back(std::move(newSlot));
     }
 
-    newProgram.recipes.push_back(std::move(recipeRef));
-    recipeIndex++;
+    std::cout << "[ProgramManager] Loaded " << newProgram.recipeSlots.size()
+              << " slot(s) from new format" << std::endl;
   }
+  else {
+    // =========================================================================
+    // LEGACY FORMAT: Migrate to single "Slot 1" with recipes at root
+    // =========================================================================
+    newProgram.recipeSlots.clear();
+    RecipeSlot defaultSlot("Slot 1");
 
-  // Load dependency sets (new format) or migrate from legacy
-  newProgram.dependencySets.clear();
+    // Check if old format has dependency_sets at root (intermediate format)
+    bool hasRootDependencySets = root.contains("dependency_sets");
 
-  if (hasNewFormat) {
-    // New format: load dependency_sets array
-    QJsonArray dependencySetsArray = root["dependency_sets"].toArray();
+    // Storage for migrating old format dependencies
+    std::map<int, std::vector<DependencyLink>> legacyDependencies;
 
-    for (const QJsonValue& setVal : dependencySetsArray) {
-      QJsonObject setObj = setVal.toObject();
-      std::string setName = setObj["name"].toString("Default").toStdString();
+    QJsonArray recipesArray = root["recipes"].toArray();
+    int recipeIndex = 0;
 
-      DependencySet depSet(setName);
+    for (const QJsonValue& val : recipesArray) {
+      QJsonObject recipeObj = val.toObject();
 
-      // Load dependencies from the "dependencies" object
-      QJsonObject depsObj = setObj["dependencies"].toObject();
-      for (auto it = depsObj.begin(); it != depsObj.end(); ++it) {
-        bool ok;
-        int recipeIdx = it.key().toInt(&ok);
-        if (ok && it.value().isArray()) {
-          QJsonArray depsArray = it.value().toArray();
+      std::string filePath = recipeObj["recipe_file"].toString().toStdString();
+      std::string displayName = recipeObj["display_name"].toString().toStdString();
+      bool enabled = recipeObj["enabled"].toBool(true);
+      bool includeInLoop = recipeObj["include_in_loop"].toBool(false);
+
+      auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
+      recipeRef->includeInLoop = includeInLoop;
+
+      // If very old format, collect dependencies from recipe objects
+      if (!hasRootDependencySets) {
+        if (recipeObj.contains("dependencies")) {
+          QJsonArray depsArray = recipeObj["dependencies"].toArray();
           for (const QJsonValue& depVal : depsArray) {
             if (depVal.isObject()) {
               QJsonObject depObj = depVal.toObject();
               int predIndex = depObj["predecessor_index"].toInt();
               std::string condition = depObj.value("condition").toString("").toStdString();
-              depSet.dependencies[recipeIdx].emplace_back(predIndex, condition);
+              legacyDependencies[recipeIndex].emplace_back(predIndex, condition);
             }
+          }
+        }
+        // Legacy format: "predecessors" array of ints
+        else if (recipeObj.contains("predecessors")) {
+          QJsonArray predecessorsArray = recipeObj["predecessors"].toArray();
+          for (const QJsonValue& predVal : predecessorsArray) {
+            legacyDependencies[recipeIndex].emplace_back(predVal.toInt(), "");
           }
         }
       }
 
-      newProgram.dependencySets.push_back(depSet);
+      defaultSlot.recipes.push_back(std::move(recipeRef));
+      recipeIndex++;
     }
 
-    std::cout << "[ProgramManager] Loaded " << newProgram.dependencySets.size()
-              << " dependency set(s)" << std::endl;
-  }
-  else {
-    // Legacy format: migrate to a single "Default" dependency set
-    DependencySet defaultSet("Default");
-    defaultSet.dependencies = legacyDependencies;
-    newProgram.dependencySets.push_back(defaultSet);
-    newProgram.activeDependencySetIndex = 0;
+    // Load dependency sets from root (intermediate format) or migrate
+    defaultSlot.dependencySets.clear();
 
-    std::cout << "[ProgramManager] Migrated legacy dependencies to 'Default' set" << std::endl;
+    if (hasRootDependencySets) {
+      // Intermediate format: dependency_sets at root level
+      QJsonArray dependencySetsArray = root["dependency_sets"].toArray();
+
+      for (const QJsonValue& setVal : dependencySetsArray) {
+        QJsonObject setObj = setVal.toObject();
+        std::string setName = setObj["name"].toString("Default").toStdString();
+
+        DependencySet depSet(setName);
+
+        QJsonObject depsObj = setObj["dependencies"].toObject();
+        for (auto it = depsObj.begin(); it != depsObj.end(); ++it) {
+          bool ok;
+          int recipeIdx = it.key().toInt(&ok);
+          if (ok && it.value().isArray()) {
+            QJsonArray depsArray = it.value().toArray();
+            for (const QJsonValue& depVal : depsArray) {
+              if (depVal.isObject()) {
+                QJsonObject depObj = depVal.toObject();
+                int predIndex = depObj["predecessor_index"].toInt();
+                std::string condition = depObj.value("condition").toString("").toStdString();
+                depSet.dependencies[recipeIdx].emplace_back(predIndex, condition);
+              }
+            }
+          }
+        }
+
+        defaultSlot.dependencySets.push_back(depSet);
+      }
+
+      defaultSlot.activeDependencySetIndex = root["active_dependency_set_index"].toInt(0);
+      std::cout << "[ProgramManager] Migrated intermediate format with "
+                << defaultSlot.dependencySets.size() << " dependency set(s)" << std::endl;
+    }
+    else {
+      // Very old format: migrate to single "Default" dependency set
+      DependencySet defaultSet("Default");
+      defaultSet.dependencies = legacyDependencies;
+      defaultSlot.dependencySets.push_back(defaultSet);
+      defaultSlot.activeDependencySetIndex = 0;
+
+      std::cout << "[ProgramManager] Migrated legacy dependencies to 'Default' set" << std::endl;
+    }
+
+    // Ensure at least one dependency set exists
+    if (defaultSlot.dependencySets.empty()) {
+      defaultSlot.dependencySets.emplace_back("Default");
+    }
+
+    // Validate active dependency set index
+    if (defaultSlot.activeDependencySetIndex < 0 ||
+        defaultSlot.activeDependencySetIndex >= static_cast<int>(defaultSlot.dependencySets.size())) {
+      defaultSlot.activeDependencySetIndex = 0;
+    }
+
+    // Load graph node positions from root (legacy location)
+    if (root.contains("graph_positions")) {
+      QJsonObject positionsObj = root["graph_positions"].toObject();
+      for (auto it = positionsObj.begin(); it != positionsObj.end(); ++it) {
+        bool ok;
+        int index = it.key().toInt(&ok);
+        if (ok && it.value().isObject()) {
+          QJsonObject posObj = it.value().toObject();
+          double x = posObj["x"].toDouble();
+          double y = posObj["y"].toDouble();
+          defaultSlot.graphPositions[index] = GraphNodePosition(x, y);
+        }
+      }
+      std::cout << "[ProgramManager] Loaded " << defaultSlot.graphPositions.size()
+                << " graph node positions from legacy format" << std::endl;
+    }
+
+    newProgram.recipeSlots.push_back(std::move(defaultSlot));
+    newProgram.activeSlotIndex = 0;
+
+    std::cout << "[ProgramManager] Migrated legacy format to single 'Slot 1'" << std::endl;
   }
 
-  // Ensure at least one dependency set exists
-  if (newProgram.dependencySets.empty()) {
-    newProgram.dependencySets.emplace_back("Default");
+  // Ensure at least one slot exists
+  if (newProgram.recipeSlots.empty()) {
+    newProgram.recipeSlots.emplace_back("Slot 1");
   }
 
-  // Validate active index
-  if (newProgram.activeDependencySetIndex < 0 ||
-      newProgram.activeDependencySetIndex >= static_cast<int>(newProgram.dependencySets.size())) {
-    newProgram.activeDependencySetIndex = 0;
+  // Validate active slot index
+  if (newProgram.activeSlotIndex < 0 ||
+      newProgram.activeSlotIndex >= static_cast<int>(newProgram.recipeSlots.size())) {
+    newProgram.activeSlotIndex = 0;
   }
 
   // Replace current program
   m_currentProgram = std::move(newProgram);
   m_currentFilePath = filename;
 
-  // Load graph node positions
-  m_graphPositions.clear();
-  if (root.contains("graph_positions")) {
-    QJsonObject positionsObj = root["graph_positions"].toObject();
-    for (auto it = positionsObj.begin(); it != positionsObj.end(); ++it) {
-      bool ok;
-      int index = it.key().toInt(&ok);
-      if (ok && it.value().isObject()) {
-        QJsonObject posObj = it.value().toObject();
-        double x = posObj["x"].toDouble();
-        double y = posObj["y"].toDouble();
-        m_graphPositions[index] = GraphNodePosition(x, y);
-      }
-    }
-    std::cout << "[ProgramManager] Loaded " << m_graphPositions.size() << " graph node positions" << std::endl;
+  int totalRecipes = 0;
+  for (const auto& slot : m_currentProgram.recipeSlots) {
+    totalRecipes += static_cast<int>(slot.recipes.size());
   }
 
   std::cout << "[ProgramManager] Loaded program '" << m_currentProgram.name
-    << "' with " << m_currentProgram.recipes.size() << " recipes and "
-    << m_currentProgram.dependencySets.size() << " dependency set(s) from "
-    << filename << std::endl;
+    << "' with " << m_currentProgram.recipeSlots.size() << " slot(s) and "
+    << totalRecipes << " total recipes from " << filename << std::endl;
 
   return true;
 }

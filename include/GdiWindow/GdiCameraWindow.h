@@ -45,6 +45,10 @@ class CameraManager;
 #define IDM_TOOLS_CROSSHAIR         8001
 #define IDM_TOOLS_CLICK_TO_MOVE     8002
 
+// Overlay Size Menu IDs
+#define IDM_OVERLAY_SIZE_INCREASE   8010
+#define IDM_OVERLAY_SIZE_DECREASE   8011
+
 // Camera Menu IDs
 #define IDM_CAMERA_MENU_BASE        9000
 #define IDM_CAMERA_DUAL_MODE        9001
@@ -74,8 +78,15 @@ public:
 
     void Draw(HDC hDC, const RECT& windowRect);
 
+    // Scale factor for overlay size (1.0 = default, 0.5 = half, 2.0 = double)
+    void SetScale(float scale);
+    float GetScale() const { return m_scale; }
+    void IncreaseScale();
+    void DecreaseScale();
+
 private:
     bool m_enabled = false;
+    float m_scale = 1.0f;  // Scale factor for overlay size
     mutable std::mutex m_dataMutex;
 
     struct ChannelData {
@@ -87,9 +98,16 @@ private:
     std::set<std::string> m_enabledChannels;
 
     static constexpr size_t MAX_POINTS = 200;
-    static constexpr int CHART_WIDTH = 320;
-    static constexpr int CHART_HEIGHT = 180;  // Increased for larger value display
+    static constexpr int BASE_CHART_WIDTH = 320;
+    static constexpr int BASE_CHART_HEIGHT = 180;
     static constexpr int CHART_MARGIN = 10;
+    static constexpr float MIN_SCALE = 0.5f;
+    static constexpr float MAX_SCALE = 3.0f;
+    static constexpr float SCALE_STEP = 0.25f;
+
+    // Computed dimensions based on scale
+    int GetChartWidth() const { return static_cast<int>(BASE_CHART_WIDTH * m_scale); }
+    int GetChartHeight() const { return static_cast<int>(BASE_CHART_HEIGHT * m_scale); }
 
     static Gdiplus::Color GetChannelColor(int index);
     static std::wstring FormatValue(double value);
@@ -203,6 +221,15 @@ public:
     // Chart overlay access
     ChartOverlay& GetChartOverlay() { return m_chartOverlay; }
 
+    // Overlay scale control
+    void SetOverlayScale(float scale) { m_chartOverlay.SetScale(scale); }
+    float GetOverlayScale() const { return m_chartOverlay.GetScale(); }
+
+    // Callback for overlay scale changes (for settings save)
+    void SetOverlayScaleChangedCallback(std::function<void(float)> callback) {
+        m_onOverlayScaleChanged = callback;
+    }
+
 private:
     // Window procedure
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -302,6 +329,7 @@ private:
 
     // Chart overlay
     ChartOverlay m_chartOverlay;
+    std::function<void(float)> m_onOverlayScaleChanged;  // Callback for scale changes
 
     // DataStore
     DataStore* m_dataStore = nullptr;

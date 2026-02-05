@@ -2,6 +2,8 @@
 #include "ApplicationSettingsPage.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
+#include "camera/CameraManager.h"
+#include "data/DataStore.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -9,35 +11,159 @@
 #include <QFile>
 #include <QTextStream>
 #include <QFont>
+#include <QHeaderView>
+#include <QFrame>
+#include <QSettings>
+#include <QDir>
 #include <iostream>
 
-// Section descriptions for the UI
-const std::map<std::string, std::string> ApplicationSettingsPage::s_sectionDescriptions = {
-  {"ChainExecution", "Settings for chain execution (auto-running dependent recipes)"},
-  {"Scanning", "Settings for scanning operations"},
-  {"UI", "User interface settings"}
-};
-
-// Key descriptions for tooltips
-const std::map<std::string, std::map<std::string, std::string>> ApplicationSettingsPage::s_keyDescriptions = {
-  {"ChainExecution", {
-    {"AutoContinueSeconds", "Seconds to wait before auto-continuing to next recipe (1-60)"}
-  }},
-  {"Scanning", {
-    {"DefaultScanTimeoutMs", "Default timeout for scan operations in milliseconds"}
-  }},
-  {"UI", {
-    {"MaxLogLines", "Maximum number of lines to keep in execution log (100-1000)"}
-  }}
-};
+// QSettings keys (same organization as GdiCameraWindowManager)
+static const QString QSETTINGS_ORG = "Fabrinet";
+static const QString QSETTINGS_APP = "BobcatEngine";
 
 ApplicationSettingsPage::ApplicationSettingsPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_modified(false)
 {
+  initializeSettingDefinitions();
   setupUI();
   loadSettings();
+}
+
+void ApplicationSettingsPage::initializeSettingDefinitions()
+{
+  // Initialize section descriptions
+  s_sectionDescriptions = {
+    {"ChainExecution", "Settings for chain execution (auto-running dependent recipes)"},
+    {"Scanning", "Settings for scanning operations"},
+    {"UI", "User interface settings"},
+    {"CameraMonitor", "GDI Camera monitor window settings"},
+    {"ChartOverlay", "Chart overlay display settings"},
+    {"Vision", "Vision processing settings"},
+    {"Tools", "Tool overlay settings"}
+  };
+
+  // Get dynamic options
+  auto cameras = getAvailableCameras();
+  auto channels = getAvailableChannels();
+  auto profiles = getAvailableVisionProfiles();
+
+  // Initialize setting definitions
+  m_settingDefs = {
+    // === Chain Execution ===
+    {"ChainExecution", "AutoContinueSeconds", "3",
+     "Seconds to wait before auto-continuing to next recipe in chain execution",
+     "int", 1, 60, {}},
+
+    // === Scanning ===
+    {"Scanning", "DefaultScanTimeoutMs", "60000",
+     "Default timeout for scan operations (milliseconds)",
+     "int", 1000, 600000, {}},
+
+    // === UI ===
+    {"UI", "MaxLogLines", "200",
+     "Maximum number of lines to keep in execution log",
+     "int", 100, 10000, {}},
+
+    // === Camera Monitor ===
+    {"CameraMonitor", "ViewMode", "single",
+     "Camera view mode: single camera or dual (split) view",
+     "combo", 0, 0, {{"single", "Single View"}, {"dual", "Dual View (Split)"}}},
+
+    {"CameraMonitor", "PrimaryCamera", "",
+     "Primary camera to display (single view or left side in dual view)",
+     "combo", 0, 0, cameras},
+
+    {"CameraMonitor", "SecondaryCamera", "",
+     "Secondary camera to display (right side in dual view)",
+     "combo", 0, 0, cameras},
+
+    // === Chart Overlay ===
+    {"ChartOverlay", "Enabled", "false",
+     "Enable chart overlay on camera view",
+     "bool", 0, 0, {}},
+
+    {"ChartOverlay", "LastChannel", "",
+     "Last used data channel for chart overlay",
+     "combo", 0, 0, channels},
+
+    // === Vision ===
+    {"Vision", "Enabled", "false",
+     "Enable vision processing on camera view",
+     "bool", 0, 0, {}},
+
+    {"Vision", "LastProfile", "",
+     "Last used vision profile",
+     "combo", 0, 0, profiles},
+
+    // === Tools ===
+    {"Tools", "CrosshairEnabled", "false",
+     "Show crosshair overlay on camera view",
+     "bool", 0, 0, {}},
+
+    {"Tools", "ClickToMoveEnabled", "false",
+     "Enable click-to-move functionality on camera view",
+     "bool", 0, 0, {}}
+  };
+}
+
+std::vector<std::pair<std::string, std::string>> ApplicationSettingsPage::getAvailableCameras()
+{
+  std::vector<std::pair<std::string, std::string>> cameras;
+  cameras.push_back({"", "(Auto - First Available)"});
+
+  if (m_context && m_context->cameraManager) {
+    auto ids = m_context->cameraManager->GetCameraIds();
+    for (const auto& id : ids) {
+      cameras.push_back({id, id});
+    }
+  }
+
+  return cameras;
+}
+
+std::vector<std::pair<std::string, std::string>> ApplicationSettingsPage::getAvailableChannels()
+{
+  std::vector<std::pair<std::string, std::string>> channels;
+  channels.push_back({"", "(None)"});
+
+  if (m_context && m_context->dataStore) {
+    auto names = m_context->dataStore->GetAllChannelNames();
+    for (const auto& name : names) {
+      channels.push_back({name, name});
+    }
+  }
+
+  // Add some common channel names if DataStore is empty
+  if (channels.size() == 1) {
+    channels.push_back({"SMU1_Current", "SMU1_Current"});
+    channels.push_back({"SMU2_Current", "SMU2_Current"});
+    channels.push_back({"Temperature", "Temperature"});
+  }
+
+  return channels;
+}
+
+std::vector<std::pair<std::string, std::string>> ApplicationSettingsPage::getAvailableVisionProfiles()
+{
+  std::vector<std::pair<std::string, std::string>> profiles;
+  profiles.push_back({"", "(None)"});
+
+  // Scan vision profiles directory
+  QDir profileDir("config/vision_profiles");
+  if (profileDir.exists()) {
+    QStringList filters;
+    filters << "*.json";
+    QFileInfoList files = profileDir.entryInfoList(filters, QDir::Files);
+    for (const auto& fileInfo : files) {
+      std::string path = fileInfo.filePath().toStdString();
+      std::string name = fileInfo.baseName().toStdString();
+      profiles.push_back({path, name});
+    }
+  }
+
+  return profiles;
 }
 
 void ApplicationSettingsPage::setupUI()
@@ -85,26 +211,36 @@ void ApplicationSettingsPage::setupUI()
   mainLayout->addLayout(topBar);
 
   // === File Path Info ===
-  m_filePathLabel = new QLabel("Config file: config/system/applicationSettings.ini");
+  m_filePathLabel = new QLabel("Settings stored in: Windows Registry (HKCU\\Software\\Fabrinet\\BobcatEngine)");
   m_filePathLabel->setStyleSheet("color: #888888; font-size: 11px;");
   mainLayout->addWidget(m_filePathLabel);
 
-  // === Settings Scroll Area ===
-  m_scrollArea = new QScrollArea();
-  m_scrollArea->setWidgetResizable(true);
-  m_scrollArea->setStyleSheet(
-    "QScrollArea { "
-    "  background-color: #27272a; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 8px; "
+  // === Main Content: Splitter with Tree and Property Panel ===
+  m_splitter = new QSplitter(Qt::Horizontal);
+  m_splitter->setStyleSheet(
+    "QSplitter::handle { "
+    "  background-color: #3f3f46; "
+    "  width: 2px; "
     "}"
   );
 
-  m_settingsContainer = new QWidget();
-  m_settingsContainer->setStyleSheet("background-color: #27272a;");
-  m_scrollArea->setWidget(m_settingsContainer);
+  setupTreeView();
+  setupPropertyPanel();
 
-  mainLayout->addWidget(m_scrollArea, 1);
+  m_splitter->addWidget(m_treeWidget);
+
+  // Create stacked widget for property/section panels
+  QStackedWidget* rightStack = new QStackedWidget();
+  rightStack->addWidget(m_propertyPanel);
+  rightStack->addWidget(m_sectionPanel);
+  rightStack->setCurrentWidget(m_propertyPanel);
+  m_splitter->addWidget(rightStack);
+
+  m_splitter->setSizes({280, 500});
+  m_splitter->setStretchFactor(0, 0);
+  m_splitter->setStretchFactor(1, 1);
+
+  mainLayout->addWidget(m_splitter, 1);
 
   // === Button Bar ===
   QHBoxLayout* buttonBar = new QHBoxLayout();
@@ -170,190 +306,547 @@ void ApplicationSettingsPage::setupUI()
   mainLayout->addLayout(buttonBar);
 }
 
+void ApplicationSettingsPage::setupTreeView()
+{
+  m_treeWidget = new QTreeWidget();
+  m_treeWidget->setHeaderHidden(true);
+  m_treeWidget->setIndentation(20);
+  m_treeWidget->setAnimated(true);
+  m_treeWidget->setStyleSheet(
+    "QTreeWidget { "
+    "  background-color: #27272a; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 8px; "
+    "  color: white; "
+    "  font-size: 12px; "
+    "} "
+    "QTreeWidget::item { "
+    "  padding: 6px 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QTreeWidget::item:hover { "
+    "  background-color: #3f3f46; "
+    "} "
+    "QTreeWidget::item:selected { "
+    "  background-color: #3b82f6; "
+    "  color: white; "
+    "} "
+    "QTreeWidget::branch:has-children:closed { "
+    "  image: none; "
+    "  border-image: none; "
+    "} "
+    "QTreeWidget::branch:has-children:open { "
+    "  image: none; "
+    "  border-image: none; "
+    "}"
+  );
+
+  connect(m_treeWidget, &QTreeWidget::itemSelectionChanged,
+          this, &ApplicationSettingsPage::onTreeItemSelected);
+}
+
+void ApplicationSettingsPage::setupPropertyPanel()
+{
+  // === Property Panel (for individual settings) ===
+  m_propertyPanel = new QWidget();
+  m_propertyPanel->setStyleSheet("background-color: #27272a; border-radius: 8px;");
+
+  QVBoxLayout* propLayout = new QVBoxLayout(m_propertyPanel);
+  propLayout->setContentsMargins(20, 20, 20, 20);
+  propLayout->setSpacing(15);
+
+  // Title
+  m_propTitleLabel = new QLabel("Select a setting");
+  QFont titleFont = m_propTitleLabel->font();
+  titleFont.setPointSize(16);
+  titleFont.setBold(true);
+  m_propTitleLabel->setFont(titleFont);
+  m_propTitleLabel->setStyleSheet("color: #60a5fa;");
+  propLayout->addWidget(m_propTitleLabel);
+
+  // Section badge
+  m_propSectionLabel = new QLabel("");
+  m_propSectionLabel->setStyleSheet(
+    "color: #a1a1aa; "
+    "background-color: #3f3f46; "
+    "padding: 4px 10px; "
+    "border-radius: 4px; "
+    "font-size: 11px;"
+  );
+  m_propSectionLabel->setFixedHeight(24);
+  m_propSectionLabel->hide();
+  propLayout->addWidget(m_propSectionLabel);
+
+  // Separator
+  QFrame* sep1 = new QFrame();
+  sep1->setFrameShape(QFrame::HLine);
+  sep1->setStyleSheet("background-color: #3f3f46;");
+  sep1->setFixedHeight(1);
+  propLayout->addWidget(sep1);
+
+  // Value editor container
+  m_propEditorContainer = new QWidget();
+  QVBoxLayout* editorLayout = new QVBoxLayout(m_propEditorContainer);
+  editorLayout->setContentsMargins(0, 0, 0, 0);
+  editorLayout->setSpacing(8);
+
+  QLabel* valueLabel = new QLabel("Value");
+  valueLabel->setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: bold;");
+  editorLayout->addWidget(valueLabel);
+
+  // Stacked widget for different editor types
+  m_propValueStack = new QStackedWidget();
+
+  // String editor (QLineEdit) - index 0
+  m_propValueEdit = new QLineEdit();
+  m_propValueEdit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #3f3f46; "
+    "  color: white; "
+    "  border: 2px solid #52525b; "
+    "  border-radius: 6px; "
+    "  padding: 10px 14px; "
+    "  font-size: 14px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border-color: #3b82f6; "
+    "}"
+  );
+  connect(m_propValueEdit, &QLineEdit::textChanged, this, &ApplicationSettingsPage::onSettingChanged);
+  m_propValueStack->addWidget(m_propValueEdit);
+
+  // Integer editor (QSpinBox) - index 1
+  m_propValueSpin = new QSpinBox();
+  m_propValueSpin->setStyleSheet(
+    "QSpinBox { "
+    "  background-color: #3f3f46; "
+    "  color: white; "
+    "  border: 2px solid #52525b; "
+    "  border-radius: 6px; "
+    "  padding: 10px 14px; "
+    "  font-size: 14px; "
+    "} "
+    "QSpinBox:focus { "
+    "  border-color: #3b82f6; "
+    "} "
+    "QSpinBox::up-button, QSpinBox::down-button { "
+    "  background-color: #52525b; "
+    "  border: none; "
+    "  width: 20px; "
+    "} "
+    "QSpinBox::up-button:hover, QSpinBox::down-button:hover { "
+    "  background-color: #71717a; "
+    "}"
+  );
+  m_propValueSpin->setMinimum(0);
+  m_propValueSpin->setMaximum(1000000);
+  connect(m_propValueSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+          this, &ApplicationSettingsPage::onSettingChanged);
+  m_propValueStack->addWidget(m_propValueSpin);
+
+  // Boolean editor (QCheckBox) - index 2
+  m_propValueCheck = new QCheckBox("Enabled");
+  m_propValueCheck->setStyleSheet(
+    "QCheckBox { "
+    "  color: white; "
+    "  font-size: 14px; "
+    "  spacing: 10px; "
+    "} "
+    "QCheckBox::indicator { "
+    "  width: 24px; "
+    "  height: 24px; "
+    "  border: 2px solid #52525b; "
+    "  border-radius: 4px; "
+    "  background-color: #3f3f46; "
+    "} "
+    "QCheckBox::indicator:checked { "
+    "  background-color: #3b82f6; "
+    "  border-color: #3b82f6; "
+    "} "
+    "QCheckBox::indicator:hover { "
+    "  border-color: #71717a; "
+    "}"
+  );
+  connect(m_propValueCheck, &QCheckBox::stateChanged, this, &ApplicationSettingsPage::onSettingChanged);
+  m_propValueStack->addWidget(m_propValueCheck);
+
+  // Combo editor (QComboBox) - index 3
+  m_propValueCombo = new QComboBox();
+  m_propValueCombo->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #3f3f46; "
+    "  color: white; "
+    "  border: 2px solid #52525b; "
+    "  border-radius: 6px; "
+    "  padding: 10px 14px; "
+    "  font-size: 14px; "
+    "  min-width: 200px; "
+    "} "
+    "QComboBox:focus { "
+    "  border-color: #3b82f6; "
+    "} "
+    "QComboBox::drop-down { "
+    "  border: none; "
+    "  width: 30px; "
+    "} "
+    "QComboBox::down-arrow { "
+    "  image: none; "
+    "  border-left: 5px solid transparent; "
+    "  border-right: 5px solid transparent; "
+    "  border-top: 6px solid white; "
+    "  margin-right: 10px; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #3f3f46; "
+    "  color: white; "
+    "  selection-background-color: #3b82f6; "
+    "  border: 1px solid #52525b; "
+    "  border-radius: 4px; "
+    "}"
+  );
+  connect(m_propValueCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &ApplicationSettingsPage::onSettingChanged);
+  m_propValueStack->addWidget(m_propValueCombo);
+
+  editorLayout->addWidget(m_propValueStack);
+
+  // Type info
+  m_propTypeLabel = new QLabel("");
+  m_propTypeLabel->setStyleSheet("color: #71717a; font-size: 11px;");
+  editorLayout->addWidget(m_propTypeLabel);
+
+  // Range info
+  m_propRangeLabel = new QLabel("");
+  m_propRangeLabel->setStyleSheet("color: #71717a; font-size: 11px;");
+  editorLayout->addWidget(m_propRangeLabel);
+
+  m_propEditorContainer->hide();
+  propLayout->addWidget(m_propEditorContainer);
+
+  // Description
+  QLabel* descHeader = new QLabel("Description");
+  descHeader->setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: bold; margin-top: 10px;");
+  propLayout->addWidget(descHeader);
+
+  m_propDescLabel = new QLabel("Select a setting from the tree to view and edit its value.");
+  m_propDescLabel->setStyleSheet("color: #d4d4d8; font-size: 12px; line-height: 1.5;");
+  m_propDescLabel->setWordWrap(true);
+  propLayout->addWidget(m_propDescLabel);
+
+  propLayout->addStretch();
+
+  // === Section Panel (for section headers) ===
+  m_sectionPanel = new QWidget();
+  m_sectionPanel->setStyleSheet("background-color: #27272a; border-radius: 8px;");
+
+  QVBoxLayout* sectionLayout = new QVBoxLayout(m_sectionPanel);
+  sectionLayout->setContentsMargins(20, 20, 20, 20);
+  sectionLayout->setSpacing(15);
+
+  m_sectionTitleLabel = new QLabel("Section");
+  QFont secTitleFont = m_sectionTitleLabel->font();
+  secTitleFont.setPointSize(16);
+  secTitleFont.setBold(true);
+  m_sectionTitleLabel->setFont(secTitleFont);
+  m_sectionTitleLabel->setStyleSheet("color: #60a5fa;");
+  sectionLayout->addWidget(m_sectionTitleLabel);
+
+  QFrame* sep2 = new QFrame();
+  sep2->setFrameShape(QFrame::HLine);
+  sep2->setStyleSheet("background-color: #3f3f46;");
+  sep2->setFixedHeight(1);
+  sectionLayout->addWidget(sep2);
+
+  m_sectionDescLabel = new QLabel("");
+  m_sectionDescLabel->setStyleSheet("color: #d4d4d8; font-size: 12px;");
+  m_sectionDescLabel->setWordWrap(true);
+  sectionLayout->addWidget(m_sectionDescLabel);
+
+  m_sectionCountLabel = new QLabel("");
+  m_sectionCountLabel->setStyleSheet("color: #71717a; font-size: 11px; margin-top: 10px;");
+  sectionLayout->addWidget(m_sectionCountLabel);
+
+  sectionLayout->addStretch();
+}
+
 void ApplicationSettingsPage::loadSettings()
 {
-  createSettingsForm();
+  loadFromQSettings();
+  populateTree();
+  clearPropertyPanel();
+
   m_modified = false;
   updateModifiedIndicator();
 }
 
-void ApplicationSettingsPage::createSettingsForm()
+void ApplicationSettingsPage::loadFromQSettings()
 {
-  // Clear existing widgets
-  if (m_settingsContainer->layout()) {
-    QLayoutItem* item;
-    while ((item = m_settingsContainer->layout()->takeAt(0)) != nullptr) {
-      delete item->widget();
-      delete item;
+  QSettings settings(QSETTINGS_ORG, QSETTINGS_APP);
+
+  m_currentValues.clear();
+  for (const auto& def : m_settingDefs) {
+    QString key = QString::fromStdString(def.section + "/" + def.key);
+    std::string value = def.defaultValue;
+
+    if (settings.contains(key)) {
+      value = settings.value(key).toString().toStdString();
     }
-    delete m_settingsContainer->layout();
+
+    m_currentValues[def.section][def.key] = value;
   }
-  m_settingEdits.clear();
 
-  QVBoxLayout* containerLayout = new QVBoxLayout(m_settingsContainer);
-  containerLayout->setContentsMargins(20, 20, 20, 20);
-  containerLayout->setSpacing(20);
+  std::cout << "[ApplicationSettingsPage] Loaded settings from QSettings" << std::endl;
+}
 
-  // Get settings from context
-  ApplicationSettings* settings = m_context ? m_context->applicationSettings : nullptr;
+void ApplicationSettingsPage::populateTree()
+{
+  m_treeWidget->clear();
 
-  // Define sections and their keys with default values
-  struct SettingDef {
-    std::string key;
-    std::string defaultValue;
-    std::string description;
+  // Group settings by section
+  std::map<std::string, std::vector<const SettingDefinition*>> sectionSettings;
+  for (const auto& def : m_settingDefs) {
+    sectionSettings[def.section].push_back(&def);
+  }
+
+  // Define section order
+  std::vector<std::string> sectionOrder = {
+    "CameraMonitor", "ChartOverlay", "Vision", "Tools",
+    "ChainExecution", "Scanning", "UI"
   };
 
-  std::map<std::string, std::vector<SettingDef>> sections = {
-    {"ChainExecution", {
-      {"AutoContinueSeconds", "3", "Seconds before auto-continuing to next recipe in chain execution"}
-    }},
-    {"Scanning", {
-      {"DefaultScanTimeoutMs", "60000", "Default timeout for scan operations (milliseconds)"}
-    }},
-    {"UI", {
-      {"MaxLogLines", "200", "Maximum lines to keep in execution log"}
-    }}
-  };
+  // Create tree items in order
+  for (const auto& sectionName : sectionOrder) {
+    auto it = sectionSettings.find(sectionName);
+    if (it == sectionSettings.end()) continue;
 
-  // Create UI for each section
-  for (const auto& [sectionName, keys] : sections) {
-    // Section group box
-    QGroupBox* sectionGroup = new QGroupBox(QString::fromStdString(sectionName));
-    sectionGroup->setStyleSheet(
-      "QGroupBox { "
-      "  font-weight: bold; "
-      "  font-size: 14px; "
-      "  color: #60a5fa; "
-      "  border: 1px solid #3f3f46; "
-      "  border-radius: 6px; "
-      "  margin-top: 10px; "
-      "  padding-top: 10px; "
-      "} "
-      "QGroupBox::title { "
-      "  subcontrol-origin: margin; "
-      "  left: 10px; "
-      "  padding: 0 5px; "
-      "}"
-    );
+    const auto& settings = it->second;
 
-    QFormLayout* formLayout = new QFormLayout(sectionGroup);
-    formLayout->setContentsMargins(15, 20, 15, 15);
-    formLayout->setSpacing(12);
-    formLayout->setLabelAlignment(Qt::AlignRight);
+    QTreeWidgetItem* sectionItem = new QTreeWidgetItem(m_treeWidget);
+    sectionItem->setText(0, QString::fromStdString(sectionName));
+    sectionItem->setData(0, Qt::UserRole, QString("section"));
+    sectionItem->setData(0, Qt::UserRole + 1, QString::fromStdString(sectionName));
 
-    // Section description
-    auto descIt = s_sectionDescriptions.find(sectionName);
-    if (descIt != s_sectionDescriptions.end()) {
-      QLabel* descLabel = new QLabel(QString::fromStdString(descIt->second));
-      descLabel->setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: normal;");
-      descLabel->setWordWrap(true);
-      formLayout->addRow(descLabel);
+    QFont sectionFont = sectionItem->font(0);
+    sectionFont.setBold(true);
+    sectionItem->setFont(0, sectionFont);
+
+    for (const auto* def : settings) {
+      QTreeWidgetItem* keyItem = new QTreeWidgetItem(sectionItem);
+      keyItem->setText(0, QString::fromStdString(def->key));
+      keyItem->setData(0, Qt::UserRole, QString("setting"));
+      keyItem->setData(0, Qt::UserRole + 1, QString::fromStdString(def->section));
+      keyItem->setData(0, Qt::UserRole + 2, QString::fromStdString(def->key));
     }
 
-    // Create fields for each key
-    for (const auto& settingDef : keys) {
-      QLabel* keyLabel = new QLabel(QString::fromStdString(settingDef.key) + ":");
-      keyLabel->setStyleSheet("color: white; font-weight: normal;");
+    sectionItem->setExpanded(true);
+  }
+}
 
-      QLineEdit* valueEdit = new QLineEdit();
-      valueEdit->setStyleSheet(
-        "QLineEdit { "
-        "  background-color: #3f3f46; "
-        "  color: white; "
-        "  border: 1px solid #52525b; "
-        "  border-radius: 4px; "
-        "  padding: 6px 10px; "
-        "} "
-        "QLineEdit:focus { "
-        "  border-color: #3b82f6; "
-        "}"
-      );
-      valueEdit->setMinimumWidth(200);
-      valueEdit->setMaximumWidth(300);
+void ApplicationSettingsPage::onTreeItemSelected()
+{
+  QList<QTreeWidgetItem*> selected = m_treeWidget->selectedItems();
+  if (selected.isEmpty()) {
+    clearPropertyPanel();
+    return;
+  }
 
-      // Get current value from settings
-      std::string currentValue = settingDef.defaultValue;
-      if (settings) {
-        currentValue = settings->GetString(sectionName, settingDef.key, settingDef.defaultValue);
+  QTreeWidgetItem* item = selected.first();
+  QString itemType = item->data(0, Qt::UserRole).toString();
+
+  if (itemType == "section") {
+    QString sectionName = item->data(0, Qt::UserRole + 1).toString();
+    showSectionPanel(sectionName.toStdString());
+  } else if (itemType == "setting") {
+    QString section = item->data(0, Qt::UserRole + 1).toString();
+    QString key = item->data(0, Qt::UserRole + 2).toString();
+
+    // Find the setting definition
+    for (auto& def : m_settingDefs) {
+      if (def.section == section.toStdString() && def.key == key.toStdString()) {
+        showPropertyPanel(def);
+        return;
       }
-      valueEdit->setText(QString::fromStdString(currentValue));
-
-      // Set tooltip
-      valueEdit->setToolTip(QString::fromStdString(settingDef.description));
-
-      // Connect change signal
-      connect(valueEdit, &QLineEdit::textChanged, this, &ApplicationSettingsPage::onSettingChanged);
-
-      // Add description label below the edit
-      QWidget* fieldWidget = new QWidget();
-      QVBoxLayout* fieldLayout = new QVBoxLayout(fieldWidget);
-      fieldLayout->setContentsMargins(0, 0, 0, 0);
-      fieldLayout->setSpacing(2);
-      fieldLayout->addWidget(valueEdit);
-
-      QLabel* fieldDescLabel = new QLabel(QString::fromStdString(settingDef.description));
-      fieldDescLabel->setStyleSheet("color: #71717a; font-size: 10px; font-weight: normal;");
-      fieldDescLabel->setWordWrap(true);
-      fieldLayout->addWidget(fieldDescLabel);
-
-      formLayout->addRow(keyLabel, fieldWidget);
-
-      // Store reference
-      m_settingEdits[sectionName][settingDef.key] = valueEdit;
     }
+  }
+}
 
-    containerLayout->addWidget(sectionGroup);
+void ApplicationSettingsPage::showPropertyPanel(const SettingDefinition& setting)
+{
+  // Switch to property panel
+  QStackedWidget* stack = qobject_cast<QStackedWidget*>(m_splitter->widget(1));
+  if (stack) {
+    stack->setCurrentWidget(m_propertyPanel);
   }
 
-  containerLayout->addStretch();
+  m_currentSetting = const_cast<SettingDefinition*>(&setting);
 
-  // Update file path label
-  if (settings && settings->IsLoaded()) {
-    m_filePathLabel->setText(QString("Loaded from: %1").arg(QString::fromStdString(settings->GetLoadedFilePath())));
+  m_propTitleLabel->setText(QString::fromStdString(setting.key));
+  m_propSectionLabel->setText(QString::fromStdString(setting.section));
+  m_propSectionLabel->show();
+  m_propDescLabel->setText(QString::fromStdString(setting.description));
+  m_propEditorContainer->show();
+
+  // Get current value
+  std::string currentValue = m_currentValues[setting.section][setting.key];
+
+  // Setup editor based on type
+  if (setting.type == "int") {
+    m_propValueStack->setCurrentIndex(1);  // SpinBox
+    m_propValueSpin->blockSignals(true);
+    m_propValueSpin->setMinimum(setting.minValue);
+    m_propValueSpin->setMaximum(setting.maxValue);
+    try {
+      m_propValueSpin->setValue(std::stoi(currentValue));
+    } catch (...) {
+      m_propValueSpin->setValue(setting.minValue);
+    }
+    m_propValueSpin->blockSignals(false);
+    m_propTypeLabel->setText("Type: Integer");
+    m_propRangeLabel->setText(QString("Range: %1 - %2").arg(setting.minValue).arg(setting.maxValue));
+    m_propRangeLabel->show();
+
+  } else if (setting.type == "bool") {
+    m_propValueStack->setCurrentIndex(2);  // CheckBox
+    m_propValueCheck->blockSignals(true);
+    m_propValueCheck->setChecked(currentValue == "true" || currentValue == "1");
+    m_propValueCheck->blockSignals(false);
+    m_propTypeLabel->setText("Type: Boolean");
+    m_propRangeLabel->hide();
+
+  } else if (setting.type == "combo") {
+    m_propValueStack->setCurrentIndex(3);  // ComboBox
+    m_propValueCombo->blockSignals(true);
+    m_propValueCombo->clear();
+
+    int selectedIndex = 0;
+    for (size_t i = 0; i < setting.comboOptions.size(); ++i) {
+      const auto& opt = setting.comboOptions[i];
+      m_propValueCombo->addItem(QString::fromStdString(opt.second),
+                                 QString::fromStdString(opt.first));
+      if (opt.first == currentValue) {
+        selectedIndex = static_cast<int>(i);
+      }
+    }
+    m_propValueCombo->setCurrentIndex(selectedIndex);
+    m_propValueCombo->blockSignals(false);
+    m_propTypeLabel->setText("Type: Selection");
+    m_propRangeLabel->hide();
+
+  } else {
+    // String type
+    m_propValueStack->setCurrentIndex(0);  // LineEdit
+    m_propValueEdit->blockSignals(true);
+    m_propValueEdit->setText(QString::fromStdString(currentValue));
+    m_propValueEdit->blockSignals(false);
+    m_propTypeLabel->setText("Type: String");
+    m_propRangeLabel->hide();
   }
+}
+
+void ApplicationSettingsPage::showSectionPanel(const std::string& sectionName)
+{
+  // Switch to section panel
+  QStackedWidget* stack = qobject_cast<QStackedWidget*>(m_splitter->widget(1));
+  if (stack) {
+    stack->setCurrentWidget(m_sectionPanel);
+  }
+
+  m_currentSetting = nullptr;
+
+  m_sectionTitleLabel->setText(QString::fromStdString(sectionName));
+
+  auto descIt = s_sectionDescriptions.find(sectionName);
+  if (descIt != s_sectionDescriptions.end()) {
+    m_sectionDescLabel->setText(QString::fromStdString(descIt->second));
+  } else {
+    m_sectionDescLabel->setText("No description available.");
+  }
+
+  // Count settings in this section
+  int count = 0;
+  for (const auto& def : m_settingDefs) {
+    if (def.section == sectionName) count++;
+  }
+  m_sectionCountLabel->setText(QString("%1 setting(s) in this section").arg(count));
+}
+
+void ApplicationSettingsPage::clearPropertyPanel()
+{
+  m_currentSetting = nullptr;
+  m_propTitleLabel->setText("Select a setting");
+  m_propSectionLabel->hide();
+  m_propDescLabel->setText("Select a setting from the tree to view and edit its value.");
+  m_propEditorContainer->hide();
+
+  QStackedWidget* stack = qobject_cast<QStackedWidget*>(m_splitter->widget(1));
+  if (stack) {
+    stack->setCurrentWidget(m_propertyPanel);
+  }
+}
+
+std::string ApplicationSettingsPage::getCurrentValue(const std::string& section,
+                                                      const std::string& key,
+                                                      const std::string& defaultVal)
+{
+  auto secIt = m_currentValues.find(section);
+  if (secIt != m_currentValues.end()) {
+    auto keyIt = secIt->second.find(key);
+    if (keyIt != secIt->second.end()) {
+      return keyIt->second;
+    }
+  }
+  return defaultVal;
+}
+
+void ApplicationSettingsPage::onSettingChanged()
+{
+  if (!m_currentSetting) return;
+
+  // Update stored value based on editor type
+  if (m_currentSetting->type == "int") {
+    m_currentValues[m_currentSetting->section][m_currentSetting->key] =
+      std::to_string(m_propValueSpin->value());
+  } else if (m_currentSetting->type == "bool") {
+    m_currentValues[m_currentSetting->section][m_currentSetting->key] =
+      m_propValueCheck->isChecked() ? "true" : "false";
+  } else if (m_currentSetting->type == "combo") {
+    int idx = m_propValueCombo->currentIndex();
+    if (idx >= 0) {
+      m_currentValues[m_currentSetting->section][m_currentSetting->key] =
+        m_propValueCombo->currentData().toString().toStdString();
+    }
+  } else {
+    m_currentValues[m_currentSetting->section][m_currentSetting->key] =
+      m_propValueEdit->text().toStdString();
+  }
+
+  m_modified = true;
+  updateModifiedIndicator();
 }
 
 void ApplicationSettingsPage::saveSettings()
 {
-  // Save to local config file
-  QString localPath = "config/system/applicationSettings.local.ini";
-
-  QFile file(localPath);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    QMessageBox::critical(this, "Save Error",
-      QString("Failed to save settings to:\n%1").arg(localPath));
-    return;
-  }
-
-  QTextStream out(&file);
-  out << "; Application Settings (Local Override)\n";
-  out << "; This file overrides applicationSettings.ini\n";
-  out << "; Delete this file to restore defaults\n\n";
-
-  // Write each section
-  for (const auto& [sectionName, keys] : m_settingEdits) {
-    out << "[" << QString::fromStdString(sectionName) << "]\n";
-
-    for (const auto& [keyName, edit] : keys) {
-      out << QString::fromStdString(keyName) << "=" << edit->text() << "\n";
-    }
-    out << "\n";
-  }
-
-  file.close();
-
-  // Reload settings in ApplicationSettings
-  if (m_context && m_context->applicationSettings) {
-    m_context->applicationSettings->LoadFromFile(localPath.toStdString());
-  }
+  saveToQSettings();
 
   m_modified = false;
   updateModifiedIndicator();
 
-  m_filePathLabel->setText(QString("Saved to: %1").arg(localPath));
+  emit settingsChanged();
 
-  std::cout << "[ApplicationSettingsPage] Settings saved to: " << localPath.toStdString() << std::endl;
+  std::cout << "[ApplicationSettingsPage] Settings saved to QSettings" << std::endl;
+}
+
+void ApplicationSettingsPage::saveToQSettings()
+{
+  QSettings settings(QSETTINGS_ORG, QSETTINGS_APP);
+
+  for (const auto& def : m_settingDefs) {
+    QString key = QString::fromStdString(def.section + "/" + def.key);
+    std::string value = m_currentValues[def.section][def.key];
+    settings.setValue(key, QString::fromStdString(value));
+  }
+
+  settings.sync();
 }
 
 void ApplicationSettingsPage::onBackClicked()
@@ -379,7 +872,7 @@ void ApplicationSettingsPage::onSaveClicked()
 {
   saveSettings();
   QMessageBox::information(this, "Settings Saved",
-    "Settings have been saved.\nChanges will take effect immediately.");
+    "Settings have been saved.\nSome changes may require restarting the camera monitor.");
 }
 
 void ApplicationSettingsPage::onReloadClicked()
@@ -396,18 +889,8 @@ void ApplicationSettingsPage::onReloadClicked()
     }
   }
 
-  // Reload settings from file
-  if (m_context && m_context->applicationSettings) {
-    QString localPath = "config/system/applicationSettings.local.ini";
-    QString defaultPath = "config/system/applicationSettings.ini";
-
-    if (QFile::exists(localPath)) {
-      m_context->applicationSettings->LoadFromFile(localPath.toStdString());
-    } else {
-      m_context->applicationSettings->LoadFromFile(defaultPath.toStdString());
-    }
-  }
-
+  // Refresh dynamic options (cameras, channels, profiles)
+  initializeSettingDefinitions();
   loadSettings();
 }
 
@@ -415,7 +898,7 @@ void ApplicationSettingsPage::onResetToDefaults()
 {
   QMessageBox::StandardButton reply = QMessageBox::question(
     this, "Reset to Defaults",
-    "This will delete the local settings file and restore all settings to their default values.\n\nContinue?",
+    "This will reset all settings to their default values.\n\nContinue?",
     QMessageBox::Yes | QMessageBox::No
   );
 
@@ -423,29 +906,20 @@ void ApplicationSettingsPage::onResetToDefaults()
     return;
   }
 
-  // Delete local config file
-  QString localPath = "config/system/applicationSettings.local.ini";
-  if (QFile::exists(localPath)) {
-    QFile::remove(localPath);
-    std::cout << "[ApplicationSettingsPage] Deleted local config: " << localPath.toStdString() << std::endl;
+  // Reset all values to defaults
+  for (const auto& def : m_settingDefs) {
+    m_currentValues[def.section][def.key] = def.defaultValue;
   }
 
-  // Reload from default
-  if (m_context && m_context->applicationSettings) {
-    QString defaultPath = "config/system/applicationSettings.ini";
-    m_context->applicationSettings->LoadFromFile(defaultPath.toStdString());
-  }
+  // Save the defaults
+  saveSettings();
 
-  loadSettings();
+  // Reload UI
+  populateTree();
+  clearPropertyPanel();
 
   QMessageBox::information(this, "Defaults Restored",
-    "Settings have been reset to default values.");
-}
-
-void ApplicationSettingsPage::onSettingChanged()
-{
-  m_modified = true;
-  updateModifiedIndicator();
+    "All settings have been reset to default values.");
 }
 
 void ApplicationSettingsPage::updateModifiedIndicator()

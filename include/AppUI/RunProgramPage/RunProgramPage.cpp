@@ -718,6 +718,70 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   executeTabLayout->addWidget(executeGroup, 0);
 
+  // === SLOT SELECTOR (above recipe list) ===
+  QGroupBox* slotGroup = new QGroupBox("Active Slot");
+  slotGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
+  QVBoxLayout* slotLayout = new QVBoxLayout(slotGroup);
+  slotLayout->setSpacing(5);
+
+  m_slotSelector = new QComboBox();
+  m_slotSelector->setMinimumHeight(30);
+  m_slotSelector->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-size: 13px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox::drop-down { "
+    "  border: none; "
+    "  width: 25px; "
+    "} "
+    "QComboBox::down-arrow { "
+    "  image: none; "
+    "  border-left: 5px solid transparent; "
+    "  border-right: 5px solid transparent; "
+    "  border-top: 5px solid #d4d4d4; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  selection-color: white; "
+    "  border: 1px solid #555555; "
+    "}"
+  );
+  connect(m_slotSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &RunProgramPage::onSlotSelectionChanged);
+  slotLayout->addWidget(m_slotSelector);
+
+  m_slotInfoLabel = new QLabel("0 recipes in this slot");
+  m_slotInfoLabel->setStyleSheet("color: #888888; font-size: 11px; font-style: italic;");
+  slotLayout->addWidget(m_slotInfoLabel);
+
+  executeTabLayout->addWidget(slotGroup, 0);
+
   // === Recipe List ===
   QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
   recipeGroup->setStyleSheet(
@@ -1179,6 +1243,145 @@ void RunProgramPage::createEditWidget()
 
   programNameLayout->addLayout(nameAndSaveLayout);
   layout->addWidget(programNameGroup);
+
+  // === SLOT MANAGEMENT BAR ===
+  QGroupBox* slotManageGroup = new QGroupBox("Recipe Slot");
+  slotManageGroup->setStyleSheet(
+    "QGroupBox { "
+    "  background-color: #1e1e1e; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  margin-top: 10px; "
+    "  padding-top: 15px; "
+    "  color: #d4d4d4; "
+    "  font-weight: bold; "
+    "} "
+    "QGroupBox::title { "
+    "  subcontrol-origin: margin; "
+    "  subcontrol-position: top left; "
+    "  padding: 2px 5px; "
+    "  color: #ffffff; "
+    "}"
+  );
+  QHBoxLayout* slotManageLayout = new QHBoxLayout(slotManageGroup);
+  slotManageLayout->setSpacing(5);
+
+  m_editSlotSelector = new QComboBox();
+  m_editSlotSelector->setMinimumHeight(30);
+  m_editSlotSelector->setMinimumWidth(150);
+  m_editSlotSelector->setStyleSheet(
+    "QComboBox { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-size: 13px; "
+    "} "
+    "QComboBox:hover { "
+    "  border-color: #0e639c; "
+    "} "
+    "QComboBox::drop-down { "
+    "  border: none; "
+    "  width: 25px; "
+    "} "
+    "QComboBox::down-arrow { "
+    "  image: none; "
+    "  border-left: 5px solid transparent; "
+    "  border-right: 5px solid transparent; "
+    "  border-top: 5px solid #d4d4d4; "
+    "} "
+    "QComboBox QAbstractItemView { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  selection-background-color: #0e639c; "
+    "  selection-color: white; "
+    "  border: 1px solid #555555; "
+    "}"
+  );
+  connect(m_editSlotSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &RunProgramPage::onEditSlotSelectionChanged);
+  slotManageLayout->addWidget(m_editSlotSelector, 1);
+
+  // Slot management button style
+  QString slotButtonStyle =
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
+    "  color: #d4d4d4; "
+    "  padding: 5px 10px; "
+    "  font-size: 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #2c2c2c; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #3c3c3c; "
+    "  color: #666666; "
+    "}";
+
+  m_renameSlotButton = new QPushButton("Rename");
+  m_renameSlotButton->setMinimumHeight(30);
+  m_renameSlotButton->setStyleSheet(slotButtonStyle);
+  m_renameSlotButton->setToolTip("Rename the current slot");
+  connect(m_renameSlotButton, &QPushButton::clicked, this, &RunProgramPage::onRenameSlot);
+  slotManageLayout->addWidget(m_renameSlotButton);
+
+  m_addSlotButton = new QPushButton("+ Add");
+  m_addSlotButton->setMinimumHeight(30);
+  m_addSlotButton->setStyleSheet(slotButtonStyle);
+  m_addSlotButton->setToolTip("Add a new slot (max 5)");
+  connect(m_addSlotButton, &QPushButton::clicked, this, &RunProgramPage::onAddSlot);
+  slotManageLayout->addWidget(m_addSlotButton);
+
+  m_duplicateSlotButton = new QPushButton("Copy");
+  m_duplicateSlotButton->setMinimumHeight(30);
+  m_duplicateSlotButton->setStyleSheet(slotButtonStyle);
+  m_duplicateSlotButton->setToolTip("Duplicate the current slot");
+  connect(m_duplicateSlotButton, &QPushButton::clicked, this, &RunProgramPage::onDuplicateSlot);
+  slotManageLayout->addWidget(m_duplicateSlotButton);
+
+  m_deleteSlotButton = new QPushButton("Delete");
+  m_deleteSlotButton->setMinimumHeight(30);
+  m_deleteSlotButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #c0392b, stop:1 #a93226); "
+    "  color: white; "
+    "  padding: 5px 10px; "
+    "  font-size: 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d0493b, stop:1 #c0392b); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #8e2820; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #5a5a5a; "
+    "  color: #888888; "
+    "}"
+  );
+  m_deleteSlotButton->setToolTip("Delete the current slot (cannot delete last slot)");
+  connect(m_deleteSlotButton, &QPushButton::clicked, this, &RunProgramPage::onDeleteSlot);
+  slotManageLayout->addWidget(m_deleteSlotButton);
+
+  layout->addWidget(slotManageGroup);
 
   // Add Recipe button
   m_addRecipeButton = new QPushButton("+ Add Recipe");
@@ -2165,6 +2368,207 @@ void RunProgramPage::onEditProgram()
 }
 
 // ============================================================================
+// SLOT SYSTEM HANDLERS
+// ============================================================================
+
+void RunProgramPage::onSlotSelectionChanged(int index)
+{
+  if (index < 0 || !m_programManager) return;
+
+  m_programManager->setActiveSlot(index);
+  updateRecipeList();
+  updateSlotInfo();
+
+  // Sync edit slot selector if it exists
+  if (m_editSlotSelector) {
+    m_editSlotSelector->blockSignals(true);
+    m_editSlotSelector->setCurrentIndex(index);
+    m_editSlotSelector->blockSignals(false);
+  }
+
+  // Reset completion tracking when slot changes
+  m_completedRecipes.clear();
+  m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
+
+  std::cout << "[RunProgramPage] Switched to slot: "
+            << m_programManager->getSlotName(index) << std::endl;
+}
+
+void RunProgramPage::onEditSlotSelectionChanged(int index)
+{
+  if (index < 0 || !m_programManager) return;
+
+  m_programManager->setActiveSlot(index);
+  updateRecipeList();
+  updateSlotInfo();
+
+  // Sync execute tab slot selector
+  if (m_slotSelector) {
+    m_slotSelector->blockSignals(true);
+    m_slotSelector->setCurrentIndex(index);
+    m_slotSelector->blockSignals(false);
+  }
+
+  // Refresh the edit table
+  if (m_editRecipeTable) {
+    onEditRecipeSelectionChanged();  // This will refresh the table content
+  }
+
+  std::cout << "[RunProgramPage] Edit slot switched to: "
+            << m_programManager->getSlotName(index) << std::endl;
+}
+
+void RunProgramPage::onRenameSlot()
+{
+  if (!m_programManager) return;
+
+  int currentIndex = m_programManager->getActiveSlotIndex();
+  QString currentName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
+
+  bool ok;
+  QString newName = QInputDialog::getText(this, "Rename Slot",
+    "Enter new name for slot:", QLineEdit::Normal, currentName, &ok);
+
+  if (ok && !newName.isEmpty() && newName != currentName) {
+    m_programManager->renameSlot(currentIndex, newName.toStdString());
+    updateSlotSelectors();
+  }
+}
+
+void RunProgramPage::onAddSlot()
+{
+  if (!m_programManager) return;
+
+  if (m_programManager->getSlotCount() >= MAX_RECIPE_SLOTS) {
+    QMessageBox::warning(this, "Maximum Slots Reached",
+      QString("Cannot add more than %1 slots.").arg(MAX_RECIPE_SLOTS));
+    return;
+  }
+
+  bool ok;
+  QString name = QInputDialog::getText(this, "Add Slot",
+    "Enter name for new slot:", QLineEdit::Normal,
+    QString("Slot %1").arg(m_programManager->getSlotCount() + 1), &ok);
+
+  if (ok && !name.isEmpty()) {
+    int newIndex = m_programManager->createSlot(name.toStdString());
+    if (newIndex >= 0) {
+      updateSlotSelectors();
+      // Switch to the new slot
+      m_programManager->setActiveSlot(newIndex);
+      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
+      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
+      updateRecipeList();
+      updateSlotInfo();
+    }
+  }
+}
+
+void RunProgramPage::onDeleteSlot()
+{
+  if (!m_programManager) return;
+
+  if (m_programManager->getSlotCount() <= 1) {
+    QMessageBox::warning(this, "Cannot Delete",
+      "Cannot delete the last slot. A program must have at least one slot.");
+    return;
+  }
+
+  int currentIndex = m_programManager->getActiveSlotIndex();
+  QString slotName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
+
+  QMessageBox::StandardButton reply = QMessageBox::question(this, "Delete Slot",
+    QString("Delete slot '%1' and all its recipes?\n\nThis cannot be undone.").arg(slotName),
+    QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+  if (reply == QMessageBox::Yes) {
+    if (m_programManager->deleteSlot(currentIndex)) {
+      updateSlotSelectors();
+      // Update active slot index in selectors
+      int newIndex = m_programManager->getActiveSlotIndex();
+      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
+      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
+      updateRecipeList();
+      updateSlotInfo();
+    }
+  }
+}
+
+void RunProgramPage::onDuplicateSlot()
+{
+  if (!m_programManager) return;
+
+  if (m_programManager->getSlotCount() >= MAX_RECIPE_SLOTS) {
+    QMessageBox::warning(this, "Maximum Slots Reached",
+      QString("Cannot add more than %1 slots.").arg(MAX_RECIPE_SLOTS));
+    return;
+  }
+
+  int currentIndex = m_programManager->getActiveSlotIndex();
+  QString currentName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
+
+  bool ok;
+  QString name = QInputDialog::getText(this, "Duplicate Slot",
+    "Enter name for the copy:", QLineEdit::Normal,
+    currentName + " (Copy)", &ok);
+
+  if (ok && !name.isEmpty()) {
+    int newIndex = m_programManager->duplicateSlot(currentIndex, name.toStdString());
+    if (newIndex >= 0) {
+      updateSlotSelectors();
+      // Switch to the new slot
+      m_programManager->setActiveSlot(newIndex);
+      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
+      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
+      updateRecipeList();
+      updateSlotInfo();
+    }
+  }
+}
+
+void RunProgramPage::updateSlotSelectors()
+{
+  if (!m_programManager) return;
+
+  auto names = m_programManager->getSlotNames();
+  int activeIndex = m_programManager->getActiveSlotIndex();
+
+  // Update both selectors
+  for (QComboBox* selector : {m_slotSelector, m_editSlotSelector}) {
+    if (!selector) continue;
+    selector->blockSignals(true);
+    selector->clear();
+    for (const auto& name : names) {
+      selector->addItem(QString::fromStdString(name));
+    }
+    selector->setCurrentIndex(activeIndex);
+    selector->blockSignals(false);
+  }
+
+  // Update button states
+  if (m_deleteSlotButton) {
+    m_deleteSlotButton->setEnabled(names.size() > 1);
+  }
+  if (m_addSlotButton) {
+    m_addSlotButton->setEnabled(static_cast<int>(names.size()) < MAX_RECIPE_SLOTS);
+  }
+  if (m_duplicateSlotButton) {
+    m_duplicateSlotButton->setEnabled(static_cast<int>(names.size()) < MAX_RECIPE_SLOTS);
+  }
+}
+
+void RunProgramPage::updateSlotInfo()
+{
+  if (!m_slotInfoLabel || !m_programManager) return;
+
+  int recipeCount = m_programManager->getRecipeCount();
+  QString text = QString("%1 recipe%2 in this slot")
+    .arg(recipeCount)
+    .arg(recipeCount == 1 ? "" : "s");
+  m_slotInfoLabel->setText(text);
+}
+
+// ============================================================================
 // EXECUTION
 // ============================================================================
 
@@ -2511,13 +2915,6 @@ void RunProgramPage::onExecuteProgram()
     if (!selfPtr) return;  // Widget destroyed
 
     (*checkCountPtr)++;
-    if (*checkCountPtr % 10 == 0) {  // Log every second
-      std::cout << "[RunProgramPage] Timer heartbeat #" << *checkCountPtr
-                << ", m_isExecuting=" << m_isExecuting
-                << ", worker running=" << (m_programWorker ? m_programWorker->isRunning() : false)
-                << ", worker finished=" << (m_programWorker ? m_programWorker->isFinished() : false) << std::endl;
-      std::cout.flush();
-    }
 
     if (m_programWorker && m_programWorker->isFinished()) {
       std::cout << "[RunProgramPage] Timer detected thread finished after " << *checkCountPtr << " checks" << std::endl;
@@ -3861,7 +4258,7 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
 
   // Create context menu
   QMenu contextMenu(this);
-  contextMenu.setStyleSheet(
+  QString menuStyle =
     "QMenu { "
     "  background-color: #2d2d30; "
     "  color: white; "
@@ -3873,10 +4270,33 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
     "} "
     "QMenu::item:selected { "
     "  background-color: #0e639c; "
-    "}"
-  );
+    "} "
+    "QMenu::item:disabled { "
+    "  color: #666666; "
+    "}";
+  contextMenu.setStyleSheet(menuStyle);
 
   QAction* renameAction = contextMenu.addAction("Rename Recipe...");
+
+  // Add "Move to Slot" submenu if there are multiple slots
+  QMenu* moveToSlotMenu = nullptr;
+  std::vector<QAction*> slotActions;
+  if (m_programManager->getSlotCount() > 1) {
+    contextMenu.addSeparator();
+    moveToSlotMenu = contextMenu.addMenu("Move to Slot");
+    moveToSlotMenu->setStyleSheet(menuStyle);
+
+    int currentSlot = m_programManager->getActiveSlotIndex();
+    auto slotNames = m_programManager->getSlotNames();
+
+    for (int i = 0; i < static_cast<int>(slotNames.size()); ++i) {
+      if (i != currentSlot) {
+        QAction* slotAction = moveToSlotMenu->addAction(QString::fromStdString(slotNames[i]));
+        slotAction->setData(i);  // Store slot index in action data
+        slotActions.push_back(slotAction);
+      }
+    }
+  }
 
   // Add retrace edit option (only if not currently running)
   QAction* retraceAction = nullptr;
@@ -3893,6 +4313,28 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
   }
   else if (retraceAction && selectedAction == retraceAction) {
     onStartRetraceEdit(row);
+  }
+  else if (moveToSlotMenu) {
+    // Check if a slot action was selected
+    for (QAction* slotAction : slotActions) {
+      if (selectedAction == slotAction) {
+        int targetSlotIndex = slotAction->data().toInt();
+        QString recipeName = QString::fromStdString(m_programManager->getRecipe(row)->displayName);
+        QString targetSlotName = QString::fromStdString(m_programManager->getSlotName(targetSlotIndex));
+
+        if (m_programManager->moveRecipeToSlot(row, targetSlotIndex)) {
+          updateRecipeList();
+          updateSlotInfo();
+          std::cout << "[RunProgramPage] Moved recipe '" << recipeName.toStdString()
+                    << "' to slot '" << targetSlotName.toStdString() << "'" << std::endl;
+        } else {
+          QMessageBox::warning(this, "Move Failed",
+            QString("Failed to move recipe '%1' to slot '%2'.")
+              .arg(recipeName).arg(targetSlotName));
+        }
+        break;
+      }
+    }
   }
 }
 
@@ -4241,12 +4683,16 @@ void RunProgramPage::updateProgramInfo()
     m_executionTitleLabel->setText("Program Execution");
   }
 
-  // ✅ UPDATE: Display program file path
+  // Display program file path
   if (!m_currentProgramPath.isEmpty()) {
     m_programPathLabel->setText("Path: " + m_currentProgramPath);
   } else {
     m_programPathLabel->setText("");
   }
+
+  // Update slot system UI
+  updateSlotSelectors();
+  updateSlotInfo();
 }
 
 void RunProgramPage::updateRecipeList()
@@ -4333,6 +4779,7 @@ void RunProgramPage::updateRecipeList()
   }
 
   updateExecuteButton();
+  updateSlotInfo();
 }
 
 void RunProgramPage::updateExecuteButton()
@@ -4773,7 +5220,7 @@ void RunProgramPage::createContextTab()
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   QLabel* filterLabel = new QLabel("Filter:");
-  filterLabel->setStyleSheet("color: #d4d4d4; font-weight: bold;");
+  filterLabel->setStyleSheet("color: #d4d4d4; font-weight: bold; font-size: 18pt;");
   headerLayout->addWidget(filterLabel);
 
   m_contextFilterEdit = new QLineEdit();
@@ -4786,6 +5233,7 @@ void RunProgramPage::createContextTab()
     "  border-radius: 3px; "
     "  padding: 5px; "
     "  min-width: 200px; "
+    "  font-size: 18pt; "
     "} "
     "QLineEdit:focus { "
     "  border: 1px solid #0e639c; "
@@ -4794,7 +5242,7 @@ void RunProgramPage::createContextTab()
   headerLayout->addWidget(m_contextFilterEdit, 1);
 
   m_contextStatusLabel = new QLabel("No context data");
-  m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
+  m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic; font-size: 18pt;");
   headerLayout->addWidget(m_contextStatusLabel);
 
   contextLayout->addLayout(headerLayout);
@@ -4807,10 +5255,22 @@ void RunProgramPage::createContextTab()
   m_contextTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_contextTable->setAlternatingRowColors(true);
 
-  // Column widths
-  m_contextTable->setColumnWidth(0, 200);  // Variable name
-  m_contextTable->setColumnWidth(1, 300);  // Value
+  // Load column widths from settings (with defaults for larger font)
+  QSettings settings("Fabrinet", "BobcatEngine");
+  int col0Width = settings.value("ContextTable/ColumnWidth0", 300).toInt();
+  int col1Width = settings.value("ContextTable/ColumnWidth1", 450).toInt();
+  m_contextTable->setColumnWidth(0, col0Width);  // Variable name
+  m_contextTable->setColumnWidth(1, col1Width);  // Value
   m_contextTable->horizontalHeader()->setStretchLastSection(true);  // Type stretches
+
+  // Save column widths when user resizes them
+  connect(m_contextTable->horizontalHeader(), &QHeaderView::sectionResized,
+    this, [this](int logicalIndex, int /*oldSize*/, int newSize) {
+      if (logicalIndex < 2) {  // Only save Variable and Value columns (Type stretches)
+        QSettings settings("Fabrinet", "BobcatEngine");
+        settings.setValue(QString("ContextTable/ColumnWidth%1").arg(logicalIndex), newSize);
+      }
+    });
 
   m_contextTable->verticalHeader()->setVisible(false);
   m_contextTable->setSortingEnabled(true);
@@ -4821,9 +5281,10 @@ void RunProgramPage::createContextTab()
     "  border: 1px solid #3f3f46; "
     "  gridline-color: #3f3f46; "
     "  color: #d4d4d4; "
+    "  font-size: 18pt; "
     "} "
     "QTableWidget::item { "
-    "  padding: 4px; "
+    "  padding: 6px; "
     "} "
     "QTableWidget::item:alternate { "
     "  background-color: #252526; "
@@ -4835,9 +5296,10 @@ void RunProgramPage::createContextTab()
     "QHeaderView::section { "
     "  background-color: #2d2d30; "
     "  color: #d4d4d4; "
-    "  padding: 6px; "
+    "  padding: 8px; "
     "  border: 1px solid #3f3f46; "
     "  font-weight: bold; "
+    "  font-size: 18pt; "
     "}"
   );
 
@@ -4854,7 +5316,8 @@ void RunProgramPage::createContextTab()
     "  color: #d4d4d4; "
     "  border: 1px solid #555555; "
     "  border-radius: 3px; "
-    "  padding: 6px 12px; "
+    "  padding: 8px 16px; "
+    "  font-size: 18pt; "
     "} "
     "QPushButton:hover { "
     "  background-color: #505050; "
@@ -4872,7 +5335,8 @@ void RunProgramPage::createContextTab()
     "  color: #d4d4d4; "
     "  border: 1px solid #555555; "
     "  border-radius: 3px; "
-    "  padding: 6px 12px; "
+    "  padding: 8px 16px; "
+    "  font-size: 18pt; "
     "} "
     "QPushButton:hover { "
     "  background-color: #505050; "

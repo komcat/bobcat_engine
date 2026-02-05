@@ -64,6 +64,21 @@ std::vector<std::string> ChartOverlay::GetEnabledChannels() const {
     return std::vector<std::string>(m_enabledChannels.begin(), m_enabledChannels.end());
 }
 
+void ChartOverlay::SetScale(float scale) {
+    if (scale < MIN_SCALE) scale = MIN_SCALE;
+    if (scale > MAX_SCALE) scale = MAX_SCALE;
+    m_scale = scale;
+    std::cout << "[ChartOverlay] Scale set to " << m_scale << std::endl;
+}
+
+void ChartOverlay::IncreaseScale() {
+    SetScale(m_scale + SCALE_STEP);
+}
+
+void ChartOverlay::DecreaseScale() {
+    SetScale(m_scale - SCALE_STEP);
+}
+
 void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
     if (!m_enabled) return;
 
@@ -86,16 +101,20 @@ void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
 
     int winW = windowRect.right - windowRect.left;
 
+    // Get scaled dimensions
+    int chartWidth = GetChartWidth();
+    int chartHeight = GetChartHeight();
+
     // Chart rect: top-right corner
-    int chartLeft = winW - CHART_WIDTH - CHART_MARGIN;
+    int chartLeft = winW - chartWidth - CHART_MARGIN;
     int chartTop = CHART_MARGIN;
     if (chartLeft < CHART_MARGIN) chartLeft = CHART_MARGIN;
 
     Gdiplus::RectF chartRect(
         static_cast<Gdiplus::REAL>(chartLeft),
         static_cast<Gdiplus::REAL>(chartTop),
-        static_cast<Gdiplus::REAL>(CHART_WIDTH),
-        static_cast<Gdiplus::REAL>(CHART_HEIGHT));
+        static_cast<Gdiplus::REAL>(chartWidth),
+        static_cast<Gdiplus::REAL>(chartHeight));
 
     // Semi-transparent dark background
     Gdiplus::SolidBrush bgBrush(Gdiplus::Color(180, 20, 20, 30));
@@ -128,22 +147,24 @@ void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
     double yMax = globalMax + padding;
     double yRange = yMax - yMin;
 
-    // Inner drawing area
-    const float legendH = 20.0f;
-    const float valuesH = 28.0f;  // Increased for larger value font
-    float plotLeft = chartRect.X + 4.0f;
+    // Scaled font sizes and layout dimensions
+    float scaledLegendFontSize = 8.0f * m_scale;
+    float scaledValueFontSize = 14.0f * m_scale;
+    float legendH = 20.0f * m_scale;
+    float valuesH = 28.0f * m_scale;
+    float plotLeft = chartRect.X + 4.0f * m_scale;
     float plotTop = chartRect.Y + legendH;
-    float plotW = chartRect.Width - 8.0f;
-    float plotH = chartRect.Height - legendH - valuesH - 4.0f;
+    float plotW = chartRect.Width - 8.0f * m_scale;
+    float plotH = chartRect.Height - legendH - valuesH - 4.0f * m_scale;
 
-    // Fonts
-    Gdiplus::Font legendFont(L"Segoe UI", 8.0f, Gdiplus::FontStyleBold);
-    Gdiplus::Font valueFont(L"Segoe UI", 14.0f, Gdiplus::FontStyleBold);  // Larger value display
+    // Fonts (scaled)
+    Gdiplus::Font legendFont(L"Segoe UI", scaledLegendFontSize, Gdiplus::FontStyleBold);
+    Gdiplus::Font valueFont(L"Segoe UI", scaledValueFontSize, Gdiplus::FontStyleBold);
 
     // Draw legend and curves per channel
-    float legendX = chartRect.X + 6.0f;
-    float legendY = chartRect.Y + 2.0f;
-    float valueX = chartRect.X + 6.0f;
+    float legendX = chartRect.X + 6.0f * m_scale;
+    float legendY = chartRect.Y + 2.0f * m_scale;
+    float valueX = chartRect.X + 6.0f * m_scale;
     float valueY = chartRect.Y + chartRect.Height - valuesH - 1.0f;
 
     colorIndex = 0;
@@ -154,20 +175,23 @@ void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
 
         Gdiplus::Color color = GetChannelColor(colorIndex++);
         Gdiplus::SolidBrush textBrush(color);
-        Gdiplus::Pen linePen(color, 1.5f);
+        Gdiplus::Pen linePen(color, 1.5f * m_scale);
 
         // Legend: colored square + channel name (truncated)
+        float squareSize = 8.0f * m_scale;
         Gdiplus::SolidBrush squareBrush(color);
-        gfx.FillRectangle(&squareBrush, legendX, legendY + 4.0f, 8.0f, 8.0f);
+        gfx.FillRectangle(&squareBrush, legendX, legendY + 4.0f * m_scale, squareSize, squareSize);
 
-        // Truncate channel name to fit
+        // Truncate channel name to fit (adjust length based on scale)
         std::wstring wChannelId(channelId.begin(), channelId.end());
-        if (wChannelId.length() > 12) {
-            wChannelId = wChannelId.substr(0, 10) + L"..";
+        size_t maxChars = static_cast<size_t>(12 * m_scale);
+        if (maxChars < 6) maxChars = 6;
+        if (wChannelId.length() > maxChars) {
+            wChannelId = wChannelId.substr(0, maxChars - 2) + L"..";
         }
         gfx.DrawString(wChannelId.c_str(), -1, &legendFont,
-            Gdiplus::PointF(legendX + 11.0f, legendY), &textBrush);
-        legendX += 90.0f;
+            Gdiplus::PointF(legendX + 11.0f * m_scale, legendY), &textBrush);
+        legendX += 90.0f * m_scale;
 
         // Build PointF array for the curve
         size_t count = data.values.size();
@@ -185,7 +209,8 @@ void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
         if (count >= 2) {
             gfx.DrawCurve(&linePen, pts.data(), static_cast<INT>(count));
         } else if (count == 1) {
-            Gdiplus::RectF dot(pts[0].X - 2.0f, pts[0].Y - 2.0f, 4.0f, 4.0f);
+            float dotSize = 4.0f * m_scale;
+            Gdiplus::RectF dot(pts[0].X - dotSize/2, pts[0].Y - dotSize/2, dotSize, dotSize);
             gfx.DrawEllipse(&linePen, dot);
         }
 
@@ -193,7 +218,7 @@ void ChartOverlay::Draw(HDC hDC, const RECT& windowRect) {
         std::wstring valStr = FormatValue(data.values.back());
         gfx.DrawString(valStr.c_str(), -1, &valueFont,
             Gdiplus::PointF(valueX, valueY), &textBrush);
-        valueX += 120.0f;  // Increased spacing for larger font
+        valueX += 120.0f * m_scale;  // Scaled spacing for value display
     }
 }
 
@@ -611,6 +636,9 @@ void GdiCameraWindow::CreateMenuBar() {
         if (m_toolsMenu) {
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_CROSSHAIR, L"Show Crosshair");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_CLICK_TO_MOVE, L"Enable Click-to-Move");
+            AppendMenuW(m_toolsMenu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_INCREASE, L"Increase Overlay Size (+)");
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_DECREASE, L"Decrease Overlay Size (-)");
             AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_toolsMenu, L"Tools");
         }
 
@@ -983,6 +1011,25 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         std::cout << "[GdiCameraWindow] Click-to-move " << (m_clickToMoveEnabled ? "enabled" : "disabled") << std::endl;
         UpdateToolsMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    // Overlay size commands
+    else if (commandId == IDM_OVERLAY_SIZE_INCREASE) {
+        m_chartOverlay.IncreaseScale();
+        std::cout << "[GdiCameraWindow] Overlay scale increased to " << m_chartOverlay.GetScale() << std::endl;
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+        // Emit signal for settings save (manager will handle this)
+        if (m_onOverlayScaleChanged) {
+            m_onOverlayScaleChanged(m_chartOverlay.GetScale());
+        }
+    }
+    else if (commandId == IDM_OVERLAY_SIZE_DECREASE) {
+        m_chartOverlay.DecreaseScale();
+        std::cout << "[GdiCameraWindow] Overlay scale decreased to " << m_chartOverlay.GetScale() << std::endl;
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+        // Emit signal for settings save (manager will handle this)
+        if (m_onOverlayScaleChanged) {
+            m_onOverlayScaleChanged(m_chartOverlay.GetScale());
+        }
     }
     // Camera menu commands
     else if (commandId == IDM_CAMERA_DUAL_MODE) {
