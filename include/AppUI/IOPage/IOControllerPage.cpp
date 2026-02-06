@@ -118,7 +118,7 @@ void IOControllerPage::createDeviceListPanel()
   m_deviceButtonGroup = new QButtonGroup(this);
   m_deviceButtonGroup->setExclusive(true);
   connect(m_deviceButtonGroup, QOverload<QAbstractButton*>::of(&QButtonGroup::buttonClicked),
-    this, [this](QAbstractButton* button) { onDeviceSelected(); });
+    this, [this](QAbstractButton* /*button*/) { onDeviceSelected(); });
 
   layout->addStretch();
 }

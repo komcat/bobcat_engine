@@ -235,9 +235,9 @@ void ContextImageViewer::ShowImage(const cv::Mat& image,
 #endif
 
 void ContextImageViewer::ShowContextImage(const QString& contextKey,
-                                           const QString& title,
-                                           int autoCloseMs,
-                                           QWidget* parent)
+                                           const QString& /*title*/,
+                                           int /*autoCloseMs*/,
+                                           QWidget* /*parent*/)
 {
     // This is a placeholder - actual implementation will be called from VisionCommandHandler
     // which has access to the SequenceContext

@@ -171,9 +171,9 @@ public:
                     "Calibration aborted."},
         {"blocking", "true"}
       });
+      return;  // Stop sequence if offset missing
     }
     sequence->EndIf();
-    return;  // Stop sequence
 
     // Use loaded factory offset values
     sequence->AddAction("context", "SetNumeric", {

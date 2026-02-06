@@ -186,7 +186,6 @@ bool OpenCVTest::testImageFiltering()
 
         // Check that blur actually changed the image (edges should be smoothed)
         // The edge should no longer be sharp
-        uchar originalEdge = image.at<uchar>(50, 49);  // Just outside rectangle
         uchar blurredEdge = blurred.at<uchar>(50, 49);
 
         // Blurred edge should be between background (128) and rectangle (255)

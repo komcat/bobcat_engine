@@ -481,6 +481,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/vision/ui
     ${CMAKE_SOURCE_DIR}/include/lighting
     ${CMAKE_SOURCE_DIR}/include/settings
+    ${CMAKE_SOURCE_DIR}/include/common
 )
 
 # External SDK include directories — stored for SYSTEM includes after target creation
@@ -724,6 +725,7 @@ set(SOURCES
     include/AppUI/LightingPage/CameraLightingPage.cpp
     # Safety system
     include/safety/SafetyWatchManager.cpp
+    include/safety/SafetyEventLog.cpp
     include/safety/SafetyAlertDialog.cpp
     # Application settings
     include/settings/ApplicationSettings.cpp
@@ -927,6 +929,9 @@ set(HEADERS
     include/AppUI/LightingPage/CameraLightingPage.h
     # Safety system
     include/safety/SafetyWatchManager.h
+    include/safety/SafetyEventLog.h
+    include/common/ErrorCode.h
+    include/common/ThreadPriority.h
     include/safety/SafetyAlertDialog.h
     # Application settings
     include/settings/ApplicationSettings.h
@@ -1200,6 +1205,8 @@ endif()
 # Compiler Warning Level (safety compliance)
 # ============================================================================
 if(MSVC)
+    # Remove default /W3 to avoid D9025 override warning
+    string(REGEX REPLACE "/W[0-3]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     target_compile_options(bobcat_engine PRIVATE /W4 /external:anglebrackets /external:W0)
 endif()
 

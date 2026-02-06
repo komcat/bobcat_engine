@@ -332,7 +332,7 @@ void ManualAlignPointWidget::updatePositionDisplay()
   m_positionLabel->setText(posText);
 }
 
-void ManualAlignPointWidget::enableClickToMove(bool enable)
+void ManualAlignPointWidget::enableClickToMove(bool /*enable*/)
 {
   // TODO: Implement auxiliaryWindowManager integration
   /*
@@ -350,7 +350,7 @@ void ManualAlignPointWidget::enableClickToMove(bool enable)
   */
 }
 
-void ManualAlignPointWidget::enableCrosshair(bool enable)
+void ManualAlignPointWidget::enableCrosshair(bool /*enable*/)
 {
   // TODO: Implement auxiliaryWindowManager integration
   /*

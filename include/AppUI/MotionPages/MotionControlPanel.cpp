@@ -313,7 +313,7 @@ void MotionControlPanel::setDevices(const QStringList& devices)
 
 void MotionControlPanel::setSelectedPosition(const QString& name, double x, double y, double z,
   double u, double v, double w,
-  const std::vector<std::string>& waypoints)
+  const std::vector<std::string>& /*waypoints*/)
 {
   m_selectedPositionName = name;
 

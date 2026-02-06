@@ -480,7 +480,7 @@ bool CalibrationCommandHandler::SaveNeedleZCalibrationGlobal(
 
 bool CalibrationCommandHandler::ExecuteCommand(
   void* /*manager*/,
-  const std::string& deviceName,
+  const std::string& /*deviceName*/,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
   std::string& errorMessage,

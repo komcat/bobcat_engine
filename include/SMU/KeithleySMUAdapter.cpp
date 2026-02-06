@@ -833,7 +833,6 @@ bool KeithleySMUAdapter::QueryCommandInternal(const std::string& command, std::s
 
   // Read response
   char buffer[BUFFER_SIZE] = {0};
-  ViUInt32 retCount = 0;
 
   status = viScanf(m_instrument, "%t", buffer);
   if (status < VI_SUCCESS) {

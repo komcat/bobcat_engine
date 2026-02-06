@@ -11,6 +11,7 @@
 
 class EziIOManager;
 class LogManager;
+class SafetyEventLog;
 
 /**
  * @brief Background safety monitoring layer
@@ -79,6 +80,12 @@ public:
    * @param logManager Pointer to LogManager
    */
   void SetLogManager(LogManager* logManager);
+
+  /**
+   * @brief Set the safety event log for structured audit trail
+   * @param eventLog Pointer to SafetyEventLog
+   */
+  void SetSafetyEventLog(SafetyEventLog* eventLog);
 
   // ========== Configuration ==========
 
@@ -192,6 +199,7 @@ private:
   // Dependencies
   EziIOManager* m_ioManager;
   LogManager* m_logManager;
+  SafetyEventLog* m_safetyEventLog;
 
   // Configuration
   bool m_enabled;

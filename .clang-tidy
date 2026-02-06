@@ -1,0 +1,27 @@
+---
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-concat-nested-namespaces,
+  performance-*,
+  -performance-avoid-endl,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-cognitive-complexity,
+  -readability-implicit-bool-conversion,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-slicing,
+  misc-unused-using-decls,
+  misc-redundant-expression
+
+WarningsAsErrors: ''
+
+HeaderFilterRegex: 'include/.*\.h$'
+
+FormatStyle: none
+...

@@ -418,7 +418,6 @@ void DependencyGraphWindow::refreshSetTabs()
 
   // Clear existing tabs
   while (m_setTabWidget->count() > 0) {
-    QWidget* widget = m_setTabWidget->widget(0);
     m_setTabWidget->removeTab(0);
     // Don't delete - we manage these separately
   }

@@ -243,7 +243,7 @@ bool Keithley6482Adapter::SetVoltage(double voltage)
   return true;
 }
 
-bool Keithley6482Adapter::SetCurrent(double current)
+bool Keithley6482Adapter::SetCurrent(double /*current*/)
 {
   SetLastError("SetCurrent: Not applicable for this device (voltage source only)");
   return false;

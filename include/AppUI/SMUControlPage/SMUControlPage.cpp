@@ -1216,7 +1216,7 @@ void SMUControlPage::refreshActiveSessionsList()
 }
 
 // Polling measurement callback
-void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString timestamp)
+void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString /*timestamp*/)
 {
   // Update live display for current device
   if (deviceName == m_currentDevice) {
@@ -1590,7 +1590,7 @@ void SMUControlPage::onConnectionOperationStarted(QString operation, QString dev
 
 // ========== PARAMETER WORKER CALLBACKS ==========
 
-void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
+void SMUControlPage::onMeasurementsUpdated(int /*channel*/, double voltage, double current, bool outputOn)
 {
   // Update cached output state (for use by updateOutputState())
   m_cachedOutputOn = outputOn;
@@ -1646,7 +1646,7 @@ void SMUControlPage::onParameterCommandError(QString operation, QString error)
   showError(operation + ": " + error);
 }
 
-void SMUControlPage::onParameterCommandSuccess(QString operation, QString message)
+void SMUControlPage::onParameterCommandSuccess(QString /*operation*/, QString message)
 {
   showSuccess(message);
 }

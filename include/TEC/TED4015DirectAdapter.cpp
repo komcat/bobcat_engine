@@ -299,7 +299,7 @@ TECCommandResult TED4015DirectAdapter::ReadTECCurrent() {
 // LASER CONTROL (NOT SUPPORTED - TED4015 is TEC-only)
 // ============================================================================
 
-TECCommandResult TED4015DirectAdapter::SetLaserCurrent(double current) {
+TECCommandResult TED4015DirectAdapter::SetLaserCurrent(double /*current*/) {
   TECCommandResult result;
   result.Success = false;
   result.Message = "Laser control not supported on TED4015 (TEC-only controller)";

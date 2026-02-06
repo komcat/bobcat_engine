@@ -1,5 +1,6 @@
 ﻿// pi_controller.cpp
 #include "pi_controller.h"
+#include "common/ThreadPriority.h"
 #include <iostream>
 #include <chrono>
 #include <sstream>
@@ -64,6 +65,7 @@ void PIController::StopCommunicationThread() {
 }
 
 void PIController::CommunicationThreadFunc() {
+  ThreadUtil::SetCurrentThreadPriority(ThreadUtil::Priority::AboveNormal, "PIController");
   const auto updateInterval = std::chrono::milliseconds(50);
   int frameCounter = 0;
 

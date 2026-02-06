@@ -282,7 +282,7 @@ Gdiplus::PointF VisionResultOverlay::ImageToScreen(double imgX, double imgY,
     );
 }
 
-void VisionResultOverlay::Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
+void VisionResultOverlay::Draw(HDC hDC, const RECT& /*windowRect*/, int frameWidth, int frameHeight,
                                 int destX, int destY, int destWidth, int destHeight) {
     if (!m_enabled) return;
 
@@ -1963,7 +1963,7 @@ void GdiCameraWindow::SetCrosshairEnabled(bool enabled) {
     std::cout << "[GdiCameraWindow] Crosshair " << (enabled ? "enabled" : "disabled") << std::endl;
 }
 
-void GdiCameraWindow::DrawCrosshairs(HDC hDC, const RECT& windowRect) {
+void GdiCameraWindow::DrawCrosshairs(HDC hDC, const RECT& /*windowRect*/) {
     if (!m_crosshairEnabled && !m_clickToMoveEnabled) return;
     if (m_lastDestWidth <= 0 || m_lastDestHeight <= 0) return;
 

@@ -2741,7 +2741,7 @@ void RecipePage::onRunRecipe()
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
-            m_recipeWorker, [this](QString title, QString message, bool critical) {
+            m_recipeWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
       if (critical && m_recipeWorker) {
         m_recipeWorker->requestStop();
       }
@@ -2920,8 +2920,8 @@ void RecipePage::onRunSelectedStep()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      QWidget* oldWidget = m_configScrollArea->takeWidget();
+      // Take the current widget out of the scroll area (will be restored later)
+      (void)m_configScrollArea->takeWidget();
 
       // Show the user input widget in the scroll area
       m_configScrollArea->setWidget(m_userInputWidget);
@@ -2975,7 +2975,7 @@ void RecipePage::onRunSelectedStep()
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
-            m_recipeWorker, [this](QString title, QString message, bool critical) {
+            m_recipeWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
       if (critical && m_recipeWorker) {
         m_recipeWorker->requestStop();
       }
@@ -3039,7 +3039,7 @@ void RecipePage::onRecipeProgress(const QString& message)
   std::cout << "[RecipePage] Progress: " << message.toStdString() << std::endl;
 }
 
-void RecipePage::onRecipeFinished(bool success, const QString& message)
+void RecipePage::onRecipeFinished(bool /*success*/, const QString& message)
 {
   std::cout << "[RecipePage] Recipe finished: " << message.toStdString() << std::endl;
   m_recipeWorker = nullptr;
@@ -3292,7 +3292,7 @@ void RecipePage::onWaitProgress(int remainingMs, int totalMs)
 // ✅ STEP EXECUTION EVENTS (PUB-SUB FROM SEQUENCE ENGINE)
 // ============================================================================
 
-void RecipePage::onStepExecutionStarted(int stepIndex, QString stepName, QString stepType)
+void RecipePage::onStepExecutionStarted(int stepIndex, QString stepName, QString /*stepType*/)
 {
   // Highlight the currently executing step in the recipe tree
   highlightExecutingStep(stepIndex);

@@ -19,7 +19,7 @@ DUTCommandHandler::DUTCommandHandler(ApplicationContext* context)
 
 bool DUTCommandHandler::ExecuteCommand(
   void* /*manager*/,
-  const std::string& deviceName,
+  const std::string& /*deviceName*/,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
   std::string& errorMessage,

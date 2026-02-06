@@ -1,0 +1,588 @@
+>------ Build started: Project: CMakeLists, Configuration: Debug ------
+  [1/267] Automatic MOC for target bobcat_engine
+  [2/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\LiveVideoSubscriber.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [3/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\DarkTheme.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [4/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraHardwareFactory.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [5/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\ConnectionSplashScreen.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [6/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\camera\CameraWorker.cpp(346): warning C4189: 'captured': local variable is initialized but not referenced
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\camera\CameraWorker.cpp(347): warning C4189: 'displayed': local variable is initialized but not referenced
+  [7/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\PlaceholderPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [8/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [9/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraParameterWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [10/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraConfigManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [11/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraImageWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\camera\CameraImageWidget.cpp(412): warning C4100: 'event': unreferenced parameter
+  [12/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\TopBar.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [13/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraImageWidgetGL.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [14/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraSettingsWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [15/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\HardwareInstrumentPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [16/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\data\DataStore.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [17/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraLiveView.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [18/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MainMenuPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [19/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\MultiCameraView.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [20/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\logger\LogStatusBar.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [21/267] Building CXX object CMakeFiles\bobcat_engine.dir\bobcat_engine.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [22/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\CameraView.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [23/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\logger\LogManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [24/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\data\TcpDataClient.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [25/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\dut\DeviceUnderTest.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [26/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\pneumatics\PneumaticSlide.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\pneumatics\PneumaticSlide.cpp(52): warning C4189: 'oldPosition': local variable is initialized but not referenced
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\pneumatics\PneumaticSlide.cpp(82): warning C4189: 'oldPosition': local variable is initialized but not referenced
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\pneumatics\PneumaticSlide.cpp(160): warning C4189: 'oldPosition': local variable is initialized but not referenced
+  [27/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\TcpClientFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [28/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\logger\LogViewerPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [29/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MainWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [30/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\pneumatics\PneumaticManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [31/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\data\TcpClientWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [32/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\CameraFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [33/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\MotorDeviceFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [34/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\SavedPositionsFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [35/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\data\DataStoreWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [36/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\data\TcpClientManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\data\TcpClientManager.cpp(380): warning C4100: 'clientId': unreferenced parameter
+  [37/267] Building CXX object CMakeFiles\bobcat_engine.dir\Application.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\Application.cpp(1858): warning C4100: 'timestamp': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\Application.cpp(1871): warning C4100: 'timestamp': unreferenced parameter
+  [38/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\ConfigEditor\ConfigEditorPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [39/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\IOCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [40/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SequenceContextCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [41/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\CommandDispatcher.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [42/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionControllerPageBase.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [43/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\IODevicesFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [44/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\PneumaticSlidesFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [45/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\PneumaticCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [46/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\ACSControllerPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [47/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\CoordinateTransformer.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [48/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\PIControllerPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\PIControllerPage.cpp(1734): warning C4100: 'currentZ': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\PIControllerPage.cpp(1734): warning C4100: 'deviceName': unreferenced parameter
+  [49/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\PowerSupplyFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [50/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Forms\TECDevicesFormWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [51/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SequenceWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [52/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SequenceContext.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\SequenceContext.cpp(323): warning C4100: 'cameraName': unreferenced parameter
+  [53/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\GraphMoveWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [54/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\IOPage\IOControllerPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\IOPage\IOControllerPage.cpp(121): warning C4100: 'button': unreferenced parameter
+  [55/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\motions\CoordinateSystemManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [56/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\TransformationMatrixLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [57/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\PositionDot.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [58/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\JogWindow\QuickOutputWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [59/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\CameraCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [60/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\JogWindow\JogKeyBindingHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [61/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SequenceEngine.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [62/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\JogWindow\JogWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [63/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\DeviceLinkManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [64/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\CollapsiblePanel.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [65/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionControlPanel.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\MotionControlPanel.cpp(316): warning C4100: 'waypoints': unreferenced parameter
+  [66/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\NewPositionDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [67/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionGraphicsView.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\MotionGraphicsView.cpp(264): warning C4189: 'viewportHeight': local variable is initialized but not referenced
+  [68/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\CalibrationCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\CalibrationCommandHandler.cpp(483): warning C4100: 'deviceName': unreferenced parameter
+  [69/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\DeviceButtonStack.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [70/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\JogWindow\JogPanelWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [71/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\DevicePositionMarker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [72/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\PositionAnchor.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [73/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\PositionLabel.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [74/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\CoordinateSystem\CreateSystemWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [75/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\graph\MotionEdge.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [76/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\MotionJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [77/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\graph\MotionGraph.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [78/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\graph\MotionNode.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [79/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\CoordinateSystem\TestSystemWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [80/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\graph\MotionGraphManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [81/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\MotionCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [82/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\logger\ILogger.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [83/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionEdgeItem.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [84/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\products\product_position_manager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [85/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\GripperSequenceHelpers.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\GripperSequenceHelpers.cpp(74): warning C4100: 'lensName': unreferenced parameter
+  [86/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\products\product_json_loader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [87/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionNodeItem.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [88/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\PathPreview.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [89/267] Building CXX object CMakeFiles\bobcat_engine.dir\bobcat_engine_autogen\mocs_compilation.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [90/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\WaypointEditorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [91/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\OffsetMoveDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [92/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\RecipeClipboard.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [93/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\ScanDataCollector.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [94/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\MotionPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\MotionPage.cpp(1269): warning C4100: 'z': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\MotionPage.cpp(1269): warning C4100: 'y': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\MotionPage.cpp(1269): warning C4100: 'x': unreferenced parameter
+  [95/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\ScanContext.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [96/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\ProcessPluginRegistry.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [97/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\CoarseToFineStrategy.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [98/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\ProcessSequenceFactory.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [99/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SequencePromptDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [100/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\RotationScanStrategy.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [101/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\AdaptiveScanController.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [102/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\RotationScanController.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [103/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\ScanControlPanel.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [104/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SystemCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [105/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\RecipeTreeItemFactory.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [106/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\GraphWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\MotionPages\GraphWidget.cpp(1880): warning C4100: 'index': unreferenced parameter
+  [107/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\RecipeStepDelegate.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [108/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\RecipeManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [109/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\SystemProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [110/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\DeviceLinkProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [111/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\PropertyTableWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [112/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\TECProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [113/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\IOProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [114/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\PSUProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [115/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\DataStoreProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [116/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\ConditionalProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [117/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\DUTProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [118/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\CoordinateAlignProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [119/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\UpdatePositionProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [120/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\AutoFocusProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [121/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\YawCorrectionProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [122/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\MotionProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [123/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\CalibrationProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\recipe\processes\CalibrationProcesses.cpp(179): warning C4702: unreachable code
+  [124/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\YawCorrectionToTemplateProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [125/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\CalibrateCameraToNeedleOffset.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [126/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\RecipePage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(2744): warning C4100: 'message': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(2744): warning C4100: 'title': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(2924): warning C4189: 'oldWidget': local variable is initialized but not referenced
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(2978): warning C4100: 'message': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(2978): warning C4100: 'title': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(3042): warning C4100: 'success': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RecipePage\RecipePage.cpp(3295): warning C4100: 'stepType': unreferenced parameter
+  [127/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\SMUProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [128/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\CLD101xAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [129/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\DispenseProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [130/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\TECManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [131/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\AuxWindowProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [132/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\TECCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [133/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\CameraProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [134/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\RecipeProgressWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [135/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\LightingCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [136/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\DataStoreCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [137/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\LightingProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [138/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\TECJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [139/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\TECConnectionWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [140/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\TECParameterWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [141/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\ContextVariablePreviewWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [142/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\MotionPages\EditPositionDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [143/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\ContextViewerWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [144/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\RecipeWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\recipe\RecipeWorker.cpp(235): warning C4100: 'defaultValue': unreferenced parameter
+  [145/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\PneumaticSlideSelectorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [146/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\ProcessConfigWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [147/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\DeviceSelectorWidgets.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [148/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\PSUCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [149/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\TECPage\TECControlPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [150/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RecipePage\MotionDeviceSelectorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [151/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\RelativePositionCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [152/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\SMUCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [153/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Common\FileSelectorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [154/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\AuxWindowManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [155/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Common\ProductSelectorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [156/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\DUTCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\DUTCommandHandler.cpp(22): warning C4100: 'deviceName': unreferenced parameter
+  [157/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\CoordinateAlignCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [158/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Common\RecipeSaveAsDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [159/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\Common\CreateProductDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [160/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\AuxWindowCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [161/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\WorldOverlay.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [162/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\KeysightE36441A.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [163/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\WorldOverlayManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [164/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\WorldOverlayRenderer.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [165/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\KeysightE36103B.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [166/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\PowerSupplyManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [167/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\LiveViewCameraWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [168/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\AuxViewWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [169/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\PSUParameterWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [170/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\ShapeCreatorDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AuxWindow\ShapeCreatorDialog.cpp(327): warning C4100: 'index': unreferenced parameter
+  [171/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\SMUManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\SMU\SMUManager.cpp(174): warning C4100: 'deviceName': unreferenced parameter
+  [172/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\SMUPollingManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [173/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\GdiWindow\GdiCameraWindowManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [174/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\LiveChartWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [175/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\PowerSupplyJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [176/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\ProgramManager\RecipeExecutionStateMachine.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [177/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\PSU\KeysightPSUAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [178/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\AlignmentWizardDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [179/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\ProgramManager\ConditionExpressionEvaluator.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [180/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\SMUParameterWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [181/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\SMUControlPage\SMUControlPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\SMUControlPage\SMUControlPage.cpp(1219): warning C4100: 'timestamp': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\SMUControlPage\SMUControlPage.cpp(1593): warning C4100: 'channel': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\SMUControlPage\SMUControlPage.cpp(1649): warning C4100: 'operation': unreferenced parameter
+  [182/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\PowerSupplyControlPage\PowerSupplyControlPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [183/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\SMUConnectionWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [184/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\WorldOverlayWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [185/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\SMUJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [186/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\ProgramManager\ProgramManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [187/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\ProgramManager\ProgramWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [188/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\GdiWindow\GdiCameraWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\GdiWindow\GdiCameraWindow.cpp(285): warning C4100: 'windowRect': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\GdiWindow\GdiCameraWindow.cpp(1966): warning C4100: 'windowRect': unreferenced parameter
+  [189/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AuxWindow\CameraClickToMoveWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [190/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\lighting\CCSPD3Adapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [191/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\UserPromptWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [192/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\UserInputWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [193/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\CaptureConfirmWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [194/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\lighting\LightingManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [195/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\RecipeNodeItem.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [196/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\settings\ApplicationSettings.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [197/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\DependencyEdgeItem.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [198/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\lighting\LightingJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [199/267] Building CXX object CMakeFiles\bobcat_engine.dir\src\lighting\LightingParameterWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [200/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\DependencyGraphScene.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [201/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\RetraceEditWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [202/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\safety\SafetyEventLog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [203/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\LoopConfigDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [204/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\ManualAdjustWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [205/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\LightingPage\CameraLightingPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [206/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\ManualAlignPointWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RunProgramPage\ManualAlignPointWidget.cpp(335): warning C4100: 'enable': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RunProgramPage\ManualAlignPointWidget.cpp(353): warning C4100: 'enable': unreferenced parameter
+  [207/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\DependencyGraphWindow.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RunProgramPage\DependencyGraphWindow.cpp(421): warning C4189: 'widget': local variable is initialized but not referenced
+  [208/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\scanning\ScanExecutor.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [209/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\ACS\acs_controller_manager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [210/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\safety\SafetyAlertDialog.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [211/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\LightingPage\LightingControlWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [212/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\startup\ConnectionWorkerPool.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [213/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\PI\pi_controller.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [214/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\startup\ConnectionTask.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [215/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\startup\ConnectionConfig.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [216/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\ACS\acs_controller.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\motions\ACS\acs_controller.cpp(272): warning C4100: 'velocity': unreferenced parameter
+  [217/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\safety\SafetyWatchManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [218/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\IDSCameraAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [219/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\PI\PIPivotJsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [220/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\RunProgramPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RunProgramPage\RunProgramPage.cpp(2888): warning C4100: 'message': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\AppUI\RunProgramPage\RunProgramPage.cpp(2888): warning C4100: 'title': unreferenced parameter
+  [221/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\ids_camera_test.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [222/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\IO\EziIODevice.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [223/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\CLD101xDirectAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [224/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\PI\pi_controller_manager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [225/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\TEC\TED4015DirectAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\TEC\TED4015DirectAdapter.cpp(302): warning C4100: 'current': unreferenced parameter
+  [226/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\IO\QuickOutputManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [227/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\PylonCameraAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\camera\PylonCameraAdapter.cpp(505): warning C4100: 'value': unreferenced parameter
+  [228/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\IO\EziIOManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [229/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\SettingsPage\ApplicationSettingsPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [230/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\IO\WagoIODevice.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\IO\WagoIODevice.cpp(401): warning C4244: 'argument': conversion from 'int' to 'uint16_t', possible loss of data
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\IO\WagoIODevice.cpp(468): warning C4244: 'argument': conversion from 'int' to 'uint16_t', possible loss of data
+  [231/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\PI\PIAlignExecutor.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [232/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\OpenCVTest.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\vision\OpenCVTest.cpp(189): warning C4189: 'originalEdge': local variable is initialized but not referenced
+  [233/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\camera\pylon_camera.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [234/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\IO\QuickOutput_JsonLoader.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [235/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\KeithleySMUAdapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\SMU\KeithleySMUAdapter.cpp(836): warning C4189: 'retCount': local variable is initialized but not referenced
+  [236/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\SMU\Keithley6482Adapter.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\SMU\Keithley6482Adapter.cpp(246): warning C4100: 'current': unreferenced parameter
+  [237/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\motions\unified_motion_manager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [238/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionToolbarWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [239/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\recipe\processes\VisionProcesses.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [240/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\ContextImageViewer.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\ContextImageViewer.cpp(240): warning C4100: 'parent': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\ContextImageViewer.cpp(239): warning C4100: 'autoCloseMs': unreferenced parameter
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\include\sequence\ContextImageViewer.cpp(238): warning C4100: 'title': unreferenced parameter
+  [241/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\CircleDetectionPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [242/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\CornerDetectorPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [243/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\EdgeDetectionPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [244/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\VisionManager.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [245/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\FiducialDetectorPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [246/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\PatternMatchingEdgePlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [247/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\ImageProcessingPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [248/267] Building RC object CMakeFiles\bobcat_engine.dir\app.rc.res
+  [249/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\VisionProcessingWorker.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [250/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionLeftPanelWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [251/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\CalibrationPlatePlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [252/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\LineDetectorPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [253/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\TemplateMatchingBase.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [254/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionProfileListWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [255/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionImageWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [256/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\PatternMatchingPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [257/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\sequence\VisionCommandHandler.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [258/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\RunProgramPage\ScanControlWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [259/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionRightPanelWidget.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [260/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\AppUI\PneumaticPage\PneumaticControlPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [261/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\HalconCircleDetectionPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [262/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\ui\VisionManagerPage.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [263/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\HalconLineDetectionPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [264/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\HalconBeamDetectionPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [265/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\HalconCircleDetectionRobustPlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [266/267] Building CXX object CMakeFiles\bobcat_engine.dir\include\vision\plugins\HalconPatternMatchingEdgePlugin.cpp.obj
+C:\Users\Fabrinet\source\repos\komcat\komcat\bobcat_engine\out\build\x64-debug-hardware\cl : Command line warning D9025: overriding '/W3' with '/W4'
+  [267/267] Linking CXX executable bobcat_engine.exe; Copying PI GCS2 DLL to output directory; Copying Pylon DLLs to output directory; Copying IDS uEye DLL to output directory; Copying EziIO DLL to output directory; Copying OpenCV DLL to output directory; Copying OpenCV FFmpeg DLL to output directory; Copying config templates (preserving *.local.json files); Copying assets folder to output directory
+
+Build succeeded.

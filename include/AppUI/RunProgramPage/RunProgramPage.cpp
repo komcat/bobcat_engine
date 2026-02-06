@@ -2885,7 +2885,7 @@ void RunProgramPage::onExecuteProgram()
   // Connect safety watch - auto-stop on critical safety flag
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
-            m_programWorker, [this](QString title, QString message, bool critical) {
+            m_programWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
       if (critical && m_programWorker) {
         std::cout << "[RunProgramPage] Critical safety flag - stopping program worker" << std::endl;
         m_programWorker->requestStop();

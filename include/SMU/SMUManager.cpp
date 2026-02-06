@@ -171,7 +171,7 @@ void SMUManager::subscribeToDevice(SMUDevicePtr device, const std::string& name)
   if (keithley) {
     // Forward device measurements to manager's signal
     connect(keithley.get(), &Keithley6482Adapter::measurementReady,
-            this, [this, name](QString deviceName, int channel, double current, QString timestamp) {
+            this, [this, name](QString /*deviceName*/, int channel, double current, QString timestamp) {
       // Forward to manager's signal (use stored name to ensure consistency)
       emit measurementReady(QString::fromStdString(name), channel, current, timestamp);
     });

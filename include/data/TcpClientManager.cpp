@@ -377,7 +377,7 @@ void TcpClientManager::OnDataReceived(const std::string& clientId, const std::st
   emit dataReceived(clientId, value, timestamp);
 }
 
-void TcpClientManager::OnMultiChannelDataReceived(const std::string& clientId,
+void TcpClientManager::OnMultiChannelDataReceived(const std::string& /*clientId*/,
                                                     const std::vector<std::string>& channelIds,
                                                     size_t channelIndex,
                                                     float value,

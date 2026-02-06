@@ -71,7 +71,7 @@ namespace GripperSequenceHelpers {
     const GripperConfig& config,
     const std::string& placeNode,
     const std::string& viewNode,
-    const std::string& lensName)
+    const std::string& /*lensName*/)
   {
     // Move camera to place view position
     builder->AddAction(config.cameraDevice, "MoveToNamedPosition", {

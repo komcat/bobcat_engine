@@ -320,7 +320,7 @@ std::optional<cv::Mat> SequenceContext::GetImageFrame(const std::string& key) co
 #endif
 
 // ✅ NEW: Generate unique temp file path
-std::string SequenceContext::GenerateTempFilePath(const std::string& cameraName)
+std::string SequenceContext::GenerateTempFilePath(const std::string& /*cameraName*/)
 {
     // Get current date
     auto now = std::chrono::system_clock::now();

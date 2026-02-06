@@ -343,8 +343,8 @@ void CameraWorker::updateFPS()
   double fps = static_cast<double>(frames);
 
   // Get statistics
-  int captured = m_capturedFrames.load();
-  int displayed = m_displayedFrames.load();
+  (void)m_capturedFrames.load();  // Available for debugging if needed
+  (void)m_displayedFrames.load();  // Available for debugging if needed
 
   emit fpsUpdated(fps);
   emit processingTimeUpdated(m_avgProcessingTime.load());

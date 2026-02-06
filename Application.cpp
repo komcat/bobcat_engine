@@ -25,6 +25,7 @@
 #include "lighting/LightingJsonLoader.h"
 #include "lighting/LightingTypes.h"
 #include "settings/ApplicationSettings.h"
+#include "safety/SafetyEventLog.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
@@ -329,6 +330,17 @@ void Application::initializeManagers()
     updateSplash("LightingManager");
     initializeLightingManager();
     completeSplash("LightingManager");
+
+    // Initialize safety event log before safety watch (so safety watch can use it)
+    updateSplash("SafetyEventLog");
+    m_safetyEventLog = std::make_unique<SafetyEventLog>();
+    if (m_safetyEventLog->Initialize("logs")) {
+      m_context.safetyEventLog = m_safetyEventLog.get();
+      m_logManager->Info("SafetyEventLog initialized", "Application");
+    } else {
+      m_logManager->Warning("SafetyEventLog failed to initialize", "Application");
+    }
+    completeSplash("SafetyEventLog");
 
     updateSplash("SafetyWatch");
     initializeSafetyWatch();
@@ -1027,6 +1039,7 @@ void Application::shutdownManagers()
   // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
   m_smuPollingManager.reset();
   m_safetyWatchManager.reset();
+  m_safetyEventLog.reset();
   m_deviceLinkManager.reset();
   m_powerSupplyManager.reset();
   m_smuManager.reset();
@@ -1842,7 +1855,7 @@ void Application::initializeSMUSystem()
   // ✅ CONNECT POLLING MANAGER TO DATASTORE
   // This is the primary path for polling data (thread-safe architecture)
   connect(m_smuPollingManager.get(), &SMUPollingManager::measurementReady,
-          this, [this](QString deviceName, int channel, double value, QString timestamp) {
+          this, [this](QString deviceName, int channel, double value, QString /*timestamp*/) {
       // Guard against pending signals during shutdown
       if (!m_context.dataStore) return;
 
@@ -1855,7 +1868,7 @@ void Application::initializeSMUSystem()
   // ========== Legacy: Direct SMU Manager connection (for non-polling measurements) ==========
   // Note: This may be redundant now that polling uses SMUPollingManager
   connect(m_smuManager.get(), &SMUManager::measurementReady,
-          this, [this](QString deviceName, int channel, double value, QString timestamp) {
+          this, [this](QString deviceName, int channel, double value, QString /*timestamp*/) {
       // Guard against pending signals during shutdown
       if (!m_context.dataStore) return;
 
@@ -1906,6 +1919,9 @@ void Application::initializeSafetyWatch()
     // Set dependencies
     m_safetyWatchManager->SetIOManager(m_ioManager.get());
     m_safetyWatchManager->SetLogManager(m_logManager.get());
+    if (m_safetyEventLog) {
+      m_safetyWatchManager->SetSafetyEventLog(m_safetyEventLog.get());
+    }
 
     // Try local config first, then fall back to default
     std::string localConfigPath = "config/safety_watch.local.json";

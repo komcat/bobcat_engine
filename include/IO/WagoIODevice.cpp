@@ -398,7 +398,7 @@ EziIOError WagoIODevice::ReadInputs(uint64_t& inputs, uint64_t& latch) {
   std::lock_guard<std::mutex> lock(m_socketMutex);
 
   // Build and send Read Discrete Inputs request
-  auto request = BuildReadDiscreteInputsRequest(0, m_config.InputCount);
+  auto request = BuildReadDiscreteInputsRequest(0, static_cast<uint16_t>(m_config.InputCount));
   if (!SendRequest(request)) {
     return EziIOError::OPERATION_FAILED;
   }
@@ -465,7 +465,7 @@ EziIOError WagoIODevice::ReadOutputs(uint64_t& outputs, uint64_t& status) {
 
   // Build and send Read Coils request
   // WAGO 750: Read output status from address 0x0200 (512), not 0x0000
-  auto request = BuildReadCoilsRequest(WAGO_OUTPUT_READ_ADDR, m_config.OutputCount);
+  auto request = BuildReadCoilsRequest(WAGO_OUTPUT_READ_ADDR, static_cast<uint16_t>(m_config.OutputCount));
   if (!SendRequest(request)) {
     return EziIOError::OPERATION_FAILED;
   }

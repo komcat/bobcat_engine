@@ -1731,7 +1731,7 @@ void PIControllerPage::onZScanClicked(int channel)
   m_alignExecutor->startAlignment(deviceName, params);
 }
 
-void PIControllerPage::onZScanProgress(QString deviceName, int iteration, int total, double currentZ, double peakZ, double peakVoltage)
+void PIControllerPage::onZScanProgress(QString /*deviceName*/, int iteration, int total, double /*currentZ*/, double peakZ, double peakVoltage)
 {
   // Update progress bar
   if (m_zScanProgressBar) {

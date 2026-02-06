@@ -49,7 +49,6 @@ PneumaticError PneumaticSlide::Extend() {
   m_moveStartTime = std::chrono::steady_clock::now();
   m_lastCompletedMoveTimeMs = 0;  // Clear previous time
 
-  PneumaticPosition oldPosition = m_currentPosition;
   m_currentPosition = PneumaticPosition::EXTENDING;
   NotifyPositionChange(m_currentPosition);
 
@@ -79,7 +78,6 @@ PneumaticError PneumaticSlide::Retract() {
   m_moveStartTime = std::chrono::steady_clock::now();
   m_lastCompletedMoveTimeMs = 0;  // Clear previous time
 
-  PneumaticPosition oldPosition = m_currentPosition;
   m_currentPosition = PneumaticPosition::RETRACTING;
   NotifyPositionChange(m_currentPosition);
 
@@ -157,7 +155,6 @@ PneumaticPosition PneumaticSlide::UpdatePositionInternal() {
 
   // Notify and update position FIRST (if changed)
   if (newPosition != m_currentPosition) {
-    PneumaticPosition oldPosition = m_currentPosition;
     m_currentPosition = newPosition;  // ✅ UPDATE POSITION FIRST
     NotifyPositionChange(newPosition);
   }

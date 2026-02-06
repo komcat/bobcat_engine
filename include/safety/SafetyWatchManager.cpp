@@ -1,7 +1,9 @@
 // SafetyWatchManager.cpp
 #include "SafetyWatchManager.h"
+#include "SafetyEventLog.h"
 #include "../IO/EziIOManager.h"
 #include "../logger/LogManager.h"
+#include "common/ThreadPriority.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -13,6 +15,7 @@ SafetyWatchManager::SafetyWatchManager(QObject* parent)
   : QObject(parent)
   , m_ioManager(nullptr)
   , m_logManager(nullptr)
+  , m_safetyEventLog(nullptr)
   , m_enabled(false)
   , m_pollingIntervalMs(100)
   , m_activeAlertCritical(false)
@@ -38,6 +41,11 @@ void SafetyWatchManager::SetIOManager(EziIOManager* ioManager)
 void SafetyWatchManager::SetLogManager(LogManager* logManager)
 {
   m_logManager = logManager;
+}
+
+void SafetyWatchManager::SetSafetyEventLog(SafetyEventLog* eventLog)
+{
+  m_safetyEventLog = eventLog;
 }
 
 bool SafetyWatchManager::LoadConfig(const std::string& configPath)
@@ -212,6 +220,12 @@ void SafetyWatchManager::AcknowledgeSafetyFlag()
   std::cout << "[SafetyWatchManager] Safety flag acknowledged" << std::endl;
   LogEvent("Safety alert acknowledged: " + m_activeAlertTitle);
 
+  // Log to structured safety event log
+  if (m_safetyEventLog) {
+    m_safetyEventLog->LogEvent(SafetySeverity::INFO, "SafetyWatchManager",
+                                "SAFETY_ACKNOWLEDGED", "Acknowledged: " + m_activeAlertTitle);
+  }
+
   m_safetyFlagRaised = false;
   m_criticalFlagRaised = false;
   m_activeAlertTitle.clear();
@@ -242,6 +256,7 @@ bool SafetyWatchManager::IsActiveAlertCritical() const
 void SafetyWatchManager::PollingThreadFunction()
 {
   m_isRunning = true;
+  ThreadUtil::SetCurrentThreadPriority(ThreadUtil::Priority::AboveNormal, "SafetyWatch");
   std::cout << "[SafetyWatchManager] Polling thread started - watching "
             << m_watchedInputs.size() << " inputs" << std::endl;
 
@@ -371,6 +386,16 @@ void SafetyWatchManager::RaiseSafetyFlag(const WatchedInput& input, bool prevSta
     LogEvent(logMsg + " (CRITICAL)", true);
   } else {
     LogEvent(logMsg);
+  }
+
+  // Log to structured safety event log
+  if (m_safetyEventLog) {
+    m_safetyEventLog->LogSafetyTrigger(
+      "SafetyWatchManager",
+      logMsg,
+      input.critical,
+      input.critical ? ErrorCode::SafetyCriticalStop : ErrorCode::SafetyFlagRaised
+    );
   }
 
   // Emit signal (must be done without lock in some cases, but signals are thread-safe)

@@ -1,5 +1,6 @@
 ﻿// acs_controller.cpp
 #include "acs_controller.h"
+#include "common/ThreadPriority.h"
 #include <chrono>
 #include <thread>
 #include <sstream>
@@ -60,6 +61,7 @@ void ACSController::StopCommunicationThread() {
 }
 
 void ACSController::CommunicationThreadFunc() {
+  ThreadUtil::SetCurrentThreadPriority(ThreadUtil::Priority::AboveNormal, "ACSController");
   const auto updateInterval = std::chrono::milliseconds(200);
   int frameCounter = 0;
 
@@ -267,7 +269,7 @@ void ACSController::Disconnect() {
   LOG_INFO("Disconnected");
 }
 
-bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double velocity, bool blocking) {
+bool ACSController::MoveToAbsolutePosition(double x, double y, double z, double /*velocity*/, bool blocking) {
   if (!m_isConnected) {
     LOG_ERROR("Cannot move - not connected");
     return false;

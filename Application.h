@@ -28,6 +28,7 @@ class LogManager;
 class DataStore;
 class TcpClientManager;
 class ConnectionSplashScreen;  // ✅ NEW: Splash screen for hardware connection
+class SafetyEventLog;          // Structured safety event logging
 
 class Application : public QObject
 {
@@ -120,6 +121,7 @@ private:
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;  // GDI camera monitor
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
   std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
+  std::unique_ptr<SafetyEventLog> m_safetyEventLog;           // Structured safety event log
 
   ApplicationContext m_context;
 

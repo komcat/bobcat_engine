@@ -502,7 +502,7 @@ void PylonCameraAdapter::ClearFrameCallback() {
   std::cout << "Frame callback cleared for Pylon camera: " << m_cameraId << std::endl;
 }
 
-bool PylonCameraAdapter::SetConfiguration(const std::string& key, const std::string& value) {
+bool PylonCameraAdapter::SetConfiguration(const std::string& key, const std::string& /*value*/) {
   try {
     if (!m_pylonCamera || !IsConnected()) {
       SetError("Camera not connected");

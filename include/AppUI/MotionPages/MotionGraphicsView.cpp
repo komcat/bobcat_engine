@@ -261,7 +261,6 @@ void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& rect)
 
   // Get viewport dimensions
   int viewportWidth = viewport()->width();
-  int viewportHeight = viewport()->height();
 
   // Set font
   QFont font("Arial", 11, QFont::Bold);

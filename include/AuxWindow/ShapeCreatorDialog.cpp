@@ -324,7 +324,7 @@ ShapeCreatorDialog::CapturedPoint ShapeCreatorDialog::screenToWorld(const QPoint
   return pt;
 }
 
-void ShapeCreatorDialog::onShapeTypeChanged(int index)
+void ShapeCreatorDialog::onShapeTypeChanged(int /*index*/)
 {
   m_currentShapeType = static_cast<ShapeType>(m_shapeTypeDropdown->currentData().toInt());
 

@@ -232,7 +232,7 @@ void RecipeWorker::run()
     else {
       // No callback - return empty string (fail the input)
       m_engine->SetUserInputCallback(
-        [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
+        [this](const std::string& title, const std::string& prompt, const std::string& /*defaultValue*/) -> std::pair<bool, std::string> {
         if (!m_loopMode) {
           emit logMessage(QString("Auto-failing user input (no callback): %1 - %2")
             .arg(QString::fromStdString(title))

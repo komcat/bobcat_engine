@@ -1266,7 +1266,7 @@ void MotionPage::onStopClicked()
 	msgBox.exec();
 }
 
-void MotionPage::onPositionSelected(const QString& name, double x, double y, double z)
+void MotionPage::onPositionSelected(const QString& name, double /*x*/, double /*y*/, double /*z*/)
 {
 	m_selectedPositionName = name;
 

@@ -409,7 +409,7 @@ void CameraImageWidget::resizeEvent(QResizeEvent* event)
   }
 }
 
-void CameraImageWidget::paintEvent(QPaintEvent* event)
+void CameraImageWidget::paintEvent(QPaintEvent* /*event*/)
 {
   // Since we have WA_OpaquePaintEvent set, we must paint the entire widget
   // Fill background with dark color to prevent leftover pixels

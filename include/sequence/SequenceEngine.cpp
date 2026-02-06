@@ -29,6 +29,7 @@
 #include "PneumaticCommandHandler.h"
 #include "CameraCommandHandler.h"
 #include "safety/SafetyWatchManager.h"
+#include "safety/SafetyEventLog.h"
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
 #endif
@@ -634,6 +635,11 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
 
   LogInfo("Executing sequence: " + sequence->GetName());
 
+  // Log sequence start to safety event log
+  if (m_context->safetyEventLog) {
+    m_context->safetyEventLog->LogSequenceStart(sequence->GetName());
+  }
+
   // Reset step tracking
   m_currentStepIndex = -1;
 
@@ -646,6 +652,9 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
       // ✅ CHECK STOP FLAG BEFORE EACH STEP (check both engine and context flags)
       if (m_stopRequested.load() || context->IsStopRequested()) {
         LogWarning("Sequence execution stopped by user request");
+        if (m_context->safetyEventLog) {
+          m_context->safetyEventLog->LogSequenceStop(sequence->GetName(), false, "user request");
+        }
         // Notify failure for current step if any
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
@@ -658,6 +667,9 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
 
       if (!ExecuteStep(sequence->GetSteps()[i].get(), context)) {
         LogError("Step execution failed");
+        if (m_context->safetyEventLog) {
+          m_context->safetyEventLog->LogSequenceError(sequence->GetName(), "Step execution failed at index " + std::to_string(i));
+        }
         // Notify failure for current step if any
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
@@ -674,10 +686,16 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     context->SetExecutionEndTime();
     LogInfo("Sequence completed in " +
            std::to_string(context->GetExecutionDuration().count()) + " ms");
+    if (m_context->safetyEventLog) {
+      m_context->safetyEventLog->LogSequenceStop(sequence->GetName(), true);
+    }
     return true;
   }
   catch (const std::exception& e) {
     LogError("Exception during execution: " + std::string(e.what()));
+    if (m_context->safetyEventLog) {
+      m_context->safetyEventLog->LogSequenceError(sequence->GetName(), std::string("Exception: ") + e.what());
+    }
     // Notify failure for current step if any
     if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
       m_stepCompletedCallback(m_currentStepIndex, false);

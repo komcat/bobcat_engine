@@ -1877,7 +1877,7 @@ void GraphWidget::updateCurrentPosition()
   }
 }
 
-void GraphWidget::onGoalNodeChanged(int index)
+void GraphWidget::onGoalNodeChanged(int /*index*/)
 {
   // Clear cached path when selection changes
   m_currentPath = GraphPath();

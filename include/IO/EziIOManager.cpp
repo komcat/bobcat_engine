@@ -1,6 +1,7 @@
 // EziIOManager.cpp - Implementation
 #include "EziIOManager.h"
 #include "FAS_EziMOTIONPlusE.h"
+#include "common/ThreadPriority.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -532,6 +533,7 @@ bool EziIOManager::IsPolling() const {
 }
 
 void EziIOManager::PollingThreadFunc() {
+  ThreadUtil::SetCurrentThreadPriority(ThreadUtil::Priority::AboveNormal, "EziIOPolling");
   while (!m_stopPolling) {
     int connectedCount = 0;
 
