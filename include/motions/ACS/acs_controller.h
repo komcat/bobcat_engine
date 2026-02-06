@@ -46,9 +46,9 @@ public:
     const std::vector<double>& positions,
     bool blocking = true);
   bool HomeAxis(const std::string& axis);
-  bool StopAxis(const std::string& axis);
-  bool StopAllAxes();
-  bool StopAllMotion();
+  [[nodiscard]] bool StopAxis(const std::string& axis);
+  [[nodiscard]] bool StopAllAxes();
+  [[nodiscard]] bool StopAllMotion();
 
   // Status methods
   bool IsMoving(const std::string& axis);
@@ -59,7 +59,7 @@ public:
   PositionStruct GetCurrentPosition();
 
   // Servo control
-  bool EnableServo(const std::string& axis, bool enable);
+  [[nodiscard]] bool EnableServo(const std::string& axis, bool enable);
   bool IsServoEnabled(const std::string& axis, bool& enabled);
 
   // Motion configuration

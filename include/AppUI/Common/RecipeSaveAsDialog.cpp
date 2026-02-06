@@ -207,8 +207,8 @@ void RecipeSaveAsDialog::loadExistingRecipes()
     // Try to extract recipe name from JSON
     QFile file(info.fullPath);
     if (file.open(QIODevice::ReadOnly)) {
-      QByteArray data = file.readAll();
-      QJsonDocument doc = QJsonDocument::fromJson(data);
+      QByteArray fileData = file.readAll();
+      QJsonDocument doc = QJsonDocument::fromJson(fileData);
       if (doc.isObject()) {
         QJsonObject obj = doc.object();
         info.recipeName = obj.value("recipe_name").toString();

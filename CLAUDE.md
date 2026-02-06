@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build System
 
-This is a **CMake-based C++ Qt6 application** for industrial motion control and automation.
+This is a **CMake-based C++17 Qt6 application** for industrial motion control and automation. Builds with **MSVC (cl.exe)** and **Ninja** on Windows.
 
 ### Build Commands
 ```bash
@@ -19,7 +19,7 @@ cmake --build out/build/x64-debug
 ```
 
 ### Version System
-The build version auto-increments via `build_number.txt`. Override with:
+The build version auto-increments via `build_number.txt` on every configure. Override with:
 ```bash
 cmake --preset x64-debug -DBOBCAT_VERSION_BUILD_OVERRIDE=123
 ```
@@ -43,264 +43,171 @@ cmake --preset x64-debug -DBOBCAT_VERSION_BUILD_OVERRIDE=123
 ### Build Output Location
 Built executables and runtime files are located in: `out/build/<preset-name>/`
 
-Config files are automatically copied from `config/` to the build output directory.
+Config files are automatically copied from `config/` to the build output directory. `*.local.json` files in the build output are preserved (not overwritten).
+
+### Utility Targets
+The build also produces these standalone tools:
+- **`config_editor`** - Standalone JSON configuration file editor (`tools/config_editor/`)
+- **`data_explorer`** - Browse and filter serial number result data (`tools/data_explorer/`)
+- **`find_visa_devices`** - Scan for connected VISA instruments (only built when VISA SDK found)
+
+## Project Layout (Non-Standard)
+
+**Critical:** This project stores `.cpp` implementation files alongside `.h` headers in `include/`. The `src/` directory contains only a few files (`src/dut/`, `src/lighting/`, `src/motions/`). When adding new files, follow the existing convention and place both `.h` and `.cpp` in the appropriate `include/` subdirectory unless the subsystem already uses `src/`.
+
+```
+bobcat_engine/
+├── Application.cpp, bobcat_engine.cpp    # Entry points (root level)
+├── include/                               # Headers AND implementations
+│   ├── AppUI/                            # Qt UI (pages, forms, dialogs)
+│   ├── AuxWindow/                        # Auxiliary display windows
+│   ├── camera/                           # Camera management
+│   ├── context/ApplicationContext.h      # DI container (raw pointer struct)
+│   ├── graph/                            # Motion graph navigation
+│   ├── IO/                               # Digital I/O (EziIO, WAGO)
+│   ├── motions/                          # Motion control (ACS, PI, scanning)
+│   ├── pneumatics/                       # Pneumatic slides
+│   ├── ProgramManager/                   # Recipe execution state machine
+│   ├── recipe/                           # Recipe system + plugin processes
+│   ├── sequence/                         # SequenceEngine + command handlers
+│   ├── vision/                           # Vision processing (OpenCV/Halcon)
+│   └── [PSU, SMU, TEC, lighting, safety, settings, ...]
+├── src/                                   # Sparse - only dut, lighting, motions
+├── config/                                # JSON hardware configuration
+├── tools/                                 # Standalone utility apps
+└── docs/                                  # 40+ documentation files
+```
 
 ## High-Level Architecture
 
-### Application Structure
-The application follows a **Manager-based architecture** with centralized access through `ApplicationContext`:
+### Application Lifecycle
+`Application::run()` initializes the system in this order:
+1. Create QApplication, apply dark theme (RobotoMono font)
+2. Check `BOBCAT_SIMULATION` environment variable
+3. Show `ConnectionSplashScreen` (hardware mode only)
+4. `initializeManagers()` - creates all managers sequentially, wiring them into `ApplicationContext`
+5. `createMainWindow()` - builds the Qt UI
+6. `connectHardwareAsync()` - deferred hardware connections via `ConnectionWorkerPool` (background threads with timeout)
 
+### ApplicationContext
+A simple struct (`include/context/ApplicationContext.h`) holding raw pointers to all managers. Ownership lives in `Application.cpp`. All managers receive this context to access sibling managers.
+
+### Manager Tree
 ```
-Application (main entry point)
-    ├── ApplicationContext (dependency injection container)
-    │   ├── UnifiedMotionManager (motion control)
-    │   ├── CameraManager (camera operations)
-    │   ├── EziIOManager (digital I/O control)
-    │   ├── PneumaticManager (pneumatic slides)
-    │   ├── TECManager (thermoelectric cooler control)
-    │   ├── PowerSupplyManager (power supply control)
-    │   ├── SMUManager (source measure units)
-    │   ├── SMUPollingManager (SMU data polling)
-    │   ├── LightingManager (lighting controllers)
-    │   ├── TcpClientManager (network communication)
-    │   ├── DataStore (application-wide data storage)
-    │   ├── LogManager (logging system)
-    │   ├── SequenceEngine (command sequencing)
-    │   ├── RecipeManager (process recipes)
-    │   ├── VisionManager (image processing)
-    │   ├── SafetyWatchManager (I/O safety monitoring)
-    │   ├── AdaptiveScanController (scanning operations)
-    │   ├── CoordinateSystemManager (coordinate transformations)
-    │   ├── DeviceUnderTest (current DUT instance)
-    │   ├── AuxWindowManager (auxiliary window controls)
-    │   ├── DeviceLinkManager (linked device motion)
-    │   └── GdiCameraWindowManager (GDI camera monitor)
-    │
-    └── MainWindow (Qt UI)
-        ├── MotionPages (motion control UI)
-        ├── RecipePage (recipe editing)
-        ├── RunProgramPage (program execution)
-        └── [other UI pages]
+ApplicationContext (dependency injection container)
+├── UnifiedMotionManager    - Multi-brand motion control (ACS gantry + PI hexapod)
+├── CameraManager           - Multi-camera (Pylon/IDS uEye) via CameraHardwareFactory
+├── EziIOManager            - Digital I/O (EziIO + WAGO Modbus TCP)
+├── PneumaticManager        - Pneumatic slide control
+├── TECManager              - Thermoelectric cooler control (CLD101x, TED4015)
+├── PowerSupplyManager      - Power supplies (Keysight E36103B, E36441A)
+├── SMUManager / SMUPollingManager - Source measure units (Keithley)
+├── LightingManager         - LED controllers (CCS PD3)
+├── TcpClientManager        - Network communication
+├── DataStore               - Key-value data storage
+├── LogManager              - spdlog-based logging
+├── SequenceEngine          - Command execution (dispatcher + handlers)
+├── RecipeManager           - Process recipe management
+├── VisionManager           - Image processing plugins (OpenCV/Halcon)
+├── SafetyWatchManager      - I/O safety monitoring → emergency stop
+├── AdaptiveScanController  - Coarse-to-fine scanning
+├── CoordinateSystemManager - Coordinate frame transformations
+├── DeviceUnderTest         - Current DUT instance
+├── DeviceLinkManager       - Linked multi-device motion
+├── AuxWindowManager        - Auxiliary display windows
+├── GdiCameraWindowManager  - GDI-based camera monitor
+└── ApplicationSettings     - INI-based app settings (config/system/applicationSettings.ini)
 ```
 
-### Core System Components
+### Core Execution Pipeline
 
-#### 1. Motion Control System
-- **UnifiedMotionManager** - Unified interface for multiple motion controller types
-  - Supports **ACS** controllers (gantry systems)
-  - Supports **PI** controllers (hexapods)
-  - Automatic routing to correct controller based on device type
-  - Named positions, waypoint system, coordinate transformation
-  - Location: `include/motions/unified_motion_manager.h`
+**Recipe** (JSON) → **ProcessSequenceFactory** (converts steps) → **SequenceEngine** (executes) → **CommandDispatcher** → **CommandHandler** (device-specific)
 
-Configuration: `config/motor_devices.json`
+Key flow:
+1. **RecipeManager** loads/saves recipe JSON files containing ordered process steps
+2. **ProcessPluginRegistry** maps process type names to `IProcessPlugin` implementations
+3. Each plugin's `BuildSequence()` uses `SequenceBuilder` to create command sequences
+4. **ProgramManager** (`include/ProgramManager/`) orchestrates recipe execution with a state machine (`RecipeExecutionStateMachine`), handling loops, step dependencies, and conditional execution
+5. **SequenceEngine** executes steps (Actions, Loops, Conditionals) with stop/pause/step-by-step/breakpoint support
+6. **CommandDispatcher** routes each action to the appropriate handler based on device type
 
-#### 2. Sequence Engine
-- Command-based execution system with dispatcher pattern
-- Supports Actions, Loops, and Conditionals
-- Handler registration for different device types:
-  - `MotionCommandHandler` - motion commands
-  - `IOCommandHandler` - I/O operations
-  - `PneumaticCommandHandler` - pneumatic controls
-  - `CameraCommandHandler` - camera operations
-  - `TECCommandHandler` - TEC device commands
-  - `SystemCommandHandler` - system operations (prompts, delays)
-  - `DataStoreCommandHandler` - data storage operations
-  - `PSUCommandHandler` - power supply commands
-  - `SMUCommandHandler` - source measure unit commands
-  - `LightingCommandHandler` - lighting control commands
-  - `VisionCommandHandler` - vision processing commands
-  - `CalibrationCommandHandler` - calibration procedures
-  - `DUTCommandHandler` - device under test operations
-  - `AuxWindowCommandHandler` - auxiliary window controls
-  - `CoordinateAlignCommandHandler` - coordinate alignment
-  - `RelativePositionCommandHandler` - relative position calculations
-  - `SequenceContextCommandHandler` - context variable operations
-- Stop/pause capability with atomic flags
-- Location: `include/sequence/SequenceEngine.h`
+### Command Handlers
+All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware domain:
 
-#### 3. Recipe System
-- **RecipeManager** - Manages process recipes (collections of steps)
-- **ProcessSequenceFactory** - Converts recipe steps to sequences
-- **ProcessConfigWidget** - UI for editing process parameters
-- Recipes stored as JSON with:
-  - Process type (Pick, Place, Scan, etc.)
-  - Parameters (device names, positions, settings)
-  - Enable/disable flags
-- Location: `include/recipe/RecipeManager.h`
+| Handler | Domain | Notable Commands |
+|---------|--------|-----------------|
+| MotionCommandHandler | Motion control | MoveToAbs, MoveToNamedPosition, HomeAxis, SetVelocity |
+| IOCommandHandler | Digital I/O | SetOutput, ReadInput, WaitForInput |
+| PneumaticCommandHandler | Pneumatic slides | Extend, Retract, WaitForState |
+| CameraCommandHandler | Camera ops | Capture, StartLive, StopLive |
+| TECCommandHandler | TEC devices | SetTemperature, EnableOutput |
+| SystemCommandHandler | System | Wait, Prompt, Log, UserInput |
+| DataStoreCommandHandler | Data storage | Set, Get, Export |
+| PSUCommandHandler | Power supply | SetVoltage, SetCurrent, EnableOutput |
+| SMUCommandHandler | SMU | Configure, Measure, EnableOutput |
+| LightingCommandHandler | Lighting | SetIntensity, EnableChannel |
+| VisionCommandHandler | Vision (OpenCV) | RunPlugin, DetectCircle, PatternMatch |
+| CalibrationCommandHandler | Calibration | Various calibration procedures |
+| DUTCommandHandler | Device under test | CreateDUT, SetSerialNumber |
+| AuxWindowCommandHandler | Aux windows | ShowChart, ShowCamera |
+| CoordinateAlignCommandHandler | Coord alignment | AlignToPoints, TransformCoordinates |
+| RelativePositionCommandHandler | Relative positions | CalculateOffset, MoveRelative |
+| SequenceContextCommandHandler | Context vars | SetVariable, GetVariable, Evaluate |
 
-#### 4. Camera System
-- **CameraManager** - Multi-camera support
-- **CameraHardwareFactory** - Creates camera adapters
-- Supported camera types:
-  - Pylon (Basler cameras)
-  - IDS uEye
-- Live view, multi-camera view, frame capture
-- Location: `include/camera/CameraManager.h`
+### Motion Control System
+- **UnifiedMotionManager** (`include/motions/unified_motion_manager.h`) - requires both ACS and PI SDKs
+- Routes commands to correct controller based on device type from `config/motor_devices.json`
+- **Named positions** - saved positions referenced by name (e.g., "home", "lensgrip")
+- **Waypoint system** - automatic safe path routing with exit/entry waypoints (state machine)
+- **Calculated positions** - offset notation: `"lensgrip+Y1"`, `"safe+X-2+Z5"`
+- **Graph navigation** - `include/graph/MotionGraph*.cpp` provides graph-based pathfinding between positions
+- **6-axis support** - XYZUVW (position + rotation)
 
-Configuration: `config/camera_config.json`
+### Recipe Plugin System
+Plugin-based architecture for process types. See `docs/creating_recipe_plugins.md`.
 
-#### 5. I/O and Pneumatics
-- **EziIOManager** - Digital I/O control (EziIO devices)
-- **PneumaticManager** - Pneumatic slide control
-- Configuration-driven device setup
-- Locations:
-  - `include/IO/EziIOManager.h`
-  - `include/pneumatics/PneumaticManager.h`
+**To add a new process type:**
+1. Create plugin class implementing `IProcessPlugin` in `include/recipe/processes/`
+2. Implement: `GetName()`, `GetCategory()`, `GetDescription()`, `GetDefaultParameters()`, `CreateConfigUI()`, `BuildSequence()`
+3. Register via auto-registration macro at file bottom
+4. If new category: add to `RecipeManager::getProcessCategories()`
+5. Add source file to CMakeLists.txt `SOURCES` list
 
-#### 6. Scanning System
-- **AdaptiveScanController** - Automated scanning operations
-- Coarse-to-fine scanning strategy
-- Data collection and result storage
-- Location: `include/motions/scanning/AdaptiveScanController.h`
+Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`, `SystemProcesses.cpp`, `TECProcesses.cpp`, `PSUProcesses.cpp`, `SMUProcesses.cpp`, `DataStoreProcesses.cpp`, `DUTProcesses.cpp`, `ConditionalProcesses.cpp`, `CalibrationProcesses.cpp`, `VisionProcesses.cpp`, `CameraProcesses.cpp`, `LightingProcesses.cpp`, `AuxWindowProcesses.cpp`, `DispenseProcesses.cpp`, etc.
 
-#### 7. Vision System (OpenCV/Halcon)
-- **VisionManager** - Plugin-based image processing
-- **IVisionPlugin** - Interface for vision algorithms (circle detection, edge detection, pattern matching)
-- OpenCV plugins in `include/vision/plugins/`
-- Halcon plugins available when SDK present
-- Location: `include/vision/VisionManager.h`
-
-#### 8. Safety System
-- **SafetyWatchManager** - Monitors I/O states for safety conditions
-- Halts motion/scanning when configured safety signals trigger
-- Configuration: `config/safety_watch.json` (or `.local.json`)
-- Location: `include/safety/SafetyWatchManager.h`
-
-### Key Design Patterns
-
-1. **Manager Pattern** - Each subsystem has a dedicated manager
-2. **Dependency Injection** - ApplicationContext provides manager access
-3. **Factory Pattern** - Hardware adapters created via factories
-4. **Command/Handler Pattern** - SequenceEngine uses command dispatching
-5. **Builder Pattern** - SequenceBuilder for constructing command sequences
+### Adding New Commands
+See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for the full guide on extending the sequence system with new command handlers.
 
 ## Configuration System
 
-All hardware configuration is JSON-based in the `config/` directory:
-- `camera_config.json` - Camera devices
-- `motor_devices.json` - Motion controllers and named positions
-- `io_devices.json` - Digital I/O devices
-- `pneumatic_slides.json` - Pneumatic slide configurations
-- `tec_devices.json` - TEC device settings
-- `power_supply_config.json` - Power supply settings
-- `tcp_clients.json` - TCP client connections
-- `transformation_matrix.json` - Coordinate transformation matrices
-- `lighting_config.json` - Lighting controller settings
-- `safety_watch.json` - Safety I/O monitoring configuration
+All hardware configuration is JSON-based in `config/`:
+
+| File | Purpose |
+|------|---------|
+| `motor_devices.json` | Motion controllers, axes, and named positions |
+| `camera_config.json` | Camera devices and connection settings |
+| `io_devices.json` | Digital I/O devices |
+| `pneumatic_slides.json` | Pneumatic slide configurations |
+| `tec_devices.json` | TEC device settings |
+| `power_supply_config.json` | Power supply settings |
+| `smu_devices.json` | Source measure unit settings |
+| `tcp_clients.json` | TCP client connections |
+| `transformation_matrix.json` | Coordinate transformation matrices |
+| `lighting_config.json` | Lighting controller settings |
+| `safety_watch.json` | Safety I/O monitoring |
+| `pi_pivot_config.json` | PI hexapod pivot point config |
+| `system/applicationSettings.ini` | Application-wide settings |
+| `SYSTEM/needlexyoffset.json` | Needle XY offset data |
 
 ### Local Config Override Pattern
-The application uses a `*.local.json` pattern for user-specific configuration:
-- Application first tries `config/xxx.local.json`, then falls back to `config/xxx.json`
+- Application tries `config/xxx.local.json` first, falls back to `config/xxx.json`
 - Local configs are gitignored - safe for machine-specific settings
-- Example: `motor_devices.local.json` overrides `motor_devices.json`
 
-Named positions for motion devices are stored in the motor_devices.json file under the `named_positions` section.
-
-## Adding New Process Types to Recipe System
-
-The recipe system uses a **plugin-based architecture** for process types. See `docs/creating_recipe_plugins.md` for the comprehensive guide.
-
-### Quick Plugin Creation
-1. Create plugin class implementing `IProcessPlugin` interface in `include/recipe/processes/`
-2. Define metadata: `GetName()`, `GetCategory()`, `GetDescription()`
-3. Implement `GetDefaultParameters()`, `CreateConfigUI()`, `BuildSequence()`
-4. Register in auto-registration section at file bottom
-5. If using a NEW category, add it to `RecipeManager::getProcessCategories()`
-6. Add source file to CMakeLists.txt
-
-Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`, `SystemProcesses.cpp`, etc.
-
-### Legacy Approach (non-plugin)
-See `include/recipe/new process addition.md` for the older manual approach requiring changes to multiple files.
-
-## External Dependencies
-
-### Required SDKs (in `external/` directory)
-- **Pylon 8** - Basler camera SDK
-- **IDS uEye** - IDS camera SDK
-- **ACSC** - ACS motion controller library
-- **PI GCS2** - PI motion controller library
-- **EziIO** - Fastech I/O controller library
-- **NI-VISA** - VISA instrument communication (for TEC, SMU devices)
-- **OpenCV 4.12** - Computer vision (optional)
-- **Halcon** - Machine vision library (optional, delay-loaded)
-- **nlohmann/json** - JSON parsing (header-only)
-
-### Qt6 Dependencies
-- Qt6::Widgets
-- Qt6::Charts
-
-CMake automatically detects which SDKs are present and enables/disables features accordingly. Compile definitions `HAS_OPENCV` and `HAS_HALCON` indicate availability.
-
-## Key Concepts
-
-### Named Positions
-Motion devices can have saved positions with names (e.g., "home", "lensgrip", "safe"). These are stored in `motor_devices.json` and can be referenced in sequences and recipes.
-
-### Waypoint System
-The motion system includes automatic waypoint routing - devices can have exit/entry waypoints to ensure safe paths between positions.
-
-### Coordinate Transformation
-The system supports coordinate transformation matrices for converting between different reference frames (e.g., camera coordinates to motion coordinates).
-
-### Calculated Positions
-Positions can use offset notation (e.g., "lensgrip+Y1" or "safe+X-2+Z5") for runtime-calculated positions relative to saved positions.
-
-## Important Files
-
-- `Application.cpp` - Application initialization and manager setup
-- `ApplicationContext.h` - Central dependency container
-- `CMakeLists.txt` - Build configuration and library linking
-- `CMakePresets.json` - Build preset definitions
-- `include/motions/unified_motion_manager.h` - Motion control interface
-- `include/sequence/SequenceEngine.h` - Command execution engine
-- `include/sequence/SequenceBuilder.h` - Sequence construction API
-- `include/recipe/RecipeManager.h` - Recipe data management
-- `include/recipe/IProcessPlugin.h` - Recipe plugin interface
-- `include/recipe/ProcessPluginRegistry.h` - Plugin registration
-- `config/*.json` - Hardware configuration files
-
-## Adding New Commands
-
-See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for adding commands to the sequence system.
-
-Command handlers are in `include/sequence/*CommandHandler.cpp`:
-- `MotionCommandHandler` - Motion device commands (move, home, scan)
-- `IOCommandHandler` - Digital I/O commands
-- `PneumaticCommandHandler` - Pneumatic slide commands
-- `CameraCommandHandler` - Camera capture commands
-- `TECCommandHandler` - Temperature controller commands
-- `SystemCommandHandler` - Wait, prompts, logging
-- `DataStoreCommandHandler` - Data storage operations
-- `PSUCommandHandler` - Power supply control
-- `SMUCommandHandler` - Source measure unit control
-- `LightingCommandHandler` - Lighting controller commands
-- `VisionCommandHandler` - Vision processing commands (requires OpenCV)
-- `CalibrationCommandHandler` - Calibration procedures
-- `DUTCommandHandler` - Device under test operations
-- `AuxWindowCommandHandler` - Auxiliary window commands
-- `CoordinateAlignCommandHandler` - Coordinate alignment operations
-- `RelativePositionCommandHandler` - Relative position calculations
-- `SequenceContextCommandHandler` - Context variable manipulation
-
-## Camera Configuration
-
-Camera connection types in `camera_config.json`:
-- `ip` - GigE cameras via IP address (e.g., `"ip_address": "192.168.0.68"`)
-- `serial` - Any camera by serial number (works for USB cameras)
-- `index` - Any camera by device index (works for USB cameras)
-- `auto` - First available camera (works for USB cameras)
-
-Example USB Basler camera config:
-```json
-{
-  "id": "usb_camera",
-  "camera_type": "PYLON",
-  "connection_type": "serial",
-  "serial_number": "YOUR_SERIAL"
-}
-```
+### Camera Connection Types
+- `ip` - GigE cameras via IP address
+- `serial` - By serial number (USB cameras)
+- `index` - By device index
+- `auto` - First available camera
 
 ## Sequence Context System
 
@@ -309,16 +216,63 @@ Commands can store and retrieve values at runtime using `SequenceContext`:
 - Reference context values with `context:variable_name` syntax
 - See `docs/sequence_context_usage_guide.md` for details
 
-Example:
 ```cpp
 // In command handler - store result
 context->Set("measured_value", std::to_string(result));
 
 // In plugin - reference context value
 sequence->AddAction(device, "MoveToAbs", {
-  {"x", "context:calculated_x"}  // Uses value from context
+  {"x", "context:calculated_x"}
 });
 ```
+
+## External Dependencies
+
+### SDKs in `external/` (CMake auto-detects presence)
+- **Pylon 8** - Basler camera SDK
+- **IDS uEye** - IDS camera SDK
+- **ACSC** - ACS motion controller (x64/x86 libs)
+- **PI GCS2** - PI motion controller (x64/x86 libs)
+- **EziIO** - Fastech I/O controller (x64/x86 libs)
+- **NI-VISA** - VISA instrument communication (TEC, SMU devices)
+- **OpenCV 4.12** - Computer vision (optional, compile def `HAS_OPENCV`)
+- **Halcon** - Machine vision (optional, delay-loaded, compile def `HAS_HALCON`)
+- **nlohmann/json** - JSON parsing (header-only)
+- **spdlog** - Logging (header-only)
+
+### Qt6 (auto-detected at C:/Qt/6.10.x or C:/Qt/6.9.3)
+- Qt6::Widgets, Qt6::Charts, Qt6::OpenGLWidgets
+
+### Conditional Compilation
+- UnifiedMotionManager requires **both** ACS and PI SDKs
+- Vision plugins require OpenCV; Halcon plugins require **both** OpenCV and Halcon
+- VISA-based adapters (CLD101x, TED4015, Keithley) require NI-VISA
+
+## Key Design Patterns
+
+1. **Manager Pattern** - Each subsystem has a dedicated manager class
+2. **Dependency Injection** - `ApplicationContext` struct provides manager access (raw pointers, no interfaces)
+3. **Factory Pattern** - `CameraHardwareFactory`, hardware adapter factories
+4. **Command/Handler/Dispatcher** - SequenceEngine → CommandDispatcher → *CommandHandler
+5. **Builder Pattern** - `SequenceBuilder` for constructing command sequences
+6. **Plugin Architecture** - `IProcessPlugin` for recipe processes, `IVisionPlugin` for vision algorithms
+7. **State Machine** - Waypoint navigation, recipe execution (`RecipeExecutionStateMachine`)
+
+## Important Files
+
+- `Application.cpp` - App initialization, manager creation, hardware connection
+- `include/context/ApplicationContext.h` - Central dependency container (struct)
+- `include/motions/unified_motion_manager.h` - Motion control unified interface
+- `include/sequence/SequenceEngine.h` - Command execution engine
+- `include/sequence/SequenceBuilder.h` - Sequence construction API
+- `include/sequence/CommandDispatcher.h` - Routes commands to handlers
+- `include/recipe/IProcessPlugin.h` - Recipe plugin interface
+- `include/recipe/ProcessPluginRegistry.h` - Plugin auto-registration
+- `include/recipe/RecipeManager.h` - Recipe data management
+- `include/ProgramManager/ProgramManager.h` - Recipe execution orchestration
+- `include/ProgramManager/RecipeExecutionStateMachine.cpp` - Execution state machine
+- `include/vision/IVisionPlugin.h` - Vision plugin interface
+- `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
 
 ## User Preferences
 

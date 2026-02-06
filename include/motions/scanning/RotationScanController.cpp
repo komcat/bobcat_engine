@@ -69,8 +69,10 @@ bool RotationScanController::StartScan(const RotationScanParameters& params) {
   // Generate scan ID
   auto now = std::chrono::system_clock::now();
   auto time_t_now = std::chrono::system_clock::to_time_t(now);
+  std::tm tm_buf{};
+  localtime_s(&tm_buf, &time_t_now);
   std::stringstream ss;
-  ss << "rotation_" << m_deviceName << "_" << std::put_time(std::localtime(&time_t_now), "%Y%m%d_%H%M%S");
+  ss << "rotation_" << m_deviceName << "_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
   m_results.scanId = ss.str();
 
   // Create strategy
@@ -359,8 +361,11 @@ nlohmann::json RotationScanResults::ToJson() const {
   // Timestamps
   auto startTimeT = std::chrono::system_clock::to_time_t(startTime);
   auto endTimeT = std::chrono::system_clock::to_time_t(endTime);
-  j["startTime"] = std::ctime(&startTimeT);
-  j["endTime"] = std::ctime(&endTimeT);
+  char startTimeBuf[26]{}, endTimeBuf[26]{};
+  ctime_s(startTimeBuf, sizeof(startTimeBuf), &startTimeT);
+  ctime_s(endTimeBuf, sizeof(endTimeBuf), &endTimeT);
+  j["startTime"] = startTimeBuf;
+  j["endTime"] = endTimeBuf;
   j["durationSeconds"] = duration.count();
 
   // Baseline

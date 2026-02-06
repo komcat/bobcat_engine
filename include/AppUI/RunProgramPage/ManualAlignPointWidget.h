@@ -8,7 +8,7 @@
 #include <string>
 
 class UnifiedMotionManager;
-class ApplicationContext;
+struct ApplicationContext;
 class CameraManager;
 
 /**

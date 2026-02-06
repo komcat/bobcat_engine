@@ -366,7 +366,7 @@ bool TED4015DirectAdapter::WriteCommand(const std::string& command) {
   // Write command to device
   status = viWrite(m_instrument,
                    (ViBuf)cmdWithNewline.c_str(),
-                   cmdWithNewline.length(),
+                   static_cast<ViUInt32>(cmdWithNewline.length()),
                    &retCount);
 
   if (status < VI_SUCCESS) {
@@ -394,7 +394,7 @@ bool TED4015DirectAdapter::QueryCommand(const std::string& query, std::string& r
   // Write query to device
   status = viWrite(m_instrument,
                    (ViBuf)queryWithNewline.c_str(),
-                   queryWithNewline.length(),
+                   static_cast<ViUInt32>(queryWithNewline.length()),
                    &retCount);
 
   if (status < VI_SUCCESS) {

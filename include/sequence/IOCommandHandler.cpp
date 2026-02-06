@@ -453,7 +453,8 @@ bool IOCommandHandler::ExecuteCommand(
     auto startTime = std::chrono::steady_clock::now();
     bool currentState = false;
 
-    while (true) {
+    constexpr int MAX_ITERATIONS = 1000; // Safety bound: 5s timeout / 10ms poll * 2x margin
+    for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
       // Check if timeout
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - startTime
@@ -484,6 +485,13 @@ bool IOCommandHandler::ExecuteCommand(
       // Small delay before next check
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    // Safety bound exhausted
+    if (m_logger) {
+      m_logger->Error("Loop safety bound reached in WaitForInput", "IOHandler");
+    }
+    errorMessage = "WaitForInput safety bound reached for " + pinName;
+    return false;
   }
 
   // ============================================================================

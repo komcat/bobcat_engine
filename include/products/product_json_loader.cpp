@@ -340,22 +340,22 @@ bool ProductJsonLoader::GetFileInfo(const std::string& filePath,
     // Count for v2.0
     if (version == "2.0") {
       if (j.contains("positions") && j["positions"].is_object()) {
-        outDeviceCount = j["positions"].size();
+        outDeviceCount = static_cast<int>(j["positions"].size());
 
         for (auto& [deviceName, devicePositions] : j["positions"].items()) {
           if (devicePositions.is_object()) {
-            outPositionCount += devicePositions.size();
+            outPositionCount += static_cast<int>(devicePositions.size());
           }
         }
       }
     }
     // Count for v1.0
     else {
-      outDeviceCount = j.size();
+      outDeviceCount = static_cast<int>(j.size());
 
       for (auto& [deviceName, devicePositions] : j.items()) {
         if (devicePositions.is_object()) {
-          outPositionCount += devicePositions.size();
+          outPositionCount += static_cast<int>(devicePositions.size());
         }
       }
     }

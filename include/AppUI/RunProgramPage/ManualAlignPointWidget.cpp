@@ -233,7 +233,9 @@ void ManualAlignPointWidget::showAlignment(
                 << "X=" << savedX << ", Y=" << savedY << ", Z=" << savedZ << std::endl;
 
       // MoveToAbs with blocking=true will wait for motion to complete
-      m_motionManager->MoveToAbs(m_currentDevice, savedX, savedY, savedZ, 20.0, true);
+      if (!m_motionManager->MoveToAbs(m_currentDevice, savedX, savedY, savedZ, 20.0, true)) {
+        std::cerr << "[ManualAlignPointWidget] Auto-navigation failed" << std::endl;
+      }
 
       std::cout << "[ManualAlignPointWidget] Auto-navigation complete" << std::endl;
     }
@@ -624,10 +626,10 @@ bool ManualAlignPointWidget::loadNavigationData(double& x, double& y, double& z)
     return false;
   }
 
-  QByteArray data = file.readAll();
+  QByteArray fileData = file.readAll();
   file.close();
 
-  QJsonDocument doc = QJsonDocument::fromJson(data);
+  QJsonDocument doc = QJsonDocument::fromJson(fileData);
   if (doc.isNull() || !doc.isObject()) {
     std::cerr << "[ManualAlignPointWidget] Invalid JSON in navigation file: "
               << filePath.toStdString() << std::endl;

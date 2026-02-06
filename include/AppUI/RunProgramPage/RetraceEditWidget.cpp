@@ -428,12 +428,14 @@ void RetraceEditWidget::onUpdatePosition()
 
   // Read current position from hardware
   double x = 0, y = 0, z = 0, u = 0, v = 0, w = 0;
-  m_motionManager->GetPosition(m_currentDevice, "X", x);
-  m_motionManager->GetPosition(m_currentDevice, "Y", y);
-  m_motionManager->GetPosition(m_currentDevice, "Z", z);
-  m_motionManager->GetPosition(m_currentDevice, "U", u);
-  m_motionManager->GetPosition(m_currentDevice, "V", v);
-  m_motionManager->GetPosition(m_currentDevice, "W", w);
+  if (!m_motionManager->GetPosition(m_currentDevice, "X", x) ||
+      !m_motionManager->GetPosition(m_currentDevice, "Y", y) ||
+      !m_motionManager->GetPosition(m_currentDevice, "Z", z) ||
+      !m_motionManager->GetPosition(m_currentDevice, "U", u) ||
+      !m_motionManager->GetPosition(m_currentDevice, "V", v) ||
+      !m_motionManager->GetPosition(m_currentDevice, "W", w)) {
+    return; // Skip jog detection if position read fails
+  }
 
   // Check if position changed (user jogged)
   double threshold = 0.001;  // 1 micron

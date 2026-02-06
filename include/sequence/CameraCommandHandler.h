@@ -4,7 +4,7 @@
 #include "ICommandHandler.h"
 
 // Forward declaration
-class ApplicationContext;
+struct ApplicationContext;
 
 class CameraCommandHandler : public ICommandHandler
 {

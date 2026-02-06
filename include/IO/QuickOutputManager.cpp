@@ -134,7 +134,7 @@ void QuickOutputManager::TurnOffAll()
 
     if (pinNumber >= 0) {
       // Turn off the output
-      m_ioManager->SetOutput(pinDef.deviceName, pinNumber, false);
+      (void)m_ioManager->SetOutput(pinDef.deviceName, pinNumber, false);
 
       // Check if we've already refreshed this device
       bool alreadyRefreshed = false;

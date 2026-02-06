@@ -107,13 +107,13 @@ bool TECCommandHandler::ExecuteCommand(
     }
 
     // Auto-capture to context if requested
-    auto captureAsIt = params.find("captureAs");
-    if (context && captureAsIt != params.end() && !captureAsIt->second.empty()) {
-      context->SetValue(captureAsIt->second, static_cast<float>(result.Value), deviceName, methodName);
+    auto tempCaptureIt = params.find("captureAs");
+    if (context && tempCaptureIt != params.end() && !tempCaptureIt->second.empty()) {
+      context->SetValue(tempCaptureIt->second, static_cast<float>(result.Value), deviceName, methodName);
 
       if (m_logger) {
         m_logger->Info("Temperature " + std::to_string(result.Value) + " �C stored as '" +
-                      captureAsIt->second + "'", "TECHandler");
+                      tempCaptureIt->second + "'", "TECHandler");
       }
     }
 
@@ -218,13 +218,13 @@ bool TECCommandHandler::ExecuteCommand(
     }
 
     // Auto-capture to context if requested
-    auto captureAsIt = params.find("captureAs");
-    if (context && captureAsIt != params.end() && !captureAsIt->second.empty()) {
-      context->SetValue(captureAsIt->second, static_cast<float>(result.Value), deviceName, methodName);
+    auto currentCaptureIt = params.find("captureAs");
+    if (context && currentCaptureIt != params.end() && !currentCaptureIt->second.empty()) {
+      context->SetValue(currentCaptureIt->second, static_cast<float>(result.Value), deviceName, methodName);
 
       if (m_logger) {
         m_logger->Info("Laser Current " + std::to_string(result.Value) + " mA stored as '" +
-                      captureAsIt->second + "'", "TECHandler");
+                      currentCaptureIt->second + "'", "TECHandler");
       }
     }
 
@@ -300,7 +300,8 @@ bool TECCommandHandler::ExecuteCommand(
 
     auto startTime = std::chrono::steady_clock::now();
 
-    while (true) {
+    constexpr int MAX_ITERATIONS = 120; // Safety bound: 30s timeout / 500ms poll * 2x margin
+    for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
       // Check timeout
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - startTime
@@ -339,6 +340,13 @@ bool TECCommandHandler::ExecuteCommand(
       // Wait before next check
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
+
+    // Safety bound exhausted
+    if (m_logger) {
+      m_logger->Error("Loop safety bound reached in WaitForTemperature", "TECHandler");
+    }
+    errorMessage = "WaitForTemperature safety bound reached";
+    return false;
   }
 
   // ============================================================================

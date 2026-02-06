@@ -251,15 +251,15 @@ void PIAlignWorker::doWork()
         }
 
         // Query scan status
-        PIController* piController = m_motionManager->GetPIController(m_deviceName.toStdString());
-        if (!piController || !piController->IsConnected()) {
+        PIController* piCtrl = m_motionManager->GetPIController(m_deviceName.toStdString());
+        if (!piCtrl || !piCtrl->IsConnected()) {
             std::cerr << "[PIAlignWorker] Device disconnected during alignment" << std::endl;
             emit failed(m_deviceName, m_params.analogChannel, "Device disconnected during alignment");
             break;
         }
 
         int status = 0;
-        if (!piController->GetFastScanStatus(status)) {
+        if (!piCtrl->GetFastScanStatus(status)) {
             std::cerr << "[PIAlignWorker] Failed to get scan status" << std::endl;
             // Don't fail immediately - might be temporary
             continue;

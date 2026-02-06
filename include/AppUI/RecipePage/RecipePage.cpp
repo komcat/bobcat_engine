@@ -716,14 +716,14 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   m_removeButton = new QPushButton();
   m_removeButton->setVisible(false);
 
-  editMenu->addAction("Copy", this, &RecipePage::onCopySelectedSteps, QKeySequence::Copy);
-  editMenu->addAction("Paste", this, &RecipePage::onPasteSteps, QKeySequence::Paste);
+  editMenu->addAction("Copy", QKeySequence::Copy, this, &RecipePage::onCopySelectedSteps);
+  editMenu->addAction("Paste", QKeySequence::Paste, this, &RecipePage::onPasteSteps);
   editMenu->addSeparator();
-  editMenu->addAction("Move Up", this, &RecipePage::onMoveStepUp, QKeySequence(Qt::CTRL | Qt::Key_Up));
-  editMenu->addAction("Move Down", this, &RecipePage::onMoveStepDown, QKeySequence(Qt::CTRL | Qt::Key_Down));
-  editMenu->addAction("Move to Line...", this, &RecipePage::onMoveStepToLine, QKeySequence(Qt::CTRL | Qt::Key_G));
+  editMenu->addAction("Move Up", QKeySequence(Qt::CTRL | Qt::Key_Up), this, &RecipePage::onMoveStepUp);
+  editMenu->addAction("Move Down", QKeySequence(Qt::CTRL | Qt::Key_Down), this, &RecipePage::onMoveStepDown);
+  editMenu->addAction("Move to Line...", QKeySequence(Qt::CTRL | Qt::Key_G), this, &RecipePage::onMoveStepToLine);
   editMenu->addSeparator();
-  editMenu->addAction("Remove", this, &RecipePage::onRemoveStep, QKeySequence::Delete);
+  editMenu->addAction("Remove", QKeySequence::Delete, this, &RecipePage::onRemoveStep);
 
   editMenuBtn->setMenu(editMenu);
   menuRow->addWidget(editMenuBtn);
@@ -742,7 +742,7 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   m_toggleSelectedButton = new QPushButton();
   m_toggleSelectedButton->setVisible(false);
 
-  selectMenu->addAction("Select All", this, &RecipePage::onSelectAllProcesses, QKeySequence::SelectAll);
+  selectMenu->addAction("Select All", QKeySequence::SelectAll, this, &RecipePage::onSelectAllProcesses);
   selectMenu->addAction("Deselect All", this, &RecipePage::onDeselectAllProcesses);
   selectMenu->addSeparator();
   selectMenu->addAction("Toggle Selected", this, &RecipePage::onToggleSelectedProcesses);
@@ -1011,15 +1011,15 @@ void RecipePage::onLoadRecipe()
         if (m_context->productPositionManager->LoadProduct(productFile)) {
           m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
 
-          std::string productName = m_context->productPositionManager->GetCurrentProductName();
+          std::string loadedProductName = m_context->productPositionManager->GetCurrentProductName();
 
           m_productStatusLabel->setText(QString("Product: %1")
-            .arg(QString::fromStdString(productName)));
+            .arg(QString::fromStdString(loadedProductName)));
           m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
 
           if (m_loadedProductLabel) {
             m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
-              .arg(QString::fromStdString(productName))
+              .arg(QString::fromStdString(loadedProductName))
               .arg(QString::fromStdString(productFile)));
             m_loadedProductLabel->setStyleSheet(
             "font-size: 11px; "
@@ -1037,7 +1037,7 @@ void RecipePage::onLoadRecipe()
           QMessageBox::information(this, "Recipe Loaded",
             QString("Recipe '%1' loaded successfully!\n\nAuto-loaded product: %2")
             .arg(QString::fromStdString(m_recipeManager->getRecipeName()))
-            .arg(QString::fromStdString(productName)));
+            .arg(productName));
         }
         else {
           if (m_loadedProductLabel) {
@@ -1219,8 +1219,8 @@ void RecipePage::populateRecipeListWidget()
     // Try to extract recipe name from JSON
     QFile file(fileInfo.absoluteFilePath());
     if (file.open(QIODevice::ReadOnly)) {
-      QByteArray data = file.readAll();
-      QJsonDocument doc = QJsonDocument::fromJson(data);
+      QByteArray fileData = file.readAll();
+      QJsonDocument doc = QJsonDocument::fromJson(fileData);
       if (doc.isObject()) {
         QJsonObject obj = doc.object();
         QString jsonName = obj.value("recipe_name").toString();
@@ -1431,10 +1431,10 @@ void RecipePage::onRenameSelectedRecipe()
   // Update recipe name in JSON content
   QFile file(filePath);
   if (file.open(QIODevice::ReadOnly)) {
-    QByteArray data = file.readAll();
+    QByteArray fileData = file.readAll();
     file.close();
 
-    QJsonDocument doc = QJsonDocument::fromJson(data);
+    QJsonDocument doc = QJsonDocument::fromJson(fileData);
     if (doc.isObject()) {
       QJsonObject obj = doc.object();
       obj["recipe_name"] = newName;
@@ -3521,7 +3521,7 @@ void RecipePage::onStopRecipeRequested()
   // Emergency stop all motors
   if (m_context && m_context->motionManager) {
     std::cout << "[RecipePage] Calling EmergencyStopAll on motion manager" << std::endl;
-    m_context->motionManager->EmergencyStopAll();
+    (void)m_context->motionManager->EmergencyStopAll();
   }
 
   std::cout << "[RecipePage] Emergency stop completed" << std::endl;

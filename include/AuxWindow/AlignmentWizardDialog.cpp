@@ -899,10 +899,12 @@ void AlignmentWizardDialog::onMoveToMasterF1Clicked()
             << " Y=" << m_layer->localSystem.masterF1Y
             << " Z=" << m_layer->localSystem.masterF1Z << std::endl;
 
-  m_motionManager->MoveToAbs("gantry-main",
+  if (!m_motionManager->MoveToAbs("gantry-main",
     m_layer->localSystem.masterF1X,
     m_layer->localSystem.masterF1Y,
-    m_layer->localSystem.masterF1Z);
+    m_layer->localSystem.masterF1Z)) {
+    QMessageBox::warning(this, "Error", "Failed to move to Master F1 position");
+  }
 }
 
 void AlignmentWizardDialog::onMoveToMasterF2Clicked()
@@ -937,8 +939,10 @@ void AlignmentWizardDialog::onMoveToMasterF2Clicked()
             << " Y=" << m_layer->localSystem.masterF2Y
             << " Z=" << m_layer->localSystem.masterF2Z << std::endl;
 
-  m_motionManager->MoveToAbs("gantry-main",
+  if (!m_motionManager->MoveToAbs("gantry-main",
     m_layer->localSystem.masterF2X,
     m_layer->localSystem.masterF2Y,
-    m_layer->localSystem.masterF2Z);
+    m_layer->localSystem.masterF2Z)) {
+    QMessageBox::warning(this, "Error", "Failed to move to Master F2 position");
+  }
 }

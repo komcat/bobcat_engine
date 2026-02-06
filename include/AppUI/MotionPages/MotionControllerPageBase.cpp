@@ -231,7 +231,7 @@ void MotionControllerPageBase::updateDeviceRow(int row, const std::string& devic
     QTableWidgetItem* posItem = new QTableWidgetItem("--");
     posItem->setTextAlignment(Qt::AlignCenter);
     posItem->setForeground(QColor("#888888"));
-    m_deviceTable->setItem(row, COL_AXIS_START + i, posItem);
+    m_deviceTable->setItem(row, COL_AXIS_START + static_cast<int>(i), posItem);
   }
 
   // Connect/Disconnect button
@@ -282,7 +282,7 @@ void MotionControllerPageBase::updatePositions()
     if (!status[deviceName]) {
       // Not connected - show "--"
       for (size_t i = 0; i < axisNames.size(); ++i) {
-        QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + i);
+        QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + static_cast<int>(i));
         if (posItem) {
           posItem->setText("--");
           posItem->setForeground(QColor("#666666"));
@@ -296,7 +296,7 @@ void MotionControllerPageBase::updatePositions()
       double position = 0.0;
       bool success = motionMgr->GetPosition(deviceName, axisNames[i], position);
 
-      QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + i);
+      QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + static_cast<int>(i));
       if (posItem) {
         if (success) {
           posItem->setText(QString::number(position, 'f', 3));

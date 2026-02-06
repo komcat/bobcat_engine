@@ -272,11 +272,11 @@ void ConfigEditorPage::loadConfigFile(const QString& filename)
     return;
   }
 
-  QByteArray data = file.readAll();
+  QByteArray fileData = file.readAll();
   file.close();
 
   QJsonParseError parseError;
-  m_currentConfig = QJsonDocument::fromJson(data, &parseError);
+  m_currentConfig = QJsonDocument::fromJson(fileData, &parseError);
 
   if (parseError.error != QJsonParseError::NoError) {
     m_context->logManager->Error("Failed to parse JSON: " + parseError.errorString().toStdString(), "ConfigEditor");

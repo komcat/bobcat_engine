@@ -90,7 +90,7 @@ bool KeysightE36441A::connect()
     // Connect to server
     sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(m_port);
+    serverAddr.sin_port = htons(static_cast<u_short>(m_port));
 
 #ifdef _WIN32
     inet_pton(AF_INET, m_ip.c_str(), &serverAddr.sin_addr);

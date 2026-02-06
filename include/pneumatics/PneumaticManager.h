@@ -52,17 +52,17 @@ public:
   // NON-BLOCKING OPERATIONS
   // ============================================================================
 
-  PneumaticError Extend(const std::string& slideName);
-  PneumaticError Retract(const std::string& slideName);
-  PneumaticError Stop(const std::string& slideName);
+  [[nodiscard]] PneumaticError Extend(const std::string& slideName);
+  [[nodiscard]] PneumaticError Retract(const std::string& slideName);
+  [[nodiscard]] PneumaticError Stop(const std::string& slideName);
   void StopAll();
 
   // ============================================================================
   // BLOCKING OPERATIONS
   // ============================================================================
 
-  PneumaticError ExtendAndWait(const std::string& slideName, uint32_t pollIntervalMs = 50);
-  PneumaticError RetractAndWait(const std::string& slideName, uint32_t pollIntervalMs = 50);
+  [[nodiscard]] PneumaticError ExtendAndWait(const std::string& slideName, uint32_t pollIntervalMs = 50);
+  [[nodiscard]] PneumaticError RetractAndWait(const std::string& slideName, uint32_t pollIntervalMs = 50);
 
   // ============================================================================
   // STATUS & MONITORING

@@ -467,7 +467,7 @@ void ApplicationSettingsPage::setupPropertyPanel()
     "  border-color: #71717a; "
     "}"
   );
-  connect(m_propValueCheck, &QCheckBox::stateChanged, this, &ApplicationSettingsPage::onSettingChanged);
+  connect(m_propValueCheck, &QCheckBox::checkStateChanged, this, &ApplicationSettingsPage::onSettingChanged);
   m_propValueStack->addWidget(m_propValueCheck);
 
   // Combo editor (QComboBox) - index 3

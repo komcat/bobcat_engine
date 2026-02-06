@@ -46,8 +46,8 @@ public:
   bool MoveToPosition(const std::string& axis, double position, bool blocking = true);
   bool MoveRelative(const std::string& axis, double distance, bool blocking = true);
   bool HomeAxis(const std::string& axis);
-  bool StopAxis(const std::string& axis);
-  bool StopAllAxes();
+  [[nodiscard]] bool StopAxis(const std::string& axis);
+  [[nodiscard]] bool StopAllAxes();
 
   // Status methods
   bool IsMoving(const std::string& axis);
@@ -56,7 +56,7 @@ public:
   float GetAxisPositionFloat(const std::string& axis);
 
   // Servo control
-  bool EnableServo(const std::string& axis, bool enable);
+  [[nodiscard]] bool EnableServo(const std::string& axis, bool enable);
   bool IsServoEnabled(const std::string& axis, bool& enabled);
 
   // Motion configuration

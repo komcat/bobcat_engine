@@ -8,7 +8,7 @@
 #endif
 
 // Forward declaration
-class ApplicationContext;
+struct ApplicationContext;
 
 /**
  * @brief Command handler for vision processing in sequences

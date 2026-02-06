@@ -2424,7 +2424,7 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Emergency stop all devices
         for (const auto& s : moveSpecs) {
-          motionManager->EmergencyStop(s.deviceName);
+          (void)motionManager->EmergencyStop(s.deviceName);
         }
         // Wait for workers to finish
         for (auto* w : graphWorkers) {
@@ -2487,7 +2487,8 @@ bool MotionCommandHandler::ExecuteCommand(
       }
     }
 
-    while (true) {
+    constexpr int MAX_ITERATIONS_PARALLEL = 2400; // Safety bound: 60s timeout / 50ms poll * 2x margin
+    for (int iteration = 0; iteration < MAX_ITERATIONS_PARALLEL; ++iteration) {
       // Check stop request
       if (context && context->IsStopRequestedAny()) {
         if (m_logger) {
@@ -2499,7 +2500,7 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Emergency stop all devices
         for (const auto& spec : moveSpecs) {
-          motionManager->EmergencyStop(spec.deviceName);
+          (void)motionManager->EmergencyStop(spec.deviceName);
         }
         // Wait for workers to finish
         for (auto* w : graphWorkers) {
@@ -2579,7 +2580,7 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Emergency stop all devices
         for (const auto& spec : moveSpecs) {
-          motionManager->EmergencyStop(spec.deviceName);
+          (void)motionManager->EmergencyStop(spec.deviceName);
         }
         // Wait for workers to finish
         for (auto* w : graphWorkers) {
@@ -2592,6 +2593,21 @@ bool MotionCommandHandler::ExecuteCommand(
       // Sleep to avoid busy waiting
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+
+    // Safety bound exhausted - treat as timeout
+    if (m_logger) {
+      m_logger->Error("Loop safety bound reached in ParallelMove", "MotionHandler");
+    }
+    for (auto* w : graphWorkers) {
+      w->requestStop();
+    }
+    for (const auto& spec : moveSpecs) {
+      (void)motionManager->EmergencyStop(spec.deviceName);
+    }
+    for (auto* w : graphWorkers) {
+      w->wait();
+    }
+    // Fall through to PHASE 5 to clean up and report
 
     // ✅ PHASE 5: Check results
     bool allSuccess = true;
@@ -2717,8 +2733,8 @@ bool MotionCommandHandler::ExecuteCommand(
       if (!motionManager->MoveRelative(spec.deviceName, spec.axis, spec.distance, false)) {
         errorMessage = "ParallelMoveRelative: Failed to start move for " + spec.deviceName + " " + spec.axis;
         // Emergency stop all devices that already started
-        for (const auto& deviceName : deviceNames) {
-          motionManager->EmergencyStop(deviceName);
+        for (const auto& stopDevice : deviceNames) {
+          (void)motionManager->EmergencyStop(stopDevice);
         }
         return false;
       }
@@ -2825,7 +2841,12 @@ bool MotionCommandHandler::ExecuteCommand(
     if (keepZIt != params.end() && (keepZIt->second == "true" || keepZIt->second == "1")) {
       keepZ = true;
       double currentZ = 0.0;
-      motionManager->GetPosition(deviceName, "Z", currentZ);
+      if (!motionManager->GetPosition(deviceName, "Z", currentZ)) {
+        if (m_logger) {
+          m_logger->Error("MoveToContextPosition: Failed to read Z position for " + deviceName, "MotionHandler");
+        }
+        return false;
+      }
       z = currentZ;
     }
 
@@ -2948,7 +2969,12 @@ bool MotionCommandHandler::ExecuteCommand(
 
     // Get current Z position
     double currentZ = 0.0;
-    motionManager->GetPosition(deviceName, "Z", currentZ);
+    if (!motionManager->GetPosition(deviceName, "Z", currentZ)) {
+      if (m_logger) {
+        m_logger->Error("MoveToContextXY: Failed to read Z position for " + deviceName, "MotionHandler");
+      }
+      return false;
+    }
 
     // Check if non-blocking mode requested
     bool explicitNonBlocking = false;
@@ -3484,7 +3510,8 @@ bool MotionCommandHandler::ExecuteCommand(
     int lastStatus = -999;
     int notMovingCount = 0;
 
-    while (true) {
+    constexpr int MAX_ITERATIONS_FASTALIGN = 600; // Safety bound: 60s timeout / 200ms poll * 2x margin
+    for (int iteration = 0; iteration < MAX_ITERATIONS_FASTALIGN; ++iteration) {
       // Check stop flags
       if (context && context->IsStopRequestedAny()) {
         errorMessage = "FastAlignXY: Cancelled by user";
@@ -3552,7 +3579,12 @@ bool MotionCommandHandler::ExecuteCommand(
       }
     }
 
-    return true;
+    // Safety bound exhausted
+    if (m_logger) {
+      m_logger->Error("Loop safety bound reached in FastAlignXY", "MotionHandler");
+    }
+    errorMessage = "FastAlignXY: Loop safety bound reached";
+    return false;
   }
 
   // ============================================================================
@@ -3739,7 +3771,8 @@ bool MotionCommandHandler::ExecuteCommand(
       int lastStatus = -999;
       int notMovingCount = 0;
 
-      while (true) {
+      constexpr int MAX_ITERATIONS_FSM = 600; // Safety bound: 60s timeout / 200ms poll * 2x margin
+      for (int iteration = 0; iteration < MAX_ITERATIONS_FSM; ++iteration) {
         // Check stop flags
         if (context && context->IsStopRequestedAny()) {
           return false;
@@ -3779,7 +3812,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
         }
       }
-      return false;
+      return false; // Safety bound exhausted
     };
 
     // ✅ ITERATE THROUGH Z POSITIONS
@@ -3955,7 +3988,9 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
   // has been sent but the motor hasn't started moving yet
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  while (true) {
+  // Safety bound: timeoutMs / 50ms poll * 2x margin, minimum 400 iterations
+  const int maxIterations = std::max(400, timeoutMs / 50 * 2);
+  for (int iteration = 0; iteration < maxIterations; ++iteration) {
     // ✅ CRITICAL: Update waypoint state machine before checking status
     // This allows the waypoint system to transition from MovingToFinalTarget to Idle
     motionManager->Update();
@@ -4233,6 +4268,12 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     // Sleep briefly to avoid busy-waiting (50ms polling rate)
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  // Safety bound exhausted
+  if (m_logger) {
+    m_logger->Error("Loop safety bound reached in WaitForMotionWithStopCheck for " + deviceName, "MotionHandler");
+  }
+  return false;
 }
 
 // =============================================================================
@@ -4266,7 +4307,7 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
 
       // Emergency stop ALL devices
       for (const auto& spec : moves) {
-        motionManager->EmergencyStop(spec.deviceName);
+        (void)motionManager->EmergencyStop(spec.deviceName);
       }
 
       return false;
@@ -4362,7 +4403,7 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
       // Emergency stop all devices that are still moving
       for (size_t i = 0; i < moves.size(); ++i) {
         if (!completed[i]) {
-          motionManager->EmergencyStop(moves[i].deviceName);
+          (void)motionManager->EmergencyStop(moves[i].deviceName);
         }
       }
 
@@ -4419,7 +4460,7 @@ bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
 
       // Emergency stop ALL devices
       for (const auto& deviceName : deviceNames) {
-        motionManager->EmergencyStop(deviceName);
+        (void)motionManager->EmergencyStop(deviceName);
       }
 
       return false;
@@ -4464,7 +4505,7 @@ bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
       // Emergency stop all devices that are still moving
       for (size_t i = 0; i < deviceNames.size(); ++i) {
         if (!completed[i]) {
-          motionManager->EmergencyStop(deviceNames[i]);
+          (void)motionManager->EmergencyStop(deviceNames[i]);
         }
       }
 

@@ -356,7 +356,12 @@ uint32_t PneumaticSlide::GetElapsedMs() const {
 }
 
 PneumaticError PneumaticSlide::WaitForPosition(PneumaticPosition targetPos, uint32_t pollIntervalMs) {
-  while (true) {
+  // Safety bound: TimeoutMs / pollIntervalMs * 2x margin, minimum 200 iterations
+  const int maxIterations = (pollIntervalMs > 0)
+    ? std::max(200, static_cast<int>(m_config.TimeoutMs / pollIntervalMs * 2))
+    : 200;
+
+  for (int iteration = 0; iteration < maxIterations; ++iteration) {
     UpdatePosition();
 
     // Success - reached target position
@@ -377,6 +382,11 @@ PneumaticError PneumaticSlide::WaitForPosition(PneumaticPosition targetPos, uint
     // Wait before next poll
     std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
   }
+
+  // Safety bound exhausted - should not happen if timeout logic works correctly
+  std::cerr << "[PneumaticSlide] " << m_config.Name
+    << " - Loop safety bound reached in WaitForPosition" << std::endl;
+  return PneumaticError::TIMEOUT;
 }
 
 bool PneumaticSlide::IsIOConnected() const {

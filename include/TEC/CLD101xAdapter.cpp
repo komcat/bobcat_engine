@@ -51,7 +51,7 @@ bool CLD101xAdapter::Connect() {
   // Setup server address
   sockaddr_in serverAddr;
   serverAddr.sin_family = AF_INET;
-  serverAddr.sin_port = htons(m_config.Port);
+  serverAddr.sin_port = htons(static_cast<u_short>(m_config.Port));
   inet_pton(AF_INET, m_config.IpAddress.c_str(), &serverAddr.sin_addr);
 
   // Connect to server
@@ -370,7 +370,7 @@ bool CLD101xAdapter::SendCommand(const std::string& command, std::string& respon
 
   // Send command
   std::string cmdWithNewline = command + "\n";
-  int sendResult = send(m_socket, cmdWithNewline.c_str(), cmdWithNewline.length(), 0);
+  int sendResult = send(m_socket, cmdWithNewline.c_str(), static_cast<int>(cmdWithNewline.length()), 0);
   if (sendResult == SOCKET_ERROR) {
     std::cerr << "[ERROR] " << m_config.Name << ": Send failed: "
       << WSAGetLastError() << std::endl;

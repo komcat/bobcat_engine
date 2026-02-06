@@ -13,10 +13,10 @@
 class CameraManager;
 class UnifiedMotionManager;
 class LiveVideoSubscriber;
-class CameraFrameData;
+struct CameraFrameData;
 class WorldOverlayManager;
 class WorldOverlayRenderer;
-class ApplicationContext;
+struct ApplicationContext;
 
 /**
  * @brief Camera widget with click-to-move feature for gantry alignment

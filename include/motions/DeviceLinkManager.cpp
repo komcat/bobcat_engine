@@ -82,8 +82,10 @@ bool DeviceLinkManager::RegisterLink(const std::string& primaryDevice, const std
     // Generate timestamp
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf{};
+    localtime_s(&tm_buf, &time_t_now);
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t_now), "%Y-%m-%dT%H:%M:%S");
+    ss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S");
     std::string timestamp = ss.str();
 
     // Store the link

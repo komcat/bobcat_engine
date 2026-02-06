@@ -1004,7 +1004,10 @@ bool CoordinateAlignCommandHandler::HandleMoveToLocalXY(
 
     // Get current Z position
     double currentZ = 0.0;
-    m_appContext->motionManager->GetPosition(motionDevice, "Z", currentZ);
+    if (!m_appContext->motionManager->GetPosition(motionDevice, "Z", currentZ)) {
+      errorMessage = "MoveToLocalXY: Failed to read Z position for " + motionDevice;
+      return false;
+    }
 
     std::cout << "[CoordAlign] MoveToLocalXY: " << motionDevice
               << " local(" << localX << ", " << localY

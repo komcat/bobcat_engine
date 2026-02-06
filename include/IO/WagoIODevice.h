@@ -10,6 +10,12 @@
 #include <cstdint>
 #include <memory>
 
+#ifdef _WIN32
+  #include <winsock2.h>
+#else
+  #define SOCKET int
+#endif
+
 // Forward declaration for Modbus client
 namespace modbus {
   class ModbusTcpClient;
@@ -88,7 +94,7 @@ private:
 
   // Connection state
   bool m_isConnected;
-  int m_socket;
+  SOCKET m_socket;
   static constexpr int MODBUS_PORT = 502;
   static constexpr int MODBUS_TIMEOUT_MS = 3000;
 

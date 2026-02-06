@@ -4,7 +4,7 @@
 #include "ICommandHandler.h"
 #include <string>
 
-class ApplicationContext;
+struct ApplicationContext;
 
 class CalibrationCommandHandler : public ICommandHandler
 {

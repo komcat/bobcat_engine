@@ -250,7 +250,7 @@ void PIController::Disconnect() {
   StopCommunicationThread();
   LOG_INFO("Disconnecting");
 
-  StopAllAxes();
+  (void)StopAllAxes();
   PI_CloseConnection(m_controllerId);
 
   m_isConnected.store(false);
@@ -546,7 +546,8 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
   auto startTime = std::chrono::steady_clock::now();
   int checkCount = 0;
 
-  while (true) {
+  constexpr int MAX_ITERATIONS = 1200; // Safety bound: 30s timeout / 50ms poll * 2x margin
+  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
     checkCount++;
     bool stillMoving = IsMoving(axis);
 
@@ -568,6 +569,9 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  LOG_ERROR("Loop safety bound reached in WaitForMotionCompletion (PI)");
+  return false;
 }
 
 

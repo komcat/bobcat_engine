@@ -553,9 +553,12 @@ std::string SequenceContext::ToJson() const
     auto start_time_t = std::chrono::system_clock::to_time_t(m_startTime);
     auto end_time_t = std::chrono::system_clock::to_time_t(m_endTime);
 
+    std::tm start_tm{}, end_tm{};
+    localtime_s(&start_tm, &start_time_t);
+    localtime_s(&end_tm, &end_time_t);
     char start_buf[100], end_buf[100];
-    std::strftime(start_buf, sizeof(start_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&start_time_t));
-    std::strftime(end_buf, sizeof(end_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&end_time_t));
+    std::strftime(start_buf, sizeof(start_buf), "%Y-%m-%d %H:%M:%S", &start_tm);
+    std::strftime(end_buf, sizeof(end_buf), "%Y-%m-%d %H:%M:%S", &end_tm);
 
     json << "  \"startTime\": \"" << start_buf << "\",\n";
     json << "  \"endTime\": \"" << end_buf << "\",\n";

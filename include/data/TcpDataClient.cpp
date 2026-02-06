@@ -359,7 +359,8 @@ void TcpDataClient::ProcessSingleChannelBuffer(std::string& buffer)
 void TcpDataClient::ProcessMultiChannelBuffer(std::string& buffer)
 {
   // Process complete messages in format: $START,val1,val2,...,valN,$END
-  while (true) {
+  constexpr int MAX_MESSAGES = 1000; // Safety bound: max messages per buffer parse
+  for (int messageCount = 0; messageCount < MAX_MESSAGES; ++messageCount) {
     size_t startPos = buffer.find("$START");
     if (startPos == std::string::npos) {
       // No start marker found, keep buffer for next recv
@@ -444,6 +445,11 @@ void TcpDataClient::ProcessMultiChannelBuffer(std::string& buffer)
       std::cerr << "[TcpDataClient] Error processing multi-channel message: "
                 << e.what() << std::endl;
     }
+  }
+
+  // If we exhausted the message count bound, log a warning (should not happen normally)
+  if (!buffer.empty() && buffer.find("$START") != std::string::npos) {
+    std::cerr << "[TcpDataClient] Loop safety bound reached in ProcessMultiChannelBuffer" << std::endl;
   }
 }
 

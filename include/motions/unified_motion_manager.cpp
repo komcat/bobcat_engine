@@ -76,7 +76,7 @@ void UnifiedMotionManager::SetSafetyWatchManager(SafetyWatchManager* safetyManag
       Q_UNUSED(message);
       if (critical) {
         LOG_WARNING("Critical safety flag - EMERGENCY STOP ALL AXES");
-        EmergencyStopAll();
+        (void)EmergencyStopAll();
       }
     });
 
@@ -825,7 +825,8 @@ bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName
   auto startTime = std::chrono::steady_clock::now();
   int status = 1;
 
-  while (true) {
+  constexpr int MAX_ITERATIONS = 2400; // Safety bound: 60s timeout / 50ms poll * 2x margin
+  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
     if (!controller->GetFastScanStatus(status)) {
       LOG_ERROR("WaitForFastScanComplete: Failed to query scan status");
       return false;
@@ -852,6 +853,9 @@ bool UnifiedMotionManager::WaitForFastScanComplete(const std::string& deviceName
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  LOG_ERROR("Loop safety bound reached in WaitForFastScanComplete");
+  return false;
 }
 
 bool UnifiedMotionManager::EnableServo(const std::string& deviceName,
@@ -1866,7 +1870,7 @@ bool UnifiedMotionManager::IsWaypointSystemActive(const std::string& deviceName)
 
 void UnifiedMotionManager::CancelWaypointSequence(const std::string& deviceName) {
   stopWaypointSequence(deviceName);
-  EmergencyStop(deviceName);
+  (void)EmergencyStop(deviceName);
 }
 
 // ============================================================================

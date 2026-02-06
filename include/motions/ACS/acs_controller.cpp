@@ -258,7 +258,7 @@ void ACSController::Disconnect() {
 
   LOG_INFO("Disconnecting");
 
-  StopAllAxes();
+  (void)StopAllAxes();
   acsc_CloseComm(m_controllerId);
 
   m_isConnected.store(false);
@@ -792,7 +792,8 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
   // Phase 2: Wait for motion to COMPLETE (motor flag becomes NOT MOVING)
   LOG_DEBUG("Waiting for " + axis + " motion completion");
 
-  while (true) {
+  constexpr int MAX_ITERATIONS = 1200; // Safety bound: 30s timeout / 50ms poll * 2x margin
+  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
     int motorState = 0;
     if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
       bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
@@ -817,6 +818,9 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
+
+  LOG_ERROR("Loop safety bound reached in WaitForMotionCompletion (ACS)");
+  return false;
 }
 
 bool ACSController::ConfigureFromDevice(const MotionDevice& device) {

@@ -87,7 +87,7 @@ public:
    * @param configPath Path to safety_watch.json
    * @return true if loaded successfully
    */
-  bool LoadConfig(const std::string& configPath);
+  [[nodiscard]] bool LoadConfig(const std::string& configPath);
 
   /**
    * @brief Save current configuration to JSON file
@@ -113,7 +113,7 @@ public:
    * @param intervalMs Polling interval in milliseconds (default from config)
    * @return true if started successfully
    */
-  bool StartWatching(int intervalMs = -1);
+  [[nodiscard]] bool StartWatching(int intervalMs = -1);
 
   /**
    * @brief Stop the polling thread

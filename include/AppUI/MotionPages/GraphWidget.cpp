@@ -2190,9 +2190,15 @@ void GraphWidget::onSpeedSliderChanged(int value)
 
   if (deviceType == "ACS") {
     // For ACS controllers, set velocity for X, Y, Z axes
-    m_motionManager->SetVelocity(deviceName, "X", velocity);
-    m_motionManager->SetVelocity(deviceName, "Y", velocity);
-    m_motionManager->SetVelocity(deviceName, "Z", velocity);
+    if (!m_motionManager->SetVelocity(deviceName, "X", velocity)) {
+      std::cerr << "[GraphWidget] Warning: Failed to set X velocity" << std::endl;
+    }
+    if (!m_motionManager->SetVelocity(deviceName, "Y", velocity)) {
+      std::cerr << "[GraphWidget] Warning: Failed to set Y velocity" << std::endl;
+    }
+    if (!m_motionManager->SetVelocity(deviceName, "Z", velocity)) {
+      std::cerr << "[GraphWidget] Warning: Failed to set Z velocity" << std::endl;
+    }
     std::cout << "[GraphWidget] ACS velocity set to " << velocity << " mm/s for X, Y, Z" << std::endl;
   }
   else if (deviceType == "PI") {

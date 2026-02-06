@@ -46,7 +46,7 @@ public:
   // ============================================================================
   // CONNECTION MANAGEMENT
   // ============================================================================
-  bool ConnectAll();
+  [[nodiscard]] bool ConnectAll();
   void DisconnectAll();
   bool ConnectDevice(const std::string& deviceName);
   bool DisconnectDevice(const std::string& deviceName);
@@ -55,7 +55,7 @@ public:
   // ============================================================================
   // INPUT OPERATIONS (uint64_t supports up to 64 I/O pins)
   // ============================================================================
-  EziIOError ReadInputs(const std::string& deviceName, uint64_t& inputs, uint64_t& latch);
+  [[nodiscard]] EziIOError ReadInputs(const std::string& deviceName, uint64_t& inputs, uint64_t& latch);
   EziIOError GetLastInputStatus(const std::string& deviceName, uint64_t& inputs, uint64_t& latch);
   EziIOError ClearLatch(const std::string& deviceName, uint64_t latchMask);
 
@@ -64,11 +64,11 @@ public:
   // ============================================================================
   EziIOError ReadOutputs(const std::string& deviceName, uint64_t& outputs, uint64_t& status);
   EziIOError GetLastOutputStatus(const std::string& deviceName, uint64_t& outputs, uint64_t& status);
-  EziIOError SetOutputs(const std::string& deviceName, uint64_t setMask, uint64_t clearMask);
-  EziIOError SetOutput(const std::string& deviceName, int pin, bool state);
+  [[nodiscard]] EziIOError SetOutputs(const std::string& deviceName, uint64_t setMask, uint64_t clearMask);
+  [[nodiscard]] EziIOError SetOutput(const std::string& deviceName, int pin, bool state);
 
   // Pin name convenience methods
-  EziIOError SetOutputByName(const std::string& deviceName, const std::string& pinName, bool state);
+  [[nodiscard]] EziIOError SetOutputByName(const std::string& deviceName, const std::string& pinName, bool state);
   bool GetInputByName(const std::string& deviceName, const std::string& pinName, bool& state);
 
   // ============================================================================

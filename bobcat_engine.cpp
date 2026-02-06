@@ -33,9 +33,12 @@ int main(int argc, char* argv[])
 
     // Check environment variable (set by CMake configuration)
     if (!modeSpecified) {
-      const char* envSimulation = std::getenv("BOBCAT_SIMULATION");
+      char* envSimulation = nullptr;
+      size_t envLen = 0;
+      _dupenv_s(&envSimulation, &envLen, "BOBCAT_SIMULATION");
       if (envSimulation) {
         std::string envValue(envSimulation);
+        free(envSimulation);
         if (envValue == "1" || envValue == "true" || envValue == "TRUE") {
           simulationMode = true;
           modeSpecified = true;

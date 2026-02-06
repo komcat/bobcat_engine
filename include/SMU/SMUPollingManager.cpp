@@ -325,8 +325,10 @@ void SMUPollingManager::PollingThreadFunction(PollingWorker* worker)
 
     // Generate timestamp for this measurement cycle
     std::time_t now = std::time(nullptr);
+    std::tm tm_buf{};
+    localtime_s(&tm_buf, &now);
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S");
+    ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
     std::string timestamp = ss.str();
 
     // Distribute results to each active channel

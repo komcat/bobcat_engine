@@ -302,8 +302,8 @@ void QuickOutputWidget::createOutputButtons()
 
     connect(button, &OutputButton::clicked, this, &QuickOutputWidget::onOutputButtonClicked);
 
-    int row = i / columns;
-    int col = i % columns;
+    int row = static_cast<int>(i) / columns;
+    int col = static_cast<int>(i) % columns;
     m_outputGrid->addWidget(button, row, col);
 
     m_outputButtons.push_back(button);

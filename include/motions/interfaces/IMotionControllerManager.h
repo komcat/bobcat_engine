@@ -22,10 +22,10 @@ public:
   virtual bool HasDevice(const std::string& deviceName) const = 0;
 
   // Connection Management
-  virtual bool ConnectAll() = 0;
+  [[nodiscard]] virtual bool ConnectAll() = 0;
   virtual void DisconnectAll() = 0;
-  virtual bool ConnectDevice(const std::string& deviceName) = 0;
-  virtual bool DisconnectDevice(const std::string& deviceName) = 0;
+  [[nodiscard]] virtual bool ConnectDevice(const std::string& deviceName) = 0;
+  [[nodiscard]] virtual bool DisconnectDevice(const std::string& deviceName) = 0;
   virtual bool ReconnectDevice(const std::string& deviceName) = 0;
   virtual int ConnectEnabledDevices() = 0;
 

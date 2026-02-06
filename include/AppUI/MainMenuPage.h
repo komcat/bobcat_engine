@@ -6,7 +6,7 @@
 #include <QPushButton>
 #include <QLabel>
 
-class ApplicationContext;
+struct ApplicationContext;
 
 /**
  * @brief Main menu page - 6 category buttons in 2x3 grid

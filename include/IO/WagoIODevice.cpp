@@ -266,7 +266,7 @@ std::vector<uint8_t> WagoIODevice::BuildWriteMultipleCoilsRequest(uint16_t start
   uint16_t transId = ++m_transactionId;
 
   // Calculate byte count for coil data
-  uint8_t byteCount = (count + 7) / 8;
+  uint8_t byteCount = static_cast<uint8_t>((count + 7) / 8);
 
   // MBAP Header
   request.push_back(transId >> 8);
@@ -414,7 +414,7 @@ EziIOError WagoIODevice::ReadInputs(uint64_t& inputs, uint64_t& latch) {
   }
 
   // Expected response size: MBAP (7) + FC (1) + byte count (1) + data bytes
-  size_t dataBytes = (m_config.InputCount + 7) / 8;
+  size_t dataBytes = static_cast<size_t>((m_config.InputCount + 7) / 8);
   size_t expectedLen = 9 + dataBytes;
 
   std::vector<uint8_t> response;
@@ -481,7 +481,7 @@ EziIOError WagoIODevice::ReadOutputs(uint64_t& outputs, uint64_t& status) {
   }
 
   // Expected response size
-  size_t dataBytes = (m_config.OutputCount + 7) / 8;
+  size_t dataBytes = static_cast<size_t>((m_config.OutputCount + 7) / 8);
   size_t expectedLen = 9 + dataBytes;
 
   std::vector<uint8_t> response;
@@ -547,7 +547,7 @@ EziIOError WagoIODevice::SetOutputs(uint64_t setMask, uint64_t clearMask) {
   std::lock_guard<std::mutex> lock(m_socketMutex);
 
   // Write all coils to address 0x0000 (WAGO Process Image Output area)
-  auto request = BuildWriteMultipleCoilsRequest(WAGO_OUTPUT_WRITE_ADDR, m_config.OutputCount, values);
+  auto request = BuildWriteMultipleCoilsRequest(WAGO_OUTPUT_WRITE_ADDR, static_cast<uint16_t>(m_config.OutputCount), values);
   if (!SendRequest(request)) {
     return EziIOError::OPERATION_FAILED;
   }
@@ -590,7 +590,7 @@ EziIOError WagoIODevice::SetOutput(int pin, bool state) {
   std::lock_guard<std::mutex> lock(m_socketMutex);
 
   // Write single coil to address 0x0000 + pin (WAGO Process Image Output area)
-  auto request = BuildWriteSingleCoilRequest(WAGO_OUTPUT_WRITE_ADDR + pin, state);
+  auto request = BuildWriteSingleCoilRequest(static_cast<uint16_t>(WAGO_OUTPUT_WRITE_ADDR + pin), state);
   if (!SendRequest(request)) {
     return EziIOError::OPERATION_FAILED;
   }

@@ -1039,32 +1039,32 @@ void MotionPage::onUpdatePositionClicked()
 		// If product is already loaded, save to existing file
 		if (m_productManager->HasLoadedProduct()) {
 			if (m_productManager->SaveProduct()) {
-				QMessageBox msgBox(this);
-				msgBox.setWindowTitle("Success");
-				msgBox.setText("Position updated and saved successfully!");
-				msgBox.setIcon(QMessageBox::Information);
-				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-				msgBox.exec();
+				QMessageBox saveSuccessBox(this);
+				saveSuccessBox.setWindowTitle("Success");
+				saveSuccessBox.setText("Position updated and saved successfully!");
+				saveSuccessBox.setIcon(QMessageBox::Information);
+				saveSuccessBox.setStyleSheet(DarkTheme::getStyleSheet());
+				saveSuccessBox.exec();
 			}
 			else {
-				QMessageBox msgBox(this);
-				msgBox.setWindowTitle("Position Updated");
-				msgBox.setText("Position updated but failed to auto-save.\n"
+				QMessageBox saveFailBox(this);
+				saveFailBox.setWindowTitle("Position Updated");
+				saveFailBox.setText("Position updated but failed to auto-save.\n"
 					"Please use 'Save Positions' button manually.");
-				msgBox.setIcon(QMessageBox::Warning);
-				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-				msgBox.exec();
+				saveFailBox.setIcon(QMessageBox::Warning);
+				saveFailBox.setStyleSheet(DarkTheme::getStyleSheet());
+				saveFailBox.exec();
 			}
 		}
 		else {
 			// No product loaded - show success but remind to save
-			QMessageBox msgBox(this);
-			msgBox.setWindowTitle("Position Updated");
-			msgBox.setText("Position updated successfully!\n\n"
+			QMessageBox noProductBox(this);
+			noProductBox.setWindowTitle("Position Updated");
+			noProductBox.setText("Position updated successfully!\n\n"
 				"Click 'Save Positions' to save to a file.");
-			msgBox.setIcon(QMessageBox::Information);
-			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-			msgBox.exec();
+			noProductBox.setIcon(QMessageBox::Information);
+			noProductBox.setStyleSheet(DarkTheme::getStyleSheet());
+			noProductBox.exec();
 		}
 
 		refreshPositionDisplay();
@@ -1114,32 +1114,32 @@ void MotionPage::onCreatePositionClicked()
 		// If product is already loaded, save to existing file
 		if (m_productManager->HasLoadedProduct()) {
 			if (m_productManager->SaveProduct()) {
-				QMessageBox msgBox(this);
-				msgBox.setWindowTitle("Success");
-				msgBox.setText(QString("Position '%1' created and saved successfully!").arg(name));
-				msgBox.setIcon(QMessageBox::Information);
-				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-				msgBox.exec();
+				QMessageBox createSuccessBox(this);
+				createSuccessBox.setWindowTitle("Success");
+				createSuccessBox.setText(QString("Position '%1' created and saved successfully!").arg(name));
+				createSuccessBox.setIcon(QMessageBox::Information);
+				createSuccessBox.setStyleSheet(DarkTheme::getStyleSheet());
+				createSuccessBox.exec();
 			}
 			else {
-				QMessageBox msgBox(this);
-				msgBox.setWindowTitle("Position Created");
-				msgBox.setText(QString("Position '%1' created but failed to auto-save.\n"
+				QMessageBox createFailBox(this);
+				createFailBox.setWindowTitle("Position Created");
+				createFailBox.setText(QString("Position '%1' created but failed to auto-save.\n"
 						"Please use 'Save Positions' button manually.").arg(name));
-				msgBox.setIcon(QMessageBox::Warning);
-				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-				msgBox.exec();
+				createFailBox.setIcon(QMessageBox::Warning);
+				createFailBox.setStyleSheet(DarkTheme::getStyleSheet());
+				createFailBox.exec();
 			}
 		}
 		else {
 			// No product loaded - show success but remind to save
-			QMessageBox msgBox(this);
-			msgBox.setWindowTitle("Position Created");
-			msgBox.setText(QString("Position '%1' created successfully!\n\n"
+			QMessageBox createNoProductBox(this);
+			createNoProductBox.setWindowTitle("Position Created");
+			createNoProductBox.setText(QString("Position '%1' created successfully!\n\n"
 					"Click 'Save Positions' to save to a file.").arg(name));
-			msgBox.setIcon(QMessageBox::Information);
-			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-			msgBox.exec();
+			createNoProductBox.setIcon(QMessageBox::Information);
+			createNoProductBox.setStyleSheet(DarkTheme::getStyleSheet());
+			createNoProductBox.exec();
 		}
 
 		refreshPositionDisplay();
@@ -1179,40 +1179,40 @@ void MotionPage::onDeletePositionClicked()
 				m_productManager->ImportFromMotionManager(*m_motionManager);
 
 				if (m_productManager->SaveProduct()) {
-					QMessageBox msgBox(this);
-					msgBox.setWindowTitle("Success");
-					msgBox.setText("Position deleted and product saved successfully!");
-					msgBox.setIcon(QMessageBox::Information);
-					msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-					msgBox.exec();
+					QMessageBox deleteSuccessBox(this);
+					deleteSuccessBox.setWindowTitle("Success");
+					deleteSuccessBox.setText("Position deleted and product saved successfully!");
+					deleteSuccessBox.setIcon(QMessageBox::Information);
+					deleteSuccessBox.setStyleSheet(DarkTheme::getStyleSheet());
+					deleteSuccessBox.exec();
 				}
 				else {
-					QMessageBox msgBox(this);
-					msgBox.setWindowTitle("Partial Success");
-					msgBox.setText("Position deleted but failed to save product file.\n"
+					QMessageBox deletePartialBox(this);
+					deletePartialBox.setWindowTitle("Partial Success");
+					deletePartialBox.setText("Position deleted but failed to save product file.\n"
 						"Please save manually.");
-					msgBox.setIcon(QMessageBox::Warning);
-					msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-					msgBox.exec();
+					deletePartialBox.setIcon(QMessageBox::Warning);
+					deletePartialBox.setStyleSheet(DarkTheme::getStyleSheet());
+					deletePartialBox.exec();
 				}
 			}
 			else {
-				QMessageBox msgBox(this);
-				msgBox.setWindowTitle("Success");
-				msgBox.setText("Position deleted successfully!\n\n"
+				QMessageBox deleteNoProductBox(this);
+				deleteNoProductBox.setWindowTitle("Success");
+				deleteNoProductBox.setText("Position deleted successfully!\n\n"
 					"No product loaded - remember to save when ready.");
-				msgBox.setIcon(QMessageBox::Information);
-				msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-				msgBox.exec();
+				deleteNoProductBox.setIcon(QMessageBox::Information);
+				deleteNoProductBox.setStyleSheet(DarkTheme::getStyleSheet());
+				deleteNoProductBox.exec();
 			}
 		}
 		else {
-			QMessageBox msgBox(this);
-			msgBox.setWindowTitle("Error");
-			msgBox.setText("Failed to delete position.");
-			msgBox.setIcon(QMessageBox::Critical);
-			msgBox.setStyleSheet(DarkTheme::getStyleSheet());
-			msgBox.exec();
+			QMessageBox deleteErrorBox(this);
+			deleteErrorBox.setWindowTitle("Error");
+			deleteErrorBox.setText("Failed to delete position.");
+			deleteErrorBox.setIcon(QMessageBox::Critical);
+			deleteErrorBox.setStyleSheet(DarkTheme::getStyleSheet());
+			deleteErrorBox.exec();
 		}
 	}
 }
@@ -1249,7 +1249,7 @@ void MotionPage::onHomeClicked()
 void MotionPage::onStopClicked()
 {
 	if (m_currentDevice.isEmpty()) {
-		m_motionManager->EmergencyStopAll();
+		(void)m_motionManager->EmergencyStopAll();
 	}
 	else {
 		// Cancel waypoint sequence and emergency stop
@@ -1451,10 +1451,10 @@ void MotionPage::loadLabelOffsets()
 		return;
 	}
 
-	QByteArray data = file.readAll();
+	QByteArray fileData = file.readAll();
 	file.close();
 
-	QJsonDocument doc = QJsonDocument::fromJson(data);
+	QJsonDocument doc = QJsonDocument::fromJson(fileData);
 	if (!doc.isObject()) {
 		qWarning() << "Invalid label offsets JSON format";
 		return;

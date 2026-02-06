@@ -81,9 +81,9 @@ public:
 	// CONNECTION MANAGEMENT
 	// ============================================================================
 
-	bool ConnectAll();
+	[[nodiscard]] bool ConnectAll();
 	void DisconnectAll();
-	bool ConnectDevice(const std::string& deviceName);
+	[[nodiscard]] bool ConnectDevice(const std::string& deviceName);
 	bool DisconnectDevice(const std::string& deviceName);
 	bool ReconnectDevice(const std::string& deviceName);
 	int ConnectEnabledDevices();
@@ -93,52 +93,52 @@ public:
 	// ============================================================================
 
 	// Move to absolute position (XYZ only)
-	bool MoveToAbs(const std::string& deviceName,
+	[[nodiscard]] bool MoveToAbs(const std::string& deviceName,
 		double x, double y, double z,
 		double velocity = 100.0,
 		bool blocking = true);
 
 	// Move to absolute position (all 6 axes XYZUVW)
-	bool MoveToAbs6(const std::string& deviceName,
+	[[nodiscard]] bool MoveToAbs6(const std::string& deviceName,
 		const PositionStruct& position,
 		bool blocking = true);
 
 	// Move single axis to position
-	bool MoveToPosition(const std::string& deviceName,
+	[[nodiscard]] bool MoveToPosition(const std::string& deviceName,
 		const std::string& axis,
 		double position,
 		bool blocking = true);
 
 	// Move to named position
 // Move to named position
-	bool MoveToNamedPosition(const std::string& deviceName,
+	[[nodiscard]] bool MoveToNamedPosition(const std::string& deviceName,
 		const std::string& positionName,
 		bool blocking = false);  // ✅ ADD blocking parameter with default false
 
 	// Move relative (single axis)
-	bool MoveRelative(const std::string& deviceName,
+	[[nodiscard]] bool MoveRelative(const std::string& deviceName,
 		const std::string& axis,
 		double distance,
 		bool blocking = true);
 
 	// Emergency stop methods
-	bool EmergencyStop(const std::string& deviceName);
-	bool EmergencyStopAll();
+	[[nodiscard]] bool EmergencyStop(const std::string& deviceName);
+	[[nodiscard]] bool EmergencyStopAll();
 
 	// Additional motion control
-	bool StopAxis(const std::string& deviceName, const std::string& axis);
-	bool HomeAxis(const std::string& deviceName, const std::string& axis);
+	[[nodiscard]] bool StopAxis(const std::string& deviceName, const std::string& axis);
+	[[nodiscard]] bool HomeAxis(const std::string& deviceName, const std::string& axis);
 	bool IsMoving(const std::string& deviceName, const std::string& axis);
 	bool IsDeviceInMotion(const std::string& deviceName);
 
 	// Position queries
-	bool GetPosition(const std::string& deviceName,
+	[[nodiscard]] bool GetPosition(const std::string& deviceName,
 		const std::string& axis,
 		double& position);
 	PositionStruct GetCurrentPosition(const std::string& deviceName);
 
 	// Velocity control
-	bool SetVelocity(const std::string& deviceName,
+	[[nodiscard]] bool SetVelocity(const std::string& deviceName,
 		const std::string& axis,
 		double velocity);
 	bool GetVelocity(const std::string& deviceName,
@@ -150,7 +150,7 @@ public:
 	bool GetSystemVelocity(const std::string& deviceName, double& velocity);
 
 	// Servo control
-	bool EnableServo(const std::string& deviceName,
+	[[nodiscard]] bool EnableServo(const std::string& deviceName,
 		const std::string& axis,
 		bool enable);
 

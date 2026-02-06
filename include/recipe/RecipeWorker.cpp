@@ -425,9 +425,9 @@ void RecipeWorker::run()
       }
 
       // ✅ Clear LogManager callback before exiting
-      LogManager* logger = m_engine->GetLogger();
-      if (logger) {
-        logger->ClearUICallback();
+      LogManager* logMgr = m_engine->GetLogger();
+      if (logMgr) {
+        logMgr->ClearUICallback();
       }
 
       std::cout << "[RecipeWorker] Emitting executionCompleted signal: " << resultMsg.toStdString() << std::endl;

@@ -1212,8 +1212,17 @@ endif()
 # Compile Definitions
 # ============================================================================
 # Prevent Windows min/max macros from conflicting with std::min/std::max in OpenCV/Halcon
+# WIN32_LEAN_AND_MEAN prevents windows.h from including winsock.h (v1),
+# allowing winsock2.h to be safely included in any order
 if(WIN32)
-    target_compile_definitions(bobcat_engine PRIVATE NOMINMAX)
+    target_compile_definitions(bobcat_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
+# ============================================================================
+# Compiler Warning Level (safety compliance)
+# ============================================================================
+if(MSVC)
+    target_compile_options(bobcat_engine PRIVATE /W4)
 endif()
 
 # ============================================================================

@@ -310,7 +310,7 @@ bool SystemCommandHandler::ExecuteCommand(
 
     // Expand context references in message
     std::string message = ExpandContextReferences(messageIt->second, context);
-    std::string deviceName = deviceIt->second;
+    std::string adjustDeviceName = deviceIt->second;
     double stepSizeUm = std::stod(stepSizeIt->second);
     bool enableX = (enableXIt != params.end() && enableXIt->second == "true");
     bool enableY = (enableYIt != params.end() && enableYIt->second == "true");
@@ -319,7 +319,7 @@ bool SystemCommandHandler::ExecuteCommand(
     // ✅ LOOP MODE: Auto-skip manual adjustment when in loop execution mode
     if (context && context->IsLoopExecutionMode()) {
       if (m_logger) {
-        m_logger->Info("Loop mode: Skipping manual adjustment for: " + deviceName, "SystemHandler");
+        m_logger->Info("Loop mode: Skipping manual adjustment for: " + adjustDeviceName, "SystemHandler");
       }
       return true;  // Continue without user interaction
     }
@@ -330,22 +330,22 @@ bool SystemCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Showing manual adjustment for device: " + deviceName, "SystemHandler");
+      m_logger->Info("Showing manual adjustment for device: " + adjustDeviceName, "SystemHandler");
     }
 
     // Call the callback - this will show the ManualAdjustWidget and wait for user
-    bool userCompleted = m_manualAdjustCallback(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
+    bool userCompleted = m_manualAdjustCallback(message, adjustDeviceName, stepSizeUm, enableX, enableY, enableZ);
 
     if (!userCompleted) {
       errorMessage = "User cancelled manual adjustment";
       if (m_logger) {
-        m_logger->Warning("User cancelled manual adjustment for: " + deviceName, "SystemHandler");
+        m_logger->Warning("User cancelled manual adjustment for: " + adjustDeviceName, "SystemHandler");
       }
       return false;
     }
 
     if (m_logger) {
-      m_logger->Info("User completed manual adjustment for: " + deviceName, "SystemHandler");
+      m_logger->Info("User completed manual adjustment for: " + adjustDeviceName, "SystemHandler");
     }
 
     return true;
@@ -582,9 +582,9 @@ bool SystemCommandHandler::ExecuteCommand(
               << mostRecentImageKey << "]) to: " << savePath << std::endl;
 
     // Store filepath in context if captureAs specified
-    auto captureAsIt = params.find("captureAs");
-    if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
-      context->SetValue(captureAsIt->second, savePath, "system", "SaveLastCaptureToFile");
+    auto saveFileCapture = params.find("captureAs");
+    if (saveFileCapture != params.end() && !saveFileCapture->second.empty()) {
+      context->SetValue(saveFileCapture->second, savePath, "system", "SaveLastCaptureToFile");
     }
 
     return true;

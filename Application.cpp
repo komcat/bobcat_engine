@@ -164,9 +164,12 @@ bool Application::initialize()
     // Note: Logging version info happens after LogManager init in initializeManagers()
 
     // ✅ Check BOBCAT_SIMULATION environment variable
-    const char* simEnv = std::getenv("BOBCAT_SIMULATION");
+    char* simEnv = nullptr;
+    size_t simEnvLen = 0;
+    _dupenv_s(&simEnv, &simEnvLen, "BOBCAT_SIMULATION");
     if (simEnv != nullptr) {
       std::string simValue(simEnv);
+      free(simEnv);
       m_context.simulationMode = (simValue == "1" || simValue == "true" || simValue == "TRUE");
     } else {
       // Default to false if environment variable not set
@@ -910,8 +913,9 @@ void Application::onConnectionTaskCompleted(const Startup::ConnectionResult& res
   // Start safety watch after IO is connected (regardless of phase completion)
   if (result.managerName == "IOManager" && result.isSuccess()) {
     if (m_safetyWatchManager && m_safetyWatchManager->IsEnabled()) {
-      m_safetyWatchManager->StartWatching();
-      m_logManager->Info("Safety watch started", "Application");
+      if (!m_safetyWatchManager->StartWatching()) {
+        m_logManager->Error("Failed to start safety watch", "Application");
+      }
     }
   }
 }
@@ -1316,7 +1320,7 @@ void Application::testSequenceEngine()
   if (m_sequenceEngine->ValidateSequence(seq, errors)) {
     m_logManager->Info("Sequence validation passed, executing...", "Sequence Test");
     auto context = std::make_unique<SequenceContext>();
-    m_sequenceEngine->ExecuteSequence(seq, context.get());
+    (void)m_sequenceEngine->ExecuteSequence(seq, context.get());
   }
   else {
     m_logManager->Error("Sequence validation failed:", "Sequence Test");

@@ -287,10 +287,10 @@ public:
   SequenceBuilder* CreateSequence(const std::string& name);
 
   // Execute with context
-  bool ExecuteSequence(SequenceBuilder* sequence, SequenceContext* context);
+  [[nodiscard]] bool ExecuteSequence(SequenceBuilder* sequence, SequenceContext* context);
 
   // Validate sequence
-  bool ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors);
+  [[nodiscard]] bool ValidateSequence(SequenceBuilder* sequence, std::vector<std::string>& errors);
 
   // Logging
   const std::vector<std::string>& GetExecutionLog() const { return m_executionLog; }

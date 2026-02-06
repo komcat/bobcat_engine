@@ -966,7 +966,10 @@ void CameraClickToMoveWidget::onAutoFocusClicked()
     double currentZ = zMin + (i * zStepMm);
 
     // Move to Z position
-    m_motionManager->MoveRelative("gantry-main", "Z", currentZ - m_motionManager->GetCurrentPosition("gantry-main").z, true);
+    if (!m_motionManager->MoveRelative("gantry-main", "Z", currentZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
+      std::cerr << "[CameraClickToMoveWidget] Auto-focus move failed at step " << i << std::endl;
+      break;
+    }
 
     // Wait for settle
     QThread::msleep(settleTimeMs);
@@ -1015,7 +1018,9 @@ void CameraClickToMoveWidget::onAutoFocusClicked()
 
   // Move to best focus position
   std::cout << "[CameraClickToMoveWidget] ✅ Best focus at Z=" << bestZ << "mm (value=" << bestFocusValue << ")" << std::endl;
-  m_motionManager->MoveRelative("gantry-main", "Z", bestZ - m_motionManager->GetCurrentPosition("gantry-main").z, true);
+  if (!m_motionManager->MoveRelative("gantry-main", "Z", bestZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
+    std::cerr << "[CameraClickToMoveWidget] Failed to move to best focus position" << std::endl;
+  }
 
   // Re-enable button
   m_autoFocusButton->setEnabled(true);

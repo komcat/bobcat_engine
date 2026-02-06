@@ -312,8 +312,10 @@ std::string DeviceUnderTest::getCurrentTimestamp() {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
 
+    std::tm tm_buf{};
+    gmtime_s(&tm_buf, &time_t_now);
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t_now), "%Y-%m-%dT%H:%M:%S");
+    ss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%S");
     ss << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
 
     return ss.str();

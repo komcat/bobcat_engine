@@ -955,7 +955,10 @@ bool CalibrationCommandHandler::ExecuteCommand(
 
     // Get current Z to maintain height
     double currentZ = 0.0;
-    m_context->motionManager->GetPosition(device, "Z", currentZ);
+    if (!m_context->motionManager->GetPosition(device, "Z", currentZ)) {
+      errorMessage = "NavigateToSavedCorner: Failed to read Z position";
+      return false;
+    }
 
     if (!m_context->motionManager->MoveToAbs(device, x, y, currentZ, 100.0, true)) {
       errorMessage = "NavigateToSavedCorner: Failed to move to corner " + corner;

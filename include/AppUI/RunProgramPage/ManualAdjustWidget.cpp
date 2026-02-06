@@ -426,9 +426,11 @@ void ManualAdjustWidget::updatePositionDisplay()
   }
 
   double x = 0.0, y = 0.0, z = 0.0;
-  m_motionManager->GetPosition(m_currentDevice, "X", x);
-  m_motionManager->GetPosition(m_currentDevice, "Y", y);
-  m_motionManager->GetPosition(m_currentDevice, "Z", z);
+  if (!m_motionManager->GetPosition(m_currentDevice, "X", x) ||
+      !m_motionManager->GetPosition(m_currentDevice, "Y", y) ||
+      !m_motionManager->GetPosition(m_currentDevice, "Z", z)) {
+    return; // Skip UI update on position read failure
+  }
 
   m_positionLabel->setText(
     QString("Position: X: %1 | Y: %2 | Z: %3 mm")

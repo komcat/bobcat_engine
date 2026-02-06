@@ -155,7 +155,7 @@ void AdaptiveScanController::EmergencyStop() {
   m_haltRequested = true;
 
   // Stop motion immediately
-  m_motionManager.EmergencyStop(m_deviceName);
+  (void)m_motionManager.EmergencyStop(m_deviceName);
 
   if (m_scanThread.joinable()) {
     m_scanThread.join();

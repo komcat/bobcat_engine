@@ -1276,7 +1276,7 @@ bool VisionCommandHandler::ExecuteAutoFocus(const std::map<std::string, std::str
         errorMessage = "Auto-focus failed: no valid focus measurements";
         if (context) context->SetValue(contextPrefix + ".success", false);
         // Return to start position (blocking)
-        m_context->motionManager->MoveToAbs(motionDevice, startPos.x, startPos.y, startZ, 100.0, true);
+        (void)m_context->motionManager->MoveToAbs(motionDevice, startPos.x, startPos.y, startZ, 100.0, true);
         return false;
     }
 

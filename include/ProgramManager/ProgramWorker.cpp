@@ -157,7 +157,7 @@ void ProgramWorker::runSequential()
 
     // ✅ DETERMINE WHICH RECIPES TO RUN
     int startIndex = 0;
-    int endIndex = allRecipes.size();
+    int endIndex = static_cast<int>(allRecipes.size());
 
     if (!m_autoRunMode) {
       // Single recipe mode - only run the selected recipe
@@ -329,7 +329,7 @@ void ProgramWorker::runWithDependencies()
       recipeNames.push_back(recipe->displayName);
     }
 
-    stateMachine.initialize(allRecipes.size(), recipeNames);
+    stateMachine.initialize(static_cast<int>(allRecipes.size()), recipeNames);
     emit logMessage("Initialized dependency state machine");
 
     // ============================================================================
@@ -797,7 +797,7 @@ void ProgramWorker::runWithLoop()
   for (const auto& recipe : allRecipes) {
     recipeNames.push_back(recipe->displayName);
   }
-  stateMachine.initialize(allRecipes.size(), recipeNames);
+  stateMachine.initialize(static_cast<int>(allRecipes.size()), recipeNames);
 
   // Import all dependencies from the active POR set
   int activeSetIndex = m_programManager->getActiveDependencySetIndex();
