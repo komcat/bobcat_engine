@@ -148,6 +148,22 @@ int TECManager::ConnectEnabledDevices() {
 }
 
 // ============================================================================
+// SAFETY - E-Stop
+// ============================================================================
+
+void TECManager::DisableAllOutputs() {
+  std::cout << "[INFO] TECManager: E-STOP - Disabling all outputs" << std::endl;
+
+  for (auto& [name, device] : m_devices) {
+    if (device->IsConnected()) {
+      device->TEC_Off();
+      device->Laser_Off();
+      std::cout << "[INFO] TECManager: Disabled outputs on '" << name << "'" << std::endl;
+    }
+  }
+}
+
+// ============================================================================
 // TEC CONTROL
 // ============================================================================
 

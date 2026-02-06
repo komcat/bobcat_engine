@@ -1962,6 +1962,76 @@ void Application::initializeSafetyWatch()
       m_motionManager->SetSafetyWatchManager(m_safetyWatchManager.get());
     }
 
+    // E-Stop broadcast: connect critical safety flag to ALL hardware managers
+    if (m_safetyWatchManager) {
+      // TEC: disable all outputs
+      if (m_tecManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical && m_tecManager) {
+            m_tecManager->DisableAllOutputs();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_TEC", "E-Stop: TEC outputs disabled");
+            }
+          }
+        });
+      }
+      // PSU: disable all outputs (keep connection alive)
+      if (m_powerSupplyManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical && m_powerSupplyManager) {
+            m_powerSupplyManager->disableAllOutputs();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_PSU", "E-Stop: PSU outputs disabled");
+            }
+          }
+        });
+      }
+      // SMU: stop polling + disable all outputs
+      if (m_smuManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical) {
+            if (m_smuPollingManager) m_smuPollingManager->StopAllPolling();
+            if (m_smuManager) m_smuManager->OutputOffAll();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_SMU", "E-Stop: SMU outputs disabled, polling stopped");
+            }
+          }
+        });
+      }
+      // Pneumatic: retract all slides
+      if (m_pneumaticManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical && m_pneumaticManager) {
+            m_pneumaticManager->StopAll();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_PNEUMATIC", "E-Stop: All pneumatic slides stopped");
+            }
+          }
+        });
+      }
+      // Lighting: all off
+      if (m_lightingManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical && m_lightingManager) {
+            m_lightingManager->AllOff();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_LIGHTING", "E-Stop: All lighting turned off");
+            }
+          }
+        });
+      }
+    }
+
     m_logManager->Info("Safety Watch initialized", "Application");
   }
   catch (const std::exception& e) {

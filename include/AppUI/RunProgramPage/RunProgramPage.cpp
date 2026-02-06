@@ -2882,7 +2882,8 @@ void RunProgramPage::onExecuteProgram()
   connect(m_programWorker, &ProgramWorker::visionResultReady,
     this, &RunProgramPage::onVisionResultReady, Qt::QueuedConnection);
 
-  // Connect safety watch - auto-stop on critical safety flag
+  // Safety-critical: DirectConnection ensures immediate stop on the signaling
+  // thread without event loop delay — required for E-stop responsiveness.
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
             m_programWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
@@ -2890,7 +2891,7 @@ void RunProgramPage::onExecuteProgram()
         std::cout << "[RunProgramPage] Critical safety flag - stopping program worker" << std::endl;
         m_programWorker->requestStop();
       }
-    }, Qt::DirectConnection);  // Direct connection for immediate response
+    }, Qt::DirectConnection);
   }
 
   std::cout << "[RunProgramPage] All signals connected, main thread ID: " << QThread::currentThreadId() << std::endl;

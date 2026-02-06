@@ -149,3 +149,21 @@ void PowerSupplyManager::disconnectAll()
     }
   }
 }
+
+void PowerSupplyManager::disableAllOutputs()
+{
+  std::cout << "[PowerSupplyManager] E-STOP - Disabling all outputs" << std::endl;
+
+  for (auto& pair : m_devices) {
+    const std::string& name = pair.first;
+    PowerSupplyPtr& psu = pair.second;
+
+    if (psu->isConnected()) {
+      int channels = getDeviceChannelCount(name);
+      for (int ch = 1; ch <= channels; ++ch) {
+        psu->setOutputOff(ch);
+      }
+      std::cout << "[PowerSupplyManager] Disabled " << channels << " channel(s) on " << name << std::endl;
+    }
+  }
+}

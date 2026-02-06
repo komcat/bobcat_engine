@@ -80,6 +80,16 @@ public:
   int ConnectEnabledDevices();
 
   // ============================================================================
+  // SAFETY - E-Stop
+  // ============================================================================
+
+  /**
+   * @brief Disable all TEC and laser outputs (E-stop safety action)
+   * Iterates all connected devices and turns off TEC + laser outputs.
+   */
+  void DisableAllOutputs();
+
+  // ============================================================================
   // TEC CONTROL
   // ============================================================================
 

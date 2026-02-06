@@ -2738,7 +2738,8 @@ void RecipePage::onRunRecipe()
   connect(m_recipeWorker, &RecipeWorker::finished,
     m_recipeWorker, &QObject::deleteLater);
 
-  // Connect safety watch - auto-stop on critical safety flag
+  // Safety-critical: DirectConnection ensures immediate stop on the signaling
+  // thread without event loop delay — required for E-stop responsiveness.
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
             m_recipeWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
@@ -2972,7 +2973,8 @@ void RecipePage::onRunSelectedStep()
     return result;
   });
 
-  // Connect safety watch - auto-stop on critical safety flag
+  // Safety-critical: DirectConnection ensures immediate stop on the signaling
+  // thread without event loop delay — required for E-stop responsiveness.
   if (m_context->safetyWatchManager) {
     connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
             m_recipeWorker, [this](QString /*title*/, QString /*message*/, bool critical) {

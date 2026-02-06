@@ -10,6 +10,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <future>
 
 struct ApplicationContext;
 class TcpClientManager;
@@ -61,4 +62,8 @@ private:
   QTimer* m_updateTimer;
 
   std::vector<ClientCard> m_clientCards;
+
+  // Background operation futures (prevents detached threads outliving widget)
+  std::future<void> m_connectFuture;
+  std::future<void> m_disconnectFuture;
 };

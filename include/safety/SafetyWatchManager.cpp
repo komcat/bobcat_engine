@@ -280,8 +280,7 @@ void SafetyWatchManager::PollingThreadFunction()
       if (!m_ioManager->GetInputByName(input.deviceName, input.pinName, currentState)) {
         // Failed to read - emit error but continue
         // Only log occasionally to avoid spam (every 50 polls = 5 seconds at 100ms)
-        static int failCount = 0;
-        if (failCount++ % 50 == 0) {
+        if (m_pollFailCount++ % 50 == 0) {
           std::cerr << "[SafetyWatchManager] Failed to read " << input.deviceName
                     << ":" << input.pinName << " (check device connection and pin name)" << std::endl;
           emit watchError(QString::fromStdString(

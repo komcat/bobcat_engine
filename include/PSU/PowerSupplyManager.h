@@ -54,6 +54,12 @@ public:
   bool connectAll();
   void disconnectAll();
 
+  /**
+   * @brief Disable all PSU outputs without disconnecting (E-stop safety action)
+   * Turns off output on all channels of all connected devices.
+   */
+  void disableAllOutputs();
+
 signals:
   void deviceAdded(const QString& name);
   void deviceRemoved(const QString& name);

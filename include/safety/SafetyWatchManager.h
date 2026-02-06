@@ -214,6 +214,9 @@ private:
   std::string m_activeAlertMessage;
   bool m_activeAlertCritical;
 
+  // IO read failure tracking (moved from static to member for thread safety)
+  int m_pollFailCount = 0;
+
   // Thread management
   std::unique_ptr<std::thread> m_pollingThread;
   std::atomic<bool> m_stopRequested;

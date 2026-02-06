@@ -26,6 +26,9 @@ TcpClientWidget::~TcpClientWidget()
   if (m_updateTimer) {
     m_updateTimer->stop();
   }
+  // Wait for any pending background operations to complete
+  if (m_connectFuture.valid()) m_connectFuture.wait();
+  if (m_disconnectFuture.valid()) m_disconnectFuture.wait();
 }
 
 void TcpClientWidget::setupUI()
@@ -309,7 +312,7 @@ void TcpClientWidget::onConnectAllClicked()
   m_connectAllBtn->setEnabled(false);
   m_connectAllBtn->setText("Connecting...");
 
-  std::thread([this]() {
+  m_connectFuture = std::async(std::launch::async, [this]() {
     m_tcpManager->ConnectAll();
 
     QMetaObject::invokeMethod(this, [this]() {
@@ -317,7 +320,7 @@ void TcpClientWidget::onConnectAllClicked()
       m_connectAllBtn->setText("Connect All");
       std::cout << "[TcpClientWidget] Connection attempt complete" << std::endl;
     });
-  }).detach();
+  });
 }
 
 void TcpClientWidget::onDisconnectAllClicked()
@@ -327,7 +330,7 @@ void TcpClientWidget::onDisconnectAllClicked()
   m_disconnectAllBtn->setEnabled(false);
   m_disconnectAllBtn->setText("Disconnecting...");
 
-  std::thread([this]() {
+  m_disconnectFuture = std::async(std::launch::async, [this]() {
     m_tcpManager->DisconnectAll();
 
     QMetaObject::invokeMethod(this, [this]() {
@@ -335,7 +338,7 @@ void TcpClientWidget::onDisconnectAllClicked()
       m_disconnectAllBtn->setText("Disconnect All");
       std::cout << "[TcpClientWidget] All clients disconnected" << std::endl;
     });
-  }).detach();
+  });
 }
 
 void TcpClientWidget::onUpdateStatus()

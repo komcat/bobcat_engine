@@ -36,6 +36,7 @@
 #include "SequenceBuilder.h"
 #include <iostream>
 #include <cmath>
+#include <chrono>
 
 //=============================================================================
 // SEQUENCE ENGINE IMPLEMENTATION
@@ -156,6 +157,11 @@ void SequenceEngine::RequestStop()
 void SequenceEngine::ClearStopFlag()
 {
   m_stopRequested.store(false);
+}
+
+void SequenceEngine::SetActionTimeoutMs(int timeoutMs)
+{
+  m_actionTimeoutMs = (timeoutMs > 0) ? timeoutMs : 60000;
 }
 
 void SequenceEngine::BuildDeviceRegistry()
@@ -323,6 +329,57 @@ std::string SequenceEngine::ResolveManagerType(const std::string& deviceName)
 {
   auto it = m_deviceToTypeMap.find(deviceName);
   return (it != m_deviceToTypeMap.end()) ? it->second : "";
+}
+
+bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const
+{
+  auto typeIt = m_deviceToTypeMap.find(deviceName);
+  if (typeIt == m_deviceToTypeMap.end()) return false;
+
+  const std::string& type = typeIt->second;
+
+  if (type == "motion" && m_context->motionManager) {
+    auto status = m_context->motionManager->GetConnectionStatus();
+    auto it = status.find(deviceName);
+    return (it != status.end()) && it->second;
+  }
+  if (type == "io" && m_context->ioManager) {
+    auto* device = m_context->ioManager->GetDevice(deviceName);
+    return device && device->IsConnected();
+  }
+  if (type == "camera" && m_context->cameraManager) {
+    auto status = m_context->cameraManager->GetCameraStatus(deviceName);
+    return status.connected;
+  }
+  if (type == "tec" && m_context->tecManager) {
+    auto* device = m_context->tecManager->GetDevice(deviceName);
+    return device && device->IsConnected();
+  }
+  if (type == "psu" && m_context->powerSupplyManager) {
+    auto psu = m_context->powerSupplyManager->getPowerSupply(deviceName);
+    return psu && psu->isConnected();
+  }
+  if (type == "smu" && m_context->smuManager) {
+    auto smu = m_context->smuManager->GetDevice(deviceName);
+    return smu && smu->IsConnected();
+  }
+  if (type == "pneumatic" && m_context->pneumaticManager) {
+    auto* slide = m_context->pneumaticManager->GetSlide(deviceName);
+    return slide && slide->IsIOConnected();
+  }
+  if (type == "lighting" && m_context->lightingManager) {
+    // Lighting uses deviceId internally; map deviceName -> deviceId
+    for (const auto& id : m_context->lightingManager->GetControllerIds()) {
+      const auto* cfg = m_context->lightingManager->GetControllerConfig(id);
+      if ((cfg && cfg->deviceName == deviceName) || id == deviceName) {
+        return m_context->lightingManager->IsConnected(id);
+      }
+    }
+    return false;
+  }
+
+  // Virtual devices (system, context, etc.) are always "connected"
+  return true;
 }
 
 void SequenceEngine::SetUserPromptCallback(UserPromptCallback callback)
@@ -753,12 +810,45 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       return false;
     }
 
-    // Execute command via dispatcher with context
+    // Pre-check device connectivity for hardware commands
+    if (managerType != "system" && managerType != "context" &&
+        managerType != "calibration" && managerType != "dut" &&
+        managerType != "vision" && managerType != "relpos" &&
+        managerType != "coordalign" && managerType != "datastore" &&
+        managerType != "auxwindow") {
+      if (!IsDeviceConnected(action->deviceName)) {
+        std::string disconnMsg = "Device not connected: " + action->deviceName;
+        LogError(disconnMsg);
+        if (m_context->safetyEventLog) {
+          m_context->safetyEventLog->LogEvent(SafetySeverity::WARNING, "SequenceEngine",
+              "DEVICE_DISCONNECTED", disconnMsg, ErrorCode::NotConnected);
+        }
+        return false;
+      }
+    }
+
+    // Execute command via dispatcher with context (timed for watchdog)
     std::string errorMessage;
+    auto actionStart = std::chrono::steady_clock::now();
+
     if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
       action->methodName, action->params, errorMessage, context)) {
       LogError("❌ Command failed: " + errorMessage);
       return false;
+    }
+
+    // Watchdog: log warning if action exceeded timeout threshold
+    auto actionDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - actionStart).count();
+    if (actionDurationMs > m_actionTimeoutMs) {
+      std::string timeoutMsg = action->deviceName + "." + action->methodName +
+          " took " + std::to_string(actionDurationMs) + "ms (limit: " +
+          std::to_string(m_actionTimeoutMs) + "ms)";
+      LogWarning("Action exceeded timeout: " + timeoutMsg);
+      if (m_context->safetyEventLog) {
+        m_context->safetyEventLog->LogEvent(SafetySeverity::WARNING, "SequenceEngine",
+            "ACTION_TIMEOUT", timeoutMsg, ErrorCode::Timeout);
+      }
     }
 
     break;

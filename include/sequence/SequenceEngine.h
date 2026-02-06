@@ -247,6 +247,10 @@ public:
   void ClearStopFlag();      // Reset stop flag before execution
   bool IsStopRequested() const { return m_stopRequested.load(); }
 
+  // Action timeout watchdog (monitoring only — logs slow commands)
+  void SetActionTimeoutMs(int timeoutMs);
+  int GetActionTimeoutMs() const { return m_actionTimeoutMs; }
+
   // ============================================================================
   // RETRACE EDIT MODE (for position re-teach workflow)
   // ============================================================================
@@ -303,6 +307,9 @@ public:
   void* ResolveManager(const std::string& deviceName);
   std::string ResolveManagerType(const std::string& deviceName);
 
+  // Connection pre-check for hardware commands
+  [[nodiscard]] bool IsDeviceConnected(const std::string& deviceName) const;
+
 private:
   ApplicationContext* m_context;
   LogManager* m_logger;
@@ -317,6 +324,9 @@ private:
 
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
+
+  // Action timeout watchdog (monitoring only)
+  int m_actionTimeoutMs = 60000;  // Default 60 seconds
 
   // Retrace edit mode
   std::atomic<bool> m_retraceEditMode;
