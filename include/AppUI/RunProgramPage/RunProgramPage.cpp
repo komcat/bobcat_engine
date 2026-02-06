@@ -3661,7 +3661,7 @@ void RunProgramPage::onWorkerLogMessage(QString message)
 // STEP-LEVEL PROGRESS TRACKING
 // ============================================================================
 
-void RunProgramPage::onStepBuildStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType)
+void RunProgramPage::onStepBuildStarted(int /*recipeIndex*/, int stepIndex, QString /*stepName*/, QString /*stepType*/)
 {
   // Update total steps if this is a higher step index than we've seen
   if (stepIndex + 1 > m_currentRecipeTotalSteps) {
@@ -3678,7 +3678,7 @@ void RunProgramPage::onStepBuildStarted(int recipeIndex, int stepIndex, QString 
   // Note: Command tracker is now updated by onActionStarted for more granular tracking
 }
 
-void RunProgramPage::onStepBuildCompleted(int recipeIndex, int stepIndex)
+void RunProgramPage::onStepBuildCompleted(int /*recipeIndex*/, int /*stepIndex*/)
 {
   // Increment completed steps
   m_currentRecipeCompletedSteps++;
@@ -3690,7 +3690,7 @@ void RunProgramPage::onStepBuildCompleted(int recipeIndex, int stepIndex)
   }
 }
 
-void RunProgramPage::onActionStarted(int recipeIndex, QString current, QString next, QString afterNext)
+void RunProgramPage::onActionStarted(int /*recipeIndex*/, QString current, QString next, QString afterNext)
 {
   // Update the command tracker with the currently executing action and look-ahead
   // The current step (from onStepBuildStarted) becomes the previous
@@ -3707,7 +3707,7 @@ void RunProgramPage::onActionStarted(int recipeIndex, QString current, QString n
   m_cmdNext2Label->setText(afterNext.isEmpty() ? "-" : afterNext);
 }
 
-void RunProgramPage::onSequenceExecutionStarted(int recipeIndex)
+void RunProgramPage::onSequenceExecutionStarted(int /*recipeIndex*/)
 {
   // All steps have been built, now executing
   // Set progress to 100% (or keep at current build progress)
@@ -4029,7 +4029,7 @@ void RunProgramPage::onChannelChanged(QString channel)
   // Subscribe to new channel
   std::string channelStd = channel.toStdString();
   m_dataStore->Subscribe(channelStd,
-    [this, channel](const std::string& channelId, float value) {
+    [this, channel](const std::string& /*channelId*/, float value) {
     // Update widget on UI thread with SI formatted value
     QMetaObject::invokeMethod(this, [this, value]() {
       m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(value)));
@@ -5188,7 +5188,7 @@ void RunProgramPage::loadVisionHistoryImage(int index)
   std::cout << "[RunProgramPage] 📷 Loaded history image [" << (index + 1) << "/"
             << m_visionHistory.size() << "]: " << imagePath.toStdString() << std::endl;
 #else
-  Q_UNUSED(index);
+  (void)index;
 #endif
 }
 
@@ -5496,9 +5496,8 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
   }
 }
 
-void RunProgramPage::onContextFilterChanged(const QString& filter)
+void RunProgramPage::onContextFilterChanged(const QString& /*filter*/)
 {
-  Q_UNUSED(filter);
   // Immediately update the table with new filter
   updateContextTable();
 }

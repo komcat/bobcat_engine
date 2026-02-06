@@ -306,38 +306,38 @@ std::unique_ptr<IScanStrategy> ScanStrategyFactory::CreateSpiralScan(
 
 
 // Stub implementations for other strategies
-bool SinglePassStrategy::Execute(ScanContext& context) {
+bool SinglePassStrategy::Execute(ScanContext& /*context*/) {
   // TODO: Implement
   return false;
 }
 
-int SinglePassStrategy::EstimateTotalSteps(const ScanParameters& params) const {
+int SinglePassStrategy::EstimateTotalSteps(const ScanParameters& /*params*/) const {
   return 50;
 }
 
-bool AdaptiveStepStrategy::Execute(ScanContext& context) {
+bool AdaptiveStepStrategy::Execute(ScanContext& /*context*/) {
   // TODO: Implement
   return false;
 }
 
-int AdaptiveStepStrategy::EstimateTotalSteps(const ScanParameters& params) const {
+int AdaptiveStepStrategy::EstimateTotalSteps(const ScanParameters& /*params*/) const {
   return 100;
 }
 
-bool GridScanStrategy::Execute(ScanContext& context) {
+bool GridScanStrategy::Execute(ScanContext& /*context*/) {
   // TODO: Implement
   return false;
 }
 
-int GridScanStrategy::EstimateTotalSteps(const ScanParameters& params) const {
+int GridScanStrategy::EstimateTotalSteps(const ScanParameters& /*params*/) const {
   return 200;
 }
 
-bool SpiralScanStrategy::Execute(ScanContext& context) {
+bool SpiralScanStrategy::Execute(ScanContext& /*context*/) {
   // TODO: Implement
   return false;
 }
 
-int SpiralScanStrategy::EstimateTotalSteps(const ScanParameters& params) const {
+int SpiralScanStrategy::EstimateTotalSteps(const ScanParameters& /*params*/) const {
   return 150;
 }

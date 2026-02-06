@@ -1648,7 +1648,6 @@ void RecipePage::onRemoveStep()
 
   // Remember the index being deleted
   int deletedIndex = m_selectedStepIndex;
-  int totalSteps = m_recipeManager->getStepCount();
 
   // Remove the step
   m_recipeManager->removeStep(m_selectedStepIndex);
@@ -2313,7 +2312,7 @@ void RecipePage::setupSequenceEngine()
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
       // Take the current widget out of the scroll area
-      QWidget* oldWidget = m_configScrollArea->takeWidget();
+      delete m_configScrollArea->takeWidget();
 
       // Show the user input widget in the scroll area
       m_configScrollArea->setWidget(m_userInputWidget);
@@ -2339,7 +2338,7 @@ void RecipePage::setupSequenceEngine()
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
         // Take the current widget out of the scroll area
-        QWidget* oldWidget = m_configScrollArea->takeWidget();
+        delete m_configScrollArea->takeWidget();
 
         // Show the user input widget in the scroll area
         m_configScrollArea->setWidget(m_userInputWidget);
@@ -2375,7 +2374,7 @@ void RecipePage::setupSequenceEngine()
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
       // Take the current widget out of the scroll area
-      QWidget* oldWidget = m_configScrollArea->takeWidget();
+      delete m_configScrollArea->takeWidget();
 
       // Show the manual align point widget in the scroll area
       m_configScrollArea->setWidget(m_manualAlignPointWidget);
@@ -2401,7 +2400,7 @@ void RecipePage::setupSequenceEngine()
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
         // Take the current widget out of the scroll area
-        QWidget* oldWidget = m_configScrollArea->takeWidget();
+        delete m_configScrollArea->takeWidget();
 
         // Show the manual align point widget in the scroll area
         m_configScrollArea->setWidget(m_manualAlignPointWidget);
@@ -2437,7 +2436,7 @@ void RecipePage::setupSequenceEngine()
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
       // Take the current widget out of the scroll area
-      QWidget* oldWidget = m_configScrollArea->takeWidget();
+      delete m_configScrollArea->takeWidget();
 
       // Show the manual adjust widget in the scroll area
       m_configScrollArea->setWidget(m_manualAdjustWidget);
@@ -2464,7 +2463,7 @@ void RecipePage::setupSequenceEngine()
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, &result]() {
         // Take the current widget out of the scroll area
-        QWidget* oldWidget = m_configScrollArea->takeWidget();
+        delete m_configScrollArea->takeWidget();
 
         // Show the manual adjust widget in the scroll area
         m_configScrollArea->setWidget(m_manualAdjustWidget);
@@ -2519,7 +2518,6 @@ void RecipePage::onRunRecipe()
   }
 
   QString recipeName = QString::fromStdString(m_recipeManager->getRecipeName());
-  int stepCount = m_recipeManager->getStepCount();
 
   // ✅ SUPPRESSED: Confirmation popup before execution
   // QMessageBox::StandardButton reply = QMessageBox::question(
@@ -2646,7 +2644,7 @@ void RecipePage::onRunRecipe()
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
       // Take the current widget out of the scroll area
-      QWidget* oldWidget = m_configScrollArea->takeWidget();
+      delete m_configScrollArea->takeWidget();
 
       // Show the user input widget in the scroll area
       m_configScrollArea->setWidget(m_userInputWidget);
@@ -2672,7 +2670,7 @@ void RecipePage::onRunRecipe()
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
         // Take the current widget out of the scroll area
-        QWidget* oldWidget = m_configScrollArea->takeWidget();
+        delete m_configScrollArea->takeWidget();
 
         // Show the user input widget in the scroll area
         m_configScrollArea->setWidget(m_userInputWidget);
@@ -2949,7 +2947,7 @@ void RecipePage::onRunSelectedStep()
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
         // Take the current widget out of the scroll area
-        QWidget* oldWidget = m_configScrollArea->takeWidget();
+        delete m_configScrollArea->takeWidget();
 
         // Show the user input widget in the scroll area
         m_configScrollArea->setWidget(m_userInputWidget);
@@ -3838,9 +3836,9 @@ void RecipePage::onShowManualAdjust(QString message, QString deviceName, double 
                                     bool enableX, bool enableY, bool enableZ)
 {
   // Switch from current view to manual adjust view in the scroll area
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
   // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
   // We'll just replace it in the scroll area
+  (void)m_configScrollArea->takeWidget();
 
   // Show the manual adjust widget in the scroll area
   m_configScrollArea->setWidget(m_manualAdjustWidget);
@@ -3881,9 +3879,9 @@ void RecipePage::onShowManualAlignPoint(QString pointName, QString message,
                                         bool enableX, bool enableY, bool enableZ)
 {
   // Switch from current view to manual align point view in the scroll area
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
   // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
   // We'll just replace it in the scroll area
+  (void)m_configScrollArea->takeWidget();
 
   // Show the manual align point widget in the scroll area
   m_configScrollArea->setWidget(m_manualAlignPointWidget);
@@ -4353,7 +4351,7 @@ bool RecipePage::canLeavePage()
 
   QPushButton* saveButton = msgBox.addButton("Save", QMessageBox::AcceptRole);
   QPushButton* discardButton = msgBox.addButton("Discard", QMessageBox::DestructiveRole);
-  QPushButton* cancelButton = msgBox.addButton("Cancel", QMessageBox::RejectRole);
+  msgBox.addButton("Cancel", QMessageBox::RejectRole);
 
   msgBox.setDefaultButton(saveButton);
 

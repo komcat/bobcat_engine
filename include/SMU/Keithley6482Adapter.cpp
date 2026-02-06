@@ -299,7 +299,7 @@ double Keithley6482Adapter::ReadVoltage()
   try {
     double voltage = std::stod(response);
     return voltage;
-  } catch (const std::exception& e) {
+  } catch (const std::exception& /*e*/) {
     SetLastError("Failed to parse voltage response: " + response);
     std::cerr << "[Keithley6482] " << m_lastError << std::endl;
     return -999.0;

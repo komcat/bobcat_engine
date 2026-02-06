@@ -16,22 +16,6 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 
-// Helper function to load UI throttle delay from config
-static int loadUIThrottleDelay() {
-    const int DEFAULT_THROTTLE_MS = 350;
-    try {
-        QFile file("config/SYSTEM/systemdelay.json");
-        if (file.open(QIODevice::ReadOnly)) {
-            QByteArray data = file.readAll();
-            nlohmann::json config = nlohmann::json::parse(data.constData());
-            if (config.contains("ui_throttle_ms")) {
-                return config["ui_throttle_ms"].get<int>();
-            }
-        }
-    } catch (...) {}
-    return DEFAULT_THROTTLE_MS;
-}
-
 CameraView::CameraView(ApplicationContext* context,
   const std::string& cameraId,
   const std::string& displayName,

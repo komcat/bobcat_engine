@@ -483,55 +483,32 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/settings
 )
 
-# Add nlohmann json include directory if found
+# External SDK include directories — stored for SYSTEM includes after target creation
+# (suppresses third-party warnings with /external:W0)
 if(NLOHMANN_JSON_FOUND)
-    include_directories(${NLOHMANN_JSON_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${NLOHMANN_JSON_DIR})
 endif()
-
-# Add spdlog include directory if found
 if(SPDLOG_FOUND)
-    include_directories(${SPDLOG_INCLUDE_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${SPDLOG_INCLUDE_DIR})
 endif()
-
-# Add ACS include directory if found
 if(ACSC_FOUND)
-    include_directories(${ACSC_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${ACSC_DIR})
 endif()
-
-# Add PI include directory if found
 if(PI_FOUND)
-    include_directories(${PI_INCLUDE_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${PI_INCLUDE_DIR})
 endif()
-
-# Add Pylon include directory if found
 if(PYLON_FOUND)
-    include_directories(${PYLON_INCLUDE_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${PYLON_INCLUDE_DIR})
 endif()
-
-# Add IDS uEye include directory if found
 if(IDS_UEYE_FOUND)
-    include_directories(${IDS_UEYE_INCLUDE_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${IDS_UEYE_INCLUDE_DIR})
 endif()
-
-# Add VISA include directory if found
 if(VISA_FOUND)
-    include_directories(${VISA_INCLUDE_DIR})
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${VISA_INCLUDE_DIR})
 endif()
 
-# Add EziIO include directory if found
-if(EZIIO_FOUND)
-    include_directories(${EZIIO_INCLUDE_DIR})
-endif()
-
-# Add OpenCV include directory if found
-if(OPENCV_FOUND)
-    include_directories(${OPENCV_INCLUDE_DIR})
-endif()
-
-# Add Halcon include directory if found
-if(HALCON_FOUND)
-    include_directories(${HALCON_INCLUDE_DIR})
-endif()
+# External SDK include directories are added as SYSTEM includes after the target
+# (see target_include_directories below) to suppress third-party warnings with /external:W0
 
 # ============================================================================
 # Source Files
@@ -1056,6 +1033,7 @@ if(EZIIO_FOUND)
         include/IO/EziIO_Types.h
         include/IO/IEziIODevice.h
         include/IO/EziIODevice.h
+        include/IO/SocketGuard.h
         include/IO/WagoIODevice.h
         include/IO/EziIOManager.h
         include/IO/EziIO_JsonLoader.h
@@ -1222,7 +1200,21 @@ endif()
 # Compiler Warning Level (safety compliance)
 # ============================================================================
 if(MSVC)
-    target_compile_options(bobcat_engine PRIVATE /W4)
+    target_compile_options(bobcat_engine PRIVATE /W4 /external:anglebrackets /external:W0)
+endif()
+
+# External SDK includes (SYSTEM to suppress third-party warnings)
+if(EXTERNAL_SDK_INCLUDES)
+    target_include_directories(bobcat_engine SYSTEM PRIVATE ${EXTERNAL_SDK_INCLUDES})
+endif()
+if(EZIIO_FOUND)
+    target_include_directories(bobcat_engine SYSTEM PRIVATE ${EZIIO_INCLUDE_DIR})
+endif()
+if(OPENCV_FOUND)
+    target_include_directories(bobcat_engine SYSTEM PRIVATE ${OPENCV_INCLUDE_DIR})
+endif()
+if(HALCON_FOUND)
+    target_include_directories(bobcat_engine SYSTEM PRIVATE ${HALCON_INCLUDE_DIR})
 endif()
 
 # ============================================================================

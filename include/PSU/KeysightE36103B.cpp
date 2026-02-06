@@ -7,7 +7,7 @@
 bool KeysightE36103B::s_wsaInitialized = false;
 
 KeysightE36103B::KeysightE36103B(const std::string& ip, int port, const std::string& deviceName)
-    : m_socket(INVALID_SOCKET)
+    : m_socket()
     , m_ip(ip)
     , m_port(port)
     , m_deviceName(deviceName)
@@ -59,8 +59,8 @@ bool KeysightE36103B::connect()
     }
 
     // Create socket
-    m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (m_socket == INVALID_SOCKET) {
+    m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+    if (!m_socket.valid()) {
 #ifdef _WIN32
         m_lastError = "Socket creation failed with error: " + std::to_string(WSAGetLastError());
 #else
@@ -73,17 +73,17 @@ bool KeysightE36103B::connect()
     // Set socket timeouts
 #ifdef _WIN32
     DWORD timeout = RECV_TIMEOUT_MS;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
     timeout = SEND_TIMEOUT_MS;
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 #else
     struct timeval tv;
     tv.tv_sec = RECV_TIMEOUT_MS / 1000;
     tv.tv_usec = (RECV_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     tv.tv_sec = SEND_TIMEOUT_MS / 1000;
     tv.tv_usec = (SEND_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
 
     // Connect to server
@@ -97,15 +97,14 @@ bool KeysightE36103B::connect()
     inet_aton(m_ip.c_str(), &serverAddr.sin_addr);
 #endif
 
-    if (::connect(m_socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+    if (::connect(m_socket.get(), (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Connection failed with error: " + std::to_string(WSAGetLastError());
 #else
         m_lastError = "Connection failed";
 #endif
         std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+        m_socket.reset();
         return false;
     }
 
@@ -122,9 +121,8 @@ void KeysightE36103B::disconnect()
 {
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    if (m_socket != INVALID_SOCKET) {
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+    if (m_socket.valid()) {
+        m_socket.reset();
         m_connected = false;
         std::cout << "[KeysightE36103B] Disconnected from " << m_ip << ":" << m_port << std::endl;
     }
@@ -144,7 +142,7 @@ std::string KeysightE36103B::queryInternal(const std::string& command)
 {
     // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
-    if (!m_connected || m_socket == INVALID_SOCKET) {
+    if (!m_connected || !m_socket.valid()) {
         m_lastError = "Not connected";
         return "";
     }
@@ -156,7 +154,7 @@ std::string KeysightE36103B::queryInternal(const std::string& command)
     }
 
     // Send command
-    int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
+    int bytesSent = send(m_socket.get(), cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Send failed with error: " + std::to_string(WSAGetLastError());
@@ -175,7 +173,7 @@ bool KeysightE36103B::writeInternal(const std::string& command)
 {
     // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
-    if (!m_connected || m_socket == INVALID_SOCKET) {
+    if (!m_connected || !m_socket.valid()) {
         m_lastError = "Not connected";
         std::cerr << "[KeysightE36103B] Write failed - " << m_lastError << std::endl;
         return false;
@@ -188,7 +186,7 @@ bool KeysightE36103B::writeInternal(const std::string& command)
     }
 
     // Send command
-    int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
+    int bytesSent = send(m_socket.get(), cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Send failed with error: " + std::to_string(WSAGetLastError());
@@ -217,7 +215,7 @@ bool KeysightE36103B::write(const std::string& command)
 std::string KeysightE36103B::receiveResponse()
 {
     char buffer[BUFFER_SIZE];
-    int bytesReceived = recv(m_socket, buffer, BUFFER_SIZE - 1, 0);
+    int bytesReceived = recv(m_socket.get(), buffer, BUFFER_SIZE - 1, 0);
 
     if (bytesReceived == SOCKET_ERROR) {
 #ifdef _WIN32
@@ -245,7 +243,7 @@ std::string KeysightE36103B::receiveResponse()
     return response;
 }
 
-bool KeysightE36103B::setOutputOn(int channel)
+bool KeysightE36103B::setOutputOn(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::cout << "[KeysightE36103B] Setting output ON for device: " << m_deviceName << std::endl;
@@ -258,7 +256,7 @@ bool KeysightE36103B::setOutputOn(int channel)
     return result;
 }
 
-bool KeysightE36103B::setOutputOff(int channel)
+bool KeysightE36103B::setOutputOff(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::cout << "[KeysightE36103B] Setting output OFF for device: " << m_deviceName << std::endl;
@@ -271,7 +269,7 @@ bool KeysightE36103B::setOutputOff(int channel)
     return result;
 }
 
-bool KeysightE36103B::setVoltage(double voltage, int channel)
+bool KeysightE36103B::setVoltage(double voltage, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::ostringstream oss;
@@ -279,7 +277,7 @@ bool KeysightE36103B::setVoltage(double voltage, int channel)
     return write(oss.str());
 }
 
-bool KeysightE36103B::setCurrent(double current, int channel)
+bool KeysightE36103B::setCurrent(double current, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::ostringstream oss;
@@ -287,7 +285,7 @@ bool KeysightE36103B::setCurrent(double current, int channel)
     return write(oss.str());
 }
 
-bool KeysightE36103B::setOVP(double voltage, int channel)
+bool KeysightE36103B::setOVP(double voltage, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::lock_guard<std::mutex> lock(m_socketMutex);
@@ -300,7 +298,7 @@ bool KeysightE36103B::setOVP(double voltage, int channel)
     return writeInternal("VOLT:PROT:STAT ON");
 }
 
-bool KeysightE36103B::setOCP(double current, int channel)
+bool KeysightE36103B::setOCP(double current, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::lock_guard<std::mutex> lock(m_socketMutex);
@@ -313,7 +311,7 @@ bool KeysightE36103B::setOCP(double current, int channel)
     return writeInternal("CURR:PROT:STAT ON");
 }
 
-double KeysightE36103B::readVoltage(int channel)
+double KeysightE36103B::readVoltage(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:VOLT?");
@@ -331,7 +329,7 @@ double KeysightE36103B::readVoltage(int channel)
     }
 }
 
-double KeysightE36103B::readCurrent(int channel)
+double KeysightE36103B::readCurrent(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::string response = query("MEAS:CURR?");
@@ -349,7 +347,7 @@ double KeysightE36103B::readCurrent(int channel)
     }
 }
 
-bool KeysightE36103B::readOutputState(int channel)
+bool KeysightE36103B::readOutputState(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
     std::string response = query("OUTP?");

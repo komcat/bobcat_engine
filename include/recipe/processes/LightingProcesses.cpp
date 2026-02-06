@@ -76,6 +76,7 @@ public:
         cmdParams["intensity"] = intensity;
 
         sequence->AddAction(deviceName, "SetIntensity", cmdParams);
+        (void)step;
     }
 };
 
@@ -130,6 +131,7 @@ public:
         cmdParams["channel"] = channel;
 
         sequence->AddAction(deviceName, "TurnOn", cmdParams);
+        (void)step;
     }
 };
 
@@ -184,6 +186,7 @@ public:
         cmdParams["channel"] = channel;
 
         sequence->AddAction(deviceName, "TurnOff", cmdParams);
+        (void)step;
     }
 };
 
@@ -228,6 +231,7 @@ public:
         if (it != params.end()) deviceName = it->second;
 
         sequence->AddAction(deviceName, "AllOff", {});
+        (void)step;
     }
 };
 
@@ -282,6 +286,7 @@ public:
         cmdParams["intensity"] = intensity;
 
         sequence->AddAction(deviceName, "AllOn", cmdParams);
+        (void)step;
     }
 };
 

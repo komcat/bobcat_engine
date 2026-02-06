@@ -73,6 +73,6 @@ public:
   virtual void ClearLastError() = 0;
 
   // Optional: Camera-specific configuration
-  virtual bool SetConfiguration(const std::string& key, const std::string& value) { return false; }
-  virtual std::string GetConfiguration(const std::string& key) const { return ""; }
+  virtual bool SetConfiguration(const std::string& /*key*/, const std::string& /*value*/) { return false; }
+  virtual std::string GetConfiguration(const std::string& /*key*/) const { return ""; }
 };

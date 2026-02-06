@@ -65,7 +65,8 @@ double ScanContext::GetMeasurement() {
 
   while (std::chrono::system_clock::now() < deadline) {
     if (IsHaltRequested() || IsEmergencyStopRequested()) {
-      throw std::runtime_error("Measurement interrupted by halt/stop");
+      // Return 0.0 to indicate failure - caller should check halt flags
+      return 0.0;
     }
 
     float value;
@@ -78,7 +79,8 @@ double ScanContext::GetMeasurement() {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
-  throw std::runtime_error("Measurement timeout");
+  // Return 0.0 to indicate timeout - caller should check halt flags
+  return 0.0;
 }
 
 double ScanContext::GetAveragedMeasurement(int numSamples) {
@@ -86,7 +88,8 @@ double ScanContext::GetAveragedMeasurement(int numSamples) {
 
   for (int i = 0; i < numSamples; i++) {
     if (IsHaltRequested() || IsEmergencyStopRequested()) {
-      throw std::runtime_error("Averaging interrupted");
+      // Return 0.0 to indicate failure - caller should check halt flags
+      return 0.0;
     }
 
     sum += GetMeasurement();

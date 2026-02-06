@@ -31,7 +31,7 @@ void TcpDataClient::CleanupWSA()
 }
 
 TcpDataClient::TcpDataClient()
-  : m_socket(INVALID_SOCKET)
+  : m_socket()
   , m_port(0)
   , m_running(false)
   , m_connected(false)
@@ -93,9 +93,8 @@ void TcpDataClient::Disconnect()
     m_receiveThread.join();
   }
 
-  if (m_socket != INVALID_SOCKET) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+  if (m_socket.valid()) {
+    m_socket.reset();
   }
 
   std::cout << "[TcpDataClient] Disconnected from " << m_host << ":" << m_port << std::endl;
@@ -172,8 +171,8 @@ std::vector<float> TcpDataClient::GetLatestValues() const
 
 bool TcpDataClient::AttemptConnection()
 {
-  m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (m_socket == INVALID_SOCKET) {
+  m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!m_socket.valid()) {
     return false;
   }
 
@@ -182,24 +181,22 @@ bool TcpDataClient::AttemptConnection()
   serverAddr.sin_port = htons(m_port);
 
   if (inet_pton(AF_INET, m_host.c_str(), &serverAddr.sin_addr) <= 0) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
-  if (connect(m_socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+  if (connect(m_socket.get(), (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+    m_socket.reset();
     return false;
   }
 
   // Set non-blocking
 #ifdef _WIN32
   unsigned long mode = 1;
-  ioctlsocket(m_socket, FIONBIO, &mode);
+  ioctlsocket(m_socket.get(), FIONBIO, &mode);
 #else
-  int flags = fcntl(m_socket, F_GETFL, 0);
-  fcntl(m_socket, F_SETFL, flags | O_NONBLOCK);
+  int flags = fcntl(m_socket.get(), F_GETFL, 0);
+  fcntl(m_socket.get(), F_SETFL, flags | O_NONBLOCK);
 #endif
 
   m_connected.store(true);
@@ -219,7 +216,7 @@ void TcpDataClient::ReceiveThread()
       continue;
     }
 
-    int bytesReceived = recv(m_socket, buffer, bufferSize - 1, 0);
+    int bytesReceived = recv(m_socket.get(), buffer, bufferSize - 1, 0);
 
     if (bytesReceived > 0) {
       buffer[bytesReceived] = '\0';

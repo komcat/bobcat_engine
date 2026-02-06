@@ -7,7 +7,7 @@
 bool KeysightE36441A::s_wsaInitialized = false;
 
 KeysightE36441A::KeysightE36441A(const std::string& ip, int port, const std::string& deviceName)
-    : m_socket(INVALID_SOCKET)
+    : m_socket()
     , m_ip(ip)
     , m_port(port)
     , m_deviceName(deviceName)
@@ -60,8 +60,8 @@ bool KeysightE36441A::connect()
     }
 
     // Create socket
-    m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (m_socket == INVALID_SOCKET) {
+    m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+    if (!m_socket.valid()) {
 #ifdef _WIN32
         m_lastError = "Socket creation failed with error: " + std::to_string(WSAGetLastError());
 #else
@@ -74,17 +74,17 @@ bool KeysightE36441A::connect()
     // Set socket timeouts
 #ifdef _WIN32
     DWORD timeout = RECV_TIMEOUT_MS;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
     timeout = SEND_TIMEOUT_MS;
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 #else
     struct timeval tv;
     tv.tv_sec = RECV_TIMEOUT_MS / 1000;
     tv.tv_usec = (RECV_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     tv.tv_sec = SEND_TIMEOUT_MS / 1000;
     tv.tv_usec = (SEND_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
 
     // Connect to server
@@ -98,15 +98,14 @@ bool KeysightE36441A::connect()
     inet_aton(m_ip.c_str(), &serverAddr.sin_addr);
 #endif
 
-    if (::connect(m_socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+    if (::connect(m_socket.get(), (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Connection failed with error: " + std::to_string(WSAGetLastError());
 #else
         m_lastError = "Connection failed";
 #endif
         std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+        m_socket.reset();
         return false;
     }
 
@@ -123,9 +122,8 @@ void KeysightE36441A::disconnect()
 {
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    if (m_socket != INVALID_SOCKET) {
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+    if (m_socket.valid()) {
+        m_socket.reset();
         m_connected = false;
         std::cout << "[KeysightE36441A] Disconnected from " << m_ip << ":" << m_port << std::endl;
     }
@@ -145,7 +143,7 @@ std::string KeysightE36441A::queryInternal(const std::string& command)
 {
     // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
-    if (!m_connected || m_socket == INVALID_SOCKET) {
+    if (!m_connected || !m_socket.valid()) {
         m_lastError = "Not connected";
         return "";
     }
@@ -157,7 +155,7 @@ std::string KeysightE36441A::queryInternal(const std::string& command)
     }
 
     // Send command
-    int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
+    int bytesSent = send(m_socket.get(), cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Send failed with error: " + std::to_string(WSAGetLastError());
@@ -176,7 +174,7 @@ bool KeysightE36441A::writeInternal(const std::string& command)
 {
     // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
-    if (!m_connected || m_socket == INVALID_SOCKET) {
+    if (!m_connected || !m_socket.valid()) {
         m_lastError = "Not connected";
         std::cerr << "[KeysightE36441A] Write failed - " << m_lastError << std::endl;
         return false;
@@ -189,7 +187,7 @@ bool KeysightE36441A::writeInternal(const std::string& command)
     }
 
     // Send command
-    int bytesSent = send(m_socket, cmd.c_str(), static_cast<int>(cmd.length()), 0);
+    int bytesSent = send(m_socket.get(), cmd.c_str(), static_cast<int>(cmd.length()), 0);
     if (bytesSent == SOCKET_ERROR) {
 #ifdef _WIN32
         m_lastError = "Send failed with error: " + std::to_string(WSAGetLastError());
@@ -218,7 +216,7 @@ bool KeysightE36441A::write(const std::string& command)
 std::string KeysightE36441A::receiveResponse()
 {
     char buffer[BUFFER_SIZE];
-    int bytesReceived = recv(m_socket, buffer, BUFFER_SIZE - 1, 0);
+    int bytesReceived = recv(m_socket.get(), buffer, BUFFER_SIZE - 1, 0);
 
     if (bytesReceived == SOCKET_ERROR) {
 #ifdef _WIN32

@@ -48,7 +48,7 @@ KeysightPSUAdapter::KeysightPSUAdapter(const std::string& deviceName,
   , m_serverPort(serverPort)
   , m_psuIP(psuIP)
   , m_psuPort(psuPort)
-  , m_socket(INVALID_SOCKET)
+  , m_socket()
   , m_isConnected(false)
 {
   InitializeWSA();
@@ -93,7 +93,7 @@ bool KeysightPSUAdapter::connect()
 void KeysightPSUAdapter::disconnect()
 {
   // Don't lock here - let individual operations handle their own locking
-  if (m_socket != INVALID_SOCKET) {
+  if (m_socket.valid()) {
     closeSocket();
   }
 
@@ -106,13 +106,13 @@ void KeysightPSUAdapter::disconnect()
 
 bool KeysightPSUAdapter::isConnected() const
 {
-  return m_isConnected && m_socket != INVALID_SOCKET;
+  return m_isConnected && m_socket.valid();
 }
 
 bool KeysightPSUAdapter::connectSocket()
 {
-  m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (m_socket == INVALID_SOCKET) {
+  m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!m_socket.valid()) {
     setError("Failed to create socket");
     return false;
   }
@@ -123,15 +123,13 @@ bool KeysightPSUAdapter::connectSocket()
 
   if (inet_pton(AF_INET, m_serverHost.c_str(), &serverAddr.sin_addr) <= 0) {
     setError("Invalid server address: " + m_serverHost);
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
-  if (::connect(m_socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+  if (::connect(m_socket.get(), (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
     setError("Failed to connect to server: " + m_serverHost + ":" + std::to_string(m_serverPort));
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
@@ -140,9 +138,8 @@ bool KeysightPSUAdapter::connectSocket()
 
 void KeysightPSUAdapter::closeSocket()
 {
-  if (m_socket != INVALID_SOCKET) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+  if (m_socket.valid()) {
+    m_socket.reset();
   }
 }
 
@@ -182,13 +179,13 @@ bool KeysightPSUAdapter::sendCommand(const std::string& jsonCommand, std::string
 {
   std::lock_guard<std::mutex> lock(m_socketMutex);
 
-  if (m_socket == INVALID_SOCKET) {
+  if (!m_socket.valid()) {
     setError("Socket not connected");
     return false;
   }
 
   // Send command
-  int bytesSent = send(m_socket, jsonCommand.c_str(), static_cast<int>(jsonCommand.length()), 0);
+  int bytesSent = send(m_socket.get(), jsonCommand.c_str(), static_cast<int>(jsonCommand.length()), 0);
   if (bytesSent == SOCKET_ERROR) {
     setError("Failed to send command");
     return false;
@@ -197,13 +194,13 @@ bool KeysightPSUAdapter::sendCommand(const std::string& jsonCommand, std::string
   // Wait for response with timeout
   fd_set readSet;
   FD_ZERO(&readSet);
-  FD_SET(m_socket, &readSet);
+  FD_SET(m_socket.get(), &readSet);
 
   struct timeval timeout;
   timeout.tv_sec = COMMAND_TIMEOUT_MS / 1000;
   timeout.tv_usec = (COMMAND_TIMEOUT_MS % 1000) * 1000;
 
-  int selectResult = select(static_cast<int>(m_socket) + 1, &readSet, nullptr, nullptr, &timeout);
+  int selectResult = select(static_cast<int>(m_socket.get()) + 1, &readSet, nullptr, nullptr, &timeout);
   if (selectResult == 0) {
     setError("Timeout waiting for response");
     return false;
@@ -215,7 +212,7 @@ bool KeysightPSUAdapter::sendCommand(const std::string& jsonCommand, std::string
 
   // Read response
   char buffer[4096];
-  int bytesReceived = recv(m_socket, buffer, sizeof(buffer) - 1, 0);
+  int bytesReceived = recv(m_socket.get(), buffer, sizeof(buffer) - 1, 0);
 
   if (bytesReceived <= 0) {
     setError("Failed to receive response");
@@ -242,7 +239,7 @@ bool KeysightPSUAdapter::sendCommand(const std::string& jsonCommand, std::string
   }
 }
 
-bool KeysightPSUAdapter::setOutputOn(int channel)
+bool KeysightPSUAdapter::setOutputOn(int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -253,7 +250,7 @@ bool KeysightPSUAdapter::setOutputOn(int channel)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOutputOff(int channel)
+bool KeysightPSUAdapter::setOutputOff(int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -264,7 +261,7 @@ bool KeysightPSUAdapter::setOutputOff(int channel)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setVoltage(double voltage, int channel)
+bool KeysightPSUAdapter::setVoltage(double voltage, int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -276,7 +273,7 @@ bool KeysightPSUAdapter::setVoltage(double voltage, int channel)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setCurrent(double current, int channel)
+bool KeysightPSUAdapter::setCurrent(double current, int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -288,7 +285,7 @@ bool KeysightPSUAdapter::setCurrent(double current, int channel)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOVP(double voltage, int channel)
+bool KeysightPSUAdapter::setOVP(double voltage, int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -300,7 +297,7 @@ bool KeysightPSUAdapter::setOVP(double voltage, int channel)
   return sendCommand(command.dump(), response);
 }
 
-bool KeysightPSUAdapter::setOCP(double current, int channel)
+bool KeysightPSUAdapter::setOCP(double current, int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -312,7 +309,7 @@ bool KeysightPSUAdapter::setOCP(double current, int channel)
   return sendCommand(command.dump(), response);
 }
 
-double KeysightPSUAdapter::readVoltage(int channel)
+double KeysightPSUAdapter::readVoltage(int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -334,7 +331,7 @@ double KeysightPSUAdapter::readVoltage(int channel)
   }
 }
 
-double KeysightPSUAdapter::readCurrent(int channel)
+double KeysightPSUAdapter::readCurrent(int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;
@@ -356,7 +353,7 @@ double KeysightPSUAdapter::readCurrent(int channel)
   }
 }
 
-bool KeysightPSUAdapter::readOutputState(int channel)
+bool KeysightPSUAdapter::readOutputState(int /*channel*/)
 {
   // Server-based adapter is single-channel, ignore channel parameter
   json command;

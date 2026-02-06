@@ -58,6 +58,9 @@ public:
   explicit TcpClientManager(DataStore* dataStore, QObject* parent = nullptr);
   ~TcpClientManager();
 
+  // Validity check
+  bool IsValid() const { return m_valid; }
+
   // Configuration
   bool LoadConfig(const std::string& configPath);
   bool SaveConfig(const std::string& configPath) const;
@@ -110,6 +113,7 @@ private:
   DataStore* m_dataStore;
   mutable std::recursive_mutex m_clientsMutex;
   std::vector<ManagedClient> m_clients;
+  bool m_valid = true;
 
   // Single-channel callback
   void OnDataReceived(const std::string& clientId, const std::string& channelId, float value);

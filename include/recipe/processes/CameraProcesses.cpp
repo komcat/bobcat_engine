@@ -88,6 +88,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "CaptureToFile", captureParams);
+    (void)step;
   }
 };
 
@@ -147,6 +148,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "CaptureToContext", captureParams);
+    (void)step;
   }
 };
 
@@ -213,6 +215,7 @@ public:
 
     // Use special device name "system" for this command
     sequence->AddAction("system", "SaveLastCaptureToFile", saveParams);
+    (void)step;
   }
 };
 
@@ -280,6 +283,7 @@ public:
 
     // Use special device name "system" for this command
     sequence->AddAction("system", "CropROI", cropParams);
+    (void)step;
   }
 };
 
@@ -343,6 +347,7 @@ public:
 
     // Use special device name "system" for this command
     sequence->AddAction("system", "ManualAlignPoint", alignParams);
+    (void)step;
   }
 };
 
@@ -429,6 +434,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "CaptureToDUT", captureParams);
+    (void)step;
   }
 };
 
@@ -497,6 +503,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "CaptureAndConfirm", captureParams);
+    (void)step;
   }
 };
 
@@ -555,6 +562,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "SetExposure", exposureParams);
+    (void)step;
   }
 };
 
@@ -613,6 +621,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "SetGain", gainParams);
+    (void)step;
   }
 };
 
@@ -671,6 +680,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "SetAutoExposure", autoExpParams);
+    (void)step;
   }
 };
 
@@ -729,6 +739,7 @@ public:
     }
 
     sequence->AddAction(cameraName, "SetAutoGain", autoGainParams);
+    (void)step;
   }
 };
 

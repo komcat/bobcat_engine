@@ -6,7 +6,7 @@
 
 CLD101xAdapter::CLD101xAdapter(const TECDevice& config)
   : m_config(config)
-  , m_socket(INVALID_SOCKET)
+  , m_socket()
   , m_connected(false)
 {
   std::cout << "[INFO] CLD101xAdapter: Created for device '"
@@ -36,8 +36,8 @@ bool CLD101xAdapter::Connect() {
     << m_config.IpAddress << ":" << m_config.Port << std::endl;
 
   // Create socket
-  m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (m_socket == INVALID_SOCKET) {
+  m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!m_socket.valid()) {
     std::cerr << "[ERROR] " << m_config.Name << ": Failed to create socket: "
       << WSAGetLastError() << std::endl;
     return false;
@@ -45,8 +45,8 @@ bool CLD101xAdapter::Connect() {
 
   // Set socket timeout
   DWORD timeout = TIMEOUT_MS;
-  setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-  setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 
   // Setup server address
   sockaddr_in serverAddr;
@@ -55,11 +55,10 @@ bool CLD101xAdapter::Connect() {
   inet_pton(AF_INET, m_config.IpAddress.c_str(), &serverAddr.sin_addr);
 
   // Connect to server
-  if (connect(m_socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+  if (connect(m_socket.get(), (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
     std::cerr << "[ERROR] " << m_config.Name << ": Connection failed: "
       << WSAGetLastError() << std::endl;
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
@@ -81,9 +80,8 @@ void CLD101xAdapter::Disconnect() {
 
   std::cout << "[INFO] " << m_config.Name << ": Disconnecting..." << std::endl;
 
-  if (m_socket != INVALID_SOCKET) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+  if (m_socket.valid()) {
+    m_socket.reset();
   }
 
   m_connected = false;
@@ -363,14 +361,14 @@ std::string CLD101xAdapter::GetDeviceType() const {
 // ============================================================================
 
 bool CLD101xAdapter::SendCommand(const std::string& command, std::string& response) {
-  if (!m_connected || m_socket == INVALID_SOCKET) {
+  if (!m_connected || !m_socket.valid()) {
     std::cerr << "[ERROR] " << m_config.Name << ": Not connected" << std::endl;
     return false;
   }
 
   // Send command
   std::string cmdWithNewline = command + "\n";
-  int sendResult = send(m_socket, cmdWithNewline.c_str(), static_cast<int>(cmdWithNewline.length()), 0);
+  int sendResult = send(m_socket.get(), cmdWithNewline.c_str(), static_cast<int>(cmdWithNewline.length()), 0);
   if (sendResult == SOCKET_ERROR) {
     std::cerr << "[ERROR] " << m_config.Name << ": Send failed: "
       << WSAGetLastError() << std::endl;
@@ -379,7 +377,7 @@ bool CLD101xAdapter::SendCommand(const std::string& command, std::string& respon
 
   // Receive response
   char buffer[1024];
-  int bytesReceived = recv(m_socket, buffer, sizeof(buffer) - 1, 0);
+  int bytesReceived = recv(m_socket.get(), buffer, sizeof(buffer) - 1, 0);
   if (bytesReceived > 0) {
     buffer[bytesReceived] = '\0';
     response = std::string(buffer);

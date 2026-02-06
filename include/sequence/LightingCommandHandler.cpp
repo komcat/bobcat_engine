@@ -14,7 +14,7 @@ bool LightingCommandHandler::ExecuteCommand(
     const std::string& methodName,
     const std::map<std::string, std::string>& params,
     std::string& errorMessage,
-    SequenceContext* context)
+    SequenceContext* /*context*/)
 {
     Lighting::LightingManager* lightingManager = static_cast<Lighting::LightingManager*>(manager);
 

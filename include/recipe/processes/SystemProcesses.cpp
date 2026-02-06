@@ -52,6 +52,7 @@ public:
     };
 
     sequence->AddAction("system", "Wait", waitParams);
+    (void)step;
   }
 };
 
@@ -91,6 +92,7 @@ public:
       {"message", params.at("message")}
     };
     sequence->AddAction("system", "LogMessage", logParams);
+    (void)step;
   }
 };
 

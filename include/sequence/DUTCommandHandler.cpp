@@ -10,13 +10,15 @@ DUTCommandHandler::DUTCommandHandler(ApplicationContext* context)
   : m_context(context)
 {
   if (!m_context) {
-    throw std::runtime_error("ApplicationContext cannot be null");
+    std::cerr << "[DUTCommandHandler] Error: ApplicationContext cannot be null" << std::endl;
+    m_valid = false;
+    return;
   }
   std::cout << "[DUTCommandHandler] Created" << std::endl;
 }
 
 bool DUTCommandHandler::ExecuteCommand(
-  void* manager,
+  void* /*manager*/,
   const std::string& deviceName,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
@@ -110,23 +112,23 @@ bool DUTCommandHandler::ExecuteCreate(const std::map<std::string, std::string>& 
     m_context->currentDUT = nullptr;
   }
 
-  try {
-    // Create new DUT and store in context
-    m_context->currentDUT = new DeviceUnderTest(DeviceUnderTest::create(productName, serialNumber));
-
-    if (m_logger) {
-      m_logger->Info("Created DUT: " + productName + " / " + serialNumber, "DUT");
-    }
-    std::cout << "[DUTCommandHandler] Created DUT: " << productName << " / " << serialNumber << std::endl;
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to create DUT: " + std::string(e.what());
+  // Create new DUT and store in context
+  auto dutOpt = DeviceUnderTest::create(productName, serialNumber);
+  if (!dutOpt.has_value()) {
+    errorMessage = "Failed to create DUT: " + productName + " / " + serialNumber;
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
     return false;
   }
+
+  m_context->currentDUT = new DeviceUnderTest(std::move(dutOpt.value()));
+
+  if (m_logger) {
+    m_logger->Info("Created DUT: " + productName + " / " + serialNumber, "DUT");
+  }
+  std::cout << "[DUTCommandHandler] Created DUT: " << productName << " / " << serialNumber << std::endl;
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteLoad(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context)
@@ -180,25 +182,25 @@ bool DUTCommandHandler::ExecuteLoad(const std::map<std::string, std::string>& pa
     m_context->currentDUT = nullptr;
   }
 
-  try {
-    // Load existing DUT and store in context
-    m_context->currentDUT = new DeviceUnderTest(DeviceUnderTest::load(productName, serialNumber));
-
-    if (m_logger) {
-      m_logger->Info("Loaded DUT: " + productName + " / " + serialNumber +
-                     " (" + std::to_string(m_context->currentDUT->getEntryCount()) + " entries)", "DUT");
-    }
-    std::cout << "[DUTCommandHandler] Loaded DUT: " << productName << " / " << serialNumber
-              << " (" << m_context->currentDUT->getEntryCount() << " entries)" << std::endl;
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to load DUT: " + std::string(e.what());
+  // Load existing DUT and store in context
+  auto dutOpt = DeviceUnderTest::load(productName, serialNumber);
+  if (!dutOpt.has_value()) {
+    errorMessage = "Failed to load DUT: " + productName + " / " + serialNumber;
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
     return false;
   }
+
+  m_context->currentDUT = new DeviceUnderTest(std::move(dutOpt.value()));
+
+  if (m_logger) {
+    m_logger->Info("Loaded DUT: " + productName + " / " + serialNumber +
+                   " (" + std::to_string(m_context->currentDUT->getEntryCount()) + " entries)", "DUT");
+  }
+  std::cout << "[DUTCommandHandler] Loaded DUT: " << productName << " / " << serialNumber
+            << " (" << m_context->currentDUT->getEntryCount() << " entries)" << std::endl;
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteLoadOrCreate(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context)
@@ -252,38 +254,47 @@ bool DUTCommandHandler::ExecuteLoadOrCreate(const std::map<std::string, std::str
     m_context->currentDUT = nullptr;
   }
 
-  try {
-    // Check if DUT file exists
-    if (DeviceUnderTest::exists(productName, serialNumber)) {
-      // Load existing DUT (preserves all previous data)
-      m_context->currentDUT = new DeviceUnderTest(DeviceUnderTest::load(productName, serialNumber));
-
+  // Check if DUT file exists
+  if (DeviceUnderTest::exists(productName, serialNumber)) {
+    // Load existing DUT (preserves all previous data)
+    auto dutOpt = DeviceUnderTest::load(productName, serialNumber);
+    if (!dutOpt.has_value()) {
+      errorMessage = "Failed to load existing DUT: " + productName + " / " + serialNumber;
       if (m_logger) {
-        m_logger->Info("Loaded existing DUT: " + productName + " / " + serialNumber +
-                       " (" + std::to_string(m_context->currentDUT->getEntryCount()) + " existing entries - new data will be appended)", "DUT");
+        m_logger->Error(errorMessage, "DUT");
       }
-      std::cout << "[DUTCommandHandler] Loaded existing DUT: " << productName << " / " << serialNumber
-                << " (" << m_context->currentDUT->getEntryCount() << " existing entries)" << std::endl;
-    }
-    else {
-      // Create new DUT (file doesn't exist yet)
-      m_context->currentDUT = new DeviceUnderTest(DeviceUnderTest::create(productName, serialNumber));
-
-      if (m_logger) {
-        m_logger->Info("Created new DUT: " + productName + " / " + serialNumber, "DUT");
-      }
-      std::cout << "[DUTCommandHandler] Created new DUT: " << productName << " / " << serialNumber << std::endl;
+      return false;
     }
 
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to load or create DUT: " + std::string(e.what());
+    m_context->currentDUT = new DeviceUnderTest(std::move(dutOpt.value()));
+
     if (m_logger) {
-      m_logger->Error(errorMessage, "DUT");
+      m_logger->Info("Loaded existing DUT: " + productName + " / " + serialNumber +
+                     " (" + std::to_string(m_context->currentDUT->getEntryCount()) + " existing entries - new data will be appended)", "DUT");
     }
-    return false;
+    std::cout << "[DUTCommandHandler] Loaded existing DUT: " << productName << " / " << serialNumber
+              << " (" << m_context->currentDUT->getEntryCount() << " existing entries)" << std::endl;
   }
+  else {
+    // Create new DUT (file doesn't exist yet)
+    auto dutOpt = DeviceUnderTest::create(productName, serialNumber);
+    if (!dutOpt.has_value()) {
+      errorMessage = "Failed to create new DUT: " + productName + " / " + serialNumber;
+      if (m_logger) {
+        m_logger->Error(errorMessage, "DUT");
+      }
+      return false;
+    }
+
+    m_context->currentDUT = new DeviceUnderTest(std::move(dutOpt.value()));
+
+    if (m_logger) {
+      m_logger->Info("Created new DUT: " + productName + " / " + serialNumber, "DUT");
+    }
+    std::cout << "[DUTCommandHandler] Created new DUT: " << productName << " / " << serialNumber << std::endl;
+  }
+
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteClose(std::string& errorMessage)
@@ -325,21 +336,18 @@ bool DUTCommandHandler::ExecuteInsertString(const std::map<std::string, std::str
 
   // Note: value can be empty string, which is valid
 
-  try {
-    m_context->currentDUT->insertEntry(key, value);
-
-    if (m_logger) {
-      m_logger->Debug("DUT Insert: " + key + " = " + value, "DUT");
-    }
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to insert string entry: " + std::string(e.what());
+  if (!m_context->currentDUT->insertEntry(key, value)) {
+    errorMessage = "Failed to insert string entry for key: " + key;
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
     return false;
   }
+
+  if (m_logger) {
+    m_logger->Debug("DUT Insert: " + key + " = " + value, "DUT");
+  }
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteInsertDouble(const std::map<std::string, std::string>& params, std::string& errorMessage)
@@ -363,7 +371,13 @@ bool DUTCommandHandler::ExecuteInsertDouble(const std::map<std::string, std::str
 
   try {
     double value = std::stod(valueStr);
-    m_context->currentDUT->insertEntry(key, value);
+    if (!m_context->currentDUT->insertEntry(key, value)) {
+      errorMessage = "Failed to insert double entry for key: " + key;
+      if (m_logger) {
+        m_logger->Error(errorMessage, "DUT");
+      }
+      return false;
+    }
 
     if (m_logger) {
       m_logger->Debug("DUT Insert: " + key + " = " + std::to_string(value), "DUT");
@@ -372,13 +386,6 @@ bool DUTCommandHandler::ExecuteInsertDouble(const std::map<std::string, std::str
   }
   catch (const std::invalid_argument&) {
     errorMessage = "Invalid double value: " + valueStr;
-    if (m_logger) {
-      m_logger->Error(errorMessage, "DUT");
-    }
-    return false;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to insert double entry: " + std::string(e.what());
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
@@ -407,7 +414,13 @@ bool DUTCommandHandler::ExecuteInsertInteger(const std::map<std::string, std::st
 
   try {
     int64_t value = std::stoll(valueStr);
-    m_context->currentDUT->insertEntry(key, value);
+    if (!m_context->currentDUT->insertEntry(key, value)) {
+      errorMessage = "Failed to insert integer entry for key: " + key;
+      if (m_logger) {
+        m_logger->Error(errorMessage, "DUT");
+      }
+      return false;
+    }
 
     if (m_logger) {
       m_logger->Debug("DUT Insert: " + key + " = " + std::to_string(value), "DUT");
@@ -416,13 +429,6 @@ bool DUTCommandHandler::ExecuteInsertInteger(const std::map<std::string, std::st
   }
   catch (const std::invalid_argument&) {
     errorMessage = "Invalid integer value: " + valueStr;
-    if (m_logger) {
-      m_logger->Error(errorMessage, "DUT");
-    }
-    return false;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to insert integer entry: " + std::string(e.what());
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
@@ -472,70 +478,70 @@ bool DUTCommandHandler::ExecuteInsertFromContext(const std::map<std::string, std
     return false;
   }
 
-  try {
-    // Get value from context
-    auto contextValue = context->GetValue(contextKey);
+  // Get value from context
+  auto contextValue = context->GetValue(contextKey);
 
-    // Auto-detect type or use specified type
-    if (dataType == "auto") {
-      // Use context's native type
-      if (contextValue.type == SequenceContext::ValueType::STRING) {
-        m_context->currentDUT->insertEntry(entryKey, contextValue.stringValue);
-        if (m_logger) {
-          m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + contextValue.stringValue + " (string)", "DUT");
-        }
-      }
-      else if (contextValue.type == SequenceContext::ValueType::NUMERIC) {
-        m_context->currentDUT->insertEntry(entryKey, static_cast<double>(contextValue.numericValue));
-        if (m_logger) {
-          m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(contextValue.numericValue) + " (double)", "DUT");
-        }
-      }
-      else if (contextValue.type == SequenceContext::ValueType::BOOLEAN) {
-        // Store boolean as string "true"/"false"
-        std::string boolStr = contextValue.booleanValue ? "true" : "false";
-        m_context->currentDUT->insertEntry(entryKey, boolStr);
-        if (m_logger) {
-          m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + boolStr + " (boolean as string)", "DUT");
-        }
-      }
-      else {
-        errorMessage = "Unknown value type in context for key: " + contextKey;
-        return false;
+  // Auto-detect type or use specified type
+  bool insertSuccess = false;
+  if (dataType == "auto") {
+    // Use context's native type
+    if (contextValue.type == SequenceContext::ValueType::STRING) {
+      insertSuccess = m_context->currentDUT->insertEntry(entryKey, contextValue.stringValue);
+      if (insertSuccess && m_logger) {
+        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + contextValue.stringValue + " (string)", "DUT");
       }
     }
-    else if (dataType == "string") {
-      m_context->currentDUT->insertEntry(entryKey, contextValue.AsString());
-      if (m_logger) {
-        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + contextValue.AsString() + " (forced string)", "DUT");
+    else if (contextValue.type == SequenceContext::ValueType::NUMERIC) {
+      insertSuccess = m_context->currentDUT->insertEntry(entryKey, static_cast<double>(contextValue.numericValue));
+      if (insertSuccess && m_logger) {
+        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(contextValue.numericValue) + " (double)", "DUT");
       }
     }
-    else if (dataType == "double") {
-      m_context->currentDUT->insertEntry(entryKey, static_cast<double>(contextValue.AsFloat()));
-      if (m_logger) {
-        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(contextValue.AsFloat()) + " (forced double)", "DUT");
-      }
-    }
-    else if (dataType == "integer") {
-      m_context->currentDUT->insertEntry(entryKey, static_cast<int64_t>(contextValue.AsFloat()));
-      if (m_logger) {
-        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(static_cast<int64_t>(contextValue.AsFloat())) + " (forced integer)", "DUT");
+    else if (contextValue.type == SequenceContext::ValueType::BOOLEAN) {
+      // Store boolean as string "true"/"false"
+      std::string boolStr = contextValue.booleanValue ? "true" : "false";
+      insertSuccess = m_context->currentDUT->insertEntry(entryKey, boolStr);
+      if (insertSuccess && m_logger) {
+        m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + boolStr + " (boolean as string)", "DUT");
       }
     }
     else {
-      errorMessage = "Invalid data_type: " + dataType + " (must be: auto, string, double, or integer)";
+      errorMessage = "Unknown value type in context for key: " + contextKey;
       return false;
     }
-
-    return true;
   }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to insert from context: " + std::string(e.what());
+  else if (dataType == "string") {
+    insertSuccess = m_context->currentDUT->insertEntry(entryKey, contextValue.AsString());
+    if (insertSuccess && m_logger) {
+      m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + contextValue.AsString() + " (forced string)", "DUT");
+    }
+  }
+  else if (dataType == "double") {
+    insertSuccess = m_context->currentDUT->insertEntry(entryKey, static_cast<double>(contextValue.AsFloat()));
+    if (insertSuccess && m_logger) {
+      m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(contextValue.AsFloat()) + " (forced double)", "DUT");
+    }
+  }
+  else if (dataType == "integer") {
+    insertSuccess = m_context->currentDUT->insertEntry(entryKey, static_cast<int64_t>(contextValue.AsFloat()));
+    if (insertSuccess && m_logger) {
+      m_logger->Debug("DUT Insert from context[" + contextKey + "]: " + entryKey + " = " + std::to_string(static_cast<int64_t>(contextValue.AsFloat())) + " (forced integer)", "DUT");
+    }
+  }
+  else {
+    errorMessage = "Invalid data_type: " + dataType + " (must be: auto, string, double, or integer)";
+    return false;
+  }
+
+  if (!insertSuccess) {
+    errorMessage = "Failed to insert entry from context for key: " + entryKey;
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
     return false;
   }
+
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteDeleteEntry(const std::map<std::string, std::string>& params, std::string& errorMessage)
@@ -551,29 +557,20 @@ bool DUTCommandHandler::ExecuteDeleteEntry(const std::map<std::string, std::stri
     return false;
   }
 
-  try {
-    bool deleted = m_context->currentDUT->deleteEntry(timestamp);
+  bool deleted = m_context->currentDUT->deleteEntry(timestamp);
 
-    if (!deleted) {
-      errorMessage = "Entry not found with timestamp: " + timestamp;
-      if (m_logger) {
-        m_logger->Warning(errorMessage, "DUT");
-      }
-      return false;
-    }
-
+  if (!deleted) {
+    errorMessage = "Entry not found with timestamp: " + timestamp;
     if (m_logger) {
-      m_logger->Debug("DUT Deleted entry: " + timestamp, "DUT");
-    }
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to delete entry: " + std::string(e.what());
-    if (m_logger) {
-      m_logger->Error(errorMessage, "DUT");
+      m_logger->Warning(errorMessage, "DUT");
     }
     return false;
   }
+
+  if (m_logger) {
+    m_logger->Debug("DUT Deleted entry: " + timestamp, "DUT");
+  }
+  return true;
 }
 
 bool DUTCommandHandler::ExecuteDeleteEntriesByKey(const std::map<std::string, std::string>& params, std::string& errorMessage)
@@ -589,29 +586,28 @@ bool DUTCommandHandler::ExecuteDeleteEntriesByKey(const std::map<std::string, st
     return false;
   }
 
-  try {
-    int deletedCount = m_context->currentDUT->deleteEntriesByKey(key);
+  int deletedCount = m_context->currentDUT->deleteEntriesByKey(key);
 
-    if (deletedCount == 0) {
-      errorMessage = "No entries found with key: " + key;
-      if (m_logger) {
-        m_logger->Warning(errorMessage, "DUT");
-      }
-      return false;
-    }
-
-    if (m_logger) {
-      m_logger->Debug("DUT Deleted " + std::to_string(deletedCount) + " entries with key: " + key, "DUT");
-    }
-    return true;
-  }
-  catch (const std::exception& e) {
-    errorMessage = "Failed to delete entries by key: " + std::string(e.what());
+  if (deletedCount == -1) {
+    errorMessage = "Failed to delete entries by key (save error): " + key;
     if (m_logger) {
       m_logger->Error(errorMessage, "DUT");
     }
     return false;
   }
+
+  if (deletedCount == 0) {
+    errorMessage = "No entries found with key: " + key;
+    if (m_logger) {
+      m_logger->Warning(errorMessage, "DUT");
+    }
+    return false;
+  }
+
+  if (m_logger) {
+    m_logger->Debug("DUT Deleted " + std::to_string(deletedCount) + " entries with key: " + key, "DUT");
+  }
+  return true;
 }
 
 bool DUTCommandHandler::EnsureDUTActive(std::string& errorMessage) const

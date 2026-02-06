@@ -43,6 +43,7 @@
 SequenceEngine::SequenceEngine(ApplicationContext* context)
   : m_context(context)
   , m_logger(nullptr)
+  , m_valid(true)  // Initialize as valid, set to false on error
   , m_systemHandler(nullptr)
   , m_stopRequested(false)  // ✅ Initialize stop flag
   , m_retraceEditMode(false)  // ✅ Initialize retrace edit mode
@@ -56,7 +57,9 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   , m_continueRequested(false)
 {
   if (!m_context) {
-    throw std::runtime_error("SequenceEngine: ApplicationContext is null");
+    std::cerr << "[SequenceEngine ERROR] ApplicationContext is null - initialization failed" << std::endl;
+    m_valid = false;
+    return;
   }
 
   // Register all command handlers
@@ -987,7 +990,8 @@ void SequenceBuilder::BeginLoop(int count)
 void SequenceBuilder::EndLoop()
 {
   if (m_blockStack.empty() || m_blockStack.back().type != BlockType::LOOP) {
-    throw std::runtime_error("EndLoop called without matching BeginLoop");
+    std::cerr << "[SequenceBuilder ERROR] EndLoop called without matching BeginLoop" << std::endl;
+    return;
   }
 
   m_blockStack.pop_back();
@@ -1027,7 +1031,8 @@ void SequenceBuilder::BeginIf(const std::string& contextKey,
 void SequenceBuilder::Else()
 {
   if (m_blockStack.empty() || m_blockStack.back().type != BlockType::CONDITIONAL_THEN) {
-    throw std::runtime_error("Else called without matching BeginIf");
+    std::cerr << "[SequenceBuilder ERROR] Else called without matching BeginIf" << std::endl;
+    return;
   }
 
   // Switch to ELSE branch
@@ -1039,7 +1044,8 @@ void SequenceBuilder::EndIf()
   if (m_blockStack.empty() ||
     (m_blockStack.back().type != BlockType::CONDITIONAL_THEN &&
       m_blockStack.back().type != BlockType::CONDITIONAL_ELSE)) {
-    throw std::runtime_error("EndIf called without matching BeginIf");
+    std::cerr << "[SequenceBuilder ERROR] EndIf called without matching BeginIf" << std::endl;
+    return;
   }
 
   m_blockStack.pop_back();

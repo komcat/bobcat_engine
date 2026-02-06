@@ -1947,7 +1947,7 @@ bool UnifiedMotionManager::ParseCalculatedPosition(const std::string& positionNa
       else if (axis == 'Z') offsetZ = value;
 
     }
-    catch (const std::exception& e) {
+    catch (const std::exception& /*e*/) {
       LOG_ERROR("ParseCalculatedPosition: Invalid value '" + valueStr +
                 "' for axis " + std::string(1, axis) + " in: " + positionName);
       return false;

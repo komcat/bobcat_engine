@@ -153,7 +153,7 @@ protected:
   void run() override;
 
 private:
-  void buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager);
+  bool buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager);
 
   SequenceEngine* m_engine;
   ProcessSequenceFactory* m_factory;

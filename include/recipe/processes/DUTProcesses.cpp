@@ -158,6 +158,7 @@ public:
     sequence->AddAction("dut", "Close", {});
 
     std::cout << "[DUTProcesses] Built DUT Close sequence" << std::endl;
+    (void)step;
   }
 };
 
@@ -206,6 +207,7 @@ public:
     });
 
     std::cout << "[DUTProcesses] Built DUT Insert String: " << key << " = " << value << std::endl;
+    (void)step;
   }
 };
 
@@ -254,6 +256,7 @@ public:
     });
 
     std::cout << "[DUTProcesses] Built DUT Insert Double: " << key << " = " << value << std::endl;
+    (void)step;
   }
 };
 
@@ -302,6 +305,7 @@ public:
     });
 
     std::cout << "[DUTProcesses] Built DUT Insert Integer: " << key << " = " << value << std::endl;
+    (void)step;
   }
 };
 
@@ -354,6 +358,7 @@ public:
     });
 
     std::cout << "[DUTProcesses] Built DUT Insert from Context: " << entryKey << " <- context[" << contextKey << "]" << std::endl;
+    (void)step;
   }
 };
 

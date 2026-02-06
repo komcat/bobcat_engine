@@ -5,19 +5,13 @@
 #include <algorithm>
 
 #ifdef _WIN32
-  #include <winsock2.h>
   #include <ws2tcpip.h>
   #pragma comment(lib, "ws2_32.lib")
 #else
-  #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
-  #include <unistd.h>
   #include <fcntl.h>
-  #define SOCKET int
-  #define INVALID_SOCKET -1
   #define SOCKET_ERROR -1
-  #define closesocket close
 #endif
 
 // ============================================================================
@@ -27,7 +21,6 @@
 WagoIODevice::WagoIODevice(const EziIODeviceConfig& config)
   : m_config(config),
     m_isConnected(false),
-    m_socket(INVALID_SOCKET),
     m_transactionId(0),
     m_previousInputs(0),
     m_currentOutputState(0)
@@ -103,8 +96,8 @@ bool WagoIODevice::CreateSocket() {
 #endif
 
   // Create socket
-  m_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (m_socket == INVALID_SOCKET) {
+  m_socket.reset(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+  if (!m_socket.valid()) {
     std::cerr << "[WagoIODevice] Failed to create socket" << std::endl;
     return false;
   }
@@ -112,14 +105,14 @@ bool WagoIODevice::CreateSocket() {
   // Set socket timeout
 #ifdef _WIN32
   DWORD timeout = MODBUS_TIMEOUT_MS;
-  setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-  setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 #else
   struct timeval tv;
   tv.tv_sec = MODBUS_TIMEOUT_MS / 1000;
   tv.tv_usec = (MODBUS_TIMEOUT_MS % 1000) * 1000;
-  setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
 
   // Connect to WAGO device
@@ -130,15 +123,13 @@ bool WagoIODevice::CreateSocket() {
 
   if (inet_pton(AF_INET, m_config.IpAddress.c_str(), &serverAddr.sin_addr) <= 0) {
     std::cerr << "[WagoIODevice] Invalid IP address: " << m_config.IpAddress << std::endl;
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
-  if (connect(m_socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+  if (connect(m_socket.get(), (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
     std::cerr << "[WagoIODevice] Failed to connect to " << m_config.IpAddress << std::endl;
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+    m_socket.reset();
     return false;
   }
 
@@ -148,9 +139,8 @@ bool WagoIODevice::CreateSocket() {
 void WagoIODevice::CloseSocket() {
   std::lock_guard<std::mutex> lock(m_socketMutex);
 
-  if (m_socket != INVALID_SOCKET) {
-    closesocket(m_socket);
-    m_socket = INVALID_SOCKET;
+  if (m_socket.valid()) {
+    m_socket.reset();
   }
 }
 
@@ -159,22 +149,22 @@ void WagoIODevice::CloseSocket() {
 // ============================================================================
 
 bool WagoIODevice::SendRequest(const std::vector<uint8_t>& request) {
-  if (m_socket == INVALID_SOCKET) {
+  if (!m_socket.valid()) {
     return false;
   }
 
-  int sent = send(m_socket, reinterpret_cast<const char*>(request.data()),
+  int sent = send(m_socket.get(), reinterpret_cast<const char*>(request.data()),
                   static_cast<int>(request.size()), 0);
   return sent == static_cast<int>(request.size());
 }
 
 bool WagoIODevice::ReceiveResponse(std::vector<uint8_t>& response, size_t expectedLength) {
-  if (m_socket == INVALID_SOCKET) {
+  if (!m_socket.valid()) {
     return false;
   }
 
   response.resize(expectedLength);
-  int received = recv(m_socket, reinterpret_cast<char*>(response.data()),
+  int received = recv(m_socket.get(), reinterpret_cast<char*>(response.data()),
                       static_cast<int>(expectedLength), 0);
 
   if (received <= 0) {

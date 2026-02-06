@@ -11,7 +11,7 @@ bool IOCommandHandler::ExecuteCommand(
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
   std::string& errorMessage,
-  SequenceContext* context)
+  SequenceContext* /*context*/)
 {
   EziIOManager* ioManager = static_cast<EziIOManager*>(manager);
 

@@ -8,16 +8,14 @@
 #include <sstream>
 
 bool RelativePositionCommandHandler::ExecuteCommand(
-    void* manager,
-    const std::string& deviceName,
+    void* /*manager*/,
+    const std::string& /*deviceName*/,
     const std::string& methodName,
     const std::map<std::string, std::string>& params,
     std::string& errorMessage,
     SequenceContext* context)
 {
     // Note: manager parameter is unused - we use m_motionManager set via SetMotionManager
-    (void)manager;
-    (void)deviceName;  // deviceName is "relpos" - not used for routing
 
     if (methodName == "CaptureBaseline") {
         return HandleCaptureBaseline(params, errorMessage, context);
@@ -248,9 +246,8 @@ bool RelativePositionCommandHandler::HandleClearBaseline(
     return true;
 }
 
-bool RelativePositionCommandHandler::HandleClearAllBaselines(std::string& errorMessage)
+bool RelativePositionCommandHandler::HandleClearAllBaselines(std::string& /*errorMessage*/)
 {
-    (void)errorMessage;
 
     size_t count = 0;
     {
@@ -268,9 +265,8 @@ bool RelativePositionCommandHandler::HandleClearAllBaselines(std::string& errorM
     return true;
 }
 
-bool RelativePositionCommandHandler::HandleListBaselines(std::string& errorMessage)
+bool RelativePositionCommandHandler::HandleListBaselines(std::string& /*errorMessage*/)
 {
-    (void)errorMessage;
 
     std::lock_guard<std::mutex> lock(m_baselinesMutex);
 

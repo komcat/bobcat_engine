@@ -878,7 +878,6 @@ void GraphWidget::onCreateEdge()
   }
 
   // Ask for max speed
-  bool ok;
   QInputDialog inputDialog(this);
   inputDialog.setStyleSheet(DarkTheme::getStyleSheet());
   inputDialog.setWindowTitle("Create Edge");
@@ -1024,7 +1023,6 @@ void GraphWidget::onGraphSelected(int index)
 
 void GraphWidget::onNewGraph()
 {
-  bool ok;
   QInputDialog inputDialog(this);
   inputDialog.setStyleSheet(DarkTheme::getStyleSheet());
   inputDialog.setWindowTitle("New Graph");
@@ -1068,7 +1066,6 @@ void GraphWidget::onRenameGraph()
     return;
   }
 
-  bool ok;
   QInputDialog inputDialog(this);
   inputDialog.setStyleSheet(DarkTheme::getStyleSheet());
   inputDialog.setWindowTitle("Rename Graph");

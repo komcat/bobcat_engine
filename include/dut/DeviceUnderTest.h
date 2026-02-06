@@ -47,19 +47,17 @@ public:
      * @brief Create a new DUT instance and save to file
      * @param productName Product name (used for directory structure)
      * @param serialNumber Unique serial number for this device
-     * @return New DeviceUnderTest instance
-     * @throws std::runtime_error if file creation fails
+     * @return New DeviceUnderTest instance, or std::nullopt if creation fails
      */
-    static DeviceUnderTest create(const std::string& productName, const std::string& serialNumber);
+    static std::optional<DeviceUnderTest> create(const std::string& productName, const std::string& serialNumber);
 
     /**
      * @brief Load existing DUT from file
      * @param productName Product name
      * @param serialNumber Serial number
-     * @return Loaded DeviceUnderTest instance
-     * @throws std::runtime_error if file not found or parsing fails
+     * @return Loaded DeviceUnderTest instance, or std::nullopt if file not found or parsing fails
      */
-    static DeviceUnderTest load(const std::string& productName, const std::string& serialNumber);
+    static std::optional<DeviceUnderTest> load(const std::string& productName, const std::string& serialNumber);
 
     /**
      * @brief Check if DUT file exists
@@ -77,24 +75,23 @@ public:
      * @brief Insert new entry with current timestamp
      * @param key Entry identifier (can be duplicated with different timestamps)
      * @param value String, double, or int64_t value
-     * @throws std::runtime_error if save fails
+     * @return true if insert and save successful, false otherwise
      */
-    void insertEntry(const std::string& key, const std::string& value);
-    void insertEntry(const std::string& key, double value);
-    void insertEntry(const std::string& key, int64_t value);
+    bool insertEntry(const std::string& key, const std::string& value);
+    bool insertEntry(const std::string& key, double value);
+    bool insertEntry(const std::string& key, int64_t value);
 
     /**
      * @brief Delete entry by exact timestamp
      * @param timestamp ISO 8601 timestamp of entry to delete
      * @return true if entry found and deleted, false otherwise
-     * @throws std::runtime_error if save fails
      */
     bool deleteEntry(const std::string& timestamp);
 
     /**
      * @brief Delete all entries with matching key
      * @param key Key to match
-     * @return Number of entries deleted
+     * @return Number of entries deleted, or -1 if save failed
      */
     int deleteEntriesByKey(const std::string& key);
 
@@ -123,8 +120,9 @@ public:
     // Manual save (usually not needed - auto-saves on insert/delete)
     /**
      * @brief Manually save current state to JSON file
+     * @return true if save successful, false otherwise
      */
-    void save();
+    bool save();
 
     // Accessors
     std::string getProductName() const { return productName_; }
@@ -157,8 +155,8 @@ private:
     static std::string getCurrentTimestamp();
     static std::string buildFilePath(const std::string& productName, const std::string& serialNumber);
     static bool ensureDirectoryExists(const std::string& path);
-    void loadFromFile();
-    void saveToFile();
+    bool loadFromFile();
+    bool saveToFile();
 };
 
 #endif // DEVICE_UNDER_TEST_H

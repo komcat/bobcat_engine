@@ -215,6 +215,9 @@ public:
   explicit SequenceEngine(ApplicationContext* context);
   ~SequenceEngine();
 
+  // Validity check (call after constructor to ensure initialization succeeded)
+  [[nodiscard]] bool IsValid() const { return m_valid; }
+
   // Configuration
   void SetLogger(LogManager* logger);
   LogManager* GetLogger() const { return m_logger; }
@@ -303,6 +306,7 @@ public:
 private:
   ApplicationContext* m_context;
   LogManager* m_logger;
+  bool m_valid;  // True if constructor succeeded, false if initialization failed
   std::vector<std::string> m_executionLog;
 
   CommandDispatcher m_dispatcher;

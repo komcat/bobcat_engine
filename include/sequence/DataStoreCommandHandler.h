@@ -15,6 +15,9 @@ public:
   DataStoreCommandHandler(DataStore* dataStore);
   ~DataStoreCommandHandler() override = default;
 
+  // Validity check
+  bool IsValid() const { return m_valid; }
+
   bool ExecuteCommand(
     void* manager,
     const std::string& deviceName,
@@ -28,6 +31,7 @@ public:
 
 private:
   DataStore* m_dataStore;
+  bool m_valid = true;
 
   std::string DetectUnit(const std::string& channelName);
   std::string FormatValueWithPrefix(float value, const std::string& unit);

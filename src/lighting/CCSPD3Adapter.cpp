@@ -8,7 +8,7 @@
 namespace Lighting {
 
 CCSPD3Adapter::CCSPD3Adapter()
-    : m_socket(INVALID_SOCKET)
+    : m_socket()
     , m_connected(false)
     , m_initialized(false)
 {
@@ -55,8 +55,8 @@ bool CCSPD3Adapter::Connect() {
     std::cout << "[CCSPD3Adapter] Creating socket..." << std::endl;
 
     // Create socket (same as Python: socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    m_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (m_socket == INVALID_SOCKET) {
+    m_socket.reset(socket(AF_INET, SOCK_STREAM, 0));
+    if (!m_socket.valid()) {
 #ifdef _WIN32
         int wsaError = WSAGetLastError();
         m_lastError = "Failed to create socket (WSA error: " + std::to_string(wsaError) + ")";
@@ -72,14 +72,14 @@ bool CCSPD3Adapter::Connect() {
     // Set socket timeout (same as Python: socket.settimeout(5.0))
 #ifdef _WIN32
     DWORD timeout = TIMEOUT_MS;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof(timeout));
 #else
     struct timeval tv;
     tv.tv_sec = TIMEOUT_MS / 1000;
     tv.tv_usec = (TIMEOUT_MS % 1000) * 1000;
-    setsockopt(m_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(m_socket, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(m_socket.get(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
 
     // Setup address
@@ -92,8 +92,7 @@ bool CCSPD3Adapter::Connect() {
     if (inet_pton(AF_INET, m_config.ipAddress.c_str(), &serverAddr.sin_addr) <= 0) {
         m_lastError = "Invalid IP address: " + m_config.ipAddress;
         std::cerr << "[CCSPD3Adapter] " << m_lastError << std::endl;
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+        m_socket.reset();
         return false;
     }
 
@@ -101,7 +100,7 @@ bool CCSPD3Adapter::Connect() {
     std::cout << "[CCSPD3Adapter] Connecting to " << m_config.ipAddress << ":" << m_config.port << "..." << std::endl;
     std::cout << "[CCSPD3Adapter] NOTE: CCS PD3 only allows 1 TCP connection at a time!" << std::endl;
 
-    int result = connect(m_socket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+    int result = connect(m_socket.get(), (struct sockaddr*)&serverAddr, sizeof(serverAddr));
     if (result == SOCKET_ERROR) {
 #ifdef _WIN32
         int wsaError = WSAGetLastError();
@@ -117,8 +116,7 @@ bool CCSPD3Adapter::Connect() {
         m_lastError = "Connection failed to " + m_config.ipAddress + ":" + std::to_string(m_config.port);
 #endif
         std::cerr << "[CCSPD3Adapter] " << m_lastError << std::endl;
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+        m_socket.reset();
         return false;
     }
 
@@ -133,8 +131,7 @@ bool CCSPD3Adapter::Connect() {
 
     if (response.empty()) {
         std::cerr << "[CCSPD3Adapter] Connection test failed - no response" << std::endl;
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+        m_socket.reset();
         m_connected = false;
         return false;
     }
@@ -146,9 +143,8 @@ bool CCSPD3Adapter::Connect() {
 bool CCSPD3Adapter::Disconnect() {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (m_socket != INVALID_SOCKET) {
-        closesocket(m_socket);
-        m_socket = INVALID_SOCKET;
+    if (m_socket.valid()) {
+        m_socket.reset();
     }
 
     if (m_connected) {
@@ -185,14 +181,14 @@ std::string CCSPD3Adapter::BuildCommand(const std::string& channel,
 
 std::string CCSPD3Adapter::SendCommandInternal(const std::string& command) {
     // Internal send without mutex - caller must hold lock
-    if (m_socket == INVALID_SOCKET) {
+    if (!m_socket.valid()) {
         m_lastError = "Socket not valid";
         return "";
     }
 
     // Send command with CRLF
     std::string fullCommand = command + "\r\n";
-    int bytesSent = send(m_socket, fullCommand.c_str(),
+    int bytesSent = send(m_socket.get(), fullCommand.c_str(),
                          static_cast<int>(fullCommand.length()), 0);
 
     if (bytesSent == SOCKET_ERROR) {
@@ -210,7 +206,7 @@ std::string CCSPD3Adapter::SendCommandInternal(const std::string& command) {
     int retries = 3;
 
     while (retries > 0) {
-        int bytesReceived = recv(m_socket, buffer + totalReceived,
+        int bytesReceived = recv(m_socket.get(), buffer + totalReceived,
                                   RECV_BUFFER_SIZE - 1 - totalReceived, 0);
         if (bytesReceived > 0) {
             totalReceived += bytesReceived;
@@ -249,7 +245,7 @@ std::string CCSPD3Adapter::SendCommandInternal(const std::string& command) {
 std::string CCSPD3Adapter::SendCommand(const std::string& command) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (!m_connected || m_socket == INVALID_SOCKET) {
+    if (!m_connected || !m_socket.valid()) {
         m_lastError = "Not connected";
         return "";
     }

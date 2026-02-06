@@ -134,7 +134,7 @@ bool HalconLineDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
                 if (length >= m_minLength) {
                     detectedLines.push_back(std::make_tuple(x1, y1, x2, y2, length));
                 }
-            } catch (HException& e) {
+            } catch (HException& /*e*/) {
                 // Skip contours that fail to fit
                 continue;
             }

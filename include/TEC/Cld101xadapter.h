@@ -2,8 +2,8 @@
 #pragma once
 #include "ITECDevice.h"
 #include "TECTypes.h"
+#include "SocketGuard.h"
 #include <string>
-#include <winsock2.h>
 #include <ws2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -68,7 +68,7 @@ private:
   TECDevice m_config;
 
   // TCP socket
-  SOCKET m_socket;
+  SocketGuard m_socket;
   bool m_connected;
 
   // Cached status

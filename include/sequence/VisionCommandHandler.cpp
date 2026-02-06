@@ -34,7 +34,7 @@ const int VisionCommandHandler::MAX_HISTORY;  // Defined in header as 10
 const std::string VisionCommandHandler::HISTORY_DIR = "logs/vision_history";
 
 bool VisionCommandHandler::ExecuteCommand(
-    void* manager,
+    void* /*manager*/,
     const std::string& deviceName,
     const std::string& methodName,
     const std::map<std::string, std::string>& params,

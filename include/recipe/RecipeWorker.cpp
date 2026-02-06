@@ -211,7 +211,7 @@ void RecipeWorker::run()
       // No callback - auto-accept all adjustments for automated execution
       m_engine->SetManualAdjustCallback(
         [this](const std::string& message, const std::string& deviceName,
-               double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+               double /*stepSizeUm*/, bool /*enableX*/, bool /*enableY*/, bool /*enableZ*/) -> bool {
         if (!m_loopMode) {
           emit logMessage(QString("Auto-accepting manual adjust: %1 (device: %2)")
             .arg(QString::fromStdString(message))
@@ -259,18 +259,23 @@ void RecipeWorker::run()
     std::string recipeName = recipeManager.getRecipeName();
     SequenceBuilder* sequence = m_engine->CreateSequence(recipeName);
 
+    if (!m_loopMode) emit logMessage("Building sequence...");
+    if (!buildSequenceFromRecipe(sequence, &recipeManager)) {
+      delete sequence;
+      emit executionStopped();
+      emit executionCompleted(false, "Sequence build failed");
+      return;
+    }
+
+    // Check if stopped during build
+    if (m_stopRequested.load()) {
+      delete sequence;
+      emit executionStopped();
+      emit executionCompleted(false, "Execution stopped by user");
+      return;
+    }
+
     try {
-      if (!m_loopMode) emit logMessage("Building sequence...");
-      buildSequenceFromRecipe(sequence, &recipeManager);
-
-      // Check if stopped during build
-      if (m_stopRequested.load()) {
-        delete sequence;
-        emit executionStopped();
-        emit executionCompleted(false, "Execution stopped by user");
-        return;
-      }
-
       // ✅ Step 6: Execute sequence (SequenceEngine will check stop flag internally)
       emit sequenceExecutionStarted();
       if (!m_loopMode) emit logMessage("Executing sequence...");
@@ -452,7 +457,7 @@ void RecipeWorker::run()
   }
 }
 
-void RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager)
+bool RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager)
 {
   int enabledStepIndex = 0;
   int totalStepIndex = 0;
@@ -463,7 +468,7 @@ void RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeMana
     // Check for stop request
     if (m_stopRequested.load()) {
       emit logMessage("Build stopped by user");
-      throw std::runtime_error("Build stopped by user");
+      return false;
     }
 
     if (!step->enabled) {
@@ -487,7 +492,8 @@ void RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeMana
     std::string errorMsg;
     if (!m_factory->BuildStep(sequence, step.get(), errorMsg)) {
       std::cerr << "[RecipeWorker] " << errorMsg << std::endl;
-      throw std::runtime_error(errorMsg);
+      emit logMessage(QString("Build failed: %1").arg(QString::fromStdString(errorMsg)));
+      return false;
     }
 
     emit stepBuildCompleted(enabledStepIndex);
@@ -496,4 +502,5 @@ void RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeMana
 
   emit logMessage(QString("Sequence built with %1 enabled step(s)")
     .arg(enabledStepIndex));
+  return true;
 }

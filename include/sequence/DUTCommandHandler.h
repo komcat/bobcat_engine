@@ -34,6 +34,9 @@ public:
   DUTCommandHandler(ApplicationContext* context);
   ~DUTCommandHandler() override = default;
 
+  // Validity check
+  bool IsValid() const { return m_valid; }
+
   bool ExecuteCommand(
     void* manager,
     const std::string& deviceName,
@@ -47,6 +50,7 @@ public:
 
 private:
   ApplicationContext* m_context;
+  bool m_valid = true;
 
   // Command implementations
   bool ExecuteCreate(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);

@@ -71,6 +71,7 @@ public:
 
     std::cout << "[DataStoreProcesses] Built Set Context Value: " << key << " = " << value
               << " (type: " << valueType << ")" << std::endl;
+    (void)step;
   }
 };
 
@@ -123,6 +124,7 @@ public:
 
     std::cout << "[DataStoreProcesses] Built Set Context Boolean: " << key << " = " << value
               << " (" << numericValue << ")" << std::endl;
+    (void)step;
   }
 };
 

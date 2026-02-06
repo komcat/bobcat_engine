@@ -40,7 +40,7 @@ public:
   virtual void OnNewFrame(const CameraFrameData& frameData) = 0;
 
   // Status change callback (optional)
-  virtual void OnCameraStatusChanged(const std::string& cameraId, bool connected, bool grabbing) {}
+  virtual void OnCameraStatusChanged(const std::string& /*cameraId*/, bool /*connected*/, bool /*grabbing*/) {}
 
   // Subscriber identification
   virtual std::string GetSubscriberId() const = 0;

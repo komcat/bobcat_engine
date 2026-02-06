@@ -3,22 +3,18 @@
 #include <mutex>
 #include <iostream>
 
+#include "SocketGuard.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <WinSock2.h>
 #include <WS2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 #else
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#define SOCKET int
-#define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
-#define closesocket close
 #endif
 
 namespace Lighting {
@@ -64,7 +60,7 @@ private:
     ControllerConfig m_config;
 
     // Connection
-    SOCKET m_socket;
+    SocketGuard m_socket;
     bool m_connected;
     bool m_initialized;
     std::string m_lastError;

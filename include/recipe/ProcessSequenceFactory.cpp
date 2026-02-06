@@ -628,7 +628,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   // ============================================================================
   // REGISTER GROUP START PROCESS BUILDER (Organizational - No execution)
   // ============================================================================
-  RegisterProcessBuilder("Group Start", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+  RegisterProcessBuilder("Group Start", [](SequenceBuilder* /*sequence*/, const ProcessInstance* step) {
     // Groups are organizational only - they don't add sequence actions
     std::cout << "[ProcessSequenceFactory] Group Start (organizational): "
               << step->parameters.at("group_name") << std::endl;
@@ -637,7 +637,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   // ============================================================================
   // REGISTER GROUP END PROCESS BUILDER (Organizational - No execution)
   // ============================================================================
-  RegisterProcessBuilder("Group End", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+  RegisterProcessBuilder("Group End", [](SequenceBuilder* /*sequence*/, const ProcessInstance* /*step*/) {
     // Groups are organizational only - they don't add sequence actions
     std::cout << "[ProcessSequenceFactory] Group End (organizational)" << std::endl;
   });
@@ -675,7 +675,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   // ============================================================================
   // REGISTER CONDITIONAL ELSE PROCESS BUILDER
   // ============================================================================
-  RegisterProcessBuilder("Conditional Else", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+  RegisterProcessBuilder("Conditional Else", [](SequenceBuilder* sequence, const ProcessInstance* /*step*/) {
     sequence->Else();
     std::cout << "[ProcessSequenceFactory] Built Conditional Else" << std::endl;
   });
@@ -683,7 +683,7 @@ ProcessSequenceFactory::ProcessSequenceFactory()
   // ============================================================================
   // REGISTER CONDITIONAL END PROCESS BUILDER
   // ============================================================================
-  RegisterProcessBuilder("Conditional End", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+  RegisterProcessBuilder("Conditional End", [](SequenceBuilder* sequence, const ProcessInstance* /*step*/) {
     sequence->EndIf();
     std::cout << "[ProcessSequenceFactory] Built Conditional End" << std::endl;
   });

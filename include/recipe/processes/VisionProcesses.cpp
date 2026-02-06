@@ -59,6 +59,7 @@ public:
         }
 
         sequence->AddAction("vision", "load_profile", loadParams);
+        (void)step;
     }
 };
 
@@ -237,6 +238,7 @@ public:
         }
 
         sequence->AddAction("vision", "capture_and_execute", execParams);
+        (void)step;
     }
 };
 
@@ -303,6 +305,7 @@ public:
         execParams["plugin"] = "PatternMatching";
 
         sequence->AddAction("vision", "capture_and_execute", execParams);
+        (void)step;
 
         // Results are automatically stored in context as:
         // vision.result.best_score
@@ -372,6 +375,7 @@ public:
         execParams["plugin"] = "CircleDetection";
 
         sequence->AddAction("vision", "capture_and_execute", execParams);
+        (void)step;
     }
 };
 

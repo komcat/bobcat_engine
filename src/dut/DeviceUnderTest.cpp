@@ -39,9 +39,10 @@ DeviceUnderTest::DeviceUnderTest(const std::string& productName, const std::stri
 }
 
 // Static factory methods
-DeviceUnderTest DeviceUnderTest::create(const std::string& productName, const std::string& serialNumber) {
+std::optional<DeviceUnderTest> DeviceUnderTest::create(const std::string& productName, const std::string& serialNumber) {
     if (productName.empty() || serialNumber.empty()) {
-        throw std::runtime_error("Product name and serial number cannot be empty");
+        std::cerr << "[DeviceUnderTest] Error: Product name and serial number cannot be empty" << std::endl;
+        return std::nullopt;
     }
 
     DeviceUnderTest dut(productName, serialNumber);
@@ -49,30 +50,37 @@ DeviceUnderTest DeviceUnderTest::create(const std::string& productName, const st
     // Ensure directory exists
     fs::path path(dut.filePath_);
     if (!ensureDirectoryExists(path.parent_path().string())) {
-        throw std::runtime_error("Failed to create directory: " + path.parent_path().string());
+        std::cerr << "[DeviceUnderTest] Error: Failed to create directory: " << path.parent_path().string() << std::endl;
+        return std::nullopt;
     }
 
     // Save initial empty state
-    dut.saveToFile();
+    if (!dut.saveToFile()) {
+        return std::nullopt;
+    }
 
     std::cout << "[DUT] Created new DUT: " << productName << " / " << serialNumber << std::endl;
     return dut;
 }
 
-DeviceUnderTest DeviceUnderTest::load(const std::string& productName, const std::string& serialNumber) {
+std::optional<DeviceUnderTest> DeviceUnderTest::load(const std::string& productName, const std::string& serialNumber) {
     if (productName.empty() || serialNumber.empty()) {
-        throw std::runtime_error("Product name and serial number cannot be empty");
+        std::cerr << "[DeviceUnderTest] Error: Product name and serial number cannot be empty" << std::endl;
+        return std::nullopt;
     }
 
     std::string filePath = buildFilePath(productName, serialNumber);
 
     if (!fs::exists(filePath)) {
-        throw std::runtime_error("DUT file not found: " + filePath);
+        std::cerr << "[DeviceUnderTest] Error: DUT file not found: " << filePath << std::endl;
+        return std::nullopt;
     }
 
     // Create empty DUT and load from file
     DeviceUnderTest dut(productName, serialNumber);
-    dut.loadFromFile();
+    if (!dut.loadFromFile()) {
+        return std::nullopt;
+    }
 
     std::cout << "[DUT] Loaded DUT: " << productName << " / " << serialNumber
               << " (" << dut.entries_.size() << " entries)" << std::endl;
@@ -101,7 +109,7 @@ bool DeviceUnderTest::deleteFile(const std::string& productName, const std::stri
 }
 
 // Data operations
-void DeviceUnderTest::insertEntry(const std::string& key, const std::string& value) {
+bool DeviceUnderTest::insertEntry(const std::string& key, const std::string& value) {
     DataEntry entry;
     entry.timestamp = getCurrentTimestamp();
     entry.key = key;
@@ -109,12 +117,16 @@ void DeviceUnderTest::insertEntry(const std::string& key, const std::string& val
     entry.dataType = "string";
 
     entries_.push_back(entry);
-    saveToFile();
+    if (!saveToFile()) {
+        entries_.pop_back();  // Rollback on save failure
+        return false;
+    }
 
     std::cout << "[DUT] Inserted entry: " << key << " = " << value << " @ " << entry.timestamp << std::endl;
+    return true;
 }
 
-void DeviceUnderTest::insertEntry(const std::string& key, double value) {
+bool DeviceUnderTest::insertEntry(const std::string& key, double value) {
     DataEntry entry;
     entry.timestamp = getCurrentTimestamp();
     entry.key = key;
@@ -122,12 +134,16 @@ void DeviceUnderTest::insertEntry(const std::string& key, double value) {
     entry.dataType = "double";
 
     entries_.push_back(entry);
-    saveToFile();
+    if (!saveToFile()) {
+        entries_.pop_back();  // Rollback on save failure
+        return false;
+    }
 
     std::cout << "[DUT] Inserted entry: " << key << " = " << value << " @ " << entry.timestamp << std::endl;
+    return true;
 }
 
-void DeviceUnderTest::insertEntry(const std::string& key, int64_t value) {
+bool DeviceUnderTest::insertEntry(const std::string& key, int64_t value) {
     DataEntry entry;
     entry.timestamp = getCurrentTimestamp();
     entry.key = key;
@@ -135,9 +151,13 @@ void DeviceUnderTest::insertEntry(const std::string& key, int64_t value) {
     entry.dataType = "integer";
 
     entries_.push_back(entry);
-    saveToFile();
+    if (!saveToFile()) {
+        entries_.pop_back();  // Rollback on save failure
+        return false;
+    }
 
     std::cout << "[DUT] Inserted entry: " << key << " = " << value << " @ " << entry.timestamp << std::endl;
+    return true;
 }
 
 bool DeviceUnderTest::deleteEntry(const std::string& timestamp) {
@@ -148,8 +168,12 @@ bool DeviceUnderTest::deleteEntry(const std::string& timestamp) {
 
     if (it != entries_.end()) {
         std::cout << "[DUT] Deleting entry: " << it->key << " @ " << timestamp << std::endl;
+        DataEntry backup = *it;  // Backup for potential rollback
         entries_.erase(it);
-        saveToFile();
+        if (!saveToFile()) {
+            entries_.push_back(backup);  // Rollback on save failure
+            return false;
+        }
         return true;
     }
 
@@ -158,6 +182,7 @@ bool DeviceUnderTest::deleteEntry(const std::string& timestamp) {
 
 int DeviceUnderTest::deleteEntriesByKey(const std::string& key) {
     auto originalSize = entries_.size();
+    std::vector<DataEntry> backup = entries_;  // Backup for potential rollback
 
     entries_.erase(
         std::remove_if(entries_.begin(), entries_.end(),
@@ -170,7 +195,10 @@ int DeviceUnderTest::deleteEntriesByKey(const std::string& key) {
     int deletedCount = static_cast<int>(originalSize - entries_.size());
 
     if (deletedCount > 0) {
-        saveToFile();
+        if (!saveToFile()) {
+            entries_ = backup;  // Rollback on save failure
+            return -1;
+        }
         std::cout << "[DUT] Deleted " << deletedCount << " entries with key: " << key << std::endl;
     }
 
@@ -215,14 +243,15 @@ std::vector<DeviceUnderTest::DataEntry> DeviceUnderTest::getEntriesInTimeRange(
 }
 
 // Save/Load operations
-void DeviceUnderTest::save() {
-    saveToFile();
+bool DeviceUnderTest::save() {
+    return saveToFile();
 }
 
-void DeviceUnderTest::loadFromFile() {
+bool DeviceUnderTest::loadFromFile() {
     std::ifstream file(filePath_);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file for reading: " + filePath_);
+        std::cerr << "[DeviceUnderTest] Error: Failed to open file for reading: " << filePath_ << std::endl;
+        return false;
     }
 
     nlohmann::json j;
@@ -230,18 +259,22 @@ void DeviceUnderTest::loadFromFile() {
         file >> j;
         *this = fromJson(j);
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to parse JSON from file: " + std::string(e.what()));
+        std::cerr << "[DeviceUnderTest] Error: Failed to parse JSON from file: " << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 
-void DeviceUnderTest::saveToFile() {
+bool DeviceUnderTest::saveToFile() {
     std::ofstream file(filePath_);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open file for writing: " + filePath_);
+        std::cerr << "[DeviceUnderTest] Error: Failed to open file for writing: " << filePath_ << std::endl;
+        return false;
     }
 
     nlohmann::json j = toJson();
     file << j.dump(4);  // Pretty print with 4-space indent
+    return true;
 }
 
 // JSON serialization

@@ -13,7 +13,9 @@ TcpClientManager::TcpClientManager(DataStore* dataStore, QObject* parent)
   , m_dataStore(dataStore)
 {
   if (!m_dataStore) {
-    throw std::runtime_error("DataStore cannot be null");
+    std::cerr << "[TcpClientManager] Error: DataStore cannot be null" << std::endl;
+    m_valid = false;
+    return;
   }
 
   std::cout << "[TcpClientManager] Created" << std::endl;

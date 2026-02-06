@@ -135,7 +135,7 @@ bool AuxWindowCommandHandler::ExecuteCommand(
     float targetValue;
     try {
       targetValue = std::stof(valueIt->second);
-    } catch (const std::exception& e) {
+    } catch (const std::exception& /*e*/) {
       errorMessage = "Invalid target value: " + valueIt->second;
       return false;
     }

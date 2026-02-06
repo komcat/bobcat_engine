@@ -174,7 +174,8 @@ void AdaptiveScanController::ScanThreadFunction() {
 
     // Initialize
     if (!m_stateMachine->TransitionTo(ScanState::Initializing)) {
-      throw std::runtime_error("Failed to transition to Initializing state");
+      HandleScanError("Failed to transition to Initializing state");
+      return;
     }
 
     // Execute scan
@@ -533,10 +534,12 @@ double AdaptiveScanController::GetMeasurement() {
   }
 
   if (m_haltRequested) {
-    throw std::runtime_error("Scan halted while waiting for measurement");
+    NotifyError("Scan halted while waiting for measurement", ScanErrorType::UserHalt);
+    return 0.0;
   }
 
-  throw std::runtime_error("Measurement timeout");
+  NotifyError("Measurement timeout", ScanErrorType::MeasurementTimeout);
+  return 0.0;
 }
 
 double AdaptiveScanController::GetAveragedMeasurement(int numSamples) {

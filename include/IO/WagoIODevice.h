@@ -10,11 +10,7 @@
 #include <cstdint>
 #include <memory>
 
-#ifdef _WIN32
-  #include <winsock2.h>
-#else
-  #define SOCKET int
-#endif
+#include "SocketGuard.h"
 
 // Forward declaration for Modbus client
 namespace modbus {
@@ -94,7 +90,7 @@ private:
 
   // Connection state
   bool m_isConnected;
-  SOCKET m_socket;
+  SocketGuard m_socket;
   static constexpr int MODBUS_PORT = 502;
   static constexpr int MODBUS_TIMEOUT_MS = 3000;
 

@@ -11,7 +11,7 @@ bool PneumaticCommandHandler::ExecuteCommand(
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
   std::string& errorMessage,
-  SequenceContext* context)
+  SequenceContext* /*context*/)
 {
   PneumaticManager* pneumaticManager = static_cast<PneumaticManager*>(manager);
 

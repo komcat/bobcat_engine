@@ -7,18 +7,20 @@ DataStoreCommandHandler::DataStoreCommandHandler(DataStore* dataStore)
   : m_dataStore(dataStore)
 {
   if (!m_dataStore) {
-    throw std::runtime_error("DataStore cannot be null");
+    std::cerr << "[DataStoreCommandHandler] Error: DataStore cannot be null" << std::endl;
+    m_valid = false;
+    return;
   }
   std::cout << "[DataStoreCommandHandler] Created" << std::endl;
 }
 
 bool DataStoreCommandHandler::ExecuteCommand(
-  void* manager,
-  const std::string& deviceName,
+  void* /*manager*/,
+  const std::string& /*deviceName*/,
   const std::string& methodName,
   const std::map<std::string, std::string>& params,
   std::string& errorMessage,
-  SequenceContext* context)
+  SequenceContext* /*context*/)
 {
   // Context is available but DataStore is the primary target
   // Could use context to track which values were logged, etc.
