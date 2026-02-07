@@ -6,27 +6,22 @@
 #include <thread>
 #include <QDateTime>
 
-bool TcpDataClient::s_wsaInitialized = false;
+std::once_flag TcpDataClient::s_wsaInitFlag;
 
 void TcpDataClient::InitializeWSA()
 {
 #ifdef _WIN32
-  if (!s_wsaInitialized) {
+  std::call_once(s_wsaInitFlag, []() {
     WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) == 0) {
-      s_wsaInitialized = true;
-    }
-  }
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+  });
 #endif
 }
 
 void TcpDataClient::CleanupWSA()
 {
 #ifdef _WIN32
-  if (s_wsaInitialized) {
-    WSACleanup();
-    s_wsaInitialized = false;
-  }
+  WSACleanup();
 #endif
 }
 

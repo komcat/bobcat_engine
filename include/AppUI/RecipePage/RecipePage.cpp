@@ -3057,7 +3057,10 @@ bool RecipePage::executeRecipe()
   std::string recipeName = m_recipeManager->getRecipeName();
   SequenceBuilder* sequence = m_sequenceEngine->CreateSequence(recipeName);
 
-  buildSequenceFromRecipe(sequence);
+  if (!buildSequenceFromRecipe(sequence)) {
+    delete sequence;
+    return false;
+  }
 
   // Create execution context for value capture and conditionals
   auto context = std::make_unique<SequenceContext>();
@@ -3106,7 +3109,7 @@ bool RecipePage::executeRecipe()
   return success;
 }
 
-void RecipePage::buildSequenceFromRecipe(SequenceBuilder* sequence)
+bool RecipePage::buildSequenceFromRecipe(SequenceBuilder* sequence)
 {
   int enabledCount = 0;
   int totalCount = 0;
@@ -3129,13 +3132,16 @@ void RecipePage::buildSequenceFromRecipe(SequenceBuilder* sequence)
     if (!m_processFactory->BuildStep(sequence, step.get(), errorMsg)) {
       std::cerr << "[RecipePage] " << errorMsg << std::endl;
       m_context->logManager->Error(errorMsg, "RecipePage");
-      throw std::runtime_error(errorMsg);
+      QMessageBox::critical(this, "Recipe Build Error",
+        QString::fromStdString("Failed to build step '" + step->userNickname + "':\n" + errorMsg));
+      return false;
     }
   }
 
   std::cout << "[RecipePage] Sequence built successfully: "
     << enabledCount << " enabled steps out of "
     << totalCount << " total steps" << std::endl;
+  return true;
 }
 
 // ============================================================================

@@ -91,7 +91,8 @@ private:
     bool m_connected;
     mutable std::string m_lastError;
 
-    static bool s_wsaInitialized;
+    static std::once_flag s_wsaInitFlag;
+    static bool s_wsaReady;
 
     static constexpr int RECV_TIMEOUT_MS = 5000;  // 5 seconds
     static constexpr int SEND_TIMEOUT_MS = 5000;  // 5 seconds

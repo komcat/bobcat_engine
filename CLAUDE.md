@@ -248,6 +248,48 @@ sequence->AddAction(device, "MoveToAbs", {
 - Vision plugins require OpenCV; Halcon plugins require **both** OpenCV and Halcon
 - VISA-based adapters (CLD101x, TED4015, Keithley) require NI-VISA
 
+## Coding Conventions (MISRA-Aligned)
+
+This codebase follows MISRA-inspired safety conventions. When modifying code, follow these patterns:
+
+### Error Handling — No Exceptions
+- **Do NOT use `throw`** — the codebase has been purged of exceptions
+- Return error codes (`ErrorCode` enum from `include/common/ErrorCode.h`) or `std::optional` for fallible operations
+- Use the `IsValid()` pattern: construct object, then check `IsValid()` before use
+- Example: `DeviceUnderTest::create()` returns `std::optional<DeviceUnderTest>`
+
+### Loop Safety
+- **Do NOT use `while(true)`** — use bounded `for` loops with a maximum iteration count
+- Pattern: `for (int i = 0; i < MAX_ITERATIONS; ++i)` with a break condition inside
+
+### RAII for Sockets
+- Use `SocketGuard` (`include/IO/SocketGuard.h`) for all socket lifetime management
+- Already applied in: WagoIODevice, TcpDataClient, CLD101xAdapter, Keysight adapters
+
+### Attributes and Warnings
+- Build uses `/W4` (MSVC warning level 4) — code must compile warning-free
+- Use `[[nodiscard]]` on safety-critical return values (error codes, status results)
+- Comment out unused parameter names rather than using `(void)param`: `void foo(int /*param*/)`
+
+### Thread Safety
+- Use `include/common/ThreadPriority.h` for setting thread priorities (safety-critical threads use `AboveNormal`)
+- Prefer `std::future` over `.detach()` for thread lifetime management
+- Avoid `static` mutable state — use member variables instead
+
+## Safety Infrastructure
+
+- **`include/common/ErrorCode.h`** — Unified error code enum (40+ codes, categorized 0x0000-0x0F00)
+- **`include/safety/SafetyEventLog.h`** — Structured JSON-lines audit trail (`logs/safety_events.jsonl`), wired into ApplicationContext
+- **`include/safety/SafetyWatchManager.h`** — I/O safety monitoring with E-stop broadcast to all hardware managers
+- **`include/common/ThreadPriority.h`** — Cross-platform thread priority utility
+
+### E-Stop Cascade
+When `SafetyWatchManager` triggers, it broadcasts to: TECManager → `DisableAllOutputs()`, PowerSupplyManager → `disableAllOutputs()`, SMUManager → `OutputOffAll()`, PneumaticManager → `StopAll()`, LightingManager → `AllOff()`. All actions are logged to SafetyEventLog with CRITICAL severity.
+
+## Static Analysis
+
+A `.clang-tidy` configuration exists at project root. Enabled check families: `bugprone-*`, `modernize-*`, `performance-*`, `readability-*`, plus select `cppcoreguidelines` and `misc` checks. Header filter: `include/.*\.h$`.
+
 ## Key Design Patterns
 
 1. **Manager Pattern** - Each subsystem has a dedicated manager class
@@ -272,6 +314,9 @@ sequence->AddAction(device, "MoveToAbs", {
 - `include/ProgramManager/ProgramManager.h` - Recipe execution orchestration
 - `include/ProgramManager/RecipeExecutionStateMachine.cpp` - Execution state machine
 - `include/vision/IVisionPlugin.h` - Vision plugin interface
+- `include/common/ErrorCode.h` - Unified error codes for the entire application
+- `include/safety/SafetyEventLog.h` - Structured safety audit logging
+- `include/IO/SocketGuard.h` - RAII wrapper for socket lifetime
 - `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
 
 ## User Preferences

@@ -1964,6 +1964,19 @@ void Application::initializeSafetyWatch()
 
     // E-Stop broadcast: connect critical safety flag to ALL hardware managers
     if (m_safetyWatchManager) {
+      // Motion: emergency stop all axes
+      if (m_motionManager) {
+        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+                this, [this](QString /*title*/, QString /*message*/, bool critical) {
+          if (critical && m_motionManager) {
+            m_motionManager->EmergencyStopAll();
+            if (m_safetyEventLog) {
+              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+                "ESTOP_MOTION", "E-Stop: All motion axes emergency stopped");
+            }
+          }
+        });
+      }
       // TEC: disable all outputs
       if (m_tecManager) {
         connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,

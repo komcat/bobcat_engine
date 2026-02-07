@@ -128,7 +128,7 @@ private:
   MultiChannelDataCallback m_multiChannelDataCallback;
   ConnectionCallback m_connectionCallback;
 
-  static bool s_wsaInitialized;
+  static std::once_flag s_wsaInitFlag;
   static void InitializeWSA();
   static void CleanupWSA();
 };

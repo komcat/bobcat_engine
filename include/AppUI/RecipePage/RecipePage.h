@@ -194,7 +194,7 @@ private:
   // Recipe execution
   void setupSequenceEngine();
   bool executeRecipe();
-  void buildSequenceFromRecipe(SequenceBuilder* sequence);
+  [[nodiscard]] bool buildSequenceFromRecipe(SequenceBuilder* sequence);
 
   // Settings persistence
   void saveLastRecipeToSettings(const QString& recipePath);

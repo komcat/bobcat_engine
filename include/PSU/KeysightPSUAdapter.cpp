@@ -14,27 +14,22 @@
 
 using json = nlohmann::json;
 
-bool KeysightPSUAdapter::s_wsaInitialized = false;
+std::once_flag KeysightPSUAdapter::s_wsaInitFlag;
 
 void KeysightPSUAdapter::InitializeWSA()
 {
 #ifdef _WIN32
-  if (!s_wsaInitialized) {
+  std::call_once(s_wsaInitFlag, []() {
     WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) == 0) {
-      s_wsaInitialized = true;
-    }
-  }
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+  });
 #endif
 }
 
 void KeysightPSUAdapter::CleanupWSA()
 {
 #ifdef _WIN32
-  if (s_wsaInitialized) {
-    WSACleanup();
-    s_wsaInitialized = false;
-  }
+  WSACleanup();
 #endif
 }
 

@@ -95,6 +95,6 @@ private:
   std::string m_lastError;
   mutable std::mutex m_socketMutex;
 
-  static bool s_wsaInitialized;
+  static std::once_flag s_wsaInitFlag;
   static constexpr int COMMAND_TIMEOUT_MS = 5000;
 };

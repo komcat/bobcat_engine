@@ -4,7 +4,8 @@
 #include <sstream>
 #include <cstring>
 
-bool KeysightE36441A::s_wsaInitialized = false;
+std::once_flag KeysightE36441A::s_wsaInitFlag;
+bool KeysightE36441A::s_wsaReady = false;
 
 KeysightE36441A::KeysightE36441A(const std::string& ip, int port, const std::string& deviceName)
     : m_socket()
@@ -25,16 +26,21 @@ KeysightE36441A::~KeysightE36441A()
 bool KeysightE36441A::initializeWSA()
 {
 #ifdef _WIN32
-    if (!s_wsaInitialized) {
+    std::call_once(s_wsaInitFlag, []() {
         WSADATA wsaData;
         int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
         if (result != 0) {
-            m_lastError = "WSAStartup failed with error: " + std::to_string(result);
-            std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
-            return false;
+            std::cerr << "[KeysightE36441A] WSAStartup failed with error: " << result << std::endl;
+            s_wsaReady = false;
+        } else {
+            s_wsaReady = true;
+            std::cout << "[KeysightE36441A] WSA initialized" << std::endl;
         }
-        s_wsaInitialized = true;
-        std::cout << "[KeysightE36441A] WSA initialized" << std::endl;
+    });
+
+    if (!s_wsaReady) {
+        m_lastError = "WSAStartup failed during initialization";
+        return false;
     }
 #endif
     return true;
@@ -43,10 +49,7 @@ bool KeysightE36441A::initializeWSA()
 void KeysightE36441A::cleanupWSA()
 {
 #ifdef _WIN32
-    if (s_wsaInitialized) {
-        WSACleanup();
-        s_wsaInitialized = false;
-    }
+    WSACleanup();
 #endif
 }
 
