@@ -137,6 +137,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
 
 SequenceEngine::~SequenceEngine()
 {
+  JoinZombieThreads();
   ClearLog();
 }
 
@@ -716,6 +717,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
         }
+        JoinZombieThreads();
         return false;
       }
 
@@ -731,6 +733,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
         }
+        JoinZombieThreads();
         return false;
       }
     }
@@ -746,6 +749,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     if (m_context->safetyEventLog) {
       m_context->safetyEventLog->LogSequenceStop(sequence->GetName(), true);
     }
+    JoinZombieThreads();
     return true;
   }
   catch (const std::exception& e) {
@@ -757,6 +761,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
       m_stepCompletedCallback(m_currentStepIndex, false);
     }
+    JoinZombieThreads();
     return false;
   }
 }
@@ -827,28 +832,35 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       }
     }
 
-    // Execute command via dispatcher with context (timed for watchdog)
+    // Execute command via dispatcher with timeout enforcement
     std::string errorMessage;
     auto actionStart = std::chrono::steady_clock::now();
 
-    if (!m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
+    if (!DispatchWithTimeout(managerType, manager, action->deviceName,
       action->methodName, action->params, errorMessage, context)) {
-      LogError("❌ Command failed: " + errorMessage);
+      // Post-dispatch disconnect diagnostic (TOCTOU: device may have disconnected mid-command)
+      if (!IsDeviceConnected(action->deviceName)) {
+        std::string disconnMsg = "Device disconnected during command: " +
+            action->deviceName + "." + action->methodName;
+        LogError(disconnMsg);
+        if (m_context->safetyEventLog) {
+          m_context->safetyEventLog->LogEvent(SafetySeverity::WARNING, "SequenceEngine",
+              "DEVICE_DISCONNECTED_DURING_COMMAND", disconnMsg, ErrorCode::NotConnected);
+        }
+      } else {
+        LogError("Command failed: " + errorMessage);
+      }
       return false;
     }
 
-    // Watchdog: log warning if action exceeded timeout threshold
+    // Log slow commands that completed within timeout (non-critical warning)
     auto actionDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - actionStart).count();
-    if (actionDurationMs > m_actionTimeoutMs) {
-      std::string timeoutMsg = action->deviceName + "." + action->methodName +
+    if (actionDurationMs > m_actionTimeoutMs / 2) {
+      std::string slowMsg = action->deviceName + "." + action->methodName +
           " took " + std::to_string(actionDurationMs) + "ms (limit: " +
           std::to_string(m_actionTimeoutMs) + "ms)";
-      LogWarning("Action exceeded timeout: " + timeoutMsg);
-      if (m_context->safetyEventLog) {
-        m_context->safetyEventLog->LogEvent(SafetySeverity::WARNING, "SequenceEngine",
-            "ACTION_TIMEOUT", timeoutMsg, ErrorCode::Timeout);
-      }
+      LogWarning("Slow command: " + slowMsg);
     }
 
     break;
@@ -1019,6 +1031,73 @@ std::string SequenceEngine::ComparisonToString(ConditionalBlock::ComparisonType 
     case ConditionalBlock::ComparisonType::NOT_EXISTS: return "not exists";
     default: return "unknown";
   }
+}
+
+//=============================================================================
+// TIMEOUT ENFORCEMENT
+//=============================================================================
+
+bool SequenceEngine::DispatchWithTimeout(
+    const std::string& managerType, void* manager,
+    const std::string& deviceName, const std::string& methodName,
+    const std::map<std::string, std::string>& params,
+    std::string& errorMessage, SequenceContext* context)
+{
+  // Shared state between calling thread and dispatch thread
+  auto done = std::make_shared<std::atomic<bool>>(false);
+  auto success = std::make_shared<std::atomic<bool>>(false);
+  auto sharedError = std::make_shared<std::string>();
+  std::mutex mtx;
+  std::condition_variable cv;
+
+  std::thread dispatchThread([this, managerType, manager, deviceName, methodName,
+                              params, context, done, success, sharedError, &mtx, &cv]() {
+    std::string localError;
+    bool result = m_dispatcher.ExecuteCommand(
+        managerType, manager, deviceName, methodName, params, localError, context);
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      *sharedError = localError;
+      success->store(result);
+      done->store(true);
+    }
+    cv.notify_one();
+  });
+
+  // Wait for completion or timeout
+  {
+    std::unique_lock<std::mutex> lock(mtx);
+    bool completed = cv.wait_for(lock,
+        std::chrono::milliseconds(m_actionTimeoutMs),
+        [&done]() { return done->load(); });
+
+    if (!completed) {
+      // TIMEOUT - command still running
+      std::string timeoutMsg = deviceName + "." + methodName +
+          " timed out after " + std::to_string(m_actionTimeoutMs) + "ms";
+      LogError("TIMEOUT: " + timeoutMsg);
+      if (m_context->safetyEventLog) {
+        m_context->safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "SequenceEngine",
+            "ACTION_TIMEOUT_ENFORCED", timeoutMsg, ErrorCode::Timeout);
+      }
+      m_stopRequested.store(true);  // Signal cooperative stop
+      m_zombieThreads.push_back(std::move(dispatchThread));
+      errorMessage = "Command timed out: " + timeoutMsg;
+      return false;
+    }
+  }
+
+  dispatchThread.join();
+  errorMessage = *sharedError;
+  return success->load();
+}
+
+void SequenceEngine::JoinZombieThreads()
+{
+  for (auto& t : m_zombieThreads) {
+    if (t.joinable()) t.join();
+  }
+  m_zombieThreads.clear();
 }
 
 //=============================================================================

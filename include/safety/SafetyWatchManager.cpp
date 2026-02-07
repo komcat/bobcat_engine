@@ -180,7 +180,13 @@ bool SafetyWatchManager::StartWatching(int intervalMs)
   }
 
   m_stopRequested = false;
+  m_lastPollTickMs.store(0);
   m_pollingThread = std::make_unique<std::thread>(&SafetyWatchManager::PollingThreadFunction, this);
+
+  // Start health monitor timer on Qt event loop
+  m_healthTimer = new QTimer(this);
+  connect(m_healthTimer, &QTimer::timeout, this, &SafetyWatchManager::CheckPollingHealth);
+  m_healthTimer->start(2000);  // Check every 2 seconds
 
   std::cout << "[SafetyWatchManager] Started watching (interval=" << m_pollingIntervalMs << "ms)" << std::endl;
   LogEvent("Safety watch started");
@@ -196,6 +202,14 @@ void SafetyWatchManager::StopWatching()
   }
 
   std::cout << "[SafetyWatchManager] Stopping watch..." << std::endl;
+
+  // Stop health monitor timer before joining thread
+  if (m_healthTimer) {
+    m_healthTimer->stop();
+    delete m_healthTimer;
+    m_healthTimer = nullptr;
+  }
+
   m_stopRequested = true;
 
   if (m_pollingThread && m_pollingThread->joinable()) {
@@ -271,6 +285,10 @@ void SafetyWatchManager::PollingThreadFunction()
   auto nextPollTime = std::chrono::steady_clock::now();
 
   while (!m_stopRequested) {
+    // Update heartbeat for health monitor
+    m_lastPollTickMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+
     // Poll each watched input
     for (const auto& input : m_watchedInputs) {
       if (!input.enabled) continue;
@@ -418,6 +436,28 @@ void SafetyWatchManager::LogEvent(const std::string& message, bool isError)
     } else {
       m_logManager->Info(message, "SafetyWatch");
     }
+  }
+}
+
+void SafetyWatchManager::CheckPollingHealth()
+{
+  if (!m_isRunning.load()) return;  // Thread not supposed to be running
+
+  auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  auto lastTickMs = m_lastPollTickMs.load();
+  auto staleDurationMs = nowMs - lastTickMs;
+  int64_t thresholdMs = static_cast<int64_t>(m_pollingIntervalMs) * 5;  // 500ms at default 100ms interval
+
+  if (lastTickMs > 0 && staleDurationMs > thresholdMs) {
+    std::string msg = "Safety polling thread stalled (" +
+        std::to_string(staleDurationMs) + "ms since last poll)";
+    LogEvent(msg, true);
+    if (m_safetyEventLog) {
+      m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "SafetyWatchManager",
+          "WATCHDOG_STALL", msg, ErrorCode::SafetyWatchdogTimeout);
+    }
+    emit pollingThreadStalled(QString::fromStdString(msg));
   }
 }
 

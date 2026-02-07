@@ -57,11 +57,14 @@ public:
 
 private:
   static constexpr size_t MAX_EVENTS = 1000;
+  static constexpr size_t MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;  // 10 MB
 
   mutable std::mutex m_mutex;
   std::vector<SafetyEvent> m_events;
   uint64_t m_nextId = 1;
   std::ofstream m_fileStream;
+  std::string m_filePath;  // Stored for rotation
 
   void WriteToFile(const SafetyEvent& event);
+  void RotateIfNeeded();
 };

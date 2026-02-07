@@ -12,6 +12,7 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
 
 // Forward declarations
 class SequenceBuilder;
@@ -325,8 +326,11 @@ private:
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
 
-  // Action timeout watchdog (monitoring only)
+  // Action timeout — enforced via DispatchWithTimeout
   int m_actionTimeoutMs = 60000;  // Default 60 seconds
+
+  // Zombie threads from timed-out commands (joined at sequence cleanup)
+  std::vector<std::thread> m_zombieThreads;
 
   // Retrace edit mode
   std::atomic<bool> m_retraceEditMode;
@@ -362,6 +366,13 @@ private:
 
   bool ExecuteStep(ISequenceStep* step, SequenceContext* context);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);
+
+  [[nodiscard]] bool DispatchWithTimeout(
+      const std::string& managerType, void* manager,
+      const std::string& deviceName, const std::string& methodName,
+      const std::map<std::string, std::string>& params,
+      std::string& errorMessage, SequenceContext* context);
+  void JoinZombieThreads();
   bool EvaluateCondition(const ConditionalBlock* cond, SequenceContext* context);
   std::string ComparisonToString(ConditionalBlock::ComparisonType comp) const;
 

@@ -2,8 +2,10 @@
 #pragma once
 
 #include <QObject>
+#include <QTimer>
 #include <thread>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -195,6 +197,12 @@ signals:
    */
   void watchError(QString errorMessage);
 
+  /**
+   * @brief Emitted when the polling thread appears stalled (no heartbeat)
+   * @param message Description of the stall condition
+   */
+  void pollingThreadStalled(QString message);
+
 private:
   // Dependencies
   EziIOManager* m_ioManager;
@@ -225,7 +233,12 @@ private:
   std::atomic<bool> m_criticalFlagRaised;
   mutable std::mutex m_mutex;
 
+  // Health monitor: heartbeat from polling thread, checked by QTimer on Qt event loop
+  std::atomic<int64_t> m_lastPollTickMs{0};
+  QTimer* m_healthTimer = nullptr;
+
   // Private methods
+  void CheckPollingHealth();
   void PollingThreadFunction();
   bool ShouldTrigger(bool prevState, bool currState, TriggerEdge edge) const;
   void RaiseSafetyFlag(const WatchedInput& input, bool prevState, bool currState);

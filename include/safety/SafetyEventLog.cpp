@@ -57,14 +57,14 @@ bool SafetyEventLog::Initialize(const std::string& logDirectory) {
     return false;
   }
 
-  std::string filePath = logDirectory + "/safety_events.jsonl";
-  m_fileStream.open(filePath, std::ios::app);
+  m_filePath = logDirectory + "/safety_events.jsonl";
+  m_fileStream.open(m_filePath, std::ios::app);
   if (!m_fileStream.is_open()) {
-    std::cerr << "[SafetyEventLog] Failed to open log file: " << filePath << std::endl;
+    std::cerr << "[SafetyEventLog] Failed to open log file: " << m_filePath << std::endl;
     return false;
   }
 
-  std::cout << "[SafetyEventLog] Initialized, writing to: " << filePath << std::endl;
+  std::cout << "[SafetyEventLog] Initialized, writing to: " << m_filePath << std::endl;
   return true;
 }
 
@@ -178,8 +178,26 @@ std::string SafetyEvent::ToJsonLine() const {
 }
 
 void SafetyEventLog::WriteToFile(const SafetyEvent& event) {
+  RotateIfNeeded();
   if (m_fileStream.is_open()) {
     m_fileStream << event.ToJsonLine() << '\n';
     m_fileStream.flush();
   }
+}
+
+void SafetyEventLog::RotateIfNeeded() {
+  // m_mutex already held by caller (LogEvent holds the lock)
+  if (!m_fileStream.is_open()) return;
+
+  auto pos = m_fileStream.tellp();
+  if (pos < 0 || static_cast<size_t>(pos) < MAX_FILE_SIZE_BYTES) return;
+
+  m_fileStream.close();
+
+  std::string backupPath = m_filePath + ".1";
+  std::error_code ec;
+  std::filesystem::remove(backupPath, ec);                  // Remove old backup
+  std::filesystem::rename(m_filePath, backupPath, ec);      // Current -> .1
+
+  m_fileStream.open(m_filePath, std::ios::app);             // Open fresh file
 }
