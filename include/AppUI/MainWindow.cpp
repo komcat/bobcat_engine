@@ -84,7 +84,16 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
             this, [this](QString title, QString message, bool critical) {
       // Show safety alert dialog on UI thread
       QMetaObject::invokeMethod(this, [this, title, message, critical]() {
-        SafetyAlertDialog dialog(title, message, critical, this);
+        // Append E-stop cascade summary if available
+        QString dialogMessage = message;
+        if (critical && m_context->safetyWatchManager) {
+          std::string summary = m_context->safetyWatchManager->GetEStopSummary();
+          if (!summary.empty()) {
+            dialogMessage += "\n\n" + QString::fromStdString(summary);
+          }
+        }
+
+        SafetyAlertDialog dialog(title, dialogMessage, critical, this);
         connect(&dialog, &SafetyAlertDialog::acknowledged, this, [this]() {
           if (m_context->safetyWatchManager) {
             m_context->safetyWatchManager->AcknowledgeSafetyFlag();

@@ -16,6 +16,8 @@ SafetyAlertDialog::SafetyAlertDialog(const QString& title,
 {
   setupUI(title, message);
   applyStyle();
+  startAudioAlarm();
+  startCountdown();
 }
 
 void SafetyAlertDialog::setupUI(const QString& title, const QString& message)
@@ -85,6 +87,8 @@ void SafetyAlertDialog::setupUI(const QString& title, const QString& message)
   m_acknowledgeButton->setFocus();
 
   connect(m_acknowledgeButton, &QPushButton::clicked, this, [this]() {
+    stopAudioAlarm();
+    if (m_countdownTimer) m_countdownTimer->stop();
     emit acknowledged();
     accept();
   });
@@ -186,6 +190,58 @@ void SafetyAlertDialog::applyStyle()
       "}"
     );
   }
+}
+
+void SafetyAlertDialog::startAudioAlarm()
+{
+  // Immediate beep on creation
+  QApplication::beep();
+  m_beepCount = 1;
+
+  m_beepTimer = new QTimer(this);
+  m_beepTimer->setInterval(BEEP_INTERVAL_MS);
+  connect(m_beepTimer, &QTimer::timeout, this, [this]() {
+    QApplication::beep();
+    ++m_beepCount;
+    // Warning: stop after max beeps; Critical: beep until acknowledged/timeout
+    if (!m_critical && m_beepCount >= WARNING_BEEP_MAX) {
+      m_beepTimer->stop();
+    }
+  });
+  m_beepTimer->start();
+}
+
+void SafetyAlertDialog::stopAudioAlarm()
+{
+  if (m_beepTimer) {
+    m_beepTimer->stop();
+  }
+}
+
+void SafetyAlertDialog::startCountdown()
+{
+  m_remainingSeconds = m_critical ? CRITICAL_TIMEOUT_S : WARNING_TIMEOUT_S;
+  m_acknowledgeButton->setText(QString("Acknowledge (%1s)").arg(m_remainingSeconds));
+
+  m_countdownTimer = new QTimer(this);
+  m_countdownTimer->setInterval(1000);
+  connect(m_countdownTimer, &QTimer::timeout, this, &SafetyAlertDialog::onCountdownTick);
+  m_countdownTimer->start();
+}
+
+void SafetyAlertDialog::onCountdownTick()
+{
+  --m_remainingSeconds;
+
+  if (m_remainingSeconds <= 0) {
+    m_countdownTimer->stop();
+    stopAudioAlarm();
+    emit acknowledged();
+    accept();
+    return;
+  }
+
+  m_acknowledgeButton->setText(QString("Acknowledge (%1s)").arg(m_remainingSeconds));
 }
 
 bool SafetyAlertDialog::ShowAlert(const QString& title,

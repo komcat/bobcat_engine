@@ -961,6 +961,104 @@ void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& su
   }
 }
 
+void Application::performEStopCascade()
+{
+  int successCount = 0;
+  int totalCount = 7;
+  std::string details;
+
+  // 1. Motion: emergency stop all axes
+  if (m_motionManager) {
+    bool ok = m_motionManager->EmergencyStopAll();
+    if (ok) ++successCount;
+    details += "Motion: " + std::string(ok ? "OK" : "FAIL");
+  } else {
+    details += "Motion: N/A";
+  }
+
+  // 2. TEC: disable all outputs
+  details += ", ";
+  if (m_tecManager) {
+    m_tecManager->DisableAllOutputs();
+    ++successCount;
+    details += "TEC: OK";
+  } else {
+    details += "TEC: N/A";
+  }
+
+  // 3. PSU: disable all outputs
+  details += ", ";
+  if (m_powerSupplyManager) {
+    m_powerSupplyManager->disableAllOutputs();
+    ++successCount;
+    details += "PSU: OK";
+  } else {
+    details += "PSU: N/A";
+  }
+
+  // 4. SMU Polling: stop polling
+  details += ", ";
+  if (m_smuPollingManager) {
+    m_smuPollingManager->StopAllPolling();
+    ++successCount;
+    details += "SMU-Poll: OK";
+  } else {
+    details += "SMU-Poll: N/A";
+  }
+
+  // 5. SMU: disable all outputs
+  details += ", ";
+  if (m_smuManager) {
+    m_smuManager->OutputOffAll();
+    ++successCount;
+    details += "SMU: OK";
+  } else {
+    details += "SMU: N/A";
+  }
+
+  // 6. Pneumatic: stop all slides
+  details += ", ";
+  if (m_pneumaticManager) {
+    m_pneumaticManager->StopAll();
+    ++successCount;
+    details += "Pneumatic: OK";
+  } else {
+    details += "Pneumatic: N/A";
+  }
+
+  // 7. Lighting: all off
+  details += ", ";
+  if (m_lightingManager) {
+    m_lightingManager->AllOff();
+    ++successCount;
+    details += "Lighting: OK";
+  } else {
+    details += "Lighting: N/A";
+  }
+
+  // Build summary
+  std::string summary = "E-Stop cascade: " + std::to_string(successCount) +
+                         "/" + std::to_string(totalCount) +
+                         " subsystems stopped (" + details + ")";
+
+  // Store on SafetyWatchManager for dialog display
+  if (m_safetyWatchManager) {
+    m_safetyWatchManager->SetEStopSummary(summary);
+  }
+
+  // Log aggregate event to safety event log
+  if (m_safetyEventLog) {
+    m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
+      "ESTOP_CASCADE_COMPLETE", summary, ErrorCode::SafetyEStopCascadeComplete);
+  }
+
+  if (m_logManager) {
+    m_logManager->Error(summary, "Application");
+  }
+
+  std::cout << "[Application] " << summary << std::endl;
+}
+
 void Application::shutdownManagers()
 {
   if (m_logManager) m_logManager->Info("Shutting down managers...", "Application");
@@ -1962,87 +2060,14 @@ void Application::initializeSafetyWatch()
       m_motionManager->SetSafetyWatchManager(m_safetyWatchManager.get());
     }
 
-    // E-Stop broadcast: connect critical safety flag to ALL hardware managers
+    // E-Stop broadcast: single consolidated connection for all hardware managers
     if (m_safetyWatchManager) {
-      // Motion: emergency stop all axes
-      if (m_motionManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical && m_motionManager) {
-            m_motionManager->EmergencyStopAll();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_MOTION", "E-Stop: All motion axes emergency stopped");
-            }
-          }
-        });
-      }
-      // TEC: disable all outputs
-      if (m_tecManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical && m_tecManager) {
-            m_tecManager->DisableAllOutputs();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_TEC", "E-Stop: TEC outputs disabled");
-            }
-          }
-        });
-      }
-      // PSU: disable all outputs (keep connection alive)
-      if (m_powerSupplyManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical && m_powerSupplyManager) {
-            m_powerSupplyManager->disableAllOutputs();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_PSU", "E-Stop: PSU outputs disabled");
-            }
-          }
-        });
-      }
-      // SMU: stop polling + disable all outputs
-      if (m_smuManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical) {
-            if (m_smuPollingManager) m_smuPollingManager->StopAllPolling();
-            if (m_smuManager) m_smuManager->OutputOffAll();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_SMU", "E-Stop: SMU outputs disabled, polling stopped");
-            }
-          }
-        });
-      }
-      // Pneumatic: retract all slides
-      if (m_pneumaticManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical && m_pneumaticManager) {
-            m_pneumaticManager->StopAll();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_PNEUMATIC", "E-Stop: All pneumatic slides stopped");
-            }
-          }
-        });
-      }
-      // Lighting: all off
-      if (m_lightingManager) {
-        connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
-                this, [this](QString /*title*/, QString /*message*/, bool critical) {
-          if (critical && m_lightingManager) {
-            m_lightingManager->AllOff();
-            if (m_safetyEventLog) {
-              m_safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "Application",
-                "ESTOP_LIGHTING", "E-Stop: All lighting turned off");
-            }
-          }
-        });
-      }
+      connect(m_safetyWatchManager.get(), &SafetyWatchManager::safetyTriggered,
+              this, [this](QString /*title*/, QString /*message*/, bool critical) {
+        if (critical) {
+          performEStopCascade();
+        }
+      });
     }
 
     m_logManager->Info("Safety Watch initialized", "Application");

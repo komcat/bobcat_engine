@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QString>
+#include <QTimer>
 
 /**
  * @brief Modal popup dialog for safety alerts
@@ -59,6 +60,22 @@ private:
   QPushButton* m_acknowledgeButton;
   bool m_critical;
 
+  // Auto-acknowledge countdown
+  QTimer* m_countdownTimer = nullptr;
+  int m_remainingSeconds = 0;
+  static constexpr int CRITICAL_TIMEOUT_S = 30;
+  static constexpr int WARNING_TIMEOUT_S = 15;
+
+  // Audio alarm
+  QTimer* m_beepTimer = nullptr;
+  int m_beepCount = 0;
+  static constexpr int BEEP_INTERVAL_MS = 1500;
+  static constexpr int WARNING_BEEP_MAX = 3;
+
   void setupUI(const QString& title, const QString& message);
   void applyStyle();
+  void startCountdown();
+  void onCountdownTick();
+  void startAudioAlarm();
+  void stopAudioAlarm();
 };

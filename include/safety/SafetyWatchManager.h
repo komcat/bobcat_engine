@@ -159,6 +159,13 @@ public:
   std::string GetActiveAlertMessage() const;
   bool IsActiveAlertCritical() const;
 
+  /**
+   * @brief Store/retrieve E-Stop cascade result summary
+   * Set by Application::performEStopCascade(), read by MainWindow for dialog display
+   */
+  void SetEStopSummary(const std::string& summary);
+  std::string GetEStopSummary() const;
+
 signals:
   /**
    * @brief Emitted when a safety condition is triggered
@@ -221,6 +228,9 @@ private:
   std::string m_activeAlertTitle;
   std::string m_activeAlertMessage;
   bool m_activeAlertCritical;
+
+  // E-Stop cascade result summary
+  std::string m_eStopSummary;
 
   // IO read failure tracking (moved from static to member for thread safety)
   int m_pollFailCount = 0;

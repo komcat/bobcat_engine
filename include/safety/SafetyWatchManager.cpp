@@ -245,6 +245,7 @@ void SafetyWatchManager::AcknowledgeSafetyFlag()
   m_activeAlertTitle.clear();
   m_activeAlertMessage.clear();
   m_activeAlertCritical = false;
+  m_eStopSummary.clear();
 
   emit safetyCleared();
 }
@@ -265,6 +266,18 @@ bool SafetyWatchManager::IsActiveAlertCritical() const
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   return m_activeAlertCritical;
+}
+
+void SafetyWatchManager::SetEStopSummary(const std::string& summary)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_eStopSummary = summary;
+}
+
+std::string SafetyWatchManager::GetEStopSummary() const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  return m_eStopSummary;
 }
 
 void SafetyWatchManager::PollingThreadFunction()

@@ -20,7 +20,7 @@
       "alert_title": "Safety Door Opened",
       "alert_message": "Safety enclosure door has been opened.",
       "critical": false,
-      "enabled": false
+      "enabled": true
     }
   ]
 }

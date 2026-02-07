@@ -93,6 +93,7 @@ private:
   void onConnectionTaskCompleted(const Startup::ConnectionResult& result);
   void onAllConnectionsCompleted(const Startup::ConnectionSummary& summary);
 
+  void performEStopCascade();
   void shutdownManagers();
 
   std::unique_ptr<QApplication> m_qApplication;
