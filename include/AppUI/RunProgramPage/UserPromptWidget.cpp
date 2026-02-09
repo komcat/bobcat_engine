@@ -1,4 +1,4 @@
-﻿// UserPromptWidget.cpp
+// UserPromptWidget.cpp
 #include "UserPromptWidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -10,23 +10,30 @@ UserPromptWidget::UserPromptWidget(QWidget* parent)
   setupUI();
 }
 
+void UserPromptWidget::setAlignment(Alignment align)
+{
+  if (m_alignment == align) return;
+  m_alignment = align;
+  rebuildLayout();
+}
+
 void UserPromptWidget::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // Create centered container with max width
-  QWidget* container = new QWidget();
-  container->setMaximumWidth(600);
-  container->setStyleSheet(
+  // Create container with max width
+  m_container = new QWidget();
+  m_container->setMaximumWidth(600);
+  m_container->setStyleSheet(
     "QWidget { "
-    "  background-color: #1e1e1e; "  // ✅ Dark background
-    "  border: 2px solid #0e639c; "  // ✅ Blue border for dark theme
+    "  background-color: #1e1e1e; "
+    "  border: 2px solid #0e639c; "
     "  border-radius: 8px; "
     "}");
 
-  QVBoxLayout* containerLayout = new QVBoxLayout(container);
+  QVBoxLayout* containerLayout = new QVBoxLayout(m_container);
   containerLayout->setContentsMargins(30, 30, 30, 30);
   containerLayout->setSpacing(20);
 
@@ -35,7 +42,7 @@ void UserPromptWidget::setupUI()
   m_titleLabel->setStyleSheet(
     "font-size: 20px; "
     "font-weight: bold; "
-    "color: #0e639c; "  // ✅ Blue for dark theme
+    "color: #0e639c; "
     "background: transparent; "
     "border: none;");
   m_titleLabel->setWordWrap(true);
@@ -47,7 +54,7 @@ void UserPromptWidget::setupUI()
     "font-size: 16px; "
     "background: transparent; "
     "border: none; "
-    "padding: 10px 0px;");  // ✅ Color from global theme
+    "padding: 10px 0px;");
   m_messageLabel->setWordWrap(true);
   m_messageLabel->setMinimumHeight(60);
   containerLayout->addWidget(m_messageLabel);
@@ -59,8 +66,8 @@ void UserPromptWidget::setupUI()
   buttonLayout->setSpacing(15);
 
   // Yes button
-  m_yesButton = new QPushButton("✓ Yes");
-  m_yesButton->setObjectName("yesButton");  // ✅ Green button
+  m_yesButton = new QPushButton("\xe2\x9c\x93 Yes");
+  m_yesButton->setObjectName("yesButton");
   m_yesButton->setMinimumHeight(50);
   m_yesButton->setMinimumWidth(120);
   m_yesButton->setStyleSheet(
@@ -74,8 +81,8 @@ void UserPromptWidget::setupUI()
     "}");
 
   // No button
-  m_noButton = new QPushButton("✗ No");
-  m_noButton->setObjectName("noButton");  // ✅ Red button
+  m_noButton = new QPushButton("\xe2\x9c\x97 No");
+  m_noButton->setObjectName("noButton");
   m_noButton->setMinimumHeight(50);
   m_noButton->setMinimumWidth(120);
   m_noButton->setStyleSheet(
@@ -98,14 +105,8 @@ void UserPromptWidget::setupUI()
 
   containerLayout->addLayout(buttonLayout);
 
-  // Center the container in the main layout
-  mainLayout->addStretch();
-  QHBoxLayout* centerLayout = new QHBoxLayout();
-  centerLayout->addStretch();
-  centerLayout->addWidget(container);
-  centerLayout->addStretch();
-  mainLayout->addLayout(centerLayout);
-  mainLayout->addStretch();
+  // Position the container according to alignment
+  rebuildLayout();
 
   // Connect signals
   connect(m_yesButton, &QPushButton::clicked, this, &UserPromptWidget::onYesClicked);
@@ -113,6 +114,48 @@ void UserPromptWidget::setupUI()
 
   // Start hidden
   hide();
+}
+
+void UserPromptWidget::rebuildLayout()
+{
+  QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
+  if (!mainLayout || !m_container) return;
+
+  // Remove all items from main layout (stretches + sub-layouts)
+  while (mainLayout->count() > 0) {
+    QLayoutItem* item = mainLayout->takeAt(0);
+    // Delete sub-layouts but not the container widget itself
+    if (item->layout()) {
+      // Remove widgets from sub-layout without deleting them
+      while (item->layout()->count() > 0) {
+        QLayoutItem* sub = item->layout()->takeAt(0);
+        // Don't delete the container widget
+        delete sub;
+      }
+      delete item->layout();
+    }
+    delete item;
+  }
+
+  if (m_alignment == Alignment::TopLeft) {
+    // Top-left: container at top-left, stretch fills remaining space
+    QHBoxLayout* rowLayout = new QHBoxLayout();
+    rowLayout->addWidget(m_container);
+    rowLayout->addStretch();
+    mainLayout->addLayout(rowLayout);
+    mainLayout->addStretch();
+    mainLayout->setContentsMargins(10, 10, 0, 0);
+  } else {
+    // Center (default): stretches on all sides
+    mainLayout->addStretch();
+    QHBoxLayout* centerLayout = new QHBoxLayout();
+    centerLayout->addStretch();
+    centerLayout->addWidget(m_container);
+    centerLayout->addStretch();
+    mainLayout->addLayout(centerLayout);
+    mainLayout->addStretch();
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+  }
 }
 
 void UserPromptWidget::showPrompt(const QString& title, const QString& message)

@@ -1944,6 +1944,14 @@ void RunProgramPage::createExecutionWidget()
     "}"
   );
 
+  // Apply prompt alignment from application settings
+  if (m_context && m_context->applicationSettings) {
+    std::string alignStr = m_context->applicationSettings->GetString("UI", "PromptAlignment", "Center");
+    if (alignStr == "TopLeft") {
+      m_promptWidget->setAlignment(UserPromptWidget::Alignment::TopLeft);
+    }
+  }
+
   // Connect prompt response
   connect(m_promptWidget, &UserPromptWidget::responseReceived,
     this, &RunProgramPage::onPromptResponse);
