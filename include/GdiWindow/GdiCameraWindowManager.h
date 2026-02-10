@@ -11,6 +11,10 @@ class DataStore;
 class GdiCameraWindow;
 class UnifiedMotionManager;
 
+#ifdef HAS_OPENCV
+struct VisionResult;
+#endif
+
 /**
  * @brief Manager for GDI-based camera monitor window
  *
@@ -58,6 +62,17 @@ public:
     bool isDualCameraMode() const;
     void setSecondaryCameraId(const std::string& cameraId);
     std::string getSecondaryCameraId() const;
+
+    // Continuous vision result access (for SequenceContext injection)
+#ifdef HAS_OPENCV
+    bool isVisionProcessingActive() const;
+    VisionResult getLatestVisionResult() const;
+    uint64_t getVisionResultSequence() const;
+
+    // Programmatic continuous vision control (for recipe commands)
+    void setVisionEnabled(bool enabled);
+    void selectVisionProfile(const std::string& profilePath);
+#endif
 
     // Window control
     void show();

@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QDir>
 #include "SequenceEngine.h"  // For VisionResultCallback
+#include "../GdiWindow/GdiCameraWindowManager.h"
 
 // Static member definitions for vision history
 int VisionCommandHandler::s_historyIndex = 0;
@@ -365,6 +366,57 @@ bool VisionCommandHandler::ExecuteCommand(
         }
 
         return ShowContextImage(contextKey, title, autoCloseMs, errorMessage, context);
+    }
+    else if (methodName == "start_continuous") {
+        // Start continuous vision processing on GdiCameraWindow
+        // params: "profile_path" (optional) = vision profile to select before starting
+        if (!m_context || !m_context->gdiCameraWindowManager) {
+            errorMessage = "GdiCameraWindowManager not available";
+            return false;
+        }
+
+        auto profileIt = params.find("profile_path");
+        if (profileIt != params.end() && !profileIt->second.empty()) {
+            m_context->gdiCameraWindowManager->selectVisionProfile(profileIt->second);
+            std::cout << "[VisionCommandHandler] Selected continuous vision profile: " << profileIt->second << std::endl;
+        }
+
+        m_context->gdiCameraWindowManager->setVisionEnabled(true);
+        std::cout << "[VisionCommandHandler] Continuous vision started" << std::endl;
+        return true;
+    }
+    else if (methodName == "stop_continuous") {
+        // Stop continuous vision processing on GdiCameraWindow
+        if (!m_context || !m_context->gdiCameraWindowManager) {
+            errorMessage = "GdiCameraWindowManager not available";
+            return false;
+        }
+
+        m_context->gdiCameraWindowManager->setVisionEnabled(false);
+        std::cout << "[VisionCommandHandler] Continuous vision stopped" << std::endl;
+        return true;
+    }
+    else if (methodName == "enable_cv_inject") {
+        // Enable cv.* context injection from continuous vision
+        if (!m_context || !m_context->sequenceEngine) {
+            errorMessage = "SequenceEngine not available";
+            return false;
+        }
+
+        m_context->sequenceEngine->SetCvInjectEnabled(true);
+        std::cout << "[VisionCommandHandler] CV inject enabled" << std::endl;
+        return true;
+    }
+    else if (methodName == "disable_cv_inject") {
+        // Disable cv.* context injection from continuous vision
+        if (!m_context || !m_context->sequenceEngine) {
+            errorMessage = "SequenceEngine not available";
+            return false;
+        }
+
+        m_context->sequenceEngine->SetCvInjectEnabled(false);
+        std::cout << "[VisionCommandHandler] CV inject disabled" << std::endl;
+        return true;
     }
     else if (methodName == "auto_focus") {
         // Auto-focus in Z axis using Laplacian variance focus measure

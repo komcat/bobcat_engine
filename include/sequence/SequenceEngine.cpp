@@ -30,8 +30,10 @@
 #include "CameraCommandHandler.h"
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyEventLog.h"
+#include "GdiWindow/GdiCameraWindowManager.h"
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
+#include "vision/VisionResult.h"
 #endif
 #include "SequenceBuilder.h"
 #include <iostream>
@@ -676,6 +678,8 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
 
   // ✅ Clear stop flag before execution
   ClearStopFlag();
+  m_lastInjectedVisionSeq = 0;
+  m_cvInjectEnabled = true;
 
   // ✅ Set engine stop callback in context for safety-critical stop detection
   context->SetEngineStopCallback([this]() {
@@ -837,6 +841,9 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
         return false;
       }
     }
+
+    // Inject latest continuous vision result into context before dispatch
+    InjectContinuousVisionResult(context);
 
     // Execute command via dispatcher with timeout enforcement
     std::string errorMessage;
@@ -1109,6 +1116,111 @@ void SequenceEngine::JoinZombieThreads()
 //=============================================================================
 // LOGGING HELPERS
 //=============================================================================
+
+void SequenceEngine::InjectContinuousVisionResult(SequenceContext* context)
+{
+#ifdef HAS_OPENCV
+  if (!m_cvInjectEnabled.load()) return;
+  if (!m_context->gdiCameraWindowManager) return;
+  if (!m_context->gdiCameraWindowManager->isVisionProcessingActive()) return;
+
+  // Skip if result hasn't changed since last injection
+  uint64_t seq = m_context->gdiCameraWindowManager->getVisionResultSequence();
+  if (seq == m_lastInjectedVisionSeq) return;
+
+  VisionResult result = m_context->gdiCameraWindowManager->getLatestVisionResult();
+  m_lastInjectedVisionSeq = seq;
+
+  // Status keys
+  context->SetValue("cv.result.success", result.success ? "true" : "false");
+  context->SetValue("cv.result.plugin", result.pluginName);
+  context->SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
+
+  // Measurements
+  for (const auto& [key, val] : result.measurements) {
+    context->SetValue("cv.result." + key, std::to_string(val));
+  }
+
+  // Points
+  context->SetValue("cv.point.count", std::to_string(result.points.size()));
+  for (size_t i = 0; i < result.points.size(); ++i) {
+    std::string prefix = "cv.point." + std::to_string(i) + ".";
+    const auto& pt = result.points[i];
+    context->SetValue(prefix + "x", std::to_string(pt.pixelCoord.x));
+    context->SetValue(prefix + "y", std::to_string(pt.pixelCoord.y));
+    context->SetValue(prefix + "mm_x", std::to_string(pt.mmCoord.x));
+    context->SetValue(prefix + "mm_y", std::to_string(pt.mmCoord.y));
+    context->SetValue(prefix + "confidence", std::to_string(pt.confidence));
+  }
+
+  // Circles
+  context->SetValue("cv.circle.count", std::to_string(result.circles.size()));
+  for (size_t i = 0; i < result.circles.size(); ++i) {
+    std::string prefix = "cv.circle." + std::to_string(i) + ".";
+    const auto& c = result.circles[i];
+    context->SetValue(prefix + "x", std::to_string(c.centerPx.x));
+    context->SetValue(prefix + "y", std::to_string(c.centerPx.y));
+    context->SetValue(prefix + "radius", std::to_string(c.radiusPx));
+    context->SetValue(prefix + "mm_x", std::to_string(c.centerMm.x));
+    context->SetValue(prefix + "mm_y", std::to_string(c.centerMm.y));
+    context->SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
+  }
+
+  // Lines
+  context->SetValue("cv.line.count", std::to_string(result.lines.size()));
+  for (size_t i = 0; i < result.lines.size(); ++i) {
+    std::string prefix = "cv.line." + std::to_string(i) + ".";
+    const auto& l = result.lines[i];
+    context->SetValue(prefix + "start_x", std::to_string(l.startPx.x));
+    context->SetValue(prefix + "start_y", std::to_string(l.startPx.y));
+    context->SetValue(prefix + "end_x", std::to_string(l.endPx.x));
+    context->SetValue(prefix + "end_y", std::to_string(l.endPx.y));
+  }
+
+  // Rectangles
+  context->SetValue("cv.rectangle.count", std::to_string(result.rectangles.size()));
+  for (size_t i = 0; i < result.rectangles.size(); ++i) {
+    std::string prefix = "cv.rectangle." + std::to_string(i) + ".";
+    const auto& r = result.rectangles[i];
+    context->SetValue(prefix + "center_x", std::to_string(r.centerPx.x));
+    context->SetValue(prefix + "center_y", std::to_string(r.centerPx.y));
+    context->SetValue(prefix + "width", std::to_string(r.widthPx));
+    context->SetValue(prefix + "height", std::to_string(r.heightPx));
+    context->SetValue(prefix + "angle", std::to_string(r.angleDeg));
+  }
+
+  // Beams
+  context->SetValue("cv.beam.count", std::to_string(result.beams.size()));
+  for (size_t i = 0; i < result.beams.size(); ++i) {
+    std::string prefix = "cv.beam." + std::to_string(i) + ".";
+    const auto& b = result.beams[i];
+    context->SetValue(prefix + "x", std::to_string(b.centerPx.x));
+    context->SetValue(prefix + "y", std::to_string(b.centerPx.y));
+    context->SetValue(prefix + "mm_x", std::to_string(b.centerMm.x));
+    context->SetValue(prefix + "mm_y", std::to_string(b.centerMm.y));
+    context->SetValue(prefix + "fwhm_major", std::to_string(b.fwhmMajorPx));
+    context->SetValue(prefix + "fwhm_minor", std::to_string(b.fwhmMinorPx));
+    context->SetValue(prefix + "mean_intensity", std::to_string(b.meanIntensity));
+  }
+
+  // Convenience: cv.result.center_x/center_y (priority: rect > point > circle > beam)
+  if (!result.rectangles.empty()) {
+    context->SetValue("cv.result.center_x", std::to_string(result.rectangles[0].centerPx.x));
+    context->SetValue("cv.result.center_y", std::to_string(result.rectangles[0].centerPx.y));
+  } else if (!result.points.empty()) {
+    context->SetValue("cv.result.center_x", std::to_string(result.points[0].pixelCoord.x));
+    context->SetValue("cv.result.center_y", std::to_string(result.points[0].pixelCoord.y));
+  } else if (!result.circles.empty()) {
+    context->SetValue("cv.result.center_x", std::to_string(result.circles[0].centerPx.x));
+    context->SetValue("cv.result.center_y", std::to_string(result.circles[0].centerPx.y));
+  } else if (!result.beams.empty()) {
+    context->SetValue("cv.result.center_x", std::to_string(result.beams[0].centerPx.x));
+    context->SetValue("cv.result.center_y", std::to_string(result.beams[0].centerPx.y));
+  }
+#else
+  (void)context;
+#endif
+}
 
 void SequenceEngine::LogInfo(const std::string& message)
 {

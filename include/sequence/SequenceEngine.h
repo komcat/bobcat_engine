@@ -252,6 +252,10 @@ public:
   void SetActionTimeoutMs(int timeoutMs);
   int GetActionTimeoutMs() const { return m_actionTimeoutMs; }
 
+  // CV inject enable/disable (for recipe-controlled cv.* context injection)
+  void SetCvInjectEnabled(bool enabled) { m_cvInjectEnabled.store(enabled); }
+  bool IsCvInjectEnabled() const { return m_cvInjectEnabled.load(); }
+
   // ============================================================================
   // RETRACE EDIT MODE (for position re-teach workflow)
   // ============================================================================
@@ -366,6 +370,13 @@ private:
 
   bool ExecuteStep(ISequenceStep* step, SequenceContext* context);
   bool ValidateStep(ISequenceStep* step, std::vector<std::string>& errors);
+
+  // Inject latest continuous vision result into context (cv.* keys)
+  void InjectContinuousVisionResult(SequenceContext* context);
+  uint64_t m_lastInjectedVisionSeq = 0;
+
+  // CV inject enable/disable (controllable from recipe commands)
+  std::atomic<bool> m_cvInjectEnabled{true};
 
   [[nodiscard]] bool DispatchWithTimeout(
       const std::string& managerType, void* manager,

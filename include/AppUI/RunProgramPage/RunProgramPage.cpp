@@ -58,6 +58,8 @@
 
 #ifdef HAS_OPENCV
 #include "SequenceContext.h"
+#include "GdiWindow/GdiCameraWindowManager.h"
+#include "vision/VisionResult.h"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>  // For cv::imread
 #include <QImage>
@@ -219,6 +221,11 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
 
 RunProgramPage::~RunProgramPage()
 {
+  // Stop CV auto-refresh timer
+  if (m_cvAutoRefreshTimer) {
+    m_cvAutoRefreshTimer->stop();
+  }
+
   // Stop context refresh timer
   stopContextRefreshTimer();
 
@@ -5324,6 +5331,33 @@ void RunProgramPage::createContextTab()
 
   // Button row for copy/export
   QHBoxLayout* buttonLayout = new QHBoxLayout();
+
+  // Refresh CV button (left side)
+  m_contextRefreshCvButton = new QPushButton("Refresh CV");
+  m_contextRefreshCvButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #2d5a27; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3a7d32; "
+    "  border-radius: 3px; "
+    "  padding: 8px 16px; "
+    "  font-size: 18pt; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #3a7d32; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #4a9d42; "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: #4a9d42; "
+    "  border: 2px solid #6abf62; "
+    "}"
+  );
+  m_contextRefreshCvButton->setCheckable(true);
+  m_contextRefreshCvButton->setToolTip("Click to inject cv.* values from continuous vision.\nToggle ON for auto-refresh every 500ms.");
+  buttonLayout->addWidget(m_contextRefreshCvButton);
+
   buttonLayout->addStretch();
 
   m_contextCopyButton = new QPushButton("Copy to Clipboard");
@@ -5375,6 +5409,28 @@ void RunProgramPage::createContextTab()
     this, &RunProgramPage::onContextCopyToClipboard);
   connect(m_contextExportButton, &QPushButton::clicked,
     this, &RunProgramPage::onContextExportToCsv);
+
+  // Connect Refresh CV button (toggle auto-refresh)
+  connect(m_contextRefreshCvButton, &QPushButton::clicked,
+    this, [this](bool checked) {
+      if (checked) {
+        // Toggle ON: do immediate refresh + start auto-refresh timer
+        onContextRefreshCv();
+        if (!m_cvAutoRefreshTimer) {
+          m_cvAutoRefreshTimer = new QTimer(this);
+          m_cvAutoRefreshTimer->setInterval(500);
+          connect(m_cvAutoRefreshTimer, &QTimer::timeout, this, &RunProgramPage::onContextRefreshCv);
+        }
+        m_cvAutoRefreshTimer->start();
+        m_contextRefreshCvButton->setText("Refresh CV (Auto)");
+      } else {
+        // Toggle OFF: stop auto-refresh
+        if (m_cvAutoRefreshTimer) {
+          m_cvAutoRefreshTimer->stop();
+        }
+        m_contextRefreshCvButton->setText("Refresh CV");
+      }
+    });
 
   // Create refresh timer (but don't start yet)
   m_contextRefreshTimer = new QTimer(this);
@@ -5515,12 +5571,24 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
 
 void RunProgramPage::onContextFilterChanged(const QString& /*filter*/)
 {
-  // Immediately update the table with new filter
-  updateContextTable();
+  // If CV auto-refresh is active, refresh the standalone context display
+  if (m_cvAutoRefreshTimer && m_cvAutoRefreshTimer->isActive() && m_standaloneCvContext) {
+    displayStandaloneContext();
+  } else {
+    // Immediately update the table with new filter
+    updateContextTable();
+  }
 }
 
 void RunProgramPage::startContextRefreshTimer()
 {
+  // Stop CV auto-refresh when recipe execution starts
+  if (m_cvAutoRefreshTimer && m_cvAutoRefreshTimer->isActive()) {
+    m_cvAutoRefreshTimer->stop();
+    m_contextRefreshCvButton->setChecked(false);
+    m_contextRefreshCvButton->setText("Refresh CV");
+  }
+
   if (m_contextRefreshTimer && !m_contextRefreshTimer->isActive()) {
     // Use longer interval during loop execution to reduce UI overhead
     int interval = m_isLoopExecution ? 1000 : 500;
@@ -5644,4 +5712,164 @@ void RunProgramPage::onContextExportToCsv()
   QTimer::singleShot(1500, this, [this]() {
     m_contextExportButton->setText("Export to CSV");
   });
+}
+
+void RunProgramPage::onContextRefreshCv()
+{
+#ifdef HAS_OPENCV
+  if (!m_context || !m_context->gdiCameraWindowManager) {
+    m_contextStatusLabel->setText("GDI Camera Window not available");
+    m_contextStatusLabel->setStyleSheet("color: #f44747; font-style: italic; font-size: 18pt;");
+    return;
+  }
+
+  if (!m_context->gdiCameraWindowManager->isVisionProcessingActive()) {
+    m_contextStatusLabel->setText("Continuous vision not active");
+    m_contextStatusLabel->setStyleSheet("color: #cca700; font-style: italic; font-size: 18pt;");
+    return;
+  }
+
+  // Create standalone context if needed
+  if (!m_standaloneCvContext) {
+    m_standaloneCvContext = std::make_unique<SequenceContext>();
+  }
+
+  // Read latest vision result from GdiCameraWindowManager
+  VisionResult result = m_context->gdiCameraWindowManager->getLatestVisionResult();
+
+  // Populate the standalone context with cv.* keys (mirrors InjectContinuousVisionResult)
+  m_standaloneCvContext->SetValue("cv.result.success", result.success ? "true" : "false");
+  m_standaloneCvContext->SetValue("cv.result.plugin", result.pluginName);
+  m_standaloneCvContext->SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
+
+  // Measurements
+  for (const auto& [key, val] : result.measurements) {
+    m_standaloneCvContext->SetValue("cv.result." + key, std::to_string(val));
+  }
+
+  // Points
+  m_standaloneCvContext->SetValue("cv.point.count", std::to_string(result.points.size()));
+  for (size_t i = 0; i < result.points.size(); ++i) {
+    std::string prefix = "cv.point." + std::to_string(i) + ".";
+    const auto& pt = result.points[i];
+    m_standaloneCvContext->SetValue(prefix + "x", std::to_string(pt.pixelCoord.x));
+    m_standaloneCvContext->SetValue(prefix + "y", std::to_string(pt.pixelCoord.y));
+    m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(pt.mmCoord.x));
+    m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(pt.mmCoord.y));
+    m_standaloneCvContext->SetValue(prefix + "confidence", std::to_string(pt.confidence));
+  }
+
+  // Circles
+  m_standaloneCvContext->SetValue("cv.circle.count", std::to_string(result.circles.size()));
+  for (size_t i = 0; i < result.circles.size(); ++i) {
+    std::string prefix = "cv.circle." + std::to_string(i) + ".";
+    const auto& c = result.circles[i];
+    m_standaloneCvContext->SetValue(prefix + "x", std::to_string(c.centerPx.x));
+    m_standaloneCvContext->SetValue(prefix + "y", std::to_string(c.centerPx.y));
+    m_standaloneCvContext->SetValue(prefix + "radius", std::to_string(c.radiusPx));
+    m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(c.centerMm.x));
+    m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(c.centerMm.y));
+    m_standaloneCvContext->SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
+  }
+
+  // Lines
+  m_standaloneCvContext->SetValue("cv.line.count", std::to_string(result.lines.size()));
+  for (size_t i = 0; i < result.lines.size(); ++i) {
+    std::string prefix = "cv.line." + std::to_string(i) + ".";
+    const auto& l = result.lines[i];
+    m_standaloneCvContext->SetValue(prefix + "start_x", std::to_string(l.startPx.x));
+    m_standaloneCvContext->SetValue(prefix + "start_y", std::to_string(l.startPx.y));
+    m_standaloneCvContext->SetValue(prefix + "end_x", std::to_string(l.endPx.x));
+    m_standaloneCvContext->SetValue(prefix + "end_y", std::to_string(l.endPx.y));
+  }
+
+  // Display the standalone context in the table
+  displayStandaloneContext();
+#else
+  m_contextStatusLabel->setText("Vision not available (HAS_OPENCV not defined)");
+  m_contextStatusLabel->setStyleSheet("color: #f44747; font-style: italic; font-size: 18pt;");
+#endif
+}
+
+void RunProgramPage::displayStandaloneContext()
+{
+  if (!m_standaloneCvContext) return;
+
+  // Get current filter text
+  QString filterText = m_contextFilterEdit->text().toLower().trimmed();
+
+  // Get summary from standalone context
+  auto summary = m_standaloneCvContext->GetSummary();
+
+  m_contextTable->setUpdatesEnabled(false);
+  m_contextTable->setSortingEnabled(false);
+  m_contextTable->setRowCount(0);
+
+  int totalCount = 0;
+  int shownCount = 0;
+
+  for (const auto& [key, value] : summary.capturedValues) {
+    totalCount++;
+
+    QString keyStr = QString::fromStdString(key);
+    if (!filterText.isEmpty() && !keyStr.toLower().contains(filterText)) {
+      continue;
+    }
+
+    shownCount++;
+    int row = m_contextTable->rowCount();
+    m_contextTable->insertRow(row);
+
+    // Variable name
+    QTableWidgetItem* keyItem = new QTableWidgetItem(keyStr);
+    keyItem->setForeground(QColor(86, 156, 214));  // Blue
+    m_contextTable->setItem(row, 0, keyItem);
+
+    // Value and type
+    QString valueStr;
+    QString typeStr;
+    QColor valueColor;
+
+    switch (value.type) {
+      case SequenceContext::ValueType::NUMERIC:
+        valueStr = QString::number(value.numericValue, 'g', 8);
+        typeStr = "Numeric";
+        valueColor = QColor(181, 206, 168);  // Green
+        break;
+      case SequenceContext::ValueType::STRING:
+        valueStr = QString::fromStdString(value.stringValue);
+        typeStr = "String";
+        valueColor = QColor(206, 145, 120);  // Orange
+        break;
+      case SequenceContext::ValueType::BOOLEAN:
+        valueStr = value.booleanValue ? "true" : "false";
+        typeStr = "Boolean";
+        valueColor = QColor(86, 156, 214);  // Blue
+        break;
+      default:
+        valueStr = "(none)";
+        typeStr = "None";
+        valueColor = QColor(128, 128, 128);
+        break;
+    }
+
+    QTableWidgetItem* valueItem = new QTableWidgetItem(valueStr);
+    valueItem->setForeground(valueColor);
+    m_contextTable->setItem(row, 1, valueItem);
+
+    QTableWidgetItem* typeItem = new QTableWidgetItem(typeStr);
+    typeItem->setForeground(QColor(128, 128, 128));
+    m_contextTable->setItem(row, 2, typeItem);
+  }
+
+  m_contextTable->setSortingEnabled(true);
+  m_contextTable->setUpdatesEnabled(true);
+
+  // Update status label
+  m_contextStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 18pt;");
+  if (filterText.isEmpty()) {
+    m_contextStatusLabel->setText(QString("%1 cv.* variables (live)").arg(totalCount));
+  } else {
+    m_contextStatusLabel->setText(QString("%1 of %2 cv.* variables (live)").arg(shownCount).arg(totalCount));
+  }
 }

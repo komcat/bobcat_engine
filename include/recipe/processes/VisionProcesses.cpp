@@ -673,6 +673,149 @@ public:
 };
 
 //=============================================================================
+// START CONTINUOUS VISION PLUGIN
+//=============================================================================
+
+class StartContinuousVisionPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Start Continuous Vision";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Start continuous vision processing on GDI camera window with selected profile";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"profile_path", ""}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        auto it = params.find("profile_path");
+        std::string profilePath = (it != params.end()) ? it->second : "";
+        widget->addVisionProfileSelector("profile_path", "Vision Profile", profilePath);
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        std::map<std::string, std::string> cmdParams;
+
+        auto profileIt = params.find("profile_path");
+        if (profileIt != params.end() && !profileIt->second.empty()) {
+            cmdParams["profile_path"] = profileIt->second;
+        }
+
+        sequence->AddAction("vision", "start_continuous", cmdParams);
+    }
+};
+
+//=============================================================================
+// STOP CONTINUOUS VISION PLUGIN
+//=============================================================================
+
+class StopContinuousVisionPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Stop Continuous Vision";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Stop continuous vision processing and clear overlay";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {};
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* /*widget*/, const ProcessInstance* /*instance*/) override {
+        // No parameters needed
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* /*step*/) override {
+        sequence->AddAction("vision", "stop_continuous", {});
+    }
+};
+
+//=============================================================================
+// ENABLE CV INJECT PLUGIN
+//=============================================================================
+
+class EnableCvInjectPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Enable CV Inject";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Enable cv.* context injection from continuous vision results";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {};
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* /*widget*/, const ProcessInstance* /*instance*/) override {
+        // No parameters needed
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* /*step*/) override {
+        sequence->AddAction("vision", "enable_cv_inject", {});
+    }
+};
+
+//=============================================================================
+// DISABLE CV INJECT PLUGIN
+//=============================================================================
+
+class DisableCvInjectPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Disable CV Inject";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Disable cv.* context injection (continuous vision overlay still runs)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {};
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* /*widget*/, const ProcessInstance* /*instance*/) override {
+        // No parameters needed
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* /*step*/) override {
+        sequence->AddAction("vision", "disable_cv_inject", {});
+    }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -697,7 +840,20 @@ namespace {
             registry.RegisterPlugin(std::make_unique<ShowContextImagePlugin>());
             std::cout << "[ProcessPluginRegistry] Registered plugin: Show Context Image (Category: Vision)" << std::endl;
 
-            std::cout << "[VisionProcesses] Registered 4 vision processing plugins" << std::endl;
+            // Continuous vision control plugins
+            registry.RegisterPlugin(std::make_unique<StartContinuousVisionPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Start Continuous Vision (Category: Vision)" << std::endl;
+
+            registry.RegisterPlugin(std::make_unique<StopContinuousVisionPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Stop Continuous Vision (Category: Vision)" << std::endl;
+
+            registry.RegisterPlugin(std::make_unique<EnableCvInjectPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Enable CV Inject (Category: Vision)" << std::endl;
+
+            registry.RegisterPlugin(std::make_unique<DisableCvInjectPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Disable CV Inject (Category: Vision)" << std::endl;
+
+            std::cout << "[VisionProcesses] Registered 8 vision processing plugins" << std::endl;
         }
     };
 

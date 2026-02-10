@@ -18,8 +18,10 @@
 #include <QComboBox>  // For slot selector
 #include <vector>
 #include <string>
+#include <memory>
 
 struct ApplicationContext;
+class SequenceContext;
 class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
@@ -331,6 +333,9 @@ private:
   QTimer* m_contextRefreshTimer;         // 500ms refresh timer
   QPushButton* m_contextCopyButton;      // Copy to clipboard button
   QPushButton* m_contextExportButton;    // Export to CSV button
+  QPushButton* m_contextRefreshCvButton; // Refresh CV inject button
+  std::unique_ptr<SequenceContext> m_standaloneCvContext;  // Standalone context for CV refresh
+  QTimer* m_cvAutoRefreshTimer = nullptr;  // Auto-refresh timer for CV data
 
   // Context tab methods
   void createContextTab();                             // Creates the context tab UI
@@ -340,4 +345,6 @@ private:
   void stopContextRefreshTimer();                      // Stops the timer
   void onContextCopyToClipboard();                     // Copy context to clipboard
   void onContextExportToCsv();                         // Export context to CSV file
+  void onContextRefreshCv();                           // Refresh CV inject into standalone context
+  void displayStandaloneContext();                     // Display standalone context in table
 };

@@ -262,6 +262,7 @@ void VisionResultOverlay::SetResult(const VisionResult& result, const std::strin
     std::lock_guard<std::mutex> lock(m_resultMutex);
     m_lastResult = result;
     m_profileName = profileName;
+    m_resultSequence.fetch_add(1, std::memory_order_relaxed);
 }
 
 void VisionResultOverlay::Clear() {
@@ -2124,6 +2125,41 @@ void GdiCameraWindow::StopVisionProcessing() {
     VisionManager::instance().setVerboseLogging(true);
 
     std::cout << "[GdiCameraWindow] Vision processing thread stopped" << std::endl;
+}
+
+void GdiCameraWindow::SetVisionEnabled(bool enabled) {
+    if (enabled == m_visionEnabled.load()) return;
+
+    if (enabled) {
+        std::lock_guard<std::mutex> lock(m_visionProfileMutex);
+        if (m_activeVisionProfile.empty()) {
+            // Auto-select first profile if none selected
+            if (!m_availableProfiles.empty()) {
+                m_activeVisionProfile = m_availableProfiles[0].fullPath;
+            } else {
+                std::cout << "[GdiCameraWindow] SetVisionEnabled: No profile available" << std::endl;
+                return;
+            }
+        }
+        m_visionEnabled = true;
+        m_visionOverlay.SetEnabled(true);
+        StartVisionProcessing();
+    } else {
+        StopVisionProcessing();
+        m_visionEnabled = false;
+        m_visionOverlay.SetEnabled(false);
+        m_visionOverlay.Clear();
+    }
+
+    UpdateVisionMenu();
+    InvalidateRect(m_hwnd, nullptr, FALSE);
+    std::cout << "[GdiCameraWindow] SetVisionEnabled(" << (enabled ? "true" : "false") << ")" << std::endl;
+}
+
+void GdiCameraWindow::SelectVisionProfile(const std::string& profilePath) {
+    std::lock_guard<std::mutex> lock(m_visionProfileMutex);
+    m_activeVisionProfile = profilePath;
+    std::cout << "[GdiCameraWindow] SelectVisionProfile: " << profilePath << std::endl;
 }
 
 void GdiCameraWindow::VisionThreadLoop() {

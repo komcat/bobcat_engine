@@ -2,6 +2,9 @@
 #include "GdiCameraWindowManager.h"
 #include "GdiCameraWindow.h"
 #include "camera/CameraManager.h"
+#ifdef HAS_OPENCV
+#include "vision/VisionResult.h"
+#endif
 #include <Windows.h>
 #include <QSettings>
 #include <iostream>
@@ -209,6 +212,41 @@ std::string GdiCameraWindowManager::getSecondaryCameraId() const {
     }
     return "";
 }
+
+#ifdef HAS_OPENCV
+bool GdiCameraWindowManager::isVisionProcessingActive() const {
+    if (m_window) {
+        return m_window->IsVisionProcessingActive();
+    }
+    return false;
+}
+
+VisionResult GdiCameraWindowManager::getLatestVisionResult() const {
+    if (m_window) {
+        return m_window->GetLatestVisionResult();
+    }
+    return VisionResult{};
+}
+
+uint64_t GdiCameraWindowManager::getVisionResultSequence() const {
+    if (m_window) {
+        return m_window->GetVisionResultSequence();
+    }
+    return 0;
+}
+
+void GdiCameraWindowManager::setVisionEnabled(bool enabled) {
+    if (m_window) {
+        m_window->SetVisionEnabled(enabled);
+    }
+}
+
+void GdiCameraWindowManager::selectVisionProfile(const std::string& profilePath) {
+    if (m_window) {
+        m_window->SelectVisionProfile(profilePath);
+    }
+}
+#endif
 
 void GdiCameraWindowManager::show() {
     std::cout << "[GdiCameraWindowManager] show() called" << std::endl;
