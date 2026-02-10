@@ -828,6 +828,14 @@ void ApplicationSettingsPage::saveSettings()
 {
   saveToQSettings();
 
+  // Sync values into the in-memory ApplicationSettings so other code sees changes immediately
+  if (m_context && m_context->applicationSettings) {
+    for (const auto& def : m_settingDefs) {
+      std::string value = m_currentValues[def.section][def.key];
+      m_context->applicationSettings->Set(def.section, def.key, value);
+    }
+  }
+
   m_modified = false;
   updateModifiedIndicator();
 

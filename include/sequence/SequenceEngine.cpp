@@ -717,6 +717,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
         }
+        context->SetExecutionEndTime();
         JoinZombieThreads();
         return false;
       }
@@ -733,6 +734,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
         if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
           m_stepCompletedCallback(m_currentStepIndex, false);
         }
+        context->SetExecutionEndTime();
         JoinZombieThreads();
         return false;
       }
@@ -761,6 +763,7 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
     if (m_currentStepIndex >= 0 && m_stepCompletedCallback) {
       m_stepCompletedCallback(m_currentStepIndex, false);
     }
+    context->SetExecutionEndTime();
     JoinZombieThreads();
     return false;
   }
@@ -810,17 +813,20 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     }
 
     // System/context/calibration/dut/vision/relpos/coordalign commands can have nullptr manager, others cannot
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign" && !manager) {
+    // "parallel" is a virtual coordinator — its sub-commands check their own devices
+    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign" && action->deviceName != "parallel" && !manager) {
       LogError("❓ Manager not found for device: " + action->deviceName);
       return false;
     }
 
     // Pre-check device connectivity for hardware commands
+    // Skip for Connect/Disconnect commands — their purpose is to change connectivity state
     if (managerType != "system" && managerType != "context" &&
         managerType != "calibration" && managerType != "dut" &&
         managerType != "vision" && managerType != "relpos" &&
         managerType != "coordalign" && managerType != "datastore" &&
-        managerType != "auxwindow") {
+        managerType != "auxwindow" && action->deviceName != "parallel" &&
+        action->methodName != "Connect" && action->methodName != "Disconnect") {
       if (!IsDeviceConnected(action->deviceName)) {
         std::string disconnMsg = "Device not connected: " + action->deviceName;
         LogError(disconnMsg);

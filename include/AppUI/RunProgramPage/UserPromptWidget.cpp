@@ -124,17 +124,23 @@ void UserPromptWidget::rebuildLayout()
   // Remove all items from main layout (stretches + sub-layouts)
   while (mainLayout->count() > 0) {
     QLayoutItem* item = mainLayout->takeAt(0);
-    // Delete sub-layouts but not the container widget itself
     if (item->layout()) {
-      // Remove widgets from sub-layout without deleting them
+      // Sub-layout: remove child items first (but don't delete m_container)
       while (item->layout()->count() > 0) {
         QLayoutItem* sub = item->layout()->takeAt(0);
-        // Don't delete the container widget
-        delete sub;
+        if (!sub->widget()) {
+          delete sub;  // delete spacers only
+        }
       }
-      delete item->layout();
+      // item IS the layout (QLayout inherits QLayoutItem), single delete
+      delete item;
+    } else if (item->widget() == m_container) {
+      // Don't delete the container widget, just the layout item wrapper
+      delete item;
+    } else {
+      // Spacer items
+      delete item;
     }
-    delete item;
   }
 
   if (m_alignment == Alignment::TopLeft) {

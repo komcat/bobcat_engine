@@ -53,6 +53,15 @@ public:
   bool GetBool(const std::string& section, const std::string& key,
                bool defaultValue = false) const;
 
+  /**
+   * @brief Set a value in the in-memory settings map
+   * @param section Section name (e.g., "ChainExecution")
+   * @param key Key name (e.g., "AutoContinueSeconds")
+   * @param value Value to set
+   */
+  void Set(const std::string& section, const std::string& key,
+           const std::string& value);
+
   // === Convenience accessors for common settings ===
 
   /**

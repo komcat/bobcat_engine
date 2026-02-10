@@ -18,6 +18,7 @@
 #include "lighting/LightingManager.h"
 #include "safety/SafetyWatchManager.h"
 #include "motions/DeviceLinkManager.h"
+#include "version.h"
 #include "startup/ConnectionWorkerPool.h"
 #include "settings/ApplicationSettings.h"
 
@@ -44,7 +45,7 @@ public:
   ApplicationContext* getContext() { return &m_context; }
 
   bool isInitialized() const { return m_initialized; }
-  std::string getVersion() const { return "1.0.0"; }
+  std::string getVersion() const { return BobcatVersion::VERSION_STRING; }
   std::string getApplicationName() const { return "Bobcat Engine"; }
 
   // Simulation mode control

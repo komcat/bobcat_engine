@@ -2143,6 +2143,25 @@ void Application::initializeApplicationSettings()
     m_logManager->Warning("No application settings file found - using defaults", "Application");
   }
 
+  // Override with any user-changed values from QSettings (Windows Registry)
+  {
+    QSettings qsettings("Fabrinet", "BobcatEngine");
+    QStringList keys = qsettings.allKeys();
+    for (const QString& key : keys) {
+      // QSettings keys are "Section/Key" format
+      int slashPos = key.indexOf('/');
+      if (slashPos > 0) {
+        std::string section = key.left(slashPos).toStdString();
+        std::string settingKey = key.mid(slashPos + 1).toStdString();
+        std::string value = qsettings.value(key).toString().toStdString();
+        m_applicationSettings->Set(section, settingKey, value);
+      }
+    }
+    if (!keys.isEmpty()) {
+      m_logManager->Debug("Applied " + std::to_string(keys.size()) + " QSettings overrides", "Application");
+    }
+  }
+
   // Log key settings for verification
   int chainTimeout = m_applicationSettings->GetChainExecutionTimeoutSeconds();
   m_logManager->Debug("  ChainExecution.AutoContinueSeconds = " + std::to_string(chainTimeout), "Application");

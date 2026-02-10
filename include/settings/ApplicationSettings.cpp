@@ -153,6 +153,13 @@ bool ApplicationSettings::GetBool(const std::string& section, const std::string&
   return defaultValue;
 }
 
+void ApplicationSettings::Set(const std::string& section, const std::string& key,
+                              const std::string& value)
+{
+  std::string fullKey = MakeKey(section, key);
+  m_settings[fullKey] = value;
+}
+
 // === Convenience accessors ===
 
 int ApplicationSettings::GetChainExecutionTimeoutSeconds() const
