@@ -18,8 +18,14 @@ class UserInputWidget : public QWidget
   Q_OBJECT
 
 public:
+  enum class Alignment { Center, TopLeft };
+
   explicit UserInputWidget(QWidget* parent = nullptr);
   ~UserInputWidget() = default;
+
+  // Set widget alignment (must be called before first showInput, or call rebuildLayout after)
+  void setAlignment(Alignment align);
+  Alignment alignment() const { return m_alignment; }
 
   // Show input prompt with title, message, and default value
   void showInput(const QString& title, const QString& prompt, const QString& defaultValue);
@@ -40,7 +46,10 @@ private slots:
 
 private:
   void setupUI();
+  void rebuildLayout();
 
+  Alignment m_alignment = Alignment::Center;
+  QWidget* m_container = nullptr;
   QLabel* m_titleLabel;
   QLabel* m_promptLabel;
   QLineEdit* m_inputField;

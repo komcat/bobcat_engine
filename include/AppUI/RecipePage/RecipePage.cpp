@@ -5,6 +5,7 @@
 #include "RecipeTreeItemFactory.h"   // NEW: Tree item factory
 #include "RecipeClipboard.h"         // NEW: Clipboard
 #include "ApplicationContext.h"
+#include "settings/ApplicationSettings.h"
 #include "safety/SafetyWatchManager.h"
 #include "unified_motion_manager.h"
 #include "SequenceEngine.h"
@@ -894,6 +895,14 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Create user input widget (will be shown when needed)
   m_userInputWidget = new UserInputWidget();
   m_userInputWidget->setStyleSheet("background-color: #2d2d30;");
+
+  // Apply input alignment from application settings (same as prompt)
+  if (m_context && m_context->applicationSettings) {
+    std::string alignStr = m_context->applicationSettings->GetString("UI", "PromptAlignment", "Center");
+    if (alignStr == "TopLeft") {
+      m_userInputWidget->setAlignment(UserInputWidget::Alignment::TopLeft);
+    }
+  }
 
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,

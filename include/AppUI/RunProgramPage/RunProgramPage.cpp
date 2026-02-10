@@ -1993,6 +1993,14 @@ void RunProgramPage::createExecutionWidget()
     "}"
   );
 
+  // Apply input alignment from application settings (same as prompt)
+  if (m_context && m_context->applicationSettings) {
+    std::string alignStr = m_context->applicationSettings->GetString("UI", "PromptAlignment", "Center");
+    if (alignStr == "TopLeft") {
+      m_userInputWidget->setAlignment(UserInputWidget::Alignment::TopLeft);
+    }
+  }
+
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RunProgramPage::onUserInputResponse);

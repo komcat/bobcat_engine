@@ -11,23 +11,30 @@ UserInputWidget::UserInputWidget(QWidget* parent)
   setupUI();
 }
 
+void UserInputWidget::setAlignment(Alignment align)
+{
+  if (m_alignment == align) return;
+  m_alignment = align;
+  rebuildLayout();
+}
+
 void UserInputWidget::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // Create centered container with max width
-  QWidget* container = new QWidget();
-  container->setMaximumWidth(600);
-  container->setStyleSheet(
+  // Create container with max width
+  m_container = new QWidget();
+  m_container->setMaximumWidth(600);
+  m_container->setStyleSheet(
     "QWidget { "
     "  background-color: #1e1e1e; "  // Dark background
     "  border: 2px solid #0e639c; "  // Blue border for dark theme
     "  border-radius: 8px; "
     "}");
 
-  QVBoxLayout* containerLayout = new QVBoxLayout(container);
+  QVBoxLayout* containerLayout = new QVBoxLayout(m_container);
   containerLayout->setContentsMargins(30, 30, 30, 30);
   containerLayout->setSpacing(20);
 
@@ -138,14 +145,8 @@ void UserInputWidget::setupUI()
 
   containerLayout->addLayout(buttonLayout);
 
-  // Center the container in the main layout
-  mainLayout->addStretch();
-  QHBoxLayout* centerLayout = new QHBoxLayout();
-  centerLayout->addStretch();
-  centerLayout->addWidget(container);
-  centerLayout->addStretch();
-  mainLayout->addLayout(centerLayout);
-  mainLayout->addStretch();
+  // Position the container according to alignment
+  rebuildLayout();
 
   // Connect signals
   connect(m_okButton, &QPushButton::clicked, this, &UserInputWidget::onOkClicked);
@@ -196,4 +197,49 @@ void UserInputWidget::onUseDummyClicked()
 
   emit responseReceived(true, dummySerial);
   hideInput();
+}
+
+void UserInputWidget::rebuildLayout()
+{
+  QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(layout());
+  if (!mainLayout || !m_container) return;
+
+  // Remove all items from main layout (stretches + sub-layouts)
+  while (mainLayout->count() > 0) {
+    QLayoutItem* item = mainLayout->takeAt(0);
+    if (item->layout()) {
+      // Sub-layout: remove child items first (but don't delete m_container)
+      while (item->layout()->count() > 0) {
+        QLayoutItem* sub = item->layout()->takeAt(0);
+        if (!sub->widget()) {
+          delete sub;  // delete spacers only
+        }
+      }
+      delete item;
+    } else if (item->widget() == m_container) {
+      delete item;
+    } else {
+      delete item;
+    }
+  }
+
+  if (m_alignment == Alignment::TopLeft) {
+    // Top-left: container at top-left, stretch fills remaining space
+    QHBoxLayout* rowLayout = new QHBoxLayout();
+    rowLayout->addWidget(m_container);
+    rowLayout->addStretch();
+    mainLayout->addLayout(rowLayout);
+    mainLayout->addStretch();
+    mainLayout->setContentsMargins(10, 10, 0, 0);
+  } else {
+    // Center (default): stretches on all sides
+    mainLayout->addStretch();
+    QHBoxLayout* centerLayout = new QHBoxLayout();
+    centerLayout->addStretch();
+    centerLayout->addWidget(m_container);
+    centerLayout->addStretch();
+    mainLayout->addLayout(centerLayout);
+    mainLayout->addStretch();
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+  }
 }
