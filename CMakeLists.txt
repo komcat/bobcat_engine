@@ -1155,6 +1155,7 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconLineDetectionPlugin.cpp
         include/vision/plugins/HalconPatternMatchingEdgePlugin.cpp
         include/vision/plugins/HalconBeamDetectionPlugin.cpp
+        include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.cpp
     )
     list(APPEND HEADERS
         include/vision/plugins/HalconCircleDetectionPlugin.h
@@ -1162,6 +1163,7 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconLineDetectionPlugin.h
         include/vision/plugins/HalconPatternMatchingEdgePlugin.h
         include/vision/plugins/HalconBeamDetectionPlugin.h
+        include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.h
     )
     message(STATUS "Halcon vision plugins enabled")
 else()

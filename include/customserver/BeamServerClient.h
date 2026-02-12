@@ -49,6 +49,10 @@ public:
     double umPerPxX, double umPerPxY, double wavelengthM,
     const std::string& name = "");
 
+  // Send a save request to persist accumulated images and fit results to disk.
+  // name: optional label for the saved data folder on the server.
+  [[nodiscard]] nlohmann::json SendSave(const std::string& name = "");
+
   // Send a reset request to clear accumulated data on the server.
   [[nodiscard]] bool SendReset();
 

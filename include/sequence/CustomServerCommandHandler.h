@@ -36,6 +36,8 @@ private:
                         std::string& errorMessage, SequenceContext* context);
   bool HandleDetectFolder(const std::map<std::string, std::string>& params,
                           std::string& errorMessage, SequenceContext* context);
+  bool HandleSave(const std::map<std::string, std::string>& params,
+                  std::string& errorMessage, SequenceContext* context);
   bool HandleReset(std::string& errorMessage);
 
   ApplicationContext* m_context = nullptr;

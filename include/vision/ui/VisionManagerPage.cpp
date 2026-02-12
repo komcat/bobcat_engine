@@ -29,6 +29,7 @@
 #include "../plugins/HalconLineDetectionPlugin.h"
 #include "../plugins/HalconPatternMatchingEdgePlugin.h"
 #include "../plugins/HalconBeamDetectionPlugin.h"
+#include "../plugins/HalconD4SigmaBeamDetectionPlugin.h"
 #endif
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -1520,6 +1521,11 @@ void VisionManagerPage::registerPlugins()
     auto halconBeamPlugin = std::make_shared<HalconBeamDetectionPlugin>();
     VisionManager::instance().registerPlugin(halconBeamPlugin);
     std::cout << "[VisionManagerPage] Registered Halcon Beam Detection plugin" << std::endl;
+
+    // Register Halcon D4Sigma Beam Detection Plugin
+    auto halconD4SigmaBeamPlugin = std::make_shared<HalconD4SigmaBeamDetectionPlugin>();
+    VisionManager::instance().registerPlugin(halconD4SigmaBeamPlugin);
+    std::cout << "[VisionManagerPage] Registered Halcon D4Sigma Beam Detection plugin" << std::endl;
 #endif
 
     if (m_context && m_context->logManager) {

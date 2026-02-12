@@ -134,7 +134,8 @@ void FileSelectorDialog::setupUI()
   }
 
   m_fileTable->setAlternatingRowColors(true);
-  m_fileTable->setStyleSheet("font-size: 11px;");  // ✅ Only custom font size, rest from global theme
+  m_fileTable->setStyleSheet("font-size: 22px;");  // ✅ Enlarged font for easier reading
+  m_fileTable->verticalHeader()->setDefaultSectionSize(36);  // ✅ Taller rows to match larger font
 
   // Enable sorting by clicking column headers
   m_fileTable->setSortingEnabled(false);  // We handle sorting manually

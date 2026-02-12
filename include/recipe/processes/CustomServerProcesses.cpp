@@ -179,7 +179,8 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addParameterField("file_path", "Image File Path", params.at("file_path"));
+    widget->addFileSelector("file_path", "Image File Path", params.at("file_path"),
+                            "Image Files (*.png *.bmp *.tif *.tiff *.jpg *.jpeg)");
     widget->addParameterField("z_um", "Z Position (context:key or value)", params.at("z_um"));
     widget->addDropdownParameter("rotate_180", "Rotate 180", params.at("rotate_180"),
                                  {"false", "true"});
@@ -227,8 +228,7 @@ public:
       {"um_per_px_x", "0.25"},
       {"um_per_px_y", "0.25"},
       {"wavelength_m", "1550e-9"},
-      {"captureAs", "beam"},
-      {"name", ""}
+      {"captureAs", "beam"}
     };
   }
 
@@ -242,7 +242,6 @@ public:
     widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
     widget->addParameterField("wavelength_m", "Wavelength (m)", get("wavelength_m", "1550e-9"));
     widget->addParameterField("captureAs", "Capture As (Context Prefix)", get("captureAs", "beam"));
-    widget->addParameterField("name", "Save Name (optional, supports context:)", get("name"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -255,8 +254,7 @@ public:
       {"um_per_px_x", get("um_per_px_x", "0.25")},
       {"um_per_px_y", get("um_per_px_y", "0.25")},
       {"wavelength_m", get("wavelength_m", "1550e-9")},
-      {"captureAs", get("captureAs", "beam")},
-      {"name", get("name")}
+      {"captureAs", get("captureAs", "beam")}
     });
     std::cout << "[CustomServerProcesses] Built Beam Fit for: "
               << step->userNickname << std::endl;
@@ -285,7 +283,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"folder_path", ""},
-      {"z_regex", R"(zheight([\d.]+)um)"},
+      {"z_pattern", "zheight<number>um"},
       {"um_per_px_x", "0.25"},
       {"um_per_px_y", "0.25"},
       {"delay_ms", "150"},
@@ -299,8 +297,9 @@ public:
       auto it = params.find(key);
       return (it != params.end()) ? it->second : def;
     };
-    widget->addParameterField("folder_path", "Image Folder Path (supports context:)", get("folder_path"));
-    widget->addParameterField("z_regex", "Z-height Regex", get("z_regex", R"(zheight([\d.]+)um)"));
+    widget->addFolderSelector("folder_path", "Image Folder Path", get("folder_path"));
+    widget->addDropdownParameter("z_pattern", "Z-height Filename Pattern", get("z_pattern", "zheight<number>um"),
+      {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"});
     widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
     widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
     widget->addParameterField("delay_ms", "Delay Between Images (ms)", get("delay_ms", "150"));
@@ -313,15 +312,76 @@ public:
       auto it = params.find(key);
       return (it != params.end()) ? it->second : def;
     };
+
+    // Convert user-friendly pattern name to regex
+    std::string pattern = get("z_pattern", "zheight<number>um");
+    std::string regex;
+    if (pattern == "zheight<number>um") regex = R"(zheight([\d.]+)um)";
+    else if (pattern == "z<number>um") regex = R"(z([\d.]+)um)";
+    else if (pattern == "z_<number>") regex = R"(z_([\d.]+))";
+    else if (pattern == "<number>um") regex = R"(([\d.]+)um)";
+    else regex = pattern;  // raw regex fallback
+
     sequence->AddAction("beamserver", "DetectFolder", {
       {"folder_path", get("folder_path")},
-      {"z_regex", get("z_regex", R"(zheight([\d.]+)um)")},
+      {"z_regex", regex},
       {"um_per_px_x", get("um_per_px_x", "0.25")},
       {"um_per_px_y", get("um_per_px_y", "0.25")},
       {"delay_ms", get("delay_ms", "150")},
       {"captureAs", get("captureAs", "beam")}
     });
     std::cout << "[CustomServerProcesses] Built Beam Detect Folder for: "
+              << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// BEAM: SAVE
+//=============================================================================
+
+class BeamSavePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Beam: Save";
+  }
+
+  std::string GetCategory() const override {
+    return "Custom Server";
+  }
+
+  std::string GetDescription() const override {
+    return "Save accumulated images and fit results to folder, then clear accumulated data";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"name", ""},
+      {"captureAs", "beam"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    widget->addParameterField("name", "Save Name (optional, supports context:)", get("name"));
+    widget->addParameterField("captureAs", "Capture As (Context Prefix)", get("captureAs", "beam"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    sequence->AddAction("beamserver", "Save", {
+      {"name", get("name")},
+      {"captureAs", get("captureAs", "beam")}
+    });
+    std::cout << "[CustomServerProcesses] Built Beam Save for: "
               << step->userNickname << std::endl;
   }
 };
@@ -375,9 +435,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<BeamDetectFilePlugin>());
       registry.RegisterPlugin(std::make_unique<BeamDetectFolderPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamFitPlugin>());
+      registry.RegisterPlugin(std::make_unique<BeamSavePlugin>());
       registry.RegisterPlugin(std::make_unique<BeamResetPlugin>());
 
-      std::cout << "[CustomServerProcesses] Registered 7 Custom Server process plugins" << std::endl;
+      std::cout << "[CustomServerProcesses] Registered 8 Custom Server process plugins" << std::endl;
     }
   };
 

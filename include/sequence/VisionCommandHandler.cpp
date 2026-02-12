@@ -299,15 +299,60 @@ bool VisionCommandHandler::ExecuteCommand(
     }
     else if (methodName == "execute") {
         // Execute vision plugin
-        // deviceName = plugin name (or empty to use currently loaded plugin)
-        std::string pluginName = deviceName;
-        if (pluginName.empty()) {
-            auto it = params.find("plugin");
-            if (it != params.end()) {
-                pluginName = it->second;
-            }
+        // params: "plugin" = plugin name (optional, falls back to context vision.current_plugin)
+        //         "capture_as" = optional prefix to copy vision.* results to (e.g., "splice1")
+        std::string pluginName;
+        auto it = params.find("plugin");
+        if (it != params.end() && !it->second.empty()) {
+            pluginName = it->second;
         }
-        return Execute(pluginName, errorMessage, context);
+        bool execResult = Execute(pluginName, errorMessage, context);
+
+        // Copy results to custom prefix if capture_as is specified
+        auto captureAsIt = params.find("capture_as");
+        if (captureAsIt != params.end() && !captureAsIt->second.empty() && context) {
+            std::string contextPrefix = captureAsIt->second;
+            if (!contextPrefix.empty() && contextPrefix[0] == '$') {
+                contextPrefix = contextPrefix.substr(1);
+            }
+
+            std::cout << "[VisionCommandHandler] Copying results to prefix: " << contextPrefix << std::endl;
+
+            // Save a unique copy of the result image
+            cv::Mat outputImage = VisionManager::instance().getOutputImage();
+            if (!outputImage.empty()) {
+                std::string uniquePath = "logs/" + contextPrefix + "_result.png";
+                cv::imwrite(uniquePath, outputImage);
+                context->SetValue(contextPrefix + ".result.image_path", uniquePath);
+                context->SetImageFrame(contextPrefix + ".result.image", outputImage);
+            }
+
+            // Copy all vision.* values to <contextPrefix>.*
+            auto summary = context->GetSummary();
+            for (const auto& [key, value] : summary.capturedValues) {
+                if (key.find("vision.") == 0) {
+                    std::string suffix = key.substr(7);  // Remove "vision."
+                    std::string newKey = contextPrefix + "." + suffix;
+                    if (suffix.find("image") != std::string::npos) continue;
+                    switch (value.type) {
+                        case SequenceContext::ValueType::NUMERIC:
+                            context->SetValue(newKey, value.numericValue);
+                            break;
+                        case SequenceContext::ValueType::STRING:
+                            context->SetValue(newKey, value.stringValue);
+                            break;
+                        case SequenceContext::ValueType::BOOLEAN:
+                            context->SetValue(newKey, value.booleanValue);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+            std::cout << "[VisionCommandHandler] Results copied to prefix: " << contextPrefix << std::endl;
+        }
+
+        return execResult;
     }
     else if (methodName == "capture_and_execute") {
         // Capture from camera and execute vision
@@ -416,6 +461,30 @@ bool VisionCommandHandler::ExecuteCommand(
 
         m_context->sequenceEngine->SetCvInjectEnabled(false);
         std::cout << "[VisionCommandHandler] CV inject disabled" << std::endl;
+        return true;
+    }
+    else if (methodName == "load_image_from_file") {
+        // Load image from file into vision pipeline (for offline testing)
+        // params: "file_path" = path to image file
+        auto fileIt = params.find("file_path");
+        if (fileIt == params.end() || fileIt->second.empty()) {
+            errorMessage = "load_image_from_file requires 'file_path' parameter";
+            return false;
+        }
+        cv::Mat image = cv::imread(fileIt->second, cv::IMREAD_UNCHANGED);
+        if (image.empty()) {
+            errorMessage = "Failed to load image: " + fileIt->second;
+            return false;
+        }
+        VisionManager::instance().setInputImage(image);
+        if (context) {
+            context->SetImageFrame("vision.loaded.image", image);
+            context->SetValue("vision.loaded.file_path", fileIt->second);
+            context->SetValue("vision.loaded.width", static_cast<float>(image.cols));
+            context->SetValue("vision.loaded.height", static_cast<float>(image.rows));
+        }
+        std::cout << "[VisionCommandHandler] Loaded image from file: " << fileIt->second
+                  << " (" << image.cols << "x" << image.rows << ")" << std::endl;
         return true;
     }
     else if (methodName == "auto_focus") {

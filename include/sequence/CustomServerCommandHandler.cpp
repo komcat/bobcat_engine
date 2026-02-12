@@ -35,6 +35,7 @@ bool CustomServerCommandHandler::ExecuteCommand(
   if (methodName == "DetectFile")   return HandleDetectFile(params, errorMessage, context);
   if (methodName == "DetectFolder") return HandleDetectFolder(params, errorMessage, context);
   if (methodName == "Fit")          return HandleFit(params, errorMessage, context);
+  if (methodName == "Save")         return HandleSave(params, errorMessage, context);
   if (methodName == "Reset")        return HandleReset(errorMessage);
 
   errorMessage = "Unknown method: " + methodName;
@@ -421,22 +422,12 @@ bool CustomServerCommandHandler::HandleFit(
     captureAs = capIt->second;
   }
 
-  std::string name;
-  auto nameIt = params.find("name");
-  if (nameIt != params.end() && !nameIt->second.empty()) {
-    name = nameIt->second;
-    if (context && name.substr(0, 8) == "context:") {
-      name = context->GetString(name.substr(8));
-    }
-  }
-
   if (m_logger) {
     m_logger->Info("Sending fit request (wavelength=" +
-                   std::to_string(wavelengthM) + "m" +
-                   (name.empty() ? "" : ", name=" + name) + ")", "CustomServer");
+                   std::to_string(wavelengthM) + "m)", "CustomServer");
   }
 
-  auto result = m_context->beamServerClient->SendFit(umPerPxX, umPerPxY, wavelengthM, name);
+  auto result = m_context->beamServerClient->SendFit(umPerPxX, umPerPxY, wavelengthM);
 
   if (result.empty()) {
     errorMessage = "Fit failed: " + m_context->beamServerClient->GetLastError();
@@ -492,10 +483,6 @@ bool CustomServerCommandHandler::HandleFit(
       context->SetValue(captureAs + ".tx_rx_vector_y_um",
         std::to_string(result["tx_rx_vector_y_um"].get<double>()));
 
-    // Save directory (returned by server when images are saved)
-    if (result.contains("save_dir"))
-      context->SetValue(captureAs + ".save_dir", result["save_dir"].get<std::string>());
-
     if (m_logger) {
       m_logger->Info("Fit result: " + std::to_string(numBeams) + " beams, " +
                      std::to_string(numZSteps) + " z-steps", "CustomServer");
@@ -520,6 +507,65 @@ bool CustomServerCommandHandler::HandleReset(std::string& errorMessage)
   }
 
   if (m_logger) m_logger->Info("Beam server reset", "CustomServer");
+  return true;
+}
+
+bool CustomServerCommandHandler::HandleSave(
+  const std::map<std::string, std::string>& params,
+  std::string& errorMessage,
+  SequenceContext* context)
+{
+  if (!m_context->beamServerClient->IsConnected()) {
+    errorMessage = "Beam server not connected";
+    return false;
+  }
+
+  std::string name;
+  auto nameIt = params.find("name");
+  if (nameIt != params.end() && !nameIt->second.empty()) {
+    name = nameIt->second;
+    if (context && name.substr(0, 8) == "context:") {
+      name = context->GetString(name.substr(8));
+    }
+  }
+
+  if (m_logger) {
+    m_logger->Info("Sending save request" +
+                   (name.empty() ? "" : " (name=" + name + ")"), "CustomServer");
+  }
+
+  auto result = m_context->beamServerClient->SendSave(name);
+
+  if (result.empty()) {
+    errorMessage = "Save failed: " + m_context->beamServerClient->GetLastError();
+    if (m_logger) m_logger->Error(errorMessage, "CustomServer");
+    return false;
+  }
+
+  if (result.contains("error")) {
+    errorMessage = "Server error: " + result["error"].get<std::string>();
+    if (m_logger) m_logger->Error(errorMessage, "CustomServer");
+    return false;
+  }
+
+  // Store save directory in context
+  std::string captureAs = "beam";
+  auto capIt = params.find("captureAs");
+  if (capIt != params.end() && !capIt->second.empty()) {
+    captureAs = capIt->second;
+  }
+
+  if (context && result.contains("save_dir")) {
+    context->SetValue(captureAs + ".save_dir", result["save_dir"].get<std::string>());
+  }
+
+  if (m_logger) {
+    std::string saveDir = result.value("save_dir", "unknown");
+    int numImages = result.value("num_images", 0);
+    m_logger->Info("Save complete: " + std::to_string(numImages) +
+                   " images saved to " + saveDir, "CustomServer");
+  }
+
   return true;
 }
 

@@ -816,6 +816,124 @@ public:
 };
 
 //=============================================================================
+// LOAD IMAGE TO VISION PLUGIN - Load offline image into vision pipeline
+//=============================================================================
+
+class LoadImageToVisionPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Load Image to Vision";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Load image from file into vision pipeline for offline testing";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"file_path", ""}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        auto it = params.find("file_path");
+        std::string filePath = (it != params.end()) ? it->second : "";
+        widget->addFileSelector("file_path", "Image File Path", filePath,
+                                "Image Files (*.png *.bmp *.tif *.tiff *.jpg *.jpeg)");
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        std::map<std::string, std::string> cmdParams;
+
+        auto it = params.find("file_path");
+        if (it != params.end() && !it->second.empty()) {
+            cmdParams["file_path"] = it->second;
+        }
+
+        sequence->AddAction("vision", "load_image_from_file", cmdParams);
+    }
+};
+
+//=============================================================================
+// EXECUTE VISION PROFILE (FROM FILE) PLUGIN - Combined convenience
+//=============================================================================
+
+class ExecuteVisionProfileFromFilePlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Execute Vision Profile (from File)";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Load image from file, apply vision profile, and execute (no camera needed)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"file_path", ""},
+            {"profile_path", ""},
+            {"capture_as", ""}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        widget->addFileSelector("file_path", "Image File Path", getParam("file_path", ""),
+                                "Image Files (*.png *.bmp *.tif *.tiff *.jpg *.jpeg)");
+        widget->addVisionProfileSelector("profile_path", "Vision Profile", getParam("profile_path", ""));
+        widget->addParameterField("capture_as", "Capture As (optional)", getParam("capture_as", ""));
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        // Step 1: Load image from file
+        auto fileIt = params.find("file_path");
+        if (fileIt != params.end() && !fileIt->second.empty()) {
+            sequence->AddAction("vision", "load_image_from_file", {{"file_path", fileIt->second}});
+        }
+
+        // Step 2: Load vision profile
+        auto profileIt = params.find("profile_path");
+        if (profileIt != params.end() && !profileIt->second.empty()) {
+            sequence->AddAction("vision", "load_profile", {{"path", profileIt->second}});
+        }
+
+        // Step 3: Execute vision plugin (with capture_as if specified)
+        std::map<std::string, std::string> execParams;
+        auto captureAsIt = params.find("capture_as");
+        if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+            execParams["capture_as"] = captureAsIt->second;
+        }
+        sequence->AddAction("vision", "execute", execParams);
+
+        std::cout << "[VisionProcesses] Built ExecuteVisionProfile(fromFile) sequence: "
+                  << "file=" << (fileIt != params.end() ? fileIt->second : "")
+                  << ", profile=" << (profileIt != params.end() ? profileIt->second : "") << std::endl;
+    }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -853,7 +971,15 @@ namespace {
             registry.RegisterPlugin(std::make_unique<DisableCvInjectPlugin>());
             std::cout << "[ProcessPluginRegistry] Registered plugin: Disable CV Inject (Category: Vision)" << std::endl;
 
-            std::cout << "[VisionProcesses] Registered 8 vision processing plugins" << std::endl;
+            // Load Image to Vision: Load offline image into vision pipeline
+            registry.RegisterPlugin(std::make_unique<LoadImageToVisionPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Load Image to Vision (Category: Vision)" << std::endl;
+
+            // Execute Vision Profile (from File): Combined file load + profile + execute
+            registry.RegisterPlugin(std::make_unique<ExecuteVisionProfileFromFilePlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: Execute Vision Profile (from File) (Category: Vision)" << std::endl;
+
+            std::cout << "[VisionProcesses] Registered 10 vision processing plugins" << std::endl;
         }
     };
 

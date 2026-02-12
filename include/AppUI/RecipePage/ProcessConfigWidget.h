@@ -139,6 +139,14 @@ public:
   void addLocalPointSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // Helper to add file selector (QLineEdit + Browse button using QFileDialog::getOpenFileName)
+  void addFileSelector(const std::string& key, const std::string& label,
+    const std::string& value, const std::string& fileFilter = "All Files (*.*)");
+
+  // Helper to add folder selector (QLineEdit + Browse button using QFileDialog::getExistingDirectory)
+  void addFolderSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

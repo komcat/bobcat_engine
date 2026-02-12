@@ -324,6 +324,32 @@ json BeamServerClient::SendFit(double umPerPxX, double umPerPxY, double waveleng
   return response;
 }
 
+json BeamServerClient::SendSave(const std::string& name)
+{
+  static constexpr uint32_t CMD_SAVE = 0x05;
+
+  std::lock_guard<std::mutex> lock(m_socketMutex);
+
+  if (!m_connected.load()) {
+    m_lastError = "Not connected";
+    return {};
+  }
+
+  json saveParams;
+  if (!name.empty()) {
+    saveParams["name"] = name;
+  }
+
+  std::string payloadStr = saveParams.dump();
+  std::vector<uint8_t> payload(payloadStr.begin(), payloadStr.end());
+
+  json response = SendCommand(CMD_SAVE, payload);
+  if (response.empty()) {
+    std::cout << "[BeamServerClient] Save failed: " << m_lastError << std::endl;
+  }
+  return response;
+}
+
 bool BeamServerClient::SendReset()
 {
   static constexpr uint32_t CMD_RESET = 0x03;

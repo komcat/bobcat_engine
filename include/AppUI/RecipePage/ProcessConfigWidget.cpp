@@ -24,6 +24,7 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <iostream>
@@ -1346,6 +1347,105 @@ void ProcessConfigWidget::addLocalPointSelector(const std::string& key,
         QString uid = selectedItem->data(Qt::UserRole).toString();
         edit->setText(uid);
       }
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+void ProcessConfigWidget::addFileSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value,
+  const std::string& fileFilter)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit, fileFilter]() {
+    QString currentPath = edit->text();
+    QString startDir = currentPath.isEmpty() ? QString() : QFileInfo(currentPath).absolutePath();
+    QString selected = QFileDialog::getOpenFileName(
+      this->window(), "Select File", startDir, QString::fromStdString(fileFilter));
+    if (!selected.isEmpty()) {
+      edit->setText(selected);
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+void ProcessConfigWidget::addFolderSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    QString currentPath = edit->text();
+    QString startDir = currentPath.isEmpty() ? QString() : currentPath;
+    QString selected = QFileDialog::getExistingDirectory(
+      this->window(), "Select Folder", startDir);
+    if (!selected.isEmpty()) {
+      edit->setText(selected);
     }
   });
 
