@@ -613,6 +613,16 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
     emit sequenceExecutionStarted(recipeIndex);
   });
 
+  // Forward step execution signals (actual execution progress)
+  connect(recipeWorker, &RecipeWorker::stepExecutionStarted,
+    this, [this, recipeIndex](int stepIndex, QString stepName, QString stepType) {
+    emit stepExecutionStarted(recipeIndex, stepIndex, stepName, stepType);
+  });
+  connect(recipeWorker, &RecipeWorker::stepExecutionCompleted,
+    this, [this, recipeIndex](int stepIndex, bool success) {
+    emit stepExecutionCompleted(recipeIndex, stepIndex, success);
+  });
+
   // Forward action started signals with look-ahead
   connect(recipeWorker, &RecipeWorker::actionStarted,
     this, [this, recipeIndex](QString current, QString next, QString afterNext) {

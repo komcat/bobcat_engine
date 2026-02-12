@@ -221,6 +221,19 @@ bool SequenceContextCommandHandler::ExecuteCommand(
     }
 
     // =========================================================================
+    // ClearCapturedValues - Clear captured values but preserve execution state
+    // =========================================================================
+    if (methodName == "ClearCapturedValues") {
+        context->ClearCapturedValues();
+
+        if (m_logger) {
+            m_logger->Info("Cleared captured context values (execution state preserved)", "SequenceContext");
+        }
+
+        return true;
+    }
+
+    // =========================================================================
     // Exists - Check if key exists (returns boolean to context)
     // =========================================================================
     if (methodName == "Exists") {

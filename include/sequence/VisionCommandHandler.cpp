@@ -83,11 +83,18 @@ bool VisionCommandHandler::ExecuteCommand(
         std::string profilePath = profileIt->second;
         std::string cameraName = cameraIt->second;
 
+        // Check skip_camera_settings flag (speeds up repeated captures with same settings)
+        bool skipCameraSettings = false;
+        auto skipCamIt = params.find("skip_camera_settings");
+        if (skipCamIt != params.end() && (skipCamIt->second == "true" || skipCamIt->second == "1")) {
+            skipCameraSettings = true;
+        }
+
         std::cout << "[VisionCommandHandler] 📄 Vision profile loaded: " << profilePath << std::endl;
 
         // Step 1: Load profile
         std::string loadError;
-        if (!LoadProfile(profilePath, loadError, context)) {
+        if (!LoadProfile(profilePath, loadError, context, skipCameraSettings)) {
             if (context) {
                 context->SetValue("vision.result.success", false);
                 context->SetValue("vision.result.error", std::string("Failed to load profile: ") + loadError);
@@ -213,6 +220,29 @@ bool VisionCommandHandler::ExecuteCommand(
                           << referenceX_px << ", " << referenceY_px << ") px" << std::endl;
             }
 
+            // Always store device position (Z is needed for z-scan even without a reference point)
+            double deviceX_mm = 0.0, deviceY_mm = 0.0, deviceZ_mm = 0.0;
+            if (m_context && m_context->motionManager) {
+                PositionStruct currentPos = m_context->motionManager->GetCurrentPosition(motionDevice);
+                deviceX_mm = currentPos.x;
+                deviceY_mm = currentPos.y;
+                deviceZ_mm = currentPos.z;
+
+                std::cout << "[VisionCommandHandler] 📍 Device position: X=" << deviceX_mm
+                          << ", Y=" << deviceY_mm << ", Z=" << deviceZ_mm << " mm" << std::endl;
+            }
+
+            // Always store device position in context (needed by D4Sigma z-scan FitSlices)
+            context->SetValue("vision.detected.device_x_mm", static_cast<float>(deviceX_mm));
+            context->SetValue("vision.detected.device_y_mm", static_cast<float>(deviceY_mm));
+            context->SetValue("vision.detected.device_z_mm", static_cast<float>(deviceZ_mm));
+            if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+                std::string captureAs = captureAsIt->second;
+                context->SetValue(captureAs + ".detected.device_x_mm", static_cast<float>(deviceX_mm));
+                context->SetValue(captureAs + ".detected.device_y_mm", static_cast<float>(deviceY_mm));
+                context->SetValue(captureAs + ".detected.device_z_mm", static_cast<float>(deviceZ_mm));
+            }
+
             if (foundReference) {
 
                 // Get image dimensions for center calculation
@@ -238,18 +268,6 @@ bool VisionCommandHandler::ExecuteCommand(
                 std::cout << "[VisionCommandHandler] 📐 Offset in mm: (" << offsetX_mm << ", " << offsetY_mm << ") mm" << std::endl;
                 std::cout << "[VisionCommandHandler]    Calculation: offset_mm = offset_px × calibration = (" << offsetX_px << " × " << pixelToMmX << ", " << offsetY_px << " × " << pixelToMmY << ")" << std::endl;
 
-                // Get current motion device position
-                double deviceX_mm = 0.0, deviceY_mm = 0.0, deviceZ_mm = 0.0;
-                if (m_context && m_context->motionManager) {
-                    PositionStruct currentPos = m_context->motionManager->GetCurrentPosition(motionDevice);
-                    deviceX_mm = currentPos.x;
-                    deviceY_mm = currentPos.y;
-                    deviceZ_mm = currentPos.z;
-
-                    std::cout << "[VisionCommandHandler] 📍 Device position: X=" << deviceX_mm
-                              << ", Y=" << deviceY_mm << ", Z=" << deviceZ_mm << " mm" << std::endl;
-                }
-
                 // Calculate world position of detected feature
                 // World position = device position + offset from camera center
                 double worldX_mm = deviceX_mm + offsetX_mm;
@@ -264,9 +282,6 @@ bool VisionCommandHandler::ExecuteCommand(
                 context->SetValue("vision.detected.world_y_mm", static_cast<float>(worldY_mm));
                 context->SetValue("vision.detected.offset_x_mm", static_cast<float>(offsetX_mm));
                 context->SetValue("vision.detected.offset_y_mm", static_cast<float>(offsetY_mm));
-                context->SetValue("vision.detected.device_x_mm", static_cast<float>(deviceX_mm));
-                context->SetValue("vision.detected.device_y_mm", static_cast<float>(deviceY_mm));
-                context->SetValue("vision.detected.device_z_mm", static_cast<float>(deviceZ_mm));  // Store Z for MoveToContextPosition
                 context->SetValue("vision.detected.reference_x_px", static_cast<float>(referenceX_px));
                 context->SetValue("vision.detected.reference_y_px", static_cast<float>(referenceY_px));
                 context->SetValue("vision.detected.using_anchor", usingAnchor);
@@ -278,9 +293,6 @@ bool VisionCommandHandler::ExecuteCommand(
                     context->SetValue(captureAs + ".detected.world_y_mm", static_cast<float>(worldY_mm));
                     context->SetValue(captureAs + ".detected.offset_x_mm", static_cast<float>(offsetX_mm));
                     context->SetValue(captureAs + ".detected.offset_y_mm", static_cast<float>(offsetY_mm));
-                    context->SetValue(captureAs + ".detected.device_x_mm", static_cast<float>(deviceX_mm));
-                    context->SetValue(captureAs + ".detected.device_y_mm", static_cast<float>(deviceY_mm));
-                    context->SetValue(captureAs + ".detected.device_z_mm", static_cast<float>(deviceZ_mm));
                     context->SetValue(captureAs + ".detected.reference_x_px", static_cast<float>(referenceX_px));
                     context->SetValue(captureAs + ".detected.reference_y_px", static_cast<float>(referenceY_px));
                     context->SetValue(captureAs + ".detected.using_anchor", usingAnchor);
@@ -288,9 +300,9 @@ bool VisionCommandHandler::ExecuteCommand(
 
                 std::cout << "[VisionCommandHandler] ✅ World position calculated and stored (reference: " << referenceType << ")" << std::endl;
             } else {
-                std::cout << "[VisionCommandHandler] ⚠️ No reference point found in vision result" << std::endl;
+                std::cout << "[VisionCommandHandler] ⚠️ No reference point found in vision result (device Z still stored)" << std::endl;
                 std::cout << "[VisionCommandHandler]    Checked for: anchor, corner, center" << std::endl;
-                std::cout << "[VisionCommandHandler]    Make sure vision plugin produces one of these coordinates" << std::endl;
+                std::cout << "[VisionCommandHandler]    World X/Y not computed, but device_z_mm is available" << std::endl;
             }
         }
 
@@ -512,7 +524,8 @@ bool VisionCommandHandler::ExecuteCommand(
 
 bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
                                         std::string& errorMessage,
-                                        SequenceContext* context)
+                                        SequenceContext* context,
+                                        bool skipCameraSettings)
 {
     std::cout << "[VisionCommandHandler] 📂 Loading profile: " << profilePath << std::endl;
 
@@ -620,7 +633,9 @@ bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
             }
 
             // ✅ Apply exposure/gain settings to camera if specified
-            if (!cameraId.empty() && m_context && m_context->cameraManager) {
+            if (skipCameraSettings) {
+                std::cout << "[VisionCommandHandler] 📷 Skipping camera settings (skip_camera_settings=true)" << std::endl;
+            } else if (!cameraId.empty() && m_context && m_context->cameraManager) {
                 // Support both camelCase (from UI) and snake_case field names
                 bool hasExposureSettings = camJson.contains("exposureTime") || camJson.contains("exposure_time")
                                         || camJson.contains("gain");

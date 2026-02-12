@@ -334,6 +334,50 @@ public:
 };
 
 //=============================================================================
+// CLEAR CONTEXT PLUGIN
+//=============================================================================
+
+class ClearContextPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Clear Context";
+  }
+
+  std::string GetCategory() const override {
+    return "System";
+  }
+
+  std::string GetDescription() const override {
+    return "Clear all stored values from the sequence context";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"mode", "captured_values"}  // "captured_values" or "all"
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addDropdownParameter("mode", "Clear Mode", params.at("mode"),
+      {"captured_values", "all"});
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string mode = params.at("mode");
+
+    if (mode == "all") {
+      sequence->AddAction("context", "ClearAll", {});
+    } else {
+      sequence->AddAction("context", "ClearCapturedValues", {});
+    }
+  }
+};
+
+//=============================================================================
 // COMMENT PLUGIN - Visual comment row, does nothing when executed
 //=============================================================================
 
@@ -388,8 +432,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<GroupEndPlugin>());
       registry.RegisterPlugin(std::make_unique<StopSequencePlugin>());
       registry.RegisterPlugin(std::make_unique<CommentPlugin>());
+      registry.RegisterPlugin(std::make_unique<ClearContextPlugin>());
 
-      std::cout << "[SystemProcesses] Registered 8 system process plugins" << std::endl;
+      std::cout << "[SystemProcesses] Registered 9 system process plugins" << std::endl;
     }
   };
 

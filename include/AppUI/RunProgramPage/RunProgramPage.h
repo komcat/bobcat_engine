@@ -90,6 +90,7 @@ private slots:
   void onStepBuildStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType);
   void onStepBuildCompleted(int recipeIndex, int stepIndex);
   void onSequenceExecutionStarted(int recipeIndex);
+  void onStepExecutionCompleted(int recipeIndex, int stepIndex, bool success);
   void onWaitProgress(int remainingMs, int totalMs);
   void onWorkerFinished();  // ✅ Handle QThread::finished()
 

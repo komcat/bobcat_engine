@@ -45,7 +45,7 @@ private:
     ApplicationContext* m_context;
 
     // Command implementations
-    bool LoadProfile(const std::string& profilePath, std::string& errorMessage, SequenceContext* context);
+    bool LoadProfile(const std::string& profilePath, std::string& errorMessage, SequenceContext* context, bool skipCameraSettings = false);
     bool Execute(const std::string& pluginName, std::string& errorMessage, SequenceContext* context);
     bool CaptureAndExecute(const std::string& cameraName, const std::string& pluginName,
                            std::string& errorMessage, SequenceContext* context);

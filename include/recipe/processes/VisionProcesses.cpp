@@ -88,7 +88,8 @@ public:
             {"camera_name", "main_camera"},
             {"capture_as", ""},     // Optional: store results with custom prefix (e.g., "sled_position")
             {"calculate_world_position", "false"},  // Calculate world position from detected feature
-            {"motion_device", "gantry-main"}        // Motion device for world position calculation
+            {"motion_device", "gantry-main"},       // Motion device for world position calculation
+            {"skip_camera_settings", "false"}       // Skip camera exposure/gain settings (faster repeated captures)
         };
     }
 
@@ -120,6 +121,11 @@ public:
         widget->addDeviceSelector("motion_device", "Motion Device (for world pos)",
             getParam("motion_device", "gantry-main"),
             static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+        // Skip camera settings (faster repeated captures)
+        widget->addCheckboxParameter("skip_camera_settings", "Skip Camera Settings",
+            getParam("skip_camera_settings", "false"),
+            "Skip applying exposure/gain from profile (saves ~300ms per capture when settings are already correct)");
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -165,6 +171,12 @@ public:
 
             std::cout << "[ExecuteVisionProfile] World position calculation enabled (device: "
                       << execParams["motion_device"] << ")" << std::endl;
+        }
+
+        // Skip camera settings (faster repeated captures)
+        auto skipCamIt = params.find("skip_camera_settings");
+        if (skipCamIt != params.end() && skipCamIt->second == "true") {
+            execParams["skip_camera_settings"] = "true";
         }
 
         // Single command that does: load profile + capture + execute + return results
@@ -959,7 +971,8 @@ public:
             {"motion_device", "gantry-main"},
             {"num_slices", "5"},
             {"z_step_mm", "0.010"},
-            {"capture_as_prefix", "splice"}
+            {"capture_as_prefix", "splice"},
+            {"skip_camera_settings", "true"}
         };
     }
 
@@ -990,6 +1003,10 @@ public:
 
         widget->addParameterField("capture_as_prefix", "Capture As Prefix",
             getParam("capture_as_prefix", "splice"));
+
+        widget->addCheckboxParameter("skip_camera_settings", "Skip Camera Settings",
+            getParam("skip_camera_settings", "true"),
+            "Skip applying exposure/gain before each capture (saves ~300ms per slice). Camera must already have correct settings.");
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -1006,6 +1023,7 @@ public:
         int numSlices = std::stoi(getParam("num_slices", "5"));
         std::string zStepStr = getParam("z_step_mm", "0.010");
         std::string prefix = getParam("capture_as_prefix", "splice");
+        std::string skipCamSettings = getParam("skip_camera_settings", "true");
 
         for (int i = 1; i <= numSlices; ++i) {
             std::string captureAs = prefix + std::to_string(i);
@@ -1016,7 +1034,8 @@ public:
                 {"camera", cameraName},
                 {"capture_as", captureAs},
                 {"calculate_world_position", "true"},
-                {"motion_device", motionDevice}
+                {"motion_device", motionDevice},
+                {"skip_camera_settings", skipCamSettings}
             });
 
             // Move Z (skip after last slice)
@@ -1030,7 +1049,8 @@ public:
         }
 
         std::cout << "[VisionProcesses] Built D4Sigma Z-Scan: " << numSlices
-                  << " slices, z_step=" << zStepStr << "mm, prefix=" << prefix << std::endl;
+                  << " slices, z_step=" << zStepStr << "mm, prefix=" << prefix
+                  << ", skip_camera=" << skipCamSettings << std::endl;
     }
 };
 

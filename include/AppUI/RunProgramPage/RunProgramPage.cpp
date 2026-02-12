@@ -704,24 +704,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
     "}");
   executeLayout->addWidget(m_executeButton);
 
-  m_progressBar = new QProgressBar();
-  m_progressBar->setRange(0, 100);
-  m_progressBar->setValue(0);
-  m_progressBar->setTextVisible(true);
-  m_progressBar->setStyleSheet(
-    "QProgressBar { "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "  text-align: center; "
-    "  color: #d4d4d4; "
-    "} "
-    "QProgressBar::chunk { "
-    "  background-color: #4CAF50; "
-    "  border-radius: 2px; "
-    "}"
-  );
-  executeLayout->addWidget(m_progressBar);
+  // Progress bar moved to right panel (execution widget) for better visibility
 
   executeTabLayout->addWidget(executeGroup, 0);
 
@@ -1834,7 +1817,28 @@ void RunProgramPage::createExecutionWidget()
   trackerLayout->addWidget(next2Cell, 1);
 
   layout->addWidget(m_commandTrackerRow);
-  layout->addSpacing(8);
+
+  // === PROGRESS BAR (tracks step execution progress) ===
+  m_progressBar = new QProgressBar();
+  m_progressBar->setRange(0, 100);
+  m_progressBar->setValue(0);
+  m_progressBar->setTextVisible(true);
+  m_progressBar->setFixedHeight(18);
+  m_progressBar->setStyleSheet(
+    "QProgressBar { "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  background-color: #2d2d30; "
+    "  text-align: center; "
+    "  color: #d4d4d4; "
+    "} "
+    "QProgressBar::chunk { "
+    "  background-color: #4CAF50; "
+    "  border-radius: 2px; "
+    "}"
+  );
+  layout->addWidget(m_progressBar);
+  layout->addSpacing(4);
 
   // === TAB WIDGET FOR LOG AND LIVE VIEW ===
   m_executionTabWidget = new QTabWidget();
@@ -2888,6 +2892,8 @@ void RunProgramPage::onExecuteProgram()
     this, &RunProgramPage::onStepBuildCompleted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::sequenceExecutionStarted,
     this, &RunProgramPage::onSequenceExecutionStarted, Qt::QueuedConnection);
+  connect(m_programWorker, &ProgramWorker::stepExecutionCompleted,
+    this, &RunProgramPage::onStepExecutionCompleted, Qt::QueuedConnection);
   connect(m_programWorker, &ProgramWorker::waitProgress,
     this, &RunProgramPage::onWaitProgress, Qt::QueuedConnection);
 
@@ -3056,8 +3062,7 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
 
 void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString message)
 {
-  // ✅ Set progress to 100% when recipe completes
-  m_progressBar->setValue(100);
+  // Progress bar reaches 100% naturally via stepExecutionCompleted signals
 
   // Update list item to show completed/failed state
   QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
@@ -3687,27 +3692,24 @@ void RunProgramPage::onWorkerLogMessage(QString message)
 
 void RunProgramPage::onStepBuildStarted(int /*recipeIndex*/, int stepIndex, QString /*stepName*/, QString /*stepType*/)
 {
-  // Update total steps if this is a higher step index than we've seen
+  // Track total steps count (build phase tells us how many steps exist)
   if (stepIndex + 1 > m_currentRecipeTotalSteps) {
     m_currentRecipeTotalSteps = stepIndex + 1;
   }
-
-  // Update progress bar based on step completion
-  // Progress = (completed steps / total steps) * 100
-  if (m_currentRecipeTotalSteps > 0) {
-    int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
-    m_progressBar->setValue(progress);
-  }
-
-  // Note: Command tracker is now updated by onActionStarted for more granular tracking
+  // Note: Progress bar is NOT updated here — it tracks execution, not build
 }
 
 void RunProgramPage::onStepBuildCompleted(int /*recipeIndex*/, int /*stepIndex*/)
 {
-  // Increment completed steps
+  // Build phase completed for a step — no progress bar update
+  // Progress bar is driven by stepExecutionCompleted signals instead
+}
+
+void RunProgramPage::onStepExecutionCompleted(int /*recipeIndex*/, int /*stepIndex*/, bool /*success*/)
+{
+  // A step has finished executing — advance the progress bar
   m_currentRecipeCompletedSteps++;
 
-  // Update progress bar
   if (m_currentRecipeTotalSteps > 0) {
     int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
     m_progressBar->setValue(progress);
@@ -3734,11 +3736,7 @@ void RunProgramPage::onActionStarted(int /*recipeIndex*/, QString current, QStri
 void RunProgramPage::onSequenceExecutionStarted(int /*recipeIndex*/)
 {
   // All steps have been built, now executing
-  // Set progress to 100% (or keep at current build progress)
-  if (m_currentRecipeTotalSteps > 0) {
-    int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
-    m_progressBar->setValue(progress);
-  }
+  // Progress bar will advance via stepExecutionCompleted signals
 }
 
 void RunProgramPage::onWaitProgress(int remainingMs, int totalMs)

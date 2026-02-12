@@ -133,6 +133,10 @@ signals:
   void stepBuildCompleted(int recipeIndex, int stepIndex);
   void sequenceExecutionStarted(int recipeIndex);
 
+  // Step execution signals (actual execution progress, not build phase)
+  void stepExecutionStarted(int recipeIndex, int stepIndex, QString stepName, QString stepType);
+  void stepExecutionCompleted(int recipeIndex, int stepIndex, bool success);
+
   // Action-level signal with look-ahead (granular command tracking)
   void actionStarted(int recipeIndex, QString current, QString next, QString afterNext);
 
