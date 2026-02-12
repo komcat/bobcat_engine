@@ -1034,6 +1034,31 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
     }
     context->SetValue("vision.rectangle.count", static_cast<float>(rectIndex));
 
+    // Store detected beams
+    int beamIndex = 0;
+    for (const auto& beam : result.beams) {
+        std::string prefix = "vision.beam." + std::to_string(beamIndex) + ".";
+        context->SetValue(prefix + "center_x", static_cast<float>(beam.centerPx.x));
+        context->SetValue(prefix + "center_y", static_cast<float>(beam.centerPx.y));
+        context->SetValue(prefix + "center_mm_x", static_cast<float>(beam.centerMm.x));
+        context->SetValue(prefix + "center_mm_y", static_cast<float>(beam.centerMm.y));
+        context->SetValue(prefix + "fwhm_major_px", static_cast<float>(beam.fwhmMajorPx));
+        context->SetValue(prefix + "fwhm_minor_px", static_cast<float>(beam.fwhmMinorPx));
+        context->SetValue(prefix + "fwhm_major_mm", static_cast<float>(beam.fwhmMajorMm));
+        context->SetValue(prefix + "fwhm_minor_mm", static_cast<float>(beam.fwhmMinorMm));
+        context->SetValue(prefix + "mean_intensity", static_cast<float>(beam.meanIntensity));
+        context->SetValue(prefix + "max_intensity", static_cast<float>(beam.maxIntensity));
+        context->SetValue(prefix + "is_saturated", beam.isSaturated);
+        context->SetValue(prefix + "angle_deg", static_cast<float>(beam.angleDeg));
+        context->SetValue(prefix + "ellipticity", static_cast<float>(beam.ellipticity));
+        context->SetValue(prefix + "area_px", static_cast<float>(beam.areaPx));
+        if (!beam.name.empty()) {
+            context->SetValue(prefix + "name", beam.name);
+        }
+        beamIndex++;
+    }
+    context->SetValue("vision.beam.count", static_cast<float>(beamIndex));
+
     // Store primary detected center (for GotoDetect world position calculation)
     // Priority: rectangle center > point > circle center
     bool hasPrimaryCenter = false;
@@ -1064,7 +1089,8 @@ void VisionCommandHandler::StoreResultInContext(const VisionResult& result, Sequ
               << pointIndex << " points, "
               << circleIndex << " circles, "
               << rectIndex << " rectangles, "
-              << lineIndex << " lines" << std::endl;
+              << lineIndex << " lines, "
+              << beamIndex << " beams" << std::endl;
 }
 
 bool VisionCommandHandler::ShowContextImage(const std::string& contextKey,

@@ -40,5 +40,11 @@ private:
                   std::string& errorMessage, SequenceContext* context);
   bool HandleReset(std::string& errorMessage);
 
+  // Native handlers (no TCP server needed)
+  bool HandleFitSlices(const std::map<std::string, std::string>& params,
+                       std::string& errorMessage, SequenceContext* context);
+  bool HandleD4SigmaZScanFolder(const std::map<std::string, std::string>& params,
+                                 std::string& errorMessage, SequenceContext* context);
+
   ApplicationContext* m_context = nullptr;
 };

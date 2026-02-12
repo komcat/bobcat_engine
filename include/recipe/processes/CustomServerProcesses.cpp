@@ -421,6 +421,69 @@ public:
 };
 
 //=============================================================================
+// BEAM: FIT SLICES (native C++ fit from context data — no TCP server needed)
+//=============================================================================
+
+class BeamFitSlicesPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Beam: Fit Slices";
+  }
+
+  std::string GetCategory() const override {
+    return "Custom Server";
+  }
+
+  std::string GetDescription() const override {
+    return "Fit Gaussian M^2 beam propagation to D4Sigma z-scan slices stored in context (native C++, no TCP server)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"capture_as_prefix", "splice"},
+      {"num_slices", "auto"},
+      {"wavelength_m", "1550e-9"},
+      {"um_per_px_x", "0.25"},
+      {"um_per_px_y", "0.25"},
+      {"captureAs", "beam_fit"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    widget->addParameterField("capture_as_prefix", "Slice Prefix (from Z-Scan)", get("capture_as_prefix", "splice"));
+    widget->addParameterField("num_slices", "Number of Slices (auto = detect)", get("num_slices", "auto"));
+    widget->addParameterField("wavelength_m", "Wavelength (m)", get("wavelength_m", "1550e-9"));
+    widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
+    widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
+    widget->addParameterField("captureAs", "Output Context Prefix", get("captureAs", "beam_fit"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    sequence->AddAction("beamserver", "FitSlices", {
+      {"capture_as_prefix", get("capture_as_prefix", "splice")},
+      {"num_slices", get("num_slices", "5")},
+      {"wavelength_m", get("wavelength_m", "1550e-9")},
+      {"um_per_px_x", get("um_per_px_x", "0.25")},
+      {"um_per_px_y", get("um_per_px_y", "0.25")},
+      {"captureAs", get("captureAs", "beam_fit")}
+    });
+    std::cout << "[CustomServerProcesses] Built Beam Fit Slices for: "
+              << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -437,8 +500,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<BeamFitPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamSavePlugin>());
       registry.RegisterPlugin(std::make_unique<BeamResetPlugin>());
+      registry.RegisterPlugin(std::make_unique<BeamFitSlicesPlugin>());
 
-      std::cout << "[CustomServerProcesses] Registered 8 Custom Server process plugins" << std::endl;
+      std::cout << "[CustomServerProcesses] Registered 9 Custom Server process plugins" << std::endl;
     }
   };
 

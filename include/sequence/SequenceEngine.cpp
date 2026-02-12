@@ -846,7 +846,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
         managerType != "calibration" && managerType != "dut" &&
         managerType != "vision" && managerType != "relpos" &&
         managerType != "coordalign" && managerType != "datastore" &&
-        managerType != "auxwindow" && action->deviceName != "parallel" &&
+        managerType != "auxwindow" && managerType != "customserver" &&
+        action->deviceName != "parallel" &&
         action->methodName != "Connect" && action->methodName != "Disconnect" &&
         action->methodName != "Reset") {
       if (!IsDeviceConnected(action->deviceName)) {

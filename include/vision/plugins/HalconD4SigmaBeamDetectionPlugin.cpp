@@ -142,13 +142,17 @@ bool HalconD4SigmaBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& ou
             HRegion expandedROI;
             expandedROI.GenRectangle1(expR1, expC1, expR2, expC2);
 
-            // 4c: D4sigma integration region (threshold at fraction of peak)
-            double d4ThreshVal = m_d4sigmaThresh * peakSignal;
+            // 4c: D4sigma integration region
             HImage signalROI = signalImage.ReduceDomain(expandedROI);
-
-            // Threshold: keep pixels with signal >= d4ThreshVal
-            // Use a large upper bound for real-valued images
-            HRegion d4Region = signalROI.Threshold(d4ThreshVal, 1e9);
+            HRegion d4Region;
+            if (m_d4sigmaThresh > 0.0) {
+                // Threshold at fraction of peak signal (clips beam wings)
+                double d4ThreshVal = m_d4sigmaThresh * peakSignal;
+                d4Region = signalROI.Threshold(d4ThreshVal, 1e9);
+            } else {
+                // ISO 11146 mode: all pixels above background (signal > 0)
+                d4Region = signalROI.Threshold(0.001, 1e9);
+            }
 
             // Check that we have pixels in the D4 region
             HTuple d4Area, d4Row, d4Col;
@@ -444,8 +448,8 @@ bool HalconD4SigmaBeamDetectionPlugin::validate() const
         m_lastError = "maxBeams must be positive";
         return false;
     }
-    if (m_d4sigmaThresh <= 0.0 || m_d4sigmaThresh >= 1.0) {
-        m_lastError = "d4sigmaThresh must be between 0 and 1 (exclusive)";
+    if (m_d4sigmaThresh < 0.0 || m_d4sigmaThresh >= 1.0) {
+        m_lastError = "d4sigmaThresh must be between 0 and 1 (0 = no threshold, ISO 11146 mode)";
         return false;
     }
     if (m_roiExpandFactor < 0.0 || m_roiExpandFactor > 10.0) {
@@ -509,11 +513,12 @@ QWidget* HalconD4SigmaBeamDetectionPlugin::createConfigWidget(QWidget* parent)
 
     // D4sigma Threshold
     m_d4sigmaThreshSpin = new QDoubleSpinBox();
-    m_d4sigmaThreshSpin->setRange(0.01, 0.99);
+    m_d4sigmaThreshSpin->setRange(0.00, 0.99);
     m_d4sigmaThreshSpin->setSingleStep(0.05);
     m_d4sigmaThreshSpin->setDecimals(2);
     m_d4sigmaThreshSpin->setValue(m_d4sigmaThresh);
     m_d4sigmaThreshSpin->setToolTip("Fraction of peak signal for D4sigma integration region.\n"
+                                     "0.0 = no threshold (ISO 11146 mode, all pixels above background).\n"
                                      "Lower values include more of the beam wings.");
     detectionLayout->addRow("D4sigma Threshold:", m_d4sigmaThreshSpin);
 

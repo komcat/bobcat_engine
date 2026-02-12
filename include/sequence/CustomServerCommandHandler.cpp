@@ -8,6 +8,7 @@
 #include "SequenceContext.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
+#include "LevenbergMarquardt.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -15,6 +16,16 @@
 #include <filesystem>
 #include <regex>
 #include <algorithm>
+#include <cmath>
+#include <fstream>
+
+#ifdef HAS_OPENCV
+#include "../vision/VisionManager.h"
+#include "../vision/VisionResult.h"
+#include "../vision/VisionROI.h"
+#include <opencv2/imgcodecs.hpp>
+#include <nlohmann/json.hpp>
+#endif
 
 bool CustomServerCommandHandler::ExecuteCommand(
   void* /*manager*/,
@@ -24,7 +35,17 @@ bool CustomServerCommandHandler::ExecuteCommand(
   std::string& errorMessage,
   SequenceContext* context)
 {
-  if (!m_context || !m_context->beamServerClient) {
+  if (!m_context) {
+    errorMessage = "ApplicationContext not available";
+    return false;
+  }
+
+  // Native handlers (no TCP server needed)
+  if (methodName == "FitSlices")           return HandleFitSlices(params, errorMessage, context);
+  if (methodName == "D4SigmaZScanFolder") return HandleD4SigmaZScanFolder(params, errorMessage, context);
+
+  // TCP-based handlers require beam server client
+  if (!m_context->beamServerClient) {
     errorMessage = "BeamServerClient not available";
     return false;
   }
@@ -729,4 +750,614 @@ bool CustomServerCommandHandler::HandleDetectFolder(
   }
 
   return true;
+}
+
+//=============================================================================
+// HandleFitSlices - Native Gaussian M^2 beam fit from context data
+//=============================================================================
+
+bool CustomServerCommandHandler::HandleFitSlices(
+  const std::map<std::string, std::string>& params,
+  std::string& errorMessage,
+  SequenceContext* context)
+{
+  if (!context) {
+    errorMessage = "FitSlices requires a sequence context";
+    return false;
+  }
+
+  // Parse parameters
+  std::string prefix = "splice";
+  auto prefIt = params.find("capture_as_prefix");
+  if (prefIt != params.end() && !prefIt->second.empty()) {
+    prefix = prefIt->second;
+  }
+
+  // num_slices: 0 or "auto" means auto-detect from context
+  int numSlicesParam = 0;
+  auto nsIt = params.find("num_slices");
+  if (nsIt != params.end() && !nsIt->second.empty() && nsIt->second != "auto") {
+    numSlicesParam = std::stoi(nsIt->second);
+  }
+
+  double wavelengthM = 1550e-9;
+  auto wlIt = params.find("wavelength_m");
+  if (wlIt != params.end() && !wlIt->second.empty()) {
+    wavelengthM = std::stod(wlIt->second);
+  }
+  double wavelengthUm = wavelengthM * 1e6;  // Convert to um for calculations
+
+  double umPerPxX = 0.25;
+  auto uxIt = params.find("um_per_px_x");
+  if (uxIt != params.end() && !uxIt->second.empty()) {
+    umPerPxX = std::stod(uxIt->second);
+  }
+
+  double umPerPxY = 0.25;
+  auto uyIt = params.find("um_per_px_y");
+  if (uyIt != params.end() && !uyIt->second.empty()) {
+    umPerPxY = std::stod(uyIt->second);
+  }
+
+  std::string captureAs = "beam_fit";
+  auto capIt = params.find("captureAs");
+  if (capIt != params.end() && !capIt->second.empty()) {
+    captureAs = capIt->second;
+  }
+
+  // Auto-detect number of slices from context if not specified
+  int numSlices = numSlicesParam;
+  if (numSlices <= 0) {
+    for (int i = 1; i <= 200; ++i) {
+      std::string sliceKey = prefix + std::to_string(i);
+      if (context->HasValue(sliceKey + ".z_um") ||
+          context->HasValue(sliceKey + ".detected.device_z_mm")) {
+        numSlices = i;
+      } else {
+        break;
+      }
+    }
+  }
+
+  if (numSlices <= 0) {
+    errorMessage = "FitSlices: No slice data found with prefix '" + prefix + "'";
+    return false;
+  }
+
+  if (m_logger) {
+    m_logger->Info("FitSlices: prefix=" + prefix + ", slices=" + std::to_string(numSlices) +
+                   (numSlicesParam <= 0 ? " (auto-detected)" : "") +
+                   ", wavelength=" + std::to_string(wavelengthUm) + "um", "CustomServer");
+  }
+
+  // Read z-heights from context for each slice
+  std::vector<double> z_um_all;
+  for (int i = 1; i <= numSlices; ++i) {
+    std::string sliceKey = prefix + std::to_string(i);
+    double z = 0.0;
+    bool found = false;
+
+    // Try from-folder mode first: prefix1.z_um
+    if (context->HasValue(sliceKey + ".z_um")) {
+      z = static_cast<double>(context->GetNumeric(sliceKey + ".z_um", 0.0f));
+      found = true;
+    }
+    // Try live mode: prefix1.detected.device_z_mm (convert mm -> um)
+    else if (context->HasValue(sliceKey + ".detected.device_z_mm")) {
+      z = static_cast<double>(context->GetNumeric(sliceKey + ".detected.device_z_mm", 0.0f)) * 1000.0;
+      found = true;
+    }
+
+    if (!found) {
+      if (m_logger) {
+        m_logger->Warning("FitSlices: No z-height for slice " + sliceKey + ", stopping at " +
+                         std::to_string(i - 1) + " slices", "CustomServer");
+      }
+      break;
+    }
+    z_um_all.push_back(z);
+  }
+
+  numSlices = static_cast<int>(z_um_all.size());
+  if (numSlices < 3) {
+    errorMessage = "FitSlices: Need at least 3 slices, found " + std::to_string(numSlices);
+    return false;
+  }
+
+  // Determine beam count from first slice
+  int numBeams = 0;
+  std::string firstSlice = prefix + "1";
+  // Try beam_count measurement (from D4Sigma plugin)
+  if (context->HasValue(firstSlice + ".result.beam_count")) {
+    numBeams = static_cast<int>(context->GetNumeric(firstSlice + ".result.beam_count", 0.0f));
+  }
+  // Try vision.beam.count style (from StoreResultInContext)
+  else if (context->HasValue(firstSlice + ".beam.count")) {
+    numBeams = static_cast<int>(context->GetNumeric(firstSlice + ".beam.count", 0.0f));
+  }
+  // Probe incrementally
+  else {
+    for (int j = 0; j < 20; ++j) {
+      std::string testKey = firstSlice + ".result.beam_" + std::to_string(j) + "_d4sigma_x_px";
+      if (!context->HasValue(testKey)) break;
+      numBeams = j + 1;
+    }
+  }
+
+  if (numBeams == 0) {
+    errorMessage = "FitSlices: No beam data found in context for " + firstSlice;
+    return false;
+  }
+
+  if (m_logger) {
+    m_logger->Info("FitSlices: Found " + std::to_string(numBeams) + " beams, " +
+                   std::to_string(numSlices) + " z-steps", "CustomServer");
+  }
+
+  // Gaussian M^2 beam model:
+  // d(z) = 2*w0 * sqrt(1 + ((z - z0) * M2 * lambda / (pi * w0^2))^2)
+  // Parameters: [z0, w0, M2]
+  // w0 and M2 are clamped to positive values during fitting
+  auto beamModel = [wavelengthUm](double z, const std::vector<double>& p) -> double {
+    double z0 = p[0];
+    double w0 = std::max(p[1], 0.1);   // Clamp w0 > 0.1 um
+    double M2 = std::max(p[2], 0.3);   // Clamp M2 > 0.3
+    double zR = M_PI * w0 * w0 / (M2 * wavelengthUm);
+    double ratio = (z - z0) / zR;
+    return 2.0 * w0 * std::sqrt(1.0 + ratio * ratio);
+  };
+
+  // Collect beam centroid locations for TX→RX vector computation
+  std::vector<std::pair<double, double>> beamLocations;
+
+  // For each beam, collect data across all slices and fit
+  for (int b = 0; b < numBeams; ++b) {
+    std::string beamStr = std::to_string(b);
+    std::vector<double> z_um;
+    std::vector<double> d4x_um, d4y_um;
+    std::vector<double> cx_um, cy_um;
+
+    for (int i = 1; i <= numSlices; ++i) {
+      std::string sliceKey = prefix + std::to_string(i);
+      std::string mBase = sliceKey + ".result.beam_" + beamStr + "_";
+
+      // D4Sigma values (in pixels)
+      float d4x_px = context->GetNumeric(mBase + "d4sigma_x_px", -1.0f);
+      float d4y_px = context->GetNumeric(mBase + "d4sigma_y_px", -1.0f);
+
+      if (d4x_px <= 0.0f || d4y_px <= 0.0f) {
+        // Skip slices with missing or zero data
+        if (m_logger) {
+          m_logger->Warning("FitSlices: Beam " + beamStr + " slice " + std::to_string(i) +
+                           " missing d4sigma data, skipping", "CustomServer");
+        }
+        continue;
+      }
+
+      z_um.push_back(z_um_all[static_cast<size_t>(i - 1)]);
+      d4x_um.push_back(static_cast<double>(d4x_px) * umPerPxX);
+      d4y_um.push_back(static_cast<double>(d4y_px) * umPerPxY);
+
+      // Centroid values (in pixels)
+      float cx_px = context->GetNumeric(mBase + "centroid_x_px", 0.0f);
+      float cy_px = context->GetNumeric(mBase + "centroid_y_px", 0.0f);
+      cx_um.push_back(static_cast<double>(cx_px) * umPerPxX);
+      cy_um.push_back(static_cast<double>(cy_px) * umPerPxY);
+    }
+
+    if (z_um.size() < 3) {
+      if (m_logger) {
+        m_logger->Warning("FitSlices: Beam " + beamStr + " has only " +
+                         std::to_string(z_um.size()) + " valid slices (need >= 3), skipping",
+                         "CustomServer");
+      }
+      continue;
+    }
+
+    // Log raw data for debugging
+    if (m_logger) {
+      for (size_t di = 0; di < z_um.size(); ++di) {
+        m_logger->Info("FitSlices beam " + beamStr + " z=" +
+          std::to_string(z_um[di]) + " d4x=" + std::to_string(d4x_um[di]) +
+          " d4y=" + std::to_string(d4y_um[di]) + " um", "CustomServer");
+      }
+    }
+
+    // Smart initial guesses: find z of minimum d4sigma (closest to waist)
+    auto computeInitialGuess = [](const std::vector<double>& z,
+                                   const std::vector<double>& d_um) {
+      // Find minimum d4sigma and its z position
+      size_t minIdx = 0;
+      double minD = d_um[0];
+      for (size_t i = 1; i < d_um.size(); ++i) {
+        if (d_um[i] < minD) {
+          minD = d_um[i];
+          minIdx = i;
+        }
+      }
+      double z0 = z[minIdx];
+      double w0 = minD / 2.0;  // d4sigma = 2*w0 at waist
+      if (w0 < 0.5) w0 = 0.5;  // Minimum reasonable waist
+      double M2 = 1.5;  // Typical starting value for fiber-coupled beams
+      return std::vector<double>{z0, w0, M2};
+    };
+
+    // Fit X
+    auto guessX = computeInitialGuess(z_um, d4x_um);
+    if (m_logger) {
+      m_logger->Info("FitSlices beam " + beamStr + " X guess: z0=" +
+        std::to_string(guessX[0]) + " w0=" + std::to_string(guessX[1]) +
+        " M2=" + std::to_string(guessX[2]), "CustomServer");
+    }
+    auto fitX = LMFit::Solve(z_um, d4x_um, guessX, beamModel);
+
+    // Fit Y
+    auto guessY = computeInitialGuess(z_um, d4y_um);
+    if (m_logger) {
+      m_logger->Info("FitSlices beam " + beamStr + " Y guess: z0=" +
+        std::to_string(guessY[0]) + " w0=" + std::to_string(guessY[1]) +
+        " M2=" + std::to_string(guessY[2]), "CustomServer");
+    }
+    auto fitY = LMFit::Solve(z_um, d4y_um, guessY, beamModel);
+
+    // Linear fit for centroid trajectory: centroid(z) = a*z + b
+    auto linearFit = [](const std::vector<double>& x, const std::vector<double>& y)
+        -> std::pair<double, double> {
+      double N = static_cast<double>(x.size());
+      double sx = 0, sy = 0, sxy = 0, sx2 = 0;
+      for (size_t i = 0; i < x.size(); ++i) {
+        sx += x[i]; sy += y[i]; sxy += x[i] * y[i]; sx2 += x[i] * x[i];
+      }
+      double denom = N * sx2 - sx * sx;
+      if (std::abs(denom) < 1e-30) return {0.0, sy / N};
+      double a = (N * sxy - sx * sy) / denom;
+      double b = (sy - a * sx) / N;
+      return {a, b};
+    };
+
+    auto [ax, bx] = linearFit(z_um, cx_um);
+    auto [ay, by_] = linearFit(z_um, cy_um);
+
+    double poyntXDeg = std::atan(ax) * 180.0 / M_PI;
+    double poyntYDeg = -std::atan(ay) * 180.0 / M_PI;  // Negate Y: image Y-axis is inverted vs physical convention
+
+    // Extract fitted parameters (ensure physical validity)
+    double w0X = std::max(std::abs(fitX.params[1]), 0.1);
+    double w0Y = std::max(std::abs(fitY.params[1]), 0.1);
+    double m2X = std::max(std::abs(fitX.params[2]), 0.3);
+    double m2Y = std::max(std::abs(fitY.params[2]), 0.3);
+    double z0X = fitX.params[0];
+    double z0Y = fitY.params[0];
+    double waistXUm = w0X * 2.0;  // diameter = 2 * w0
+    double waistYUm = w0Y * 2.0;
+    double centroidZ = (z0X + z0Y) / 2.0;
+
+    // Interpolate beam centroid location at the waist z-position
+    // Uses linear interpolation of centroid trajectory: loc = a*z0 + b
+    double beamLocXUm = ax * centroidZ + bx;
+    double beamLocYUm = ay * centroidZ + by_;
+
+    // Store results in context
+    std::string outPrefix = captureAs + "." + beamStr;
+
+    context->SetValue(outPrefix + ".waist_x_um", static_cast<float>(waistXUm));
+    context->SetValue(outPrefix + ".waist_y_um", static_cast<float>(waistYUm));
+    context->SetValue(outPrefix + ".centroid_z_um", static_cast<float>(centroidZ));
+    context->SetValue(outPrefix + ".z0_x_um", static_cast<float>(z0X));
+    context->SetValue(outPrefix + ".z0_y_um", static_cast<float>(z0Y));
+    context->SetValue(outPrefix + ".m2_x", static_cast<float>(m2X));
+    context->SetValue(outPrefix + ".m2_y", static_cast<float>(m2Y));
+    context->SetValue(outPrefix + ".poynt_x_deg", static_cast<float>(poyntXDeg));
+    context->SetValue(outPrefix + ".poynt_y_deg", static_cast<float>(poyntYDeg));
+    context->SetValue(outPrefix + ".beam_loc_x_um", static_cast<float>(beamLocXUm));
+    context->SetValue(outPrefix + ".beam_loc_y_um", static_cast<float>(beamLocYUm));
+    context->SetValue(outPrefix + ".fit_error_x", static_cast<float>(fitX.residualSum));
+    context->SetValue(outPrefix + ".fit_error_y", static_cast<float>(fitY.residualSum));
+    context->SetValue(outPrefix + ".fit_converged_x", fitX.converged);
+    context->SetValue(outPrefix + ".fit_converged_y", fitY.converged);
+
+    // Collect beam locations for TX→RX vector computation
+    beamLocations.push_back({beamLocXUm, beamLocYUm});
+
+    if (m_logger) {
+      m_logger->Info("FitSlices beam " + beamStr +
+        ": waist_x=" + std::to_string(waistXUm) + "um" +
+        ", waist_y=" + std::to_string(waistYUm) + "um" +
+        ", M2_x=" + std::to_string(m2X) +
+        ", M2_y=" + std::to_string(m2Y) +
+        ", poynt=(" + std::to_string(poyntXDeg) + "," + std::to_string(poyntYDeg) + ")deg" +
+        ", loc=(" + std::to_string(beamLocXUm) + "," + std::to_string(beamLocYUm) + ")um" +
+        ", iters_x=" + std::to_string(fitX.iterations) +
+        ", iters_y=" + std::to_string(fitY.iterations),
+        "CustomServer");
+    }
+  }
+
+  // Compute TX→RX vector if we have at least 2 beams (beam 0 = TX, beam 1 = RX)
+  if (beamLocations.size() >= 2) {
+    double vecXUm = beamLocations[1].first - beamLocations[0].first;
+    double vecYUm = beamLocations[1].second - beamLocations[0].second;
+    double distance = std::sqrt(vecXUm * vecXUm + vecYUm * vecYUm);
+
+    context->SetValue(captureAs + ".tx_rx_vector_x_um", static_cast<float>(vecXUm));
+    context->SetValue(captureAs + ".tx_rx_vector_y_um", static_cast<float>(vecYUm));
+    context->SetValue(captureAs + ".tx_rx_distance_um", static_cast<float>(distance));
+
+    if (m_logger) {
+      m_logger->Info("FitSlices TX->RX vector: X=" + std::to_string(vecXUm) +
+                     "um, Y=" + std::to_string(vecYUm) +
+                     "um, distance=" + std::to_string(distance) + "um", "CustomServer");
+    }
+  }
+
+  // Store summary
+  context->SetValue(captureAs + ".num_beams", static_cast<float>(numBeams));
+  context->SetValue(captureAs + ".num_z_steps", static_cast<float>(numSlices));
+
+  if (m_logger) {
+    m_logger->Info("FitSlices complete: " + std::to_string(numBeams) + " beams, " +
+                   std::to_string(numSlices) + " z-steps fitted", "CustomServer");
+  }
+
+  return true;
+}
+
+//=============================================================================
+// HandleD4SigmaZScanFolder - Process folder of images through vision pipeline
+//=============================================================================
+
+bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
+  const std::map<std::string, std::string>& params,
+  std::string& errorMessage,
+  SequenceContext* context)
+{
+#ifndef HAS_OPENCV
+  errorMessage = "D4SigmaZScanFolder requires OpenCV (HAS_OPENCV not defined)";
+  return false;
+#else
+  if (!context) {
+    errorMessage = "D4SigmaZScanFolder requires a sequence context";
+    return false;
+  }
+
+  // Parse parameters
+  auto profIt = params.find("profile_path");
+  if (profIt == params.end() || profIt->second.empty()) {
+    errorMessage = "Missing required parameter: profile_path";
+    return false;
+  }
+  std::string profilePath = profIt->second;
+
+  auto fpIt = params.find("folder_path");
+  if (fpIt == params.end() || fpIt->second.empty()) {
+    errorMessage = "Missing required parameter: folder_path";
+    return false;
+  }
+  std::string folderPath = fpIt->second;
+  if (context && folderPath.substr(0, 8) == "context:") {
+    folderPath = context->GetString(folderPath.substr(8));
+  }
+
+  std::string zRegex = R"(zheight([\d.]+)um)";
+  auto zrIt = params.find("z_regex");
+  if (zrIt != params.end() && !zrIt->second.empty()) {
+    zRegex = zrIt->second;
+  }
+
+  std::string prefix = "splice";
+  auto prefIt = params.find("capture_as_prefix");
+  if (prefIt != params.end() && !prefIt->second.empty()) {
+    prefix = prefIt->second;
+  }
+
+  bool rotate180 = true;  // Default matches Python convention
+  auto rotIt = params.find("rotate_180");
+  if (rotIt != params.end()) {
+    rotate180 = (rotIt->second == "true" || rotIt->second == "1");
+  }
+
+  // Verify folder exists
+  namespace fs = std::filesystem;
+  if (!fs::exists(folderPath) || !fs::is_directory(folderPath)) {
+    errorMessage = "Folder does not exist: " + folderPath;
+    return false;
+  }
+
+  // Collect image files and extract z-heights
+  struct ImageEntry {
+    std::string path;
+    double z_um;
+  };
+  std::vector<ImageEntry> entries;
+  std::regex re(zRegex, std::regex::icase);
+
+  for (const auto& entry : fs::directory_iterator(folderPath)) {
+    if (!entry.is_regular_file()) continue;
+
+    std::string ext = entry.path().extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (ext != ".png" && ext != ".bmp" && ext != ".tif" &&
+        ext != ".tiff" && ext != ".jpg" && ext != ".jpeg") {
+      continue;
+    }
+
+    std::string filename = entry.path().filename().string();
+    std::smatch match;
+    double z_um = 0.0;
+    if (std::regex_search(filename, match, re) && match.size() > 1) {
+      z_um = std::stod(match[1].str());
+    }
+
+    entries.push_back({entry.path().string(), z_um});
+  }
+
+  if (entries.empty()) {
+    errorMessage = "No image files found in: " + folderPath;
+    return false;
+  }
+
+  // Sort by z_um ascending
+  std::sort(entries.begin(), entries.end(),
+            [](const ImageEntry& a, const ImageEntry& b) { return a.z_um < b.z_um; });
+
+  if (m_logger) {
+    m_logger->Info("D4SigmaZScanFolder: " + std::to_string(entries.size()) +
+                   " images in " + folderPath, "CustomServer");
+  }
+
+  // Load vision profile JSON to get plugin name and parameters
+  std::string pluginName;
+  try {
+    std::ifstream file(profilePath);
+    if (!file.is_open()) {
+      errorMessage = "Cannot open vision profile: " + profilePath;
+      return false;
+    }
+
+    nlohmann::json j;
+    file >> j;
+    file.close();
+
+    // Set ROI if present
+    if (j.contains("roi")) {
+      auto roiJson = j["roi"];
+      int startX = roiJson.value("startX", 0);
+      int startY = roiJson.value("startY", 0);
+      int endX = roiJson.value("endX", 640);
+      int endY = roiJson.value("endY", 480);
+      bool enabled = roiJson.value("enabled", false);
+
+      VisionROI roi(startX, startY, endX, endY);
+      roi.setEnabled(enabled);
+      VisionManager::instance().setROI(roi);
+    }
+
+    // Load plugin name and parameters
+    if (j.contains("plugin")) {
+      auto pluginJson = j["plugin"];
+      pluginName = pluginJson.value("name", "");
+
+      if (!pluginName.empty()) {
+        auto plugin = VisionManager::instance().getPlugin(QString::fromStdString(pluginName));
+        if (plugin && pluginJson.contains("parameters")) {
+          plugin->setParameters(pluginJson["parameters"]);
+        } else if (!plugin) {
+          errorMessage = "Vision plugin not found: " + pluginName;
+          return false;
+        }
+      }
+    }
+
+    if (pluginName.empty()) {
+      errorMessage = "No plugin specified in vision profile: " + profilePath;
+      return false;
+    }
+  } catch (const std::exception& e) {
+    errorMessage = "Error loading vision profile: " + std::string(e.what());
+    return false;
+  }
+
+  // Process each image through the vision pipeline
+  QString qPluginName = QString::fromStdString(pluginName);
+  int successCount = 0;
+
+  for (size_t i = 0; i < entries.size(); ++i) {
+    const auto& img = entries[i];
+    std::string captureAs = prefix + std::to_string(i + 1);
+
+    if (m_logger) {
+      m_logger->Info("D4SigmaZScanFolder [" + std::to_string(i + 1) + "/" +
+                     std::to_string(entries.size()) + "]: " +
+                     fs::path(img.path).filename().string() +
+                     " z=" + std::to_string(img.z_um) + "um", "CustomServer");
+    }
+
+    // Load image
+    cv::Mat image = cv::imread(img.path, cv::IMREAD_UNCHANGED);
+    if (image.empty()) {
+      if (m_logger) {
+        m_logger->Warning("Failed to load image: " + img.path, "CustomServer");
+      }
+      continue;
+    }
+
+    // Rotate 180° if requested (matches Python convention: rotate_180=True)
+    if (rotate180) {
+      cv::flip(image, image, -1);  // flipCode=-1 = 180° rotation
+    }
+
+    // Set as input and execute vision plugin
+    VisionManager::instance().setInputImage(image);
+    VisionResult result = VisionManager::instance().executePlugin(qPluginName);
+
+    if (!result.success) {
+      if (m_logger) {
+        m_logger->Warning("Vision execution failed for " + img.path + ": " +
+                         result.errorMessage, "CustomServer");
+      }
+      continue;
+    }
+
+    // Store measurements in context (same format as StoreResultInContext)
+    for (const auto& kv : result.measurements) {
+      std::string key = captureAs + ".result." + kv.first;
+      context->SetValue(key, static_cast<float>(kv.second));
+    }
+
+    // Store metadata
+    for (const auto& kv : result.metadata) {
+      std::string key = captureAs + ".metadata." + kv.first;
+      context->SetValue(key, kv.second);
+    }
+
+    // Store beam results
+    int beamIndex = 0;
+    for (const auto& beam : result.beams) {
+      std::string bPrefix = captureAs + ".beam." + std::to_string(beamIndex) + ".";
+      context->SetValue(bPrefix + "center_x", static_cast<float>(beam.centerPx.x));
+      context->SetValue(bPrefix + "center_y", static_cast<float>(beam.centerPx.y));
+      context->SetValue(bPrefix + "center_mm_x", static_cast<float>(beam.centerMm.x));
+      context->SetValue(bPrefix + "center_mm_y", static_cast<float>(beam.centerMm.y));
+      context->SetValue(bPrefix + "fwhm_major_px", static_cast<float>(beam.fwhmMajorPx));
+      context->SetValue(bPrefix + "fwhm_minor_px", static_cast<float>(beam.fwhmMinorPx));
+      context->SetValue(bPrefix + "fwhm_major_mm", static_cast<float>(beam.fwhmMajorMm));
+      context->SetValue(bPrefix + "fwhm_minor_mm", static_cast<float>(beam.fwhmMinorMm));
+      context->SetValue(bPrefix + "mean_intensity", static_cast<float>(beam.meanIntensity));
+      context->SetValue(bPrefix + "max_intensity", static_cast<float>(beam.maxIntensity));
+      context->SetValue(bPrefix + "is_saturated", beam.isSaturated);
+      context->SetValue(bPrefix + "angle_deg", static_cast<float>(beam.angleDeg));
+      context->SetValue(bPrefix + "ellipticity", static_cast<float>(beam.ellipticity));
+      context->SetValue(bPrefix + "area_px", static_cast<float>(beam.areaPx));
+      if (!beam.name.empty()) {
+        context->SetValue(bPrefix + "name", beam.name);
+      }
+      beamIndex++;
+    }
+    context->SetValue(captureAs + ".beam.count", static_cast<float>(beamIndex));
+
+    // Store z-height and success flag
+    context->SetValue(captureAs + ".z_um", static_cast<float>(img.z_um));
+    context->SetValue(captureAs + ".result.success", result.success);
+    context->SetValue(captureAs + ".result.plugin", result.pluginName);
+
+    ++successCount;
+  }
+
+  if (successCount == 0) {
+    errorMessage = "D4SigmaZScanFolder: No images were successfully processed";
+    return false;
+  }
+
+  // Store summary in context
+  context->SetValue(prefix + ".total_slices", static_cast<float>(successCount));
+
+  if (m_logger) {
+    m_logger->Info("D4SigmaZScanFolder complete: " + std::to_string(successCount) +
+                   "/" + std::to_string(entries.size()) + " images processed", "CustomServer");
+  }
+
+  return true;
+#endif // HAS_OPENCV
 }

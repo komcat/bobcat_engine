@@ -934,6 +934,197 @@ public:
 };
 
 //=============================================================================
+// D4SIGMA Z-SCAN PLUGIN - Compound: execute vision profile at multiple Z heights
+//=============================================================================
+
+class D4SigmaZScanPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "D4Sigma Z-Scan";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Execute D4Sigma vision profile at multiple Z heights (z-scan for beam profiling)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"profile_path", ""},
+            {"camera_name", "main_camera"},
+            {"motion_device", "gantry-main"},
+            {"num_slices", "5"},
+            {"z_step_mm", "0.010"},
+            {"capture_as_prefix", "splice"}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        widget->addVisionProfileSelector("profile_path", "Vision Profile (D4Sigma)",
+            getParam("profile_path", ""));
+
+        widget->addDeviceSelector("camera_name", "Camera",
+            getParam("camera_name", "main_camera"),
+            static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+        widget->addDeviceSelector("motion_device", "Motion Device (Z axis)",
+            getParam("motion_device", "gantry-main"),
+            static_cast<int>(DeviceComboBox::DeviceType::Motion));
+
+        widget->addParameterField("num_slices", "Number of Z Slices",
+            getParam("num_slices", "5"));
+
+        widget->addParameterField("z_step_mm", "Z Step Size (mm)",
+            getParam("z_step_mm", "0.010"));
+
+        widget->addParameterField("capture_as_prefix", "Capture As Prefix",
+            getParam("capture_as_prefix", "splice"));
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        std::string profilePath = getParam("profile_path", "");
+        std::string cameraName = getParam("camera_name", "main_camera");
+        std::string motionDevice = getParam("motion_device", "gantry-main");
+        int numSlices = std::stoi(getParam("num_slices", "5"));
+        std::string zStepStr = getParam("z_step_mm", "0.010");
+        std::string prefix = getParam("capture_as_prefix", "splice");
+
+        for (int i = 1; i <= numSlices; ++i) {
+            std::string captureAs = prefix + std::to_string(i);
+
+            // Execute vision profile at current Z position
+            sequence->AddAction("vision", "execute_profile", {
+                {"profile_path", profilePath},
+                {"camera", cameraName},
+                {"capture_as", captureAs},
+                {"calculate_world_position", "true"},
+                {"motion_device", motionDevice}
+            });
+
+            // Move Z (skip after last slice)
+            if (i < numSlices) {
+                sequence->AddAction(motionDevice, "MoveRelative", {
+                    {"axis", "Z"},
+                    {"distance", zStepStr}
+                });
+                sequence->AddAction(motionDevice, "WaitForMotionComplete", {});
+            }
+        }
+
+        std::cout << "[VisionProcesses] Built D4Sigma Z-Scan: " << numSlices
+                  << " slices, z_step=" << zStepStr << "mm, prefix=" << prefix << std::endl;
+    }
+};
+
+//=============================================================================
+// D4SIGMA Z-SCAN (FROM FOLDER) PLUGIN - Offline test mode, images from folder
+//=============================================================================
+
+class D4SigmaZScanFromFolderPlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "D4Sigma Z-Scan (from Folder)";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Run D4Sigma vision profile on images from a folder (offline z-scan, no camera/motion needed)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"profile_path", ""},
+            {"folder_path", ""},
+            {"z_pattern", "zheight<number>um"},
+            {"capture_as_prefix", "splice"},
+            {"rotate_180", "true"}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        widget->addVisionProfileSelector("profile_path", "Vision Profile (D4Sigma)",
+            getParam("profile_path", ""));
+
+        widget->addFolderSelector("folder_path", "Image Folder Path",
+            getParam("folder_path", ""));
+
+        widget->addDropdownParameter("z_pattern", "Z-height Filename Pattern",
+            getParam("z_pattern", "zheight<number>um"),
+            {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"});
+
+        widget->addParameterField("capture_as_prefix", "Capture As Prefix",
+            getParam("capture_as_prefix", "splice"));
+
+        widget->addDropdownParameter("rotate_180", "Rotate Image 180°",
+            getParam("rotate_180", "true"),
+            {"true", "false"});
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        auto getParam = [&params](const std::string& key, const std::string& defaultVal = "") {
+            auto it = params.find(key);
+            return (it != params.end()) ? it->second : defaultVal;
+        };
+
+        std::string profilePath = getParam("profile_path", "");
+        std::string folderPath = getParam("folder_path", "");
+        std::string prefix = getParam("capture_as_prefix", "splice");
+        std::string rotate180 = getParam("rotate_180", "true");
+
+        // Convert user-friendly pattern name to regex
+        std::string pattern = getParam("z_pattern", "zheight<number>um");
+        std::string regex;
+        if (pattern == "zheight<number>um") regex = R"(zheight([\d.]+)um)";
+        else if (pattern == "z<number>um") regex = R"(z([\d.]+)um)";
+        else if (pattern == "z_<number>") regex = R"(z_([\d.]+))";
+        else if (pattern == "<number>um") regex = R"(([\d.]+)um)";
+        else regex = pattern;  // raw regex fallback
+
+        sequence->AddAction("beamserver", "D4SigmaZScanFolder", {
+            {"profile_path", profilePath},
+            {"folder_path", folderPath},
+            {"z_regex", regex},
+            {"capture_as_prefix", prefix},
+            {"rotate_180", rotate180}
+        });
+
+        std::cout << "[VisionProcesses] Built D4Sigma Z-Scan (from Folder): "
+                  << "folder=" << folderPath << ", prefix=" << prefix << std::endl;
+    }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -979,7 +1170,15 @@ namespace {
             registry.RegisterPlugin(std::make_unique<ExecuteVisionProfileFromFilePlugin>());
             std::cout << "[ProcessPluginRegistry] Registered plugin: Execute Vision Profile (from File) (Category: Vision)" << std::endl;
 
-            std::cout << "[VisionProcesses] Registered 10 vision processing plugins" << std::endl;
+            // D4Sigma Z-Scan: Compound vision + motion z-scan
+            registry.RegisterPlugin(std::make_unique<D4SigmaZScanPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: D4Sigma Z-Scan (Category: Vision)" << std::endl;
+
+            // D4Sigma Z-Scan (from Folder): Offline test mode
+            registry.RegisterPlugin(std::make_unique<D4SigmaZScanFromFolderPlugin>());
+            std::cout << "[ProcessPluginRegistry] Registered plugin: D4Sigma Z-Scan (from Folder) (Category: Vision)" << std::endl;
+
+            std::cout << "[VisionProcesses] Registered 12 vision processing plugins" << std::endl;
         }
     };
 
