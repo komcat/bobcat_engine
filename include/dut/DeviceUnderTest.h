@@ -33,8 +33,8 @@ public:
     struct DataEntry {
         std::string timestamp;     // ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ
         std::string key;           // Entry identifier (not unique - multiple entries can have same key)
-        std::variant<std::string, double, int64_t> value;
-        std::string dataType;      // "string", "double", "integer"
+        std::variant<std::string, double, int64_t, nlohmann::json> value;
+        std::string dataType;      // "string", "double", "integer", "object"
 
         // Helper methods to get typed values
         std::optional<std::string> getStringValue() const;
@@ -80,6 +80,7 @@ public:
     bool insertEntry(const std::string& key, const std::string& value);
     bool insertEntry(const std::string& key, double value);
     bool insertEntry(const std::string& key, int64_t value);
+    bool insertEntry(const std::string& key, const nlohmann::json& value);
 
     /**
      * @brief Delete entry by exact timestamp

@@ -644,6 +644,9 @@ set(SOURCES
     include/recipe/processes/AuxWindowProcesses.cpp
     include/recipe/processes/CameraProcesses.cpp
     include/recipe/processes/LightingProcesses.cpp
+    include/recipe/processes/CustomServerProcesses.cpp
+    include/customserver/BeamServerClient.cpp
+    include/sequence/CustomServerCommandHandler.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp
     include/recipe/RecipeWorker.cpp
@@ -868,6 +871,8 @@ set(HEADERS
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
+    include/sequence/CustomServerCommandHandler.h
+    include/customserver/BeamServerClient.h
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
     include/AppUI/Common/CreateProductDialog.h

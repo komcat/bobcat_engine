@@ -68,6 +68,13 @@ enum class ErrorCode : uint16_t {
   VisionPluginFailed = 0x0A00,
   VisionNoImage      = 0x0A01,
 
+  // 0x0B00: Custom Server
+  CustomServerNotConnected    = 0x0B00,
+  CustomServerConnectionFailed = 0x0B01,
+  CustomServerSendFailed      = 0x0B02,
+  CustomServerRecvFailed      = 0x0B03,
+  CustomServerProtocolError   = 0x0B04,
+
   // 0x0F00: Safety
   SafetyFlagRaised   = 0x0F00,
   SafetyCriticalStop = 0x0F01,
@@ -87,8 +94,9 @@ enum class ErrorCategory : uint8_t {
   SMU       = 0x07,
   Lighting  = 0x08,
   Sequence  = 0x09,
-  Vision    = 0x0A,
-  Safety    = 0x0F
+  Vision       = 0x0A,
+  CustomServer = 0x0B,
+  Safety       = 0x0F
 };
 
 inline ErrorCategory GetErrorCategory(ErrorCode code) {
@@ -107,8 +115,9 @@ inline std::string ErrorCategoryToString(ErrorCategory cat) {
     case ErrorCategory::SMU:       return "SMU";
     case ErrorCategory::Lighting:  return "Lighting";
     case ErrorCategory::Sequence:  return "Sequence";
-    case ErrorCategory::Vision:    return "Vision";
-    case ErrorCategory::Safety:    return "Safety";
+    case ErrorCategory::Vision:       return "Vision";
+    case ErrorCategory::CustomServer: return "CustomServer";
+    case ErrorCategory::Safety:       return "Safety";
     default:                       return "Unknown";
   }
 }
@@ -154,6 +163,11 @@ inline std::string ErrorCodeToString(ErrorCode code) {
     case ErrorCode::RecipeLoadFailed:           return "RecipeLoadFailed";
     case ErrorCode::VisionPluginFailed:         return "VisionPluginFailed";
     case ErrorCode::VisionNoImage:              return "VisionNoImage";
+    case ErrorCode::CustomServerNotConnected:   return "CustomServerNotConnected";
+    case ErrorCode::CustomServerConnectionFailed: return "CustomServerConnectionFailed";
+    case ErrorCode::CustomServerSendFailed:     return "CustomServerSendFailed";
+    case ErrorCode::CustomServerRecvFailed:     return "CustomServerRecvFailed";
+    case ErrorCode::CustomServerProtocolError:  return "CustomServerProtocolError";
     case ErrorCode::SafetyFlagRaised:           return "SafetyFlagRaised";
     case ErrorCode::SafetyCriticalStop:         return "SafetyCriticalStop";
     case ErrorCode::SafetyEStopTriggered:       return "SafetyEStopTriggered";

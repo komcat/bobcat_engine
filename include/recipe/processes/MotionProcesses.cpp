@@ -364,7 +364,7 @@ public:
       "Axis to move along");
     table->addNumericProperty("distance", "Distance",
       std::stod(params.at("distance")),
-      -1000, 1000, 0.1, 2, "mm",
+      -1000, 1000, 0.001, 3, "mm",
       "Distance to move (positive or negative)");
   }
 
@@ -1956,6 +1956,57 @@ public:
 };
 
 //=============================================================================
+// READ POSITION PLUGIN - Read current axis positions into context
+//=============================================================================
+
+class ReadPositionPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Read Position";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Read current device position (XYZ) into context variables. "
+           "Stores as prefix_x, prefix_y, prefix_z (and optionally UVW).";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "gantry-main"},
+      {"key_prefix", "pos"},
+      {"save_uvw", "false"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("key_prefix", "Context Key Prefix", params.at("key_prefix"));
+    widget->addDropdownParameter("save_uvw", "Include UVW", params.at("save_uvw"),
+                                 {"false", "true"});
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    sequence->AddAction(params.at("device"), "SavePositionToContext", {
+      {"key_prefix", params.at("key_prefix")},
+      {"save_uvw", params.at("save_uvw")}
+    });
+
+    std::cout << "[MotionProcesses] Built Read Position for: " << step->userNickname
+              << " -> " << params.at("key_prefix") << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -1983,8 +2034,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToContextXYPlugin>());
       registry.RegisterPlugin(std::make_unique<FastAlignXYPlugin>());
       registry.RegisterPlugin(std::make_unique<FastAlignZXYPlugin>());
+      registry.RegisterPlugin(std::make_unique<ReadPositionPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 19 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 20 motion process plugins" << std::endl;
     }
   };
 

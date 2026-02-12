@@ -5,6 +5,8 @@
 #include "products/product_position_manager.h"
 #include <iostream>
 #include <stdexcept>
+#include <cstdlib>
+#include <nlohmann/json.hpp>
 
 DUTCommandHandler::DUTCommandHandler(ApplicationContext* context)
   : m_context(context)
@@ -49,6 +51,9 @@ bool DUTCommandHandler::ExecuteCommand(
   }
   else if (methodName == "InsertFromContext") {
     return ExecuteInsertFromContext(params, errorMessage, context);
+  }
+  else if (methodName == "BulkInsertFromContext") {
+    return ExecuteBulkInsertFromContext(params, errorMessage, context);
   }
   else if (methodName == "DeleteEntry") {
     return ExecuteDeleteEntry(params, errorMessage);
@@ -540,6 +545,119 @@ bool DUTCommandHandler::ExecuteInsertFromContext(const std::map<std::string, std
     }
     return false;
   }
+
+  return true;
+}
+
+bool DUTCommandHandler::ExecuteBulkInsertFromContext(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context)
+{
+  if (!EnsureDUTActive(errorMessage)) {
+    return false;
+  }
+
+  if (!context) {
+    errorMessage = "No execution context available";
+    if (m_logger) {
+      m_logger->Error(errorMessage, "DUT");
+    }
+    return false;
+  }
+
+  std::string prefix = GetParam(params, "prefix");
+  std::string dataType = GetParam(params, "data_type");
+  std::string entryName = GetParam(params, "entry_name");
+
+  if (prefix.empty()) {
+    errorMessage = "Missing required parameter: prefix";
+    return false;
+  }
+
+  if (dataType.empty()) {
+    dataType = "auto";
+  }
+
+  // Use prefix (without trailing dot) as default entry name
+  if (entryName.empty()) {
+    entryName = prefix;
+    // Strip trailing dot if present
+    if (!entryName.empty() && entryName.back() == '.') {
+      entryName.pop_back();
+    }
+  }
+
+  // Get all context keys and filter by prefix — build a single JSON object
+  auto allKeys = context->GetAllKeys();
+  nlohmann::json bulkObject = nlohmann::json::object();
+  int fieldCount = 0;
+
+  for (const auto& contextKey : allKeys) {
+    // Check if key starts with prefix
+    if (contextKey.size() < prefix.size() || contextKey.substr(0, prefix.size()) != prefix) {
+      continue;
+    }
+
+    // Strip prefix to get the field name within the object
+    std::string fieldName = contextKey.substr(prefix.size());
+    if (fieldName.empty()) {
+      continue;
+    }
+
+    // Get value from context
+    auto contextValue = context->GetValue(contextKey);
+
+    if (dataType == "auto") {
+      if (contextValue.type == SequenceContext::ValueType::NUMERIC) {
+        bulkObject[fieldName] = static_cast<double>(contextValue.numericValue);
+      }
+      else if (contextValue.type == SequenceContext::ValueType::STRING) {
+        // Try to parse as number for cleaner output
+        char* end = nullptr;
+        double numVal = std::strtod(contextValue.stringValue.c_str(), &end);
+        if (end != contextValue.stringValue.c_str() && *end == '\0' && !contextValue.stringValue.empty()) {
+          bulkObject[fieldName] = numVal;
+        }
+        else {
+          bulkObject[fieldName] = contextValue.stringValue;
+        }
+      }
+      else if (contextValue.type == SequenceContext::ValueType::BOOLEAN) {
+        bulkObject[fieldName] = contextValue.booleanValue;
+      }
+    }
+    else if (dataType == "string") {
+      bulkObject[fieldName] = contextValue.AsString();
+    }
+    else if (dataType == "double") {
+      bulkObject[fieldName] = static_cast<double>(contextValue.AsFloat());
+    }
+    else if (dataType == "integer") {
+      bulkObject[fieldName] = static_cast<int64_t>(contextValue.AsFloat());
+    }
+
+    ++fieldCount;
+  }
+
+  if (fieldCount == 0) {
+    errorMessage = "No context keys found matching prefix: " + prefix;
+    if (m_logger) {
+      m_logger->Warning(errorMessage, "DUT");
+    }
+    return false;
+  }
+
+  // Insert as a single object entry
+  if (!m_context->currentDUT->insertEntry(entryName, bulkObject)) {
+    errorMessage = "Failed to insert bulk object entry: " + entryName;
+    if (m_logger) {
+      m_logger->Error(errorMessage, "DUT");
+    }
+    return false;
+  }
+
+  if (m_logger) {
+    m_logger->Info("DUT Bulk Insert: '" + entryName + "' with " + std::to_string(fieldCount) + " fields from prefix '" + prefix + "'", "DUT");
+  }
+  std::cout << "[DUTCommandHandler] Bulk inserted '" << entryName << "' with " << fieldCount << " fields from prefix '" << prefix << "'" << std::endl;
 
   return true;
 }

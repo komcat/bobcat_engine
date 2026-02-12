@@ -160,6 +160,23 @@ bool DeviceUnderTest::insertEntry(const std::string& key, int64_t value) {
     return true;
 }
 
+bool DeviceUnderTest::insertEntry(const std::string& key, const nlohmann::json& value) {
+    DataEntry entry;
+    entry.timestamp = getCurrentTimestamp();
+    entry.key = key;
+    entry.value = value;
+    entry.dataType = "object";
+
+    entries_.push_back(entry);
+    if (!saveToFile()) {
+        entries_.pop_back();  // Rollback on save failure
+        return false;
+    }
+
+    std::cout << "[DUT] Inserted object entry: " << key << " (" << value.size() << " fields) @ " << entry.timestamp << std::endl;
+    return true;
+}
+
 bool DeviceUnderTest::deleteEntry(const std::string& timestamp) {
     auto it = std::find_if(entries_.begin(), entries_.end(),
         [&timestamp](const DataEntry& entry) {
@@ -298,6 +315,8 @@ nlohmann::json DeviceUnderTest::toJson() const {
             entryJson["value"] = std::get<double>(entry.value);
         } else if (entry.dataType == "integer") {
             entryJson["value"] = std::get<int64_t>(entry.value);
+        } else if (entry.dataType == "object") {
+            entryJson["value"] = std::get<nlohmann::json>(entry.value);
         }
 
         entriesArray.push_back(entryJson);
@@ -329,6 +348,8 @@ DeviceUnderTest DeviceUnderTest::fromJson(const nlohmann::json& j) {
                 entry.value = entryJson.at("value").get<double>();
             } else if (entry.dataType == "integer") {
                 entry.value = entryJson.at("value").get<int64_t>();
+            } else if (entry.dataType == "object") {
+                entry.value = entryJson.at("value").get<nlohmann::json>();
             }
 
             dut.entries_.push_back(entry);

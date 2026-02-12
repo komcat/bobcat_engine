@@ -17,6 +17,7 @@
 #include "CoordinateSystemManager.h"
 #include "lighting/LightingManager.h"
 #include "safety/SafetyWatchManager.h"
+#include "customserver/BeamServerClient.h"
 #include "motions/DeviceLinkManager.h"
 #include "version.h"
 #include "startup/ConnectionWorkerPool.h"
@@ -124,6 +125,7 @@ private:
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
   std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
   std::unique_ptr<SafetyEventLog> m_safetyEventLog;           // Structured safety event log
+  std::unique_ptr<BeamServerClient> m_beamServerClient;       // Beam detection TCP client
 
   ApplicationContext m_context;
 

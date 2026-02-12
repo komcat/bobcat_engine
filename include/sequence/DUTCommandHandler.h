@@ -19,6 +19,8 @@
  * - InsertString: Insert string value (params: key, value)
  * - InsertDouble: Insert double value (params: key, value)
  * - InsertInteger: Insert integer value (params: key, value)
+ * - InsertFromContext: Insert value from context (params: entry_key, context_key, data_type)
+ * - BulkInsertFromContext: Insert all context vars matching prefix as single object (params: prefix, entry_name, data_type)
  * - DeleteEntry: Delete entry by timestamp (params: timestamp)
  * - DeleteEntriesByKey: Delete all entries with key (params: key)
  *
@@ -61,6 +63,7 @@ private:
   bool ExecuteInsertDouble(const std::map<std::string, std::string>& params, std::string& errorMessage);
   bool ExecuteInsertInteger(const std::map<std::string, std::string>& params, std::string& errorMessage);
   bool ExecuteInsertFromContext(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
+  bool ExecuteBulkInsertFromContext(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
   bool ExecuteDeleteEntry(const std::map<std::string, std::string>& params, std::string& errorMessage);
   bool ExecuteDeleteEntriesByKey(const std::map<std::string, std::string>& params, std::string& errorMessage);
 

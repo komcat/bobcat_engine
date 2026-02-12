@@ -26,6 +26,7 @@
 #include "lighting/LightingTypes.h"
 #include "settings/ApplicationSettings.h"
 #include "safety/SafetyEventLog.h"
+#include "customserver/BeamServerClient.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
@@ -330,6 +331,11 @@ void Application::initializeManagers()
     updateSplash("LightingManager");
     initializeLightingManager();
     completeSplash("LightingManager");
+
+    // Initialize beam server client (connection is recipe-driven, not automatic)
+    m_beamServerClient = std::make_unique<BeamServerClient>();
+    m_context.beamServerClient = m_beamServerClient.get();
+    m_logManager->Info("BeamServerClient created (connection deferred to recipe)", "Application");
 
     // Initialize safety event log before safety watch (so safety watch can use it)
     updateSplash("SafetyEventLog");
@@ -1151,6 +1157,7 @@ void Application::shutdownManagers()
   m_cameraManager.reset();
   m_tcpClientManager.reset();
   m_dataStore.reset();
+  m_beamServerClient.reset();
   m_sequenceEngine.reset();
   // Note: Log final message before resetting logger
   if (m_logManager) m_logManager->Info("All managers shut down", "Application");

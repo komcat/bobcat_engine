@@ -162,6 +162,94 @@ public:
 };
 
 //=============================================================================
+// LOOP START PLUGIN
+//=============================================================================
+
+class LoopStartPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Loop Start";
+  }
+
+  std::string GetCategory() const override {
+    return "Control Flow";
+  }
+
+  std::string GetDescription() const override {
+    return "Begin a loop block that repeats contained steps N times";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"count", "1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("count", "Loop Count", params.at("count"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    int count = 1;
+    std::string countStr = params.at("count");
+    if (!countStr.empty()) {
+      try {
+        count = std::stoi(countStr);
+      } catch (const std::exception& e) {
+        std::cerr << "[ConditionalProcesses] Warning: Invalid loop count '"
+                  << countStr << "', using 1. Error: " << e.what() << std::endl;
+        count = 1;
+      }
+    }
+    if (count < 1) count = 1;
+
+    sequence->BeginLoop(count);
+
+    std::cout << "[ConditionalProcesses] Built Loop Start: " << count
+              << " iterations for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// LOOP END PLUGIN
+//=============================================================================
+
+class LoopEndPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Loop End";
+  }
+
+  std::string GetCategory() const override {
+    return "Control Flow";
+  }
+
+  std::string GetDescription() const override {
+    return "End a loop block";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* /*widget*/, const ProcessInstance* /*instance*/) override {
+    // No parameters
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    sequence->EndLoop();
+    std::cout << "[ConditionalProcesses] Built Loop End for: "
+              << step->userNickname << std::endl;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -173,8 +261,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<ConditionalIfPlugin>());
       registry.RegisterPlugin(std::make_unique<ConditionalElsePlugin>());
       registry.RegisterPlugin(std::make_unique<ConditionalEndPlugin>());
+      registry.RegisterPlugin(std::make_unique<LoopStartPlugin>());
+      registry.RegisterPlugin(std::make_unique<LoopEndPlugin>());
 
-      std::cout << "[ConditionalProcesses] Registered 3 conditional process plugins" << std::endl;
+      std::cout << "[ConditionalProcesses] Registered 5 control flow process plugins" << std::endl;
     }
   };
 

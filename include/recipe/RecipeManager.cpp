@@ -663,6 +663,7 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "Calibration",
     "Vision",
     "Dispensing",
+    "Custom Server",
     "Aux Window",
     "Comment"
   };

@@ -363,6 +363,69 @@ public:
 };
 
 //=============================================================================
+// DUT BULK INSERT FROM CONTEXT PLUGIN
+//=============================================================================
+
+class DUTBulkInsertFromContextPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "DUT Bulk Insert from Context";
+  }
+
+  std::string GetCategory() const override {
+    return "Data";
+  }
+
+  std::string GetDescription() const override {
+    return "Bulk insert all context variables matching a prefix as a single grouped object in DUT. "
+           "E.g., prefix 'fitres_ch1.' creates one entry with all fitres_ch1.* values nested inside.";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"prefix", "fitres_ch1."},
+      {"entry_name", ""},        // empty = auto from prefix (e.g., "fitres_ch1")
+      {"data_type", "auto"}      // auto, string, double, integer
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    auto getParam = [&](const std::string& key, const std::string& fallback) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : fallback;
+    };
+
+    widget->addParameterField("prefix", "Context Key Prefix (e.g., 'fitres_ch1.')", getParam("prefix", "fitres_ch1."));
+    widget->addParameterField("entry_name", "DUT Entry Name (empty = auto from prefix)", getParam("entry_name", ""));
+    widget->addParameterField("data_type", "Data Type (auto/string/double/integer)", getParam("data_type", "auto"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    auto getParam = [&](const std::string& key, const std::string& fallback) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : fallback;
+    };
+
+    std::string prefix = getParam("prefix", "fitres_ch1.");
+    std::string entryName = getParam("entry_name", "");
+    std::string dataType = getParam("data_type", "auto");
+
+    sequence->AddAction("dut", "BulkInsertFromContext", {
+      {"prefix", prefix},
+      {"entry_name", entryName},
+      {"data_type", dataType}
+    });
+
+    std::cout << "[DUTProcesses] Built DUT Bulk Insert from Context: prefix='" << prefix << "'" << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -378,8 +441,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<DUTInsertDoublePlugin>());
       registry.RegisterPlugin(std::make_unique<DUTInsertIntegerPlugin>());
       registry.RegisterPlugin(std::make_unique<DUTInsertFromContextPlugin>());
+      registry.RegisterPlugin(std::make_unique<DUTBulkInsertFromContextPlugin>());
 
-      std::cout << "[DUTProcesses] Registered 7 DUT process plugins" << std::endl;
+      std::cout << "[DUTProcesses] Registered 8 DUT process plugins" << std::endl;
     }
   };
 

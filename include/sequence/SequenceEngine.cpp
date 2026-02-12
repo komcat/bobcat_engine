@@ -19,6 +19,7 @@
 #include "AuxWindowCommandHandler.h"
 #include "RelativePositionCommandHandler.h"
 #include "CoordinateAlignCommandHandler.h"
+#include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
 #include "TECManager.h"
@@ -31,6 +32,7 @@
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyEventLog.h"
 #include "GdiWindow/GdiCameraWindowManager.h"
+#include "customserver/BeamServerClient.h"
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
 #include "vision/VisionResult.h"
@@ -109,6 +111,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   coordAlignHandler->SetConfigPath("config/");
   // Note: Files are read at runtime when needed (not loaded into memory at startup)
   m_dispatcher.RegisterHandler("coordalign", std::move(coordAlignHandler));
+
+  // Register custom server handler for beam detection
+  auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
+  customServerHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("customserver", std::move(customServerHandler));
 
 #ifdef HAS_OPENCV
   // Register vision command handler for vision profile execution
@@ -258,6 +265,13 @@ void SequenceEngine::BuildDeviceRegistry()
     LogInfo("Registered " + std::to_string(deviceIds.size()) + " lighting controllers");
   }
 
+  // Beam server client (custom server)
+  if (m_context->beamServerClient) {
+    m_deviceToManagerMap["beamserver"] = m_context->beamServerClient;
+    m_deviceToTypeMap["beamserver"] = "customserver";
+    LogInfo("Registered beamserver device");
+  }
+
   // Register DataStore as virtual device
   if (m_context->dataStore) {
     m_deviceToManagerMap["datastore"] = m_context->dataStore;
@@ -379,6 +393,9 @@ bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const
       }
     }
     return false;
+  }
+  if (type == "customserver" && m_context->beamServerClient) {
+    return m_context->beamServerClient->IsConnected();
   }
 
   // Virtual devices (system, context, etc.) are always "connected"
@@ -830,7 +847,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
         managerType != "vision" && managerType != "relpos" &&
         managerType != "coordalign" && managerType != "datastore" &&
         managerType != "auxwindow" && action->deviceName != "parallel" &&
-        action->methodName != "Connect" && action->methodName != "Disconnect") {
+        action->methodName != "Connect" && action->methodName != "Disconnect" &&
+        action->methodName != "Reset") {
       if (!IsDeviceConnected(action->deviceName)) {
         std::string disconnMsg = "Device not connected: " + action->deviceName;
         LogError(disconnMsg);
@@ -1056,31 +1074,32 @@ bool SequenceEngine::DispatchWithTimeout(
     const std::map<std::string, std::string>& params,
     std::string& errorMessage, SequenceContext* context)
 {
-  // Shared state between calling thread and dispatch thread
+  // All shared state is heap-allocated so it survives this function returning
+  // (zombie threads on timeout still hold references to these)
   auto done = std::make_shared<std::atomic<bool>>(false);
   auto success = std::make_shared<std::atomic<bool>>(false);
   auto sharedError = std::make_shared<std::string>();
-  std::mutex mtx;
-  std::condition_variable cv;
+  auto mtx = std::make_shared<std::mutex>();
+  auto cv = std::make_shared<std::condition_variable>();
 
   std::thread dispatchThread([this, managerType, manager, deviceName, methodName,
-                              params, context, done, success, sharedError, &mtx, &cv]() {
+                              params, context, done, success, sharedError, mtx, cv]() {
     std::string localError;
     bool result = m_dispatcher.ExecuteCommand(
         managerType, manager, deviceName, methodName, params, localError, context);
     {
-      std::lock_guard<std::mutex> lock(mtx);
+      std::lock_guard<std::mutex> lock(*mtx);
       *sharedError = localError;
       success->store(result);
       done->store(true);
     }
-    cv.notify_one();
+    cv->notify_one();
   });
 
   // Wait for completion or timeout
   {
-    std::unique_lock<std::mutex> lock(mtx);
-    bool completed = cv.wait_for(lock,
+    std::unique_lock<std::mutex> lock(*mtx);
+    bool completed = cv->wait_for(lock,
         std::chrono::milliseconds(m_actionTimeoutMs),
         [&done]() { return done->load(); });
 

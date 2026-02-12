@@ -24,6 +24,7 @@ class DeviceLinkManager;
 class GdiCameraWindowManager;  // GDI-based camera monitor window
 class ApplicationSettings;  // Application-wide configurable settings
 class SafetyEventLog;       // Structured safety event logging
+class BeamServerClient;     // Custom TCP server client for beam detection
 
 namespace Lighting {
 class LightingManager;
@@ -55,6 +56,7 @@ struct ApplicationContext
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
   ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
   SafetyEventLog* safetyEventLog = nullptr;            // Structured safety event logging
+  BeamServerClient* beamServerClient = nullptr;        // Custom TCP server for beam detection
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections
