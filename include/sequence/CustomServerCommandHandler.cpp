@@ -24,6 +24,7 @@
 #include "../vision/VisionResult.h"
 #include "../vision/VisionROI.h"
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <nlohmann/json.hpp>
 #endif
 
@@ -999,7 +1000,7 @@ bool CustomServerCommandHandler::HandleFitSlices(
       double z0 = z[minIdx];
       double w0 = minD / 2.0;  // d4sigma = 2*w0 at waist
       if (w0 < 0.5) w0 = 0.5;  // Minimum reasonable waist
-      double M2 = 1.5;  // Typical starting value for fiber-coupled beams
+      double M2 = 1.0;  // Start at diffraction-limited (matches reference algorithm)
       return std::vector<double>{z0, w0, M2};
     };
 
@@ -1039,8 +1040,10 @@ bool CustomServerCommandHandler::HandleFitSlices(
     auto [ax, bx] = linearFit(z_um, cx_um);
     auto [ay, by_] = linearFit(z_um, cy_um);
 
-    double poyntXDeg = std::atan(ax) * 180.0 / M_PI;
-    double poyntYDeg = -std::atan(ay) * 180.0 / M_PI;  // Negate Y: image Y-axis is inverted vs physical convention
+    // Full 3D Poynting angle (accounts for direction vector normalization)
+    double n_norm = std::sqrt(1.0 + ax * ax + ay * ay);
+    double poyntXDeg = std::atan(ax / n_norm) * 180.0 / M_PI;
+    double poyntYDeg = -std::atan(ay / n_norm) * 180.0 / M_PI;  // Negate Y: image Y-axis is inverted vs physical convention
 
     // Extract fitted parameters (ensure physical validity)
     double w0X = std::max(std::abs(fitX.params[1]), 0.1);
@@ -1049,8 +1052,8 @@ bool CustomServerCommandHandler::HandleFitSlices(
     double m2Y = std::max(std::abs(fitY.params[2]), 0.3);
     double z0X = fitX.params[0];
     double z0Y = fitY.params[0];
-    double waistXUm = w0X * 2.0;  // diameter = 2 * w0
-    double waistYUm = w0Y * 2.0;
+    double waistXUm = w0X;  // w0 half-width (matches reference algorithm)
+    double waistYUm = w0Y;
     double centroidZ = (z0X + z0Y) / 2.0;
 
     // Interpolate beam centroid location at the waist z-position
@@ -1123,6 +1126,46 @@ bool CustomServerCommandHandler::HandleFitSlices(
   return true;
 }
 
+#ifdef HAS_OPENCV
+// File-local helper: D4sigma on a cropped sub-image using OpenCV
+struct D4CropResult { double cx, cy, d4x, d4y; };
+
+static D4CropResult d4sigma_crop(const cv::Mat& img, int r0, int c0, int r1, int c1,
+                                  double noiseFloor = 0.0) {
+    // Two-pass: intensity-weighted centroid, then variance
+    // noiseFloor: pixels below this value (after bg subtraction) are treated as zero
+    //             to prevent background noise from inflating the second moment.
+    //             Matches the effect of minSignalAboveBg in the Halcon detection pass.
+    double total = 0, sx = 0, sy = 0;
+    for (int r = r0; r < r1; r++) {
+        for (int c = c0; c < c1; c++) {
+            double I = static_cast<double>(img.at<float>(r, c));
+            if (I < noiseFloor) I = 0;
+            total += I;
+            sx += I * c;
+            sy += I * r;
+        }
+    }
+    if (total == 0) return {0, 0, 0, 0};
+    double cx = sx / total;
+    double cy = sy / total;
+
+    double vx = 0, vy = 0;
+    for (int r = r0; r < r1; r++) {
+        for (int c = c0; c < c1; c++) {
+            double I = static_cast<double>(img.at<float>(r, c));
+            if (I < noiseFloor) I = 0;
+            vx += I * (c - cx) * (c - cx);
+            vy += I * (r - cy) * (r - cy);
+        }
+    }
+    vx /= total;
+    vy /= total;
+
+    return {cx, cy, 4.0 * std::sqrt(vx), 4.0 * std::sqrt(vy)};  // d4sigma = 4*sqrt(var)
+}
+#endif // HAS_OPENCV
+
 //=============================================================================
 // HandleD4SigmaZScanFolder - Process folder of images through vision pipeline
 //=============================================================================
@@ -1182,6 +1225,19 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
   auto rotIt = params.find("rotate_180");
   if (rotIt != params.end()) {
     rotate180 = (rotIt->second == "true" || rotIt->second == "1");
+  }
+
+  // Fixed-crop second pass parameters
+  bool fixedCropEnabled = true;
+  auto fceIt = params.find("fixed_crop_enabled");
+  if (fceIt != params.end()) {
+    fixedCropEnabled = (fceIt->second == "true" || fceIt->second == "1");
+  }
+
+  double cropWidthFactor = 2.5;
+  auto cwfIt = params.find("crop_width_factor");
+  if (cwfIt != params.end() && !cwfIt->second.empty()) {
+    cropWidthFactor = std::stod(cwfIt->second);
   }
 
   // Verify folder exists
@@ -1251,6 +1307,7 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
 
   // Load vision profile JSON to get plugin name and parameters
   std::string pluginName;
+  int bgBoxSize = 25;  // Default for fixed-crop background subtraction
   try {
     std::ifstream file(profilePath);
     if (!file.is_open()) {
@@ -1285,6 +1342,10 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
         auto plugin = VisionManager::instance().getPlugin(QString::fromStdString(pluginName));
         if (plugin && pluginJson.contains("parameters")) {
           plugin->setParameters(pluginJson["parameters"]);
+          // Extract bgBoxSize for fixed-crop second pass background subtraction
+          if (pluginJson["parameters"].contains("bgBoxSize")) {
+            bgBoxSize = pluginJson["parameters"]["bgBoxSize"].get<int>();
+          }
         } else if (!plugin) {
           errorMessage = "Vision plugin not found: " + pluginName;
           return false;
@@ -1385,6 +1446,180 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
     context->SetValue(captureAs + ".result.plugin", result.pluginName);
 
     ++successCount;
+  }
+
+  // =========================================================================
+  // Second pass: Fixed-crop d4sigma (eliminates threshold-dependent wing clipping)
+  // At defocused z-positions, beams are dimmer/larger so more wing pixels fall
+  // below the noise threshold — causing d4sigma underestimation. The fixed crop
+  // uses the middle slice (best SNR) as reference to define a consistent
+  // integration region across all z-steps.
+  // =========================================================================
+  if (fixedCropEnabled && successCount >= 3) {
+    // Collect indices of successful slices
+    std::vector<size_t> successIndices;
+    for (size_t i = 0; i < entries.size(); ++i) {
+      std::string sliceKey = prefix + std::to_string(i + 1);
+      if (context->HasValue(sliceKey + ".result.success")) {
+        successIndices.push_back(i);
+      }
+    }
+
+    if (successIndices.size() >= 3) {
+      // Pick middle slice as reference (best SNR, near focus)
+      size_t midSuccessIdx = successIndices.size() / 2;
+      size_t midEntryIdx = successIndices[midSuccessIdx];
+      std::string midKey = prefix + std::to_string(midEntryIdx + 1);
+
+      // Get beam count from middle slice
+      int numBeams = static_cast<int>(context->GetNumeric(midKey + ".result.beam_count", 0.0f));
+      if (numBeams <= 0) {
+        // Probe incrementally
+        for (int j = 0; j < 20; ++j) {
+          if (!context->HasValue(midKey + ".result.beam_" + std::to_string(j) + "_d4sigma_x_px")) break;
+          numBeams = j + 1;
+        }
+      }
+
+      if (numBeams > 0) {
+        if (m_logger) {
+          m_logger->Info("D4SigmaZScanFolder: Starting fixed-crop second pass (factor=" +
+                         std::to_string(cropWidthFactor) + ", bgBox=" + std::to_string(bgBoxSize) +
+                         ", ref slice=" + std::to_string(midEntryIdx + 1) + ", beams=" +
+                         std::to_string(numBeams) + ")", "CustomServer");
+        }
+
+        // Read reference image to get dimensions
+        cv::Mat refImage = cv::imread(entries[midEntryIdx].path, cv::IMREAD_UNCHANGED);
+        if (!refImage.empty()) {
+          if (rotate180) cv::flip(refImage, refImage, -1);
+          int imgRows = refImage.rows;
+          int imgCols = refImage.cols;
+
+          // Compute per-beam crop rectangles from middle slice
+          struct CropRect { int r0, c0, r1, c1; };
+          std::vector<CropRect> crops(static_cast<size_t>(numBeams));
+          bool cropsValid = true;
+
+          for (int b = 0; b < numBeams; ++b) {
+            std::string bKey = midKey + ".result.beam_" + std::to_string(b) + "_";
+            float cx_px = context->GetNumeric(bKey + "centroid_x_px", -1.0f);
+            float cy_px = context->GetNumeric(bKey + "centroid_y_px", -1.0f);
+            float d4x_px = context->GetNumeric(bKey + "d4sigma_x_px", -1.0f);
+            float d4y_px = context->GetNumeric(bKey + "d4sigma_y_px", -1.0f);
+
+            if (cx_px < 0 || cy_px < 0 || d4x_px <= 0 || d4y_px <= 0) {
+              if (m_logger) {
+                m_logger->Warning("D4SigmaZScanFolder: Beam " + std::to_string(b) +
+                  " missing data in middle slice, skipping fixed-crop pass", "CustomServer");
+              }
+              cropsValid = false;
+              break;
+            }
+
+            double cropW = static_cast<double>(d4x_px) * cropWidthFactor;
+            double cropH = static_cast<double>(d4y_px) * cropWidthFactor;
+            int r0 = std::max(0, static_cast<int>(static_cast<double>(cy_px) - cropH));
+            int c0 = std::max(0, static_cast<int>(static_cast<double>(cx_px) - cropW));
+            int r1 = std::min(imgRows, static_cast<int>(static_cast<double>(cy_px) + cropH));
+            int c1 = std::min(imgCols, static_cast<int>(static_cast<double>(cx_px) + cropW));
+
+            crops[static_cast<size_t>(b)] = {r0, c0, r1, c1};
+
+            if (m_logger) {
+              m_logger->Info("D4SigmaZScanFolder: Beam " + std::to_string(b) +
+                " crop: [" + std::to_string(r0) + "," + std::to_string(c0) + "]->[" +
+                std::to_string(r1) + "," + std::to_string(c1) + "] from centroid=(" +
+                std::to_string(cx_px) + "," + std::to_string(cy_px) + ") d4s=(" +
+                std::to_string(d4x_px) + "," + std::to_string(d4y_px) + ")", "CustomServer");
+            }
+          }
+
+          if (cropsValid) {
+            // Process each successful slice with fixed crops
+            for (size_t si = 0; si < successIndices.size(); ++si) {
+              size_t idx = successIndices[si];
+              std::string sliceKey = prefix + std::to_string(idx + 1);
+
+              // Reload image
+              cv::Mat image = cv::imread(entries[idx].path, cv::IMREAD_UNCHANGED);
+              if (image.empty()) continue;
+              if (rotate180) cv::flip(image, image, -1);
+
+              // Convert to single-channel float
+              cv::Mat gray;
+              if (image.channels() == 3) {
+                cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+              } else if (image.channels() == 4) {
+                cv::cvtColor(image, gray, cv::COLOR_BGRA2GRAY);
+              } else {
+                gray = image;
+              }
+              cv::Mat floatImg;
+              gray.convertTo(floatImg, CV_32F);
+
+              // 4-corner background subtraction (matches Halcon plugin's approach)
+              int box = std::min(bgBoxSize, std::min(floatImg.rows, floatImg.cols) / 2);
+              double bgSum = 0;
+              int bgPixels = 0;
+              // Top-left
+              for (int r = 0; r < box; ++r)
+                for (int c = 0; c < box; ++c) {
+                  bgSum += static_cast<double>(floatImg.at<float>(r, c));
+                  bgPixels++;
+                }
+              // Top-right
+              for (int r = 0; r < box; ++r)
+                for (int c = floatImg.cols - box; c < floatImg.cols; ++c) {
+                  bgSum += static_cast<double>(floatImg.at<float>(r, c));
+                  bgPixels++;
+                }
+              // Bottom-left
+              for (int r = floatImg.rows - box; r < floatImg.rows; ++r)
+                for (int c = 0; c < box; ++c) {
+                  bgSum += static_cast<double>(floatImg.at<float>(r, c));
+                  bgPixels++;
+                }
+              // Bottom-right
+              for (int r = floatImg.rows - box; r < floatImg.rows; ++r)
+                for (int c = floatImg.cols - box; c < floatImg.cols; ++c) {
+                  bgSum += static_cast<double>(floatImg.at<float>(r, c));
+                  bgPixels++;
+                }
+              float bgMean = (bgPixels > 0) ? static_cast<float>(bgSum / bgPixels) : 0.0f;
+              floatImg -= bgMean;
+
+              // For each beam, compute d4sigma in fixed crop and overwrite context
+              for (int b = 0; b < numBeams; ++b) {
+                const auto& crop = crops[static_cast<size_t>(b)];
+                // Use noiseFloor=0 (clip negatives only) — matches Python calc_beam_params(threshold=0).
+                // The fixed crop from the middle slice is already tight enough to limit background noise.
+                D4CropResult d4 = d4sigma_crop(floatImg, crop.r0, crop.c0, crop.r1, crop.c1, 0.0);
+
+                if (d4.d4x > 0 && d4.d4y > 0) {
+                  std::string bKey = sliceKey + ".result.beam_" + std::to_string(b) + "_";
+                  context->SetValue(bKey + "d4sigma_x_px", static_cast<float>(d4.d4x));
+                  context->SetValue(bKey + "d4sigma_y_px", static_cast<float>(d4.d4y));
+                  context->SetValue(bKey + "centroid_x_px", static_cast<float>(d4.cx));
+                  context->SetValue(bKey + "centroid_y_px", static_cast<float>(d4.cy));
+                }
+              }
+            }
+
+            if (m_logger) {
+              m_logger->Info("D4SigmaZScanFolder: Fixed-crop second pass complete (" +
+                             std::to_string(successIndices.size()) + " slices, " +
+                             std::to_string(numBeams) + " beams updated)", "CustomServer");
+            }
+          }
+        } else {
+          if (m_logger) {
+            m_logger->Warning("D4SigmaZScanFolder: Could not load reference image for fixed-crop pass",
+                             "CustomServer");
+          }
+        }
+      }
+    }
   }
 
   if (successCount == 0) {

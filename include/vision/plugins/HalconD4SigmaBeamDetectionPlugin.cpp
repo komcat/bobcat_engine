@@ -53,28 +53,34 @@ bool HalconD4SigmaBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& ou
         HImage halconImage;
         halconImage.GenImage1("byte", W, H, static_cast<void*>(gray.data));
 
-        // Step 1: Background estimation from corner regions
+        // Step 1: Background estimation from 4-corner regions
+        // Uses global constant subtraction (robust for multi-beam images)
         int bgBox = std::min(m_bgBoxSize, static_cast<int>(std::min(W, H) / 2));
+        std::cout << "[HalconD4SigmaBeamDetection] v3 no-expand, bgBox=" << bgBox << std::endl;
 
-        HRegion roiTL, roiBR, roiBg;
+        HRegion roiTL, roiTR, roiBL, roiBR, roiBg;
         roiTL.GenRectangle1(0, 0, bgBox - 1, bgBox - 1);
+        roiTR.GenRectangle1(0, W - bgBox, bgBox - 1, W - 1);
+        roiBL.GenRectangle1(H - bgBox, 0, H - 1, bgBox - 1);
         roiBR.GenRectangle1(H - bgBox, W - bgBox, H - 1, W - 1);
-        roiBg = roiTL.Union2(roiBR);
+        roiBg = roiTL.Union2(roiTR).Union2(roiBL).Union2(roiBR);
 
         HTuple bgMean, bgDev;
         Intensity(roiBg, halconImage, &bgMean, &bgDev);
         double bgMeanVal = bgMean.D();
 
         if (VisionManager::instance().isVerboseLogging()) {
-            std::cout << "[HalconD4SigmaBeamDetection] Background mean: " << bgMeanVal
+            std::cout << "[HalconD4SigmaBeamDetection] Background mean (4-corner): " << bgMeanVal
                       << " +/- " << bgDev.D() << std::endl;
         }
 
         // Step 2: Prepare images for D4sigma computation
-        // Convert to real (float) for math operations
+        // Convert to real, subtract global background constant
         HImage imageReal = halconImage.ConvertImageType("real");
-        // Signal image = original - background
         HImage signalImage = imageReal.ScaleImage(1.0, -bgMeanVal);
+
+        // Byte version for thresholding (ScaleImage on byte clips to [0,255])
+        HImage signalByte = halconImage.ScaleImage(1.0, -bgMeanVal);
 
         // Coordinate images: GenImageSurfaceFirstOrder("real", alpha, beta, gamma, row0, col0, width, height)
         // pixel_value = alpha * (row - row0) + beta * (col - col0) + gamma
@@ -85,10 +91,8 @@ bool HalconD4SigmaBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& ou
         colImage.GenImageSurfaceFirstOrder("real", 0.0, 1.0, 0.0, 0, 0, W, H);
 
         // Step 3: Find beam candidates
-        Hlong threshVal = static_cast<Hlong>(bgMeanVal + m_minSignalAboveBg);
-        if (threshVal > 255) threshVal = 255;
-
-        HRegion brightRegions = halconImage.Threshold(threshVal, 255);
+        // Threshold on background-subtracted image (noise threshold)
+        HRegion brightRegions = signalByte.Threshold(static_cast<Hlong>(m_minSignalAboveBg), 255);
         HRegion connectedRegions = brightRegions.Connection();
         HRegion beamRegions = connectedRegions.SelectShape("area", "and",
                                                             static_cast<double>(m_minBeamArea),
@@ -127,32 +131,23 @@ bool HalconD4SigmaBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& ou
                 continue;  // No signal above background
             }
 
-            // 4b: Expand bounding box for wing capture
-            HTuple r1, c1, r2, c2;
-            SmallestRectangle1(beam, &r1, &c1, &r2, &c2);
-
-            double beamH = r2.D() - r1.D();
-            double beamW = c2.D() - c1.D();
-
-            double expR1 = std::max(0.0, r1.D() - beamH * m_roiExpandFactor);
-            double expC1 = std::max(0.0, c1.D() - beamW * m_roiExpandFactor);
-            double expR2 = std::min(static_cast<double>(H - 1), r2.D() + beamH * m_roiExpandFactor);
-            double expC2 = std::min(static_cast<double>(W - 1), c2.D() + beamW * m_roiExpandFactor);
-
-            HRegion expandedROI;
-            expandedROI.GenRectangle1(expR1, expC1, expR2, expC2);
-
-            // 4c: D4sigma integration region
-            HImage signalROI = signalImage.ReduceDomain(expandedROI);
+            // 4b: D4sigma integration region — use beam's connected component directly
+            // Prevents cross-contamination from neighboring beams in multi-beam images
+            // (matches reference d4sigma_beam.cpp: ReduceDomain + GetRegionPoints on BeamRegion)
             HRegion d4Region;
             if (m_d4sigmaThresh > 0.0) {
-                // Threshold at fraction of peak signal (clips beam wings)
+                // Optional: clip beam wings at fraction of peak within the connected component only
+                HImage signalBeam = signalImage.ReduceDomain(beam);
                 double d4ThreshVal = m_d4sigmaThresh * peakSignal;
-                d4Region = signalROI.Threshold(d4ThreshVal, 1e9);
+                d4Region = signalBeam.Threshold(d4ThreshVal, 1e9);
             } else {
-                // ISO 11146 mode: all pixels above background (signal > 0)
-                d4Region = signalROI.Threshold(0.001, 1e9);
+                // Use full connected component (all pixels above noise threshold)
+                d4Region = beam;
             }
+
+            // Get bounding box for overlay display
+            HTuple r1, c1, r2, c2;
+            SmallestRectangle1(beam, &r1, &c1, &r2, &c2);
 
             // Check that we have pixels in the D4 region
             HTuple d4Area, d4Row, d4Col;
@@ -317,15 +312,16 @@ bool HalconD4SigmaBeamDetectionPlugin::execute(const cv::Mat& input, cv::Mat& ou
                                       beamColor, 2);
             }
 
-            // Draw expanded ROI bounding box (yellow)
+            // Draw beam bounding box (yellow)
             if (m_showBoundingBox) {
-                result.addLineOverlay(cv::Point2d(expC1, expR1), cv::Point2d(expC2, expR1),
+                double bR1 = r1.D(), bC1 = c1.D(), bR2 = r2.D(), bC2 = c2.D();
+                result.addLineOverlay(cv::Point2d(bC1, bR1), cv::Point2d(bC2, bR1),
                                       cv::Scalar(0, 255, 255), 1);
-                result.addLineOverlay(cv::Point2d(expC2, expR1), cv::Point2d(expC2, expR2),
+                result.addLineOverlay(cv::Point2d(bC2, bR1), cv::Point2d(bC2, bR2),
                                       cv::Scalar(0, 255, 255), 1);
-                result.addLineOverlay(cv::Point2d(expC2, expR2), cv::Point2d(expC1, expR2),
+                result.addLineOverlay(cv::Point2d(bC2, bR2), cv::Point2d(bC1, bR2),
                                       cv::Scalar(0, 255, 255), 1);
-                result.addLineOverlay(cv::Point2d(expC1, expR2), cv::Point2d(expC1, expR1),
+                result.addLineOverlay(cv::Point2d(bC1, bR2), cv::Point2d(bC1, bR1),
                                       cv::Scalar(0, 255, 255), 1);
             }
 
@@ -481,8 +477,8 @@ QWidget* HalconD4SigmaBeamDetectionPlugin::createConfigWidget(QWidget* parent)
     m_minSignalAboveBgSpin->setRange(1, 255);
     m_minSignalAboveBgSpin->setSingleStep(5);
     m_minSignalAboveBgSpin->setValue(m_minSignalAboveBg);
-    m_minSignalAboveBgSpin->setToolTip("Minimum signal above background for beam finding.\n"
-                                        "Threshold = background_mean + this value.");
+    m_minSignalAboveBgSpin->setToolTip("Noise threshold applied to background-subtracted image.\n"
+                                        "Pixels below this value in the subtracted image are ignored.");
     detectionLayout->addRow("Min Signal Above BG:", m_minSignalAboveBgSpin);
 
     // Min Beam Area
@@ -537,8 +533,8 @@ QWidget* HalconD4SigmaBeamDetectionPlugin::createConfigWidget(QWidget* parent)
     m_bgBoxSizeSpin->setRange(5, 500);
     m_bgBoxSizeSpin->setSingleStep(5);
     m_bgBoxSizeSpin->setValue(m_bgBoxSize);
-    m_bgBoxSizeSpin->setToolTip("Corner box size (pixels) for background estimation.\n"
-                                 "Background is estimated from top-left and bottom-right corners.");
+    m_bgBoxSizeSpin->setToolTip("Corner box size (pixels) for 4-corner background estimation.\n"
+                                 "Background is averaged from TL, TR, BL, BR corner regions.");
     detectionLayout->addRow("BG Box Size (px):", m_bgBoxSizeSpin);
 
     // Saturation Threshold
@@ -571,9 +567,9 @@ QWidget* HalconD4SigmaBeamDetectionPlugin::createConfigWidget(QWidget* parent)
     m_showLabelsCheck->setToolTip("Display beam ID, position, and D4sigma values as text.");
     displayLayout->addWidget(m_showLabelsCheck);
 
-    m_showBoundingBoxCheck = new QCheckBox("Show expanded ROI box");
+    m_showBoundingBoxCheck = new QCheckBox("Show beam bounding box");
     m_showBoundingBoxCheck->setChecked(m_showBoundingBox);
-    m_showBoundingBoxCheck->setToolTip("Draw the expanded bounding box used for D4sigma integration.");
+    m_showBoundingBoxCheck->setToolTip("Draw the bounding box of the beam connected component.");
     displayLayout->addWidget(m_showBoundingBoxCheck);
 
     mainLayout->addWidget(displayGroup);
@@ -693,8 +689,8 @@ ParameterSchema HalconD4SigmaBeamDetectionPlugin::getParameterSchema() const
     schema.parameters.push_back(ParameterDescriptor::createInt(
         "minSignalAboveBg", "Min Signal Above BG",
         1, 255, 30,
-        "Minimum signal above background for beam finding. "
-        "Threshold = background_mean + this value.",
+        "Noise threshold applied to background-subtracted image. "
+        "Pixels below this value in the subtracted image are ignored.",
         "", 5,
         "Detection"
     ));
@@ -744,7 +740,7 @@ ParameterSchema HalconD4SigmaBeamDetectionPlugin::getParameterSchema() const
     schema.parameters.push_back(ParameterDescriptor::createInt(
         "bgBoxSize", "BG Box Size",
         5, 500, 50,
-        "Corner box size (pixels) for background estimation.",
+        "Corner box size (pixels) for 4-corner background estimation.",
         "px", 5,
         "Detection"
     ));
@@ -783,7 +779,7 @@ ParameterSchema HalconD4SigmaBeamDetectionPlugin::getParameterSchema() const
     schema.parameters.push_back(ParameterDescriptor::createBool(
         "showBoundingBox", "Show Bounding Box",
         false,
-        "Draw the expanded bounding box used for D4sigma integration.",
+        "Draw the bounding box of the beam connected component.",
         "Display"
     ));
 

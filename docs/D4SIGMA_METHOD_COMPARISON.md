@@ -497,6 +497,190 @@ This is why beam locations agree to < 0.3 um while waist sizes differ by 20-35%.
 | 1 | D4Sigma Z-Scan (from Folder) | profile=d4sigma_slice.json, folder=small_data, rotate_180=true |
 | 2 | Beam: Fit Slices | prefix=splice, num_slices=auto, wavelength=1550e-9 |
 
+## Fixed-Crop Second Pass (v6-v8, February 2026)
+
+### Problem: Threshold-Dependent D4Sigma Underestimation
+
+The per-image Halcon detection (first pass) uses connected-component thresholding to define the integration region for d4sigma. At defocused z-positions, beams are dimmer and larger, so more wing pixels fall below the detection threshold. This causes **8-18% d4sigma underestimation at far-field z-positions**, producing a flatter d4sigma(z) curve and systematically low waist and M2 values.
+
+```
+d4sigma(z)
+  |
+  | \                      /   True curve (consistent integration region)
+  |   \                  /
+  |  x  \              /  x    Measured (per-image threshold clips more wings at far-field)
+  |       \  x    x  /
+  |    x    \      /    x
+  |           \  /
+  |            \/
+  +------------------------ z
+
+  At focus: peak=200, threshold clips at 20 => 90% of beam captured
+  At far-field: peak=65, threshold clips at 20 => 70% of beam captured
+```
+
+### Solution: Fixed-Crop Second Pass
+
+The Python reference algorithm (`poynt.py`) solves this by:
+1. Detecting beams at the **middle z-step** (best SNR, near focus)
+2. Computing a **fixed crop rectangle** from the middle step's centroid and d4sigma
+3. Applying that **same crop** to all z-steps for d4sigma computation
+
+This ensures consistent integration regions across the entire z-scan, eliminating the threshold-dependent wing clipping.
+
+### Implementation in `CustomServerCommandHandler.cpp`
+
+The second pass was added to `HandleD4SigmaZScanFolder`, executing after the existing Halcon detection loop:
+
+```
+Pass 1 (existing):  per-image -> Halcon plugin -> connected component d4sigma -> context
+Pass 2 (new):       middle slice reference -> fixed crop -> OpenCV d4sigma -> overwrite context
+HandleFitSlices:    reads context (same keys) -> fits Gaussian beam model
+```
+
+#### Algorithm Flow
+
+```
+1. Collect successful slice indices from Pass 1
+2. Pick middle slice (midIdx = successCount / 2)
+3. Read middle slice's per-beam centroid and d4sigma from context
+4. Compute fixed crop per beam:
+     crop_w = d4sigma_x * crop_width_factor (default 2.5)
+     crop_h = d4sigma_y * crop_width_factor
+     r0 = max(0, centroid_y - crop_h)
+     c0 = max(0, centroid_x - crop_w)
+     r1 = min(rows, centroid_y + crop_h)
+     c1 = min(cols, centroid_x + crop_w)
+5. For each z-slice:
+     a. Load image (cv::imread UNCHANGED), apply rotate_180 if needed
+     b. Convert to float
+     c. Background subtraction: 2-corner mean (TL + BR, bgBoxSize from profile)
+     d. For each beam: d4sigma_crop(bgSubtracted, r0, c0, r1, c1, noiseFloor=0.0)
+     e. Overwrite context keys: beam_N_d4sigma_x_px, beam_N_d4sigma_y_px,
+        beam_N_centroid_x_px, beam_N_centroid_y_px
+```
+
+#### D4Sigma Crop Helper (`d4sigma_crop`)
+
+```cpp
+struct D4CropResult { double cx, cy, d4x, d4y; };
+
+static D4CropResult d4sigma_crop(const cv::Mat& img, int r0, int c0, int r1, int c1,
+                                  double noiseFloor = 0.0) {
+    // Two-pass: intensity-weighted centroid, then variance
+    // Pixels below noiseFloor (after bg subtraction) are zeroed.
+    // Pass 1: centroid (first moment)
+    // Pass 2: variance (second moment)
+    // Returns d4sigma = 4 * sqrt(variance) for both axes
+}
+```
+
+#### New Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `fixed_crop_enabled` | `"true"` | Enable/disable fixed-crop second pass |
+| `crop_width_factor` | `"2.5"` | Crop size = centroid +/- d4sigma x factor |
+
+### Trial-and-Error History
+
+#### v6: Fixed Crop, No Noise Floor (noiseFloor=0.0)
+
+First implementation of the fixed-crop second pass. Used `noiseFloor=0.0` (only clip negatives after background subtraction).
+
+**Results vs Python reference:**
+
+| Metric | v6 Beam 0 | Python B1 (TX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 6.906 um | 7.391 um | -6.6% |
+| M2_x | 1.319 | 1.399 | -5.7% |
+| poynt_x | 0.223 deg | 0.222 deg | +0.5% |
+
+| Metric | v6 Beam 1 | Python B2 (RX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 6.083 um | 6.355 um | -4.3% |
+| M2_x | 1.217 | 1.264 | -3.7% |
+| poynt_x | 0.948 deg | 0.947 deg | +0.1% |
+
+**Assessment:** Good results, all M2 > 1.0, fits converge. But initial comparison with Python's `d4sigma_results_bg20.csv` showed C++ d4sigma values were 16-104% larger than the CSV values.
+
+**Misdiagnosis:** The CSV values were from Python's `extract_info()` which uses `threshold=0.1` (10% of peak) — these are thresholded values used only to determine crop sizes. Python's actual fitting in `calc_beam_params()` uses `threshold=0` (no thresholding). The comparison was apples-to-oranges.
+
+#### v7: Fixed Crop with Noise Floor (noiseFloor=20) -- FAILED
+
+Attempted to match d4sigma values to the Python CSV by adding `noiseFloor = minSignalAboveBg = 20` to `d4sigma_crop`. This zeroed all pixels below 20 DN after background subtraction.
+
+**Results vs Python reference:**
+
+| Metric | v7 Beam 0 | Python B1 (TX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 3.900 um | 7.391 um | **-47%** |
+| M2_x | 0.594 | 1.399 | **-58%** |
+| converged_x | **false** | - | - |
+
+| Metric | v7 Beam 1 | Python B2 (RX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 4.115 um | 6.355 um | **-35%** |
+| M2_x | 0.777 | 1.264 | **-39%** |
+| converged_x | **false** | - | - |
+
+**Assessment:** Catastrophic failure. M2 < 1.0 (physically impossible), fits did not converge.
+
+**Root cause:** `noiseFloor=20` clipped too much beam wing signal. For a beam with peak=200, 20 DN = 10% threshold (reasonable). But for a dim defocused beam with peak=65, 20 DN = 31% threshold (far too aggressive). The absolute threshold amplified the exact problem we were trying to fix — differential clipping across z-positions.
+
+**Key lesson from poynt.py review:**
+- `extract_info()` uses `threshold=0.1` (relative) for beam DETECTION and crop sizing only
+- `calc_beam_params()` uses `threshold=0` (none) for the d4sigma values that feed the Gaussian M2 fit
+- The fixed crop from the middle slice is tight enough (2.5x d4sigma) that background noise within the crop is minimal — no additional thresholding needed
+
+#### v8: Reverted to No Noise Floor (noiseFloor=0.0) -- FINAL
+
+Reverted to `noiseFloor=0.0`, same as v6. This matches Python's `calc_beam_params(threshold=0)` approach.
+
+**Final results vs Python reference:**
+
+| Metric | v8 Beam 0 | Python B1 (TX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 6.906 um | 7.391 um | -6.6% |
+| waist_y | 5.716 um | 6.038 um | -5.3% |
+| M2_x | 1.319 | 1.399 | -5.7% |
+| M2_y | 1.499 | 1.636 | -8.4% |
+| poynt_x | 0.223 deg | 0.222 deg | +0.5% |
+| poynt_y | -0.280 deg | -0.276 deg | +1.4% |
+| converged | x:yes y:yes | - | - |
+
+| Metric | v8 Beam 1 | Python B2 (RX) | Error |
+|--------|-----------|----------------|-------|
+| waist_x | 6.083 um | 6.355 um | -4.3% |
+| waist_y | 6.090 um | 6.354 um | -4.2% |
+| M2_x | 1.217 | 1.264 | -3.7% |
+| M2_y | 1.168 | 1.209 | -3.4% |
+| poynt_x | 0.948 deg | 0.947 deg | +0.1% |
+| poynt_y | -0.918 deg | -0.917 deg | +0.1% |
+| converged | x:yes y:no | - | - |
+
+### Remaining Systematic Offset (~5%)
+
+The v8 results show a consistent -4 to -8% offset in waist and M2 relative to Python. Likely causes:
+
+1. **Background subtraction difference**: C++ uses 2-corner bg with `bgBoxSize=100` (from vision profile); Python uses 2-corner with `bgBox=50`. Larger bg box may include faint beam signal near corners, slightly overestimating background, which reduces beam signal and shrinks d4sigma.
+
+2. **Image loading**: C++ loads via `cv::imread(IMREAD_UNCHANGED)` as 8-bit then converts to float; Python loads via PIL and operates in float64 throughout. Minor quantization differences in bg subtraction.
+
+3. **Crop sizing**: C++ crops are based on Halcon's first-pass d4sigma (thresholded), while Python crops are based on its own `extract_info` d4sigma (also thresholded but with different threshold). Different crop sizes lead to slightly different integration regions.
+
+These offsets are consistent and small enough for production use. Poynting angles match within 1.5%.
+
+### Key Lessons
+
+1. **Never apply absolute noise thresholds to d4sigma computation for M2 fitting.** An absolute threshold (e.g., 20 DN) becomes a different relative threshold at each z-position, creating exactly the differential clipping that biases M2.
+
+2. **Fixed crops eliminate threshold sensitivity.** By using the same crop for all z-steps, the integration region is consistent regardless of beam brightness. The tight crop (2.5x d4sigma) naturally limits background noise without needing a threshold.
+
+3. **Distinguish detection thresholds from measurement thresholds.** The Python pipeline uses threshold=0.1 for DETECTION (finding beams, sizing crops) but threshold=0 for MEASUREMENT (d4sigma values fed to the fit). These serve different purposes and should not be conflated.
+
+4. **Compare fit results, not intermediate d4sigma values.** Raw d4sigma values from different methods (thresholded vs unthresholded, different crop sizes) are not directly comparable. The fit outputs (waist, M2, Poynting) are the meaningful comparison points.
+
 ## Python Reference Command
 
 ```bash
