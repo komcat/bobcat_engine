@@ -283,6 +283,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"folder_path", ""},
+      {"filename_filter", ""},
       {"z_pattern", "zheight<number>um"},
       {"um_per_px_x", "0.25"},
       {"um_per_px_y", "0.25"},
@@ -298,8 +299,10 @@ public:
       return (it != params.end()) ? it->second : def;
     };
     widget->addFolderSelector("folder_path", "Image Folder Path", get("folder_path"));
+    widget->addDropdownParameter("filename_filter", "Filename Filter (substring)", get("filename_filter", ""),
+      {"", "ch0", "ch1", "ch2", "ch3"}, true);
     widget->addDropdownParameter("z_pattern", "Z-height Filename Pattern", get("z_pattern", "zheight<number>um"),
-      {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"});
+      {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"}, true);
     widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
     widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
     widget->addParameterField("delay_ms", "Delay Between Images (ms)", get("delay_ms", "150"));
@@ -324,6 +327,7 @@ public:
 
     sequence->AddAction("beamserver", "DetectFolder", {
       {"folder_path", get("folder_path")},
+      {"filename_filter", get("filename_filter")},
       {"z_regex", regex},
       {"um_per_px_x", get("um_per_px_x", "0.25")},
       {"um_per_px_y", get("um_per_px_y", "0.25")},

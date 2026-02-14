@@ -1077,6 +1077,7 @@ public:
         return {
             {"profile_path", ""},
             {"folder_path", ""},
+            {"filename_filter", ""},
             {"z_pattern", "zheight<number>um"},
             {"capture_as_prefix", "splice"},
             {"rotate_180", "true"}
@@ -1097,9 +1098,13 @@ public:
         widget->addFolderSelector("folder_path", "Image Folder Path",
             getParam("folder_path", ""));
 
+        widget->addDropdownParameter("filename_filter", "Filename Filter (substring)",
+            getParam("filename_filter", ""),
+            {"", "ch0", "ch1", "ch2", "ch3"}, true);
+
         widget->addDropdownParameter("z_pattern", "Z-height Filename Pattern",
             getParam("z_pattern", "zheight<number>um"),
-            {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"});
+            {"zheight<number>um", "z<number>um", "z_<number>", "<number>um"}, true);
 
         widget->addParameterField("capture_as_prefix", "Capture As Prefix",
             getParam("capture_as_prefix", "splice"));
@@ -1119,6 +1124,7 @@ public:
 
         std::string profilePath = getParam("profile_path", "");
         std::string folderPath = getParam("folder_path", "");
+        std::string filenameFilter = getParam("filename_filter", "");
         std::string prefix = getParam("capture_as_prefix", "splice");
         std::string rotate180 = getParam("rotate_180", "true");
 
@@ -1134,6 +1140,7 @@ public:
         sequence->AddAction("beamserver", "D4SigmaZScanFolder", {
             {"profile_path", profilePath},
             {"folder_path", folderPath},
+            {"filename_filter", filenameFilter},
             {"z_regex", regex},
             {"capture_as_prefix", prefix},
             {"rotate_180", rotate180}

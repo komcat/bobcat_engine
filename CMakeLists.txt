@@ -1483,3 +1483,69 @@ if(WIN32 AND MSVC)
 endif()
 
 message(STATUS "Data Explorer utility: 'data_explorer' - browse serial number result data")
+
+# ============================================================================
+# Vision Profile Tester Utility
+# ============================================================================
+# Offline vision profile testing tool - load images from disk, run vision plugins
+if(OPENCV_FOUND)
+    set(VISION_TESTER_SOURCES
+        tools/vision_profile_tester/main.cpp
+        tools/vision_profile_tester/VisionProfileTesterWindow.cpp
+        include/AppUI/DarkTheme.cpp
+        include/vision/VisionManager.cpp
+        # OpenCV plugins (excludes PatternMatching/TemplateMatchingBase - they need VisionManagerPage)
+        include/vision/plugins/CircleDetectionPlugin.cpp
+        include/vision/plugins/EdgeDetectionPlugin.cpp
+        include/vision/plugins/FiducialDetectorPlugin.cpp
+        include/vision/plugins/LineDetectorPlugin.cpp
+        include/vision/plugins/CornerDetectorPlugin.cpp
+        include/vision/plugins/ImageProcessingPlugin.cpp
+        include/vision/plugins/CalibrationPlatePlugin.cpp
+    )
+
+    if(HALCON_FOUND)
+        list(APPEND VISION_TESTER_SOURCES
+            include/vision/plugins/HalconCircleDetectionPlugin.cpp
+            include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
+            include/vision/plugins/HalconLineDetectionPlugin.cpp
+            include/vision/plugins/HalconBeamDetectionPlugin.cpp
+            include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.cpp
+        )
+    endif()
+
+    add_executable(vision_profile_tester ${VISION_TESTER_SOURCES})
+
+    target_include_directories(vision_profile_tester PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/include/AppUI
+        ${CMAKE_SOURCE_DIR}/include/vision
+        ${CMAKE_SOURCE_DIR}/include/vision/plugins
+        ${CMAKE_SOURCE_DIR}/tools/vision_profile_tester
+        ${NLOHMANN_JSON_DIR}
+        ${OPENCV_INCLUDE_DIR}
+    )
+
+    target_link_libraries(vision_profile_tester PRIVATE Qt6::Widgets ${OPENCV_LIBRARY})
+    target_compile_definitions(vision_profile_tester PRIVATE HAS_OPENCV NOMINMAX WIN32_LEAN_AND_MEAN)
+
+    if(HALCON_FOUND)
+        target_include_directories(vision_profile_tester SYSTEM PRIVATE ${HALCON_INCLUDE_DIR})
+        target_link_libraries(vision_profile_tester PRIVATE ${HALCON_LIBRARY} ${HALCON_CORE_LIBRARY})
+        target_compile_definitions(vision_profile_tester PRIVATE HAS_HALCON)
+    endif()
+
+    set_target_properties(vision_profile_tester PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        AUTOMOC ON
+    )
+
+    if(WIN32 AND MSVC)
+        set_target_properties(vision_profile_tester PROPERTIES
+            WIN32_EXECUTABLE TRUE
+        )
+    endif()
+
+    message(STATUS "Vision Profile Tester: 'vision_profile_tester' - offline vision profile testing tool")
+endif()

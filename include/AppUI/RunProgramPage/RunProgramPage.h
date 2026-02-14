@@ -6,6 +6,7 @@
 #include <QProgressBar>
 #include <QListWidget>
 #include <QTableWidget>
+#include <QTreeWidget>
 #include <QStackedWidget>
 #include <QLabel>
 #include <QCheckBox>
@@ -326,26 +327,29 @@ private:
   void loadVisionHistoryImage(int index);       // Load specific history image
   void clearVisionHistory();                    // Clear history on new program run
 
-  // Context Tab Components (real-time context variable viewer)
+  // Context Tab Components (real-time context variable viewer with tree hierarchy)
   QWidget* m_contextTabWidget;           // Container widget for context tab
-  QTableWidget* m_contextTable;          // Table showing context variables
+  QTreeWidget* m_contextTree;            // Tree showing context variables (dot-separated hierarchy)
   QLineEdit* m_contextFilterEdit;        // Filter/search textbox
   QLabel* m_contextStatusLabel;          // Status label (e.g., "12 variables")
   QTimer* m_contextRefreshTimer;         // 500ms refresh timer
   QPushButton* m_contextCopyButton;      // Copy to clipboard button
   QPushButton* m_contextExportButton;    // Export to CSV button
   QPushButton* m_contextRefreshCvButton; // Refresh CV inject button
+  QPushButton* m_contextExpandAllButton; // Expand all tree nodes
+  QPushButton* m_contextCollapseAllButton; // Collapse all tree nodes
   std::unique_ptr<SequenceContext> m_standaloneCvContext;  // Standalone context for CV refresh
   QTimer* m_cvAutoRefreshTimer = nullptr;  // Auto-refresh timer for CV data
 
   // Context tab methods
   void createContextTab();                             // Creates the context tab UI
-  void updateContextTable(bool forceUpdate = false);   // Refreshes table from context
+  void updateContextTable(bool forceUpdate = false);   // Refreshes tree from context
   void onContextFilterChanged(const QString& filter);  // Handles filter text changes
   void startContextRefreshTimer();                     // Starts the 500ms timer
   void stopContextRefreshTimer();                      // Stops the timer
   void onContextCopyToClipboard();                     // Copy context to clipboard
   void onContextExportToCsv();                         // Export context to CSV file
   void onContextRefreshCv();                           // Refresh CV inject into standalone context
-  void displayStandaloneContext();                     // Display standalone context in table
+  void displayStandaloneContext();                     // Display standalone context in tree
+  void refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix);  // Shared tree builder
 };

@@ -881,7 +881,8 @@ void ProcessConfigWidget::addIOPinSelector(const std::string& key,
 void ProcessConfigWidget::addDropdownParameter(const std::string& key,
   const std::string& label,
   const std::string& value,
-  const std::vector<std::string>& options)
+  const std::vector<std::string>& options,
+  bool editable)
 {
   QComboBox* combo = new QComboBox();
   combo->setStyleSheet(
@@ -892,6 +893,17 @@ void ProcessConfigWidget::addDropdownParameter(const std::string& key,
     "border-radius: 3px;"
   );
 
+  // Allow manual text input when editable (e.g., custom regex patterns)
+  if (editable) {
+    combo->setEditable(true);
+    combo->lineEdit()->setStyleSheet(
+      "background-color: #3c3c3c; "
+      "color: #d4d4d4; "
+      "border: none; "
+      "padding: 2px;"
+    );
+  }
+
   // Add all options to combo box
   for (const auto& option : options) {
     combo->addItem(QString::fromStdString(option));
@@ -901,6 +913,9 @@ void ProcessConfigWidget::addDropdownParameter(const std::string& key,
   int index = combo->findText(QString::fromStdString(value));
   if (index >= 0) {
     combo->setCurrentIndex(index);
+  } else if (editable) {
+    // Custom value not in preset list - set it as typed text
+    combo->setCurrentText(QString::fromStdString(value));
   } else if (!options.empty()) {
     combo->setCurrentIndex(0);  // Default to first option if value not found
   }
@@ -908,6 +923,10 @@ void ProcessConfigWidget::addDropdownParameter(const std::string& key,
   // Connect to parameter change signal
   connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &ProcessConfigWidget::parameterChanged);
+  if (editable) {
+    connect(combo, &QComboBox::editTextChanged,
+      this, &ProcessConfigWidget::parameterChanged);
+  }
 
   m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
   m_parameterCombos[key] = combo;

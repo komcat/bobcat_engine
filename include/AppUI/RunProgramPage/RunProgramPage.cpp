@@ -43,6 +43,7 @@
 #include <QHeaderView>
 #include <QTableWidgetItem>
 #include <QSettings>
+#include <QSet>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
@@ -178,7 +179,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_visionIndexLabel(nullptr)        // Vision index label
   , m_visionHistoryViewIndex(-1)       // -1 = show latest
   , m_contextTabWidget(nullptr)        // Context tab container
-  , m_contextTable(nullptr)            // Context variables table
+  , m_contextTree(nullptr)             // Context variables tree
   , m_contextFilterEdit(nullptr)       // Context filter textbox
   , m_contextStatusLabel(nullptr)      // Context status label
   , m_contextRefreshTimer(nullptr)     // Context refresh timer
@@ -5238,7 +5239,7 @@ void RunProgramPage::createContextTab()
   contextLayout->setContentsMargins(5, 5, 5, 5);
   contextLayout->setSpacing(8);
 
-  // Header row with filter and status
+  // Header row with filter, expand/collapse, and status
   QHBoxLayout* headerLayout = new QHBoxLayout();
 
   QLabel* filterLabel = new QLabel("Filter:");
@@ -5263,57 +5264,89 @@ void RunProgramPage::createContextTab()
   );
   headerLayout->addWidget(m_contextFilterEdit, 1);
 
+  // Expand All / Collapse All buttons
+  QString smallButtonStyle =
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 4px 10px; "
+    "  font-size: 14pt; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #606060; "
+    "}";
+
+  m_contextExpandAllButton = new QPushButton("Expand All");
+  m_contextExpandAllButton->setStyleSheet(smallButtonStyle);
+  headerLayout->addWidget(m_contextExpandAllButton);
+
+  m_contextCollapseAllButton = new QPushButton("Collapse All");
+  m_contextCollapseAllButton->setStyleSheet(smallButtonStyle);
+  headerLayout->addWidget(m_contextCollapseAllButton);
+
   m_contextStatusLabel = new QLabel("No context data");
   m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic; font-size: 18pt;");
   headerLayout->addWidget(m_contextStatusLabel);
 
   contextLayout->addLayout(headerLayout);
 
-  // Context variables table
-  m_contextTable = new QTableWidget();
-  m_contextTable->setColumnCount(3);
-  m_contextTable->setHorizontalHeaderLabels({"Variable", "Value", "Type"});
-  m_contextTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_contextTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_contextTable->setAlternatingRowColors(true);
+  // Context variables tree (dot-separated hierarchy)
+  m_contextTree = new QTreeWidget();
+  m_contextTree->setColumnCount(3);
+  m_contextTree->setHeaderLabels({"Variable", "Value", "Type"});
+  m_contextTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  m_contextTree->setSelectionBehavior(QAbstractItemView::SelectRows);
+  m_contextTree->setAlternatingRowColors(true);
+  m_contextTree->setIndentation(20);
 
   // Load column widths from settings (with defaults for larger font)
   QSettings settings("Fabrinet", "BobcatEngine");
-  int col0Width = settings.value("ContextTable/ColumnWidth0", 300).toInt();
-  int col1Width = settings.value("ContextTable/ColumnWidth1", 450).toInt();
-  m_contextTable->setColumnWidth(0, col0Width);  // Variable name
-  m_contextTable->setColumnWidth(1, col1Width);  // Value
-  m_contextTable->horizontalHeader()->setStretchLastSection(true);  // Type stretches
+  int col0Width = settings.value("ContextTree/ColumnWidth0", 300).toInt();
+  int col1Width = settings.value("ContextTree/ColumnWidth1", 450).toInt();
+  m_contextTree->setColumnWidth(0, col0Width);  // Variable name (tree column)
+  m_contextTree->setColumnWidth(1, col1Width);  // Value
+  m_contextTree->header()->setStretchLastSection(true);  // Type stretches
 
   // Save column widths when user resizes them
-  connect(m_contextTable->horizontalHeader(), &QHeaderView::sectionResized,
+  connect(m_contextTree->header(), &QHeaderView::sectionResized,
     this, [this](int logicalIndex, int /*oldSize*/, int newSize) {
       if (logicalIndex < 2) {  // Only save Variable and Value columns (Type stretches)
         QSettings settings("Fabrinet", "BobcatEngine");
-        settings.setValue(QString("ContextTable/ColumnWidth%1").arg(logicalIndex), newSize);
+        settings.setValue(QString("ContextTree/ColumnWidth%1").arg(logicalIndex), newSize);
       }
     });
 
-  m_contextTable->verticalHeader()->setVisible(false);
-  m_contextTable->setSortingEnabled(true);
-
-  m_contextTable->setStyleSheet(
-    "QTableWidget { "
+  m_contextTree->setStyleSheet(
+    "QTreeWidget { "
     "  background-color: #1e1e1e; "
     "  border: 1px solid #3f3f46; "
-    "  gridline-color: #3f3f46; "
     "  color: #d4d4d4; "
     "  font-size: 18pt; "
     "} "
-    "QTableWidget::item { "
-    "  padding: 6px; "
+    "QTreeWidget::item { "
+    "  padding: 4px; "
     "} "
-    "QTableWidget::item:alternate { "
+    "QTreeWidget::item:alternate { "
     "  background-color: #252526; "
     "} "
-    "QTableWidget::item:selected { "
+    "QTreeWidget::item:selected { "
     "  background-color: #0e639c; "
     "  color: white; "
+    "} "
+    "QTreeWidget::branch:has-children:!has-siblings:closed,"
+    "QTreeWidget::branch:closed:has-children:has-siblings { "
+    "  border-image: none; "
+    "  image: none; "
+    "} "
+    "QTreeWidget::branch:open:has-children:!has-siblings,"
+    "QTreeWidget::branch:open:has-children:has-siblings { "
+    "  border-image: none; "
+    "  image: none; "
     "} "
     "QHeaderView::section { "
     "  background-color: #2d2d30; "
@@ -5325,7 +5358,7 @@ void RunProgramPage::createContextTab()
     "}"
   );
 
-  contextLayout->addWidget(m_contextTable, 1);
+  contextLayout->addWidget(m_contextTree, 1);
 
   // Button row for copy/export
   QHBoxLayout* buttonLayout = new QHBoxLayout();
@@ -5408,6 +5441,12 @@ void RunProgramPage::createContextTab()
   connect(m_contextExportButton, &QPushButton::clicked,
     this, &RunProgramPage::onContextExportToCsv);
 
+  // Connect Expand All / Collapse All
+  connect(m_contextExpandAllButton, &QPushButton::clicked,
+    this, [this]() { m_contextTree->expandAll(); });
+  connect(m_contextCollapseAllButton, &QPushButton::clicked,
+    this, [this]() { m_contextTree->collapseAll(); });
+
   // Connect Refresh CV button (toggle auto-refresh)
   connect(m_contextRefreshCvButton, &QPushButton::clicked,
     this, [this](bool checked) {
@@ -5436,19 +5475,15 @@ void RunProgramPage::createContextTab()
   connect(m_contextRefreshTimer, &QTimer::timeout,
     this, [this]() { updateContextTable(false); });
 
-  std::cout << "[RunProgramPage] Context tab created" << std::endl;
+  std::cout << "[RunProgramPage] Context tab created (tree view)" << std::endl;
 }
 
 void RunProgramPage::updateContextTable(bool forceUpdate)
 {
   // Safety check: Don't access context if worker is not actively running
-  // This prevents race conditions during worker thread shutdown
-  // But preserve the existing table contents (don't clear them)
-  // UNLESS forceUpdate is true - used for final update before worker deletion
   if (!forceUpdate && (!m_programWorker || !m_programWorker->isRunning())) {
-    // Keep existing table data visible, just update status to show it's from last run
-    if (m_contextTable->rowCount() > 0) {
-      m_contextStatusLabel->setText(QString("%1 variables (last run)").arg(m_contextTable->rowCount()));
+    if (m_contextTree->topLevelItemCount() > 0) {
+      m_contextStatusLabel->setText("variables (last run)");
       m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
     } else {
       m_contextStatusLabel->setText("No context data");
@@ -5461,9 +5496,8 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
   SequenceContext* context = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
 
   if (!context) {
-    // Keep existing table data if we have any
-    if (m_contextTable->rowCount() > 0) {
-      m_contextStatusLabel->setText(QString("%1 variables (last run)").arg(m_contextTable->rowCount()));
+    if (m_contextTree->topLevelItemCount() > 0) {
+      m_contextStatusLabel->setText("variables (last run)");
       m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
     } else {
       m_contextStatusLabel->setText("No context data");
@@ -5472,99 +5506,7 @@ void RunProgramPage::updateContextTable(bool forceUpdate)
     return;
   }
 
-  // Get current filter text
-  QString filterText = m_contextFilterEdit->text().toLower().trimmed();
-
-  // Get summary from context (thread-safe via internal mutex)
-  auto summary = context->GetSummary();
-
-  // ✅ Batch UI updates to prevent flicker and improve performance
-  m_contextTable->setUpdatesEnabled(false);
-
-  // Temporarily disable sorting for performance
-  m_contextTable->setSortingEnabled(false);
-  m_contextTable->setRowCount(0);
-
-  int totalCount = 0;
-  int shownCount = 0;
-
-  for (const auto& [key, value] : summary.capturedValues) {
-    totalCount++;
-
-    // Apply filter
-    QString keyStr = QString::fromStdString(key);
-    if (!filterText.isEmpty() && !keyStr.toLower().contains(filterText)) {
-      continue;
-    }
-
-    shownCount++;
-    int row = m_contextTable->rowCount();
-    m_contextTable->insertRow(row);
-
-    // Variable name
-    QTableWidgetItem* keyItem = new QTableWidgetItem(keyStr);
-    keyItem->setForeground(QColor(86, 156, 214));  // Blue for variable names
-    m_contextTable->setItem(row, 0, keyItem);
-
-    // Value and type
-    QString valueStr;
-    QString typeStr;
-    QColor valueColor;
-
-    switch (value.type) {
-      case SequenceContext::ValueType::NUMERIC:
-        valueStr = QString::number(value.numericValue, 'g', 8);
-        typeStr = "Numeric";
-        valueColor = QColor(181, 206, 168);  // Green for numbers
-        break;
-      case SequenceContext::ValueType::STRING:
-        valueStr = QString::fromStdString(value.stringValue);
-        typeStr = "String";
-        valueColor = QColor(206, 145, 120);  // Orange for strings
-        break;
-      case SequenceContext::ValueType::BOOLEAN:
-        valueStr = value.booleanValue ? "true" : "false";
-        typeStr = "Boolean";
-        valueColor = QColor(86, 156, 214);  // Blue for booleans
-        break;
-      case SequenceContext::ValueType::IMAGE_FRAME:
-        valueStr = "[Image Frame]";
-        if (!value.tempFilePath.empty()) {
-          valueStr += QString(" (%1)").arg(QString::fromStdString(value.tempFilePath));
-        }
-        typeStr = "Image";
-        valueColor = QColor(220, 220, 170);  // Yellow for images
-        break;
-      default:
-        valueStr = "(none)";
-        typeStr = "None";
-        valueColor = QColor(128, 128, 128);  // Gray for none
-        break;
-    }
-
-    QTableWidgetItem* valueItem = new QTableWidgetItem(valueStr);
-    valueItem->setForeground(valueColor);
-    m_contextTable->setItem(row, 1, valueItem);
-
-    // Type
-    QTableWidgetItem* typeItem = new QTableWidgetItem(typeStr);
-    typeItem->setForeground(QColor(128, 128, 128));  // Gray for type
-    m_contextTable->setItem(row, 2, typeItem);
-  }
-
-  // Re-enable sorting
-  m_contextTable->setSortingEnabled(true);
-
-  // ✅ Re-enable UI updates (batched for performance)
-  m_contextTable->setUpdatesEnabled(true);
-
-  // Update status label
-  m_contextStatusLabel->setStyleSheet("color: #4ec9b0;");  // Teal color
-  if (filterText.isEmpty()) {
-    m_contextStatusLabel->setText(QString("%1 variables").arg(totalCount));
-  } else {
-    m_contextStatusLabel->setText(QString("%1 of %2 variables").arg(shownCount).arg(totalCount));
-  }
+  refreshContextTreeDisplay(context, "", "");
 }
 
 void RunProgramPage::onContextFilterChanged(const QString& /*filter*/)
@@ -5609,34 +5551,44 @@ void RunProgramPage::stopContextRefreshTimer()
 
 void RunProgramPage::onContextCopyToClipboard()
 {
-  if (!m_contextTable || m_contextTable->rowCount() == 0) {
+  if (!m_contextTree || m_contextTree->topLevelItemCount() == 0) {
     std::cout << "[RunProgramPage] No context data to copy" << std::endl;
     return;
   }
 
-  // Build tab-separated text from table contents
-  QString clipboardText;
-  clipboardText += "Variable\tValue\tType\n";  // Header row
+  // Recursive helper to collect leaf entries with full dot-separated paths
+  struct Entry { QString variable; QString value; QString type; };
+  std::vector<Entry> entries;
 
-  for (int row = 0; row < m_contextTable->rowCount(); ++row) {
-    QTableWidgetItem* varItem = m_contextTable->item(row, 0);
-    QTableWidgetItem* valueItem = m_contextTable->item(row, 1);
-    QTableWidgetItem* typeItem = m_contextTable->item(row, 2);
+  std::function<void(QTreeWidgetItem*, const QString&)> collectLeaves;
+  collectLeaves = [&](QTreeWidgetItem* item, const QString& prefix) {
+    QString fullPath = prefix.isEmpty() ? item->text(0) : prefix + "." + item->text(0);
+    if (item->childCount() == 0) {
+      // Leaf node
+      entries.push_back({fullPath, item->text(1), item->text(2)});
+    } else {
+      for (int i = 0; i < item->childCount(); ++i) {
+        collectLeaves(item->child(i), fullPath);
+      }
+    }
+  };
 
-    QString varName = varItem ? varItem->text() : "";
-    QString value = valueItem ? valueItem->text() : "";
-    QString type = typeItem ? typeItem->text() : "";
-
-    clipboardText += QString("%1\t%2\t%3\n").arg(varName, value, type);
+  for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
+    collectLeaves(m_contextTree->topLevelItem(i), "");
   }
 
-  // Copy to clipboard
+  // Build tab-separated text
+  QString clipboardText;
+  clipboardText += "Variable\tValue\tType\n";
+  for (const auto& e : entries) {
+    clipboardText += QString("%1\t%2\t%3\n").arg(e.variable, e.value, e.type);
+  }
+
   QClipboard* clipboard = QApplication::clipboard();
   clipboard->setText(clipboardText);
 
-  std::cout << "[RunProgramPage] Copied " << m_contextTable->rowCount() << " context variables to clipboard" << std::endl;
+  std::cout << "[RunProgramPage] Copied " << entries.size() << " context variables to clipboard" << std::endl;
 
-  // Brief visual feedback - change button text temporarily
   m_contextCopyButton->setText("Copied!");
   QTimer::singleShot(1500, this, [this]() {
     m_contextCopyButton->setText("Copy to Clipboard");
@@ -5645,16 +5597,35 @@ void RunProgramPage::onContextCopyToClipboard()
 
 void RunProgramPage::onContextExportToCsv()
 {
-  if (!m_contextTable || m_contextTable->rowCount() == 0) {
+  if (!m_contextTree || m_contextTree->topLevelItemCount() == 0) {
     std::cout << "[RunProgramPage] No context data to export" << std::endl;
     return;
+  }
+
+  // Collect leaf entries from tree
+  struct Entry { QString variable; QString value; QString type; };
+  std::vector<Entry> entries;
+
+  std::function<void(QTreeWidgetItem*, const QString&)> collectLeaves;
+  collectLeaves = [&](QTreeWidgetItem* item, const QString& prefix) {
+    QString fullPath = prefix.isEmpty() ? item->text(0) : prefix + "." + item->text(0);
+    if (item->childCount() == 0) {
+      entries.push_back({fullPath, item->text(1), item->text(2)});
+    } else {
+      for (int i = 0; i < item->childCount(); ++i) {
+        collectLeaves(item->child(i), fullPath);
+      }
+    }
+  };
+
+  for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
+    collectLeaves(m_contextTree->topLevelItem(i), "");
   }
 
   // Generate default filename with timestamp
   QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
   QString defaultFileName = QString("context_export_%1.csv").arg(timestamp);
 
-  // Open file dialog
   QString filePath = QFileDialog::getSaveFileName(
     this,
     "Export Context to CSV",
@@ -5666,7 +5637,6 @@ void RunProgramPage::onContextExportToCsv()
     return;  // User cancelled
   }
 
-  // Open file for writing
   QFile file(filePath);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
     std::cerr << "[RunProgramPage] Failed to open file for writing: " << filePath.toStdString() << std::endl;
@@ -5674,38 +5644,25 @@ void RunProgramPage::onContextExportToCsv()
   }
 
   QTextStream stream(&file);
-
-  // Write CSV header
   stream << "Variable,Value,Type\n";
 
-  // Write data rows
-  for (int row = 0; row < m_contextTable->rowCount(); ++row) {
-    QTableWidgetItem* varItem = m_contextTable->item(row, 0);
-    QTableWidgetItem* valueItem = m_contextTable->item(row, 1);
-    QTableWidgetItem* typeItem = m_contextTable->item(row, 2);
+  auto escapeForCsv = [](const QString& str) -> QString {
+    QString escaped = str;
+    escaped.replace("\"", "\"\"");
+    if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n')) {
+      escaped = QString("\"%1\"").arg(escaped);
+    }
+    return escaped;
+  };
 
-    QString varName = varItem ? varItem->text() : "";
-    QString value = valueItem ? valueItem->text() : "";
-    QString type = typeItem ? typeItem->text() : "";
-
-    // Escape quotes in values and wrap in quotes if contains comma
-    auto escapeForCsv = [](const QString& str) -> QString {
-      QString escaped = str;
-      escaped.replace("\"", "\"\"");  // Double up quotes
-      if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n')) {
-        escaped = QString("\"%1\"").arg(escaped);
-      }
-      return escaped;
-    };
-
-    stream << escapeForCsv(varName) << "," << escapeForCsv(value) << "," << escapeForCsv(type) << "\n";
+  for (const auto& e : entries) {
+    stream << escapeForCsv(e.variable) << "," << escapeForCsv(e.value) << "," << escapeForCsv(e.type) << "\n";
   }
 
   file.close();
 
-  std::cout << "[RunProgramPage] Exported " << m_contextTable->rowCount() << " context variables to: " << filePath.toStdString() << std::endl;
+  std::cout << "[RunProgramPage] Exported " << entries.size() << " context variables to: " << filePath.toStdString() << std::endl;
 
-  // Brief visual feedback
   m_contextExportButton->setText("Exported!");
   QTimer::singleShot(1500, this, [this]() {
     m_contextExportButton->setText("Export to CSV");
@@ -5792,38 +5749,99 @@ void RunProgramPage::onContextRefreshCv()
 void RunProgramPage::displayStandaloneContext()
 {
   if (!m_standaloneCvContext) return;
+  refreshContextTreeDisplay(m_standaloneCvContext.get(), "cv.* ", " (live)");
+}
 
-  // Get current filter text
+void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix)
+{
+  if (!context) return;
+
   QString filterText = m_contextFilterEdit->text().toLower().trimmed();
+  auto summary = context->GetSummary();
 
-  // Get summary from standalone context
-  auto summary = m_standaloneCvContext->GetSummary();
+  // Save expansion state before rebuilding
+  QSet<QString> expandedPaths;
+  QSet<QString> allPreviousPaths;  // Track all known nodes to detect new ones
+  bool wasEmpty = (m_contextTree->topLevelItemCount() == 0);
 
-  m_contextTable->setUpdatesEnabled(false);
-  m_contextTable->setSortingEnabled(false);
-  m_contextTable->setRowCount(0);
+  if (!wasEmpty) {
+    std::function<void(QTreeWidgetItem*, const QString&)> collectState;
+    collectState = [&](QTreeWidgetItem* item, const QString& path) {
+      allPreviousPaths.insert(path);
+      if (item->isExpanded()) {
+        expandedPaths.insert(path);
+      }
+      for (int i = 0; i < item->childCount(); ++i) {
+        QString childPath = path + "." + item->child(i)->text(0);
+        collectState(item->child(i), childPath);
+      }
+    };
+    for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
+      auto* item = m_contextTree->topLevelItem(i);
+      collectState(item, item->text(0));
+    }
+  }
+
+  m_contextTree->setUpdatesEnabled(false);
+  m_contextTree->clear();
 
   int totalCount = 0;
   int shownCount = 0;
 
+  // Map to track created parent nodes by their full dot-path
+  std::map<QString, QTreeWidgetItem*> nodeMap;
+
   for (const auto& [key, value] : summary.capturedValues) {
     totalCount++;
 
+    // Apply filter on full key
     QString keyStr = QString::fromStdString(key);
     if (!filterText.isEmpty() && !keyStr.toLower().contains(filterText)) {
       continue;
     }
-
     shownCount++;
-    int row = m_contextTable->rowCount();
-    m_contextTable->insertRow(row);
 
-    // Variable name
-    QTableWidgetItem* keyItem = new QTableWidgetItem(keyStr);
-    keyItem->setForeground(QColor(86, 156, 214));  // Blue
-    m_contextTable->setItem(row, 0, keyItem);
+    // Split key by '.' to build hierarchy
+    QStringList parts = keyStr.split('.');
 
-    // Value and type
+    // Navigate/create parent nodes for all segments except the last
+    QTreeWidgetItem* parent = nullptr;
+    QString currentPath;
+
+    for (int i = 0; i < parts.size() - 1; ++i) {
+      currentPath = currentPath.isEmpty() ? parts[i] : currentPath + "." + parts[i];
+
+      auto it = nodeMap.find(currentPath);
+      if (it != nodeMap.end()) {
+        parent = it->second;
+      } else {
+        QTreeWidgetItem* node;
+        if (parent) {
+          node = new QTreeWidgetItem(parent);
+        } else {
+          node = new QTreeWidgetItem(m_contextTree);
+        }
+        node->setText(0, parts[i]);
+        node->setForeground(0, QColor(78, 201, 176));  // Teal for group names
+        QFont font = node->font(0);
+        font.setBold(true);
+        node->setFont(0, font);
+        nodeMap[currentPath] = node;
+        parent = node;
+      }
+    }
+
+    // Create the leaf node (last segment)
+    QTreeWidgetItem* leaf;
+    if (parent) {
+      leaf = new QTreeWidgetItem(parent);
+    } else {
+      leaf = new QTreeWidgetItem(m_contextTree);
+    }
+    leaf->setText(0, parts.last());
+    leaf->setForeground(0, QColor(86, 156, 214));  // Blue for variable names
+
+    // Format value and type
     QString valueStr;
     QString typeStr;
     QColor valueColor;
@@ -5844,6 +5862,14 @@ void RunProgramPage::displayStandaloneContext()
         typeStr = "Boolean";
         valueColor = QColor(86, 156, 214);  // Blue
         break;
+      case SequenceContext::ValueType::IMAGE_FRAME:
+        valueStr = "[Image Frame]";
+        if (!value.tempFilePath.empty()) {
+          valueStr += QString(" (%1)").arg(QString::fromStdString(value.tempFilePath));
+        }
+        typeStr = "Image";
+        valueColor = QColor(220, 220, 170);  // Yellow
+        break;
       default:
         valueStr = "(none)";
         typeStr = "None";
@@ -5851,23 +5877,44 @@ void RunProgramPage::displayStandaloneContext()
         break;
     }
 
-    QTableWidgetItem* valueItem = new QTableWidgetItem(valueStr);
-    valueItem->setForeground(valueColor);
-    m_contextTable->setItem(row, 1, valueItem);
-
-    QTableWidgetItem* typeItem = new QTableWidgetItem(typeStr);
-    typeItem->setForeground(QColor(128, 128, 128));
-    m_contextTable->setItem(row, 2, typeItem);
+    leaf->setText(1, valueStr);
+    leaf->setForeground(1, valueColor);
+    leaf->setText(2, typeStr);
+    leaf->setForeground(2, QColor(128, 128, 128));
   }
 
-  m_contextTable->setSortingEnabled(true);
-  m_contextTable->setUpdatesEnabled(true);
+  // Restore expansion state or expand all on first population
+  // New nodes (not in previous state) are expanded by default
+  if (wasEmpty) {
+    m_contextTree->expandAll();
+  } else {
+    std::function<void(QTreeWidgetItem*, const QString&)> restoreExpanded;
+    restoreExpanded = [&](QTreeWidgetItem* item, const QString& path) {
+      if (allPreviousPaths.contains(path)) {
+        // Existing node - restore previous expand/collapse state
+        item->setExpanded(expandedPaths.contains(path));
+      } else {
+        // New node - expand by default so user can see new data
+        item->setExpanded(true);
+      }
+      for (int i = 0; i < item->childCount(); ++i) {
+        QString childPath = path + "." + item->child(i)->text(0);
+        restoreExpanded(item->child(i), childPath);
+      }
+    };
+    for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
+      auto* item = m_contextTree->topLevelItem(i);
+      restoreExpanded(item, item->text(0));
+    }
+  }
+
+  m_contextTree->setUpdatesEnabled(true);
 
   // Update status label
   m_contextStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 18pt;");
   if (filterText.isEmpty()) {
-    m_contextStatusLabel->setText(QString("%1 cv.* variables (live)").arg(totalCount));
+    m_contextStatusLabel->setText(QString("%1 %2variables%3").arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
   } else {
-    m_contextStatusLabel->setText(QString("%1 of %2 cv.* variables (live)").arg(shownCount).arg(totalCount));
+    m_contextStatusLabel->setText(QString("%1 of %2 %3variables%4").arg(shownCount).arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
   }
 }

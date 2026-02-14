@@ -123,8 +123,10 @@ public:
     const std::string& pinType = "output");
 
   // ✅ NEW: Helper to add simple dropdown parameter with fixed options
+  // Set editable=true to allow manual text input (e.g., custom regex patterns)
   void addDropdownParameter(const std::string& key, const std::string& label,
-    const std::string& value, const std::vector<std::string>& options);
+    const std::string& value, const std::vector<std::string>& options,
+    bool editable = false);
 
   // ✅ NEW: Helper to add PSU channel selector (dynamic based on PSU device config)
   // psuDeviceParamKey: the parameter key of the PSU device selector (e.g., "psu_device")

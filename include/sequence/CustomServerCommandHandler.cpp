@@ -611,6 +611,13 @@ bool CustomServerCommandHandler::HandleDetectFolder(
     folderPath = context->GetString(folderPath.substr(8));
   }
 
+  // filename_filter — substring filter to include only matching files (e.g., "ch0")
+  std::string filenameFilter;
+  auto ffIt = params.find("filename_filter");
+  if (ffIt != params.end()) {
+    filenameFilter = ffIt->second;
+  }
+
   // z_regex — regex to extract z-height from filename, group 1 = value in um
   std::string zRegex = R"(zheight([\d.]+)um)";
   auto zrIt = params.find("z_regex");
@@ -671,6 +678,20 @@ bool CustomServerCommandHandler::HandleDetectFolder(
     }
 
     std::string filename = entry.path().filename().string();
+
+    // Apply filename filter (substring match, case-insensitive)
+    if (!filenameFilter.empty()) {
+      std::string filenameLower = filename;
+      std::string filterLower = filenameFilter;
+      std::transform(filenameLower.begin(), filenameLower.end(), filenameLower.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (filenameLower.find(filterLower) == std::string::npos) {
+        continue;  // Skip files that don't match the filter
+      }
+    }
+
     std::smatch match;
     double z_um = 0.0;
     if (std::regex_search(filename, match, re) && match.size() > 1) {
@@ -681,7 +702,7 @@ bool CustomServerCommandHandler::HandleDetectFolder(
   }
 
   if (entries.empty()) {
-    errorMessage = "No image files found in: " + folderPath;
+    errorMessage = "No image files found matching filter in: " + folderPath;
     return false;
   }
 
@@ -1138,6 +1159,13 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
     folderPath = context->GetString(folderPath.substr(8));
   }
 
+  // filename_filter — substring filter to include only matching files (e.g., "ch0")
+  std::string filenameFilter;
+  auto ffIt2 = params.find("filename_filter");
+  if (ffIt2 != params.end()) {
+    filenameFilter = ffIt2->second;
+  }
+
   std::string zRegex = R"(zheight([\d.]+)um)";
   auto zrIt = params.find("z_regex");
   if (zrIt != params.end() && !zrIt->second.empty()) {
@@ -1184,6 +1212,20 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
     }
 
     std::string filename = entry.path().filename().string();
+
+    // Apply filename filter (substring match, case-insensitive)
+    if (!filenameFilter.empty()) {
+      std::string filenameLower = filename;
+      std::string filterLower = filenameFilter;
+      std::transform(filenameLower.begin(), filenameLower.end(), filenameLower.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (filenameLower.find(filterLower) == std::string::npos) {
+        continue;  // Skip files that don't match the filter
+      }
+    }
+
     std::smatch match;
     double z_um = 0.0;
     if (std::regex_search(filename, match, re) && match.size() > 1) {
@@ -1194,7 +1236,7 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
   }
 
   if (entries.empty()) {
-    errorMessage = "No image files found in: " + folderPath;
+    errorMessage = "No image files found matching filter in: " + folderPath;
     return false;
   }
 
