@@ -21,6 +21,7 @@
 #include <queue>
 #include <condition_variable>
 #include "camera/CameraFrameData.h"
+#include "nlohmann/json.hpp"
 
 #ifdef HAS_OPENCV
 #include "vision/VisionResult.h"
@@ -29,6 +30,7 @@
 class DataStore;
 class UnifiedMotionManager;
 class CameraManager;
+class BeamServerClient;
 
 // Menu IDs
 #define IDM_SHOW_MENU_BASE      6000
@@ -55,8 +57,14 @@ class CameraManager;
 #define IDM_CAMERA_PRIMARY_BASE     9100  // Primary camera selection (max 50)
 #define IDM_CAMERA_SECONDARY_BASE   9200  // Secondary camera selection (max 50)
 
+// Beam Stream Menu IDs
+#define IDM_BEAM_STREAM_MENU_BASE   10000
+#define IDM_BEAM_STREAM_ENABLE      10001
+#define IDM_BEAM_STREAM_CAMERA_BASE 10100  // Max 50 cameras
+
 // Custom Windows messages
 #define WM_VISION_RESULT_READY      (WM_USER + 101)
+#define WM_BEAM_STREAM_RESULT_READY (WM_USER + 102)
 
 // Calibration config file (shared with CameraClickToMoveWidget)
 #define CALIBRATION_CONFIG_FILE     "config/SYSTEM/val_pixelmm.json"
@@ -158,6 +166,40 @@ private:
 #endif
 
 /**
+ * @brief Beam stream overlay for displaying live beam detection results on camera view
+ */
+class BeamStreamOverlay {
+public:
+    void SetEnabled(bool enabled) { m_enabled = enabled; }
+    bool IsEnabled() const { return m_enabled; }
+
+    void SetResult(const nlohmann::json& result);
+    void Clear();
+
+    void Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
+              int destX, int destY, int destWidth, int destHeight,
+              double umPerPxX, double umPerPxY);
+
+    double GetFps() const { return m_fps; }
+    void SetFps(double fps) { m_fps = fps; }
+
+private:
+    bool m_enabled = false;
+    mutable std::mutex m_resultMutex;
+    nlohmann::json m_lastResult;
+    double m_fps = 0.0;
+
+    static constexpr int OVERLAY_WIDTH = 280;
+    static constexpr int OVERLAY_MARGIN = 10;
+
+    // Convert image pixel coordinates to screen coordinates
+    static Gdiplus::PointF ImageToScreen(double imgX, double imgY,
+                                          int frameWidth, int frameHeight,
+                                          int destX, int destY,
+                                          int destWidth, int destHeight);
+};
+
+/**
  * @brief Pure Win32 GDI window for camera live streaming with data chart overlay
  *
  * This is a native Windows window that displays camera frames using GDI.
@@ -244,6 +286,9 @@ public:
     void SelectVisionProfile(const std::string& profilePath);
 #endif
 
+    // Beam streaming
+    void SetBeamServerClient(BeamServerClient* client);
+
     // Callback for overlay scale changes (for settings save)
     void SetOverlayScaleChangedCallback(std::function<void(float)> callback) {
         m_onOverlayScaleChanged = callback;
@@ -268,6 +313,13 @@ private:
     void HandleClickToMove(int mouseX, int mouseY);
     void LoadCalibrationFactors();
     void DrawCrosshairs(HDC hDC, const RECT& windowRect);
+
+    // Beam streaming
+    void UpdateBeamStreamMenu();
+    void LoadBeamStreamConfig();
+    void StartBeamStreaming();
+    void StopBeamStreaming();
+    void BeamStreamThreadLoop();
 
     // Vision processing
 #ifdef HAS_OPENCV
@@ -376,6 +428,35 @@ private:
     int m_lastSecondaryDestY = 0;
     int m_lastSecondaryDestWidth = 0;
     int m_lastSecondaryDestHeight = 0;
+
+    // Beam streaming
+    BeamServerClient* m_beamServerClient = nullptr;           // Injected command client (port 5555)
+    std::unique_ptr<BeamServerClient> m_beamStreamClient;     // Owned stream client (port 5567)
+    BeamStreamOverlay m_beamStreamOverlay;
+    HMENU m_beamStreamMenu = nullptr;
+
+    std::atomic<bool> m_beamStreamEnabled{false};
+    std::atomic<bool> m_beamStreamThreadRunning{false};
+    std::thread m_beamStreamThread;
+
+    std::queue<std::vector<uint8_t>> m_beamStreamQueue;  // RGB frame data
+    uint32_t m_beamStreamQueuedWidth = 0;
+    uint32_t m_beamStreamQueuedHeight = 0;
+    std::mutex m_beamStreamQueueMutex;
+    std::condition_variable m_beamStreamQueueCV;
+
+    std::string m_beamStreamCameraId;
+    mutable std::mutex m_beamStreamCameraMutex;
+
+    struct BeamStreamConfig {
+        std::string host = "127.0.0.1";
+        int port = 5567;
+        double umPerPxX = 0.25;
+        double umPerPxY = 0.25;
+        bool rotate180 = false;
+        int intervalMs = 100;
+    };
+    BeamStreamConfig m_beamStreamConfig;
 
     // Vision overlay and processing
 #ifdef HAS_OPENCV

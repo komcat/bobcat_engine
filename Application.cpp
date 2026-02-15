@@ -337,6 +337,11 @@ void Application::initializeManagers()
     m_context.beamServerClient = m_beamServerClient.get();
     m_logManager->Info("BeamServerClient created (connection deferred to recipe)", "Application");
 
+    // Wire beam server client to GDI camera window (created earlier, needs late injection)
+    if (m_gdiCameraWindowManager) {
+      m_gdiCameraWindowManager->setBeamServerClient(m_beamServerClient.get());
+    }
+
     // Initialize safety event log before safety watch (so safety watch can use it)
     updateSplash("SafetyEventLog");
     m_safetyEventLog = std::make_unique<SafetyEventLog>();
@@ -1823,6 +1828,8 @@ void Application::initializeGdiCameraWindow()
 
   // Set motion manager for click-to-move
   m_gdiCameraWindowManager->setMotionManager(m_motionManager.get());
+
+  // Note: BeamServerClient is wired later (after it's created at line ~336)
 
   // Configure window title
   m_gdiCameraWindowManager->setWindowTitle("Camera Monitor (GDI)");

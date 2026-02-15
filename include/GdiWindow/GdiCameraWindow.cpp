@@ -1,5 +1,6 @@
 // GdiCameraWindow.cpp
 #include "GdiCameraWindow.h"
+#include "customserver/BeamServerClient.h"
 #include "data/DataStore.h"
 #include "motions/unified_motion_manager.h"
 #include "camera/CameraManager.h"
@@ -10,6 +11,8 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <set>
+
+#include <QSettings>
 
 #ifdef HAS_OPENCV
 #include "vision/VisionManager.h"
@@ -494,6 +497,164 @@ void VisionResultOverlay::DrawGeometricOverlays(HDC hDC, int frameWidth, int fra
 #endif // HAS_OPENCV
 
 // ============================================================================
+// BeamStreamOverlay Implementation
+// ============================================================================
+
+void BeamStreamOverlay::SetResult(const nlohmann::json& result) {
+    std::lock_guard<std::mutex> lock(m_resultMutex);
+    m_lastResult = result;
+}
+
+void BeamStreamOverlay::Clear() {
+    std::lock_guard<std::mutex> lock(m_resultMutex);
+    m_lastResult = nlohmann::json();
+    m_fps = 0.0;
+}
+
+Gdiplus::PointF BeamStreamOverlay::ImageToScreen(double imgX, double imgY,
+                                                  int frameWidth, int frameHeight,
+                                                  int destX, int destY,
+                                                  int destWidth, int destHeight) {
+    float scaleX = static_cast<float>(destWidth) / frameWidth;
+    float scaleY = static_cast<float>(destHeight) / frameHeight;
+    return Gdiplus::PointF(
+        destX + static_cast<float>(imgX * scaleX),
+        destY + static_cast<float>(imgY * scaleY)
+    );
+}
+
+void BeamStreamOverlay::Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
+                              int destX, int destY, int destWidth, int destHeight,
+                              double umPerPxX, double umPerPxY) {
+    if (!m_enabled) return;
+
+    std::lock_guard<std::mutex> lock(m_resultMutex);
+
+    Gdiplus::Graphics gfx(hDC);
+    gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    gfx.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+    // Info panel on TOP-RIGHT
+    int panelWidth = OVERLAY_WIDTH;
+    int panelX = (windowRect.right - windowRect.left) - panelWidth - OVERLAY_MARGIN;
+    Gdiplus::RectF panelRect(
+        static_cast<Gdiplus::REAL>(panelX),
+        static_cast<Gdiplus::REAL>(OVERLAY_MARGIN),
+        static_cast<Gdiplus::REAL>(panelWidth),
+        static_cast<Gdiplus::REAL>(200));
+
+    // Semi-transparent dark background
+    Gdiplus::SolidBrush bgBrush(Gdiplus::Color(200, 20, 20, 30));
+    gfx.FillRectangle(&bgBrush, panelRect);
+    Gdiplus::Pen borderPen(Gdiplus::Color(200, 80, 80, 80), 1.0f);
+    gfx.DrawRectangle(&borderPen, panelRect);
+
+    // Fonts
+    Gdiplus::Font titleFont(L"Segoe UI", 11.0f, Gdiplus::FontStyleBold);
+    Gdiplus::Font labelFont(L"Segoe UI", 9.0f, Gdiplus::FontStyleRegular);
+    Gdiplus::Font valueFont(L"Segoe UI", 9.0f, Gdiplus::FontStyleBold);
+
+    Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 255, 255, 255));
+    Gdiplus::SolidBrush dimBrush(Gdiplus::Color(255, 180, 180, 180));
+    Gdiplus::SolidBrush valueBrush(Gdiplus::Color(255, 100, 255, 100));
+
+    float y = panelRect.Y + 8.0f;
+    float x = panelRect.X + 10.0f;
+    float lineHeight = 18.0f;
+
+    // Title
+    gfx.DrawString(L"Beam Stream", -1, &titleFont, Gdiplus::PointF(x, y), &titleBrush);
+    y += lineHeight + 4.0f;
+
+    // FPS
+    wchar_t fpsBuf[64];
+    swprintf_s(fpsBuf, L"Streaming @ %.1f Hz", m_fps);
+    gfx.DrawString(fpsBuf, -1, &labelFont, Gdiplus::PointF(x, y), &dimBrush);
+    y += lineHeight;
+
+    // Process time
+    if (m_lastResult.contains("process_ms")) {
+        wchar_t timeBuf[64];
+        swprintf_s(timeBuf, L"Process: %.1f ms", m_lastResult["process_ms"].get<double>());
+        gfx.DrawString(timeBuf, -1, &labelFont, Gdiplus::PointF(x, y), &dimBrush);
+        y += lineHeight + 4.0f;
+    }
+
+    // Per-beam info
+    if (m_lastResult.contains("beams") && m_lastResult["beams"].is_array()) {
+        for (const auto& beam : m_lastResult["beams"]) {
+            std::string side = beam.value("side", "?");
+            double cx = beam.value("centroid_x_px", 0.0);
+            double cy = beam.value("centroid_y_px", 0.0);
+
+            // Try um fields first, fall back to px fields converted to um
+            double d4x = beam.value("d4sigma_x_um", 0.0);
+            double d4y = beam.value("d4sigma_y_um", 0.0);
+            if (d4x == 0.0 && beam.contains("d4sigma_x_px")) {
+                d4x = beam["d4sigma_x_px"].get<double>() * umPerPxX;
+            }
+            if (d4y == 0.0 && beam.contains("d4sigma_y_px")) {
+                d4y = beam["d4sigma_y_px"].get<double>() * umPerPxY;
+            }
+
+            wchar_t line1[128];
+            swprintf_s(line1, L"%hs: cx=%.1f cy=%.1f px", side.c_str(), cx, cy);
+            gfx.DrawString(line1, -1, &valueFont, Gdiplus::PointF(x, y), &valueBrush);
+            y += lineHeight;
+
+            wchar_t line2[128];
+            swprintf_s(line2, L"    d4sx=%.1f d4sy=%.1f um", d4x, d4y);
+            gfx.DrawString(line2, -1, &labelFont, Gdiplus::PointF(x, y), &dimBrush);
+            y += lineHeight + 2.0f;
+        }
+    }
+
+    // Geometric overlay on image
+    if (frameWidth > 0 && frameHeight > 0 && destWidth > 0 && destHeight > 0 &&
+        m_lastResult.contains("beams") && m_lastResult["beams"].is_array()) {
+
+        float scaleX = static_cast<float>(destWidth) / frameWidth;
+        float scaleY = static_cast<float>(destHeight) / frameHeight;
+
+        Gdiplus::Pen beamPen(Gdiplus::Color(255, 0, 255, 0), 2.0f);
+
+        for (const auto& beam : m_lastResult["beams"]) {
+            double cx = beam.value("centroid_x_px", 0.0);
+            double cy = beam.value("centroid_y_px", 0.0);
+
+            // Get d4sigma in pixels (prefer px fields, convert um if needed)
+            double d4x_px = beam.value("d4sigma_x_px", 0.0);
+            double d4y_px = beam.value("d4sigma_y_px", 0.0);
+            if (d4x_px == 0.0 && umPerPxX > 0) {
+                d4x_px = beam.value("d4sigma_x_um", 0.0) / umPerPxX;
+            }
+            if (d4y_px == 0.0 && umPerPxY > 0) {
+                d4y_px = beam.value("d4sigma_y_um", 0.0) / umPerPxY;
+            }
+
+            Gdiplus::PointF center = ImageToScreen(cx, cy,
+                frameWidth, frameHeight, destX, destY, destWidth, destHeight);
+
+            // Crosshair at centroid
+            float crossSize = 12.0f;
+            gfx.DrawLine(&beamPen, center.X - crossSize, center.Y, center.X + crossSize, center.Y);
+            gfx.DrawLine(&beamPen, center.X, center.Y - crossSize, center.X, center.Y + crossSize);
+
+            // Ellipse sized by d4sigma in pixels, scaled to screen
+            {
+                float ellipseW = static_cast<float>(d4x_px * scaleX);
+                float ellipseH = static_cast<float>(d4y_px * scaleY);
+                if (ellipseW > 2.0f && ellipseH > 2.0f) {
+                    gfx.DrawEllipse(&beamPen,
+                        center.X - ellipseW / 2.0f, center.Y - ellipseH / 2.0f,
+                        ellipseW, ellipseH);
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // GdiCameraWindow Implementation
 // ============================================================================
 
@@ -505,6 +666,7 @@ GdiCameraWindow::GdiCameraWindow() {
 }
 
 GdiCameraWindow::~GdiCameraWindow() {
+    StopBeamStreaming();
 #ifdef HAS_OPENCV
     StopVisionProcessing();
 #endif
@@ -643,6 +805,15 @@ void GdiCameraWindow::CreateMenuBar() {
             AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_toolsMenu, L"Tools");
         }
 
+        // Beam Stream menu
+        m_beamStreamMenu = CreatePopupMenu();
+        if (m_beamStreamMenu) {
+            AppendMenuA(m_beamStreamMenu, MF_STRING, IDM_BEAM_STREAM_ENABLE, "Enable Beam Stream");
+            AppendMenuA(m_beamStreamMenu, MF_SEPARATOR, 0, nullptr);
+            // Camera selection items populated dynamically in UpdateBeamStreamMenu()
+            AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_beamStreamMenu, L"Beam Stream");
+        }
+
         SetMenu(m_hwnd, m_menuBar);
     }
 }
@@ -773,6 +944,52 @@ void GdiCameraWindow::UpdateCameraMenu() {
                 }
                 AppendMenuW(m_cameraMenu, MF_POPUP, (UINT_PTR)secondarySubmenu, L"Right Camera (Secondary)");
             }
+        }
+    }
+
+    DrawMenuBar(m_hwnd);
+}
+
+void GdiCameraWindow::UpdateBeamStreamMenu() {
+    if (!m_beamStreamMenu) return;
+
+    // Remove old camera items (keep first 2: "Enable Beam Stream" and separator)
+    int count = GetMenuItemCount(m_beamStreamMenu);
+    while (count > 2) {
+        DeleteMenu(m_beamStreamMenu, count - 1, MF_BYPOSITION);
+        count--;
+    }
+
+    // Update enable checkbox
+    CheckMenuItem(m_beamStreamMenu, IDM_BEAM_STREAM_ENABLE,
+                  m_beamStreamEnabled ? MF_CHECKED : MF_UNCHECKED);
+
+    // Get available cameras
+    std::vector<std::string> cameras;
+    {
+        std::lock_guard<std::mutex> lock(m_cameraListMutex);
+        cameras = m_availableCameraIds;
+    }
+
+    // Get current beam stream camera
+    std::string streamCamera;
+    {
+        std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
+        streamCamera = m_beamStreamCameraId;
+    }
+
+    if (cameras.empty()) {
+        AppendMenuW(m_beamStreamMenu, MF_STRING | MF_GRAYED, 0, L"(No cameras available)");
+    } else {
+        for (size_t i = 0; i < cameras.size() && i < 50; ++i) {
+            std::wstring wCameraId(cameras[i].begin(), cameras[i].end());
+            UINT flags = MF_STRING;
+            if (cameras[i] == streamCamera) {
+                flags |= MF_CHECKED;
+            }
+            AppendMenuW(m_beamStreamMenu, flags,
+                        IDM_BEAM_STREAM_CAMERA_BASE + static_cast<UINT>(i),
+                        wCameraId.c_str());
         }
     }
 
@@ -1104,9 +1321,47 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         UpdateCameraMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
     }
+    // Beam Stream menu commands
+    else if (commandId == IDM_BEAM_STREAM_ENABLE) {
+        if (m_beamStreamEnabled) {
+            StopBeamStreaming();
+        } else {
+            // Auto-select first camera if none selected
+            {
+                std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
+                if (m_beamStreamCameraId.empty()) {
+                    std::lock_guard<std::mutex> camLock(m_cameraListMutex);
+                    if (!m_availableCameraIds.empty()) {
+                        m_beamStreamCameraId = m_availableCameraIds.front();
+                    }
+                }
+            }
+            StartBeamStreaming();
+        }
+        UpdateBeamStreamMenu();
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    else if (commandId >= IDM_BEAM_STREAM_CAMERA_BASE && commandId < IDM_BEAM_STREAM_CAMERA_BASE + 50) {
+        size_t index = commandId - IDM_BEAM_STREAM_CAMERA_BASE;
+        std::vector<std::string> cameras;
+        {
+            std::lock_guard<std::mutex> lock(m_cameraListMutex);
+            cameras = m_availableCameraIds;
+        }
+        if (index < cameras.size()) {
+            {
+                std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
+                m_beamStreamCameraId = cameras[index];
+            }
+            std::cout << "[GdiCameraWindow] Beam stream camera set to: " << cameras[index] << std::endl;
+            UpdateBeamStreamMenu();
+        }
+    }
 }
 
 void GdiCameraWindow::Destroy() {
+    StopBeamStreaming();
+
     if (m_memDC) {
         if (m_oldBitmap) {
             SelectObject(m_memDC, m_oldBitmap);
@@ -1221,6 +1476,12 @@ void GdiCameraWindow::OnDataStoreValueChanged(const std::string& channelId, floa
 }
 
 bool GdiCameraWindow::WantsFramesFromCamera(const std::string& cameraId) const {
+    // Also accept frames from beam stream camera
+    if (m_beamStreamEnabled) {
+        std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
+        if (!m_beamStreamCameraId.empty() && m_beamStreamCameraId == cameraId) return true;
+    }
+
     std::lock_guard<std::mutex> lock(m_cameraMutex);
     // In dual mode, accept frames from both primary and secondary cameras
     if (m_dualCameraMode) {
@@ -1346,6 +1607,25 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
     }
 #endif
 
+    // Queue frame for beam streaming (check against beam stream camera ID)
+    if (m_beamStreamEnabled && m_beamStreamThreadRunning) {
+        std::string streamCamId;
+        {
+            std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
+            streamCamId = m_beamStreamCameraId;
+        }
+        if (frameData.cameraId == streamCamId) {
+            std::lock_guard<std::mutex> lock(m_beamStreamQueueMutex);
+            while (m_beamStreamQueue.size() >= 2) {
+                m_beamStreamQueue.pop();
+            }
+            m_beamStreamQueue.push(frameData.imageData);
+            m_beamStreamQueuedWidth = frameData.width;
+            m_beamStreamQueuedHeight = frameData.height;
+            m_beamStreamQueueCV.notify_one();
+        }
+    }
+
     if (m_hwnd && IsWindowVisible(m_hwnd)) {
         InvalidateRect(m_hwnd, nullptr, FALSE);
     }
@@ -1460,6 +1740,10 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             RefreshCameraMenu();
             UpdateCameraMenu();
         }
+        else if ((HMENU)wParam == m_beamStreamMenu) {
+            RefreshCameraMenu();
+            UpdateBeamStreamMenu();
+        }
         return 0;
 
     case WM_USER + 100:  // Custom message to refresh menu
@@ -1467,6 +1751,12 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
         return 0;
 
     case WM_VISION_RESULT_READY:  // Vision result ready from background thread
+        if (IsWindowVisible(m_hwnd)) {
+            InvalidateRect(m_hwnd, nullptr, FALSE);
+        }
+        return 0;
+
+    case WM_BEAM_STREAM_RESULT_READY:  // Beam stream result ready
         if (IsWindowVisible(m_hwnd)) {
             InvalidateRect(m_hwnd, nullptr, FALSE);
         }
@@ -1592,6 +1882,11 @@ void GdiCameraWindow::OnPaint() {
         m_visionOverlay.Draw(m_memDC, rect, m_frameWidth, m_frameHeight,
                              m_lastDestX, m_lastDestY, m_lastDestWidth, m_lastDestHeight);
 #endif
+
+        // Draw beam stream overlay (top-right)
+        m_beamStreamOverlay.Draw(m_memDC, rect, m_frameWidth, m_frameHeight,
+                                  m_lastDestX, m_lastDestY, m_lastDestWidth, m_lastDestHeight,
+                                  m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY);
 
         // Draw chart overlay (on RIGHT side of camera)
         m_chartOverlay.Draw(m_memDC, rect);
@@ -2295,3 +2590,230 @@ void GdiCameraWindow::VisionThreadLoop() {
 }
 
 #endif // HAS_OPENCV
+
+// ============================================================================
+// Beam Stream Implementation
+// ============================================================================
+
+void GdiCameraWindow::SetBeamServerClient(BeamServerClient* client) {
+    m_beamServerClient = client;
+}
+
+void GdiCameraWindow::LoadBeamStreamConfig() {
+    // Primary: read from QSettings (Application Settings page)
+    QSettings settings("Fabrinet", "BobcatEngine");
+    if (settings.contains("BeamServer/Host")) {
+        m_beamStreamConfig.host = settings.value("BeamServer/Host", "127.0.0.1").toString().toStdString();
+        m_beamStreamConfig.port = settings.value("BeamServer/StreamPort", 5567).toInt();
+        m_beamStreamConfig.umPerPxX = settings.value("BeamServer/UmPerPxX", "0.25").toString().toDouble();
+        m_beamStreamConfig.umPerPxY = settings.value("BeamServer/UmPerPxY", "0.25").toString().toDouble();
+        m_beamStreamConfig.rotate180 = settings.value("BeamServer/Rotate180", "false").toString() == "true";
+        m_beamStreamConfig.intervalMs = settings.value("BeamServer/StreamIntervalMs", 100).toInt();
+        std::cout << "[GdiCameraWindow] Loaded beam config from Application Settings"
+                  << " (host=" << m_beamStreamConfig.host
+                  << " port=" << m_beamStreamConfig.port
+                  << " interval=" << m_beamStreamConfig.intervalMs << "ms)" << std::endl;
+        return;
+    }
+
+    // Fallback: read from beam_stream.json
+    std::vector<std::string> configPaths = {
+        "config/beam_stream.json",
+        "./config/beam_stream.json",
+        "../config/beam_stream.json"
+    };
+
+    for (const auto& path : configPaths) {
+        std::ifstream file(path);
+        if (file.is_open()) {
+            try {
+                nlohmann::json cfg;
+                file >> cfg;
+                m_beamStreamConfig.host = cfg.value("host", "127.0.0.1");
+                m_beamStreamConfig.port = cfg.value("port", 5567);
+                m_beamStreamConfig.umPerPxX = cfg.value("um_per_px_x", 0.25);
+                m_beamStreamConfig.umPerPxY = cfg.value("um_per_px_y", 0.25);
+                m_beamStreamConfig.rotate180 = cfg.value("rotate_180", false);
+                m_beamStreamConfig.intervalMs = cfg.value("interval_ms", 100);
+                std::cout << "[GdiCameraWindow] Loaded beam_stream.json from " << path
+                          << " (host=" << m_beamStreamConfig.host
+                          << " port=" << m_beamStreamConfig.port
+                          << " interval=" << m_beamStreamConfig.intervalMs << "ms)" << std::endl;
+                return;
+            } catch (const nlohmann::json::exception& e) {
+                std::cout << "[GdiCameraWindow] Error parsing beam_stream.json: " << e.what() << std::endl;
+            }
+        }
+    }
+    std::cout << "[GdiCameraWindow] beam_stream.json not found, using defaults" << std::endl;
+}
+
+void GdiCameraWindow::StartBeamStreaming() {
+    if (m_beamStreamThreadRunning) return;
+
+    // Join previous thread if it ended on its own (e.g. connection lost)
+    if (m_beamStreamThread.joinable()) {
+        m_beamStreamThread.join();
+    }
+
+    // Load config
+    LoadBeamStreamConfig();
+
+    // Create dedicated stream client (separate from command client on port 5555)
+    m_beamStreamClient = std::make_unique<BeamServerClient>();
+
+    std::cout << "[GdiCameraWindow] Connecting to stream server at "
+              << m_beamStreamConfig.host << ":" << m_beamStreamConfig.port << std::endl;
+    if (!m_beamStreamClient->Connect(m_beamStreamConfig.host, m_beamStreamConfig.port)) {
+        std::cout << "[GdiCameraWindow] Failed to connect to stream server: "
+                  << m_beamStreamClient->GetLastError() << std::endl;
+        m_beamStreamClient.reset();
+        return;
+    }
+
+    // Get frame dimensions from current frame
+    uint32_t width = 0;
+    uint32_t height = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        width = m_frameWidth;
+        height = m_frameHeight;
+    }
+
+    if (width == 0 || height == 0) {
+        std::cout << "[GdiCameraWindow] Cannot start beam streaming: no frame data yet" << std::endl;
+        m_beamStreamClient.reset();
+        return;
+    }
+
+    // Send STREAM_START
+    auto response = m_beamStreamClient->SendStreamStart(
+        static_cast<int>(width), static_cast<int>(height), "mono8",
+        m_beamStreamConfig.rotate180,
+        m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY,
+        m_beamStreamConfig.intervalMs);
+
+    if (response.empty() || response.contains("error")) {
+        std::string err = response.value("error", m_beamStreamClient->GetLastError());
+        std::cout << "[GdiCameraWindow] STREAM_START failed: " << err << std::endl;
+        m_beamStreamClient.reset();
+        return;
+    }
+
+    m_beamStreamThreadRunning = true;
+    m_beamStreamEnabled = true;
+    m_beamStreamOverlay.SetEnabled(true);
+
+    m_beamStreamThread = std::thread(&GdiCameraWindow::BeamStreamThreadLoop, this);
+    std::cout << "[GdiCameraWindow] Beam streaming started" << std::endl;
+}
+
+void GdiCameraWindow::StopBeamStreaming() {
+    m_beamStreamThreadRunning = false;
+    m_beamStreamQueueCV.notify_all();
+
+    if (m_beamStreamThread.joinable()) {
+        m_beamStreamThread.join();
+    }
+
+    // Send STREAM_STOP and disconnect dedicated stream client
+    if (m_beamStreamClient && m_beamStreamClient->IsConnected()) {
+        auto response = m_beamStreamClient->SendStreamStop();
+        if (response.contains("total_frames")) {
+            std::cout << "[GdiCameraWindow] Stream stopped. Total frames: "
+                      << response["total_frames"] << " avg_process_ms: "
+                      << response.value("avg_process_ms", 0.0) << std::endl;
+        }
+    }
+    m_beamStreamClient.reset();
+
+    // Clear queue
+    {
+        std::lock_guard<std::mutex> lock(m_beamStreamQueueMutex);
+        while (!m_beamStreamQueue.empty()) {
+            m_beamStreamQueue.pop();
+        }
+    }
+
+    m_beamStreamEnabled = false;
+    m_beamStreamOverlay.SetEnabled(false);
+    m_beamStreamOverlay.Clear();
+
+    std::cout << "[GdiCameraWindow] Beam streaming stopped" << std::endl;
+}
+
+void GdiCameraWindow::BeamStreamThreadLoop() {
+    std::cout << "[GdiCameraWindow] Beam stream thread started (ID: "
+              << std::this_thread::get_id() << ")" << std::endl;
+
+    static constexpr int MAX_STREAM_ITERATIONS = 10000000;
+    uint32_t seqNum = 0;
+    auto lastFrameTime = std::chrono::steady_clock::now();
+    int frameCount = 0;
+
+    for (int i = 0; i < MAX_STREAM_ITERATIONS && m_beamStreamThreadRunning; ++i) {
+        std::vector<uint8_t> rgbData;
+        uint32_t frameWidth = 0;
+        uint32_t frameHeight = 0;
+
+        // Wait for a frame
+        {
+            std::unique_lock<std::mutex> lock(m_beamStreamQueueMutex);
+            m_beamStreamQueueCV.wait_for(lock,
+                std::chrono::milliseconds(m_beamStreamConfig.intervalMs),
+                [this] { return !m_beamStreamQueue.empty() || !m_beamStreamThreadRunning; });
+
+            if (!m_beamStreamThreadRunning) break;
+            if (m_beamStreamQueue.empty()) continue;
+
+            rgbData = std::move(m_beamStreamQueue.front());
+            m_beamStreamQueue.pop();
+            frameWidth = m_beamStreamQueuedWidth;
+            frameHeight = m_beamStreamQueuedHeight;
+        }
+
+        if (rgbData.empty() || frameWidth == 0 || frameHeight == 0) continue;
+
+        // Convert RGB to grayscale mono8
+        size_t pixelCount = static_cast<size_t>(frameWidth) * frameHeight;
+        std::vector<uint8_t> grayData(pixelCount);
+        const uint8_t* src = rgbData.data();
+        for (size_t j = 0; j < pixelCount; ++j) {
+            size_t idx = j * 3;
+            grayData[j] = static_cast<uint8_t>(
+                (static_cast<int>(src[idx]) + static_cast<int>(src[idx + 1]) + static_cast<int>(src[idx + 2])) / 3);
+        }
+
+        // Send frame
+        auto response = m_beamStreamClient->SendStreamFrame(grayData, seqNum++);
+
+        if (response.empty()) {
+            std::cout << "[GdiCameraWindow] Stream frame send failed: "
+                      << m_beamStreamClient->GetLastError() << std::endl;
+            // Connection lost - stop streaming
+            m_beamStreamThreadRunning = false;
+            break;
+        }
+
+        // Calculate FPS
+        frameCount++;
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - lastFrameTime).count();
+        if (elapsed >= 1.0) {
+            double fps = frameCount / elapsed;
+            m_beamStreamOverlay.SetFps(fps);
+            frameCount = 0;
+            lastFrameTime = now;
+        }
+
+        // Update overlay with result
+        m_beamStreamOverlay.SetResult(response);
+
+        // Trigger repaint
+        if (m_hwnd) {
+            PostMessage(m_hwnd, WM_BEAM_STREAM_RESULT_READY, 0, 0);
+        }
+    }
+
+    std::cout << "[GdiCameraWindow] Beam stream thread loop exiting" << std::endl;
+}

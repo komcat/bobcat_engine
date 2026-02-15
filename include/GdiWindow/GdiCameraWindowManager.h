@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 
+class BeamServerClient;
 class CameraManager;
 class DataStore;
 class GdiCameraWindow;
@@ -52,6 +53,9 @@ public:
 
     // Set motion manager for click-to-move
     void setMotionManager(UnifiedMotionManager* motionManager);
+
+    // Set beam server client for beam streaming
+    void setBeamServerClient(BeamServerClient* client);
 
     // Set target camera ID (empty string = use any available camera)
     void setTargetCamera(const std::string& cameraId);
@@ -104,6 +108,7 @@ public slots:
 private:
     void saveWindowGeometry();
     void loadWindowGeometry();
+    BeamServerClient* m_beamServerClient = nullptr;
     CameraManager* m_cameraManager = nullptr;
     DataStore* m_dataStore = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;

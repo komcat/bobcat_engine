@@ -56,6 +56,16 @@ public:
   // Send a reset request to clear accumulated data on the server.
   [[nodiscard]] bool SendReset();
 
+  // Streaming protocol (10Hz live beam detection)
+  [[nodiscard]] nlohmann::json SendStreamStart(
+    int width, int height, const std::string& pixelFormat,
+    bool rotate180, double umPerPxX, double umPerPxY, int intervalMs = 100);
+
+  [[nodiscard]] nlohmann::json SendStreamFrame(
+    const std::vector<uint8_t>& grayData, uint32_t sequenceNumber);
+
+  [[nodiscard]] nlohmann::json SendStreamStop();
+
   // Get last error message
   std::string GetLastError() const;
 

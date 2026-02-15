@@ -1,0 +1,8 @@
+{
+  "host": "127.0.0.1",
+  "port": 5567,
+  "um_per_px_x": 0.25,
+  "um_per_px_y": 0.25,
+  "rotate_180": false,
+  "interval_ms": 100
+}

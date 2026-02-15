@@ -114,6 +114,12 @@ bool GdiCameraWindowManager::initialize() {
         m_window->SetMotionManager(m_motionManager);
     }
 
+    // Set beam server client for beam streaming
+    if (m_beamServerClient) {
+        std::cout << "[GdiCameraWindowManager] Setting beam server client..." << std::endl;
+        m_window->SetBeamServerClient(m_beamServerClient);
+    }
+
     // Apply application settings (view mode, overlays, etc.)
     applyApplicationSettings();
 
@@ -170,6 +176,13 @@ void GdiCameraWindowManager::setMotionManager(UnifiedMotionManager* motionManage
     m_motionManager = motionManager;
     if (m_window) {
         m_window->SetMotionManager(motionManager);
+    }
+}
+
+void GdiCameraWindowManager::setBeamServerClient(BeamServerClient* client) {
+    m_beamServerClient = client;
+    if (m_window) {
+        m_window->SetBeamServerClient(client);
     }
 }
 

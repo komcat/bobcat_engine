@@ -41,7 +41,8 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"CameraMonitor", "GDI Camera monitor window settings"},
     {"ChartOverlay", "Chart overlay display settings"},
     {"Vision", "Vision processing settings"},
-    {"Tools", "Tool overlay settings"}
+    {"Tools", "Tool overlay settings"},
+    {"BeamServer", "Beam analyser server connection settings (command + stream ports)"}
   };
 
   // Get dynamic options
@@ -104,7 +105,36 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
 
     {"Tools", "ClickToMoveEnabled", "false",
      "Enable click-to-move functionality on camera view",
-     "bool", 0, 0, {}}
+     "bool", 0, 0, {}},
+
+    // === Beam Server ===
+    {"BeamServer", "Host", "127.0.0.1",
+     "IP address of the beam analyser server",
+     "string", 0, 0, {}},
+
+    {"BeamServer", "CommandPort", "5555",
+     "TCP port for beam commands (DETECT, FIT, RESET, SAVE)",
+     "int", 1, 65535, {}},
+
+    {"BeamServer", "StreamPort", "5567",
+     "TCP port for beam streaming (STREAM_START, STREAM_FRAME, STREAM_STOP)",
+     "int", 1, 65535, {}},
+
+    {"BeamServer", "UmPerPxX", "0.25",
+     "Pixel scale X in micrometers per pixel",
+     "string", 0, 0, {}},
+
+    {"BeamServer", "UmPerPxY", "0.25",
+     "Pixel scale Y in micrometers per pixel",
+     "string", 0, 0, {}},
+
+    {"BeamServer", "Rotate180", "false",
+     "Rotate image 180 degrees before beam detection",
+     "bool", 0, 0, {}},
+
+    {"BeamServer", "StreamIntervalMs", "100",
+     "Target interval between stream frames in milliseconds (100 = 10Hz)",
+     "int", 50, 1000, {}}
   };
 }
 
@@ -611,7 +641,7 @@ void ApplicationSettingsPage::populateTree()
   // Define section order
   std::vector<std::string> sectionOrder = {
     "CameraMonitor", "ChartOverlay", "Vision", "Tools",
-    "ChainExecution", "Scanning", "UI"
+    "BeamServer", "ChainExecution", "Scanning", "UI"
   };
 
   // Create tree items in order

@@ -350,6 +350,78 @@ json BeamServerClient::SendSave(const std::string& name)
   return response;
 }
 
+json BeamServerClient::SendStreamStart(
+  int width, int height, const std::string& pixelFormat,
+  bool rotate180, double umPerPxX, double umPerPxY, int intervalMs)
+{
+  static constexpr uint32_t CMD_STREAM_START = 0x06;
+
+  std::lock_guard<std::mutex> lock(m_socketMutex);
+
+  if (!m_connected.load()) {
+    m_lastError = "Not connected";
+    return {};
+  }
+
+  // STREAM_START payload: JSON bytes only
+  json params = {
+    {"width", width},
+    {"height", height},
+    {"pixel_format", pixelFormat},
+    {"rotate_180", rotate180},
+    {"um_per_px", {umPerPxX, umPerPxY}},
+    {"interval_ms", intervalMs}
+  };
+
+  std::string payloadStr = params.dump();
+  std::vector<uint8_t> payload(payloadStr.begin(), payloadStr.end());
+
+  json response = SendCommand(CMD_STREAM_START, payload);
+  if (response.empty()) {
+    std::cout << "[BeamServerClient] StreamStart failed: " << m_lastError << std::endl;
+  }
+  return response;
+}
+
+json BeamServerClient::SendStreamFrame(
+  const std::vector<uint8_t>& grayData, uint32_t sequenceNumber)
+{
+  static constexpr uint32_t CMD_STREAM_FRAME = 0x07;
+
+  std::lock_guard<std::mutex> lock(m_socketMutex);
+
+  if (!m_connected.load()) {
+    m_lastError = "Not connected";
+    return {};
+  }
+
+  // STREAM_FRAME payload: [4B seq_number LE][raw mono8 pixels]
+  std::vector<uint8_t> payload(4 + grayData.size());
+  std::memcpy(payload.data(), &sequenceNumber, 4);
+  std::memcpy(payload.data() + 4, grayData.data(), grayData.size());
+
+  return SendCommand(CMD_STREAM_FRAME, payload);
+}
+
+json BeamServerClient::SendStreamStop()
+{
+  static constexpr uint32_t CMD_STREAM_STOP = 0x08;
+
+  std::lock_guard<std::mutex> lock(m_socketMutex);
+
+  if (!m_connected.load()) {
+    m_lastError = "Not connected";
+    return {};
+  }
+
+  // STREAM_STOP payload: empty (0 bytes)
+  json response = SendCommand(CMD_STREAM_STOP);
+  if (response.empty()) {
+    std::cout << "[BeamServerClient] StreamStop failed: " << m_lastError << std::endl;
+  }
+  return response;
+}
+
 bool BeamServerClient::SendReset()
 {
   static constexpr uint32_t CMD_RESET = 0x03;
