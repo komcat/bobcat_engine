@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <memory>
 #include <string>
+#include <nlohmann/json.hpp>
 
 class BeamServerClient;
 class CameraManager;
@@ -77,6 +78,12 @@ public:
     void setVisionEnabled(bool enabled);
     void selectVisionProfile(const std::string& profilePath);
 #endif
+
+    // Beam stream result access (for SequenceContext injection)
+    bool isBeamStreamActive() const;
+    nlohmann::json getLatestBeamStreamResult() const;
+    uint64_t getBeamStreamResultSequence() const;
+    double getBeamStreamFps() const;
 
     // Window control
     void show();

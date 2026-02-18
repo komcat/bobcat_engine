@@ -183,11 +183,19 @@ public:
     double GetFps() const { return m_fps; }
     void SetFps(double fps) { m_fps = fps; }
 
+    // Thread-safe accessors for SequenceContext injection
+    nlohmann::json GetResult() const {
+        std::lock_guard<std::mutex> lock(m_resultMutex);
+        return m_lastResult;
+    }
+    uint64_t GetResultSequence() const { return m_resultSequence.load(); }
+
 private:
     bool m_enabled = false;
     mutable std::mutex m_resultMutex;
     nlohmann::json m_lastResult;
     double m_fps = 0.0;
+    std::atomic<uint64_t> m_resultSequence{0};
 
     static constexpr int OVERLAY_WIDTH = 280;
     static constexpr int OVERLAY_MARGIN = 10;
@@ -288,6 +296,12 @@ public:
 
     // Beam streaming
     void SetBeamServerClient(BeamServerClient* client);
+
+    // Beam stream result access (for SequenceContext injection)
+    bool IsBeamStreamActive() const { return m_beamStreamEnabled.load() && m_beamStreamThreadRunning.load(); }
+    nlohmann::json GetLatestBeamStreamResult() const { return m_beamStreamOverlay.GetResult(); }
+    uint64_t GetBeamStreamResultSequence() const { return m_beamStreamOverlay.GetResultSequence(); }
+    double GetBeamStreamFps() const { return m_beamStreamOverlay.GetFps(); }
 
     // Callback for overlay scale changes (for settings save)
     void SetOverlayScaleChangedCallback(std::function<void(float)> callback) {

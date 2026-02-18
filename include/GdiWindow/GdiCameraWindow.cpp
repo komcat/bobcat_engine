@@ -503,6 +503,7 @@ void VisionResultOverlay::DrawGeometricOverlays(HDC hDC, int frameWidth, int fra
 void BeamStreamOverlay::SetResult(const nlohmann::json& result) {
     std::lock_guard<std::mutex> lock(m_resultMutex);
     m_lastResult = result;
+    ++m_resultSequence;
 }
 
 void BeamStreamOverlay::Clear() {

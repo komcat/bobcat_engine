@@ -261,6 +261,34 @@ void GdiCameraWindowManager::selectVisionProfile(const std::string& profilePath)
 }
 #endif
 
+bool GdiCameraWindowManager::isBeamStreamActive() const {
+    if (m_window) {
+        return m_window->IsBeamStreamActive();
+    }
+    return false;
+}
+
+nlohmann::json GdiCameraWindowManager::getLatestBeamStreamResult() const {
+    if (m_window) {
+        return m_window->GetLatestBeamStreamResult();
+    }
+    return nlohmann::json();
+}
+
+uint64_t GdiCameraWindowManager::getBeamStreamResultSequence() const {
+    if (m_window) {
+        return m_window->GetBeamStreamResultSequence();
+    }
+    return 0;
+}
+
+double GdiCameraWindowManager::getBeamStreamFps() const {
+    if (m_window) {
+        return m_window->GetBeamStreamFps();
+    }
+    return 0.0;
+}
+
 void GdiCameraWindowManager::show() {
     std::cout << "[GdiCameraWindowManager] show() called" << std::endl;
     if (m_window) {

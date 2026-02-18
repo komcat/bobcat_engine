@@ -256,6 +256,10 @@ public:
   void SetCvInjectEnabled(bool enabled) { m_cvInjectEnabled.store(enabled); }
   bool IsCvInjectEnabled() const { return m_cvInjectEnabled.load(); }
 
+  // BS (beam stream) inject enable/disable (for recipe-controlled bs.* context injection)
+  void SetBsInjectEnabled(bool enabled) { m_bsInjectEnabled.store(enabled); }
+  bool IsBsInjectEnabled() const { return m_bsInjectEnabled.load(); }
+
   // ============================================================================
   // RETRACE EDIT MODE (for position re-teach workflow)
   // ============================================================================
@@ -377,6 +381,13 @@ private:
 
   // CV inject enable/disable (controllable from recipe commands)
   std::atomic<bool> m_cvInjectEnabled{true};
+
+  // Inject latest beam stream result into context (bs.* keys)
+  void InjectBeamStreamResult(SequenceContext* context);
+  uint64_t m_lastInjectedBeamStreamSeq = 0;
+
+  // BS inject enable/disable (controllable from recipe commands)
+  std::atomic<bool> m_bsInjectEnabled{true};
 
   [[nodiscard]] bool DispatchWithTimeout(
       const std::string& managerType, void* manager,

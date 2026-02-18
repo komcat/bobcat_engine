@@ -338,6 +338,8 @@ private:
   QPushButton* m_contextRefreshCvButton; // Refresh CV inject button
   QPushButton* m_contextExpandAllButton; // Expand all tree nodes
   QPushButton* m_contextCollapseAllButton; // Collapse all tree nodes
+  QPushButton* m_contextFontToggleButton = nullptr; // Toggle small/large font
+  bool m_contextLargeFont = false;        // Current font mode (false=small/default, true=large/18pt)
   std::unique_ptr<SequenceContext> m_standaloneCvContext;  // Standalone context for CV refresh
   QTimer* m_cvAutoRefreshTimer = nullptr;  // Auto-refresh timer for CV data
 
@@ -352,4 +354,5 @@ private:
   void onContextRefreshCv();                           // Refresh CV inject into standalone context
   void displayStandaloneContext();                     // Display standalone context in tree
   void refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix);  // Shared tree builder
+  void applyContextFontSize();                         // Apply current font size to all context tab widgets
 };

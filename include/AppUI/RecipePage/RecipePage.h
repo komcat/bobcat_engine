@@ -162,6 +162,9 @@ private slots:
   void onRenameSelectedRecipe();
 
 private:
+  // Live data injection for Context Viewer
+  void injectLiveBeamStreamData();
+
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);

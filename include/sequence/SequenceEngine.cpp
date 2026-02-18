@@ -864,6 +864,9 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     // Inject latest continuous vision result into context before dispatch
     InjectContinuousVisionResult(context);
 
+    // Inject latest beam stream result into context before dispatch
+    InjectBeamStreamResult(context);
+
     // Execute command via dispatcher with timeout enforcement
     std::string errorMessage;
     auto actionStart = std::chrono::steady_clock::now();
@@ -1240,6 +1243,100 @@ void SequenceEngine::InjectContinuousVisionResult(SequenceContext* context)
 #else
   (void)context;
 #endif
+}
+
+void SequenceEngine::InjectBeamStreamResult(SequenceContext* context)
+{
+  if (!m_bsInjectEnabled.load()) return;
+  if (!m_context->gdiCameraWindowManager) return;
+  if (!m_context->gdiCameraWindowManager->isBeamStreamActive()) return;
+
+  // Skip if result hasn't changed since last injection
+  uint64_t seq = m_context->gdiCameraWindowManager->getBeamStreamResultSequence();
+  if (seq == m_lastInjectedBeamStreamSeq) return;
+
+  nlohmann::json result = m_context->gdiCameraWindowManager->getLatestBeamStreamResult();
+  m_lastInjectedBeamStreamSeq = seq;
+
+  // Status keys
+  context->SetValue("bs.active", "true");
+  context->SetValue("bs.fps", std::to_string(m_context->gdiCameraWindowManager->getBeamStreamFps()));
+
+  if (result.contains("process_ms")) {
+    context->SetValue("bs.process_ms", std::to_string(result["process_ms"].get<double>()));
+  }
+
+  // Beams array
+  if (result.contains("beams") && result["beams"].is_array()) {
+    const auto& beams = result["beams"];
+    context->SetValue("bs.beam.count", std::to_string(beams.size()));
+
+    for (size_t i = 0; i < beams.size(); ++i) {
+      std::string prefix = "bs.beam." + std::to_string(i) + ".";
+      const auto& beam = beams[i];
+
+      // Label / side
+      if (beam.contains("side")) {
+        context->SetValue(prefix + "label", beam["side"].get<std::string>());
+      }
+
+      // Centroid in pixels
+      context->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
+      context->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
+
+      // D4sigma in pixels (if present)
+      if (beam.contains("d4sigma_x_px")) {
+        context->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+      }
+      if (beam.contains("d4sigma_y_px")) {
+        context->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+      }
+
+      // D4sigma in microns (if present)
+      if (beam.contains("d4sigma_x_um")) {
+        context->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
+      }
+      if (beam.contains("d4sigma_y_um")) {
+        context->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+      }
+
+      // Peak intensity (if present)
+      if (beam.contains("peak_intensity")) {
+        context->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+      }
+
+      // ROI bounds (if present)
+      if (beam.contains("roi_x")) {
+        context->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
+      }
+      if (beam.contains("roi_y")) {
+        context->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
+      }
+      if (beam.contains("roi_w")) {
+        context->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
+      }
+      if (beam.contains("roi_h")) {
+        context->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
+      }
+    }
+
+    // Convenience: bs.beam.first.* aliases for the first beam
+    if (!beams.empty()) {
+      context->SetValue("bs.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
+      context->SetValue("bs.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
+      if (beams[0].contains("d4sigma_x_px")) {
+        context->SetValue("bs.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
+      }
+      if (beams[0].contains("d4sigma_y_px")) {
+        context->SetValue("bs.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
+      }
+      if (beams[0].contains("side")) {
+        context->SetValue("bs.beam.first.label", beams[0]["side"].get<std::string>());
+      }
+    }
+  } else {
+    context->SetValue("bs.beam.count", "0");
+  }
 }
 
 void SequenceEngine::LogInfo(const std::string& message)

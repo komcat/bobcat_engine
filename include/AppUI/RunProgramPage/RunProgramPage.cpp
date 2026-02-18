@@ -5289,6 +5289,14 @@ void RunProgramPage::createContextTab()
   m_contextCollapseAllButton->setStyleSheet(smallButtonStyle);
   headerLayout->addWidget(m_contextCollapseAllButton);
 
+  // Font size toggle button (small = app default, large = 18pt)
+  QSettings fontSettings("Fabrinet", "BobcatEngine");
+  m_contextLargeFont = fontSettings.value("ContextTree/LargeFont", false).toBool();
+  m_contextFontToggleButton = new QPushButton(m_contextLargeFont ? "Aa-" : "Aa+");
+  m_contextFontToggleButton->setToolTip(m_contextLargeFont ? "Switch to small font" : "Switch to large font");
+  m_contextFontToggleButton->setStyleSheet(smallButtonStyle);
+  headerLayout->addWidget(m_contextFontToggleButton);
+
   m_contextStatusLabel = new QLabel("No context data");
   m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic; font-size: 18pt;");
   headerLayout->addWidget(m_contextStatusLabel);
@@ -5338,15 +5346,20 @@ void RunProgramPage::createContextTab()
     "  background-color: #0e639c; "
     "  color: white; "
     "} "
+    "QTreeWidget::branch { "
+    "  background: transparent; "
+    "  border-image: none; "
+    "  image: none; "
+    "} "
     "QTreeWidget::branch:has-children:!has-siblings:closed,"
     "QTreeWidget::branch:closed:has-children:has-siblings { "
     "  border-image: none; "
-    "  image: none; "
+    "  image: url(assets/icons/down_arrow.png); "
     "} "
     "QTreeWidget::branch:open:has-children:!has-siblings,"
     "QTreeWidget::branch:open:has-children:has-siblings { "
     "  border-image: none; "
-    "  image: none; "
+    "  image: url(assets/icons/up_arrow.png); "
     "} "
     "QHeaderView::section { "
     "  background-color: #2d2d30; "
@@ -5447,6 +5460,17 @@ void RunProgramPage::createContextTab()
   connect(m_contextCollapseAllButton, &QPushButton::clicked,
     this, [this]() { m_contextTree->collapseAll(); });
 
+  // Connect Font Toggle
+  connect(m_contextFontToggleButton, &QPushButton::clicked,
+    this, [this]() {
+      m_contextLargeFont = !m_contextLargeFont;
+      QSettings s("Fabrinet", "BobcatEngine");
+      s.setValue("ContextTree/LargeFont", m_contextLargeFont);
+      m_contextFontToggleButton->setText(m_contextLargeFont ? "Aa-" : "Aa+");
+      m_contextFontToggleButton->setToolTip(m_contextLargeFont ? "Switch to small font" : "Switch to large font");
+      applyContextFontSize();
+    });
+
   // Connect Refresh CV button (toggle auto-refresh)
   connect(m_contextRefreshCvButton, &QPushButton::clicked,
     this, [this](bool checked) {
@@ -5475,7 +5499,153 @@ void RunProgramPage::createContextTab()
   connect(m_contextRefreshTimer, &QTimer::timeout,
     this, [this]() { updateContextTable(false); });
 
+  // Apply the persisted font size preference
+  applyContextFontSize();
+
   std::cout << "[RunProgramPage] Context tab created (tree view)" << std::endl;
+}
+
+void RunProgramPage::applyContextFontSize()
+{
+  QString contentSize = m_contextLargeFont ? "18pt" : "9pt";
+  QString buttonSize = m_contextLargeFont ? "14pt" : "9pt";
+  QString headerPad = m_contextLargeFont ? "8px" : "4px";
+  QString btnPad = m_contextLargeFont ? "8px 16px" : "4px 10px";
+
+  // Filter label
+  auto* filterLabel = m_contextTabWidget->findChild<QLabel*>();
+  if (filterLabel && filterLabel->text() == "Filter:") {
+    filterLabel->setStyleSheet(QString("color: #d4d4d4; font-weight: bold; font-size: %1;").arg(contentSize));
+  }
+
+  // Filter edit
+  m_contextFilterEdit->setStyleSheet(
+    QString(
+      "QLineEdit { "
+      "  background-color: #3c3c3c; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #555555; "
+      "  border-radius: 3px; "
+      "  padding: 5px; "
+      "  min-width: 200px; "
+      "  font-size: %1; "
+      "} "
+      "QLineEdit:focus { "
+      "  border: 1px solid #0e639c; "
+      "}"
+    ).arg(contentSize)
+  );
+
+  // Small header buttons (Expand All, Collapse All, Font Toggle)
+  QString smallBtnStyle = QString(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: 4px 10px; "
+    "  font-size: %1; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #606060; "
+    "}"
+  ).arg(buttonSize);
+  m_contextExpandAllButton->setStyleSheet(smallBtnStyle);
+  m_contextCollapseAllButton->setStyleSheet(smallBtnStyle);
+  m_contextFontToggleButton->setStyleSheet(smallBtnStyle);
+
+  // Status label
+  m_contextStatusLabel->setStyleSheet(QString("color: #888888; font-style: italic; font-size: %1;").arg(contentSize));
+
+  // Tree widget
+  m_contextTree->setStyleSheet(
+    QString(
+      "QTreeWidget { "
+      "  background-color: #1e1e1e; "
+      "  border: 1px solid #3f3f46; "
+      "  color: #d4d4d4; "
+      "  font-size: %1; "
+      "} "
+      "QTreeWidget::item { "
+      "  padding: 4px; "
+      "} "
+      "QTreeWidget::item:alternate { "
+      "  background-color: #252526; "
+      "} "
+      "QTreeWidget::item:selected { "
+      "  background-color: #0e639c; "
+      "  color: white; "
+      "} "
+      "QTreeWidget::branch { "
+      "  background: transparent; "
+      "} "
+      "QTreeWidget::branch:has-children:!has-siblings:closed,"
+      "QTreeWidget::branch:closed:has-children:has-siblings { "
+      "  border-image: none; "
+      "  image: url(assets/icons/down_arrow.png); "
+      "} "
+      "QTreeWidget::branch:open:has-children:!has-siblings,"
+      "QTreeWidget::branch:open:has-children:has-siblings { "
+      "  border-image: none; "
+      "  image: url(assets/icons/up_arrow.png); "
+      "} "
+      "QHeaderView::section { "
+      "  background-color: #2d2d30; "
+      "  color: #d4d4d4; "
+      "  padding: %2; "
+      "  border: 1px solid #3f3f46; "
+      "  font-weight: bold; "
+      "  font-size: %1; "
+      "}"
+    ).arg(contentSize, headerPad)
+  );
+
+  // Bottom action buttons (Refresh CV, Copy, Export)
+  QString actionBtnStyle = QString(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #555555; "
+    "  border-radius: 3px; "
+    "  padding: %1; "
+    "  font-size: %2; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #505050; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #606060; "
+    "}"
+  ).arg(btnPad, contentSize);
+  m_contextCopyButton->setStyleSheet(actionBtnStyle);
+  m_contextExportButton->setStyleSheet(actionBtnStyle);
+
+  // Refresh CV button (green variant)
+  m_contextRefreshCvButton->setStyleSheet(
+    QString(
+      "QPushButton { "
+      "  background-color: #2d5a27; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #3a7d32; "
+      "  border-radius: 3px; "
+      "  padding: %1; "
+      "  font-size: %2; "
+      "} "
+      "QPushButton:hover { "
+      "  background-color: #3a7d32; "
+      "} "
+      "QPushButton:pressed { "
+      "  background-color: #4a9d42; "
+      "} "
+      "QPushButton:checked { "
+      "  background-color: #4a9d42; "
+      "  border: 2px solid #6abf62; "
+      "}"
+    ).arg(btnPad, contentSize)
+  );
 }
 
 void RunProgramPage::updateContextTable(bool forceUpdate)
@@ -5671,16 +5841,22 @@ void RunProgramPage::onContextExportToCsv()
 
 void RunProgramPage::onContextRefreshCv()
 {
-#ifdef HAS_OPENCV
   if (!m_context || !m_context->gdiCameraWindowManager) {
     m_contextStatusLabel->setText("GDI Camera Window not available");
-    m_contextStatusLabel->setStyleSheet("color: #f44747; font-style: italic; font-size: 18pt;");
+    m_contextStatusLabel->setStyleSheet(QString("color: #f44747; font-style: italic; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
     return;
   }
 
-  if (!m_context->gdiCameraWindowManager->isVisionProcessingActive()) {
-    m_contextStatusLabel->setText("Continuous vision not active");
-    m_contextStatusLabel->setStyleSheet("color: #cca700; font-style: italic; font-size: 18pt;");
+  bool hasVision = false;
+  bool hasBeamStream = m_context->gdiCameraWindowManager->isBeamStreamActive();
+
+#ifdef HAS_OPENCV
+  hasVision = m_context->gdiCameraWindowManager->isVisionProcessingActive();
+#endif
+
+  if (!hasVision && !hasBeamStream) {
+    m_contextStatusLabel->setText("No live data source active (vision / beam stream)");
+    m_contextStatusLabel->setStyleSheet(QString("color: #cca700; font-style: italic; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
     return;
   }
 
@@ -5689,67 +5865,139 @@ void RunProgramPage::onContextRefreshCv()
     m_standaloneCvContext = std::make_unique<SequenceContext>();
   }
 
-  // Read latest vision result from GdiCameraWindowManager
-  VisionResult result = m_context->gdiCameraWindowManager->getLatestVisionResult();
+#ifdef HAS_OPENCV
+  if (hasVision) {
+    // Read latest vision result from GdiCameraWindowManager
+    VisionResult result = m_context->gdiCameraWindowManager->getLatestVisionResult();
 
-  // Populate the standalone context with cv.* keys (mirrors InjectContinuousVisionResult)
-  m_standaloneCvContext->SetValue("cv.result.success", result.success ? "true" : "false");
-  m_standaloneCvContext->SetValue("cv.result.plugin", result.pluginName);
-  m_standaloneCvContext->SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
+    // Populate the standalone context with cv.* keys (mirrors InjectContinuousVisionResult)
+    m_standaloneCvContext->SetValue("cv.result.success", result.success ? "true" : "false");
+    m_standaloneCvContext->SetValue("cv.result.plugin", result.pluginName);
+    m_standaloneCvContext->SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
 
-  // Measurements
-  for (const auto& [key, val] : result.measurements) {
-    m_standaloneCvContext->SetValue("cv.result." + key, std::to_string(val));
+    // Measurements
+    for (const auto& [key, val] : result.measurements) {
+      m_standaloneCvContext->SetValue("cv.result." + key, std::to_string(val));
+    }
+
+    // Points
+    m_standaloneCvContext->SetValue("cv.point.count", std::to_string(result.points.size()));
+    for (size_t i = 0; i < result.points.size(); ++i) {
+      std::string prefix = "cv.point." + std::to_string(i) + ".";
+      const auto& pt = result.points[i];
+      m_standaloneCvContext->SetValue(prefix + "x", std::to_string(pt.pixelCoord.x));
+      m_standaloneCvContext->SetValue(prefix + "y", std::to_string(pt.pixelCoord.y));
+      m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(pt.mmCoord.x));
+      m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(pt.mmCoord.y));
+      m_standaloneCvContext->SetValue(prefix + "confidence", std::to_string(pt.confidence));
+    }
+
+    // Circles
+    m_standaloneCvContext->SetValue("cv.circle.count", std::to_string(result.circles.size()));
+    for (size_t i = 0; i < result.circles.size(); ++i) {
+      std::string prefix = "cv.circle." + std::to_string(i) + ".";
+      const auto& c = result.circles[i];
+      m_standaloneCvContext->SetValue(prefix + "x", std::to_string(c.centerPx.x));
+      m_standaloneCvContext->SetValue(prefix + "y", std::to_string(c.centerPx.y));
+      m_standaloneCvContext->SetValue(prefix + "radius", std::to_string(c.radiusPx));
+      m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(c.centerMm.x));
+      m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(c.centerMm.y));
+      m_standaloneCvContext->SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
+    }
+
+    // Lines
+    m_standaloneCvContext->SetValue("cv.line.count", std::to_string(result.lines.size()));
+    for (size_t i = 0; i < result.lines.size(); ++i) {
+      std::string prefix = "cv.line." + std::to_string(i) + ".";
+      const auto& l = result.lines[i];
+      m_standaloneCvContext->SetValue(prefix + "start_x", std::to_string(l.startPx.x));
+      m_standaloneCvContext->SetValue(prefix + "start_y", std::to_string(l.startPx.y));
+      m_standaloneCvContext->SetValue(prefix + "end_x", std::to_string(l.endPx.x));
+      m_standaloneCvContext->SetValue(prefix + "end_y", std::to_string(l.endPx.y));
+    }
   }
+#endif
 
-  // Points
-  m_standaloneCvContext->SetValue("cv.point.count", std::to_string(result.points.size()));
-  for (size_t i = 0; i < result.points.size(); ++i) {
-    std::string prefix = "cv.point." + std::to_string(i) + ".";
-    const auto& pt = result.points[i];
-    m_standaloneCvContext->SetValue(prefix + "x", std::to_string(pt.pixelCoord.x));
-    m_standaloneCvContext->SetValue(prefix + "y", std::to_string(pt.pixelCoord.y));
-    m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(pt.mmCoord.x));
-    m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(pt.mmCoord.y));
-    m_standaloneCvContext->SetValue(prefix + "confidence", std::to_string(pt.confidence));
-  }
+  // Inject beam stream data (always available, no HAS_OPENCV dependency)
+  if (hasBeamStream) {
+    nlohmann::json bsResult = m_context->gdiCameraWindowManager->getLatestBeamStreamResult();
 
-  // Circles
-  m_standaloneCvContext->SetValue("cv.circle.count", std::to_string(result.circles.size()));
-  for (size_t i = 0; i < result.circles.size(); ++i) {
-    std::string prefix = "cv.circle." + std::to_string(i) + ".";
-    const auto& c = result.circles[i];
-    m_standaloneCvContext->SetValue(prefix + "x", std::to_string(c.centerPx.x));
-    m_standaloneCvContext->SetValue(prefix + "y", std::to_string(c.centerPx.y));
-    m_standaloneCvContext->SetValue(prefix + "radius", std::to_string(c.radiusPx));
-    m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(c.centerMm.x));
-    m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(c.centerMm.y));
-    m_standaloneCvContext->SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
-  }
+    m_standaloneCvContext->SetValue("bs.active", "true");
+    m_standaloneCvContext->SetValue("bs.fps", std::to_string(m_context->gdiCameraWindowManager->getBeamStreamFps()));
 
-  // Lines
-  m_standaloneCvContext->SetValue("cv.line.count", std::to_string(result.lines.size()));
-  for (size_t i = 0; i < result.lines.size(); ++i) {
-    std::string prefix = "cv.line." + std::to_string(i) + ".";
-    const auto& l = result.lines[i];
-    m_standaloneCvContext->SetValue(prefix + "start_x", std::to_string(l.startPx.x));
-    m_standaloneCvContext->SetValue(prefix + "start_y", std::to_string(l.startPx.y));
-    m_standaloneCvContext->SetValue(prefix + "end_x", std::to_string(l.endPx.x));
-    m_standaloneCvContext->SetValue(prefix + "end_y", std::to_string(l.endPx.y));
+    if (bsResult.contains("process_ms")) {
+      m_standaloneCvContext->SetValue("bs.process_ms", std::to_string(bsResult["process_ms"].get<double>()));
+    }
+
+    if (bsResult.contains("beams") && bsResult["beams"].is_array()) {
+      const auto& beams = bsResult["beams"];
+      m_standaloneCvContext->SetValue("bs.beam.count", std::to_string(beams.size()));
+
+      for (size_t i = 0; i < beams.size(); ++i) {
+        std::string prefix = "bs.beam." + std::to_string(i) + ".";
+        const auto& beam = beams[i];
+
+        if (beam.contains("side")) {
+          m_standaloneCvContext->SetValue(prefix + "label", beam["side"].get<std::string>());
+        }
+        m_standaloneCvContext->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
+        m_standaloneCvContext->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
+        if (beam.contains("d4sigma_x_px")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+        }
+        if (beam.contains("d4sigma_y_px")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+        }
+        if (beam.contains("d4sigma_x_um")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
+        }
+        if (beam.contains("d4sigma_y_um")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+        }
+        if (beam.contains("peak_intensity")) {
+          m_standaloneCvContext->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+        }
+        if (beam.contains("roi_x")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
+        }
+        if (beam.contains("roi_y")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
+        }
+        if (beam.contains("roi_w")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
+        }
+        if (beam.contains("roi_h")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
+        }
+      }
+
+      // Convenience aliases for first beam
+      if (!beams.empty()) {
+        m_standaloneCvContext->SetValue("bs.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
+        m_standaloneCvContext->SetValue("bs.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
+        if (beams[0].contains("d4sigma_x_px")) {
+          m_standaloneCvContext->SetValue("bs.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
+        }
+        if (beams[0].contains("d4sigma_y_px")) {
+          m_standaloneCvContext->SetValue("bs.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
+        }
+        if (beams[0].contains("side")) {
+          m_standaloneCvContext->SetValue("bs.beam.first.label", beams[0]["side"].get<std::string>());
+        }
+      }
+    } else {
+      m_standaloneCvContext->SetValue("bs.beam.count", "0");
+    }
   }
 
   // Display the standalone context in the table
   displayStandaloneContext();
-#else
-  m_contextStatusLabel->setText("Vision not available (HAS_OPENCV not defined)");
-  m_contextStatusLabel->setStyleSheet("color: #f44747; font-style: italic; font-size: 18pt;");
-#endif
 }
 
 void RunProgramPage::displayStandaloneContext()
 {
   if (!m_standaloneCvContext) return;
-  refreshContextTreeDisplay(m_standaloneCvContext.get(), "cv.* ", " (live)");
+  refreshContextTreeDisplay(m_standaloneCvContext.get(), "", " (live)");
 }
 
 void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix)
@@ -5911,7 +6159,7 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
   m_contextTree->setUpdatesEnabled(true);
 
   // Update status label
-  m_contextStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 18pt;");
+  m_contextStatusLabel->setStyleSheet(QString("color: #4ec9b0; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
   if (filterText.isEmpty()) {
     m_contextStatusLabel->setText(QString("%1 %2variables%3").arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
   } else {

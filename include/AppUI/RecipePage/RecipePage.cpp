@@ -28,6 +28,7 @@
 #include "RecipeSaveAsDialog.h"
 #include "ContextViewerWindow.h"
 #include "ContextVariablePreviewWidget.h"
+#include "GdiWindow/GdiCameraWindowManager.h"
 #include <QSplitter>
 #include <QLabel>
 #include <QHBoxLayout>
@@ -4002,6 +4003,87 @@ void RecipePage::onUserPromptResponse(bool confirmed)
 // CONTEXT VIEWER
 // ============================================================================
 
+void RecipePage::injectLiveBeamStreamData()
+{
+  // Inject live beam stream data into context (available even without running a recipe)
+  if (!m_context || !m_context->gdiCameraWindowManager) return;
+  if (!m_context->gdiCameraWindowManager->isBeamStreamActive()) return;
+
+  // Create context if it doesn't exist yet (no recipe has been run)
+  if (!m_currentContext) {
+    m_currentContext = new SequenceContext();
+  }
+
+  nlohmann::json result = m_context->gdiCameraWindowManager->getLatestBeamStreamResult();
+
+  m_currentContext->SetValue("bs.active", "true");
+  m_currentContext->SetValue("bs.fps", std::to_string(m_context->gdiCameraWindowManager->getBeamStreamFps()));
+
+  if (result.contains("process_ms")) {
+    m_currentContext->SetValue("bs.process_ms", std::to_string(result["process_ms"].get<double>()));
+  }
+
+  if (result.contains("beams") && result["beams"].is_array()) {
+    const auto& beams = result["beams"];
+    m_currentContext->SetValue("bs.beam.count", std::to_string(beams.size()));
+
+    for (size_t i = 0; i < beams.size(); ++i) {
+      std::string prefix = "bs.beam." + std::to_string(i) + ".";
+      const auto& beam = beams[i];
+
+      if (beam.contains("side")) {
+        m_currentContext->SetValue(prefix + "label", beam["side"].get<std::string>());
+      }
+      m_currentContext->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
+      m_currentContext->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
+      if (beam.contains("d4sigma_x_px")) {
+        m_currentContext->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+      }
+      if (beam.contains("d4sigma_y_px")) {
+        m_currentContext->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+      }
+      if (beam.contains("d4sigma_x_um")) {
+        m_currentContext->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
+      }
+      if (beam.contains("d4sigma_y_um")) {
+        m_currentContext->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+      }
+      if (beam.contains("peak_intensity")) {
+        m_currentContext->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+      }
+      if (beam.contains("roi_x")) {
+        m_currentContext->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
+      }
+      if (beam.contains("roi_y")) {
+        m_currentContext->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
+      }
+      if (beam.contains("roi_w")) {
+        m_currentContext->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
+      }
+      if (beam.contains("roi_h")) {
+        m_currentContext->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
+      }
+    }
+
+    // Convenience aliases for first beam
+    if (!beams.empty()) {
+      m_currentContext->SetValue("bs.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
+      m_currentContext->SetValue("bs.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
+      if (beams[0].contains("d4sigma_x_px")) {
+        m_currentContext->SetValue("bs.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
+      }
+      if (beams[0].contains("d4sigma_y_px")) {
+        m_currentContext->SetValue("bs.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
+      }
+      if (beams[0].contains("side")) {
+        m_currentContext->SetValue("bs.beam.first.label", beams[0]["side"].get<std::string>());
+      }
+    }
+  } else {
+    m_currentContext->SetValue("bs.beam.count", "0");
+  }
+}
+
 void RecipePage::onShowContextViewer()
 {
   if (!m_contextViewer) {
@@ -4009,6 +4091,9 @@ void RecipePage::onShowContextViewer()
     connect(m_contextViewer, &ContextViewerWindow::refreshRequested,
             this, &RecipePage::onContextRefreshRequested);
   }
+
+  // Inject live beam stream data before showing
+  injectLiveBeamStreamData();
 
   // Update with current context
   if (m_currentContext) {
@@ -4025,6 +4110,9 @@ void RecipePage::onShowContextViewer()
 
 void RecipePage::onContextRefreshRequested()
 {
+  // Inject live beam stream data on every refresh
+  injectLiveBeamStreamData();
+
   if (m_contextViewer && m_currentContext) {
     m_contextViewer->updateFromContext(m_currentContext);
     std::cout << "[RecipePage] Context viewer refreshed" << std::endl;
