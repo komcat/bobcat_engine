@@ -262,8 +262,9 @@ QListWidget::item:hover {
 /* ============================================
    TREE WIDGETS
    ============================================ */
-QTreeWidget {
+QTreeWidget, QTreeView {
     background-color: #3c3c3c;
+    alternate-background-color: #3c3c3c;
     color: #ffffff;
     border: 1px solid #555555;
     border-radius: 3px;

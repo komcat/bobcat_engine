@@ -5309,7 +5309,7 @@ void RunProgramPage::createContextTab()
   m_contextTree->setHeaderLabels({"Variable", "Value", "Type"});
   m_contextTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_contextTree->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_contextTree->setAlternatingRowColors(true);
+  m_contextTree->setAlternatingRowColors(false);
   m_contextTree->setIndentation(20);
 
   // Load column widths from settings (with defaults for larger font)
