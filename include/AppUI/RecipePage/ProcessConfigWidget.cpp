@@ -750,7 +750,31 @@ void ProcessConfigWidget::addVisionProfileSelector(const std::string& key,
   connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, &ProcessConfigWidget::parameterChanged);
 
-  m_formLayout->addRow(QString::fromStdString(label) + ":", combo);
+  // Create horizontal layout with combobox + refresh button
+  QWidget* container = new QWidget();
+  QHBoxLayout* hLayout = new QHBoxLayout(container);
+  hLayout->setContentsMargins(0, 0, 0, 0);
+  hLayout->setSpacing(4);
+  hLayout->addWidget(combo, 1);
+
+  QPushButton* refreshBtn = new QPushButton("Refresh");
+  refreshBtn->setFixedWidth(60);
+  refreshBtn->setToolTip("Refresh the vision profile list");
+  connect(refreshBtn, &QPushButton::clicked, this, [combo]() {
+    QString currentSelection = combo->currentText();
+    combo->blockSignals(true);
+    combo->refreshProfiles();
+    // Restore previous selection if still available
+    int idx = combo->findText(currentSelection);
+    if (idx >= 0) {
+      combo->setCurrentIndex(idx);
+    }
+    combo->blockSignals(false);
+    std::cout << "[ProcessConfigWidget] Vision profile list refreshed" << std::endl;
+  });
+  hLayout->addWidget(refreshBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
 
   // Store in vision profile combos map (special handling for full path)
   m_visionProfileCombos[key] = combo;

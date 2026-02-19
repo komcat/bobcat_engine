@@ -40,6 +40,7 @@ class BeamServerClient;
 // Vision Menu IDs
 #define IDM_VISION_MENU_BASE        7000
 #define IDM_VISION_ENABLE           7001
+#define IDM_VISION_REFRESH          7002
 #define IDM_VISION_PROFILE_BASE     7100  // Max 100 profiles
 
 // Tools Menu IDs

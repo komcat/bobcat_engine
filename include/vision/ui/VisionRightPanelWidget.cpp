@@ -39,15 +39,13 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     , m_cameraSelector(nullptr)
     , m_autoExposureCheck(nullptr)
     , m_autoGainCheck(nullptr)
-    , m_exposureSlider(nullptr)
     , m_exposureSpinBox(nullptr)
     , m_exposureValueLabel(nullptr)
-    , m_gainSlider(nullptr)
     , m_gainSpinBox(nullptr)
     , m_gainValueLabel(nullptr)
-    , m_frameRateSlider(nullptr)
     , m_frameRateSpinBox(nullptr)
     , m_frameRateValueLabel(nullptr)
+    , m_applyCameraSettingsBtn(nullptr)
     , m_pixelToMmXLabel(nullptr)
     , m_pixelToMmYLabel(nullptr)
     , m_pluginScrollArea(nullptr)
@@ -347,36 +345,16 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     expLabel->setStyleSheet("QLabel { font-weight: bold; }");
     settingsLayout->addWidget(expLabel);
 
-    // Exposure slider + spinbox layout
-    QHBoxLayout* exposureLayout = new QHBoxLayout();
-    exposureLayout->setSpacing(8);
-
-    m_exposureSlider = new QSlider(Qt::Horizontal);
-    m_exposureSlider->setMinimum(1);
-    m_exposureSlider->setMaximum(100000);  // Up to 100ms (ACE/ACE2 compatible)
-    m_exposureSlider->setSingleStep(50);   // 50µs steps to reduce command frequency
-    m_exposureSlider->setPageStep(500);    // Page step 500µs
-    m_exposureSlider->setValue(1000);
-    m_exposureSlider->setToolTip("Camera exposure time in microseconds");
-    connect(m_exposureSlider, &QSlider::valueChanged,
-            this, &VisionRightPanelWidget::onExposureSliderChanged);
-    exposureLayout->addWidget(m_exposureSlider, 1);
-
     m_exposureSpinBox = new QSpinBox();
     m_exposureSpinBox->setMinimum(1);
     m_exposureSpinBox->setMaximum(100000);
+    m_exposureSpinBox->setSingleStep(50);
     m_exposureSpinBox->setValue(1000);
     m_exposureSpinBox->setSuffix(" us");
-    m_exposureSpinBox->setFixedWidth(100);
     m_exposureSpinBox->setToolTip("Enter exposure time in microseconds");
-    m_exposureSpinBox->setStyleSheet(
-        "QSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; padding: 2px; }"
-        "QSpinBox:focus { border: 1px solid #0e639c; }");
     connect(m_exposureSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &VisionRightPanelWidget::onExposureSpinBoxChanged);
-    exposureLayout->addWidget(m_exposureSpinBox);
-
-    settingsLayout->addLayout(exposureLayout);
+    settingsLayout->addWidget(m_exposureSpinBox);
 
     m_exposureValueLabel = new QLabel("1000 us = 1.00 ms");
     m_exposureValueLabel->setAlignment(Qt::AlignCenter);
@@ -390,37 +368,18 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     gainLabel->setStyleSheet("QLabel { font-weight: bold; }");
     settingsLayout->addWidget(gainLabel);
 
-    // Gain slider + spinbox layout
-    QHBoxLayout* gainLayout = new QHBoxLayout();
-    gainLayout->setSpacing(8);
-
-    m_gainSlider = new QSlider(Qt::Horizontal);
-    m_gainSlider->setMinimum(0);
-    m_gainSlider->setMaximum(240);  // 0-24 with 0.1 precision (ACE/ACE2 compatible)
-    m_gainSlider->setValue(10);
-    m_gainSlider->setToolTip("Camera gain (0.0 - 24.0)");
-    connect(m_gainSlider, &QSlider::valueChanged,
-            this, &VisionRightPanelWidget::onGainSliderChanged);
-    gainLayout->addWidget(m_gainSlider, 1);
-
     m_gainSpinBox = new QDoubleSpinBox();
     m_gainSpinBox->setMinimum(0.0);
     m_gainSpinBox->setMaximum(24.0);
     m_gainSpinBox->setValue(1.0);
     m_gainSpinBox->setSingleStep(0.1);
     m_gainSpinBox->setDecimals(1);
-    m_gainSpinBox->setFixedWidth(80);
     m_gainSpinBox->setToolTip("Enter gain value (0.0 - 24.0)");
-    m_gainSpinBox->setStyleSheet(
-        "QDoubleSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; padding: 2px; }"
-        "QDoubleSpinBox:focus { border: 1px solid #0e639c; }");
     connect(m_gainSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &VisionRightPanelWidget::onGainSpinBoxChanged);
-    gainLayout->addWidget(m_gainSpinBox);
+    settingsLayout->addWidget(m_gainSpinBox);
 
-    settingsLayout->addLayout(gainLayout);
-
-    m_gainValueLabel = new QLabel("1.0");
+    m_gainValueLabel = new QLabel("Gain: 1.0");
     m_gainValueLabel->setAlignment(Qt::AlignCenter);
     m_gainValueLabel->setStyleSheet("color: #888888; font-size: 11px;");
     settingsLayout->addWidget(m_gainValueLabel);
@@ -432,19 +391,6 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     fpsLabel->setStyleSheet("QLabel { font-weight: bold; }");
     settingsLayout->addWidget(fpsLabel);
 
-    // Frame Rate slider + spinbox layout
-    QHBoxLayout* frameRateLayout = new QHBoxLayout();
-    frameRateLayout->setSpacing(8);
-
-    m_frameRateSlider = new QSlider(Qt::Horizontal);
-    m_frameRateSlider->setMinimum(1);    // 0.1 fps (value / 10)
-    m_frameRateSlider->setMaximum(300);  // 30.0 fps
-    m_frameRateSlider->setValue(80);     // 8.0 fps default
-    m_frameRateSlider->setToolTip("Camera frame rate (0.1 - 30.0 fps)");
-    connect(m_frameRateSlider, &QSlider::valueChanged,
-            this, &VisionRightPanelWidget::onFrameRateSliderChanged);
-    frameRateLayout->addWidget(m_frameRateSlider, 1);
-
     m_frameRateSpinBox = new QDoubleSpinBox();
     m_frameRateSpinBox->setMinimum(0.1);
     m_frameRateSpinBox->setMaximum(30.0);
@@ -452,21 +398,29 @@ void VisionRightPanelWidget::setupCameraTab(QWidget* cameraTab)
     m_frameRateSpinBox->setSingleStep(0.5);
     m_frameRateSpinBox->setDecimals(1);
     m_frameRateSpinBox->setSuffix(" fps");
-    m_frameRateSpinBox->setFixedWidth(90);
     m_frameRateSpinBox->setToolTip("Enter frame rate (0.1 - 30.0 fps)");
-    m_frameRateSpinBox->setStyleSheet(
-        "QDoubleSpinBox { background-color: #2d2d30; color: white; border: 1px solid #3c3c3c; padding: 2px; }"
-        "QDoubleSpinBox:focus { border: 1px solid #0e639c; }");
     connect(m_frameRateSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &VisionRightPanelWidget::onFrameRateSpinBoxChanged);
-    frameRateLayout->addWidget(m_frameRateSpinBox);
-
-    settingsLayout->addLayout(frameRateLayout);
+    settingsLayout->addWidget(m_frameRateSpinBox);
 
     m_frameRateValueLabel = new QLabel("8.0 fps");
     m_frameRateValueLabel->setAlignment(Qt::AlignCenter);
     m_frameRateValueLabel->setStyleSheet("color: #888888; font-size: 11px;");
     settingsLayout->addWidget(m_frameRateValueLabel);
+
+    settingsLayout->addSpacing(10);
+
+    // Apply Camera Settings button
+    m_applyCameraSettingsBtn = new QPushButton("Apply Camera Settings");
+    m_applyCameraSettingsBtn->setToolTip("Apply exposure, gain, and frame rate to the camera");
+    m_applyCameraSettingsBtn->setStyleSheet(
+        "QPushButton { background-color: #1565C0; color: white; font-weight: bold; padding: 8px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #1976D2; }"
+        "QPushButton:pressed { background-color: #0D47A1; }"
+    );
+    connect(m_applyCameraSettingsBtn, &QPushButton::clicked,
+            this, &VisionRightPanelWidget::onApplyCameraSettingsBtnClicked);
+    settingsLayout->addWidget(m_applyCameraSettingsBtn);
 
     tabLayout->addWidget(cameraGroup);
 
@@ -600,9 +554,9 @@ void VisionRightPanelWidget::applyCameraSettings()
     ICameraHardware::ExposureSettings settings;
     settings.auto_exposure = m_autoExposureCheck->isChecked();
     settings.auto_gain = m_autoGainCheck->isChecked();
-    settings.exposure_time = m_exposureSlider->value();
-    settings.gain = m_gainSlider->value() / 10.0;
-    settings.frame_rate = m_frameRateSlider ? m_frameRateSlider->value() / 10.0 : 8.0;
+    settings.exposure_time = m_exposureSpinBox ? m_exposureSpinBox->value() : 1000;
+    settings.gain = m_gainSpinBox ? m_gainSpinBox->value() : 1.0;
+    settings.frame_rate = m_frameRateSpinBox ? m_frameRateSpinBox->value() : 8.0;
 
     std::string cameraIdStr = cameraId.toStdString();
 
@@ -641,11 +595,8 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
     // Block signals during load
     m_autoExposureCheck->blockSignals(true);
     m_autoGainCheck->blockSignals(true);
-    m_exposureSlider->blockSignals(true);
-    m_gainSlider->blockSignals(true);
     if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(true);
     if (m_gainSpinBox) m_gainSpinBox->blockSignals(true);
-    if (m_frameRateSlider) m_frameRateSlider->blockSignals(true);
     if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
 
     m_autoExposureCheck->setChecked(settings.auto_exposure);
@@ -654,20 +605,11 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
     int exposureValue = static_cast<int>(settings.exposure_time);
     if (exposureValue < 1) exposureValue = 1;
     if (exposureValue > 100000) exposureValue = 100000;
-    m_exposureSlider->setValue(exposureValue);
     if (m_exposureSpinBox) m_exposureSpinBox->setValue(exposureValue);
 
-    int gainValue = static_cast<int>(settings.gain * 10);
-    if (gainValue < 0) gainValue = 0;
-    if (gainValue > 240) gainValue = 240;
-    m_gainSlider->setValue(gainValue);
     if (m_gainSpinBox) m_gainSpinBox->setValue(settings.gain);
 
     // Load frame rate
-    int frameRateValue = static_cast<int>(settings.frame_rate * 10);
-    if (frameRateValue < 1) frameRateValue = 1;
-    if (frameRateValue > 300) frameRateValue = 300;
-    if (m_frameRateSlider) m_frameRateSlider->setValue(frameRateValue);
     if (m_frameRateSpinBox) m_frameRateSpinBox->setValue(settings.frame_rate);
 
     // Update labels
@@ -675,20 +617,15 @@ void VisionRightPanelWidget::loadCurrentCameraSettings()
     updateGainLabel(settings.gain);
     updateFrameRateLabel(settings.frame_rate);
 
-    // Update slider and spinbox enabled state
-    m_exposureSlider->setEnabled(!settings.auto_exposure);
-    m_gainSlider->setEnabled(!settings.auto_gain);
+    // Update spinbox enabled state
     if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.auto_exposure);
     if (m_gainSpinBox) m_gainSpinBox->setEnabled(!settings.auto_gain);
 
     // Unblock signals
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
-    m_exposureSlider->blockSignals(false);
-    m_gainSlider->blockSignals(false);
     if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(false);
     if (m_gainSpinBox) m_gainSpinBox->blockSignals(false);
-    if (m_frameRateSlider) m_frameRateSlider->blockSignals(false);
     if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
 
     std::cout << "[VisionRightPanelWidget] Loaded camera settings from " << cameraIdStr << std::endl;
@@ -722,11 +659,11 @@ VisionCameraSettings VisionRightPanelWidget::getCameraSettings() const
 {
     VisionCameraSettings settings;
     settings.cameraId = getSelectedCameraId();
-    settings.exposureTime = m_exposureSlider ? m_exposureSlider->value() : 1000;
-    settings.gain = m_gainSlider ? m_gainSlider->value() / 10.0 : 1.0;
+    settings.exposureTime = m_exposureSpinBox ? m_exposureSpinBox->value() : 1000;
+    settings.gain = m_gainSpinBox ? m_gainSpinBox->value() : 1.0;
     settings.autoExposure = m_autoExposureCheck ? m_autoExposureCheck->isChecked() : false;
     settings.autoGain = m_autoGainCheck ? m_autoGainCheck->isChecked() : false;
-    settings.frameRate = m_frameRateSlider ? m_frameRateSlider->value() / 10.0 : 8.0;
+    settings.frameRate = m_frameRateSpinBox ? m_frameRateSpinBox->value() : 8.0;
     settings.pixelToMmX = m_pixelToMmX;  // From config/SYSTEM/val_pixelmm.json
     settings.pixelToMmY = m_pixelToMmY;  // From config/SYSTEM/val_pixelmm.json
     return settings;
@@ -738,11 +675,8 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_cameraSelector->blockSignals(true);
     m_autoExposureCheck->blockSignals(true);
     m_autoGainCheck->blockSignals(true);
-    m_exposureSlider->blockSignals(true);
-    m_gainSlider->blockSignals(true);
     if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(true);
     if (m_gainSpinBox) m_gainSpinBox->blockSignals(true);
-    if (m_frameRateSlider) m_frameRateSlider->blockSignals(true);
     if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
 
     // Set camera
@@ -754,15 +688,12 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     // Set exposure/gain
     m_autoExposureCheck->setChecked(settings.autoExposure);
     m_autoGainCheck->setChecked(settings.autoGain);
-    m_exposureSlider->setValue(settings.exposureTime);
-    m_gainSlider->setValue(static_cast<int>(settings.gain * 10));
     if (m_exposureSpinBox) m_exposureSpinBox->setValue(settings.exposureTime);
     if (m_gainSpinBox) m_gainSpinBox->setValue(settings.gain);
     updateExposureLabel(settings.exposureTime);
     updateGainLabel(settings.gain);
 
     // Set frame rate
-    if (m_frameRateSlider) m_frameRateSlider->setValue(static_cast<int>(settings.frameRate * 10));
     if (m_frameRateSpinBox) m_frameRateSpinBox->setValue(settings.frameRate);
     updateFrameRateLabel(settings.frameRate);
 
@@ -776,8 +707,6 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     }
 
     // Update enabled states
-    m_exposureSlider->setEnabled(!settings.autoExposure);
-    m_gainSlider->setEnabled(!settings.autoGain);
     if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.autoExposure);
     if (m_gainSpinBox) m_gainSpinBox->setEnabled(!settings.autoGain);
 
@@ -785,11 +714,8 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
     m_cameraSelector->blockSignals(false);
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
-    m_exposureSlider->blockSignals(false);
     if (m_exposureSpinBox) m_exposureSpinBox->blockSignals(false);
     if (m_gainSpinBox) m_gainSpinBox->blockSignals(false);
-    m_gainSlider->blockSignals(false);
-    if (m_frameRateSlider) m_frameRateSlider->blockSignals(false);
     if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
 
     std::cout << "[VisionRightPanelWidget] Camera settings restored: "
@@ -799,72 +725,19 @@ void VisionRightPanelWidget::setCameraSettings(const VisionCameraSettings& setti
               << "FrameRate=" << settings.frameRate << "fps" << std::endl;
 }
 
-void VisionRightPanelWidget::onExposureSliderChanged(int value)
-{
-    // Sync spinbox (block signals to prevent loop)
-    if (m_exposureSpinBox) {
-        m_exposureSpinBox->blockSignals(true);
-        m_exposureSpinBox->setValue(value);
-        m_exposureSpinBox->blockSignals(false);
-    }
-    updateExposureLabel(value);
-
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
-}
-
 void VisionRightPanelWidget::onExposureSpinBoxChanged(int value)
 {
-    // Sync slider (block signals to prevent loop)
-    if (m_exposureSlider) {
-        m_exposureSlider->blockSignals(true);
-        m_exposureSlider->setValue(value);
-        m_exposureSlider->blockSignals(false);
-    }
     updateExposureLabel(value);
-
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
-}
-
-void VisionRightPanelWidget::onGainSliderChanged(int value)
-{
-    double gain = value / 10.0;  // Convert to 0.0 - 24.0 range
-    // Sync spinbox (block signals to prevent loop)
-    if (m_gainSpinBox) {
-        m_gainSpinBox->blockSignals(true);
-        m_gainSpinBox->setValue(gain);
-        m_gainSpinBox->blockSignals(false);
-    }
-    updateGainLabel(gain);
-
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onGainSpinBoxChanged(double value)
 {
-    int sliderValue = static_cast<int>(value * 10);  // Convert to slider range
-    // Sync slider (block signals to prevent loop)
-    if (m_gainSlider) {
-        m_gainSlider->blockSignals(true);
-        m_gainSlider->setValue(sliderValue);
-        m_gainSlider->blockSignals(false);
-    }
     updateGainLabel(value);
-
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
 }
 
 void VisionRightPanelWidget::onAutoExposureChanged(Qt::CheckState state)
 {
     bool autoEnabled = (state == Qt::Checked);
-    m_exposureSlider->setEnabled(!autoEnabled);
     if (m_exposureSpinBox) {
         m_exposureSpinBox->setEnabled(!autoEnabled);
     }
@@ -875,7 +748,6 @@ void VisionRightPanelWidget::onAutoExposureChanged(Qt::CheckState state)
 void VisionRightPanelWidget::onAutoGainChanged(Qt::CheckState state)
 {
     bool autoEnabled = (state == Qt::Checked);
-    m_gainSlider->setEnabled(!autoEnabled);
     if (m_gainSpinBox) {
         m_gainSpinBox->setEnabled(!autoEnabled);
     }
@@ -898,36 +770,16 @@ void VisionRightPanelWidget::updateGainLabel(double gain)
     m_gainValueLabel->setText(QString("Gain: %1").arg(gain, 0, 'f', 1));
 }
 
-void VisionRightPanelWidget::onFrameRateSliderChanged(int value)
-{
-    double fps = value / 10.0;  // Convert to 0.1 - 30.0 range
-    // Sync spinbox (block signals to prevent loop)
-    if (m_frameRateSpinBox) {
-        m_frameRateSpinBox->blockSignals(true);
-        m_frameRateSpinBox->setValue(fps);
-        m_frameRateSpinBox->blockSignals(false);
-    }
-    updateFrameRateLabel(fps);
-
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
-}
-
 void VisionRightPanelWidget::onFrameRateSpinBoxChanged(double value)
 {
-    int sliderValue = static_cast<int>(value * 10);  // Convert to slider range
-    // Sync slider (block signals to prevent loop)
-    if (m_frameRateSlider) {
-        m_frameRateSlider->blockSignals(true);
-        m_frameRateSlider->setValue(sliderValue);
-        m_frameRateSlider->blockSignals(false);
-    }
     updateFrameRateLabel(value);
+}
 
-    // Throttle: restart timer (delay loaded from config/SYSTEM/systemdelay.json)
-    m_settingsPending = true;
-    m_applySettingsTimer->start(loadUIThrottleDelay());
+void VisionRightPanelWidget::onApplyCameraSettingsBtnClicked()
+{
+    applyCameraSettings();
+    emit cameraSettingsChanged();
+    std::cout << "[VisionRightPanelWidget] Camera settings applied via button" << std::endl;
 }
 
 void VisionRightPanelWidget::updateFrameRateLabel(double fps)

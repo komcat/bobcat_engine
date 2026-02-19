@@ -787,6 +787,7 @@ void GdiCameraWindow::CreateMenuBar() {
         // Vision menu
         if (m_visionMenu) {
             AppendMenuW(m_visionMenu, MF_STRING, IDM_VISION_ENABLE, L"Enable Continuous Vision");
+            AppendMenuW(m_visionMenu, MF_STRING, IDM_VISION_REFRESH, L"Refresh Profile List");
             AppendMenuW(m_visionMenu, MF_SEPARATOR, 0, nullptr);
             // Profiles will be populated dynamically
             AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_visionMenu, L"Vision");
@@ -1001,9 +1002,9 @@ void GdiCameraWindow::UpdateBeamStreamMenu() {
 void GdiCameraWindow::UpdateVisionMenu() {
     if (!m_visionMenu) return;
 
-    // Remove old profile items (keep first 2: "Enable Continuous Vision" and separator)
+    // Remove old profile items (keep first 3: "Enable Continuous Vision", "Refresh Profile List", and separator)
     int count = GetMenuItemCount(m_visionMenu);
-    while (count > 2) {
+    while (count > 3) {
         DeleteMenu(m_visionMenu, count - 1, MF_BYPOSITION);
         count--;
     }
@@ -1096,20 +1097,22 @@ void GdiCameraWindow::DiscoverVisionProfiles() {
         std::wstring configPath(basePath, basePath + strlen(basePath));
         configPath += L"/*";
 
-        hFind = FindFirstFileW(configPath.c_str(), &findData);
+        WIN32_FIND_DATAW dirFindData;
+        hFind = FindFirstFileW(configPath.c_str(), &dirFindData);
         if (hFind != INVALID_HANDLE_VALUE) {
             do {
-                if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                    std::wstring dirName = findData.cFileName;
+                if (dirFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    std::wstring dirName = dirFindData.cFileName;
                     if (dirName != L"." && dirName != L"..") {
                         // Check if this directory has a vision subfolder
                         std::wstring visionPath = configPath.substr(0, configPath.length() - 1);
                         visionPath += dirName + L"/vision/*.json";
 
-                        HANDLE hFind2 = FindFirstFileW(visionPath.c_str(), &findData);
+                        WIN32_FIND_DATAW fileFindData;
+                        HANDLE hFind2 = FindFirstFileW(visionPath.c_str(), &fileFindData);
                         if (hFind2 != INVALID_HANDLE_VALUE) {
                             do {
-                                std::wstring fileName = findData.cFileName;
+                                std::wstring fileName = fileFindData.cFileName;
                                 if (fileName.find(L".recipe.json") != std::wstring::npos) {
                                     continue;
                                 }
@@ -1136,15 +1139,21 @@ void GdiCameraWindow::DiscoverVisionProfiles() {
                                 if (!exists) {
                                     m_availableProfiles.push_back(info);
                                 }
-                            } while (FindNextFileW(hFind2, &findData));
+                            } while (FindNextFileW(hFind2, &fileFindData));
                             FindClose(hFind2);
                         }
                     }
                 }
-            } while (FindNextFileW(hFind, &findData));
+            } while (FindNextFileW(hFind, &dirFindData));
             FindClose(hFind);
         }
     }
+
+    // Sort profiles alphabetically by display name
+    std::sort(m_availableProfiles.begin(), m_availableProfiles.end(),
+              [](const VisionProfileInfo& a, const VisionProfileInfo& b) {
+                  return a.displayName < b.displayName;
+              });
 
     if (!m_availableProfiles.empty()) {
         std::cout << "[GdiCameraWindow] Total vision profiles discovered: "
@@ -1176,6 +1185,12 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         }
     }
 #ifdef HAS_OPENCV
+    else if (commandId == IDM_VISION_REFRESH) {
+        std::cout << "[GdiCameraWindow] Refreshing vision profile list..." << std::endl;
+        DiscoverVisionProfiles();
+        UpdateVisionMenu();
+        std::cout << "[GdiCameraWindow] Found " << m_availableProfiles.size() << " profiles after refresh" << std::endl;
+    }
     else if (commandId == IDM_VISION_ENABLE) {
         if (m_visionEnabled) {
             // Disable vision processing
