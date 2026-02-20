@@ -634,6 +634,7 @@ set(SOURCES
     include/recipe/processes/DUTProcesses.cpp
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
+    include/recipe/processes/AccuracyTrainerProcesses.cpp
     include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
     include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
@@ -672,6 +673,7 @@ set(SOURCES
     include/sequence/AuxWindowCommandHandler.cpp
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
+    include/sequence/AccuracyTrainerCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
@@ -880,6 +882,7 @@ set(HEADERS
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
+    include/sequence/AccuracyTrainerCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
     include/customserver/BeamServerClient.h
     include/AppUI/Common/FileSelectorDialog.h

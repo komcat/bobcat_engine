@@ -33,6 +33,11 @@ bool CommandDispatcher::ExecuteCommand(
   return it->second->ExecuteCommand(manager, deviceName, methodName, params, errorMessage, context);
 }
 
+bool CommandDispatcher::HasHandler(const std::string& managerType) const
+{
+  return m_handlers.find(managerType) != m_handlers.end();
+}
+
 void CommandDispatcher::SetLogger(LogManager* logger)
 {
   for (auto& pair : m_handlers) {

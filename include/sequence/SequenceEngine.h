@@ -18,6 +18,7 @@
 class SequenceBuilder;
 struct ISequenceStep;
 class SystemCommandHandler;
+class AccuracyTrainerCommandHandler;
 class LogManager;
 class SequenceContext;
 
@@ -348,6 +349,9 @@ private:
 
   // MotionCommandHandler pointer for retrace edit integration
   class MotionCommandHandler* m_motionHandler = nullptr;
+
+  // AccuracyTrainerCommandHandler pointer for manual align callback forwarding
+  AccuracyTrainerCommandHandler* m_accuracyTrainerHandler = nullptr;
 
   // Step execution event callbacks
   StepStartedCallback m_stepStartedCallback;

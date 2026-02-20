@@ -19,6 +19,7 @@
 #include "AuxWindowCommandHandler.h"
 #include "RelativePositionCommandHandler.h"
 #include "CoordinateAlignCommandHandler.h"
+#include "AccuracyTrainerCommandHandler.h"
 #include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
@@ -111,6 +112,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   coordAlignHandler->SetConfigPath("config/");
   // Note: Files are read at runtime when needed (not loaded into memory at startup)
   m_dispatcher.RegisterHandler("coordalign", std::move(coordAlignHandler));
+
+  // Register accuracy trainer handler for headless alignment
+  auto atHandler = std::make_unique<AccuracyTrainerCommandHandler>();
+  atHandler->SetContext(m_context);
+  m_accuracyTrainerHandler = atHandler.get();
+  m_dispatcher.RegisterHandler("accuracytrainer", std::move(atHandler));
 
   // Register custom server handler for beam detection
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
@@ -321,6 +328,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["coordalign"] = "coordalign";
   LogInfo("Registered coordinate alignment command handler");
 
+  // Accuracy trainer commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["accuracytrainer"] = nullptr;
+  m_deviceToTypeMap["accuracytrainer"] = "accuracytrainer";
+  LogInfo("Registered accuracy trainer command handler");
+
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
@@ -434,6 +446,9 @@ void SequenceEngine::SetManualAlignPointCallback(ManualAlignPointCallback callba
 {
   if (m_systemHandler) {
     m_systemHandler->SetManualAlignPointCallback(callback);
+  }
+  if (m_accuracyTrainerHandler) {
+    m_accuracyTrainerHandler->SetManualAlignPointCallback(callback);
   }
 }
 
@@ -617,13 +632,11 @@ bool SequenceEngine::ValidateStep(ISequenceStep* step, std::vector<std::string>&
       return false;
     }
 
-    // System, context, calibration, dut, vision, relpos, and coordalign commands don't need a manager pointer, others do
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign") {
-      void* manager = ResolveManager(action->deviceName);
-      if (!manager) {
-        errors.push_back("Manager not found for device: " + action->deviceName);
-        return false;
-      }
+    // If the dispatcher has a handler for this type, it can work with nullptr manager (virtual devices)
+    void* manager = ResolveManager(action->deviceName);
+    if (!manager && !m_dispatcher.HasHandler(managerType)) {
+      errors.push_back("Manager not found for device: " + action->deviceName);
+      return false;
     }
 
     break;
@@ -833,9 +846,9 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       return false;
     }
 
-    // System/context/calibration/dut/vision/relpos/coordalign commands can have nullptr manager, others cannot
+    // If the dispatcher has a handler for this type, it can work with nullptr manager (virtual devices)
     // "parallel" is a virtual coordinator — its sub-commands check their own devices
-    if (managerType != "system" && managerType != "context" && managerType != "calibration" && managerType != "dut" && managerType != "vision" && managerType != "relpos" && managerType != "coordalign" && action->deviceName != "parallel" && !manager) {
+    if (action->deviceName != "parallel" && !manager && !m_dispatcher.HasHandler(managerType)) {
       LogError("❓ Manager not found for device: " + action->deviceName);
       return false;
     }

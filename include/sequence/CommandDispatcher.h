@@ -28,6 +28,9 @@ public:
     SequenceContext* context = nullptr
   );
 
+  // Check if a handler is registered for a manager type
+  bool HasHandler(const std::string& managerType) const;
+
   // Set logger for all handlers
   void SetLogger(LogManager* logger);
 
