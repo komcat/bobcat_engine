@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QImage>
 #include <functional>
+#include <future>
 
 class UnifiedMotionManager;
 
@@ -150,4 +151,7 @@ private:
 
   // Timer for position updates
   QTimer* m_positionTimer;
+
+  // Background motion thread (avoid blocking UI)
+  std::future<void> m_moveFuture;
 };

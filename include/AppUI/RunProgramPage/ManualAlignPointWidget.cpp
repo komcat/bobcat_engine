@@ -224,23 +224,6 @@ void ManualAlignPointWidget::showAlignment(
   // Update message
   m_messageLabel->setText(message);
 
-  // Try to load and auto-navigate to saved position
-  double savedX = 0.0, savedY = 0.0, savedZ = 0.0;
-  if (loadNavigationData(savedX, savedY, savedZ)) {
-    // Navigation data exists - auto-move to saved position
-    if (m_motionManager) {
-      std::cout << "[ManualAlignPointWidget] Auto-navigating to saved position: "
-                << "X=" << savedX << ", Y=" << savedY << ", Z=" << savedZ << std::endl;
-
-      // MoveToAbs with blocking=true will wait for motion to complete
-      if (!m_motionManager->MoveToAbs(m_currentDevice, savedX, savedY, savedZ, 20.0, true)) {
-        std::cerr << "[ManualAlignPointWidget] Auto-navigation failed" << std::endl;
-      }
-
-      std::cout << "[ManualAlignPointWidget] Auto-navigation complete" << std::endl;
-    }
-  }
-
   // Load and display reference image
   loadReferenceImage();
 
@@ -256,6 +239,27 @@ void ManualAlignPointWidget::showAlignment(
 
   // Show widget
   show();
+
+  // Try to load and auto-navigate to saved position (background thread)
+  double savedX = 0.0, savedY = 0.0, savedZ = 0.0;
+  if (loadNavigationData(savedX, savedY, savedZ)) {
+    if (m_motionManager) {
+      std::cout << "[ManualAlignPointWidget] Auto-navigating to saved position: "
+                << "X=" << savedX << ", Y=" << savedY << ", Z=" << savedZ << std::endl;
+
+      std::string device = m_currentDevice;
+      m_moveFuture = std::async(std::launch::async, [this, device, savedX, savedY, savedZ]() {
+        bool ok = m_motionManager->MoveToAbs(device, savedX, savedY, savedZ, 20.0, true);
+        QMetaObject::invokeMethod(this, [ok]() {
+          if (!ok) {
+            std::cerr << "[ManualAlignPointWidget] Auto-navigation failed" << std::endl;
+          } else {
+            std::cout << "[ManualAlignPointWidget] Auto-navigation complete" << std::endl;
+          }
+        }, Qt::QueuedConnection);
+      });
+    }
+  }
 
   std::cout << "[ManualAlignPointWidget] Showing alignment dialog for point: "
             << m_pointName << std::endl;

@@ -23,6 +23,7 @@ class RunProgramPage;
 class TopBar;
 class VisionManagerPage;       // Vision Manager UI
 class ApplicationSettingsPage; // Application Settings editor
+class AccuracyTrainerPage;    // Accuracy Trainer
 
 class MainWindow : public QMainWindow
 {
@@ -50,6 +51,7 @@ private slots:
   void onMainMenuHardware();
   void onMainMenuEditConfig();
   void onMainMenuFutureUpdate();
+  void onMainMenuAccuracyTrainer();
   void onBackToMainMenu();
   void onOpenLogViewer();
   void onToggleJogPanel();
@@ -80,6 +82,7 @@ private:
   RunProgramPage* m_runProgramPage;
   VisionManagerPage* m_visionManagerPage;  // Vision Manager page
   ApplicationSettingsPage* m_applicationSettingsPage;  // Application Settings page
+  AccuracyTrainerPage* m_accuracyTrainerPage;  // Accuracy Trainer page
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;

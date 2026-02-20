@@ -287,14 +287,16 @@ void MainMenuPage::setupUI()
   m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
   m_editConfigButton = createMenuButton("Settings", "assets/icons/config.png");
   m_futureUpdateButton = createMenuButton("Vision Manager", "assets/icons/future.png");
+  m_accuracyTrainerButton = createMenuButton("Accuracy\nTrainer", "assets/icons/future.png");
 
-  // Add to grid (3 columns, 2 rows)
+  // Add to grid (3 columns, 3 rows)
   buttonGrid->addWidget(m_processButton, 0, 0);
   buttonGrid->addWidget(m_recipeButton, 0, 1);
   buttonGrid->addWidget(m_motionButton, 0, 2);
   buttonGrid->addWidget(m_hardwareButton, 1, 0);
   buttonGrid->addWidget(m_editConfigButton, 1, 1);
   buttonGrid->addWidget(m_futureUpdateButton, 1, 2);
+  buttonGrid->addWidget(m_accuracyTrainerButton, 2, 0);
 
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
@@ -306,6 +308,7 @@ void MainMenuPage::setupUI()
   connect(m_hardwareButton, &QToolButton::clicked, this, &MainMenuPage::hardwareClicked);
   connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);
   connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);
+  connect(m_accuracyTrainerButton, &QToolButton::clicked, this, &MainMenuPage::accuracyTrainerClicked);
 
   // Set dark blue background
   setStyleSheet("QWidget { background-color: #1a1f2e; }");

@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 4)
+set(BOBCAT_VERSION_MINOR 5)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -458,6 +458,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/SMUControlPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/SettingsPage
+    ${CMAKE_SOURCE_DIR}/include/AppUI/AccuracyTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -734,6 +735,14 @@ set(SOURCES
     include/settings/ApplicationSettings.cpp
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
+    # Accuracy Trainer
+    include/AppUI/AccuracyTrainer/AccuracyTrainerStore.cpp
+    include/AppUI/AccuracyTrainer/AccuracyTrainerPage.cpp
+    include/AppUI/AccuracyTrainer/TeachBondingWidget.cpp
+    include/AppUI/AccuracyTrainer/TeachReferenceWidget.cpp
+    include/AppUI/AccuracyTrainer/RunAlignmentWidget.cpp
+    include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.cpp
+    include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -942,6 +951,15 @@ set(HEADERS
     include/settings/ApplicationSettings.h
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.h
+    # Accuracy Trainer
+    include/AppUI/AccuracyTrainer/AccuracyTrainerData.h
+    include/AppUI/AccuracyTrainer/AccuracyTrainerStore.h
+    include/AppUI/AccuracyTrainer/AccuracyTrainerPage.h
+    include/AppUI/AccuracyTrainer/TeachBondingWidget.h
+    include/AppUI/AccuracyTrainer/TeachReferenceWidget.h
+    include/AppUI/AccuracyTrainer/RunAlignmentWidget.h
+    include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.h
+    include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h

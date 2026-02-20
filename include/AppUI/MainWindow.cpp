@@ -20,6 +20,7 @@
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
+#include "AccuracyTrainer/AccuracyTrainerPage.h"   // Accuracy Trainer
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
@@ -44,6 +45,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_runProgramPage(nullptr)
   , m_visionManagerPage(nullptr) // Vision Manager page
   , m_applicationSettingsPage(nullptr) // Application Settings page
+  , m_accuracyTrainerPage(nullptr)     // Accuracy Trainer page
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -200,6 +202,8 @@ void MainWindow::createPages()
     this, &MainWindow::onMainMenuEditConfig);
   connect(m_mainMenuPage, &MainMenuPage::futureUpdateClicked,
     this, &MainWindow::onMainMenuFutureUpdate);
+  connect(m_mainMenuPage, &MainMenuPage::accuracyTrainerClicked,
+    this, &MainWindow::onMainMenuAccuracyTrainer);
   connect(m_mainMenuPage, &MainMenuPage::productChanged,
     this, &MainWindow::updateProductInfo);
   m_pageStack->addWidget(m_mainMenuPage);
@@ -274,6 +278,12 @@ void MainWindow::createPages()
       m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
   }
   m_pageStack->addWidget(m_applicationSettingsPage);
+
+  // Accuracy Trainer page
+  m_accuracyTrainerPage = new AccuracyTrainerPage(m_context, this);
+  connect(m_accuracyTrainerPage, &AccuracyTrainerPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  m_pageStack->addWidget(m_accuracyTrainerPage);
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
@@ -382,10 +392,10 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutF6, &QShortcut::activated, this, &MainWindow::onMainMenuFutureUpdate);
   std::cout << "[MainWindow]   F6 -> Vision Manager Page" << std::endl;
 
-  // F7 - Reserved (not connected yet)
+  // F7 - Accuracy Trainer Page
   m_shortcutF7 = new QShortcut(QKeySequence(Qt::Key_F7), this);
-  m_shortcutF7->setEnabled(false);  // Disabled until implemented
-  std::cout << "[MainWindow]   F7 -> Reserved (Disabled)" << std::endl;
+  connect(m_shortcutF7, &QShortcut::activated, this, &MainWindow::onMainMenuAccuracyTrainer);
+  std::cout << "[MainWindow]   F7 -> Accuracy Trainer Page" << std::endl;
 
   // F8 - Reserved (not connected yet)
   m_shortcutF8 = new QShortcut(QKeySequence(Qt::Key_F8), this);
@@ -509,6 +519,20 @@ void MainWindow::onMainMenuFutureUpdate()
   std::cout << "[MainWindow] Vision Manager clicked" << std::endl;
   m_context->logManager->Info("Navigating to Vision Manager page", "MainWindow");
   m_pageStack->setCurrentWidget(m_visionManagerPage);
+}
+
+void MainWindow::onMainMenuAccuracyTrainer()
+{
+  // Check for unsaved changes if leaving RecipePage
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;  // User cancelled navigation
+    }
+  }
+
+  std::cout << "[MainWindow] Accuracy Trainer clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Accuracy Trainer page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_accuracyTrainerPage);
 }
 
 void MainWindow::onBackToMainMenu()

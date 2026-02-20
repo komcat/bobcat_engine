@@ -9,6 +9,8 @@
 #include <QTimer>
 #include <QSettings>
 #include <memory>
+#include <future>
+#include <atomic>
 
 class CameraManager;
 class UnifiedMotionManager;
@@ -147,4 +149,8 @@ private:
   double m_gantryX = 0.0;
   double m_gantryY = 0.0;
   double m_gantryZ = 0.0;
+
+  // Background motion thread (avoid blocking UI)
+  std::future<void> m_autoFocusFuture;
+  std::atomic<bool> m_autoFocusCancelled{false};
 };

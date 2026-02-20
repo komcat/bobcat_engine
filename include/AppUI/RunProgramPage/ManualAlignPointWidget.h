@@ -6,6 +6,7 @@
 #include <QPushButton>
 #include <QString>
 #include <string>
+#include <future>
 
 class UnifiedMotionManager;
 struct ApplicationContext;
@@ -87,4 +88,7 @@ private:
 
   // Position update timer
   QTimer* m_positionTimer;
+
+  // Background motion thread (avoid blocking UI)
+  std::future<void> m_moveFuture;
 };

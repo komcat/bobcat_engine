@@ -894,17 +894,25 @@ void AlignmentWizardDialog::onMoveToMasterF1Clicked()
     return;
   }
 
-  // Move to master F1 position
-  std::cout << "[AlignmentWizard] Moving to Master F1: X=" << m_layer->localSystem.masterF1X
-            << " Y=" << m_layer->localSystem.masterF1Y
-            << " Z=" << m_layer->localSystem.masterF1Z << std::endl;
+  // Move to master F1 position (background thread)
+  double f1x = m_layer->localSystem.masterF1X;
+  double f1y = m_layer->localSystem.masterF1Y;
+  double f1z = m_layer->localSystem.masterF1Z;
 
-  if (!m_motionManager->MoveToAbs("gantry-main",
-    m_layer->localSystem.masterF1X,
-    m_layer->localSystem.masterF1Y,
-    m_layer->localSystem.masterF1Z)) {
-    QMessageBox::warning(this, "Error", "Failed to move to Master F1 position");
-  }
+  std::cout << "[AlignmentWizard] Moving to Master F1: X=" << f1x
+            << " Y=" << f1y << " Z=" << f1z << std::endl;
+
+  if (m_moveToMasterF1Button) m_moveToMasterF1Button->setEnabled(false);
+
+  m_moveFuture = std::async(std::launch::async, [this, f1x, f1y, f1z]() {
+    bool ok = m_motionManager->MoveToAbs("gantry-main", f1x, f1y, f1z);
+    QMetaObject::invokeMethod(this, [this, ok]() {
+      if (m_moveToMasterF1Button) m_moveToMasterF1Button->setEnabled(true);
+      if (!ok) {
+        QMessageBox::warning(this, "Error", "Failed to move to Master F1 position");
+      }
+    }, Qt::QueuedConnection);
+  });
 }
 
 void AlignmentWizardDialog::onMoveToMasterF2Clicked()
@@ -934,15 +942,23 @@ void AlignmentWizardDialog::onMoveToMasterF2Clicked()
     return;
   }
 
-  // Move to master F2 position
-  std::cout << "[AlignmentWizard] Moving to Master F2: X=" << m_layer->localSystem.masterF2X
-            << " Y=" << m_layer->localSystem.masterF2Y
-            << " Z=" << m_layer->localSystem.masterF2Z << std::endl;
+  // Move to master F2 position (background thread)
+  double f2x = m_layer->localSystem.masterF2X;
+  double f2y = m_layer->localSystem.masterF2Y;
+  double f2z = m_layer->localSystem.masterF2Z;
 
-  if (!m_motionManager->MoveToAbs("gantry-main",
-    m_layer->localSystem.masterF2X,
-    m_layer->localSystem.masterF2Y,
-    m_layer->localSystem.masterF2Z)) {
-    QMessageBox::warning(this, "Error", "Failed to move to Master F2 position");
-  }
+  std::cout << "[AlignmentWizard] Moving to Master F2: X=" << f2x
+            << " Y=" << f2y << " Z=" << f2z << std::endl;
+
+  if (m_moveToMasterF2Button) m_moveToMasterF2Button->setEnabled(false);
+
+  m_moveFuture = std::async(std::launch::async, [this, f2x, f2y, f2z]() {
+    bool ok = m_motionManager->MoveToAbs("gantry-main", f2x, f2y, f2z);
+    QMetaObject::invokeMethod(this, [this, ok]() {
+      if (m_moveToMasterF2Button) m_moveToMasterF2Button->setEnabled(true);
+      if (!ok) {
+        QMessageBox::warning(this, "Error", "Failed to move to Master F2 position");
+      }
+    }, Qt::QueuedConnection);
+  });
 }

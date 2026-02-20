@@ -1,4 +1,4 @@
-﻿// MainMenuPage.h - Main menu with 6 big buttons
+﻿// MainMenuPage.h - Main menu with 7 big buttons
 #pragma once
 
 #include <QWidget>
@@ -9,7 +9,7 @@
 struct ApplicationContext;
 
 /**
- * @brief Main menu page - 6 category buttons in 2x3 grid
+ * @brief Main menu page - 7 category buttons in grid
  */
 class MainMenuPage : public QWidget
 {
@@ -26,6 +26,7 @@ signals:
   void hardwareClicked();
   void editConfigClicked();
   void futureUpdateClicked();
+  void accuracyTrainerClicked();
   void productChanged();  // Emitted when product is loaded or created
 
 private slots:
@@ -57,4 +58,5 @@ private:
   QToolButton* m_hardwareButton;
   QToolButton* m_editConfigButton;
   QToolButton* m_futureUpdateButton;
+  QToolButton* m_accuracyTrainerButton;
 };

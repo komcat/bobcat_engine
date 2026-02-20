@@ -931,11 +931,19 @@ void CameraClickToMoveWidget::onAutoFocusClicked()
     return;
   }
 
+  // Check if auto-focus is already running
+  if (m_autoFocusFuture.valid() &&
+      m_autoFocusFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+    std::cout << "[CameraClickToMoveWidget] Auto-focus already in progress" << std::endl;
+    return;
+  }
+
   // Disable button during focus
   m_autoFocusButton->setEnabled(false);
   m_autoFocusButton->setText("...");
+  m_autoFocusCancelled = false;
 
-  std::cout << "[CameraClickToMoveWidget] 🔍 Starting auto-focus..." << std::endl;
+  std::cout << "[CameraClickToMoveWidget] Starting auto-focus..." << std::endl;
   std::cout << "[CameraClickToMoveWidget]    Camera: " << m_currentCameraId << std::endl;
   std::cout << "[CameraClickToMoveWidget]    Range: 2mm, Step: 0.2mm" << std::endl;
 
@@ -950,82 +958,88 @@ void CameraClickToMoveWidget::onAutoFocusClicked()
 
   std::cout << "[CameraClickToMoveWidget]    Start Z: " << startZ << "mm" << std::endl;
 
-  // Calculate Z positions to scan
-  double zMin = startZ - zRangeMm;
-  double zMax = startZ + zRangeMm;
-  int numSteps = static_cast<int>((zMax - zMin) / zStepMm) + 1;
+  // Run entire auto-focus loop on background thread
+  m_autoFocusFuture = std::async(std::launch::async, [this, startZ, zRangeMm, zStepMm, settleTimeMs]() {
+    double zMin = startZ - zRangeMm;
+    double zMax = startZ + zRangeMm;
+    int numSteps = static_cast<int>((zMax - zMin) / zStepMm) + 1;
 
-  std::cout << "[CameraClickToMoveWidget]    Scanning " << numSteps << " positions from "
-            << zMin << " to " << zMax << "mm" << std::endl;
+    std::cout << "[CameraClickToMoveWidget]    Scanning " << numSteps << " positions from "
+              << zMin << " to " << zMax << "mm" << std::endl;
 
-  // Use QtConcurrent or just run in a simple loop with processEvents
-  double bestZ = startZ;
-  double bestFocusValue = -1.0;
+    double bestZ = startZ;
+    double bestFocusValue = -1.0;
 
-  for (int i = 0; i < numSteps; i++) {
-    double currentZ = zMin + (i * zStepMm);
+    for (int i = 0; i < numSteps; i++) {
+      if (m_autoFocusCancelled.load()) {
+        std::cout << "[CameraClickToMoveWidget] Auto-focus cancelled" << std::endl;
+        break;
+      }
 
-    // Move to Z position
-    if (!m_motionManager->MoveRelative("gantry-main", "Z", currentZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
-      std::cerr << "[CameraClickToMoveWidget] Auto-focus move failed at step " << i << std::endl;
-      break;
-    }
+      double currentZ = zMin + (i * zStepMm);
 
-    // Wait for settle
-    QThread::msleep(settleTimeMs);
-    QCoreApplication::processEvents();
+      // Move to Z position
+      if (!m_motionManager->MoveRelative("gantry-main", "Z", currentZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
+        std::cerr << "[CameraClickToMoveWidget] Auto-focus move failed at step " << i << std::endl;
+        break;
+      }
 
-    // Get current frame and calculate focus
-    if (m_subscriber && m_subscriber->HasNewFrame()) {
-      CameraFrameData frame = m_subscriber->GetLatestFrame();
-      m_subscriber->MarkFrameConsumed();
+      // Wait for settle
+      std::this_thread::sleep_for(std::chrono::milliseconds(settleTimeMs));
+
+      // Get current frame and calculate focus
+      if (m_subscriber && m_subscriber->HasNewFrame()) {
+        CameraFrameData frame = m_subscriber->GetLatestFrame();
+        m_subscriber->MarkFrameConsumed();
 
 #ifdef HAS_OPENCV
-      if (frame.IsValid() && !frame.imageData.empty()) {
-        // Convert imageData to cv::Mat
-        cv::Mat image(frame.height, frame.width,
-                      frame.channels == 3 ? CV_8UC3 : CV_8UC1,
-                      const_cast<uint8_t*>(frame.imageData.data()));
+        if (frame.IsValid() && !frame.imageData.empty()) {
+          cv::Mat image(frame.height, frame.width,
+                        frame.channels == 3 ? CV_8UC3 : CV_8UC1,
+                        const_cast<uint8_t*>(frame.imageData.data()));
 
-        // Calculate Laplacian variance (focus measure)
-        cv::Mat gray;
-        if (frame.channels == 3) {
-          cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
-        } else {
-          gray = image;
+          cv::Mat gray;
+          if (frame.channels == 3) {
+            cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+          } else {
+            gray = image;
+          }
+
+          cv::Mat laplacian;
+          cv::Laplacian(gray, laplacian, CV_64F);
+
+          cv::Scalar mean, stddev;
+          cv::meanStdDev(laplacian, mean, stddev);
+          double focusValue = stddev.val[0] * stddev.val[0];
+
+          std::cout << "[CameraClickToMoveWidget]    Z=" << currentZ << "mm -> Focus=" << focusValue << std::endl;
+
+          if (focusValue > bestFocusValue) {
+            bestFocusValue = focusValue;
+            bestZ = currentZ;
+          }
         }
-
-        cv::Mat laplacian;
-        cv::Laplacian(gray, laplacian, CV_64F);
-
-        cv::Scalar mean, stddev;
-        cv::meanStdDev(laplacian, mean, stddev);
-        double focusValue = stddev.val[0] * stddev.val[0];
-
-        std::cout << "[CameraClickToMoveWidget]    Z=" << currentZ << "mm -> Focus=" << focusValue << std::endl;
-
-        if (focusValue > bestFocusValue) {
-          bestFocusValue = focusValue;
-          bestZ = currentZ;
-        }
-      }
 #else
-      (void)frame;  // Suppress unused warning
-      std::cerr << "[CameraClickToMoveWidget] OpenCV not available - cannot calculate focus" << std::endl;
+        (void)frame;
+        std::cerr << "[CameraClickToMoveWidget] OpenCV not available - cannot calculate focus" << std::endl;
 #endif
+      }
     }
-  }
 
-  // Move to best focus position
-  std::cout << "[CameraClickToMoveWidget] ✅ Best focus at Z=" << bestZ << "mm (value=" << bestFocusValue << ")" << std::endl;
-  if (!m_motionManager->MoveRelative("gantry-main", "Z", bestZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
-    std::cerr << "[CameraClickToMoveWidget] Failed to move to best focus position" << std::endl;
-  }
+    // Move to best focus position
+    if (!m_autoFocusCancelled.load()) {
+      std::cout << "[CameraClickToMoveWidget] Best focus at Z=" << bestZ << "mm (value=" << bestFocusValue << ")" << std::endl;
+      if (!m_motionManager->MoveRelative("gantry-main", "Z", bestZ - m_motionManager->GetCurrentPosition("gantry-main").z, true)) {
+        std::cerr << "[CameraClickToMoveWidget] Failed to move to best focus position" << std::endl;
+      }
+    }
 
-  // Re-enable button
-  m_autoFocusButton->setEnabled(true);
-  m_autoFocusButton->setText("🔍");
-
-  std::cout << "[CameraClickToMoveWidget] 🔍 Auto-focus complete!" << std::endl;
+    // Re-enable button on UI thread
+    QMetaObject::invokeMethod(this, [this]() {
+      m_autoFocusButton->setEnabled(true);
+      m_autoFocusButton->setText("AF");
+      std::cout << "[CameraClickToMoveWidget] Auto-focus complete!" << std::endl;
+    }, Qt::QueuedConnection);
+  });
 }
 
