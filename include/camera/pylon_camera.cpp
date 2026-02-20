@@ -3,6 +3,7 @@
 #include <chrono>
 #include <thread>
 #include <fstream>
+#include <cmath>
 #include <nlohmann/json.hpp>
 
 // Helper function to load camera settle delay from config
@@ -1422,27 +1423,41 @@ bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 
 	bool success = true;
 
-	// ✅ Check current auto modes before making changes
+	// Read current camera state to detect what actually needs changing
 	bool wasExposureAuto = IsExposureAuto();
 	bool wasGainAuto = IsGainAuto();
+	double wasExposureTime = GetExposureTime();
+	double wasGain = GetGain();
 
 	std::cout << "  Current Exposure Auto: " << (wasExposureAuto ? "On" : "Off") << std::endl;
 	std::cout << "  Current Gain Auto: " << (wasGainAuto ? "On" : "Off") << std::endl;
+	std::cout << "  Current Exposure: " << wasExposureTime << " us" << std::endl;
+	std::cout << "  Current Gain: " << wasGain << std::endl;
+
+	// Fast path: skip entirely if all settings already match
+	bool exposureAutoMatch = (wasExposureAuto == settings.exposure_auto);
+	bool gainAutoMatch = (wasGainAuto == settings.gain_auto);
+	bool exposureMatch = settings.exposure_auto || (std::abs(wasExposureTime - settings.exposure_time) < 1.0);
+	bool gainMatch = settings.gain_auto || (std::abs(wasGain - settings.gain) < 0.01);
+
+	if (exposureAutoMatch && gainAutoMatch && exposureMatch && gainMatch) {
+		std::cout << "  [INFO] All camera settings unchanged - skipping (saved ~"
+		          << (SETTLE_DELAY_MS * 2) << "ms)" << std::endl;
+		return true;
+	}
 
 	// Set exposure mode first
 	if (!SetExposureMode()) {
 		success = false;
 	}
 
-	// Set auto-exposure mode and wait for settle
+	// Set auto-exposure mode — only wait for settle if it actually changed
 	if (!SetExposureAuto(settings.exposure_auto)) {
 		success = false;
-	} else {
-		if (wasExposureAuto != settings.exposure_auto) {
-			std::cout << "  [INFO] Exposure Auto changed: " << (wasExposureAuto ? "On" : "Off")
-			          << " -> " << (settings.exposure_auto ? "On" : "Off") << std::endl;
-		}
-		std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure auto setting..." << std::endl;
+	} else if (!exposureAutoMatch) {
+		std::cout << "  [INFO] Exposure Auto changed: " << (wasExposureAuto ? "On" : "Off")
+		          << " -> " << (settings.exposure_auto ? "On" : "Off") << std::endl;
+		std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure auto change..." << std::endl;
 		std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_DELAY_MS));
 	}
 
@@ -1451,12 +1466,14 @@ bool PylonCamera::ApplyExposureSettings(const ExposureSettings& settings) {
 		success = false;
 	}
 
-	// Set manual exposure value and wait for settle (only if auto is disabled)
+	// Set manual exposure value — only wait for settle if value actually changed
 	if (!settings.exposure_auto) {
 		if (!SetExposureTime(settings.exposure_time)) {
 			success = false;
-		} else {
-			std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure time setting..." << std::endl;
+		} else if (!exposureMatch) {
+			std::cout << "  [INFO] Exposure changed: " << wasExposureTime << " -> "
+			          << settings.exposure_time << " us" << std::endl;
+			std::cout << "  [INFO] Waiting " << SETTLE_DELAY_MS << "ms after exposure time change..." << std::endl;
 			std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_DELAY_MS));
 		}
 	}
