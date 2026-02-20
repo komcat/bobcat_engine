@@ -74,6 +74,7 @@ public:
 
   // Helper methods
   bool WaitForMotionCompletion(const std::string& axis, double timeoutSeconds = 30.0);
+  bool WaitForMultiAxisCompletion(const std::vector<std::string>& axes, double timeoutSeconds = 30.0);
 
   // Buffer program control
   bool RunBuffer(int bufferNumber, const std::string& labelName = "");

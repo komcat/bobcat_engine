@@ -8,7 +8,7 @@
 
 // Helper function to load camera settle delay from config
 static int loadCameraSettleDelay() {
-    const int DEFAULT_SETTLE_MS = 300;
+    const int DEFAULT_SETTLE_MS = 500;
     try {
         std::ifstream file("config/SYSTEM/systemdelay.json");
         if (file.is_open()) {

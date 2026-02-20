@@ -825,6 +825,82 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
   return false;
 }
 
+bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& axes, double timeoutSeconds) {
+  if (!m_isConnected) {
+    LOG_ERROR("Cannot wait - not connected");
+    return false;
+  }
+
+  // Resolve all axis indices up front
+  std::vector<int> axisIndices;
+  for (const auto& axis : axes) {
+    int idx = GetAxisIndex(axis);
+    if (idx < 0) return false;
+    axisIndices.push_back(idx);
+  }
+
+  LOG_DEBUG("WaitForMultiAxisCompletion START for " + std::to_string(axes.size()) + " axes");
+  auto startTime = std::chrono::steady_clock::now();
+
+  // Phase 1: Brief wait for ANY axis to show MOVING (confirms motion command was received)
+  const int motionStartTimeoutMs = 100;
+  int waitedMs = 0;
+  bool anyStarted = false;
+
+  while (waitedMs < motionStartTimeoutMs) {
+    for (int idx : axisIndices) {
+      int motorState = 0;
+      if (acsc_GetMotorState(m_controllerId, idx, &motorState, NULL)) {
+        if ((motorState & ACSC_MST_MOVE) != 0) {
+          anyStarted = true;
+          break;
+        }
+      }
+    }
+    if (anyStarted) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    waitedMs += 5;
+  }
+
+  if (!anyStarted) {
+    LOG_DEBUG("No axis showed MOVING flag after " + std::to_string(motionStartTimeoutMs) + "ms - may already be at target");
+  }
+
+  // Phase 2: Wait until ALL axes report NOT MOVING
+  constexpr int MAX_ITERATIONS = 1200;
+  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
+    bool allStopped = true;
+    for (int idx : axisIndices) {
+      int motorState = 0;
+      if (acsc_GetMotorState(m_controllerId, idx, &motorState, NULL)) {
+        if ((motorState & ACSC_MST_MOVE) != 0) {
+          allStopped = false;
+          break;
+        }
+      }
+    }
+
+    if (allStopped) {
+      auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+      LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed after " + std::to_string(totalMs) + "ms");
+      return true;
+    }
+
+    auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::steady_clock::now() - startTime).count();
+    if (elapsedSeconds > timeoutSeconds) {
+      LOG_WARNING("Timeout waiting for multi-axis motion after " + std::to_string(timeoutSeconds) + "s");
+      return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  LOG_ERROR("Loop safety bound reached in WaitForMultiAxisCompletion (ACS)");
+  return false;
+}
+
 bool ACSController::ConfigureFromDevice(const MotionDevice& device) {
   if (m_isConnected) {
     LOG_WARNING("Cannot configure while connected");
@@ -1006,13 +1082,7 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion on all axes");
-    bool allCompleted = true;
-    for (const auto& axis : axes) {
-      if (!WaitForMotionCompletion(axis)) {
-        allCompleted = false;
-      }
-    }
-    return allCompleted;
+    return WaitForMultiAxisCompletion(axes);
   }
 
   LOG_DEBUG("MoveToPositionMultiAxis END - success");
