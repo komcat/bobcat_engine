@@ -7,7 +7,6 @@
 #include "../../sequence/SequenceBuilder.h"
 #include "../../sequence/SequenceEngine.h"
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
-#include "../../AppUI/AccuracyTrainer/AccuracyTrainerStore.h"
 
 #include <iostream>
 #include <memory>
@@ -57,12 +56,9 @@ public:
             return "";
         };
 
-        // Training set dropdown (populated from stored training sets)
-        AccuracyTrainerStore store;
-        std::vector<std::string> names = store.ListTrainingSets();
-
-        widget->addDropdownParameter("training_set_name", "Training Set",
-                                     getParam("training_set_name"), names, false);
+        // Training set selector (Browse button opens dialog listing sets from product folder)
+        widget->addTrainingSetSelector("training_set_name", "Training Set",
+                                       getParam("training_set_name"));
 
         // Per-hex-device registration checkboxes
         widget->addCheckboxParameter("register_hex_left", "Register Hex-Left",

@@ -35,6 +35,7 @@ VisionRightPanelWidget::VisionRightPanelWidget(ApplicationContext* context, QWid
     : QWidget(parent)
     , m_context(context)
     , m_executeBtn(nullptr)
+    , m_testReliabilityBtn(nullptr)
     , m_tabWidget(nullptr)
     , m_cameraSelector(nullptr)
     , m_autoExposureCheck(nullptr)
@@ -79,7 +80,10 @@ void VisionRightPanelWidget::setupUI()
     mainLayout->setContentsMargins(5, 5, 5, 0);
     mainLayout->setSpacing(5);
 
-    // Execute Vision Profile button at the top (above tabs)
+    // Execute buttons row at the top (above tabs)
+    QHBoxLayout* executeBtnLayout = new QHBoxLayout();
+    executeBtnLayout->setSpacing(5);
+
     m_executeBtn = new QPushButton("Execute Vision Profile", this);
     m_executeBtn->setToolTip("Execute selected plugin with current settings");
     m_executeBtn->setStyleSheet(
@@ -95,7 +99,26 @@ void VisionRightPanelWidget::setupUI()
         "QPushButton:pressed { background-color: #1B5E20; }"
     );
     connect(m_executeBtn, &QPushButton::clicked, this, &VisionRightPanelWidget::executeVisionClicked);
-    mainLayout->addWidget(m_executeBtn);
+
+    m_testReliabilityBtn = new QPushButton("Test Reliability", this);
+    m_testReliabilityBtn->setToolTip("Run plugin N times and collect statistics");
+    m_testReliabilityBtn->setStyleSheet(
+        "QPushButton { "
+        "   background-color: #1565C0; "
+        "   color: white; "
+        "   font-weight: bold; "
+        "   font-size: 12px; "
+        "   padding: 10px; "
+        "   border-radius: 5px; "
+        "} "
+        "QPushButton:hover { background-color: #1976D2; } "
+        "QPushButton:pressed { background-color: #0D47A1; }"
+    );
+    connect(m_testReliabilityBtn, &QPushButton::clicked, this, &VisionRightPanelWidget::testReliabilityClicked);
+
+    executeBtnLayout->addWidget(m_executeBtn, 2);
+    executeBtnLayout->addWidget(m_testReliabilityBtn, 1);
+    mainLayout->addLayout(executeBtnLayout);
 
     // Create main tab widget
     m_tabWidget = new QTabWidget(this);

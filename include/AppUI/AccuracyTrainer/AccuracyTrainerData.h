@@ -45,6 +45,7 @@ struct HexDeviceTeachData {
 };
 
 struct TrainingSet {
+    std::string uid;            // Unique identifier (UUID) — differentiates sets with the same name
     std::string name;           // User-given name, e.g., "Die Attach Zone A"
     std::string deviceName;     // Motion device, e.g., "gantry-main"
 

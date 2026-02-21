@@ -65,6 +65,9 @@ private slots:
     void onROIChanged(int startX, int startY, int endX, int endY);
     void onROIEnabledChanged(bool enabled);
 
+    // Reliability test
+    void onTestReliability();
+
     // Search Box actions
     void onSearchBoxDragged(int startX, int startY, int endX, int endY);
     void onSearchBoxChanged(int startX, int startY, int endX, int endY);

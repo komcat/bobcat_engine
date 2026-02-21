@@ -89,6 +89,44 @@ private:
 };
 
 /**
+ * @brief Dialog for selecting accuracy trainer training sets
+ * Lists training sets from the active product's accuracy_trainer/ folder
+ */
+class TrainingSetSelectorDialog : public QDialog
+{
+  Q_OBJECT
+
+public:
+  explicit TrainingSetSelectorDialog(ApplicationContext* context,
+    const std::string& currentSet,
+    QWidget* parent = nullptr);
+
+  // Get selected training set name
+  std::string getSelectedSet() const;
+
+  // Static convenience method
+  static std::string SelectTrainingSet(ApplicationContext* context,
+    const std::string& currentSet,
+    QWidget* parent = nullptr);
+
+private:
+  void setupUI();
+  void loadSets();
+  void onItemDoubleClicked(QListWidgetItem* item);
+  void onSearchTextChanged(const QString& text);
+
+  ApplicationContext* m_context;
+  std::string m_selectedSet;
+
+  QListWidget* m_setList;
+  QLineEdit* m_searchEdit;
+  QPushButton* m_okButton;
+  QPushButton* m_cancelButton;
+
+  std::vector<std::string> m_allSets;
+};
+
+/**
  * @brief ComboBox for selecting vision profiles from product folder
  * Scans config/<product_name>/vision/ for .json files
  */

@@ -7,6 +7,7 @@
 #include "TeachMultiDeviceWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "product_position_manager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -15,6 +16,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QDateTime>
 #include <iostream>
 #include <filesystem>
@@ -23,7 +25,7 @@ AccuracyTrainerPage::AccuracyTrainerPage(ApplicationContext* context, QWidget* p
     : QWidget(parent)
     , m_context(context)
     , m_navList(nullptr)
-    , m_trainingSetCombo(nullptr)
+    , m_trainingSetLabel(nullptr)
     , m_newBtn(nullptr)
     , m_loadBtn(nullptr)
     , m_deleteBtn(nullptr)
@@ -38,6 +40,7 @@ AccuracyTrainerPage::AccuracyTrainerPage(ApplicationContext* context, QWidget* p
     , m_welcomeWidget(nullptr)
     , m_deviceCombo(nullptr)
 {
+    updateStoreBasePath();
     setupUI();
     refreshTrainingSetList();
     setTrainingSetLoaded(false);
@@ -97,9 +100,11 @@ void AccuracyTrainerPage::setupUI()
     );
     QVBoxLayout* tsLayout = new QVBoxLayout(tsGroup);
 
-    m_trainingSetCombo = new QComboBox();
-    m_trainingSetCombo->setPlaceholderText("(none loaded)");
-    tsLayout->addWidget(m_trainingSetCombo);
+    m_trainingSetLabel = new QLabel("(none loaded)");
+    m_trainingSetLabel->setStyleSheet(
+        "QLabel { background-color: #1a1f2e; color: #ccc; border: 1px solid #3d5a8c; "
+        "border-radius: 3px; padding: 5px 8px; font-size: 12px; }");
+    tsLayout->addWidget(m_trainingSetLabel);
 
     QHBoxLayout* tsButtonRow = new QHBoxLayout();
     m_newBtn = new QPushButton("New");
@@ -332,11 +337,7 @@ void AccuracyTrainerPage::onNewTrainingSet()
     m_store.SaveTrainingSet(m_currentSet);
     refreshTrainingSetList();
 
-    // Select it in combo
-    int idx = m_trainingSetCombo->findText(name.trimmed());
-    if (idx >= 0) {
-        m_trainingSetCombo->setCurrentIndex(idx);
-    }
+    m_trainingSetLabel->setText(name.trimmed());
 
     m_statusLabel->setText(QString("Created: %1\nBonding pts: 0 | Refs: 0")
         .arg(name.trimmed()));
@@ -370,11 +371,7 @@ void AccuracyTrainerPage::onLoadTrainingSet()
     m_currentSet = loaded.value();
     setTrainingSetLoaded(true);
 
-    // Update combo box selection to match
-    int comboIdx = m_trainingSetCombo->findText(QString::fromStdString(stem));
-    if (comboIdx >= 0) {
-        m_trainingSetCombo->setCurrentIndex(comboIdx);
-    }
+    m_trainingSetLabel->setText(QString::fromStdString(stem));
 
     // Set device combo to match
     int devIdx = m_deviceCombo->findText(QString::fromStdString(m_currentSet.deviceName));
@@ -389,7 +386,10 @@ void AccuracyTrainerPage::onLoadTrainingSet()
 
 void AccuracyTrainerPage::onDeleteTrainingSet()
 {
-    QString name = m_trainingSetCombo->currentText();
+    if (!m_hasLoadedSet) {
+        return;
+    }
+    QString name = QString::fromStdString(m_currentSet.name);
     if (name.isEmpty()) {
         return;
     }
@@ -404,13 +404,10 @@ void AccuracyTrainerPage::onDeleteTrainingSet()
 
     m_store.DeleteTrainingSet(name.toStdString());
 
-    if (m_hasLoadedSet && m_currentSet.name == name.toStdString()) {
-        m_currentSet = TrainingSet();
-        setTrainingSetLoaded(false);
-        m_contentStack->setCurrentIndex(0);
-    }
-
-    refreshTrainingSetList();
+    m_currentSet = TrainingSet();
+    setTrainingSetLoaded(false);
+    m_trainingSetLabel->setText("(none loaded)");
+    m_contentStack->setCurrentIndex(0);
     std::cout << "[AccuracyTrainerPage] Deleted training set: " << name.toStdString() << std::endl;
 }
 
@@ -440,10 +437,23 @@ void AccuracyTrainerPage::onDeviceChanged(const QString& deviceName)
 
 void AccuracyTrainerPage::refreshTrainingSetList()
 {
-    m_trainingSetCombo->clear();
-    auto names = m_store.ListTrainingSets();
-    for (const auto& name : names) {
-        m_trainingSetCombo->addItem(QString::fromStdString(name));
+    // No-op: combo removed, label is updated directly on load/new/delete
+}
+
+void AccuracyTrainerPage::updateStoreBasePath()
+{
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+        QString productFilePath = QString::fromStdString(
+            m_context->productPositionManager->GetCurrentProductPath());
+        QString productDir = QFileInfo(productFilePath).path();
+        std::string path = (productDir + "/accuracy_trainer").toStdString();
+        m_store.SetBasePath(path);
+        std::cout << "[AccuracyTrainerPage] Store base path set to product: " << path << std::endl;
+    } else {
+        // Fallback when no product loaded
+        m_store.SetBasePath("config/accuracy_trainer");
+        std::cout << "[AccuracyTrainerPage] No product loaded, using default: config/accuracy_trainer" << std::endl;
     }
 }
 

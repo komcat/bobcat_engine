@@ -4,8 +4,39 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
 using json = nlohmann::json;
+
+static constexpr int CURRENT_FILE_VERSION = 2;
+
+// Generate a UUID v4 string without Qt dependency
+static std::string GenerateUUID() {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dist(0, 0xFFFFFFFF);
+
+    uint32_t a = dist(gen);
+    uint32_t b = dist(gen);
+    uint32_t c = dist(gen);
+    uint32_t d = dist(gen);
+
+    // Set version (4) and variant (10xx) bits
+    b = (b & 0xFFFF0FFF) | 0x00004000;  // version 4
+    c = (c & 0x3FFFFFFF) | 0x80000000;  // variant 1
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0')
+        << std::setw(8) << a << "-"
+        << std::setw(4) << (b >> 16) << "-"
+        << std::setw(4) << (b & 0xFFFF) << "-"
+        << std::setw(4) << (c >> 16) << "-"
+        << std::setw(4) << (c & 0xFFFF)
+        << std::setw(8) << d;
+    return oss.str();
+}
 
 AccuracyTrainerStore::AccuracyTrainerStore()
     : m_basePath("config/accuracy_trainer")
@@ -35,6 +66,8 @@ bool AccuracyTrainerStore::SaveTrainingSet(const TrainingSet& ts)
     EnsureDirectory();
 
     json j;
+    j["version"] = CURRENT_FILE_VERSION;
+    j["uid"] = ts.uid.empty() ? GenerateUUID() : ts.uid;
     j["name"] = ts.name;
     j["deviceName"] = ts.deviceName;
     j["createdAt"] = ts.createdAt;
@@ -163,6 +196,14 @@ std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::stri
     }
 
     TrainingSet ts;
+    int fileVersion = j.value("version", 1);
+    ts.uid = j.value("uid", "");
+    if (ts.uid.empty()) {
+        // v1 file without uid — generate one
+        ts.uid = GenerateUUID();
+        std::cout << "[AccuracyTrainerStore] Generated UID for v" << fileVersion
+                  << " file: " << ts.uid << std::endl;
+    }
     ts.name = j.value("name", "");
     ts.deviceName = j.value("deviceName", "");
     ts.createdAt = j.value("createdAt", "");
@@ -266,6 +307,7 @@ std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::stri
     }
 
     std::cout << "[AccuracyTrainerStore] Loaded training set: " << ts.name
+              << " [uid=" << ts.uid << "]"
               << " (" << ts.referencePoints.size() << " refs, "
               << ts.bondingPoints.size() << " bonds, "
               << ts.hexDevicePositions.size() << " hex teach, "

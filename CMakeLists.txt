@@ -1136,6 +1136,7 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionLeftPanelWidget.cpp
         include/vision/ui/VisionImageWidget.cpp
         include/vision/ui/VisionRightPanelWidget.cpp
+        include/vision/ui/VisionReliabilityTestDialog.cpp
     )
     list(APPEND HEADERS
         include/vision/OpenCVTest.h
@@ -1161,6 +1162,7 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionLeftPanelWidget.h
         include/vision/ui/VisionImageWidget.h
         include/vision/ui/VisionRightPanelWidget.h
+        include/vision/ui/VisionReliabilityTestDialog.h
     )
     message(STATUS "OpenCV vision support enabled (v4.12.0)")
 else()

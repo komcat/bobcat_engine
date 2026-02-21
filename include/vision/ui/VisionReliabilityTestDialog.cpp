@@ -1,0 +1,620 @@
+// VisionReliabilityTestDialog.cpp
+#ifdef HAS_OPENCV
+
+#include "VisionReliabilityTestDialog.h"
+#include "../VisionManager.h"
+#include "../VisionProcessingWorker.h"
+#include "../VisionROI.h"
+#include "../VisionResult.h"
+#include "ApplicationContext.h"
+#include "CameraManager.h"
+#include "LiveVideoSubscriber.h"
+#include "LogManager.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QHeaderView>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QThread>
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <algorithm>
+#include <set>
+
+VisionReliabilityTestDialog::VisionReliabilityTestDialog(
+    ApplicationContext* context,
+    const QString& pluginName,
+    std::shared_ptr<LiveVideoSubscriber> frameSubscriber,
+    QWidget* parent)
+    : QDialog(parent)
+    , m_context(context)
+    , m_pluginName(pluginName)
+    , m_frameSubscriber(frameSubscriber)
+{
+    setupUI();
+
+    // Create own dedicated worker
+    m_worker = new VisionProcessingWorker(this);
+    m_worker->startWorkerThread();
+
+    // Connect worker signals
+    connect(m_worker, &VisionProcessingWorker::processingFinished,
+            this, &VisionReliabilityTestDialog::onIterationFinished);
+    connect(m_worker, &VisionProcessingWorker::processingError,
+            this, &VisionReliabilityTestDialog::onIterationError);
+
+    // Setup iteration timer (single-shot, fires between iterations)
+    m_nextIterationTimer = new QTimer(this);
+    m_nextIterationTimer->setSingleShot(true);
+    connect(m_nextIterationTimer, &QTimer::timeout,
+            this, &VisionReliabilityTestDialog::startNextIteration);
+
+    setRunningState(false);
+}
+
+VisionReliabilityTestDialog::~VisionReliabilityTestDialog()
+{
+    m_stopRequested = true;
+    if (m_nextIterationTimer) {
+        m_nextIterationTimer->stop();
+    }
+    if (m_worker) {
+        m_worker->requestCancel();
+        m_worker->stopWorkerThread();
+    }
+}
+
+void VisionReliabilityTestDialog::setupUI()
+{
+    setWindowTitle("Vision Reliability Test - " + m_pluginName);
+    setMinimumSize(800, 600);
+    resize(900, 700);
+
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(8);
+
+    // === Control bar ===
+    QHBoxLayout* controlLayout = new QHBoxLayout();
+
+    QLabel* iterLabel = new QLabel("Iterations:");
+    controlLayout->addWidget(iterLabel);
+
+    m_iterationsSpin = new QSpinBox();
+    m_iterationsSpin->setRange(1, 1000);
+    m_iterationsSpin->setValue(10);
+    m_iterationsSpin->setFixedWidth(80);
+    controlLayout->addWidget(m_iterationsSpin);
+
+    controlLayout->addSpacing(10);
+
+    m_startBtn = new QPushButton("Start");
+    m_startBtn->setStyleSheet(
+        "QPushButton { background-color: #2E7D32; color: white; font-weight: bold; padding: 6px 16px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #388E3C; }"
+        "QPushButton:disabled { background-color: #555; color: #999; }");
+    connect(m_startBtn, &QPushButton::clicked, this, &VisionReliabilityTestDialog::onStartClicked);
+    controlLayout->addWidget(m_startBtn);
+
+    m_stopBtn = new QPushButton("Stop");
+    m_stopBtn->setStyleSheet(
+        "QPushButton { background-color: #C62828; color: white; font-weight: bold; padding: 6px 16px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #E53935; }"
+        "QPushButton:disabled { background-color: #555; color: #999; }");
+    connect(m_stopBtn, &QPushButton::clicked, this, &VisionReliabilityTestDialog::onStopClicked);
+    controlLayout->addWidget(m_stopBtn);
+
+    controlLayout->addStretch();
+    mainLayout->addLayout(controlLayout);
+
+    // === Progress bar ===
+    QHBoxLayout* progressLayout = new QHBoxLayout();
+    m_progressBar = new QProgressBar();
+    m_progressBar->setRange(0, 100);
+    m_progressBar->setValue(0);
+    m_progressBar->setTextVisible(true);
+    progressLayout->addWidget(m_progressBar);
+
+    m_statusLabel = new QLabel("Ready");
+    m_statusLabel->setFixedWidth(200);
+    m_statusLabel->setStyleSheet("color: #aaa;");
+    progressLayout->addWidget(m_statusLabel);
+
+    mainLayout->addLayout(progressLayout);
+
+    // === Results table ===
+    QGroupBox* tableGroup = new QGroupBox("Per-Iteration Results");
+    QVBoxLayout* tableLayout = new QVBoxLayout(tableGroup);
+
+    m_resultsTable = new QTableWidget(0, 7);
+    m_resultsTable->setHorizontalHeaderLabels(
+        {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"});
+    m_resultsTable->horizontalHeader()->setStretchLastSection(true);
+    m_resultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_resultsTable->setAlternatingRowColors(true);
+    m_resultsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_resultsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_resultsTable->verticalHeader()->setVisible(false);
+    tableLayout->addWidget(m_resultsTable);
+
+    mainLayout->addWidget(tableGroup, 1);
+
+    // === Statistics summary ===
+    QGroupBox* statsGroup = new QGroupBox("Statistics Summary");
+    QVBoxLayout* statsLayout = new QVBoxLayout(statsGroup);
+
+    m_statisticsText = new QTextEdit();
+    m_statisticsText->setReadOnly(true);
+    m_statisticsText->setMaximumHeight(180);
+    m_statisticsText->setStyleSheet(
+        "QTextEdit { background-color: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 12px; }");
+    m_statisticsText->setPlainText("Run a test to see statistics...");
+    statsLayout->addWidget(m_statisticsText);
+
+    mainLayout->addWidget(statsGroup);
+
+    // === Export button ===
+    QHBoxLayout* exportLayout = new QHBoxLayout();
+    exportLayout->addStretch();
+
+    m_exportBtn = new QPushButton("Export CSV");
+    m_exportBtn->setStyleSheet(
+        "QPushButton { background-color: #1565C0; color: white; font-weight: bold; padding: 6px 16px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #1976D2; }"
+        "QPushButton:disabled { background-color: #555; color: #999; }");
+    m_exportBtn->setEnabled(false);
+    connect(m_exportBtn, &QPushButton::clicked, this, &VisionReliabilityTestDialog::onExportCsvClicked);
+    exportLayout->addWidget(m_exportBtn);
+
+    mainLayout->addLayout(exportLayout);
+}
+
+void VisionReliabilityTestDialog::setRunningState(bool running)
+{
+    m_isRunning = running;
+    m_startBtn->setEnabled(!running);
+    m_stopBtn->setEnabled(running);
+    m_iterationsSpin->setEnabled(!running);
+    m_exportBtn->setEnabled(!running && !m_results.empty());
+}
+
+void VisionReliabilityTestDialog::onStartClicked()
+{
+    // Reset state
+    m_results.clear();
+    m_allMeasurementKeys.clear();
+    m_currentIteration = 0;
+    m_totalIterations = m_iterationsSpin->value();
+    m_stopRequested = false;
+
+    // Reset table
+    m_resultsTable->setRowCount(0);
+    m_resultsTable->setColumnCount(7);
+    m_resultsTable->setHorizontalHeaderLabels(
+        {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"});
+
+    // Reset stats
+    m_statisticsText->setPlainText("Running...");
+
+    // Reset progress
+    m_progressBar->setRange(0, m_totalIterations);
+    m_progressBar->setValue(0);
+
+    setRunningState(true);
+
+    std::cout << "[ReliabilityTest] Starting " << m_totalIterations
+              << " iterations with plugin: " << m_pluginName.toStdString() << std::endl;
+
+    startNextIteration();
+}
+
+void VisionReliabilityTestDialog::onStopClicked()
+{
+    m_stopRequested = true;
+    m_nextIterationTimer->stop();
+
+    if (m_worker && m_worker->isProcessing()) {
+        m_worker->requestCancel();
+    }
+
+    m_statusLabel->setText("Stopped by user");
+    m_statusLabel->setStyleSheet("color: #FFA500;");
+    setRunningState(false);
+
+    // Update statistics with whatever we have so far
+    if (!m_results.empty()) {
+        collectAllMeasurementKeys();
+        rebuildTableColumns();
+        updateStatisticsSummary();
+    }
+
+    std::cout << "[ReliabilityTest] Stopped after " << m_currentIteration
+              << "/" << m_totalIterations << " iterations" << std::endl;
+}
+
+void VisionReliabilityTestDialog::startNextIteration()
+{
+    // Bounded check — MISRA compliant (no unbounded loops)
+    if (m_stopRequested || m_currentIteration >= m_totalIterations) {
+        // Done
+        setRunningState(false);
+        if (!m_stopRequested) {
+            m_statusLabel->setText(QString("Completed %1 iterations").arg(m_totalIterations));
+            m_statusLabel->setStyleSheet("color: #4CAF50;");
+        }
+
+        // Final statistics
+        if (!m_results.empty()) {
+            collectAllMeasurementKeys();
+            rebuildTableColumns();
+            updateStatisticsSummary();
+        }
+        return;
+    }
+
+    m_currentIteration++;
+    updateProgressUI();
+
+    captureAndExecute();
+}
+
+void VisionReliabilityTestDialog::captureAndExecute()
+{
+    // Capture fresh image (same pattern as VisionManagerPage::onApplyParams)
+    cv::Mat inputImage;
+
+    if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected()
+        && m_frameSubscriber->IsCameraGrabbing()) {
+        // Wait briefly for camera exposure to stabilize
+        QThread::msleep(100);
+
+        CameraFrameData frame = m_frameSubscriber->GetLatestFrame();
+        if (frame.IsValid()) {
+            if (frame.channels == 3) {
+                inputImage = cv::Mat(frame.height, frame.width, CV_8UC3,
+                                     frame.imageData.data()).clone();
+                cv::cvtColor(inputImage, inputImage, cv::COLOR_RGB2BGR);
+            } else {
+                inputImage = cv::Mat(frame.height, frame.width, CV_8UC1,
+                                     frame.imageData.data()).clone();
+            }
+            VisionManager::instance().setInputImage(inputImage);
+        } else {
+            inputImage = VisionManager::instance().getInputImage();
+        }
+    } else {
+        inputImage = VisionManager::instance().getInputImage();
+    }
+
+    if (inputImage.empty()) {
+        // Record as a failure
+        ReliabilityIterationResult iterResult;
+        iterResult.iteration = m_currentIteration;
+        iterResult.success = false;
+        iterResult.errorMessage = "No image available";
+        m_results.push_back(iterResult);
+        addResultRow(iterResult);
+
+        // Continue to next iteration
+        m_nextIterationTimer->start(50);
+        return;
+    }
+
+    // Get current ROI
+    VisionROI currentROI = VisionManager::instance().getROI();
+
+    // Execute plugin (no search box in reliability test — direct execution)
+    m_worker->executePlugin(m_pluginName, inputImage, currentROI,
+                            false, 0, 0, 0, 0);
+}
+
+void VisionReliabilityTestDialog::onIterationFinished(const VisionResult& result,
+                                                       const QString& /*pluginName*/)
+{
+    ReliabilityIterationResult iterResult;
+    iterResult.iteration = m_currentIteration;
+    iterResult.success = result.success;
+    iterResult.processingTimeMs = result.processingTimeMs;
+    iterResult.circleCount = static_cast<int>(result.circles.size());
+    iterResult.pointCount = static_cast<int>(result.points.size());
+    iterResult.lineCount = static_cast<int>(result.lines.size());
+    iterResult.rectangleCount = static_cast<int>(result.rectangles.size());
+    iterResult.beamCount = static_cast<int>(result.beams.size());
+    iterResult.measurements = result.measurements;
+    iterResult.errorMessage = result.errorMessage;
+
+    m_results.push_back(iterResult);
+    addResultRow(iterResult);
+
+    // Schedule next iteration via timer (event-driven, non-blocking)
+    if (!m_stopRequested) {
+        m_nextIterationTimer->start(100);
+    }
+}
+
+void VisionReliabilityTestDialog::onIterationError(const QString& errorMessage)
+{
+    ReliabilityIterationResult iterResult;
+    iterResult.iteration = m_currentIteration;
+    iterResult.success = false;
+    iterResult.errorMessage = errorMessage.toStdString();
+
+    m_results.push_back(iterResult);
+    addResultRow(iterResult);
+
+    // Continue to next iteration
+    if (!m_stopRequested) {
+        m_nextIterationTimer->start(100);
+    }
+}
+
+void VisionReliabilityTestDialog::addResultRow(const ReliabilityIterationResult& result)
+{
+    int row = m_resultsTable->rowCount();
+    m_resultsTable->insertRow(row);
+
+    // Fixed columns: #, Pass, Time, Circles, Points, Lines, Beams
+    m_resultsTable->setItem(row, 0, new QTableWidgetItem(QString::number(result.iteration)));
+
+    QTableWidgetItem* passItem = new QTableWidgetItem(result.success ? "PASS" : "FAIL");
+    passItem->setForeground(result.success ? QColor("#4CAF50") : QColor("#F44336"));
+    passItem->setTextAlignment(Qt::AlignCenter);
+    m_resultsTable->setItem(row, 1, passItem);
+
+    m_resultsTable->setItem(row, 2, new QTableWidgetItem(
+        QString::number(result.processingTimeMs, 'f', 2)));
+    m_resultsTable->setItem(row, 3, new QTableWidgetItem(QString::number(result.circleCount)));
+    m_resultsTable->setItem(row, 4, new QTableWidgetItem(QString::number(result.pointCount)));
+    m_resultsTable->setItem(row, 5, new QTableWidgetItem(QString::number(result.lineCount)));
+    m_resultsTable->setItem(row, 6, new QTableWidgetItem(QString::number(result.beamCount)));
+
+    // Measurement columns (dynamic — added during rebuildTableColumns)
+    // For now, just scroll to the latest row
+    m_resultsTable->scrollToBottom();
+}
+
+void VisionReliabilityTestDialog::updateProgressUI()
+{
+    m_progressBar->setValue(m_currentIteration);
+    m_statusLabel->setText(QString("Running iteration %1/%2...")
+                               .arg(m_currentIteration)
+                               .arg(m_totalIterations));
+    m_statusLabel->setStyleSheet("color: #2196F3;");
+}
+
+void VisionReliabilityTestDialog::collectAllMeasurementKeys()
+{
+    std::set<std::string> keySet;
+    for (const auto& r : m_results) {
+        for (const auto& kv : r.measurements) {
+            keySet.insert(kv.first);
+        }
+    }
+    m_allMeasurementKeys.assign(keySet.begin(), keySet.end());
+}
+
+void VisionReliabilityTestDialog::rebuildTableColumns()
+{
+    int fixedCols = 7; // #, Pass, Time, Circles, Points, Lines, Beams
+    int totalCols = fixedCols + static_cast<int>(m_allMeasurementKeys.size());
+
+    m_resultsTable->setColumnCount(totalCols);
+
+    QStringList headers = {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"};
+    for (const auto& key : m_allMeasurementKeys) {
+        headers << QString::fromStdString(key);
+    }
+    m_resultsTable->setHorizontalHeaderLabels(headers);
+
+    // Fill in measurement data for all rows
+    for (int row = 0; row < static_cast<int>(m_results.size()); ++row) {
+        const auto& r = m_results[static_cast<size_t>(row)];
+        for (int col = 0; col < static_cast<int>(m_allMeasurementKeys.size()); ++col) {
+            const auto& key = m_allMeasurementKeys[static_cast<size_t>(col)];
+            auto it = r.measurements.find(key);
+            QString val = "-";
+            if (it != r.measurements.end()) {
+                val = QString::number(it->second, 'f', 4);
+            }
+            m_resultsTable->setItem(row, fixedCols + col, new QTableWidgetItem(val));
+        }
+    }
+}
+
+void VisionReliabilityTestDialog::updateStatisticsSummary()
+{
+    if (m_results.empty()) {
+        m_statisticsText->setPlainText("No results yet.");
+        return;
+    }
+
+    int total = static_cast<int>(m_results.size());
+    int passCount = 0;
+    std::vector<double> processingTimes;
+
+    for (const auto& r : m_results) {
+        if (r.success) passCount++;
+        processingTimes.push_back(r.processingTimeMs);
+    }
+
+    double passRate = (total > 0) ? (static_cast<double>(passCount) / total * 100.0) : 0.0;
+
+    QString text;
+    text += QString("=== Reliability Test Summary ===\n");
+    text += QString("Total: %1  |  Pass: %2  |  Fail: %3  |  Pass Rate: %4%\n\n")
+                .arg(total).arg(passCount).arg(total - passCount)
+                .arg(passRate, 0, 'f', 1);
+
+    // Processing time stats
+    auto timeStats = computeStats("Processing Time (ms)", processingTimes);
+    text += QString("Processing Time (ms):  Mean: %1  StdDev: %2  Min: %3  Max: %4\n")
+                .arg(timeStats.mean, 0, 'f', 2)
+                .arg(timeStats.stdDev, 0, 'f', 2)
+                .arg(timeStats.min, 0, 'f', 2)
+                .arg(timeStats.max, 0, 'f', 2);
+
+    // Object count stats
+    auto countStat = [&](const std::string& name, auto getter) {
+        std::vector<double> vals;
+        for (const auto& r : m_results) {
+            vals.push_back(static_cast<double>(getter(r)));
+        }
+        auto stats = computeStats(name, vals);
+        if (stats.max > 0.0) {
+            text += QString("%1:  Mean: %2  Min: %3  Max: %4\n")
+                        .arg(QString::fromStdString(name))
+                        .arg(stats.mean, 0, 'f', 1)
+                        .arg(stats.min, 0, 'f', 0)
+                        .arg(stats.max, 0, 'f', 0);
+        }
+    };
+
+    countStat("Circles", [](const ReliabilityIterationResult& r) { return r.circleCount; });
+    countStat("Points", [](const ReliabilityIterationResult& r) { return r.pointCount; });
+    countStat("Lines", [](const ReliabilityIterationResult& r) { return r.lineCount; });
+    countStat("Beams", [](const ReliabilityIterationResult& r) { return r.beamCount; });
+
+    // Measurement stats
+    if (!m_allMeasurementKeys.empty()) {
+        text += "\n--- Measurements ---\n";
+        for (const auto& key : m_allMeasurementKeys) {
+            std::vector<double> vals;
+            for (const auto& r : m_results) {
+                auto it = r.measurements.find(key);
+                if (it != r.measurements.end()) {
+                    vals.push_back(it->second);
+                }
+            }
+            if (!vals.empty()) {
+                auto stats = computeStats(key, vals);
+                text += QString("%1:  Mean: %2  StdDev: %3  Min: %4  Max: %5  (n=%6)\n")
+                            .arg(QString::fromStdString(key))
+                            .arg(stats.mean, 0, 'f', 4)
+                            .arg(stats.stdDev, 0, 'f', 4)
+                            .arg(stats.min, 0, 'f', 4)
+                            .arg(stats.max, 0, 'f', 4)
+                            .arg(stats.count);
+            }
+        }
+    }
+
+    m_statisticsText->setPlainText(text);
+}
+
+MeasurementStatistics VisionReliabilityTestDialog::computeStats(
+    const std::string& key, const std::vector<double>& values)
+{
+    MeasurementStatistics stats;
+    stats.key = key;
+    stats.count = static_cast<int>(values.size());
+
+    if (values.empty()) return stats;
+
+    double sum = 0.0;
+    double sumSq = 0.0;
+    stats.min = values[0];
+    stats.max = values[0];
+
+    for (double v : values) {
+        sum += v;
+        sumSq += v * v;
+        if (v < stats.min) stats.min = v;
+        if (v > stats.max) stats.max = v;
+    }
+
+    stats.mean = sum / values.size();
+
+    // Population stddev with float rounding guard
+    double variance = (sumSq / values.size()) - (stats.mean * stats.mean);
+    stats.stdDev = (variance > 0.0) ? std::sqrt(variance) : 0.0;
+
+    return stats;
+}
+
+void VisionReliabilityTestDialog::onExportCsvClicked()
+{
+    if (m_results.empty()) {
+        QMessageBox::information(this, "Export", "No results to export.");
+        return;
+    }
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this, "Export Reliability Test Results", "", "CSV Files (*.csv);;All Files (*)");
+
+    if (filePath.isEmpty()) return;
+
+    std::ofstream file(filePath.toStdString());
+    if (!file.is_open()) {
+        QMessageBox::warning(this, "Export Error", "Cannot open file for writing:\n" + filePath);
+        return;
+    }
+
+    // Ensure measurement keys are collected
+    collectAllMeasurementKeys();
+
+    // Write header
+    file << "Iteration,Pass,ProcessingTime_ms,Circles,Points,Lines,Rectangles,Beams";
+    for (const auto& key : m_allMeasurementKeys) {
+        file << "," << key;
+    }
+    file << "\n";
+
+    // Write data rows
+    for (const auto& r : m_results) {
+        file << r.iteration << ","
+             << (r.success ? "PASS" : "FAIL") << ","
+             << r.processingTimeMs << ","
+             << r.circleCount << ","
+             << r.pointCount << ","
+             << r.lineCount << ","
+             << r.rectangleCount << ","
+             << r.beamCount;
+
+        for (const auto& key : m_allMeasurementKeys) {
+            auto it = r.measurements.find(key);
+            if (it != r.measurements.end()) {
+                file << "," << it->second;
+            } else {
+                file << ",";
+            }
+        }
+        file << "\n";
+    }
+
+    // Write summary block as comments
+    int total = static_cast<int>(m_results.size());
+    int passCount = 0;
+    for (const auto& r : m_results) {
+        if (r.success) passCount++;
+    }
+    double passRate = (total > 0) ? (static_cast<double>(passCount) / total * 100.0) : 0.0;
+
+    file << "\n";
+    file << "# === Reliability Test Summary ===\n";
+    file << "# Plugin: " << m_pluginName.toStdString() << "\n";
+    file << "# Total: " << total << "  Pass: " << passCount
+         << "  Fail: " << (total - passCount)
+         << "  Pass Rate: " << passRate << "%\n";
+
+    // Processing time stats
+    std::vector<double> times;
+    for (const auto& r : m_results) {
+        times.push_back(r.processingTimeMs);
+    }
+    auto timeStats = computeStats("ProcessingTime", times);
+    file << "# Processing Time (ms): Mean=" << timeStats.mean
+         << " StdDev=" << timeStats.stdDev
+         << " Min=" << timeStats.min
+         << " Max=" << timeStats.max << "\n";
+
+    file.close();
+
+    std::cout << "[ReliabilityTest] Results exported to: " << filePath.toStdString() << std::endl;
+    QMessageBox::information(this, "Export Complete",
+                             QString("Results exported to:\n%1").arg(filePath));
+}
+
+#endif // HAS_OPENCV

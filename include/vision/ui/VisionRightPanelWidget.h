@@ -91,6 +91,7 @@ signals:
     void calibrationChanged(double xMmPerPx, double yMmPerPx);
     void applyPluginParamsClicked();
     void executeVisionClicked();
+    void testReliabilityClicked();
     void roiChanged(int startX, int startY, int endX, int endY);
     void roiEnabledChanged(bool enabled);
     void searchBoxChanged(int startX, int startY, int endX, int endY);
@@ -131,8 +132,9 @@ private:
 
     ApplicationContext* m_context;
 
-    // Execute button (above tabs)
+    // Execute buttons (above tabs)
     QPushButton* m_executeBtn;
+    QPushButton* m_testReliabilityBtn;
 
     // Main tab widget
     QTabWidget* m_tabWidget;

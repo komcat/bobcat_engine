@@ -16,6 +16,7 @@
 #include <QDialogButtonBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QUuid>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -1298,29 +1299,27 @@ QWidget* PatternMatchingPlugin::createConfigWidget(QWidget* parent) {
 
                 // Teach template
                 if (teachFromImage(templateImage)) {
-                    QString message = QString("Template successfully captured.\nSize: %1 x %2 pixels")
-                                          .arg(m_template.cols).arg(m_template.rows);
+                    // Show anchor point dialog first
+                    showAnchorPointDialog();
 
-                    // Auto-save
+                    // Auto-save after anchor point is set
                     if (!m_templateDirectory.empty() && !m_profileName.empty()) {
-                        QString templatesDir = QString::fromStdString(m_templateDirectory) + "/templates";
+                        QString templatesDir = QString::fromStdString(m_templateDirectory);
                         QDir dir(templatesDir);
                         if (!dir.exists()) dir.mkpath(".");
 
-                        QString templateFileName = QString::fromStdString(m_profileName) + "_template.png";
+                        // Use UUID for unique template filenames (avoids overwriting on re-teach)
+                        QString uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                        QString templateFileName = uid + "_template.png";
                         QString fullPath = templatesDir + "/" + templateFileName;
 
                         if (saveTemplateToFile(fullPath.toStdString())) {
-                            message += QString("\n\nTemplate auto-saved to:\n%1").arg(templateFileName);
-                        } else {
-                            message += "\n\nWarning: Failed to auto-save template.";
+                            std::cout << "[PatternMatchingPlugin] Template auto-saved to: " << fullPath.toStdString() << std::endl;
                         }
-                    } else {
-                        message += "\n\nNote: Template is in memory only.\nUse 'Save...' to save to file.";
                     }
 
-                    QMessageBox::information(m_configWidget, "Template Taught", message);
-                    showAnchorPointDialog();
+                    // Update preview to show template thumbnail and file info
+                    updatePreviewLabel();
                 } else {
                     QMessageBox::warning(m_configWidget, "Teaching Error",
                                          "Failed to teach template.");

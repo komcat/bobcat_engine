@@ -23,6 +23,7 @@
 #include "../plugins/PatternMatchingEdgePlugin.h"
 #include "../plugins/ImageProcessingPlugin.h"
 #include "../plugins/CalibrationPlatePlugin.h"
+#include "VisionReliabilityTestDialog.h"
 #ifdef HAS_HALCON
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
@@ -207,6 +208,8 @@ void VisionManagerPage::connectSignals()
             this, &VisionManagerPage::onROIChanged);
     connect(m_rightPanel, &VisionRightPanelWidget::roiEnabledChanged,
             this, &VisionManagerPage::onROIEnabledChanged);
+    connect(m_rightPanel, &VisionRightPanelWidget::testReliabilityClicked,
+            this, &VisionManagerPage::onTestReliability);
     connect(m_rightPanel, &VisionRightPanelWidget::searchBoxChanged,
             this, &VisionManagerPage::onSearchBoxChanged);
     connect(m_rightPanel, &VisionRightPanelWidget::searchBoxEnabledChanged,
@@ -1209,6 +1212,25 @@ void VisionManagerPage::onApplyParams()
 #endif
 }
 
+void VisionManagerPage::onTestReliability()
+{
+    std::cout << "[VisionManagerPage] Test Reliability clicked" << std::endl;
+
+    if (m_selectedPluginName.isEmpty()) {
+        QMessageBox::warning(this, "No Plugin Selected",
+                             "Please select a vision plugin before running a reliability test.");
+        return;
+    }
+
+#ifdef HAS_OPENCV
+    VisionReliabilityTestDialog dialog(m_context, m_selectedPluginName, m_frameSubscriber, this);
+    dialog.exec();
+#else
+    QMessageBox::warning(this, "OpenCV Not Available",
+                         "Vision reliability testing requires OpenCV.");
+#endif
+}
+
 void VisionManagerPage::onCameraSelected(const QString& cameraId)
 {
     std::cout << "[VisionManagerPage] Camera selected: " << cameraId.toStdString() << std::endl;
@@ -1576,6 +1598,23 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
         std::cerr << "[VisionManagerPage] Failed to create config widget for: " << pluginName.toStdString() << std::endl;
     }
 
+    // Helper: resolve template directory and profile name for PR matching plugins
+    auto resolveTemplateDir = [this](std::string& outDir, std::string& outProfileName) {
+        if (!m_currentProfilePath.isEmpty()) {
+            QFileInfo profileInfo(m_currentProfilePath);
+            QString productDir = profileInfo.absolutePath() + "/..";
+            QString prDir = QDir::cleanPath(productDir + "/PRMatchingTemplate");
+            outDir = prDir.toStdString();
+            outProfileName = profileInfo.baseName().toStdString();
+        } else if (m_context && m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
+            QString productFilePath = QString::fromStdString(m_context->productPositionManager->GetCurrentProductPath());
+            QString productDir = QFileInfo(productFilePath).path();
+            QString prDir = productDir + "/PRMatchingTemplate";
+            outDir = prDir.toStdString();
+            outProfileName = "untitled";
+        }
+    };
+
     // If it's a PatternMatchingPlugin, pass the current ROI image for teaching and set VisionManagerPage reference
     if (pluginName == "PatternMatching") {
         updatePatternMatchingSourceImage();
@@ -1587,26 +1626,37 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
         }
     }
 
-    // If it's a PatternMatchingEdgePlugin, set VisionManagerPage reference for template selection
+    // If it's a PatternMatchingEdgePlugin, set VisionManagerPage reference and template directory
     if (pluginName == "PatternMatchingEdge") {
         auto pmePlugin = std::dynamic_pointer_cast<PatternMatchingEdgePlugin>(plugin);
         if (pmePlugin) {
             pmePlugin->setVisionManagerPage(this);
 
-            // Set template directory and profile name for auto-save
-            if (!m_currentProfilePath.isEmpty()) {
-                QFileInfo profileInfo(m_currentProfilePath);
-                QString visionDir = profileInfo.absolutePath();
-                pmePlugin->setTemplateDirectory(visionDir.toStdString());
-                pmePlugin->setProfileName(profileInfo.baseName().toStdString());
-            } else if (m_context && m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
-                QString configPath = QCoreApplication::applicationDirPath() + "/config/"
-                                    + QString::fromStdString(m_context->productPositionManager->GetCurrentProductName()) + "/vision";
-                pmePlugin->setTemplateDirectory(configPath.toStdString());
-                pmePlugin->setProfileName("untitled");
+            std::string templateDir, profileName;
+            resolveTemplateDir(templateDir, profileName);
+            if (!templateDir.empty()) {
+                pmePlugin->setTemplateDirectory(templateDir);
+                pmePlugin->setProfileName(profileName);
             }
         }
     }
+
+#ifdef HAS_HALCON
+    // If it's a HalconPatternMatchingEdgePlugin, set template directory
+    if (pluginName == "PatternMatchEdge (Halcon)") {
+        auto halconPlugin = std::dynamic_pointer_cast<HalconPatternMatchingEdgePlugin>(plugin);
+        if (halconPlugin) {
+            halconPlugin->setVisionManagerPage(this);
+
+            std::string templateDir, profileName;
+            resolveTemplateDir(templateDir, profileName);
+            if (!templateDir.empty()) {
+                halconPlugin->setTemplateDirectory(templateDir);
+                halconPlugin->setProfileName(profileName);
+            }
+        }
+    }
+#endif
 }
 
 void VisionManagerPage::updatePatternMatchingSourceImage()
@@ -1617,21 +1667,23 @@ void VisionManagerPage::updatePatternMatchingSourceImage()
     auto patternPlugin = std::dynamic_pointer_cast<PatternMatchingPlugin>(plugin);
     if (!patternPlugin) return;
 
-    // Set template directory and profile name for auto-save
+    // Set template directory and profile name for auto-save (PRMatchingTemplate folder)
     if (!m_currentProfilePath.isEmpty()) {
         QFileInfo profileInfo(m_currentProfilePath);
-        QString visionDir = profileInfo.absolutePath();
-        patternPlugin->setTemplateDirectory(visionDir.toStdString());
+        QString productDir = QDir::cleanPath(profileInfo.absolutePath() + "/..");
+        QString prDir = productDir + "/PRMatchingTemplate";
+        patternPlugin->setTemplateDirectory(prDir.toStdString());
         patternPlugin->setProfileName(profileInfo.baseName().toStdString());
-        std::cout << "[VisionManagerPage] Set template directory: " << visionDir.toStdString()
+        std::cout << "[VisionManagerPage] Set template directory: " << prDir.toStdString()
                   << ", profile: " << profileInfo.baseName().toStdString() << std::endl;
     } else if (m_context && m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
         // Use product-based path if no profile path set
-        QString configPath = QCoreApplication::applicationDirPath() + "/config/"
-                            + QString::fromStdString(m_context->productPositionManager->GetCurrentProductName()) + "/vision";
-        patternPlugin->setTemplateDirectory(configPath.toStdString());
+        QString productFilePath = QString::fromStdString(m_context->productPositionManager->GetCurrentProductPath());
+        QString productDir = QFileInfo(productFilePath).path();
+        QString prDir = productDir + "/PRMatchingTemplate";
+        patternPlugin->setTemplateDirectory(prDir.toStdString());
         patternPlugin->setProfileName("untitled");
-        std::cout << "[VisionManagerPage] Set default template directory: " << configPath.toStdString() << std::endl;
+        std::cout << "[VisionManagerPage] Set default template directory: " << prDir.toStdString() << std::endl;
     }
 
     // Get the current input image and ROI

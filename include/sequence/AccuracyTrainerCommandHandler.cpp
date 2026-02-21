@@ -8,9 +8,11 @@
 #include "../AppUI/AccuracyTrainer/AccuracyTrainerStore.h"
 #include "../motions/TransformationMatrixLoader.h"
 #include "../motions/CoordinateTransformer.h"
+#include "product_position_manager.h"
 #include "LogManager.h"
 #include <iostream>
 #include <cmath>
+#include <filesystem>
 
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
@@ -78,8 +80,15 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
               << " hexR=" << (registerHexRight ? "true" : "false")
               << " bond=" << (moveToBonding ? "true" : "false") << std::endl;
 
-    // --- Load training set ---
+    // --- Load training set from active product folder ---
     AccuracyTrainerStore store;
+    if (m_appContext && m_appContext->productPositionManager &&
+        m_appContext->productPositionManager->HasLoadedProduct()) {
+        std::string productPath = m_appContext->productPositionManager->GetCurrentProductPath();
+        std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
+        store.SetBasePath((productDir / "accuracy_trainer").string());
+        std::cout << "[AccuracyTrainer] Store path: " << store.GetBasePath() << std::endl;
+    }
     auto optTs = store.LoadTrainingSet(tsName);
     if (!optTs.has_value()) {
         errorMessage = "Failed to load training set: " + tsName;

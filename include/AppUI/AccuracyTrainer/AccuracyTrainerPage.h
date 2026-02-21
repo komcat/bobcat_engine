@@ -44,6 +44,7 @@ private:
     void refreshTrainingSetList();
     void updateCurrentTrainingSet();
     void setTrainingSetLoaded(bool loaded);
+    void updateStoreBasePath();
 
     ApplicationContext* m_context;
     AccuracyTrainerStore m_store;
@@ -52,7 +53,7 @@ private:
 
     // Left panel
     QListWidget* m_navList;
-    QComboBox* m_trainingSetCombo;
+    QLabel* m_trainingSetLabel;
     QPushButton* m_newBtn;
     QPushButton* m_loadBtn;
     QPushButton* m_deleteBtn;

@@ -9,7 +9,9 @@
 /**
  * @brief Persistence layer for AccuracyTrainer training sets.
  *
- * Saves/loads training sets as JSON files in config/accuracy_trainer/<name>.json
+ * Saves/loads training sets as JSON files in <basePath>/<name>.json
+ * Default basePath is "config/accuracy_trainer", but callers should use
+ * SetBasePath() to point to the active product folder (e.g., products/MyProduct/accuracy_trainer).
  */
 class AccuracyTrainerStore
 {
@@ -18,7 +20,7 @@ public:
 
     /**
      * @brief Set the base directory for training set files
-     * @param basePath Directory path (default: "config/accuracy_trainer")
+     * @param basePath Directory path (default: "config/accuracy_trainer", should be product-relative)
      */
     void SetBasePath(const std::string& basePath);
 

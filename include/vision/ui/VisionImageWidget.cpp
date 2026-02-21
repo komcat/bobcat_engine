@@ -364,7 +364,7 @@ void VisionImageWidget::setupUI()
     m_imageLabel->setAlignment(Qt::AlignCenter);
     m_imageLabel->setStyleSheet("QLabel { background-color: #1E1E1E; color: #808080; }");
     m_imageLabel->setText("No image captured\n\nClick 'Capture' to grab image from camera");
-    m_imageLabel->setMinimumSize(640, 480);
+    m_imageLabel->setMinimumSize(1, 1);
 
     // Connect corner drag signals
     connect(m_imageLabel, &ImageDisplayLabel::roiCornerDragged,
@@ -812,7 +812,8 @@ void VisionImageWidget::updateDisplayImage()
         m_imageLabel->setPixmap(scaledImage);
     }
 
-    m_imageLabel->adjustSize();
+    // Don't call adjustSize() - let QScrollArea with widgetResizable(true)
+    // handle the label sizing so the image stays centered at any window size
 }
 
 QPixmap VisionImageWidget::scaleToFit(const QPixmap& pixmap)

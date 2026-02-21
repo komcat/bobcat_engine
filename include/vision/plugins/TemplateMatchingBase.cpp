@@ -18,6 +18,7 @@
 #include <QDialogButtonBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QUuid>
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -545,29 +546,27 @@ void TemplateMatchingBase::onTemplateSelectionCancelled() {
 }
 
 void TemplateMatchingBase::onTemplateTeachingComplete() {
-    QString message = QString("Template created.\nSize: %1 x %2 pixels")
-                          .arg(m_template.cols).arg(m_template.rows);
+    // Show anchor point dialog first
+    showAnchorPointDialog();
 
     // Auto-save if directory and profile name are set
     if (!m_templateDirectory.empty() && !m_profileName.empty()) {
-        QString templatesDir = QString::fromStdString(m_templateDirectory) + "/templates";
+        QString templatesDir = QString::fromStdString(m_templateDirectory);
         QDir dir(templatesDir);
         if (!dir.exists()) dir.mkpath(".");
 
-        QString templateFileName = QString::fromStdString(m_profileName) + QString::fromStdString(getTemplateFileSuffix());
+        // Use UUID for unique template filenames (avoids overwriting on re-teach)
+        QString uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QString templateFileName = uid + QString::fromStdString(getTemplateFileSuffix());
         QString fullPath = templatesDir + "/" + templateFileName;
 
         if (saveTemplateToFile(fullPath.toStdString())) {
-            message += QString("\n\nTemplate auto-saved to:\n%1").arg(templateFileName);
+            std::cout << "[" << m_name << "] Template auto-saved to: " << fullPath.toStdString() << std::endl;
         }
     }
 
-    if (m_templateConfigWidget) {
-        QMessageBox::information(m_templateConfigWidget, "Template Taught", message);
-    }
-
-    // Show anchor point dialog
-    showAnchorPointDialog();
+    // Update preview to show template thumbnail and file info
+    updatePreviewLabel();
 }
 
 nlohmann::json TemplateMatchingBase::getTemplateParameters() const {

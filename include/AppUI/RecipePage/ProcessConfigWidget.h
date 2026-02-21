@@ -45,6 +45,9 @@ public:
   std::string getNickname() const;
   bool isEnabled() const;
 
+  // Get application context (for plugins that need product-relative paths, etc.)
+  ApplicationContext* getContext() const { return m_context; }
+
   // ✅ Get checkbox widget by key (for custom validation)
   QCheckBox* getCheckbox(const std::string& key) const {
     auto it = m_parameterCheckboxes.find(key);
@@ -147,6 +150,10 @@ public:
 
   // Helper to add folder selector (QLineEdit + Browse button using QFileDialog::getExistingDirectory)
   void addFolderSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
+  // Helper to add accuracy trainer training set selector (QLineEdit + Browse button)
+  void addTrainingSetSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
 protected:
