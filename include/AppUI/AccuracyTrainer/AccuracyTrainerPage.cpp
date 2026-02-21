@@ -14,8 +14,10 @@
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QInputDialog>
+#include <QFileDialog>
 #include <QDateTime>
 #include <iostream>
+#include <filesystem>
 
 AccuracyTrainerPage::AccuracyTrainerPage(ApplicationContext* context, QWidget* parent)
     : QWidget(parent)
@@ -344,21 +346,35 @@ void AccuracyTrainerPage::onNewTrainingSet()
 
 void AccuracyTrainerPage::onLoadTrainingSet()
 {
-    QString name = m_trainingSetCombo->currentText();
-    if (name.isEmpty()) {
-        QMessageBox::information(this, "Load", "No training set selected.");
-        return;
+    // Open file dialog in the accuracy trainer config folder
+    QString baseDir = QString::fromStdString(
+        std::filesystem::absolute(m_store.GetBasePath()).string());
+
+    QString filePath = QFileDialog::getOpenFileName(
+        this, "Load Training Set", baseDir, "Training Set Files (*.json)");
+
+    if (filePath.isEmpty()) {
+        return;  // User cancelled
     }
 
-    auto loaded = m_store.LoadTrainingSet(name.toStdString());
+    // Extract filename stem for loading
+    std::string stem = std::filesystem::path(filePath.toStdString()).stem().string();
+
+    auto loaded = m_store.LoadTrainingSet(stem);
     if (!loaded.has_value()) {
         QMessageBox::warning(this, "Load Failed",
-            "Could not load training set: " + name);
+            "Could not load training set: " + QString::fromStdString(stem));
         return;
     }
 
     m_currentSet = loaded.value();
     setTrainingSetLoaded(true);
+
+    // Update combo box selection to match
+    int comboIdx = m_trainingSetCombo->findText(QString::fromStdString(stem));
+    if (comboIdx >= 0) {
+        m_trainingSetCombo->setCurrentIndex(comboIdx);
+    }
 
     // Set device combo to match
     int devIdx = m_deviceCombo->findText(QString::fromStdString(m_currentSet.deviceName));
@@ -367,7 +383,8 @@ void AccuracyTrainerPage::onLoadTrainingSet()
     }
 
     updateCurrentTrainingSet();
-    std::cout << "[AccuracyTrainerPage] Loaded training set: " << m_currentSet.name << std::endl;
+    std::cout << "[AccuracyTrainerPage] Loaded training set: " << m_currentSet.name
+              << " from: " << stem << ".json" << std::endl;
 }
 
 void AccuracyTrainerPage::onDeleteTrainingSet()

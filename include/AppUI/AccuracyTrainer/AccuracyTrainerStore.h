@@ -45,6 +45,11 @@ public:
      */
     [[nodiscard]] bool DeleteTrainingSet(const std::string& name);
 
+    /**
+     * @brief Get the base directory path
+     */
+    std::string GetBasePath() const { return m_basePath; }
+
 private:
     std::string m_basePath;
 

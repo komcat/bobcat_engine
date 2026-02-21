@@ -880,12 +880,28 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     // Inject latest beam stream result into context before dispatch
     InjectBeamStreamResult(context);
 
-    // Execute command via dispatcher with timeout enforcement
+    // Execute command — check for per-action timeout override
+    // Actions with timeout=0 (e.g., accuracy trainer with manual callbacks) bypass timeout
     std::string errorMessage;
     auto actionStart = std::chrono::steady_clock::now();
 
-    if (!DispatchWithTimeout(managerType, manager, action->deviceName,
-      action->methodName, action->params, errorMessage, context)) {
+    bool useTimeout = true;
+    auto timeoutIt = action->params.find("timeout");
+    if (timeoutIt != action->params.end() && timeoutIt->second == "0") {
+      useTimeout = false;
+      LogInfo("Timeout disabled for: " + action->deviceName + "." + action->methodName);
+    }
+
+    bool dispatchOk = false;
+    if (useTimeout) {
+      dispatchOk = DispatchWithTimeout(managerType, manager, action->deviceName,
+        action->methodName, action->params, errorMessage, context);
+    } else {
+      dispatchOk = m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
+        action->methodName, action->params, errorMessage, context);
+    }
+
+    if (!dispatchOk) {
       // Post-dispatch disconnect diagnostic (TOCTOU: device may have disconnected mid-command)
       if (!IsDeviceConnected(action->deviceName)) {
         std::string disconnMsg = "Device disconnected during command: " +

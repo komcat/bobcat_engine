@@ -96,7 +96,8 @@ public:
             {"training_set_name", tsName},
             {"register_hex_left", hexLeft},
             {"register_hex_right", hexRight},
-            {"move_to_bonding", moveToBonding}
+            {"move_to_bonding", moveToBonding},
+            {"timeout", "0"}  // Disable action timeout (manual callbacks may block indefinitely)
         });
 
         std::cout << "[AccuracyTrainerProcesses] Built sequence for: "

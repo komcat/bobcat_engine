@@ -105,7 +105,9 @@ bool AccuracyTrainerStore::SaveTrainingSet(const TrainingSet& ts)
     }
     j["bondingDeviceAssignments"] = assignObj;
 
-    std::string filePath = MakeFilePath(ts.name);
+    // Save to source file if loaded from one, otherwise use internal name
+    std::string saveAs = ts.sourceFilename.empty() ? ts.name : ts.sourceFilename;
+    std::string filePath = MakeFilePath(saveAs);
     std::ofstream ofs(filePath);
     if (!ofs.is_open()) {
         std::cerr << "[AccuracyTrainerStore] Failed to open file for writing: " << filePath << std::endl;
@@ -121,10 +123,34 @@ bool AccuracyTrainerStore::SaveTrainingSet(const TrainingSet& ts)
 
 std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::string& name)
 {
+    // Try direct filename match first
     std::string filePath = MakeFilePath(name);
     std::ifstream ifs(filePath);
+
+    // Fallback: search all files for matching internal name
     if (!ifs.is_open()) {
-        std::cerr << "[AccuracyTrainerStore] Failed to open file: " << filePath << std::endl;
+        std::filesystem::path dir(m_basePath);
+        if (std::filesystem::exists(dir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+                if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+                std::ifstream probe(entry.path());
+                if (!probe.is_open()) continue;
+                json probeJ;
+                try { probe >> probeJ; } catch (...) { continue; }
+                probe.close();
+                if (probeJ.contains("name") && probeJ["name"].get<std::string>() == name) {
+                    filePath = entry.path().string();
+                    ifs.open(filePath);
+                    std::cout << "[AccuracyTrainerStore] Found '" << name << "' by internal name in: "
+                              << filePath << std::endl;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!ifs.is_open()) {
+        std::cerr << "[AccuracyTrainerStore] Failed to find training set: " << name << std::endl;
         return std::nullopt;
     }
 
@@ -141,6 +167,9 @@ std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::stri
     ts.deviceName = j.value("deviceName", "");
     ts.createdAt = j.value("createdAt", "");
     ts.valid = j.value("valid", false);
+
+    // Track source filename so SaveTrainingSet writes back to the same file
+    ts.sourceFilename = std::filesystem::path(filePath).stem().string();
 
     // Reference frame axes
     if (j.contains("origin")) {

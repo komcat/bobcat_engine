@@ -68,6 +68,10 @@ struct TrainingSet {
 
     std::string createdAt;
     bool valid = false;
+
+    // Tracks which file this was loaded from (filename stem, not serialized to JSON)
+    // Used by SaveTrainingSet to save back to the same file
+    std::string sourceFilename;
 };
 
 // ============================================================================
