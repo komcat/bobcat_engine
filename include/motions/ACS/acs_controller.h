@@ -19,6 +19,8 @@
 #include <condition_variable>
 #include <vector>
 #include <map>
+#include <limits>
+#include <cmath>
 #include "MotionTypes.h"
 #include "ILogger.h"
 
@@ -73,8 +75,11 @@ public:
   bool MoveToNamedPosition(const std::string& deviceName, const std::string& positionName);
 
   // Helper methods
-  bool WaitForMotionCompletion(const std::string& axis, double timeoutSeconds = 30.0);
-  bool WaitForMultiAxisCompletion(const std::vector<std::string>& axes, double timeoutSeconds = 30.0);
+  bool WaitForMotionCompletion(const std::string& axis, double timeoutSeconds = 30.0,
+                                double targetPosition = std::numeric_limits<double>::quiet_NaN());
+  bool WaitForMultiAxisCompletion(const std::vector<std::string>& axes,
+                                   double timeoutSeconds = 30.0,
+                                   const std::vector<double>& targetPositions = {});
 
   // Buffer program control
   bool RunBuffer(int bufferNumber, const std::string& labelName = "");
@@ -102,6 +107,13 @@ private:
   void UpdateMotorStatus();
   bool StartMotion(const std::string& axis);
   int GetAxisIndex(const std::string& axis);
+
+  // Post-motion diagnostic helpers
+  void CheckInPosition(const std::string& axis, int axisIndex);
+  void VerifyFinalPosition(const std::string& axis, int axisIndex, double targetPosition);
+
+  // Position verification tolerance
+  static constexpr double kPositionToleranceMm = 0.001;
 
   // Command queue structure
   struct MotorCommand {

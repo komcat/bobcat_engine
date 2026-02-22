@@ -326,21 +326,20 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
   }
 
   // Wait for axis to be idle before starting new motion (prevents error 3065)
-  const int maxWaitMs = 5000;  // 5 second timeout
-  const int pollIntervalMs = 10;
-  int waitedMs = 0;
+  constexpr int kMaxIdleIter = 500;  // 5000ms / 10ms poll
+  constexpr int kIdlePollMs = 10;
   bool isEnabled = false;
   bool isMoving = true;
 
-  while (waitedMs < maxWaitMs) {
+  for (int i = 0; i < kMaxIdleIter; ++i) {
     int motorState = 0;
     if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
       isEnabled = (motorState & ACSC_MST_ENABLE) != 0;
       isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
       if (!isMoving) {
-        if (waitedMs > 0) {
-          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
+        if (i > 0) {
+          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(i * kIdlePollMs) + "ms wait");
         }
         break;  // Axis is idle, proceed with move
       }
@@ -351,14 +350,13 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
       break;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
-    waitedMs += pollIntervalMs;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kIdlePollMs));
   }
 
   if (isMoving) {
     m_lastErrorCode = -3;
     m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
-                         std::to_string(maxWaitMs) + "ms)";
+                         std::to_string(kMaxIdleIter * kIdlePollMs) + "ms)";
     LOG_ERROR(m_lastErrorMessage);
     return false;
   }
@@ -393,7 +391,7 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion");
-    return WaitForMotionCompletion(axis);
+    return WaitForMotionCompletion(axis, 30.0, position);
   }
 
   LOG_DEBUG("MoveToPosition END - success");
@@ -423,21 +421,20 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
   }
 
   // Wait for axis to be idle before starting new motion (prevents error 3065)
-  const int maxWaitMs = 5000;  // 5 second timeout
-  const int pollIntervalMs = 10;
-  int waitedMs = 0;
+  constexpr int kMaxIdleIter = 500;  // 5000ms / 10ms poll
+  constexpr int kIdlePollMs = 10;
   bool isEnabled = false;
   bool isMoving = true;
 
-  while (waitedMs < maxWaitMs) {
+  for (int i = 0; i < kMaxIdleIter; ++i) {
     int motorState = 0;
     if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
       isEnabled = (motorState & ACSC_MST_ENABLE) != 0;
       isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
       if (!isMoving) {
-        if (waitedMs > 0) {
-          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
+        if (i > 0) {
+          LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(i * kIdlePollMs) + "ms wait");
         }
         break;  // Axis is idle, proceed with move
       }
@@ -448,17 +445,21 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
       break;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
-    waitedMs += pollIntervalMs;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kIdlePollMs));
   }
 
   if (isMoving) {
     m_lastErrorCode = -3;
     m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
-                         std::to_string(maxWaitMs) + "ms)";
+                         std::to_string(kMaxIdleIter * kIdlePollMs) + "ms)";
     LOG_ERROR(m_lastErrorMessage);
     return false;
   }
+
+  // Capture current position for target calculation (before issuing move)
+  double currentPos = 0.0;
+  GetPosition(axis, currentPos);
+  double targetAbsPos = currentPos + distance;
 
   LOG_INFO("Moving " + axis + " relative " + std::to_string(distance));
 
@@ -490,7 +491,7 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion");
-    return WaitForMotionCompletion(axis);
+    return WaitForMotionCompletion(axis, 30.0, targetAbsPos);
   }
 
   LOG_DEBUG("MoveRelative END - success");
@@ -751,7 +752,8 @@ bool ACSController::GetVelocity(const std::string& axis, double& velocity) {
   return true;
 }
 
-bool ACSController::WaitForMotionCompletion(const std::string& axis, double timeoutSeconds) {
+bool ACSController::WaitForMotionCompletion(const std::string& axis, double timeoutSeconds,
+                                             double targetPosition) {
   if (!m_isConnected) {
     LOG_ERROR("Cannot wait - not connected");
     return false;
@@ -766,52 +768,73 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
 
   // Phase 1: Wait for motion to START (motor flag becomes MOVING)
   // This prevents false "completed" when motion hasn't begun yet
-  const int motionStartTimeoutMs = 500;  // 500ms to start moving
-  int waitedForStartMs = 0;
+  constexpr int kMaxStartIter = 50;  // 500ms / 10ms poll
+  constexpr int kStartPollMs = 10;
   bool motionStarted = false;
 
-  while (waitedForStartMs < motionStartTimeoutMs) {
+  for (int i = 0; i < kMaxStartIter; ++i) {
     int motorState = 0;
     if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
-      bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
-      if (isMoving) {
+      if ((motorState & ACSC_MST_MOVE) != 0) {
         motionStarted = true;
-        LOG_DEBUG("Axis " + axis + " motion started after " + std::to_string(waitedForStartMs) + "ms");
+        LOG_DEBUG("Axis " + axis + " motion started after " + std::to_string(i * kStartPollMs) + "ms");
         break;
       }
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    waitedForStartMs += 10;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kStartPollMs));
   }
 
   if (!motionStarted) {
     // Motion never started - check if we're already at target (position didn't change)
-    LOG_DEBUG("Axis " + axis + " motion flag never set after " + std::to_string(motionStartTimeoutMs) + "ms - checking if already at target");
+    LOG_DEBUG("Axis " + axis + " motion flag never set after " +
+              std::to_string(kMaxStartIter * kStartPollMs) + "ms - checking if already at target");
     // Proceed to completion check anyway - might be a very short move
   }
 
-  // Phase 2: Wait for motion to COMPLETE (motor flag becomes NOT MOVING)
+  // Phase 2: Wait for motion to COMPLETE
   LOG_DEBUG("Waiting for " + axis + " motion completion");
 
-  constexpr int MAX_ITERATIONS = 1200; // Safety bound: 30s timeout / 50ms poll * 2x margin
-  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
+  // Calculate remaining timeout for Phase 2
+  auto phase1Elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - startTime).count();
+  int remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(phase1Elapsed);
+  if (remainingTimeoutMs < 100) {
+    remainingTimeoutMs = 100;  // Minimum 100ms
+  }
+
+  // Try acsc_WaitMotionEnd first (SDK blocking wait)
+  if (acsc_WaitMotionEnd(m_controllerId, axisIndex, remainingTimeoutMs)) {
+    auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime).count();
+    LOG_DEBUG("Axis " + axis + " motion completed via SDK after " + std::to_string(totalMs) + "ms total");
+    CheckInPosition(axis, axisIndex);
+    VerifyFinalPosition(axis, axisIndex, targetPosition);
+    return true;
+  }
+
+  // SDK wait failed — log and fall back to manual polling
+  int sdkError = acsc_GetLastError();
+  LOG_DEBUG("acsc_WaitMotionEnd failed (error=" + std::to_string(sdkError) +
+            "), falling back to manual poll");
+
+  // Fallback: bounded poll loop
+  constexpr int kMaxPollIter = 1200;  // Safety bound: 30s / 50ms * 2x margin
+  for (int iteration = 0; iteration < kMaxPollIter; ++iteration) {
     int motorState = 0;
     if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
-      bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
-
-      if (!isMoving) {
-        auto endTime = std::chrono::steady_clock::now();
+      if ((motorState & ACSC_MST_MOVE) == 0) {
         auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-          endTime - startTime).count();
-        LOG_DEBUG("Axis " + axis + " motion completed after " + std::to_string(totalMs) + "ms total");
+          std::chrono::steady_clock::now() - startTime).count();
+        LOG_DEBUG("Axis " + axis + " motion completed via fallback after " + std::to_string(totalMs) + "ms total");
+        CheckInPosition(axis, axisIndex);
+        VerifyFinalPosition(axis, axisIndex, targetPosition);
         return true;
       }
     }
 
-    auto currentTime = std::chrono::steady_clock::now();
     auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
-      currentTime - startTime).count();
+      std::chrono::steady_clock::now() - startTime).count();
 
     if (elapsedSeconds > timeoutSeconds) {
       LOG_WARNING("Timeout waiting for " + axis + " after " + std::to_string(timeoutSeconds) + " seconds");
@@ -825,7 +848,9 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
   return false;
 }
 
-bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& axes, double timeoutSeconds) {
+bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& axes,
+                                                double timeoutSeconds,
+                                                const std::vector<double>& targetPositions) {
   if (!m_isConnected) {
     LOG_ERROR("Cannot wait - not connected");
     return false;
@@ -843,11 +868,11 @@ bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& a
   auto startTime = std::chrono::steady_clock::now();
 
   // Phase 1: Brief wait for ANY axis to show MOVING (confirms motion command was received)
-  const int motionStartTimeoutMs = 100;
-  int waitedMs = 0;
+  constexpr int kMaxMultiStartIter = 20;  // 100ms / 5ms poll
+  constexpr int kMultiStartPollMs = 5;
   bool anyStarted = false;
 
-  while (waitedMs < motionStartTimeoutMs) {
+  for (int i = 0; i < kMaxMultiStartIter; ++i) {
     for (int idx : axisIndices) {
       int motorState = 0;
       if (acsc_GetMotorState(m_controllerId, idx, &motorState, NULL)) {
@@ -858,17 +883,61 @@ bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& a
       }
     }
     if (anyStarted) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    waitedMs += 5;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kMultiStartPollMs));
   }
 
   if (!anyStarted) {
-    LOG_DEBUG("No axis showed MOVING flag after " + std::to_string(motionStartTimeoutMs) + "ms - may already be at target");
+    LOG_DEBUG("No axis showed MOVING flag after " +
+              std::to_string(kMaxMultiStartIter * kMultiStartPollMs) + "ms - may already be at target");
   }
 
-  // Phase 2: Wait until ALL axes report NOT MOVING
-  constexpr int MAX_ITERATIONS = 1200;
-  for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
+  // Phase 2: Wait for motion completion
+  LOG_DEBUG("Waiting for multi-axis motion completion");
+
+  // Calculate remaining timeout
+  auto phase1Elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - startTime).count();
+  int remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(phase1Elapsed);
+  if (remainingTimeoutMs < 100) {
+    remainingTimeoutMs = 100;
+  }
+
+  // Try acsc_WaitMotionEnd per axis sequentially (SDK blocking wait)
+  bool sdkWaitSucceeded = true;
+  for (size_t i = 0; i < axisIndices.size(); ++i) {
+    if (!acsc_WaitMotionEnd(m_controllerId, axisIndices[i], remainingTimeoutMs)) {
+      int sdkError = acsc_GetLastError();
+      LOG_DEBUG("acsc_WaitMotionEnd failed for axis " + axes[i] +
+                " (error=" + std::to_string(sdkError) + "), falling back to manual poll");
+      sdkWaitSucceeded = false;
+      break;
+    }
+    // Recalculate remaining timeout after each axis
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime).count();
+    remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(elapsed);
+    if (remainingTimeoutMs < 100) {
+      remainingTimeoutMs = 100;
+    }
+  }
+
+  if (sdkWaitSucceeded) {
+    auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - startTime).count();
+    LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed via SDK after " + std::to_string(totalMs) + "ms");
+    // Run diagnostics on all axes
+    for (size_t i = 0; i < axes.size(); ++i) {
+      CheckInPosition(axes[i], axisIndices[i]);
+      if (i < targetPositions.size()) {
+        VerifyFinalPosition(axes[i], axisIndices[i], targetPositions[i]);
+      }
+    }
+    return true;
+  }
+
+  // Fallback: bounded poll loop — wait until ALL axes report NOT MOVING
+  constexpr int kMaxPollIter = 1200;
+  for (int iteration = 0; iteration < kMaxPollIter; ++iteration) {
     bool allStopped = true;
     for (int idx : axisIndices) {
       int motorState = 0;
@@ -883,7 +952,14 @@ bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& a
     if (allStopped) {
       auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - startTime).count();
-      LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed after " + std::to_string(totalMs) + "ms");
+      LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed via fallback after " + std::to_string(totalMs) + "ms");
+      // Run diagnostics on all axes
+      for (size_t i = 0; i < axes.size(); ++i) {
+        CheckInPosition(axes[i], axisIndices[i]);
+        if (i < targetPositions.size()) {
+          VerifyFinalPosition(axes[i], axisIndices[i], targetPositions[i]);
+        }
+      }
       return true;
     }
 
@@ -1014,41 +1090,39 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   }
 
   // Wait for all axes to be idle before starting new motion (prevents error 3065)
-  const int maxWaitMs = 5000;  // 5 second timeout
-  const int pollIntervalMs = 10;
+  constexpr int kMaxIdleIter = 500;  // 5000ms / 10ms poll
+  constexpr int kIdlePollMs = 10;
 
   for (size_t i = 0; i < axisIndices.size(); i++) {
-    int axisIndex = axisIndices[i];
-    const std::string& axis = axes[i];
-    int waitedMs = 0;
+    int axisIdx = axisIndices[i];
+    const std::string& axisName = axes[i];
     bool isMoving = true;
 
-    while (waitedMs < maxWaitMs) {
+    for (int j = 0; j < kMaxIdleIter; ++j) {
       int motorState = 0;
-      if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+      if (acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL)) {
         isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
         if (!isMoving) {
-          if (waitedMs > 0) {
-            LOG_DEBUG("Axis " + axis + " became idle after " + std::to_string(waitedMs) + "ms wait");
+          if (j > 0) {
+            LOG_DEBUG("Axis " + axisName + " became idle after " + std::to_string(j * kIdlePollMs) + "ms wait");
           }
           break;  // Axis is idle, proceed to next axis
         }
       } else {
         // State query failed, proceed anyway and let acsc_ToPointM handle it
-        LOG_DEBUG("Motor state query failed for " + axis + ", proceeding anyway");
+        LOG_DEBUG("Motor state query failed for " + axisName + ", proceeding anyway");
         isMoving = false;
         break;
       }
 
-      std::this_thread::sleep_for(std::chrono::milliseconds(pollIntervalMs));
-      waitedMs += pollIntervalMs;
+      std::this_thread::sleep_for(std::chrono::milliseconds(kIdlePollMs));
     }
 
     if (isMoving) {
       m_lastErrorCode = -3;
-      m_lastErrorMessage = "Timeout waiting for axis " + axis + " to become idle (waited " +
-                           std::to_string(maxWaitMs) + "ms)";
+      m_lastErrorMessage = "Timeout waiting for axis " + axisName + " to become idle (waited " +
+                           std::to_string(kMaxIdleIter * kIdlePollMs) + "ms)";
       LOG_ERROR(m_lastErrorMessage);
       return false;
     }
@@ -1082,11 +1156,44 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion on all axes");
-    return WaitForMultiAxisCompletion(axes);
+    return WaitForMultiAxisCompletion(axes, 30.0, positions);
   }
 
   LOG_DEBUG("MoveToPositionMultiAxis END - success");
   return true;
+}
+
+void ACSController::CheckInPosition(const std::string& axis, int axisIndex) {
+  int motorState = 0;
+  if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+    bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
+    bool isInPos  = (motorState & ACSC_MST_INPOS) != 0;
+
+    if (!isMoving && !isInPos) {
+      std::ostringstream oss;
+      oss << "Axis " << axis << " stopped but INPOS flag not set (motor state=0x"
+          << std::hex << motorState << ") - motor may not have reached target";
+      LOG_WARNING(oss.str());
+    }
+  }
+}
+
+void ACSController::VerifyFinalPosition(const std::string& axis, int axisIndex, double targetPosition) {
+  // Skip verification if target is NaN (e.g. HomeAxis calls)
+  if (std::isnan(targetPosition)) {
+    return;
+  }
+
+  double actualPosition = 0.0;
+  if (acsc_GetFPosition(m_controllerId, axisIndex, &actualPosition, NULL)) {
+    double error = std::abs(actualPosition - targetPosition);
+    if (error > kPositionToleranceMm) {
+      LOG_WARNING("Axis " + axis + " position error: target=" + std::to_string(targetPosition) +
+                  " actual=" + std::to_string(actualPosition) +
+                  " error=" + std::to_string(error) + "mm (tolerance=" +
+                  std::to_string(kPositionToleranceMm) + "mm)");
+    }
+  }
 }
 
 bool ACSController::RunBuffer(int bufferNumber, const std::string& labelName) {
