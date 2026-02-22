@@ -390,6 +390,10 @@ private:
   void InjectBeamStreamResult(SequenceContext* context);
   uint64_t m_lastInjectedBeamStreamSeq = 0;
 
+  // Inject latest beam stream result from second GDI window (bs2.* keys)
+  void InjectBeamStreamResult2(SequenceContext* context);
+  uint64_t m_lastInjectedBeamStreamSeq2 = 0;
+
   // BS inject enable/disable (controllable from recipe commands)
   std::atomic<bool> m_bsInjectEnabled{true};
 

@@ -5849,12 +5849,14 @@ void RunProgramPage::onContextRefreshCv()
 
   bool hasVision = false;
   bool hasBeamStream = m_context->gdiCameraWindowManager->isBeamStreamActive();
+  bool hasBeamStream2 = m_context->gdiCameraWindowManager2 &&
+                        m_context->gdiCameraWindowManager2->isBeamStreamActive();
 
 #ifdef HAS_OPENCV
   hasVision = m_context->gdiCameraWindowManager->isVisionProcessingActive();
 #endif
 
-  if (!hasVision && !hasBeamStream) {
+  if (!hasVision && !hasBeamStream && !hasBeamStream2) {
     m_contextStatusLabel->setText("No live data source active (vision / beam stream)");
     m_contextStatusLabel->setStyleSheet(QString("color: #cca700; font-style: italic; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
     return;
@@ -5990,6 +5992,78 @@ void RunProgramPage::onContextRefreshCv()
     }
   }
 
+  // Inject beam stream data from second GDI camera window (bs2.* keys)
+  if (hasBeamStream2) {
+    nlohmann::json bsResult = m_context->gdiCameraWindowManager2->getLatestBeamStreamResult();
+
+    m_standaloneCvContext->SetValue("bs2.active", "true");
+    m_standaloneCvContext->SetValue("bs2.fps", std::to_string(m_context->gdiCameraWindowManager2->getBeamStreamFps()));
+
+    if (bsResult.contains("process_ms")) {
+      m_standaloneCvContext->SetValue("bs2.process_ms", std::to_string(bsResult["process_ms"].get<double>()));
+    }
+
+    if (bsResult.contains("beams") && bsResult["beams"].is_array()) {
+      const auto& beams = bsResult["beams"];
+      m_standaloneCvContext->SetValue("bs2.beam.count", std::to_string(beams.size()));
+
+      for (size_t i = 0; i < beams.size(); ++i) {
+        std::string prefix = "bs2.beam." + std::to_string(i) + ".";
+        const auto& beam = beams[i];
+
+        if (beam.contains("side")) {
+          m_standaloneCvContext->SetValue(prefix + "label", beam["side"].get<std::string>());
+        }
+        m_standaloneCvContext->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
+        m_standaloneCvContext->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
+        if (beam.contains("d4sigma_x_px")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+        }
+        if (beam.contains("d4sigma_y_px")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+        }
+        if (beam.contains("d4sigma_x_um")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
+        }
+        if (beam.contains("d4sigma_y_um")) {
+          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+        }
+        if (beam.contains("peak_intensity")) {
+          m_standaloneCvContext->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+        }
+        if (beam.contains("roi_x")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
+        }
+        if (beam.contains("roi_y")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
+        }
+        if (beam.contains("roi_w")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
+        }
+        if (beam.contains("roi_h")) {
+          m_standaloneCvContext->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
+        }
+      }
+
+      // Convenience aliases for first beam
+      if (!beams.empty()) {
+        m_standaloneCvContext->SetValue("bs2.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
+        m_standaloneCvContext->SetValue("bs2.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
+        if (beams[0].contains("d4sigma_x_px")) {
+          m_standaloneCvContext->SetValue("bs2.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
+        }
+        if (beams[0].contains("d4sigma_y_px")) {
+          m_standaloneCvContext->SetValue("bs2.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
+        }
+        if (beams[0].contains("side")) {
+          m_standaloneCvContext->SetValue("bs2.beam.first.label", beams[0]["side"].get<std::string>());
+        }
+      }
+    } else {
+      m_standaloneCvContext->SetValue("bs2.beam.count", "0");
+    }
+  }
+
   // Display the standalone context in the table
   displayStandaloneContext();
 }
@@ -6007,8 +6081,9 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
   QString filterText = m_contextFilterEdit->text().toLower().trimmed();
   auto summary = context->GetSummary();
 
-  // Save expansion state before rebuilding
+  // Save expansion and selection state before rebuilding
   QSet<QString> expandedPaths;
+  QSet<QString> selectedPaths;
   QSet<QString> allPreviousPaths;  // Track all known nodes to detect new ones
   bool wasEmpty = (m_contextTree->topLevelItemCount() == 0);
 
@@ -6018,6 +6093,9 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
       allPreviousPaths.insert(path);
       if (item->isExpanded()) {
         expandedPaths.insert(path);
+      }
+      if (item->isSelected()) {
+        selectedPaths.insert(path);
       }
       for (int i = 0; i < item->childCount(); ++i) {
         QString childPath = path + "." + item->child(i)->text(0);
@@ -6131,13 +6209,13 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
     leaf->setForeground(2, QColor(128, 128, 128));
   }
 
-  // Restore expansion state or expand all on first population
+  // Restore expansion and selection state, or expand all on first population
   // New nodes (not in previous state) are expanded by default
   if (wasEmpty) {
     m_contextTree->expandAll();
   } else {
-    std::function<void(QTreeWidgetItem*, const QString&)> restoreExpanded;
-    restoreExpanded = [&](QTreeWidgetItem* item, const QString& path) {
+    std::function<void(QTreeWidgetItem*, const QString&)> restoreState;
+    restoreState = [&](QTreeWidgetItem* item, const QString& path) {
       if (allPreviousPaths.contains(path)) {
         // Existing node - restore previous expand/collapse state
         item->setExpanded(expandedPaths.contains(path));
@@ -6145,14 +6223,18 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
         // New node - expand by default so user can see new data
         item->setExpanded(true);
       }
+      // Restore selection state
+      if (selectedPaths.contains(path)) {
+        item->setSelected(true);
+      }
       for (int i = 0; i < item->childCount(); ++i) {
         QString childPath = path + "." + item->child(i)->text(0);
-        restoreExpanded(item->child(i), childPath);
+        restoreState(item->child(i), childPath);
       }
     };
     for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
       auto* item = m_contextTree->topLevelItem(i);
-      restoreExpanded(item, item->text(0));
+      restoreState(item, item->text(0));
     }
   }
 
