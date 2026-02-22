@@ -161,6 +161,7 @@ void MainWindow::setupUI()
   connect(m_topBar, &TopBar::jogButtonClicked, this, &MainWindow::onToggleJogPanel);
   connect(m_topBar, &TopBar::auxWindowButtonClicked, this, &MainWindow::onToggleAuxWindow);
   connect(m_topBar, &TopBar::rtlmButtonClicked, this, &MainWindow::onToggleRtlmWindow);
+  connect(m_topBar, &TopBar::rtlm2ButtonClicked, this, &MainWindow::onToggleRtlmWindow2);
   mainLayout->addWidget(m_topBar, 0);
 
   // Page stack (main content area)
@@ -272,10 +273,14 @@ void MainWindow::createPages()
   m_applicationSettingsPage = new ApplicationSettingsPage(m_context, this);
   connect(m_applicationSettingsPage, &ApplicationSettingsPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
-  // Connect settings changes to GDI camera window manager
+  // Connect settings changes to GDI camera window managers
   if (m_context && m_context->gdiCameraWindowManager) {
     connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
       m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
+  }
+  if (m_context && m_context->gdiCameraWindowManager2) {
+    connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+      m_context->gdiCameraWindowManager2, &GdiCameraWindowManager::applyApplicationSettings);
   }
   m_pageStack->addWidget(m_applicationSettingsPage);
 
@@ -417,10 +422,15 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutCtrlR, &QShortcut::activated, this, &MainWindow::onToggleRtlmWindow);
   std::cout << "[MainWindow]   Ctrl+R -> Toggle Realtime Camera Monitor" << std::endl;
 
+  // Ctrl+T - Toggle Realtime Camera Monitor 2 (GDI)
+  m_shortcutCtrlT = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
+  connect(m_shortcutCtrlT, &QShortcut::activated, this, &MainWindow::onToggleRtlmWindow2);
+  std::cout << "[MainWindow]   Ctrl+T -> Toggle Realtime Camera Monitor 2" << std::endl;
+
   std::cout << "[MainWindow] Keyboard shortcuts setup complete!" << std::endl;
 
   if (m_context->logManager) {
-    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K, Ctrl+R) registered", "MainWindow");
+    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K, Ctrl+R, Ctrl+T) registered", "MainWindow");
   }
 }
 
@@ -638,6 +648,29 @@ void MainWindow::onToggleRtlmWindow()
     std::cout << "[MainWindow] Realtime camera monitor shown (Ctrl+R)" << std::endl;
     if (m_context->logManager) {
       m_context->logManager->Info("Realtime camera monitor shown", "MainWindow");
+    }
+  }
+}
+
+void MainWindow::onToggleRtlmWindow2()
+{
+  if (!m_context || !m_context->gdiCameraWindowManager2) {
+    std::cerr << "[MainWindow] GDI Camera window manager 2 not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_context->gdiCameraWindowManager2->isVisible()) {
+    m_context->gdiCameraWindowManager2->hide();
+    std::cout << "[MainWindow] Realtime camera monitor 2 hidden (Ctrl+T)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Realtime camera monitor 2 hidden", "MainWindow");
+    }
+  }
+  else {
+    m_context->gdiCameraWindowManager2->show();
+    std::cout << "[MainWindow] Realtime camera monitor 2 shown (Ctrl+T)" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("Realtime camera monitor 2 shown", "MainWindow");
     }
   }
 }

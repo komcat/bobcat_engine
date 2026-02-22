@@ -54,6 +54,7 @@ struct ApplicationContext
   SafetyWatchManager* safetyWatchManager = nullptr;  // Safety monitoring layer
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
+  GdiCameraWindowManager* gdiCameraWindowManager2 = nullptr; // Second GDI camera monitor window
   ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
   SafetyEventLog* safetyEventLog = nullptr;            // Structured safety event logging
   BeamServerClient* beamServerClient = nullptr;        // Custom TCP server for beam detection

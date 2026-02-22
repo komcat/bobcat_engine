@@ -9,28 +9,18 @@
 #include <QSettings>
 #include <iostream>
 
-// QSettings keys for window geometry and camera selection
-static constexpr const char* SETTINGS_KEY_X = "GdiCameraWindow/x";
-static constexpr const char* SETTINGS_KEY_Y = "GdiCameraWindow/y";
-static constexpr const char* SETTINGS_KEY_WIDTH = "GdiCameraWindow/width";
-static constexpr const char* SETTINGS_KEY_HEIGHT = "GdiCameraWindow/height";
-static constexpr const char* SETTINGS_KEY_VISIBLE = "GdiCameraWindow/visible";
-static constexpr const char* SETTINGS_KEY_TARGET_CAMERA = "GdiCameraWindow/targetCamera";
-
-// Application Settings keys (shared with ApplicationSettingsPage)
-static constexpr const char* SETTINGS_KEY_VIEW_MODE = "CameraMonitor/ViewMode";
-static constexpr const char* SETTINGS_KEY_PRIMARY_CAMERA = "CameraMonitor/PrimaryCamera";
-static constexpr const char* SETTINGS_KEY_SECONDARY_CAMERA = "CameraMonitor/SecondaryCamera";
-static constexpr const char* SETTINGS_KEY_CHART_ENABLED = "ChartOverlay/Enabled";
-static constexpr const char* SETTINGS_KEY_CHART_CHANNEL = "ChartOverlay/LastChannel";
-static constexpr const char* SETTINGS_KEY_CHART_SCALE = "ChartOverlay/Scale";
-static constexpr const char* SETTINGS_KEY_VISION_ENABLED = "Vision/Enabled";
-static constexpr const char* SETTINGS_KEY_VISION_PROFILE = "Vision/LastProfile";
-static constexpr const char* SETTINGS_KEY_CROSSHAIR = "Tools/CrosshairEnabled";
-static constexpr const char* SETTINGS_KEY_CLICK_TO_MOVE = "Tools/ClickToMoveEnabled";
-
-GdiCameraWindowManager::GdiCameraWindowManager(QObject* parent)
-    : QObject(parent) {
+GdiCameraWindowManager::GdiCameraWindowManager(const std::string& instanceId, QObject* parent)
+    : QObject(parent)
+    , m_instanceId(instanceId) {
+    // Compute settings key prefixes based on instance ID
+    // First instance (empty id): "GdiCameraWindow", "CameraMonitor", etc. (backwards compatible)
+    // Second instance (id="2"):  "GdiCameraWindow2", "CameraMonitor2", etc.
+    m_settingsPrefix = "GdiCameraWindow" + m_instanceId;
+    m_monitorPrefix  = "CameraMonitor" + m_instanceId;
+    m_chartPrefix    = "ChartOverlay" + m_instanceId;
+    m_visionPrefix   = "Vision" + m_instanceId;
+    m_toolsPrefix    = "Tools" + m_instanceId;
+    m_subscriberId   = "GdiCameraWindow" + m_instanceId;
 }
 
 GdiCameraWindowManager::~GdiCameraWindowManager() {
@@ -54,8 +44,12 @@ bool GdiCameraWindowManager::initialize() {
     loadWindowGeometry();
 
     // Create the GDI window
-    std::cout << "[GdiCameraWindowManager] Creating GdiCameraWindow..." << std::endl;
+    std::cout << "[GdiCameraWindowManager] Creating GdiCameraWindow (instance: '"
+              << (m_instanceId.empty() ? "default" : m_instanceId) << "')..." << std::endl;
     m_window = std::make_shared<GdiCameraWindow>();
+
+    // Set unique subscriber ID before subscribing to cameras
+    m_window->SetSubscriberId(m_subscriberId);
 
     if (!m_window->Create(m_windowTitle, m_initialX, m_initialY,
                           m_initialWidth, m_initialHeight)) {
@@ -354,13 +348,15 @@ void GdiCameraWindowManager::applyApplicationSettings() {
     QSettings settings("Fabrinet", "BobcatEngine");
 
     // View Mode
-    QString viewMode = settings.value(SETTINGS_KEY_VIEW_MODE, "single").toString();
+    QString viewModeKey = QString::fromStdString(m_monitorPrefix + "/ViewMode");
+    QString viewMode = settings.value(viewModeKey, "single").toString();
     bool dualMode = (viewMode == "dual");
     m_window->SetDualCameraMode(dualMode);
     std::cout << "[GdiCameraWindowManager] View mode: " << (dualMode ? "dual" : "single") << std::endl;
 
     // Primary Camera (override if set in app settings)
-    QString primaryCamera = settings.value(SETTINGS_KEY_PRIMARY_CAMERA, "").toString();
+    QString primaryCameraKey = QString::fromStdString(m_monitorPrefix + "/PrimaryCamera");
+    QString primaryCamera = settings.value(primaryCameraKey, "").toString();
     if (!primaryCamera.isEmpty() && primaryCamera != m_targetCameraId.c_str()) {
         m_targetCameraId = primaryCamera.toStdString();
         m_window->SetTargetCamera(m_targetCameraId);
@@ -368,17 +364,22 @@ void GdiCameraWindowManager::applyApplicationSettings() {
     }
 
     // Secondary Camera (for dual mode)
-    QString secondaryCamera = settings.value(SETTINGS_KEY_SECONDARY_CAMERA, "").toString();
+    QString secondaryCameraKey = QString::fromStdString(m_monitorPrefix + "/SecondaryCamera");
+    QString secondaryCamera = settings.value(secondaryCameraKey, "").toString();
     if (!secondaryCamera.isEmpty()) {
         m_window->SetSecondaryCameraId(secondaryCamera.toStdString());
         std::cout << "[GdiCameraWindowManager] Secondary camera: " << secondaryCamera.toStdString() << std::endl;
     }
 
     // Chart Overlay
-    bool chartEnabled = settings.value(SETTINGS_KEY_CHART_ENABLED, "false").toString() == "true";
+    QString chartEnabledKey = QString::fromStdString(m_chartPrefix + "/Enabled");
+    QString chartChannelKey = QString::fromStdString(m_chartPrefix + "/LastChannel");
+    QString chartScaleKey = QString::fromStdString(m_chartPrefix + "/Scale");
+
+    bool chartEnabled = settings.value(chartEnabledKey, "false").toString() == "true";
     m_window->GetChartOverlay().SetEnabled(chartEnabled);
     if (chartEnabled) {
-        QString lastChannel = settings.value(SETTINGS_KEY_CHART_CHANNEL, "").toString();
+        QString lastChannel = settings.value(chartChannelKey, "").toString();
         if (!lastChannel.isEmpty()) {
             m_window->GetChartOverlay().SetChannelEnabled(lastChannel.toStdString(), true);
             std::cout << "[GdiCameraWindowManager] Chart overlay enabled, channel: " << lastChannel.toStdString() << std::endl;
@@ -386,23 +387,28 @@ void GdiCameraWindowManager::applyApplicationSettings() {
     }
 
     // Chart Overlay Scale
-    float overlayScale = settings.value(SETTINGS_KEY_CHART_SCALE, 1.0f).toFloat();
+    float overlayScale = settings.value(chartScaleKey, 1.0f).toFloat();
     m_window->SetOverlayScale(overlayScale);
     std::cout << "[GdiCameraWindowManager] Chart overlay scale: " << overlayScale << std::endl;
 
     // Setup callback to save overlay scale when changed via menu
-    m_window->SetOverlayScaleChangedCallback([](float newScale) {
+    // Capture the key string by value for the lambda
+    std::string scaleKeyCopy = m_chartPrefix + "/Scale";
+    m_window->SetOverlayScaleChangedCallback([scaleKeyCopy](float newScale) {
         QSettings settings("Fabrinet", "BobcatEngine");
-        settings.setValue(SETTINGS_KEY_CHART_SCALE, newScale);
+        settings.setValue(QString::fromStdString(scaleKeyCopy), newScale);
         settings.sync();
         std::cout << "[GdiCameraWindowManager] Saved overlay scale: " << newScale << std::endl;
     });
 
     // Tools
-    bool crosshairEnabled = settings.value(SETTINGS_KEY_CROSSHAIR, "false").toString() == "true";
+    QString crosshairKey = QString::fromStdString(m_toolsPrefix + "/CrosshairEnabled");
+    QString clickToMoveKey = QString::fromStdString(m_toolsPrefix + "/ClickToMoveEnabled");
+
+    bool crosshairEnabled = settings.value(crosshairKey, "false").toString() == "true";
     m_window->SetCrosshairEnabled(crosshairEnabled);
 
-    bool clickToMoveEnabled = settings.value(SETTINGS_KEY_CLICK_TO_MOVE, "false").toString() == "true";
+    bool clickToMoveEnabled = settings.value(clickToMoveKey, "false").toString() == "true";
     m_window->SetClickToMoveEnabled(clickToMoveEnabled);
 
     std::cout << "[GdiCameraWindowManager] Crosshair: " << (crosshairEnabled ? "on" : "off")
@@ -424,35 +430,44 @@ void GdiCameraWindowManager::saveWindowGeometry() {
         bool visible = m_window->IsVisible();
 
         QSettings settings("Fabrinet", "BobcatEngine");
-        settings.setValue(SETTINGS_KEY_X, x);
-        settings.setValue(SETTINGS_KEY_Y, y);
-        settings.setValue(SETTINGS_KEY_WIDTH, width);
-        settings.setValue(SETTINGS_KEY_HEIGHT, height);
-        settings.setValue(SETTINGS_KEY_VISIBLE, visible);
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/x"), x);
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/y"), y);
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/width"), width);
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/height"), height);
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/visible"), visible);
 
         // Save the current target camera selection
         std::string currentCamera = m_window->GetTargetCamera();
-        settings.setValue(SETTINGS_KEY_TARGET_CAMERA, QString::fromStdString(currentCamera));
+        settings.setValue(QString::fromStdString(m_settingsPrefix + "/targetCamera"),
+                          QString::fromStdString(currentCamera));
 
         // Save current application settings state
         // View mode
-        settings.setValue(SETTINGS_KEY_VIEW_MODE, m_window->IsDualCameraMode() ? "dual" : "single");
+        settings.setValue(QString::fromStdString(m_monitorPrefix + "/ViewMode"),
+                          m_window->IsDualCameraMode() ? "dual" : "single");
 
         // Cameras
-        settings.setValue(SETTINGS_KEY_PRIMARY_CAMERA, QString::fromStdString(m_window->GetTargetCamera()));
-        settings.setValue(SETTINGS_KEY_SECONDARY_CAMERA, QString::fromStdString(m_window->GetSecondaryCameraId()));
+        settings.setValue(QString::fromStdString(m_monitorPrefix + "/PrimaryCamera"),
+                          QString::fromStdString(m_window->GetTargetCamera()));
+        settings.setValue(QString::fromStdString(m_monitorPrefix + "/SecondaryCamera"),
+                          QString::fromStdString(m_window->GetSecondaryCameraId()));
 
         // Chart overlay
-        settings.setValue(SETTINGS_KEY_CHART_ENABLED, m_window->GetChartOverlay().IsEnabled() ? "true" : "false");
+        settings.setValue(QString::fromStdString(m_chartPrefix + "/Enabled"),
+                          m_window->GetChartOverlay().IsEnabled() ? "true" : "false");
         auto enabledChannels = m_window->GetChartOverlay().GetEnabledChannels();
         if (!enabledChannels.empty()) {
-            settings.setValue(SETTINGS_KEY_CHART_CHANNEL, QString::fromStdString(enabledChannels.front()));
+            settings.setValue(QString::fromStdString(m_chartPrefix + "/LastChannel"),
+                              QString::fromStdString(enabledChannels.front()));
         }
-        settings.setValue(SETTINGS_KEY_CHART_SCALE, m_window->GetOverlayScale());
+        settings.setValue(QString::fromStdString(m_chartPrefix + "/Scale"),
+                          m_window->GetOverlayScale());
 
         // Tools
-        settings.setValue(SETTINGS_KEY_CROSSHAIR, m_window->IsCrosshairEnabled() ? "true" : "false");
-        settings.setValue(SETTINGS_KEY_CLICK_TO_MOVE, m_window->IsClickToMoveEnabled() ? "true" : "false");
+        settings.setValue(QString::fromStdString(m_toolsPrefix + "/CrosshairEnabled"),
+                          m_window->IsCrosshairEnabled() ? "true" : "false");
+        settings.setValue(QString::fromStdString(m_toolsPrefix + "/ClickToMoveEnabled"),
+                          m_window->IsClickToMoveEnabled() ? "true" : "false");
 
         settings.sync();
 
@@ -466,22 +481,25 @@ void GdiCameraWindowManager::saveWindowGeometry() {
 void GdiCameraWindowManager::loadWindowGeometry() {
     QSettings settings("Fabrinet", "BobcatEngine");
 
+    QString keyX = QString::fromStdString(m_settingsPrefix + "/x");
+
     // Check if we have saved settings
-    if (!settings.contains(SETTINGS_KEY_X)) {
+    if (!settings.contains(keyX)) {
         std::cout << "[GdiCameraWindowManager] No saved geometry found, using defaults (will show on first run)" << std::endl;
         m_restoreVisible = true;  // Show on first run
         return;
     }
 
-    m_initialX = settings.value(SETTINGS_KEY_X, 100).toInt();
-    m_initialY = settings.value(SETTINGS_KEY_Y, 100).toInt();
-    m_initialWidth = settings.value(SETTINGS_KEY_WIDTH, 800).toInt();
-    m_initialHeight = settings.value(SETTINGS_KEY_HEIGHT, 600).toInt();
-    m_restoreVisible = settings.value(SETTINGS_KEY_VISIBLE, true).toBool();
+    m_initialX = settings.value(keyX, 100).toInt();
+    m_initialY = settings.value(QString::fromStdString(m_settingsPrefix + "/y"), 100).toInt();
+    m_initialWidth = settings.value(QString::fromStdString(m_settingsPrefix + "/width"), 800).toInt();
+    m_initialHeight = settings.value(QString::fromStdString(m_settingsPrefix + "/height"), 600).toInt();
+    m_restoreVisible = settings.value(QString::fromStdString(m_settingsPrefix + "/visible"), true).toBool();
 
     // Load saved target camera selection
-    if (settings.contains(SETTINGS_KEY_TARGET_CAMERA)) {
-        m_targetCameraId = settings.value(SETTINGS_KEY_TARGET_CAMERA).toString().toStdString();
+    QString targetCameraKey = QString::fromStdString(m_settingsPrefix + "/targetCamera");
+    if (settings.contains(targetCameraKey)) {
+        m_targetCameraId = settings.value(targetCameraKey).toString().toStdString();
     }
 
     // Validate position is on screen (in case screen configuration changed)

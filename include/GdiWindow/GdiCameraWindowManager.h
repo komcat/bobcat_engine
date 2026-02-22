@@ -37,7 +37,7 @@ class GdiCameraWindowManager : public QObject {
     Q_OBJECT
 
 public:
-    explicit GdiCameraWindowManager(QObject* parent = nullptr);
+    explicit GdiCameraWindowManager(const std::string& instanceId = "", QObject* parent = nullptr);
     ~GdiCameraWindowManager();
 
     // Initialize the window (must call setCameraManager first)
@@ -115,6 +115,18 @@ public slots:
 private:
     void saveWindowGeometry();
     void loadWindowGeometry();
+
+    // Instance identification (empty for first instance, "2" for second, etc.)
+    std::string m_instanceId;
+
+    // Computed QSettings key prefixes (depend on m_instanceId)
+    std::string m_settingsPrefix;       // "GdiCameraWindow" or "GdiCameraWindow2"
+    std::string m_monitorPrefix;        // "CameraMonitor" or "CameraMonitor2"
+    std::string m_chartPrefix;          // "ChartOverlay" or "ChartOverlay2"
+    std::string m_visionPrefix;         // "Vision" or "Vision2"
+    std::string m_toolsPrefix;          // "Tools" or "Tools2"
+    std::string m_subscriberId;         // "GdiCameraWindow" or "GdiCameraWindow2"
+
     BeamServerClient* m_beamServerClient = nullptr;
     CameraManager* m_cameraManager = nullptr;
     DataStore* m_dataStore = nullptr;

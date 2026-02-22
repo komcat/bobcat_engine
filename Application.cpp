@@ -306,6 +306,10 @@ void Application::initializeManagers()
     initializeGdiCameraWindow();
     completeSplash("GdiCameraWindow");
 
+    updateSplash("GdiCameraWindow2");
+    initializeGdiCameraWindow2();
+    completeSplash("GdiCameraWindow2");
+
     updateSplash("ProductPositionManager");
     initializeProductPositionManager();
     completeSplash("ProductPositionManager");
@@ -337,9 +341,12 @@ void Application::initializeManagers()
     m_context.beamServerClient = m_beamServerClient.get();
     m_logManager->Info("BeamServerClient created (connection deferred to recipe)", "Application");
 
-    // Wire beam server client to GDI camera window (created earlier, needs late injection)
+    // Wire beam server client to GDI camera windows (created earlier, needs late injection)
     if (m_gdiCameraWindowManager) {
       m_gdiCameraWindowManager->setBeamServerClient(m_beamServerClient.get());
+    }
+    if (m_gdiCameraWindowManager2) {
+      m_gdiCameraWindowManager2->setBeamServerClient(m_beamServerClient.get());
     }
 
     // Initialize safety event log before safety watch (so safety watch can use it)
@@ -1108,6 +1115,11 @@ void Application::shutdownManagers()
 
 
   // Shutdown in reverse order
+  if (m_gdiCameraWindowManager2) {
+    m_gdiCameraWindowManager2->shutdown();
+    m_gdiCameraWindowManager2.reset();
+  }
+
   if (m_gdiCameraWindowManager) {
     m_gdiCameraWindowManager->shutdown();
     m_gdiCameraWindowManager.reset();
@@ -1847,6 +1859,42 @@ void Application::initializeGdiCameraWindow()
     }
   } else {
     m_logManager->Warning("GdiCameraWindow failed to initialize", "Application");
+  }
+}
+
+void Application::initializeGdiCameraWindow2()
+{
+  m_logManager->Debug("Initializing GdiCameraWindow2...", "Application");
+
+  m_gdiCameraWindowManager2 = std::make_unique<GdiCameraWindowManager>("2");
+
+  // Set camera manager (required)
+  m_gdiCameraWindowManager2->setCameraManager(m_cameraManager.get());
+
+  // Set DataStore for chart overlay
+  m_gdiCameraWindowManager2->setDataStore(m_dataStore.get());
+
+  // Set motion manager for click-to-move
+  m_gdiCameraWindowManager2->setMotionManager(m_motionManager.get());
+
+  // Note: BeamServerClient is wired later (after it's created)
+
+  // Configure window title
+  m_gdiCameraWindowManager2->setWindowTitle("Camera Monitor 2 (GDI)");
+
+  // Initialize the window (position/size loaded from saved settings)
+  if (m_gdiCameraWindowManager2->initialize()) {
+    m_context.gdiCameraWindowManager2 = m_gdiCameraWindowManager2.get();
+
+    // Restore visibility from last session
+    if (m_gdiCameraWindowManager2->shouldRestoreVisible()) {
+      m_gdiCameraWindowManager2->show();
+      m_logManager->Info("GdiCameraWindow2 initialized and shown (restored from last session)", "Application");
+    } else {
+      m_logManager->Info("GdiCameraWindow2 initialized (hidden - restored from last session)", "Application");
+    }
+  } else {
+    m_logManager->Warning("GdiCameraWindow2 failed to initialize", "Application");
   }
 }
 

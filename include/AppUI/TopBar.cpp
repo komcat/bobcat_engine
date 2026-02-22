@@ -154,6 +154,7 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
   , m_jogButton(nullptr)
   , m_auxWindowButton(nullptr)
   , m_rtlmButton(nullptr)
+  , m_rtlm2Button(nullptr)
   , m_safetyIndicator(nullptr)
 {
   setupUI();
@@ -293,6 +294,40 @@ void TopBar::setupUI()
   m_rtlmButton->setToolTip("Toggle Realtime Camera Monitor");
   connect(m_rtlmButton, &QPushButton::clicked, this, &TopBar::rtlmButtonClicked);
   layout->addWidget(m_rtlmButton);
+
+  // Rltm2 button (for second GDI Camera Window)
+  m_rtlm2Button = new QPushButton("Rltm2", this);
+  m_rtlm2Button->setFixedSize(70, 35);
+  m_rtlm2Button->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #58d68d, stop:1 #27ae60); "
+    "  color: white; "
+    "  border-radius: 5px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #68e69d, stop:1 #58d68d); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #1e8449; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 2px; "
+    "  padding-left: 2px; "
+    "}"
+  );
+  m_rtlm2Button->setToolTip("Toggle Realtime Camera Monitor 2");
+  connect(m_rtlm2Button, &QPushButton::clicked, this, &TopBar::rtlm2ButtonClicked);
+  layout->addWidget(m_rtlm2Button);
 
   // JOG button (right side, orange)
   m_jogButton = new QPushButton("JOG", this);

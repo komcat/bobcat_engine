@@ -264,10 +264,13 @@ public:
     bool IsClickToMoveEnabled() const { return m_clickToMoveEnabled; }
     bool IsCrosshairEnabled() const { return m_crosshairEnabled; }
 
+    // Subscriber identity (must be unique per instance for CameraManager)
+    void SetSubscriberId(const std::string& id) { m_subscriberId = id; }
+
     // CameraFrameSubscriber interface
     void OnNewFrame(const CameraFrameData& frameData) override;
     void OnCameraStatusChanged(const std::string& cameraId, bool connected, bool grabbing) override;
-    std::string GetSubscriberId() const override { return "GdiCameraWindow"; }
+    std::string GetSubscriberId() const override { return m_subscriberId; }
     bool WantsFramesFromCamera(const std::string& cameraId) const override;
     int GetMinFrameIntervalMs() const override { return 33; } // ~30fps
 
@@ -362,6 +365,9 @@ private:
     static bool s_gdiplusInitialized;
     static bool InitializeGdiPlus();
     static void ShutdownGdiPlus();
+
+    // Subscriber identity
+    std::string m_subscriberId = "GdiCameraWindow";
 
     // Window handle
     HWND m_hwnd = nullptr;

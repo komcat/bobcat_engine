@@ -71,7 +71,8 @@ private:
 	void initializeProductPositionManager();  // ✅ ADD THIS
   void initializeTECManager();  // ✅ ADD THIS LINE
   void initializeAuxWindowManager();  // ✅ ADD THIS
-  void initializeGdiCameraWindow();  // GDI camera monitor window
+  void initializeGdiCameraWindow();   // GDI camera monitor window
+  void initializeGdiCameraWindow2();  // Second GDI camera monitor window
   void initializePowerSupplySystem();
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
@@ -121,7 +122,8 @@ private:
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
-  std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;  // GDI camera monitor
+  std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
+  std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager2;  // Second GDI camera monitor
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
   std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
   std::unique_ptr<SafetyEventLog> m_safetyEventLog;           // Structured safety event log
