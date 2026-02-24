@@ -801,6 +801,8 @@ void GdiCameraWindow::CreateMenuBar() {
         if (m_toolsMenu) {
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_CROSSHAIR, L"Show Crosshair");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_CLICK_TO_MOVE, L"Enable Click-to-Move");
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_SHOW_DISTANCE, L"Show Real World Distance");
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_MAGNIFICATION, L"Magnification...");
             AppendMenuW(m_toolsMenu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_INCREASE, L"Increase Overlay Size (+)");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_DECREASE, L"Decrease Overlay Size (-)");
@@ -864,6 +866,13 @@ void GdiCameraWindow::UpdateToolsMenu() {
                   m_crosshairEnabled ? MF_CHECKED : MF_UNCHECKED);
     CheckMenuItem(m_toolsMenu, IDM_TOOLS_CLICK_TO_MOVE,
                   m_clickToMoveEnabled ? MF_CHECKED : MF_UNCHECKED);
+    CheckMenuItem(m_toolsMenu, IDM_TOOLS_SHOW_DISTANCE,
+                  m_showDistanceEnabled ? MF_CHECKED : MF_UNCHECKED);
+
+    // Update magnification menu text to show current value
+    std::wstring magText = L"Magnification... (" + std::to_wstring(static_cast<int>(m_magnification)) + L"x)";
+    ModifyMenuW(m_toolsMenu, IDM_TOOLS_MAGNIFICATION, MF_BYCOMMAND | MF_STRING,
+                IDM_TOOLS_MAGNIFICATION, magText.c_str());
 
     DrawMenuBar(m_hwnd);
 }
@@ -1245,6 +1254,52 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         std::cout << "[GdiCameraWindow] Click-to-move " << (m_clickToMoveEnabled ? "enabled" : "disabled") << std::endl;
         UpdateToolsMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    else if (commandId == IDM_TOOLS_SHOW_DISTANCE) {
+        m_showDistanceEnabled = !m_showDistanceEnabled;
+        std::cout << "[GdiCameraWindow] Show distance " << (m_showDistanceEnabled ? "enabled" : "disabled") << std::endl;
+        UpdateToolsMenu();
+        InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+    else if (commandId == IDM_TOOLS_MAGNIFICATION) {
+        // Show magnification selection dialog
+        struct MagOption { const wchar_t* label; double value; };
+        static const MagOption options[] = {
+            {L"1x",   1.0},
+            {L"10x",  10.0},
+            {L"20x",  20.0},
+            {L"50x",  50.0},
+            {L"100x", 100.0},
+            {L"200x", 200.0}
+        };
+        static const int numOptions = sizeof(options) / sizeof(options[0]);
+
+        // Build a popup menu as a simple magnification picker
+        HMENU magPopup = CreatePopupMenu();
+        if (magPopup) {
+            for (int i = 0; i < numOptions; ++i) {
+                UINT flags = MF_STRING;
+                // Use a tolerance check for floating point comparison
+                if (std::abs(m_magnification - options[i].value) < 0.01) {
+                    flags |= MF_CHECKED;
+                }
+                AppendMenuW(magPopup, flags, 50000 + i, options[i].label);
+            }
+
+            // Show popup at cursor position
+            POINT pt;
+            GetCursorPos(&pt);
+            int selected = TrackPopupMenu(magPopup, TPM_RETURNCMD | TPM_NONOTIFY,
+                                          pt.x, pt.y, 0, m_hwnd, nullptr);
+            DestroyMenu(magPopup);
+
+            if (selected >= 50000 && selected < 50000 + numOptions) {
+                m_magnification = options[selected - 50000].value;
+                std::cout << "[GdiCameraWindow] Magnification set to " << m_magnification << "x" << std::endl;
+                UpdateToolsMenu();
+                InvalidateRect(m_hwnd, nullptr, FALSE);
+            }
+        }
     }
     // Overlay size commands
     else if (commandId == IDM_OVERLAY_SIZE_INCREASE) {
@@ -2178,8 +2233,14 @@ void GdiCameraWindow::LoadCalibrationFactors() {
                     auto& cal = j["calibration"];
                     m_pixelToMmFactorX = cal.value("pixel_to_mm_x", 0.00248);
                     m_pixelToMmFactorY = cal.value("pixel_to_mm_y", 0.00248);
+                    m_calibrationRefWidth = cal.value("reference_width", 0);
+                    m_calibrationRefHeight = cal.value("reference_height", 0);
                     std::cout << "[GdiCameraWindow] Loaded calibration: PixelToMm X=" << m_pixelToMmFactorX
-                              << ", Y=" << m_pixelToMmFactorY << std::endl;
+                              << ", Y=" << m_pixelToMmFactorY;
+                    if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
+                        std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;
+                    }
+                    std::cout << std::endl;
                     return;
                 }
             }
@@ -2302,35 +2363,101 @@ void GdiCameraWindow::DrawCrosshairs(HDC hDC, const RECT& /*windowRect*/) {
     }
 
     // Draw tracking crosshair (cyan) if click-to-move enabled and mouse over image
-    if (m_clickToMoveEnabled && m_mouseOverImage) {
-        // Check if mouse is within the image area
-        if (m_mousePosition.x >= m_lastDestX &&
-            m_mousePosition.x < m_lastDestX + m_lastDestWidth &&
-            m_mousePosition.y >= m_lastDestY &&
-            m_mousePosition.y < m_lastDestY + m_lastDestHeight) {
+    bool mouseInImage = m_mouseOverImage &&
+        m_mousePosition.x >= m_lastDestX &&
+        m_mousePosition.x < m_lastDestX + m_lastDestWidth &&
+        m_mousePosition.y >= m_lastDestY &&
+        m_mousePosition.y < m_lastDestY + m_lastDestHeight;
 
-            Gdiplus::Pen trackPen(Gdiplus::Color(255, 0, 255, 255), 1.0f);  // Cyan
+    if (m_clickToMoveEnabled && mouseInImage) {
+        Gdiplus::Pen trackPen(Gdiplus::Color(255, 0, 255, 255), 1.0f);  // Cyan
 
-            int mouseX = static_cast<int>(m_mousePosition.x);
-            int mouseY = static_cast<int>(m_mousePosition.y);
+        int mouseX = static_cast<int>(m_mousePosition.x);
+        int mouseY = static_cast<int>(m_mousePosition.y);
 
-            // Full crosshair lines across entire image area
-            gfx.DrawLine(&trackPen,
-                         m_lastDestX, mouseY,
-                         m_lastDestX + m_lastDestWidth, mouseY);
-            gfx.DrawLine(&trackPen,
-                         mouseX, m_lastDestY,
-                         mouseX, m_lastDestY + m_lastDestHeight);
+        // Full crosshair lines across entire image area
+        gfx.DrawLine(&trackPen,
+                     m_lastDestX, mouseY,
+                     m_lastDestX + m_lastDestWidth, mouseY);
+        gfx.DrawLine(&trackPen,
+                     mouseX, m_lastDestY,
+                     mouseX, m_lastDestY + m_lastDestHeight);
 
-            // Small cross at mouse position
-            int crossSize = 15;
-            gfx.DrawLine(&trackPen,
-                         mouseX - crossSize, mouseY,
-                         mouseX + crossSize, mouseY);
-            gfx.DrawLine(&trackPen,
-                         mouseX, mouseY - crossSize,
-                         mouseX, mouseY + crossSize);
+        // Small cross at mouse position
+        int crossSize = 15;
+        gfx.DrawLine(&trackPen,
+                     mouseX - crossSize, mouseY,
+                     mouseX + crossSize, mouseY);
+        gfx.DrawLine(&trackPen,
+                     mouseX, mouseY - crossSize,
+                     mouseX, mouseY + crossSize);
+    }
+
+    // Draw real-world distance text near mouse cursor
+    if (m_showDistanceEnabled && mouseInImage && m_frameWidth > 0 && m_frameHeight > 0) {
+        int mouseX = static_cast<int>(m_mousePosition.x);
+        int mouseY = static_cast<int>(m_mousePosition.y);
+
+        // Calculate pixel offset from image center to mouse position
+        int pixelOffsetX = mouseX - centerX;
+        int pixelOffsetY = mouseY - centerY;
+
+        // Scale to original image pixels
+        double scaleFactorX = static_cast<double>(m_frameWidth) / m_lastDestWidth;
+        double scaleFactorY = static_cast<double>(m_frameHeight) / m_lastDestHeight;
+        double scaledOffsetX = pixelOffsetX * scaleFactorX;
+        double scaledOffsetY = pixelOffsetY * scaleFactorY;
+
+        // Apply effective pixel-to-mm factor (with calibration ref scaling)
+        double effectivePixelToMmX = m_pixelToMmFactorX;
+        double effectivePixelToMmY = m_pixelToMmFactorY;
+        if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
+            effectivePixelToMmX = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_frameWidth;
+            effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
         }
+
+        // Divide by magnification to get physical distance at the sample
+        double distX_mm = (scaledOffsetX * effectivePixelToMmX) / m_magnification;
+        double distY_mm = (scaledOffsetY * effectivePixelToMmY) / m_magnification;
+
+        // Format text
+        wchar_t dxBuf[64];
+        wchar_t dyBuf[64];
+        swprintf_s(dxBuf, L"dX: %+.3f mm", distX_mm);
+        swprintf_s(dyBuf, L"dY: %+.3f mm", distY_mm);
+
+        // Position text offset from mouse cursor (bottom-right, or adjust if near edge)
+        int textOffsetX = 18;
+        int textOffsetY = 18;
+        float textX = static_cast<float>(mouseX + textOffsetX);
+        float textY = static_cast<float>(mouseY + textOffsetY);
+
+        // Flip to left side if too close to right edge
+        if (mouseX + textOffsetX + 140 > m_lastDestX + m_lastDestWidth) {
+            textX = static_cast<float>(mouseX - textOffsetX - 130);
+        }
+        // Flip above if too close to bottom
+        if (mouseY + textOffsetY + 36 > m_lastDestY + m_lastDestHeight) {
+            textY = static_cast<float>(mouseY - textOffsetY - 36);
+        }
+
+        Gdiplus::Font font(L"Consolas", 10.0f, Gdiplus::FontStyleBold);
+
+        // Draw dark background rectangle for readability
+        Gdiplus::RectF bgRect(textX - 3.0f, textY - 2.0f, 136.0f, 36.0f);
+        Gdiplus::SolidBrush bgBrush(Gdiplus::Color(180, 0, 0, 0));
+        gfx.FillRectangle(&bgBrush, bgRect);
+
+        // Draw outline border
+        Gdiplus::Pen borderPen(Gdiplus::Color(200, 255, 255, 255), 1.0f);
+        gfx.DrawRectangle(&borderPen, bgRect);
+
+        // Draw text in white
+        Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
+        Gdiplus::PointF dxPos(textX, textY);
+        Gdiplus::PointF dyPos(textX, textY + 16.0f);
+        gfx.DrawString(dxBuf, -1, &font, dxPos, &textBrush);
+        gfx.DrawString(dyBuf, -1, &font, dyPos, &textBrush);
     }
 }
 
@@ -2366,9 +2493,16 @@ void GdiCameraWindow::HandleClickToMove(int mouseX, int mouseY) {
     double scaledOffsetX = pixelOffsetX * scaleFactorX;
     double scaledOffsetY = pixelOffsetY * scaleFactorY;
 
-    // Convert to mm
-    double offsetX_mm = scaledOffsetX * m_pixelToMmFactorX;
-    double offsetY_mm = scaledOffsetY * m_pixelToMmFactorY;
+    // Convert to mm (auto-scale if actual resolution differs from calibration reference)
+    double effectivePixelToMmX = m_pixelToMmFactorX;
+    double effectivePixelToMmY = m_pixelToMmFactorY;
+    if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0 &&
+        m_frameWidth > 0 && m_frameHeight > 0) {
+        effectivePixelToMmX = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_frameWidth;
+        effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
+    }
+    double offsetX_mm = scaledOffsetX * effectivePixelToMmX;
+    double offsetY_mm = scaledOffsetY * effectivePixelToMmY;
 
     std::cout << "[GdiCameraWindow] Click detected: Pixel offset (" << pixelOffsetX << ", " << pixelOffsetY << ")"
               << " scaled (" << scaledOffsetX << ", " << scaledOffsetY << ")"

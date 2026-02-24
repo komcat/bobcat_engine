@@ -274,8 +274,14 @@ void CameraClickToMoveWidget::loadSettingsFromQSettings()
           auto& cal = j["calibration"];
           m_pixelToMmFactorX = cal.value("pixel_to_mm_x", 0.00248);
           m_pixelToMmFactorY = cal.value("pixel_to_mm_y", 0.00248);
+          m_calibrationRefWidth = cal.value("reference_width", 0);
+          m_calibrationRefHeight = cal.value("reference_height", 0);
           std::cout << "[CameraClickToMoveWidget] Loaded from JSON: PixelToMm X=" << m_pixelToMmFactorX
-                    << ", Y=" << m_pixelToMmFactorY << std::endl;
+                    << ", Y=" << m_pixelToMmFactorY;
+          if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
+            std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;
+          }
+          std::cout << std::endl;
 
           // Sync to QSettings for legacy compatibility
           QSettings settings("BobcatEngine", "Application");
@@ -887,9 +893,16 @@ void CameraClickToMoveWidget::handleImageClick(const QPoint& pixmapClickPos)
   pixelOffsetX *= scaleFactorX;
   pixelOffsetY *= scaleFactorY;
 
-  // Convert to mm
-  double offsetX_mm = pixelOffsetX * m_pixelToMmFactorX;
-  double offsetY_mm = pixelOffsetY * m_pixelToMmFactorY;
+  // Convert to mm (auto-scale if actual resolution differs from calibration reference)
+  double effectivePixelToMmX = m_pixelToMmFactorX;
+  double effectivePixelToMmY = m_pixelToMmFactorY;
+  if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0 &&
+      m_currentImage.width() > 0 && m_currentImage.height() > 0) {
+    effectivePixelToMmX = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_currentImage.width();
+    effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_currentImage.height();
+  }
+  double offsetX_mm = pixelOffsetX * effectivePixelToMmX;
+  double offsetY_mm = pixelOffsetY * effectivePixelToMmY;
 
   std::cout << "[CameraClickToMoveWidget] Click detected: Pixel offset (" << pixelOffsetX << ", " << pixelOffsetY << ")"
             << " = (" << offsetX_mm << " mm, " << offsetY_mm << " mm)" << std::endl;

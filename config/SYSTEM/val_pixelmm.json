@@ -1,8 +1,10 @@
 {
   "calibration": {
     "pixel_to_mm_x": 0.00248,
-    "pixel_to_mm_y": 0.00248
+    "pixel_to_mm_y": 0.00248,
+    "reference_width": 1224,
+    "reference_height": 1024
   },
   "description": "Pixel to millimeter calibration values for vision system",
-  "notes": "These values are hardware-specific and should be calibrated for each camera setup"
+  "notes": "These values are hardware-specific and should be calibrated for each camera setup. reference_width/height is the image resolution at which pixel_to_mm was calibrated. If actual image is different, the factor auto-scales."
 }

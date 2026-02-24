@@ -47,6 +47,8 @@ class BeamServerClient;
 #define IDM_TOOLS_MENU_BASE         8000
 #define IDM_TOOLS_CROSSHAIR         8001
 #define IDM_TOOLS_CLICK_TO_MOVE     8002
+#define IDM_TOOLS_SHOW_DISTANCE     8003
+#define IDM_TOOLS_MAGNIFICATION     8004
 
 // Overlay Size Menu IDs
 #define IDM_OVERLAY_SIZE_INCREASE   8010
@@ -432,10 +434,14 @@ private:
     UnifiedMotionManager* m_motionManager = nullptr;
     bool m_clickToMoveEnabled = false;
     bool m_crosshairEnabled = false;
+    bool m_showDistanceEnabled = false;
+    double m_magnification = 1.0;  // Optics magnification for distance display
     POINT m_mousePosition = {0, 0};
     bool m_mouseOverImage = false;
     double m_pixelToMmFactorX = 0.00248;
     double m_pixelToMmFactorY = 0.00248;
+    int m_calibrationRefWidth = 0;   // Reference resolution at which pixel_to_mm was calibrated (0 = no scaling)
+    int m_calibrationRefHeight = 0;
 
     // Frame destination info for overlay drawing (crosshair, vision)
     // Primary camera (left in dual mode, full in single mode)

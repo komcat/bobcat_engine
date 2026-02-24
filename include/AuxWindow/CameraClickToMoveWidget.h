@@ -134,6 +134,8 @@ private:
   // Calibration factors (stored in QSettings)
   double m_pixelToMmFactorX;
   double m_pixelToMmFactorY;
+  int m_calibrationRefWidth = 0;   // Reference resolution at which pixel_to_mm was calibrated (0 = no scaling)
+  int m_calibrationRefHeight = 0;
 
   // ✅ ADD: Track initial camera selection
   bool m_initialCameraSelected;
