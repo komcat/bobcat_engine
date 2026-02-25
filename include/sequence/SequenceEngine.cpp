@@ -20,6 +20,7 @@
 #include "RelativePositionCommandHandler.h"
 #include "CoordinateAlignCommandHandler.h"
 #include "AccuracyTrainerCommandHandler.h"
+#include "CameraOffsetCommandHandler.h"
 #include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
@@ -118,6 +119,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   atHandler->SetContext(m_context);
   m_accuracyTrainerHandler = atHandler.get();
   m_dispatcher.RegisterHandler("accuracytrainer", std::move(atHandler));
+
+  // Register camera offset handler for low-mag/high-mag switching
+  auto camOffsetHandler = std::make_unique<CameraOffsetCommandHandler>();
+  camOffsetHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("cameraoffset", std::move(camOffsetHandler));
 
   // Register custom server handler for beam detection
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
@@ -332,6 +338,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToManagerMap["accuracytrainer"] = nullptr;
   m_deviceToTypeMap["accuracytrainer"] = "accuracytrainer";
   LogInfo("Registered accuracy trainer command handler");
+
+  // Camera offset commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["cameraoffset"] = nullptr;
+  m_deviceToTypeMap["cameraoffset"] = "cameraoffset";
+  LogInfo("Registered camera offset command handler");
 
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {

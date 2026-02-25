@@ -156,6 +156,10 @@ public:
   void addTrainingSetSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // Helper to add camera offset calibration set selector (QLineEdit + Browse button)
+  void addCameraOffsetSetSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

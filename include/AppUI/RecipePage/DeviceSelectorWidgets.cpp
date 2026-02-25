@@ -11,6 +11,7 @@
 #include "SMUManager.h"
 #include "lighting/LightingManager.h"
 #include "AccuracyTrainerStore.h"
+#include "../CameraOffsetTrainer/CameraOffsetStore.h"
 #include <filesystem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -621,6 +622,210 @@ std::string TrainingSetSelectorDialog::SelectTrainingSet(ApplicationContext* con
   QWidget* parent)
 {
   TrainingSetSelectorDialog dialog(context, currentSet, parent);
+
+  if (dialog.exec() == QDialog::Accepted) {
+    return dialog.getSelectedSet();
+  }
+
+  return currentSet; // Return original if cancelled
+}
+
+// ============================================================================
+// CAMERA OFFSET SET SELECTOR DIALOG
+// ============================================================================
+
+CameraOffsetSetSelectorDialog::CameraOffsetSetSelectorDialog(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+  : QDialog(parent)
+  , m_context(context)
+  , m_selectedSet(currentSet)
+{
+  setupUI();
+  loadSets();
+
+  // Select current set if exists
+  for (int i = 0; i < m_setList->count(); ++i) {
+    if (m_setList->item(i)->text().toStdString() == currentSet) {
+      m_setList->setCurrentRow(i);
+      break;
+    }
+  }
+}
+
+void CameraOffsetSetSelectorDialog::setupUI()
+{
+  setWindowTitle("Select Camera Offset Calibration Set");
+  setMinimumSize(400, 500);
+
+  setStyleSheet("QDialog { background-color: #2b2b2b; }");
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+  // Info label
+  QLabel* infoLabel = new QLabel("Select a Camera Offset calibration set:");
+  infoLabel->setStyleSheet(
+    "color: white; "
+    "font-weight: bold; "
+    "padding: 5px; "
+    "background-color: #1e1e1e; "
+    "border-radius: 4px;"
+  );
+  mainLayout->addWidget(infoLabel);
+
+  // Search box
+  m_searchEdit = new QLineEdit();
+  m_searchEdit->setPlaceholderText("Search calibration sets...");
+  m_searchEdit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  padding: 8px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #1177bb; "
+    "}"
+  );
+  connect(m_searchEdit, &QLineEdit::textChanged,
+    this, &CameraOffsetSetSelectorDialog::onSearchTextChanged);
+  mainLayout->addWidget(m_searchEdit);
+
+  // Set list
+  m_setList = new QListWidget();
+  m_setList->setStyleSheet(
+    "QListWidget { "
+    "  background-color: #1e1e1e; "
+    "  color: white; "
+    "  border: 1px solid #3c3c3c; "
+    "  border-radius: 4px; "
+    "  padding: 5px; "
+    "} "
+    "QListWidget::item { "
+    "  padding: 8px; "
+    "  border-bottom: 1px solid #3c3c3c; "
+    "} "
+    "QListWidget::item:hover { "
+    "  background-color: #2d2d30; "
+    "} "
+    "QListWidget::item:selected { "
+    "  background-color: #1177bb; "
+    "  color: white; "
+    "}"
+  );
+  connect(m_setList, &QListWidget::itemDoubleClicked,
+    this, &CameraOffsetSetSelectorDialog::onItemDoubleClicked);
+  mainLayout->addWidget(m_setList);
+
+  // Buttons
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->addStretch();
+
+  m_cancelButton = new QPushButton("Cancel");
+  m_cancelButton->setMinimumWidth(100);
+  m_cancelButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: white; "
+    "  padding: 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4c4c4c; "
+    "}"
+  );
+  connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+  buttonLayout->addWidget(m_cancelButton);
+
+  m_okButton = new QPushButton("Select");
+  m_okButton->setMinimumWidth(100);
+  m_okButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #27ae60; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 8px; "
+    "  border-radius: 4px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #2ecc71; "
+    "}"
+  );
+  connect(m_okButton, &QPushButton::clicked, [this]() {
+    if (m_setList->currentItem()) {
+      m_selectedSet = m_setList->currentItem()->text().toStdString();
+      accept();
+    }
+  });
+  buttonLayout->addWidget(m_okButton);
+
+  mainLayout->addLayout(buttonLayout);
+}
+
+void CameraOffsetSetSelectorDialog::loadSets()
+{
+  m_setList->clear();
+  m_allSets.clear();
+
+  if (!m_context) {
+    m_setList->addItem("Application context not available");
+    return;
+  }
+
+  CameraOffsetStore store;
+  if (m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::filesystem::path productDir = std::filesystem::path(
+      m_context->productPositionManager->GetCurrentProductPath()).parent_path();
+    store.SetBasePath((productDir / "PR_Camera_Offset").string());
+  }
+
+  m_allSets = store.ListCalibrationSets();
+
+  std::cout << "[CameraOffsetSetSelectorDialog] Loaded " << m_allSets.size()
+    << " calibration sets from " << store.GetBasePath() << std::endl;
+
+  if (m_allSets.empty()) {
+    m_setList->addItem("No calibration sets found");
+    return;
+  }
+
+  for (const auto& name : m_allSets) {
+    QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(name));
+    m_setList->addItem(item);
+  }
+}
+
+void CameraOffsetSetSelectorDialog::onSearchTextChanged(const QString& text)
+{
+  std::string search = text.toLower().toStdString();
+
+  for (int i = 0; i < m_setList->count(); ++i) {
+    QListWidgetItem* item = m_setList->item(i);
+    std::string setName = item->text().toLower().toStdString();
+
+    bool matches = search.empty() || setName.find(search) != std::string::npos;
+    item->setHidden(!matches);
+  }
+}
+
+void CameraOffsetSetSelectorDialog::onItemDoubleClicked(QListWidgetItem* item)
+{
+  m_selectedSet = item->text().toStdString();
+  accept();
+}
+
+std::string CameraOffsetSetSelectorDialog::getSelectedSet() const
+{
+  return m_selectedSet;
+}
+
+std::string CameraOffsetSetSelectorDialog::SelectCalibrationSet(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+{
+  CameraOffsetSetSelectorDialog dialog(context, currentSet, parent);
 
   if (dialog.exec() == QDialog::Accepted) {
     return dialog.getSelectedSet();

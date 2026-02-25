@@ -459,6 +459,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/RunProgramPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/SettingsPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/AccuracyTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/CameraOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -635,6 +636,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/CameraOffsetProcesses.cpp
     include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
     include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
@@ -674,6 +676,7 @@ set(SOURCES
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
+    include/sequence/CameraOffsetCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
@@ -747,6 +750,11 @@ set(SOURCES
     include/AppUI/AccuracyTrainer/RunAlignmentWidget.cpp
     include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.cpp
     include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.cpp
+    # Camera Offset Trainer
+    include/AppUI/CameraOffsetTrainer/CameraOffsetStore.cpp
+    include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.cpp
+    include/AppUI/CameraOffsetTrainer/CalibrateOffsetWidget.cpp
+    include/AppUI/CameraOffsetTrainer/TestOffsetWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -885,6 +893,7 @@ set(HEADERS
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
+    include/sequence/CameraOffsetCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
     include/customserver/BeamServerClient.h
     include/AppUI/Common/FileSelectorDialog.h
@@ -965,6 +974,12 @@ set(HEADERS
     include/AppUI/AccuracyTrainer/RunAlignmentWidget.h
     include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.h
     include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.h
+    # Camera Offset Trainer
+    include/AppUI/CameraOffsetTrainer/CameraOffsetData.h
+    include/AppUI/CameraOffsetTrainer/CameraOffsetStore.h
+    include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.h
+    include/AppUI/CameraOffsetTrainer/CalibrateOffsetWidget.h
+    include/AppUI/CameraOffsetTrainer/TestOffsetWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h

@@ -1,6 +1,7 @@
 // TrainerContainerPage.cpp
 #include "TrainerContainerPage.h"
 #include "AccuracyTrainer/AccuracyTrainerPage.h"
+#include "CameraOffsetTrainer/CameraOffsetTrainerPage.h"
 #include "ApplicationContext.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -13,7 +14,7 @@ TrainerContainerPage::TrainerContainerPage(ApplicationContext* context, QWidget*
     , m_context(context)
     , m_contentStack(nullptr)
     , m_accuracyTrainerPage(nullptr)
-    , m_cameraOffsetPlaceholder(nullptr)
+    , m_cameraOffsetPage(nullptr)
     , m_activeIndex(0)
 {
     setupUI();
@@ -125,15 +126,10 @@ void TrainerContainerPage::setupUI()
     m_accuracyTrainerPage->setTopBarVisible(false);
     m_contentStack->addWidget(m_accuracyTrainerPage);
 
-    // Index 1: Camera Offset placeholder
-    m_cameraOffsetPlaceholder = new QWidget();
-    QVBoxLayout* placeholderLayout = new QVBoxLayout(m_cameraOffsetPlaceholder);
-    placeholderLayout->setAlignment(Qt::AlignCenter);
-    QLabel* placeholderLabel = new QLabel("Camera Offset Trainer\n\n(Coming soon)");
-    placeholderLabel->setAlignment(Qt::AlignCenter);
-    placeholderLabel->setStyleSheet("color: #888; font-size: 16px;");
-    placeholderLayout->addWidget(placeholderLabel);
-    m_contentStack->addWidget(m_cameraOffsetPlaceholder);
+    // Index 1: CameraOffsetTrainerPage (with its own top bar hidden)
+    m_cameraOffsetPage = new CameraOffsetTrainerPage(m_context, this);
+    m_cameraOffsetPage->setTopBarVisible(false);
+    m_contentStack->addWidget(m_cameraOffsetPage);
 
     bodyLayout->addWidget(m_contentStack, 1);
     mainLayout->addLayout(bodyLayout, 1);
