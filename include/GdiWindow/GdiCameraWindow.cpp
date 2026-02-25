@@ -1432,6 +1432,9 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
 
 void GdiCameraWindow::Destroy() {
     StopBeamStreaming();
+#ifdef HAS_OPENCV
+    StopVisionProcessing();
+#endif
 
     if (m_memDC) {
         if (m_oldBitmap) {
@@ -2336,8 +2339,22 @@ void GdiCameraWindow::SetCrosshairEnabled(bool enabled) {
     std::cout << "[GdiCameraWindow] Crosshair " << (enabled ? "enabled" : "disabled") << std::endl;
 }
 
+void GdiCameraWindow::SetShowDistanceEnabled(bool enabled) {
+    m_showDistanceEnabled = enabled;
+    UpdateToolsMenu();
+    std::cout << "[GdiCameraWindow] Show distance " << (enabled ? "enabled" : "disabled") << std::endl;
+}
+
+void GdiCameraWindow::SetMagnification(double mag) {
+    if (mag > 0.0) {
+        m_magnification = mag;
+        UpdateToolsMenu();
+        std::cout << "[GdiCameraWindow] Magnification set to " << m_magnification << "x" << std::endl;
+    }
+}
+
 void GdiCameraWindow::DrawCrosshairs(HDC hDC, const RECT& /*windowRect*/) {
-    if (!m_crosshairEnabled && !m_clickToMoveEnabled) return;
+    if (!m_crosshairEnabled && !m_clickToMoveEnabled && !m_showDistanceEnabled) return;
     if (m_lastDestWidth <= 0 || m_lastDestHeight <= 0) return;
 
     Gdiplus::Graphics gfx(hDC);
@@ -2501,8 +2518,8 @@ void GdiCameraWindow::HandleClickToMove(int mouseX, int mouseY) {
         effectivePixelToMmX = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_frameWidth;
         effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
     }
-    double offsetX_mm = scaledOffsetX * effectivePixelToMmX;
-    double offsetY_mm = scaledOffsetY * effectivePixelToMmY;
+    double offsetX_mm = (scaledOffsetX * effectivePixelToMmX) / m_magnification;
+    double offsetY_mm = (scaledOffsetY * effectivePixelToMmY) / m_magnification;
 
     std::cout << "[GdiCameraWindow] Click detected: Pixel offset (" << pixelOffsetX << ", " << pixelOffsetY << ")"
               << " scaled (" << scaledOffsetX << ", " << scaledOffsetY << ")"

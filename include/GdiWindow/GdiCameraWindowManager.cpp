@@ -134,6 +134,11 @@ void GdiCameraWindowManager::shutdown() {
     // Save window geometry before destroying
     saveWindowGeometry();
 
+    // Hide the window immediately so it disappears before slow cleanup
+    if (m_window) {
+        m_window->Hide();
+    }
+
     // Stop message timer
     if (m_messageTimer) {
         m_messageTimer->stop();
@@ -141,12 +146,12 @@ void GdiCameraWindowManager::shutdown() {
         m_messageTimer = nullptr;
     }
 
-    // Unsubscribe from camera
+    // Unsubscribe from camera (stops frame delivery before destroying window)
     if (m_cameraManager && m_window) {
         m_cameraManager->UnsubscribeFromFrames(m_window->GetSubscriberId());
     }
 
-    // Destroy window
+    // Destroy window (stops threads, releases GDI resources, destroys HWND)
     if (m_window) {
         m_window->Destroy();
         m_window.reset();
@@ -411,8 +416,20 @@ void GdiCameraWindowManager::applyApplicationSettings() {
     bool clickToMoveEnabled = settings.value(clickToMoveKey, "false").toString() == "true";
     m_window->SetClickToMoveEnabled(clickToMoveEnabled);
 
+    QString showDistanceKey = QString::fromStdString(m_toolsPrefix + "/ShowDistanceEnabled");
+    bool showDistanceEnabled = settings.value(showDistanceKey, "false").toString() == "true";
+    m_window->SetShowDistanceEnabled(showDistanceEnabled);
+
+    QString magnificationKey = QString::fromStdString(m_toolsPrefix + "/Magnification");
+    double magnification = settings.value(magnificationKey, 1.0).toDouble();
+    if (magnification > 0.0) {
+        m_window->SetMagnification(magnification);
+    }
+
     std::cout << "[GdiCameraWindowManager] Crosshair: " << (crosshairEnabled ? "on" : "off")
-              << ", Click-to-move: " << (clickToMoveEnabled ? "on" : "off") << std::endl;
+              << ", Click-to-move: " << (clickToMoveEnabled ? "on" : "off")
+              << ", Show-distance: " << (showDistanceEnabled ? "on" : "off")
+              << ", Magnification: " << magnification << "x" << std::endl;
 }
 
 void GdiCameraWindowManager::saveWindowGeometry() {
@@ -468,6 +485,10 @@ void GdiCameraWindowManager::saveWindowGeometry() {
                           m_window->IsCrosshairEnabled() ? "true" : "false");
         settings.setValue(QString::fromStdString(m_toolsPrefix + "/ClickToMoveEnabled"),
                           m_window->IsClickToMoveEnabled() ? "true" : "false");
+        settings.setValue(QString::fromStdString(m_toolsPrefix + "/ShowDistanceEnabled"),
+                          m_window->IsShowDistanceEnabled() ? "true" : "false");
+        settings.setValue(QString::fromStdString(m_toolsPrefix + "/Magnification"),
+                          m_window->GetMagnification());
 
         settings.sync();
 

@@ -107,7 +107,13 @@ int Application::run()
   int result = m_qApplication->exec();
   m_logManager->Debug("exec() returned: " + std::to_string(result), "Application");
 
-  m_logManager->Info("Exited with code: " + std::to_string(result), "Application");
+  if (m_logManager) m_logManager->Info("Exited with code: " + std::to_string(result), "Application");
+
+  // Shutdown immediately after event loop exits, before run() returns.
+  // This ensures GDI camera windows and other resources are cleaned up
+  // right away instead of waiting for the Application destructor.
+  shutdown();
+
   return result;
 }
 

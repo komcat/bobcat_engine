@@ -39,6 +39,7 @@ AccuracyTrainerPage::AccuracyTrainerPage(ApplicationContext* context, QWidget* p
     , m_teachMultiDeviceWidget(nullptr)
     , m_welcomeWidget(nullptr)
     , m_deviceCombo(nullptr)
+    , m_topBarWidget(nullptr)
 {
     updateStoreBasePath();
     setupUI();
@@ -52,7 +53,12 @@ void AccuracyTrainerPage::setupUI()
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // Top bar with back button
+    // Top bar with back button (wrapped in a widget so it can be hidden)
+    m_topBarWidget = new QWidget();
+    QVBoxLayout* topBarContainer = new QVBoxLayout(m_topBarWidget);
+    topBarContainer->setContentsMargins(0, 0, 0, 0);
+    topBarContainer->setSpacing(0);
+
     QHBoxLayout* topBar = new QHBoxLayout();
     topBar->setContentsMargins(10, 5, 10, 5);
 
@@ -71,14 +77,16 @@ void AccuracyTrainerPage::setupUI()
     topBar->addWidget(titleLabel);
     topBar->addStretch();
 
-    mainLayout->addLayout(topBar);
+    topBarContainer->addLayout(topBar);
 
     // Separator
     QFrame* sep = new QFrame();
     sep->setFrameShape(QFrame::HLine);
     sep->setStyleSheet("background-color: #3d5a8c;");
     sep->setFixedHeight(2);
-    mainLayout->addWidget(sep);
+    topBarContainer->addWidget(sep);
+
+    mainLayout->addWidget(m_topBarWidget);
 
     // Splitter: left 30% | right 70%
     QSplitter* splitter = new QSplitter(Qt::Horizontal);
@@ -501,5 +509,12 @@ void AccuracyTrainerPage::setTrainingSetLoaded(bool loaded)
     if (!loaded) {
         m_statusLabel->setText("No training set loaded");
         m_navList->clearSelection();
+    }
+}
+
+void AccuracyTrainerPage::setTopBarVisible(bool visible)
+{
+    if (m_topBarWidget) {
+        m_topBarWidget->setVisible(visible);
     }
 }

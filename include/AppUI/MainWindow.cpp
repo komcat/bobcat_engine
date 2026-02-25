@@ -20,7 +20,7 @@
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
-#include "AccuracyTrainer/AccuracyTrainerPage.h"   // Accuracy Trainer
+#include "TrainerContainerPage.h"                  // Trainer container
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
@@ -45,7 +45,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_runProgramPage(nullptr)
   , m_visionManagerPage(nullptr) // Vision Manager page
   , m_applicationSettingsPage(nullptr) // Application Settings page
-  , m_accuracyTrainerPage(nullptr)     // Accuracy Trainer page
+  , m_trainerContainerPage(nullptr)    // Trainer container page
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -284,11 +284,11 @@ void MainWindow::createPages()
   }
   m_pageStack->addWidget(m_applicationSettingsPage);
 
-  // Accuracy Trainer page
-  m_accuracyTrainerPage = new AccuracyTrainerPage(m_context, this);
-  connect(m_accuracyTrainerPage, &AccuracyTrainerPage::backToMainMenu,
+  // Trainer container page (wraps AccuracyTrainerPage + future trainer tools)
+  m_trainerContainerPage = new TrainerContainerPage(m_context, this);
+  connect(m_trainerContainerPage, &TrainerContainerPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_accuracyTrainerPage);
+  m_pageStack->addWidget(m_trainerContainerPage);
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }
@@ -542,7 +542,7 @@ void MainWindow::onMainMenuAccuracyTrainer()
 
   std::cout << "[MainWindow] Accuracy Trainer clicked" << std::endl;
   m_context->logManager->Info("Navigating to Accuracy Trainer page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_accuracyTrainerPage);
+  m_pageStack->setCurrentWidget(m_trainerContainerPage);
 }
 
 void MainWindow::onBackToMainMenu()

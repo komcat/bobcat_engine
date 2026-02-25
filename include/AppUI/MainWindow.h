@@ -23,7 +23,7 @@ class RunProgramPage;
 class TopBar;
 class VisionManagerPage;       // Vision Manager UI
 class ApplicationSettingsPage; // Application Settings editor
-class AccuracyTrainerPage;    // Accuracy Trainer
+class TrainerContainerPage;   // Trainer container with side panel
 
 class MainWindow : public QMainWindow
 {
@@ -83,7 +83,7 @@ private:
   RunProgramPage* m_runProgramPage;
   VisionManagerPage* m_visionManagerPage;  // Vision Manager page
   ApplicationSettingsPage* m_applicationSettingsPage;  // Application Settings page
-  AccuracyTrainerPage* m_accuracyTrainerPage;  // Accuracy Trainer page
+  TrainerContainerPage* m_trainerContainerPage;  // Trainer container page
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;

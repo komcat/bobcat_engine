@@ -500,6 +500,59 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // SET ALL AXIS VELOCITY (ACS - only installed axes)
+  // ============================================================================
+  else if (methodName == "SetAllAxisVelocity") {
+    auto velIt = params.find("velocity");
+
+    if (velIt == params.end()) {
+      errorMessage = "Missing required parameter: velocity";
+      return false;
+    }
+
+    double velocity = std::stod(velIt->second);
+    std::string installedAxes = motionManager->GetInstalledAxes(deviceName);
+
+    if (installedAxes.empty()) {
+      errorMessage = "No installed axes found for device: " + deviceName;
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info(
+        "Setting velocity for " + deviceName + " installed axes [" + installedAxes +
+        "] to " + std::to_string(velocity) + " mm/s",
+        "MotionHandler"
+      );
+    }
+
+    // Set velocity only on axes that are actually installed
+    static const std::string allAxes = "XYZUVW";
+    bool anyFailed = false;
+    for (char axisChar : allAxes) {
+      if (installedAxes.find(axisChar) != std::string::npos) {
+        std::string axis(1, axisChar);
+        if (!motionManager->SetVelocity(deviceName, axis, velocity)) {
+          if (m_logger) {
+            m_logger->Warning(
+              "Failed to set velocity for axis " + axis + " on " + deviceName,
+              "MotionHandler"
+            );
+          }
+          anyFailed = true;
+        }
+      }
+    }
+
+    if (anyFailed) {
+      errorMessage = "SetAllAxisVelocity: one or more axes failed";
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // SET SYSTEM VELOCITY (PI hexapods)
   // ============================================================================
   else if (methodName == "SetSystemVelocity") {

@@ -266,6 +266,12 @@ public:
     bool IsClickToMoveEnabled() const { return m_clickToMoveEnabled; }
     bool IsCrosshairEnabled() const { return m_crosshairEnabled; }
 
+    // Distance display and magnification
+    void SetShowDistanceEnabled(bool enabled);
+    bool IsShowDistanceEnabled() const { return m_showDistanceEnabled; }
+    void SetMagnification(double mag);
+    double GetMagnification() const { return m_magnification; }
+
     // Subscriber identity (must be unique per instance for CameraManager)
     void SetSubscriberId(const std::string& id) { m_subscriberId = id; }
 

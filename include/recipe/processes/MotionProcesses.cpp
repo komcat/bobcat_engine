@@ -454,28 +454,29 @@ public:
     std::string distY = params.at("distance_y");
     std::string distZ = params.at("distance_z");
 
-    bool hasMoves = false;
+    // Build a JSON array of parallel moves for all non-zero axes
+    // ParallelMoveRelative starts all axes simultaneously (non-blocking),
+    // then waits for all to complete — true multi-axis relative move
+    nlohmann::json movesArray = nlohmann::json::array();
 
     if (!isZeroDistance(distX)) {
-      sequence->AddAction(device, "MoveRelative", {{"axis", "X"}, {"distance", distX}});
-      hasMoves = true;
+      movesArray.push_back({{"device", device}, {"axis", "X"}, {"distance", distX}});
     }
-
     if (!isZeroDistance(distY)) {
-      sequence->AddAction(device, "MoveRelative", {{"axis", "Y"}, {"distance", distY}});
-      hasMoves = true;
+      movesArray.push_back({{"device", device}, {"axis", "Y"}, {"distance", distY}});
     }
-
     if (!isZeroDistance(distZ)) {
-      sequence->AddAction(device, "MoveRelative", {{"axis", "Z"}, {"distance", distZ}});
-      hasMoves = true;
+      movesArray.push_back({{"device", device}, {"axis", "Z"}, {"distance", distZ}});
     }
 
-    if (hasMoves) {
-      sequence->AddAction(device, "WaitForMotionComplete", {});
+    if (!movesArray.empty()) {
+      sequence->AddAction(device, "ParallelMoveRelative", {
+        {"moves", movesArray.dump()}
+      });
     }
 
-    std::cout << "[MotionProcesses] Built Move Relative Multi-Axis sequence for: " << step->userNickname << std::endl;
+    std::cout << "[MotionProcesses] Built Move Relative Multi-Axis sequence for: " << step->userNickname
+              << " (" << movesArray.size() << " axes)" << std::endl;
   }
 };
 
@@ -750,20 +751,13 @@ public:
                 << device << " at " << speed << " mm/s" << std::endl;
     }
     else {
-      // ACS gantries: Use per-axis velocity
-      sequence->AddAction(device, "SetVelocity", {
-        {"axis", "X"},
+      // ACS gantries: Set velocity on all installed axes
+      // Uses SetAllAxisVelocity so the handler queries installed axes at runtime,
+      // avoiding errors when a device has only a subset of axes (e.g., Y only)
+      sequence->AddAction(device, "SetAllAxisVelocity", {
         {"velocity", speedStr}
       });
-      sequence->AddAction(device, "SetVelocity", {
-        {"axis", "Y"},
-        {"velocity", speedStr}
-      });
-      sequence->AddAction(device, "SetVelocity", {
-        {"axis", "Z"},
-        {"velocity", speedStr}
-      });
-      std::cout << "[MotionProcesses] Built Set Velocity (ACS per-axis) sequence for device: "
+      std::cout << "[MotionProcesses] Built Set Velocity (ACS all-axis) sequence for device: "
                 << device << " at " << speed << " mm/s" << std::endl;
     }
   }

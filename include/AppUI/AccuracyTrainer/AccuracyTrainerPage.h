@@ -28,6 +28,10 @@ class AccuracyTrainerPage : public QWidget
 public:
     explicit AccuracyTrainerPage(ApplicationContext* context, QWidget* parent = nullptr);
 
+    /** Hide/show the built-in top bar (back button + title).
+     *  Call setTopBarVisible(false) when embedding inside TrainerContainerPage. */
+    void setTopBarVisible(bool visible);
+
 signals:
     void backToMainMenu();
 
@@ -71,4 +75,7 @@ private:
 
     // Device selection
     QComboBox* m_deviceCombo;
+
+    // Top bar container (back button + title) — can be hidden when embedded
+    QWidget* m_topBarWidget;
 };

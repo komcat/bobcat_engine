@@ -737,6 +737,8 @@ set(SOURCES
     include/settings/ApplicationSettings.cpp
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
+    # Trainer container (side panel navigation)
+    include/AppUI/TrainerContainerPage.cpp
     # Accuracy Trainer
     include/AppUI/AccuracyTrainer/AccuracyTrainerStore.cpp
     include/AppUI/AccuracyTrainer/AccuracyTrainerPage.cpp
