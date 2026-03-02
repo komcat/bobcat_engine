@@ -1526,9 +1526,19 @@ void GdiCameraWindow::OnDataStoreValueChanged(const std::string& channelId, floa
     if (m_chartOverlay.IsChannelEnabled(channelId)) {
         m_chartOverlay.AddDataPoint(channelId, static_cast<double>(value));
 
-        // Request repaint if chart is visible
+        // Throttled repaint to prevent UI freezing from high-frequency updates
+        // Instead of calling InvalidateRect for every data point, we rate-limit repaints
         if (m_hwnd && m_chartOverlay.IsEnabled()) {
-            InvalidateRect(m_hwnd, nullptr, FALSE);
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - m_lastChartRepaint).count();
+
+            // Only request repaint if enough time has passed since last one
+            if (elapsed >= CHART_REPAINT_INTERVAL_MS) {
+                m_lastChartRepaint = now;
+                // Use PostMessage for thread-safe UI update (safer than InvalidateRect from callback)
+                PostMessage(m_hwnd, WM_CHART_REPAINT_REQUEST, 0, 0);  // Throttled chart repaint
+            }
         }
     }
 
@@ -1822,6 +1832,12 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
 
     case WM_USER + 100:  // Custom message to refresh menu
         UpdateShowMenu();
+        return 0;
+
+    case WM_CHART_REPAINT_REQUEST:  // Throttled chart repaint request
+        if (IsWindowVisible(m_hwnd)) {
+            InvalidateRect(m_hwnd, nullptr, FALSE);
+        }
         return 0;
 
     case WM_VISION_RESULT_READY:  // Vision result ready from background thread

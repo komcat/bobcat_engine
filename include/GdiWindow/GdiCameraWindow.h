@@ -20,6 +20,7 @@
 #include <thread>
 #include <queue>
 #include <condition_variable>
+#include <chrono>
 #include "camera/CameraFrameData.h"
 #include "nlohmann/json.hpp"
 
@@ -68,6 +69,7 @@ class BeamServerClient;
 // Custom Windows messages
 #define WM_VISION_RESULT_READY      (WM_USER + 101)
 #define WM_BEAM_STREAM_RESULT_READY (WM_USER + 102)
+#define WM_CHART_REPAINT_REQUEST    (WM_USER + 103)
 
 // Calibration config file (shared with CameraClickToMoveWidget)
 #define CALIBRATION_CONFIG_FILE     "config/SYSTEM/val_pixelmm.json"
@@ -430,6 +432,11 @@ private:
     // Chart overlay
     ChartOverlay m_chartOverlay;
     std::function<void(float)> m_onOverlayScaleChanged;  // Callback for scale changes
+
+    // Chart update throttling (prevents UI freezing from high-frequency data updates)
+    std::atomic<bool> m_chartNeedsRepaint{false};
+    std::chrono::steady_clock::time_point m_lastChartRepaint;
+    static constexpr int CHART_REPAINT_INTERVAL_MS = 50;  // Max ~20fps for chart updates
 
     // DataStore
     DataStore* m_dataStore = nullptr;

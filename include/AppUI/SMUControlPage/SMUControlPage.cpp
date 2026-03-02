@@ -250,7 +250,62 @@ void SMUControlPage::setupUI()
   mainLayout->setContentsMargins(10, 10, 10, 10);
   mainLayout->setSpacing(10);
 
-  // Create tab widget
+  // Create horizontal splitter for master-detail layout
+  QSplitter* splitter = new QSplitter(Qt::Horizontal);
+  splitter->setHandleWidth(1);
+  splitter->setStyleSheet("QSplitter::handle { background-color: #3f3f46; }");
+
+  // LEFT PANEL: Device list and connection controls
+  QWidget* leftPanel = new QWidget();
+  leftPanel->setMinimumWidth(200);
+  leftPanel->setMaximumWidth(280);
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
+  leftLayout->setContentsMargins(10, 10, 10, 10);
+  leftLayout->setSpacing(10);
+
+  // Device list title
+  QLabel* listLabel = new QLabel("SMU Devices");
+  listLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #ffffff; }");
+  leftLayout->addWidget(listLabel);
+
+  // Device list
+  m_deviceList = new QListWidget();
+  m_deviceList->setMinimumHeight(120);
+  leftLayout->addWidget(m_deviceList);
+  connect(m_deviceList, &QListWidget::currentRowChanged, this, &SMUControlPage::onDeviceSelected);
+
+  // Connection status
+  m_connectionStatus = new QLabel("● Not connected");
+  m_connectionStatus->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #e74c3c; padding: 8px; }");
+  m_connectionStatus->setAlignment(Qt::AlignCenter);
+  leftLayout->addWidget(m_connectionStatus);
+
+  // Device info
+  m_deviceInfoLabel = new QLabel("");
+  m_deviceInfoLabel->setStyleSheet("QLabel { font-size: 11px; color: #888888; padding: 8px; background-color: #1e1e1e; border-radius: 4px; }");
+  m_deviceInfoLabel->setWordWrap(true);
+  m_deviceInfoLabel->setAlignment(Qt::AlignLeft);
+  leftLayout->addWidget(m_deviceInfoLabel);
+
+  // Connect/Disconnect buttons
+  m_connectButton = new QPushButton("Connect");
+  m_connectButton->setMinimumHeight(40);
+  m_connectButton->setStyleSheet("QPushButton { background-color: #27ae60; font-size: 13px; font-weight: bold; }");
+  m_disconnectButton = new QPushButton("Disconnect");
+  m_disconnectButton->setMinimumHeight(40);
+  m_disconnectButton->setStyleSheet("QPushButton { background-color: #e74c3c; font-size: 13px; font-weight: bold; }");
+  m_disconnectButton->setEnabled(false);
+
+  connect(m_connectButton, &QPushButton::clicked, this, &SMUControlPage::onConnectClicked);
+  connect(m_disconnectButton, &QPushButton::clicked, this, &SMUControlPage::onDisconnectClicked);
+
+  leftLayout->addWidget(m_connectButton);
+  leftLayout->addWidget(m_disconnectButton);
+  leftLayout->addStretch();
+
+  splitter->addWidget(leftPanel);
+
+  // RIGHT PANEL: Tab widget for Simple and Polling
   m_tabWidget = new QTabWidget();
   m_tabWidget->setStyleSheet(R"(
     QTabWidget::pane {
@@ -261,11 +316,11 @@ void SMUControlPage::setupUI()
     QTabBar::tab {
       background-color: #3c3c3c;
       color: #d4d4d4;
-      padding: 12px 24px;
+      padding: 10px 20px;
       margin-right: 4px;
       border-top-left-radius: 6px;
       border-top-right-radius: 6px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: bold;
     }
     QTabBar::tab:selected {
@@ -277,12 +332,15 @@ void SMUControlPage::setupUI()
     }
   )");
 
-  // Create tabs
-  createConnectionTab();
+  // Create Simple and Polling tabs (no Connection tab needed)
   createSimpleTab();
   createPollingTab();
 
-  mainLayout->addWidget(m_tabWidget);
+  splitter->addWidget(m_tabWidget);
+  splitter->setStretchFactor(0, 0);  // Left panel doesn't stretch
+  splitter->setStretchFactor(1, 1);  // Right panel stretches
+
+  mainLayout->addWidget(splitter);
 
   // Status bar at bottom
   m_statusLabel = new QLabel("");
@@ -291,75 +349,7 @@ void SMUControlPage::setupUI()
   mainLayout->addWidget(m_statusLabel);
 }
 
-// ========== TAB 1: CONNECTION ==========
-void SMUControlPage::createConnectionTab()
-{
-  QWidget* tab = new QWidget();
-  QHBoxLayout* tabLayout = new QHBoxLayout(tab);
-  tabLayout->setContentsMargins(20, 20, 20, 20);
-
-  // Fixed-width content container
-  QWidget* contentWidget = new QWidget();
-  contentWidget->setMaximumWidth(450);
-  QVBoxLayout* layout = new QVBoxLayout(contentWidget);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(15);
-
-  // Title
-  QLabel* title = new QLabel("SMU Device Connection");
-  title->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
-  layout->addWidget(title);
-
-  // Device list
-  QLabel* listLabel = new QLabel("Available Devices:");
-  listLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; }");
-  layout->addWidget(listLabel);
-
-  m_deviceList = new QListWidget();
-  m_deviceList->setMinimumHeight(150);
-  layout->addWidget(m_deviceList);
-  connect(m_deviceList, &QListWidget::currentRowChanged, this, &SMUControlPage::onDeviceSelected);
-
-  // Connection status
-  m_connectionStatus = new QLabel("● Not connected");
-  m_connectionStatus->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; padding: 10px; }");
-  m_connectionStatus->setAlignment(Qt::AlignCenter);
-  layout->addWidget(m_connectionStatus);
-
-  // Device info
-  m_deviceInfoLabel = new QLabel("");
-  m_deviceInfoLabel->setStyleSheet("QLabel { font-size: 12px; color: #888888; padding: 10px; background-color: #1e1e1e; border-radius: 4px; }");
-  m_deviceInfoLabel->setWordWrap(true);
-  m_deviceInfoLabel->setAlignment(Qt::AlignLeft);
-  layout->addWidget(m_deviceInfoLabel);
-
-  // Connect/Disconnect buttons
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-  m_connectButton = new QPushButton("Connect");
-  m_connectButton->setMinimumHeight(45);
-  m_connectButton->setStyleSheet("QPushButton { background-color: #27ae60; font-size: 14px; font-weight: bold; }");
-  m_disconnectButton = new QPushButton("Disconnect");
-  m_disconnectButton->setMinimumHeight(45);
-  m_disconnectButton->setStyleSheet("QPushButton { background-color: #e74c3c; font-size: 14px; font-weight: bold; }");
-  m_disconnectButton->setEnabled(false);
-
-  connect(m_connectButton, &QPushButton::clicked, this, &SMUControlPage::onConnectClicked);
-  connect(m_disconnectButton, &QPushButton::clicked, this, &SMUControlPage::onDisconnectClicked);
-
-  buttonLayout->addWidget(m_connectButton);
-  buttonLayout->addWidget(m_disconnectButton);
-  layout->addLayout(buttonLayout);
-
-  layout->addStretch();
-
-  // Align content to left
-  tabLayout->addWidget(contentWidget, 0, Qt::AlignLeft | Qt::AlignTop);
-  tabLayout->addStretch();
-
-  m_tabWidget->addTab(tab, "Connection");
-}
-
-// ========== TAB 2: SIMPLE ==========
+// ========== TAB 1: SIMPLE (Controls) ==========
 void SMUControlPage::createSimpleTab()
 {
   QWidget* tab = new QWidget();
@@ -387,13 +377,14 @@ void SMUControlPage::createSimpleTab()
 
   mainLayout->addLayout(deviceInfoLayout);
 
-  // ===== CHANNEL TABS (controls inside each tab) =====
+  // ===== CHANNEL TABS (just for channel selection, no content inside) =====
   m_channelTabWidget = new QTabWidget();
   m_channelTabWidget->setStyleSheet(R"(
     QTabWidget::pane {
       border: 1px solid #3f3f46;
       background-color: #2d2d30;
-      padding: 10px;
+      padding: 5px;
+      min-height: 10px;
     }
     QTabBar::tab {
       background-color: #3c3c3c;
@@ -413,14 +404,15 @@ void SMUControlPage::createSimpleTab()
       background-color: #4a4a4a;
     }
   )");
+  m_channelTabWidget->setFixedHeight(50);  // Minimal height - just shows tabs
   connect(m_channelTabWidget, &QTabWidget::currentChanged, this, &SMUControlPage::onChannelTabChanged);
-  mainLayout->addWidget(m_channelTabWidget);  // No stretch - fixed width container
+  mainLayout->addWidget(m_channelTabWidget);
 
-  // Create a template widget with controls (will be shown in each channel tab)
-  // We'll create the controls here and they'll be shared across channel tabs
+  // ===== CONTROLS (always visible below channel tabs) =====
+  // Using a regular QWidget instead of QPointer since we won't be reparenting anymore
   m_channelControlsWidget = new QWidget();
   QVBoxLayout* controlsLayout = new QVBoxLayout(m_channelControlsWidget);
-  controlsLayout->setContentsMargins(5, 5, 5, 5);
+  controlsLayout->setContentsMargins(5, 10, 5, 5);
   controlsLayout->setSpacing(10);
 
   // ===== OUTPUT ROW =====
@@ -546,6 +538,9 @@ void SMUControlPage::createSimpleTab()
 
   controlsLayout->addStretch();
 
+  // Add controls widget directly to main layout (no reparenting)
+  mainLayout->addWidget(m_channelControlsWidget);
+
   // Initialize hidden compliance spinboxes (keep functionality but hide UI)
   m_voltageComplianceSpinBox = new QDoubleSpinBox(tab);
   m_voltageComplianceSpinBox->setRange(0.0, 100.0);
@@ -580,7 +575,7 @@ void SMUControlPage::createSimpleTab()
   m_tabWidget->addTab(tab, "Simple");
 }
 
-// ========== TAB 3: POLLING ==========
+// ========== TAB 2: POLLING ==========
 void SMUControlPage::createPollingTab()
 {
   // Create scroll area for tab content
@@ -831,7 +826,7 @@ void SMUControlPage::onChannelSelected(int index)
   }
 }
 
-// Channel tab changed (new simplified UI)
+// Channel tab changed - just update the selected channel (no widget reparenting)
 void SMUControlPage::onChannelTabChanged(int index)
 {
   if (index < 0) return;
@@ -844,17 +839,6 @@ void SMUControlPage::onChannelTabChanged(int index)
   if (channel <= 0) channel = index + 1;
 
   std::cout << "[SMUControlPage] Channel tab changed: " << channel << std::endl;
-
-  // Move the controls widget to the newly selected tab
-  if (m_channelControlsWidget) {
-    // Get layout of new tab
-    QVBoxLayout* tabLayout = qobject_cast<QVBoxLayout*>(tabWidget->layout());
-    if (tabLayout) {
-      // Reparent controls to new tab
-      m_channelControlsWidget->setParent(tabWidget);
-      tabLayout->addWidget(m_channelControlsWidget);
-    }
-  }
 
   // Update the hidden combo box to stay in sync
   if (m_channelComboBox && index < m_channelComboBox->count()) {
@@ -961,6 +945,11 @@ void SMUControlPage::onOutputOffClicked()
 
 void SMUControlPage::updateOutputState()
 {
+  // Safety check - if controls widget was deleted, don't access child labels
+  if (!m_channelControlsWidget) {
+    return;
+  }
+
   if (m_currentDevice.isEmpty()) {
     m_outputStateLabel->setText("---");
     m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #888888; }");
@@ -1249,8 +1238,11 @@ void SMUControlPage::onRefreshClicked()
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
-    m_voltageReadLabel->setText("Voltage = --- V");
-    m_currentReadLabel->setText("Current = --- A");
+    // Safety check before accessing child labels
+    if (m_channelControlsWidget) {
+      m_voltageReadLabel->setText("Voltage = --- V");
+      m_currentReadLabel->setText("Current = --- A");
+    }
     showError("Device not connected");
     return;
   }
@@ -1267,6 +1259,11 @@ void SMUControlPage::updateMeasurements()
 {
   // All SMU reads are now handled by the parameter worker (off-thread)
   // This function only requests a refresh - actual UI update happens in onMeasurementsUpdated()
+
+  // Safety check - if controls widget was deleted, don't access child labels
+  if (!m_channelControlsWidget) {
+    return;
+  }
 
   if (m_currentDevice.isEmpty()) {
     m_voltageReadLabel->setText("Voltage = --- V");
@@ -1318,28 +1315,17 @@ void SMUControlPage::updateChannelList()
   m_channelComboBox->clear();
   m_pollingChannelComboBox->clear();
 
-  // Safely remove controls widget from current tab before clearing (to prevent deletion)
-  // QPointer will be null if widget was already deleted
-  if (m_channelControlsWidget) {
-    // Remove from layout first (this is critical - setParent alone doesn't remove from layout)
-    if (QWidget* parent = m_channelControlsWidget->parentWidget()) {
-      if (QLayout* layout = parent->layout()) {
-        layout->removeWidget(m_channelControlsWidget);
-      }
-    }
-    // Then orphan the widget so it's not deleted with the tab
-    m_channelControlsWidget->setParent(nullptr);
-    m_channelControlsWidget->hide();  // Hide while orphaned
-  }
-
-  // Clear channel tabs
+  // Clear channel tabs (simplified - no widget reparenting needed)
   while (m_channelTabWidget->count() > 0) {
     QWidget* w = m_channelTabWidget->widget(0);
     m_channelTabWidget->removeTab(0);
     delete w;
   }
 
-  if (m_currentDevice.isEmpty()) return;
+  if (m_currentDevice.isEmpty()) {
+    m_channelCountLabel->setText("0");
+    return;
+  }
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
@@ -1352,26 +1338,15 @@ void SMUControlPage::updateChannelList()
 
   m_channelCountLabel->setText(QString::number(channelCount));
 
-  // Populate channel combo boxes and tabs
-  bool firstTab = true;
+  // Populate channel combo boxes and create minimal tabs (just for selection)
   for (int ch : enabledChannels) {
     // Hidden combo box (for compatibility)
     m_channelComboBox->addItem(QString("Channel %1").arg(ch));
     m_pollingChannelComboBox->addItem(QString("Channel %1").arg(ch));
 
-    // Channel tab with layout to hold controls
+    // Channel tab - empty widget (controls are below, not inside tabs)
     QWidget* tabContent = new QWidget();
     tabContent->setProperty("channelNumber", ch);
-    QVBoxLayout* tabLayout = new QVBoxLayout(tabContent);
-    tabLayout->setContentsMargins(0, 0, 0, 0);
-
-    // Add controls to first tab (QPointer ensures null check is safe)
-    if (firstTab && m_channelControlsWidget) {
-      tabLayout->addWidget(m_channelControlsWidget);
-      m_channelControlsWidget->show();  // Show again after being hidden while orphaned
-      firstTab = false;
-    }
-
     m_channelTabWidget->addTab(tabContent, QString("Ch%1").arg(ch));
   }
 }
@@ -1595,6 +1570,12 @@ void SMUControlPage::onMeasurementsUpdated(int /*channel*/, double voltage, doub
   // Update cached output state (for use by updateOutputState())
   m_cachedOutputOn = outputOn;
 
+  // Safety check - if controls widget was deleted, don't access child labels
+  // This can happen when a queued signal is delivered after device switch
+  if (!m_channelControlsWidget) {
+    return;
+  }
+
   // Update voltage display (new format: "Voltage = X.XXX V")
   if (voltage != -999.0) {
     m_voltageReadLabel->setText(QString("Voltage = %1 V").arg(QString::number(voltage, 'f', 3)));
@@ -1623,6 +1604,11 @@ void SMUControlPage::onOutputStateChangedByWorker(bool on)
 {
   // Update cached output state
   m_cachedOutputOn = on;
+
+  // Safety check - if controls widget was deleted, don't access child labels
+  if (!m_channelControlsWidget) {
+    return;
+  }
 
   // Update output state display (simplified)
   if (on) {

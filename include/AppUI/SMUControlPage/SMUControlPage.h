@@ -11,7 +11,6 @@
 #include <QVBoxLayout>
 #include <QTabWidget>
 #include <QDoubleSpinBox>
-#include <QPointer>
 #include <QShowEvent>
 #include <QHideEvent>
 #include <vector>
@@ -92,7 +91,6 @@ private slots:
 
 private:
   void setupUI();
-  void createConnectionTab();
   void createSimpleTab();
   void createPollingTab();
 
@@ -124,9 +122,9 @@ private:
   QLabel* m_simpleDeviceLabel;
   QLabel* m_simpleConnectionLabel;
 
-  // Channel tabs (replacing dropdown)
+  // Channel tabs (for channel selection)
   QTabWidget* m_channelTabWidget;
-  QPointer<QWidget> m_channelControlsWidget;  // Shared controls widget that moves between tabs (QPointer for safety)
+  QWidget* m_channelControlsWidget;  // Controls container (permanent child, not reparented)
 
   // Channel selection (hidden, for compatibility)
   QComboBox* m_channelComboBox;
