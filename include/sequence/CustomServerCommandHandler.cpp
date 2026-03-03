@@ -7,6 +7,7 @@
 #include "CameraFrameData.h"
 #include "SequenceContext.h"
 #include "ApplicationContext.h"
+#include "motions/unified_motion_manager.h"
 #include "LogManager.h"
 #include "LevenbergMarquardt.h"
 #include <iostream>
@@ -18,6 +19,24 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <cstdlib>  // strtod, strtol
+
+// Exception-free numeric conversions (std::stod/stoi throw on empty or invalid strings)
+static double safeStod(const std::string& str, double defaultVal = 0.0) {
+  if (str.empty()) return defaultVal;
+  char* end = nullptr;
+  double val = std::strtod(str.c_str(), &end);
+  if (end == str.c_str()) return defaultVal;  // no conversion performed
+  return val;
+}
+
+static int safeStoi(const std::string& str, int defaultVal = 0) {
+  if (str.empty()) return defaultVal;
+  char* end = nullptr;
+  long val = std::strtol(str.c_str(), &end, 10);
+  if (end == str.c_str()) return defaultVal;  // no conversion performed
+  return static_cast<int>(val);
+}
 
 #ifdef HAS_OPENCV
 #include "../vision/VisionManager.h"
@@ -78,7 +97,7 @@ bool CustomServerCommandHandler::HandleConnect(
 
   auto portIt = params.find("port");
   if (portIt != params.end() && !portIt->second.empty()) {
-    port = std::stoi(portIt->second);
+    port = safeStoi(portIt->second);
   }
 
   if (m_logger) {
@@ -122,15 +141,57 @@ bool CustomServerCommandHandler::HandleDetect(
   }
   std::string cameraDevice = cameraIt->second;
 
+  // Resolve z_um: prefer live device reading, fall back to param/context value
   double z_um = 0.0;
-  auto zIt = params.find("z_um");
-  if (zIt != params.end() && !zIt->second.empty()) {
-    // Support context: references
-    std::string zVal = zIt->second;
-    if (context && zVal.substr(0, 8) == "context:") {
-      zVal = context->GetString(zVal.substr(8));
+  bool useDeviceZ = false;
+  auto udzIt = params.find("use_device_z");
+  if (udzIt != params.end()) {
+    useDeviceZ = (udzIt->second == "true" || udzIt->second == "1");
+  }
+
+  if (useDeviceZ && m_context->motionManager) {
+    std::string zDevice = "gantry-main";
+    auto zdIt = params.find("z_device");
+    if (zdIt != params.end() && !zdIt->second.empty()) {
+      zDevice = zdIt->second;
     }
-    z_um = std::stod(zVal);
+    std::string zAxis = "Z";
+    auto zaIt = params.find("z_axis");
+    if (zaIt != params.end() && !zaIt->second.empty()) {
+      zAxis = zaIt->second;
+    }
+
+    double positionMm = 0.0;
+    if (m_context->motionManager->GetPosition(zDevice, zAxis, positionMm)) {
+      z_um = positionMm * 1000.0;  // mm -> um
+      if (m_logger) {
+        m_logger->Info("Read Z from " + zDevice + "." + zAxis + " = " +
+                       std::to_string(positionMm) + " mm (" + std::to_string(z_um) + " um)",
+                       "CustomServer");
+      }
+    } else {
+      if (m_logger) {
+        m_logger->Warning("Failed to read Z from " + zDevice + "." + zAxis +
+                          ", falling back to z_um parameter", "CustomServer");
+      }
+      useDeviceZ = false;  // fall through to param/context below
+    }
+  }
+
+  if (!useDeviceZ) {
+    auto zIt = params.find("z_um");
+    if (zIt != params.end() && !zIt->second.empty()) {
+      std::string zVal = zIt->second;
+      if (context && zVal.substr(0, 8) == "context:") {
+        std::string contextKey = zVal.substr(8);
+        zVal = context->GetString(contextKey);
+        if (zVal.empty() && m_logger) {
+          m_logger->Warning("Context key '" + contextKey + "' not found or empty, z_um will be 0",
+                            "CustomServer");
+        }
+      }
+      z_um = safeStod(zVal);
+    }
   }
 
   bool rotate180 = false;
@@ -142,13 +203,13 @@ bool CustomServerCommandHandler::HandleDetect(
   double umPerPxX = 1.0;
   auto uxIt = params.find("um_per_px_x");
   if (uxIt != params.end() && !uxIt->second.empty()) {
-    umPerPxX = std::stod(uxIt->second);
+    umPerPxX = safeStod(uxIt->second);
   }
 
   double umPerPxY = 1.0;
   auto uyIt = params.find("um_per_px_y");
   if (uyIt != params.end() && !uyIt->second.empty()) {
-    umPerPxY = std::stod(uyIt->second);
+    umPerPxY = safeStod(uyIt->second);
   }
 
   std::string captureAs = "beam";
@@ -281,6 +342,12 @@ bool CustomServerCommandHandler::HandleDetect(
           context->SetValue(prefix + ".d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
         if (beam.contains("d4sigma_y_um"))
           context->SetValue(prefix + ".d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+        if (beam.contains("d4sigma_x_px"))
+          context->SetValue(prefix + ".d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+        if (beam.contains("d4sigma_y_px"))
+          context->SetValue(prefix + ".d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+        if (beam.contains("peak_intensity"))
+          context->SetValue(prefix + ".peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
 
         ++beamIdx;
       }
@@ -322,9 +389,14 @@ bool CustomServerCommandHandler::HandleDetectFile(
   if (zIt != params.end() && !zIt->second.empty()) {
     std::string zVal = zIt->second;
     if (context && zVal.substr(0, 8) == "context:") {
-      zVal = context->GetString(zVal.substr(8));
+      std::string contextKey = zVal.substr(8);
+      zVal = context->GetString(contextKey);
+      if (zVal.empty() && m_logger) {
+        m_logger->Warning("Context key '" + contextKey + "' not found or empty, z_um will be 0",
+                          "CustomServer");
+      }
     }
-    z_um = std::stod(zVal);
+    z_um = safeStod(zVal);
   }
 
   std::optional<bool> rotate180 = std::nullopt;
@@ -336,13 +408,13 @@ bool CustomServerCommandHandler::HandleDetectFile(
   double umPerPxX = 0.25;
   auto uxIt = params.find("um_per_px_x");
   if (uxIt != params.end() && !uxIt->second.empty()) {
-    umPerPxX = std::stod(uxIt->second);
+    umPerPxX = safeStod(uxIt->second);
   }
 
   double umPerPxY = 0.25;
   auto uyIt = params.find("um_per_px_y");
   if (uyIt != params.end() && !uyIt->second.empty()) {
-    umPerPxY = std::stod(uyIt->second);
+    umPerPxY = safeStod(uyIt->second);
   }
 
   std::string captureAs = "beam";
@@ -396,6 +468,12 @@ bool CustomServerCommandHandler::HandleDetectFile(
           context->SetValue(prefix + ".d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
         if (beam.contains("d4sigma_y_um"))
           context->SetValue(prefix + ".d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+        if (beam.contains("d4sigma_x_px"))
+          context->SetValue(prefix + ".d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+        if (beam.contains("d4sigma_y_px"))
+          context->SetValue(prefix + ".d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+        if (beam.contains("peak_intensity"))
+          context->SetValue(prefix + ".peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
 
         ++beamIdx;
       }
@@ -423,19 +501,19 @@ bool CustomServerCommandHandler::HandleFit(
   double umPerPxX = 0.25;
   auto uxIt = params.find("um_per_px_x");
   if (uxIt != params.end() && !uxIt->second.empty()) {
-    umPerPxX = std::stod(uxIt->second);
+    umPerPxX = safeStod(uxIt->second);
   }
 
   double umPerPxY = 0.25;
   auto uyIt = params.find("um_per_px_y");
   if (uyIt != params.end() && !uyIt->second.empty()) {
-    umPerPxY = std::stod(uyIt->second);
+    umPerPxY = safeStod(uyIt->second);
   }
 
   double wavelengthM = 1550e-9;  // default 1550nm
   auto wlIt = params.find("wavelength_m");
   if (wlIt != params.end() && !wlIt->second.empty()) {
-    wavelengthM = std::stod(wlIt->second);
+    wavelengthM = safeStod(wlIt->second);
   }
 
   std::string captureAs = "beam";
@@ -475,6 +553,10 @@ bool CustomServerCommandHandler::HandleFit(
       int beamIdx = 0;
       for (const auto& beam : result["beams"]) {
         std::string prefix = captureAs + "." + std::to_string(beamIdx);
+
+        // Store side label (TX/RX)
+        if (beam.contains("side"))
+          context->SetValue(prefix + ".side", beam["side"].get<std::string>());
 
         auto storeDouble = [&](const std::string& key) {
           if (beam.contains(key))
@@ -629,19 +711,19 @@ bool CustomServerCommandHandler::HandleDetectFolder(
   double umPerPxX = 0.25;
   auto uxIt = params.find("um_per_px_x");
   if (uxIt != params.end() && !uxIt->second.empty()) {
-    umPerPxX = std::stod(uxIt->second);
+    umPerPxX = safeStod(uxIt->second);
   }
 
   double umPerPxY = 0.25;
   auto uyIt = params.find("um_per_px_y");
   if (uyIt != params.end() && !uyIt->second.empty()) {
-    umPerPxY = std::stod(uyIt->second);
+    umPerPxY = safeStod(uyIt->second);
   }
 
   int delayMs = 150;
   auto delIt = params.find("delay_ms");
   if (delIt != params.end() && !delIt->second.empty()) {
-    delayMs = std::stoi(delIt->second);
+    delayMs = safeStoi(delIt->second);
   }
 
   std::string captureAs = "beam";
@@ -696,7 +778,7 @@ bool CustomServerCommandHandler::HandleDetectFolder(
     std::smatch match;
     double z_um = 0.0;
     if (std::regex_search(filename, match, re) && match.size() > 1) {
-      z_um = std::stod(match[1].str());
+      z_um = safeStod(match[1].str());
     }
 
     entries.push_back({entry.path().string(), z_um});
@@ -799,26 +881,26 @@ bool CustomServerCommandHandler::HandleFitSlices(
   int numSlicesParam = 0;
   auto nsIt = params.find("num_slices");
   if (nsIt != params.end() && !nsIt->second.empty() && nsIt->second != "auto") {
-    numSlicesParam = std::stoi(nsIt->second);
+    numSlicesParam = safeStoi(nsIt->second);
   }
 
   double wavelengthM = 1550e-9;
   auto wlIt = params.find("wavelength_m");
   if (wlIt != params.end() && !wlIt->second.empty()) {
-    wavelengthM = std::stod(wlIt->second);
+    wavelengthM = safeStod(wlIt->second);
   }
   double wavelengthUm = wavelengthM * 1e6;  // Convert to um for calculations
 
   double umPerPxX = 0.25;
   auto uxIt = params.find("um_per_px_x");
   if (uxIt != params.end() && !uxIt->second.empty()) {
-    umPerPxX = std::stod(uxIt->second);
+    umPerPxX = safeStod(uxIt->second);
   }
 
   double umPerPxY = 0.25;
   auto uyIt = params.find("um_per_px_y");
   if (uyIt != params.end() && !uyIt->second.empty()) {
-    umPerPxY = std::stod(uyIt->second);
+    umPerPxY = safeStod(uyIt->second);
   }
 
   std::string captureAs = "beam_fit";
@@ -1237,7 +1319,7 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
   double cropWidthFactor = 2.5;
   auto cwfIt = params.find("crop_width_factor");
   if (cwfIt != params.end() && !cwfIt->second.empty()) {
-    cropWidthFactor = std::stod(cwfIt->second);
+    cropWidthFactor = safeStod(cwfIt->second);
   }
 
   // Verify folder exists
@@ -1285,7 +1367,7 @@ bool CustomServerCommandHandler::HandleD4SigmaZScanFolder(
     std::smatch match;
     double z_um = 0.0;
     if (std::regex_search(filename, match, re) && match.size() > 1) {
-      z_um = std::stod(match[1].str());
+      z_um = safeStod(match[1].str());
     }
 
     entries.push_back({entry.path().string(), z_um});

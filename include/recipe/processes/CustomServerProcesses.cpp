@@ -112,7 +112,10 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"camera_device", "main_camera"},
-      {"z_um", "context:swir_cam_z"},
+      {"use_device_z", "true"},
+      {"z_device", "gantry-main"},
+      {"z_axis", "Z"},
+      {"z_um", ""},
       {"rotate_180", "false"},
       {"um_per_px_x", "0.25"},
       {"um_per_px_y", "0.25"},
@@ -122,25 +125,43 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addDeviceSelector("camera_device", "Camera", params.at("camera_device"),
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    widget->addDeviceSelector("camera_device", "Camera", get("camera_device", "main_camera"),
                               static_cast<int>(DeviceComboBox::DeviceType::Camera));
-    widget->addParameterField("z_um", "Z Position (context:key or value)", params.at("z_um"));
-    widget->addDropdownParameter("rotate_180", "Rotate 180", params.at("rotate_180"),
+    widget->addCheckboxParameter("use_device_z", "Read Z from motion device",
+                                 get("use_device_z", "true"),
+                                 "Read current Z position from the motion device axis (in mm, converted to um)");
+    widget->addDeviceSelector("z_device", "Z Motion Device", get("z_device", "gantry-main"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("z_axis", "Z Axis Name", get("z_axis", "Z"));
+    widget->addParameterField("z_um", "Z Position (context:key or um value, used when checkbox off)",
+                              get("z_um"));
+    widget->addDropdownParameter("rotate_180", "Rotate 180", get("rotate_180", "false"),
                                  {"false", "true"});
-    widget->addParameterField("um_per_px_x", "um/px X", params.at("um_per_px_x"));
-    widget->addParameterField("um_per_px_y", "um/px Y", params.at("um_per_px_y"));
-    widget->addParameterField("captureAs", "Capture As (Context Prefix)", params.at("captureAs"));
+    widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
+    widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
+    widget->addParameterField("captureAs", "Capture As (Context Prefix)", get("captureAs", "beam"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
     sequence->AddAction("beamserver", "Detect", {
-      {"camera_device", params.at("camera_device")},
-      {"z_um", params.at("z_um")},
-      {"rotate_180", params.at("rotate_180")},
-      {"um_per_px_x", params.at("um_per_px_x")},
-      {"um_per_px_y", params.at("um_per_px_y")},
-      {"captureAs", params.at("captureAs")}
+      {"camera_device", get("camera_device", "main_camera")},
+      {"use_device_z", get("use_device_z", "true")},
+      {"z_device", get("z_device", "gantry-main")},
+      {"z_axis", get("z_axis", "Z")},
+      {"z_um", get("z_um")},
+      {"rotate_180", get("rotate_180", "false")},
+      {"um_per_px_x", get("um_per_px_x", "0.25")},
+      {"um_per_px_y", get("um_per_px_y", "0.25")},
+      {"captureAs", get("captureAs", "beam")}
     });
     std::cout << "[CustomServerProcesses] Built Beam Detect for: "
               << step->userNickname << std::endl;
