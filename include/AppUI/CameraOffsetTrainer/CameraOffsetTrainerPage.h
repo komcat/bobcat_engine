@@ -61,6 +61,7 @@ private:
     QPushButton* m_saveBtn;
     QComboBox* m_lowMagCameraCombo;
     QComboBox* m_highMagCameraCombo;
+    QComboBox* m_pneumaticSlideCombo;
     QLabel* m_statusLabel;
 
     // Right panel

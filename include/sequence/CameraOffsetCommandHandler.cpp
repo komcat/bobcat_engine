@@ -7,6 +7,7 @@
 #include "../AppUI/CameraOffsetTrainer/CameraOffsetData.h"
 #include "../AppUI/CameraOffsetTrainer/CameraOffsetStore.h"
 #include "product_position_manager.h"
+#include "PneumaticManager.h"
 #include "LogManager.h"
 #include <iostream>
 #include <filesystem>
@@ -117,12 +118,28 @@ bool CameraOffsetCommandHandler::HandleRelativeMove(
               << " offset=(" << cs.offsetX << ", " << cs.offsetY << ", " << cs.offsetZ << ")"
               << " vel=" << velocity << std::endl;
 
+    // Retract pneumatic slide before any gantry motion (if configured)
+    if (!cs.pneumaticSlideName.empty()) {
+        if (!EnsurePneumaticRetracted(cs.pneumaticSlideName, errorMessage)) {
+            if (context) context->SetValue("camera_offset.result.success", false);
+            return false;
+        }
+    }
+
     bool moveOk = motionMgr->MoveToAbs(device, toX, toY, toZ, velocity, true);
 
     if (!moveOk) {
         errorMessage = "Motion move failed for " + direction;
         if (context) context->SetValue("camera_offset.result.success", false);
         return false;
+    }
+
+    // If moving to high-mag, extend pneumatic after arrival
+    if (lowToHigh && !cs.pneumaticSlideName.empty()) {
+        if (!ActivatePneumaticExtend(cs.pneumaticSlideName, errorMessage)) {
+            if (context) context->SetValue("camera_offset.result.success", false);
+            return false;
+        }
     }
 
     // Store results in context
@@ -139,6 +156,10 @@ bool CameraOffsetCommandHandler::HandleRelativeMove(
         context->SetValue("camera_offset.result.offset_x", std::to_string(cs.offsetX));
         context->SetValue("camera_offset.result.offset_y", std::to_string(cs.offsetY));
         context->SetValue("camera_offset.result.offset_z", std::to_string(cs.offsetZ));
+        if (!cs.pneumaticSlideName.empty()) {
+            context->SetValue("camera_offset.result.pneumatic_slide", cs.pneumaticSlideName);
+            context->SetValue("camera_offset.result.pneumatic_action", lowToHigh ? "extend" : "retract");
+        }
     }
 
     std::cout << "[CameraOffset] " << direction << " complete." << std::endl;
@@ -220,12 +241,28 @@ bool CameraOffsetCommandHandler::HandleAbsoluteMove(
               << " to (" << target.x << ", " << target.y << ", " << target.z << ")"
               << " vel=" << velocity << std::endl;
 
+    // Always retract pneumatic before any gantry motion (if configured)
+    if (!cs.pneumaticSlideName.empty()) {
+        if (!EnsurePneumaticRetracted(cs.pneumaticSlideName, errorMessage)) {
+            if (context) context->SetValue("camera_offset.result.success", false);
+            return false;
+        }
+    }
+
     bool moveOk = motionMgr->MoveToAbs(device, target.x, target.y, target.z, velocity, true);
 
     if (!moveOk) {
         errorMessage = "Motion move failed for " + camLabel;
         if (context) context->SetValue("camera_offset.result.success", false);
         return false;
+    }
+
+    // If moving to high-mag, extend pneumatic after arrival
+    if (toHighMag && !cs.pneumaticSlideName.empty()) {
+        if (!ActivatePneumaticExtend(cs.pneumaticSlideName, errorMessage)) {
+            if (context) context->SetValue("camera_offset.result.success", false);
+            return false;
+        }
     }
 
     // Store results in context
@@ -242,8 +279,71 @@ bool CameraOffsetCommandHandler::HandleAbsoluteMove(
         context->SetValue("camera_offset.result.offset_x", std::to_string(cs.offsetX));
         context->SetValue("camera_offset.result.offset_y", std::to_string(cs.offsetY));
         context->SetValue("camera_offset.result.offset_z", std::to_string(cs.offsetZ));
+        if (!cs.pneumaticSlideName.empty()) {
+            context->SetValue("camera_offset.result.pneumatic_slide", cs.pneumaticSlideName);
+            context->SetValue("camera_offset.result.pneumatic_action", toHighMag ? "extend" : "retract");
+        }
     }
 
     std::cout << "[CameraOffset] " << camLabel << " complete." << std::endl;
+    return true;
+}
+
+// ============================================================================
+// Pneumatic helpers
+// ============================================================================
+
+bool CameraOffsetCommandHandler::EnsurePneumaticRetracted(
+    const std::string& slideName, std::string& errorMessage)
+{
+    if (!m_appContext || !m_appContext->pneumaticManager) {
+        // No pneumatic manager available — skip silently
+        std::cout << "[CameraOffset] No pneumatic manager, skipping retract for: " << slideName << std::endl;
+        return true;
+    }
+
+    if (!m_appContext->pneumaticManager->HasSlide(slideName)) {
+        errorMessage = "Pneumatic slide not found: " + slideName;
+        return false;
+    }
+
+    auto pos = m_appContext->pneumaticManager->GetPosition(slideName);
+    if (pos == PneumaticPosition::RETRACTED) {
+        std::cout << "[CameraOffset] Pneumatic '" << slideName << "' already retracted" << std::endl;
+        return true;
+    }
+
+    std::cout << "[CameraOffset] Retracting pneumatic '" << slideName << "'..." << std::endl;
+    auto err = m_appContext->pneumaticManager->RetractAndWait(slideName);
+    if (err != PneumaticError::SUCCESS && err != PneumaticError::ALREADY_AT_POSITION) {
+        errorMessage = "Failed to retract pneumatic '" + slideName + "': " + GetPneumaticErrorString(err);
+        return false;
+    }
+
+    std::cout << "[CameraOffset] Pneumatic '" << slideName << "' retracted" << std::endl;
+    return true;
+}
+
+bool CameraOffsetCommandHandler::ActivatePneumaticExtend(
+    const std::string& slideName, std::string& errorMessage)
+{
+    if (!m_appContext || !m_appContext->pneumaticManager) {
+        std::cout << "[CameraOffset] No pneumatic manager, skipping extend for: " << slideName << std::endl;
+        return true;
+    }
+
+    if (!m_appContext->pneumaticManager->HasSlide(slideName)) {
+        errorMessage = "Pneumatic slide not found: " + slideName;
+        return false;
+    }
+
+    std::cout << "[CameraOffset] Extending pneumatic '" << slideName << "'..." << std::endl;
+    auto err = m_appContext->pneumaticManager->ExtendAndWait(slideName);
+    if (err != PneumaticError::SUCCESS && err != PneumaticError::ALREADY_AT_POSITION) {
+        errorMessage = "Failed to extend pneumatic '" + slideName + "': " + GetPneumaticErrorString(err);
+        return false;
+    }
+
+    std::cout << "[CameraOffset] Pneumatic '" << slideName << "' extended" << std::endl;
     return true;
 }

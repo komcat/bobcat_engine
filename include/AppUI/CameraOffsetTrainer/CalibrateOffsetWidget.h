@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QStackedWidget>
+#include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QComboBox>
@@ -63,6 +64,10 @@ private:
     void setState(CalibrationState state);
     void navigateToPosition(const CameraPosition& pos, CalibrationState nextState);
     QString getVisionDirectory() const;
+    void updatePneumaticStatus();
+    void setPneumaticGroupVisible(bool visible);
+    bool hasPneumaticSlide() const;
+    void onPneumaticToggle();
 
     ApplicationContext* m_context;
     CameraOffsetCalibrationSet* m_calibrationSet;
@@ -86,6 +91,11 @@ private:
     QPushButton* m_detectCenterBtn;
     QPushButton* m_confirmBtn;
     QPushButton* m_cancelBtn;
+
+    // Pneumatic control (on Page 1)
+    QGroupBox* m_pneumaticGroup;
+    QLabel* m_pneumaticStatusLabel;
+    QPushButton* m_pneumaticBtn;
 
     // UI - Page 2 (Summary)
     QLabel* m_summaryLabel;

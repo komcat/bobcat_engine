@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QStackedWidget>
+#include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QTimer>
@@ -59,6 +60,10 @@ private:
     void setupUI();
     void setState(TestState state);
     void navigateToPosition(const CameraPosition& pos, TestState nextState);
+    void updatePneumaticStatus();
+    void setPneumaticGroupVisible(bool visible);
+    bool hasPneumaticSlide() const;
+    void onPneumaticToggle();
 
     ApplicationContext* m_context;
     CameraOffsetCalibrationSet* m_calibrationSet;
@@ -82,6 +87,11 @@ private:
     QPushButton* m_runVisionBtn;
     QPushButton* m_confirmBtn;
     QPushButton* m_cancelBtn;
+
+    // Pneumatic control (on Page 1)
+    QGroupBox* m_pneumaticGroup;
+    QLabel* m_pneumaticStatusLabel;
+    QPushButton* m_pneumaticBtn;
 
     // UI - Page 2 (Comparison)
     QLabel* m_comparisonLabel;

@@ -6,6 +6,7 @@
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
 #include "CameraManager.h"
+#include "PneumaticManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -30,6 +31,7 @@ CameraOffsetTrainerPage::CameraOffsetTrainerPage(ApplicationContext* context, QW
     , m_saveBtn(nullptr)
     , m_lowMagCameraCombo(nullptr)
     , m_highMagCameraCombo(nullptr)
+    , m_pneumaticSlideCombo(nullptr)
     , m_statusLabel(nullptr)
     , m_contentStack(nullptr)
     , m_welcomeWidget(nullptr)
@@ -189,6 +191,34 @@ void CameraOffsetTrainerPage::setupUI()
 
     leftLayout->addWidget(camGroup);
 
+    // Pneumatic Slide group
+    QGroupBox* pneuGroup = new QGroupBox("Pneumatic Slide");
+    pneuGroup->setStyleSheet(groupStyle);
+    QVBoxLayout* pneuLayout = new QVBoxLayout(pneuGroup);
+
+    QLabel* pneuLabel = new QLabel("High-Mag Lens Tube:");
+    pneuLabel->setStyleSheet("color: #aaa; font-size: 11px;");
+    pneuLayout->addWidget(pneuLabel);
+
+    m_pneumaticSlideCombo = new QComboBox();
+    m_pneumaticSlideCombo->addItem("(None)");
+    if (m_context && m_context->pneumaticManager) {
+        auto slideNames = m_context->pneumaticManager->GetAllSlideNames();
+        for (const auto& name : slideNames) {
+            m_pneumaticSlideCombo->addItem(QString::fromStdString(name));
+        }
+    }
+    pneuLayout->addWidget(m_pneumaticSlideCombo);
+
+    connect(m_pneumaticSlideCombo, &QComboBox::currentTextChanged,
+            this, [this](const QString& text) {
+        if (m_hasLoadedSet) {
+            m_currentSet.pneumaticSlideName = (text == "(None)") ? "" : text.toStdString();
+        }
+    });
+
+    leftLayout->addWidget(pneuGroup);
+
     // Navigation list (Workflow)
     QGroupBox* navGroup = new QGroupBox("Workflow");
     navGroup->setStyleSheet(groupStyle);
@@ -292,9 +322,11 @@ void CameraOffsetTrainerPage::onNavItemChanged(int currentRow)
         return;
     }
 
-    // Sync camera selections into the current set before passing to widgets
+    // Sync camera selections and pneumatic slide into the current set before passing to widgets
     m_currentSet.lowMagCameraId = m_lowMagCameraCombo->currentText().toStdString();
     m_currentSet.highMagCameraId = m_highMagCameraCombo->currentText().toStdString();
+    QString pneuNav = m_pneumaticSlideCombo->currentText();
+    m_currentSet.pneumaticSlideName = (pneuNav == "(None)") ? "" : pneuNav.toStdString();
 
     switch (currentRow) {
     case 0:  // Calibrate Offset
@@ -326,9 +358,11 @@ void CameraOffsetTrainerPage::onNewCalibrationSet()
     m_currentSet.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate).toStdString();
     m_currentSet.lastModifiedAt = m_currentSet.createdAt;
 
-    // Set camera IDs from combos
+    // Set camera IDs and pneumatic slide from combos
     m_currentSet.lowMagCameraId = m_lowMagCameraCombo->currentText().toStdString();
     m_currentSet.highMagCameraId = m_highMagCameraCombo->currentText().toStdString();
+    QString pneuNew = m_pneumaticSlideCombo->currentText();
+    m_currentSet.pneumaticSlideName = (pneuNew == "(None)") ? "" : pneuNew.toStdString();
 
     setCalibrationSetLoaded(true);
 
@@ -377,6 +411,16 @@ void CameraOffsetTrainerPage::onLoadCalibrationSet()
         m_highMagCameraCombo->setCurrentIndex(highIdx);
     }
 
+    // Set pneumatic slide combo to match loaded data
+    if (m_currentSet.pneumaticSlideName.empty()) {
+        m_pneumaticSlideCombo->setCurrentIndex(0);  // "(None)"
+    } else {
+        int pneuIdx = m_pneumaticSlideCombo->findText(QString::fromStdString(m_currentSet.pneumaticSlideName));
+        if (pneuIdx >= 0) {
+            m_pneumaticSlideCombo->setCurrentIndex(pneuIdx);
+        }
+    }
+
     updateCurrentCalibrationSet();
     std::cout << "[CameraOffsetTrainerPage] Loaded calibration set: " << m_currentSet.name << std::endl;
 }
@@ -421,6 +465,8 @@ void CameraOffsetTrainerPage::onSaveCalibrationSet()
     // Sync camera selections
     m_currentSet.lowMagCameraId = m_lowMagCameraCombo->currentText().toStdString();
     m_currentSet.highMagCameraId = m_highMagCameraCombo->currentText().toStdString();
+    QString pneuText = m_pneumaticSlideCombo->currentText();
+    m_currentSet.pneumaticSlideName = (pneuText == "(None)") ? "" : pneuText.toStdString();
     m_currentSet.lastModifiedAt = QDateTime::currentDateTime().toString(Qt::ISODate).toStdString();
 
     if (m_store.SaveCalibrationSet(m_currentSet)) {

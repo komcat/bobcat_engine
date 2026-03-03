@@ -3,6 +3,7 @@
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
+#include "PneumaticManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -37,6 +38,9 @@ CalibrateOffsetWidget::CalibrateOffsetWidget(ApplicationContext* context, QWidge
     , m_detectCenterBtn(nullptr)
     , m_confirmBtn(nullptr)
     , m_cancelBtn(nullptr)
+    , m_pneumaticGroup(nullptr)
+    , m_pneumaticStatusLabel(nullptr)
+    , m_pneumaticBtn(nullptr)
     , m_summaryLabel(nullptr)
     , m_doneBtn(nullptr)
 {
@@ -174,6 +178,29 @@ void CalibrateOffsetWidget::setupUI()
 
     activeLayout->addWidget(visionGroup);
 
+    // Pneumatic control group (shown only during high-mag steps when configured)
+    m_pneumaticGroup = new QGroupBox("Pneumatic Control");
+    m_pneumaticGroup->setStyleSheet(posGroup->styleSheet());
+    QVBoxLayout* pneuLayout = new QVBoxLayout(m_pneumaticGroup);
+
+    m_pneumaticStatusLabel = new QLabel("Status: ---");
+    m_pneumaticStatusLabel->setStyleSheet("font-size: 13px; color: #ccc; padding: 4px;");
+    pneuLayout->addWidget(m_pneumaticStatusLabel);
+
+    m_pneumaticBtn = new QPushButton("Extend Lens Tube");
+    m_pneumaticBtn->setFixedHeight(36);
+    m_pneumaticBtn->setStyleSheet(
+        "QPushButton { background-color: #b07d2b; color: white; font-weight: bold; "
+        "font-size: 13px; border-radius: 4px; padding: 6px 16px; }"
+        "QPushButton:hover { background-color: #c9922f; }"
+        "QPushButton:disabled { background-color: #4a3a15; color: #888; }"
+    );
+    connect(m_pneumaticBtn, &QPushButton::clicked, this, &CalibrateOffsetWidget::onPneumaticToggle);
+    pneuLayout->addWidget(m_pneumaticBtn);
+
+    m_pneumaticGroup->setVisible(false);
+    activeLayout->addWidget(m_pneumaticGroup);
+
     activeLayout->addStretch();
 
     // Action buttons
@@ -290,6 +317,30 @@ void CalibrateOffsetWidget::setState(CalibrationState state)
         m_stepLabel->setText("Step 1/6: Navigate to Low-Mag Position");
         m_confirmBtn->setEnabled(false);
         m_detectCenterBtn->setEnabled(false);
+        setPneumaticGroupVisible(false);
+
+        // Ensure pneumatic is retracted before any gantry motion
+        if (hasPneumaticSlide()) {
+            auto pos = m_context->pneumaticManager->GetPosition(m_calibrationSet->pneumaticSlideName);
+            if (pos != PneumaticPosition::RETRACTED) {
+                m_instructionLabel->setText("Retracting pneumatic slide before moving...");
+                std::string slideName = m_calibrationSet->pneumaticSlideName;
+                bool hasValidPos = m_calibrationSet && m_calibrationSet->lowMagPosition.valid;
+                CameraPosition targetPos = hasValidPos ? m_calibrationSet->lowMagPosition : CameraPosition();
+                m_moveFuture = std::async(std::launch::async, [this, slideName, hasValidPos, targetPos]() {
+                    m_context->pneumaticManager->RetractAndWait(slideName);
+                    QMetaObject::invokeMethod(this, [this, hasValidPos, targetPos]() {
+                        if (hasValidPos) {
+                            m_instructionLabel->setText("Navigating to previously saved low-mag position...");
+                            navigateToPosition(targetPos, SetCenterLowMag);
+                        } else {
+                            setState(SetCenterLowMag);
+                        }
+                    }, Qt::QueuedConnection);
+                });
+                break;
+            }
+        }
 
         // If prior calibration exists, auto-navigate
         if (m_calibrationSet && m_calibrationSet->lowMagPosition.valid) {
@@ -313,6 +364,7 @@ void CalibrateOffsetWidget::setState(CalibrationState state)
             "When centered, click 'Capture Position'.");
         m_confirmBtn->setEnabled(true);
         m_detectCenterBtn->setEnabled(true);
+        setPneumaticGroupVisible(false);
         break;
     }
 
@@ -346,9 +398,33 @@ void CalibrateOffsetWidget::setState(CalibrationState state)
         m_stepLabel->setText("Step 3/6: Navigate to High-Mag Position");
         m_confirmBtn->setEnabled(false);
         m_detectCenterBtn->setEnabled(false);
+        setPneumaticGroupVisible(false);
 
         // Reset vision profile combo for high-mag step
         m_visionProfileCombo->setCurrentIndex(0);
+
+        // Ensure pneumatic is retracted before gantry motion
+        if (hasPneumaticSlide()) {
+            auto pos = m_context->pneumaticManager->GetPosition(m_calibrationSet->pneumaticSlideName);
+            if (pos != PneumaticPosition::RETRACTED) {
+                m_instructionLabel->setText("Retracting pneumatic slide before moving...");
+                std::string slideName = m_calibrationSet->pneumaticSlideName;
+                bool hasValidPos = m_calibrationSet && m_calibrationSet->highMagPosition.valid;
+                CameraPosition targetPos = hasValidPos ? m_calibrationSet->highMagPosition : CameraPosition();
+                m_moveFuture = std::async(std::launch::async, [this, slideName, hasValidPos, targetPos]() {
+                    m_context->pneumaticManager->RetractAndWait(slideName);
+                    QMetaObject::invokeMethod(this, [this, hasValidPos, targetPos]() {
+                        if (hasValidPos) {
+                            m_instructionLabel->setText("Navigating to previously saved high-mag position...");
+                            navigateToPosition(targetPos, SetCenterHighMag);
+                        } else {
+                            setState(SetCenterHighMag);
+                        }
+                    }, Qt::QueuedConnection);
+                });
+                break;
+            }
+        }
 
         if (m_calibrationSet && m_calibrationSet->highMagPosition.valid) {
             m_instructionLabel->setText("Navigating to previously saved high-mag position...");
@@ -365,12 +441,17 @@ void CalibrateOffsetWidget::setState(CalibrationState state)
         m_wizardStack->setCurrentIndex(1);
         m_positionTimer.start(100);
         m_stepLabel->setText("Step 4/6: Center High-Mag Camera on Fiducial");
-        m_instructionLabel->setText(
+        QString highMagInstruction =
             "Jog the gantry so the SAME fiducial is centered in the high-mag camera view.\n"
             "Use 'Detect & Center' with a vision profile for auto-centering, or jog manually.\n"
-            "When centered, click 'Capture Position'.");
+            "When centered, click 'Capture Position'.";
+        if (hasPneumaticSlide()) {
+            highMagInstruction += "\n\nUse the 'Extend Lens Tube' button below to deploy the high-mag lens.";
+        }
+        m_instructionLabel->setText(highMagInstruction);
         m_confirmBtn->setEnabled(true);
         m_detectCenterBtn->setEnabled(true);
+        setPneumaticGroupVisible(true);
         break;
     }
 
@@ -405,6 +486,24 @@ void CalibrateOffsetWidget::setState(CalibrationState state)
             std::cout << "[CalibrateOffset] Offset computed: dX=" << m_calibrationSet->offsetX
                       << " dY=" << m_calibrationSet->offsetY
                       << " dZ=" << m_calibrationSet->offsetZ << std::endl;
+        }
+
+        setPneumaticGroupVisible(false);
+
+        // Auto-retract pneumatic before proceeding to summary
+        if (hasPneumaticSlide()) {
+            auto pneuPos = m_context->pneumaticManager->GetPosition(m_calibrationSet->pneumaticSlideName);
+            if (pneuPos != PneumaticPosition::RETRACTED) {
+                std::string slideName = m_calibrationSet->pneumaticSlideName;
+                m_moveFuture = std::async(std::launch::async, [this, slideName]() {
+                    std::cout << "[CalibrateOffset] Auto-retracting pneumatic before summary..." << std::endl;
+                    m_context->pneumaticManager->RetractAndWait(slideName);
+                    QMetaObject::invokeMethod(this, [this]() {
+                        setState(Summary);
+                    }, Qt::QueuedConnection);
+                });
+                break;
+            }
         }
 
         setState(Summary);
@@ -708,4 +807,78 @@ void CalibrateOffsetWidget::updatePositionDisplay()
         .arg(pos.x, 10, 'f', 4)
         .arg(pos.y, 10, 'f', 4)
         .arg(pos.z, 10, 'f', 4));
+
+    // Update pneumatic status if visible
+    if (m_pneumaticGroup->isVisible()) {
+        updatePneumaticStatus();
+    }
+}
+
+bool CalibrateOffsetWidget::hasPneumaticSlide() const
+{
+    return m_calibrationSet &&
+           !m_calibrationSet->pneumaticSlideName.empty() &&
+           m_context && m_context->pneumaticManager &&
+           m_context->pneumaticManager->HasSlide(m_calibrationSet->pneumaticSlideName);
+}
+
+void CalibrateOffsetWidget::setPneumaticGroupVisible(bool visible)
+{
+    m_pneumaticGroup->setVisible(visible && hasPneumaticSlide());
+}
+
+void CalibrateOffsetWidget::updatePneumaticStatus()
+{
+    if (!hasPneumaticSlide()) return;
+
+    auto pos = m_context->pneumaticManager->GetPosition(m_calibrationSet->pneumaticSlideName);
+    QString statusText = QString::fromStdString(GetPositionString(pos));
+    m_pneumaticStatusLabel->setText("Status: " + statusText);
+
+    // Update button text based on current position
+    if (pos == PneumaticPosition::EXTENDED) {
+        m_pneumaticBtn->setText("Retract Lens Tube");
+    } else {
+        m_pneumaticBtn->setText("Extend Lens Tube");
+    }
+}
+
+void CalibrateOffsetWidget::onPneumaticToggle()
+{
+    if (!hasPneumaticSlide()) return;
+
+    const std::string& slideName = m_calibrationSet->pneumaticSlideName;
+    auto pos = m_context->pneumaticManager->GetPosition(slideName);
+
+    m_pneumaticBtn->setEnabled(false);
+
+    if (pos == PneumaticPosition::EXTENDED) {
+        // Retract
+        m_pneumaticBtn->setText("Retracting...");
+        m_moveFuture = std::async(std::launch::async, [this, slideName]() {
+            auto err = m_context->pneumaticManager->RetractAndWait(slideName);
+            QMetaObject::invokeMethod(this, [this, err]() {
+                m_pneumaticBtn->setEnabled(true);
+                if (err != PneumaticError::SUCCESS && err != PneumaticError::ALREADY_AT_POSITION) {
+                    std::cout << "[CalibrateOffset] Pneumatic retract failed: "
+                              << GetPneumaticErrorString(err) << std::endl;
+                }
+                updatePneumaticStatus();
+            }, Qt::QueuedConnection);
+        });
+    } else {
+        // Extend
+        m_pneumaticBtn->setText("Extending...");
+        m_moveFuture = std::async(std::launch::async, [this, slideName]() {
+            auto err = m_context->pneumaticManager->ExtendAndWait(slideName);
+            QMetaObject::invokeMethod(this, [this, err]() {
+                m_pneumaticBtn->setEnabled(true);
+                if (err != PneumaticError::SUCCESS && err != PneumaticError::ALREADY_AT_POSITION) {
+                    std::cout << "[CalibrateOffset] Pneumatic extend failed: "
+                              << GetPneumaticErrorString(err) << std::endl;
+                }
+                updatePneumaticStatus();
+            }, Qt::QueuedConnection);
+        });
+    }
 }

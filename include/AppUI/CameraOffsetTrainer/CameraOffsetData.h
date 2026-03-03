@@ -40,6 +40,8 @@ struct CameraOffsetCalibrationSet {
     std::string lowMagVisionProfilePath;   // optional vision recipe for auto-centering
     std::string highMagVisionProfilePath;  // optional vision recipe for auto-centering
 
+    std::string pneumaticSlideName;        // optional pneumatic slide for high-mag lens tube (empty = none)
+
     /**
      * @brief Result of a test run comparing calibrated offset to actual.
      */

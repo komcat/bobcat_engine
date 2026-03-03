@@ -83,4 +83,16 @@ private:
         const std::map<std::string, std::string>& params,
         std::string& errorMessage,
         SequenceContext* context);
+
+    /**
+     * @brief Retract the pneumatic slide (blocking) if configured
+     * @return true on success or if no slide is configured
+     */
+    bool EnsurePneumaticRetracted(const std::string& slideName, std::string& errorMessage);
+
+    /**
+     * @brief Extend the pneumatic slide (blocking) if configured
+     * @return true on success or if no slide is configured
+     */
+    bool ActivatePneumaticExtend(const std::string& slideName, std::string& errorMessage);
 };

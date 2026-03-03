@@ -101,6 +101,9 @@ bool CameraOffsetStore::SaveCalibrationSet(const CameraOffsetCalibrationSet& cs)
     j["lowMagVisionProfilePath"] = cs.lowMagVisionProfilePath;
     j["highMagVisionProfilePath"] = cs.highMagVisionProfilePath;
 
+    // Pneumatic slide
+    j["pneumaticSlideName"] = cs.pneumaticSlideName;
+
     // Last test result
     const auto& tr = cs.lastTestResult;
     json trj;
@@ -223,6 +226,9 @@ std::optional<CameraOffsetCalibrationSet> CameraOffsetStore::LoadCalibrationSet(
     // Vision profile paths
     cs.lowMagVisionProfilePath = j.value("lowMagVisionProfilePath", "");
     cs.highMagVisionProfilePath = j.value("highMagVisionProfilePath", "");
+
+    // Pneumatic slide
+    cs.pneumaticSlideName = j.value("pneumaticSlideName", "");
 
     // Last test result
     if (j.contains("lastTestResult")) {
