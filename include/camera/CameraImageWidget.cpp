@@ -342,9 +342,6 @@ void CameraImageWidget::renderFrame(const QImage& image)
     return;
   }
 
-  // Convert to pixmap
-  QPixmap pixmap = QPixmap::fromImage(image);
-
   Qt::TransformationMode transformMode =
     (m_scalingMode == ScalingMode::Fast)
     ? Qt::FastTransformation
@@ -353,22 +350,18 @@ void CameraImageWidget::renderFrame(const QImage& image)
   // Get scroll area viewport size for proper scaling
   QSize viewportSize = m_scrollArea ? m_scrollArea->viewport()->size() : this->size();
 
-  // Make sure we have a valid size
+  // Scale QImage first, THEN convert to QPixmap (avoids full-res QPixmap::fromImage)
+  QImage scaledImage = image;
   if (viewportSize.width() > 0 && viewportSize.height() > 0) {
-    // Scale to fill container width while maintaining aspect ratio
-    // Calculate target width (full viewport width)
     int targetWidth = viewportSize.width();
-
-    // Calculate height based on original aspect ratio
     double aspectRatio = static_cast<double>(image.height()) / static_cast<double>(image.width());
     int targetHeight = static_cast<int>(targetWidth * aspectRatio);
 
-    // Note: We always fill width and let height be proportional
-    // Scrollbars will appear if content exceeds viewport
-
     QSize targetSize(targetWidth, targetHeight);
-    pixmap = pixmap.scaled(targetSize, Qt::IgnoreAspectRatio, transformMode);
+    scaledImage = image.scaled(targetSize, Qt::IgnoreAspectRatio, transformMode);
   }
+
+  QPixmap pixmap = QPixmap::fromImage(scaledImage);
 
   // Draw crosshair overlay on pixmap if enabled
   if (m_crosshairEnabled.load() && !pixmap.isNull()) {

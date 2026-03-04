@@ -403,6 +403,8 @@ private:
     std::vector<uint8_t> m_frameBuffer;  // BGR format for GDI
     uint32_t m_frameWidth = 0;
     uint32_t m_frameHeight = 0;
+    uint32_t m_displayFrameWidth = 0;   // Decimated buffer width for rendering
+    uint32_t m_displayFrameHeight = 0;  // Decimated buffer height for rendering
     std::atomic<bool> m_hasNewFrame{false};
 
     // Camera selection
@@ -423,6 +425,8 @@ private:
     std::vector<uint8_t> m_secondaryFrameBuffer;  // BGR format for GDI
     uint32_t m_secondaryFrameWidth = 0;
     uint32_t m_secondaryFrameHeight = 0;
+    uint32_t m_displaySecondaryWidth = 0;   // Decimated buffer width for rendering
+    uint32_t m_displaySecondaryHeight = 0;  // Decimated buffer height for rendering
     std::atomic<bool> m_hasSecondaryNewFrame{false};
 
     // Status
