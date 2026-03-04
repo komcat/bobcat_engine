@@ -4,6 +4,7 @@
 #include "TECManager.h"
 #include "TECConnectionWorker.h"
 #include "TECParameterWorker.h"
+#include "safety/SafetyWatchManager.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGroupBox>
@@ -29,6 +30,19 @@ TECControlPage::TECControlPage(ApplicationContext* context, QWidget* parent)
   // Timer will start in showEvent() when page becomes visible
   m_pollTimer = new QTimer(this);
   connect(m_pollTimer, &QTimer::timeout, this, &TECControlPage::onPollTimer);
+
+  // Resume polling when E-Stop is cleared (if page is visible)
+  if (m_context && m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyCleared,
+            this, [this]() {
+      if (isVisible() && m_pollTimer && !m_pollTimer->isActive()) {
+        if (m_parameterWorker) {
+          m_parameterWorker->setStatusPollingEnabled(true);
+        }
+        m_pollTimer->start(500);
+      }
+    });
+  }
 
   // Initialize workers if TEC manager is available
   if (m_context && m_context->tecManager) {
@@ -721,6 +735,15 @@ void TECControlPage::applyPreset(double temp, double current, bool tecOn, bool l
 
 void TECControlPage::onPollTimer()
 {
+  // Skip hardware access during E-Stop
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    m_pollTimer->stop();
+    if (m_parameterWorker) {
+      m_parameterWorker->setStatusPollingEnabled(false);
+    }
+    return;
+  }
+
   // Use parameter worker's built-in polling when connected
   // This method is now only used as a backup/fallback
   if (!m_isConnected || !m_parameterWorker) {
@@ -883,6 +906,12 @@ void TECControlPage::showEvent(QShowEvent* event)
   QWidget::showEvent(event);
 
   std::cout << "[TECControlPage] Page shown - starting polling" << std::endl;
+
+  // Don't start polling during E-Stop - hardware may be unresponsive
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    std::cout << "[TECControlPage] E-Stop active - skipping polling" << std::endl;
+    return;
+  }
 
   // Refresh device list
   updateDeviceList();

@@ -9,6 +9,7 @@
 #include <vector>
 
 class QuickOutputManager;
+class SafetyWatchManager;
 
 /**
  * @brief Output control button with state display
@@ -52,6 +53,8 @@ public:
   explicit QuickOutputWidget(QuickOutputManager* manager, QWidget* parent = nullptr);
   ~QuickOutputWidget();
 
+  void setSafetyWatchManager(SafetyWatchManager* safetyMgr);
+
   // Start/stop status polling
   void startPolling(int intervalMs = 200);
   void stopPolling();
@@ -78,6 +81,7 @@ private:
   void clearOutputButtons();
 
   QuickOutputManager* m_manager;
+  SafetyWatchManager* m_safetyWatchManager = nullptr;
 
   // UI Components
   QGridLayout* m_outputGrid;

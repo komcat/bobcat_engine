@@ -1,6 +1,7 @@
 // QuickOutputWidget.cpp
 #include "QuickOutputWidget.h"
 #include "QuickOutputManager.h"
+#include "safety/SafetyWatchManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -151,6 +152,21 @@ QuickOutputWidget::QuickOutputWidget(QuickOutputManager* manager, QWidget* paren
 QuickOutputWidget::~QuickOutputWidget()
 {
   stopPolling();
+}
+
+void QuickOutputWidget::setSafetyWatchManager(SafetyWatchManager* safetyMgr)
+{
+  m_safetyWatchManager = safetyMgr;
+
+  // Resume polling when E-Stop is cleared (if widget is visible)
+  if (m_safetyWatchManager) {
+    connect(m_safetyWatchManager, &SafetyWatchManager::safetyCleared,
+            this, [this]() {
+      if (isVisible() && m_pollTimer && !m_pollTimer->isActive()) {
+        m_pollTimer->start(m_pollInterval);
+      }
+    });
+  }
 }
 
 void QuickOutputWidget::setupUI()
@@ -377,6 +393,12 @@ void QuickOutputWidget::onTurnOffAllClicked()
 
 void QuickOutputWidget::updateOutputStatuses()
 {
+  // Skip hardware access during E-Stop
+  if (m_safetyWatchManager && m_safetyWatchManager->IsCriticalFlagRaised()) {
+    stopPolling();
+    return;
+  }
+
   if (!m_manager) {
     return;
   }
@@ -390,6 +412,11 @@ void QuickOutputWidget::updateOutputStatuses()
 
 void QuickOutputWidget::startPolling(int intervalMs)
 {
+  // Don't start polling during E-Stop
+  if (m_safetyWatchManager && m_safetyWatchManager->IsCriticalFlagRaised()) {
+    return;
+  }
+
   m_pollInterval = intervalMs;
   if (!m_pollTimer->isActive()) {
     m_pollTimer->start(m_pollInterval);

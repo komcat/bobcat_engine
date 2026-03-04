@@ -526,7 +526,8 @@ Gdiplus::PointF BeamStreamOverlay::ImageToScreen(double imgX, double imgY,
 
 void BeamStreamOverlay::Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
                               int destX, int destY, int destWidth, int destHeight,
-                              double umPerPxX, double umPerPxY) {
+                              double umPerPxX, double umPerPxY,
+                              int displayRotation, int origFrameWidth, int origFrameHeight) {
     if (!m_enabled) return;
 
     std::lock_guard<std::mutex> lock(m_resultMutex);
@@ -631,6 +632,26 @@ void BeamStreamOverlay::Draw(HDC hDC, const RECT& windowRect, int frameWidth, in
             }
             if (d4y_px == 0.0 && umPerPxY > 0) {
                 d4y_px = beam.value("d4sigma_y_um", 0.0) / umPerPxY;
+            }
+
+            // Transform beam coordinates from original image space to rotated display space
+            if (displayRotation != 0 && origFrameWidth > 0) {
+                if (displayRotation == -90) {
+                    // -90° CCW: (x, y) -> (y, W_orig - 1 - x)
+                    double newCx = cy;
+                    double newCy = static_cast<double>(origFrameWidth - 1) - cx;
+                    cx = newCx;
+                    cy = newCy;
+                }
+                else if (displayRotation == 90) {
+                    // +90° CW: (x, y) -> (H_orig - 1 - y, x)
+                    double newCx = static_cast<double>(origFrameHeight - 1) - cy;
+                    double newCy = cx;
+                    cx = newCx;
+                    cy = newCy;
+                }
+                // Swap d4sigma axes (rotation swaps X and Y)
+                std::swap(d4x_px, d4y_px);
             }
 
             Gdiplus::PointF center = ImageToScreen(cx, cy,
@@ -803,6 +824,8 @@ void GdiCameraWindow::CreateMenuBar() {
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_CLICK_TO_MOVE, L"Enable Click-to-Move");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_SHOW_DISTANCE, L"Show Real World Distance");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_MAGNIFICATION, L"Magnification...");
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_DISPLAY_ROTATION, L"Display Rotation (-90\u00B0)");
+            AppendMenuW(m_toolsMenu, MF_STRING, IDM_TOOLS_DISPLAY_ROTATION_CW, L"Display Rotation (+90\u00B0)");
             AppendMenuW(m_toolsMenu, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_INCREASE, L"Increase Overlay Size (+)");
             AppendMenuW(m_toolsMenu, MF_STRING, IDM_OVERLAY_SIZE_DECREASE, L"Decrease Overlay Size (-)");
@@ -868,6 +891,10 @@ void GdiCameraWindow::UpdateToolsMenu() {
                   m_clickToMoveEnabled ? MF_CHECKED : MF_UNCHECKED);
     CheckMenuItem(m_toolsMenu, IDM_TOOLS_SHOW_DISTANCE,
                   m_showDistanceEnabled ? MF_CHECKED : MF_UNCHECKED);
+    CheckMenuItem(m_toolsMenu, IDM_TOOLS_DISPLAY_ROTATION,
+                  (m_displayRotation == -90) ? MF_CHECKED : MF_UNCHECKED);
+    CheckMenuItem(m_toolsMenu, IDM_TOOLS_DISPLAY_ROTATION_CW,
+                  (m_displayRotation == 90) ? MF_CHECKED : MF_UNCHECKED);
 
     // Update magnification menu text to show current value
     std::wstring magText = L"Magnification... (" + std::to_wstring(static_cast<int>(m_magnification)) + L"x)";
@@ -1301,6 +1328,24 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
             }
         }
     }
+    else if (commandId == IDM_TOOLS_DISPLAY_ROTATION) {
+        m_displayRotation = (m_displayRotation == -90) ? 0 : -90;
+        std::cout << "[GdiCameraWindow] Display rotation: " << m_displayRotation << " degrees" << std::endl;
+        if (m_onDisplayRotationChanged) {
+            m_onDisplayRotationChanged(m_displayRotation);
+        }
+        UpdateToolsMenu();
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+    }
+    else if (commandId == IDM_TOOLS_DISPLAY_ROTATION_CW) {
+        m_displayRotation = (m_displayRotation == 90) ? 0 : 90;
+        std::cout << "[GdiCameraWindow] Display rotation: " << m_displayRotation << " degrees" << std::endl;
+        if (m_onDisplayRotationChanged) {
+            m_onDisplayRotationChanged(m_displayRotation);
+        }
+        UpdateToolsMenu();
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+    }
     // Overlay size commands
     else if (commandId == IDM_OVERLAY_SIZE_INCREASE) {
         m_chartOverlay.IncreaseScale();
@@ -1496,6 +1541,14 @@ std::string GdiCameraWindow::GetTargetCamera() const {
     return m_targetCameraId;
 }
 
+void GdiCameraWindow::SetDisplayRotation(int degrees) {
+    m_displayRotation = degrees;
+    std::cout << "[GdiCameraWindow] Display rotation: " << degrees << " degrees" << std::endl;
+    if (m_hwnd) {
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+    }
+}
+
 void GdiCameraWindow::SetDataStore(DataStore* dataStore) {
     m_dataStore = dataStore;
     if (m_dataStore) {
@@ -1640,6 +1693,44 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
             }
         }
 
+        // Apply rotation if enabled
+        if (m_displayRotation != 0) {
+            m_originalFrameWidth = m_frameWidth;
+            m_originalFrameHeight = m_frameHeight;
+
+            uint32_t srcW = m_frameWidth;
+            uint32_t srcH = m_frameHeight;
+            // Rotated dimensions: W becomes H, H becomes W
+            uint32_t rotW = srcH;
+            uint32_t rotH = srcW;
+
+            std::vector<uint8_t> rotated(rotW * rotH * 3);
+            for (uint32_t dy = 0; dy < rotH; ++dy) {
+                for (uint32_t dx = 0; dx < rotW; ++dx) {
+                    uint32_t sx, sy;
+                    if (m_displayRotation == -90) {
+                        // -90° CCW: dest(dx, dy) = src(srcW - 1 - dy, dx)
+                        sx = srcW - 1 - dy;
+                        sy = dx;
+                    }
+                    else {
+                        // +90° CW: dest(dx, dy) = src(dy, srcH - 1 - dx)
+                        sx = dy;
+                        sy = srcH - 1 - dx;
+                    }
+                    size_t srcIdx = (sy * srcW + sx) * 3;
+                    size_t dstIdx = (dy * rotW + dx) * 3;
+                    rotated[dstIdx + 0] = m_frameBuffer[srcIdx + 0];
+                    rotated[dstIdx + 1] = m_frameBuffer[srcIdx + 1];
+                    rotated[dstIdx + 2] = m_frameBuffer[srcIdx + 2];
+                }
+            }
+
+            m_frameBuffer = std::move(rotated);
+            m_frameWidth = rotW;
+            m_frameHeight = rotH;
+        }
+
         m_hasNewFrame = true;
     }
     else if (isSecondaryCamera) {
@@ -1677,16 +1768,47 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
 
 #ifdef HAS_OPENCV
     // Queue frame for vision processing if enabled (only for primary camera)
+    // Vision processes what you see: rotated image when rotation is on
     if (isPrimaryCamera && m_visionEnabled && m_visionThreadRunning) {
         std::lock_guard<std::mutex> lock(m_frameQueueMutex);
         // Keep max 2 frames in queue to avoid lag
         while (m_frameQueue.size() >= 2) {
             m_frameQueue.pop();
         }
-        // Store RGB data for vision processing
-        m_frameQueue.push(frameData.imageData);
-        m_queuedFrameWidth = frameData.width;
-        m_queuedFrameHeight = frameData.height;
+        if (m_displayRotation != 0) {
+            // Build rotated RGB from original frame data
+            uint32_t srcW = frameData.width;
+            uint32_t srcH = frameData.height;
+            uint32_t rotW = srcH;
+            uint32_t rotH = srcW;
+            std::vector<uint8_t> rotatedRgb(rotW * rotH * 3);
+            const uint8_t* src = frameData.imageData.data();
+            for (uint32_t dy = 0; dy < rotH; ++dy) {
+                for (uint32_t dx = 0; dx < rotW; ++dx) {
+                    uint32_t sx, sy;
+                    if (m_displayRotation == -90) {
+                        sx = srcW - 1 - dy;
+                        sy = dx;
+                    }
+                    else {
+                        sx = dy;
+                        sy = srcH - 1 - dx;
+                    }
+                    size_t srcIdx = (sy * srcW + sx) * 3;
+                    size_t dstIdx = (dy * rotW + dx) * 3;
+                    rotatedRgb[dstIdx + 0] = src[srcIdx + 0];
+                    rotatedRgb[dstIdx + 1] = src[srcIdx + 1];
+                    rotatedRgb[dstIdx + 2] = src[srcIdx + 2];
+                }
+            }
+            m_frameQueue.push(std::move(rotatedRgb));
+            m_queuedFrameWidth = rotW;
+            m_queuedFrameHeight = rotH;
+        } else {
+            m_frameQueue.push(frameData.imageData);
+            m_queuedFrameWidth = frameData.width;
+            m_queuedFrameHeight = frameData.height;
+        }
         m_frameQueueCV.notify_one();
     }
 #endif
@@ -1976,7 +2098,10 @@ void GdiCameraWindow::OnPaint() {
         // Draw beam stream overlay (top-right)
         m_beamStreamOverlay.Draw(m_memDC, rect, m_frameWidth, m_frameHeight,
                                   m_lastDestX, m_lastDestY, m_lastDestWidth, m_lastDestHeight,
-                                  m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY);
+                                  m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY,
+                                  m_displayRotation,
+                                  static_cast<int>(m_originalFrameWidth),
+                                  static_cast<int>(m_originalFrameHeight));
 
         // Draw chart overlay (on RIGHT side of camera)
         m_chartOverlay.Draw(m_memDC, rect);

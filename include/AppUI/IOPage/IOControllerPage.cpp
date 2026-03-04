@@ -2,6 +2,7 @@
 #include "IOControllerPage.h"
 #include "ApplicationContext.h"
 #include "EziIOManager.h"
+#include "safety/SafetyWatchManager.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGroupBox>
@@ -36,6 +37,16 @@ IOControllerPage::IOControllerPage(ApplicationContext* context, QWidget* parent)
 
   m_pollTimer = new QTimer(this);
   connect(m_pollTimer, &QTimer::timeout, this, &IOControllerPage::updateIOStatus);
+
+  // Resume polling when E-Stop is cleared (if page is visible)
+  if (m_context && m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyCleared,
+            this, [this]() {
+      if (isVisible() && m_pollTimer && !m_pollTimer->isActive()) {
+        m_pollTimer->start(POLL_INTERVAL_MS);
+      }
+    });
+  }
 }
 
 IOControllerPage::~IOControllerPage()
@@ -298,6 +309,12 @@ void IOControllerPage::showEvent(QShowEvent* event)
 
   std::cout << "[IOControllerPage] Page shown - starting polling" << std::endl;
 
+  // Don't start polling during E-Stop - hardware may be unresponsive
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    std::cout << "[IOControllerPage] E-Stop active - skipping polling" << std::endl;
+    return;
+  }
+
   refreshDeviceList();
   m_pollTimer->start(POLL_INTERVAL_MS);
 }
@@ -542,6 +559,12 @@ void IOControllerPage::updatePinRow(QTableWidget* table, int row, int pinNumber,
 
 void IOControllerPage::updateIOStatus()
 {
+  // Skip hardware access during E-Stop
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    m_pollTimer->stop();
+    return;
+  }
+
   if (m_selectedDevice.empty()) {
     return;
   }

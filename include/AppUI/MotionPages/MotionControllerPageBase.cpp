@@ -2,6 +2,7 @@
 #include "MotionControllerPageBase.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "safety/SafetyWatchManager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -148,6 +149,16 @@ void MotionControllerPageBase::setupPolling()
   m_pollTimer = new QTimer(this);
   connect(m_pollTimer, &QTimer::timeout, this, &MotionControllerPageBase::updatePositions);
   // Timer will start in showEvent()
+
+  // Resume polling when E-Stop is cleared (if page is visible)
+  if (m_context && m_context->safetyWatchManager) {
+    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyCleared,
+            this, [this]() {
+      if (isVisible() && m_pollTimer && !m_pollTimer->isActive()) {
+        m_pollTimer->start(POLL_INTERVAL_MS);
+      }
+    });
+  }
 }
 
 void MotionControllerPageBase::showEvent(QShowEvent* event)
@@ -155,6 +166,12 @@ void MotionControllerPageBase::showEvent(QShowEvent* event)
   QWidget::showEvent(event);
 
   std::cout << "[MotionControllerPageBase] Page shown - starting polling" << std::endl;
+
+  // Don't start polling during E-Stop - hardware may be unresponsive
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    std::cout << "[MotionControllerPageBase] E-Stop active - skipping polling" << std::endl;
+    return;
+  }
 
   // Refresh device list
   refreshDeviceList();
@@ -266,6 +283,12 @@ void MotionControllerPageBase::updateDeviceRow(int row, const std::string& devic
 
 void MotionControllerPageBase::updatePositions()
 {
+  // Skip hardware access during E-Stop
+  if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+    m_pollTimer->stop();
+    return;
+  }
+
   UnifiedMotionManager* motionMgr = getMotionManager();
   if (!motionMgr) return;
 

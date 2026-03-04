@@ -50,6 +50,8 @@ class BeamServerClient;
 #define IDM_TOOLS_CLICK_TO_MOVE     8002
 #define IDM_TOOLS_SHOW_DISTANCE     8003
 #define IDM_TOOLS_MAGNIFICATION     8004
+#define IDM_TOOLS_DISPLAY_ROTATION  8005
+#define IDM_TOOLS_DISPLAY_ROTATION_CW 8006
 
 // Overlay Size Menu IDs
 #define IDM_OVERLAY_SIZE_INCREASE   8010
@@ -183,7 +185,8 @@ public:
 
     void Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
               int destX, int destY, int destWidth, int destHeight,
-              double umPerPxX, double umPerPxY);
+              double umPerPxX, double umPerPxY,
+              int displayRotation = 0, int origFrameWidth = 0, int origFrameHeight = 0);
 
     double GetFps() const { return m_fps; }
     void SetFps(double fps) { m_fps = fps; }
@@ -317,6 +320,14 @@ public:
     uint64_t GetBeamStreamResultSequence() const { return m_beamStreamOverlay.GetResultSequence(); }
     double GetBeamStreamFps() const { return m_beamStreamOverlay.GetFps(); }
 
+    // Display rotation (0 = none, -90 = CCW, +90 = CW)
+    void SetDisplayRotation(int degrees);
+    int GetDisplayRotation() const { return m_displayRotation; }
+    bool IsDisplayRotation() const { return m_displayRotation != 0; }
+    void SetDisplayRotationChangedCallback(std::function<void(int)> callback) {
+        m_onDisplayRotationChanged = callback;
+    }
+
     // Callback for overlay scale changes (for settings save)
     void SetOverlayScaleChangedCallback(std::function<void(float)> callback) {
         m_onOverlayScaleChanged = callback;
@@ -432,6 +443,12 @@ private:
     // Chart overlay
     ChartOverlay m_chartOverlay;
     std::function<void(float)> m_onOverlayScaleChanged;  // Callback for scale changes
+
+    // Display rotation (0 = none, -90 = CCW, +90 = CW)
+    int m_displayRotation = 0;
+    uint32_t m_originalFrameWidth = 0;   // Pre-rotation width (for beam overlay transform)
+    uint32_t m_originalFrameHeight = 0;  // Pre-rotation height
+    std::function<void(int)> m_onDisplayRotationChanged;
 
     // Chart update throttling (prevents UI freezing from high-frequency data updates)
     std::atomic<bool> m_chartNeedsRepaint{false};

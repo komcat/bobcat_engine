@@ -426,10 +426,36 @@ void GdiCameraWindowManager::applyApplicationSettings() {
         m_window->SetMagnification(magnification);
     }
 
+    // Display rotation (stored as int: 0, -90, 90)
+    QString displayRotationKey = QString::fromStdString(m_toolsPrefix + "/DisplayRotation");
+    QVariant rotVal = settings.value(displayRotationKey, 0);
+    int displayRotation = 0;
+    // Support legacy "true"/"false" values
+    if (rotVal.toString() == "true") {
+        displayRotation = -90;
+    }
+    else if (rotVal.toString() == "false") {
+        displayRotation = 0;
+    }
+    else {
+        displayRotation = rotVal.toInt();
+    }
+    m_window->SetDisplayRotation(displayRotation);
+
+    // Setup callback to save display rotation when changed via menu
+    std::string rotationKeyCopy = m_toolsPrefix + "/DisplayRotation";
+    m_window->SetDisplayRotationChangedCallback([rotationKeyCopy](int degrees) {
+        QSettings settings("Fabrinet", "BobcatEngine");
+        settings.setValue(QString::fromStdString(rotationKeyCopy), degrees);
+        settings.sync();
+        std::cout << "[GdiCameraWindowManager] Saved display rotation: " << degrees << " degrees" << std::endl;
+    });
+
     std::cout << "[GdiCameraWindowManager] Crosshair: " << (crosshairEnabled ? "on" : "off")
               << ", Click-to-move: " << (clickToMoveEnabled ? "on" : "off")
               << ", Show-distance: " << (showDistanceEnabled ? "on" : "off")
-              << ", Magnification: " << magnification << "x" << std::endl;
+              << ", Magnification: " << magnification << "x"
+              << ", Rotation: " << displayRotation << " deg" << std::endl;
 }
 
 void GdiCameraWindowManager::saveWindowGeometry() {
@@ -489,6 +515,8 @@ void GdiCameraWindowManager::saveWindowGeometry() {
                           m_window->IsShowDistanceEnabled() ? "true" : "false");
         settings.setValue(QString::fromStdString(m_toolsPrefix + "/Magnification"),
                           m_window->GetMagnification());
+        settings.setValue(QString::fromStdString(m_toolsPrefix + "/DisplayRotation"),
+                          m_window->GetDisplayRotation());
 
         settings.sync();
 

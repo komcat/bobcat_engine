@@ -4,6 +4,7 @@
 #include "lighting/LightingManager.h"
 #include "lighting/LightingTypes.h"
 #include "lighting/LightingParameterWorker.h"
+#include "safety/SafetyWatchManager.h"
 #include <QScrollArea>
 #include <QFrame>
 #include <iostream>
@@ -407,6 +408,19 @@ LightingControlWidget::LightingControlWidget(ApplicationContext* context, QWidge
         // Start the worker thread
         m_parameterWorker->start();
     }
+
+    // Resume polling when E-Stop is cleared (if page is visible)
+    if (m_context && m_context->safetyWatchManager) {
+        connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyCleared,
+                this, [this]() {
+            if (isVisible() && m_pollTimer && !m_pollTimer->isActive()) {
+                if (m_parameterWorker) {
+                    m_parameterWorker->setStatusPollingEnabled(true);
+                }
+                m_pollTimer->start(500);
+            }
+        });
+    }
 }
 
 LightingControlWidget::~LightingControlWidget()
@@ -424,6 +438,12 @@ LightingControlWidget::~LightingControlWidget()
 void LightingControlWidget::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
+
+    // Don't start polling during E-Stop - hardware may be unresponsive
+    if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+        return;
+    }
+
     updateStatus();
 
     // Enable worker polling when visible
@@ -907,6 +927,15 @@ void LightingControlWidget::updateChannelWidgets()
 
 void LightingControlWidget::onPollTimer()
 {
+    // Skip hardware access during E-Stop
+    if (m_context && m_context->safetyWatchManager && m_context->safetyWatchManager->IsCriticalFlagRaised()) {
+        m_pollTimer->stop();
+        if (m_parameterWorker) {
+            m_parameterWorker->setStatusPollingEnabled(false);
+        }
+        return;
+    }
+
     // Only update connection status UI (non-blocking config/flag checks)
     // Channel widget updates are handled by the worker's statusUpdated signal -> onWorkerStatusUpdated
     updateStatus();

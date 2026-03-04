@@ -295,6 +295,9 @@ void JogPanelWindow::createQuickOutputTab()
 {
   if (m_quickOutputManager) {
     m_quickOutputWidget = new QuickOutputWidget(m_quickOutputManager, this);
+    if (m_context && m_context->safetyWatchManager) {
+      m_quickOutputWidget->setSafetyWatchManager(m_context->safetyWatchManager);
+    }
     m_tabWidget->addTab(m_quickOutputWidget, "Quick Output");
   }
   else {
@@ -615,7 +618,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
 
   const std::vector<QString> labels = {
     "0.1µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
-    "100µ", "200µ", "500µ", "1mm", "2mm"
+    "100µ", "200µ", "250µ", "500µ", "1mm", "2mm", "5mm"
   };
 
   int row = 0, col = 0;
