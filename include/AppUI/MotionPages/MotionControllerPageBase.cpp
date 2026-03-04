@@ -204,7 +204,9 @@ void MotionControllerPageBase::refreshDeviceList()
   std::cout << "[MotionControllerPageBase] Refreshing device list for type: "
     << controllerType << " (" << deviceNames.size() << " devices)" << std::endl;
 
-  // Clear and rebuild table
+  // Clear and rebuild table (m_deviceTable may be null if subclass overrides setupUI)
+  if (!m_deviceTable) return;
+
   m_deviceTable->setRowCount(0);
 
   for (const auto& deviceName : deviceNames) {
@@ -293,6 +295,8 @@ void MotionControllerPageBase::updatePositions()
   if (!motionMgr) return;
 
   std::vector<std::string> axisNames = getAxisNames();
+
+  if (!m_deviceTable) return;
 
   for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
     QTableWidgetItem* nameItem = m_deviceTable->item(row, COL_NAME);
@@ -390,6 +394,7 @@ UnifiedMotionManager* MotionControllerPageBase::getMotionManager()
 
 int MotionControllerPageBase::findDeviceRow(const std::string& deviceName) const
 {
+  if (!m_deviceTable) return -1;
   for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
     QTableWidgetItem* nameItem = m_deviceTable->item(row, COL_NAME);
     if (nameItem && nameItem->text().toStdString() == deviceName) {

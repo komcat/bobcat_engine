@@ -15,6 +15,9 @@
 #include <QFrame>
 #include <QSettings>
 #include <QDir>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QCoreApplication>
 #include <iostream>
 
 // QSettings keys (same organization as GdiCameraWindowManager)
@@ -328,7 +331,33 @@ void ApplicationSettingsPage::setupUI()
   m_saveButton->setEnabled(false);
   connect(m_saveButton, &QPushButton::clicked, this, &ApplicationSettingsPage::onSaveClicked);
 
+  QPushButton* openConfigButton = new QPushButton("Open Config Folder");
+  openConfigButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #0e639c; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 10px 20px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1177bb; "
+    "}"
+  );
+  connect(openConfigButton, &QPushButton::clicked, this, [this]() {
+    QString configPath = QCoreApplication::applicationDirPath() + "/config";
+    QDir configDir(configPath);
+    if (configDir.exists()) {
+      QDesktopServices::openUrl(QUrl::fromLocalFile(configPath));
+    } else {
+      QMessageBox::warning(this, "Config Folder Not Found",
+        "Config folder not found at:\n" + configPath);
+    }
+  });
+
   buttonBar->addWidget(m_resetButton);
+  buttonBar->addWidget(openConfigButton);
   buttonBar->addStretch();
   buttonBar->addWidget(m_reloadButton);
   buttonBar->addWidget(m_saveButton);
