@@ -1395,8 +1395,6 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
                 std::lock_guard<std::mutex> lock(m_frameMutex);
                 m_frameWidth = 0;
                 m_frameHeight = 0;
-                m_displayFrameWidth = 0;
-                m_displayFrameHeight = 0;
             }
             UpdateCameraMenu();
             InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -1435,8 +1433,6 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
             std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
             m_secondaryFrameWidth = 0;
             m_secondaryFrameHeight = 0;
-            m_displaySecondaryWidth = 0;
-            m_displaySecondaryHeight = 0;
         }
         UpdateCameraMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -1672,47 +1668,39 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
     if (isPrimaryCamera) {
         std::lock_guard<std::mutex> lock(m_frameMutex);
 
-        // 2:1 decimation for display performance (4x fewer pixels to process and render)
-        uint32_t dispW = (frameData.width + 1) / 2;
-        uint32_t dispH = (frameData.height + 1) / 2;
-
-        size_t requiredSize = dispW * dispH * 3;
+        size_t requiredSize = frameData.width * frameData.height * 3;
         if (m_frameBuffer.size() < requiredSize) {
             m_frameBuffer.resize(requiredSize);
         }
 
-        // Keep original dimensions for coordinate mapping (click-to-move, overlays, calibration)
         m_frameWidth = frameData.width;
         m_frameHeight = frameData.height;
-        m_displayFrameWidth = dispW;
-        m_displayFrameHeight = dispH;
 
         const uint8_t* src = frameData.imageData.data();
         uint8_t* dst = m_frameBuffer.data();
 
-        // Combined 2:1 decimation + RGB->BGR conversion + vertical flip in one pass
-        for (uint32_t dy = 0; dy < dispH; ++dy) {
-            uint32_t srcRow = dy * 2;
-            uint32_t dstRow = dispH - 1 - dy;  // Vertical flip for bottom-up BMP
+        // RGB->BGR conversion + vertical flip for bottom-up BMP
+        for (uint32_t y = 0; y < frameData.height; ++y) {
+            uint32_t srcRow = y;
+            uint32_t dstRow = frameData.height - 1 - y;
 
             const uint8_t* srcLine = src + srcRow * frameData.width * 3;
-            uint8_t* dstLine = dst + dstRow * dispW * 3;
+            uint8_t* dstLine = dst + dstRow * frameData.width * 3;
 
-            for (uint32_t dx = 0; dx < dispW; ++dx) {
-                uint32_t sx = dx * 2;
-                dstLine[dx * 3 + 0] = srcLine[sx * 3 + 2];  // B
-                dstLine[dx * 3 + 1] = srcLine[sx * 3 + 1];  // G
-                dstLine[dx * 3 + 2] = srcLine[sx * 3 + 0];  // R
+            for (uint32_t x = 0; x < frameData.width; ++x) {
+                dstLine[x * 3 + 0] = srcLine[x * 3 + 2];  // B
+                dstLine[x * 3 + 1] = srcLine[x * 3 + 1];  // G
+                dstLine[x * 3 + 2] = srcLine[x * 3 + 0];  // R
             }
         }
 
-        // Apply rotation if enabled (operates on decimated buffer - 4x faster)
+        // Apply rotation if enabled
         if (m_displayRotation != 0) {
             m_originalFrameWidth = m_frameWidth;
             m_originalFrameHeight = m_frameHeight;
 
-            uint32_t srcW = m_displayFrameWidth;
-            uint32_t srcH = m_displayFrameHeight;
+            uint32_t srcW = m_frameWidth;
+            uint32_t srcH = m_frameHeight;
             // Rotated dimensions: W becomes H, H becomes W
             uint32_t rotW = srcH;
             uint32_t rotH = srcW;
@@ -1740,12 +1728,8 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
             }
 
             m_frameBuffer = std::move(rotated);
-            // Update original dims to rotated orientation (for coordinate mapping)
-            m_frameWidth = m_originalFrameHeight;
-            m_frameHeight = m_originalFrameWidth;
-            // Update display dims to rotated decimated
-            m_displayFrameWidth = rotW;
-            m_displayFrameHeight = rotH;
+            m_frameWidth = rotW;
+            m_frameHeight = rotH;
         }
 
         m_hasNewFrame = true;
@@ -1753,36 +1737,29 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
     else if (isSecondaryCamera) {
         std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
 
-        // 2:1 decimation for display performance
-        uint32_t dispW = (frameData.width + 1) / 2;
-        uint32_t dispH = (frameData.height + 1) / 2;
-
-        size_t requiredSize = dispW * dispH * 3;
+        size_t requiredSize = frameData.width * frameData.height * 3;
         if (m_secondaryFrameBuffer.size() < requiredSize) {
             m_secondaryFrameBuffer.resize(requiredSize);
         }
 
         m_secondaryFrameWidth = frameData.width;
         m_secondaryFrameHeight = frameData.height;
-        m_displaySecondaryWidth = dispW;
-        m_displaySecondaryHeight = dispH;
 
         const uint8_t* src = frameData.imageData.data();
         uint8_t* dst = m_secondaryFrameBuffer.data();
 
-        // Combined 2:1 decimation + RGB->BGR conversion + vertical flip
-        for (uint32_t dy = 0; dy < dispH; ++dy) {
-            uint32_t srcRow = dy * 2;
-            uint32_t dstRow = dispH - 1 - dy;
+        // RGB->BGR conversion + vertical flip for bottom-up BMP
+        for (uint32_t y = 0; y < frameData.height; ++y) {
+            uint32_t srcRow = y;
+            uint32_t dstRow = frameData.height - 1 - y;
 
             const uint8_t* srcLine = src + srcRow * frameData.width * 3;
-            uint8_t* dstLine = dst + dstRow * dispW * 3;
+            uint8_t* dstLine = dst + dstRow * frameData.width * 3;
 
-            for (uint32_t dx = 0; dx < dispW; ++dx) {
-                uint32_t sx = dx * 2;
-                dstLine[dx * 3 + 0] = srcLine[sx * 3 + 2];  // B
-                dstLine[dx * 3 + 1] = srcLine[sx * 3 + 1];  // G
-                dstLine[dx * 3 + 2] = srcLine[sx * 3 + 0];  // R
+            for (uint32_t x = 0; x < frameData.width; ++x) {
+                dstLine[x * 3 + 0] = srcLine[x * 3 + 2];  // B
+                dstLine[x * 3 + 1] = srcLine[x * 3 + 1];  // G
+                dstLine[x * 3 + 2] = srcLine[x * 3 + 0];  // R
             }
         }
 
@@ -2146,7 +2123,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
         {
             std::lock_guard<std::mutex> lock(m_frameMutex);
 
-            if (m_displayFrameWidth == 0 || m_displayFrameHeight == 0 || m_frameBuffer.empty()) {
+            if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
                 SetBkMode(hdc, TRANSPARENT);
                 SetTextColor(hdc, RGB(128, 128, 128));
 
@@ -2160,8 +2137,8 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
             } else {
                 BITMAPINFOHEADER& bih = m_bitmapInfo->bmiHeader;
                 bih.biSize = sizeof(BITMAPINFOHEADER);
-                bih.biWidth = m_displayFrameWidth;
-                bih.biHeight = m_displayFrameHeight;
+                bih.biWidth = m_frameWidth;
+                bih.biHeight = m_frameHeight;
                 bih.biPlanes = 1;
                 bih.biBitCount = 24;
                 bih.biCompression = BI_RGB;
@@ -2171,7 +2148,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
                 bih.biClrUsed = 0;
                 bih.biClrImportant = 0;
 
-                float frameAspect = static_cast<float>(m_displayFrameWidth) / m_displayFrameHeight;
+                float frameAspect = static_cast<float>(m_frameWidth) / m_frameHeight;
                 float windowAspect = static_cast<float>(halfWidth) / m_bufferHeight;
 
                 int destWidth, destHeight, destX, destY;
@@ -2192,7 +2169,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
                 StretchDIBits(
                     hdc,
                     destX, destY, destWidth, destHeight,
-                    0, 0, m_displayFrameWidth, m_displayFrameHeight,
+                    0, 0, m_frameWidth, m_frameHeight,
                     m_frameBuffer.data(),
                     m_bitmapInfo,
                     DIB_RGB_COLORS,
@@ -2216,7 +2193,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
         {
             std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
 
-            if (m_displaySecondaryWidth == 0 || m_displaySecondaryHeight == 0 || m_secondaryFrameBuffer.empty()) {
+            if (m_secondaryFrameWidth == 0 || m_secondaryFrameHeight == 0 || m_secondaryFrameBuffer.empty()) {
                 SetBkMode(hdc, TRANSPARENT);
                 SetTextColor(hdc, RGB(128, 128, 128));
 
@@ -2244,13 +2221,13 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
                 BITMAPINFO bitmapInfo2 = {};
                 BITMAPINFOHEADER& bih2 = bitmapInfo2.bmiHeader;
                 bih2.biSize = sizeof(BITMAPINFOHEADER);
-                bih2.biWidth = m_displaySecondaryWidth;
-                bih2.biHeight = m_displaySecondaryHeight;
+                bih2.biWidth = m_secondaryFrameWidth;
+                bih2.biHeight = m_secondaryFrameHeight;
                 bih2.biPlanes = 1;
                 bih2.biBitCount = 24;
                 bih2.biCompression = BI_RGB;
 
-                float frameAspect = static_cast<float>(m_displaySecondaryWidth) / m_displaySecondaryHeight;
+                float frameAspect = static_cast<float>(m_secondaryFrameWidth) / m_secondaryFrameHeight;
                 float windowAspect = static_cast<float>(halfWidth) / m_bufferHeight;
 
                 int destWidth, destHeight, destX, destY;
@@ -2271,7 +2248,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
                 StretchDIBits(
                     hdc,
                     destX, destY, destWidth, destHeight,
-                    0, 0, m_displaySecondaryWidth, m_displaySecondaryHeight,
+                    0, 0, m_secondaryFrameWidth, m_secondaryFrameHeight,
                     m_secondaryFrameBuffer.data(),
                     &bitmapInfo2,
                     DIB_RGB_COLORS,
@@ -2318,7 +2295,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
         // Single camera mode (original behavior)
         std::lock_guard<std::mutex> lock(m_frameMutex);
 
-        if (m_displayFrameWidth == 0 || m_displayFrameHeight == 0 || m_frameBuffer.empty()) {
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
             SetBkMode(hdc, TRANSPARENT);
             SetTextColor(hdc, RGB(128, 128, 128));
 
@@ -2328,11 +2305,10 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
             return;
         }
 
-        // Use decimated display dimensions for BITMAPINFOHEADER (matches actual buffer)
         BITMAPINFOHEADER& bih = m_bitmapInfo->bmiHeader;
         bih.biSize = sizeof(BITMAPINFOHEADER);
-        bih.biWidth = m_displayFrameWidth;
-        bih.biHeight = m_displayFrameHeight;
+        bih.biWidth = m_frameWidth;
+        bih.biHeight = m_frameHeight;
         bih.biPlanes = 1;
         bih.biBitCount = 24;
         bih.biCompression = BI_RGB;
@@ -2342,8 +2318,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
         bih.biClrUsed = 0;
         bih.biClrImportant = 0;
 
-        // Aspect ratio is preserved since decimation is uniform 2:1
-        float frameAspect = static_cast<float>(m_displayFrameWidth) / m_displayFrameHeight;
+        float frameAspect = static_cast<float>(m_frameWidth) / m_frameHeight;
         float windowAspect = static_cast<float>(m_bufferWidth) / m_bufferHeight;
 
         int destWidth, destHeight, destX, destY;
@@ -2364,7 +2339,7 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
         StretchDIBits(
             hdc,
             destX, destY, destWidth, destHeight,
-            0, 0, m_displayFrameWidth, m_displayFrameHeight,
+            0, 0, m_frameWidth, m_frameHeight,
             m_frameBuffer.data(),
             m_bitmapInfo,
             DIB_RGB_COLORS,
@@ -2464,8 +2439,6 @@ void GdiCameraWindow::SetDualCameraMode(bool enabled) {
             std::lock_guard<std::mutex> lock(m_secondaryFrameMutex);
             m_secondaryFrameWidth = 0;
             m_secondaryFrameHeight = 0;
-            m_displaySecondaryWidth = 0;
-            m_displaySecondaryHeight = 0;
         }
     }
 
