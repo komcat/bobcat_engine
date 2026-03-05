@@ -45,21 +45,27 @@ private slots:
     void onMoveToPosition();
     void onCaptureHexPosition();
     void onCaptureGantryPosition();
+    void onCaptureGantryCorner();
+    void onSkipGantryCorner3();
     void onDetectCenter();
     void onConfirm();
     void onRedo();
     void onCancel();
     void updatePositionDisplay();
     void onAssignmentComboChanged();
+    void onGantryModeChanged(int index);
 
 private:
-    enum WizardState { Idle, PositionHex, PositionGantry, Summary };
+    enum WizardState { Idle, PositionHex, PositionGantry,
+                       GantryCorner1, GantryCorner2, GantryCorner3,
+                       Summary };
 
     void setupUI();
     void setState(WizardState state);
     void refreshList();
     void rebuildAssignmentUI();
     void refreshVisionProfiles();
+    void finalizeCornerCapture();
     QString getVisionDirectory() const;
 
     ApplicationContext* m_context;
@@ -91,6 +97,26 @@ private:
     QLabel* m_gantryPositionLabel;
     QPushButton* m_captureGantryBtn;
     QPushButton* m_cancelGantryBtn;
+
+    // Gantry teaching mode selector
+    QComboBox* m_gantryModeCombo;
+
+    // Corner teaching sub-page (reuses gantry page area)
+    QLabel* m_cornerInstructionLabel;
+    QLabel* m_cornerPositionLabel;
+    QLabel* m_cornerStatusLabel;
+    QPushButton* m_captureCornerBtn;
+    QPushButton* m_skipCorner3Btn;
+    QPushButton* m_cancelCornerBtn;
+    QWidget* m_singlePointPage;
+    QWidget* m_cornerPatternPage;
+    QStackedWidget* m_gantryModeStack;
+
+    // Corner positions (temporary, used to compute center)
+    double m_cornerTL_X = 0.0, m_cornerTL_Y = 0.0, m_cornerTL_Z = 0.0;
+    double m_cornerBR_X = 0.0, m_cornerBR_Y = 0.0;
+    double m_cornerTR_X = 0.0, m_cornerTR_Y = 0.0;
+    bool m_hasThirdCorner = false;
 
     // Vision detect on gantry page
     QComboBox* m_visionProfileCombo;

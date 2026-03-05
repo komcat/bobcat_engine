@@ -354,14 +354,87 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 }
             }
 
-            // Manual fallback for hex
+            // Manual fallback for hex: 2-3 corner capture (same pattern as UI widget)
             if (!hexCaptured && m_manualAlignCallback) {
-                std::string msg = "Align hex device: " + hexDev.deviceName
-                    + "\nJog to center on the hex device tip/feature.";
-                bool userOk = m_manualAlignCallback(hexDev.deviceName, msg, true, true, true);
+                std::cout << "[AccuracyTrainer] Starting 2-3 corner capture for " << hexDev.deviceName << std::endl;
+
+                // Corner 1: Top-Left
+                std::string msg1 = "Corner 1/3 (Top-Left): " + hexDev.deviceName
+                    + "\nJog gantry camera crosshair to the TOP-LEFT corner of the end-effector tip.";
+                bool userOk = m_manualAlignCallback(hexDev.deviceName, msg1, true, true, true);
                 if (!userOk) {
-                    std::cout << "[AccuracyTrainer] User skipped hex registration for " << hexDev.deviceName << std::endl;
+                    std::cout << "[AccuracyTrainer] User cancelled hex corner 1 for " << hexDev.deviceName << std::endl;
+                    continue;
                 }
+                auto cornerTL = motionMgr->GetCurrentPosition(device);
+                std::cout << "[AccuracyTrainer] Corner 1 (TL): X=" << cornerTL.x
+                          << " Y=" << cornerTL.y << " Z=" << cornerTL.z << std::endl;
+
+                if (context && context->IsStopRequestedAny()) {
+                    errorMessage = "Alignment stopped during hex corner capture";
+                    context->SetValue("accuracy_trainer.result.success", false);
+                    return false;
+                }
+
+                // Corner 2: Bottom-Right
+                std::string msg2 = "Corner 2/3 (Bottom-Right): " + hexDev.deviceName
+                    + "\nJog gantry camera crosshair to the BOTTOM-RIGHT corner of the end-effector tip.";
+                userOk = m_manualAlignCallback(hexDev.deviceName, msg2, true, true, true);
+                if (!userOk) {
+                    std::cout << "[AccuracyTrainer] User cancelled hex corner 2 for " << hexDev.deviceName << std::endl;
+                    continue;
+                }
+                auto cornerBR = motionMgr->GetCurrentPosition(device);
+                std::cout << "[AccuracyTrainer] Corner 2 (BR): X=" << cornerBR.x
+                          << " Y=" << cornerBR.y << std::endl;
+
+                // Corner 3: Top-Right (optional)
+                std::string msg3 = "Corner 3/3 (Top-Right, Optional): " + hexDev.deviceName
+                    + "\nJog gantry camera crosshair to the TOP-RIGHT corner.\n"
+                      "Click OK to capture, or Cancel to use 2-corner midpoint.";
+                bool hasThirdCorner = m_manualAlignCallback(hexDev.deviceName, msg3, true, true, true);
+                double cornerTR_X = 0.0, cornerTR_Y = 0.0;
+                if (hasThirdCorner) {
+                    auto cornerTR = motionMgr->GetCurrentPosition(device);
+                    cornerTR_X = cornerTR.x;
+                    cornerTR_Y = cornerTR.y;
+                    std::cout << "[AccuracyTrainer] Corner 3 (TR): X=" << cornerTR_X
+                              << " Y=" << cornerTR_Y << std::endl;
+                } else {
+                    std::cout << "[AccuracyTrainer] Skipped corner 3 (using 2-corner midpoint)" << std::endl;
+                }
+
+                // Compute center from corners (same math as UI widgets)
+                double centerX = 0.0, centerY = 0.0;
+                if (hasThirdCorner) {
+                    double blX = cornerTL.x + cornerBR.x - cornerTR_X;
+                    double blY = cornerTL.y + cornerBR.y - cornerTR_Y;
+                    centerX = (cornerTL.x + cornerBR.x + cornerTR_X + blX) / 4.0;
+                    centerY = (cornerTL.y + cornerBR.y + cornerTR_Y + blY) / 4.0;
+                } else {
+                    centerX = (cornerTL.x + cornerBR.x) / 2.0;
+                    centerY = (cornerTL.y + cornerBR.y) / 2.0;
+                }
+
+                double dist = AccuracyTrainerMath::Distance(
+                    cornerTL.x, cornerTL.y, cornerBR.x, cornerBR.y);
+                std::cout << "[AccuracyTrainer] Computed center: X=" << centerX
+                          << " Y=" << centerY << " diagonal=" << dist << "mm"
+                          << (hasThirdCorner ? " (3-corner)" : " (2-corner)") << std::endl;
+
+                // Move gantry to computed center
+                bool moveOk = motionMgr->MoveToAbs(
+                    device, centerX, centerY, cornerTL.z, 100.0, true);
+                if (!moveOk) {
+                    std::cout << "[AccuracyTrainer] WARNING: Move to corner center failed" << std::endl;
+                }
+                hexCaptured = true;
+            }
+
+            if (!hexCaptured) {
+                std::cout << "[AccuracyTrainer] No vision and no manual callback for hex "
+                          << hexDev.deviceName << " - skipping" << std::endl;
+                continue;
             }
 
             // Capture gantry position (where gantry is centered on hex) and hex device position

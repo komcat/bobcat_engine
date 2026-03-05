@@ -225,6 +225,34 @@ void TeachMultiDeviceWidget::setupUI()
     m_gantryInstructionLabel->setAlignment(Qt::AlignCenter);
     gantryLayout->addWidget(m_gantryInstructionLabel);
 
+    // Teaching mode selector
+    QHBoxLayout* modeRow = new QHBoxLayout();
+    QLabel* modeLabel = new QLabel("Teaching Mode:");
+    modeLabel->setStyleSheet("color: #aaa; font-size: 12px; font-weight: bold;");
+    modeRow->addWidget(modeLabel);
+
+    m_gantryModeCombo = new QComboBox();
+    m_gantryModeCombo->addItem("Single Point (manual)");
+    m_gantryModeCombo->addItem("Corner Pattern (2-3 points)");
+    m_gantryModeCombo->setStyleSheet(
+        "QComboBox { background-color: #2d3e5f; color: white; border: 1px solid #4d6e9f; "
+        "border-radius: 3px; padding: 4px 8px; }"
+        "QComboBox::drop-down { border: none; }"
+        "QComboBox QAbstractItemView { background-color: #2d3e5f; color: white; selection-background-color: #3d5a8c; }");
+    modeRow->addWidget(m_gantryModeCombo, 1);
+    gantryLayout->addLayout(modeRow);
+
+    connect(m_gantryModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TeachMultiDeviceWidget::onGantryModeChanged);
+
+    // Stacked widget to switch between single-point and corner-pattern sub-pages
+    m_gantryModeStack = new QStackedWidget();
+
+    // --- Sub-page 0: Single Point mode (original UI) ---
+    m_singlePointPage = new QWidget();
+    QVBoxLayout* singleLayout = new QVBoxLayout(m_singlePointPage);
+    singleLayout->setContentsMargins(0, 0, 0, 0);
+
     QGroupBox* gantryPosGroup = new QGroupBox("Gantry Position (XYZ)");
     gantryPosGroup->setStyleSheet(
         "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
@@ -235,7 +263,7 @@ void TeachMultiDeviceWidget::setupUI()
     m_gantryPositionLabel->setStyleSheet("font-size: 18px; color: #00ff88; font-family: monospace; padding: 10px;");
     m_gantryPositionLabel->setAlignment(Qt::AlignCenter);
     gantryPosLayout->addWidget(m_gantryPositionLabel);
-    gantryLayout->addWidget(gantryPosGroup);
+    singleLayout->addWidget(gantryPosGroup);
 
     // Vision profile section for auto-detect hex tip
     QGroupBox* visionGroup = new QGroupBox("Vision Detect (Optional)");
@@ -281,9 +309,8 @@ void TeachMultiDeviceWidget::setupUI()
     connect(m_detectCenterBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onDetectCenter);
     visionLayout->addWidget(m_detectCenterBtn);
 
-    gantryLayout->addWidget(visionGroup);
-
-    gantryLayout->addStretch();
+    singleLayout->addWidget(visionGroup);
+    singleLayout->addStretch();
 
     QHBoxLayout* gantryBtnRow = new QHBoxLayout();
     m_captureGantryBtn = new QPushButton("Capture Gantry View Position");
@@ -300,10 +327,80 @@ void TeachMultiDeviceWidget::setupUI()
         "QPushButton:hover { background-color: #e74c3c; }");
     gantryBtnRow->addWidget(m_captureGantryBtn);
     gantryBtnRow->addWidget(m_cancelGantryBtn);
-    gantryLayout->addLayout(gantryBtnRow);
+    singleLayout->addLayout(gantryBtnRow);
 
     connect(m_captureGantryBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCaptureGantryPosition);
     connect(m_cancelGantryBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCancel);
+
+    m_gantryModeStack->addWidget(m_singlePointPage);  // sub-index 0
+
+    // --- Sub-page 1: Corner Pattern mode ---
+    m_cornerPatternPage = new QWidget();
+    QVBoxLayout* cornerLayout = new QVBoxLayout(m_cornerPatternPage);
+    cornerLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_cornerInstructionLabel = new QLabel();
+    m_cornerInstructionLabel->setStyleSheet(
+        "font-size: 14px; color: #e0a0ff; font-weight: bold; padding: 12px; "
+        "background-color: #2d2e5f; border-radius: 6px;");
+    m_cornerInstructionLabel->setWordWrap(true);
+    m_cornerInstructionLabel->setAlignment(Qt::AlignCenter);
+    cornerLayout->addWidget(m_cornerInstructionLabel);
+
+    QGroupBox* cornerPosGroup = new QGroupBox("Gantry Position (XYZ)");
+    cornerPosGroup->setStyleSheet(
+        "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; margin-top: 10px; padding-top: 15px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    QVBoxLayout* cornerPosLayout = new QVBoxLayout(cornerPosGroup);
+    m_cornerPositionLabel = new QLabel("X: ---  Y: ---  Z: ---");
+    m_cornerPositionLabel->setStyleSheet("font-size: 18px; color: #00ff88; font-family: monospace; padding: 10px;");
+    m_cornerPositionLabel->setAlignment(Qt::AlignCenter);
+    cornerPosLayout->addWidget(m_cornerPositionLabel);
+    cornerLayout->addWidget(cornerPosGroup);
+
+    // Status label showing captured corners so far
+    m_cornerStatusLabel = new QLabel();
+    m_cornerStatusLabel->setStyleSheet(
+        "font-size: 12px; color: #aaa; padding: 8px; "
+        "background-color: #1a2a3f; border: 1px solid #3d5a8c; border-radius: 4px;");
+    m_cornerStatusLabel->setWordWrap(true);
+    cornerLayout->addWidget(m_cornerStatusLabel);
+
+    cornerLayout->addStretch();
+
+    QHBoxLayout* cornerBtnRow = new QHBoxLayout();
+    m_captureCornerBtn = new QPushButton("Capture Corner");
+    m_captureCornerBtn->setFixedHeight(40);
+    m_captureCornerBtn->setStyleSheet(
+        "QPushButton { background-color: #2980b9; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #3498db; }");
+    m_skipCorner3Btn = new QPushButton("Skip (2 corners only)");
+    m_skipCorner3Btn->setFixedHeight(40);
+    m_skipCorner3Btn->setStyleSheet(
+        "QPushButton { background-color: #7f8c8d; color: white; font-weight: bold; "
+        "border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #95a5a6; }");
+    m_skipCorner3Btn->setVisible(false);
+    m_cancelCornerBtn = new QPushButton("Cancel");
+    m_cancelCornerBtn->setFixedHeight(40);
+    m_cancelCornerBtn->setStyleSheet(
+        "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
+        "border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #e74c3c; }");
+    cornerBtnRow->addWidget(m_captureCornerBtn);
+    cornerBtnRow->addWidget(m_skipCorner3Btn);
+    cornerBtnRow->addWidget(m_cancelCornerBtn);
+    cornerLayout->addLayout(cornerBtnRow);
+
+    connect(m_captureCornerBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCaptureGantryCorner);
+    connect(m_skipCorner3Btn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onSkipGantryCorner3);
+    connect(m_cancelCornerBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCancel);
+
+    m_gantryModeStack->addWidget(m_cornerPatternPage);  // sub-index 1
+
+    gantryLayout->addWidget(m_gantryModeStack, 1);
 
     m_wizardStack->addWidget(gantryPage);  // index 2
 
@@ -371,12 +468,68 @@ void TeachMultiDeviceWidget::setState(WizardState state)
 
     case PositionGantry:
         m_wizardStack->setCurrentIndex(2);
+        m_gantryModeCombo->setEnabled(true);
+        m_gantryModeStack->setCurrentIndex(0);  // default to single-point
+        m_gantryModeCombo->setCurrentIndex(0);
         m_gantryInstructionLabel->setText(QString(
             "Step 2/2: Jog gantry to view %1 tip\n\n"
-            "Move the gantry camera so that the %1\n"
-            "end-effector tip is visible in the field of view.\n"
-            "Then click 'Capture Gantry View Position'")
+            "Single Point: Move gantry camera to center on the end-effector.\n"
+            "Corner Pattern: Capture 2-3 corners to compute center automatically.")
             .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        m_positionTimer->start(100);
+        break;
+
+    case GantryCorner1:
+        m_wizardStack->setCurrentIndex(2);
+        m_gantryModeCombo->setEnabled(false);
+        m_gantryModeStack->setCurrentIndex(1);
+        m_cornerInstructionLabel->setText(QString(
+            "Corner 1/3: Jog gantry to TOP-LEFT corner\n\n"
+            "Move the gantry camera crosshair to the\n"
+            "TOP-LEFT corner of the %1 end-effector.\n"
+            "Then click 'Capture Corner'")
+            .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        m_skipCorner3Btn->setVisible(false);
+        m_cornerStatusLabel->setText("No corners captured yet.");
+        m_positionTimer->start(100);
+        break;
+
+    case GantryCorner2:
+        m_wizardStack->setCurrentIndex(2);
+        m_gantryModeCombo->setEnabled(false);
+        m_gantryModeStack->setCurrentIndex(1);
+        m_cornerInstructionLabel->setText(QString(
+            "Corner 2/3: Jog gantry to BOTTOM-RIGHT corner\n\n"
+            "Move the gantry camera crosshair to the\n"
+            "BOTTOM-RIGHT corner of the %1 end-effector.\n"
+            "Then click 'Capture Corner'")
+            .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        m_skipCorner3Btn->setVisible(false);
+        m_cornerStatusLabel->setText(QString(
+            "Top-Left:  X=%1  Y=%2")
+            .arg(m_cornerTL_X, 0, 'f', 4)
+            .arg(m_cornerTL_Y, 0, 'f', 4));
+        m_positionTimer->start(100);
+        break;
+
+    case GantryCorner3:
+        m_wizardStack->setCurrentIndex(2);
+        m_gantryModeCombo->setEnabled(false);
+        m_gantryModeStack->setCurrentIndex(1);
+        m_cornerInstructionLabel->setText(QString(
+            "Corner 3/3 (Optional): Jog gantry to TOP-RIGHT corner\n\n"
+            "Move the gantry camera crosshair to the\n"
+            "TOP-RIGHT corner of the %1 end-effector.\n"
+            "Click 'Capture Corner' or 'Skip (2 corners only)'")
+            .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        m_skipCorner3Btn->setVisible(true);
+        m_cornerStatusLabel->setText(QString(
+            "Top-Left:      X=%1  Y=%2\n"
+            "Bottom-Right:  X=%3  Y=%4")
+            .arg(m_cornerTL_X, 0, 'f', 4)
+            .arg(m_cornerTL_Y, 0, 'f', 4)
+            .arg(m_cornerBR_X, 0, 'f', 4)
+            .arg(m_cornerBR_Y, 0, 'f', 4));
         m_positionTimer->start(100);
         break;
 
@@ -402,6 +555,26 @@ void TeachMultiDeviceWidget::setState(WizardState state)
             .arg(m_pendingTeach.gantryViewY, 0, 'f', 4)
             .arg(m_pendingTeach.gantryViewZ, 0, 'f', 4);
 
+        // Show corner details if corner pattern was used
+        if (m_cornerTL_X != 0.0 || m_cornerTL_Y != 0.0 ||
+            m_cornerBR_X != 0.0 || m_cornerBR_Y != 0.0) {
+            summary += QString("\n\nCorner Pattern (computed center):\n"
+                "  Top-Left:      X=%1  Y=%2\n"
+                "  Bottom-Right:  X=%3  Y=%4")
+                .arg(m_cornerTL_X, 0, 'f', 4)
+                .arg(m_cornerTL_Y, 0, 'f', 4)
+                .arg(m_cornerBR_X, 0, 'f', 4)
+                .arg(m_cornerBR_Y, 0, 'f', 4);
+            if (m_hasThirdCorner) {
+                summary += QString("\n  Top-Right:     X=%1  Y=%2")
+                    .arg(m_cornerTR_X, 0, 'f', 4)
+                    .arg(m_cornerTR_Y, 0, 'f', 4);
+            }
+            double dist = AccuracyTrainerMath::Distance(
+                m_cornerTL_X, m_cornerTL_Y, m_cornerBR_X, m_cornerBR_Y);
+            summary += QString("\n  Diagonal: %1 mm").arg(dist, 0, 'f', 4);
+        }
+
         if (!m_pendingTeach.visionProfilePath.empty()) {
             summary += QString("\n\nVision Profile: %1").arg(
                 QFileInfo(QString::fromStdString(m_pendingTeach.visionProfilePath)).baseName());
@@ -419,6 +592,12 @@ void TeachMultiDeviceWidget::onTeach()
 
     m_pendingTeach = HexDeviceTeachData();
     m_pendingTeach.deviceName = m_hexDeviceCombo->currentText().toStdString();
+
+    // Reset corner data
+    m_cornerTL_X = m_cornerTL_Y = m_cornerTL_Z = 0.0;
+    m_cornerBR_X = m_cornerBR_Y = 0.0;
+    m_cornerTR_X = m_cornerTR_Y = 0.0;
+    m_hasThirdCorner = false;
 
     std::cout << "[TeachMultiDevice] Starting teach for: " << m_pendingTeach.deviceName << std::endl;
 
@@ -448,6 +627,12 @@ void TeachMultiDeviceWidget::onReteachSelected()
     // Prepare pending teach with the same device name
     m_pendingTeach = HexDeviceTeachData();
     m_pendingTeach.deviceName = hd.deviceName;
+
+    // Reset corner data
+    m_cornerTL_X = m_cornerTL_Y = m_cornerTL_Z = 0.0;
+    m_cornerBR_X = m_cornerBR_Y = 0.0;
+    m_cornerTR_X = m_cornerTR_Y = 0.0;
+    m_hasThirdCorner = false;
 
     std::string hexDevice = hd.deviceName;
     PositionStruct hexTarget;
@@ -656,6 +841,72 @@ void TeachMultiDeviceWidget::onCaptureGantryPosition()
     setState(Summary);
 }
 
+void TeachMultiDeviceWidget::onGantryModeChanged(int index)
+{
+    if (m_state != PositionGantry) return;
+
+    if (index == 1) {
+        // Corner Pattern mode - start corner capture flow
+        m_cornerTL_X = m_cornerTL_Y = m_cornerTL_Z = 0.0;
+        m_cornerBR_X = m_cornerBR_Y = 0.0;
+        m_cornerTR_X = m_cornerTR_Y = 0.0;
+        m_hasThirdCorner = false;
+        setState(GantryCorner1);
+    } else {
+        // Single point mode - stay on PositionGantry with single-point sub-page
+        m_gantryModeStack->setCurrentIndex(0);
+    }
+}
+
+void TeachMultiDeviceWidget::onCaptureGantryCorner()
+{
+    if (!m_context || !m_context->motionManager || !m_trainingSet) {
+        QMessageBox::warning(this, "Error", "Motion manager not available.");
+        return;
+    }
+
+    std::string gantryDevice = m_trainingSet->deviceName;
+    auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+
+    switch (m_state) {
+    case GantryCorner1:
+        m_cornerTL_X = pos.x;
+        m_cornerTL_Y = pos.y;
+        m_cornerTL_Z = pos.z;
+        std::cout << "[TeachMultiDevice] Corner 1 (TL): X=" << pos.x
+                  << " Y=" << pos.y << " Z=" << pos.z << std::endl;
+        setState(GantryCorner2);
+        break;
+
+    case GantryCorner2:
+        m_cornerBR_X = pos.x;
+        m_cornerBR_Y = pos.y;
+        std::cout << "[TeachMultiDevice] Corner 2 (BR): X=" << pos.x
+                  << " Y=" << pos.y << std::endl;
+        setState(GantryCorner3);
+        break;
+
+    case GantryCorner3:
+        m_cornerTR_X = pos.x;
+        m_cornerTR_Y = pos.y;
+        m_hasThirdCorner = true;
+        std::cout << "[TeachMultiDevice] Corner 3 (TR): X=" << pos.x
+                  << " Y=" << pos.y << std::endl;
+        finalizeCornerCapture();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void TeachMultiDeviceWidget::onSkipGantryCorner3()
+{
+    m_hasThirdCorner = false;
+    std::cout << "[TeachMultiDevice] Skipped corner 3" << std::endl;
+    finalizeCornerCapture();
+}
+
 void TeachMultiDeviceWidget::onConfirm()
 {
     if (!m_trainingSet) return;
@@ -684,6 +935,11 @@ void TeachMultiDeviceWidget::onConfirm()
 
 void TeachMultiDeviceWidget::onRedo()
 {
+    // Reset corner data on redo
+    m_cornerTL_X = m_cornerTL_Y = m_cornerTL_Z = 0.0;
+    m_cornerBR_X = m_cornerBR_Y = 0.0;
+    m_cornerTR_X = m_cornerTR_Y = 0.0;
+    m_hasThirdCorner = false;
     setState(PositionHex);
 }
 
@@ -827,6 +1083,74 @@ void TeachMultiDeviceWidget::onDetectCenter()
 #endif
 }
 
+void TeachMultiDeviceWidget::finalizeCornerCapture()
+{
+    // Calculate center from captured corners
+    double centerX = 0.0;
+    double centerY = 0.0;
+
+    if (m_hasThirdCorner) {
+        // 3-corner: infer 4th corner (BL) and compute centroid of the rectangle
+        double blX = m_cornerTL_X + m_cornerBR_X - m_cornerTR_X;
+        double blY = m_cornerTL_Y + m_cornerBR_Y - m_cornerTR_Y;
+        centerX = (m_cornerTL_X + m_cornerBR_X + m_cornerTR_X + blX) / 4.0;
+        centerY = (m_cornerTL_Y + m_cornerBR_Y + m_cornerTR_Y + blY) / 4.0;
+    } else {
+        // 2-corner: midpoint of TL and BR diagonal
+        centerX = (m_cornerTL_X + m_cornerBR_X) / 2.0;
+        centerY = (m_cornerTL_Y + m_cornerBR_Y) / 2.0;
+    }
+
+    double dist = AccuracyTrainerMath::Distance(
+        m_cornerTL_X, m_cornerTL_Y, m_cornerBR_X, m_cornerBR_Y);
+
+    std::cout << "[TeachMultiDevice] Corner center: X=" << centerX << " Y=" << centerY
+              << " diagonal=" << dist << "mm"
+              << (m_hasThirdCorner ? " (3-corner)" : " (2-corner)") << std::endl;
+
+    // Store computed center as gantry view position
+    m_pendingTeach.gantryViewX = centerX;
+    m_pendingTeach.gantryViewY = centerY;
+    m_pendingTeach.gantryViewZ = m_cornerTL_Z;
+    m_pendingTeach.valid = true;
+
+    // Move gantry to the computed center
+    if (m_context && m_context->motionManager && m_trainingSet) {
+        std::string gantryDevice = m_trainingSet->deviceName;
+
+        m_captureCornerBtn->setEnabled(false);
+        m_skipCorner3Btn->setEnabled(false);
+        m_cancelCornerBtn->setEnabled(false);
+        m_cornerInstructionLabel->setText("Moving gantry to computed center...");
+
+        m_moveFuture = std::async(std::launch::async,
+            [this, gantryDevice, centerX, centerY]() {
+            double curZ = m_context->motionManager->GetCurrentPosition(gantryDevice).z;
+            bool moveOk = m_context->motionManager->MoveToAbs(
+                gantryDevice, centerX, centerY, curZ, 100.0, true);
+
+            QMetaObject::invokeMethod(this, [this, moveOk]() {
+                m_captureCornerBtn->setEnabled(true);
+                m_skipCorner3Btn->setEnabled(true);
+                m_cancelCornerBtn->setEnabled(true);
+
+                if (!moveOk) {
+                    std::cout << "[TeachMultiDevice] Move to corner center failed" << std::endl;
+                    QMessageBox::warning(this, "Move Failed",
+                        "Failed to move gantry to computed center.\n"
+                        "The computed position will still be used.");
+                } else {
+                    std::cout << "[TeachMultiDevice] Gantry moved to corner center" << std::endl;
+                }
+
+                setState(Summary);
+            }, Qt::QueuedConnection);
+        });
+    } else {
+        setState(Summary);
+    }
+}
+
 void TeachMultiDeviceWidget::refreshVisionProfiles()
 {
     m_visionProfileCombo->clear();
@@ -895,6 +1219,14 @@ void TeachMultiDeviceWidget::updatePositionDisplay()
         std::string gantryDevice = m_trainingSet->deviceName;
         auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
         m_gantryPositionLabel->setText(QString("X: %1  Y: %2  Z: %3")
+            .arg(pos.x, 10, 'f', 4)
+            .arg(pos.y, 10, 'f', 4)
+            .arg(pos.z, 10, 'f', 4));
+    } else if ((m_state == GantryCorner1 || m_state == GantryCorner2 || m_state == GantryCorner3)
+               && m_trainingSet) {
+        std::string gantryDevice = m_trainingSet->deviceName;
+        auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+        m_cornerPositionLabel->setText(QString("X: %1  Y: %2  Z: %3")
             .arg(pos.x, 10, 'f', 4)
             .arg(pos.y, 10, 'f', 4)
             .arg(pos.z, 10, 'f', 4));
