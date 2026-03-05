@@ -21,6 +21,7 @@
 #include "CoordinateAlignCommandHandler.h"
 #include "AccuracyTrainerCommandHandler.h"
 #include "CameraOffsetCommandHandler.h"
+#include "PlanarAdjustmentCommandHandler.h"
 #include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
@@ -124,6 +125,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   auto camOffsetHandler = std::make_unique<CameraOffsetCommandHandler>();
   camOffsetHandler->SetContext(m_context);
   m_dispatcher.RegisterHandler("cameraoffset", std::move(camOffsetHandler));
+
+  // Register planar adjustment handler for tilt correction
+  auto planarHandler = std::make_unique<PlanarAdjustmentCommandHandler>();
+  planarHandler->SetContext(m_context);
+  m_planarAdjustmentHandler = planarHandler.get();
+  m_dispatcher.RegisterHandler("planaradjustment", std::move(planarHandler));
 
   // Register custom server handler for beam detection
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
@@ -344,6 +351,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["cameraoffset"] = "cameraoffset";
   LogInfo("Registered camera offset command handler");
 
+  // Planar adjustment commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["planaradjustment"] = nullptr;
+  m_deviceToTypeMap["planaradjustment"] = "planaradjustment";
+  LogInfo("Registered planar adjustment command handler");
+
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
@@ -443,6 +455,9 @@ void SequenceEngine::SetManualAdjustCallback(ManualAdjustCallback callback)
 {
   if (m_systemHandler) {
     m_systemHandler->SetManualAdjustCallback(callback);
+  }
+  if (m_planarAdjustmentHandler) {
+    m_planarAdjustmentHandler->SetManualAdjustCallback(callback);
   }
 }
 

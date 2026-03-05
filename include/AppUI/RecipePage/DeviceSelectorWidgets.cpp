@@ -12,6 +12,7 @@
 #include "lighting/LightingManager.h"
 #include "AccuracyTrainerStore.h"
 #include "../CameraOffsetTrainer/CameraOffsetStore.h"
+#include "../PlanarAdjustmentTrainer/PlanarAdjustmentStore.h"
 #include <filesystem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -832,6 +833,163 @@ std::string CameraOffsetSetSelectorDialog::SelectCalibrationSet(ApplicationConte
   }
 
   return currentSet; // Return original if cancelled
+}
+
+// ============================================================================
+// PLANAR ADJUSTMENT SET SELECTOR DIALOG
+// ============================================================================
+
+PlanarAdjustmentSetSelectorDialog::PlanarAdjustmentSetSelectorDialog(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+  : QDialog(parent)
+  , m_context(context)
+  , m_selectedSet(currentSet)
+{
+  setupUI();
+  loadSets();
+
+  for (int i = 0; i < m_setList->count(); ++i) {
+    if (m_setList->item(i)->text().toStdString() == currentSet) {
+      m_setList->setCurrentRow(i);
+      break;
+    }
+  }
+}
+
+void PlanarAdjustmentSetSelectorDialog::setupUI()
+{
+  setWindowTitle("Select Planar Adjustment Set");
+  setMinimumSize(400, 500);
+  setStyleSheet("QDialog { background-color: #2b2b2b; }");
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+  QLabel* infoLabel = new QLabel("Select a Planar Adjustment training set:");
+  infoLabel->setStyleSheet(
+    "color: white; font-weight: bold; padding: 5px; "
+    "background-color: #1e1e1e; border-radius: 4px;"
+  );
+  mainLayout->addWidget(infoLabel);
+
+  m_searchEdit = new QLineEdit();
+  m_searchEdit->setPlaceholderText("Search planar adjustment sets...");
+  m_searchEdit->setStyleSheet(
+    "QLineEdit { background-color: #1e1e1e; color: white; "
+    "border: 1px solid #3c3c3c; border-radius: 4px; padding: 8px; } "
+    "QLineEdit:focus { border: 1px solid #1177bb; }"
+  );
+  connect(m_searchEdit, &QLineEdit::textChanged,
+    this, &PlanarAdjustmentSetSelectorDialog::onSearchTextChanged);
+  mainLayout->addWidget(m_searchEdit);
+
+  m_setList = new QListWidget();
+  m_setList->setStyleSheet(
+    "QListWidget { background-color: #1e1e1e; color: white; "
+    "border: 1px solid #3c3c3c; border-radius: 4px; padding: 5px; } "
+    "QListWidget::item { padding: 8px; border-bottom: 1px solid #3c3c3c; } "
+    "QListWidget::item:hover { background-color: #2d2d30; } "
+    "QListWidget::item:selected { background-color: #1177bb; color: white; }"
+  );
+  connect(m_setList, &QListWidget::itemDoubleClicked,
+    this, &PlanarAdjustmentSetSelectorDialog::onItemDoubleClicked);
+  mainLayout->addWidget(m_setList);
+
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->addStretch();
+
+  m_cancelButton = new QPushButton("Cancel");
+  m_cancelButton->setMinimumWidth(100);
+  m_cancelButton->setStyleSheet(
+    "QPushButton { background-color: #3c3c3c; color: white; padding: 8px; border-radius: 4px; } "
+    "QPushButton:hover { background-color: #4c4c4c; }"
+  );
+  connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+  buttonLayout->addWidget(m_cancelButton);
+
+  m_okButton = new QPushButton("Select");
+  m_okButton->setMinimumWidth(100);
+  m_okButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; "
+    "padding: 8px; border-radius: 4px; } "
+    "QPushButton:hover { background-color: #2ecc71; }"
+  );
+  connect(m_okButton, &QPushButton::clicked, [this]() {
+    if (m_setList->currentItem()) {
+      m_selectedSet = m_setList->currentItem()->text().toStdString();
+      accept();
+    }
+  });
+  buttonLayout->addWidget(m_okButton);
+
+  mainLayout->addLayout(buttonLayout);
+}
+
+void PlanarAdjustmentSetSelectorDialog::loadSets()
+{
+  m_setList->clear();
+  m_allSets.clear();
+
+  if (!m_context) {
+    m_setList->addItem("Application context not available");
+    return;
+  }
+
+  PlanarAdjustmentStore store;
+  if (m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::filesystem::path productDir = std::filesystem::path(
+      m_context->productPositionManager->GetCurrentProductPath()).parent_path();
+    store.SetBasePath((productDir / "planar_adjustment").string());
+  }
+
+  m_allSets = store.ListSets();
+
+  std::cout << "[PlanarAdjustmentSetSelectorDialog] Loaded " << m_allSets.size()
+    << " sets from " << store.GetBasePath() << std::endl;
+
+  if (m_allSets.empty()) {
+    m_setList->addItem("No planar adjustment sets found");
+    return;
+  }
+
+  for (const auto& name : m_allSets) {
+    QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(name));
+    m_setList->addItem(item);
+  }
+}
+
+void PlanarAdjustmentSetSelectorDialog::onSearchTextChanged(const QString& text)
+{
+  std::string search = text.toLower().toStdString();
+  for (int i = 0; i < m_setList->count(); ++i) {
+    QListWidgetItem* item = m_setList->item(i);
+    std::string setName = item->text().toLower().toStdString();
+    bool matches = search.empty() || setName.find(search) != std::string::npos;
+    item->setHidden(!matches);
+  }
+}
+
+void PlanarAdjustmentSetSelectorDialog::onItemDoubleClicked(QListWidgetItem* item)
+{
+  m_selectedSet = item->text().toStdString();
+  accept();
+}
+
+std::string PlanarAdjustmentSetSelectorDialog::getSelectedSet() const
+{
+  return m_selectedSet;
+}
+
+std::string PlanarAdjustmentSetSelectorDialog::SelectPlanarAdjustmentSet(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+{
+  PlanarAdjustmentSetSelectorDialog dialog(context, currentSet, parent);
+  if (dialog.exec() == QDialog::Accepted) {
+    return dialog.getSelectedSet();
+  }
+  return currentSet;
 }
 
 // ============================================================================

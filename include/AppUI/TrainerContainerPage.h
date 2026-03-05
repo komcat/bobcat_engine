@@ -9,6 +9,7 @@
 struct ApplicationContext;
 class AccuracyTrainerPage;
 class CameraOffsetTrainerPage;
+class PlanarAdjustmentPage;
 
 /**
  * @brief Container page with a narrow side panel for switching between trainer tools.
@@ -20,7 +21,8 @@ class CameraOffsetTrainerPage;
  * Side panel buttons:
  *   0: "Pos\nAccuracy" -> AccuracyTrainerPage
  *   1: "Camera\nOffset" -> CameraOffsetTrainerPage
- *   2-4: reserved (disabled)
+ *   2: "Planar\nAdjust" -> PlanarAdjustmentPage
+ *   3-4: reserved (disabled)
  */
 class TrainerContainerPage : public QWidget
 {
@@ -44,5 +46,6 @@ private:
     QVector<QPushButton*> m_sideButtons;
     AccuracyTrainerPage* m_accuracyTrainerPage;
     CameraOffsetTrainerPage* m_cameraOffsetPage;
+    PlanarAdjustmentPage* m_planarAdjustmentPage;
     int m_activeIndex;
 };

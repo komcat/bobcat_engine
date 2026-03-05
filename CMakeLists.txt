@@ -460,6 +460,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/SettingsPage
     ${CMAKE_SOURCE_DIR}/include/AppUI/AccuracyTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/CameraOffsetTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/PlanarAdjustmentTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -636,6 +637,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/CameraOffsetProcesses.cpp
     include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
@@ -676,6 +678,7 @@ set(SOURCES
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
+    include/sequence/PlanarAdjustmentCommandHandler.cpp
     include/sequence/CameraOffsetCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
@@ -755,6 +758,13 @@ set(SOURCES
     include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.cpp
     include/AppUI/CameraOffsetTrainer/CalibrateOffsetWidget.cpp
     include/AppUI/CameraOffsetTrainer/TestOffsetWidget.cpp
+    # Planar Adjustment Trainer
+    include/AppUI/PlanarAdjustmentTrainer/PlanarAdjustmentStore.cpp
+    include/AppUI/PlanarAdjustmentTrainer/PlanarAdjustmentPage.cpp
+    include/AppUI/PlanarAdjustmentTrainer/TeachPointWidget.cpp
+    include/AppUI/PlanarAdjustmentTrainer/TiltResultWidget.cpp
+    include/AppUI/PlanarAdjustmentTrainer/ApplyCorrectionWidget.cpp
+    include/AppUI/PlanarAdjustmentTrainer/RetraceAndApplyWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -893,6 +903,7 @@ set(HEADERS
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
+    include/sequence/PlanarAdjustmentCommandHandler.h
     include/sequence/CameraOffsetCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
     include/customserver/BeamServerClient.h
@@ -980,6 +991,14 @@ set(HEADERS
     include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.h
     include/AppUI/CameraOffsetTrainer/CalibrateOffsetWidget.h
     include/AppUI/CameraOffsetTrainer/TestOffsetWidget.h
+    # Planar Adjustment Trainer
+    include/AppUI/PlanarAdjustmentTrainer/PlanarAdjustmentData.h
+    include/AppUI/PlanarAdjustmentTrainer/PlanarAdjustmentStore.h
+    include/AppUI/PlanarAdjustmentTrainer/PlanarAdjustmentPage.h
+    include/AppUI/PlanarAdjustmentTrainer/TeachPointWidget.h
+    include/AppUI/PlanarAdjustmentTrainer/TiltResultWidget.h
+    include/AppUI/PlanarAdjustmentTrainer/ApplyCorrectionWidget.h
+    include/AppUI/PlanarAdjustmentTrainer/RetraceAndApplyWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h

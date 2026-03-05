@@ -2,6 +2,7 @@
 #include "TrainerContainerPage.h"
 #include "AccuracyTrainer/AccuracyTrainerPage.h"
 #include "CameraOffsetTrainer/CameraOffsetTrainerPage.h"
+#include "PlanarAdjustmentTrainer/PlanarAdjustmentPage.h"
 #include "ApplicationContext.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -15,6 +16,7 @@ TrainerContainerPage::TrainerContainerPage(ApplicationContext* context, QWidget*
     , m_contentStack(nullptr)
     , m_accuracyTrainerPage(nullptr)
     , m_cameraOffsetPage(nullptr)
+    , m_planarAdjustmentPage(nullptr)
     , m_activeIndex(0)
 {
     setupUI();
@@ -80,7 +82,7 @@ void TrainerContainerPage::setupUI()
     const ButtonDef defs[] = {
         { "Pos\nAccuracy", true },
         { "Camera\nOffset", true },
-        { "",               false },
+        { "Planar\nAdjust", true },
         { "",               false },
         { "",               false },
     };
@@ -130,6 +132,11 @@ void TrainerContainerPage::setupUI()
     m_cameraOffsetPage = new CameraOffsetTrainerPage(m_context, this);
     m_cameraOffsetPage->setTopBarVisible(false);
     m_contentStack->addWidget(m_cameraOffsetPage);
+
+    // Index 2: PlanarAdjustmentPage (with its own top bar hidden)
+    m_planarAdjustmentPage = new PlanarAdjustmentPage(m_context, this);
+    m_planarAdjustmentPage->setTopBarVisible(false);
+    m_contentStack->addWidget(m_planarAdjustmentPage);
 
     bodyLayout->addWidget(m_contentStack, 1);
     mainLayout->addLayout(bodyLayout, 1);
