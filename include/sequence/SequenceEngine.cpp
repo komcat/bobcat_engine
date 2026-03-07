@@ -1134,6 +1134,17 @@ bool SequenceEngine::DispatchWithTimeout(
     const std::map<std::string, std::string>& params,
     std::string& errorMessage, SequenceContext* context)
 {
+  // Compute effective timeout: base timeout + any inherent command duration
+  // (e.g., system.Wait with milliseconds=90000 needs 90s + base timeout as buffer)
+  int effectiveTimeoutMs = m_actionTimeoutMs;
+  auto msIt = params.find("milliseconds");
+  if (msIt != params.end()) {
+    int commandDurationMs = std::stoi(msIt->second);
+    if (commandDurationMs > 0) {
+      effectiveTimeoutMs += commandDurationMs;
+    }
+  }
+
   // All shared state is heap-allocated so it survives this function returning
   // (zombie threads on timeout still hold references to these)
   auto done = std::make_shared<std::atomic<bool>>(false);
@@ -1160,13 +1171,13 @@ bool SequenceEngine::DispatchWithTimeout(
   {
     std::unique_lock<std::mutex> lock(*mtx);
     bool completed = cv->wait_for(lock,
-        std::chrono::milliseconds(m_actionTimeoutMs),
+        std::chrono::milliseconds(effectiveTimeoutMs),
         [&done]() { return done->load(); });
 
     if (!completed) {
       // TIMEOUT - command still running
       std::string timeoutMsg = deviceName + "." + methodName +
-          " timed out after " + std::to_string(m_actionTimeoutMs) + "ms";
+          " timed out after " + std::to_string(effectiveTimeoutMs) + "ms";
       LogError("TIMEOUT: " + timeoutMsg);
       if (m_context->safetyEventLog) {
         m_context->safetyEventLog->LogEvent(SafetySeverity::CRITICAL, "SequenceEngine",
