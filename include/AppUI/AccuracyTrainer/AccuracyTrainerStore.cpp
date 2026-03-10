@@ -126,6 +126,12 @@ bool AccuracyTrainerStore::SaveTrainingSet(const TrainingSet& ts)
                          {"u", hd.hexU}, {"v", hd.hexV}, {"w", hd.hexW} };
         hj["gantryView"] = { {"x", hd.gantryViewX}, {"y", hd.gantryViewY}, {"z", hd.gantryViewZ} };
         hj["visionProfilePath"] = hd.visionProfilePath;
+        hj["gantryTeachMode"] = hd.gantryTeachMode;
+        hj["zCompPos"] = { {"x", hd.zCompX}, {"y", hd.zCompY}, {"z", hd.zComp} };
+        hj["zPlacePos"] = { {"x", hd.zPlaceX}, {"y", hd.zPlaceY}, {"z", hd.zPlace} };
+        hj["componentThickness"] = hd.componentThickness;
+        hj["bondlineThickness"] = hd.bondlineThickness;
+        hj["hexZAdjustment"] = hd.hexZAdjustment;
         hj["valid"] = hd.valid;
         hexArray.push_back(hj);
     }
@@ -293,6 +299,25 @@ std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::stri
                 hd.gantryViewZ = hj["gantryView"].value("z", 0.0);
             }
             hd.visionProfilePath = hj.value("visionProfilePath", "");
+            hd.gantryTeachMode = hj.value("gantryTeachMode", 0);
+            // Z comp/place positions (backward compat: old files had flat zComp/zPlace)
+            if (hj.contains("zCompPos")) {
+                hd.zCompX = hj["zCompPos"].value("x", 0.0);
+                hd.zCompY = hj["zCompPos"].value("y", 0.0);
+                hd.zComp = hj["zCompPos"].value("z", 0.0);
+            } else {
+                hd.zComp = hj.value("zComp", 0.0);
+            }
+            if (hj.contains("zPlacePos")) {
+                hd.zPlaceX = hj["zPlacePos"].value("x", 0.0);
+                hd.zPlaceY = hj["zPlacePos"].value("y", 0.0);
+                hd.zPlace = hj["zPlacePos"].value("z", 0.0);
+            } else {
+                hd.zPlace = hj.value("zPlace", 0.0);
+            }
+            hd.componentThickness = hj.value("componentThickness", 1.2);
+            hd.bondlineThickness = hj.value("bondlineThickness", 0.05);
+            hd.hexZAdjustment = hj.value("hexZAdjustment", 0.0);
             ts.hexDevicePositions.push_back(hd);
         }
     }

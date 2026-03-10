@@ -17,6 +17,7 @@ class TeachReferenceWidget;
 class RunAlignmentWidget;
 class MultiDeviceRunAlignmentWidget;
 class TeachMultiDeviceWidget;
+class EditZOffsetWidget;
 
 /**
  * @brief Main Accuracy Trainer page: left nav (30%) + right content (70%)
@@ -71,6 +72,7 @@ private:
     RunAlignmentWidget* m_runAlignmentWidget;
     MultiDeviceRunAlignmentWidget* m_multiDeviceWidget;
     TeachMultiDeviceWidget* m_teachMultiDeviceWidget;
+    EditZOffsetWidget* m_editZOffsetWidget;
     QWidget* m_welcomeWidget;
 
     // Device selection

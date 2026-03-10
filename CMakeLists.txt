@@ -753,6 +753,7 @@ set(SOURCES
     include/AppUI/AccuracyTrainer/RunAlignmentWidget.cpp
     include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.cpp
     include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.cpp
+    include/AppUI/AccuracyTrainer/EditZOffsetWidget.cpp
     # Camera Offset Trainer
     include/AppUI/CameraOffsetTrainer/CameraOffsetStore.cpp
     include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.cpp

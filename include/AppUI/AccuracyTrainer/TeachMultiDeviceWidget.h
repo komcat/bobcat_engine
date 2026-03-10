@@ -8,6 +8,7 @@
 #include <QStackedWidget>
 #include <QTimer>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <future>
 #include <vector>
 #include <string>
@@ -54,10 +55,13 @@ private slots:
     void updatePositionDisplay();
     void onAssignmentComboChanged();
     void onGantryModeChanged(int index);
+    void onCaptureZComp();
+    void onCaptureZPlace();
 
 private:
     enum WizardState { Idle, PositionHex, PositionGantry,
                        GantryCorner1, GantryCorner2, GantryCorner3,
+                       CaptureZComp, CaptureZPlace,
                        Summary };
 
     void setupUI();
@@ -123,6 +127,20 @@ private:
     QPushButton* m_refreshProfilesBtn;
     QPushButton* m_detectCenterBtn;
     std::future<void> m_detectFuture;
+
+    // UI - Page 3: Capture Z Component height
+    QLabel* m_zCompInstructionLabel;
+    QLabel* m_zCompPositionLabel;
+    QDoubleSpinBox* m_componentThicknessSpin;
+    QDoubleSpinBox* m_bondlineThicknessSpin;
+    QPushButton* m_captureZCompBtn;
+    QPushButton* m_cancelZCompBtn;
+
+    // UI - Page 4: Capture Z Placement height
+    QLabel* m_zPlaceInstructionLabel;
+    QLabel* m_zPlacePositionLabel;
+    QPushButton* m_captureZPlaceBtn;
+    QPushButton* m_cancelZPlaceBtn;
 
     // UI - Page 3: Summary
     QLabel* m_summaryLabel;

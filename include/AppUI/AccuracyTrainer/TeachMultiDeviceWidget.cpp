@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QApplication>
 #include <iostream>
+#include <cmath>
 
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
@@ -405,7 +406,146 @@ void TeachMultiDeviceWidget::setupUI()
     m_wizardStack->addWidget(gantryPage);  // index 2
 
     // ========================================
-    // Page 3: Summary
+    // Page 3: Capture Z Component height
+    // ========================================
+    QWidget* zCompPage = new QWidget();
+    QVBoxLayout* zCompLayout = new QVBoxLayout(zCompPage);
+
+    m_zCompInstructionLabel = new QLabel();
+    m_zCompInstructionLabel->setStyleSheet(
+        "font-size: 14px; color: #80d0ff; font-weight: bold; padding: 15px; "
+        "background-color: #1a3a4f; border-radius: 6px;");
+    m_zCompInstructionLabel->setWordWrap(true);
+    m_zCompInstructionLabel->setAlignment(Qt::AlignCenter);
+    zCompLayout->addWidget(m_zCompInstructionLabel);
+
+    QGroupBox* zCompPosGroup = new QGroupBox("Gantry Position (XYZ)");
+    zCompPosGroup->setStyleSheet(
+        "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; margin-top: 10px; padding-top: 15px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    QVBoxLayout* zCompPosLayout = new QVBoxLayout(zCompPosGroup);
+    m_zCompPositionLabel = new QLabel("X: ---  Y: ---  Z: ---");
+    m_zCompPositionLabel->setStyleSheet("font-size: 18px; color: #00ff88; font-family: monospace; padding: 10px;");
+    m_zCompPositionLabel->setAlignment(Qt::AlignCenter);
+    zCompPosLayout->addWidget(m_zCompPositionLabel);
+    zCompLayout->addWidget(zCompPosGroup);
+
+    // Component and bondline thickness spinboxes
+    QGroupBox* thicknessGroup = new QGroupBox("Component Parameters");
+    thicknessGroup->setStyleSheet(
+        "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; margin-top: 10px; padding-top: 15px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    QVBoxLayout* thicknessLayout = new QVBoxLayout(thicknessGroup);
+
+    QHBoxLayout* tcompRow = new QHBoxLayout();
+    QLabel* tcompLabel = new QLabel("Component Thickness (mm):");
+    tcompLabel->setStyleSheet("color: #ccc; font-size: 12px;");
+    tcompRow->addWidget(tcompLabel);
+    m_componentThicknessSpin = new QDoubleSpinBox();
+    m_componentThicknessSpin->setRange(0.0, 50.0);
+    m_componentThicknessSpin->setDecimals(3);
+    m_componentThicknessSpin->setValue(1.2);
+    m_componentThicknessSpin->setSingleStep(0.1);
+    m_componentThicknessSpin->setStyleSheet(
+        "QDoubleSpinBox { background-color: #1a1f2e; color: white; border: 1px solid #4d6e9f; "
+        "padding: 4px; border-radius: 3px; font-size: 13px; }");
+    tcompRow->addWidget(m_componentThicknessSpin);
+    thicknessLayout->addLayout(tcompRow);
+
+    QHBoxLayout* bltRow = new QHBoxLayout();
+    QLabel* bltLabel = new QLabel("Bondline Thickness (mm):");
+    bltLabel->setStyleSheet("color: #ccc; font-size: 12px;");
+    bltRow->addWidget(bltLabel);
+    m_bondlineThicknessSpin = new QDoubleSpinBox();
+    m_bondlineThicknessSpin->setRange(0.0, 5.0);
+    m_bondlineThicknessSpin->setDecimals(3);
+    m_bondlineThicknessSpin->setValue(0.05);
+    m_bondlineThicknessSpin->setSingleStep(0.01);
+    m_bondlineThicknessSpin->setStyleSheet(
+        "QDoubleSpinBox { background-color: #1a1f2e; color: white; border: 1px solid #4d6e9f; "
+        "padding: 4px; border-radius: 3px; font-size: 13px; }");
+    bltRow->addWidget(m_bondlineThicknessSpin);
+    thicknessLayout->addLayout(bltRow);
+
+    zCompLayout->addWidget(thicknessGroup);
+    zCompLayout->addStretch();
+
+    QHBoxLayout* zCompBtnRow = new QHBoxLayout();
+    m_captureZCompBtn = new QPushButton("Capture Z Component Height");
+    m_captureZCompBtn->setFixedHeight(40);
+    m_captureZCompBtn->setStyleSheet(
+        "QPushButton { background-color: #2980b9; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #3498db; }");
+    m_cancelZCompBtn = new QPushButton("Cancel");
+    m_cancelZCompBtn->setFixedHeight(40);
+    m_cancelZCompBtn->setStyleSheet(
+        "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
+        "border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #e74c3c; }");
+    zCompBtnRow->addWidget(m_captureZCompBtn);
+    zCompBtnRow->addWidget(m_cancelZCompBtn);
+    zCompLayout->addLayout(zCompBtnRow);
+
+    connect(m_captureZCompBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCaptureZComp);
+    connect(m_cancelZCompBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCancel);
+
+    m_wizardStack->addWidget(zCompPage);  // index 3
+
+    // ========================================
+    // Page 4: Capture Z Placement height
+    // ========================================
+    QWidget* zPlacePage = new QWidget();
+    QVBoxLayout* zPlaceLayout = new QVBoxLayout(zPlacePage);
+
+    m_zPlaceInstructionLabel = new QLabel();
+    m_zPlaceInstructionLabel->setStyleSheet(
+        "font-size: 14px; color: #80d0ff; font-weight: bold; padding: 15px; "
+        "background-color: #1a3a4f; border-radius: 6px;");
+    m_zPlaceInstructionLabel->setWordWrap(true);
+    m_zPlaceInstructionLabel->setAlignment(Qt::AlignCenter);
+    zPlaceLayout->addWidget(m_zPlaceInstructionLabel);
+
+    QGroupBox* zPlacePosGroup = new QGroupBox("Gantry Position (XYZ)");
+    zPlacePosGroup->setStyleSheet(
+        "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; margin-top: 10px; padding-top: 15px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    QVBoxLayout* zPlacePosLayout = new QVBoxLayout(zPlacePosGroup);
+    m_zPlacePositionLabel = new QLabel("X: ---  Y: ---  Z: ---");
+    m_zPlacePositionLabel->setStyleSheet("font-size: 18px; color: #00ff88; font-family: monospace; padding: 10px;");
+    m_zPlacePositionLabel->setAlignment(Qt::AlignCenter);
+    zPlacePosLayout->addWidget(m_zPlacePositionLabel);
+    zPlaceLayout->addWidget(zPlacePosGroup);
+
+    zPlaceLayout->addStretch();
+
+    QHBoxLayout* zPlaceBtnRow = new QHBoxLayout();
+    m_captureZPlaceBtn = new QPushButton("Capture Z Placement Height");
+    m_captureZPlaceBtn->setFixedHeight(40);
+    m_captureZPlaceBtn->setStyleSheet(
+        "QPushButton { background-color: #2980b9; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #3498db; }");
+    m_cancelZPlaceBtn = new QPushButton("Cancel");
+    m_cancelZPlaceBtn->setFixedHeight(40);
+    m_cancelZPlaceBtn->setStyleSheet(
+        "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
+        "border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #e74c3c; }");
+    zPlaceBtnRow->addWidget(m_captureZPlaceBtn);
+    zPlaceBtnRow->addWidget(m_cancelZPlaceBtn);
+    zPlaceLayout->addLayout(zPlaceBtnRow);
+
+    connect(m_captureZPlaceBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCaptureZPlace);
+    connect(m_cancelZPlaceBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onCancel);
+
+    m_wizardStack->addWidget(zPlacePage);  // index 4
+
+    // ========================================
+    // Page 5: Summary
     // ========================================
     QWidget* summaryPage = new QWidget();
     QVBoxLayout* summaryLayout = new QVBoxLayout(summaryPage);
@@ -440,7 +580,7 @@ void TeachMultiDeviceWidget::setupUI()
     connect(m_confirmBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onConfirm);
     connect(m_redoBtn, &QPushButton::clicked, this, &TeachMultiDeviceWidget::onRedo);
 
-    m_wizardStack->addWidget(summaryPage);  // index 3
+    m_wizardStack->addWidget(summaryPage);  // index 5
 
     mainLayout->addWidget(m_wizardStack, 1);
 }
@@ -458,7 +598,7 @@ void TeachMultiDeviceWidget::setState(WizardState state)
     case PositionHex:
         m_wizardStack->setCurrentIndex(1);
         m_hexInstructionLabel->setText(QString(
-            "Step 1/2: Jog %1 to its working position\n\n"
+            "Step 1/4: Jog %1 to its working position\n\n"
             "Move the hex device to the position where its\n"
             "end-effector is ready for corner capture.\n"
             "Then click 'Capture Hex Position'")
@@ -466,18 +606,21 @@ void TeachMultiDeviceWidget::setState(WizardState state)
         m_positionTimer->start(100);
         break;
 
-    case PositionGantry:
+    case PositionGantry: {
         m_wizardStack->setCurrentIndex(2);
         m_gantryModeCombo->setEnabled(true);
-        m_gantryModeStack->setCurrentIndex(0);  // default to single-point
-        m_gantryModeCombo->setCurrentIndex(0);
+        // Restore teaching mode from previous teach (0=single, 1 or 2=corner pattern)
+        int comboIdx = (m_pendingTeach.gantryTeachMode > 0) ? 1 : 0;
+        m_gantryModeCombo->setCurrentIndex(comboIdx);
+        m_gantryModeStack->setCurrentIndex(comboIdx);
         m_gantryInstructionLabel->setText(QString(
-            "Step 2/2: Jog gantry to view %1 tip\n\n"
+            "Step 2/4: Jog gantry to view %1 tip\n\n"
             "Single Point: Move gantry camera to center on the end-effector.\n"
             "Corner Pattern: Capture 2-3 corners to compute center automatically.")
             .arg(QString::fromStdString(m_pendingTeach.deviceName)));
         m_positionTimer->start(100);
         break;
+    }
 
     case GantryCorner1:
         m_wizardStack->setCurrentIndex(2);
@@ -533,8 +676,69 @@ void TeachMultiDeviceWidget::setState(WizardState state)
         m_positionTimer->start(100);
         break;
 
-    case Summary: {
+    case CaptureZComp:
         m_wizardStack->setCurrentIndex(3);
+        m_zCompInstructionLabel->setText(QString(
+            "Step 3/4: Capture Z Component Height for %1\n\n"
+            "Jog gantry Z to touch the TOP of the component\n"
+            "(or the height where the component surface is).\n"
+            "Set component and bondline thickness, then click 'Capture'")
+            .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        // Pre-populate spinboxes from pending teach data
+        m_componentThicknessSpin->setValue(m_pendingTeach.componentThickness);
+        m_bondlineThicknessSpin->setValue(m_pendingTeach.bondlineThickness);
+        m_positionTimer->start(100);
+        // Auto-navigate gantry to previously taught zComp position (reteach)
+        if (std::abs(m_pendingTeach.zComp) > 1e-6 && m_context && m_context->motionManager && m_trainingSet) {
+            std::string gantryDev = m_trainingSet->deviceName;
+            double tx = m_pendingTeach.zCompX, ty = m_pendingTeach.zCompY, tz = m_pendingTeach.zComp;
+            m_captureZCompBtn->setEnabled(false);
+            m_moveFuture = std::async(std::launch::async, [this, gantryDev, tx, ty, tz]() {
+                // Move to full XYZ if XY was stored, otherwise Z-only
+                if (std::abs(tx) > 1e-6 || std::abs(ty) > 1e-6) {
+                    m_context->motionManager->MoveToAbs(gantryDev, tx, ty, tz, 100.0, true);
+                } else {
+                    auto cur = m_context->motionManager->GetCurrentPosition(gantryDev);
+                    m_context->motionManager->MoveToAbs(gantryDev, cur.x, cur.y, tz, 100.0, true);
+                }
+                QMetaObject::invokeMethod(this, [this]() {
+                    m_captureZCompBtn->setEnabled(true);
+                }, Qt::QueuedConnection);
+            });
+        }
+        break;
+
+    case CaptureZPlace:
+        m_wizardStack->setCurrentIndex(4);
+        m_zPlaceInstructionLabel->setText(QString(
+            "Step 4/4: Capture Z Placement Height for %1\n\n"
+            "Jog gantry Z to the PLACEMENT SURFACE\n"
+            "(substrate or PCB surface where component will be placed).\n"
+            "Then click 'Capture'")
+            .arg(QString::fromStdString(m_pendingTeach.deviceName)));
+        m_positionTimer->start(100);
+        // Auto-navigate gantry to previously taught zPlace position (reteach)
+        if (std::abs(m_pendingTeach.zPlace) > 1e-6 && m_context && m_context->motionManager && m_trainingSet) {
+            std::string gantryDev = m_trainingSet->deviceName;
+            double tx = m_pendingTeach.zPlaceX, ty = m_pendingTeach.zPlaceY, tz = m_pendingTeach.zPlace;
+            m_captureZPlaceBtn->setEnabled(false);
+            m_moveFuture = std::async(std::launch::async, [this, gantryDev, tx, ty, tz]() {
+                // Move to full XYZ if XY was stored, otherwise Z-only
+                if (std::abs(tx) > 1e-6 || std::abs(ty) > 1e-6) {
+                    m_context->motionManager->MoveToAbs(gantryDev, tx, ty, tz, 100.0, true);
+                } else {
+                    auto cur = m_context->motionManager->GetCurrentPosition(gantryDev);
+                    m_context->motionManager->MoveToAbs(gantryDev, cur.x, cur.y, tz, 100.0, true);
+                }
+                QMetaObject::invokeMethod(this, [this]() {
+                    m_captureZPlaceBtn->setEnabled(true);
+                }, Qt::QueuedConnection);
+            });
+        }
+        break;
+
+    case Summary: {
+        m_wizardStack->setCurrentIndex(5);
         m_positionTimer->stop();
 
         QString summary = QString(
@@ -554,6 +758,13 @@ void TeachMultiDeviceWidget::setState(WizardState state)
             .arg(m_pendingTeach.gantryViewX, 0, 'f', 4)
             .arg(m_pendingTeach.gantryViewY, 0, 'f', 4)
             .arg(m_pendingTeach.gantryViewZ, 0, 'f', 4);
+
+        // Show teaching mode
+        const char* modeNames[] = { "Single Point", "2-Corner", "3-Corner" };
+        int modeIdx = m_pendingTeach.gantryTeachMode;
+        if (modeIdx >= 0 && modeIdx <= 2) {
+            summary += QString("\n  Teaching Mode: %1").arg(modeNames[modeIdx]);
+        }
 
         // Show corner details if corner pattern was used
         if (m_cornerTL_X != 0.0 || m_cornerTL_Y != 0.0 ||
@@ -578,6 +789,21 @@ void TeachMultiDeviceWidget::setState(WizardState state)
         if (!m_pendingTeach.visionProfilePath.empty()) {
             summary += QString("\n\nVision Profile: %1").arg(
                 QFileInfo(QString::fromStdString(m_pendingTeach.visionProfilePath)).baseName());
+        }
+
+        // Z placement adjustment info
+        if (std::abs(m_pendingTeach.hexZAdjustment) > 1e-6) {
+            summary += QString("\n\nZ Placement Adjustment:\n"
+                "  Z Component: %1\n"
+                "  Z Placement: %2\n"
+                "  Component Thickness: %3\n"
+                "  Bondline Thickness: %4\n"
+                "  Hex Z Adjustment: %5")
+                .arg(m_pendingTeach.zComp, 0, 'f', 4)
+                .arg(m_pendingTeach.zPlace, 0, 'f', 4)
+                .arg(m_pendingTeach.componentThickness, 0, 'f', 3)
+                .arg(m_pendingTeach.bondlineThickness, 0, 'f', 3)
+                .arg(m_pendingTeach.hexZAdjustment, 0, 'f', 4);
         }
 
         m_summaryLabel->setText(summary);
@@ -624,9 +850,19 @@ void TeachMultiDeviceWidget::onReteachSelected()
         return;
     }
 
-    // Prepare pending teach with the same device name
+    // Prepare pending teach with the same device name, carrying over Z params and teach mode
     m_pendingTeach = HexDeviceTeachData();
     m_pendingTeach.deviceName = hd.deviceName;
+    m_pendingTeach.gantryTeachMode = hd.gantryTeachMode;
+    m_pendingTeach.zCompX = hd.zCompX;
+    m_pendingTeach.zCompY = hd.zCompY;
+    m_pendingTeach.zComp = hd.zComp;
+    m_pendingTeach.zPlaceX = hd.zPlaceX;
+    m_pendingTeach.zPlaceY = hd.zPlaceY;
+    m_pendingTeach.zPlace = hd.zPlace;
+    m_pendingTeach.componentThickness = hd.componentThickness;
+    m_pendingTeach.bondlineThickness = hd.bondlineThickness;
+    m_pendingTeach.hexZAdjustment = hd.hexZAdjustment;
 
     // Reset corner data
     m_cornerTL_X = m_cornerTL_Y = m_cornerTL_Z = 0.0;
@@ -822,6 +1058,7 @@ void TeachMultiDeviceWidget::onCaptureGantryPosition()
     m_pendingTeach.gantryViewX = pos.x;
     m_pendingTeach.gantryViewY = pos.y;
     m_pendingTeach.gantryViewZ = pos.z;
+    m_pendingTeach.gantryTeachMode = 0;  // single point
     m_pendingTeach.valid = true;
 
     // Save selected vision profile
@@ -838,7 +1075,7 @@ void TeachMultiDeviceWidget::onCaptureGantryPosition()
     }
     std::cout << std::endl;
 
-    setState(Summary);
+    setState(CaptureZComp);
 }
 
 void TeachMultiDeviceWidget::onGantryModeChanged(int index)
@@ -1083,6 +1320,54 @@ void TeachMultiDeviceWidget::onDetectCenter()
 #endif
 }
 
+void TeachMultiDeviceWidget::onCaptureZComp()
+{
+    if (!m_context || !m_context->motionManager || !m_trainingSet) {
+        QMessageBox::warning(this, "Error", "Motion manager not available.");
+        return;
+    }
+
+    std::string gantryDevice = m_trainingSet->deviceName;
+    auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+    m_pendingTeach.zCompX = pos.x;
+    m_pendingTeach.zCompY = pos.y;
+    m_pendingTeach.zComp = pos.z;
+    m_pendingTeach.componentThickness = m_componentThicknessSpin->value();
+    m_pendingTeach.bondlineThickness = m_bondlineThicknessSpin->value();
+
+    std::cout << "[TeachMultiDevice] Captured Z Component pos: X=" << pos.x
+              << " Y=" << pos.y << " Z=" << pos.z
+              << " Tcomp=" << m_pendingTeach.componentThickness
+              << " BLT=" << m_pendingTeach.bondlineThickness << std::endl;
+
+    setState(CaptureZPlace);
+}
+
+void TeachMultiDeviceWidget::onCaptureZPlace()
+{
+    if (!m_context || !m_context->motionManager || !m_trainingSet) {
+        QMessageBox::warning(this, "Error", "Motion manager not available.");
+        return;
+    }
+
+    std::string gantryDevice = m_trainingSet->deviceName;
+    auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+    m_pendingTeach.zPlaceX = pos.x;
+    m_pendingTeach.zPlaceY = pos.y;
+    m_pendingTeach.zPlace = pos.z;
+
+    // Compute hex Z adjustment: negated gap between component bottom and placement surface
+    // gap = zPlace - zComp - (Tcomp + BLT), then subtract from hex Z (lower the hex)
+    m_pendingTeach.hexZAdjustment = -(m_pendingTeach.zPlace - m_pendingTeach.zComp
+        - (m_pendingTeach.componentThickness + m_pendingTeach.bondlineThickness));
+
+    std::cout << "[TeachMultiDevice] Captured Z Placement pos: X=" << pos.x
+              << " Y=" << pos.y << " Z=" << pos.z
+              << " hexZAdjustment=" << m_pendingTeach.hexZAdjustment << std::endl;
+
+    setState(Summary);
+}
+
 void TeachMultiDeviceWidget::finalizeCornerCapture()
 {
     // Calculate center from captured corners
@@ -1112,6 +1397,7 @@ void TeachMultiDeviceWidget::finalizeCornerCapture()
     m_pendingTeach.gantryViewX = centerX;
     m_pendingTeach.gantryViewY = centerY;
     m_pendingTeach.gantryViewZ = m_cornerTL_Z;
+    m_pendingTeach.gantryTeachMode = m_hasThirdCorner ? 2 : 1;  // 2=3-corner, 1=2-corner
     m_pendingTeach.valid = true;
 
     // Move gantry to the computed center
@@ -1143,11 +1429,11 @@ void TeachMultiDeviceWidget::finalizeCornerCapture()
                     std::cout << "[TeachMultiDevice] Gantry moved to corner center" << std::endl;
                 }
 
-                setState(Summary);
+                setState(CaptureZComp);
             }, Qt::QueuedConnection);
         });
     } else {
-        setState(Summary);
+        setState(CaptureZComp);
     }
 }
 
@@ -1230,6 +1516,18 @@ void TeachMultiDeviceWidget::updatePositionDisplay()
             .arg(pos.x, 10, 'f', 4)
             .arg(pos.y, 10, 'f', 4)
             .arg(pos.z, 10, 'f', 4));
+    } else if ((m_state == CaptureZComp || m_state == CaptureZPlace) && m_trainingSet) {
+        std::string gantryDevice = m_trainingSet->deviceName;
+        auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+        QString posText = QString("X: %1  Y: %2  Z: %3")
+            .arg(pos.x, 10, 'f', 4)
+            .arg(pos.y, 10, 'f', 4)
+            .arg(pos.z, 10, 'f', 4);
+        if (m_state == CaptureZComp) {
+            m_zCompPositionLabel->setText(posText);
+        } else {
+            m_zPlacePositionLabel->setText(posText);
+        }
     }
 }
 
@@ -1247,9 +1545,18 @@ void TeachMultiDeviceWidget::refreshList()
             .arg(hd.gantryViewX, 0, 'f', 3)
             .arg(hd.gantryViewY, 0, 'f', 3)
             .arg(hd.gantryViewZ, 0, 'f', 3);
+        // Show teach mode
+        if (hd.gantryTeachMode == 1) {
+            text += "  [2-corner]";
+        } else if (hd.gantryTeachMode == 2) {
+            text += "  [3-corner]";
+        }
         if (!hd.visionProfilePath.empty()) {
             text += QString("  [vision: %1]").arg(
                 QFileInfo(QString::fromStdString(hd.visionProfilePath)).baseName());
+        }
+        if (std::abs(hd.hexZAdjustment) > 1e-6) {
+            text += QString("  [Zadj=%1]").arg(hd.hexZAdjustment, 0, 'f', 3);
         }
         if (!hd.valid) {
             text += "  [invalid]";

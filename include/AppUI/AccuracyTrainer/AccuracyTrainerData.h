@@ -41,6 +41,13 @@ struct HexDeviceTeachData {
     double hexX = 0.0, hexY = 0.0, hexZ = 0.0, hexU = 0.0, hexV = 0.0, hexW = 0.0;  // hex device 6-axis position
     double gantryViewX = 0.0, gantryViewY = 0.0, gantryViewZ = 0.0;  // gantry viewing position
     std::string visionProfilePath;  // Vision profile for auto-detect hex tip (empty = manual only)
+    int gantryTeachMode = 0;        // 0=single point, 1=2-corner, 2=3-corner
+    // Z placement adjustment parameters (full XYZ stored for reteach navigation)
+    double zCompX = 0.0, zCompY = 0.0, zComp = 0.0;  // Gantry XYZ at component top
+    double zPlaceX = 0.0, zPlaceY = 0.0, zPlace = 0.0; // Gantry XYZ at placement surface
+    double componentThickness = 1.2;   // Component thickness in mm
+    double bondlineThickness = 0.05;   // Bondline gap in mm
+    double hexZAdjustment = 0.0;       // Computed: zComp - zPlace - (componentThickness + bondlineThickness)
     bool valid = false;
 };
 

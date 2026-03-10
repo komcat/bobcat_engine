@@ -10,15 +10,52 @@
 #include "../motions/CoordinateTransformer.h"
 #include "product_position_manager.h"
 #include "LogManager.h"
+#include <nlohmann/json.hpp>
 #include <iostream>
+#include <fstream>
 #include <cmath>
 #include <filesystem>
 
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
-#include <nlohmann/json.hpp>
-#include <fstream>
 #endif
+
+// Helper: Write taught position to the ManualAlignPointWidget navigation file
+// so the widget auto-navigates to the correct taught position (not stale saved data)
+static void WriteNavigationData(
+    const std::string& productName,
+    const std::string& deviceName,
+    const std::string& pointName,
+    double x, double y, double z)
+{
+    std::filesystem::path navDir = std::filesystem::path("data") / productName / "referenceimages" / "navigation";
+    std::filesystem::create_directories(navDir);
+
+    std::filesystem::path navFile = navDir / (pointName + ".json");
+    nlohmann::json j;
+    j["point_name"] = pointName;
+    j["device"] = deviceName;
+    j["position"]["x"] = x;
+    j["position"]["y"] = y;
+    j["position"]["z"] = z;
+
+    // Get current timestamp
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_now{};
+    localtime_s(&tm_now, &time_t_now);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_now);
+    j["last_saved"] = std::string(buf);
+
+    std::ofstream file(navFile);
+    if (file.is_open()) {
+        file << j.dump(4);
+        file.close();
+        std::cout << "[AccuracyTrainer] Updated navigation data: " << navFile.string()
+                  << " (X:" << x << ", Y:" << y << ", Z:" << z << ")" << std::endl;
+    }
+}
 
 // ============================================================================
 // ExecuteCommand - Route to the appropriate handler
@@ -124,6 +161,13 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
     const std::string& device = ts.deviceName;
     auto* motionMgr = m_appContext->motionManager;
 
+    // Get product name for navigation file updates
+    std::string productName;
+    if (m_appContext->productPositionManager &&
+        m_appContext->productPositionManager->HasLoadedProduct()) {
+        productName = m_appContext->productPositionManager->GetCurrentProductName();
+    }
+
     // ========================================================================
     // PHASE 1: Reference alignment
     // ========================================================================
@@ -135,10 +179,12 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                   << ": " << ref.name << " -> (" << ref.globalX << ", " << ref.globalY
                   << ", " << ref.globalZ << ")" << std::endl;
 
-        // Move gantry to taught ref position
-        bool moveOk = motionMgr->MoveToAbs(device, ref.globalX, ref.globalY, ref.globalZ, 100.0, true);
-        if (!moveOk) {
-            std::cout << "[AccuracyTrainer] Move to ref failed, will try manual fallback" << std::endl;
+        // Write taught ref position to navigation file BEFORE calling the manual
+        // callback, so ManualAlignPointWidget auto-navigates to the taught position
+        // (not stale saved data from a previous run)
+        if (!productName.empty()) {
+            WriteNavigationData(productName, device, ref.name,
+                                ref.globalX, ref.globalY, ref.globalZ);
         }
 
         // Check stop between operations
@@ -148,40 +194,33 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
             return false;
         }
 
-        bool positionCaptured = false;
-
-        // Try vision auto-detect if profile exists
-        if (!ref.visionProfilePath.empty()) {
-            std::cout << "[AccuracyTrainer] Running vision profile for " << ref.name << std::endl;
-            std::string visionError;
-            bool visionOk = RunVisionDetectCenter(ref.visionProfilePath, device, visionError);
-
-            if (visionOk) {
-                std::cout << "[AccuracyTrainer] Vision succeeded for " << ref.name << std::endl;
-                positionCaptured = true;
-            } else {
-                std::cout << "[AccuracyTrainer] Vision failed for " << ref.name
-                          << ": " << visionError << " - falling back to manual" << std::endl;
+        // Show manual alignment dialog for user to verify/adjust and confirm
+        // The ManualAlignPointWidget will auto-navigate to the taught position
+        // we just wrote to the navigation file
+        if (m_manualAlignCallback) {
+            std::string msg = "Align to reference point " + ref.name
+                + " (" + std::to_string(i + 1) + " of "
+                + std::to_string(ts.referencePoints.size()) + ")\n"
+                + "Verify or adjust gantry position on the reference feature, then click OK.";
+            bool userOk = m_manualAlignCallback(ref.name, msg, true, true, true);
+            if (!userOk) {
+                errorMessage = "User cancelled alignment at reference " + ref.name;
+                if (context) context->SetValue("accuracy_trainer.result.success", false);
+                return false;
             }
-        }
-
-        // Manual fallback if vision failed or no profile
-        if (!positionCaptured) {
-            if (m_manualAlignCallback) {
-                std::string msg = "Align to reference point " + ref.name
-                    + " (" + std::to_string(i + 1) + " of "
-                    + std::to_string(ts.referencePoints.size()) + ")\n"
-                    + "Jog gantry to center on the reference feature.";
-                bool userOk = m_manualAlignCallback(ref.name, msg, true, true, true);
-                if (!userOk) {
-                    errorMessage = "User cancelled alignment at reference " + ref.name;
+        } else {
+            // No manual callback — try vision as fallback, then fail
+            if (!ref.visionProfilePath.empty()) {
+                std::cout << "[AccuracyTrainer] No manual callback, trying vision for " << ref.name << std::endl;
+                std::string visionError;
+                bool visionOk = RunVisionDetectCenter(ref.visionProfilePath, device, visionError);
+                if (!visionOk) {
+                    errorMessage = "Vision failed and no manual callback for ref " + ref.name + ": " + visionError;
                     if (context) context->SetValue("accuracy_trainer.result.success", false);
                     return false;
                 }
-                positionCaptured = true;
             } else {
-                // No manual callback and no vision - cannot proceed
-                errorMessage = "No vision profile and no manual callback for ref " + ref.name;
+                errorMessage = "No manual callback and no vision for ref " + ref.name;
                 if (context) context->SetValue("accuracy_trainer.result.success", false);
                 return false;
             }
@@ -320,12 +359,22 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
             }
 
             std::cout << "[AccuracyTrainer] Hex device " << (i + 1) << ": "
-                      << hexDev.deviceName << std::endl;
+                      << hexDev.deviceName
+                      << " (teachMode=" << hexDev.gantryTeachMode << ")" << std::endl;
 
             if (context && context->IsStopRequestedAny()) {
                 errorMessage = "Alignment stopped by user during hex registration";
                 context->SetValue("accuracy_trainer.result.success", false);
                 return false;
+            }
+
+            // Move hex device to taught 6-axis position
+            PositionStruct hexTarget;
+            hexTarget.x = hexDev.hexX; hexTarget.y = hexDev.hexY; hexTarget.z = hexDev.hexZ;
+            hexTarget.u = hexDev.hexU; hexTarget.v = hexDev.hexV; hexTarget.w = hexDev.hexW;
+            bool hexOk = motionMgr->MoveToAbs6(hexDev.deviceName, hexTarget, true);
+            if (!hexOk) {
+                std::cout << "[AccuracyTrainer] WARNING: Hex move failed for " << hexDev.deviceName << std::endl;
             }
 
             // Move gantry to viewing position
@@ -335,28 +384,72 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] WARNING: Gantry move failed for hex " << hexDev.deviceName << std::endl;
             }
 
-            // Move hex device to taught 6-axis position (single multi-axis command)
-            PositionStruct hexTarget;
-            hexTarget.x = hexDev.hexX; hexTarget.y = hexDev.hexY; hexTarget.z = hexDev.hexZ;
-            hexTarget.u = hexDev.hexU; hexTarget.v = hexDev.hexV; hexTarget.w = hexDev.hexW;
-            bool hexOk = motionMgr->MoveToAbs6(hexDev.deviceName, hexTarget, true);
-            if (!hexOk) {
-                std::cout << "[AccuracyTrainer] WARNING: Hex move failed for " << hexDev.deviceName << std::endl;
-            }
-
-            // Try vision for hex if profile available
-            bool hexCaptured = false;
-            if (!hexDev.visionProfilePath.empty()) {
+            // Try vision for hex if profile available (pre-positions gantry)
+            if (!hexDev.visionProfilePath.empty() && gantryOk) {
+                std::cout << "[AccuracyTrainer] Running vision profile for " << hexDev.deviceName << std::endl;
                 std::string visionError;
-                hexCaptured = RunVisionDetectCenter(hexDev.visionProfilePath, device, visionError);
-                if (!hexCaptured) {
-                    std::cout << "[AccuracyTrainer] Hex vision failed: " << visionError << std::endl;
+                bool visionOk = RunVisionDetectCenter(hexDev.visionProfilePath, device, visionError);
+                if (visionOk) {
+                    std::cout << "[AccuracyTrainer] Vision pre-positioned for " << hexDev.deviceName << std::endl;
+                } else {
+                    std::cout << "[AccuracyTrainer] Hex vision failed: " << visionError
+                              << " - user must jog manually" << std::endl;
                 }
             }
 
-            // Manual fallback for hex: 2-3 corner capture (same pattern as UI widget)
-            if (!hexCaptured && m_manualAlignCallback) {
-                std::cout << "[AccuracyTrainer] Starting 2-3 corner capture for " << hexDev.deviceName << std::endl;
+            // Registration based on teach mode
+            if (hexDev.gantryTeachMode == 0) {
+                // Single-point mode: confirm current gantry position as hex center
+                std::cout << "[AccuracyTrainer] Single-point mode for " << hexDev.deviceName << std::endl;
+
+                // Always require manual confirmation for hex registration
+                if (m_manualAlignCallback) {
+                    std::string msg = "Confirm hex registration: " + hexDev.deviceName
+                        + "\nVerify gantry is centered on the hex end-effector tip, then click OK.";
+                    bool userOk = m_manualAlignCallback(hexDev.deviceName, msg, true, true, true);
+                    if (!userOk) {
+                        std::cout << "[AccuracyTrainer] User cancelled hex registration for "
+                                  << hexDev.deviceName << std::endl;
+                        continue;
+                    }
+                }
+
+                auto gantryPos = motionMgr->GetCurrentPosition(device);
+                auto hexPos = motionMgr->GetCurrentPosition(hexDev.deviceName);
+
+                RegisteredHexPos regPos;
+                regPos.centerGantryX = gantryPos.x;
+                regPos.centerGantryY = gantryPos.y;
+                regPos.centerGantryZ = gantryPos.z;
+                regPos.x = hexPos.x; regPos.y = hexPos.y; regPos.z = hexPos.z;
+                regPos.u = hexPos.u; regPos.v = hexPos.v; regPos.w = hexPos.w;
+                registeredHexPositions[hexDev.deviceName] = regPos;
+
+                std::cout << "[AccuracyTrainer] Registered " << hexDev.deviceName
+                          << " (single-point): gantryCenter=(" << gantryPos.x << ", " << gantryPos.y
+                          << ", " << gantryPos.z << ")" << std::endl;
+
+                if (context) {
+                    std::string prefix = "accuracy_trainer.result.hex_" + std::to_string(i);
+                    context->SetValue(prefix + ".device", hexDev.deviceName);
+                    context->SetValue(prefix + ".x", std::to_string(hexPos.x));
+                    context->SetValue(prefix + ".y", std::to_string(hexPos.y));
+                    context->SetValue(prefix + ".z", std::to_string(hexPos.z));
+                    context->SetValue(prefix + ".z_adjustment", std::to_string(hexDev.hexZAdjustment));
+                }
+                continue;  // Skip to next hex device
+            }
+
+            // TeachMode 1 or 2: manual 2-3 corner capture
+            if (!m_manualAlignCallback) {
+                std::cout << "[AccuracyTrainer] No manual callback for hex "
+                          << hexDev.deviceName << " - skipping" << std::endl;
+                continue;
+            }
+
+            {
+                std::cout << "[AccuracyTrainer] Starting corner capture for " << hexDev.deviceName
+                          << " (teachMode=" << hexDev.gantryTeachMode << ")" << std::endl;
 
                 // Corner 1: Top-Left
                 std::string msg1 = "Corner 1/3 (Top-Left): " + hexDev.deviceName
@@ -388,23 +481,26 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] Corner 2 (BR): X=" << cornerBR.x
                           << " Y=" << cornerBR.y << std::endl;
 
-                // Corner 3: Top-Right (optional)
-                std::string msg3 = "Corner 3/3 (Top-Right, Optional): " + hexDev.deviceName
-                    + "\nJog gantry camera crosshair to the TOP-RIGHT corner.\n"
-                      "Click OK to capture, or Cancel to use 2-corner midpoint.";
-                bool hasThirdCorner = m_manualAlignCallback(hexDev.deviceName, msg3, true, true, true);
+                // Corner 3: Top-Right (only for 3-corner mode, optional for 2-corner)
+                bool hasThirdCorner = false;
                 double cornerTR_X = 0.0, cornerTR_Y = 0.0;
-                if (hasThirdCorner) {
-                    auto cornerTR = motionMgr->GetCurrentPosition(device);
-                    cornerTR_X = cornerTR.x;
-                    cornerTR_Y = cornerTR.y;
-                    std::cout << "[AccuracyTrainer] Corner 3 (TR): X=" << cornerTR_X
-                              << " Y=" << cornerTR_Y << std::endl;
-                } else {
-                    std::cout << "[AccuracyTrainer] Skipped corner 3 (using 2-corner midpoint)" << std::endl;
+                if (hexDev.gantryTeachMode == 2) {
+                    std::string msg3 = "Corner 3/3 (Top-Right): " + hexDev.deviceName
+                        + "\nJog gantry camera crosshair to the TOP-RIGHT corner.\n"
+                          "Click OK to capture, or Cancel to use 2-corner midpoint.";
+                    hasThirdCorner = m_manualAlignCallback(hexDev.deviceName, msg3, true, true, true);
+                    if (hasThirdCorner) {
+                        auto cornerTR = motionMgr->GetCurrentPosition(device);
+                        cornerTR_X = cornerTR.x;
+                        cornerTR_Y = cornerTR.y;
+                        std::cout << "[AccuracyTrainer] Corner 3 (TR): X=" << cornerTR_X
+                                  << " Y=" << cornerTR_Y << std::endl;
+                    } else {
+                        std::cout << "[AccuracyTrainer] Skipped corner 3 (using 2-corner midpoint)" << std::endl;
+                    }
                 }
 
-                // Compute center from corners (same math as UI widgets)
+                // Compute center from corners (same math as MultiDeviceRunAlignmentWidget)
                 double centerX = 0.0, centerY = 0.0;
                 if (hasThirdCorner) {
                     double blX = cornerTL.x + cornerBR.x - cornerTR_X;
@@ -428,13 +524,6 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 if (!moveOk) {
                     std::cout << "[AccuracyTrainer] WARNING: Move to corner center failed" << std::endl;
                 }
-                hexCaptured = true;
-            }
-
-            if (!hexCaptured) {
-                std::cout << "[AccuracyTrainer] No vision and no manual callback for hex "
-                          << hexDev.deviceName << " - skipping" << std::endl;
-                continue;
             }
 
             // Capture gantry position (where gantry is centered on hex) and hex device position
@@ -459,6 +548,7 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 context->SetValue(prefix + ".x", std::to_string(hexPos.x));
                 context->SetValue(prefix + ".y", std::to_string(hexPos.y));
                 context->SetValue(prefix + ".z", std::to_string(hexPos.z));
+                context->SetValue(prefix + ".z_adjustment", std::to_string(hexDev.hexZAdjustment));
             }
         }
     }
@@ -515,6 +605,7 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
 
             // If assigned to a registered hex device, compute corrected hex position
             // using transformation matrix (same math as MultiDeviceRunAlignmentWidget)
+            // Two-stage move: XY lateral first, then Z height adjustment (avoids crashes)
             if (assignedToHex) {
                 auto hexIt = registeredHexPositions.find(cb.assignedDevice);
                 const auto& regHex = hexIt->second;
@@ -530,32 +621,77 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 double gantryDeltaX = cb.correctedX - regHex.centerGantryX;
                 double gantryDeltaY = cb.correctedY - regHex.centerGantryY;
 
+                // Look up hexZAdjustment from training set teach data
+                double hexZAdjustment = 0.0;
+                for (const auto& hd : ts.hexDevicePositions) {
+                    if (hd.deviceName == cb.assignedDevice && hd.valid) {
+                        hexZAdjustment = hd.hexZAdjustment;
+                        break;
+                    }
+                }
+
                 std::cout << "[AccuracyTrainer] " << cb.assignedDevice
-                          << " gantry delta: dX=" << gantryDeltaX << " dY=" << gantryDeltaY << std::endl;
+                          << " gantry delta: dX=" << gantryDeltaX << " dY=" << gantryDeltaY
+                          << " Zadj=" << hexZAdjustment << std::endl;
 
-                // Transform gantry delta to hex local coordinates via 3x3 matrix
-                CoordinateTransformer::Vector6D globalDelta(gantryDeltaX, gantryDeltaY, 0.0, 0.0, 0.0, 0.0);
-                auto localDelta = CoordinateTransformer::TransformGlobalToLocal(globalDelta, *matrix);
+                // Step 1: Lateral repositioning - transform gantry XY delta only
+                CoordinateTransformer::Vector6D xyGlobalDelta(gantryDeltaX, gantryDeltaY, 0.0, 0.0, 0.0, 0.0);
+                auto xyLocalDelta = CoordinateTransformer::TransformGlobalToLocal(xyGlobalDelta, *matrix);
 
-                // Get current hex position and add the local delta
+                std::cout << "[AccuracyTrainer]   Lateral local delta: dX=" << xyLocalDelta.x
+                          << " dY=" << xyLocalDelta.y << " dZ=" << xyLocalDelta.z << std::endl;
+
+                // Step 2: Height adjustment - transform Z adjustment only
+                CoordinateTransformer::Vector6D zGlobalDelta(0.0, 0.0, hexZAdjustment, 0.0, 0.0, 0.0);
+                auto zLocalDelta = CoordinateTransformer::TransformGlobalToLocal(zGlobalDelta, *matrix);
+
+                bool hasZAdjustment = (std::abs(zLocalDelta.x) > 1e-6 ||
+                                       std::abs(zLocalDelta.y) > 1e-6 ||
+                                       std::abs(zLocalDelta.z) > 1e-6);
+
+                if (hasZAdjustment) {
+                    std::cout << "[AccuracyTrainer]   Height local delta:  dX=" << zLocalDelta.x
+                              << " dY=" << zLocalDelta.y << " dZ=" << zLocalDelta.z << std::endl;
+                }
+
+                // Execute Step 1: lateral move
                 auto curHexPos = motionMgr->GetCurrentPosition(cb.assignedDevice);
-                PositionStruct targetPos;
-                targetPos.x = curHexPos.x + localDelta.x;
-                targetPos.y = curHexPos.y + localDelta.y;
-                targetPos.z = curHexPos.z + localDelta.z;
-                targetPos.u = curHexPos.u + localDelta.u;
-                targetPos.v = curHexPos.v + localDelta.v;
-                targetPos.w = curHexPos.w + localDelta.w;
+                PositionStruct xyTargetPos;
+                xyTargetPos.x = curHexPos.x + xyLocalDelta.x;
+                xyTargetPos.y = curHexPos.y + xyLocalDelta.y;
+                xyTargetPos.z = curHexPos.z + xyLocalDelta.z;
+                xyTargetPos.u = curHexPos.u + xyLocalDelta.u;
+                xyTargetPos.v = curHexPos.v + xyLocalDelta.v;
+                xyTargetPos.w = curHexPos.w + xyLocalDelta.w;
 
-                std::cout << "[AccuracyTrainer] " << cb.assignedDevice
-                          << " target: X=" << targetPos.x << " Y=" << targetPos.y
-                          << " Z=" << targetPos.z << " U=" << targetPos.u
-                          << " V=" << targetPos.v << " W=" << targetPos.w << std::endl;
+                std::cout << "[AccuracyTrainer]   Step 1 - Hex lateral target: X=" << xyTargetPos.x
+                          << " Y=" << xyTargetPos.y << " Z=" << xyTargetPos.z << std::endl;
 
-                bool hexOk = motionMgr->MoveToAbs6(cb.assignedDevice, targetPos, true);
+                bool hexOk = motionMgr->MoveToAbs6(cb.assignedDevice, xyTargetPos, true);
                 if (!hexOk) {
                     std::cout << "[AccuracyTrainer] WARNING: " << cb.assignedDevice
-                              << " move failed for " << cb.name << std::endl;
+                              << " lateral move failed for " << cb.name << std::endl;
+                }
+
+                // Execute Step 2: height adjustment (separate move to avoid crash)
+                if (hexOk && hasZAdjustment) {
+                    auto afterXYPos = motionMgr->GetCurrentPosition(cb.assignedDevice);
+                    PositionStruct zTargetPos;
+                    zTargetPos.x = afterXYPos.x + zLocalDelta.x;
+                    zTargetPos.y = afterXYPos.y + zLocalDelta.y;
+                    zTargetPos.z = afterXYPos.z + zLocalDelta.z;
+                    zTargetPos.u = afterXYPos.u;
+                    zTargetPos.v = afterXYPos.v;
+                    zTargetPos.w = afterXYPos.w;
+
+                    std::cout << "[AccuracyTrainer]   Step 2 - Hex height target: X=" << zTargetPos.x
+                              << " Y=" << zTargetPos.y << " Z=" << zTargetPos.z << std::endl;
+
+                    bool zOk = motionMgr->MoveToAbs6(cb.assignedDevice, zTargetPos, true);
+                    if (!zOk) {
+                        std::cout << "[AccuracyTrainer] WARNING: " << cb.assignedDevice
+                                  << " height move failed for " << cb.name << std::endl;
+                    }
                 }
             }
         }

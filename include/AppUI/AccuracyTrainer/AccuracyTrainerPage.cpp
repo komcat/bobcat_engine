@@ -5,6 +5,7 @@
 #include "RunAlignmentWidget.h"
 #include "MultiDeviceRunAlignmentWidget.h"
 #include "TeachMultiDeviceWidget.h"
+#include "EditZOffsetWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -37,6 +38,7 @@ AccuracyTrainerPage::AccuracyTrainerPage(ApplicationContext* context, QWidget* p
     , m_runAlignmentWidget(nullptr)
     , m_multiDeviceWidget(nullptr)
     , m_teachMultiDeviceWidget(nullptr)
+    , m_editZOffsetWidget(nullptr)
     , m_welcomeWidget(nullptr)
     , m_deviceCombo(nullptr)
     , m_topBarWidget(nullptr)
@@ -180,6 +182,7 @@ void AccuracyTrainerPage::setupUI()
     m_navList->addItem("3. Teach Multi-Device Positions");
     m_navList->addItem("4. Run Alignment");
     m_navList->addItem("5. Run Multi-Device Alignment");
+    m_navList->addItem("6. Edit Z Offset");
     connect(m_navList, &QListWidget::currentRowChanged,
             this, &AccuracyTrainerPage::onNavItemChanged);
     navLayout->addWidget(m_navList);
@@ -233,6 +236,9 @@ void AccuracyTrainerPage::setupUI()
     m_teachMultiDeviceWidget = new TeachMultiDeviceWidget(m_context, this);
     m_contentStack->addWidget(m_teachMultiDeviceWidget);  // index 5
 
+    m_editZOffsetWidget = new EditZOffsetWidget(m_context, this);
+    m_contentStack->addWidget(m_editZOffsetWidget);  // index 6
+
     // Wire widget signals for data updates
     connect(m_teachBondingWidget, &TeachBondingWidget::bondingPointAdded,
             this, [this](const BondingPoint& bp) {
@@ -280,6 +286,12 @@ void AccuracyTrainerPage::setupUI()
         updateCurrentTrainingSet();
     });
 
+    connect(m_editZOffsetWidget, &EditZOffsetWidget::zOffsetsUpdated,
+            this, [this]() {
+        updateCurrentTrainingSet();
+        onSaveTrainingSet();
+    });
+
     // Add panels to splitter
     splitter->addWidget(leftPanel);
     splitter->addWidget(m_contentStack);
@@ -318,6 +330,10 @@ void AccuracyTrainerPage::onNavItemChanged(int currentRow)
     case 4:  // Run Multi-Device Alignment
         m_multiDeviceWidget->SetTrainingSet(&m_currentSet);
         m_contentStack->setCurrentIndex(4);
+        break;
+    case 5:  // Edit Z Offset
+        m_editZOffsetWidget->SetTrainingSet(&m_currentSet);
+        m_contentStack->setCurrentIndex(6);
         break;
     default:
         m_contentStack->setCurrentIndex(0);

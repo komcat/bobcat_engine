@@ -86,6 +86,7 @@ private:
     void startHexRegistration();
     void beginNextHexCornerCapture();
     void computeHexCenter();
+    void autoRegisterSinglePoint();
     void applyDeviceAssignments();
     void startBondingSequence();
     void showBondingPointAndAutoMove();

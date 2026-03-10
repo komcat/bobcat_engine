@@ -910,9 +910,10 @@ void MultiDeviceRunAlignmentWidget::beginNextHexCornerCapture()
         double gantryY = teachData->gantryViewY;
         double gantryZ = teachData->gantryViewZ;
         std::string visionProfile = teachData->visionProfilePath;
+        int teachMode = teachData->gantryTeachMode;
 
         m_moveFuture = std::async(std::launch::async,
-            [this, hexDevice, gantryDevice, hexTarget, gantryX, gantryY, gantryZ, visionProfile]() {
+            [this, hexDevice, gantryDevice, hexTarget, gantryX, gantryY, gantryZ, visionProfile, teachMode]() {
             // First move hex to working position
             bool hexOk = m_context->motionManager->MoveToAbs6(hexDevice, hexTarget, true);
             // Then move gantry to viewing position
@@ -976,18 +977,29 @@ void MultiDeviceRunAlignmentWidget::beginNextHexCornerCapture()
                     return;
                 }
 
-                // Vision failed - fall back to manual corners
-                QMetaObject::invokeMethod(this, [this]() {
-                    appendLog("  Vision failed - falling back to manual corner capture.");
-                    setState(RegisterHex_Corner1);
+                // Vision failed - fall back based on teach mode
+                QMetaObject::invokeMethod(this, [this, teachMode]() {
+                    appendLog("  Vision failed - falling back to manual registration.");
+                    if (teachMode == 0) {
+                        // Single point: use current gantry position as center
+                        autoRegisterSinglePoint();
+                    } else {
+                        setState(RegisterHex_Corner1);
+                    }
                 }, Qt::QueuedConnection);
                 return;
             }
 
-            // No vision profile - manual corner capture
-            QMetaObject::invokeMethod(this, [this]() {
-                appendLog("  Capture corners manually.");
-                setState(RegisterHex_Corner1);
+            // No vision profile - register based on teach mode
+            QMetaObject::invokeMethod(this, [this, teachMode]() {
+                if (teachMode == 0) {
+                    // Single point: use current gantry position as center (already at taught pos)
+                    appendLog("  Single-point mode: using gantry position as center.");
+                    autoRegisterSinglePoint();
+                } else {
+                    appendLog("  Capture corners manually.");
+                    setState(RegisterHex_Corner1);
+                }
             }, Qt::QueuedConnection);
         });
     } else {
@@ -1092,6 +1104,50 @@ void MultiDeviceRunAlignmentWidget::computeHexCenter()
 
     // Auto-confirm registration (no manual summary step)
     onConfirmHexRegistration();
+}
+
+void MultiDeviceRunAlignmentWidget::autoRegisterSinglePoint()
+{
+    // Use current gantry position as the registration center (single-point mode)
+    if (!m_context || !m_context->motionManager || !m_trainingSet) return;
+
+    std::string gantryDevice = m_trainingSet->deviceName;
+    auto pos = m_context->motionManager->GetCurrentPosition(gantryDevice);
+
+    m_pendingHexReg.centerGantryX = pos.x;
+    m_pendingHexReg.centerGantryY = pos.y;
+    m_pendingHexReg.centerGantryZ = pos.z;
+    m_pendingHexReg.cornerTL_X = pos.x;
+    m_pendingHexReg.cornerTL_Y = pos.y;
+    m_pendingHexReg.cornerBR_X = pos.x;
+    m_pendingHexReg.cornerBR_Y = pos.y;
+    m_pendingHexReg.hasThirdCorner = false;
+    m_pendingHexReg.valid = true;
+
+    appendLog(QString("  Single-point registration: center=(%1, %2, %3)")
+        .arg(pos.x, 0, 'f', 4)
+        .arg(pos.y, 0, 'f', 4)
+        .arg(pos.z, 0, 'f', 4));
+    appendLog(QString("  Hex device pos: X=%1, Y=%2, Z=%3")
+        .arg(m_pendingHexReg.hexPosX, 0, 'f', 4)
+        .arg(m_pendingHexReg.hexPosY, 0, 'f', 4)
+        .arg(m_pendingHexReg.hexPosZ, 0, 'f', 4));
+
+    // Show summary for user confirmation instead of auto-confirming
+    m_hexSummaryLabel->setText(QString(
+        "Hex Registration: %1 (Single Point)\n\n"
+        "Gantry Center: X=%2  Y=%3  Z=%4\n\n"
+        "Hex Device Position:\n"
+        "  X=%5  Y=%6  Z=%7\n\n"
+        "Click 'Confirm Registration' to accept.")
+        .arg(QString::fromStdString(m_pendingHexReg.deviceName))
+        .arg(pos.x, 0, 'f', 4)
+        .arg(pos.y, 0, 'f', 4)
+        .arg(pos.z, 0, 'f', 4)
+        .arg(m_pendingHexReg.hexPosX, 0, 'f', 4)
+        .arg(m_pendingHexReg.hexPosY, 0, 'f', 4)
+        .arg(m_pendingHexReg.hexPosZ, 0, 'f', 4));
+    setState(RegisterHex_Summary);
 }
 
 void MultiDeviceRunAlignmentWidget::onConfirmHexRegistration()
@@ -1224,6 +1280,17 @@ void MultiDeviceRunAlignmentWidget::showBondingPointAndAutoMove()
         .arg(cb.correctedY, 10, 'f', 4)
         .arg(cb.correctedZ, 10, 'f', 4));
 
+    // Append Z adjustment info if applicable
+    if (cb.assignedHexIndex >= 0 && m_trainingSet) {
+        for (const auto& hd : m_trainingSet->hexDevicePositions) {
+            if (hd.deviceName == cb.assignedDevice && hd.valid && std::abs(hd.hexZAdjustment) > 1e-6) {
+                m_bondInstructionLabel->setText(m_bondInstructionLabel->text()
+                    + QString("\nZ Adjustment: %1 mm").arg(hd.hexZAdjustment, 0, 'f', 4));
+                break;
+            }
+        }
+    }
+
     // Show/hide Back button: hidden for first point
     m_prevBondBtn->setVisible(m_currentBondIndex > 0);
 
@@ -1268,7 +1335,7 @@ void MultiDeviceRunAlignmentWidget::moveToCurrentBonding()
             }, Qt::QueuedConnection);
         });
     } else {
-        // Hex device: move gantry AND hex device simultaneously
+        // Hex device: 2-step move — XY first, then Z adjustment
         int hexIndex = cb.assignedHexIndex;
         if (hexIndex >= static_cast<int>(m_hexRegistrations.size())) {
             appendLog("ERROR: Invalid hex device selection.");
@@ -1292,41 +1359,108 @@ void MultiDeviceRunAlignmentWidget::moveToCurrentBonding()
         double gantryDeltaX = cb.correctedX - hexReg.centerGantryX;
         double gantryDeltaY = cb.correctedY - hexReg.centerGantryY;
 
-        appendLog(QString("Also moving %1 (delta: dX=%2, dY=%3)")
+        // Look up hexZAdjustment from training set teach data
+        double hexZAdjustment = 0.0;
+        if (m_trainingSet) {
+            for (const auto& hd : m_trainingSet->hexDevicePositions) {
+                if (hd.deviceName == hexReg.deviceName && hd.valid) {
+                    hexZAdjustment = hd.hexZAdjustment;
+                    break;
+                }
+            }
+        }
+
+        appendLog(QString("Also moving %1 (delta: dX=%2, dY=%3, Zadj=%4)")
             .arg(QString::fromStdString(hexReg.deviceName))
             .arg(gantryDeltaX, 0, 'f', 4)
-            .arg(gantryDeltaY, 0, 'f', 4));
+            .arg(gantryDeltaY, 0, 'f', 4)
+            .arg(hexZAdjustment, 0, 'f', 4));
 
-        // Transform via 3x3 matrix
-        CoordinateTransformer::Vector6D globalDelta(gantryDeltaX, gantryDeltaY, 0.0, 0.0, 0.0, 0.0);
-        auto localDelta = CoordinateTransformer::TransformGlobalToLocal(globalDelta, *matrix);
+        // Two separate transforms to keep lateral (XY) and height (Z) moves independent.
+        // This prevents the hex from lowering while still moving laterally, avoiding crashes.
+        // Step 1: Lateral repositioning — transform gantry XY delta only
+        CoordinateTransformer::Vector6D xyGlobalDelta(gantryDeltaX, gantryDeltaY, 0.0, 0.0, 0.0, 0.0);
+        auto xyLocalDelta = CoordinateTransformer::TransformGlobalToLocal(xyGlobalDelta, *matrix);
+
+        // Step 2: Height adjustment — transform Z adjustment only
+        CoordinateTransformer::Vector6D zGlobalDelta(0.0, 0.0, hexZAdjustment, 0.0, 0.0, 0.0);
+        auto zLocalDelta = CoordinateTransformer::TransformGlobalToLocal(zGlobalDelta, *matrix);
+
+        appendLog(QString("  Lateral local delta: dX=%1, dY=%2, dZ=%3")
+            .arg(xyLocalDelta.x, 0, 'f', 4).arg(xyLocalDelta.y, 0, 'f', 4)
+            .arg(xyLocalDelta.z, 0, 'f', 4));
+        appendLog(QString("  Height local delta:  dX=%1, dY=%2, dZ=%3")
+            .arg(zLocalDelta.x, 0, 'f', 4).arg(zLocalDelta.y, 0, 'f', 4)
+            .arg(zLocalDelta.z, 0, 'f', 4));
 
         std::string hexDevice = hexReg.deviceName;
         auto curPos = m_context->motionManager->GetCurrentPosition(hexDevice);
 
-        PositionStruct targetPos;
-        targetPos.x = curPos.x + localDelta.x;
-        targetPos.y = curPos.y + localDelta.y;
-        targetPos.z = curPos.z + localDelta.z;
-        targetPos.u = curPos.u + localDelta.u;
-        targetPos.v = curPos.v + localDelta.v;
-        targetPos.w = curPos.w + localDelta.w;
+        // Step 1 target: lateral repositioning only (gantry XY delta transformed)
+        PositionStruct xyTargetPos;
+        xyTargetPos.x = curPos.x + xyLocalDelta.x;
+        xyTargetPos.y = curPos.y + xyLocalDelta.y;
+        xyTargetPos.z = curPos.z + xyLocalDelta.z;
+        xyTargetPos.u = curPos.u + xyLocalDelta.u;
+        xyTargetPos.v = curPos.v + xyLocalDelta.v;
+        xyTargetPos.w = curPos.w + xyLocalDelta.w;
 
-        appendLog(QString("  Hex target: X=%1, Y=%2, Z=%3, U=%4, V=%5, W=%6")
-            .arg(targetPos.x, 0, 'f', 4).arg(targetPos.y, 0, 'f', 4)
-            .arg(targetPos.z, 0, 'f', 4).arg(targetPos.u, 0, 'f', 4)
-            .arg(targetPos.v, 0, 'f', 4).arg(targetPos.w, 0, 'f', 4));
+        appendLog(QString("  Step 1 - Hex lateral target: X=%1, Y=%2, Z=%3")
+            .arg(xyTargetPos.x, 0, 'f', 4).arg(xyTargetPos.y, 0, 'f', 4)
+            .arg(xyTargetPos.z, 0, 'f', 4));
+
+        // Capture Z height delta for Step 2 (all 3 axes — matrix may map gantry Z to any hex axis)
+        double capturedZdX = zLocalDelta.x;
+        double capturedZdY = zLocalDelta.y;
+        double capturedZdZ = zLocalDelta.z;
+        bool hasZAdjustment = (std::abs(capturedZdX) > 1e-6 ||
+                               std::abs(capturedZdY) > 1e-6 ||
+                               std::abs(capturedZdZ) > 1e-6);
 
         m_moveFuture = std::async(std::launch::async,
-            [this, gantryDevice, cx, cy, cz, hexDevice, targetPos]() {
-            // Move both devices
+            [this, gantryDevice, cx, cy, cz, hexDevice, xyTargetPos,
+             capturedZdX, capturedZdY, capturedZdZ, hasZAdjustment]() {
+            // Step 1: Move gantry + hex lateral simultaneously
             bool gantryOk = m_context->motionManager->MoveToAbs(gantryDevice, cx, cy, cz, 100.0, true);
-            bool hexOk = m_context->motionManager->MoveToAbs6(hexDevice, targetPos, true);
+            bool hexOk = m_context->motionManager->MoveToAbs6(hexDevice, xyTargetPos, true);
 
-            QMetaObject::invokeMethod(this, [this, gantryOk, hexOk]() {
-                if (!gantryOk) appendLog("WARNING: Gantry move failed!");
-                if (!hexOk) appendLog("WARNING: Hex move failed!");
-                if (gantryOk && hexOk) appendLog("All moves complete.");
+            if (!gantryOk) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    appendLog("WARNING: Gantry move failed!");
+                }, Qt::QueuedConnection);
+            }
+            if (!hexOk) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    appendLog("WARNING: Hex lateral move failed!");
+                }, Qt::QueuedConnection);
+            }
+
+            // Step 2: Height adjustment (separate move to avoid crash)
+            bool zOk = true;
+            if (hexOk && hasZAdjustment) {
+                auto afterXYPos = m_context->motionManager->GetCurrentPosition(hexDevice);
+                PositionStruct zTargetPos;
+                zTargetPos.x = afterXYPos.x + capturedZdX;
+                zTargetPos.y = afterXYPos.y + capturedZdY;
+                zTargetPos.z = afterXYPos.z + capturedZdZ;
+                zTargetPos.u = afterXYPos.u;
+                zTargetPos.v = afterXYPos.v;
+                zTargetPos.w = afterXYPos.w;
+
+                QMetaObject::invokeMethod(this, [this, zTargetPos]() {
+                    appendLog(QString("  Step 2 - Hex height target: X=%1, Y=%2, Z=%3")
+                        .arg(zTargetPos.x, 0, 'f', 4)
+                        .arg(zTargetPos.y, 0, 'f', 4)
+                        .arg(zTargetPos.z, 0, 'f', 4));
+                }, Qt::QueuedConnection);
+
+                zOk = m_context->motionManager->MoveToAbs6(hexDevice, zTargetPos, true);
+            }
+
+            QMetaObject::invokeMethod(this, [this, gantryOk, hexOk, zOk, hasZAdjustment]() {
+                if (!zOk) appendLog("WARNING: Hex height move failed!");
+                bool allOk = gantryOk && hexOk && (zOk || !hasZAdjustment);
+                if (allOk) appendLog("All moves complete.");
                 m_bondInstructionLabel->setText(
                     m_bondInstructionLabel->text().replace("Moving to position...", "Position reached."));
                 m_prevBondBtn->setEnabled(m_currentBondIndex > 0);
