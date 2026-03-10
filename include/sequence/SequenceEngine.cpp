@@ -919,6 +919,13 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
       LogInfo("Timeout disabled for: " + action->deviceName + "." + action->methodName);
     }
 
+    // User-interactive commands wait indefinitely — no timeout
+    if (action->methodName == "ManualAdjust" ||
+        action->methodName == "UserPrompt" ||
+        action->methodName == "AskForInput") {
+      useTimeout = false;
+    }
+
     bool dispatchOk = false;
     if (useTimeout) {
       dispatchOk = DispatchWithTimeout(managerType, manager, action->deviceName,
