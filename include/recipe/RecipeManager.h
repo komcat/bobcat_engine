@@ -110,6 +110,9 @@ public:
   static bool isBlockStart(const std::string& processType);
   static bool isBlockEnd(const std::string& processType);
 
+  // Regenerate all unique IDs (used by Save As to create independent copy)
+  void regenerateAllUniqueIds();
+
   // ✅ Product file management
   std::string getProductFile() const { return m_currentRecipe.productFile; }
   void setProductFile(const std::string& file) { m_currentRecipe.productFile = file; }

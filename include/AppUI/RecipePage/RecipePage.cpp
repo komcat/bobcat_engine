@@ -1164,6 +1164,9 @@ void RecipePage::onSaveRecipeAs()
   m_recipeManager->setRecipeName(newRecipeName.toStdString());
   m_recipeNameEdit->setText(newRecipeName);
 
+  // Regenerate unique IDs so the new file is an independent copy
+  m_recipeManager->regenerateAllUniqueIds();
+
   if (m_recipeManager->saveRecipe(filename.toStdString())) {
     updateRecipeFileNameDisplay();  // Update recipe file name label
     // Also save to QSettings as last loaded recipe
@@ -1176,8 +1179,9 @@ void RecipePage::onSaveRecipeAs()
     QMessageBox::critical(this, "Error", "Failed to save recipe file.");
   }
 
-  // Refresh recipe list after save
+  // Refresh recipe list and step list (to show new unique IDs)
   populateRecipeListWidget();
+  refreshRecipeList();
 }
 
 // ============================================================================
@@ -1766,11 +1770,7 @@ void RecipePage::onPasteSteps()
   // Insert each clipboard step
   int pastedCount = 0;
   for (const auto& clipStep : m_clipboard->getSteps()) {
-    // Create a nickname with "(copy)" suffix
     std::string nickname = clipStep.userNickname;
-    if (nickname.find("(copy)") == std::string::npos) {
-      nickname += " (copy)";
-    }
 
     m_recipeManager->insertStepAt(insertIndex, clipStep.processType,
                                    nickname, clipStep.enabled, clipStep.parameters);
