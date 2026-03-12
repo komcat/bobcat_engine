@@ -248,6 +248,15 @@ std::string RecipeManager::generateUniqueId(const std::string& processType)
   return id;
 }
 
+void RecipeManager::regenerateAllUniqueIds()
+{
+  for (auto& step : m_currentRecipe.steps) {
+    step->uniqueId = generateUniqueId(step->processType);
+  }
+  std::cout << "[RecipeManager] Regenerated unique IDs for all "
+            << m_currentRecipe.steps.size() << " steps" << std::endl;
+}
+
 std::vector<std::string> RecipeManager::getAvailableProcessTypes()
 {
   // Get plugin-based process types from registry
