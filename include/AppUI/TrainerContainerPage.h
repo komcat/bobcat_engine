@@ -10,6 +10,7 @@ struct ApplicationContext;
 class AccuracyTrainerPage;
 class CameraOffsetTrainerPage;
 class PlanarAdjustmentPage;
+class ZOffsetPage;
 
 /**
  * @brief Container page with a narrow side panel for switching between trainer tools.
@@ -22,7 +23,8 @@ class PlanarAdjustmentPage;
  *   0: "Pos\nAccuracy" -> AccuracyTrainerPage
  *   1: "Camera\nOffset" -> CameraOffsetTrainerPage
  *   2: "Planar\nAdjust" -> PlanarAdjustmentPage
- *   3-4: reserved (disabled)
+ *   3: "Z\nOffset"      -> ZOffsetPage
+ *   4: reserved (disabled)
  */
 class TrainerContainerPage : public QWidget
 {
@@ -47,5 +49,6 @@ private:
     AccuracyTrainerPage* m_accuracyTrainerPage;
     CameraOffsetTrainerPage* m_cameraOffsetPage;
     PlanarAdjustmentPage* m_planarAdjustmentPage;
+    ZOffsetPage* m_zOffsetPage;
     int m_activeIndex;
 };

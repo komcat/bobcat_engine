@@ -22,6 +22,7 @@
 #include "AccuracyTrainerCommandHandler.h"
 #include "CameraOffsetCommandHandler.h"
 #include "PlanarAdjustmentCommandHandler.h"
+#include "ZOffsetCommandHandler.h"
 #include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
@@ -131,6 +132,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   planarHandler->SetContext(m_context);
   m_planarAdjustmentHandler = planarHandler.get();
   m_dispatcher.RegisterHandler("planaradjustment", std::move(planarHandler));
+
+  // Register Z offset handler for Z offset correction
+  auto zOffsetHandler = std::make_unique<ZOffsetCommandHandler>();
+  zOffsetHandler->SetContext(m_context);
+  m_zOffsetHandler = zOffsetHandler.get();
+  m_dispatcher.RegisterHandler("zoffset", std::move(zOffsetHandler));
 
   // Register custom server handler for beam detection
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
@@ -356,6 +363,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["planaradjustment"] = "planaradjustment";
   LogInfo("Registered planar adjustment command handler");
 
+  // Z offset commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["zoffset"] = nullptr;
+  m_deviceToTypeMap["zoffset"] = "zoffset";
+  LogInfo("Registered z offset command handler");
+
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
@@ -458,6 +470,9 @@ void SequenceEngine::SetManualAdjustCallback(ManualAdjustCallback callback)
   }
   if (m_planarAdjustmentHandler) {
     m_planarAdjustmentHandler->SetManualAdjustCallback(callback);
+  }
+  if (m_zOffsetHandler) {
+    m_zOffsetHandler->SetManualAdjustCallback(callback);
   }
 }
 

@@ -461,6 +461,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/AccuracyTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/CameraOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlanarAdjustmentTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -638,6 +639,7 @@ set(SOURCES
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
+    include/recipe/processes/ZOffsetProcesses.cpp
     include/recipe/processes/CameraOffsetProcesses.cpp
     include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
@@ -679,6 +681,7 @@ set(SOURCES
     include/sequence/CoordinateAlignCommandHandler.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
     include/sequence/PlanarAdjustmentCommandHandler.cpp
+    include/sequence/ZOffsetCommandHandler.cpp
     include/sequence/CameraOffsetCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
@@ -766,6 +769,13 @@ set(SOURCES
     include/AppUI/PlanarAdjustmentTrainer/TiltResultWidget.cpp
     include/AppUI/PlanarAdjustmentTrainer/ApplyCorrectionWidget.cpp
     include/AppUI/PlanarAdjustmentTrainer/RetraceAndApplyWidget.cpp
+    # Z Offset Trainer
+    include/AppUI/ZOffsetTrainer/ZOffsetStore.cpp
+    include/AppUI/ZOffsetTrainer/ZOffsetPage.cpp
+    include/AppUI/ZOffsetTrainer/TeachZPointWidget.cpp
+    include/AppUI/ZOffsetTrainer/ZOffsetResultWidget.cpp
+    include/AppUI/ZOffsetTrainer/ZOffsetApplyWidget.cpp
+    include/AppUI/ZOffsetTrainer/ZOffsetRetraceWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -905,6 +915,7 @@ set(HEADERS
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
     include/sequence/PlanarAdjustmentCommandHandler.h
+    include/sequence/ZOffsetCommandHandler.h
     include/sequence/CameraOffsetCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
     include/customserver/BeamServerClient.h
@@ -1000,6 +1011,14 @@ set(HEADERS
     include/AppUI/PlanarAdjustmentTrainer/TiltResultWidget.h
     include/AppUI/PlanarAdjustmentTrainer/ApplyCorrectionWidget.h
     include/AppUI/PlanarAdjustmentTrainer/RetraceAndApplyWidget.h
+    # Z Offset Trainer
+    include/AppUI/ZOffsetTrainer/ZOffsetData.h
+    include/AppUI/ZOffsetTrainer/ZOffsetStore.h
+    include/AppUI/ZOffsetTrainer/ZOffsetPage.h
+    include/AppUI/ZOffsetTrainer/TeachZPointWidget.h
+    include/AppUI/ZOffsetTrainer/ZOffsetResultWidget.h
+    include/AppUI/ZOffsetTrainer/ZOffsetApplyWidget.h
+    include/AppUI/ZOffsetTrainer/ZOffsetRetraceWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
