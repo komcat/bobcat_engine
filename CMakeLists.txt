@@ -462,6 +462,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/CameraOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlanarAdjustmentTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/YawTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -640,6 +641,7 @@ set(SOURCES
     include/recipe/processes/AccuracyTrainerProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/ZOffsetProcesses.cpp
+    include/recipe/processes/YawTrainerProcesses.cpp
     include/recipe/processes/CameraOffsetProcesses.cpp
     include/recipe/processes/CoordinateAlignProcesses.cpp
     include/recipe/processes/YawCorrectionProcesses.cpp
@@ -682,6 +684,7 @@ set(SOURCES
     include/sequence/AccuracyTrainerCommandHandler.cpp
     include/sequence/PlanarAdjustmentCommandHandler.cpp
     include/sequence/ZOffsetCommandHandler.cpp
+    include/sequence/YawTrainerCommandHandler.cpp
     include/sequence/CameraOffsetCommandHandler.cpp
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
@@ -776,6 +779,13 @@ set(SOURCES
     include/AppUI/ZOffsetTrainer/ZOffsetResultWidget.cpp
     include/AppUI/ZOffsetTrainer/ZOffsetApplyWidget.cpp
     include/AppUI/ZOffsetTrainer/ZOffsetRetraceWidget.cpp
+    # Yaw Trainer
+    include/AppUI/YawTrainer/YawTrainerStore.cpp
+    include/AppUI/YawTrainer/YawTrainerPage.cpp
+    include/AppUI/YawTrainer/TeachLineWidget.cpp
+    include/AppUI/YawTrainer/YawResultWidget.cpp
+    include/AppUI/YawTrainer/YawApplyCorrectionWidget.cpp
+    include/AppUI/YawTrainer/YawRetraceWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -916,6 +926,7 @@ set(HEADERS
     include/sequence/AccuracyTrainerCommandHandler.h
     include/sequence/PlanarAdjustmentCommandHandler.h
     include/sequence/ZOffsetCommandHandler.h
+    include/sequence/YawTrainerCommandHandler.h
     include/sequence/CameraOffsetCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
     include/customserver/BeamServerClient.h
@@ -1019,6 +1030,14 @@ set(HEADERS
     include/AppUI/ZOffsetTrainer/ZOffsetResultWidget.h
     include/AppUI/ZOffsetTrainer/ZOffsetApplyWidget.h
     include/AppUI/ZOffsetTrainer/ZOffsetRetraceWidget.h
+    # Yaw Trainer
+    include/AppUI/YawTrainer/YawTrainerData.h
+    include/AppUI/YawTrainer/YawTrainerStore.h
+    include/AppUI/YawTrainer/YawTrainerPage.h
+    include/AppUI/YawTrainer/TeachLineWidget.h
+    include/AppUI/YawTrainer/YawResultWidget.h
+    include/AppUI/YawTrainer/YawApplyCorrectionWidget.h
+    include/AppUI/YawTrainer/YawRetraceWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h

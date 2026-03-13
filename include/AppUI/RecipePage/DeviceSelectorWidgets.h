@@ -241,6 +241,42 @@ private:
 };
 
 /**
+ * @brief Dialog for selecting yaw trainer training sets
+ * Scans yaw_trainer/ folder (product-relative or default)
+ */
+class YawTrainerSetSelectorDialog : public QDialog
+{
+  Q_OBJECT
+
+public:
+  explicit YawTrainerSetSelectorDialog(ApplicationContext* context,
+    const std::string& currentSet,
+    QWidget* parent = nullptr);
+
+  std::string getSelectedSet() const;
+
+  static std::string SelectYawTrainerSet(ApplicationContext* context,
+    const std::string& currentSet,
+    QWidget* parent = nullptr);
+
+private:
+  void setupUI();
+  void loadSets();
+  void onItemDoubleClicked(QListWidgetItem* item);
+  void onSearchTextChanged(const QString& text);
+
+  ApplicationContext* m_context;
+  std::string m_selectedSet;
+
+  QListWidget* m_setList;
+  QLineEdit* m_searchEdit;
+  QPushButton* m_okButton;
+  QPushButton* m_cancelButton;
+
+  std::vector<std::string> m_allSets;
+};
+
+/**
  * @brief ComboBox for selecting vision profiles from product folder
  * Scans config/<product_name>/vision/ for .json files
  */

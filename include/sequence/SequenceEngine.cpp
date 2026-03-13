@@ -23,6 +23,7 @@
 #include "CameraOffsetCommandHandler.h"
 #include "PlanarAdjustmentCommandHandler.h"
 #include "ZOffsetCommandHandler.h"
+#include "YawTrainerCommandHandler.h"
 #include "CustomServerCommandHandler.h"
 #include "SequenceContext.h"
 #include "AuxWindowManager.h"
@@ -138,6 +139,12 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   zOffsetHandler->SetContext(m_context);
   m_zOffsetHandler = zOffsetHandler.get();
   m_dispatcher.RegisterHandler("zoffset", std::move(zOffsetHandler));
+
+  // Register yaw trainer handler for yaw correction
+  auto yawTrainerHandler = std::make_unique<YawTrainerCommandHandler>();
+  yawTrainerHandler->SetContext(m_context);
+  m_yawTrainerHandler = yawTrainerHandler.get();
+  m_dispatcher.RegisterHandler("yawtrainer", std::move(yawTrainerHandler));
 
   // Register custom server handler for beam detection
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
@@ -368,6 +375,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["zoffset"] = "zoffset";
   LogInfo("Registered z offset command handler");
 
+  // Yaw trainer commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["yawtrainer"] = nullptr;
+  m_deviceToTypeMap["yawtrainer"] = "yawtrainer";
+  LogInfo("Registered yaw trainer command handler");
+
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
@@ -473,6 +485,9 @@ void SequenceEngine::SetManualAdjustCallback(ManualAdjustCallback callback)
   }
   if (m_zOffsetHandler) {
     m_zOffsetHandler->SetManualAdjustCallback(callback);
+  }
+  if (m_yawTrainerHandler) {
+    m_yawTrainerHandler->SetManualAdjustCallback(callback);
   }
 }
 

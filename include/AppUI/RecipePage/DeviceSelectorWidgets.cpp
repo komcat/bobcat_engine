@@ -14,6 +14,7 @@
 #include "../CameraOffsetTrainer/CameraOffsetStore.h"
 #include "../PlanarAdjustmentTrainer/PlanarAdjustmentStore.h"
 #include "../ZOffsetTrainer/ZOffsetStore.h"
+#include "../YawTrainer/YawTrainerStore.h"
 #include <filesystem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -1144,6 +1145,163 @@ std::string ZOffsetSetSelectorDialog::SelectZOffsetSet(ApplicationContext* conte
   QWidget* parent)
 {
   ZOffsetSetSelectorDialog dialog(context, currentSet, parent);
+  if (dialog.exec() == QDialog::Accepted) {
+    return dialog.getSelectedSet();
+  }
+  return currentSet;
+}
+
+// ============================================================================
+// YAW TRAINER SET SELECTOR DIALOG
+// ============================================================================
+
+YawTrainerSetSelectorDialog::YawTrainerSetSelectorDialog(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+  : QDialog(parent)
+  , m_context(context)
+  , m_selectedSet(currentSet)
+{
+  setupUI();
+  loadSets();
+
+  for (int i = 0; i < m_setList->count(); ++i) {
+    if (m_setList->item(i)->text().toStdString() == currentSet) {
+      m_setList->setCurrentRow(i);
+      break;
+    }
+  }
+}
+
+void YawTrainerSetSelectorDialog::setupUI()
+{
+  setWindowTitle("Select Yaw Trainer Set");
+  setMinimumSize(400, 500);
+  setStyleSheet("QDialog { background-color: #2b2b2b; }");
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(this);
+
+  QLabel* infoLabel = new QLabel("Select a Yaw Trainer training set:");
+  infoLabel->setStyleSheet(
+    "color: white; font-weight: bold; padding: 5px; "
+    "background-color: #1e1e1e; border-radius: 4px;"
+  );
+  mainLayout->addWidget(infoLabel);
+
+  m_searchEdit = new QLineEdit();
+  m_searchEdit->setPlaceholderText("Search yaw trainer sets...");
+  m_searchEdit->setStyleSheet(
+    "QLineEdit { background-color: #1e1e1e; color: white; "
+    "border: 1px solid #3c3c3c; border-radius: 4px; padding: 8px; } "
+    "QLineEdit:focus { border: 1px solid #1177bb; }"
+  );
+  connect(m_searchEdit, &QLineEdit::textChanged,
+    this, &YawTrainerSetSelectorDialog::onSearchTextChanged);
+  mainLayout->addWidget(m_searchEdit);
+
+  m_setList = new QListWidget();
+  m_setList->setStyleSheet(
+    "QListWidget { background-color: #1e1e1e; color: white; "
+    "border: 1px solid #3c3c3c; border-radius: 4px; padding: 5px; } "
+    "QListWidget::item { padding: 8px; border-bottom: 1px solid #3c3c3c; } "
+    "QListWidget::item:hover { background-color: #2d2d30; } "
+    "QListWidget::item:selected { background-color: #1177bb; color: white; }"
+  );
+  connect(m_setList, &QListWidget::itemDoubleClicked,
+    this, &YawTrainerSetSelectorDialog::onItemDoubleClicked);
+  mainLayout->addWidget(m_setList);
+
+  QHBoxLayout* buttonLayout = new QHBoxLayout();
+  buttonLayout->addStretch();
+
+  m_cancelButton = new QPushButton("Cancel");
+  m_cancelButton->setMinimumWidth(100);
+  m_cancelButton->setStyleSheet(
+    "QPushButton { background-color: #3c3c3c; color: white; padding: 8px; border-radius: 4px; } "
+    "QPushButton:hover { background-color: #4c4c4c; }"
+  );
+  connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
+  buttonLayout->addWidget(m_cancelButton);
+
+  m_okButton = new QPushButton("Select");
+  m_okButton->setMinimumWidth(100);
+  m_okButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; color: white; font-weight: bold; "
+    "padding: 8px; border-radius: 4px; } "
+    "QPushButton:hover { background-color: #2ecc71; }"
+  );
+  connect(m_okButton, &QPushButton::clicked, [this]() {
+    if (m_setList->currentItem()) {
+      m_selectedSet = m_setList->currentItem()->text().toStdString();
+      accept();
+    }
+  });
+  buttonLayout->addWidget(m_okButton);
+
+  mainLayout->addLayout(buttonLayout);
+}
+
+void YawTrainerSetSelectorDialog::loadSets()
+{
+  m_setList->clear();
+  m_allSets.clear();
+
+  if (!m_context) {
+    m_setList->addItem("Application context not available");
+    return;
+  }
+
+  YawTrainerStore store;
+  if (m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::filesystem::path productDir = std::filesystem::path(
+      m_context->productPositionManager->GetCurrentProductPath()).parent_path();
+    store.SetBasePath((productDir / "yaw_trainer").string());
+  }
+
+  m_allSets = store.ListSets();
+
+  std::cout << "[YawTrainerSetSelectorDialog] Loaded " << m_allSets.size()
+    << " sets from " << store.GetBasePath() << std::endl;
+
+  if (m_allSets.empty()) {
+    m_setList->addItem("No yaw trainer sets found");
+    return;
+  }
+
+  for (const auto& name : m_allSets) {
+    QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(name));
+    m_setList->addItem(item);
+  }
+}
+
+void YawTrainerSetSelectorDialog::onSearchTextChanged(const QString& text)
+{
+  std::string search = text.toLower().toStdString();
+  for (int i = 0; i < m_setList->count(); ++i) {
+    QListWidgetItem* item = m_setList->item(i);
+    std::string setName = item->text().toLower().toStdString();
+    bool matches = search.empty() || setName.find(search) != std::string::npos;
+    item->setHidden(!matches);
+  }
+}
+
+void YawTrainerSetSelectorDialog::onItemDoubleClicked(QListWidgetItem* item)
+{
+  m_selectedSet = item->text().toStdString();
+  accept();
+}
+
+std::string YawTrainerSetSelectorDialog::getSelectedSet() const
+{
+  return m_selectedSet;
+}
+
+std::string YawTrainerSetSelectorDialog::SelectYawTrainerSet(ApplicationContext* context,
+  const std::string& currentSet,
+  QWidget* parent)
+{
+  YawTrainerSetSelectorDialog dialog(context, currentSet, parent);
   if (dialog.exec() == QDialog::Accepted) {
     return dialog.getSelectedSet();
   }

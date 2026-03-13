@@ -168,6 +168,10 @@ public:
   void addZOffsetSetSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // Helper to add yaw trainer set selector (QLineEdit + Browse button)
+  void addYawTrainerSetSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
 protected:
   // Override this to create custom parameter fields
   virtual void createParameterFields(const ProcessInstance* instance) = 0;

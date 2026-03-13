@@ -486,6 +486,19 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                                         hexDev.gantryViewX, hexDev.gantryViewY, hexDev.gantryViewZ);
                 }
 
+                // Auto-navigate to taught TL corner position if available
+                if (hexDev.gantryTeachMode >= 1 &&
+                    (std::abs(hexDev.cornerTL_X) > 1e-6 || std::abs(hexDev.cornerTL_Y) > 1e-6)) {
+                    std::cout << "[AccuracyTrainer] Auto-navigating to taught TL corner: X="
+                              << hexDev.cornerTL_X << " Y=" << hexDev.cornerTL_Y
+                              << " Z=" << hexDev.cornerTL_Z << std::endl;
+                    bool navOk = motionMgr->MoveToAbs(device,
+                        hexDev.cornerTL_X, hexDev.cornerTL_Y, hexDev.cornerTL_Z, 100.0, true);
+                    if (!navOk) {
+                        std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to TL corner failed" << std::endl;
+                    }
+                }
+
                 // Corner 1: Top-Left
                 std::string msg1 = "Corner 1/3 (Top-Left): " + hexDev.deviceName
                     + "\nJog gantry camera crosshair to the TOP-LEFT corner of the end-effector tip.";
@@ -504,6 +517,19 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                     return false;
                 }
 
+                // Auto-navigate to taught BR corner position if available
+                if (hexDev.gantryTeachMode >= 1 &&
+                    (std::abs(hexDev.cornerBR_X) > 1e-6 || std::abs(hexDev.cornerBR_Y) > 1e-6)) {
+                    std::cout << "[AccuracyTrainer] Auto-navigating to taught BR corner: X="
+                              << hexDev.cornerBR_X << " Y=" << hexDev.cornerBR_Y << std::endl;
+                    double curZ = motionMgr->GetCurrentPosition(device).z;
+                    bool navOk = motionMgr->MoveToAbs(device,
+                        hexDev.cornerBR_X, hexDev.cornerBR_Y, curZ, 100.0, true);
+                    if (!navOk) {
+                        std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to BR corner failed" << std::endl;
+                    }
+                }
+
                 // Corner 2: Bottom-Right
                 std::string msg2 = "Corner 2/3 (Bottom-Right): " + hexDev.deviceName
                     + "\nJog gantry camera crosshair to the BOTTOM-RIGHT corner of the end-effector tip.";
@@ -520,6 +546,19 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 bool hasThirdCorner = false;
                 double cornerTR_X = 0.0, cornerTR_Y = 0.0;
                 if (hexDev.gantryTeachMode == 2) {
+                    // Auto-navigate to taught TR corner position if available
+                    if (hexDev.hasThirdCorner &&
+                        (std::abs(hexDev.cornerTR_X) > 1e-6 || std::abs(hexDev.cornerTR_Y) > 1e-6)) {
+                        std::cout << "[AccuracyTrainer] Auto-navigating to taught TR corner: X="
+                                  << hexDev.cornerTR_X << " Y=" << hexDev.cornerTR_Y << std::endl;
+                        double curZ = motionMgr->GetCurrentPosition(device).z;
+                        bool navOk = motionMgr->MoveToAbs(device,
+                            hexDev.cornerTR_X, hexDev.cornerTR_Y, curZ, 100.0, true);
+                        if (!navOk) {
+                            std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to TR corner failed" << std::endl;
+                        }
+                    }
+
                     std::string msg3 = "Corner 3/3 (Top-Right): " + hexDev.deviceName
                         + "\nJog gantry camera crosshair to the TOP-RIGHT corner.\n"
                           "Click OK to capture, or Cancel to use 2-corner midpoint.";

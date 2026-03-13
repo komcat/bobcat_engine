@@ -127,6 +127,15 @@ bool AccuracyTrainerStore::SaveTrainingSet(const TrainingSet& ts)
         hj["gantryView"] = { {"x", hd.gantryViewX}, {"y", hd.gantryViewY}, {"z", hd.gantryViewZ} };
         hj["visionProfilePath"] = hd.visionProfilePath;
         hj["gantryTeachMode"] = hd.gantryTeachMode;
+        // Taught corner positions (for auto-navigation during headless retrace)
+        if (hd.gantryTeachMode >= 1) {
+            hj["cornerTL"] = { {"x", hd.cornerTL_X}, {"y", hd.cornerTL_Y}, {"z", hd.cornerTL_Z} };
+            hj["cornerBR"] = { {"x", hd.cornerBR_X}, {"y", hd.cornerBR_Y} };
+            if (hd.hasThirdCorner) {
+                hj["cornerTR"] = { {"x", hd.cornerTR_X}, {"y", hd.cornerTR_Y} };
+            }
+            hj["hasThirdCorner"] = hd.hasThirdCorner;
+        }
         hj["zCompPos"] = { {"x", hd.zCompX}, {"y", hd.zCompY}, {"z", hd.zComp} };
         hj["zPlacePos"] = { {"x", hd.zPlaceX}, {"y", hd.zPlaceY}, {"z", hd.zPlace} };
         hj["componentThickness"] = hd.componentThickness;
@@ -300,6 +309,21 @@ std::optional<TrainingSet> AccuracyTrainerStore::LoadTrainingSet(const std::stri
             }
             hd.visionProfilePath = hj.value("visionProfilePath", "");
             hd.gantryTeachMode = hj.value("gantryTeachMode", 0);
+            // Taught corner positions (for auto-navigation during headless retrace)
+            if (hj.contains("cornerTL")) {
+                hd.cornerTL_X = hj["cornerTL"].value("x", 0.0);
+                hd.cornerTL_Y = hj["cornerTL"].value("y", 0.0);
+                hd.cornerTL_Z = hj["cornerTL"].value("z", 0.0);
+            }
+            if (hj.contains("cornerBR")) {
+                hd.cornerBR_X = hj["cornerBR"].value("x", 0.0);
+                hd.cornerBR_Y = hj["cornerBR"].value("y", 0.0);
+            }
+            hd.hasThirdCorner = hj.value("hasThirdCorner", false);
+            if (hd.hasThirdCorner && hj.contains("cornerTR")) {
+                hd.cornerTR_X = hj["cornerTR"].value("x", 0.0);
+                hd.cornerTR_Y = hj["cornerTR"].value("y", 0.0);
+            }
             // Z comp/place positions (backward compat: old files had flat zComp/zPlace)
             if (hj.contains("zCompPos")) {
                 hd.zCompX = hj["zCompPos"].value("x", 0.0);

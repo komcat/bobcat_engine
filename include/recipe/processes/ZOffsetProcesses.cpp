@@ -92,7 +92,8 @@ public:
             {"training_set_name", tsName},
             {"target_device", targetDevice},
             {"target_z_diff_um", targetZDiffUm},
-            {"reverse_sign", reverseSign}
+            {"reverse_sign", reverseSign},
+            {"timeout", "0"}  // Disable action timeout (manual callbacks may block indefinitely)
         });
 
         std::cout << "[ZOffsetProcesses] Built sequence for: "

@@ -11,6 +11,7 @@ class AccuracyTrainerPage;
 class CameraOffsetTrainerPage;
 class PlanarAdjustmentPage;
 class ZOffsetPage;
+class YawTrainerPage;
 
 /**
  * @brief Container page with a narrow side panel for switching between trainer tools.
@@ -24,7 +25,7 @@ class ZOffsetPage;
  *   1: "Camera\nOffset" -> CameraOffsetTrainerPage
  *   2: "Planar\nAdjust" -> PlanarAdjustmentPage
  *   3: "Z\nOffset"      -> ZOffsetPage
- *   4: reserved (disabled)
+ *   4: "Yaw\nTrainer" -> YawTrainerPage
  */
 class TrainerContainerPage : public QWidget
 {
@@ -50,5 +51,6 @@ private:
     CameraOffsetTrainerPage* m_cameraOffsetPage;
     PlanarAdjustmentPage* m_planarAdjustmentPage;
     ZOffsetPage* m_zOffsetPage;
+    YawTrainerPage* m_yawTrainerPage;
     int m_activeIndex;
 };
