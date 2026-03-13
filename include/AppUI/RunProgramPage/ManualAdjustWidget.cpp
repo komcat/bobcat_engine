@@ -1,8 +1,13 @@
 // ManualAdjustWidget.cpp
 #include "ManualAdjustWidget.h"
+#include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "TransformationMatrixLoader.h"
 #include "CoordinateTransformer.h"
+#include "VisionCommandHandler.h"
+#include "SequenceContext.h"
+#include "CameraManager.h"
+#include "LogManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -12,11 +17,12 @@
 #include <iostream>
 
 ManualAdjustWidget::ManualAdjustWidget(
-  UnifiedMotionManager* motionManager,
+  ApplicationContext* context,
   TransformationMatrixLoader* matrixLoader,
   QWidget* parent)
   : QWidget(parent)
-  , m_motionManager(motionManager)
+  , m_context(context)
+  , m_motionManager(context ? context->motionManager : nullptr)
   , m_matrixLoader(matrixLoader)
   , m_stepSizeUm(10.0)
   , m_enableX(true)
@@ -191,6 +197,9 @@ void ManualAdjustWidget::setupUI()
   jogLayout->addWidget(m_btnZPlus);
 
   containerLayout->addLayout(jogLayout);
+
+  // Auto Focus panel
+  createAutoFocusPanel(containerLayout);
 
   containerLayout->addSpacing(10);
 
@@ -438,4 +447,151 @@ void ManualAdjustWidget::updatePositionDisplay()
       .arg(y, 0, 'f', 3)
       .arg(z, 0, 'f', 3)
   );
+}
+
+void ManualAdjustWidget::createAutoFocusPanel(QVBoxLayout* containerLayout)
+{
+  if (!m_context || !m_context->cameraManager) return;
+
+  std::vector<std::string> cameraIds = m_context->cameraManager->GetCameraIds();
+  if (cameraIds.empty()) return;
+
+  struct AutoFocusConfig {
+    std::string cameraId;
+    std::string motionDevice;
+    double zRangeMm;
+    double zStepMm;
+    std::string label;
+  };
+
+  std::vector<AutoFocusConfig> configs = {
+    {"main_camera",   "gantry-main", 0.1, 0.02, "AF Main"},
+    {"swir_camera",   "gantry-main", 0.1, 0.01, "AF SWIR"},
+  };
+
+  // Filter to only installed cameras
+  std::vector<AutoFocusConfig> activeConfigs;
+  for (const auto& cfg : configs) {
+    for (const auto& id : cameraIds) {
+      if (id == cfg.cameraId) {
+        activeConfigs.push_back(cfg);
+        break;
+      }
+    }
+  }
+
+  if (activeConfigs.empty()) return;
+
+  QHBoxLayout* afLayout = new QHBoxLayout();
+  afLayout->setSpacing(5);
+  afLayout->setContentsMargins(0, 3, 0, 0);
+
+  QLabel* afLabel = new QLabel("Auto Focus:");
+  afLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  color: #14ffec; "
+    "  background: transparent; "
+    "  border: none; "
+    "}");
+  afLayout->addWidget(afLabel);
+
+  QString afButtonStyle =
+    "QPushButton { "
+    "  background-color: #2d5a2d; "
+    "  color: white; "
+    "  border: 1px solid #3d8b3d; "
+    "  border-radius: 3px; "
+    "  padding: 5px 10px; "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  min-width: 60px; "
+    "  min-height: 30px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #3d8b3d; "
+    "  border-color: #5cb85c; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #555; "
+    "  color: #888; "
+    "  border-color: #666; "
+    "}";
+
+  for (const auto& cfg : activeConfigs) {
+    QPushButton* btn = new QPushButton(QString::fromStdString(cfg.label));
+    btn->setStyleSheet(afButtonStyle);
+
+    connect(btn, &QPushButton::clicked, this,
+      [this, camera = cfg.cameraId, device = cfg.motionDevice,
+       range = cfg.zRangeMm, step = cfg.zStepMm, btn]() {
+        runAutoFocus(camera, device, range, step, btn);
+      });
+
+    afLayout->addWidget(btn);
+  }
+
+  afLayout->addStretch();
+  containerLayout->addLayout(afLayout);
+}
+
+void ManualAdjustWidget::runAutoFocus(const std::string& camera, const std::string& motionDevice,
+                                       double zRangeMm, double zStepMm, QPushButton* button)
+{
+  // Check if autofocus is already running
+  if (m_autoFocusFuture.valid() &&
+      m_autoFocusFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Warning("Auto focus already running", "ManualAdjust");
+    }
+    return;
+  }
+
+  if (!m_context) return;
+
+  if (button) button->setEnabled(false);
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "Starting auto focus: camera=" + camera + " device=" + motionDevice +
+      " range=" + std::to_string(zRangeMm) + "mm step=" + std::to_string(zStepMm) + "mm",
+      "ManualAdjust");
+  }
+
+  ApplicationContext* ctx = m_context;
+  m_autoFocusFuture = std::async(std::launch::async,
+    [ctx, camera, motionDevice, zRangeMm, zStepMm, button]() {
+      VisionCommandHandler visionHandler(ctx);
+      SequenceContext seqCtx;
+      std::string error;
+
+      std::map<std::string, std::string> params = {
+        {"motion_device", motionDevice},
+        {"camera", camera},
+        {"z_range_mm", std::to_string(zRangeMm)},
+        {"z_step_mm", std::to_string(zStepMm)},
+        {"settle_time_ms", "100"},
+        {"use_center_roi", "true"},
+        {"roi_width", "300"},
+        {"roi_height", "300"},
+        {"context_prefix", "autofocus"}
+      };
+
+      bool ok = visionHandler.ExecuteCommand(
+        nullptr, "vision", "auto_focus", params, error, &seqCtx);
+
+      if (ok) {
+        std::cout << "[ManualAdjust] Auto focus completed successfully" << std::endl;
+      }
+      else {
+        std::cout << "[ManualAdjust] Auto focus failed: " << error << std::endl;
+      }
+
+      if (button) {
+        QMetaObject::invokeMethod(button, [button]() {
+          button->setEnabled(true);
+        }, Qt::QueuedConnection);
+      }
+    });
 }

@@ -12,6 +12,10 @@
 #include "EziIOManager.h"
 #include "LogManager.h"
 
+#include "VisionCommandHandler.h"
+#include "SequenceContext.h"
+#include "CameraManager.h"
+
 #include <iostream>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -238,7 +242,7 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(400, 450);
+  setFixedSize(400, 500);
 }
 
 void JogPanelWindow::createJogTab()
@@ -286,6 +290,9 @@ void JogPanelWindow::createJogTab()
   columnsLayout->addWidget(rightColumn);
 
   jogLayout->addLayout(columnsLayout);
+
+  // Auto Focus buttons (below the two-column layout)
+  createAutoFocusPanel(m_jogWidget);
 
   // Add to tab widget
   m_tabWidget->addTab(m_jogWidget, "Jog");
@@ -846,6 +853,156 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   layout->addWidget(groupBox);
 }
 
+
+void JogPanelWindow::createAutoFocusPanel(QWidget* parent)
+{
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) return;
+
+  // Check if we have camera manager and any cameras
+  if (!m_context || !m_context->cameraManager) return;
+
+  std::vector<std::string> cameraIds = m_context->cameraManager->GetCameraIds();
+  if (cameraIds.empty()) return;
+
+  // Define autofocus configurations per camera
+  // {camera_id, motion_device, z_range_mm, z_step_mm, display_label}
+  struct AutoFocusConfig {
+    std::string cameraId;
+    std::string motionDevice;
+    double zRangeMm;
+    double zStepMm;
+    std::string label;
+  };
+
+  std::vector<AutoFocusConfig> configs = {
+    {"main_camera",   "gantry-main", 0.1, 0.02, "AF Main"},
+    {"swir_camera",   "gantry-main", 0.1, 0.01, "AF SWIR"},
+    {"gantry_camera", "gantry-main", 0.1, 0.02, "AF Gantry"}
+  };
+
+  // Filter to only installed cameras
+  std::vector<AutoFocusConfig> activeConfigs;
+  for (const auto& cfg : configs) {
+    for (const auto& id : cameraIds) {
+      if (id == cfg.cameraId) {
+        activeConfigs.push_back(cfg);
+        break;
+      }
+    }
+  }
+
+  if (activeConfigs.empty()) return;
+
+  // Create horizontal layout for autofocus buttons
+  QHBoxLayout* afLayout = new QHBoxLayout();
+  afLayout->setSpacing(4);
+  afLayout->setContentsMargins(4, 0, 4, 0);
+
+  QLabel* afLabel = new QLabel("Auto Focus:");
+  afLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+  afLayout->addWidget(afLabel);
+
+  for (const auto& cfg : activeConfigs) {
+    QPushButton* btn = new QPushButton(QString::fromStdString(cfg.label));
+    btn->setMinimumHeight(26);
+    btn->setMaximumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #2d5a2d; "
+      "  color: white; "
+      "  border: 1px solid #3d8b3d; "
+      "  border-radius: 3px; "
+      "  padding: 2px 8px; "
+      "  font-size: 10px; "
+      "  font-weight: bold; "
+      "} "
+      "QPushButton:hover { "
+      "  background-color: #3d8b3d; "
+      "  border-color: #5cb85c; "
+      "} "
+      "QPushButton:disabled { "
+      "  background-color: #555; "
+      "  color: #888; "
+      "  border-color: #666; "
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this,
+      [this, camera = cfg.cameraId, device = cfg.motionDevice,
+       range = cfg.zRangeMm, step = cfg.zStepMm, btn]() {
+        runAutoFocus(camera, device, range, step, btn);
+      });
+
+    afLayout->addWidget(btn);
+  }
+
+  afLayout->addStretch();
+  layout->addLayout(afLayout);
+}
+
+void JogPanelWindow::runAutoFocus(const std::string& camera, const std::string& motionDevice,
+                                   double zRangeMm, double zStepMm, QPushButton* button)
+{
+  // Check if autofocus is already running
+  if (m_autoFocusFuture.valid() &&
+      m_autoFocusFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Warning("Auto focus already running", "JogPanel");
+    }
+    return;
+  }
+
+  if (!m_context) return;
+
+  // Disable button while running
+  if (button) button->setEnabled(false);
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "Starting auto focus: camera=" + camera + " device=" + motionDevice +
+      " range=" + std::to_string(zRangeMm) + "mm step=" + std::to_string(zStepMm) + "mm",
+      "JogPanel");
+  }
+
+  // Run autofocus on background thread
+  ApplicationContext* ctx = m_context;
+  m_autoFocusFuture = std::async(std::launch::async,
+    [ctx, camera, motionDevice, zRangeMm, zStepMm, button]() {
+      VisionCommandHandler visionHandler(ctx);
+      SequenceContext seqCtx;
+      std::string error;
+
+      std::map<std::string, std::string> params = {
+        {"motion_device", motionDevice},
+        {"camera", camera},
+        {"z_range_mm", std::to_string(zRangeMm)},
+        {"z_step_mm", std::to_string(zStepMm)},
+        {"settle_time_ms", "100"},
+        {"use_center_roi", "true"},
+        {"roi_width", "300"},
+        {"roi_height", "300"},
+        {"context_prefix", "autofocus"}
+      };
+
+      bool ok = visionHandler.ExecuteCommand(
+        nullptr, "vision", "auto_focus", params, error, &seqCtx);
+
+      if (ok) {
+        std::cout << "[JogPanel] Auto focus completed successfully" << std::endl;
+      }
+      else {
+        std::cout << "[JogPanel] Auto focus failed: " << error << std::endl;
+      }
+
+      // Re-enable button on UI thread
+      if (button) {
+        QMetaObject::invokeMethod(button, [button]() {
+          button->setEnabled(true);
+        }, Qt::QueuedConnection);
+      }
+    });
+}
 
 void JogPanelWindow::flashButton(QPushButton* button)
 {

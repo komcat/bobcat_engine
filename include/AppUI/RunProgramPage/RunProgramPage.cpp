@@ -1970,7 +1970,7 @@ void RunProgramPage::createExecutionWidget()
 
   // === MANUAL ADJUST VIEW (Index 2) ===
   m_manualAdjustWidget = new ManualAdjustWidget(
-    m_context->motionManager,
+    m_context,
     m_matrixLoader);
   m_manualAdjustWidget->setStyleSheet(
     "ManualAdjustWidget { "

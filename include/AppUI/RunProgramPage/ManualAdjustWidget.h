@@ -6,9 +6,12 @@
 #include <QPushButton>
 #include <QString>
 #include <string>
+#include <future>
 
+class QVBoxLayout;
 class UnifiedMotionManager;
 class TransformationMatrixLoader;
+struct ApplicationContext;
 
 /**
  * @brief Manual adjustment widget for execution panel
@@ -23,7 +26,7 @@ class ManualAdjustWidget : public QWidget
 
 public:
   explicit ManualAdjustWidget(
-    UnifiedMotionManager* motionManager,
+    ApplicationContext* context,
     TransformationMatrixLoader* matrixLoader,
     QWidget* parent = nullptr
   );
@@ -59,9 +62,13 @@ private slots:
 
 private:
   void setupUI();
+  void createAutoFocusPanel(QVBoxLayout* containerLayout);
+  void runAutoFocus(const std::string& camera, const std::string& motionDevice,
+                    double zRangeMm, double zStepMm, QPushButton* button);
   void sendJogCommand(const std::string& axis, double direction);
   void updatePositionDisplay();
 
+  ApplicationContext* m_context;
   UnifiedMotionManager* m_motionManager;
   TransformationMatrixLoader* m_matrixLoader;
 
@@ -92,4 +99,7 @@ private:
 
   // Position update timer
   QTimer* m_positionTimer;
+
+  // Auto-focus state
+  std::future<void> m_autoFocusFuture;
 };

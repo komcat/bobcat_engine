@@ -233,13 +233,19 @@ bool PlanarAdjustmentCommandHandler::HandleRunPlanarAdjustment(
               << targetDevice << " " << targetAxis << std::endl;
 
     // --- Apply correction ---
-    bool moveOk = m_appContext->motionManager->MoveRelative(
-        targetDevice, targetAxis, correctionDeg, true);
+    // Skip move if correction is essentially zero (< 0.0001 deg)
+    bool moveOk = true;
+    if (std::abs(correctionDeg) >= 0.0001) {
+        moveOk = m_appContext->motionManager->MoveRelative(
+            targetDevice, targetAxis, correctionDeg, true);
 
-    if (!moveOk) {
-        errorMessage = "MoveRelative failed for " + targetDevice + " " + targetAxis;
-        if (context) context->SetValue("planar_adjustment.result.success", false);
-        return false;
+        if (!moveOk) {
+            errorMessage = "MoveRelative failed for " + targetDevice + " " + targetAxis;
+            if (context) context->SetValue("planar_adjustment.result.success", false);
+            return false;
+        }
+    } else {
+        std::cout << "[PlanarAdjustment] Correction is ~0 deg, skipping move" << std::endl;
     }
 
     // --- Store results ---

@@ -161,6 +161,30 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
     const std::string& device = ts.deviceName;
     auto* motionMgr = m_appContext->motionManager;
 
+    // Auto-detect hex registration from bondingDeviceAssignments:
+    // If a bonding point is assigned to a hex device, that hex must be registered
+    // so the bonding move phase can compute the corrected hex position.
+    for (const auto& [bondName, assignedDevice] : ts.bondingDeviceAssignments) {
+        if (assignedDevice != device) {
+            // Find matching hex device in training set
+            for (const auto& hexDev : ts.hexDevicePositions) {
+                if (hexDev.deviceName == assignedDevice && hexDev.valid) {
+                    if (assignedDevice.find("left") != std::string::npos && !registerHexLeft) {
+                        registerHexLeft = true;
+                        std::cout << "[AccuracyTrainer] Auto-enabled hex-left registration "
+                                  << "(assigned to " << bondName << ")" << std::endl;
+                    }
+                    if (assignedDevice.find("right") != std::string::npos && !registerHexRight) {
+                        registerHexRight = true;
+                        std::cout << "[AccuracyTrainer] Auto-enabled hex-right registration "
+                                  << "(assigned to " << bondName << ")" << std::endl;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // Get product name for navigation file updates
     std::string productName;
     if (m_appContext->productPositionManager &&
@@ -404,6 +428,11 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
 
                 // Always require manual confirmation for hex registration
                 if (m_manualAlignCallback) {
+                    // Write viewing position so ManualAlignPointWidget navigates correctly
+                    if (!productName.empty()) {
+                        WriteNavigationData(productName, device, hexDev.deviceName,
+                                            hexDev.gantryViewX, hexDev.gantryViewY, hexDev.gantryViewZ);
+                    }
                     std::string msg = "Confirm hex registration: " + hexDev.deviceName
                         + "\nVerify gantry is centered on the hex end-effector tip, then click OK.";
                     bool userOk = m_manualAlignCallback(hexDev.deviceName, msg, true, true, true);
@@ -450,6 +479,12 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
             {
                 std::cout << "[AccuracyTrainer] Starting corner capture for " << hexDev.deviceName
                           << " (teachMode=" << hexDev.gantryTeachMode << ")" << std::endl;
+
+                // Write viewing position so ManualAlignPointWidget navigates to hex area
+                if (!productName.empty()) {
+                    WriteNavigationData(productName, device, hexDev.deviceName,
+                                        hexDev.gantryViewX, hexDev.gantryViewY, hexDev.gantryViewZ);
+                }
 
                 // Corner 1: Top-Left
                 std::string msg1 = "Corner 1/3 (Top-Left): " + hexDev.deviceName

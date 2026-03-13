@@ -871,7 +871,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
 
   // Create manual adjust widget (will be shown when needed)
   m_manualAdjustWidget = new ManualAdjustWidget(
-    m_context->motionManager,
+    m_context,
     m_matrixLoader
   );
   m_manualAdjustWidget->setStyleSheet(
