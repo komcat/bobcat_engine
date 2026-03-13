@@ -29,6 +29,7 @@
 #include <map>
 #include <QStyle>
 #include <QFile>
+#include <QSpinBox>
 
 JogPanelWindow::JogPanelWindow(
   ApplicationContext* context,
@@ -242,7 +243,7 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(400, 500);
+  setFixedSize(400, 600);
 }
 
 void JogPanelWindow::createJogTab()
@@ -291,7 +292,10 @@ void JogPanelWindow::createJogTab()
 
   jogLayout->addLayout(columnsLayout);
 
-  // Auto Focus buttons (below the two-column layout)
+  // Exposure controls (below the two-column layout)
+  createExposurePanel(m_jogWidget);
+
+  // Auto Focus buttons
   createAutoFocusPanel(m_jogWidget);
 
   // Add to tab widget
@@ -853,6 +857,125 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   layout->addWidget(groupBox);
 }
 
+
+void JogPanelWindow::createExposurePanel(QWidget* parent)
+{
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) return;
+
+  if (!m_context || !m_context->cameraManager) return;
+
+  std::vector<std::string> cameraIds = m_context->cameraManager->GetCameraIds();
+  if (cameraIds.empty()) return;
+
+  // Define which cameras get exposure controls
+  struct ExposureCameraConfig {
+    std::string cameraId;
+    std::string label;
+  };
+
+  std::vector<ExposureCameraConfig> configs = {
+    {"main_camera", "Main"},
+    {"swir_camera", "SWIR"}
+  };
+
+  // Filter to only installed cameras
+  std::vector<ExposureCameraConfig> activeConfigs;
+  for (const auto& cfg : configs) {
+    for (const auto& id : cameraIds) {
+      if (id == cfg.cameraId) {
+        activeConfigs.push_back(cfg);
+        break;
+      }
+    }
+  }
+
+  if (activeConfigs.empty()) return;
+
+  for (const auto& cfg : activeConfigs) {
+    QHBoxLayout* row = new QHBoxLayout();
+    row->setSpacing(4);
+    row->setContentsMargins(4, 2, 4, 2);
+
+    QLabel* label = new QLabel(QString::fromStdString(cfg.label + " Exp:"));
+    label->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+    label->setFixedWidth(65);
+    row->addWidget(label);
+
+    QSpinBox* spinBox = new QSpinBox();
+    spinBox->setMinimum(1);
+    spinBox->setMaximum(1000000);
+    spinBox->setSingleStep(100);
+    spinBox->setSuffix(QString(" %1s").arg(QChar(0x00B5)));
+    spinBox->setStyleSheet(
+      "QSpinBox { "
+      "  background-color: #2a2a2a; "
+      "  color: white; "
+      "  border: 1px solid #555; "
+      "  border-radius: 3px; "
+      "  padding: 2px 4px; "
+      "  font-size: 10px; "
+      "}"
+    );
+
+    // Read current exposure from camera
+    auto settings = m_context->cameraManager->GetExposureSettings(cfg.cameraId);
+    spinBox->setValue(static_cast<int>(settings.exposure_time));
+
+    row->addWidget(spinBox, 1);
+
+    QPushButton* applyBtn = new QPushButton("Apply");
+    applyBtn->setMinimumHeight(24);
+    applyBtn->setMaximumHeight(24);
+    applyBtn->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #2d5a2d; "
+      "  color: white; "
+      "  border: 1px solid #3d8b3d; "
+      "  border-radius: 3px; "
+      "  padding: 2px 8px; "
+      "  font-size: 10px; "
+      "  font-weight: bold; "
+      "} "
+      "QPushButton:hover { "
+      "  background-color: #3d8b3d; "
+      "  border-color: #5cb85c; "
+      "}"
+    );
+
+    connect(applyBtn, &QPushButton::clicked, this,
+      [this, cameraId = cfg.cameraId, spinBox]() {
+        applyExposure(cameraId, spinBox);
+      });
+
+    row->addWidget(applyBtn);
+
+    layout->addLayout(row);
+  }
+}
+
+void JogPanelWindow::applyExposure(const std::string& cameraId, QSpinBox* spinBox)
+{
+  if (!m_context || !m_context->cameraManager || !spinBox) return;
+
+  auto settings = m_context->cameraManager->GetExposureSettings(cameraId);
+  settings.exposure_time = static_cast<double>(spinBox->value());
+  settings.auto_exposure = false;
+  settings.auto_gain = false;
+
+  bool ok = m_context->cameraManager->ApplyExposureSettings(cameraId, settings);
+
+  if (m_context->logManager) {
+    if (ok) {
+      m_context->logManager->Info(
+        "Applied exposure " + std::to_string(spinBox->value()) + " us to " + cameraId,
+        "JogPanel");
+    } else {
+      m_context->logManager->Warning(
+        "Failed to apply exposure to " + cameraId, "JogPanel");
+    }
+  }
+}
 
 void JogPanelWindow::createAutoFocusPanel(QWidget* parent)
 {

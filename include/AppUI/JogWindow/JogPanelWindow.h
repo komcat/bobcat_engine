@@ -13,6 +13,8 @@
 #include <string>
 #include <future>
 
+class QSpinBox;
+
 class TransformationMatrixLoader;
 class CoordinateTransformer;
 struct ApplicationContext;
@@ -89,10 +91,12 @@ private:
   void createStepSizePanel(QWidget* parent);
   void createMovementPanel(QWidget* parent);
   void createAutoFocusPanel(QWidget* parent);
+  void createExposurePanel(QWidget* parent);
 
   void sendJogCommand(const std::string& axis, double direction);
   void runAutoFocus(const std::string& camera, const std::string& motionDevice,
                     double zRangeMm, double zStepMm, QPushButton* button);
+  void applyExposure(const std::string& cameraId, QSpinBox* spinBox);
   void updateStepSizeDisplay();
   void flashButton(QPushButton* button);
   void saveWindowSettings();       // Save window position to settings
