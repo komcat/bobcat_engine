@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <shellapi.h>
 #include <QSettings>
 
 // Static members
@@ -45,6 +46,7 @@ SwirBeamWindow::SwirBeamWindow()
     m_bitmapInfoBuffer.resize(sizeof(BITMAPINFOHEADER) + 256 * sizeof(RGBQUAD), 0);
     m_bitmapInfo = reinterpret_cast<BITMAPINFO*>(m_bitmapInfoBuffer.data());
     InitializeGdiPlus();
+    LoadBeamConfig();
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -388,18 +390,57 @@ void SwirBeamWindow::PollPSUReadings()
     // Discover devices on first poll
     DiscoverPSUDevices();
 
-    std::lock_guard<std::mutex> lock(m_psuMutex);
-    for (auto& dev : m_psuDevices) {
-        auto psu = m_psuManager->getPowerSupply(dev.name);
-        if (!psu || !psu->isConnected()) continue;
-        dev.voltage = psu->readVoltage(1);
-        dev.current = psu->readCurrent(1);
-        dev.outputOn = psu->readOutputState(1);
-    }
+    // Skip if a previous poll is still running (VISA reads can be slow)
+    if (m_psuPollInFlight.load()) return;
 
-    if (m_hwnd && IsVisible()) {
-        InvalidateRect(m_hwnd, nullptr, FALSE);
+    // Collect device names to poll
+    std::vector<std::string> names;
+    {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        for (const auto& dev : m_psuDevices) names.push_back(dev.name);
     }
+    if (names.empty()) return;
+
+    // Run blocking VISA reads on a background thread
+    m_psuPollInFlight.store(true);
+    auto* psuMgr = m_psuManager;
+    auto* self = this;
+    std::thread([self, psuMgr, names]() {
+        // Read from hardware (may block 50-100ms per call)
+        struct Reading { std::string name; double voltage; double current; bool outputOn; };
+        std::vector<Reading> readings;
+        for (const auto& name : names) {
+            auto psu = psuMgr->getPowerSupply(name);
+            if (!psu || !psu->isConnected()) continue;
+            Reading r;
+            r.name = name;
+            r.voltage = psu->readVoltage(1);
+            r.current = psu->readCurrent(1);
+            r.outputOn = psu->readOutputState(1);
+            readings.push_back(r);
+        }
+
+        // Update state under lock
+        {
+            std::lock_guard<std::mutex> lock(self->m_psuMutex);
+            for (const auto& r : readings) {
+                for (auto& dev : self->m_psuDevices) {
+                    if (dev.name == r.name) {
+                        dev.voltage = r.voltage;
+                        dev.current = r.current;
+                        dev.outputOn = r.outputOn;
+                        break;
+                    }
+                }
+            }
+        }
+
+        self->m_psuPollInFlight.store(false);
+
+        if (self->m_hwnd && self->IsVisible()) {
+            InvalidateRect(self->m_hwnd, nullptr, FALSE);
+        }
+    }).detach();
 }
 
 // ============================================================================
@@ -815,6 +856,16 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     m_buttons.push_back(beamBtn);
     y += btnHeight + btnSpacing;
 
+    // BEAM CONFIG
+    SwirButton configBtn;
+    configBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
+    configBtn.label = L"BEAM CONFIG";
+    configBtn.isToggle = false;
+    configBtn.tag = TAG_BEAM_CONFIG;
+    configBtn.onClick = [this]() { OnEditBeamConfig(); };
+    m_buttons.push_back(configBtn);
+    y += btnHeight + btnSpacing;
+
     // Beam Optimize (placeholder — logs hardware status)
     SwirButton optimizeBtn;
     optimizeBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
@@ -1185,6 +1236,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += btnHeight + btnSpacing;  // CLEAR ALL
     y += btnHeight + btnSpacing;  // SET MAGNIFICATION
     y += btnHeight + btnSpacing;  // BEAM DETECT
+    y += btnHeight + btnSpacing;  // BEAM CONFIG
     y += btnHeight + btnSpacing;  // BEAM OPTIMIZE
     y += groupPad;
 
@@ -1310,6 +1362,17 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
             DrawBeamOverlays(gfx, m_beamResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
                              m_frameWidth, m_frameHeight);
+
+            // Magnified beam thumbnails
+            {
+                std::lock_guard<std::mutex> frameLock(m_frameMutex);
+                if (!m_frameBuffer.empty()) {
+                    DrawBeamMagnifiers(gfx, m_beamResults,
+                                       m_frameBuffer.data(), m_frameWidth, m_frameHeight,
+                                       m_lastRenderX, m_lastRenderY,
+                                       m_lastRenderW, m_lastRenderH);
+                }
+            }
         }
     }
 
@@ -1698,6 +1761,125 @@ void SwirBeamWindow::OnSwirHeadToggle()
 // Beam Detection
 // ============================================================================
 
+// ============================================================================
+// Beam Detection Config (JSON persistence)
+// ============================================================================
+
+void SwirBeamWindow::LoadBeamConfig()
+{
+    // Try local override first, then default
+    std::string path = "config/beam_detection.local.json";
+    std::ifstream ifs(path);
+    if (!ifs.is_open()) {
+        path = "config/beam_detection.json";
+        ifs.open(path);
+    }
+    if (!ifs.is_open()) {
+        std::cout << "[SwirBeamWindow] No beam_detection.json found, using defaults" << std::endl;
+        return;
+    }
+
+    auto j = nlohmann::json::parse(ifs, nullptr, false);
+    if (j.is_discarded()) {
+        std::cerr << "[SwirBeamWindow] Failed to parse " << path << std::endl;
+        return;
+    }
+
+    auto getD = [&](const char* key, double& out) {
+        if (j.contains(key) && j[key].is_number()) out = j[key].get<double>();
+    };
+    auto getI = [&](const char* key, int& out) {
+        if (j.contains(key) && j[key].is_number_integer()) out = j[key].get<int>();
+    };
+    auto getPeak = [&](const char* key, PeakFindParams& p) {
+        if (!j.contains(key) || !j[key].is_object()) return;
+        auto& sub = j[key];
+        if (sub.contains("height") && sub["height"].is_number()) p.height = sub["height"].get<double>();
+        if (sub.contains("width") && sub["width"].is_number()) p.width = sub["width"].get<double>();
+        if (sub.contains("distance") && sub["distance"].is_number()) p.distance = sub["distance"].get<double>();
+    };
+
+    getPeak("xpeaks", m_beamConfig.xpeaks);
+    getPeak("ypeaks", m_beamConfig.ypeaks);
+    getD("combineXThresh", m_beamConfig.combineXThresh);
+    getD("combineYThresh", m_beamConfig.combineYThresh);
+    getD("d4sigmaThreshold", m_beamConfig.d4sigmaThreshold);
+    getI("maxBeams", m_beamConfig.maxBeams);
+    if (j.contains("saturationValue") && j["saturationValue"].is_number_integer()) {
+        m_beamConfig.saturationValue = static_cast<uint8_t>(j["saturationValue"].get<int>());
+    }
+    getD("roiWidthFactor", m_beamConfig.roiWidthFactor);
+    getD("minD4Sigma", m_beamConfig.minD4Sigma);
+    getD("minPeakValue", m_beamConfig.minPeakValue);
+
+    std::cout << "[SwirBeamWindow] Beam config loaded from " << path << std::endl;
+}
+
+void SwirBeamWindow::SaveBeamConfig()
+{
+    nlohmann::json j;
+    j["xpeaks"] = {{"height", m_beamConfig.xpeaks.height},
+                    {"width", m_beamConfig.xpeaks.width},
+                    {"distance", m_beamConfig.xpeaks.distance}};
+    j["ypeaks"] = {{"height", m_beamConfig.ypeaks.height},
+                    {"width", m_beamConfig.ypeaks.width},
+                    {"distance", m_beamConfig.ypeaks.distance}};
+    j["combineXThresh"] = m_beamConfig.combineXThresh;
+    j["combineYThresh"] = m_beamConfig.combineYThresh;
+    j["d4sigmaThreshold"] = m_beamConfig.d4sigmaThreshold;
+    j["maxBeams"] = m_beamConfig.maxBeams;
+    j["saturationValue"] = static_cast<int>(m_beamConfig.saturationValue);
+    j["roiWidthFactor"] = m_beamConfig.roiWidthFactor;
+    j["minD4Sigma"] = m_beamConfig.minD4Sigma;
+    j["minPeakValue"] = m_beamConfig.minPeakValue;
+
+    std::ofstream ofs("config/beam_detection.json");
+    if (ofs.is_open()) {
+        ofs << j.dump(4) << std::endl;
+        std::cout << "[SwirBeamWindow] Beam config saved" << std::endl;
+    } else {
+        std::cerr << "[SwirBeamWindow] Failed to save beam_detection.json" << std::endl;
+    }
+}
+
+void SwirBeamWindow::OnEditBeamConfig()
+{
+    // Save current config first so the file is up to date
+    SaveBeamConfig();
+
+    // Get absolute path to config file
+    std::string path = "config\\beam_detection.json";
+    char fullPath[MAX_PATH] = {};
+    GetFullPathNameA(path.c_str(), MAX_PATH, fullPath, nullptr);
+
+    // Launch notepad and get process handle
+    SHELLEXECUTEINFOA sei = {};
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = "open";
+    sei.lpFile = "notepad.exe";
+    sei.lpParameters = fullPath;
+    sei.nShow = SW_SHOW;
+
+    if (!ShellExecuteExA(&sei) || !sei.hProcess) {
+        std::cerr << "[SwirBeamWindow] Failed to open notepad" << std::endl;
+        return;
+    }
+
+    std::cout << "[SwirBeamWindow] Editing beam config: " << fullPath << std::endl;
+    std::cout << "[SwirBeamWindow] Config will reload automatically when notepad closes" << std::endl;
+
+    // Wait for notepad to close on a background thread, then reload config
+    HANDLE hProc = sei.hProcess;
+    std::thread([this, hProc]() {
+        WaitForSingleObject(hProc, INFINITE);
+        CloseHandle(hProc);
+        std::cout << "[SwirBeamWindow] Notepad closed, reloading beam config..." << std::endl;
+        LoadBeamConfig();
+        std::cout << "[SwirBeamWindow] Beam config reloaded" << std::endl;
+    }).detach();
+}
+
 void SwirBeamWindow::OnBeamDetectToggle()
 {
     m_beamDetectionEnabled = !m_beamDetectionEnabled;
@@ -1705,6 +1887,7 @@ void SwirBeamWindow::OnBeamDetectToggle()
               << (m_beamDetectionEnabled ? "enabled" : "disabled") << std::endl;
 
     if (m_beamDetectionEnabled) {
+        LoadBeamConfig();  // reload config each time detection starts
         StartDetectionThread();
     } else {
         StopDetectionThread();

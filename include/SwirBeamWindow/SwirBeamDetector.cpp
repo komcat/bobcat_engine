@@ -339,6 +339,21 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         // Skip if beam is larger than its ROI (diffuse noise, not a real beam)
         if (d4.dx > roiW * 1.5 || d4.dy > roiH * 1.5) continue;
 
+        // Skip beams that are too small (noise spikes)
+        if (std::max(d4.dx, d4.dy) < config.minD4Sigma) continue;
+
+        // Skip beams with insufficient peak signal (noise)
+        {
+            float peakVal = 0.0f;
+            for (int rr = 0; rr < roiH; ++rr) {
+                const float* rowPtr = roiMat.ptr<float>(rr);
+                for (int cc = 0; cc < roiW; ++cc) {
+                    if (rowPtr[cc] > peakVal) peakVal = rowPtr[cc];
+                }
+            }
+            if (static_cast<double>(peakVal) < config.minPeakValue) continue;
+        }
+
         // Compute intensity: sum of E^2 in ROI
         double intensity = 0.0;
         for (int rr = 0; rr < roiH; ++rr) {

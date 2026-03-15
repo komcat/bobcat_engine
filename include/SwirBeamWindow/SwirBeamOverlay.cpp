@@ -302,3 +302,112 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
         }
     }
 }
+
+// ============================================================================
+// Magnified beam thumbnails
+// ============================================================================
+
+void DrawBeamMagnifiers(Gdiplus::Graphics& gfx,
+                        const std::vector<BeamDetectionResult>& results,
+                        const uint8_t* frameData, uint32_t frameW, uint32_t frameH,
+                        int renderX, int renderY, int renderW, int renderH) {
+    if (!frameData || frameW == 0 || frameH == 0 || results.empty()) return;
+
+    static constexpr int BOX_SIZE = 150;
+    static constexpr int MARGIN = 8;
+    static constexpr float BORDER_WIDTH = 2.0f;
+
+    // Static buffer — avoids heap allocation every frame (150*150*4 = 90KB)
+    static uint8_t thumbBuf[BOX_SIZE * BOX_SIZE * 4];
+    static constexpr int stride = BOX_SIZE * 4;
+
+    // Pre-compute column lookup table (reused per beam if crop changes)
+    static int colLUT[BOX_SIZE];
+
+    int boxX = renderX + renderW - BOX_SIZE - MARGIN;
+    int imgStride = static_cast<int>(frameW) * 3;
+    int maxRow = static_cast<int>(frameH) - 1;
+    int maxCol = static_cast<int>(frameW) - 1;
+
+    for (size_t bi = 0; bi < results.size() && bi < 2; ++bi) {
+        const auto& beam = results[bi];
+        const auto& d4 = beam.d4;
+
+        int boxY = renderY + MARGIN + static_cast<int>(bi) * (BOX_SIZE + MARGIN);
+
+        // Crop region: square centered on centroid, 3x beam diameter
+        double span = std::max(d4.dx, d4.dy) * 3.0;
+        if (span < 20.0) span = 20.0;
+
+        int srcX0 = static_cast<int>(d4.cx - span * 0.5);
+        int srcY0 = static_cast<int>(d4.cy - span * 0.5);
+        int srcX1 = srcX0 + static_cast<int>(span);
+        int srcY1 = srcY0 + static_cast<int>(span);
+
+        srcX0 = std::max(srcX0, 0);
+        srcY0 = std::max(srcY0, 0);
+        srcX1 = std::min(srcX1, static_cast<int>(frameW));
+        srcY1 = std::min(srcY1, static_cast<int>(frameH));
+
+        int cropW = srcX1 - srcX0;
+        int cropH = srcY1 - srcY0;
+        if (cropW < 2 || cropH < 2) continue;
+
+        // Build column lookup: integer fixed-point scaling (no per-pixel float math)
+        for (int dx = 0; dx < BOX_SIZE; ++dx) {
+            int c = srcX0 + (dx * cropW) / BOX_SIZE;
+            colLUT[dx] = std::min(c, maxCol) * 3;
+        }
+
+        // Fill thumbnail buffer: BGR from DIB (bottom-up) -> BGRA top-down
+        for (int dy = 0; dy < BOX_SIZE; ++dy) {
+            int srcRow = srcY0 + (dy * cropH) / BOX_SIZE;
+            if (srcRow > maxRow) srcRow = maxRow;
+
+            // DIB bottom-up: row 0 = last image row
+            const uint8_t* srcLine = frameData + static_cast<size_t>(maxRow - srcRow) * imgStride;
+            uint8_t* dstLine = thumbBuf + dy * stride;
+
+            for (int dx = 0; dx < BOX_SIZE; ++dx) {
+                const uint8_t* sp = srcLine + colLUT[dx];
+                uint8_t* dp = dstLine + dx * 4;
+                dp[0] = sp[0];  // B
+                dp[1] = sp[1];  // G
+                dp[2] = sp[2];  // R
+                dp[3] = 255;    // A
+            }
+        }
+
+        Gdiplus::Bitmap thumbBmp(BOX_SIZE, BOX_SIZE, stride,
+                                  PixelFormat32bppARGB, thumbBuf);
+
+        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+        gfx.DrawImage(&thumbBmp, boxX, boxY, BOX_SIZE, BOX_SIZE);
+
+        // Border
+        Gdiplus::Pen borderPen(beam.saturated
+            ? Gdiplus::Color(220, 255, 60, 60)
+            : Gdiplus::Color(220, 0, 255, 255), BORDER_WIDTH);
+        gfx.DrawRectangle(&borderPen, boxX, boxY, BOX_SIZE, BOX_SIZE);
+
+        // Label
+        {
+            static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+            static Gdiplus::SolidBrush labelBgBrush(Gdiplus::Color(180, 0, 0, 0));
+            static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
+
+            const wchar_t* label = (bi == 0) ? L"B0" : L"B1";
+            float lx = static_cast<float>(boxX) + 4.0f;
+            float ly = static_cast<float>(boxY) + 2.0f;
+            gfx.FillRectangle(&labelBgBrush, lx - 2.0f, ly, 22.0f, 14.0f);
+            gfx.DrawString(label, -1, &labelFont, Gdiplus::PointF(lx, ly), &labelBrush);
+        }
+
+        // Crosshair at centroid position within thumbnail
+        float cx = static_cast<float>(boxX) + static_cast<float>((d4.cx - srcX0) * BOX_SIZE) / cropW;
+        float cy = static_cast<float>(boxY) + static_cast<float>((d4.cy - srcY0) * BOX_SIZE) / cropH;
+        Gdiplus::Pen crossPen(Gdiplus::Color(200, 255, 255, 0), 1.0f);
+        gfx.DrawLine(&crossPen, cx - 8.0f, cy, cx + 8.0f, cy);
+        gfx.DrawLine(&crossPen, cx, cy - 8.0f, cx, cy + 8.0f);
+    }
+}

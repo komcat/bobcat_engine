@@ -174,6 +174,11 @@ private:
     void StartDetectionThread();
     void StopDetectionThread();
 
+    // Beam config
+    void LoadBeamConfig();
+    void SaveBeamConfig();
+    void OnEditBeamConfig();
+
     // Beam optimization
     void OnBeamOptimize();
 
@@ -242,6 +247,7 @@ private:
     int m_selectedPSU = 0;       // Index into m_psuDevices
     bool m_psuDiscovered = false;
     std::future<void> m_psuConnectFuture;  // background PSU auto-connect
+    std::atomic<bool> m_psuPollInFlight{false};  // prevents overlapping polls
 
     // Exposure state
     bool m_autoExposure = false;
@@ -273,6 +279,7 @@ private:
     static constexpr int TAG_SET_MAG = 700;
     static constexpr int TAG_SWIR_HEAD = 800;
     static constexpr int TAG_BEAM_DETECT = 900;
+    static constexpr int TAG_BEAM_CONFIG = 910;
     static constexpr int TAG_BEAM_OPTIMIZE = 950;
 
     // Mouse tracking

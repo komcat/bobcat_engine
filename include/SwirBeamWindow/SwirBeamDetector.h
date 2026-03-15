@@ -43,6 +43,8 @@ struct BeamDetectionConfig {
     int maxBeams = 2;
     uint8_t saturationValue = 200;
     double roiWidthFactor = 2.5;
+    double minD4Sigma = 10.0;       // reject beams with max(dx,dy) < this
+    double minPeakValue = 20.0;     // reject beams with ROI peak < this (after bg sub)
 };
 
 #ifdef HAS_OPENCV

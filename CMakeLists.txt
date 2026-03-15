@@ -1515,6 +1515,9 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/beam_stream.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/beam_stream.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/beam_detection.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/beam_detection.json
     COMMENT "Copying config templates (preserving *.local.json files)"
 )
 
