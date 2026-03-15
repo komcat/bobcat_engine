@@ -191,6 +191,16 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
         gfx.DrawLine(&crossPen, ccx - 5.0f, ccy, ccx + 5.0f, ccy);
         gfx.DrawLine(&crossPen, ccx, ccy - 5.0f, ccx, ccy + 5.0f);
 
+        // (b2) EE circle around centroid
+        {
+            double eeRadius = std::max(d4.dx, d4.dy) / 2.0;
+            float eeDispRx = imgToDispLenX(eeRadius, renderW, frameW);
+            float eeDispRy = imgToDispLenY(eeRadius, renderH, frameH);
+            Gdiplus::Pen eePen(Gdiplus::Color(160, 0, 255, 0), 1.0f);
+            gfx.DrawEllipse(&eePen, ccx - eeDispRx, ccy - eeDispRy,
+                            eeDispRx * 2, eeDispRy * 2);
+        }
+
         // (c) Text label - multi-row, grid-snapped position
         //     Snap anchor to a coarse grid so the label doesn't jitter frame-to-frame
         {
@@ -211,14 +221,15 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                 titleLine = ss.str();
             }
 
-            wchar_t cxLine[32], cyLine[32], dxLine[32], dyLine[32];
+            wchar_t cxLine[32], cyLine[32], dxLine[32], dyLine[32], eeLine[32];
             swprintf_s(cxLine, L"cx: %6.1f", d4.cx);
             swprintf_s(cyLine, L"cy: %6.1f", d4.cy);
             swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
             swprintf_s(dyLine, L"dy: %6.1f", d4.dy);
+            swprintf_s(eeLine, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
 
-            const wchar_t* rows[] = { titleLine.c_str(), cxLine, cyLine, dxLine, dyLine };
-            static constexpr int numRows = 5;
+            const wchar_t* rows[] = { titleLine.c_str(), cxLine, cyLine, dxLine, dyLine, eeLine };
+            static constexpr int numRows = 6;
             static constexpr float rowH = 14.0f;
             float totalH = rowH * numRows + 4.0f;
 

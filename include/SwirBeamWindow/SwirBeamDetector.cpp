@@ -205,6 +205,43 @@ void d4sigma_fast(const cv::Mat& E, int x0, int y0, double threshold,
 }
 
 // ============================================================================
+// ComputeEncircledEnergy - fraction of total ROI energy within a circle
+// ============================================================================
+
+double ComputeEncircledEnergy(const cv::Mat& img, double cx, double cy,
+                              double radius, const Roi& roi) {
+    if (img.empty() || radius <= 0.0) return 0.0;
+
+    int x0 = std::max(roi.x0, 0);
+    int y0 = std::max(roi.y0, 0);
+    int x1 = std::min(roi.x1, img.cols);
+    int y1 = std::min(roi.y1, img.rows);
+    if (x0 >= x1 || y0 >= y1) return 0.0;
+
+    double r2 = radius * radius;
+    double totalEnergy = 0.0;
+    double circleEnergy = 0.0;
+
+    for (int r = y0; r < y1; ++r) {
+        const float* row = img.ptr<float>(r);
+        double dy = static_cast<double>(r) - cy;
+        double dy2 = dy * dy;
+        for (int c = x0; c < x1; ++c) {
+            double val = static_cast<double>(row[c]);
+            if (val <= 0.0) continue;
+            totalEnergy += val;
+            double dxv = static_cast<double>(c) - cx;
+            if (dxv * dxv + dy2 <= r2) {
+                circleEnergy += val;
+            }
+        }
+    }
+
+    if (totalEnergy < 1e-30) return 0.0;
+    return circleEnergy / totalEnergy;
+}
+
+// ============================================================================
 // RunBeamDetection - full pipeline
 // ============================================================================
 
@@ -269,6 +306,7 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         Roi roi;
         double intensity;  // sum of E^2 in ROI
         size_t origIdx;
+        double encircledEnergy = 0.0;
     };
     std::vector<BeamCandidate> candidates;
 
@@ -315,6 +353,13 @@ std::vector<BeamDetectionResult> RunBeamDetection(
 
     if (candidates.empty()) return {};
 
+    // Compute encircled energy for each candidate
+    for (auto& cand : candidates) {
+        double eeRadius = std::max(cand.d4.dx, cand.d4.dy) / 2.0;
+        cand.encircledEnergy = ComputeEncircledEnergy(floatMat, cand.d4.cx, cand.d4.cy,
+                                                      eeRadius, cand.d4.roi);
+    }
+
     // Sort by intensity descending, take top maxBeams
     std::sort(candidates.begin(), candidates.end(),
               [](const BeamCandidate& a, const BeamCandidate& b) {
@@ -339,6 +384,7 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         const auto& cand = candidates[bi];
         BeamDetectionResult res;
         res.d4 = cand.d4;
+        res.encircledEnergy = cand.encircledEnergy;
         res.label = "B" + std::to_string(bi);
 
         // GA labeling

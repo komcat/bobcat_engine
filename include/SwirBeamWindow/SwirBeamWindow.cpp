@@ -267,6 +267,18 @@ void SwirBeamWindow::DiscoverPSUDevices()
     m_psuDiscovered = true;
     m_panelWidth = 0;  // Force button rebuild to show PSU selector
     std::cout << "[SwirBeamWindow] Discovered " << m_psuDevices.size() << " PSU device(s)" << std::endl;
+
+    // Auto-connect any disconnected PSUs
+    for (const auto& dev : m_psuDevices) {
+        auto psu = m_psuManager->getPowerSupply(dev.name);
+        if (!psu || psu->isConnected()) continue;
+        std::cout << "[SwirBeamWindow] Auto-connecting " << dev.name << "..." << std::endl;
+        if (psu->connect()) {
+            std::cout << "[SwirBeamWindow] " << dev.name << " connected" << std::endl;
+        } else {
+            std::cerr << "[SwirBeamWindow] " << dev.name << " auto-connect failed" << std::endl;
+        }
+    }
 }
 
 // ============================================================================
@@ -1868,6 +1880,7 @@ void SwirBeamWindow::OnBeamOptimize()
                           << " cy=" << beam.d4.cy
                           << " dx=" << beam.d4.dx
                           << " dy=" << beam.d4.dy
+                          << " EE=" << std::fixed << std::setprecision(1) << (beam.encircledEnergy * 100.0) << "%"
                           << (beam.saturated ? " SATURATED" : "")
                           << (!beam.gaLabel.empty() ? " ga=" + beam.gaLabel : "")
                           << std::endl;

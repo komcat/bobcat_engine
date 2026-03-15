@@ -4,7 +4,7 @@ Real-time beam detection and characterization overlay for the SWIR Beam Processi
 
 ## Overview
 
-The system detects up to 2 beams in the live SWIR camera feed, computes d4sigma beam diameters, and renders overlays including bounding boxes, centroid markers, Gaussian profile mini-charts, and saturation warnings.
+The system detects up to 2 beams in the live SWIR camera feed, computes d4sigma beam diameters and encircled energy (EE), and renders overlays including bounding boxes, centroid markers, EE circles, Gaussian profile mini-charts, and saturation warnings.
 
 ## Architecture
 
@@ -22,16 +22,18 @@ OnNewFrame (camera thread)
                               3. find_roi() (X/Y projection peaks)
                               4. d4sigma_fast() per ROI
                               5. Filter fake beams
-                              6. Sort/label B0/B1, assign GA1/GA2
-                              7. Saturation check
-                              8. Extract 1D profiles
+                              6. Compute encircled energy (EE)
+                              7. Sort/label B0/B1, assign GA1/GA2
+                              8. Saturation check
+                              9. Extract 1D profiles
                                     |
                             m_beamResults --> DrawOverlays (paint thread)
                                                 |
                                         DrawBeamOverlays()
                                           - Bounding boxes
                                           - Centroid crosshairs
-                                          - Grid-snapped multi-row labels
+                                          - EE circles (green)
+                                          - Grid-snapped multi-row labels (with EE%)
                                           - X/Y profile mini-charts
 ```
 
@@ -87,7 +89,27 @@ Beams are rejected if:
 - Diameter > 50% of image dimension (not a localized beam)
 - Diameter > 1.5x the ROI size (diffuse noise)
 
-### 5. Labeling
+### 5. Encircled Energy (EE)
+
+After d4sigma computation and filtering, Encircled Energy is computed for each beam candidate via `ComputeEncircledEnergy()`. EE measures the fraction of total beam energy concentrated within the d4sigma circle:
+
+```
+radius = max(dx, dy) / 2       (larger d4sigma half-width)
+totalEnergy  = sum of all positive pixels in ROI
+circleEnergy = sum of pixels within radius of (cx, cy)
+EE = circleEnergy / totalEnergy     (0.0 to 1.0)
+```
+
+EE is computed on the background-subtracted float image (`floatMat`), not the amplitude field. Only positive pixels contribute. The single-pass algorithm iterates over the ROI and tests each pixel's distance from the centroid against the radius.
+
+**Interpretation:**
+- Well-focused Gaussian beam: EE > 80%
+- Defocused or misaligned beam: EE drops
+- EE is independent of absolute intensity — it's a shape metric
+
+EE is used as a real-time feedback metric during manual hexapod alignment. The user adjusts the hexapod while watching EE% change in the overlay.
+
+### 6. Labeling
 
 ```
 1. Sort detected beams by intensity (sum of pixel values), keep top 2
@@ -100,7 +122,7 @@ Beams are rejected if:
    - Both in same half --> no GA label
 ```
 
-### 6. Saturation Check
+### 7. Saturation Check
 
 Scans original uint8 pixels within each beam's ROI. If any pixel exceeds the saturation threshold (default 200), the beam is flagged as saturated.
 
@@ -113,6 +135,11 @@ Scans original uint8 pixels within each beam's ROI. If any pixel exceeds the sat
 ### Centroid Crosshair
 - Yellow 10px cross at (cx, cy)
 
+### EE Circle
+- Green semi-transparent ellipse centered on (cx, cy)
+- Radius = `max(dx, dy) / 2` (the d4sigma half-width used for EE computation)
+- Visually shows the encircled energy integration boundary
+
 ### Text Label (Grid-Snapped)
 - Position snapped to a 20px display grid to prevent jitter
 - Multi-row layout:
@@ -122,6 +149,7 @@ Scans original uint8 pixels within each beam's ROI. If any pixel exceeds the sat
   cy:    4.2
   dx:   20.6
   dy:    7.0
+  EE:  85.3%
   ```
 - Semi-transparent black background
 - Title row turns red if saturated (appends "SAT!")

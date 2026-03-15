@@ -27,6 +27,7 @@ struct BeamDetectionResult {
     std::string label;             // "B0" or "B1"
     std::string gaLabel;           // "GA1", "GA2", or ""
     bool saturated = false;        // any pixel > saturationValue
+    double encircledEnergy = 0.0;  // EE within d4sigma/2 radius (0.0-1.0)
     std::vector<double> xProfile;  // 1D cross-section at centroid row
     std::vector<double> yProfile;  // 1D cross-section at centroid col
     int profileXStart = 0;         // ROI x0 offset for chart alignment
@@ -67,6 +68,10 @@ FindRoiResult find_roi(const cv::Mat& img,
 /// Fast fused d4sigma: single-pass threshold + second-moment calculation.
 void d4sigma_fast(const cv::Mat& E, int x0, int y0, double threshold,
                   double& cx, double& cy, double& dx, double& dy);
+
+/// Compute encircled energy: fraction of total ROI energy within a circle.
+double ComputeEncircledEnergy(const cv::Mat& img, double cx, double cy,
+                              double radius, const Roi& roi);
 
 /// Run full beam detection pipeline on a grayscale uint8 image.
 /// Returns up to config.maxBeams results, labeled B0/B1 with GA assignments.
