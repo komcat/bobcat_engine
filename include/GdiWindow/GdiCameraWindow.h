@@ -31,6 +31,7 @@
 class DataStore;
 class UnifiedMotionManager;
 class CameraManager;
+class CameraConfigManager;
 class BeamServerClient;
 
 // Menu IDs
@@ -265,6 +266,9 @@ public:
     // Motion manager for click-to-move
     void SetMotionManager(UnifiedMotionManager* motionManager);
 
+    // Camera config manager for per-camera calibration
+    void SetCameraConfigManager(CameraConfigManager* configMgr);
+
     // Click-to-move and crosshair controls
     void SetClickToMoveEnabled(bool enabled);
     void SetCrosshairEnabled(bool enabled);
@@ -460,6 +464,7 @@ private:
     mutable std::mutex m_channelMutex;
 
     // Click-to-move and crosshair
+    CameraConfigManager* m_cameraConfigManager = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;
     bool m_clickToMoveEnabled = false;
     bool m_crosshairEnabled = false;

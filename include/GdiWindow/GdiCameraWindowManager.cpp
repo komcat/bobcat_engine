@@ -114,6 +114,12 @@ bool GdiCameraWindowManager::initialize() {
         m_window->SetBeamServerClient(m_beamServerClient);
     }
 
+    // Set camera config manager for per-camera calibration
+    if (m_cameraConfigManager) {
+        std::cout << "[GdiCameraWindowManager] Setting camera config manager for per-camera calibration..." << std::endl;
+        m_window->SetCameraConfigManager(m_cameraConfigManager);
+    }
+
     // Apply application settings (view mode, overlays, etc.)
     applyApplicationSettings();
 
@@ -182,6 +188,13 @@ void GdiCameraWindowManager::setBeamServerClient(BeamServerClient* client) {
     m_beamServerClient = client;
     if (m_window) {
         m_window->SetBeamServerClient(client);
+    }
+}
+
+void GdiCameraWindowManager::setCameraConfigManager(CameraConfigManager* configMgr) {
+    m_cameraConfigManager = configMgr;
+    if (m_window) {
+        m_window->SetCameraConfigManager(configMgr);
     }
 }
 

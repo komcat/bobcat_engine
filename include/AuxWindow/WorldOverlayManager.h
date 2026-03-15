@@ -9,6 +9,7 @@
 #include <QObject>
 #include <memory>
 
+class CameraConfigManager;
 class CameraManager;
 class UnifiedMotionManager;
 
@@ -64,6 +65,7 @@ public:
 
   // Load pixel-to-mm calibration from system config
   double loadPxPerMmFromCalibration(const QString& calibrationFile = "config/SYSTEM/val_pixelmm.json");
+  double loadPxPerMmFromCalibration(const std::string& cameraId, CameraConfigManager* configMgr);
   double getDefaultPxPerMm() const { return m_defaultPxPerMm; }
 
   // Coordinate conversion helpers

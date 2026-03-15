@@ -30,6 +30,16 @@ struct CameraConfigData {
   int width;
   int height;
 
+  // Per-camera pixel-to-mm calibration
+  struct PixelCalibration {
+    double pixelToMmX = 0.0;   // 0 = not configured (use fallback)
+    double pixelToMmY = 0.0;
+    int referenceWidth = 0;
+    int referenceHeight = 0;
+    bool isConfigured() const { return pixelToMmX > 0 && pixelToMmY > 0; }
+  };
+  PixelCalibration calibration;
+
   // Default constructor
   CameraConfigData()
     : port(0), enabled(true), autoConnect(true),
@@ -87,6 +97,9 @@ public:
   bool UpdateCameraConfig(const std::string& cameraId, const CameraConfigData& config);
   bool AddCameraConfig(const CameraConfigData& config);
   bool RemoveCameraConfig(const std::string& cameraId);
+
+  // Per-camera calibration access (returns true if camera has calibration configured)
+  bool GetCalibration(const std::string& cameraId, CameraConfigData::PixelCalibration& cal) const;
 
   // Manager settings access
   void SetManagerSettings(const CameraManagerSettings& settings) { managerSettings_ = settings; }

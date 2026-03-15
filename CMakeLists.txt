@@ -703,6 +703,13 @@ set(SOURCES
     include/AuxWindow/AlignmentWizardDialog.cpp
     include/GdiWindow/GdiCameraWindow.cpp
     include/GdiWindow/GdiCameraWindowManager.cpp
+    include/SwirBeamWindow/SwirBeamWindow.cpp
+    include/SwirBeamWindow/SwirBeamWindowManager.cpp
+    include/SwirBeamWindow/SwirPeakFinder.cpp
+    include/SwirBeamWindow/SwirBeamDetector.cpp
+    include/SwirBeamWindow/SwirBeamOverlay.cpp
+    include/BeamOptimizer/BeamResultBroker.cpp
+    include/BeamOptimizer/BeamOptimizerManager.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp
@@ -1615,11 +1622,12 @@ if(OPENCV_FOUND)
         )
     endif()
 
-    add_executable(vision_profile_tester ${VISION_TESTER_SOURCES})
+    add_executable(vision_profile_tester EXCLUDE_FROM_ALL ${VISION_TESTER_SOURCES})
 
     target_include_directories(vision_profile_tester PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/include/AppUI
+        ${CMAKE_SOURCE_DIR}/include/camera
         ${CMAKE_SOURCE_DIR}/include/vision
         ${CMAKE_SOURCE_DIR}/include/vision/plugins
         ${CMAKE_SOURCE_DIR}/tools/vision_profile_tester

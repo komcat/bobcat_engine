@@ -4,6 +4,7 @@
 #include "data/DataStore.h"
 #include "motions/unified_motion_manager.h"
 #include "camera/CameraManager.h"
+#include "camera/CameraConfigManager.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -1532,8 +1533,12 @@ void GdiCameraWindow::SetTitle(const std::string& title) {
 }
 
 void GdiCameraWindow::SetTargetCamera(const std::string& cameraId) {
-    std::lock_guard<std::mutex> lock(m_cameraMutex);
-    m_targetCameraId = cameraId;
+    {
+        std::lock_guard<std::mutex> lock(m_cameraMutex);
+        m_targetCameraId = cameraId;
+    }
+    // Reload calibration for the new camera
+    LoadCalibrationFactors();
 }
 
 std::string GdiCameraWindow::GetTargetCamera() const {
@@ -2360,8 +2365,35 @@ void GdiCameraWindow::RenderFrame(HDC hdc) {
 // Click-to-Move and Crosshair Implementation
 // ============================================================================
 
+void GdiCameraWindow::SetCameraConfigManager(CameraConfigManager* configMgr) {
+    m_cameraConfigManager = configMgr;
+    // Reload calibration with per-camera support now available
+    LoadCalibrationFactors();
+}
+
 void GdiCameraWindow::LoadCalibrationFactors() {
-    // Try to load from JSON config file (shared with CameraClickToMoveWidget)
+    // Try per-camera calibration from CameraConfigManager first
+    if (m_cameraConfigManager && !m_targetCameraId.empty()) {
+        CameraConfigData::PixelCalibration cal;
+        if (m_cameraConfigManager->GetCalibration(m_targetCameraId, cal)) {
+            m_pixelToMmFactorX = cal.pixelToMmX;
+            m_pixelToMmFactorY = cal.pixelToMmY;
+            m_calibrationRefWidth = cal.referenceWidth;
+            m_calibrationRefHeight = cal.referenceHeight;
+            std::cout << "[GdiCameraWindow] Per-camera calibration for '" << m_targetCameraId
+                      << "': PixelToMm X=" << m_pixelToMmFactorX
+                      << ", Y=" << m_pixelToMmFactorY;
+            if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
+                std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;
+            }
+            std::cout << std::endl;
+            return;
+        }
+        std::cout << "[GdiCameraWindow] No per-camera calibration for '" << m_targetCameraId
+                  << "', falling back to val_pixelmm.json" << std::endl;
+    }
+
+    // Fallback: load from global JSON config file (shared with CameraClickToMoveWidget)
     std::vector<std::string> configPaths = {
         CALIBRATION_CONFIG_FILE,
         std::string("./") + CALIBRATION_CONFIG_FILE,
@@ -2381,7 +2413,7 @@ void GdiCameraWindow::LoadCalibrationFactors() {
                     m_pixelToMmFactorY = cal.value("pixel_to_mm_y", 0.00248);
                     m_calibrationRefWidth = cal.value("reference_width", 0);
                     m_calibrationRefHeight = cal.value("reference_height", 0);
-                    std::cout << "[GdiCameraWindow] Loaded calibration: PixelToMm X=" << m_pixelToMmFactorX
+                    std::cout << "[GdiCameraWindow] Loaded calibration from fallback: PixelToMm X=" << m_pixelToMmFactorX
                               << ", Y=" << m_pixelToMmFactorY;
                     if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
                         std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;

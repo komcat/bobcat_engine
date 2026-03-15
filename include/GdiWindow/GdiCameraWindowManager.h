@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 
 class BeamServerClient;
+class CameraConfigManager;
 class CameraManager;
 class DataStore;
 class GdiCameraWindow;
@@ -57,6 +58,9 @@ public:
 
     // Set beam server client for beam streaming
     void setBeamServerClient(BeamServerClient* client);
+
+    // Set camera config manager for per-camera calibration
+    void setCameraConfigManager(CameraConfigManager* configMgr);
 
     // Set target camera ID (empty string = use any available camera)
     void setTargetCamera(const std::string& cameraId);
@@ -128,6 +132,7 @@ private:
     std::string m_subscriberId;         // "GdiCameraWindow" or "GdiCameraWindow2"
 
     BeamServerClient* m_beamServerClient = nullptr;
+    CameraConfigManager* m_cameraConfigManager = nullptr;
     CameraManager* m_cameraManager = nullptr;
     DataStore* m_dataStore = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;

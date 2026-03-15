@@ -58,6 +58,7 @@ private slots:
   void onToggleAuxWindow();  // ✅ NEW: Toggle aux window visibility
   void onToggleRtlmWindow();  // Toggle realtime camera monitor (GDI)
   void onToggleRtlmWindow2(); // Toggle second realtime camera monitor (GDI)
+  void onToggleSwirWindow();  // Toggle SWIR beam processing window
 
 private:
   void setupUI();

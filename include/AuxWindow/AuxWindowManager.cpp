@@ -52,6 +52,11 @@ void AuxWindowManager::initialize()
   // Create the window with all required managers
   m_window = std::make_unique<AuxViewWindow>(m_cameraManager, m_motionManager, m_dataStore, m_tcpManager);
 
+  // Pass camera config manager for per-camera calibration
+  if (m_cameraConfigManager) {
+    m_window->setCameraConfigManager(m_cameraConfigManager);
+  }
+
   m_initialized = true;
 
   // Show window on startup
@@ -96,6 +101,12 @@ void AuxWindowManager::setTcpClientManager(TcpClientManager* tcpManager)
 {
   m_tcpManager = tcpManager;
   std::cout << "[AuxWindowManager] TcpClientManager set" << std::endl;
+}
+
+void AuxWindowManager::setCameraConfigManager(CameraConfigManager* configMgr)
+{
+  m_cameraConfigManager = configMgr;
+  std::cout << "[AuxWindowManager] CameraConfigManager set" << std::endl;
 }
 
 void AuxWindowManager::show()

@@ -7,7 +7,13 @@
       "connection_type": "ip",
       "ip_address": "192.168.0.68",
       "display_name": "Basler Camera",
-      "auto_connect": true
+      "auto_connect": true,
+      "calibration": {
+        "pixel_to_mm_x": 0.0017,
+        "pixel_to_mm_y": 0.0017,
+        "reference_width": 2448,
+        "reference_height": 2048
+      }
     }
   ]
 }

@@ -163,6 +163,14 @@ public:
     void loadCalibrationFromSettings();
 
     /**
+     * @brief Load calibration for a specific camera from CameraConfigManager
+     * @param cameraId Camera to load calibration for
+     * @param configMgr Camera config manager with per-camera calibration
+     * @return true if per-camera calibration was found and applied
+     */
+    bool loadCalibrationForCamera(const std::string& cameraId, class CameraConfigManager* configMgr);
+
+    /**
      * @brief Save calibration to QSettings (persistent storage)
      */
     void saveCalibrationToSettings();

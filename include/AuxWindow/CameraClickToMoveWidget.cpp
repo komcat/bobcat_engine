@@ -1,5 +1,6 @@
 // CameraClickToMoveWidget.cpp
 #include "CameraClickToMoveWidget.h"
+#include "CameraConfigManager.h"
 #include "CameraManager.h"
 #include "ICameraHardware.h"
 #include "LiveVideoSubscriber.h"
@@ -257,9 +258,37 @@ void CameraClickToMoveWidget::setupUI()
   mainLayout->addWidget(m_imageLabel, 1);
 }
 
+void CameraClickToMoveWidget::setCameraConfigManager(CameraConfigManager* configMgr)
+{
+  m_cameraConfigManager = configMgr;
+  // Reload calibration with per-camera support
+  loadSettingsFromQSettings();
+}
+
 void CameraClickToMoveWidget::loadSettingsFromQSettings()
 {
-  // Try to load from JSON config file first (shared with VisionManager)
+  // Try per-camera calibration from CameraConfigManager first
+  if (m_cameraConfigManager && !m_currentCameraId.empty()) {
+    CameraConfigData::PixelCalibration cal;
+    if (m_cameraConfigManager->GetCalibration(m_currentCameraId, cal)) {
+      m_pixelToMmFactorX = cal.pixelToMmX;
+      m_pixelToMmFactorY = cal.pixelToMmY;
+      m_calibrationRefWidth = cal.referenceWidth;
+      m_calibrationRefHeight = cal.referenceHeight;
+      std::cout << "[CameraClickToMoveWidget] Per-camera calibration for '" << m_currentCameraId
+                << "': PixelToMm X=" << m_pixelToMmFactorX
+                << ", Y=" << m_pixelToMmFactorY;
+      if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
+        std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;
+      }
+      std::cout << std::endl;
+      return;
+    }
+    std::cout << "[CameraClickToMoveWidget] No per-camera calibration for '" << m_currentCameraId
+              << "', falling back to val_pixelmm.json" << std::endl;
+  }
+
+  // Fallback: load from global JSON config file (shared with VisionManager)
   QString appDir = QCoreApplication::applicationDirPath();
   QString configPath = appDir + "/" + CALIBRATION_CONFIG_FILE;
 
@@ -276,7 +305,7 @@ void CameraClickToMoveWidget::loadSettingsFromQSettings()
           m_pixelToMmFactorY = cal.value("pixel_to_mm_y", 0.00248);
           m_calibrationRefWidth = cal.value("reference_width", 0);
           m_calibrationRefHeight = cal.value("reference_height", 0);
-          std::cout << "[CameraClickToMoveWidget] Loaded from JSON: PixelToMm X=" << m_pixelToMmFactorX
+          std::cout << "[CameraClickToMoveWidget] Loaded from fallback JSON: PixelToMm X=" << m_pixelToMmFactorX
                     << ", Y=" << m_pixelToMmFactorY;
           if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0) {
             std::cout << ", RefRes=" << m_calibrationRefWidth << "x" << m_calibrationRefHeight;
@@ -388,6 +417,9 @@ void CameraClickToMoveWidget::setCamera(const std::string& cameraId)
   unsubscribeFromCameraFeed();
 
   m_currentCameraId = cameraId;
+
+  // Reload calibration for the new camera
+  loadSettingsFromQSettings();
 
   if (cameraId.empty()) {
     m_imageLabel->clear();

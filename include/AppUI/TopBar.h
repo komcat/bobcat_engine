@@ -96,6 +96,7 @@ signals:
   void auxWindowButtonClicked();
   void rtlmButtonClicked();
   void rtlm2ButtonClicked();
+  void swirWindowButtonClicked();
 
 private:
   void setupUI();
@@ -107,5 +108,6 @@ private:
   QPushButton* m_auxWindowButton;
   QPushButton* m_rtlmButton;
   QPushButton* m_rtlm2Button;
+  QPushButton* m_swirButton;
   SafetyIndicatorWidget* m_safetyIndicator;
 };

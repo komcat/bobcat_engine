@@ -183,6 +183,18 @@ bool CameraConfigManager::GetCameraConfig(const std::string& cameraId, CameraCon
   return false;
 }
 
+bool CameraConfigManager::GetCalibration(const std::string& cameraId, CameraConfigData::PixelCalibration& cal) const {
+  CameraConfigData config;
+  if (!GetCameraConfig(cameraId, config)) {
+    return false;
+  }
+  if (!config.calibration.isConfigured()) {
+    return false;
+  }
+  cal = config.calibration;
+  return true;
+}
+
 bool CameraConfigManager::UpdateCameraConfig(const std::string& cameraId, const CameraConfigData& config) {
   auto it = std::find_if(cameraConfigs_.begin(), cameraConfigs_.end(),
     [&cameraId](const CameraConfigData& cfg) { return cfg.id == cameraId; });
@@ -373,6 +385,21 @@ CameraConfigData CameraConfigManager::ParseCameraConfig(const nlohmann::json& ca
   config.width = camJson.value("width", managerSettings_.defaultWidth);
   config.height = camJson.value("height", managerSettings_.defaultHeight);
 
+  // Parse per-camera calibration block
+  if (camJson.contains("calibration")) {
+    auto& calJson = camJson["calibration"];
+    config.calibration.pixelToMmX = calJson.value("pixel_to_mm_x", 0.0);
+    config.calibration.pixelToMmY = calJson.value("pixel_to_mm_y", 0.0);
+    config.calibration.referenceWidth = calJson.value("reference_width", 0);
+    config.calibration.referenceHeight = calJson.value("reference_height", 0);
+    if (config.calibration.isConfigured()) {
+      std::cout << "[CameraConfig] Camera " << config.id << " calibration: "
+                << config.calibration.pixelToMmX << " mm/px (X), "
+                << config.calibration.pixelToMmY << " mm/px (Y), ref "
+                << config.calibration.referenceWidth << "x" << config.calibration.referenceHeight << std::endl;
+    }
+  }
+
   return config;
 }
 
@@ -416,6 +443,16 @@ nlohmann::json CameraConfigManager::CameraConfigToJson(const CameraConfigData& c
   }
   if (config.height != managerSettings_.defaultHeight) {
     camJson["height"] = config.height;
+  }
+
+  // Serialize per-camera calibration block
+  if (config.calibration.isConfigured()) {
+    nlohmann::json calJson;
+    calJson["pixel_to_mm_x"] = config.calibration.pixelToMmX;
+    calJson["pixel_to_mm_y"] = config.calibration.pixelToMmY;
+    calJson["reference_width"] = config.calibration.referenceWidth;
+    calJson["reference_height"] = config.calibration.referenceHeight;
+    camJson["calibration"] = calJson;
   }
 
   return camJson;

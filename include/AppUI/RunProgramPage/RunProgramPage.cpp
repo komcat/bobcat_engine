@@ -1911,6 +1911,9 @@ void RunProgramPage::createExecutionWidget()
     );
     m_liveViewWidget->setClickToMoveEnabled(false);  // Disable click-to-move by default
     m_liveViewWidget->setCrosshairEnabled(false);    // Disable crosshair by default
+    if (m_context->cameraConfigManager) {
+      m_liveViewWidget->setCameraConfigManager(m_context->cameraConfigManager);
+    }
     liveViewTabLayout->addWidget(m_liveViewWidget, 1);
 
     // ✅ FIX: Schedule camera initialization after widget is added to layout

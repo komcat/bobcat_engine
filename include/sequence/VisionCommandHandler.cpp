@@ -5,6 +5,7 @@
 #include "SequenceContext.h"
 #include "ContextImageViewer.h"
 #include "ApplicationContext.h"
+#include "CameraConfigManager.h"
 #include "LogManager.h"
 #include "CameraManager.h"
 #include "LiveVideoSubscriber.h"
@@ -557,64 +558,83 @@ bool VisionCommandHandler::LoadProfile(const std::string& profilePath,
                       << ") to (" << endX << "," << endY << ") enabled=" << enabled << std::endl;
         }
 
-        // Load calibration from SYSTEM config (not from profile)
+        // Load calibration from per-camera config or SYSTEM config (not from profile)
         // This ensures consistent calibration across all profiles
         {
-            // Try multiple possible paths for the calibration file
-            std::vector<std::string> possiblePaths = {
-                "config/SYSTEM/val_pixelmm.json",
-                "./config/SYSTEM/val_pixelmm.json",
-                "../config/SYSTEM/val_pixelmm.json"
-            };
-
-            // Also try to construct path relative to profile path
-            size_t configPos = profilePath.find("/config/");
-            if (configPos == std::string::npos) {
-                configPos = profilePath.find("\\config\\");
-            }
-            if (configPos != std::string::npos) {
-                std::string basePath = profilePath.substr(0, configPos);
-                possiblePaths.insert(possiblePaths.begin(), basePath + "/config/SYSTEM/val_pixelmm.json");
-            }
-
             double pixelToMmX = 0.00248;  // Default fallback
             double pixelToMmY = 0.00248;
             bool loaded = false;
 
-            for (const auto& systemCalPath : possiblePaths) {
-                std::ifstream calFile(systemCalPath);
-                if (calFile.is_open()) {
-                    try {
-                        nlohmann::json calJson;
-                        calFile >> calJson;
-                        calFile.close();
-
-                        if (calJson.contains("calibration")) {
-                            pixelToMmX = calJson["calibration"].value("pixel_to_mm_x", 0.00248);
-                            pixelToMmY = calJson["calibration"].value("pixel_to_mm_y", 0.00248);
-                            std::cout << "[VisionCommandHandler] 📏 System calibration loaded from: " << systemCalPath << std::endl;
-                            std::cout << "[VisionCommandHandler] 📏 Calibration values: "
-                                      << pixelToMmX << " mm/px (X), " << pixelToMmY << " mm/px (Y)" << std::endl;
-                            loaded = true;
-                            break;
-                        }
-                    } catch (const std::exception& e) {
-                        std::cout << "[VisionCommandHandler] ⚠️ Failed to parse " << systemCalPath
-                                  << ": " << e.what() << std::endl;
+            // Try per-camera calibration from CameraConfigManager first
+            if (m_context && m_context->cameraConfigManager) {
+                // Get camera ID from profile if available, or from context
+                std::string camId;
+                if (j.contains("camera") && j["camera"].contains("cameraId")) {
+                    camId = j["camera"].value("cameraId", "");
+                }
+                if (camId.empty() && context) {
+                    camId = context->GetString("vision.camera_id");
+                }
+                if (!camId.empty()) {
+                    CameraConfigData::PixelCalibration cal;
+                    if (m_context->cameraConfigManager->GetCalibration(camId, cal)) {
+                        pixelToMmX = cal.pixelToMmX;
+                        pixelToMmY = cal.pixelToMmY;
+                        std::cout << "[VisionCommandHandler] Per-camera calibration for '" << camId
+                                  << "': " << pixelToMmX << " mm/px (X), " << pixelToMmY << " mm/px (Y)" << std::endl;
+                        loaded = true;
                     }
                 }
             }
 
+            // Fallback: load from SYSTEM config file
             if (!loaded) {
-                std::cout << "[VisionCommandHandler] ⚠️ System calibration file not found in any path:" << std::endl;
-                for (const auto& p : possiblePaths) {
-                    std::cout << "  - " << p << std::endl;
+                std::vector<std::string> possiblePaths = {
+                    "config/SYSTEM/val_pixelmm.json",
+                    "./config/SYSTEM/val_pixelmm.json",
+                    "../config/SYSTEM/val_pixelmm.json"
+                };
+
+                size_t configPos = profilePath.find("/config/");
+                if (configPos == std::string::npos) {
+                    configPos = profilePath.find("\\config\\");
                 }
-                std::cout << "[VisionCommandHandler] Using default calibration: " << pixelToMmX << " mm/px" << std::endl;
+                if (configPos != std::string::npos) {
+                    std::string basePath = profilePath.substr(0, configPos);
+                    possiblePaths.insert(possiblePaths.begin(), basePath + "/config/SYSTEM/val_pixelmm.json");
+                }
+
+                for (const auto& systemCalPath : possiblePaths) {
+                    std::ifstream calFile(systemCalPath);
+                    if (calFile.is_open()) {
+                        try {
+                            nlohmann::json calJson;
+                            calFile >> calJson;
+                            calFile.close();
+
+                            if (calJson.contains("calibration")) {
+                                pixelToMmX = calJson["calibration"].value("pixel_to_mm_x", 0.00248);
+                                pixelToMmY = calJson["calibration"].value("pixel_to_mm_y", 0.00248);
+                                std::cout << "[VisionCommandHandler] System calibration loaded from: " << systemCalPath << std::endl;
+                                std::cout << "[VisionCommandHandler] Calibration values: "
+                                          << pixelToMmX << " mm/px (X), " << pixelToMmY << " mm/px (Y)" << std::endl;
+                                loaded = true;
+                                break;
+                            }
+                        } catch (const std::exception& e) {
+                            std::cout << "[VisionCommandHandler] Failed to parse " << systemCalPath
+                                      << ": " << e.what() << std::endl;
+                        }
+                    }
+                }
+
+                if (!loaded) {
+                    std::cout << "[VisionCommandHandler] System calibration file not found, using default: "
+                              << pixelToMmX << " mm/px" << std::endl;
+                }
             }
 
             // Set calibration without saving (to avoid overwriting system config)
-            // Only update the internal values, don't save to file
             VisionManager::instance().setPixelToMmNoSave(pixelToMmX, pixelToMmY);
         }
 

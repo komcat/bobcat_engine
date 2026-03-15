@@ -1,5 +1,6 @@
 // WorldOverlayManager.cpp
 #include "WorldOverlayManager.h"
+#include "CameraConfigManager.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QUuid>
@@ -359,6 +360,27 @@ double WorldOverlayManager::loadPxPerMmFromCalibration(const QString& calibratio
   }
 
   return m_defaultPxPerMm;
+}
+
+double WorldOverlayManager::loadPxPerMmFromCalibration(const std::string& cameraId, CameraConfigManager* configMgr)
+{
+  if (configMgr && !cameraId.empty()) {
+    CameraConfigData::PixelCalibration cal;
+    if (configMgr->GetCalibration(cameraId, cal)) {
+      double pixelToMm = (cal.pixelToMmX + cal.pixelToMmY) / 2.0;
+      if (pixelToMm > 0) {
+        m_defaultPxPerMm = 1.0 / pixelToMm;
+        std::cout << "[WorldOverlayManager] Per-camera calibration for '" << cameraId
+                  << "': pixel_to_mm=" << pixelToMm << ", px_per_mm=" << m_defaultPxPerMm << std::endl;
+        return m_defaultPxPerMm;
+      }
+    }
+    std::cout << "[WorldOverlayManager] No per-camera calibration for '" << cameraId
+              << "', falling back to file" << std::endl;
+  }
+
+  // Fall back to file-based loading
+  return loadPxPerMmFromCalibration();
 }
 
 WorldOverlayManager::ScreenPoint WorldOverlayManager::worldToScreen(

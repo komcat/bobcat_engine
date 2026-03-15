@@ -1,5 +1,6 @@
 // AuxViewWindow.cpp
 #include "AuxViewWindow.h"
+#include "CameraConfigManager.h"
 #include "CameraClickToMoveWidget.h"
 #include "LiveChartWidget.h"
 #include "WorldOverlayWidget.h"
@@ -202,6 +203,13 @@ QWidget* AuxViewWindow::createOverlayTab()
   }
 
   return tab;
+}
+
+void AuxViewWindow::setCameraConfigManager(CameraConfigManager* configMgr)
+{
+  if (m_cameraClickToMoveWidget) {
+    m_cameraClickToMoveWidget->setCameraConfigManager(configMgr);
+  }
 }
 
 void AuxViewWindow::setProductPositionManager(ProductPositionManager* positionManager)

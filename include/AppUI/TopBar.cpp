@@ -155,6 +155,7 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
   , m_auxWindowButton(nullptr)
   , m_rtlmButton(nullptr)
   , m_rtlm2Button(nullptr)
+  , m_swirButton(nullptr)
   , m_safetyIndicator(nullptr)
 {
   setupUI();
@@ -260,6 +261,40 @@ void TopBar::setupUI()
   );
   connect(m_auxWindowButton, &QPushButton::clicked, this, &TopBar::auxWindowButtonClicked);
   layout->addWidget(m_auxWindowButton);
+
+  // SWIR button (for SWIR Beam Processing Window)
+  m_swirButton = new QPushButton("SWIR", this);
+  m_swirButton->setFixedSize(70, 35);
+  m_swirButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c8b, stop:1 #c0392b); "
+    "  color: white; "
+    "  border-radius: 5px; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f75c9b, stop:1 #e74c8b); "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #a93226; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "  padding-top: 2px; "
+    "  padding-left: 2px; "
+    "}"
+  );
+  m_swirButton->setToolTip("Toggle SWIR Beam Processing Window");
+  connect(m_swirButton, &QPushButton::clicked, this, &TopBar::swirWindowButtonClicked);
+  layout->addWidget(m_swirButton);
 
   // Rltm button (for GDI Camera Window - realtime view)
   m_rtlmButton = new QPushButton("Rltm", this);
