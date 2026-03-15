@@ -268,16 +268,28 @@ void SwirBeamWindow::DiscoverPSUDevices()
     m_panelWidth = 0;  // Force button rebuild to show PSU selector
     std::cout << "[SwirBeamWindow] Discovered " << m_psuDevices.size() << " PSU device(s)" << std::endl;
 
-    // Auto-connect any disconnected PSUs
+    // Auto-connect any disconnected PSUs (background thread to avoid blocking Qt event loop)
+    std::vector<std::string> disconnectedNames;
     for (const auto& dev : m_psuDevices) {
         auto psu = m_psuManager->getPowerSupply(dev.name);
-        if (!psu || psu->isConnected()) continue;
-        std::cout << "[SwirBeamWindow] Auto-connecting " << dev.name << "..." << std::endl;
-        if (psu->connect()) {
-            std::cout << "[SwirBeamWindow] " << dev.name << " connected" << std::endl;
-        } else {
-            std::cerr << "[SwirBeamWindow] " << dev.name << " auto-connect failed" << std::endl;
+        if (psu && !psu->isConnected()) {
+            disconnectedNames.push_back(dev.name);
         }
+    }
+    if (!disconnectedNames.empty()) {
+        auto* psuMgr = m_psuManager;
+        m_psuConnectFuture = std::async(std::launch::async, [psuMgr, disconnectedNames]() {
+            for (const auto& name : disconnectedNames) {
+                auto psu = psuMgr->getPowerSupply(name);
+                if (!psu) continue;
+                std::cout << "[SwirBeamWindow] Auto-connecting " << name << "..." << std::endl;
+                if (psu->connect()) {
+                    std::cout << "[SwirBeamWindow] " << name << " connected" << std::endl;
+                } else {
+                    std::cerr << "[SwirBeamWindow] " << name << " auto-connect failed" << std::endl;
+                }
+            }
+        });
     }
 }
 

@@ -13,6 +13,7 @@
 #include <atomic>
 #include <functional>
 #include <thread>
+#include <future>
 #include <condition_variable>
 #include <chrono>
 #include "camera/CameraFrameData.h"
@@ -240,6 +241,7 @@ private:
     std::vector<PSUDeviceState> m_psuDevices;
     int m_selectedPSU = 0;       // Index into m_psuDevices
     bool m_psuDiscovered = false;
+    std::future<void> m_psuConnectFuture;  // background PSU auto-connect
 
     // Exposure state
     bool m_autoExposure = false;
