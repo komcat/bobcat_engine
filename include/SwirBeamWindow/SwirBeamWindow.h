@@ -141,10 +141,14 @@ private:
     void OnPSUToggle();
     void OnCurrentIncrease();
     void OnCurrentDecrease();
+    void OnCurrentIncreaseSmall();
+    void OnCurrentDecreaseSmall();
 
     // Exposure actions
     void OnAutoExposureToggle();
     void OnSetExposure(double microseconds);
+    void OnExposureIncrease();
+    void OnExposureDecrease();
     void OnApplyManualExposure();
 
     // Click-to-move and overlays
@@ -287,7 +291,9 @@ private:
     bool m_mouseTracking = false;
 
     // Current step for PSU
-    static constexpr double CURRENT_STEP_MA = 50.0;  // 50mA step
+    static constexpr double CURRENT_STEP_MA = 50.0;      // 50mA step
+    static constexpr double CURRENT_STEP_SMALL_MA = 10.0; // 10mA step
+    static constexpr double EXPOSURE_STEP_US = 50.0;      // 50us step
 
     // Magnification (optical objective)
     double m_magnification = 20.0;
@@ -312,4 +318,24 @@ private:
     std::mutex m_beamMutex;
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
+
+    // Frame averaging for stable detection
+    static constexpr int FRAME_AVG_COUNT = 5;
+    std::vector<std::vector<uint8_t>> m_avgFrameRing;  // ring buffer of grayscale frames
+    int m_avgFrameIndex = 0;                            // next write position
+    int m_avgFramesFilled = 0;                          // frames accumulated so far
+
+    // Paint throttle: track last InvalidateRect time to avoid flooding message queue
+    std::chrono::steady_clock::time_point m_lastInvalidateTime{};
+
+    // Cached control panel bitmap (only redrawn on state change)
+    HDC m_panelCacheDC = nullptr;
+    HBITMAP m_panelCacheBitmap = nullptr;
+    HBITMAP m_panelCacheOldBitmap = nullptr;
+    int m_panelCacheWidth = 0;
+    int m_panelCacheHeight = 0;
+    std::atomic<bool> m_panelDirty{true};
+
+    void InvalidatePanel() { m_panelDirty.store(true); }
+    void CleanupPanelCache();
 };

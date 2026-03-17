@@ -155,7 +155,7 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       uint32_t frameW, uint32_t frameH) {
     if (results.empty() || frameW == 0 || frameH == 0 || renderW <= 0 || renderH <= 0) return;
 
-    Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+    static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
 
     for (const auto& beam : results) {
         const auto& d4 = beam.d4;
@@ -221,25 +221,31 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                 titleLine = ss.str();
             }
 
-            wchar_t cxLine[32], cyLine[32], dxLine[32], dyLine[32], eeLine[32];
+            wchar_t cxLine[32], cyLine[32], dxLine[32], dyLine[32];
+            wchar_t eeLine[32], ceLine[32], teLine[32];
             swprintf_s(cxLine, L"cx: %6.1f", d4.cx);
             swprintf_s(cyLine, L"cy: %6.1f", d4.cy);
             swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
             swprintf_s(dyLine, L"dy: %6.1f", d4.dy);
             swprintf_s(eeLine, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
+            swprintf_s(ceLine, L"CE: %7.0f", beam.circleEnergy);
+            swprintf_s(teLine, L"TE: %7.0f", beam.totalEnergy);
 
-            const wchar_t* rows[] = { titleLine.c_str(), cxLine, cyLine, dxLine, dyLine, eeLine };
-            static constexpr int numRows = 6;
+            const wchar_t* rows[] = { titleLine.c_str(), cxLine, cyLine, dxLine, dyLine, eeLine, ceLine, teLine };
+            static constexpr int numRows = 8;
             static constexpr float rowH = 14.0f;
             float totalH = rowH * numRows + 4.0f;
 
-            // Measure widest row for background width
-            float maxW = 0.0f;
-            for (int r = 0; r < numRows; ++r) {
+            // Cache the max width once (fixed-width font, content is always ~same width)
+            static float cachedMaxW = 0.0f;
+            float maxW;
+            if (cachedMaxW < 1.0f) {
+                // Measure once with a representative string
                 Gdiplus::RectF m;
-                gfx.MeasureString(rows[r], -1, &labelFont, Gdiplus::PointF(0, 0), &m);
-                if (m.Width > maxW) maxW = m.Width;
+                gfx.MeasureString(L"cx: 9999.9", -1, &labelFont, Gdiplus::PointF(0, 0), &m);
+                cachedMaxW = m.Width;
             }
+            maxW = cachedMaxW;
 
             // Position: above the beam box, snapped to grid
             float labelX = snapX;
@@ -271,35 +277,8 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
             }
         }
 
-        // Chart display sizes (square: chartDim x chartDim in image pixels)
-        float dChartW = imgToDispLenX(chartDim, renderW, frameW);
-        float dChartH = imgToDispLenY(chartDim, renderH, frameH);
-
-        // (d) X profile chart - above the beam, centered on cx
-        //     Image-space: centered on cx horizontally, bottom edge at cy - chartDim
-        {
-            ProfileSubRange sub = extractSubRange(beam.xProfile, beam.profileXStart,
-                                                  d4.cx, chartDim);
-            // Display position: centered on ccx, bottom at ccy - chartDim (in display)
-            float xChartLeft = ccx - dChartW / 2.0f;
-            float xChartTop = ccy - imgToDispLenY(chartDim, renderH, frameH) - dChartH;
-            DrawHorizProfileChart(gfx, sub, xChartLeft, xChartTop, dChartW, dChartH,
-                                  d4.cx, d4.dx, renderX, renderW, frameW,
-                                  Gdiplus::Color(220, 0, 255, 255));
-        }
-
-        // (e) Y profile chart - right of the beam, centered on cy
-        //     Image-space: centered on cy vertically, left edge at cx + chartDim
-        {
-            ProfileSubRange sub = extractSubRange(beam.yProfile, beam.profileYStart,
-                                                  d4.cy, chartDim);
-            // Display position: left at ccx + chartDim (in display), centered on ccy
-            float yChartLeft = ccx + imgToDispLenX(chartDim, renderW, frameW);
-            float yChartTop = ccy - dChartH / 2.0f;
-            DrawVertProfileChart(gfx, sub, yChartLeft, yChartTop, dChartW, dChartH,
-                                 d4.cy, d4.dy, renderY, renderH, frameH,
-                                 Gdiplus::Color(220, 255, 0, 255));
-        }
+        // Profile charts suppressed — polyline drawing + per-frame vector
+        // allocation adds paint overhead, contributing to UI lag.
     }
 }
 

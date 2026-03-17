@@ -48,7 +48,7 @@ bool SwirBeamWindowManager::initialize()
     // Win32 message pump timer (~60fps)
     m_messageTimer = new QTimer(this);
     connect(m_messageTimer, &QTimer::timeout, this, &SwirBeamWindowManager::processMessages);
-    m_messageTimer->start(16);
+    m_messageTimer->start(33);
 
     // PSU polling timer (500ms)
     m_psuPollTimer = new QTimer(this);

@@ -209,7 +209,12 @@ void d4sigma_fast(const cv::Mat& E, int x0, int y0, double threshold,
 // ============================================================================
 
 double ComputeEncircledEnergy(const cv::Mat& img, double cx, double cy,
-                              double radius, const Roi& roi) {
+                              double radius, const Roi& roi,
+                              double* outCircleEnergy,
+                              double* outTotalEnergy) {
+    if (outCircleEnergy) *outCircleEnergy = 0.0;
+    if (outTotalEnergy) *outTotalEnergy = 0.0;
+
     if (img.empty() || radius <= 0.0) return 0.0;
 
     int x0 = std::max(roi.x0, 0);
@@ -236,6 +241,9 @@ double ComputeEncircledEnergy(const cv::Mat& img, double cx, double cy,
             }
         }
     }
+
+    if (outCircleEnergy) *outCircleEnergy = circleEnergy;
+    if (outTotalEnergy) *outTotalEnergy = totalEnergy;
 
     if (totalEnergy < 1e-30) return 0.0;
     return circleEnergy / totalEnergy;
@@ -307,6 +315,8 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         double intensity;  // sum of E^2 in ROI
         size_t origIdx;
         double encircledEnergy = 0.0;
+        double circleEnergy = 0.0;
+        double totalEnergy = 0.0;
     };
     std::vector<BeamCandidate> candidates;
 
@@ -342,6 +352,16 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         // Skip beams that are too small (noise spikes)
         if (std::max(d4.dx, d4.dy) < config.minD4Sigma) continue;
 
+        // Skip beams with both diameters below 8 pixels (sub-pixel noise)
+        if (d4.dx < 8.0 && d4.dy < 8.0) continue;
+
+        // Skip beams with extreme aspect ratio (>2:1) - likely detection artifact
+        {
+            double minD = std::min(d4.dx, d4.dy);
+            double maxD = std::max(d4.dx, d4.dy);
+            if (minD > 1e-6 && (maxD / minD) > 2.0) continue;
+        }
+
         // Skip beams with insufficient peak signal (noise)
         {
             float peakVal = 0.0f;
@@ -372,7 +392,8 @@ std::vector<BeamDetectionResult> RunBeamDetection(
     for (auto& cand : candidates) {
         double eeRadius = std::max(cand.d4.dx, cand.d4.dy) / 2.0;
         cand.encircledEnergy = ComputeEncircledEnergy(floatMat, cand.d4.cx, cand.d4.cy,
-                                                      eeRadius, cand.d4.roi);
+                                                      eeRadius, cand.d4.roi,
+                                                      &cand.circleEnergy, &cand.totalEnergy);
     }
 
     // Sort by intensity descending, take top maxBeams
@@ -400,6 +421,8 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         BeamDetectionResult res;
         res.d4 = cand.d4;
         res.encircledEnergy = cand.encircledEnergy;
+        res.circleEnergy = cand.circleEnergy;
+        res.totalEnergy = cand.totalEnergy;
         res.label = "B" + std::to_string(bi);
 
         // GA labeling

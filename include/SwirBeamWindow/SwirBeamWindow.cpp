@@ -105,11 +105,26 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
     return true;
 }
 
+void SwirBeamWindow::CleanupPanelCache()
+{
+    if (m_panelCacheDC) {
+        if (m_panelCacheOldBitmap) SelectObject(m_panelCacheDC, m_panelCacheOldBitmap);
+        if (m_panelCacheBitmap) DeleteObject(m_panelCacheBitmap);
+        DeleteDC(m_panelCacheDC);
+        m_panelCacheDC = nullptr;
+        m_panelCacheBitmap = nullptr;
+        m_panelCacheOldBitmap = nullptr;
+        m_panelCacheWidth = 0;
+        m_panelCacheHeight = 0;
+    }
+}
+
 void SwirBeamWindow::Destroy()
 {
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
+        CleanupPanelCache();
         if (m_memDC) {
             if (m_oldBitmap) SelectObject(m_memDC, m_oldBitmap);
             if (m_memBitmap) DeleteObject(m_memBitmap);
@@ -313,66 +328,99 @@ void SwirBeamWindow::OnNewFrame(const CameraFrameData& frameData)
         std::lock_guard<std::mutex> lock(m_cameraMutex);
         if (!m_targetCameraId.empty() && frameData.cameraId != m_targetCameraId) return;
     }
-    {
+
+    const uint32_t w = frameData.width;
+    const uint32_t h = frameData.height;
+    const uint8_t* src = frameData.imageData.data();
+    const int channels = frameData.channels;
+
+    // Feed grayscale to beam detection thread (separate lock, independent of display)
+    if (m_beamDetectionEnabled) {
+        std::lock_guard<std::mutex> detLock(m_detectionMutex);
+        const size_t graySize = static_cast<size_t>(w) * h;
+        if (m_detectionBuffer.size() != graySize) m_detectionBuffer.resize(graySize);
+        m_detectionWidth = w;
+        m_detectionHeight = h;
+        if (channels == 1) {
+            std::memcpy(m_detectionBuffer.data(), src, graySize);
+        } else {
+            // Luminance from RGB: use green channel as fast approximation
+            for (uint32_t i = 0; i < w * h; ++i) {
+                m_detectionBuffer[i] = src[i * channels + 1];
+            }
+        }
+        m_detectionReady.store(true);
+    }
+
+    // Skip display buffer conversion if previous frame not yet rendered.
+    // This prevents the grab thread from stalling on expensive pixel work
+    // when the UI can't keep up, while detection still gets every frame.
+    if (!m_hasNewFrame.load()) {
         std::lock_guard<std::mutex> lock(m_frameMutex);
-        const uint32_t w = frameData.width;
-        const uint32_t h = frameData.height;
         const size_t bgrSize = static_cast<size_t>(w) * h * 3;
         if (m_frameBuffer.size() != bgrSize) m_frameBuffer.resize(bgrSize);
         m_frameWidth = w;
         m_frameHeight = h;
-        const uint8_t* src = frameData.imageData.data();
-        const int channels = frameData.channels;
-        for (uint32_t row = 0; row < h; ++row) {
-            const uint32_t dstRow = h - 1 - row;
-            for (uint32_t col = 0; col < w; ++col) {
-                const size_t srcIdx = (static_cast<size_t>(row) * w + col) * channels;
-                const size_t dstIdx = (static_cast<size_t>(dstRow) * w + col) * 3;
-                if (channels >= 3) {
-                    m_frameBuffer[dstIdx + 0] = src[srcIdx + 2];
-                    m_frameBuffer[dstIdx + 1] = src[srcIdx + 1];
-                    m_frameBuffer[dstIdx + 2] = src[srcIdx + 0];
-                } else {
-                    m_frameBuffer[dstIdx + 0] = src[srcIdx];
-                    m_frameBuffer[dstIdx + 1] = src[srcIdx];
-                    m_frameBuffer[dstIdx + 2] = src[srcIdx];
+
+        if (channels >= 3) {
+            // Row-level copy with RGB->BGR swap and vertical flip
+            const size_t rowBytes = static_cast<size_t>(w) * 3;
+            for (uint32_t row = 0; row < h; ++row) {
+                const uint32_t dstRow = h - 1 - row;
+                const uint8_t* srcLine = src + static_cast<size_t>(row) * w * channels;
+                uint8_t* dstLine = m_frameBuffer.data() + static_cast<size_t>(dstRow) * rowBytes;
+                for (uint32_t col = 0; col < w; ++col) {
+                    dstLine[col * 3 + 0] = srcLine[col * 3 + 2];
+                    dstLine[col * 3 + 1] = srcLine[col * 3 + 1];
+                    dstLine[col * 3 + 2] = srcLine[col * 3 + 0];
+                }
+            }
+        } else {
+            // Mono: row-level grayscale-to-BGR expansion with vertical flip
+            for (uint32_t row = 0; row < h; ++row) {
+                const uint32_t dstRow = h - 1 - row;
+                const uint8_t* srcLine = src + static_cast<size_t>(row) * w;
+                uint8_t* dstLine = m_frameBuffer.data() + static_cast<size_t>(dstRow) * w * 3;
+                for (uint32_t col = 0; col < w; ++col) {
+                    const uint8_t v = srcLine[col];
+                    dstLine[col * 3 + 0] = v;
+                    dstLine[col * 3 + 1] = v;
+                    dstLine[col * 3 + 2] = v;
                 }
             }
         }
         m_hasNewFrame.store(true);
-
-        // FPS tracking
-        ++m_frameCount;
-        auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(now - m_fpsTimestamp).count();
-        if (elapsed >= 1.0) {
-            m_displayFps = m_frameCount / elapsed;
-            m_frameCount = 0;
-            m_fpsTimestamp = now;
-        }
-
-        // Feed grayscale to beam detection thread
-        if (m_beamDetectionEnabled) {
-            std::lock_guard<std::mutex> detLock(m_detectionMutex);
-            const size_t graySize = static_cast<size_t>(w) * h;
-            if (m_detectionBuffer.size() != graySize) m_detectionBuffer.resize(graySize);
-            m_detectionWidth = w;
-            m_detectionHeight = h;
-            if (channels == 1) {
-                std::memcpy(m_detectionBuffer.data(), src, graySize);
-            } else {
-                // Luminance from RGB: use green channel as fast approximation
-                for (uint32_t i = 0; i < w * h; ++i) {
-                    m_detectionBuffer[i] = src[i * channels + 1];
-                }
-            }
-            m_detectionReady.store(true);
-        }
     }
+
+    // FPS tracking (lock-free, only written from grab thread)
+    ++m_frameCount;
+    auto now = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double>(now - m_fpsTimestamp).count();
+    if (elapsed >= 1.0) {
+        m_displayFps = m_frameCount / elapsed;
+        m_frameCount = 0;
+        m_fpsTimestamp = now;
+    }
+
     if (m_beamDetectionEnabled) {
         m_detectionCV.notify_one();
     }
-    InvalidateRect(m_hwnd, nullptr, FALSE);
+
+    // Throttle repaint requests to ~30fps to avoid flooding the message queue
+    auto timeSinceLastInvalidate = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - m_lastInvalidateTime).count();
+    if (timeSinceLastInvalidate >= 30) {
+        m_lastInvalidateTime = now;
+        // Only invalidate image area — skip repainting the control panel
+        if (m_lastRenderW > 0 && m_lastRenderH > 0) {
+            RECT imageInvalidRect = { m_lastRenderX, 0,
+                                      m_lastRenderX + m_lastRenderW + 1,
+                                      m_lastRenderY + m_lastRenderH + 1 };
+            InvalidateRect(m_hwnd, &imageInvalidRect, FALSE);
+        } else {
+            InvalidateRect(m_hwnd, nullptr, FALSE);
+        }
+    }
 }
 
 void SwirBeamWindow::OnCameraStatusChanged(const std::string& /*cameraId*/, bool /*connected*/, bool /*grabbing*/)
@@ -407,7 +455,7 @@ void SwirBeamWindow::PollPSUReadings()
     auto* self = this;
     std::thread([self, psuMgr, names]() {
         // Read from hardware (may block 50-100ms per call)
-        struct Reading { std::string name; double voltage; double current; bool outputOn; };
+        struct Reading { std::string name; double voltage; double current; double setCurrentVal; bool outputOn; };
         std::vector<Reading> readings;
         for (const auto& name : names) {
             auto psu = psuMgr->getPowerSupply(name);
@@ -416,6 +464,7 @@ void SwirBeamWindow::PollPSUReadings()
             r.name = name;
             r.voltage = psu->readVoltage(1);
             r.current = psu->readCurrent(1);
+            r.setCurrentVal = psu->readSetCurrent(1);
             r.outputOn = psu->readOutputState(1);
             readings.push_back(r);
         }
@@ -429,6 +478,10 @@ void SwirBeamWindow::PollPSUReadings()
                         dev.voltage = r.voltage;
                         dev.current = r.current;
                         dev.outputOn = r.outputOn;
+                        // Sync programmed current from hardware so +/- buttons work correctly
+                        if (r.setCurrentVal >= 0.0) {
+                            dev.setCurrent = r.setCurrentVal;
+                        }
                         break;
                     }
                 }
@@ -436,6 +489,7 @@ void SwirBeamWindow::PollPSUReadings()
         }
 
         self->m_psuPollInFlight.store(false);
+        self->InvalidatePanel();
 
         if (self->m_hwnd && self->IsVisible()) {
             InvalidateRect(self->m_hwnd, nullptr, FALSE);
@@ -453,6 +507,7 @@ void SwirBeamWindow::OnSelectPSU(int index)
     if (index >= 0 && index < static_cast<int>(m_psuDevices.size())) {
         m_selectedPSU = index;
         m_panelWidth = 0;  // Force button rebuild
+        InvalidatePanel();
         std::cout << "[SwirBeamWindow] Selected PSU: " << m_psuDevices[index].name << std::endl;
     }
 }
@@ -501,6 +556,7 @@ void SwirBeamWindow::OnPSUToggle()
         psu->setOutputOn(1);
         std::cout << "[SwirBeamWindow] " << devName << " output ON" << std::endl;
     }
+    InvalidatePanel();
 }
 
 void SwirBeamWindow::OnCurrentIncrease()
@@ -519,6 +575,7 @@ void SwirBeamWindow::OnCurrentIncrease()
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
     psu->setCurrent(newCurrent, 1);
+    InvalidatePanel();
     std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
@@ -539,6 +596,48 @@ void SwirBeamWindow::OnCurrentDecrease()
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
     psu->setCurrent(newCurrent, 1);
+    InvalidatePanel();
+    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+}
+
+void SwirBeamWindow::OnCurrentIncreaseSmall()
+{
+    if (!m_psuManager) return;
+    std::string devName;
+    double newCurrent;
+    {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
+        auto& dev = m_psuDevices[m_selectedPSU];
+        dev.setCurrent += CURRENT_STEP_SMALL_MA / 1000.0;
+        devName = dev.name;
+        newCurrent = dev.setCurrent;
+    }
+    auto psu = m_psuManager->getPowerSupply(devName);
+    if (!psu || !psu->isConnected()) return;
+    psu->setCurrent(newCurrent, 1);
+    InvalidatePanel();
+    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+}
+
+void SwirBeamWindow::OnCurrentDecreaseSmall()
+{
+    if (!m_psuManager) return;
+    std::string devName;
+    double newCurrent;
+    {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
+        auto& dev = m_psuDevices[m_selectedPSU];
+        dev.setCurrent -= CURRENT_STEP_SMALL_MA / 1000.0;
+        if (dev.setCurrent < 0.0) dev.setCurrent = 0.0;
+        devName = dev.name;
+        newCurrent = dev.setCurrent;
+    }
+    auto psu = m_psuManager->getPowerSupply(devName);
+    if (!psu || !psu->isConnected()) return;
+    psu->setCurrent(newCurrent, 1);
+    InvalidatePanel();
     std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
@@ -554,6 +653,7 @@ void SwirBeamWindow::OnAutoExposureToggle()
     m_autoExposure = !m_autoExposure;
     settings.auto_exposure = m_autoExposure;
     m_cameraManager->ApplyExposureSettings(camId, settings);
+    InvalidatePanel();
     std::cout << "[SwirBeamWindow] Auto exposure " << (m_autoExposure ? "ON" : "OFF") << std::endl;
 }
 
@@ -570,6 +670,21 @@ void SwirBeamWindow::OnSetExposure(double microseconds)
     m_cameraManager->ApplyExposureSettings(camId, settings);
 
     std::cout << "[SwirBeamWindow] Exposure set to " << microseconds << " us (auto gain OFF)" << std::endl;
+}
+
+void SwirBeamWindow::OnExposureIncrease()
+{
+    double newExposure = m_currentExposure + EXPOSURE_STEP_US;
+    OnSetExposure(newExposure);
+    InvalidatePanel();
+}
+
+void SwirBeamWindow::OnExposureDecrease()
+{
+    double newExposure = m_currentExposure - EXPOSURE_STEP_US;
+    if (newExposure < 1.0) newExposure = 1.0;
+    OnSetExposure(newExposure);
+    InvalidatePanel();
 }
 
 // Dialog proc for exposure input
@@ -734,6 +849,19 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     m_buttons.push_back(btnDec);
     y += btnHeight + btnSpacing;
 
+    // +10mA / -10mA
+    SwirButton btnIncSmall;
+    btnIncSmall.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
+    btnIncSmall.label = L"+10mA";
+    btnIncSmall.onClick = [this]() { OnCurrentIncreaseSmall(); };
+    m_buttons.push_back(btnIncSmall);
+    SwirButton btnDecSmall;
+    btnDecSmall.rect = {btnLeft + halfBtnWidth + btnSpacing, y, btnLeft + btnWidth, y + btnHeight};
+    btnDecSmall.label = L"-10mA";
+    btnDecSmall.onClick = [this]() { OnCurrentDecreaseSmall(); };
+    m_buttons.push_back(btnDecSmall);
+    y += btnHeight + btnSpacing;
+
     // 3 text label rows (Set, Voltage, Current) + bottom padding
     y += labelHeight * 3 + groupPad;
 
@@ -753,6 +881,19 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     autoExpBtn.tag = TAG_AUTO_EXP;
     autoExpBtn.onClick = [this]() { OnAutoExposureToggle(); };
     m_buttons.push_back(autoExpBtn);
+    y += btnHeight + btnSpacing;
+
+    // +50us / -50us
+    SwirButton btnExpInc;
+    btnExpInc.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
+    btnExpInc.label = L"+50 us";
+    btnExpInc.onClick = [this]() { OnExposureIncrease(); };
+    m_buttons.push_back(btnExpInc);
+    SwirButton btnExpDec;
+    btnExpDec.rect = {btnLeft + halfBtnWidth + btnSpacing, y, btnLeft + btnWidth, y + btnHeight};
+    btnExpDec.label = L"-50 us";
+    btnExpDec.onClick = [this]() { OnExposureDecrease(); };
+    m_buttons.push_back(btnExpDec);
     y += btnHeight + btnSpacing;
 
     // Exposure presets (2x2)
@@ -813,6 +954,7 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     ctmBtn.toggled = m_clickToMoveEnabled;
     ctmBtn.onClick = [this]() {
         m_clickToMoveEnabled = !m_clickToMoveEnabled;
+        InvalidatePanel();
         std::cout << "[SwirBeamWindow] Click-to-move " << (m_clickToMoveEnabled ? "enabled" : "disabled") << std::endl;
     };
     m_buttons.push_back(ctmBtn);
@@ -939,7 +1081,7 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
 
     // Label text
     Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
-    Gdiplus::Font font(L"Segoe UI", 8.5f, Gdiplus::FontStyleBold);
+    static Gdiplus::Font font(L"Segoe UI", 8.5f, Gdiplus::FontStyleBold);
     Gdiplus::StringFormat format;
     format.SetAlignment(Gdiplus::StringAlignmentCenter);
     format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
@@ -986,6 +1128,7 @@ void SwirBeamWindow::PrepareBackBuffer()
 void SwirBeamWindow::RenderFrame(HDC hdc, const RECT& imageRect)
 {
     std::lock_guard<std::mutex> lock(m_frameMutex);
+    m_hasNewFrame.store(false);  // Allow grab thread to write next frame
     int destX = imageRect.left;
     int destY = imageRect.top;
     int destW = imageRect.right - imageRect.left;
@@ -1096,10 +1239,10 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
                   static_cast<float>(panelRect.right - 1), static_cast<float>(panelRect.top),
                   static_cast<float>(panelRect.right - 1), static_cast<float>(panelRect.bottom));
 
-    // Fonts
-    Gdiplus::Font labelFont(L"Segoe UI", 8.0f, Gdiplus::FontStyleRegular);
-    Gdiplus::Font valueFont(L"Consolas", 9.0f, Gdiplus::FontStyleBold);
-    Gdiplus::Font smallFont(L"Segoe UI", 7.5f);
+    // Fonts (static — created once, reused every frame)
+    static Gdiplus::Font labelFont(L"Segoe UI", 8.0f, Gdiplus::FontStyleRegular);
+    static Gdiplus::Font valueFont(L"Consolas", 9.0f, Gdiplus::FontStyleBold);
+    static Gdiplus::Font smallFont(L"Segoe UI", 7.5f);
     Gdiplus::SolidBrush labelBrush(CLR_TEXT_DIM);
     Gdiplus::SolidBrush valueBrush(CLR_VALUE);
     Gdiplus::SolidBrush dimBrush(CLR_TEXT_DIM);
@@ -1124,6 +1267,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     if (numPSU > 0) y += btnHeight + btnSpacing;
     y += btnHeight + btnSpacing;  // ON/OFF
     y += btnHeight + btnSpacing;  // +50/-50
+    y += btnHeight + btnSpacing;  // +10/-10
 
     // Readings Y starts here
     float readY = static_cast<float>(y);
@@ -1203,6 +1347,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     int expGroupTop = y;
     y += titleH + groupPad;
     y += btnHeight + btnSpacing;        // AUTO EXP
+    y += btnHeight + btnSpacing;        // +50us/-50us
     y += (btnHeight + btnSpacing) * 2;  // 2x2 presets
     y += btnHeight + btnSpacing;        // manual input + SET
     float expInfoY = static_cast<float>(y);
@@ -1255,7 +1400,12 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
     if (m_lastRenderW <= 0 || m_lastRenderH <= 0) return;
 
     Gdiplus::Graphics gfx(hdc);
-    gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    if (m_beamDetectionEnabled) {
+        gfx.SetSmoothingMode(Gdiplus::SmoothingModeHighSpeed);
+        gfx.SetTextRenderingHint(Gdiplus::TextRenderingHintSystemDefault);
+    } else {
+        gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    }
 
     // Draw world-locked markers (before crosshair so crosshair draws on top)
     DrawWorldMarkers(gfx);
@@ -1349,7 +1499,7 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
         gfx.DrawRectangle(&borderPen, bgRect);
 
         // Text
-        Gdiplus::Font font(L"Consolas", 9.5f, Gdiplus::FontStyleBold);
+        static Gdiplus::Font font(L"Consolas", 9.5f, Gdiplus::FontStyleBold);
         Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
         gfx.DrawString(dxBuf, -1, &font, Gdiplus::PointF(textX, textY), &textBrush);
         gfx.DrawString(dyBuf, -1, &font, Gdiplus::PointF(textX, textY + 17.0f), &textBrush);
@@ -1363,22 +1513,15 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
                              m_frameWidth, m_frameHeight);
 
-            // Magnified beam thumbnails
-            {
-                std::lock_guard<std::mutex> frameLock(m_frameMutex);
-                if (!m_frameBuffer.empty()) {
-                    DrawBeamMagnifiers(gfx, m_beamResults,
-                                       m_frameBuffer.data(), m_frameWidth, m_frameHeight,
-                                       m_lastRenderX, m_lastRenderY,
-                                       m_lastRenderW, m_lastRenderH);
-                }
-            }
+            // Magnified beam thumbnails suppressed — the per-pixel resampling
+            // and nested m_frameMutex acquisition add significant paint overhead,
+            // causing UI lag on jog panel and GDI camera windows.
         }
     }
 
     // Info overlay - lower left corner of viewport (cal, mag, FPS stacked)
     {
-        Gdiplus::Font infoFont(L"Consolas", 9.0f, Gdiplus::FontStyleBold);
+        static Gdiplus::Font infoFont(L"Consolas", 9.0f, Gdiplus::FontStyleBold);
         float infoX = static_cast<float>(m_lastRenderX + 6);
         float lineH = 18.0f;
 
@@ -1754,6 +1897,7 @@ void SwirBeamWindow::OnSwirHeadToggle()
         std::cerr << "[SwirBeamWindow] SWIR Head toggle failed: " << GetPneumaticErrorString(err) << std::endl;
     }
 
+    InvalidatePanel();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -1833,12 +1977,12 @@ void SwirBeamWindow::SaveBeamConfig()
     j["minD4Sigma"] = m_beamConfig.minD4Sigma;
     j["minPeakValue"] = m_beamConfig.minPeakValue;
 
-    std::ofstream ofs("config/beam_detection.json");
+    std::ofstream ofs("config/beam_detection.local.json");
     if (ofs.is_open()) {
         ofs << j.dump(4) << std::endl;
-        std::cout << "[SwirBeamWindow] Beam config saved" << std::endl;
+        std::cout << "[SwirBeamWindow] Beam config saved to beam_detection.local.json" << std::endl;
     } else {
-        std::cerr << "[SwirBeamWindow] Failed to save beam_detection.json" << std::endl;
+        std::cerr << "[SwirBeamWindow] Failed to save beam_detection.local.json" << std::endl;
     }
 }
 
@@ -1847,8 +1991,8 @@ void SwirBeamWindow::OnEditBeamConfig()
     // Save current config first so the file is up to date
     SaveBeamConfig();
 
-    // Get absolute path to config file
-    std::string path = "config\\beam_detection.json";
+    // Get absolute path to local config file (user-editable)
+    std::string path = "config\\beam_detection.local.json";
     char fullPath[MAX_PATH] = {};
     GetFullPathNameA(path.c_str(), MAX_PATH, fullPath, nullptr);
 
@@ -1894,6 +2038,7 @@ void SwirBeamWindow::OnBeamDetectToggle()
         std::lock_guard<std::mutex> lock(m_beamMutex);
         m_beamResults.clear();
     }
+    InvalidatePanel();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -1903,6 +2048,12 @@ void SwirBeamWindow::StartDetectionThread()
 
     m_detectionShutdown.store(false);
     m_detectionReady.store(false);
+
+    // Reset frame averaging ring buffer
+    m_avgFrameRing.clear();
+    m_avgFrameRing.resize(FRAME_AVG_COUNT);
+    m_avgFrameIndex = 0;
+    m_avgFramesFilled = 0;
 
     m_detectionThread = std::thread([this]() {
 #ifdef HAS_OPENCV
@@ -1935,8 +2086,36 @@ void SwirBeamWindow::StartDetectionThread()
 
             if (localBuffer.empty() || localW == 0 || localH == 0) continue;
 
-            // Run detection
-            auto results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            const size_t pixelCount = static_cast<size_t>(localW) * localH;
+
+            // Reset ring buffer if frame size changed
+            if (m_avgFramesFilled > 0 && m_avgFrameRing[0].size() != pixelCount) {
+                for (auto& frame : m_avgFrameRing) frame.clear();
+                m_avgFrameIndex = 0;
+                m_avgFramesFilled = 0;
+            }
+
+            // Store frame in ring buffer
+            m_avgFrameRing[m_avgFrameIndex] = localBuffer;
+            m_avgFrameIndex = (m_avgFrameIndex + 1) % FRAME_AVG_COUNT;
+            if (m_avgFramesFilled < FRAME_AVG_COUNT) ++m_avgFramesFilled;
+
+            // Average accumulated frames
+            std::vector<uint8_t> avgBuffer(pixelCount);
+            if (m_avgFramesFilled == 1) {
+                avgBuffer = localBuffer;
+            } else {
+                for (size_t px = 0; px < pixelCount; ++px) {
+                    int sum = 0;
+                    for (int f = 0; f < m_avgFramesFilled; ++f) {
+                        sum += m_avgFrameRing[f][px];
+                    }
+                    avgBuffer[px] = static_cast<uint8_t>(sum / m_avgFramesFilled);
+                }
+            }
+
+            // Run detection on averaged frame
+            auto results = RunBeamDetection(avgBuffer.data(), localW, localH, m_beamConfig);
 
             // Publish results
             {
@@ -2109,7 +2288,35 @@ void SwirBeamWindow::OnPaint()
         RebuildButtons(panelRect);
         RenderFrame(m_memDC, imageRect);
         DrawOverlays(m_memDC);
-        RenderControlPanel(m_memDC, panelRect);
+
+        // Panel cache: only re-render control panel when state changes (dirty flag)
+        {
+            int pw = panelRect.right - panelRect.left;
+            int ph = panelRect.bottom - panelRect.top;
+            // Recreate cache bitmap if size changed
+            if (pw != m_panelCacheWidth || ph != m_panelCacheHeight) {
+                CleanupPanelCache();
+                m_panelDirty.store(true);
+            }
+            if (m_panelDirty.load()) {
+                // (Re)create cache DC/bitmap if needed
+                if (!m_panelCacheDC) {
+                    m_panelCacheDC = CreateCompatibleDC(m_memDC);
+                    m_panelCacheBitmap = CreateCompatibleBitmap(m_memDC, pw, ph);
+                    m_panelCacheOldBitmap = static_cast<HBITMAP>(SelectObject(m_panelCacheDC, m_panelCacheBitmap));
+                    m_panelCacheWidth = pw;
+                    m_panelCacheHeight = ph;
+                }
+                // Render panel into cache at origin (0,0)
+                // Offset the panelRect so it draws at (0,0) in the cache DC
+                RECT cachePanelRect = { 0, 0, pw, ph };
+                RenderControlPanel(m_panelCacheDC, cachePanelRect);
+                m_panelDirty.store(false);
+            }
+            // BitBlt cached panel into the back buffer
+            BitBlt(m_memDC, panelRect.left, panelRect.top, pw, ph,
+                   m_panelCacheDC, 0, 0, SRCCOPY);
+        }
 
         BitBlt(hdc, 0, 0, totalWidth, totalHeight, m_memDC, 0, 0, SRCCOPY);
     }
@@ -2152,13 +2359,21 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
         return 0;
     case WM_SIZE:
         m_panelWidth = 0;
+        InvalidatePanel();
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_ERASEBKGND:
         return 1;
     case WM_USER + 1:
-        // Beam detection thread requests repaint
-        InvalidateRect(hwnd, nullptr, FALSE);
+        // Beam detection thread requests repaint (image area only)
+        if (m_lastRenderW > 0 && m_lastRenderH > 0) {
+            RECT imgRect = { m_lastRenderX, 0,
+                             m_lastRenderX + m_lastRenderW + 1,
+                             m_lastRenderY + m_lastRenderH + 1 };
+            InvalidateRect(hwnd, &imgRect, FALSE);
+        } else {
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
         return 0;
     case WM_MOUSEMOVE: {
         int mx = LOWORD(lParam);
@@ -2177,7 +2392,7 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
         for (auto& btn : m_buttons) {
             bool wasHovered = btn.hovered;
             btn.hovered = (PtInRect(&btn.rect, m_mousePosition) != 0);
-            if (btn.hovered != wasHovered) needRepaint = true;
+            if (btn.hovered != wasHovered) { needRepaint = true; InvalidatePanel(); }
         }
         // Repaint when mouse is over image area AND overlays are active
         if ((m_crosshairEnabled || m_showDistanceEnabled || m_clickToMoveEnabled) &&
@@ -2192,6 +2407,7 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
         m_mouseTracking = false;
         m_mouseOverImage = false;
         for (auto& btn : m_buttons) btn.hovered = false;
+        InvalidatePanel();
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     case WM_LBUTTONDOWN: {
@@ -2200,6 +2416,7 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
         auto* btn = HitTestButton(mx, my);
         if (btn) {
             btn->pressed = true;
+            InvalidatePanel();
             InvalidateRect(hwnd, nullptr, FALSE);
             SetCapture(hwnd);
         } else if (m_clickToMoveEnabled && m_motionManager &&
@@ -2223,6 +2440,7 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
                 if (PtInRect(&btn.rect, pt) && btn.onClick) btn.onClick();
             }
         }
+        InvalidatePanel();
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
     }

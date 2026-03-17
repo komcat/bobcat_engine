@@ -469,6 +469,30 @@ double KeysightE36441A::readCurrent(int channel)
     }
 }
 
+double KeysightE36441A::readSetCurrent(int channel)
+{
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return -1.0;
+    }
+
+    // CURR? returns the programmed current level (not measured)
+    std::string response = queryChannel("CURR?", channel);
+
+    if (response.empty()) {
+        return -1.0;
+    }
+
+    try {
+        return std::stod(response);
+    }
+    catch (const std::exception& e) {
+        m_lastError = "Failed to parse set current: " + std::string(e.what());
+        std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+        return -1.0;
+    }
+}
+
 bool KeysightE36441A::readOutputState(int channel)
 {
     if (channel < 1 || channel > NUM_CHANNELS) {

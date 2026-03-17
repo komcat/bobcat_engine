@@ -351,6 +351,24 @@ double KeysightE36103B::readCurrent(int /*channel*/)
     }
 }
 
+double KeysightE36103B::readSetCurrent(int /*channel*/)
+{
+    // CURR? returns the programmed current level (not measured)
+    std::string response = query("CURR?");
+    if (response.empty()) {
+        return -1.0;
+    }
+
+    try {
+        return std::stod(response);
+    }
+    catch (const std::exception& e) {
+        m_lastError = "Failed to parse set current: " + std::string(e.what());
+        std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
+        return -1.0;
+    }
+}
+
 bool KeysightE36103B::readOutputState(int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
