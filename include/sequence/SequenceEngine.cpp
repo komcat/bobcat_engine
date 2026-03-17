@@ -242,6 +242,9 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->pneumaticManager;
       m_deviceToTypeMap[name] = "pneumatic";
     }
+    // Register generic "pneumatic" device for manager-level commands (e.g., RetractAll)
+    m_deviceToManagerMap["pneumatic"] = m_context->pneumaticManager;
+    m_deviceToTypeMap["pneumatic"] = "pneumatic";
     LogInfo("Registered " + std::to_string(slides.size()) + " pneumatic slides");
   }
 
@@ -440,6 +443,10 @@ bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const
     return smu && smu->IsConnected();
   }
   if (type == "pneumatic" && m_context->pneumaticManager) {
+    // Generic "pneumatic" device used for manager-level commands (e.g., RetractAll)
+    if (deviceName == "pneumatic") {
+      return m_context->pneumaticManager->GetSlideCount() > 0;
+    }
     auto* slide = m_context->pneumaticManager->GetSlide(deviceName);
     return slide && slide->IsIOConnected();
   }

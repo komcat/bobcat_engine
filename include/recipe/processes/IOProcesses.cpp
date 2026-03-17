@@ -397,6 +397,83 @@ public:
 };
 
 //=============================================================================
+// SLIDE RETRACT ALL PLUGIN (Table-Based UI)
+//=============================================================================
+
+class SlideRetractAllPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Slide Retract All";
+  }
+
+  std::string GetCategory() const override {
+    return "I/O & Pneumatics";
+  }
+
+  std::string GetDescription() const override {
+    return "Retract all pneumatic slides to their retracted positions";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"inbounce_delay_ms", "300"},
+      {"debounce_delay_ms", "300"}
+    };
+  }
+
+  // Use table-based UI
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
+    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    // Timing configuration
+    table->addCategoryHeader("Timing Configuration");
+    table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
+      std::stod(params.at("inbounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay before starting retract operation");
+    table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
+      std::stod(params.at("debounce_delay_ms")),
+      0, 10000, 50, 0, "ms",
+      "Delay after all slides retracted (settling time)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string inbounceDelay = params.at("inbounce_delay_ms");
+    std::string debounceDelay = params.at("debounce_delay_ms");
+
+    // Inbounce delay (wait before action)
+    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", inbounceDelay}
+      });
+    }
+
+    // Retract all slides via the pneumatic manager
+    sequence->AddAction("pneumatic", "RetractAll", {});
+
+    // Debounce delay (wait after action completed)
+    if (debounceDelay != "0" && !debounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", debounceDelay}
+      });
+    }
+
+    std::cout << "[IOProcesses] Built Slide Retract All sequence for: " << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
 // TOGGLE OUTPUT PLUGIN (Table-Based UI)
 //=============================================================================
 
@@ -547,9 +624,10 @@ namespace {
       registry.RegisterPlugin(std::make_unique<ClearOutputNamePlugin>());
       registry.RegisterPlugin(std::make_unique<SlideExtendPlugin>());
       registry.RegisterPlugin(std::make_unique<SlideRetractPlugin>());
+      registry.RegisterPlugin(std::make_unique<SlideRetractAllPlugin>());
       registry.RegisterPlugin(std::make_unique<ToggleOutputPlugin>());
 
-      std::cout << "[IOProcesses] Registered 6 I/O process plugins" << std::endl;
+      std::cout << "[IOProcesses] Registered 7 I/O process plugins" << std::endl;
     }
   };
 

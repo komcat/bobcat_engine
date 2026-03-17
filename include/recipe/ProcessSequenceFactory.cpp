@@ -391,6 +391,37 @@ ProcessSequenceFactory::ProcessSequenceFactory()
 
 
   // ============================================================================
+  // REGISTER PNEUMATIC SLIDE RETRACT ALL PROCESS
+  // ============================================================================
+  RegisterProcessBuilder("Slide Retract All", [](SequenceBuilder* sequence, const ProcessInstance* step) {
+    const auto& params = step->parameters;
+
+    std::string inbounceDelay = params.at("inbounce_delay_ms");
+    std::string debounceDelay = params.at("debounce_delay_ms");
+
+    // Inbounce delay (wait before action)
+    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", inbounceDelay}
+      });
+    }
+
+    // Retract all slides
+    sequence->AddAction("pneumatic", "RetractAll", {});
+
+    // Debounce delay (wait after action completed)
+    if (debounceDelay != "0" && !debounceDelay.empty()) {
+      sequence->AddAction("system", "Wait", {
+        {"milliseconds", debounceDelay}
+      });
+    }
+
+    std::cout << "[ProcessSequenceFactory] Built Slide Retract All sequence for: "
+      << step->userNickname << std::endl;
+  });
+
+
+  // ============================================================================
   // REGISTER SET TEC TEMP PROCESS
   // ============================================================================
   RegisterProcessBuilder("Set TEC Temp", [](SequenceBuilder* sequence, const ProcessInstance* step) {
