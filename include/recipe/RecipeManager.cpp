@@ -686,7 +686,7 @@ std::string RecipeManager::getProcessCategory(const std::string& processType)
   }
 
   // I/O & Pneumatics
-  if (processType == "Set Output" || processType == "Slide Extend" || processType == "Slide Retract") {
+  if (processType == "Set Output" || processType == "Slide Extend" || processType == "Slide Retract" || processType == "Slide Retract All") {
     return "I/O & Pneumatics";
   }
 

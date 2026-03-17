@@ -265,6 +265,39 @@ bool PneumaticCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // RETRACT ALL (retract every pneumatic slide)
+  // ============================================================================
+  else if (methodName == "RetractAll") {
+    uint32_t pollInterval = 50;
+    auto pollIt = params.find("pollInterval");
+    if (pollIt != params.end()) {
+      pollInterval = std::stoi(pollIt->second);
+    }
+
+    if (m_logger) {
+      m_logger->Info("Retracting all pneumatic slides", "PneumaticHandler");
+    }
+
+    auto slideNames = pneumaticManager->GetAllSlideNames();
+    for (const auto& name : slideNames) {
+      PneumaticError result = pneumaticManager->RetractAndWait(name, pollInterval);
+      if (result != PneumaticError::SUCCESS) {
+        errorMessage = "RetractAll failed on slide '" + name + "': " + GetPneumaticErrorString(result);
+        return false;
+      }
+      if (m_logger) {
+        m_logger->Info(name + " retracted successfully", "PneumaticHandler");
+      }
+    }
+
+    if (m_logger) {
+      m_logger->Info("All pneumatic slides retracted successfully", "PneumaticHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {
