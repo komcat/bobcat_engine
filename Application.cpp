@@ -998,7 +998,7 @@ void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& su
 void Application::performEStopCascade()
 {
   int successCount = 0;
-  int totalCount = 7;
+  int totalCount = 8;
   std::string details;
 
   // 1. Motion: emergency stop all axes
@@ -1068,6 +1068,16 @@ void Application::performEStopCascade()
     details += "Lighting: OK";
   } else {
     details += "Lighting: N/A";
+  }
+
+  // 8. SWIR Beam: cancel any running optimization
+  details += ", ";
+  if (m_swirBeamWindowManager) {
+    m_swirBeamWindowManager->emergencyStop();
+    ++successCount;
+    details += "SWIR: OK";
+  } else {
+    details += "SWIR: N/A";
   }
 
   // Build summary
@@ -1964,6 +1974,11 @@ void Application::initializeSwirBeamWindow()
   // Set pneumatic manager for SWIR head control
   if (m_pneumaticManager) {
     m_swirBeamWindowManager->setPneumaticManager(m_pneumaticManager.get());
+  }
+
+  // Set TEC manager for temperature presets
+  if (m_tecManager) {
+    m_swirBeamWindowManager->setTECManager(m_tecManager.get());
   }
 
   // Set camera config manager for per-camera calibration

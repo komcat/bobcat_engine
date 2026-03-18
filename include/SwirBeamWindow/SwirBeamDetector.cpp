@@ -362,6 +362,14 @@ std::vector<BeamDetectionResult> RunBeamDetection(
             if (minD > 1e-6 && (maxD / minD) > 2.0) continue;
         }
 
+        // Skip beams whose EE circle is clipped by image boundary
+        // (edge clipping inflates EE% by removing outer wings from denominator)
+        {
+            double eeRadius = std::max(d4.dx, d4.dy) / 2.0;
+            if (d4.cx - eeRadius < 0 || d4.cx + eeRadius > w ||
+                d4.cy - eeRadius < 0 || d4.cy + eeRadius > h) continue;
+        }
+
         // Skip beams with insufficient peak signal (noise)
         {
             float peakVal = 0.0f;

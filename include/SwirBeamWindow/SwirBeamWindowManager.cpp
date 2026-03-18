@@ -32,6 +32,7 @@ bool SwirBeamWindowManager::initialize()
     if (m_psuManager) m_window->SetPowerSupplyManager(m_psuManager);
     if (m_motionManager) m_window->SetMotionManager(m_motionManager);
     if (m_pneumaticManager) m_window->SetPneumaticManager(m_pneumaticManager);
+    if (m_tecManager) m_window->SetTECManager(m_tecManager);
     if (m_cameraConfigManager) m_window->SetCameraConfigManager(m_cameraConfigManager);
 
     m_window->SetTargetCamera(m_targetCameraId);
@@ -81,6 +82,7 @@ void SwirBeamWindowManager::setCameraManager(CameraManager* manager) { m_cameraM
 void SwirBeamWindowManager::setPowerSupplyManager(PowerSupplyManager* psuManager) { m_psuManager = psuManager; }
 void SwirBeamWindowManager::setMotionManager(UnifiedMotionManager* motionManager) { m_motionManager = motionManager; }
 void SwirBeamWindowManager::setPneumaticManager(PneumaticManager* pneumaticManager) { m_pneumaticManager = pneumaticManager; }
+void SwirBeamWindowManager::setTECManager(TECManager* tecManager) { m_tecManager = tecManager; }
 void SwirBeamWindowManager::setCameraConfigManager(CameraConfigManager* configMgr) { m_cameraConfigManager = configMgr; }
 void SwirBeamWindowManager::setBeamResultBroker(BeamResultBroker* broker) { if (m_window) m_window->SetBeamResultBroker(broker); }
 
@@ -118,6 +120,11 @@ void SwirBeamWindowManager::setWindowTitle(const std::string& title)
 
 void SwirBeamWindowManager::setWindowPosition(int x, int y) { m_initialX = x; m_initialY = y; }
 void SwirBeamWindowManager::setWindowSize(int width, int height) { m_initialWidth = width; m_initialHeight = height; }
+
+void SwirBeamWindowManager::emergencyStop()
+{
+    if (m_window) m_window->EmergencyStop();
+}
 
 void SwirBeamWindowManager::processMessages()
 {

@@ -12,6 +12,7 @@ class CameraManager;
 class PneumaticManager;
 class PowerSupplyManager;
 class SwirBeamWindow;
+class TECManager;
 class UnifiedMotionManager;
 
 /**
@@ -36,6 +37,7 @@ public:
     void setPowerSupplyManager(PowerSupplyManager* psuManager);
     void setMotionManager(UnifiedMotionManager* motionManager);
     void setPneumaticManager(PneumaticManager* pneumaticManager);
+    void setTECManager(TECManager* tecManager);
     void setCameraConfigManager(CameraConfigManager* configMgr);
     void setBeamResultBroker(BeamResultBroker* broker);
 
@@ -47,6 +49,9 @@ public:
     void hide();
     bool isVisible() const;
     void toggleVisibility();
+
+    // Emergency stop: cancels any running optimization
+    void emergencyStop();
 
     // Window configuration
     void setWindowTitle(const std::string& title);
@@ -71,6 +76,7 @@ private:
     CameraManager* m_cameraManager = nullptr;
     PowerSupplyManager* m_psuManager = nullptr;
     PneumaticManager* m_pneumaticManager = nullptr;
+    TECManager* m_tecManager = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;
     std::shared_ptr<SwirBeamWindow> m_window;
     QTimer* m_messageTimer = nullptr;

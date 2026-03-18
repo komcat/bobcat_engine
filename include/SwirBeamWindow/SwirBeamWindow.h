@@ -19,6 +19,8 @@
 #include <chrono>
 #include "camera/CameraFrameData.h"
 #include "SwirBeamDetector.h"
+#include "BeamOptimizer/BeamHillClimb.h"
+#include "BeamOptimizer/BeamScoreProvider.h"
 
 enum class SwirMarkerType { VLine, HLine };
 
@@ -35,6 +37,7 @@ class CameraConfigManager;
 class CameraManager;
 class PowerSupplyManager;
 class PneumaticManager;
+class TECManager;
 class UnifiedMotionManager;
 
 /**
@@ -90,12 +93,16 @@ public:
     bool IsVisible() const;
     void SetTitle(const std::string& title);
 
+    // Emergency stop: cancels any running optimization (beam focus, etc.)
+    void EmergencyStop();
+
     // Manager injection
     void SetCameraManager(CameraManager* cameraManager);
     void SetPowerSupplyManager(PowerSupplyManager* psuManager);
     void SetMotionManager(UnifiedMotionManager* motionManager);
     void SetCameraConfigManager(CameraConfigManager* configMgr);
     void SetPneumaticManager(PneumaticManager* pneumaticManager);
+    void SetTECManager(TECManager* tecManager) { m_tecManager = tecManager; }
     void SetBeamResultBroker(BeamResultBroker* broker) { m_beamResultBroker = broker; }
 
     // Configuration
@@ -188,6 +195,10 @@ private:
     void OnBeamOptimize();
     void OnBeamFocus();
 
+    // TEC actions
+    void OnTECPreset(double temperature);
+    void PollTECReadings();
+
     // PSU device discovery
     void DiscoverPSUDevices();
 
@@ -228,8 +239,15 @@ private:
     CameraManager* m_cameraManager = nullptr;
     PowerSupplyManager* m_psuManager = nullptr;
     PneumaticManager* m_pneumaticManager = nullptr;
+    TECManager* m_tecManager = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;
     BeamResultBroker* m_beamResultBroker = nullptr;
+
+    // TEC state
+    double m_tecTemperature = 0.0;      // last read temperature (°C)
+    bool m_tecConnected = false;
+    bool m_tecOutputOn = false;
+    std::string m_tecDeviceName = "tec-main";
 
     // Click-to-move and crosshair
     bool m_clickToMoveEnabled = false;
@@ -288,6 +306,8 @@ private:
     static constexpr int TAG_BEAM_CONFIG = 910;
     static constexpr int TAG_BEAM_OPTIMIZE = 950;
     static constexpr int TAG_BEAM_FOCUS = 960;
+    static constexpr int TAG_TEC_25C = 1000;
+    static constexpr int TAG_TEC_30C = 1010;
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};
@@ -322,10 +342,11 @@ private:
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
 
-    // Beam focus optimization
+    // Beam focus optimization (reusable components)
     std::atomic<bool> m_beamFocusRunning{false};
     std::future<void> m_beamFocusFuture;
-    std::vector<double> m_beamFocusSteps = {0.010, 0.005, 0.002};  // mm (10, 5, 2 µm)
+    BeamScoreProvider m_beamScoreProvider;
+    HillClimbConfig m_beamFocusConfig;  // configurable step sizes, settle time, etc.
 
     // CE/EE history for real-time charts (one ring buffer per beam, max 2)
     static constexpr int CE_HISTORY_SIZE = 200;

@@ -710,6 +710,7 @@ set(SOURCES
     include/SwirBeamWindow/SwirBeamOverlay.cpp
     include/BeamOptimizer/BeamResultBroker.cpp
     include/BeamOptimizer/BeamOptimizerManager.cpp
+    include/BeamOptimizer/BeamHillClimb.cpp
     include/PSU/PowerSupplyManager.cpp
     include/PSU/PowerSupplyJsonLoader.cpp
     include/PSU/KeysightPSUAdapter.cpp

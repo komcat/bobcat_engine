@@ -6,6 +6,7 @@
 #include "camera/CameraManager.h"
 #include "motions/unified_motion_manager.h"
 #include "PSU/PowerSupplyManager.h"
+#include "TEC/TECManager.h"
 #include "pneumatics/PneumaticManager.h"
 #include <algorithm>
 #include <iostream>
@@ -48,6 +49,13 @@ SwirBeamWindow::SwirBeamWindow()
     m_bitmapInfo = reinterpret_cast<BITMAPINFO*>(m_bitmapInfoBuffer.data());
     InitializeGdiPlus();
     LoadBeamConfig();
+
+    // Initialize beam focus config defaults
+    m_beamFocusConfig.stepSizes = {0.010, 0.005, 0.002};  // 10, 5, 2 µm
+    m_beamFocusConfig.label = "BeamFocus";
+
+    // Bind score provider to beam results
+    m_beamScoreProvider.Bind(&m_beamMutex, &m_beamResults);
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -120,6 +128,15 @@ void SwirBeamWindow::CleanupPanelCache()
     }
 }
 
+void SwirBeamWindow::EmergencyStop()
+{
+    if (m_beamFocusRunning.load()) {
+        std::cout << "[SwirBeamWindow] E-STOP: cancelling beam focus optimization" << std::endl;
+        m_beamFocusRunning.store(false);
+        InvalidatePanel();
+    }
+}
+
 void SwirBeamWindow::Destroy()
 {
     // Stop beam focus if running
@@ -147,6 +164,14 @@ void SwirBeamWindow::Destroy()
 void SwirBeamWindow::Show()
 {
     if (m_hwnd) { ShowWindow(m_hwnd, SW_SHOW); UpdateWindow(m_hwnd); }
+
+    // Set SWIR camera gain=0, auto_gain=off on show
+    if (m_cameraManager && !m_targetCameraId.empty()) {
+        auto settings = m_cameraManager->GetExposureSettings(m_targetCameraId);
+        settings.gain = 0.0;
+        settings.auto_gain = false;
+        m_cameraManager->ApplyExposureSettings(m_targetCameraId, settings);
+    }
 }
 
 void SwirBeamWindow::Hide()
@@ -439,6 +464,9 @@ void SwirBeamWindow::OnCameraStatusChanged(const std::string& /*cameraId*/, bool
 
 void SwirBeamWindow::PollPSUReadings()
 {
+    // Also poll TEC readings on the same timer
+    PollTECReadings();
+
     if (!m_psuManager) return;
 
     // Discover devices on first poll
@@ -501,6 +529,72 @@ void SwirBeamWindow::PollPSUReadings()
             InvalidateRect(self->m_hwnd, nullptr, FALSE);
         }
     }).detach();
+}
+
+// ============================================================================
+// TEC Actions
+// ============================================================================
+
+void SwirBeamWindow::OnTECPreset(double temperature)
+{
+    if (!m_tecManager) {
+        std::cout << "[SwirBeamWindow] TEC manager not available" << std::endl;
+        return;
+    }
+
+    // Auto-connect if not connected (background thread)
+    auto* tecMgr = m_tecManager;
+    std::string devName = m_tecDeviceName;
+
+    std::thread([tecMgr, devName, temperature, this]() {
+        // Connect if needed
+        auto status = tecMgr->GetDeviceStatus(devName);
+        if (!status.Connected) {
+            std::cout << "[SwirBeamWindow] Connecting TEC '" << devName << "'..." << std::endl;
+            if (!tecMgr->ConnectDevice(devName)) {
+                std::cerr << "[SwirBeamWindow] Failed to connect TEC '" << devName << "'" << std::endl;
+                return;
+            }
+            std::cout << "[SwirBeamWindow] TEC '" << devName << "' connected" << std::endl;
+        }
+
+        // Set temperature
+        auto result = tecMgr->SetTemperature(devName, temperature);
+        if (result.Success) {
+            std::cout << "[SwirBeamWindow] TEC set to " << temperature << " C" << std::endl;
+        } else {
+            std::cerr << "[SwirBeamWindow] TEC SetTemperature failed: " << result.Message << std::endl;
+            return;
+        }
+
+        // Enable TEC output
+        auto onResult = tecMgr->TEC_On(devName);
+        if (onResult.Success) {
+            std::cout << "[SwirBeamWindow] TEC output ON" << std::endl;
+        } else {
+            std::cerr << "[SwirBeamWindow] TEC_On failed: " << onResult.Message << std::endl;
+        }
+
+        InvalidatePanel();
+    }).detach();
+}
+
+void SwirBeamWindow::PollTECReadings()
+{
+    if (!m_tecManager) return;
+
+    auto status = m_tecManager->GetDeviceStatus(m_tecDeviceName);
+    m_tecConnected = status.Connected;
+
+    if (!m_tecConnected) return;
+
+    auto tempResult = m_tecManager->ReadTemperature(m_tecDeviceName);
+    if (tempResult.Success) {
+        m_tecTemperature = tempResult.Value;
+    }
+
+    m_tecOutputOn = status.TECOn;
+    InvalidatePanel();
 }
 
 // ============================================================================
@@ -1034,6 +1128,33 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     y += btnHeight + btnSpacing;
 
     y += groupPad;
+
+    y += sectionGap;
+
+    // === TEC Group (2-column: 25C | 30C, then temp reading label) ===
+    y += titleH + groupPad;
+
+    {
+        SwirButton tec25Btn;
+        tec25Btn.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
+        tec25Btn.label = L"25\u00B0C";
+        tec25Btn.tag = TAG_TEC_25C;
+        tec25Btn.onClick = [this]() { OnTECPreset(25.0); };
+        m_buttons.push_back(tec25Btn);
+
+        SwirButton tec30Btn;
+        tec30Btn.rect = {btnLeft + halfBtnWidth + btnSpacing, y, btnLeft + btnWidth, y + btnHeight};
+        tec30Btn.label = L"30\u00B0C";
+        tec30Btn.tag = TAG_TEC_30C;
+        tec30Btn.onClick = [this]() { OnTECPreset(30.0); };
+        m_buttons.push_back(tec30Btn);
+    }
+    y += btnHeight + btnSpacing;
+
+    // Temperature reading label space
+    y += labelHeight;
+
+    y += groupPad;
 }
 
 void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
@@ -1052,6 +1173,13 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 35, 195, 110) : CLR_BTN_ON);
         } else {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : CLR_BTN_OFF);
+        }
+    } else if (btn.tag == TAG_BEAM_FOCUS) {
+        // BF button: red when running (to indicate "click to stop"), normal otherwise
+        if (btn.toggled) {
+            bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : Gdiplus::Color(255, 180, 40, 40));
+        } else {
+            bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? CLR_BTN_HOVER : CLR_BTN_NORMAL);
         }
     } else if (btn.tag == TAG_AUTO_EXP || btn.tag == TAG_CLICK_TO_MOVE) {
         if (btn.toggled) {
@@ -1328,7 +1456,10 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
             btn.label = swirHeadDown ? L"HEAD UP" : L"HEAD DN";
         }
         if (btn.tag == TAG_BEAM_DETECT) btn.toggled = m_beamDetectionEnabled;
-        if (btn.tag == TAG_BEAM_FOCUS) btn.toggled = m_beamFocusRunning.load();
+        if (btn.tag == TAG_BEAM_FOCUS) {
+            btn.toggled = m_beamFocusRunning.load();
+            btn.label = btn.toggled ? L"STOP" : L"BF";
+        }
     }
 
     // Draw PSU readings
@@ -1399,6 +1530,52 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     RECT toolsGroupRect = { panelRect.left + margin, toolsGroupTop,
                             panelRect.right - margin, y };
     DrawGroupBox(gfx, toolsGroupRect, L"TOOLS");
+
+    // --- TEC Group Box ---
+    y += sectionGap;
+    int tecGroupTop = y;
+    y += titleH + groupPad;
+    y += btnHeight + btnSpacing;  // Row: 25°C | 30°C
+    float tecReadY = static_cast<float>(y);  // temperature reading position
+    y += labelHeight;
+    y += groupPad;
+
+    RECT tecGroupRect = { panelRect.left + margin, tecGroupTop,
+                          panelRect.right - margin, y };
+    DrawGroupBox(gfx, tecGroupRect, L"TEC");
+
+    // Draw TEC status: indicator dot + temperature
+    {
+        if (m_tecConnected) {
+            // Status indicator: green circle = ON, red circle = OFF
+            float dotX = innerX + 2.0f;
+            float dotY = tecReadY + 2.0f;
+            float dotSize = 10.0f;
+            if (m_tecOutputOn) {
+                Gdiplus::SolidBrush greenDot(Gdiplus::Color(255, 0, 220, 80));
+                gfx.FillEllipse(&greenDot, dotX, dotY, dotSize, dotSize);
+            } else {
+                Gdiplus::SolidBrush redDot(Gdiplus::Color(255, 200, 60, 60));
+                gfx.FillEllipse(&redDot, dotX, dotY, dotSize, dotSize);
+            }
+
+            // Temperature + ON/OFF text
+            std::wostringstream tempStr;
+            tempStr << (m_tecOutputOn ? L"ON  " : L"OFF  ")
+                    << std::fixed << std::setprecision(1) << m_tecTemperature << L" \u00B0C";
+            Gdiplus::SolidBrush tempBrush(m_tecOutputOn
+                ? Gdiplus::Color(255, 0, 255, 100)
+                : Gdiplus::Color(255, 200, 120, 60));
+            gfx.DrawString(tempStr.str().c_str(), -1, &smallFont,
+                           Gdiplus::RectF(innerX + dotSize + 6.0f, tecReadY, innerW - dotSize - 6.0f, static_cast<float>(labelHeight)),
+                           &leftFormat, &tempBrush);
+        } else {
+            Gdiplus::SolidBrush dimBrushLocal(Gdiplus::Color(255, 128, 128, 128));
+            gfx.DrawString(L"Not connected", -1, &smallFont,
+                           Gdiplus::RectF(innerX, tecReadY, innerW, static_cast<float>(labelHeight)),
+                           &leftFormat, &dimBrushLocal);
+        }
+    }
 
     // Draw all buttons
     for (const auto& btn : m_buttons) {
@@ -2357,149 +2534,29 @@ void SwirBeamWindow::OnBeamFocus()
     m_beamFocusRunning.store(true);
     InvalidatePanel();
 
-    // Capture step sizes (copy for thread safety)
-    std::vector<double> steps = m_beamFocusSteps;
     auto* motionMgr = m_motionManager;
+    HillClimbConfig config = m_beamFocusConfig;
 
-    m_beamFocusFuture = std::async(std::launch::async, [this, motionMgr, steps]() {
-        std::cout << "\n========================================" << std::endl;
-        std::cout << "[BeamFocus] Starting Z-axis beam focus" << std::endl;
-        std::cout << "========================================" << std::endl;
+    m_beamFocusFuture = std::async(std::launch::async, [this, motionMgr, config]() {
+        // Wire up the reusable hill-climb optimizer
+        BeamHillClimb climber;
 
-        // Helper: compute combined score from current beam results (CE * EE)
-        // Returns average score across all visible beams
-        auto getScore = [this]() -> double {
-            std::lock_guard<std::mutex> lock(m_beamMutex);
-            if (m_beamResults.empty()) return -1.0;
-            double totalScore = 0.0;
-            int numBeams = std::min(static_cast<int>(m_beamResults.size()), 2);
-            for (int i = 0; i < numBeams; ++i) {
-                double ce = m_beamResults[i].circleEnergy;
-                double ee = m_beamResults[i].encircledEnergy;  // 0.0 - 1.0
-                totalScore += ce * ee;
-            }
-            return totalScore / numBeams;
-        };
+        climber.SetScoreFunc([this]() -> double {
+            return m_beamScoreProvider.GetScore();
+        });
 
-        // Helper: wait for detection to settle after a move
-        auto waitForStableReading = [this]() {
-            // Wait for a few frames to process after motion stops
-            // 5 frames at ~30fps = ~170ms
-            for (int i = 0; i < 5; ++i) {
-                if (!m_beamFocusRunning.load()) return;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-        };
+        climber.SetMoveFunc([motionMgr](double distance) -> bool {
+            return motionMgr->MoveRelative("gantry-main", "Z", distance, true);
+        });
 
-        // Get initial score
-        waitForStableReading();
-        double bestScore = getScore();
-        if (bestScore < 0) {
-            std::cout << "[BeamFocus] No beam detected, aborting" << std::endl;
-            m_beamFocusRunning.store(false);
-            InvalidatePanel();
-            return;
-        }
+        climber.SetCancelFlag(&m_beamFocusRunning);
 
-        std::cout << "[BeamFocus] Initial score: " << std::fixed << std::setprecision(1) << bestScore << std::endl;
+        HillClimbResult result = climber.Run(config);
 
-        // For each step size: coarse-to-fine hill climb
-        for (size_t si = 0; si < steps.size(); ++si) {
-            if (!m_beamFocusRunning.load()) break;
-
-            double stepMm = steps[si];
-            std::cout << "[BeamFocus] Step size: " << (stepMm * 1000.0) << " um" << std::endl;
-
-            // Try +step first to determine direction
-            if (!motionMgr->MoveRelative("gantry-main", "Z", stepMm, true)) {
-                std::cout << "[BeamFocus] Move failed, aborting" << std::endl;
-                break;
-            }
-            waitForStableReading();
-            if (!m_beamFocusRunning.load()) break;
-
-            double newScore = getScore();
-            if (newScore < 0) {
-                // Lost beam, reverse and stop this step size
-                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
-                waitForStableReading();
-                std::cout << "[BeamFocus] Lost beam, reverting" << std::endl;
-                continue;
-            }
-
-            double direction = stepMm;  // positive direction
-            if (newScore > bestScore) {
-                // Positive direction is better, keep going
-                bestScore = newScore;
-                std::cout << "[BeamFocus]   +" << (stepMm * 1000.0) << "um -> score=" << std::fixed << std::setprecision(1) << bestScore << " (better)" << std::endl;
-            } else {
-                // Positive was worse, try negative direction
-                // Move back to origin, then -step
-                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
-                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
-                waitForStableReading();
-                if (!m_beamFocusRunning.load()) break;
-
-                newScore = getScore();
-                if (newScore < 0) {
-                    motionMgr->MoveRelative("gantry-main", "Z", stepMm, true);
-                    waitForStableReading();
-                    std::cout << "[BeamFocus] Lost beam in negative direction, reverting" << std::endl;
-                    continue;
-                }
-
-                if (newScore > bestScore) {
-                    direction = -stepMm;
-                    bestScore = newScore;
-                    std::cout << "[BeamFocus]   -" << (stepMm * 1000.0) << "um -> score=" << std::fixed << std::setprecision(1) << bestScore << " (better)" << std::endl;
-                } else {
-                    // Neither direction improved, go back to original
-                    motionMgr->MoveRelative("gantry-main", "Z", stepMm, true);
-                    waitForStableReading();
-                    std::cout << "[BeamFocus]   No improvement at " << (stepMm * 1000.0) << "um, skipping" << std::endl;
-                    continue;
-                }
-            }
-
-            // Continue in the winning direction until score stops improving
-            static constexpr int MAX_STEPS = 100;
-            for (int step = 0; step < MAX_STEPS; ++step) {
-                if (!m_beamFocusRunning.load()) break;
-
-                if (!motionMgr->MoveRelative("gantry-main", "Z", direction, true)) {
-                    std::cout << "[BeamFocus] Move failed, stopping" << std::endl;
-                    break;
-                }
-                waitForStableReading();
-                if (!m_beamFocusRunning.load()) break;
-
-                newScore = getScore();
-                if (newScore < 0) {
-                    // Lost beam, reverse last step
-                    motionMgr->MoveRelative("gantry-main", "Z", -direction, true);
-                    waitForStableReading();
-                    std::cout << "[BeamFocus]   Lost beam, reverting last step" << std::endl;
-                    break;
-                }
-
-                if (newScore > bestScore) {
-                    bestScore = newScore;
-                    std::cout << "[BeamFocus]   step " << (step + 2) << " -> score=" << std::fixed << std::setprecision(1) << bestScore << std::endl;
-                } else {
-                    // Score decreased, reverse to best position
-                    motionMgr->MoveRelative("gantry-main", "Z", -direction, true);
-                    waitForStableReading();
-                    std::cout << "[BeamFocus]   Score decreased, reverting to best" << std::endl;
-                    break;
-                }
-            }
-        }
-
+        // Log final position
         double finalZ = 0.0;
         motionMgr->GetPosition("gantry-main", "Z", finalZ);
-        std::cout << "[BeamFocus] Complete. Final Z=" << std::fixed << std::setprecision(4) << finalZ
-                  << "mm, score=" << std::setprecision(1) << bestScore << std::endl;
-        std::cout << "========================================\n" << std::endl;
+        std::cout << "[BeamFocus] Final Z=" << std::fixed << std::setprecision(4) << finalZ << " mm" << std::endl;
 
         m_beamFocusRunning.store(false);
         InvalidatePanel();

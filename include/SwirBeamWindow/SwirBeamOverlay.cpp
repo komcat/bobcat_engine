@@ -165,26 +165,7 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
         if (beamDiam < 1.0) beamDiam = 1.0;
         double chartDim = beamDiam * CHART_SPAN_FACTOR;
 
-        // (a) Bounding box around d4sigma extent (1.25x padding) - not the ROI
-        double boxPadFactor = 1.25;
-        double boxHalfW = (d4.dx / 2.0) * boxPadFactor;
-        double boxHalfH = (d4.dy / 2.0) * boxPadFactor;
-        // Ensure minimum box size of 5 pixels
-        if (boxHalfW < 2.5) boxHalfW = 2.5;
-        if (boxHalfH < 2.5) boxHalfH = 2.5;
-
-        Gdiplus::Color boxColor = beam.saturated
-            ? Gdiplus::Color(220, 255, 60, 60)
-            : Gdiplus::Color(220, 0, 255, 255);
-        Gdiplus::Pen boxPen(boxColor, 2.0f);
-
-        float bx0 = imgToDispX(d4.cx - boxHalfW, renderX, renderW, frameW);
-        float by0 = imgToDispY(d4.cy - boxHalfH, renderY, renderH, frameH);
-        float bx1 = imgToDispX(d4.cx + boxHalfW, renderX, renderW, frameW);
-        float by1 = imgToDispY(d4.cy + boxHalfH, renderY, renderH, frameH);
-        gfx.DrawRectangle(&boxPen, bx0, by0, bx1 - bx0, by1 - by0);
-
-        // (b) Centroid crosshair - yellow 10px cross
+        // Centroid crosshair - yellow 10px cross
         float ccx = imgToDispX(d4.cx, renderX, renderW, frameW);
         float ccy = imgToDispY(d4.cy, renderY, renderH, frameH);
         Gdiplus::Pen crossPen(Gdiplus::Color(220, 255, 255, 0), 1.5f);
@@ -221,18 +202,16 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                 titleLine = ss.str();
             }
 
-            wchar_t cxLine[32], cyLine[32], dxLine[32], dyLine[32];
+            wchar_t dxLine[32], dyLine[32];
             wchar_t eeLine[32], ceLine[32], teLine[32];
-            swprintf_s(cxLine, L"cx: %6.1f", d4.cx);
-            swprintf_s(cyLine, L"cy: %6.1f", d4.cy);
             swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
             swprintf_s(dyLine, L"dy: %6.1f", d4.dy);
             swprintf_s(eeLine, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
             swprintf_s(ceLine, L"CE: %7.0f", beam.circleEnergy);
             swprintf_s(teLine, L"TE: %7.0f", beam.totalEnergy);
 
-            const wchar_t* rows[] = { titleLine.c_str(), cxLine, cyLine, dxLine, dyLine, eeLine, ceLine, teLine };
-            static constexpr int numRows = 8;
+            const wchar_t* rows[] = { titleLine.c_str(), dxLine, dyLine, eeLine, ceLine, teLine };
+            static constexpr int numRows = 6;
             static constexpr float rowH = 14.0f;
             float totalH = rowH * numRows + 4.0f;
 
@@ -253,7 +232,7 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
 
             // If above viewport, place below
             if (labelY < static_cast<float>(renderY))
-                labelY = snapY + imgToDispLenY(boxHalfH * 2.0 + 4.0, renderH, frameH);
+                labelY = snapY + imgToDispLenY(std::max(d4.dy, d4.dx) + 4.0, renderH, frameH);
 
             // Keep within viewport horizontally
             float maxRight = static_cast<float>(renderX + renderW) - maxW - 6.0f;
