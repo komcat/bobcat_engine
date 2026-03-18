@@ -355,11 +355,9 @@ private:
     std::array<int, 2> m_ceHistoryIndex = {0, 0};     // next write position (shared CE/EE)
     std::array<int, 2> m_ceHistoryCount = {0, 0};     // filled count (shared CE/EE)
 
-    // Frame averaging for stable detection
-    static constexpr int FRAME_AVG_COUNT = 5;
-    std::vector<std::vector<uint8_t>> m_avgFrameRing;  // ring buffer of grayscale frames
-    int m_avgFrameIndex = 0;                            // next write position
-    int m_avgFramesFilled = 0;                          // frames accumulated so far
+    // EMA-smoothed beam results for display (raw results used for scoring)
+    std::vector<BeamDetectionResult> m_beamDisplayResults;
+    static constexpr double EMA_ALPHA = 0.3;  // smoothing factor (0=full smooth, 1=no smooth)
 
     // Paint throttle: track last InvalidateRect time to avoid flooding message queue
     std::chrono::steady_clock::time_point m_lastInvalidateTime{};

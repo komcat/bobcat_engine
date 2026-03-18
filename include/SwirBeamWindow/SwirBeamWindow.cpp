@@ -1696,8 +1696,8 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
     // Beam detection overlays
     if (m_beamDetectionEnabled) {
         std::lock_guard<std::mutex> lock(m_beamMutex);
-        if (!m_beamResults.empty()) {
-            DrawBeamOverlays(gfx, m_beamResults,
+        if (!m_beamDisplayResults.empty()) {
+            DrawBeamOverlays(gfx, m_beamDisplayResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
                              m_frameWidth, m_frameHeight);
         }
@@ -2241,11 +2241,8 @@ void SwirBeamWindow::StartDetectionThread()
     m_detectionShutdown.store(false);
     m_detectionReady.store(false);
 
-    // Reset frame averaging ring buffer
-    m_avgFrameRing.clear();
-    m_avgFrameRing.resize(FRAME_AVG_COUNT);
-    m_avgFrameIndex = 0;
-    m_avgFramesFilled = 0;
+    // Reset display smoothing
+    m_beamDisplayResults.clear();
 
     // Reset CE/EE history ring buffers
     for (int i = 0; i < 2; ++i) {
@@ -2286,43 +2283,37 @@ void SwirBeamWindow::StartDetectionThread()
 
             if (localBuffer.empty() || localW == 0 || localH == 0) continue;
 
-            const size_t pixelCount = static_cast<size_t>(localW) * localH;
+            // Run detection on single frame (raw, no averaging)
+            auto results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
 
-            // Reset ring buffer if frame size changed
-            if (m_avgFramesFilled > 0 && m_avgFrameRing[0].size() != pixelCount) {
-                for (auto& frame : m_avgFrameRing) frame.clear();
-                m_avgFrameIndex = 0;
-                m_avgFramesFilled = 0;
-            }
-
-            // Store frame in ring buffer
-            m_avgFrameRing[m_avgFrameIndex] = localBuffer;
-            m_avgFrameIndex = (m_avgFrameIndex + 1) % FRAME_AVG_COUNT;
-            if (m_avgFramesFilled < FRAME_AVG_COUNT) ++m_avgFramesFilled;
-
-            // Average accumulated frames
-            std::vector<uint8_t> avgBuffer(pixelCount);
-            if (m_avgFramesFilled == 1) {
-                avgBuffer = localBuffer;
-            } else {
-                for (size_t px = 0; px < pixelCount; ++px) {
-                    int sum = 0;
-                    for (int f = 0; f < m_avgFramesFilled; ++f) {
-                        sum += m_avgFrameRing[f][px];
-                    }
-                    avgBuffer[px] = static_cast<uint8_t>(sum / m_avgFramesFilled);
-                }
-            }
-
-            // Run detection on averaged frame
-            auto results = RunBeamDetection(avgBuffer.data(), localW, localH, m_beamConfig);
-
-            // Publish results and update CE history
+            // Publish raw results (for scoring) and EMA-smoothed results (for display)
             {
                 std::lock_guard<std::mutex> lock(m_beamMutex);
                 // Keep previous results when detection misses (avoids overlay flicker)
                 if (!results.empty()) {
-                    m_beamResults = std::move(results);
+                    m_beamResults = results;  // raw for score provider
+
+                    // EMA smoothing for display
+                    if (m_beamDisplayResults.size() != results.size()) {
+                        // Beam count changed, reset display to current raw values
+                        m_beamDisplayResults = results;
+                    } else {
+                        for (size_t bi = 0; bi < results.size(); ++bi) {
+                            auto& disp = m_beamDisplayResults[bi];
+                            const auto& raw = results[bi];
+                            disp.d4.cx = disp.d4.cx + EMA_ALPHA * (raw.d4.cx - disp.d4.cx);
+                            disp.d4.cy = disp.d4.cy + EMA_ALPHA * (raw.d4.cy - disp.d4.cy);
+                            disp.d4.dx = disp.d4.dx + EMA_ALPHA * (raw.d4.dx - disp.d4.dx);
+                            disp.d4.dy = disp.d4.dy + EMA_ALPHA * (raw.d4.dy - disp.d4.dy);
+                            disp.encircledEnergy = disp.encircledEnergy + EMA_ALPHA * (raw.encircledEnergy - disp.encircledEnergy);
+                            disp.circleEnergy = disp.circleEnergy + EMA_ALPHA * (raw.circleEnergy - disp.circleEnergy);
+                            disp.totalEnergy = disp.totalEnergy + EMA_ALPHA * (raw.totalEnergy - disp.totalEnergy);
+                            disp.label = raw.label;
+                            disp.gaLabel = raw.gaLabel;
+                            disp.saturated = raw.saturated;
+                            disp.d4.roi = raw.d4.roi;
+                        }
+                    }
                 }
 
                 // Push CE values into history ring buffers (with outlier rejection)
