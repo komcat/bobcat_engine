@@ -283,6 +283,146 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
 }
 
 // ============================================================================
+// Real-time CE charts
+// ============================================================================
+
+void DrawCECharts(Gdiplus::Graphics& gfx,
+                  const std::array<std::vector<double>, 2>& ceHistory,
+                  const std::array<std::vector<double>, 2>& eeHistory,
+                  const std::array<int, 2>& ceIndex,
+                  const std::array<int, 2>& ceCount,
+                  int historySize,
+                  int renderX, int renderY, int renderW, int renderH) {
+
+    static constexpr int CHART_W = 220;
+    static constexpr int CHART_H = 80;
+    static constexpr int MARGIN = 8;
+    static constexpr int GAP = 6;
+
+    static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+    static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
+
+    // CE line colors: B0 = cyan, B1 = green
+    static const Gdiplus::Color ceColors[2] = {
+        Gdiplus::Color(255, 0, 255, 255),
+        Gdiplus::Color(255, 0, 255, 100)
+    };
+    // EE line color: yellow for both beams
+    static const Gdiplus::Color eeColor(200, 255, 255, 0);
+    static Gdiplus::SolidBrush eeLabelBrush(Gdiplus::Color(200, 255, 255, 0));
+
+    int chartX = renderX + renderW - CHART_W - MARGIN;
+
+    for (int bi = 0; bi < 2; ++bi) {
+        int count = ceCount[bi];
+        if (count == 0) continue;
+
+        int chartY = renderY + MARGIN + bi * (CHART_H + GAP + 16);
+        float fChartX = static_cast<float>(chartX);
+        float fChartY = static_cast<float>(chartY);
+        float fChartW = static_cast<float>(CHART_W);
+        float fChartH = static_cast<float>(CHART_H);
+
+        // Background
+        Gdiplus::SolidBrush bgBrush(Gdiplus::Color(160, 0, 0, 0));
+        gfx.FillRectangle(&bgBrush, fChartX, fChartY, fChartW, fChartH);
+
+        // Border
+        Gdiplus::Pen borderPen(Gdiplus::Color(100, 255, 255, 255), 1.0f);
+        gfx.DrawRectangle(&borderPen, fChartX, fChartY, fChartW, fChartH);
+
+        // Read ring buffer in chronological order
+        int n = std::min(count, historySize);
+        int startIdx = (ceIndex[bi] - n + historySize) % historySize;
+
+        // --- CE axis (left) ---
+        double ceMin = 1e30, ceMax = -1e30;
+        for (int i = 0; i < n; ++i) {
+            double v = ceHistory[bi][(startIdx + i) % historySize];
+            if (v < ceMin) ceMin = v;
+            if (v > ceMax) ceMax = v;
+        }
+        double ceRange = ceMax - ceMin;
+        if (ceRange < 1.0) ceRange = 1.0;
+        double cePad = ceRange * 0.1;
+        double ceYMin = ceMin - cePad;
+        double ceYMax = ceMax + cePad;
+        double ceYRange = ceYMax - ceYMin;
+
+        // --- EE axis (right, fixed 0-100%) ---
+        double eeMin = 1e30, eeMax = -1e30;
+        for (int i = 0; i < n; ++i) {
+            double v = eeHistory[bi][(startIdx + i) % historySize];
+            if (v < eeMin) eeMin = v;
+            if (v > eeMax) eeMax = v;
+        }
+        double eeRange = eeMax - eeMin;
+        if (eeRange < 1.0) eeRange = 1.0;
+        double eePad = eeRange * 0.1;
+        double eeYMin = eeMin - eePad;
+        double eeYMax = eeMax + eePad;
+        double eeYRange = eeYMax - eeYMin;
+
+        if (n >= 2) {
+            float nMinus1 = static_cast<float>(n - 1);
+
+            // Draw CE polyline
+            {
+                std::vector<Gdiplus::PointF> pts(n);
+                for (int i = 0; i < n; ++i) {
+                    double v = ceHistory[bi][(startIdx + i) % historySize];
+                    float px = fChartX + static_cast<float>(i) / nMinus1 * fChartW;
+                    float py = fChartY + fChartH - static_cast<float>((v - ceYMin) / ceYRange) * fChartH;
+                    pts[i] = {px, py};
+                }
+                Gdiplus::Pen linePen(ceColors[bi], 1.5f);
+                gfx.DrawLines(&linePen, pts.data(), n);
+            }
+
+            // Draw EE% polyline (secondary axis)
+            {
+                std::vector<Gdiplus::PointF> pts(n);
+                for (int i = 0; i < n; ++i) {
+                    double v = eeHistory[bi][(startIdx + i) % historySize];
+                    float px = fChartX + static_cast<float>(i) / nMinus1 * fChartW;
+                    float py = fChartY + fChartH - static_cast<float>((v - eeYMin) / eeYRange) * fChartH;
+                    pts[i] = {px, py};
+                }
+                Gdiplus::Pen linePen(eeColor, 1.0f);
+                linePen.SetDashStyle(Gdiplus::DashStyleDash);
+                gfx.DrawLines(&linePen, pts.data(), n);
+            }
+        }
+
+        // Labels - top left: "B0 CE: xxxxx"
+        int lastIdx = (ceIndex[bi] - 1 + historySize) % historySize;
+        wchar_t ceLabelBuf[48];
+        swprintf_s(ceLabelBuf, L"B%d CE: %.0f", bi, ceHistory[bi][lastIdx]);
+        gfx.DrawString(ceLabelBuf, -1, &labelFont,
+                        Gdiplus::PointF(fChartX + 4.0f, fChartY + 2.0f),
+                        &labelBrush);
+
+        // CE min/max on left side
+        wchar_t ceMaxBuf[24], ceMinBuf[24];
+        swprintf_s(ceMaxBuf, L"%.0f", ceMax);
+        swprintf_s(ceMinBuf, L"%.0f", ceMin);
+        gfx.DrawString(ceMaxBuf, -1, &labelFont,
+                        Gdiplus::PointF(fChartX + fChartW - 50.0f, fChartY + 2.0f),
+                        &labelBrush);
+        gfx.DrawString(ceMinBuf, -1, &labelFont,
+                        Gdiplus::PointF(fChartX + fChartW - 50.0f, fChartY + fChartH - 14.0f),
+                        &labelBrush);
+
+        // EE% label - top right area, yellow
+        wchar_t eeLabelBuf[32];
+        swprintf_s(eeLabelBuf, L"EE:%.1f%%", eeHistory[bi][lastIdx]);
+        gfx.DrawString(eeLabelBuf, -1, &labelFont,
+                        Gdiplus::PointF(fChartX + fChartW - 70.0f, fChartY + fChartH - 26.0f),
+                        &eeLabelBrush);
+    }
+}
+
+// ============================================================================
 // Magnified beam thumbnails
 // ============================================================================
 

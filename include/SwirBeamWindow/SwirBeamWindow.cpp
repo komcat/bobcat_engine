@@ -7,6 +7,7 @@
 #include "motions/unified_motion_manager.h"
 #include "PSU/PowerSupplyManager.h"
 #include "pneumatics/PneumaticManager.h"
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -121,6 +122,11 @@ void SwirBeamWindow::CleanupPanelCache()
 
 void SwirBeamWindow::Destroy()
 {
+    // Stop beam focus if running
+    m_beamFocusRunning.store(false);
+    if (m_beamFocusFuture.valid()) {
+        m_beamFocusFuture.wait();
+    }
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
@@ -796,6 +802,7 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     const int btnLeft = panelRect.left + margin + groupInner;
     const int btnWidth = pw - 2 * (margin + groupInner);
     const int halfBtnWidth = (btnWidth - btnSpacing) / 2;
+    const int thirdBtnWidth = (btnWidth - 2 * btnSpacing) / 3;
 
     int y = panelRect.top + margin;
 
@@ -932,90 +939,98 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
 
     y += sectionGap;
 
-    // === TOOLS Group ===
+    // === TOOLS Group (3-column layout) ===
     y += titleH + groupPad;
 
-    // SWIR Head Up/Down toggle
-    SwirButton headBtn;
-    headBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    headBtn.label = L"SWIR HEAD DOWN";
-    headBtn.isToggle = true;
-    headBtn.tag = TAG_SWIR_HEAD;
-    headBtn.onClick = [this]() { OnSwirHeadToggle(); };
-    m_buttons.push_back(headBtn);
+    // Column positions
+    int col1 = btnLeft;
+    int col2 = btnLeft + thirdBtnWidth + btnSpacing;
+    int col3 = btnLeft + 2 * (thirdBtnWidth + btnSpacing);
+
+    // Row 1: SWIR HEAD | CLICK TO MOVE | BF
+    {
+        SwirButton headBtn;
+        headBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+        headBtn.label = L"HEAD UP";
+        headBtn.isToggle = true;
+        headBtn.tag = TAG_SWIR_HEAD;
+        headBtn.onClick = [this]() { OnSwirHeadToggle(); };
+        m_buttons.push_back(headBtn);
+
+        SwirButton ctmBtn;
+        ctmBtn.rect = {col2, y, col2 + thirdBtnWidth, y + btnHeight};
+        ctmBtn.label = L"CLICK MOVE";
+        ctmBtn.isToggle = true;
+        ctmBtn.tag = TAG_CLICK_TO_MOVE;
+        ctmBtn.toggled = m_clickToMoveEnabled;
+        ctmBtn.onClick = [this]() {
+            m_clickToMoveEnabled = !m_clickToMoveEnabled;
+            InvalidatePanel();
+            std::cout << "[SwirBeamWindow] Click-to-move " << (m_clickToMoveEnabled ? "enabled" : "disabled") << std::endl;
+        };
+        m_buttons.push_back(ctmBtn);
+
+        SwirButton bfBtn;
+        bfBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
+        bfBtn.label = L"BF";
+        bfBtn.isToggle = true;
+        bfBtn.toggled = m_beamFocusRunning.load();
+        bfBtn.tag = TAG_BEAM_FOCUS;
+        bfBtn.onClick = [this]() { OnBeamFocus(); };
+        m_buttons.push_back(bfBtn);
+    }
     y += btnHeight + btnSpacing;
 
-    // Click-to-Move toggle
-    SwirButton ctmBtn;
-    ctmBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    ctmBtn.label = L"CLICK TO MOVE";
-    ctmBtn.isToggle = true;
-    ctmBtn.tag = TAG_CLICK_TO_MOVE;
-    ctmBtn.toggled = m_clickToMoveEnabled;
-    ctmBtn.onClick = [this]() {
-        m_clickToMoveEnabled = !m_clickToMoveEnabled;
-        InvalidatePanel();
-        std::cout << "[SwirBeamWindow] Click-to-move " << (m_clickToMoveEnabled ? "enabled" : "disabled") << std::endl;
-    };
-    m_buttons.push_back(ctmBtn);
+    // Row 2: PLACE MARKER | CLEAR ALL | SET MAG
+    {
+        SwirButton placeBtn;
+        placeBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+        placeBtn.label = L"MARKER";
+        placeBtn.tag = TAG_PLACE_MARKER;
+        placeBtn.onClick = [this]() { OnPlaceMarker(); };
+        m_buttons.push_back(placeBtn);
+
+        SwirButton clearBtn;
+        clearBtn.rect = {col2, y, col2 + thirdBtnWidth, y + btnHeight};
+        clearBtn.label = L"CLEAR ALL";
+        clearBtn.tag = TAG_CLEAR_MARKERS;
+        clearBtn.onClick = [this]() { OnClearAllMarkers(); };
+        m_buttons.push_back(clearBtn);
+
+        SwirButton magBtn;
+        magBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
+        magBtn.label = L"SET MAG";
+        magBtn.tag = TAG_SET_MAG;
+        magBtn.onClick = [this]() { OnSetMagnification(); };
+        m_buttons.push_back(magBtn);
+    }
     y += btnHeight + btnSpacing;
 
-    // Place Marker
-    SwirButton placeBtn;
-    placeBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    placeBtn.label = L"PLACE MARKER";
-    placeBtn.tag = TAG_PLACE_MARKER;
-    placeBtn.onClick = [this]() { OnPlaceMarker(); };
-    m_buttons.push_back(placeBtn);
-    y += btnHeight + btnSpacing;
+    // Row 3: BEAM DETECT | BEAM CONFIG | BEAM OPT
+    {
+        SwirButton beamBtn;
+        beamBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+        beamBtn.label = L"B DETECT";
+        beamBtn.isToggle = true;
+        beamBtn.toggled = m_beamDetectionEnabled;
+        beamBtn.tag = TAG_BEAM_DETECT;
+        beamBtn.onClick = [this]() { OnBeamDetectToggle(); };
+        m_buttons.push_back(beamBtn);
 
-    // Clear All Markers
-    SwirButton clearBtn;
-    clearBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    clearBtn.label = L"CLEAR ALL";
-    clearBtn.tag = TAG_CLEAR_MARKERS;
-    clearBtn.onClick = [this]() { OnClearAllMarkers(); };
-    m_buttons.push_back(clearBtn);
-    y += btnHeight + btnSpacing;
+        SwirButton configBtn;
+        configBtn.rect = {col2, y, col2 + thirdBtnWidth, y + btnHeight};
+        configBtn.label = L"B CONFIG";
+        configBtn.tag = TAG_BEAM_CONFIG;
+        configBtn.onClick = [this]() { OnEditBeamConfig(); };
+        m_buttons.push_back(configBtn);
 
-    // SET MAGNIFICATION button
-    SwirButton magBtn;
-    magBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    magBtn.label = L"SET MAGNIFICATION";
-    magBtn.tag = TAG_SET_MAG;
-    magBtn.onClick = [this]() { OnSetMagnification(); };
-    m_buttons.push_back(magBtn);
-    y += btnHeight + btnSpacing;
-
-    // BEAM DETECT toggle
-    SwirButton beamBtn;
-    beamBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    beamBtn.label = L"BEAM DETECT";
-    beamBtn.isToggle = true;
-    beamBtn.toggled = m_beamDetectionEnabled;
-    beamBtn.tag = TAG_BEAM_DETECT;
-    beamBtn.onClick = [this]() { OnBeamDetectToggle(); };
-    m_buttons.push_back(beamBtn);
-    y += btnHeight + btnSpacing;
-
-    // BEAM CONFIG
-    SwirButton configBtn;
-    configBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    configBtn.label = L"BEAM CONFIG";
-    configBtn.isToggle = false;
-    configBtn.tag = TAG_BEAM_CONFIG;
-    configBtn.onClick = [this]() { OnEditBeamConfig(); };
-    m_buttons.push_back(configBtn);
-    y += btnHeight + btnSpacing;
-
-    // Beam Optimize (placeholder — logs hardware status)
-    SwirButton optimizeBtn;
-    optimizeBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-    optimizeBtn.label = L"BEAM OPTIMIZE";
-    optimizeBtn.isToggle = false;
-    optimizeBtn.tag = TAG_BEAM_OPTIMIZE;
-    optimizeBtn.onClick = [this]() { OnBeamOptimize(); };
-    m_buttons.push_back(optimizeBtn);
+        SwirButton optimizeBtn;
+        optimizeBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
+        optimizeBtn.label = L"B OPTIM";
+        optimizeBtn.tag = TAG_BEAM_OPTIMIZE;
+        optimizeBtn.onClick = [this]() { OnBeamOptimize(); };
+        m_buttons.push_back(optimizeBtn);
+    }
     y += btnHeight + btnSpacing;
 
     y += groupPad;
@@ -1310,9 +1325,10 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
         if (btn.tag == TAG_CLICK_TO_MOVE) btn.toggled = m_clickToMoveEnabled;
         if (btn.tag == TAG_SWIR_HEAD) {
             btn.toggled = swirHeadDown;
-            btn.label = swirHeadDown ? L"SWIR HEAD UP" : L"SWIR HEAD DOWN";
+            btn.label = swirHeadDown ? L"HEAD UP" : L"HEAD DN";
         }
         if (btn.tag == TAG_BEAM_DETECT) btn.toggled = m_beamDetectionEnabled;
+        if (btn.tag == TAG_BEAM_FOCUS) btn.toggled = m_beamFocusRunning.load();
     }
 
     // Draw PSU readings
@@ -1371,18 +1387,13 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
                        &leftFormat, &dimBrush);
     }
 
-    // --- Tools Group Box ---
+    // --- Tools Group Box (3x3 grid) ---
     y += sectionGap;
     int toolsGroupTop = y;
     y += titleH + groupPad;
-    y += btnHeight + btnSpacing;  // SWIR HEAD
-    y += btnHeight + btnSpacing;  // CLICK TO MOVE
-    y += btnHeight + btnSpacing;  // PLACE MARKER
-    y += btnHeight + btnSpacing;  // CLEAR ALL
-    y += btnHeight + btnSpacing;  // SET MAGNIFICATION
-    y += btnHeight + btnSpacing;  // BEAM DETECT
-    y += btnHeight + btnSpacing;  // BEAM CONFIG
-    y += btnHeight + btnSpacing;  // BEAM OPTIMIZE
+    y += btnHeight + btnSpacing;  // Row 1: HEAD | CLICK MOVE | BF
+    y += btnHeight + btnSpacing;  // Row 2: MARKER | CLEAR ALL | SET MAG
+    y += btnHeight + btnSpacing;  // Row 3: B DETECT | B CONFIG | B OPTIM
     y += groupPad;
 
     RECT toolsGroupRect = { panelRect.left + margin, toolsGroupTop,
@@ -1512,10 +1523,14 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
             DrawBeamOverlays(gfx, m_beamResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
                              m_frameWidth, m_frameHeight);
+        }
 
-            // Magnified beam thumbnails suppressed — the per-pixel resampling
-            // and nested m_frameMutex acquisition add significant paint overhead,
-            // causing UI lag on jog panel and GDI camera windows.
+        // CE/EE charts (drawn even when no current detection — shows previous data)
+        if (m_ceHistoryCount[0] > 0 || m_ceHistoryCount[1] > 0) {
+            DrawCECharts(gfx, m_ceHistory, m_eeHistory,
+                         m_ceHistoryIndex, m_ceHistoryCount,
+                         CE_HISTORY_SIZE,
+                         m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH);
         }
     }
 
@@ -2055,6 +2070,14 @@ void SwirBeamWindow::StartDetectionThread()
     m_avgFrameIndex = 0;
     m_avgFramesFilled = 0;
 
+    // Reset CE/EE history ring buffers
+    for (int i = 0; i < 2; ++i) {
+        m_ceHistory[i].assign(CE_HISTORY_SIZE, 0.0);
+        m_eeHistory[i].assign(CE_HISTORY_SIZE, 0.0);
+        m_ceHistoryIndex[i] = 0;
+        m_ceHistoryCount[i] = 0;
+    }
+
     m_detectionThread = std::thread([this]() {
 #ifdef HAS_OPENCV
         // Set below-normal priority
@@ -2117,10 +2140,45 @@ void SwirBeamWindow::StartDetectionThread()
             // Run detection on averaged frame
             auto results = RunBeamDetection(avgBuffer.data(), localW, localH, m_beamConfig);
 
-            // Publish results
+            // Publish results and update CE history
             {
                 std::lock_guard<std::mutex> lock(m_beamMutex);
-                m_beamResults = std::move(results);
+                // Keep previous results when detection misses (avoids overlay flicker)
+                if (!results.empty()) {
+                    m_beamResults = std::move(results);
+                }
+
+                // Push CE values into history ring buffers (with outlier rejection)
+                for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
+                    int idx = static_cast<int>(bi);
+                    double newCE = m_beamResults[bi].circleEnergy;
+
+                    // Outlier rejection: if we have enough history, reject values
+                    // that drop below 50% of the recent median (last 5 samples)
+                    if (m_ceHistoryCount[idx] >= 5) {
+                        // Gather last 5 values
+                        double recent[5];
+                        for (int k = 0; k < 5; ++k) {
+                            int hi = (m_ceHistoryIndex[idx] - 1 - k + CE_HISTORY_SIZE) % CE_HISTORY_SIZE;
+                            recent[k] = m_ceHistory[idx][hi];
+                        }
+                        // Find median of 5
+                        std::sort(recent, recent + 5);
+                        double median = recent[2];
+
+                        // Skip if value drops below 50% of median
+                        if (median > 1.0 && newCE < median * 0.5) {
+                            continue;  // discard outlier, keep previous data
+                        }
+                    }
+
+                    int wi = m_ceHistoryIndex[idx];
+                    m_ceHistory[idx][wi] = newCE;
+                    m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;  // store as %
+                    m_ceHistoryIndex[idx] = (wi + 1) % CE_HISTORY_SIZE;
+                    if (m_ceHistoryCount[idx] < CE_HISTORY_SIZE) ++m_ceHistoryCount[idx];
+                }
+                // If no beam detected, history retains previous data (no update)
             }
 
             // Publish to broker (subscribers get a copy)
@@ -2263,6 +2321,189 @@ void SwirBeamWindow::OnBeamOptimize()
     }
 
     std::cout << "========================================\n" << std::endl;
+}
+
+// ============================================================================
+// Beam Focus - hill climb Z-axis optimization
+// ============================================================================
+
+void SwirBeamWindow::OnBeamFocus()
+{
+    // Toggle off if already running
+    if (m_beamFocusRunning.load()) {
+        std::cout << "[BeamFocus] Stopping beam focus optimization" << std::endl;
+        m_beamFocusRunning.store(false);
+        InvalidatePanel();
+        return;
+    }
+
+    // Validate prerequisites
+    if (!m_motionManager) {
+        std::cout << "[BeamFocus] Motion manager not available" << std::endl;
+        return;
+    }
+    if (!m_beamDetectionEnabled) {
+        std::cout << "[BeamFocus] Enable BEAM DETECT first" << std::endl;
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_beamMutex);
+        if (m_beamResults.empty()) {
+            std::cout << "[BeamFocus] No beam detected" << std::endl;
+            return;
+        }
+    }
+
+    m_beamFocusRunning.store(true);
+    InvalidatePanel();
+
+    // Capture step sizes (copy for thread safety)
+    std::vector<double> steps = m_beamFocusSteps;
+    auto* motionMgr = m_motionManager;
+
+    m_beamFocusFuture = std::async(std::launch::async, [this, motionMgr, steps]() {
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "[BeamFocus] Starting Z-axis beam focus" << std::endl;
+        std::cout << "========================================" << std::endl;
+
+        // Helper: compute combined score from current beam results (CE * EE)
+        // Returns average score across all visible beams
+        auto getScore = [this]() -> double {
+            std::lock_guard<std::mutex> lock(m_beamMutex);
+            if (m_beamResults.empty()) return -1.0;
+            double totalScore = 0.0;
+            int numBeams = std::min(static_cast<int>(m_beamResults.size()), 2);
+            for (int i = 0; i < numBeams; ++i) {
+                double ce = m_beamResults[i].circleEnergy;
+                double ee = m_beamResults[i].encircledEnergy;  // 0.0 - 1.0
+                totalScore += ce * ee;
+            }
+            return totalScore / numBeams;
+        };
+
+        // Helper: wait for detection to settle after a move
+        auto waitForStableReading = [this]() {
+            // Wait for a few frames to process after motion stops
+            // 5 frames at ~30fps = ~170ms
+            for (int i = 0; i < 5; ++i) {
+                if (!m_beamFocusRunning.load()) return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        };
+
+        // Get initial score
+        waitForStableReading();
+        double bestScore = getScore();
+        if (bestScore < 0) {
+            std::cout << "[BeamFocus] No beam detected, aborting" << std::endl;
+            m_beamFocusRunning.store(false);
+            InvalidatePanel();
+            return;
+        }
+
+        std::cout << "[BeamFocus] Initial score: " << std::fixed << std::setprecision(1) << bestScore << std::endl;
+
+        // For each step size: coarse-to-fine hill climb
+        for (size_t si = 0; si < steps.size(); ++si) {
+            if (!m_beamFocusRunning.load()) break;
+
+            double stepMm = steps[si];
+            std::cout << "[BeamFocus] Step size: " << (stepMm * 1000.0) << " um" << std::endl;
+
+            // Try +step first to determine direction
+            if (!motionMgr->MoveRelative("gantry-main", "Z", stepMm, true)) {
+                std::cout << "[BeamFocus] Move failed, aborting" << std::endl;
+                break;
+            }
+            waitForStableReading();
+            if (!m_beamFocusRunning.load()) break;
+
+            double newScore = getScore();
+            if (newScore < 0) {
+                // Lost beam, reverse and stop this step size
+                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
+                waitForStableReading();
+                std::cout << "[BeamFocus] Lost beam, reverting" << std::endl;
+                continue;
+            }
+
+            double direction = stepMm;  // positive direction
+            if (newScore > bestScore) {
+                // Positive direction is better, keep going
+                bestScore = newScore;
+                std::cout << "[BeamFocus]   +" << (stepMm * 1000.0) << "um -> score=" << std::fixed << std::setprecision(1) << bestScore << " (better)" << std::endl;
+            } else {
+                // Positive was worse, try negative direction
+                // Move back to origin, then -step
+                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
+                motionMgr->MoveRelative("gantry-main", "Z", -stepMm, true);
+                waitForStableReading();
+                if (!m_beamFocusRunning.load()) break;
+
+                newScore = getScore();
+                if (newScore < 0) {
+                    motionMgr->MoveRelative("gantry-main", "Z", stepMm, true);
+                    waitForStableReading();
+                    std::cout << "[BeamFocus] Lost beam in negative direction, reverting" << std::endl;
+                    continue;
+                }
+
+                if (newScore > bestScore) {
+                    direction = -stepMm;
+                    bestScore = newScore;
+                    std::cout << "[BeamFocus]   -" << (stepMm * 1000.0) << "um -> score=" << std::fixed << std::setprecision(1) << bestScore << " (better)" << std::endl;
+                } else {
+                    // Neither direction improved, go back to original
+                    motionMgr->MoveRelative("gantry-main", "Z", stepMm, true);
+                    waitForStableReading();
+                    std::cout << "[BeamFocus]   No improvement at " << (stepMm * 1000.0) << "um, skipping" << std::endl;
+                    continue;
+                }
+            }
+
+            // Continue in the winning direction until score stops improving
+            static constexpr int MAX_STEPS = 100;
+            for (int step = 0; step < MAX_STEPS; ++step) {
+                if (!m_beamFocusRunning.load()) break;
+
+                if (!motionMgr->MoveRelative("gantry-main", "Z", direction, true)) {
+                    std::cout << "[BeamFocus] Move failed, stopping" << std::endl;
+                    break;
+                }
+                waitForStableReading();
+                if (!m_beamFocusRunning.load()) break;
+
+                newScore = getScore();
+                if (newScore < 0) {
+                    // Lost beam, reverse last step
+                    motionMgr->MoveRelative("gantry-main", "Z", -direction, true);
+                    waitForStableReading();
+                    std::cout << "[BeamFocus]   Lost beam, reverting last step" << std::endl;
+                    break;
+                }
+
+                if (newScore > bestScore) {
+                    bestScore = newScore;
+                    std::cout << "[BeamFocus]   step " << (step + 2) << " -> score=" << std::fixed << std::setprecision(1) << bestScore << std::endl;
+                } else {
+                    // Score decreased, reverse to best position
+                    motionMgr->MoveRelative("gantry-main", "Z", -direction, true);
+                    waitForStableReading();
+                    std::cout << "[BeamFocus]   Score decreased, reverting to best" << std::endl;
+                    break;
+                }
+            }
+        }
+
+        double finalZ = 0.0;
+        motionMgr->GetPosition("gantry-main", "Z", finalZ);
+        std::cout << "[BeamFocus] Complete. Final Z=" << std::fixed << std::setprecision(4) << finalZ
+                  << "mm, score=" << std::setprecision(1) << bestScore << std::endl;
+        std::cout << "========================================\n" << std::endl;
+
+        m_beamFocusRunning.store(false);
+        InvalidatePanel();
+    });
 }
 
 void SwirBeamWindow::OnPaint()

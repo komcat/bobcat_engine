@@ -9,6 +9,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <mutex>
 #include <atomic>
 #include <functional>
@@ -185,6 +186,7 @@ private:
 
     // Beam optimization
     void OnBeamOptimize();
+    void OnBeamFocus();
 
     // PSU device discovery
     void DiscoverPSUDevices();
@@ -285,6 +287,7 @@ private:
     static constexpr int TAG_BEAM_DETECT = 900;
     static constexpr int TAG_BEAM_CONFIG = 910;
     static constexpr int TAG_BEAM_OPTIMIZE = 950;
+    static constexpr int TAG_BEAM_FOCUS = 960;
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};
@@ -318,6 +321,18 @@ private:
     std::mutex m_beamMutex;
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
+
+    // Beam focus optimization
+    std::atomic<bool> m_beamFocusRunning{false};
+    std::future<void> m_beamFocusFuture;
+    std::vector<double> m_beamFocusSteps = {0.010, 0.005, 0.002};  // mm (10, 5, 2 µm)
+
+    // CE/EE history for real-time charts (one ring buffer per beam, max 2)
+    static constexpr int CE_HISTORY_SIZE = 200;
+    std::array<std::vector<double>, 2> m_ceHistory;   // [0]=B0, [1]=B1
+    std::array<std::vector<double>, 2> m_eeHistory;   // EE% history [0]=B0, [1]=B1
+    std::array<int, 2> m_ceHistoryIndex = {0, 0};     // next write position (shared CE/EE)
+    std::array<int, 2> m_ceHistoryCount = {0, 0};     // filled count (shared CE/EE)
 
     // Frame averaging for stable detection
     static constexpr int FRAME_AVG_COUNT = 5;
