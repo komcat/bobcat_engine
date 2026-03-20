@@ -212,11 +212,12 @@ json BeamServerClient::SendCommand(uint32_t cmdId, const std::vector<uint8_t>& p
 }
 
 json BeamServerClient::SendDetect(
-  const std::vector<uint16_t>& imageData,
+  const std::vector<uint8_t>& imageData,
   int width, int height,
   double z_um,
   bool rotate180,
-  double umPerPxX, double umPerPxY)
+  double umPerPxX, double umPerPxY,
+  int numFrames)
 {
   static constexpr uint32_t CMD_DETECT = 0x01;
 
@@ -233,21 +234,22 @@ json BeamServerClient::SendDetect(
     {"height", height},
     {"z_um", z_um},
     {"rotate_180", rotate180},
-    {"um_per_px", {umPerPxX, umPerPxY}}
+    {"um_per_px", {umPerPxX, umPerPxY}},
+    {"num_frames", numFrames}
   };
 
   std::string headerStr = header.dump();
   uint32_t headerLen = static_cast<uint32_t>(headerStr.size());
 
-  // DETECT payload: [4B json_len (LE)][JSON bytes][raw uint16 pixels]
-  size_t pixelBytes = imageData.size() * sizeof(uint16_t);
+  // DETECT payload: [4B json_len (LE)][JSON bytes][frame0 pixels][frame1 pixels]...
+  size_t pixelBytes = imageData.size();
   std::vector<uint8_t> payload(4 + headerStr.size() + pixelBytes);
 
   // Copy json_len
   std::memcpy(payload.data(), &headerLen, 4);
   // Copy JSON bytes
   std::memcpy(payload.data() + 4, headerStr.data(), headerStr.size());
-  // Copy raw pixel data (uint16 little-endian)
+  // Copy raw pixel data (numFrames * width * height uint8 grayscale)
   std::memcpy(payload.data() + 4 + headerStr.size(), imageData.data(), pixelBytes);
 
   json response = SendCommand(CMD_DETECT, payload);
