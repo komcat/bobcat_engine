@@ -913,7 +913,7 @@ void MultiDeviceRunAlignmentWidget::beginNextHexCornerCapture()
         int teachMode = teachData->gantryTeachMode;
 
         m_moveFuture = std::async(std::launch::async,
-            [this, hexDevice, gantryDevice, hexTarget, gantryX, gantryY, gantryZ, visionProfile, teachMode]() {
+            [this, hexDevice, gantryDevice, hexTarget, gantryX, gantryY, gantryZ, visionProfile, teachMode, teachData]() {
             // First move hex to working position
             bool hexOk = m_context->motionManager->MoveToAbs6(hexDevice, hexTarget, true);
             // Then move gantry to viewing position
@@ -978,32 +978,35 @@ void MultiDeviceRunAlignmentWidget::beginNextHexCornerCapture()
                 }
 
                 // Vision failed - fall back based on teach mode
-                QMetaObject::invokeMethod(this, [this, teachMode]() {
+                QMetaObject::invokeMethod(this, [this, teachMode, teachData]() {
                     appendLog("  Vision failed - falling back to manual registration.");
                     if (teachMode == 0) {
                         // Single point: use current gantry position as center
                         autoRegisterSinglePoint();
                     } else {
-                        setState(RegisterHex_Corner1);
+                        m_currentHexTeachData = teachData;
+                        navigateToCornerAndSetState(RegisterHex_Corner1);
                     }
                 }, Qt::QueuedConnection);
                 return;
             }
 
             // No vision profile - register based on teach mode
-            QMetaObject::invokeMethod(this, [this, teachMode]() {
+            QMetaObject::invokeMethod(this, [this, teachMode, teachData]() {
                 if (teachMode == 0) {
                     // Single point: use current gantry position as center (already at taught pos)
                     appendLog("  Single-point mode: using gantry position as center.");
                     autoRegisterSinglePoint();
                 } else {
-                    appendLog("  Capture corners manually.");
-                    setState(RegisterHex_Corner1);
+                    m_currentHexTeachData = teachData;
+                    appendLog("  Corner capture with auto-navigation to saved positions.");
+                    navigateToCornerAndSetState(RegisterHex_Corner1);
                 }
             }, Qt::QueuedConnection);
         });
     } else {
         // No teach data: manual jog flow (original behavior)
+        m_currentHexTeachData = nullptr;
         // Read hex device's current position (it should be in its working position)
         if (m_context && m_context->motionManager) {
             auto hexPos = m_context->motionManager->GetCurrentPosition(m_pendingHexReg.deviceName);
@@ -1021,6 +1024,54 @@ void MultiDeviceRunAlignmentWidget::beginNextHexCornerCapture()
     }
 }
 
+void MultiDeviceRunAlignmentWidget::navigateToCornerAndSetState(AlignState cornerState)
+{
+    if (!m_currentHexTeachData || !m_context || !m_context->motionManager || !m_trainingSet) {
+        setState(cornerState);
+        return;
+    }
+
+    double targetX = 0.0, targetY = 0.0, targetZ = m_currentHexTeachData->cornerTL_Z;
+    QString cornerName;
+
+    switch (cornerState) {
+    case RegisterHex_Corner1:
+        targetX = m_currentHexTeachData->cornerTL_X;
+        targetY = m_currentHexTeachData->cornerTL_Y;
+        targetZ = m_currentHexTeachData->cornerTL_Z;
+        cornerName = "TL";
+        break;
+    case RegisterHex_Corner2:
+        targetX = m_currentHexTeachData->cornerBR_X;
+        targetY = m_currentHexTeachData->cornerBR_Y;
+        cornerName = "BR";
+        break;
+    case RegisterHex_Corner3:
+        targetX = m_currentHexTeachData->cornerTR_X;
+        targetY = m_currentHexTeachData->cornerTR_Y;
+        cornerName = "TR";
+        break;
+    default:
+        setState(cornerState);
+        return;
+    }
+
+    appendLog(QString("  Auto-navigating gantry to saved %1 corner: X=%2, Y=%3")
+        .arg(cornerName).arg(targetX, 0, 'f', 4).arg(targetY, 0, 'f', 4));
+
+    std::string gantryDevice = m_trainingSet->deviceName;
+    m_cornerNavFuture = std::async(std::launch::async,
+        [this, gantryDevice, targetX, targetY, targetZ, cornerState]() {
+        bool ok = m_context->motionManager->MoveToAbs(gantryDevice, targetX, targetY, targetZ, 100.0, true);
+        QMetaObject::invokeMethod(this, [this, cornerState, ok]() {
+            if (!ok) {
+                appendLog("  Warning: auto-navigation failed, jog manually.");
+            }
+            setState(cornerState);
+        }, Qt::QueuedConnection);
+    });
+}
+
 void MultiDeviceRunAlignmentWidget::onCaptureHexCorner()
 {
     if (!m_context || !m_context->motionManager || !m_trainingSet) return;
@@ -1036,7 +1087,7 @@ void MultiDeviceRunAlignmentWidget::onCaptureHexCorner()
         m_pendingHexReg.centerGantryZ = pos.z;  // Z from first corner
         appendLog(QString("  Corner 1 (TL): X=%1, Y=%2, Z=%3")
             .arg(pos.x, 0, 'f', 4).arg(pos.y, 0, 'f', 4).arg(pos.z, 0, 'f', 4));
-        setState(RegisterHex_Corner2);
+        navigateToCornerAndSetState(RegisterHex_Corner2);
         break;
 
     case RegisterHex_Corner2:
@@ -1044,7 +1095,14 @@ void MultiDeviceRunAlignmentWidget::onCaptureHexCorner()
         m_pendingHexReg.cornerBR_Y = pos.y;
         appendLog(QString("  Corner 2 (BR): X=%1, Y=%2")
             .arg(pos.x, 0, 'f', 4).arg(pos.y, 0, 'f', 4));
-        setState(RegisterHex_Corner3);
+        // Auto-skip corner 3 if teach data only has 2 corners
+        if (m_currentHexTeachData && !m_currentHexTeachData->hasThirdCorner) {
+            appendLog("  Taught data has 2 corners - skipping corner 3.");
+            m_pendingHexReg.hasThirdCorner = false;
+            computeHexCenter();
+        } else {
+            navigateToCornerAndSetState(RegisterHex_Corner3);
+        }
         break;
 
     case RegisterHex_Corner3:

@@ -87,6 +87,7 @@ private:
     void beginNextHexCornerCapture();
     void computeHexCenter();
     void autoRegisterSinglePoint();
+    void navigateToCornerAndSetState(AlignState cornerState);
     void applyDeviceAssignments();
     void startBondingSequence();
     void showBondingPointAndAutoMove();
@@ -127,6 +128,8 @@ private:
     std::vector<HexDeviceRegistration> m_hexRegistrations;
     int m_currentHexRegIndex = 0;
     HexDeviceRegistration m_pendingHexReg;
+    const HexDeviceTeachData* m_currentHexTeachData = nullptr;
+    std::future<void> m_cornerNavFuture;
 
     // UI - Page 0: Ready
     QStackedWidget* m_wizardStack;
