@@ -42,6 +42,11 @@ struct HexDeviceTeachData {
     double gantryViewX = 0.0, gantryViewY = 0.0, gantryViewZ = 0.0;  // gantry viewing position
     std::string visionProfilePath;  // Vision profile for auto-detect hex tip (empty = manual only)
     int gantryTeachMode = 0;        // 0=single point, 1=2-corner, 2=3-corner
+    // Taught corner positions (for auto-navigation during headless retrace)
+    double cornerTL_X = 0.0, cornerTL_Y = 0.0, cornerTL_Z = 0.0;  // top-left corner gantry position
+    double cornerBR_X = 0.0, cornerBR_Y = 0.0;                     // bottom-right corner gantry position
+    double cornerTR_X = 0.0, cornerTR_Y = 0.0;                     // top-right corner (optional, 3-corner mode)
+    bool hasThirdCorner = false;
     // Z placement adjustment parameters (full XYZ stored for reteach navigation)
     double zCompX = 0.0, zCompY = 0.0, zComp = 0.0;  // Gantry XYZ at component top
     double zPlaceX = 0.0, zPlaceY = 0.0, zPlace = 0.0; // Gantry XYZ at placement surface

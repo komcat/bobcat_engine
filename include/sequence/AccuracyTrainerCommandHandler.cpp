@@ -6,6 +6,7 @@
 #include "SequenceContext.h"
 #include "../AppUI/AccuracyTrainer/AccuracyTrainerData.h"
 #include "../AppUI/AccuracyTrainer/AccuracyTrainerStore.h"
+#include "../dut/DeviceUnderTest.h"
 #include "../motions/TransformationMatrixLoader.h"
 #include "../motions/CoordinateTransformer.h"
 #include "product_position_manager.h"
@@ -161,12 +162,45 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
     const std::string& device = ts.deviceName;
     auto* motionMgr = m_appContext->motionManager;
 
+    // Auto-detect hex registration from bondingDeviceAssignments:
+    // If a bonding point is assigned to a hex device, that hex must be registered
+    // so the bonding move phase can compute the corrected hex position.
+    for (const auto& [bondName, assignedDevice] : ts.bondingDeviceAssignments) {
+        if (assignedDevice != device) {
+            // Find matching hex device in training set
+            for (const auto& hexDev : ts.hexDevicePositions) {
+                if (hexDev.deviceName == assignedDevice && hexDev.valid) {
+                    if (assignedDevice.find("left") != std::string::npos && !registerHexLeft) {
+                        registerHexLeft = true;
+                        std::cout << "[AccuracyTrainer] Auto-enabled hex-left registration "
+                                  << "(assigned to " << bondName << ")" << std::endl;
+                    }
+                    if (assignedDevice.find("right") != std::string::npos && !registerHexRight) {
+                        registerHexRight = true;
+                        std::cout << "[AccuracyTrainer] Auto-enabled hex-right registration "
+                                  << "(assigned to " << bondName << ")" << std::endl;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // Get product name for navigation file updates
     std::string productName;
     if (m_appContext->productPositionManager &&
         m_appContext->productPositionManager->HasLoadedProduct()) {
         productName = m_appContext->productPositionManager->GetCurrentProductName();
     }
+
+    // Get DUT serial number if available
+    std::string serialNumber;
+    if (m_appContext->currentDUT) {
+        serialNumber = m_appContext->currentDUT->getSerialNumber();
+    }
+
+    // Initialize SQLite logger for corner confirmations
+    m_logger.Initialize();
 
     // ========================================================================
     // PHASE 1: Reference alignment
@@ -179,11 +213,14 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                   << ": " << ref.name << " -> (" << ref.globalX << ", " << ref.globalY
                   << ", " << ref.globalZ << ")" << std::endl;
 
+        // Build unique ID for this reference point
+        std::string refUid = "ref_" + ref.name;
+
         // Write taught ref position to navigation file BEFORE calling the manual
         // callback, so ManualAlignPointWidget auto-navigates to the taught position
         // (not stale saved data from a previous run)
         if (!productName.empty()) {
-            WriteNavigationData(productName, device, ref.name,
+            WriteNavigationData(productName, device, refUid,
                                 ref.globalX, ref.globalY, ref.globalZ);
         }
 
@@ -202,7 +239,7 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 + " (" + std::to_string(i + 1) + " of "
                 + std::to_string(ts.referencePoints.size()) + ")\n"
                 + "Verify or adjust gantry position on the reference feature, then click OK.";
-            bool userOk = m_manualAlignCallback(ref.name, msg, true, true, true);
+            bool userOk = m_manualAlignCallback(refUid, msg, true, true, true);
             if (!userOk) {
                 errorMessage = "User cancelled alignment at reference " + ref.name;
                 if (context) context->SetValue("accuracy_trainer.result.success", false);
@@ -404,9 +441,15 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
 
                 // Always require manual confirmation for hex registration
                 if (m_manualAlignCallback) {
+                    // Write viewing position so ManualAlignPointWidget navigates correctly
+                    std::string hexUid = "hex_" + hexDev.deviceName + "_CENTER";
+                    if (!productName.empty()) {
+                        WriteNavigationData(productName, device, hexUid,
+                                            hexDev.gantryViewX, hexDev.gantryViewY, hexDev.gantryViewZ);
+                    }
                     std::string msg = "Confirm hex registration: " + hexDev.deviceName
                         + "\nVerify gantry is centered on the hex end-effector tip, then click OK.";
-                    bool userOk = m_manualAlignCallback(hexDev.deviceName, msg, true, true, true);
+                    bool userOk = m_manualAlignCallback(hexUid, msg, true, true, true);
                     if (!userOk) {
                         std::cout << "[AccuracyTrainer] User cancelled hex registration for "
                                   << hexDev.deviceName << std::endl;
@@ -451,10 +494,37 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] Starting corner capture for " << hexDev.deviceName
                           << " (teachMode=" << hexDev.gantryTeachMode << ")" << std::endl;
 
+                // Auto-navigate to taught TL corner position if available
+                bool hasTaughtTL = (hexDev.gantryTeachMode >= 1 &&
+                    (std::abs(hexDev.cornerTL_X) > 1e-6 || std::abs(hexDev.cornerTL_Y) > 1e-6));
+                if (hasTaughtTL) {
+                    std::cout << "[AccuracyTrainer] Auto-navigating to taught TL corner: X="
+                              << hexDev.cornerTL_X << " Y=" << hexDev.cornerTL_Y
+                              << " Z=" << hexDev.cornerTL_Z << std::endl;
+                    bool navOk = motionMgr->MoveToAbs(device,
+                        hexDev.cornerTL_X, hexDev.cornerTL_Y, hexDev.cornerTL_Z, 100.0, true);
+                    if (!navOk) {
+                        std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to TL corner failed" << std::endl;
+                    }
+                }
+
+                // Write corner position to navigation file so ManualAlignPointWidget
+                // stays at the corner (not the viewing position) when it opens
+                std::string tlUid = "hex_" + hexDev.deviceName + "_TL";
+                if (!productName.empty()) {
+                    if (hasTaughtTL) {
+                        WriteNavigationData(productName, device, tlUid,
+                                            hexDev.cornerTL_X, hexDev.cornerTL_Y, hexDev.cornerTL_Z);
+                    } else {
+                        WriteNavigationData(productName, device, tlUid,
+                                            hexDev.gantryViewX, hexDev.gantryViewY, hexDev.gantryViewZ);
+                    }
+                }
+
                 // Corner 1: Top-Left
                 std::string msg1 = "Corner 1/3 (Top-Left): " + hexDev.deviceName
                     + "\nJog gantry camera crosshair to the TOP-LEFT corner of the end-effector tip.";
-                bool userOk = m_manualAlignCallback(hexDev.deviceName, msg1, true, true, true);
+                bool userOk = m_manualAlignCallback(tlUid, msg1, true, true, true);
                 if (!userOk) {
                     std::cout << "[AccuracyTrainer] User cancelled hex corner 1 for " << hexDev.deviceName << std::endl;
                     continue;
@@ -463,16 +533,43 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] Corner 1 (TL): X=" << cornerTL.x
                           << " Y=" << cornerTL.y << " Z=" << cornerTL.z << std::endl;
 
+                m_logger.LogCorner(productName, tsName, serialNumber, hexDev.deviceName,
+                    hexDev.gantryTeachMode, "TL",
+                    hexDev.cornerTL_X, hexDev.cornerTL_Y, hexDev.cornerTL_Z,
+                    cornerTL.x, cornerTL.y, cornerTL.z);
+
                 if (context && context->IsStopRequestedAny()) {
                     errorMessage = "Alignment stopped during hex corner capture";
                     context->SetValue("accuracy_trainer.result.success", false);
                     return false;
                 }
 
+                // Auto-navigate to taught BR corner position if available
+                bool hasTaughtBR = (hexDev.gantryTeachMode >= 1 &&
+                    (std::abs(hexDev.cornerBR_X) > 1e-6 || std::abs(hexDev.cornerBR_Y) > 1e-6));
+                if (hasTaughtBR) {
+                    std::cout << "[AccuracyTrainer] Auto-navigating to taught BR corner: X="
+                              << hexDev.cornerBR_X << " Y=" << hexDev.cornerBR_Y << std::endl;
+                    double curZ = motionMgr->GetCurrentPosition(device).z;
+                    bool navOk = motionMgr->MoveToAbs(device,
+                        hexDev.cornerBR_X, hexDev.cornerBR_Y, curZ, 100.0, true);
+                    if (!navOk) {
+                        std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to BR corner failed" << std::endl;
+                    }
+                }
+
+                // Update navigation file with BR corner so widget stays here
+                std::string brUid = "hex_" + hexDev.deviceName + "_BR";
+                if (!productName.empty() && hasTaughtBR) {
+                    double curZ = motionMgr->GetCurrentPosition(device).z;
+                    WriteNavigationData(productName, device, brUid,
+                                        hexDev.cornerBR_X, hexDev.cornerBR_Y, curZ);
+                }
+
                 // Corner 2: Bottom-Right
                 std::string msg2 = "Corner 2/3 (Bottom-Right): " + hexDev.deviceName
                     + "\nJog gantry camera crosshair to the BOTTOM-RIGHT corner of the end-effector tip.";
-                userOk = m_manualAlignCallback(hexDev.deviceName, msg2, true, true, true);
+                userOk = m_manualAlignCallback(brUid, msg2, true, true, true);
                 if (!userOk) {
                     std::cout << "[AccuracyTrainer] User cancelled hex corner 2 for " << hexDev.deviceName << std::endl;
                     continue;
@@ -481,20 +578,52 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] Corner 2 (BR): X=" << cornerBR.x
                           << " Y=" << cornerBR.y << std::endl;
 
+                m_logger.LogCorner(productName, tsName, serialNumber, hexDev.deviceName,
+                    hexDev.gantryTeachMode, "BR",
+                    hexDev.cornerBR_X, hexDev.cornerBR_Y, 0.0,
+                    cornerBR.x, cornerBR.y, cornerBR.z);
+
                 // Corner 3: Top-Right (only for 3-corner mode, optional for 2-corner)
                 bool hasThirdCorner = false;
                 double cornerTR_X = 0.0, cornerTR_Y = 0.0;
                 if (hexDev.gantryTeachMode == 2) {
+                    // Auto-navigate to taught TR corner position if available
+                    bool hasTaughtTR = (hexDev.hasThirdCorner &&
+                        (std::abs(hexDev.cornerTR_X) > 1e-6 || std::abs(hexDev.cornerTR_Y) > 1e-6));
+                    if (hasTaughtTR) {
+                        std::cout << "[AccuracyTrainer] Auto-navigating to taught TR corner: X="
+                                  << hexDev.cornerTR_X << " Y=" << hexDev.cornerTR_Y << std::endl;
+                        double curZ = motionMgr->GetCurrentPosition(device).z;
+                        bool navOk = motionMgr->MoveToAbs(device,
+                            hexDev.cornerTR_X, hexDev.cornerTR_Y, curZ, 100.0, true);
+                        if (!navOk) {
+                            std::cout << "[AccuracyTrainer] WARNING: Auto-navigate to TR corner failed" << std::endl;
+                        }
+                    }
+
+                    // Update navigation file with TR corner so widget stays here
+                    std::string trUid = "hex_" + hexDev.deviceName + "_TR";
+                    if (!productName.empty() && hasTaughtTR) {
+                        double curZ = motionMgr->GetCurrentPosition(device).z;
+                        WriteNavigationData(productName, device, trUid,
+                                            hexDev.cornerTR_X, hexDev.cornerTR_Y, curZ);
+                    }
+
                     std::string msg3 = "Corner 3/3 (Top-Right): " + hexDev.deviceName
                         + "\nJog gantry camera crosshair to the TOP-RIGHT corner.\n"
                           "Click OK to capture, or Cancel to use 2-corner midpoint.";
-                    hasThirdCorner = m_manualAlignCallback(hexDev.deviceName, msg3, true, true, true);
+                    hasThirdCorner = m_manualAlignCallback(trUid, msg3, true, true, true);
                     if (hasThirdCorner) {
                         auto cornerTR = motionMgr->GetCurrentPosition(device);
                         cornerTR_X = cornerTR.x;
                         cornerTR_Y = cornerTR.y;
                         std::cout << "[AccuracyTrainer] Corner 3 (TR): X=" << cornerTR_X
                                   << " Y=" << cornerTR_Y << std::endl;
+
+                        m_logger.LogCorner(productName, tsName, serialNumber, hexDev.deviceName,
+                            hexDev.gantryTeachMode, "TR",
+                            hexDev.cornerTR_X, hexDev.cornerTR_Y, 0.0,
+                            cornerTR_X, cornerTR_Y, 0.0);
                     } else {
                         std::cout << "[AccuracyTrainer] Skipped corner 3 (using 2-corner midpoint)" << std::endl;
                     }
@@ -517,6 +646,11 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
                 std::cout << "[AccuracyTrainer] Computed center: X=" << centerX
                           << " Y=" << centerY << " diagonal=" << dist << "mm"
                           << (hasThirdCorner ? " (3-corner)" : " (2-corner)") << std::endl;
+
+                m_logger.LogCorner(productName, tsName, serialNumber, hexDev.deviceName,
+                    hexDev.gantryTeachMode, "CENTER",
+                    0.0, 0.0, 0.0,
+                    centerX, centerY, cornerTL.z);
 
                 // Move gantry to computed center
                 bool moveOk = motionMgr->MoveToAbs(

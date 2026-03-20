@@ -20,6 +20,8 @@ struct ISequenceStep;
 class SystemCommandHandler;
 class AccuracyTrainerCommandHandler;
 class PlanarAdjustmentCommandHandler;
+class ZOffsetCommandHandler;
+class YawTrainerCommandHandler;
 class LogManager;
 class SequenceContext;
 
@@ -356,6 +358,12 @@ private:
 
   // PlanarAdjustmentCommandHandler pointer for retrace callback forwarding
   PlanarAdjustmentCommandHandler* m_planarAdjustmentHandler = nullptr;
+
+  // ZOffsetCommandHandler pointer for retrace callback forwarding
+  ZOffsetCommandHandler* m_zOffsetHandler = nullptr;
+
+  // YawTrainerCommandHandler pointer for retrace callback forwarding
+  YawTrainerCommandHandler* m_yawTrainerHandler = nullptr;
 
   // Step execution event callbacks
   StepStartedCallback m_stepStartedCallback;

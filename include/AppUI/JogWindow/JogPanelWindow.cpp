@@ -12,6 +12,10 @@
 #include "EziIOManager.h"
 #include "LogManager.h"
 
+#include "VisionCommandHandler.h"
+#include "SequenceContext.h"
+#include "CameraManager.h"
+
 #include <iostream>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -25,6 +29,7 @@
 #include <map>
 #include <QStyle>
 #include <QFile>
+#include <QSpinBox>
 
 JogPanelWindow::JogPanelWindow(
   ApplicationContext* context,
@@ -238,7 +243,7 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(400, 450);
+  setFixedSize(400, 600);
 }
 
 void JogPanelWindow::createJogTab()
@@ -286,6 +291,12 @@ void JogPanelWindow::createJogTab()
   columnsLayout->addWidget(rightColumn);
 
   jogLayout->addLayout(columnsLayout);
+
+  // Exposure controls (below the two-column layout)
+  createExposurePanel(m_jogWidget);
+
+  // Auto Focus buttons
+  createAutoFocusPanel(m_jogWidget);
 
   // Add to tab widget
   m_tabWidget->addTab(m_jogWidget, "Jog");
@@ -846,6 +857,275 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   layout->addWidget(groupBox);
 }
 
+
+void JogPanelWindow::createExposurePanel(QWidget* parent)
+{
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) return;
+
+  if (!m_context || !m_context->cameraManager) return;
+
+  std::vector<std::string> cameraIds = m_context->cameraManager->GetCameraIds();
+  if (cameraIds.empty()) return;
+
+  // Define which cameras get exposure controls
+  struct ExposureCameraConfig {
+    std::string cameraId;
+    std::string label;
+  };
+
+  std::vector<ExposureCameraConfig> configs = {
+    {"main_camera", "Main"},
+    {"swir_camera", "SWIR"}
+  };
+
+  // Filter to only installed cameras
+  std::vector<ExposureCameraConfig> activeConfigs;
+  for (const auto& cfg : configs) {
+    for (const auto& id : cameraIds) {
+      if (id == cfg.cameraId) {
+        activeConfigs.push_back(cfg);
+        break;
+      }
+    }
+  }
+
+  if (activeConfigs.empty()) return;
+
+  for (const auto& cfg : activeConfigs) {
+    QHBoxLayout* row = new QHBoxLayout();
+    row->setSpacing(4);
+    row->setContentsMargins(4, 2, 4, 2);
+
+    QLabel* label = new QLabel(QString::fromStdString(cfg.label + " Exp:"));
+    label->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+    label->setFixedWidth(65);
+    row->addWidget(label);
+
+    QSpinBox* spinBox = new QSpinBox();
+    spinBox->setMinimum(1);
+    spinBox->setMaximum(1000000);
+    spinBox->setSingleStep(100);
+    spinBox->setSuffix(QString(" %1s").arg(QChar(0x00B5)));
+    spinBox->setStyleSheet(
+      "QSpinBox { "
+      "  background-color: #2a2a2a; "
+      "  color: white; "
+      "  border: 1px solid #555; "
+      "  border-radius: 3px; "
+      "  padding: 2px 4px; "
+      "  font-size: 10px; "
+      "}"
+    );
+
+    // Read current exposure from camera
+    auto settings = m_context->cameraManager->GetExposureSettings(cfg.cameraId);
+    spinBox->setValue(static_cast<int>(settings.exposure_time));
+
+    row->addWidget(spinBox, 1);
+
+    QPushButton* applyBtn = new QPushButton("Apply");
+    applyBtn->setMinimumHeight(24);
+    applyBtn->setMaximumHeight(24);
+    applyBtn->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #2d5a2d; "
+      "  color: white; "
+      "  border: 1px solid #3d8b3d; "
+      "  border-radius: 3px; "
+      "  padding: 2px 8px; "
+      "  font-size: 10px; "
+      "  font-weight: bold; "
+      "} "
+      "QPushButton:hover { "
+      "  background-color: #3d8b3d; "
+      "  border-color: #5cb85c; "
+      "}"
+    );
+
+    connect(applyBtn, &QPushButton::clicked, this,
+      [this, cameraId = cfg.cameraId, spinBox]() {
+        applyExposure(cameraId, spinBox);
+      });
+
+    row->addWidget(applyBtn);
+
+    layout->addLayout(row);
+  }
+}
+
+void JogPanelWindow::applyExposure(const std::string& cameraId, QSpinBox* spinBox)
+{
+  if (!m_context || !m_context->cameraManager || !spinBox) return;
+
+  auto settings = m_context->cameraManager->GetExposureSettings(cameraId);
+  settings.exposure_time = static_cast<double>(spinBox->value());
+  settings.auto_exposure = false;
+  settings.auto_gain = false;
+
+  bool ok = m_context->cameraManager->ApplyExposureSettings(cameraId, settings);
+
+  if (m_context->logManager) {
+    if (ok) {
+      m_context->logManager->Info(
+        "Applied exposure " + std::to_string(spinBox->value()) + " us to " + cameraId,
+        "JogPanel");
+    } else {
+      m_context->logManager->Warning(
+        "Failed to apply exposure to " + cameraId, "JogPanel");
+    }
+  }
+}
+
+void JogPanelWindow::createAutoFocusPanel(QWidget* parent)
+{
+  QVBoxLayout* layout = qobject_cast<QVBoxLayout*>(parent->layout());
+  if (!layout) return;
+
+  // Check if we have camera manager and any cameras
+  if (!m_context || !m_context->cameraManager) return;
+
+  std::vector<std::string> cameraIds = m_context->cameraManager->GetCameraIds();
+  if (cameraIds.empty()) return;
+
+  // Define autofocus configurations per camera
+  // {camera_id, motion_device, z_range_mm, z_step_mm, display_label}
+  struct AutoFocusConfig {
+    std::string cameraId;
+    std::string motionDevice;
+    double zRangeMm;
+    double zStepMm;
+    std::string label;
+  };
+
+  std::vector<AutoFocusConfig> configs = {
+    {"main_camera",   "gantry-main", 0.1, 0.02, "AF Main"},
+    {"swir_camera",   "gantry-main", 0.1, 0.01, "AF SWIR"},
+    {"gantry_camera", "gantry-main", 0.1, 0.02, "AF Gantry"}
+  };
+
+  // Filter to only installed cameras
+  std::vector<AutoFocusConfig> activeConfigs;
+  for (const auto& cfg : configs) {
+    for (const auto& id : cameraIds) {
+      if (id == cfg.cameraId) {
+        activeConfigs.push_back(cfg);
+        break;
+      }
+    }
+  }
+
+  if (activeConfigs.empty()) return;
+
+  // Create horizontal layout for autofocus buttons
+  QHBoxLayout* afLayout = new QHBoxLayout();
+  afLayout->setSpacing(4);
+  afLayout->setContentsMargins(4, 0, 4, 0);
+
+  QLabel* afLabel = new QLabel("Auto Focus:");
+  afLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+  afLayout->addWidget(afLabel);
+
+  for (const auto& cfg : activeConfigs) {
+    QPushButton* btn = new QPushButton(QString::fromStdString(cfg.label));
+    btn->setMinimumHeight(26);
+    btn->setMaximumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #2d5a2d; "
+      "  color: white; "
+      "  border: 1px solid #3d8b3d; "
+      "  border-radius: 3px; "
+      "  padding: 2px 8px; "
+      "  font-size: 10px; "
+      "  font-weight: bold; "
+      "} "
+      "QPushButton:hover { "
+      "  background-color: #3d8b3d; "
+      "  border-color: #5cb85c; "
+      "} "
+      "QPushButton:disabled { "
+      "  background-color: #555; "
+      "  color: #888; "
+      "  border-color: #666; "
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this,
+      [this, camera = cfg.cameraId, device = cfg.motionDevice,
+       range = cfg.zRangeMm, step = cfg.zStepMm, btn]() {
+        runAutoFocus(camera, device, range, step, btn);
+      });
+
+    afLayout->addWidget(btn);
+  }
+
+  afLayout->addStretch();
+  layout->addLayout(afLayout);
+}
+
+void JogPanelWindow::runAutoFocus(const std::string& camera, const std::string& motionDevice,
+                                   double zRangeMm, double zStepMm, QPushButton* button)
+{
+  // Check if autofocus is already running
+  if (m_autoFocusFuture.valid() &&
+      m_autoFocusFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Warning("Auto focus already running", "JogPanel");
+    }
+    return;
+  }
+
+  if (!m_context) return;
+
+  // Disable button while running
+  if (button) button->setEnabled(false);
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "Starting auto focus: camera=" + camera + " device=" + motionDevice +
+      " range=" + std::to_string(zRangeMm) + "mm step=" + std::to_string(zStepMm) + "mm",
+      "JogPanel");
+  }
+
+  // Run autofocus on background thread
+  ApplicationContext* ctx = m_context;
+  m_autoFocusFuture = std::async(std::launch::async,
+    [ctx, camera, motionDevice, zRangeMm, zStepMm, button]() {
+      VisionCommandHandler visionHandler(ctx);
+      SequenceContext seqCtx;
+      std::string error;
+
+      std::map<std::string, std::string> params = {
+        {"motion_device", motionDevice},
+        {"camera", camera},
+        {"z_range_mm", std::to_string(zRangeMm)},
+        {"z_step_mm", std::to_string(zStepMm)},
+        {"settle_time_ms", "100"},
+        {"use_center_roi", "true"},
+        {"roi_width", "300"},
+        {"roi_height", "300"},
+        {"context_prefix", "autofocus"}
+      };
+
+      bool ok = visionHandler.ExecuteCommand(
+        nullptr, "vision", "auto_focus", params, error, &seqCtx);
+
+      if (ok) {
+        std::cout << "[JogPanel] Auto focus completed successfully" << std::endl;
+      }
+      else {
+        std::cout << "[JogPanel] Auto focus failed: " << error << std::endl;
+      }
+
+      // Re-enable button on UI thread
+      if (button) {
+        QMetaObject::invokeMethod(button, [button]() {
+          button->setEnabled(true);
+        }, Qt::QueuedConnection);
+      }
+    });
+}
 
 void JogPanelWindow::flashButton(QPushButton* button)
 {

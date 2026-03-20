@@ -99,7 +99,8 @@ public:
             {"source_angle", sourceAngle},
             {"target_device", targetDevice},
             {"target_axis", targetAxis},
-            {"reverse_sign", reverseSign}
+            {"reverse_sign", reverseSign},
+            {"timeout", "0"}  // Disable action timeout (manual callbacks may block indefinitely)
         });
 
         std::cout << "[PlanarAdjustmentProcesses] Built sequence for: "

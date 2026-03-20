@@ -4,6 +4,7 @@
 
 #include "ICommandHandler.h"
 #include "SystemCommandHandler.h"  // For ManualAlignPointCallback
+#include "AccuracyTrainerLogger.h"
 #include <functional>
 
 // Forward declarations
@@ -65,6 +66,7 @@ public:
 private:
     ApplicationContext* m_appContext = nullptr;
     ManualAlignPointCallback m_manualAlignCallback;
+    AccuracyTrainerLogger m_logger;
 
     /**
      * @brief Execute the full alignment workflow

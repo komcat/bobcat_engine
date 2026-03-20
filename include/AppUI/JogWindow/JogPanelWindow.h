@@ -11,6 +11,9 @@
 #include <QSettings>
 #include <vector>
 #include <string>
+#include <future>
+
+class QSpinBox;
 
 class TransformationMatrixLoader;
 class CoordinateTransformer;
@@ -87,8 +90,13 @@ private:
   void createDevicePanel(QWidget* parent);
   void createStepSizePanel(QWidget* parent);
   void createMovementPanel(QWidget* parent);
+  void createAutoFocusPanel(QWidget* parent);
+  void createExposurePanel(QWidget* parent);
 
   void sendJogCommand(const std::string& axis, double direction);
+  void runAutoFocus(const std::string& camera, const std::string& motionDevice,
+                    double zRangeMm, double zStepMm, QPushButton* button);
+  void applyExposure(const std::string& cameraId, QSpinBox* spinBox);
   void updateStepSizeDisplay();
   void flashButton(QPushButton* button);
   void saveWindowSettings();       // Save window position to settings
@@ -148,6 +156,9 @@ private:
   std::string m_selectedDevice;
   double m_currentStepSize; // in microns
   bool m_keyboardActive;
+
+  // Auto-focus state
+  std::future<void> m_autoFocusFuture;
 
   // Step sizes in microns
   const std::vector<double> m_stepSizes = {

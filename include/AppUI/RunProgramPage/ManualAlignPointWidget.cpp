@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QPainter>
 #include <filesystem>
 #include <iostream>
 
@@ -433,8 +434,8 @@ void ManualAlignPointWidget::captureAndSaveImage()
     return;
   }
 
-  // Get save path (with timestamp if file exists)
-  QString savePath = getReferenceImagePath(true);  // Create new with timestamp if needed
+  // Get save path
+  QString savePath = getReferenceImagePath(true);
 
   // Create directory if needed
   QFileInfo fileInfo(savePath);
@@ -445,7 +446,7 @@ void ManualAlignPointWidget::captureAndSaveImage()
               << dir.absolutePath().toStdString() << std::endl;
   }
 
-  // Convert frame data to QImage and save
+  // Convert frame data to QImage
   QImage::Format format;
   if (frameData.channels == 3) {
     format = QImage::Format_RGB888;
@@ -459,35 +460,51 @@ void ManualAlignPointWidget::captureAndSaveImage()
     return;
   }
 
-  QImage image(
+  QImage fullImage(
     frameData.imageData.data(),
-    frameData.width,
-    frameData.height,
-    frameData.width * frameData.channels,
+    static_cast<int>(frameData.width),
+    static_cast<int>(frameData.height),
+    static_cast<int>(frameData.width * frameData.channels),
     format
   );
 
-  if (image.save(savePath, "PNG")) {
+  // Center-crop to 480x480 ROI (or full frame if smaller)
+  constexpr int roiSize = 480;
+  int cropW = std::min(roiSize, fullImage.width());
+  int cropH = std::min(roiSize, fullImage.height());
+  int cropX = (fullImage.width() - cropW) / 2;
+  int cropY = (fullImage.height() - cropH) / 2;
+  QImage cropped = fullImage.copy(cropX, cropY, cropW, cropH);
+
+  // Draw crosshair overlay on the cropped image
+  // Convert to RGB32 so QPainter works on all source formats (including Grayscale8)
+  QImage paintable = cropped.convertToFormat(QImage::Format_RGB32);
+  {
+    QPainter painter(&paintable);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
+    int cx = paintable.width() / 2;
+    int cy = paintable.height() / 2;
+    int armLen = 30;  // crosshair arm length in pixels
+
+    // Thin red crosshair lines
+    QPen pen(QColor(255, 0, 0, 200), 1);
+    painter.setPen(pen);
+    painter.drawLine(cx - armLen, cy, cx + armLen, cy);  // horizontal
+    painter.drawLine(cx, cy - armLen, cx, cy + armLen);  // vertical
+  }
+
+  // Scale down to 200x200 for storage
+  QImage scaled = paintable.scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+  if (scaled.save(savePath, "PNG")) {
     std::cout << "[ManualAlignPointWidget] Saved reference image to: "
-              << savePath.toStdString() << std::endl;
+              << savePath.toStdString()
+              << " (crop " << cropW << "x" << cropH << " -> 200x200)" << std::endl;
   } else {
     std::cerr << "[ManualAlignPointWidget] Failed to save reference image to: "
               << savePath.toStdString() << std::endl;
   }
-
-  // TODO: Store the captured frame in context for vision processing
-  /*
-  if (m_context && m_context->sequenceEngine) {
-    auto context = m_context->sequenceEngine->GetCurrentContext();
-    if (context) {
-      std::string contextKey = m_pointName + "_image";
-      context->SetFrameData(contextKey, frameData, true, cameraName, "ManualAlignPoint");
-
-      std::cout << "[ManualAlignPointWidget] Stored captured image in context["
-                << contextKey << "]" << std::endl;
-    }
-  }
-  */
 }
 
 QString ManualAlignPointWidget::getReferenceImagePath(bool createNew)

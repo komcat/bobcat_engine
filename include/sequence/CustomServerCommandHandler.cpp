@@ -73,6 +73,7 @@ bool CustomServerCommandHandler::ExecuteCommand(
   if (methodName == "Connect")      return HandleConnect(params, errorMessage);
   if (methodName == "Disconnect")   return HandleDisconnect(errorMessage);
   if (methodName == "Detect")       return HandleDetect(params, errorMessage, context);
+  if (methodName == "DetectN")      return HandleDetectN(params, errorMessage, context);
   if (methodName == "DetectFile")   return HandleDetectFile(params, errorMessage, context);
   if (methodName == "DetectFolder") return HandleDetectFolder(params, errorMessage, context);
   if (methodName == "Fit")          return HandleFit(params, errorMessage, context);
@@ -131,6 +132,18 @@ bool CustomServerCommandHandler::HandleDetect(
   if (!m_context->beamServerClient->IsConnected()) {
     errorMessage = "Beam server not connected";
     return false;
+  }
+
+  // Inbounce delay — settle time before starting detection
+  int inbounceDelayMs = 500;
+  auto ibIt = params.find("inbounce_delay_ms");
+  if (ibIt != params.end() && !ibIt->second.empty()) {
+    inbounceDelayMs = safeStoi(ibIt->second, 500);
+    if (inbounceDelayMs < 0) inbounceDelayMs = 0;
+  }
+  if (inbounceDelayMs > 0) {
+    if (m_logger) m_logger->Info("Detect: inbounce delay " + std::to_string(inbounceDelayMs) + "ms", "CustomServer");
+    std::this_thread::sleep_for(std::chrono::milliseconds(inbounceDelayMs));
   }
 
   // Parse parameters
@@ -234,73 +247,93 @@ bool CustomServerCommandHandler::HandleDetect(
     return false;
   }
 
-  // Use subscriber to get latest frame
+  int numFrames = 5;
+  auto nfIt = params.find("num_frames");
+  if (nfIt != params.end() && !nfIt->second.empty()) {
+    numFrames = safeStoi(nfIt->second, 5);
+    if (numFrames < 1) numFrames = 1;
+    if (numFrames > 20) numFrames = 20;
+  }
+
+  // Use subscriber to capture frames for server-side averaging
   auto subscriber = std::make_shared<LiveVideoSubscriber>(cameraDevice, "BeamDetect_Temp");
   m_context->cameraManager->SubscribeToFrames(subscriber);
   subscriber->InitializeStatusFromManager(m_context->cameraManager);
+  constexpr int maxWaitPerFrameMs = 3000;
+  constexpr int checkIntervalMs = 10;
 
-  // Wait for frame (max 3 seconds)
-  const int maxWaitMs = 3000;
-  const int checkIntervalMs = 100;
-  int waitedMs = 0;
-  for (int i = 0; i < maxWaitMs / checkIntervalMs; ++i) {
-    if (subscriber->HasNewFrame()) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(checkIntervalMs));
-    waitedMs += checkIntervalMs;
-  }
+  int width = 0;
+  int height = 0;
+  int channels = 0;
+  size_t framePixels = 0;
+  std::vector<uint8_t> allFrames;  // all frames concatenated: frame0|frame1|...
+  int framesCollected = 0;
 
-  if (!subscriber->HasNewFrame()) {
-    m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
-    errorMessage = "Timeout waiting for frame from camera: " + cameraDevice;
-    return false;
-  }
+  for (int f = 0; f < numFrames; ++f) {
+    // Wait for a new frame
+    subscriber->MarkFrameConsumed();
+    for (int i = 0; i < maxWaitPerFrameMs / checkIntervalMs; ++i) {
+      if (subscriber->HasNewFrame()) break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(checkIntervalMs));
+    }
 
-  CameraFrameData frameData = subscriber->GetLatestFrame();
-  m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
+    if (!subscriber->HasNewFrame()) {
+      if (framesCollected == 0) {
+        m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
+        errorMessage = "Timeout waiting for frame from camera: " + cameraDevice;
+        return false;
+      }
+      break;  // use however many frames we got
+    }
 
-  if (!frameData.IsValid()) {
-    errorMessage = "Invalid frame data from camera: " + cameraDevice;
-    return false;
-  }
+    CameraFrameData frameData = subscriber->GetLatestFrame();
+    if (!frameData.IsValid()) continue;
 
-  // Convert 8-bit image to uint16 (multiply by 256)
-  // If multi-channel, convert to grayscale by averaging
-  int width = static_cast<int>(frameData.width);
-  int height = static_cast<int>(frameData.height);
-  int channels = static_cast<int>(frameData.channels);
+    if (framesCollected == 0) {
+      width = static_cast<int>(frameData.width);
+      height = static_cast<int>(frameData.height);
+      channels = static_cast<int>(frameData.channels);
+      framePixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+      allFrames.reserve(framePixels * static_cast<size_t>(numFrames));
+    }
 
-  std::vector<uint16_t> imageU16(static_cast<size_t>(width) * static_cast<size_t>(height));
-
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      size_t pixIdx = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
+    // Convert to grayscale and append this frame
+    size_t frameStart = allFrames.size();
+    allFrames.resize(frameStart + framePixels);
+    for (size_t pixIdx = 0; pixIdx < framePixels; ++pixIdx) {
       size_t srcIdx = pixIdx * static_cast<size_t>(channels);
-
       uint8_t gray = 0;
       if (channels == 1) {
         gray = frameData.imageData[srcIdx];
       } else {
-        // Average RGB channels for grayscale
         int sum = 0;
         for (int c = 0; c < channels; ++c) {
           sum += frameData.imageData[srcIdx + static_cast<size_t>(c)];
         }
         gray = static_cast<uint8_t>(sum / channels);
       }
-
-      imageU16[pixIdx] = static_cast<uint16_t>(gray) * 256;
+      allFrames[frameStart + pixIdx] = gray;
     }
+    ++framesCollected;
+  }
+
+  m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
+
+  if (framesCollected == 0) {
+    errorMessage = "No valid frames captured from camera: " + cameraDevice;
+    return false;
   }
 
   if (m_logger) {
     m_logger->Info("Sending detect: " + std::to_string(width) + "x" +
-                   std::to_string(height) + " z=" + std::to_string(z_um) + "um",
+                   std::to_string(height) + " z=" + std::to_string(z_um) + "um" +
+                   " (" + std::to_string(framesCollected) + " frames)",
                    "CustomServer");
   }
 
-  // Send to beam server
+  // Send all raw frames to beam server for server-side detection and averaging
   auto result = m_context->beamServerClient->SendDetect(
-    imageU16, width, height, z_um, rotate180, umPerPxX, umPerPxY);
+    allFrames, width, height, z_um, rotate180, umPerPxX, umPerPxY, framesCollected);
 
   if (result.empty()) {
     errorMessage = "Detect failed: " + m_context->beamServerClient->GetLastError();
@@ -357,6 +390,338 @@ bool CustomServerCommandHandler::HandleDetect(
       m_logger->Info("Detect result: " + std::to_string(numBeams) + " beams at z=" +
                      std::to_string(z_um) + "um", "CustomServer");
     }
+  }
+
+  // Outbounce delay — settle time after detection completes
+  int outbounceDelayMs = 500;
+  auto obIt = params.find("outbounce_delay_ms");
+  if (obIt != params.end() && !obIt->second.empty()) {
+    outbounceDelayMs = safeStoi(obIt->second, 500);
+    if (outbounceDelayMs < 0) outbounceDelayMs = 0;
+  }
+  if (outbounceDelayMs > 0) {
+    if (m_logger) m_logger->Info("Detect: outbounce delay " + std::to_string(outbounceDelayMs) + "ms", "CustomServer");
+    std::this_thread::sleep_for(std::chrono::milliseconds(outbounceDelayMs));
+  }
+
+  return true;
+}
+
+bool CustomServerCommandHandler::HandleDetectN(
+  const std::map<std::string, std::string>& params,
+  std::string& errorMessage,
+  SequenceContext* context)
+{
+  if (!m_context->beamServerClient->IsConnected()) {
+    errorMessage = "Beam server not connected";
+    return false;
+  }
+
+  // Inbounce delay — settle time before starting detection
+  int inbounceDelayMs = 500;
+  {
+    auto ibIt = params.find("inbounce_delay_ms");
+    if (ibIt != params.end() && !ibIt->second.empty()) {
+      inbounceDelayMs = safeStoi(ibIt->second, 500);
+      if (inbounceDelayMs < 0) inbounceDelayMs = 0;
+    }
+  }
+  if (inbounceDelayMs > 0) {
+    if (m_logger) m_logger->Info("DetectN: inbounce delay " + std::to_string(inbounceDelayMs) + "ms", "CustomServer");
+    std::this_thread::sleep_for(std::chrono::milliseconds(inbounceDelayMs));
+  }
+
+  // Parse repeat_count and delay_between_ms
+  int repeatCount = 5;
+  auto rcIt = params.find("repeat_count");
+  if (rcIt != params.end() && !rcIt->second.empty()) {
+    repeatCount = safeStoi(rcIt->second, 5);
+    if (repeatCount < 1) repeatCount = 1;
+    if (repeatCount > 100) repeatCount = 100;
+  }
+
+  int delayBetweenMs = 100;
+  auto dbIt = params.find("delay_between_ms");
+  if (dbIt != params.end() && !dbIt->second.empty()) {
+    delayBetweenMs = safeStoi(dbIt->second, 100);
+    if (delayBetweenMs < 0) delayBetweenMs = 0;
+  }
+
+  // Parse parameters (same as HandleDetect)
+  auto cameraIt = params.find("camera_device");
+  if (cameraIt == params.end() || cameraIt->second.empty()) {
+    errorMessage = "Missing required parameter: camera_device";
+    return false;
+  }
+  std::string cameraDevice = cameraIt->second;
+
+  // Resolve z_um
+  double z_um = 0.0;
+  bool useDeviceZ = false;
+  auto udzIt = params.find("use_device_z");
+  if (udzIt != params.end()) {
+    useDeviceZ = (udzIt->second == "true" || udzIt->second == "1");
+  }
+
+  if (useDeviceZ && m_context->motionManager) {
+    std::string zDevice = "gantry-main";
+    auto zdIt = params.find("z_device");
+    if (zdIt != params.end() && !zdIt->second.empty()) {
+      zDevice = zdIt->second;
+    }
+    std::string zAxis = "Z";
+    auto zaIt = params.find("z_axis");
+    if (zaIt != params.end() && !zaIt->second.empty()) {
+      zAxis = zaIt->second;
+    }
+
+    double positionMm = 0.0;
+    if (m_context->motionManager->GetPosition(zDevice, zAxis, positionMm)) {
+      z_um = positionMm * 1000.0;
+      if (m_logger) {
+        m_logger->Info("DetectN: Read Z from " + zDevice + "." + zAxis + " = " +
+                       std::to_string(positionMm) + " mm (" + std::to_string(z_um) + " um)",
+                       "CustomServer");
+      }
+    } else {
+      if (m_logger) {
+        m_logger->Warning("DetectN: Failed to read Z from " + zDevice + "." + zAxis +
+                          ", falling back to z_um parameter", "CustomServer");
+      }
+      useDeviceZ = false;
+    }
+  }
+
+  if (!useDeviceZ) {
+    auto zIt = params.find("z_um");
+    if (zIt != params.end() && !zIt->second.empty()) {
+      std::string zVal = zIt->second;
+      if (context && zVal.substr(0, 8) == "context:") {
+        std::string contextKey = zVal.substr(8);
+        zVal = context->GetString(contextKey);
+        if (zVal.empty() && m_logger) {
+          m_logger->Warning("Context key '" + contextKey + "' not found or empty, z_um will be 0",
+                            "CustomServer");
+        }
+      }
+      z_um = safeStod(zVal);
+    }
+  }
+
+  bool rotate180 = false;
+  auto rotIt = params.find("rotate_180");
+  if (rotIt != params.end()) {
+    rotate180 = (rotIt->second == "true" || rotIt->second == "1");
+  }
+
+  double umPerPxX = 1.0;
+  auto uxIt = params.find("um_per_px_x");
+  if (uxIt != params.end() && !uxIt->second.empty()) {
+    umPerPxX = safeStod(uxIt->second);
+  }
+
+  double umPerPxY = 1.0;
+  auto uyIt = params.find("um_per_px_y");
+  if (uyIt != params.end() && !uyIt->second.empty()) {
+    umPerPxY = safeStod(uyIt->second);
+  }
+
+  std::string captureAs = "beam";
+  auto capIt = params.find("captureAs");
+  if (capIt != params.end() && !capIt->second.empty()) {
+    captureAs = capIt->second;
+  }
+
+  int numFrames = 5;
+  auto nfIt = params.find("num_frames");
+  if (nfIt != params.end() && !nfIt->second.empty()) {
+    numFrames = safeStoi(nfIt->second, 5);
+    if (numFrames < 1) numFrames = 1;
+    if (numFrames > 20) numFrames = 20;
+  }
+
+  // Verify camera
+  if (!m_context->cameraManager) {
+    errorMessage = "CameraManager not available";
+    return false;
+  }
+
+  auto status = m_context->cameraManager->GetCameraStatus(cameraDevice);
+  if (!status.connected) {
+    errorMessage = "Camera not connected: " + cameraDevice;
+    return false;
+  }
+  if (!status.grabbing) {
+    errorMessage = "Camera not grabbing: " + cameraDevice;
+    return false;
+  }
+
+  if (m_logger) {
+    m_logger->Info("DetectN: Starting " + std::to_string(repeatCount) +
+                   " repeated detections at z=" + std::to_string(z_um) + "um" +
+                   " (" + std::to_string(numFrames) + " frames each, " +
+                   std::to_string(delayBetweenMs) + "ms delay)",
+                   "CustomServer");
+  }
+
+  // Bounded loop: capture and send N independent detections
+  for (int rep = 0; rep < repeatCount; ++rep) {
+    // Capture frames using subscriber
+    auto subscriber = std::make_shared<LiveVideoSubscriber>(cameraDevice, "BeamDetectN_Temp");
+    m_context->cameraManager->SubscribeToFrames(subscriber);
+    subscriber->InitializeStatusFromManager(m_context->cameraManager);
+    constexpr int maxWaitPerFrameMs = 3000;
+    constexpr int checkIntervalMs = 10;
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    size_t framePixels = 0;
+    std::vector<uint8_t> allFrames;
+    int framesCollected = 0;
+
+    for (int f = 0; f < numFrames; ++f) {
+      subscriber->MarkFrameConsumed();
+      for (int i = 0; i < maxWaitPerFrameMs / checkIntervalMs; ++i) {
+        if (subscriber->HasNewFrame()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(checkIntervalMs));
+      }
+
+      if (!subscriber->HasNewFrame()) {
+        if (framesCollected == 0) {
+          m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
+          errorMessage = "DetectN rep " + std::to_string(rep) +
+                         ": Timeout waiting for frame from camera: " + cameraDevice;
+          return false;
+        }
+        break;
+      }
+
+      CameraFrameData frameData = subscriber->GetLatestFrame();
+      if (!frameData.IsValid()) continue;
+
+      if (framesCollected == 0) {
+        width = static_cast<int>(frameData.width);
+        height = static_cast<int>(frameData.height);
+        channels = static_cast<int>(frameData.channels);
+        framePixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+        allFrames.reserve(framePixels * static_cast<size_t>(numFrames));
+      }
+
+      size_t frameStart = allFrames.size();
+      allFrames.resize(frameStart + framePixels);
+      for (size_t pixIdx = 0; pixIdx < framePixels; ++pixIdx) {
+        size_t srcIdx = pixIdx * static_cast<size_t>(channels);
+        uint8_t gray = 0;
+        if (channels == 1) {
+          gray = frameData.imageData[srcIdx];
+        } else {
+          int sum = 0;
+          for (int c = 0; c < channels; ++c) {
+            sum += frameData.imageData[srcIdx + static_cast<size_t>(c)];
+          }
+          gray = static_cast<uint8_t>(sum / channels);
+        }
+        allFrames[frameStart + pixIdx] = gray;
+      }
+      ++framesCollected;
+    }
+
+    m_context->cameraManager->UnsubscribeFromFrames(subscriber->GetSubscriberId());
+
+    if (framesCollected == 0) {
+      errorMessage = "DetectN rep " + std::to_string(rep) +
+                     ": No valid frames captured from camera: " + cameraDevice;
+      return false;
+    }
+
+    // Send detect to server
+    if (m_logger) {
+      m_logger->Info("DetectN rep " + std::to_string(rep + 1) + "/" +
+                     std::to_string(repeatCount) + ": Sending " +
+                     std::to_string(framesCollected) + " frames",
+                     "CustomServer");
+    }
+
+    auto result = m_context->beamServerClient->SendDetect(
+      allFrames, width, height, z_um, rotate180, umPerPxX, umPerPxY, framesCollected);
+
+    if (result.empty()) {
+      errorMessage = "DetectN rep " + std::to_string(rep) +
+                     ": Detect failed: " + m_context->beamServerClient->GetLastError();
+      if (m_logger) m_logger->Error(errorMessage, "CustomServer");
+      return false;
+    }
+
+    if (result.contains("error")) {
+      errorMessage = "DetectN rep " + std::to_string(rep) +
+                     ": Server error: " + result["error"].get<std::string>();
+      if (m_logger) m_logger->Error(errorMessage, "CustomServer");
+      return false;
+    }
+
+    // Store last iteration's results in context (same format as HandleDetect)
+    if (context && rep == repeatCount - 1) {
+      int numBeams = result.value("num_beams", 0);
+      context->SetValue(captureAs + ".num_beams", std::to_string(numBeams));
+      context->SetValue(captureAs + ".z_um", std::to_string(z_um));
+      context->SetValue(captureAs + ".repeat_count", std::to_string(repeatCount));
+
+      if (result.contains("beams") && result["beams"].is_array()) {
+        int beamIdx = 0;
+        for (const auto& beam : result["beams"]) {
+          std::string prefix = captureAs + "." + std::to_string(beamIdx);
+
+          if (beam.contains("side"))
+            context->SetValue(prefix + ".side", beam["side"].get<std::string>());
+          if (beam.contains("centroid_x_px"))
+            context->SetValue(prefix + ".centroid_x_px", std::to_string(beam["centroid_x_px"].get<double>()));
+          if (beam.contains("centroid_y_px"))
+            context->SetValue(prefix + ".centroid_y_px", std::to_string(beam["centroid_y_px"].get<double>()));
+          if (beam.contains("centroid_x_um"))
+            context->SetValue(prefix + ".centroid_x_um", std::to_string(beam["centroid_x_um"].get<double>()));
+          if (beam.contains("centroid_y_um"))
+            context->SetValue(prefix + ".centroid_y_um", std::to_string(beam["centroid_y_um"].get<double>()));
+          if (beam.contains("d4sigma_x_um"))
+            context->SetValue(prefix + ".d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
+          if (beam.contains("d4sigma_y_um"))
+            context->SetValue(prefix + ".d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
+          if (beam.contains("d4sigma_x_px"))
+            context->SetValue(prefix + ".d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
+          if (beam.contains("d4sigma_y_px"))
+            context->SetValue(prefix + ".d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
+          if (beam.contains("peak_intensity"))
+            context->SetValue(prefix + ".peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+
+          ++beamIdx;
+        }
+      }
+    }
+
+    // Delay between iterations (skip after last)
+    if (rep < repeatCount - 1 && delayBetweenMs > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(delayBetweenMs));
+    }
+  }
+
+  if (m_logger) {
+    m_logger->Info("DetectN: Completed " + std::to_string(repeatCount) +
+                   " detections at z=" + std::to_string(z_um) + "um",
+                   "CustomServer");
+  }
+
+  // Outbounce delay — settle time after all detections complete
+  int outbounceDelayMs = 500;
+  {
+    auto obIt = params.find("outbounce_delay_ms");
+    if (obIt != params.end() && !obIt->second.empty()) {
+      outbounceDelayMs = safeStoi(obIt->second, 500);
+      if (outbounceDelayMs < 0) outbounceDelayMs = 0;
+    }
+  }
+  if (outbounceDelayMs > 0) {
+    if (m_logger) m_logger->Info("DetectN: outbounce delay " + std::to_string(outbounceDelayMs) + "ms", "CustomServer");
+    std::this_thread::sleep_for(std::chrono::milliseconds(outbounceDelayMs));
   }
 
   return true;

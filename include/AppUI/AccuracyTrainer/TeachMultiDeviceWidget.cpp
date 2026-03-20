@@ -1398,6 +1398,19 @@ void TeachMultiDeviceWidget::finalizeCornerCapture()
     m_pendingTeach.gantryViewY = centerY;
     m_pendingTeach.gantryViewZ = m_cornerTL_Z;
     m_pendingTeach.gantryTeachMode = m_hasThirdCorner ? 2 : 1;  // 2=3-corner, 1=2-corner
+
+    // Store taught corner positions for auto-navigation during headless retrace
+    m_pendingTeach.cornerTL_X = m_cornerTL_X;
+    m_pendingTeach.cornerTL_Y = m_cornerTL_Y;
+    m_pendingTeach.cornerTL_Z = m_cornerTL_Z;
+    m_pendingTeach.cornerBR_X = m_cornerBR_X;
+    m_pendingTeach.cornerBR_Y = m_cornerBR_Y;
+    m_pendingTeach.hasThirdCorner = m_hasThirdCorner;
+    if (m_hasThirdCorner) {
+        m_pendingTeach.cornerTR_X = m_cornerTR_X;
+        m_pendingTeach.cornerTR_Y = m_cornerTR_Y;
+    }
+
     m_pendingTeach.valid = true;
 
     // Move gantry to the computed center
