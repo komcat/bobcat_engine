@@ -2,6 +2,8 @@
 #include "TopBar.h"
 #include "ApplicationContext.h"
 #include "safety/SafetyWatchManager.h"
+#include "TECManager.h"
+#include "TECTypes.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFont>
@@ -156,6 +158,8 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
   , m_rtlmButton(nullptr)
   , m_rtlm2Button(nullptr)
   , m_safetyIndicator(nullptr)
+  , m_tecTemperatureLabel(nullptr)
+  , m_tecPollTimer(nullptr)
 {
   setupUI();
   std::cout << "[TopBar] Created" << std::endl;
@@ -163,6 +167,9 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
 
 TopBar::~TopBar()
 {
+  if (m_tecPollTimer) {
+    m_tecPollTimer->stop();
+  }
   std::cout << "[TopBar] Destroyed" << std::endl;
 }
 
@@ -329,6 +336,20 @@ void TopBar::setupUI()
   connect(m_rtlm2Button, &QPushButton::clicked, this, &TopBar::rtlm2ButtonClicked);
   layout->addWidget(m_rtlm2Button);
 
+  // TEC temperature indicator (next to JOG button)
+  m_tecTemperatureLabel = new QLabel("TEC: --", this);
+  m_tecTemperatureLabel->setStyleSheet(
+    "QLabel { "
+    "  color: #888888; "
+    "  background: transparent; "
+    "  border: none; "
+    "  font-size: 13px; "
+    "  font-weight: bold; "
+    "}"
+  );
+  m_tecTemperatureLabel->setToolTip("TEC Temperature");
+  layout->addWidget(m_tecTemperatureLabel);
+
   // JOG button (right side, orange)
   m_jogButton = new QPushButton("JOG", this);
   m_jogButton->setFixedSize(70, 35);
@@ -381,6 +402,54 @@ void TopBar::setProductInfo(const QString& productName, const QString& workingPa
 
   std::cout << "[TopBar] Product info updated - Name: " << productName.toStdString()
             << ", Path: " << workingPath.toStdString() << std::endl;
+}
+
+void TopBar::startTECTemperaturePolling()
+{
+  if (!m_context || !m_context->tecManager || !m_tecTemperatureLabel) {
+    return;
+  }
+
+  if (m_tecPollTimer) {
+    return;  // Already polling
+  }
+
+  m_tecPollTimer = new QTimer(this);
+  connect(m_tecPollTimer, &QTimer::timeout, this, [this]() {
+    if (!m_context || !m_context->tecManager) {
+      return;
+    }
+
+    // Find first connected TEC device and show cached temperature
+    auto connectedDevices = m_context->tecManager->GetConnectedDeviceNames();
+    if (connectedDevices.empty()) {
+      m_tecTemperatureLabel->setText("TEC: --");
+      m_tecTemperatureLabel->setStyleSheet(
+        "QLabel { color: #888888; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+      return;
+    }
+
+    // Use cached device status (updated by TECParameterWorker polling)
+    // to avoid concurrent VISA access from multiple threads
+    auto status = m_context->tecManager->GetDeviceStatus(connectedDevices[0]);
+    if (status.Connected && status.CurrentTemperature >= -50.0 && status.CurrentTemperature <= 100.0) {
+      m_tecTemperatureLabel->setText(
+        QString("TEC: %1 °C").arg(status.CurrentTemperature, 0, 'f', 2));
+      m_tecTemperatureLabel->setStyleSheet(
+        "QLabel { color: #1177bb; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+    } else if (status.Connected) {
+      m_tecTemperatureLabel->setText("TEC: ERR");
+      m_tecTemperatureLabel->setStyleSheet(
+        "QLabel { color: #e74c3c; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+    } else {
+      m_tecTemperatureLabel->setText("TEC: --");
+      m_tecTemperatureLabel->setStyleSheet(
+        "QLabel { color: #888888; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+    }
+  });
+
+  m_tecPollTimer->start(2000);  // Poll every 2 seconds
+  std::cout << "[TopBar] TEC temperature polling started" << std::endl;
 }
 
 void TopBar::connectSafetyManager(SafetyWatchManager* manager)

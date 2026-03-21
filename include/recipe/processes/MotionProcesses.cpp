@@ -29,6 +29,80 @@ namespace {
       return true;  // If can't parse, treat as zero (don't move)
     }
   }
+
+  // Safe parameter access with fallback to default value (backward compatibility
+  // for old recipes that don't have newly-added parameters)
+  std::string getParamOr(const std::map<std::string, std::string>& params,
+                          const std::string& key, const std::string& defaultValue) {
+    auto it = params.find(key);
+    return (it != params.end()) ? it->second : defaultValue;
+  }
+
+  // Helper to detect PI hexapod devices by name convention
+  bool isPIHexDevice(const std::string& device) {
+    std::string lower = device;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    return (lower.find("hex") != std::string::npos) ||
+           (lower.find("pi") != std::string::npos);
+  }
+
+  // Helper to add velocity set action before a move (if velocity > 0)
+  void addVelocityAction(SequenceBuilder* sequence, const std::string& device, const std::string& velocityStr) {
+    if (isZeroDistance(velocityStr)) return;
+
+    double velocity = std::stod(velocityStr);
+    if (velocity <= 0.0) return;
+
+    // Clamp hex devices to 20 mm/s max
+    if (isPIHexDevice(device) && velocity > 20.0) {
+      velocity = 20.0;
+    }
+
+    std::string clampedStr = std::to_string(velocity);
+
+    if (isPIHexDevice(device)) {
+      sequence->AddAction(device, "SetSystemVelocity", {{"velocity", clampedStr}});
+    } else {
+      sequence->AddAction(device, "SetAllAxisVelocity", {{"velocity", clampedStr}});
+    }
+  }
+
+  // Helper to add a delay/wait action (if ms > 0)
+  void addDelayAction(SequenceBuilder* sequence, const std::string& msStr) {
+    if (isZeroDistance(msStr)) return;
+    int ms = static_cast<int>(std::stod(msStr));
+    if (ms <= 0) return;
+    sequence->AddAction("system", "Wait", {{"milliseconds", std::to_string(ms)}});
+  }
+
+  // Helper to add velocity/delay table UI entries under a "Timing & Velocity" category
+  void addTimingAndVelocityTableUI(PropertyTableWidget* table,
+                                    const std::map<std::string, std::string>& params) {
+    table->addCategoryHeader("Timing & Velocity");
+    table->addNumericProperty("velocity", "Velocity",
+      std::stod(getParamOr(params, "velocity", "0")),
+      0, 70, 0.1, 1, "mm/s",
+      "Move speed (0 = use controller default, hex devices max 20 mm/s)");
+    table->addNumericProperty("delay_before_ms", "Delay Before",
+      std::stod(getParamOr(params, "delay_before_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait before executing the move (0 = no delay)");
+    table->addNumericProperty("delay_after_ms", "Delay After",
+      std::stod(getParamOr(params, "delay_after_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait after the move completes (0 = no delay)");
+  }
+
+  // Helper to add velocity/delay form UI entries
+  void addTimingAndVelocityFormUI(ProcessConfigWidget* widget,
+                                   const std::map<std::string, std::string>& params) {
+    widget->addNumericParameter("velocity", "Velocity (mm/s, 0=default)",
+      getParamOr(params, "velocity", "0"), 0, 70, 0.1, 1, "mm/s");
+    widget->addNumericParameter("delay_before_ms", "Delay Before (ms)",
+      getParamOr(params, "delay_before_ms", "0"), 0, 60000, 100, 0, "ms");
+    widget->addNumericParameter("delay_after_ms", "Delay After (ms)",
+      getParamOr(params, "delay_after_ms", "0"), 0, 60000, 100, 0, "ms");
+  }
 }
 
 //=============================================================================
@@ -275,7 +349,10 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"device", "gantry-main"},
-      {"target_position", "safe"}
+      {"target_position", "safe"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -287,6 +364,7 @@ public:
     widget->addDeviceSelector("device", "Motion Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addNodeSelector("target_position", "Target Position", params.at("target_position"), "device");
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -300,15 +378,23 @@ public:
     table->addNodeProperty("target_position", "Target Position", params.at("target_position"),
       "device",
       "Named position to move to (click [...] to browse)");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+    std::string device = params.at("device");
 
-    sequence->AddAction(params.at("device"), "MoveToNamedPosition", {
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
+    sequence->AddAction(device, "MoveToNamedPosition", {
       {"positionName", params.at("target_position")}
     });
-    sequence->AddAction(params.at("device"), "WaitForMotionComplete", {});
+    sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move to Position sequence for: " << step->userNickname << std::endl;
   }
@@ -337,7 +423,10 @@ public:
     return {
       {"device", "gantry-main"},
       {"axis", "Z"},
-      {"distance", "10.0"}
+      {"distance", "10.0"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -349,6 +438,7 @@ public:
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addParameterField("axis", "Axis (X/Y/Z)", params.at("axis"));
     widget->addParameterField("distance", "Distance (mm)", params.at("distance"));
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -366,6 +456,8 @@ public:
       std::stod(params.at("distance")),
       -1000, 1000, 0.001, 3, "mm",
       "Distance to move (positive or negative)");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -375,11 +467,16 @@ public:
     std::string axis = params.at("axis");
     std::string distance = params.at("distance");
 
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
     sequence->AddAction(device, "MoveRelative", {
       {"axis", axis},
       {"distance", distance}
     });
     sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move Relative sequence for: " << step->userNickname << std::endl;
   }
@@ -409,7 +506,10 @@ public:
       {"device", "gantry-main"},
       {"distance_x", "0"},
       {"distance_y", "0"},
-      {"distance_z", "0"}
+      {"distance_z", "0"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -422,6 +522,7 @@ public:
     widget->addParameterField("distance_x", "X Distance (mm)", params.at("distance_x"));
     widget->addParameterField("distance_y", "Y Distance (mm)", params.at("distance_y"));
     widget->addParameterField("distance_z", "Z Distance (mm)", params.at("distance_z"));
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -444,6 +545,8 @@ public:
       std::stod(params.at("distance_z")),
       -1000, 1000, 0.1, 2, "mm",
       "Distance to move on Z axis (0 = no move)");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -453,6 +556,9 @@ public:
     std::string distX = params.at("distance_x");
     std::string distY = params.at("distance_y");
     std::string distZ = params.at("distance_z");
+
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
 
     // Build a JSON array of parallel moves for all non-zero axes
     // ParallelMoveRelative starts all axes simultaneously (non-blocking),
@@ -474,6 +580,8 @@ public:
         {"moves", movesArray.dump()}
       });
     }
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move Relative Multi-Axis sequence for: " << step->userNickname
               << " (" << movesArray.size() << " axes)" << std::endl;
@@ -504,7 +612,10 @@ public:
       {"device", "hex-left"},
       {"distance_u", "0"},
       {"distance_v", "0"},
-      {"distance_w", "0"}
+      {"distance_w", "0"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -517,6 +628,7 @@ public:
     widget->addParameterField("distance_u", "U Distance (deg)", params.at("distance_u"));
     widget->addParameterField("distance_v", "V Distance (deg)", params.at("distance_v"));
     widget->addParameterField("distance_w", "W Distance (deg)", params.at("distance_w"));
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -541,6 +653,8 @@ public:
       std::stod(params.at("distance_w")),
       -180, 180, 0.1, 3, "",
       "W axis movement (0 = no move)");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -550,6 +664,9 @@ public:
     std::string distU = params.at("distance_u");
     std::string distV = params.at("distance_v");
     std::string distW = params.at("distance_w");
+
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
 
     bool hasMoves = false;
 
@@ -571,6 +688,8 @@ public:
     if (hasMoves) {
       sequence->AddAction(device, "WaitForMotionComplete", {});
     }
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move Relative Theta sequence for: " << step->userNickname << std::endl;
   }
@@ -601,7 +720,10 @@ public:
       {"base_position", "safe"},
       {"offset_x", "0"},
       {"offset_y", "0"},
-      {"offset_z", "0"}
+      {"offset_z", "0"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -616,6 +738,7 @@ public:
     widget->addParameterField("offset_x", "X Offset (mm)", params.at("offset_x"));
     widget->addParameterField("offset_y", "Y Offset (mm)", params.at("offset_y"));
     widget->addParameterField("offset_z", "Z Offset (mm)", params.at("offset_z"));
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -643,11 +766,14 @@ public:
       std::stod(params.at("offset_z")),
       -1000, 1000, 0.1, 2, "mm",
       "Offset to add to base Z position");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
+    std::string device = params.at("device");
     std::string basePosition = params.at("base_position");
     std::string offsetX = params.at("offset_x");
     std::string offsetY = params.at("offset_y");
@@ -666,10 +792,15 @@ public:
       calculatedPosition += "+Z" + offsetZ;
     }
 
-    sequence->AddAction(params.at("device"), "MoveToNamedPosition", {
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
+    sequence->AddAction(device, "MoveToNamedPosition", {
       {"positionName", calculatedPosition}
     });
-    sequence->AddAction(params.at("device"), "WaitForMotionComplete", {});
+    sequence->AddAction(device, "WaitForMotionComplete", {});
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move to Position with Offset sequence: "
               << calculatedPosition << std::endl;
@@ -1235,7 +1366,10 @@ public:
     return {
       {"device", "hex-left"},
       {"graphName", "default"},
-      {"endNodeName", "home"}
+      {"endNodeName", "home"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -1254,6 +1388,7 @@ public:
     // Node selector (populates based on selected device + graph)
     widget->addGraphNodeSelector("endNodeName", "End Node Position", params.at("endNodeName"),
       "device", "graphName");
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -1270,19 +1405,27 @@ public:
     table->addGraphNodeProperty("endNodeName", "End Node", params.at("endNodeName"),
       "device", "graphName",
       "Select the target node in the graph");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+    std::string device = params.at("device");
+
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
 
     // Single command: MoveToGraphNode (does all the work)
-    sequence->AddAction(params.at("device"), "MoveToGraphNode", {
+    sequence->AddAction(device, "MoveToGraphNode", {
       {"graphName", params.at("graphName")},
       {"endNodeName", params.at("endNodeName")}
     });
 
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
+
     std::cout << "[MotionProcesses] Built Move to Graph Node sequence: "
-              << params.at("device") << " -> graph=" << params.at("graphName")
+              << device << " -> graph=" << params.at("graphName")
               << ", endNode=" << params.at("endNodeName") << std::endl;
   }
 };
@@ -1647,7 +1790,10 @@ public:
     return {
       {"device", "gantry-main"},
       {"x_key", "tgtSled.x"},
-      {"y_key", "tgtSled.y"}
+      {"y_key", "tgtSled.y"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -1660,6 +1806,7 @@ public:
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addParameterField("x_key", "X Context Key", params.at("x_key"));
     widget->addParameterField("y_key", "Y Context Key", params.at("y_key"));
+    addTimingAndVelocityFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -1674,6 +1821,8 @@ public:
       "Context variable name for X coordinate (e.g., 'tgtSled.x' from TransformLocalPoint)");
     table->addTextProperty("y_key", "Y Context Key", params.at("y_key"),
       "Context variable name for Y coordinate (e.g., 'tgtSled.y' from TransformLocalPoint)");
+
+    addTimingAndVelocityTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -1683,11 +1832,16 @@ public:
     std::string xKey = params.at("x_key");
     std::string yKey = params.at("y_key");
 
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
     // Use MoveToContextXY command - it will read X/Y from context and keep current Z
     sequence->AddAction(device, "MoveToContextXY", {
       {"x_key", xKey},
       {"y_key", yKey}
     });
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[MotionProcesses] Built Move to Context XY sequence for: " << step->userNickname
               << " (x_key=" << xKey << ", y_key=" << yKey << ")" << std::endl;

@@ -6,6 +6,8 @@
 #include <QPushButton>
 #include <QTimer>
 
+class TECManager;
+
 struct ApplicationContext;
 class SafetyWatchManager;
 
@@ -91,6 +93,12 @@ public:
    */
   void connectSafetyManager(SafetyWatchManager* manager);
 
+  /**
+   * @brief Start TEC temperature polling in the top bar
+   * Reads temperature from the first connected TEC device and displays it.
+   */
+  void startTECTemperaturePolling();
+
 signals:
   void jogButtonClicked();
   void auxWindowButtonClicked();
@@ -108,4 +116,6 @@ private:
   QPushButton* m_rtlmButton;
   QPushButton* m_rtlm2Button;
   SafetyIndicatorWidget* m_safetyIndicator;
+  QLabel* m_tecTemperatureLabel;
+  QTimer* m_tecPollTimer;
 };

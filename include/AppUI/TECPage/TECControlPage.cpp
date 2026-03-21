@@ -545,6 +545,13 @@ void TECControlPage::onDeviceSelected()
   TECStatus status = m_context->tecManager->GetDeviceStatus(device.toStdString());
   m_isConnected = status.Connected;
 
+  // If device is already connected (e.g., connected during startup),
+  // set the device on the parameter worker so polling can read temperature
+  if (m_isConnected && m_parameterWorker) {
+    m_parameterWorker->setCurrentDevice(device.toStdString());
+    m_parameterWorker->setStatusPollingEnabled(true);
+  }
+
   enableControls(m_isConnected);
   updateControls();
 }
@@ -929,15 +936,14 @@ void TECControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
 
-  std::cout << "[TECControlPage] Page hidden - stopping polling" << std::endl;
+  std::cout << "[TECControlPage] Page hidden - reducing polling rate" << std::endl;
 
-  // Disable parameter worker polling when page is hidden
-  if (m_parameterWorker) {
-    m_parameterWorker->setStatusPollingEnabled(false);
-  }
-
-  // Stop polling to prevent timeouts when page is not visible
+  // Stop the backup polling timer when page is not visible
   m_pollTimer->stop();
+
+  // Keep parameter worker polling active at reduced rate so TopBar
+  // temperature indicator stays up-to-date via cached device status
+  // (polling continues at the worker's default interval)
 }
 
 // ============================================================================

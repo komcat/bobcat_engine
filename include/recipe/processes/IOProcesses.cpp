@@ -13,6 +13,51 @@
 #include <memory>
 #include <map>
 #include <string>
+#include <cmath>
+
+namespace {
+  // Safe parameter access with fallback (backward compatibility for old recipes)
+  std::string getParamOr(const std::map<std::string, std::string>& params,
+                          const std::string& key, const std::string& defaultValue) {
+    auto it = params.find(key);
+    return (it != params.end()) ? it->second : defaultValue;
+  }
+
+  // Helper to add a delay/wait action (if ms > 0)
+  void addDelayAction(SequenceBuilder* sequence, const std::string& msStr) {
+    if (msStr.empty() || msStr == "0") return;
+    try {
+      int ms = static_cast<int>(std::stod(msStr));
+      if (ms <= 0) return;
+      sequence->AddAction("system", "Wait", {{"milliseconds", std::to_string(ms)}});
+    } catch (...) {
+      // Invalid value, skip delay
+    }
+  }
+
+  // Helper to add delay table UI entries
+  void addDelayTableUI(PropertyTableWidget* table,
+                        const std::map<std::string, std::string>& params) {
+    table->addCategoryHeader("Timing");
+    table->addNumericProperty("delay_before_ms", "Delay Before",
+      std::stod(getParamOr(params, "delay_before_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait before executing the action (0 = no delay)");
+    table->addNumericProperty("delay_after_ms", "Delay After",
+      std::stod(getParamOr(params, "delay_after_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait after the action completes (0 = no delay)");
+  }
+
+  // Helper to add delay form UI entries
+  void addDelayFormUI(ProcessConfigWidget* widget,
+                       const std::map<std::string, std::string>& params) {
+    widget->addNumericParameter("delay_before_ms", "Delay Before (ms)",
+      getParamOr(params, "delay_before_ms", "0"), 0, 60000, 100, 0, "ms");
+    widget->addNumericParameter("delay_after_ms", "Delay After (ms)",
+      getParamOr(params, "delay_after_ms", "0"), 0, 60000, 100, 0, "ms");
+  }
+}
 
 //=============================================================================
 // SET OUTPUT PLUGIN (Table-Based UI)
@@ -37,7 +82,9 @@ public:
     return {
       {"io_device", "IOBottom"},
       {"pin", "0"},
-      {"state", "true"}  // "true" for ON, "false" for OFF
+      {"state", "true"},  // "true" for ON, "false" for OFF
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -52,6 +99,7 @@ public:
     widget->addIOPinSelector("pin", "Output Pin", params.at("pin"), "io_device", "output");
     widget->addCheckboxParameter("state", "Output State (ON/OFF)", params.at("state"),
       "Set to ON (checked) or OFF (unchecked)");
+    addDelayFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -69,16 +117,22 @@ public:
     table->addCheckboxProperty("state", "Output State (ON)",
       params.at("state") == "true",
       "Set to ON (checked) or OFF (unchecked)");
+
+    addDelayTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
-    // ✅ Use "SetOutput" command which accepts pinName (not SetOutputPin which expects numeric pin)
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
+    // Use "SetOutput" command which accepts pinName (not SetOutputPin which expects numeric pin)
     sequence->AddAction(params.at("io_device"), "SetOutput", {
       {"pinName", params.at("pin")},
       {"state", params.at("state")}
     });
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[IOProcesses] Built Set Output sequence for: " << step->userNickname << std::endl;
   }
@@ -106,7 +160,9 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"io_device", "IOBottom"},
-      {"pin_name", ""}
+      {"pin_name", ""},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -119,6 +175,7 @@ public:
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
+    addDelayFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -131,14 +188,20 @@ public:
     table->addIOPinProperty("pin_name", "Output Pin Name", params.at("pin_name"),
       "io_device", "output",
       "Select the output pin to turn ON");
+
+    addDelayTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
     sequence->AddAction(params.at("io_device"), "SetOutputName", {
       {"pinName", params.at("pin_name")}
     });
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[IOProcesses] Built Set Output Name (ON) sequence for: " << step->userNickname << std::endl;
   }
@@ -166,7 +229,9 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"io_device", "IOBottom"},
-      {"pin_name", ""}
+      {"pin_name", ""},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
     };
   }
 
@@ -179,6 +244,7 @@ public:
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addIOPinSelector("pin_name", "Output Pin Name", params.at("pin_name"), "io_device", "output");
+    addDelayFormUI(widget, params);
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -191,14 +257,20 @@ public:
     table->addIOPinProperty("pin_name", "Output Pin Name", params.at("pin_name"),
       "io_device", "output",
       "Select the output pin to turn OFF");
+
+    addDelayTableUI(table, params);
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
     sequence->AddAction(params.at("io_device"), "ClearOutputName", {
       {"pinName", params.at("pin_name")}
     });
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
 
     std::cout << "[IOProcesses] Built Clear Output Name (OFF) sequence for: " << step->userNickname << std::endl;
   }
@@ -236,12 +308,14 @@ public:
   bool PrefersTableUI() const override { return true; }
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    // Fallback for compatibility
     const auto& params = instance->parameters;
     widget->addSlideSelector("slide_name", "Pneumatic Slide", params.at("slide_name"));
-    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
-    widget->addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
-    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)",
+      getParamOr(params, "inbounce_delay_ms", "300"));
+    widget->addParameterField("timeout_ms", "Timeout (ms)",
+      getParamOr(params, "timeout_ms", "10000"));
+    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)",
+      getParamOr(params, "debounce_delay_ms", "300"));
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -255,15 +329,15 @@ public:
     // Timing configuration
     table->addCategoryHeader("Timing Configuration");
     table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
-      std::stod(params.at("inbounce_delay_ms")),
+      std::stod(getParamOr(params, "inbounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay before starting extend operation");
     table->addNumericProperty("timeout_ms", "Timeout",
-      std::stod(params.at("timeout_ms")),
+      std::stod(getParamOr(params, "timeout_ms", "10000")),
       0, 60000, 100, 0, "ms",
       "Maximum time to wait for extend completion");
     table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
-      std::stod(params.at("debounce_delay_ms")),
+      std::stod(getParamOr(params, "debounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay after extend completes (settling time)");
   }
@@ -272,16 +346,12 @@ public:
     const auto& params = step->parameters;
 
     std::string slideName = params.at("slide_name");
-    std::string inbounceDelay = params.at("inbounce_delay_ms");
-    std::string timeout = params.at("timeout_ms");
-    std::string debounceDelay = params.at("debounce_delay_ms");
+    std::string inbounceDelay = getParamOr(params, "inbounce_delay_ms", "300");
+    std::string timeout = getParamOr(params, "timeout_ms", "10000");
+    std::string debounceDelay = getParamOr(params, "debounce_delay_ms", "300");
 
     // Inbounce delay (wait before action)
-    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", inbounceDelay}
-      });
-    }
+    addDelayAction(sequence, inbounceDelay);
 
     // Extend the slide (blocking - waits for completion or timeout)
     sequence->AddAction(slideName, "Extend", {
@@ -289,11 +359,7 @@ public:
     });
 
     // Debounce delay (wait after action completed)
-    if (debounceDelay != "0" && !debounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", debounceDelay}
-      });
-    }
+    addDelayAction(sequence, debounceDelay);
 
     std::cout << "[IOProcesses] Built Slide Extend sequence for: " << step->userNickname
               << " (Slide: " << slideName << ")" << std::endl;
@@ -332,12 +398,14 @@ public:
   bool PrefersTableUI() const override { return true; }
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    // Fallback for compatibility
     const auto& params = instance->parameters;
     widget->addSlideSelector("slide_name", "Pneumatic Slide", params.at("slide_name"));
-    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
-    widget->addParameterField("timeout_ms", "Timeout (ms)", params.at("timeout_ms"));
-    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)",
+      getParamOr(params, "inbounce_delay_ms", "300"));
+    widget->addParameterField("timeout_ms", "Timeout (ms)",
+      getParamOr(params, "timeout_ms", "10000"));
+    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)",
+      getParamOr(params, "debounce_delay_ms", "300"));
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -351,15 +419,15 @@ public:
     // Timing configuration
     table->addCategoryHeader("Timing Configuration");
     table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
-      std::stod(params.at("inbounce_delay_ms")),
+      std::stod(getParamOr(params, "inbounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay before starting retract operation");
     table->addNumericProperty("timeout_ms", "Timeout",
-      std::stod(params.at("timeout_ms")),
+      std::stod(getParamOr(params, "timeout_ms", "10000")),
       0, 60000, 100, 0, "ms",
       "Maximum time to wait for retract completion");
     table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
-      std::stod(params.at("debounce_delay_ms")),
+      std::stod(getParamOr(params, "debounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay after retract completes (settling time)");
   }
@@ -368,16 +436,12 @@ public:
     const auto& params = step->parameters;
 
     std::string slideName = params.at("slide_name");
-    std::string inbounceDelay = params.at("inbounce_delay_ms");
-    std::string timeout = params.at("timeout_ms");
-    std::string debounceDelay = params.at("debounce_delay_ms");
+    std::string inbounceDelay = getParamOr(params, "inbounce_delay_ms", "300");
+    std::string timeout = getParamOr(params, "timeout_ms", "10000");
+    std::string debounceDelay = getParamOr(params, "debounce_delay_ms", "300");
 
     // Inbounce delay (wait before action)
-    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", inbounceDelay}
-      });
-    }
+    addDelayAction(sequence, inbounceDelay);
 
     // Retract the slide (blocking - waits for completion or timeout)
     sequence->AddAction(slideName, "Retract", {
@@ -385,11 +449,7 @@ public:
     });
 
     // Debounce delay (wait after action completed)
-    if (debounceDelay != "0" && !debounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", debounceDelay}
-      });
-    }
+    addDelayAction(sequence, debounceDelay);
 
     std::cout << "[IOProcesses] Built Slide Retract sequence for: " << step->userNickname
               << " (Slide: " << slideName << ")" << std::endl;
@@ -427,8 +487,10 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
-    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)", params.at("inbounce_delay_ms"));
-    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)", params.at("debounce_delay_ms"));
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms)",
+      getParamOr(params, "inbounce_delay_ms", "300"));
+    widget->addParameterField("debounce_delay_ms", "Debounce Delay (ms)",
+      getParamOr(params, "debounce_delay_ms", "300"));
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -437,11 +499,11 @@ public:
     // Timing configuration
     table->addCategoryHeader("Timing Configuration");
     table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
-      std::stod(params.at("inbounce_delay_ms")),
+      std::stod(getParamOr(params, "inbounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay before starting retract operation");
     table->addNumericProperty("debounce_delay_ms", "Debounce Delay",
-      std::stod(params.at("debounce_delay_ms")),
+      std::stod(getParamOr(params, "debounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay after all slides retracted (settling time)");
   }
@@ -449,25 +511,17 @@ public:
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
 
-    std::string inbounceDelay = params.at("inbounce_delay_ms");
-    std::string debounceDelay = params.at("debounce_delay_ms");
+    std::string inbounceDelay = getParamOr(params, "inbounce_delay_ms", "300");
+    std::string debounceDelay = getParamOr(params, "debounce_delay_ms", "300");
 
     // Inbounce delay (wait before action)
-    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", inbounceDelay}
-      });
-    }
+    addDelayAction(sequence, inbounceDelay);
 
     // Retract all slides via the pneumatic manager
     sequence->AddAction("pneumatic", "RetractAll", {});
 
     // Debounce delay (wait after action completed)
-    if (debounceDelay != "0" && !debounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", debounceDelay}
-      });
-    }
+    addDelayAction(sequence, debounceDelay);
 
     std::cout << "[IOProcesses] Built Slide Retract All sequence for: " << step->userNickname << std::endl;
   }
@@ -507,20 +561,19 @@ public:
   bool PrefersTableUI() const override { return true; }
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
-    // Fallback for non-table UI (kept for compatibility)
     const auto& params = instance->parameters;
 
     widget->addDeviceSelector("io_device", "I/O Device", params.at("io_device"),
       static_cast<int>(DeviceComboBox::DeviceType::IO));
     widget->addIOPinSelector("pin_name", "Output Pin", params.at("pin_name"), "io_device", "output");
-    widget->addDropdownParameter("start_state", "Start State", params.at("start_state"),
-      {"off", "on"});
+    widget->addDropdownParameter("start_state", "Start State",
+      getParamOr(params, "start_state", "off"), {"off", "on"});
     widget->addNumericParameter("inbounce_delay_ms", "Inbounce Delay (ms)",
-      params.at("inbounce_delay_ms"), 0, 10000, 50, 0, "ms");
+      getParamOr(params, "inbounce_delay_ms", "300"), 0, 10000, 50, 0, "ms");
     widget->addNumericParameter("dwell_time_ms", "Dwell Time (ms)",
-      params.at("dwell_time_ms"), 0, 10000, 50, 0, "ms");
+      getParamOr(params, "dwell_time_ms", "300"), 0, 10000, 50, 0, "ms");
     widget->addNumericParameter("outbounce_delay_ms", "Outbounce Delay (ms)",
-      params.at("outbounce_delay_ms"), 0, 10000, 50, 0, "ms");
+      getParamOr(params, "outbounce_delay_ms", "300"), 0, 10000, 50, 0, "ms");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -537,22 +590,23 @@ public:
 
     // Toggle settings section
     table->addCategoryHeader("Toggle Settings");
-    table->addDropdownProperty("start_state", "Start State", params.at("start_state"),
+    table->addDropdownProperty("start_state", "Start State",
+      getParamOr(params, "start_state", "off"),
       {"off", "on"},
       "Initial state before toggle sequence begins");
 
     // Timing section
     table->addCategoryHeader("Timing Configuration");
     table->addNumericProperty("inbounce_delay_ms", "Inbounce Delay",
-      std::stod(params.at("inbounce_delay_ms")),
+      std::stod(getParamOr(params, "inbounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay before first toggle (debounce input)");
     table->addNumericProperty("dwell_time_ms", "Dwell Time",
-      std::stod(params.at("dwell_time_ms")),
+      std::stod(getParamOr(params, "dwell_time_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Time to hold the toggled state");
     table->addNumericProperty("outbounce_delay_ms", "Outbounce Delay",
-      std::stod(params.at("outbounce_delay_ms")),
+      std::stod(getParamOr(params, "outbounce_delay_ms", "300")),
       0, 10000, 50, 0, "ms",
       "Delay after returning to original state");
   }
@@ -562,21 +616,17 @@ public:
 
     std::string ioDevice = params.at("io_device");
     std::string pinName = params.at("pin_name");
-    std::string startState = params.at("start_state");
-    std::string inbounceDelay = params.at("inbounce_delay_ms");
-    std::string dwellTime = params.at("dwell_time_ms");
-    std::string outbounceDelay = params.at("outbounce_delay_ms");
+    std::string startState = getParamOr(params, "start_state", "off");
+    std::string inbounceDelay = getParamOr(params, "inbounce_delay_ms", "300");
+    std::string dwellTime = getParamOr(params, "dwell_time_ms", "300");
+    std::string outbounceDelay = getParamOr(params, "outbounce_delay_ms", "300");
 
     // Determine toggle states based on start state
     bool firstToggleState = (startState == "off") ? true : false;  // opposite of start state
     bool secondToggleState = !firstToggleState;  // back to start state
 
     // Step 1: Inbounce delay
-    if (inbounceDelay != "0" && !inbounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", inbounceDelay}
-      });
-    }
+    addDelayAction(sequence, inbounceDelay);
 
     // Step 2: First toggle (opposite of start state)
     sequence->AddAction(ioDevice, "SetOutput", {
@@ -585,11 +635,7 @@ public:
     });
 
     // Step 3: Dwell time
-    if (dwellTime != "0" && !dwellTime.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", dwellTime}
-      });
-    }
+    addDelayAction(sequence, dwellTime);
 
     // Step 4: Second toggle (back to start state)
     sequence->AddAction(ioDevice, "SetOutput", {
@@ -598,11 +644,7 @@ public:
     });
 
     // Step 5: Outbounce delay
-    if (outbounceDelay != "0" && !outbounceDelay.empty()) {
-      sequence->AddAction("system", "Wait", {
-        {"milliseconds", outbounceDelay}
-      });
-    }
+    addDelayAction(sequence, outbounceDelay);
 
     std::cout << "[IOProcesses] Built Toggle Output sequence for: " << step->userNickname
               << " (Device: " << ioDevice << ", Pin: " << pinName

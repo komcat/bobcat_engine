@@ -45,6 +45,7 @@ public:
       {"dispense_interval_ms", "300"},
       {"delay_before_dispense_ms", "0"},
       {"delay_after_dispense_ms", "0"},
+      {"velocity", "0"},           // XY travel velocity (0 = use controller default)
       {"velocity_approach", "20.0"},
       {"safety_height", "1.0"},
       {"velocity_safety", "5.0"},
@@ -91,7 +92,9 @@ public:
                              getParam("delay_after_dispense_ms"));
 
     // Motion parameters
-    widget->addParameterField("velocity_approach", "Approach Velocity (mm/s)",
+    widget->addParameterField("velocity", "XY Travel Velocity (mm/s, 0=default)",
+                             getParam("velocity"));
+    widget->addParameterField("velocity_approach", "Z Approach Velocity (mm/s)",
                              getParam("velocity_approach"));
 
     widget->addParameterField("safety_height", "Safety Height (mm)",
@@ -179,11 +182,29 @@ public:
     std::string velocityApproach = getParam("velocity_approach");
     std::string safetyHeight = getParam("safety_height");
     std::string velocitySafety = getParam("velocity_safety");
+    std::string velocity = getParam("velocity");
     bool autoConfirm = (getParam("auto_confirm") == "true");
     bool skipCameraVerify = (getParam("skip_camera_verify") == "true");
 
     // Get the process instance UID for unique dispense position files
     std::string uid = step->uniqueId;
+
+    // =========================================================================
+    // SET XY TRAVEL VELOCITY (if configured, 0 = use controller default)
+    // Only set X and Y axes - Z velocity is managed separately by
+    // velocity_approach and velocity_safety for the two-stage Z descent
+    // =========================================================================
+    {
+      double vel = std::stod(velocity);
+      if (vel > 0.0) {
+        sequence->AddAction(device, "SetVelocity", {
+          {"axis", "X"}, {"velocity", velocity}
+        });
+        sequence->AddAction(device, "SetVelocity", {
+          {"axis", "Y"}, {"velocity", velocity}
+        });
+      }
+    }
 
     // =========================================================================
     // SETUP VALIDATION: Check if all calibration files exist for auto-confirm
