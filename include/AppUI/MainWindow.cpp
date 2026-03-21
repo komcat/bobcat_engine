@@ -113,6 +113,11 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
 
     std::cout << "[MainWindow] Safety watch signals connected" << std::endl;
   }
+
+  // Start TEC temperature polling in the top bar
+  if (m_topBar) {
+    m_topBar->startTECTemperaturePolling();
+  }
 }
 
 

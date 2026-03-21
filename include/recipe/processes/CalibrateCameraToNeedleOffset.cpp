@@ -39,6 +39,7 @@ public:
       {"pneumatic_slide", "Dispenser_Head"},
       {"settle_time_ms", "500"},
       {"z_retract_height", "10.0"},
+      {"velocity", "0"},           // XY travel velocity (0 = use controller default)
       {"io_device", "EziIO-1"},
       {"dispense_pin", "0"},
       {"dispense_duration_ms", "300"}
@@ -72,6 +73,10 @@ public:
     widget->addParameterField("z_retract_height", "Z Retract Height (mm)",
                              getParam("z_retract_height"));
 
+    // Velocity
+    widget->addParameterField("velocity", "XY Travel Velocity (mm/s, 0=default)",
+                             getParam("velocity"));
+
     // Dispenser IO control
     widget->addDeviceSelector("io_device", "IO Device",
                               getParam("io_device"),
@@ -103,8 +108,25 @@ public:
     std::string dispensePin = getParam("dispense_pin");
     std::string dispenseDuration = getParam("dispense_duration_ms");
 
+    std::string velocity = getParam("velocity");
+
     // Get the process instance UID for unique navigation/calibration files
     std::string uid = step->uniqueId;
+
+    // Set XY travel velocity (if configured, 0 = use controller default)
+    // Only set X and Y axes - Z velocity is managed separately by
+    // the internal calibration approach/retract steps
+    {
+      double vel = std::stod(velocity);
+      if (vel > 0.0) {
+        sequence->AddAction(device, "SetVelocity", {
+          {"axis", "X"}, {"velocity", velocity}
+        });
+        sequence->AddAction(device, "SetVelocity", {
+          {"axis", "Y"}, {"velocity", velocity}
+        });
+      }
+    }
 
     // Step 1: Instructions (non-blocking notification)
     sequence->AddAction("system", "UserPrompt", {
