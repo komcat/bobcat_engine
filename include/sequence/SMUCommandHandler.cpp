@@ -216,10 +216,28 @@ bool SMUCommandHandler::ExecuteCommand(
   // READ VOLTAGE (single measurement)
   // ============================================================================
   else if (methodName == "ReadVoltage") {
+    auto channelIt = params.find("channel");
     auto captureAsIt = params.find("captureAs");
 
+    int channel = 1;  // Default channel 1
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Reading voltage from " + deviceName, "SMUHandler");
+      m_logger->Info("Reading voltage from " + deviceName + " channel " + std::to_string(channel),
+                    "SMUHandler");
     }
 
     double voltage = device->ReadVoltage();
@@ -230,7 +248,7 @@ bool SMUCommandHandler::ExecuteCommand(
 
     // Store in context
     if (context) {
-      std::string key = deviceName + ".voltage";
+      std::string key = deviceName + ".voltage_ch" + std::to_string(channel);
       context->SetValue(key, static_cast<float>(voltage), deviceName, methodName);
 
       // If captureAs provided, also store with that name
@@ -247,6 +265,7 @@ bool SMUCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "SetVoltage") {
     auto voltageIt = params.find("voltage");
+    auto channelIt = params.find("channel");
 
     if (voltageIt == params.end()) {
       errorMessage = "Missing required parameter: voltage";
@@ -261,9 +280,25 @@ bool SMUCommandHandler::ExecuteCommand(
       return false;
     }
 
+    int channel = 1;
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Setting voltage on " + deviceName + " to " + std::to_string(voltage) + " V",
-                    "SMUHandler");
+      m_logger->Info("Setting voltage on " + deviceName + " channel " + std::to_string(channel) +
+                    " to " + std::to_string(voltage) + " V", "SMUHandler");
     }
 
     if (!device->SetVoltage(voltage)) {
@@ -279,6 +314,7 @@ bool SMUCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "SetCurrent") {
     auto currentIt = params.find("current");
+    auto channelIt = params.find("channel");
 
     if (currentIt == params.end()) {
       errorMessage = "Missing required parameter: current";
@@ -293,9 +329,25 @@ bool SMUCommandHandler::ExecuteCommand(
       return false;
     }
 
+    int channel = 1;
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Setting current on " + deviceName + " to " + std::to_string(current) + " A",
-                    "SMUHandler");
+      m_logger->Info("Setting current on " + deviceName + " channel " + std::to_string(channel) +
+                    " to " + std::to_string(current) + " A", "SMUHandler");
     }
 
     if (!device->SetCurrent(current)) {
@@ -384,6 +436,7 @@ bool SMUCommandHandler::ExecuteCommand(
   // ============================================================================
   else if (methodName == "SetCompliance") {
     auto limitIt = params.find("limit");
+    auto channelIt = params.find("channel");
 
     if (limitIt == params.end()) {
       errorMessage = "Missing required parameter: limit";
@@ -398,9 +451,25 @@ bool SMUCommandHandler::ExecuteCommand(
       return false;
     }
 
+    int channel = 1;
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Setting compliance (current) on " + deviceName + " to " + std::to_string(limit) + " A",
-                    "SMUHandler");
+      m_logger->Info("Setting compliance (current) on " + deviceName + " channel " + std::to_string(channel) +
+                    " to " + std::to_string(limit) + " A", "SMUHandler");
     }
 
     if (!device->SetCompliance(limit)) {
@@ -457,8 +526,27 @@ bool SMUCommandHandler::ExecuteCommand(
   // OUTPUT ON
   // ============================================================================
   else if (methodName == "OutputOn") {
+    auto channelIt = params.find("channel");
+
+    int channel = 1;
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Turning output ON for " + deviceName, "SMUHandler");
+      m_logger->Info("Turning output ON for " + deviceName + " channel " + std::to_string(channel),
+                    "SMUHandler");
     }
 
     if (!device->SetOutputOn()) {
@@ -473,8 +561,27 @@ bool SMUCommandHandler::ExecuteCommand(
   // OUTPUT OFF
   // ============================================================================
   else if (methodName == "OutputOff") {
+    auto channelIt = params.find("channel");
+
+    int channel = 1;
+    if (channelIt != params.end()) {
+      try {
+        channel = std::stoi(channelIt->second);
+      } catch (...) {
+        errorMessage = "Invalid channel parameter: " + channelIt->second;
+        return false;
+      }
+    }
+
+    // Select channel if device supports it
+    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
+    if (keithley6482) {
+      keithley6482->SelectChannel(channel);
+    }
+
     if (m_logger) {
-      m_logger->Info("Turning output OFF for " + deviceName, "SMUHandler");
+      m_logger->Info("Turning output OFF for " + deviceName + " channel " + std::to_string(channel),
+                    "SMUHandler");
     }
 
     if (!device->SetOutputOff()) {

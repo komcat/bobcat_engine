@@ -11,6 +11,16 @@
 #include <map>
 #include <string>
 
+namespace {
+// Safe parameter access - returns defaultValue if key not found (for backward compat with old recipes)
+std::string getParam(const std::map<std::string, std::string>& params,
+                     const std::string& key,
+                     const std::string& defaultValue = "") {
+  auto it = params.find(key);
+  return (it != params.end()) ? it->second : defaultValue;
+}
+} // namespace
+
 //=============================================================================
 // SMU START POLLING PLUGIN
 //=============================================================================
@@ -61,7 +71,7 @@ public:
 
     // Channel number
     widget->addNumericParameter("channel", "Channel",
-      params.at("channel"),
+      getParam(params, "channel", "1"),
       1,       // min
       4,       // max
       1,       // step
@@ -76,7 +86,7 @@ public:
     std::string device = params.at("device");
     std::string mode = params.at("mode");
     std::string intervalMs = params.at("intervalMs");
-    std::string channel = params.at("channel");
+    std::string channel = getParam(params, "channel", "1");
 
     // ✅ DEBUG: Log all parameters
     std::cout << "[SMUStartPollingPlugin] BuildSequence called for: " << step->userNickname << std::endl;
@@ -189,7 +199,7 @@ public:
 
     // Channel number
     widget->addNumericParameter("channel", "Channel",
-      params.at("channel"),
+      getParam(params, "channel", "1"),
       1,       // min
       4,       // max
       1,       // step
@@ -205,7 +215,7 @@ public:
     const auto& params = step->parameters;
 
     std::string device = params.at("device");
-    std::string channel = params.at("channel");
+    std::string channel = getParam(params, "channel", "1");
     std::string captureAs = params.at("captureAs");
 
     // ✅ DEBUG: Log parameters
@@ -250,6 +260,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"device", "Keithley_6482"},
+      {"channel", "1"},
       {"captureAs", ""}  // Optional: store result with custom variable name
     };
   }
@@ -259,21 +270,36 @@ public:
 
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
+
     widget->addParameterField("captureAs", "Capture As (optional)", params.at("captureAs"));
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
+    std::string channel = getParam(step->parameters, "channel", "1");
     std::string captureAs = step->parameters.at("captureAs");
 
-    std::map<std::string, std::string> params;
+    std::map<std::string, std::string> params = {
+      {"channel", channel}
+    };
     if (!captureAs.empty()) {
       params["captureAs"] = captureAs;
     }
 
     seq->AddAction(device, "ReadVoltage", params);
 
-    std::cout << "[SMUReadVoltagePlugin] Built sequence: ReadVoltage on " << device << std::endl;
+    std::cout << "[SMUReadVoltagePlugin] Built sequence: ReadVoltage on " << device
+              << " channel " << channel << std::endl;
   }
 };
 
@@ -293,6 +319,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"device", "Keithley_6482"},
+      {"channel", "1"},
       {"voltage", "0.0"}
     };
   }
@@ -302,16 +329,29 @@ public:
 
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
+
     widget->addNumericParameter("voltage", "Voltage (V)", params.at("voltage"), -100, 100, 0.1, 3, "V");
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
+    std::string channel = getParam(step->parameters, "channel", "1");
     std::string voltage = step->parameters.at("voltage");
 
-    seq->AddAction(device, "SetVoltage", {{"voltage", voltage}});
+    seq->AddAction(device, "SetVoltage", {{"voltage", voltage}, {"channel", channel}});
 
-    std::cout << "[SMUSetVoltagePlugin] Built sequence: SetVoltage " << voltage << "V on " << device << std::endl;
+    std::cout << "[SMUSetVoltagePlugin] Built sequence: SetVoltage " << voltage << "V on " << device
+              << " channel " << channel << std::endl;
   }
 };
 
@@ -331,6 +371,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"device", "Keithley_6482"},
+      {"channel", "1"},
       {"current", "0.0"}
     };
   }
@@ -340,16 +381,29 @@ public:
 
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
+
     widget->addNumericParameter("current", "Current (A)", params.at("current"), -1, 1, 0.001, 6, "A");
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
+    std::string channel = getParam(step->parameters, "channel", "1");
     std::string current = step->parameters.at("current");
 
-    seq->AddAction(device, "SetCurrent", {{"current", current}});
+    seq->AddAction(device, "SetCurrent", {{"current", current}, {"channel", channel}});
 
-    std::cout << "[SMUSetCurrentPlugin] Built sequence: SetCurrent " << current << "A on " << device << std::endl;
+    std::cout << "[SMUSetCurrentPlugin] Built sequence: SetCurrent " << current << "A on " << device
+              << " channel " << channel << std::endl;
   }
 };
 
@@ -369,6 +423,7 @@ public:
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
       {"device", "Keithley_6482"},
+      {"channel", "1"},
       {"limit", "0.1"}
     };
   }
@@ -378,16 +433,29 @@ public:
 
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
+
     widget->addNumericParameter("limit", "Compliance Limit", params.at("limit"), 0.001, 10, 0.01, 3, "");
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
+    std::string channel = getParam(step->parameters, "channel", "1");
     std::string limit = step->parameters.at("limit");
 
-    seq->AddAction(device, "SetCompliance", {{"limit", limit}});
+    seq->AddAction(device, "SetCompliance", {{"limit", limit}, {"channel", channel}});
 
-    std::cout << "[SMUSetCompliancePlugin] Built sequence: SetCompliance " << limit << " on " << device << std::endl;
+    std::cout << "[SMUSetCompliancePlugin] Built sequence: SetCompliance " << limit << " on " << device
+              << " channel " << channel << std::endl;
   }
 };
 
@@ -406,7 +474,8 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_2400"}
+      {"device", "Keithley_2400"},
+      {"channel", "1"}
     };
   }
 
@@ -414,12 +483,24 @@ public:
     const auto& params = instance->parameters;
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
-    seq->AddAction(device, "OutputOn", {});
-    std::cout << "[SMUOutputOnPlugin] Built sequence: OutputOn on " << device << std::endl;
+    std::string channel = getParam(step->parameters, "channel", "1");
+    seq->AddAction(device, "OutputOn", {{"channel", channel}});
+    std::cout << "[SMUOutputOnPlugin] Built sequence: OutputOn on " << device
+              << " channel " << channel << std::endl;
   }
 };
 
@@ -438,7 +519,8 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_2400"}
+      {"device", "Keithley_2400"},
+      {"channel", "1"}
     };
   }
 
@@ -446,12 +528,24 @@ public:
     const auto& params = instance->parameters;
     widget->addDeviceSelector("device", "SMU Device", params.at("device"),
       static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    // Channel number
+    widget->addNumericParameter("channel", "Channel",
+      getParam(params, "channel", "1"),
+      1,       // min
+      4,       // max
+      1,       // step
+      0,       // decimals (integer)
+      ""       // suffix
+    );
   }
 
   void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
     std::string device = step->parameters.at("device");
-    seq->AddAction(device, "OutputOff", {});
-    std::cout << "[SMUOutputOffPlugin] Built sequence: OutputOff on " << device << std::endl;
+    std::string channel = getParam(step->parameters, "channel", "1");
+    seq->AddAction(device, "OutputOff", {{"channel", channel}});
+    std::cout << "[SMUOutputOffPlugin] Built sequence: OutputOff on " << device
+              << " channel " << channel << std::endl;
   }
 };
 

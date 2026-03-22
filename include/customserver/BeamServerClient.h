@@ -25,14 +25,18 @@ public:
   void Disconnect();
   [[nodiscard]] bool IsConnected() const { return m_connected.load(); }
 
-  // Send a detect request with raw uint16 image data.
+  // Send a detect request with raw uint8 grayscale image data (one or more frames).
+  // When numFrames > 1, imageData must contain numFrames consecutive frames
+  // of width*height bytes each. The server detects each frame independently
+  // and averages the results.
   // Returns parsed JSON result from server, or empty object on failure.
   [[nodiscard]] nlohmann::json SendDetect(
-    const std::vector<uint16_t>& imageData,
+    const std::vector<uint8_t>& imageData,
     int width, int height,
     double z_um,
     bool rotate180,
-    double umPerPxX, double umPerPxY);
+    double umPerPxX, double umPerPxY,
+    int numFrames = 1);
 
   // Send a detect-from-file request (server reads image from disk path).
   // rotate180: if nullopt, server uses its config default.

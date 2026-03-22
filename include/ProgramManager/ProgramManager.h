@@ -10,7 +10,7 @@
 static constexpr int MAX_DEPENDENCY_SETS = 5;
 
 // Maximum number of recipe slots per program
-static constexpr int MAX_RECIPE_SLOTS = 5;
+static constexpr int MAX_RECIPE_SLOTS = 20;
 
 /**
  * @brief GraphNodePosition - Position of a node in the dependency graph

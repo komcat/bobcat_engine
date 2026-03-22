@@ -30,6 +30,8 @@ private:
   bool HandleDisconnect(std::string& errorMessage);
   bool HandleDetect(const std::map<std::string, std::string>& params,
                     std::string& errorMessage, SequenceContext* context);
+  bool HandleDetectN(const std::map<std::string, std::string>& params,
+                     std::string& errorMessage, SequenceContext* context);
   bool HandleFit(const std::map<std::string, std::string>& params,
                  std::string& errorMessage, SequenceContext* context);
   bool HandleDetectFile(const std::map<std::string, std::string>& params,

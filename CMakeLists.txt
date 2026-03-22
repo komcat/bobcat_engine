@@ -760,6 +760,9 @@ set(SOURCES
     include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.cpp
     include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.cpp
     include/AppUI/AccuracyTrainer/EditZOffsetWidget.cpp
+    include/AppUI/AccuracyTrainer/AccuracyTrainerLogger.cpp
+    # SQLite3 amalgamation (single-file C library)
+    external/sqlite3/sqlite3.c
     # Camera Offset Trainer
     include/AppUI/CameraOffsetTrainer/CameraOffsetStore.cpp
     include/AppUI/CameraOffsetTrainer/CameraOffsetTrainerPage.cpp
@@ -1008,6 +1011,7 @@ set(HEADERS
     include/AppUI/AccuracyTrainer/RunAlignmentWidget.h
     include/AppUI/AccuracyTrainer/MultiDeviceRunAlignmentWidget.h
     include/AppUI/AccuracyTrainer/TeachMultiDeviceWidget.h
+    include/AppUI/AccuracyTrainer/AccuracyTrainerLogger.h
     # Camera Offset Trainer
     include/AppUI/CameraOffsetTrainer/CameraOffsetData.h
     include/AppUI/CameraOffsetTrainer/CameraOffsetStore.h
@@ -1328,6 +1332,9 @@ endif()
 if(HALCON_FOUND)
     target_include_directories(bobcat_engine SYSTEM PRIVATE ${HALCON_INCLUDE_DIR})
 endif()
+# SQLite3 amalgamation (SYSTEM to suppress third-party warnings)
+target_include_directories(bobcat_engine SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/external/sqlite3)
+set_source_files_properties(external/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS "/W0")
 
 # ============================================================================
 # Link Libraries

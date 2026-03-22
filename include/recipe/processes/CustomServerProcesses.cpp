@@ -119,6 +119,9 @@ public:
       {"rotate_180", "false"},
       {"um_per_px_x", "0.25"},
       {"um_per_px_y", "0.25"},
+      {"num_frames", "5"},
+      {"inbounce_delay_ms", "500"},
+      {"outbounce_delay_ms", "500"},
       {"captureAs", "beam"}
     };
   }
@@ -143,6 +146,12 @@ public:
                                  {"false", "true"});
     widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
     widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
+    widget->addParameterField("num_frames", "Frames to Capture",
+                              get("num_frames", "5"));
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms, before detect)",
+                              get("inbounce_delay_ms", "500"));
+    widget->addParameterField("outbounce_delay_ms", "Outbounce Delay (ms, after detect)",
+                              get("outbounce_delay_ms", "500"));
     widget->addParameterField("captureAs", "Capture As (Context Prefix)", get("captureAs", "beam"));
   }
 
@@ -161,9 +170,110 @@ public:
       {"rotate_180", get("rotate_180", "false")},
       {"um_per_px_x", get("um_per_px_x", "0.25")},
       {"um_per_px_y", get("um_per_px_y", "0.25")},
+      {"num_frames", get("num_frames", "5")},
+      {"inbounce_delay_ms", get("inbounce_delay_ms", "500")},
+      {"outbounce_delay_ms", get("outbounce_delay_ms", "500")},
       {"captureAs", get("captureAs", "beam")}
     });
     std::cout << "[CustomServerProcesses] Built Beam Detect for: "
+              << step->userNickname << std::endl;
+  }
+};
+
+//=============================================================================
+// BEAM: DETECT N
+//=============================================================================
+
+class BeamDetectNPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Beam: Detect N";
+  }
+
+  std::string GetCategory() const override {
+    return "Custom Server";
+  }
+
+  std::string GetDescription() const override {
+    return "Capture and send image to beam server N times at the same Z height (registers N independent detections)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"camera_device", "main_camera"},
+      {"use_device_z", "true"},
+      {"z_device", "gantry-main"},
+      {"z_axis", "Z"},
+      {"z_um", ""},
+      {"rotate_180", "false"},
+      {"um_per_px_x", "0.25"},
+      {"um_per_px_y", "0.25"},
+      {"num_frames", "5"},
+      {"repeat_count", "5"},
+      {"delay_between_ms", "100"},
+      {"inbounce_delay_ms", "500"},
+      {"outbounce_delay_ms", "500"},
+      {"captureAs", "beam"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    widget->addDeviceSelector("camera_device", "Camera", get("camera_device", "main_camera"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Camera));
+    widget->addCheckboxParameter("use_device_z", "Read Z from motion device",
+                                 get("use_device_z", "true"),
+                                 "Read current Z position from the motion device axis (in mm, converted to um)");
+    widget->addDeviceSelector("z_device", "Z Motion Device", get("z_device", "gantry-main"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("z_axis", "Z Axis Name", get("z_axis", "Z"));
+    widget->addParameterField("z_um", "Z Position (context:key or um value, used when checkbox off)",
+                              get("z_um"));
+    widget->addDropdownParameter("rotate_180", "Rotate 180", get("rotate_180", "false"),
+                                 {"false", "true"});
+    widget->addParameterField("um_per_px_x", "um/px X", get("um_per_px_x", "0.25"));
+    widget->addParameterField("um_per_px_y", "um/px Y", get("um_per_px_y", "0.25"));
+    widget->addParameterField("num_frames", "Frames per Detection",
+                              get("num_frames", "5"));
+    widget->addParameterField("repeat_count", "Repeat Count (N independent detections)",
+                              get("repeat_count", "5"));
+    widget->addParameterField("delay_between_ms", "Delay Between Detections (ms)",
+                              get("delay_between_ms", "100"));
+    widget->addParameterField("inbounce_delay_ms", "Inbounce Delay (ms, before detect)",
+                              get("inbounce_delay_ms", "500"));
+    widget->addParameterField("outbounce_delay_ms", "Outbounce Delay (ms, after detect)",
+                              get("outbounce_delay_ms", "500"));
+    widget->addParameterField("captureAs", "Capture As (Context Prefix)", get("captureAs", "beam"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    auto get = [&](const std::string& key, const std::string& def = "") -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : def;
+    };
+    sequence->AddAction("beamserver", "DetectN", {
+      {"camera_device", get("camera_device", "main_camera")},
+      {"use_device_z", get("use_device_z", "true")},
+      {"z_device", get("z_device", "gantry-main")},
+      {"z_axis", get("z_axis", "Z")},
+      {"z_um", get("z_um")},
+      {"rotate_180", get("rotate_180", "false")},
+      {"um_per_px_x", get("um_per_px_x", "0.25")},
+      {"um_per_px_y", get("um_per_px_y", "0.25")},
+      {"num_frames", get("num_frames", "5")},
+      {"repeat_count", get("repeat_count", "5")},
+      {"delay_between_ms", get("delay_between_ms", "100")},
+      {"inbounce_delay_ms", get("inbounce_delay_ms", "500")},
+      {"outbounce_delay_ms", get("outbounce_delay_ms", "500")},
+      {"captureAs", get("captureAs", "beam")}
+    });
+    std::cout << "[CustomServerProcesses] Built Beam Detect N for: "
               << step->userNickname << std::endl;
   }
 };
@@ -520,6 +630,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<BeamConnectPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamDisconnectPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamDetectPlugin>());
+      registry.RegisterPlugin(std::make_unique<BeamDetectNPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamDetectFilePlugin>());
       registry.RegisterPlugin(std::make_unique<BeamDetectFolderPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamFitPlugin>());
@@ -527,7 +638,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<BeamResetPlugin>());
       registry.RegisterPlugin(std::make_unique<BeamFitSlicesPlugin>());
 
-      std::cout << "[CustomServerProcesses] Registered 9 Custom Server process plugins" << std::endl;
+      std::cout << "[CustomServerProcesses] Registered 10 Custom Server process plugins" << std::endl;
     }
   };
 
