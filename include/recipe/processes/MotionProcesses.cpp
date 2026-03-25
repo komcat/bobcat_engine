@@ -1110,7 +1110,8 @@ public:
       {"plane", "XY"},                     // XY, XZ, YZ
       {"channel", ""},                     // DataStore feedback channel
       {"settling_time_ms", "300"},
-      {"capture_as", ""}                   // Optional: store peak result
+      {"capture_as", ""},                  // Optional: store peak result
+      {"timeout_ms", "600000"}             // 10 minute timeout for scans
     };
   }
 
@@ -1118,65 +1119,104 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
 
-    widget->addDeviceSelector("device", "Hexapod Device (hex-*)", params.at("device"),
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    widget->addDeviceSelector("device", "Hexapod Device (hex-*)", getParam("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
-    widget->addDropdownParameter("mode", "Scan Mode", params.at("mode"),
+    widget->addDropdownParameter("mode", "Scan Mode", getParam("mode"),
       {"coarse", "fine", "ultrafine"});
-    widget->addDropdownParameter("plane", "Scan Plane", params.at("plane"),
+    widget->addDropdownParameter("plane", "Scan Plane", getParam("plane"),
       {"XY", "XZ", "YZ"});
-    widget->addDataChannelSelector("channel", "Data Channel (DataStore)", params.at("channel"));
+    widget->addDataChannelSelector("channel", "Data Channel (DataStore)", getParam("channel"));
     widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
-      params.at("settling_time_ms"), 50, 2000, 10, 0, "ms");
-    widget->addParameterField("capture_as", "Capture Peak As (optional)", params.at("capture_as"));
+      getParam("settling_time_ms"), 50, 2000, 10, 0, "ms");
+    widget->addParameterField("capture_as", "Capture Peak As (optional)", getParam("capture_as"));
+    widget->addNumericParameter("timeout_ms", "Timeout (ms)",
+      getParam("timeout_ms"), 60000, 1800000, 60000, 0, "ms");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
+
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
 
     table->addCategoryHeader("Device");
-    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+    table->addMotionDeviceProperty("device", "Motion Device", getParam("device"),
       "Select the PI hexapod device for grid scanning (hex-* naming)");
 
     table->addCategoryHeader("Scan Configuration");
-    table->addDropdownProperty("mode", "Scan Mode", params.at("mode"),
+    table->addDropdownProperty("mode", "Scan Mode", getParam("mode"),
       {"coarse", "fine", "ultrafine"},
       "coarse=200um/20um, fine=100um/10um, ultrafine=50um/5um (11x11 grid)");
-    table->addDropdownProperty("plane", "Scan Plane", params.at("plane"),
+    table->addDropdownProperty("plane", "Scan Plane", getParam("plane"),
       {"XY", "XZ", "YZ"},
       "2D plane to scan centered on current position: XY, XZ, or YZ");
-    table->addDataChannelProperty("channel", "Data Channel", params.at("channel"),
+    table->addDataChannelProperty("channel", "Data Channel", getParam("channel"),
       "DataStore channel to read feedback values during scan");
 
     table->addCategoryHeader("Timing");
     table->addNumericProperty("settling_time_ms", "Settling Time",
-      std::stod(params.at("settling_time_ms")),
+      std::stod(getParam("settling_time_ms")),
       50, 2000, 10, 0, "ms",
       "Wait time after each position move for signal stabilization");
 
     table->addCategoryHeader("Result Capture");
-    table->addTextProperty("capture_as", "Save Peak Value As", params.at("capture_as"),
+    table->addTextProperty("capture_as", "Save Peak Value As", getParam("capture_as"),
       "Context variable name to store the peak value found (leave empty to disable)");
+
+    table->addCategoryHeader("Timeout");
+    table->addNumericProperty("timeout_ms", "Command Timeout",
+      std::stod(getParam("timeout_ms")),
+      60000, 1800000, 60000, 0, "ms",
+      "Maximum time allowed for scan (60s-30min). Default 10 minutes.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+    auto defaults = GetDefaultParameters();
 
-    std::string device = params.at("device");
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    std::string device = getParam("device");
 
     // Build GridScan command
     sequence->AddAction(device, "GridScan", {
-      {"mode", params.at("mode")},
-      {"plane", params.at("plane")},
-      {"channel", params.at("channel")},
-      {"settling_time_ms", params.at("settling_time_ms")},
-      {"capture_as", params.at("capture_as")}
+      {"mode", getParam("mode")},
+      {"plane", getParam("plane")},
+      {"channel", getParam("channel")},
+      {"settling_time_ms", getParam("settling_time_ms")},
+      {"capture_as", getParam("capture_as")},
+      {"timeout_ms", getParam("timeout_ms")}  // Custom timeout for long scans
     });
 
     std::cout << "[MotionProcesses] Built GridScan sequence for: " << step->userNickname
-              << " (mode=" << params.at("mode")
-              << ", plane=" << params.at("plane")
-              << ", channel=" << params.at("channel") << ")"
+              << " (mode=" << getParam("mode")
+              << ", plane=" << getParam("plane")
+              << ", channel=" << getParam("channel") << ")"
               << std::endl;
   }
 };
@@ -1215,7 +1255,8 @@ public:
       {"return_to_peak", "true"},          // Move to peak after scan
       {"exit_threshold", ""},              // Early exit if value exceeds
       {"capture_as", ""},                  // Store peak value to context
-      {"capture_position_as", ""}          // Store peak position to context
+      {"capture_position_as", ""},         // Store peak position to context
+      {"timeout_ms", "600000"}             // 10 minute timeout for long scans
     };
   }
 
@@ -1223,122 +1264,161 @@ public:
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
 
-    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    widget->addDeviceSelector("device", "Motion Device", getParam("device"),
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
-    widget->addDropdownParameter("plane", "Scan Plane", params.at("plane"),
+    widget->addDropdownParameter("plane", "Scan Plane", getParam("plane"),
       {"XY", "XZ", "YZ"});
-    widget->addParameterField("range_axis1_um", "Range Axis 1 (um)", params.at("range_axis1_um"));
-    widget->addDropdownParameter("direction_axis1", "Direction Axis 1", params.at("direction_axis1"),
+    widget->addParameterField("range_axis1_um", "Range Axis 1 (um)", getParam("range_axis1_um"));
+    widget->addDropdownParameter("direction_axis1", "Direction Axis 1", getParam("direction_axis1"),
       {"centered", "positive", "negative"});
-    widget->addParameterField("range_axis2_um", "Range Axis 2 (um)", params.at("range_axis2_um"));
-    widget->addDropdownParameter("direction_axis2", "Direction Axis 2", params.at("direction_axis2"),
+    widget->addParameterField("range_axis2_um", "Range Axis 2 (um)", getParam("range_axis2_um"));
+    widget->addDropdownParameter("direction_axis2", "Direction Axis 2", getParam("direction_axis2"),
       {"centered", "positive", "negative"});
-    widget->addParameterField("step_size_um", "Step Size (um)", params.at("step_size_um"));
-    widget->addDataChannelSelector("channel", "Data Channel", params.at("channel"));
+    widget->addParameterField("step_size_um", "Step Size (um)", getParam("step_size_um"));
+    widget->addDataChannelSelector("channel", "Data Channel", getParam("channel"));
     widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
-      params.at("settling_time_ms"), 50, 2000, 10, 0, "ms");
-    widget->addDropdownParameter("snake_pattern", "Snake Pattern", params.at("snake_pattern"),
+      getParam("settling_time_ms"), 50, 2000, 10, 0, "ms");
+    widget->addDropdownParameter("snake_pattern", "Snake Pattern", getParam("snake_pattern"),
       {"true", "false"});
-    widget->addDropdownParameter("return_to_peak", "Return to Peak", params.at("return_to_peak"),
+    widget->addDropdownParameter("return_to_peak", "Return to Peak", getParam("return_to_peak"),
       {"true", "false"});
-    widget->addParameterField("exit_threshold", "Exit Threshold (optional)", params.at("exit_threshold"));
-    widget->addParameterField("capture_as", "Capture Peak As", params.at("capture_as"));
-    widget->addParameterField("capture_position_as", "Capture Position As", params.at("capture_position_as"));
+    widget->addParameterField("exit_threshold", "Exit Threshold (optional)", getParam("exit_threshold"));
+    widget->addParameterField("capture_as", "Capture Peak As", getParam("capture_as"));
+    widget->addParameterField("capture_position_as", "Capture Position As", getParam("capture_position_as"));
+    widget->addNumericParameter("timeout_ms", "Timeout (ms)",
+      getParam("timeout_ms"), 60000, 1800000, 60000, 0, "ms");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
+
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
 
     table->addCategoryHeader("Device");
-    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+    table->addMotionDeviceProperty("device", "Motion Device", getParam("device"),
       "Select the motion device for grid scanning");
 
     table->addCategoryHeader("Grid Configuration");
-    table->addDropdownProperty("plane", "Scan Plane", params.at("plane"),
+    table->addDropdownProperty("plane", "Scan Plane", getParam("plane"),
       {"XY", "XZ", "YZ"},
       "2D plane to scan: XY scans X then Y, XZ scans X then Z, YZ scans Y then Z");
 
     table->addCategoryHeader("Axis 1 (1st letter of plane)");
     table->addNumericProperty("range_axis1_um", "Range",
-      std::stod(params.at("range_axis1_um")), 10, 1000, 10, 0, "um",
+      std::stod(getParam("range_axis1_um")), 10, 1000, 10, 0, "um",
       "Scan range for 1st axis (XY->X, XZ->X, YZ->Y)");
-    table->addDropdownProperty("direction_axis1", "Direction", params.at("direction_axis1"),
+    table->addDropdownProperty("direction_axis1", "Direction", getParam("direction_axis1"),
       {"centered", "positive", "negative"},
       "centered=+/-half, positive=0 to +range, negative=-range to 0");
 
     table->addCategoryHeader("Axis 2 (2nd letter of plane)");
     table->addNumericProperty("range_axis2_um", "Range",
-      std::stod(params.at("range_axis2_um")), 10, 1000, 10, 0, "um",
+      std::stod(getParam("range_axis2_um")), 10, 1000, 10, 0, "um",
       "Scan range for 2nd axis (XY->Y, XZ->Z, YZ->Z)");
-    table->addDropdownProperty("direction_axis2", "Direction", params.at("direction_axis2"),
+    table->addDropdownProperty("direction_axis2", "Direction", getParam("direction_axis2"),
       {"centered", "positive", "negative"},
       "centered=+/-half, positive=0 to +range, negative=-range to 0");
 
     table->addCategoryHeader("Step Size");
     table->addNumericProperty("step_size_um", "Step Size",
-      std::stod(params.at("step_size_um")), 1, 100, 1, 0, "um",
+      std::stod(getParam("step_size_um")), 1, 100, 1, 0, "um",
       "Distance between grid points (same for both axes)");
 
     table->addCategoryHeader("Data Source");
-    table->addDataChannelProperty("channel", "Data Channel", params.at("channel"),
+    table->addDataChannelProperty("channel", "Data Channel", getParam("channel"),
       "DataStore channel to read feedback values during scan");
 
     table->addCategoryHeader("Timing");
     table->addNumericProperty("settling_time_ms", "Settling Time",
-      std::stod(params.at("settling_time_ms")),
+      std::stod(getParam("settling_time_ms")),
       50, 2000, 10, 0, "ms",
       "Wait time after each position move for signal stabilization");
 
     table->addCategoryHeader("Scan Options");
     table->addCheckboxProperty("snake_pattern", "Snake Pattern",
-      (params.at("snake_pattern") == "true" || params.at("snake_pattern") == "1"),
+      (getParam("snake_pattern") == "true" || getParam("snake_pattern") == "1"),
       "Use serpentine pattern to minimize backlash (recommended)");
     table->addCheckboxProperty("return_to_peak", "Return to Peak",
-      (params.at("return_to_peak") == "true" || params.at("return_to_peak") == "1"),
+      (getParam("return_to_peak") == "true" || getParam("return_to_peak") == "1"),
       "Move to the position with highest value after scan completes");
 
     table->addCategoryHeader("Exit Criteria");
-    table->addTextProperty("exit_threshold", "Exit Threshold", params.at("exit_threshold"),
+    table->addTextProperty("exit_threshold", "Exit Threshold", getParam("exit_threshold"),
       "Stop scan early if value exceeds this threshold (leave empty to disable)");
 
     table->addCategoryHeader("Result Capture");
-    table->addTextProperty("capture_as", "Save Peak Value As", params.at("capture_as"),
+    table->addTextProperty("capture_as", "Save Peak Value As", getParam("capture_as"),
       "Context variable name for peak value (leave empty to disable)");
     table->addTextProperty("capture_position_as", "Save Peak Position As",
-      params.at("capture_position_as"),
+      getParam("capture_position_as"),
       "Context variable name for peak position as 'axis1,axis2' (leave empty to disable)");
+
+    table->addCategoryHeader("Timeout");
+    table->addNumericProperty("timeout_ms", "Command Timeout",
+      std::stod(getParam("timeout_ms")),
+      60000, 1800000, 60000, 0, "ms",
+      "Maximum time allowed for scan (60s-30min). Default 10 minutes for large grids.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+    auto defaults = GetDefaultParameters();
 
-    std::string device = params.at("device");
+    // Safe param getter - falls back to default if key missing (backward compatibility)
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    std::string device = getParam("device");
 
     // Build GridScanExtended command
     std::map<std::string, std::string> actionParams = {
-      {"plane", params.at("plane")},
-      {"range_axis1_um", params.at("range_axis1_um")},
-      {"direction_axis1", params.at("direction_axis1")},
-      {"range_axis2_um", params.at("range_axis2_um")},
-      {"direction_axis2", params.at("direction_axis2")},
-      {"step_size_um", params.at("step_size_um")},
-      {"channel", params.at("channel")},
-      {"settling_time_ms", params.at("settling_time_ms")},
-      {"snake_pattern", params.at("snake_pattern")},
-      {"return_to_peak", params.at("return_to_peak")},
-      {"exit_threshold", params.at("exit_threshold")},
-      {"capture_as", params.at("capture_as")},
-      {"capture_position_as", params.at("capture_position_as")}
+      {"plane", getParam("plane")},
+      {"range_axis1_um", getParam("range_axis1_um")},
+      {"direction_axis1", getParam("direction_axis1")},
+      {"range_axis2_um", getParam("range_axis2_um")},
+      {"direction_axis2", getParam("direction_axis2")},
+      {"step_size_um", getParam("step_size_um")},
+      {"channel", getParam("channel")},
+      {"settling_time_ms", getParam("settling_time_ms")},
+      {"snake_pattern", getParam("snake_pattern")},
+      {"return_to_peak", getParam("return_to_peak")},
+      {"exit_threshold", getParam("exit_threshold")},
+      {"capture_as", getParam("capture_as")},
+      {"capture_position_as", getParam("capture_position_as")},
+      {"timeout_ms", getParam("timeout_ms")}  // Custom timeout for long scans
     };
 
     sequence->AddAction(device, "GridScanExtended", actionParams);
 
     std::cout << "[MotionProcesses] Built GridScanExtended sequence for: " << step->userNickname
-              << " (plane=" << params.at("plane")
-              << ", range=" << params.at("range_axis1_um") << "x" << params.at("range_axis2_um") << "um"
-              << ", step=" << params.at("step_size_um") << "um"
-              << ", channel=" << params.at("channel") << ")"
+              << " (plane=" << getParam("plane")
+              << ", range=" << getParam("range_axis1_um") << "x" << getParam("range_axis2_um") << "um"
+              << ", step=" << getParam("step_size_um") << "um"
+              << ", channel=" << getParam("channel") << ")"
               << std::endl;
   }
 };
