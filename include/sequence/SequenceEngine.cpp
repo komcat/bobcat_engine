@@ -946,14 +946,28 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 
     // Execute command — check for per-action timeout override
     // Actions with timeout=0 (e.g., accuracy trainer with manual callbacks) bypass timeout
+    // Actions with timeout_ms > 0 use a custom timeout (e.g., long-running scans)
     std::string errorMessage;
     auto actionStart = std::chrono::steady_clock::now();
 
     bool useTimeout = true;
+    int customTimeoutMs = 0;  // 0 = use default
+
+    // Check for timeout=0 (disable timeout entirely)
     auto timeoutIt = action->params.find("timeout");
     if (timeoutIt != action->params.end() && timeoutIt->second == "0") {
       useTimeout = false;
       LogInfo("Timeout disabled for: " + action->deviceName + "." + action->methodName);
+    }
+
+    // Check for timeout_ms (custom timeout in milliseconds)
+    auto timeoutMsIt = action->params.find("timeout_ms");
+    if (timeoutMsIt != action->params.end()) {
+      customTimeoutMs = std::stoi(timeoutMsIt->second);
+      if (customTimeoutMs > 0) {
+        LogInfo("Custom timeout " + std::to_string(customTimeoutMs) + "ms for: " +
+                action->deviceName + "." + action->methodName);
+      }
     }
 
     // User-interactive commands wait indefinitely — no timeout
@@ -966,7 +980,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     bool dispatchOk = false;
     if (useTimeout) {
       dispatchOk = DispatchWithTimeout(managerType, manager, action->deviceName,
-        action->methodName, action->params, errorMessage, context);
+        action->methodName, action->params, errorMessage, context, customTimeoutMs);
     } else {
       dispatchOk = m_dispatcher.ExecuteCommand(managerType, manager, action->deviceName,
         action->methodName, action->params, errorMessage, context);
@@ -1176,11 +1190,12 @@ bool SequenceEngine::DispatchWithTimeout(
     const std::string& managerType, void* manager,
     const std::string& deviceName, const std::string& methodName,
     const std::map<std::string, std::string>& params,
-    std::string& errorMessage, SequenceContext* context)
+    std::string& errorMessage, SequenceContext* context,
+    int customTimeoutMs)
 {
-  // Compute effective timeout: base timeout + any inherent command duration
-  // (e.g., system.Wait with milliseconds=90000 needs 90s + base timeout as buffer)
-  int effectiveTimeoutMs = m_actionTimeoutMs;
+  // Compute effective timeout: custom timeout (if provided) or base timeout
+  // Plus any inherent command duration (e.g., system.Wait with milliseconds=90000)
+  int effectiveTimeoutMs = (customTimeoutMs > 0) ? customTimeoutMs : m_actionTimeoutMs;
   auto msIt = params.find("milliseconds");
   if (msIt != params.end()) {
     int commandDurationMs = std::stoi(msIt->second);

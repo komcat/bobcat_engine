@@ -319,7 +319,20 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 - `include/IO/SocketGuard.h` - RAII wrapper for socket lifetime
 - `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
 
-## User Preferences
+## Quick Reference
 
-- User will compile the application themselves - skip `cmake --build` commands
-- `#include <iostream>` has been added to SystemCommandHandler
+### Common Workflows
+
+**Add a new recipe process type:**
+1. Create plugin in `include/recipe/processes/` implementing `IProcessPlugin`
+2. Register via auto-registration macro
+3. If new category: add to `RecipeManager::getProcessCategories()`
+4. Add source to CMakeLists.txt
+
+**Add a new command to existing handler:**
+1. Add `else if (methodName == "YourCommand")` block in `*CommandHandler.cpp`
+2. Validate parameters, execute logic, return success/failure
+
+**Add machine-specific config:**
+1. Copy `config/xxx.json` to `config/xxx.local.json`
+2. Edit local file (gitignored, won't be overwritten by builds)

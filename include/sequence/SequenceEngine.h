@@ -413,7 +413,8 @@ private:
       const std::string& managerType, void* manager,
       const std::string& deviceName, const std::string& methodName,
       const std::map<std::string, std::string>& params,
-      std::string& errorMessage, SequenceContext* context);
+      std::string& errorMessage, SequenceContext* context,
+      int customTimeoutMs = 0);  // 0 = use default m_actionTimeoutMs
   void JoinZombieThreads();
   bool EvaluateCondition(const ConditionalBlock* cond, SequenceContext* context);
   std::string ComparisonToString(ConditionalBlock::ComparisonType comp) const;
