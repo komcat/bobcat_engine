@@ -231,33 +231,46 @@ bool AccuracyTrainerCommandHandler::HandleRunAlignment(
             return false;
         }
 
-        // Show manual alignment dialog for user to verify/adjust and confirm
-        // The ManualAlignPointWidget will auto-navigate to the taught position
-        // we just wrote to the navigation file
-        if (m_manualAlignCallback) {
-            std::string msg = "Align to reference point " + ref.name
-                + " (" + std::to_string(i + 1) + " of "
-                + std::to_string(ts.referencePoints.size()) + ")\n"
-                + "Verify or adjust gantry position on the reference feature, then click OK.";
-            bool userOk = m_manualAlignCallback(refUid, msg, true, true, true);
-            if (!userOk) {
-                errorMessage = "User cancelled alignment at reference " + ref.name;
-                if (context) context->SetValue("accuracy_trainer.result.success", false);
-                return false;
+        // Navigate to taught reference position
+        std::cout << "[AccuracyTrainer] Moving to taught position for " << ref.name << std::endl;
+        bool moveOk = motionMgr->MoveToAbs(device, ref.globalX, ref.globalY, ref.globalZ, 100.0, true);
+        if (!moveOk) {
+            std::cout << "[AccuracyTrainer] WARNING: Move to taught position failed for " << ref.name << std::endl;
+        }
+
+        // Try vision first if profile was saved during teaching
+        bool visionAligned = false;
+        if (!ref.visionProfilePath.empty()) {
+            std::cout << "[AccuracyTrainer] Running vision profile for " << ref.name << std::endl;
+            std::string visionError;
+            visionAligned = RunVisionDetectCenter(ref.visionProfilePath, device, visionError);
+            if (visionAligned) {
+                std::cout << "[AccuracyTrainer] Vision succeeded for " << ref.name
+                          << " - auto-capturing position" << std::endl;
+            } else {
+                std::cout << "[AccuracyTrainer] Vision failed for " << ref.name
+                          << ": " << visionError << " - falling back to manual" << std::endl;
             }
-        } else {
-            // No manual callback — try vision as fallback, then fail
-            if (!ref.visionProfilePath.empty()) {
-                std::cout << "[AccuracyTrainer] No manual callback, trying vision for " << ref.name << std::endl;
-                std::string visionError;
-                bool visionOk = RunVisionDetectCenter(ref.visionProfilePath, device, visionError);
-                if (!visionOk) {
-                    errorMessage = "Vision failed and no manual callback for ref " + ref.name + ": " + visionError;
+        }
+
+        // If vision did not align, fall back to manual confirmation
+        if (!visionAligned) {
+            if (m_manualAlignCallback) {
+                std::string msg = "Align to reference point " + ref.name
+                    + " (" + std::to_string(i + 1) + " of "
+                    + std::to_string(ts.referencePoints.size()) + ")\n";
+                if (!ref.visionProfilePath.empty()) {
+                    msg += "Vision detection failed. ";
+                }
+                msg += "Verify or adjust gantry position on the reference feature, then click OK.";
+                bool userOk = m_manualAlignCallback(refUid, msg, true, true, true);
+                if (!userOk) {
+                    errorMessage = "User cancelled alignment at reference " + ref.name;
                     if (context) context->SetValue("accuracy_trainer.result.success", false);
                     return false;
                 }
             } else {
-                errorMessage = "No manual callback and no vision for ref " + ref.name;
+                errorMessage = "Vision failed and no manual callback for ref " + ref.name;
                 if (context) context->SetValue("accuracy_trainer.result.success", false);
                 return false;
             }
