@@ -11,8 +11,10 @@ ScanControlWidget::ScanControlWidget(QWidget* parent)
   , m_valueLabel(nullptr)
   , m_leftCoarseButton(nullptr)
   , m_leftFineButton(nullptr)
+  , m_leftUltraFineButton(nullptr)
   , m_rightCoarseButton(nullptr)
   , m_rightFineButton(nullptr)
+  , m_rightUltraFineButton(nullptr)
   , m_stopButton(nullptr)
   , m_rotationGroup(nullptr)
   , m_rotationContent(nullptr)
@@ -84,6 +86,11 @@ void ScanControlWidget::setupUI()
   m_leftFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   leftColumn->addWidget(m_leftFineButton);
 
+  m_leftUltraFineButton = new QPushButton("Ultra Fine");
+  m_leftUltraFineButton->setMinimumHeight(26);
+  m_leftUltraFineButton->setToolTip("Step sizes: 0.5, 0.2, 0.1 µm");
+  leftColumn->addWidget(m_leftUltraFineButton);
+
   buttonsLayout->addLayout(leftColumn);
 
   // RIGHT COLUMN - Right Hexapod
@@ -103,6 +110,11 @@ void ScanControlWidget::setupUI()
   m_rightFineButton->setMinimumHeight(26);
   m_rightFineButton->setToolTip("Step sizes: 2, 1, 0.5 µm");
   rightColumn->addWidget(m_rightFineButton);
+
+  m_rightUltraFineButton = new QPushButton("Ultra Fine");
+  m_rightUltraFineButton->setMinimumHeight(26);
+  m_rightUltraFineButton->setToolTip("Step sizes: 0.5, 0.2, 0.1 µm");
+  rightColumn->addWidget(m_rightUltraFineButton);
 
   buttonsLayout->addLayout(rightColumn);
 
@@ -203,14 +215,18 @@ void ScanControlWidget::setupUI()
 
   m_leftCoarseButton->setStyleSheet(buttonStyle);
   m_leftFineButton->setStyleSheet(buttonStyle);
+  m_leftUltraFineButton->setStyleSheet(buttonStyle);
   m_rightCoarseButton->setStyleSheet(buttonStyle);
   m_rightFineButton->setStyleSheet(buttonStyle);
+  m_rightUltraFineButton->setStyleSheet(buttonStyle);
 
   // === CONNECT SIGNALS ===
   connect(m_leftCoarseButton, &QPushButton::clicked, this, &ScanControlWidget::onLeftCoarseClicked);
   connect(m_leftFineButton, &QPushButton::clicked, this, &ScanControlWidget::onLeftFineClicked);
+  connect(m_leftUltraFineButton, &QPushButton::clicked, this, &ScanControlWidget::onLeftUltraFineClicked);
   connect(m_rightCoarseButton, &QPushButton::clicked, this, &ScanControlWidget::onRightCoarseClicked);
   connect(m_rightFineButton, &QPushButton::clicked, this, &ScanControlWidget::onRightFineClicked);
+  connect(m_rightUltraFineButton, &QPushButton::clicked, this, &ScanControlWidget::onRightUltraFineClicked);
   connect(m_stopButton, &QPushButton::clicked, this, &ScanControlWidget::onStopClicked);
 
   // Connect channel combo box to emit signal when selection changes
@@ -258,8 +274,10 @@ void ScanControlWidget::setEnabled(bool enabled)
   m_channelCombo->setEnabled(enabled);
   m_leftCoarseButton->setEnabled(enabled);
   m_leftFineButton->setEnabled(enabled);
+  m_leftUltraFineButton->setEnabled(enabled);
   m_rightCoarseButton->setEnabled(enabled);
   m_rightFineButton->setEnabled(enabled);
+  m_rightUltraFineButton->setEnabled(enabled);
   m_stopButton->setEnabled(!enabled);  // Stop button opposite of scan buttons
 }
 
@@ -267,8 +285,10 @@ void ScanControlWidget::setScanButtonsEnabled(bool enabled)
 {
   m_leftCoarseButton->setEnabled(enabled);
   m_leftFineButton->setEnabled(enabled);
+  m_leftUltraFineButton->setEnabled(enabled);
   m_rightCoarseButton->setEnabled(enabled);
   m_rightFineButton->setEnabled(enabled);
+  m_rightUltraFineButton->setEnabled(enabled);
   if (m_rotationScanButton) {
     m_rotationScanButton->setEnabled(enabled);
   }
@@ -281,22 +301,32 @@ void ScanControlWidget::setStopButtonEnabled(bool enabled)
 
 void ScanControlWidget::onLeftCoarseClicked()
 {
-  emitScanRequest("hex-left", true);
+  emitScanRequest("hex-left", ScanMode::Coarse);
 }
 
 void ScanControlWidget::onLeftFineClicked()
 {
-  emitScanRequest("hex-left", false);
+  emitScanRequest("hex-left", ScanMode::Fine);
+}
+
+void ScanControlWidget::onLeftUltraFineClicked()
+{
+  emitScanRequest("hex-left", ScanMode::UltraFine);
 }
 
 void ScanControlWidget::onRightCoarseClicked()
 {
-  emitScanRequest("hex-right", true);
+  emitScanRequest("hex-right", ScanMode::Coarse);
 }
 
 void ScanControlWidget::onRightFineClicked()
 {
-  emitScanRequest("hex-right", false);
+  emitScanRequest("hex-right", ScanMode::Fine);
+}
+
+void ScanControlWidget::onRightUltraFineClicked()
+{
+  emitScanRequest("hex-right", ScanMode::UltraFine);
 }
 
 void ScanControlWidget::onStopClicked()
@@ -304,7 +334,7 @@ void ScanControlWidget::onStopClicked()
   emit stopRequested();
 }
 
-void ScanControlWidget::emitScanRequest(const QString& deviceName, bool isCoarse)
+void ScanControlWidget::emitScanRequest(const QString& deviceName, ScanMode mode)
 {
   QString channel = currentChannel();
 
@@ -313,7 +343,7 @@ void ScanControlWidget::emitScanRequest(const QString& deviceName, bool isCoarse
     return;
   }
 
-  emit scanRequested(deviceName, isCoarse, channel);
+  emit scanRequested(deviceName, mode, channel);
 }
 
 void ScanControlWidget::setupRotationUI(QVBoxLayout* parentLayout)

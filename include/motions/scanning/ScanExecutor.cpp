@@ -49,7 +49,7 @@ void ScanExecutor::setLogger(ILogger* logger)
   m_logger = logger;
 }
 
-bool ScanExecutor::executeScan(const QString& deviceName, bool isCoarse, const QString& channel)
+bool ScanExecutor::executeScan(const QString& deviceName, ScanMode mode, const QString& channel)
 {
   // Validate dependencies
   if (!m_motionManager || !m_dataStore) {
@@ -86,17 +86,33 @@ bool ScanExecutor::executeScan(const QString& deviceName, bool isCoarse, const Q
   }
 
   // Create scan parameters
-  ScanParameters params = createScanParameters(isCoarse);
+  ScanParameters params = createScanParameters(mode);
 
   // Set up callbacks
   setupCallbacks(deviceName);
 
   // Log scan start
+  QString modeName;
+  QString stepsDesc;
+  switch (mode) {
+    case ScanMode::Coarse:
+      modeName = "COARSE";
+      stepsDesc = "5→2→1→0.5 µm";
+      break;
+    case ScanMode::Fine:
+      modeName = "FINE";
+      stepsDesc = "2→1→0.5 µm";
+      break;
+    case ScanMode::UltraFine:
+      modeName = "ULTRA FINE";
+      stepsDesc = "0.5→0.2→0.1 µm";
+      break;
+  }
   emit logMessage(QString("Starting %1 scan on %2")
-    .arg(isCoarse ? "COARSE" : "FINE")
+    .arg(modeName)
     .arg(deviceName));
   emit logMessage(QString("  Scanning axes: Z, Y, X with steps: %1")
-    .arg(isCoarse ? "5→2→1→0.5 µm" : "2→1→0.5 µm"));
+    .arg(stepsDesc));
   emit logMessage(QString("  Data channel: %1").arg(channel));
 
   // Start the scan
@@ -141,7 +157,7 @@ void ScanExecutor::stopScan()
   cleanupRotation();
 }
 
-ScanParameters ScanExecutor::createScanParameters(bool isCoarse) const
+ScanParameters ScanExecutor::createScanParameters(ScanMode mode) const
 {
   ScanParameters params;
 
@@ -149,23 +165,35 @@ ScanParameters ScanExecutor::createScanParameters(bool isCoarse) const
   params.axesToScan = { "Z", "Y", "X" };
 
   // Set step sizes (convert µm to mm)
-  if (isCoarse) {
-    // Coarse: 5, 2, 1, 0.5 µm = 0.005, 0.002, 0.001, 0.0005 mm
-    params.stepSizes = { 0.005, 0.002, 0.001, 0.0005 };
-  }
-  else {
-    // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
-    params.stepSizes = { 0.002, 0.001, 0.0005 };
+  switch (mode) {
+    case ScanMode::Coarse:
+      // Coarse: 5, 2, 1, 0.5 µm = 0.005, 0.002, 0.001, 0.0005 mm
+      params.stepSizes = { 0.005, 0.002, 0.001, 0.0005 };
+      break;
+    case ScanMode::Fine:
+      // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
+      params.stepSizes = { 0.002, 0.001, 0.0005 };
+      break;
+    case ScanMode::UltraFine:
+      // Ultra Fine: 0.5, 0.2, 0.1 µm = 0.0005, 0.0002, 0.0001 mm
+      params.stepSizes = { 0.0005, 0.0002, 0.0001 };
+      break;
   }
 
   // Motion parameters
   params.motionSettleTimeMs = 400;
   params.velocityPercent = 50.0;
 
-  // Termination criteria (±100µm = 0.2mm total range)
+  // Termination criteria
+  if (mode == ScanMode::UltraFine) {
+    // Tighter range for ultra fine: ±50µm = 0.1mm total range
+    params.maxTotalDistance = 0.1;  // 100µm = 0.1mm per direction
+  } else {
+    // Standard range: ±100µm = 0.2mm total range
+    params.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
+  }
   params.consecutiveDecreasesLimit = 3;
   params.significantDecreaseThreshold = 0.05;  // 5%
-  params.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
 
   // Position optimization
   params.improvementThreshold = 0.01;  // 1%

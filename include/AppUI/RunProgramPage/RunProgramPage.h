@@ -31,8 +31,9 @@ class ManualAdjustWidget;
 class ManualAlignPointWidget;
 class UserInputWidget;
 class RetraceEditWidget;
-class ScanControlWidget;
+#include "ScanControlWidget.h"
 class ScanExecutor;
+enum class ScanMode;
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class QVBoxLayout;
@@ -120,7 +121,7 @@ private slots:
   void onUserInputResponse(bool accepted, QString inputText);
 
   // Scanning integration (refactored)
-  void onScanRequested(QString deviceName, bool isCoarse, QString channel);
+  void onScanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel);
   void onRotationScanRequested(QString deviceName, QString rotationAxis,
                                 double rotationStep, double threshold,
                                 int maxNoImprovement, QString channel);

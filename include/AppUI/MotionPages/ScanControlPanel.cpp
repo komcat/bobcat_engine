@@ -73,6 +73,7 @@ void ScanControlPanel::setupUI()
   m_presetCombo = new QComboBox();
   m_presetCombo->addItem("Coarse");
   m_presetCombo->addItem("Fine");
+  m_presetCombo->addItem("Ultra Fine");
   m_presetCombo->setMinimumHeight(32);
   mainLayout->addWidget(m_presetCombo);
 
