@@ -21,6 +21,9 @@ struct RotationScanParameters;
 struct RotationScanResults;
 enum class RotationAxis;
 
+// Scan mode enumeration
+enum class ScanMode { Coarse, Fine, UltraFine };
+
 /**
  * @brief Handles all hexapod scanning business logic
  *
@@ -52,11 +55,11 @@ public:
   /**
    * @brief Execute a hexapod translation scan
    * @param deviceName Device to scan (e.g. "hex-left", "hex-right")
-   * @param isCoarse True for coarse scan (10→5→2→1 µm), false for fine (2→1→0.5 µm)
+   * @param mode Scan mode: Coarse (5→2→1→0.5 µm), Fine (2→1→0.5 µm), UltraFine (0.5→0.2→0.1 µm)
    * @param channel Data channel to optimize
    * @return True if scan started successfully
    */
-  bool executeScan(const QString& deviceName, bool isCoarse, const QString& channel);
+  bool executeScan(const QString& deviceName, ScanMode mode, const QString& channel);
 
   /**
    * @brief Execute a rotation optimization scan
@@ -117,7 +120,7 @@ signals:
   void rotationScanCompleted(QString deviceName, double peakValue, double totalRotation, bool success);
 
 private:
-  ScanParameters createScanParameters(bool isCoarse) const;
+  ScanParameters createScanParameters(ScanMode mode) const;
   RotationScanParameters createRotationScanParameters(
     const QString& rotationAxis,
     double rotationStep,

@@ -3891,7 +3891,7 @@ namespace {
 // SCANNING INTEGRATION (Refactored)
 // ============================================================================
 
-void RunProgramPage::onScanRequested(QString deviceName, bool isCoarse, QString channel)
+void RunProgramPage::onScanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel)
 {
   // Validation
   if (channel.isEmpty()) {
@@ -3908,8 +3908,16 @@ void RunProgramPage::onScanRequested(QString deviceName, bool isCoarse, QString 
   m_scanWidget->setScanButtonsEnabled(false);
   m_scanWidget->setStopButtonEnabled(true);
 
+  // Map widget ScanMode to executor ScanMode
+  ScanMode execMode;
+  switch (mode) {
+    case ScanControlWidget::ScanMode::Coarse:    execMode = ScanMode::Coarse;    break;
+    case ScanControlWidget::ScanMode::Fine:       execMode = ScanMode::Fine;      break;
+    case ScanControlWidget::ScanMode::UltraFine:  execMode = ScanMode::UltraFine; break;
+  }
+
   // Execute scan - all business logic handled by ScanExecutor
-  bool success = m_scanExecutor->executeScan(deviceName, isCoarse, channel);
+  bool success = m_scanExecutor->executeScan(deviceName, execMode, channel);
 
   if (!success) {
     // Re-enable controls if scan failed to start

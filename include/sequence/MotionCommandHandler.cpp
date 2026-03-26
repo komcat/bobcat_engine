@@ -678,17 +678,12 @@ bool MotionCommandHandler::ExecuteCommand(
     // ✅ REQUIRED PARAMETER: mode (coarse/fine)
     auto modeIt = params.find("mode");
     if (modeIt == params.end()) {
-      errorMessage = "XCAN: Missing required parameter 'mode' (coarse/fine)";
+      errorMessage = "XCAN: Missing required parameter 'mode' (coarse/fine/ultrafine)";
       return false;
     }
     std::string mode = modeIt->second;
-    bool isCoarse;
-    if (mode == "coarse") {
-      isCoarse = true;
-    } else if (mode == "fine") {
-      isCoarse = false;
-    } else {
-      errorMessage = "XCAN: Invalid mode '" + mode + "' (must be 'coarse' or 'fine')";
+    if (mode != "coarse" && mode != "fine" && mode != "ultrafine") {
+      errorMessage = "XCAN: Invalid mode '" + mode + "' (must be 'coarse', 'fine', or 'ultrafine')";
       return false;
     }
 
@@ -730,12 +725,15 @@ bool MotionCommandHandler::ExecuteCommand(
     scanParams.axesToScan = { "Z", "Y", "X" };  // Scan in ZYX order
 
     // Set step sizes based on mode
-    if (isCoarse) {
+    if (mode == "coarse") {
       // Coarse: 10, 5, 2, 1 µm = 0.010, 0.005, 0.002, 0.001 mm
       scanParams.stepSizes = { 0.010, 0.005, 0.002, 0.001 };
-    } else {
+    } else if (mode == "fine") {
       // Fine: 2, 1, 0.5 µm = 0.002, 0.001, 0.0005 mm
       scanParams.stepSizes = { 0.002, 0.001, 0.0005 };
+    } else {
+      // Ultra Fine: 0.5, 0.2, 0.1 µm = 0.0005, 0.0002, 0.0001 mm
+      scanParams.stepSizes = { 0.0005, 0.0002, 0.0001 };
     }
 
     scanParams.motionSettleTimeMs = settlingTimeMs;
@@ -744,7 +742,7 @@ bool MotionCommandHandler::ExecuteCommand(
     // Termination criteria
     scanParams.consecutiveDecreasesLimit = 3;
     scanParams.significantDecreaseThreshold = 0.05;  // 5%
-    scanParams.maxTotalDistance = 0.2;  // 200µm = 0.2mm per direction
+    scanParams.maxTotalDistance = (mode == "ultrafine") ? 0.1 : 0.2;
 
     // Position optimization
     scanParams.improvementThreshold = 0.01;  // 1%

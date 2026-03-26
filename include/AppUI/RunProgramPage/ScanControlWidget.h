@@ -28,6 +28,9 @@ class ScanControlWidget : public QWidget
   Q_OBJECT
 
 public:
+  // Scan mode enumeration
+  enum class ScanMode { Coarse, Fine, UltraFine };
+
   explicit ScanControlWidget(QWidget* parent = nullptr);
   ~ScanControlWidget() = default;
 
@@ -49,10 +52,10 @@ signals:
   /**
    * @brief Emitted when user requests a translation scan
    * @param deviceName Device to scan (e.g. "hex-left", "hex-right")
-   * @param isCoarse True for coarse scan, false for fine scan
+   * @param mode Scan mode (Coarse, Fine, or UltraFine)
    * @param channel Selected data channel
    */
-  void scanRequested(QString deviceName, bool isCoarse, QString channel);
+  void scanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel);
 
   /**
    * @brief Emitted when user requests a rotation scan
@@ -81,8 +84,10 @@ signals:
 private slots:
   void onLeftCoarseClicked();
   void onLeftFineClicked();
+  void onLeftUltraFineClicked();
   void onRightCoarseClicked();
   void onRightFineClicked();
+  void onRightUltraFineClicked();
   void onStopClicked();
   void onRotationScanClicked();
   void onRotationGroupToggled(bool checked);
@@ -90,7 +95,7 @@ private slots:
 private:
   void setupUI();
   void setupRotationUI(QVBoxLayout* parentLayout);
-  void emitScanRequest(const QString& deviceName, bool isCoarse);
+  void emitScanRequest(const QString& deviceName, ScanMode mode);
   void emitRotationScanRequest();
 
   // UI Components - Translation Scanning
@@ -98,8 +103,10 @@ private:
   QLabel* m_valueLabel;
   QPushButton* m_leftCoarseButton;
   QPushButton* m_leftFineButton;
+  QPushButton* m_leftUltraFineButton;
   QPushButton* m_rightCoarseButton;
   QPushButton* m_rightFineButton;
+  QPushButton* m_rightUltraFineButton;
   QPushButton* m_stopButton;
 
   // UI Components - Rotation Scanning
