@@ -42,6 +42,11 @@ public:
   virtual double readVoltage(int channel = 1) = 0;
   virtual double readCurrent(int channel = 1) = 0;
 
+  // Read programmed (set) current level
+  // Returns the current setting value (not measured), or -1.0 on error/unsupported.
+  // Default: returns readCurrent() as fallback for adapters that don't distinguish.
+  virtual double readSetCurrent(int channel = 1) { return readCurrent(channel); }
+
   // Read output state
   // Returns true if output is ON, false if OFF or error
   virtual bool readOutputState(int channel = 1) = 0;

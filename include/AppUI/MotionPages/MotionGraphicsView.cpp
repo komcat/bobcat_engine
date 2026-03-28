@@ -4,7 +4,8 @@
 #include <QScrollBar>
 #include <QtMath>
 #include <QPainter>
-#include <QSettings>  // ✅ NEW: For view state persistence
+#include <QSettings>
+#include <QDebug>
 
 MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   : QGraphicsView(parent)
@@ -37,8 +38,13 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
 
 MotionGraphicsView::~MotionGraphicsView()
 {
+  // Disconnect all signals to prevent queued invocations after destruction
+  disconnect();
+
   delete m_pathPreview;
   m_pathPreview = nullptr;
+
+  qDebug() << "[MotionGraphicsView] Destroyed";
 }
 
 void MotionGraphicsView::setupScene()

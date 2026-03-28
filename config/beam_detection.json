@@ -1,0 +1,20 @@
+{
+    "xpeaks": {
+        "height": -1,
+        "width": -1,
+        "distance": -1
+    },
+    "ypeaks": {
+        "height": -1,
+        "width": -1,
+        "distance": -1
+    },
+    "combineXThresh": 20.0,
+    "combineYThresh": 20.0,
+    "d4sigmaThreshold": 0.05,
+    "maxBeams": 2,
+    "saturationValue": 200,
+    "roiWidthFactor": 2.5,
+    "minD4Sigma": 10.0,
+    "minPeakValue": 20.0
+}

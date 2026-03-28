@@ -35,7 +35,7 @@ public:
     CoordinateSystemManager* coordinateSystemManager,
     SequenceEngine* sequenceEngine,
     QWidget* parent = nullptr);
-  ~MotionPage() = default;
+  ~MotionPage() override;
 
   // ✅ NEW: Refresh device list to show only connected devices
   void refreshDeviceList();

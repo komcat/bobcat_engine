@@ -316,6 +316,14 @@ void Application::initializeManagers()
     initializeGdiCameraWindow2();
     completeSplash("GdiCameraWindow2");
 
+    updateSplash("SwirBeamWindow");
+    initializeSwirBeamWindow();
+    completeSplash("SwirBeamWindow");
+
+    updateSplash("BeamOptimizer");
+    initializeBeamOptimizer();
+    completeSplash("BeamOptimizer");
+
     updateSplash("ProductPositionManager");
     initializeProductPositionManager();
     completeSplash("ProductPositionManager");
@@ -450,15 +458,15 @@ void Application::initializeCameraManager()
   bool configLoaded = false;
   std::string configPath;
 
-  auto configManager = std::make_unique<CameraConfigManager>("config/camera_config.local.json");
-  if (configManager->LoadConfig()) {
+  m_cameraConfigManager = std::make_unique<CameraConfigManager>("config/camera_config.local.json");
+  if (m_cameraConfigManager->LoadConfig()) {
     configPath = "config/camera_config.local.json";
     configLoaded = true;
     m_logManager->Info("Camera configuration loaded from LOCAL file", "Application");
   }
   else {
-    configManager = std::make_unique<CameraConfigManager>("config/camera_config.json");
-    if (configManager->LoadConfig()) {
+    m_cameraConfigManager = std::make_unique<CameraConfigManager>("config/camera_config.json");
+    if (m_cameraConfigManager->LoadConfig()) {
       configPath = "config/camera_config.json";
       configLoaded = true;
       m_logManager->Info("Camera configuration loaded from DEFAULT file", "Application");
@@ -469,7 +477,9 @@ void Application::initializeCameraManager()
   }
 
   if (configLoaded) {
-    if (configManager->InitializeCameraManager(*m_cameraManager)) {
+    m_context.cameraConfigManager = m_cameraConfigManager.get();
+
+    if (m_cameraConfigManager->InitializeCameraManager(*m_cameraManager)) {
       m_logManager->Info("CameraManager initialized from: " + configPath, "Application");
 
       // ✅ DEFERRED: Camera connection moved to connectHardwareAsync()
@@ -756,6 +766,19 @@ void Application::addConnectionTasks()
         int count = m_cameraManager->ConnectAllCameras();
         m_cameraManager->StartBroadcastSystem();
         m_cameraManager->StartGrabbingAll();
+
+        // Apply default camera settings: auto exposure ON, auto gain OFF, gain 0, frame rate 10
+        for (const auto& camId : m_cameraManager->GetCameraIds()) {
+          auto status = m_cameraManager->GetCameraStatus(camId);
+          if (status.connected) {
+            auto settings = m_cameraManager->GetExposureSettings(camId);
+            settings.auto_exposure = true;
+            settings.auto_gain = false;
+            settings.gain = 0.0;
+            settings.frame_rate = 10.0;
+            m_cameraManager->ApplyExposureSettings(camId, settings);
+          }
+        }
         m_logManager->Info("Cameras connected and broadcasting", "Application");
         return count;
       },
@@ -988,7 +1011,7 @@ void Application::onAllConnectionsCompleted(const Startup::ConnectionSummary& su
 void Application::performEStopCascade()
 {
   int successCount = 0;
-  int totalCount = 7;
+  int totalCount = 8;
   std::string details;
 
   // 1. Motion: emergency stop all axes
@@ -1060,6 +1083,16 @@ void Application::performEStopCascade()
     details += "Lighting: N/A";
   }
 
+  // 8. SWIR Beam: cancel any running optimization
+  details += ", ";
+  if (m_swirBeamWindowManager) {
+    m_swirBeamWindowManager->emergencyStop();
+    ++successCount;
+    details += "SWIR: OK";
+  } else {
+    details += "SWIR: N/A";
+  }
+
   // Build summary
   std::string summary = "E-Stop cascade: " + std::to_string(successCount) +
                          "/" + std::to_string(totalCount) +
@@ -1121,6 +1154,21 @@ void Application::shutdownManagers()
 
 
   // Shutdown in reverse order
+  // BeamOptimizer must shut down before SwirBeamWindow (unsubscribes from broker)
+  if (m_beamOptimizerManager) {
+    m_beamOptimizerManager->Shutdown();
+    m_beamOptimizerManager.reset();
+  }
+  if (m_beamResultBroker) {
+    m_beamResultBroker->BeginShutdown();
+    m_beamResultBroker.reset();
+  }
+
+  if (m_swirBeamWindowManager) {
+    m_swirBeamWindowManager->shutdown();
+    m_swirBeamWindowManager.reset();
+  }
+
   if (m_gdiCameraWindowManager2) {
     m_gdiCameraWindowManager2->shutdown();
     m_gdiCameraWindowManager2.reset();
@@ -1822,6 +1870,9 @@ void Application::initializeAuxWindowManager()
   m_auxWindowManager->setMotionManager(m_context.motionManager);
   m_auxWindowManager->setDataStore(m_dataStore.get());
   m_auxWindowManager->setTcpClientManager(m_tcpClientManager.get());
+  if (m_cameraConfigManager) {
+    m_auxWindowManager->setCameraConfigManager(m_cameraConfigManager.get());
+  }
 
   // Initialize and show the window
   m_auxWindowManager->initialize();
@@ -1846,6 +1897,11 @@ void Application::initializeGdiCameraWindow()
 
   // Set motion manager for click-to-move
   m_gdiCameraWindowManager->setMotionManager(m_motionManager.get());
+
+  // Set camera config manager for per-camera calibration
+  if (m_cameraConfigManager) {
+    m_gdiCameraWindowManager->setCameraConfigManager(m_cameraConfigManager.get());
+  }
 
   // Note: BeamServerClient is wired later (after it's created at line ~336)
 
@@ -1883,6 +1939,11 @@ void Application::initializeGdiCameraWindow2()
   // Set motion manager for click-to-move
   m_gdiCameraWindowManager2->setMotionManager(m_motionManager.get());
 
+  // Set camera config manager for per-camera calibration
+  if (m_cameraConfigManager) {
+    m_gdiCameraWindowManager2->setCameraConfigManager(m_cameraConfigManager.get());
+  }
+
   // Note: BeamServerClient is wired later (after it's created)
 
   // Configure window title
@@ -1901,6 +1962,89 @@ void Application::initializeGdiCameraWindow2()
     }
   } else {
     m_logManager->Warning("GdiCameraWindow2 failed to initialize", "Application");
+  }
+}
+
+void Application::initializeSwirBeamWindow()
+{
+  m_logManager->Debug("Initializing SwirBeamWindow...", "Application");
+
+  m_swirBeamWindowManager = std::make_unique<SwirBeamWindowManager>();
+
+  // Set camera manager (required)
+  m_swirBeamWindowManager->setCameraManager(m_cameraManager.get());
+
+  // Set power supply manager for PSU controls
+  if (m_powerSupplyManager) {
+    m_swirBeamWindowManager->setPowerSupplyManager(m_powerSupplyManager.get());
+  }
+
+  // Set motion manager for click-to-move
+  if (m_motionManager) {
+    m_swirBeamWindowManager->setMotionManager(m_motionManager.get());
+  }
+
+  // Set pneumatic manager for SWIR head control
+  if (m_pneumaticManager) {
+    m_swirBeamWindowManager->setPneumaticManager(m_pneumaticManager.get());
+  }
+
+  // Set TEC manager for temperature presets
+  if (m_tecManager) {
+    m_swirBeamWindowManager->setTECManager(m_tecManager.get());
+  }
+
+  // Set camera config manager for per-camera calibration
+  if (m_cameraConfigManager) {
+    m_swirBeamWindowManager->setCameraConfigManager(m_cameraConfigManager.get());
+  }
+
+  // Configure target camera and window title
+  m_swirBeamWindowManager->setTargetCamera("swir_camera");
+  m_swirBeamWindowManager->setWindowTitle("SWIR Beam Processing");
+
+  // Initialize the window (position/size loaded from saved settings)
+  if (m_swirBeamWindowManager->initialize()) {
+    m_context.swirBeamWindowManager = m_swirBeamWindowManager.get();
+
+    // Restore visibility from last session
+    if (m_swirBeamWindowManager->shouldRestoreVisible()) {
+      m_swirBeamWindowManager->show();
+      m_logManager->Info("SwirBeamWindow initialized and shown (restored from last session)", "Application");
+    } else {
+      m_logManager->Info("SwirBeamWindow initialized (hidden - restored from last session)", "Application");
+    }
+  } else {
+    m_logManager->Warning("SwirBeamWindow failed to initialize", "Application");
+  }
+}
+
+void Application::initializeBeamOptimizer()
+{
+  m_logManager->Debug("Initializing BeamOptimizer...", "Application");
+
+  // 1. Create broker
+  m_beamResultBroker = std::make_unique<BeamResultBroker>();
+  m_context.beamResultBroker = m_beamResultBroker.get();
+
+  // 2. Wire broker into SwirBeamWindow (publisher side)
+  if (m_swirBeamWindowManager) {
+    m_swirBeamWindowManager->setBeamResultBroker(m_beamResultBroker.get());
+  }
+
+  // 3. Create optimizer manager (subscriber side)
+  m_beamOptimizerManager = std::make_unique<BeamOptimizerManager>();
+  m_beamOptimizerManager->SetMotionManager(m_motionManager.get());
+  m_beamOptimizerManager->SetCameraManager(m_cameraManager.get());
+  m_beamOptimizerManager->SetPowerSupplyManager(m_powerSupplyManager.get());
+  m_beamOptimizerManager->SetLogManager(m_logManager.get());
+  m_beamOptimizerManager->SetBeamResultBroker(m_beamResultBroker.get());
+
+  if (m_beamOptimizerManager->Initialize() == ErrorCode::Success) {
+    m_context.beamOptimizerManager = m_beamOptimizerManager.get();
+    m_logManager->Info("BeamOptimizer initialized", "Application");
+  } else {
+    m_logManager->Warning("BeamOptimizer failed to initialize", "Application");
   }
 }
 

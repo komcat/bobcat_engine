@@ -9,7 +9,7 @@
 #include "ScanTypes.h"                // ✅ NEW: For XCAN command
 #include "../graph/MotionGraphManager.h"  // ✅ NEW: For MoveToGraphNode command
 #include "../products/product_position_manager.h"  // ✅ NEW: For MoveToGraphNode command
-#include "../vision/VisionManager.h"  // ✅ NEW: For pixel-to-mm calibration in MoveToContextPosition
+#include "../vision/VisionManager.h"  // For pixel-to-mm calibration in MoveToContextPosition
 #include "../motions/DeviceLinkManager.h"  // For linked device commands
 #include "../motions/PI/pi_controller.h"   // For FastAlignXY/ZXY commands (direct PI access)
 #include <chrono>
@@ -2157,6 +2157,7 @@ bool MotionCommandHandler::ExecuteCommand(
       double offsetY_px = detectedY_px - imageCenterY;
 
       // Convert to mm using calibration
+      // VisionCommandHandler already sets per-camera calibration on VisionManager when loading profiles
       double pixelToMmX = VisionManager::instance().getPixelToMmX();
       double pixelToMmY = VisionManager::instance().getPixelToMmY();
       double offsetX_mm = offsetX_px * pixelToMmX;

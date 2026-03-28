@@ -2,6 +2,7 @@
 #ifdef HAS_OPENCV
 
 #include "VisionManager.h"
+#include "CameraConfigManager.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
@@ -379,6 +380,26 @@ void VisionManager::loadCalibrationFromSettings()
     m_pixelToMmX = settings.value(SETTINGS_KEY_PIXEL_TO_MM_X, 0.00248).toDouble();
     m_pixelToMmY = settings.value(SETTINGS_KEY_PIXEL_TO_MM_Y, 0.00248).toDouble();
     std::cout << "[VisionManager] Loaded calibration from QSettings (fallback)" << std::endl;
+}
+
+bool VisionManager::loadCalibrationForCamera(const std::string& cameraId, CameraConfigManager* configMgr)
+{
+    if (!configMgr || cameraId.empty()) {
+        return false;
+    }
+
+    CameraConfigData::PixelCalibration cal;
+    if (configMgr->GetCalibration(cameraId, cal)) {
+        m_pixelToMmX = cal.pixelToMmX;
+        m_pixelToMmY = cal.pixelToMmY;
+        std::cout << "[VisionManager] Per-camera calibration for '" << cameraId
+                  << "': X=" << m_pixelToMmX << ", Y=" << m_pixelToMmY << " mm/px" << std::endl;
+        return true;
+    }
+
+    std::cout << "[VisionManager] No per-camera calibration for '" << cameraId
+              << "', using current values" << std::endl;
+    return false;
 }
 
 void VisionManager::saveCalibrationToSettings()

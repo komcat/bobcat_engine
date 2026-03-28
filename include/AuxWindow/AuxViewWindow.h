@@ -15,6 +15,7 @@ enum class LiveViewLayout {
     Vertical     // Camera top, Chart bottom
 };
 
+class CameraConfigManager;
 class CameraManager;
 class CameraSettingsWidget;
 class DataStore;
@@ -57,6 +58,9 @@ public:
 
   // ✅ ADD: Trigger delayed camera selection after window is fully initialized
   void initializeCameraSelection();
+
+  // Set CameraConfigManager for per-camera calibration
+  void setCameraConfigManager(CameraConfigManager* configMgr);
 
   // Set ProductPositionManager for overlay system
   void setProductPositionManager(ProductPositionManager* positionManager);

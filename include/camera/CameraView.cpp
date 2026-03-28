@@ -268,7 +268,7 @@ void CameraView::setupUI()
   m_frameRateSpinBox->setMaximum(30.0);
   m_frameRateSpinBox->setSingleStep(0.5);
   m_frameRateSpinBox->setDecimals(1);
-  m_frameRateSpinBox->setValue(8.0);
+  m_frameRateSpinBox->setValue(10.0);
   m_frameRateSpinBox->setSuffix(" fps");
   m_frameRateSpinBox->setEnabled(false);
   frameRateRow->addWidget(m_frameRateSpinBox);
@@ -282,7 +282,7 @@ void CameraView::setupUI()
 
   settingsLayout->addLayout(frameRateRow);
 
-  m_frameRateValueLabel = new QLabel("8.0 fps");
+  m_frameRateValueLabel = new QLabel("10.0 fps");
   m_frameRateValueLabel->setAlignment(Qt::AlignCenter);
   m_frameRateValueLabel->setVisible(false);  // Hidden - spinbox shows value now
 
@@ -418,6 +418,20 @@ bool CameraView::connectCamera()
     m_context->cameraManager->DisconnectCamera(m_cameraId);
     emit cameraError(QString::fromStdString(m_cameraId), "Failed to start grabbing");
     return false;
+  }
+
+  // Apply default camera settings: auto exposure ON, auto gain OFF, gain 0, frame rate 10
+  {
+    ICameraHardware::ExposureSettings defaults;
+    defaults.auto_exposure = true;
+    defaults.auto_gain = false;
+    defaults.gain = 0.0;
+    defaults.frame_rate = 10.0;
+    // Read current exposure so we don't override it when auto-exposure is on
+    auto current = m_context->cameraManager->GetExposureSettings(m_cameraId);
+    defaults.exposure_time = current.exposure_time;
+    m_context->cameraManager->ApplyExposureSettings(m_cameraId, defaults);
+    std::cout << "[CameraView] Applied default settings: autoExp=ON, autoGain=OFF, gain=0, fps=10" << std::endl;
   }
 
   m_subscriber = std::make_shared<LiveVideoSubscriber>(m_cameraId, "CameraView_" + m_cameraId);

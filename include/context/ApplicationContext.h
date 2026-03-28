@@ -22,9 +22,13 @@ class DeviceUnderTest;
 class SafetyWatchManager;
 class DeviceLinkManager;
 class GdiCameraWindowManager;  // GDI-based camera monitor window
+class SwirBeamWindowManager;   // SWIR beam processing window
 class ApplicationSettings;  // Application-wide configurable settings
 class SafetyEventLog;       // Structured safety event logging
 class BeamServerClient;     // Custom TCP server client for beam detection
+class CameraConfigManager;  // Camera configuration (per-camera calibration)
+class BeamResultBroker;     // Pub-sub broker for beam detection results
+class BeamOptimizerManager; // Beam optimization coordinator
 
 namespace Lighting {
 class LightingManager;
@@ -55,9 +59,13 @@ struct ApplicationContext
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
   GdiCameraWindowManager* gdiCameraWindowManager2 = nullptr; // Second GDI camera monitor window
+  SwirBeamWindowManager* swirBeamWindowManager = nullptr;    // SWIR beam processing window
   ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
   SafetyEventLog* safetyEventLog = nullptr;            // Structured safety event logging
   BeamServerClient* beamServerClient = nullptr;        // Custom TCP server for beam detection
+  CameraConfigManager* cameraConfigManager = nullptr;  // Camera config (per-camera calibration)
+  BeamResultBroker* beamResultBroker = nullptr;          // Beam detection pub-sub broker
+  BeamOptimizerManager* beamOptimizerManager = nullptr;  // Beam optimization coordinator
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

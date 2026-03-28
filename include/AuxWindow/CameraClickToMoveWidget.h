@@ -12,6 +12,7 @@
 #include <future>
 #include <atomic>
 
+class CameraConfigManager;
 class CameraManager;
 class UnifiedMotionManager;
 class LiveVideoSubscriber;
@@ -63,6 +64,9 @@ public:
   bool isClickToMoveEnabled() const { return m_clickToMoveEnabled; }
   bool isCrosshairEnabled() const { return m_centerCrosshairEnabled; }
 
+  // Camera config manager for per-camera calibration
+  void setCameraConfigManager(CameraConfigManager* configMgr);
+
   // Overlay support - allows showing World Overlay markers on live view
   void setOverlayManager(WorldOverlayManager* overlayManager);
   void setOverlayEnabled(bool enabled);
@@ -99,6 +103,7 @@ private:
   void handleImageClick(const QPoint& pixmapClickPos);
   void updateDisplay();  // Redraw current image with crosshairs
 
+  CameraConfigManager* m_cameraConfigManager = nullptr;
   CameraManager* m_cameraManager;
   UnifiedMotionManager* m_motionManager;
 

@@ -14,6 +14,7 @@
 #include "TransformationMatrixLoader.h"
 #include "AuxWindowManager.h"
 #include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor
+#include "SwirBeamWindow/SwirBeamWindowManager.h"  // SWIR beam processing window
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
@@ -167,6 +168,7 @@ void MainWindow::setupUI()
   connect(m_topBar, &TopBar::auxWindowButtonClicked, this, &MainWindow::onToggleAuxWindow);
   connect(m_topBar, &TopBar::rtlmButtonClicked, this, &MainWindow::onToggleRtlmWindow);
   connect(m_topBar, &TopBar::rtlm2ButtonClicked, this, &MainWindow::onToggleRtlmWindow2);
+  connect(m_topBar, &TopBar::swirWindowButtonClicked, this, &MainWindow::onToggleSwirWindow);
   mainLayout->addWidget(m_topBar, 0);
 
   // Page stack (main content area)
@@ -676,6 +678,29 @@ void MainWindow::onToggleRtlmWindow2()
     std::cout << "[MainWindow] Realtime camera monitor 2 shown (Ctrl+T)" << std::endl;
     if (m_context->logManager) {
       m_context->logManager->Info("Realtime camera monitor 2 shown", "MainWindow");
+    }
+  }
+}
+
+void MainWindow::onToggleSwirWindow()
+{
+  if (!m_context || !m_context->swirBeamWindowManager) {
+    std::cerr << "[MainWindow] SWIR Beam window manager not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_context->swirBeamWindowManager->isVisible()) {
+    m_context->swirBeamWindowManager->hide();
+    std::cout << "[MainWindow] SWIR Beam window hidden" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("SWIR Beam window hidden", "MainWindow");
+    }
+  }
+  else {
+    m_context->swirBeamWindowManager->show();
+    std::cout << "[MainWindow] SWIR Beam window shown" << std::endl;
+    if (m_context->logManager) {
+      m_context->logManager->Info("SWIR Beam window shown", "MainWindow");
     }
   }
 }

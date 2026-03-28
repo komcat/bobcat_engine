@@ -4,6 +4,7 @@
 #include <QObject>
 #include <memory>
 
+class CameraConfigManager;
 class CameraManager;
 class DataStore;
 class TcpClientManager;
@@ -41,6 +42,7 @@ public:
   void setMotionManager(UnifiedMotionManager* manager);
   void setDataStore(DataStore* dataStore);
   void setTcpClientManager(TcpClientManager* tcpManager);
+  void setCameraConfigManager(CameraConfigManager* configMgr);
 
   // Window control
   void show();
@@ -51,6 +53,7 @@ public:
   AuxViewWindow* getWindow() const { return m_window.get(); }
 
 private:
+  CameraConfigManager* m_cameraConfigManager = nullptr;
   CameraManager* m_cameraManager;
   UnifiedMotionManager* m_motionManager;
   DataStore* m_dataStore;

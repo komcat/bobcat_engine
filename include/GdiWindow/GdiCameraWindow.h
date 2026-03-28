@@ -31,6 +31,7 @@
 class DataStore;
 class UnifiedMotionManager;
 class CameraManager;
+class CameraConfigManager;
 class BeamServerClient;
 
 // Menu IDs
@@ -265,6 +266,9 @@ public:
     // Motion manager for click-to-move
     void SetMotionManager(UnifiedMotionManager* motionManager);
 
+    // Camera config manager for per-camera calibration
+    void SetCameraConfigManager(CameraConfigManager* configMgr);
+
     // Click-to-move and crosshair controls
     void SetClickToMoveEnabled(bool enabled);
     void SetCrosshairEnabled(bool enabled);
@@ -285,7 +289,11 @@ public:
     void OnCameraStatusChanged(const std::string& cameraId, bool connected, bool grabbing) override;
     std::string GetSubscriberId() const override { return m_subscriberId; }
     bool WantsFramesFromCamera(const std::string& cameraId) const override;
-    int GetMinFrameIntervalMs() const override { return 33; } // ~30fps
+    int GetMinFrameIntervalMs() const override { return 33; } // ~30fps display cap
+
+    // FPS statistics
+    double GetDisplayFps() const { return m_displayFps.load(); }
+    double GetAcquisitionFps() const { return m_acquisitionFps.load(); }
 
     // Get native window handle
     HWND GetHwnd() const { return m_hwnd; }
@@ -440,6 +448,15 @@ private:
     std::vector<uint8_t> m_bitmapInfoBuffer;
     BITMAPINFO* m_bitmapInfo = nullptr;
 
+    // FPS tracking
+    std::atomic<double> m_displayFps{0.0};
+    std::atomic<double> m_acquisitionFps{0.0};
+    int m_acquisitionFrameCount = 0;
+    int m_displayFrameCount = 0;
+    std::chrono::steady_clock::time_point m_lastAcquisitionFpsTime = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point m_lastDisplayFpsTime = std::chrono::steady_clock::now();
+    void DrawFpsOverlay(HDC hDC, const RECT& windowRect);
+
     // Chart overlay
     ChartOverlay m_chartOverlay;
     std::function<void(float)> m_onOverlayScaleChanged;  // Callback for scale changes
@@ -460,6 +477,7 @@ private:
     mutable std::mutex m_channelMutex;
 
     // Click-to-move and crosshair
+    CameraConfigManager* m_cameraConfigManager = nullptr;
     UnifiedMotionManager* m_motionManager = nullptr;
     bool m_clickToMoveEnabled = false;
     bool m_crosshairEnabled = false;

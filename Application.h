@@ -13,6 +13,7 @@
 #include "TECManager.h"    // ✅ ADD THIS
 #include "AuxWindowManager.h"  // ✅ ADD THIS
 #include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor window
+#include "SwirBeamWindow/SwirBeamWindowManager.h"  // SWIR beam processing window
 #include "SMU/SMUPollingManager.h"  // ✅ ADD SMU Polling Manager
 #include "CoordinateSystemManager.h"
 #include "lighting/LightingManager.h"
@@ -22,6 +23,9 @@
 #include "version.h"
 #include "startup/ConnectionWorkerPool.h"
 #include "settings/ApplicationSettings.h"
+#include "CameraConfigManager.h"
+#include "BeamOptimizer/BeamResultBroker.h"
+#include "BeamOptimizer/BeamOptimizerManager.h"
 
 class QApplication;
 class MainWindow;
@@ -73,6 +77,7 @@ private:
   void initializeAuxWindowManager();  // ✅ ADD THIS
   void initializeGdiCameraWindow();   // GDI camera monitor window
   void initializeGdiCameraWindow2();  // Second GDI camera monitor window
+  void initializeSwirBeamWindow();   // SWIR beam processing window
   void initializePowerSupplySystem();
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
   void initializeCoordinateSystemManager();
@@ -80,6 +85,7 @@ private:
   void initializeSafetyWatch();
   void initializeDeviceLinkManager();
   void initializeApplicationSettings();
+  void initializeBeamOptimizer();
 
   void testMotionCommands();
   void testIOCommands();
@@ -124,10 +130,14 @@ private:
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager2;  // Second GDI camera monitor
+  std::unique_ptr<SwirBeamWindowManager> m_swirBeamWindowManager;    // SWIR beam processing window
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
   std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
   std::unique_ptr<SafetyEventLog> m_safetyEventLog;           // Structured safety event log
   std::unique_ptr<BeamServerClient> m_beamServerClient;       // Beam detection TCP client
+  std::unique_ptr<CameraConfigManager> m_cameraConfigManager; // Camera config (per-camera calibration)
+  std::unique_ptr<BeamResultBroker> m_beamResultBroker;       // Beam detection pub-sub broker
+  std::unique_ptr<BeamOptimizerManager> m_beamOptimizerManager; // Beam optimization coordinator
 
   ApplicationContext m_context;
 
