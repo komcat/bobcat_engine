@@ -27,6 +27,7 @@ struct BeamDetectionResult {
     std::string label;             // "B0" or "B1"
     std::string gaLabel;           // "GA1", "GA2", or ""
     bool saturated = false;        // any pixel > saturationValue
+    uint8_t peakIntensity = 0;     // max raw pixel value in beam ROI
     double encircledEnergy = 0.0;  // EE within d4sigma/2 radius (0.0-1.0)
     double circleEnergy = 0.0;     // CE: energy inside the EE circle (arbitrary units)
     double totalEnergy = 0.0;      // TE: total energy in the ROI (arbitrary units)
@@ -47,6 +48,18 @@ struct BeamDetectionConfig {
     double roiWidthFactor = 2.5;
     double minD4Sigma = 10.0;       // reject beams with max(dx,dy) < this
     double minPeakValue = 20.0;     // reject beams with ROI peak < this (after bg sub)
+};
+
+/// Config for simple blob-based beam detection
+struct BlobDetectionConfig {
+    int maxBeams = 2;
+    uint8_t saturationValue = 200;
+    int gaussianKernel = 5;         // blur kernel size (odd number, 0=disabled)
+    double thresholdValue = 180.0;  // fixed threshold (0-255), ignored if useOtsu=true
+    bool useOtsu = false;           // use Otsu auto-threshold instead of fixed
+    double minBlobArea = 50.0;      // reject blobs smaller than this (pixels^2)
+    double maxBlobArea = 50000.0;   // reject blobs larger than this (pixels^2)
+    double roiPadding = 1.5;        // bounding rect padding factor for display
 };
 
 #ifdef HAS_OPENCV
@@ -85,5 +98,12 @@ double ComputeEncircledEnergy(const cv::Mat& img, double cx, double cy,
 std::vector<BeamDetectionResult> RunBeamDetection(
     const uint8_t* grayData, uint32_t width, uint32_t height,
     const BeamDetectionConfig& config);
+
+/// Simple blob detection: threshold + contour finding.
+/// Finds bright blobs, returns center + bounding rect as BeamDetectionResult.
+/// Uses the same result struct so overlay/EMA/charts work unchanged.
+std::vector<BeamDetectionResult> RunBlobDetection(
+    const uint8_t* grayData, uint32_t width, uint32_t height,
+    const BlobDetectionConfig& config);
 
 #endif // HAS_OPENCV

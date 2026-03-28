@@ -8,7 +8,15 @@
 #include <cmath>
 #include <numeric>
 #include <array>
+#include <iostream>
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+
+// Diagnostic logging (disabled by default, uncomment to enable)
+// static int s_bdFrameCounter = 0;
+// static constexpr int BD_LOG_INTERVAL = 150;
+// #define BD_LOG(x) do { if (s_bdFrameCounter == 0) { std::cout << x << std::endl; } } while(0)
+#define BD_LOG(x) do {} while(0)
 
 // ============================================================================
 // combine_peaks - merge adjacent ROIs
@@ -259,6 +267,8 @@ std::vector<BeamDetectionResult> RunBeamDetection(
 
     if (!grayData || width == 0 || height == 0) return {};
 
+    // s_bdFrameCounter = (s_bdFrameCounter + 1) % BD_LOG_INTERVAL;
+
     int w = static_cast<int>(width);
     int h = static_cast<int>(height);
 
@@ -306,6 +316,14 @@ std::vector<BeamDetectionResult> RunBeamDetection(
                                         config.xpeaks, config.ypeaks,
                                         config.combineXThresh, config.combineYThresh);
 
+    BD_LOG("[BeamDetect] ROIs found: " << roiResult.rois.size()
+           << "  bgAvg=" << bgAvg << "  image=" << w << "x" << h);
+    for (size_t ri = 0; ri < roiResult.rois.size(); ++ri) {
+        const auto& rr = roiResult.rois[ri];
+        BD_LOG("  ROI[" << ri << "] x=" << rr.x0 << ".." << rr.x1
+               << " y=" << rr.y0 << ".." << rr.y1);
+    }
+
     if (roiResult.rois.empty()) return {};
 
     // d4sigma per ROI + compute intensity for sorting
@@ -339,35 +357,37 @@ std::vector<BeamDetectionResult> RunBeamDetection(
                      d4.cx, d4.cy, d4.dx, d4.dy);
         d4.roi = r;
 
+        BD_LOG("  Cand[" << i << "] cx=" << d4.cx << " cy=" << d4.cy
+               << " dx=" << d4.dx << " dy=" << d4.dy
+               << " roi=" << roiW << "x" << roiH);
+
         // Skip if d4sigma returned zero (no signal)
-        if (d4.dx < 1e-6 && d4.dy < 1e-6) continue;
+        if (d4.dx < 1e-6 && d4.dy < 1e-6) { BD_LOG("    REJECT: zero d4sigma"); continue; }
 
         // Skip fake beams: reject if diameter > half the image dimension
-        // (real beams are localized, not spread across the entire frame)
-        if (d4.dx > w * 0.5 || d4.dy > h * 0.5) continue;
+        if (d4.dx > w * 0.5 || d4.dy > h * 0.5) { BD_LOG("    REJECT: too large vs image"); continue; }
 
         // Skip if beam is larger than its ROI (diffuse noise, not a real beam)
-        if (d4.dx > roiW * 1.5 || d4.dy > roiH * 1.5) continue;
+        if (d4.dx > roiW * 1.5 || d4.dy > roiH * 1.5) { BD_LOG("    REJECT: larger than ROI"); continue; }
 
         // Skip beams that are too small (noise spikes)
-        if (std::max(d4.dx, d4.dy) < config.minD4Sigma) continue;
+        if (std::max(d4.dx, d4.dy) < config.minD4Sigma) { BD_LOG("    REJECT: too small d4=" << std::max(d4.dx, d4.dy)); continue; }
 
         // Skip beams with both diameters below 8 pixels (sub-pixel noise)
-        if (d4.dx < 8.0 && d4.dy < 8.0) continue;
+        if (d4.dx < 8.0 && d4.dy < 8.0) { BD_LOG("    REJECT: both <8px"); continue; }
 
         // Skip beams with extreme aspect ratio (>2:1) - likely detection artifact
         {
             double minD = std::min(d4.dx, d4.dy);
             double maxD = std::max(d4.dx, d4.dy);
-            if (minD > 1e-6 && (maxD / minD) > 2.0) continue;
+            if (minD > 1e-6 && (maxD / minD) > 2.0) { BD_LOG("    REJECT: aspect ratio " << (maxD/minD)); continue; }
         }
 
         // Skip beams whose EE circle is clipped by image boundary
-        // (edge clipping inflates EE% by removing outer wings from denominator)
         {
             double eeRadius = std::max(d4.dx, d4.dy) / 2.0;
             if (d4.cx - eeRadius < 0 || d4.cx + eeRadius > w ||
-                d4.cy - eeRadius < 0 || d4.cy + eeRadius > h) continue;
+                d4.cy - eeRadius < 0 || d4.cy + eeRadius > h) { BD_LOG("    REJECT: EE clipped edge"); continue; }
         }
 
         // Skip beams with insufficient peak signal (noise)
@@ -379,8 +399,10 @@ std::vector<BeamDetectionResult> RunBeamDetection(
                     if (rowPtr[cc] > peakVal) peakVal = rowPtr[cc];
                 }
             }
-            if (static_cast<double>(peakVal) < config.minPeakValue) continue;
+            if (static_cast<double>(peakVal) < config.minPeakValue) { BD_LOG("    REJECT: low peak=" << peakVal); continue; }
         }
+
+        BD_LOG("    ACCEPTED");
 
         // Compute intensity: sum of E^2 in ROI
         double intensity = 0.0;
@@ -433,27 +455,24 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         res.totalEnergy = cand.totalEnergy;
         res.label = "B" + std::to_string(bi);
 
-        // GA labeling
-        if (numBeams == 2) {
-            bool b0InTop = (candidates[0].d4.cy < halfY);
-            bool b1InBottom = (candidates[1].d4.cy >= halfY);
-            if (b0InTop && b1InBottom) {
-                if (bi == 0) res.gaLabel = "GA2";
-                if (bi == 1) res.gaLabel = "GA1";
-            }
-            // If both in same half, leave gaLabel empty
+        // GA labeling: top half = GA2, bottom half = GA1
+        if (cand.d4.cy < halfY) {
+            res.gaLabel = "GA2";
+        } else {
+            res.gaLabel = "GA1";
         }
 
-        // Saturation check on original uint8 data within ROI
+        // Saturation check and peak intensity on original uint8 data within ROI
+        uint8_t maxPixel = 0;
         const Roi& roi = cand.roi;
-        for (int r = roi.y0; r < roi.y1 && !res.saturated; ++r) {
+        for (int r = roi.y0; r < roi.y1; ++r) {
             for (int c = roi.x0; c < roi.x1; ++c) {
-                if (grayData[r * w + c] > config.saturationValue) {
-                    res.saturated = true;
-                    break;
-                }
+                uint8_t val = grayData[r * w + c];
+                if (val > maxPixel) maxPixel = val;
             }
         }
+        res.peakIntensity = maxPixel;
+        res.saturated = (maxPixel > config.saturationValue);
 
         // Extract 1D profiles at centroid row/column
         int centroidRow = static_cast<int>(std::round(cand.d4.cy));
@@ -473,6 +492,176 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         res.yProfile.resize(roi.y1 - roi.y0);
         for (int r = roi.y0; r < roi.y1; ++r) {
             res.yProfile[r - roi.y0] = static_cast<double>(grayData[r * w + centroidCol]);
+        }
+
+        results.push_back(std::move(res));
+    }
+
+    return results;
+}
+
+// ============================================================================
+// RunBlobDetection - simple threshold + contour blob detection
+// ============================================================================
+
+std::vector<BeamDetectionResult> RunBlobDetection(
+    const uint8_t* grayData, uint32_t width, uint32_t height,
+    const BlobDetectionConfig& config) {
+
+    if (!grayData || width == 0 || height == 0) return {};
+
+    int w = static_cast<int>(width);
+    int h = static_cast<int>(height);
+
+    cv::Mat grayMat(h, w, CV_8UC1, const_cast<uint8_t*>(grayData));
+
+    // Optional Gaussian blur to reduce noise
+    cv::Mat blurred;
+    if (config.gaussianKernel >= 3) {
+        int k = config.gaussianKernel | 1;  // ensure odd
+        cv::GaussianBlur(grayMat, blurred, cv::Size(k, k), 0);
+    } else {
+        blurred = grayMat;
+    }
+
+    // Threshold to binary
+    cv::Mat binary;
+    if (config.useOtsu) {
+        cv::threshold(blurred, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    } else {
+        cv::threshold(blurred, binary, config.thresholdValue, 255, cv::THRESH_BINARY);
+    }
+
+    // Find contours
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    if (contours.empty()) return {};
+
+    // Score each contour by area, filter by size
+    struct BlobCandidate {
+        double area;
+        cv::Moments mom;
+        cv::Rect bbox;
+        double cx, cy;
+    };
+    std::vector<BlobCandidate> candidates;
+
+    for (const auto& contour : contours) {
+        double area = cv::contourArea(contour);
+        if (area < config.minBlobArea || area > config.maxBlobArea) continue;
+
+        cv::Moments mom = cv::moments(contour);
+        if (mom.m00 < 1e-6) continue;
+
+        BlobCandidate cand;
+        cand.area = area;
+        cand.mom = mom;
+        cand.bbox = cv::boundingRect(contour);
+        cand.cx = mom.m10 / mom.m00;
+        cand.cy = mom.m01 / mom.m00;
+        candidates.push_back(cand);
+    }
+
+    if (candidates.empty()) return {};
+
+    // Sort by area descending, take top maxBeams
+    std::sort(candidates.begin(), candidates.end(),
+              [](const BlobCandidate& a, const BlobCandidate& b) {
+                  return a.area > b.area;
+              });
+
+    int numBeams = std::min(config.maxBeams, static_cast<int>(candidates.size()));
+    candidates.resize(numBeams);
+
+    // Sort by cy ascending: B0 (top), B1 (bottom)
+    std::sort(candidates.begin(), candidates.end(),
+              [](const BlobCandidate& a, const BlobCandidate& b) {
+                  return a.cy < b.cy;
+              });
+
+    // Build results
+    double halfY = static_cast<double>(height) / 2.0;
+    std::vector<BeamDetectionResult> results;
+    results.reserve(numBeams);
+
+    for (int bi = 0; bi < numBeams; ++bi) {
+        const auto& cand = candidates[bi];
+        BeamDetectionResult res;
+
+        // Use bounding rect dimensions as dx/dy (with padding)
+        double bw = static_cast<double>(cand.bbox.width) * config.roiPadding;
+        double bh = static_cast<double>(cand.bbox.height) * config.roiPadding;
+
+        res.d4.cx = cand.cx;
+        res.d4.cy = cand.cy;
+        res.d4.dx = bw;
+        res.d4.dy = bh;
+
+        // ROI from padded bounding rect
+        double padW = bw / 2.0;
+        double padH = bh / 2.0;
+        res.d4.roi.x0 = std::max(0, static_cast<int>(cand.cx - padW));
+        res.d4.roi.y0 = std::max(0, static_cast<int>(cand.cy - padH));
+        res.d4.roi.x1 = std::min(w, static_cast<int>(cand.cx + padW));
+        res.d4.roi.y1 = std::min(h, static_cast<int>(cand.cy + padH));
+
+        res.label = "B" + std::to_string(bi);
+
+        // GA labeling: top half = GA2, bottom half = GA1
+        if (cand.cy < halfY) {
+            res.gaLabel = "GA2";
+        } else {
+            res.gaLabel = "GA1";
+        }
+
+        // Peak intensity and saturation check in ROI
+        uint8_t maxPixel = 0;
+        double totalEnergy = 0.0;
+        for (int r = res.d4.roi.y0; r < res.d4.roi.y1; ++r) {
+            for (int c = res.d4.roi.x0; c < res.d4.roi.x1; ++c) {
+                uint8_t val = grayData[r * w + c];
+                if (val > maxPixel) maxPixel = val;
+                totalEnergy += static_cast<double>(val);
+            }
+        }
+        res.peakIntensity = maxPixel;
+        res.saturated = (maxPixel > config.saturationValue);
+        res.totalEnergy = totalEnergy;
+
+        // Encircled energy: use the blob area circle
+        double eeRadius = std::max(bw, bh) / 2.0;
+        double circleEnergy = 0.0;
+        double r2 = eeRadius * eeRadius;
+        for (int r = res.d4.roi.y0; r < res.d4.roi.y1; ++r) {
+            double dy = static_cast<double>(r) - cand.cy;
+            double dy2 = dy * dy;
+            for (int c = res.d4.roi.x0; c < res.d4.roi.x1; ++c) {
+                double dx = static_cast<double>(c) - cand.cx;
+                if (dx * dx + dy2 <= r2) {
+                    circleEnergy += static_cast<double>(grayData[r * w + c]);
+                }
+            }
+        }
+        res.circleEnergy = circleEnergy;
+        res.encircledEnergy = (totalEnergy > 1e-6) ? circleEnergy / totalEnergy : 0.0;
+
+        // 1D profiles at centroid
+        int centroidRow = std::clamp(static_cast<int>(std::round(cand.cy)),
+                                     res.d4.roi.y0, res.d4.roi.y1 - 1);
+        int centroidCol = std::clamp(static_cast<int>(std::round(cand.cx)),
+                                     res.d4.roi.x0, res.d4.roi.x1 - 1);
+
+        res.profileXStart = res.d4.roi.x0;
+        res.xProfile.resize(res.d4.roi.x1 - res.d4.roi.x0);
+        for (int c = res.d4.roi.x0; c < res.d4.roi.x1; ++c) {
+            res.xProfile[c - res.d4.roi.x0] = static_cast<double>(grayData[centroidRow * w + c]);
+        }
+
+        res.profileYStart = res.d4.roi.y0;
+        res.yProfile.resize(res.d4.roi.y1 - res.d4.roi.y0);
+        for (int r = res.d4.roi.y0; r < res.d4.roi.y1; ++r) {
+            res.yProfile[r - res.d4.roi.y0] = static_cast<double>(grayData[r * w + centroidCol]);
         }
 
         results.push_back(std::move(res));

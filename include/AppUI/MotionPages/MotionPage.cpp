@@ -111,6 +111,22 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 		this, &MotionPage::onLabelOffsetChanged);
 }
 
+MotionPage::~MotionPage()
+{
+	// Stop timers before destruction to prevent callbacks on invalid object
+	if (m_livePositionTimer) {
+		m_livePositionTimer->stop();
+	}
+	if (m_motionUpdateTimer) {
+		m_motionUpdateTimer->stop();
+	}
+
+	// Disconnect all signals to prevent queued invocations after destruction
+	disconnect();
+
+	qDebug() << "[MotionPage] Destroyed";
+}
+
 void MotionPage::setupUI()
 {
 	// Set dark theme for entire page

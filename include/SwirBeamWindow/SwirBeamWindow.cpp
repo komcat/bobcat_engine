@@ -1104,7 +1104,7 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     {
         SwirButton beamBtn;
         beamBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
-        beamBtn.label = L"B DETECT";
+        beamBtn.label = m_useBlobDetection ? L"B BLOB" : L"B DETECT";
         beamBtn.isToggle = true;
         beamBtn.toggled = m_beamDetectionEnabled;
         beamBtn.tag = TAG_BEAM_DETECT;
@@ -1455,7 +1455,10 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
             btn.toggled = swirHeadDown;
             btn.label = swirHeadDown ? L"HEAD UP" : L"HEAD DN";
         }
-        if (btn.tag == TAG_BEAM_DETECT) btn.toggled = m_beamDetectionEnabled;
+        if (btn.tag == TAG_BEAM_DETECT) {
+            btn.toggled = m_beamDetectionEnabled;
+            btn.label = m_useBlobDetection ? L"B BLOB" : L"B DETECT";
+        }
         if (btn.tag == TAG_BEAM_FOCUS) {
             btn.toggled = m_beamFocusRunning.load();
             btn.label = btn.toggled ? L"STOP" : L"BF";
@@ -1699,7 +1702,7 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
         if (!m_beamDisplayResults.empty()) {
             DrawBeamOverlays(gfx, m_beamDisplayResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
-                             m_frameWidth, m_frameHeight);
+                             m_frameWidth, m_frameHeight, m_useBlobDetection);
         }
 
         // CE/EE charts (drawn even when no current detection — shows previous data)
@@ -1707,7 +1710,8 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
             DrawCECharts(gfx, m_ceHistory, m_eeHistory,
                          m_ceHistoryIndex, m_ceHistoryCount,
                          CE_HISTORY_SIZE,
-                         m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH);
+                         m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
+                         m_useBlobDetection);
         }
     }
 
@@ -2148,7 +2152,34 @@ void SwirBeamWindow::LoadBeamConfig()
     getD("minD4Sigma", m_beamConfig.minD4Sigma);
     getD("minPeakValue", m_beamConfig.minPeakValue);
 
-    std::cout << "[SwirBeamWindow] Beam config loaded from " << path << std::endl;
+    // Blob detection config
+    if (j.contains("useBlobDetection") && j["useBlobDetection"].is_boolean()) {
+        m_useBlobDetection = j["useBlobDetection"].get<bool>();
+    }
+    if (j.contains("blob") && j["blob"].is_object()) {
+        auto& bj = j["blob"];
+        auto getBD = [&](const char* key, double& out) {
+            if (bj.contains(key) && bj[key].is_number()) out = bj[key].get<double>();
+        };
+        auto getBI = [&](const char* key, int& out) {
+            if (bj.contains(key) && bj[key].is_number_integer()) out = bj[key].get<int>();
+        };
+        getBI("maxBeams", m_blobConfig.maxBeams);
+        if (bj.contains("saturationValue") && bj["saturationValue"].is_number_integer()) {
+            m_blobConfig.saturationValue = static_cast<uint8_t>(bj["saturationValue"].get<int>());
+        }
+        getBI("gaussianKernel", m_blobConfig.gaussianKernel);
+        getBD("thresholdValue", m_blobConfig.thresholdValue);
+        if (bj.contains("useOtsu") && bj["useOtsu"].is_boolean()) {
+            m_blobConfig.useOtsu = bj["useOtsu"].get<bool>();
+        }
+        getBD("minBlobArea", m_blobConfig.minBlobArea);
+        getBD("maxBlobArea", m_blobConfig.maxBlobArea);
+        getBD("roiPadding", m_blobConfig.roiPadding);
+    }
+
+    std::cout << "[SwirBeamWindow] Beam config loaded from " << path
+              << " (mode: " << (m_useBlobDetection ? "blob" : "d4sigma") << ")" << std::endl;
 }
 
 void SwirBeamWindow::SaveBeamConfig()
@@ -2168,6 +2199,19 @@ void SwirBeamWindow::SaveBeamConfig()
     j["roiWidthFactor"] = m_beamConfig.roiWidthFactor;
     j["minD4Sigma"] = m_beamConfig.minD4Sigma;
     j["minPeakValue"] = m_beamConfig.minPeakValue;
+
+    // Blob detection config
+    j["useBlobDetection"] = m_useBlobDetection;
+    j["blob"] = {
+        {"maxBeams", m_blobConfig.maxBeams},
+        {"saturationValue", static_cast<int>(m_blobConfig.saturationValue)},
+        {"gaussianKernel", m_blobConfig.gaussianKernel},
+        {"thresholdValue", m_blobConfig.thresholdValue},
+        {"useOtsu", m_blobConfig.useOtsu},
+        {"minBlobArea", m_blobConfig.minBlobArea},
+        {"maxBlobArea", m_blobConfig.maxBlobArea},
+        {"roiPadding", m_blobConfig.roiPadding}
+    };
 
     std::ofstream ofs("config/beam_detection.local.json");
     if (ofs.is_open()) {
@@ -2250,6 +2294,7 @@ void SwirBeamWindow::StartDetectionThread()
         m_eeHistory[i].assign(CE_HISTORY_SIZE, 0.0);
         m_ceHistoryIndex[i] = 0;
         m_ceHistoryCount[i] = 0;
+        m_ceRejectCount[i] = 0;
     }
 
     m_detectionThread = std::thread([this]() {
@@ -2284,7 +2329,9 @@ void SwirBeamWindow::StartDetectionThread()
             if (localBuffer.empty() || localW == 0 || localH == 0) continue;
 
             // Run detection on single frame (raw, no averaging)
-            auto results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            auto results = m_useBlobDetection
+                ? RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig)
+                : RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
 
             // Publish raw results (for scoring) and EMA-smoothed results (for display)
             {
@@ -2316,27 +2363,42 @@ void SwirBeamWindow::StartDetectionThread()
                     }
                 }
 
-                // Push CE values into history ring buffers (with outlier rejection)
+                // Push CE/SZ values into history ring buffers (with outlier rejection)
+                // In blob mode, track blob area (dx*dy) instead of circle energy
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
-                    double newCE = m_beamResults[bi].circleEnergy;
+                    double newCE = m_useBlobDetection
+                        ? m_beamResults[bi].d4.dx * m_beamResults[bi].d4.dy
+                        : m_beamResults[bi].circleEnergy;
 
                     // Outlier rejection: if we have enough history, reject values
-                    // that drop below 50% of the recent median (last 5 samples)
+                    // that drop below 50% of the recent median (last 5 samples).
+                    // Force-reset history if rejected too many times consecutively
+                    // (handles exposure/current changes that shift CE baseline).
                     if (m_ceHistoryCount[idx] >= 5) {
-                        // Gather last 5 values
                         double recent[5];
                         for (int k = 0; k < 5; ++k) {
                             int hi = (m_ceHistoryIndex[idx] - 1 - k + CE_HISTORY_SIZE) % CE_HISTORY_SIZE;
                             recent[k] = m_ceHistory[idx][hi];
                         }
-                        // Find median of 5
                         std::sort(recent, recent + 5);
                         double median = recent[2];
 
-                        // Skip if value drops below 50% of median
                         if (median > 1.0 && newCE < median * 0.5) {
-                            continue;  // discard outlier, keep previous data
+                            ++m_ceRejectCount[idx];
+                            // After 10 consecutive rejections, the baseline has
+                            // genuinely shifted — reset history to accept new data
+                            if (m_ceRejectCount[idx] >= 10) {
+                                m_ceHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
+                                m_eeHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
+                                m_ceHistoryIndex[idx] = 0;
+                                m_ceHistoryCount[idx] = 0;
+                                m_ceRejectCount[idx] = 0;
+                            } else {
+                                continue;  // discard outlier, keep previous data
+                            }
+                        } else {
+                            m_ceRejectCount[idx] = 0;
                         }
                     }
 
@@ -2355,6 +2417,17 @@ void SwirBeamWindow::StartDetectionThread()
                 m_beamResultBroker->Publish(m_beamResults);
             }
 
+            // Auto-adjust exposure/current to avoid saturation or dim beams
+            // Disabled for now — causes lag and jumpy behavior
+            // {
+            //     std::vector<BeamDetectionResult> resultsCopy;
+            //     {
+            //         std::lock_guard<std::mutex> lock(m_beamMutex);
+            //         resultsCopy = m_beamResults;
+            //     }
+            //     CheckAndAdjustSaturation(resultsCopy);
+            // }
+
             // Request repaint
             if (m_hwnd) {
                 PostMessage(m_hwnd, WM_USER + 1, 0, 0);
@@ -2370,6 +2443,194 @@ void SwirBeamWindow::StopDetectionThread()
     m_detectionCV.notify_all();
     if (m_detectionThread.joinable()) {
         m_detectionThread.join();
+    }
+}
+
+// ============================================================================
+// Beam Saturation Auto-Adjust
+// ============================================================================
+
+void SwirBeamWindow::CheckAndAdjustSaturation(const std::vector<BeamDetectionResult>& results)
+{
+    if (results.empty() || !m_cameraManager) return;
+
+    // Cooldown: wait at least 1 second between adjustments
+    auto now = std::chrono::steady_clock::now();
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - m_lastSatAdjustTime).count();
+    if (elapsedMs < 1000) return;
+
+    // Classify each beam as saturated, dim, or OK
+    struct BeamIssue {
+        int beamIdx;
+        std::string gaLabel;
+        bool saturated;
+        bool dim;
+    };
+    std::vector<BeamIssue> issues;
+    bool anySaturated = false;
+    bool anyDim = false;
+
+    for (size_t i = 0; i < results.size(); ++i) {
+        bool sat = results[i].saturated;
+        bool dim = (results[i].peakIntensity < SAT_MIN_INTENSITY);
+        if (sat || dim) {
+            issues.push_back({static_cast<int>(i), results[i].gaLabel, sat, dim});
+            if (sat) anySaturated = true;
+            if (dim) anyDim = true;
+        }
+    }
+
+    if (!anySaturated && !anyDim) return;  // all beams are fine
+
+    // --- helpers for per-beam PSU current adjustment ---
+
+    // Find PSU device index whose name contains the GA label (e.g. "GA1" or "GA2")
+    auto findPSUByGA = [this](const std::string& gaLabel) -> int {
+        if (gaLabel.empty()) return -1;
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        for (size_t i = 0; i < m_psuDevices.size(); ++i) {
+            if (m_psuDevices[i].name.find(gaLabel) != std::string::npos) {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    };
+
+    auto getPSUCurrent = [this](int psuIdx) -> double {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        if (psuIdx >= 0 && psuIdx < static_cast<int>(m_psuDevices.size())) {
+            return m_psuDevices[psuIdx].setCurrent;
+        }
+        return -1.0;
+    };
+
+    auto setPSUCurrent = [this](int psuIdx, double currentA) {
+        if (!m_psuManager) return;
+        std::string devName;
+        {
+            std::lock_guard<std::mutex> lock(m_psuMutex);
+            if (psuIdx < 0 || psuIdx >= static_cast<int>(m_psuDevices.size())) return;
+            auto& dev = m_psuDevices[psuIdx];
+            dev.setCurrent = currentA;
+            devName = dev.name;
+        }
+        auto psu = m_psuManager->getPowerSupply(devName);
+        if (psu && psu->isConnected()) {
+            psu->setCurrent(currentA, 1);
+            std::cout << "[SatAdjust] " << devName << " current -> "
+                      << (currentA * 1000.0) << " mA" << std::endl;
+        }
+    };
+
+    // --- helper to set camera exposure from detection thread ---
+    auto setExposure = [this](double us) {
+        std::string camId = GetTargetCamera();
+        auto settings = m_cameraManager->GetExposureSettings(camId);
+        settings.exposure_time = us;
+        settings.auto_exposure = false;
+        settings.auto_gain = false;
+        m_autoExposure = false;
+        m_currentExposure = us;
+        m_cameraManager->ApplyExposureSettings(camId, settings);
+    };
+
+    double curExp = m_currentExposure;
+
+    // ------------------------------------------------------------------
+    // Conflict: some beams saturated AND some beams dim simultaneously
+    // → cannot adjust shared exposure, adjust per-beam current only
+    // ------------------------------------------------------------------
+    if (anySaturated && anyDim) {
+        for (const auto& issue : issues) {
+            int psuIdx = findPSUByGA(issue.gaLabel);
+            if (psuIdx < 0) continue;
+            double cur = getPSUCurrent(psuIdx);
+            if (cur < 0.0) continue;
+
+            if (issue.saturated) {
+                double next = cur - SAT_CURRENT_STEP;
+                if (next >= SAT_CURRENT_MIN) {
+                    setPSUCurrent(psuIdx, next);
+                }
+            } else if (issue.dim) {
+                double next = cur + SAT_CURRENT_STEP;
+                if (next <= SAT_CURRENT_MAX) {
+                    setPSUCurrent(psuIdx, next);
+                }
+            }
+        }
+        m_lastSatAdjustTime = now;
+        InvalidatePanel();
+        return;
+    }
+
+    // ------------------------------------------------------------------
+    // Saturated beams: reduce exposure first, then per-beam current
+    // ------------------------------------------------------------------
+    if (anySaturated) {
+        if (curExp > SAT_EXPOSURE_MAX) {
+            // Way above operating range → snap to start value
+            setExposure(SAT_EXPOSURE_START);
+            std::cout << "[SatAdjust] Exposure -> " << SAT_EXPOSURE_START
+                      << " us (snap from " << curExp << " us)" << std::endl;
+        } else if (curExp > SAT_EXPOSURE_MIN) {
+            double next = curExp - SAT_EXPOSURE_STEP;
+            if (next < SAT_EXPOSURE_MIN) next = SAT_EXPOSURE_MIN;
+            setExposure(next);
+            std::cout << "[SatAdjust] Exposure -> " << next
+                      << " us (reduce for saturation)" << std::endl;
+        } else {
+            // Exposure already at minimum → reduce current for saturated beam(s)
+            for (const auto& issue : issues) {
+                if (!issue.saturated) continue;
+                int psuIdx = findPSUByGA(issue.gaLabel);
+                if (psuIdx < 0) continue;
+                double cur = getPSUCurrent(psuIdx);
+                if (cur < 0.0) continue;
+                double next = cur - SAT_CURRENT_STEP;
+                if (next >= SAT_CURRENT_MIN) {
+                    setPSUCurrent(psuIdx, next);
+                }
+            }
+        }
+        m_lastSatAdjustTime = now;
+        InvalidatePanel();
+        return;
+    }
+
+    // ------------------------------------------------------------------
+    // Dim beams (peak < 75): increase exposure first, then per-beam current
+    // ------------------------------------------------------------------
+    if (anyDim) {
+        if (curExp < SAT_EXPOSURE_MIN) {
+            // Below operating range → snap to start value
+            setExposure(SAT_EXPOSURE_START);
+            std::cout << "[SatAdjust] Exposure -> " << SAT_EXPOSURE_START
+                      << " us (snap from " << curExp << " us)" << std::endl;
+        } else if (curExp < SAT_EXPOSURE_MAX) {
+            double next = curExp + SAT_EXPOSURE_STEP;
+            if (next > SAT_EXPOSURE_MAX) next = SAT_EXPOSURE_MAX;
+            setExposure(next);
+            std::cout << "[SatAdjust] Exposure -> " << next
+                      << " us (increase for dim beam)" << std::endl;
+        } else {
+            // Exposure already at maximum → increase current for dim beam(s)
+            for (const auto& issue : issues) {
+                if (!issue.dim) continue;
+                int psuIdx = findPSUByGA(issue.gaLabel);
+                if (psuIdx < 0) continue;
+                double cur = getPSUCurrent(psuIdx);
+                if (cur < 0.0) continue;
+                double next = cur + SAT_CURRENT_STEP;
+                if (next <= SAT_CURRENT_MAX) {
+                    setPSUCurrent(psuIdx, next);
+                }
+            }
+        }
+        m_lastSatAdjustTime = now;
+        InvalidatePanel();
+        return;
     }
 }
 

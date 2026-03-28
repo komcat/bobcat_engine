@@ -152,7 +152,8 @@ void DrawVertProfileChart(Gdiplus::Graphics& gfx,
 void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       const std::vector<BeamDetectionResult>& results,
                       int renderX, int renderY, int renderW, int renderH,
-                      uint32_t frameW, uint32_t frameH) {
+                      uint32_t frameW, uint32_t frameH,
+                      bool blobMode) {
     if (results.empty() || frameW == 0 || frameH == 0 || renderW <= 0 || renderH <= 0) return;
 
     static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
@@ -202,16 +203,35 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                 titleLine = ss.str();
             }
 
+            // Blob mode: minimal label (title + SZ + PK)
+            // D4sigma mode: full label (title + dx/dy/EE/CE/TE/PK)
+            wchar_t szLine[32], pkLine[32];
             wchar_t dxLine[32], dyLine[32];
             wchar_t eeLine[32], ceLine[32], teLine[32];
-            swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
-            swprintf_s(dyLine, L"dy: %6.1f", d4.dy);
-            swprintf_s(eeLine, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
-            swprintf_s(ceLine, L"CE: %7.0f", beam.circleEnergy);
-            swprintf_s(teLine, L"TE: %7.0f", beam.totalEnergy);
 
-            const wchar_t* rows[] = { titleLine.c_str(), dxLine, dyLine, eeLine, ceLine, teLine };
-            static constexpr int numRows = 6;
+            swprintf_s(szLine, L"SZ: %6.0f", d4.dx * d4.dy);
+            swprintf_s(pkLine, L"PK: %5d", static_cast<int>(beam.peakIntensity));
+
+            const wchar_t* rows[8];
+            int numRows = 0;
+            rows[numRows++] = titleLine.c_str();
+
+            if (blobMode) {
+                rows[numRows++] = szLine;
+                rows[numRows++] = pkLine;
+            } else {
+                swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
+                swprintf_s(dyLine, L"dy: %6.1f", d4.dy);
+                swprintf_s(eeLine, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
+                swprintf_s(ceLine, L"CE: %7.0f", beam.circleEnergy);
+                swprintf_s(teLine, L"TE: %7.0f", beam.totalEnergy);
+                rows[numRows++] = dxLine;
+                rows[numRows++] = dyLine;
+                rows[numRows++] = eeLine;
+                rows[numRows++] = ceLine;
+                rows[numRows++] = teLine;
+                rows[numRows++] = pkLine;
+            }
             static constexpr float rowH = 14.0f;
             float totalH = rowH * numRows + 4.0f;
 
@@ -271,7 +291,8 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                   const std::array<int, 2>& ceIndex,
                   const std::array<int, 2>& ceCount,
                   int historySize,
-                  int renderX, int renderY, int renderW, int renderH) {
+                  int renderX, int renderY, int renderW, int renderH,
+                  bool blobMode) {
 
     static constexpr int CHART_W = 220;
     static constexpr int CHART_H = 80;
@@ -328,24 +349,27 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
         double ceYMax = ceMax + cePad;
         double ceYRange = ceYMax - ceYMin;
 
-        // --- EE axis (right, fixed 0-100%) ---
-        double eeMin = 1e30, eeMax = -1e30;
-        for (int i = 0; i < n; ++i) {
-            double v = eeHistory[bi][(startIdx + i) % historySize];
-            if (v < eeMin) eeMin = v;
-            if (v > eeMax) eeMax = v;
+        // --- EE axis (only in d4sigma mode) ---
+        double eeYMin = 0, eeYMax = 0, eeYRange = 1.0;
+        if (!blobMode) {
+            double eeMin = 1e30, eeMax = -1e30;
+            for (int i = 0; i < n; ++i) {
+                double v = eeHistory[bi][(startIdx + i) % historySize];
+                if (v < eeMin) eeMin = v;
+                if (v > eeMax) eeMax = v;
+            }
+            double eeRange = eeMax - eeMin;
+            if (eeRange < 1.0) eeRange = 1.0;
+            double eePad = eeRange * 0.1;
+            eeYMin = eeMin - eePad;
+            eeYMax = eeMax + eePad;
+            eeYRange = eeYMax - eeYMin;
         }
-        double eeRange = eeMax - eeMin;
-        if (eeRange < 1.0) eeRange = 1.0;
-        double eePad = eeRange * 0.1;
-        double eeYMin = eeMin - eePad;
-        double eeYMax = eeMax + eePad;
-        double eeYRange = eeYMax - eeYMin;
 
         if (n >= 2) {
             float nMinus1 = static_cast<float>(n - 1);
 
-            // Draw CE polyline
+            // Draw CE/SZ polyline
             {
                 std::vector<Gdiplus::PointF> pts(n);
                 for (int i = 0; i < n; ++i) {
@@ -358,8 +382,8 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                 gfx.DrawLines(&linePen, pts.data(), n);
             }
 
-            // Draw EE% polyline (secondary axis)
-            {
+            // Draw EE% polyline (only in d4sigma mode)
+            if (!blobMode) {
                 std::vector<Gdiplus::PointF> pts(n);
                 for (int i = 0; i < n; ++i) {
                     double v = eeHistory[bi][(startIdx + i) % historySize];
@@ -373,15 +397,19 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
             }
         }
 
-        // Labels - top left: "B0 CE: xxxxx"
+        // Labels
         int lastIdx = (ceIndex[bi] - 1 + historySize) % historySize;
         wchar_t ceLabelBuf[48];
-        swprintf_s(ceLabelBuf, L"B%d CE: %.0f", bi, ceHistory[bi][lastIdx]);
+        if (blobMode) {
+            swprintf_s(ceLabelBuf, L"B%d SZ: %.0f", bi, ceHistory[bi][lastIdx]);
+        } else {
+            swprintf_s(ceLabelBuf, L"B%d CE: %.0f", bi, ceHistory[bi][lastIdx]);
+        }
         gfx.DrawString(ceLabelBuf, -1, &labelFont,
                         Gdiplus::PointF(fChartX + 4.0f, fChartY + 2.0f),
                         &labelBrush);
 
-        // CE min/max on left side
+        // Min/max on right side
         wchar_t ceMaxBuf[24], ceMinBuf[24];
         swprintf_s(ceMaxBuf, L"%.0f", ceMax);
         swprintf_s(ceMinBuf, L"%.0f", ceMin);
@@ -392,12 +420,14 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                         Gdiplus::PointF(fChartX + fChartW - 50.0f, fChartY + fChartH - 14.0f),
                         &labelBrush);
 
-        // EE% label - top right area, yellow
-        wchar_t eeLabelBuf[32];
-        swprintf_s(eeLabelBuf, L"EE:%.1f%%", eeHistory[bi][lastIdx]);
-        gfx.DrawString(eeLabelBuf, -1, &labelFont,
-                        Gdiplus::PointF(fChartX + fChartW - 70.0f, fChartY + fChartH - 26.0f),
-                        &eeLabelBrush);
+        // EE% label only in d4sigma mode
+        if (!blobMode) {
+            wchar_t eeLabelBuf[32];
+            swprintf_s(eeLabelBuf, L"EE:%.1f%%", eeHistory[bi][lastIdx]);
+            gfx.DrawString(eeLabelBuf, -1, &labelFont,
+                            Gdiplus::PointF(fChartX + fChartW - 70.0f, fChartY + fChartH - 26.0f),
+                            &eeLabelBrush);
+        }
     }
 }
 

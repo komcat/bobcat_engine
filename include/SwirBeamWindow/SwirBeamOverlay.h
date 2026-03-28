@@ -26,7 +26,8 @@
 void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       const std::vector<BeamDetectionResult>& results,
                       int renderX, int renderY, int renderW, int renderH,
-                      uint32_t frameW, uint32_t frameH);
+                      uint32_t frameW, uint32_t frameH,
+                      bool blobMode = false);
 
 /// Draw real-time CE (circle energy) charts for B0 and B1.
 /// Charts are placed at the top-right of the viewport, stacked vertically.
@@ -46,7 +47,8 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                   const std::array<int, 2>& ceIndex,
                   const std::array<int, 2>& ceCount,
                   int historySize,
-                  int renderX, int renderY, int renderW, int renderH);
+                  int renderX, int renderY, int renderW, int renderH,
+                  bool blobMode = false);
 
 /// Draw magnified beam thumbnails at fixed positions in the viewport.
 /// B0 thumbnail at top-right, B1 thumbnail below it.

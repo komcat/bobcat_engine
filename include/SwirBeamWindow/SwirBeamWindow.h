@@ -191,6 +191,9 @@ private:
     void SaveBeamConfig();
     void OnEditBeamConfig();
 
+    // Beam saturation auto-adjust
+    void CheckAndAdjustSaturation(const std::vector<BeamDetectionResult>& results);
+
     // Beam optimization
     void OnBeamOptimize();
     void OnBeamFocus();
@@ -341,6 +344,8 @@ private:
     std::mutex m_beamMutex;
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
+    BlobDetectionConfig m_blobConfig;
+    bool m_useBlobDetection = true;   // false=d4sigma, true=blob
 
     // Beam focus optimization (reusable components)
     std::atomic<bool> m_beamFocusRunning{false};
@@ -354,10 +359,25 @@ private:
     std::array<std::vector<double>, 2> m_eeHistory;   // EE% history [0]=B0, [1]=B1
     std::array<int, 2> m_ceHistoryIndex = {0, 0};     // next write position (shared CE/EE)
     std::array<int, 2> m_ceHistoryCount = {0, 0};     // filled count (shared CE/EE)
+    std::array<int, 2> m_ceRejectCount = {0, 0};      // consecutive outlier rejection count
 
     // EMA-smoothed beam results for display (raw results used for scoring)
     std::vector<BeamDetectionResult> m_beamDisplayResults;
     static constexpr double EMA_ALPHA = 0.3;  // smoothing factor (0=full smooth, 1=no smooth)
+
+    // Saturation auto-adjust state
+    std::chrono::steady_clock::time_point m_lastSatAdjustTime{};
+
+    // Saturation auto-adjust parameters
+    static constexpr double SAT_EXPOSURE_START = 300.0;   // us - initial snap-to value
+    static constexpr double SAT_EXPOSURE_STEP  = 25.0;    // us
+    static constexpr double SAT_EXPOSURE_MIN   = 30.0;    // us
+    static constexpr double SAT_EXPOSURE_MAX   = 500.0;   // us
+    static constexpr double SAT_CURRENT_START  = 0.250;   // A (250 mA)
+    static constexpr double SAT_CURRENT_STEP   = 0.010;   // A (10 mA)
+    static constexpr double SAT_CURRENT_MIN    = 0.140;   // A (140 mA)
+    static constexpr double SAT_CURRENT_MAX    = 0.400;   // A (400 mA)
+    static constexpr uint8_t SAT_MIN_INTENSITY = 75;      // min peak pixel value
 
     // Paint throttle: track last InvalidateRect time to avoid flooding message queue
     std::chrono::steady_clock::time_point m_lastInvalidateTime{};
