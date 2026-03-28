@@ -703,6 +703,9 @@ set(SOURCES
     include/AuxWindow/AlignmentWizardDialog.cpp
     include/GdiWindow/GdiCameraWindow.cpp
     include/GdiWindow/GdiCameraWindowManager.cpp
+    include/GdiWindow/ChartOverlay.cpp
+    include/GdiWindow/VisionResultOverlay.cpp
+    include/GdiWindow/BeamStreamOverlay.cpp
     include/SwirBeamWindow/SwirBeamWindow.cpp
     include/SwirBeamWindow/SwirBeamWindowManager.cpp
     include/SwirBeamWindow/SwirPeakFinder.cpp
