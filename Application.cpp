@@ -766,6 +766,19 @@ void Application::addConnectionTasks()
         int count = m_cameraManager->ConnectAllCameras();
         m_cameraManager->StartBroadcastSystem();
         m_cameraManager->StartGrabbingAll();
+
+        // Apply default camera settings: auto exposure ON, auto gain OFF, gain 0, frame rate 10
+        for (const auto& camId : m_cameraManager->GetCameraIds()) {
+          auto status = m_cameraManager->GetCameraStatus(camId);
+          if (status.connected) {
+            auto settings = m_cameraManager->GetExposureSettings(camId);
+            settings.auto_exposure = true;
+            settings.auto_gain = false;
+            settings.gain = 0.0;
+            settings.frame_rate = 10.0;
+            m_cameraManager->ApplyExposureSettings(camId, settings);
+          }
+        }
         m_logManager->Info("Cameras connected and broadcasting", "Application");
         return count;
       },

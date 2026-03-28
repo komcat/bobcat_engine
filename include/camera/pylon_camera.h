@@ -144,7 +144,7 @@ public:
     double gain = 1.0;               // 0-10 scale
     bool exposure_auto = false;
     bool gain_auto = false;
-    double frame_rate = 30.0;        // frames per second (0 = unlimited/max)
+    double frame_rate = 10.0;        // frames per second (0 = unlimited/max)
   };
   bool ApplyExposureSettings(const ExposureSettings& settings);
 
