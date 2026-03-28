@@ -205,12 +205,13 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
 
             // Blob mode: minimal label (title + SZ + PK)
             // D4sigma mode: full label (title + dx/dy/EE/CE/TE/PK)
-            wchar_t szLine[32], pkLine[32];
+            wchar_t szLine[32], pkLine[32], spLine[32];
             wchar_t dxLine[32], dyLine[32];
             wchar_t eeLine[32], ceLine[32], teLine[32];
 
             swprintf_s(szLine, L"SZ: %6.0f", d4.dx * d4.dy);
             swprintf_s(pkLine, L"PK: %5d", static_cast<int>(beam.peakIntensity));
+            swprintf_s(spLine, L"SP: %5d", beam.saturatedPixelCount);
 
             const wchar_t* rows[8];
             int numRows = 0;
@@ -218,7 +219,7 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
 
             if (blobMode) {
                 rows[numRows++] = szLine;
-                rows[numRows++] = pkLine;
+                rows[numRows++] = spLine;
             } else {
                 swprintf_s(dxLine, L"dx: %6.1f", d4.dx);
                 swprintf_s(dyLine, L"dy: %6.1f", d4.dy);

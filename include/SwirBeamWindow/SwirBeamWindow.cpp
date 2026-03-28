@@ -2358,17 +2358,19 @@ void SwirBeamWindow::StartDetectionThread()
                             disp.label = raw.label;
                             disp.gaLabel = raw.gaLabel;
                             disp.saturated = raw.saturated;
+                            disp.peakIntensity = raw.peakIntensity;
+                            disp.saturatedPixelCount = raw.saturatedPixelCount;
                             disp.d4.roi = raw.d4.roi;
                         }
                     }
                 }
 
-                // Push CE/SZ values into history ring buffers (with outlier rejection)
-                // In blob mode, track blob area (dx*dy) instead of circle energy
+                // Push CE/SP values into history ring buffers (with outlier rejection)
+                // In blob mode, track saturated pixel count instead of circle energy
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
                     double newCE = m_useBlobDetection
-                        ? m_beamResults[bi].d4.dx * m_beamResults[bi].d4.dy
+                        ? static_cast<double>(m_beamResults[bi].saturatedPixelCount)
                         : m_beamResults[bi].circleEnergy;
 
                     // Outlier rejection: if we have enough history, reject values

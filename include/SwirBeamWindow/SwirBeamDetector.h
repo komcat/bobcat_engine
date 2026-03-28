@@ -28,6 +28,7 @@ struct BeamDetectionResult {
     std::string gaLabel;           // "GA1", "GA2", or ""
     bool saturated = false;        // any pixel > saturationValue
     uint8_t peakIntensity = 0;     // max raw pixel value in beam ROI
+    int saturatedPixelCount = 0;   // count of pixels at 255 in beam ROI
     double encircledEnergy = 0.0;  // EE within d4sigma/2 radius (0.0-1.0)
     double circleEnergy = 0.0;     // CE: energy inside the EE circle (arbitrary units)
     double totalEnergy = 0.0;      // TE: total energy in the ROI (arbitrary units)

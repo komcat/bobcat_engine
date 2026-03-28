@@ -524,13 +524,17 @@ std::vector<BeamDetectionResult> RunBlobDetection(
         blurred = grayMat;
     }
 
-    // Threshold to binary
+    // Threshold to binary for blob finding
     cv::Mat binary;
     if (config.useOtsu) {
         cv::threshold(blurred, binary, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
     } else {
         cv::threshold(blurred, binary, config.thresholdValue, 255, cv::THRESH_BINARY);
     }
+
+    // Hard saturation mask: only pixels at exactly 255 survive (for stable SP count)
+    cv::Mat satMask;
+    cv::threshold(grayMat, satMask, 254, 255, cv::THRESH_BINARY);
 
     // Find contours
     std::vector<std::vector<cv::Point>> contours;
@@ -544,10 +548,12 @@ std::vector<BeamDetectionResult> RunBlobDetection(
         cv::Moments mom;
         cv::Rect bbox;
         double cx, cy;
+        int contourIdx;  // index into contours vector for SP counting
     };
     std::vector<BlobCandidate> candidates;
 
-    for (const auto& contour : contours) {
+    for (int ci = 0; ci < static_cast<int>(contours.size()); ++ci) {
+        const auto& contour = contours[ci];
         double area = cv::contourArea(contour);
         if (area < config.minBlobArea || area > config.maxBlobArea) continue;
 
@@ -560,6 +566,7 @@ std::vector<BeamDetectionResult> RunBlobDetection(
         cand.bbox = cv::boundingRect(contour);
         cand.cx = mom.m10 / mom.m00;
         cand.cy = mom.m01 / mom.m00;
+        cand.contourIdx = ci;
         candidates.push_back(cand);
     }
 
@@ -615,7 +622,7 @@ std::vector<BeamDetectionResult> RunBlobDetection(
             res.gaLabel = "GA1";
         }
 
-        // Peak intensity and saturation check in ROI
+        // Peak intensity and total energy in ROI
         uint8_t maxPixel = 0;
         double totalEnergy = 0.0;
         for (int r = res.d4.roi.y0; r < res.d4.roi.y1; ++r) {
@@ -628,6 +635,26 @@ std::vector<BeamDetectionResult> RunBlobDetection(
         res.peakIntensity = maxPixel;
         res.saturated = (maxPixel > config.saturationValue);
         res.totalEnergy = totalEnergy;
+
+        // Saturated pixel count: count 255-only pixels within the blob contour
+        // Uses satMask (binary threshold at 254) so only truly saturated pixels
+        // are counted — stable regardless of camera position or ROI padding
+        {
+            cv::Rect bbox = cand.bbox;
+            cv::Mat localMask = cv::Mat::zeros(bbox.height, bbox.width, CV_8UC1);
+            // Shift contour points to local bbox coordinates
+            std::vector<cv::Point> shifted;
+            shifted.reserve(contours[cand.contourIdx].size());
+            for (const auto& pt : contours[cand.contourIdx]) {
+                shifted.emplace_back(pt.x - bbox.x, pt.y - bbox.y);
+            }
+            std::vector<std::vector<cv::Point>> shiftedContours = { shifted };
+            cv::drawContours(localMask, shiftedContours, 0, cv::Scalar(255), cv::FILLED);
+            cv::Mat localSat = satMask(bbox);
+            cv::Mat maskedSat;
+            cv::bitwise_and(localSat, localMask, maskedSat);
+            res.saturatedPixelCount = cv::countNonZero(maskedSat);
+        }
 
         // Encircled energy: use the blob area circle
         double eeRadius = std::max(bw, bh) / 2.0;
