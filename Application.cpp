@@ -320,6 +320,10 @@ void Application::initializeManagers()
     updateSplash("QtCameraWindow");
     initializeQtCameraWindow();
     completeSplash("QtCameraWindow");
+
+    updateSplash("QtCameraWindow2");
+    initializeQtCameraWindow2();
+    completeSplash("QtCameraWindow2");
 #endif
 
     updateSplash("SwirBeamWindow");
@@ -1186,6 +1190,10 @@ void Application::shutdownManagers()
   }
 
 #ifdef USE_QT_CAMERA_WINDOW
+  if (m_qtCameraWindow2) {
+    m_qtCameraWindow2->shutdown();
+    m_qtCameraWindow2.reset();
+  }
   if (m_qtCameraWindow) {
     m_qtCameraWindow->shutdown();
     m_qtCameraWindow.reset();
@@ -1995,10 +2003,45 @@ void Application::initializeQtCameraWindow()
 
   if (m_qtCameraWindow->initialize()) {
     m_context.qtCameraWindow = m_qtCameraWindow.get();
-    m_qtCameraWindow->show();
-    m_logManager->Info("QtCameraWindow initialized and shown", "Application");
+
+    // Respect saved visibility — show only if previously visible (default: true for first run)
+    QSettings settings("Fabrinet", "BobcatEngine");
+    const bool wasVisible = settings.value("GdiCameraWindow/visible", true).toBool();
+    if (wasVisible) {
+      m_qtCameraWindow->show();
+    }
+    m_logManager->Info("QtCameraWindow initialized", "Application");
   } else {
     m_logManager->Warning("QtCameraWindow failed to initialize", "Application");
+  }
+}
+
+void Application::initializeQtCameraWindow2()
+{
+  m_logManager->Debug("Initializing QtCameraWindow2...", "Application");
+
+  m_qtCameraWindow2 = std::make_unique<QtCameraWindow>("2");
+
+  m_qtCameraWindow2->setCameraManager(m_cameraManager.get());
+  m_qtCameraWindow2->setDataStore(m_dataStore.get());
+  m_qtCameraWindow2->setMotionManager(m_motionManager.get());
+
+  if (m_cameraConfigManager) {
+    m_qtCameraWindow2->setCameraConfigManager(m_cameraConfigManager.get());
+  }
+
+  if (m_qtCameraWindow2->initialize()) {
+    m_context.qtCameraWindow2 = m_qtCameraWindow2.get();
+
+    // Respect saved visibility — hidden by default for second window
+    QSettings settings("Fabrinet", "BobcatEngine");
+    const bool wasVisible = settings.value("GdiCameraWindow2/visible", false).toBool();
+    if (wasVisible) {
+      m_qtCameraWindow2->show();
+    }
+    m_logManager->Info("QtCameraWindow2 initialized", "Application");
+  } else {
+    m_logManager->Warning("QtCameraWindow2 failed to initialize", "Application");
   }
 }
 #endif

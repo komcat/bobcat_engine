@@ -82,7 +82,8 @@ private:
   void initializeGdiCameraWindow();   // GDI camera monitor window
   void initializeGdiCameraWindow2();  // Second GDI camera monitor window
 #ifdef USE_QT_CAMERA_WINDOW
-  void initializeQtCameraWindow();   // Qt-based camera monitor (testing)
+  void initializeQtCameraWindow();   // Qt-based camera monitor
+  void initializeQtCameraWindow2();  // Second Qt-based camera monitor
 #endif
   void initializeSwirBeamWindow();   // SWIR beam processing window
   void initializePowerSupplySystem();
@@ -138,7 +139,8 @@ private:
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager2;  // Second GDI camera monitor
 #ifdef USE_QT_CAMERA_WINDOW
-  std::unique_ptr<QtCameraWindow> m_qtCameraWindow;                  // Qt camera monitor (testing)
+  std::unique_ptr<QtCameraWindow> m_qtCameraWindow;                  // Qt camera monitor
+  std::unique_ptr<QtCameraWindow> m_qtCameraWindow2;                 // Second Qt camera monitor
 #endif
   std::unique_ptr<SwirBeamWindowManager> m_swirBeamWindowManager;    // SWIR beam processing window
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;

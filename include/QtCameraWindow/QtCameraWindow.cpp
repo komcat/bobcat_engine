@@ -1278,6 +1278,7 @@ void QtCameraWindow::showEvent(QShowEvent* event)
 
 void QtCameraWindow::hideEvent(QHideEvent* event)
 {
+    saveSettings();
     QWidget::hideEvent(event);
     emit visibilityChanged(false);
 }
