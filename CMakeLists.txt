@@ -706,6 +706,8 @@ set(SOURCES
     include/GdiWindow/ChartOverlay.cpp
     include/GdiWindow/VisionResultOverlay.cpp
     include/GdiWindow/BeamStreamOverlay.cpp
+    include/QtCameraWindow/QtCameraViewport.cpp
+    include/QtCameraWindow/QtCameraWindow.cpp
     include/SwirBeamWindow/SwirBeamWindow.cpp
     include/SwirBeamWindow/SwirBeamWindowManager.cpp
     include/SwirBeamWindow/SwirPeakFinder.cpp
@@ -1318,7 +1320,7 @@ endif()
 # WIN32_LEAN_AND_MEAN prevents windows.h from including winsock.h (v1),
 # allowing winsock2.h to be safely included in any order
 if(WIN32)
-    target_compile_definitions(bobcat_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(bobcat_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN USE_QT_CAMERA_WINDOW)
 endif()
 
 # ============================================================================

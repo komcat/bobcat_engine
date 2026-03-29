@@ -22,6 +22,7 @@ class DeviceUnderTest;
 class SafetyWatchManager;
 class DeviceLinkManager;
 class GdiCameraWindowManager;  // GDI-based camera monitor window
+class QtCameraWindow;          // Qt-based camera monitor window
 class SwirBeamWindowManager;   // SWIR beam processing window
 class ApplicationSettings;  // Application-wide configurable settings
 class SafetyEventLog;       // Structured safety event logging
@@ -59,6 +60,8 @@ struct ApplicationContext
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
   GdiCameraWindowManager* gdiCameraWindowManager2 = nullptr; // Second GDI camera monitor window
+  QtCameraWindow* qtCameraWindow = nullptr;                  // Qt camera monitor window
+  QtCameraWindow* qtCameraWindow2 = nullptr;                 // Second Qt camera monitor window
   SwirBeamWindowManager* swirBeamWindowManager = nullptr;    // SWIR beam processing window
   ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
   SafetyEventLog* safetyEventLog = nullptr;            // Structured safety event logging
