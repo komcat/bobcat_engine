@@ -314,20 +314,30 @@ void RetraceAndApplyWidget::setState(WizardState state)
 
     case WaitP1:
         m_wizardStack->setCurrentIndex(1);
+        m_confirmP1Btn->setEnabled(false);
         m_p1InstructionLabel->setText(QString(
-            "Step 1/3: Jog gantry to Point 1 position\n\n"
+            "Step 1/3: Navigating to Point 1...\n\n"
             "Taught P1: X=%1  Y=%2  Z=%3\n\n"
-            "Move gantry near Point 1, then press Confirm.\n"
-            "Current position will overwrite saved Point 1.")
+            "Moving gantry to Point 1, please wait...")
             .arg(m_set->point1.x, 0, 'f', 4)
             .arg(m_set->point1.y, 0, 'f', 4)
             .arg(m_set->point1.z, 0, 'f', 4));
         m_positionTimer->start(100);
+        QTimer::singleShot(0, this, [this]() { autoNavigateToP1(); });
         break;
 
     case WaitP2:
         m_wizardStack->setCurrentIndex(2);
+        m_confirmP2Btn->setEnabled(false);
+        m_p2InstructionLabel->setText(QString(
+            "Step 2/3: Navigating to Point 2...\n\n"
+            "Taught P2: X=%1  Y=%2  Z=%3\n\n"
+            "Moving gantry to Point 2, please wait...")
+            .arg(m_taughtP2X, 0, 'f', 4)
+            .arg(m_taughtP2Y, 0, 'f', 4)
+            .arg(m_taughtP2Z, 0, 'f', 4));
         m_positionTimer->start(100);
+        QTimer::singleShot(0, this, [this]() { autoNavigateToP2(); });
         break;
 
     case ReviewApply:
@@ -350,13 +360,13 @@ void RetraceAndApplyWidget::onStartRetrace()
         return;
     }
 
-    // Save taught delta BEFORE any overwrite
-    m_taughtDeltaX = m_set->point2.x - m_set->point1.x;
-    m_taughtDeltaY = m_set->point2.y - m_set->point1.y;
-    m_taughtDeltaZ = m_set->point2.z - m_set->point1.z;
+    // Save taught P2 absolute position BEFORE any overwrite
+    m_taughtP2X = m_set->point2.x;
+    m_taughtP2Y = m_set->point2.y;
+    m_taughtP2Z = m_set->point2.z;
 
-    std::cout << "[Retrace] Start. Taught delta: dX=" << m_taughtDeltaX
-              << " dY=" << m_taughtDeltaY << " dZ=" << m_taughtDeltaZ << std::endl;
+    std::cout << "[Retrace] Start. Taught P2: X=" << m_taughtP2X
+              << " Y=" << m_taughtP2Y << " Z=" << m_taughtP2Z << std::endl;
 
     // Reset applied flag for this run
     m_set->correction.applied = false;
@@ -379,47 +389,6 @@ void RetraceAndApplyWidget::onConfirmP1()
     m_set->point1.valid = true;
 
     std::cout << "[Retrace] P1 confirmed: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
-
-    // MoveRelative by taught delta to reach P2 area
-    std::cout << "[Retrace] MoveRelative to P2: dX=" << m_taughtDeltaX
-              << " dY=" << m_taughtDeltaY << " dZ=" << m_taughtDeltaZ << std::endl;
-
-    m_confirmP1Btn->setEnabled(false);
-    m_confirmP1Btn->setText("Moving to P2...");
-
-    // Execute move relative for each axis that has a non-zero delta
-    bool moveOk = true;
-    if (std::abs(m_taughtDeltaX) > 1e-6) {
-        moveOk = m_context->motionManager->MoveRelative(m_set->deviceName, "X", m_taughtDeltaX, true);
-    }
-    if (moveOk && std::abs(m_taughtDeltaY) > 1e-6) {
-        moveOk = m_context->motionManager->MoveRelative(m_set->deviceName, "Y", m_taughtDeltaY, true);
-    }
-    if (moveOk && std::abs(m_taughtDeltaZ) > 1e-6) {
-        moveOk = m_context->motionManager->MoveRelative(m_set->deviceName, "Z", m_taughtDeltaZ, true);
-    }
-
-    m_confirmP1Btn->setEnabled(true);
-    m_confirmP1Btn->setText("Confirm Point 1");
-
-    if (!moveOk) {
-        QMessageBox::warning(this, "Move Failed",
-            "Failed to move gantry by taught delta. Check device connection.");
-        return;
-    }
-
-    auto p2pos = m_context->motionManager->GetCurrentPosition(m_set->deviceName);
-    std::cout << "[Retrace] Arrived at P2 area: X=" << p2pos.x << " Y=" << p2pos.y << " Z=" << p2pos.z << std::endl;
-
-    m_p2InstructionLabel->setText(QString(
-        "Step 2/3: Verify Point 2\n\n"
-        "Gantry moved by taught delta to P2 area.\n"
-        "Current: X=%1  Y=%2  Z=%3\n\n"
-        "Adjust manually if needed, then press Confirm.\n"
-        "Current position will overwrite saved Point 2.")
-        .arg(p2pos.x, 0, 'f', 4)
-        .arg(p2pos.y, 0, 'f', 4)
-        .arg(p2pos.z, 0, 'f', 4));
 
     setState(WaitP2);
 }
@@ -498,6 +467,74 @@ void RetraceAndApplyWidget::onConfirmP2()
     emit retraceCompleted(*m_set);
 
     setState(ReviewApply);
+}
+
+void RetraceAndApplyWidget::autoNavigateToP1()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[Retrace] Auto-navigating to P1: X=" << m_set->point1.x
+              << " Y=" << m_set->point1.y << " Z=" << m_set->point1.z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_set->point1.x, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_set->point1.y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_set->point1.z, true);
+
+    if (!moveOk) {
+        m_p1InstructionLabel->setText(QString(
+            "Step 1/3: Auto-navigate to Point 1 FAILED\n\n"
+            "Taught P1: X=%1  Y=%2  Z=%3\n\n"
+            "Manually jog to Point 1, then press Confirm.")
+            .arg(m_set->point1.x, 0, 'f', 4)
+            .arg(m_set->point1.y, 0, 'f', 4)
+            .arg(m_set->point1.z, 0, 'f', 4));
+    } else {
+        m_p1InstructionLabel->setText(QString(
+            "Step 1/3: Arrived at Point 1\n\n"
+            "Taught P1: X=%1  Y=%2  Z=%3\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_set->point1.x, 0, 'f', 4)
+            .arg(m_set->point1.y, 0, 'f', 4)
+            .arg(m_set->point1.z, 0, 'f', 4));
+    }
+    m_confirmP1Btn->setEnabled(true);
+}
+
+void RetraceAndApplyWidget::autoNavigateToP2()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[Retrace] Auto-navigating to P2: X=" << m_taughtP2X
+              << " Y=" << m_taughtP2Y << " Z=" << m_taughtP2Z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_taughtP2X, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_taughtP2Y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_taughtP2Z, true);
+
+    if (!moveOk) {
+        m_p2InstructionLabel->setText(QString(
+            "Step 2/3: Auto-navigate to Point 2 FAILED\n\n"
+            "Taught P2: X=%1  Y=%2  Z=%3\n\n"
+            "Manually jog to Point 2, then press Confirm.")
+            .arg(m_taughtP2X, 0, 'f', 4)
+            .arg(m_taughtP2Y, 0, 'f', 4)
+            .arg(m_taughtP2Z, 0, 'f', 4));
+    } else {
+        m_p2InstructionLabel->setText(QString(
+            "Step 2/3: Arrived at Point 2\n\n"
+            "Taught P2: X=%1  Y=%2  Z=%3\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_taughtP2X, 0, 'f', 4)
+            .arg(m_taughtP2Y, 0, 'f', 4)
+            .arg(m_taughtP2Z, 0, 'f', 4));
+    }
+    m_confirmP2Btn->setEnabled(true);
 }
 
 void RetraceAndApplyWidget::onApplyCorrection()
