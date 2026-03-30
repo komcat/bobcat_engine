@@ -45,6 +45,8 @@ private:
 
     void setupUI();
     void setState(WizardState state);
+    void autoNavigateToReference();
+    void autoNavigateToTarget();
 
     ApplicationContext* m_context;
     ZOffsetSet* m_set = nullptr;

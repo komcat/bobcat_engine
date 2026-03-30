@@ -48,6 +48,8 @@ private:
 
     void setupUI();
     void setState(WizardState state);
+    void autoNavigateToRefP1();
+    void autoNavigateToTgtP1();
 
     ApplicationContext* m_context;
     YawTrainerSet* m_set = nullptr;

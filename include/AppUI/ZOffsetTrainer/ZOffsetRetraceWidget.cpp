@@ -309,28 +309,30 @@ void ZOffsetRetraceWidget::setState(WizardState state)
 
     case WaitReference:
         m_wizardStack->setCurrentIndex(1);
+        m_confirmRefBtn->setEnabled(false);
         m_refInstructionLabel->setText(QString(
-            "Step 1/3: Jog gantry to Reference Surface\n\n"
+            "Step 1/3: Navigating to Reference Surface...\n\n"
             "Saved Reference: Z=%1 mm  (X=%2, Y=%3)\n\n"
-            "Move gantry to reference surface, then press Confirm.\n"
-            "Current position will overwrite saved Reference.")
+            "Moving gantry to reference surface, please wait...")
             .arg(m_set->reference.z, 0, 'f', 4)
             .arg(m_set->reference.x, 0, 'f', 4)
             .arg(m_set->reference.y, 0, 'f', 4));
         m_positionTimer->start(100);
+        QTimer::singleShot(0, this, [this]() { autoNavigateToReference(); });
         break;
 
     case WaitTarget:
         m_wizardStack->setCurrentIndex(2);
+        m_confirmTgtBtn->setEnabled(false);
         m_tgtInstructionLabel->setText(QString(
-            "Step 2/3: Jog gantry to Target Surface\n\n"
+            "Step 2/3: Navigating to Target Surface...\n\n"
             "Saved Target: Z=%1 mm  (X=%2, Y=%3)\n\n"
-            "Move gantry to target surface, then press Confirm.\n"
-            "Current position will overwrite saved Target.")
+            "Moving gantry to target surface, please wait...")
             .arg(m_set->target.z, 0, 'f', 4)
             .arg(m_set->target.x, 0, 'f', 4)
             .arg(m_set->target.y, 0, 'f', 4));
         m_positionTimer->start(100);
+        QTimer::singleShot(0, this, [this]() { autoNavigateToTarget(); });
         break;
 
     case ReviewApply:
@@ -439,6 +441,74 @@ void ZOffsetRetraceWidget::onConfirmTarget()
     emit retraceCompleted(*m_set);
 
     setState(ReviewApply);
+}
+
+void ZOffsetRetraceWidget::autoNavigateToReference()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[ZOffsetRetrace] Auto-navigating to Reference: X=" << m_set->reference.x
+              << " Y=" << m_set->reference.y << " Z=" << m_set->reference.z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_set->reference.x, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_set->reference.y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_set->reference.z, true);
+
+    if (!moveOk) {
+        m_refInstructionLabel->setText(QString(
+            "Step 1/3: Auto-navigate to Reference Surface FAILED\n\n"
+            "Saved Reference: Z=%1 mm  (X=%2, Y=%3)\n\n"
+            "Manually jog to reference surface, then press Confirm.")
+            .arg(m_set->reference.z, 0, 'f', 4)
+            .arg(m_set->reference.x, 0, 'f', 4)
+            .arg(m_set->reference.y, 0, 'f', 4));
+    } else {
+        m_refInstructionLabel->setText(QString(
+            "Step 1/3: Arrived at Reference Surface\n\n"
+            "Saved Reference: Z=%1 mm  (X=%2, Y=%3)\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_set->reference.z, 0, 'f', 4)
+            .arg(m_set->reference.x, 0, 'f', 4)
+            .arg(m_set->reference.y, 0, 'f', 4));
+    }
+    m_confirmRefBtn->setEnabled(true);
+}
+
+void ZOffsetRetraceWidget::autoNavigateToTarget()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[ZOffsetRetrace] Auto-navigating to Target: X=" << m_set->target.x
+              << " Y=" << m_set->target.y << " Z=" << m_set->target.z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_set->target.x, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_set->target.y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_set->target.z, true);
+
+    if (!moveOk) {
+        m_tgtInstructionLabel->setText(QString(
+            "Step 2/3: Auto-navigate to Target Surface FAILED\n\n"
+            "Saved Target: Z=%1 mm  (X=%2, Y=%3)\n\n"
+            "Manually jog to target surface, then press Confirm.")
+            .arg(m_set->target.z, 0, 'f', 4)
+            .arg(m_set->target.x, 0, 'f', 4)
+            .arg(m_set->target.y, 0, 'f', 4));
+    } else {
+        m_tgtInstructionLabel->setText(QString(
+            "Step 2/3: Arrived at Target Surface\n\n"
+            "Saved Target: Z=%1 mm  (X=%2, Y=%3)\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_set->target.z, 0, 'f', 4)
+            .arg(m_set->target.x, 0, 'f', 4)
+            .arg(m_set->target.y, 0, 'f', 4));
+    }
+    m_confirmTgtBtn->setEnabled(true);
 }
 
 void ZOffsetRetraceWidget::onApplyCorrection()
