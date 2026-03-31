@@ -33,6 +33,12 @@
 #include <QSizePolicy>
 #include <QListWidget>
 #include <QPushButton>
+#include <QGridLayout>
+#include <QMenu>
+#include <QDialog>
+#include <QLineEdit>
+#include <QDoubleSpinBox>
+#include <QDialogButtonBox>
 
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -114,6 +120,9 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
 
     buildSidePanel();
     mainLayout->addWidget(m_sidePanelScroll);
+
+    buildQuickMovePanel();
+    mainLayout->addWidget(m_quickMovePanel);
 
     m_viewport = new QtCameraViewport(this);
     mainLayout->addWidget(m_viewport, 1);
@@ -224,6 +233,260 @@ void QtCameraWindow::buildSidePanel()
 
     m_sidePanelScroll->setWidget(container);
 }
+
+// ============================================================================
+// Quick-move panel (second left panel)
+// ============================================================================
+
+void QtCameraWindow::buildQuickMovePanel()
+{
+    m_quickMovePanel = new QWidget(this);
+    m_quickMovePanel->setFixedWidth(240);
+    m_quickMovePanel->setStyleSheet("QWidget { background-color: #252526; }");
+
+    auto* outerLayout = new QVBoxLayout(m_quickMovePanel);
+    outerLayout->setContentsMargins(4, 4, 4, 4);
+    outerLayout->setSpacing(4);
+
+    auto* group = new QGroupBox("Quick Move");
+    group->setStyleSheet(
+        "QGroupBox { color: #cccccc; border: 1px solid #3e3e42; border-radius: 4px; "
+        "            margin-top: 6px; padding-top: 4px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
+    );
+
+    auto* grid = new QGridLayout(group);
+    grid->setSpacing(4);
+    grid->setContentsMargins(6, 8, 6, 6);
+
+    static const QString btnStyle =
+        "QPushButton { background-color: #3e3e42; border: 1px solid #555; "
+        "              color: #cccccc; padding: 6px; min-height: 28px; "
+        "              border-radius: 3px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #505054; }"
+        "QPushButton:pressed { background-color: #007acc; }";
+
+    static const QString unassignedStyle =
+        "QPushButton { background-color: #333337; border: 1px dashed #555; "
+        "              color: #666666; padding: 6px; min-height: 28px; "
+        "              border-radius: 3px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #3e3e42; }";
+
+    for (int i = 0; i < QUICK_MOVE_COUNT; ++i) {
+        auto* btn = new QPushButton("---");
+        btn->setStyleSheet(unassignedStyle);
+        btn->setContextMenuPolicy(Qt::CustomContextMenu);
+
+        const int row = i / QUICK_MOVE_COLS;
+        const int col = i % QUICK_MOVE_COLS;
+        grid->addWidget(btn, row, col);
+
+        m_quickMoveBtns[i] = btn;
+
+        connect(btn, &QPushButton::clicked, this, [this, i]() {
+            onQuickMoveClicked(i);
+        });
+        connect(btn, &QPushButton::customContextMenuRequested, this, [this, i]() {
+            onQuickMoveRightClicked(i);
+        });
+    }
+
+    outerLayout->addWidget(group);
+    outerLayout->addStretch();
+
+    loadQuickMoveSettings();
+}
+
+void QtCameraWindow::onQuickMoveClicked(int index)
+{
+    if (index < 0 || index >= QUICK_MOVE_COUNT) return;
+    const auto& data = m_quickMoveData[index];
+    if (!data.assigned) return;
+    if (!m_motionManager) return;
+
+    // Execute relative moves for each non-zero axis (non-blocking for X/Y, blocking for Z)
+    if (data.relX != 0.0) {
+        m_motionManager->MoveRelative("gantry-main", "X", data.relX, false);
+    }
+    if (data.relY != 0.0) {
+        m_motionManager->MoveRelative("gantry-main", "Y", data.relY, false);
+    }
+    if (data.relZ != 0.0) {
+        m_motionManager->MoveRelative("gantry-main", "Z", data.relZ, false);
+    }
+}
+
+void QtCameraWindow::onQuickMoveRightClicked(int index)
+{
+    if (index < 0 || index >= QUICK_MOVE_COUNT) return;
+
+    QMenu menu(this);
+    menu.setStyleSheet(
+        "QMenu { background-color: #2d2d30; color: #cccccc; border: 1px solid #3e3e42; }"
+        "QMenu::item:selected { background-color: #007acc; }"
+    );
+
+    auto* configAction = menu.addAction("Configure...");
+    auto* clearAction  = menu.addAction("Clear");
+
+    QAction* chosen = menu.exec(QCursor::pos());
+    if (chosen == configAction) {
+        showQuickMoveConfigDialog(index);
+    } else if (chosen == clearAction) {
+        m_quickMoveData[index] = QuickMoveButtonData{};
+        updateQuickMoveButton(index);
+        saveQuickMoveSettings();
+    }
+}
+
+void QtCameraWindow::showQuickMoveConfigDialog(int index)
+{
+    if (index < 0 || index >= QUICK_MOVE_COUNT) return;
+
+    const auto& existing = m_quickMoveData[index];
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Configure Quick Move Button");
+    dlg.setFixedSize(280, 220);
+    dlg.setStyleSheet(
+        "QDialog { background-color: #2d2d30; color: #cccccc; }"
+        "QLabel { color: #cccccc; }"
+        "QLineEdit { background-color: #3e3e42; color: #cccccc; border: 1px solid #555; "
+        "            padding: 2px 4px; }"
+        "QDoubleSpinBox { background-color: #3e3e42; color: #cccccc; border: 1px solid #555; "
+        "                 padding: 2px 4px; }"
+    );
+
+    auto* layout = new QFormLayout(&dlg);
+    layout->setSpacing(8);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    auto* labelEdit = new QLineEdit(existing.label);
+    labelEdit->setMaxLength(4);
+    labelEdit->setPlaceholderText("4 chars max");
+    layout->addRow("Label:", labelEdit);
+
+    auto makeSpinBox = [&](double val) {
+        auto* spin = new QDoubleSpinBox();
+        spin->setRange(-999.0, 999.0);
+        spin->setDecimals(4);
+        spin->setSuffix(" mm");
+        spin->setValue(val);
+        return spin;
+    };
+
+    auto* xSpin = makeSpinBox(existing.relX);
+    auto* ySpin = makeSpinBox(existing.relY);
+    auto* zSpin = makeSpinBox(existing.relZ);
+
+    layout->addRow("Rel X:", xSpin);
+    layout->addRow("Rel Y:", ySpin);
+    layout->addRow("Rel Z:", zSpin);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttons->setStyleSheet(
+        "QPushButton { background-color: #3e3e42; color: #cccccc; border: 1px solid #555; "
+        "              padding: 4px 16px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #007acc; }"
+    );
+    layout->addRow(buttons);
+
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        auto& data = m_quickMoveData[index];
+        data.assigned = true;
+        data.label = labelEdit->text().left(4);
+        data.relX  = xSpin->value();
+        data.relY  = ySpin->value();
+        data.relZ  = zSpin->value();
+
+        if (data.label.isEmpty()) {
+            data.label = QString("B%1").arg(index);
+        }
+
+        updateQuickMoveButton(index);
+        saveQuickMoveSettings();
+    }
+}
+
+void QtCameraWindow::updateQuickMoveButton(int index)
+{
+    if (index < 0 || index >= QUICK_MOVE_COUNT) return;
+    if (!m_quickMoveBtns[index]) return;
+
+    const auto& data = m_quickMoveData[index];
+
+    static const QString assignedStyle =
+        "QPushButton { background-color: #3e3e42; border: 1px solid #555; "
+        "              color: #cccccc; padding: 6px; min-height: 28px; "
+        "              border-radius: 3px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #505054; }"
+        "QPushButton:pressed { background-color: #007acc; }";
+
+    static const QString unassignedStyle =
+        "QPushButton { background-color: #333337; border: 1px dashed #555; "
+        "              color: #666666; padding: 6px; min-height: 28px; "
+        "              border-radius: 3px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #3e3e42; }";
+
+    if (data.assigned) {
+        m_quickMoveBtns[index]->setText(data.label);
+        m_quickMoveBtns[index]->setStyleSheet(assignedStyle);
+        m_quickMoveBtns[index]->setToolTip(
+            QString("X:%1  Y:%2  Z:%3 mm")
+                .arg(data.relX, 0, 'f', 4)
+                .arg(data.relY, 0, 'f', 4)
+                .arg(data.relZ, 0, 'f', 4));
+    } else {
+        m_quickMoveBtns[index]->setText("---");
+        m_quickMoveBtns[index]->setStyleSheet(unassignedStyle);
+        m_quickMoveBtns[index]->setToolTip("");
+    }
+}
+
+void QtCameraWindow::saveQuickMoveSettings()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    for (int i = 0; i < QUICK_MOVE_COUNT; ++i) {
+        const QString prefix = quickMoveKey(QString::number(i));
+        const auto& d = m_quickMoveData[i];
+        settings.setValue(prefix + "/assigned", d.assigned);
+        settings.setValue(prefix + "/label",    d.label);
+        settings.setValue(prefix + "/relX",     d.relX);
+        settings.setValue(prefix + "/relY",     d.relY);
+        settings.setValue(prefix + "/relZ",     d.relZ);
+    }
+    settings.sync();
+}
+
+void QtCameraWindow::loadQuickMoveSettings()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    for (int i = 0; i < QUICK_MOVE_COUNT; ++i) {
+        const QString prefix = quickMoveKey(QString::number(i));
+        auto& d = m_quickMoveData[i];
+        d.assigned = settings.value(prefix + "/assigned", false).toBool();
+        d.label    = settings.value(prefix + "/label", "").toString().left(4);
+        d.relX     = settings.value(prefix + "/relX", 0.0).toDouble();
+        d.relY     = settings.value(prefix + "/relY", 0.0).toDouble();
+        d.relZ     = settings.value(prefix + "/relZ", 0.0).toDouble();
+        updateQuickMoveButton(i);
+    }
+}
+
+QString QtCameraWindow::quickMoveKey(const QString& key) const
+{
+    const QString prefix = m_instanceId.empty()
+        ? QStringLiteral("QtCameraWindow")
+        : QString::fromStdString("QtCameraWindow_" + m_instanceId);
+    return prefix + "/QuickMove/" + key;
+}
+
+// ============================================================================
+// Side panel group factories
+// ============================================================================
 
 QGroupBox* QtCameraWindow::createCameraGroup()
 {
