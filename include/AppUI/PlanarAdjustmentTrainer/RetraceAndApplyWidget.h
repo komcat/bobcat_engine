@@ -45,14 +45,16 @@ private:
 
     void setupUI();
     void setState(WizardState state);
+    void autoNavigateToP1();
+    void autoNavigateToP2();
 
     ApplicationContext* m_context;
     PlanarAdjustmentSet* m_set = nullptr;
 
-    // Taught delta (computed from original P1/P2 before retrace)
-    double m_taughtDeltaX = 0.0;
-    double m_taughtDeltaY = 0.0;
-    double m_taughtDeltaZ = 0.0;
+    // Taught absolute P2 position (saved before any overwrite)
+    double m_taughtP2X = 0.0;
+    double m_taughtP2Y = 0.0;
+    double m_taughtP2Z = 0.0;
 
     WizardState m_state = Idle;
 

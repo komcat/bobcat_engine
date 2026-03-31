@@ -291,14 +291,17 @@ void YawRetraceWidget::setState(WizardState state)
 
     case WaitRefP1:
         m_wizardStack->setCurrentIndex(1);
+        m_confirmRefP1Btn->setEnabled(false);
         m_refP1InstructionLabel->setText(QString(
-            "Step 1/4: Jog gantry to Reference Line Point 1\n\n"
+            "Step 1/4: Navigating to Reference Line Point 1...\n\n"
             "Taught Ref P1: X=%1  Y=%2  Z=%3\n\n"
-            "Move to Reference P1, then press Confirm.")
+            "Moving gantry to Reference P1, please wait...")
             .arg(m_set->referenceLine.p1x, 0, 'f', 4)
             .arg(m_set->referenceLine.p1y, 0, 'f', 4)
             .arg(m_set->referenceLine.p1z, 0, 'f', 4));
         m_positionTimer->start(100);
+        // Auto-navigate to taught RefP1 position
+        QTimer::singleShot(0, this, [this]() { autoNavigateToRefP1(); });
         break;
 
     case WaitRefP2:
@@ -308,14 +311,17 @@ void YawRetraceWidget::setState(WizardState state)
 
     case WaitTgtP1:
         m_wizardStack->setCurrentIndex(3);
+        m_confirmTgtP1Btn->setEnabled(false);
         m_tgtP1InstructionLabel->setText(QString(
-            "Step 3/4: Jog gantry to Target Line Point 1\n\n"
+            "Step 3/4: Navigating to Target Line Point 1...\n\n"
             "Taught Tgt P1: X=%1  Y=%2  Z=%3\n\n"
-            "Move to Target P1, then press Confirm.")
+            "Moving gantry to Target P1, please wait...")
             .arg(m_set->targetLine.p1x, 0, 'f', 4)
             .arg(m_set->targetLine.p1y, 0, 'f', 4)
             .arg(m_set->targetLine.p1z, 0, 'f', 4));
         m_positionTimer->start(100);
+        // Auto-navigate to taught TgtP1 position
+        QTimer::singleShot(0, this, [this]() { autoNavigateToTgtP1(); });
         break;
 
     case WaitTgtP2:
@@ -540,6 +546,74 @@ void YawRetraceWidget::onConfirmTgtP2()
     emit retraceCompleted(*m_set);
 
     setState(ReviewApply);
+}
+
+void YawRetraceWidget::autoNavigateToRefP1()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[YawRetrace] Auto-navigating to Ref P1: X=" << m_set->referenceLine.p1x
+              << " Y=" << m_set->referenceLine.p1y << " Z=" << m_set->referenceLine.p1z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_set->referenceLine.p1x, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_set->referenceLine.p1y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_set->referenceLine.p1z, true);
+
+    if (!moveOk) {
+        m_refP1InstructionLabel->setText(QString(
+            "Step 1/4: Auto-navigate to Reference P1 FAILED\n\n"
+            "Taught Ref P1: X=%1  Y=%2  Z=%3\n\n"
+            "Manually jog to Reference P1, then press Confirm.")
+            .arg(m_set->referenceLine.p1x, 0, 'f', 4)
+            .arg(m_set->referenceLine.p1y, 0, 'f', 4)
+            .arg(m_set->referenceLine.p1z, 0, 'f', 4));
+    } else {
+        m_refP1InstructionLabel->setText(QString(
+            "Step 1/4: Arrived at Reference Line Point 1\n\n"
+            "Taught Ref P1: X=%1  Y=%2  Z=%3\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_set->referenceLine.p1x, 0, 'f', 4)
+            .arg(m_set->referenceLine.p1y, 0, 'f', 4)
+            .arg(m_set->referenceLine.p1z, 0, 'f', 4));
+    }
+    m_confirmRefP1Btn->setEnabled(true);
+}
+
+void YawRetraceWidget::autoNavigateToTgtP1()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::cout << "[YawRetrace] Auto-navigating to Tgt P1: X=" << m_set->targetLine.p1x
+              << " Y=" << m_set->targetLine.p1y << " Z=" << m_set->targetLine.p1z << std::endl;
+
+    bool moveOk = true;
+    moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "X", m_set->targetLine.p1x, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Y", m_set->targetLine.p1y, true);
+    if (moveOk)
+        moveOk = m_context->motionManager->MoveToPosition(m_set->deviceName, "Z", m_set->targetLine.p1z, true);
+
+    if (!moveOk) {
+        m_tgtP1InstructionLabel->setText(QString(
+            "Step 3/4: Auto-navigate to Target P1 FAILED\n\n"
+            "Taught Tgt P1: X=%1  Y=%2  Z=%3\n\n"
+            "Manually jog to Target P1, then press Confirm.")
+            .arg(m_set->targetLine.p1x, 0, 'f', 4)
+            .arg(m_set->targetLine.p1y, 0, 'f', 4)
+            .arg(m_set->targetLine.p1z, 0, 'f', 4));
+    } else {
+        m_tgtP1InstructionLabel->setText(QString(
+            "Step 3/4: Arrived at Target Line Point 1\n\n"
+            "Taught Tgt P1: X=%1  Y=%2  Z=%3\n\n"
+            "Verify position and press Confirm.")
+            .arg(m_set->targetLine.p1x, 0, 'f', 4)
+            .arg(m_set->targetLine.p1y, 0, 'f', 4)
+            .arg(m_set->targetLine.p1z, 0, 'f', 4));
+    }
+    m_confirmTgtP1Btn->setEnabled(true);
 }
 
 void YawRetraceWidget::onApplyCorrection()

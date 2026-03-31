@@ -113,22 +113,36 @@ bool PlanarAdjustmentCommandHandler::HandleRunPlanarAdjustment(
     // --- Live retrace using ManualAdjust callback ---
     bool retracePerformed = false;
     if (m_manualAdjustCallback) {
-        // Compute taught delta BEFORE any overwrite
-        double taughtDeltaX = set.point2.x - set.point1.x;
-        double taughtDeltaY = set.point2.y - set.point1.y;
-        double taughtDeltaZ = set.point2.z - set.point1.z;
+        // Save taught P2 absolute position BEFORE any overwrite
+        double taughtP2X = set.point2.x;
+        double taughtP2Y = set.point2.y;
+        double taughtP2Z = set.point2.z;
 
-        std::cout << "[PlanarAdjustment] Live retrace: taught delta dX=" << taughtDeltaX
-                  << " dY=" << taughtDeltaY << " dZ=" << taughtDeltaZ << std::endl;
+        std::cout << "[PlanarAdjustment] Live retrace: taught P1=("
+                  << set.point1.x << "," << set.point1.y << "," << set.point1.z
+                  << ") P2=(" << taughtP2X << "," << taughtP2Y << "," << taughtP2Z << ")" << std::endl;
 
-        // --- Step 1: Prompt user to jog to P1 ---
+        // --- Step 1: Auto-navigate to P1, then prompt user ---
+        {
+            std::cout << "[PlanarAdjustment] Auto-navigating to P1: X="
+                      << set.point1.x << " Y=" << set.point1.y
+                      << " Z=" << set.point1.z << std::endl;
+            bool navOk = m_appContext->motionManager->MoveToAbs(
+                set.deviceName,
+                set.point1.x, set.point1.y, set.point1.z,
+                100.0, true);
+            if (!navOk) {
+                std::cout << "[PlanarAdjustment] WARNING: Auto-navigate to P1 failed" << std::endl;
+            }
+        }
+
         std::ostringstream p1Msg;
         p1Msg << std::fixed << std::setprecision(4);
         p1Msg << "Planar Retrace - Confirm Point 1\n\n"
               << "Saved P1: X=" << set.point1.x
               << "  Y=" << set.point1.y
               << "  Z=" << set.point1.z
-              << "\n\nJog to Point 1 position, then click OK.";
+              << "\n\nVerify position, then click OK.";
 
         bool p1Ok = m_manualAdjustCallback(p1Msg.str(), set.deviceName, 10.0, true, true, true);
         if (!p1Ok) {
@@ -147,34 +161,27 @@ bool PlanarAdjustmentCommandHandler::HandleRunPlanarAdjustment(
         std::cout << "[PlanarAdjustment] P1 confirmed: X=" << p1Pos.x
                   << " Y=" << p1Pos.y << " Z=" << p1Pos.z << std::endl;
 
-        // --- Auto-move by taught delta to P2 area ---
-        bool moveOk = true;
-        if (std::abs(taughtDeltaX) > 1e-6) {
-            moveOk = m_appContext->motionManager->MoveRelative(set.deviceName, "X", taughtDeltaX, true);
-        }
-        if (moveOk && std::abs(taughtDeltaY) > 1e-6) {
-            moveOk = m_appContext->motionManager->MoveRelative(set.deviceName, "Y", taughtDeltaY, true);
-        }
-        if (moveOk && std::abs(taughtDeltaZ) > 1e-6) {
-            moveOk = m_appContext->motionManager->MoveRelative(set.deviceName, "Z", taughtDeltaZ, true);
-        }
-
-        if (!moveOk) {
-            errorMessage = "Failed to move by taught delta to P2 area";
-            if (context) context->SetValue("planar_adjustment.result.success", false);
-            return false;
+        // --- Step 2: Auto-navigate to P2, then prompt user ---
+        {
+            std::cout << "[PlanarAdjustment] Auto-navigating to P2: X="
+                      << taughtP2X << " Y=" << taughtP2Y
+                      << " Z=" << taughtP2Z << std::endl;
+            bool navOk = m_appContext->motionManager->MoveToAbs(
+                set.deviceName,
+                taughtP2X, taughtP2Y, taughtP2Z,
+                100.0, true);
+            if (!navOk) {
+                std::cout << "[PlanarAdjustment] WARNING: Auto-navigate to P2 failed" << std::endl;
+            }
         }
 
-        auto arrivedPos = m_appContext->motionManager->GetCurrentPosition(set.deviceName);
-        std::cout << "[PlanarAdjustment] Arrived at P2 area: X=" << arrivedPos.x
-                  << " Y=" << arrivedPos.y << " Z=" << arrivedPos.z << std::endl;
-
-        // --- Step 2: Prompt user to adjust P2 ---
         std::ostringstream p2Msg;
         p2Msg << std::fixed << std::setprecision(4);
         p2Msg << "Planar Retrace - Confirm Point 2\n\n"
-              << "System moved by taught delta to P2 area.\n"
-              << "Adjust if needed, then click OK.";
+              << "Saved P2: X=" << taughtP2X
+              << "  Y=" << taughtP2Y
+              << "  Z=" << taughtP2Z
+              << "\n\nVerify position, then click OK.";
 
         bool p2Ok = m_manualAdjustCallback(p2Msg.str(), set.deviceName, 10.0, true, true, true);
         if (!p2Ok) {
