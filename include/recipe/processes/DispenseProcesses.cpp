@@ -305,6 +305,25 @@ public:
             {"blocking", "true"}
           });
           sequence->AddAction(device, "WaitForMotionComplete", {});
+
+          // Capture actual gantry position and save back to navigation file
+          // This ensures the file always reflects the true position used
+          sequence->AddAction("calibration", "CapturePosition", {
+            {"device", device},
+            {"key_prefix", "navigated"}
+          });
+          sequence->AddAction("context", "CopyValue", {
+            {"source_key", "navigated_x"},
+            {"dest_key", "camera_x"}
+          });
+          sequence->AddAction("context", "CopyValue", {
+            {"source_key", "navigated_y"},
+            {"dest_key", "camera_y"}
+          });
+          sequence->AddAction("calibration", "SaveNavigationData", {
+            {"uid", uid},
+            {"device", device}
+          });
         }
         sequence->EndIf();
       }
