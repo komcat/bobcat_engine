@@ -107,8 +107,6 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
         std::cerr << "[SwirBeamWindow] Failed to create window" << std::endl;
         return false;
     }
-    m_markerFilePath = "swir_markers.session.json";
-    LoadMarkersFromFile();
     LoadMagnification();
     std::cout << "[SwirBeamWindow] Window created" << std::endl;
     return true;
@@ -145,8 +143,8 @@ void SwirBeamWindow::Destroy()
         m_beamFocusFuture.wait();
     }
     StopDetectionThread();
+    StopHexZMonitorThread();
     if (m_hwnd) {
-        SaveMarkersToFile();
         CleanupPanelCache();
         if (m_memDC) {
             if (m_oldBitmap) SelectObject(m_memDC, m_oldBitmap);
@@ -1075,28 +1073,28 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     }
     y += btnHeight + btnSpacing;
 
-    // Row 2: PLACE MARKER | CLEAR ALL | SET MAG
+    // Row 2: REF PT | TARGET | RESET DIST
     {
-        SwirButton placeBtn;
-        placeBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
-        placeBtn.label = L"MARKER";
-        placeBtn.tag = TAG_PLACE_MARKER;
-        placeBtn.onClick = [this]() { OnPlaceMarker(); };
-        m_buttons.push_back(placeBtn);
+        SwirButton refBtn;
+        refBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+        refBtn.label = L"REF PT";
+        refBtn.tag = TAG_REF_POINT;
+        refBtn.onClick = [this]() { OnRefPoint(); };
+        m_buttons.push_back(refBtn);
 
-        SwirButton clearBtn;
-        clearBtn.rect = {col2, y, col2 + thirdBtnWidth, y + btnHeight};
-        clearBtn.label = L"CLEAR ALL";
-        clearBtn.tag = TAG_CLEAR_MARKERS;
-        clearBtn.onClick = [this]() { OnClearAllMarkers(); };
-        m_buttons.push_back(clearBtn);
+        SwirButton targetBtn;
+        targetBtn.rect = {col2, y, col2 + thirdBtnWidth, y + btnHeight};
+        targetBtn.label = L"TARGET";
+        targetBtn.tag = TAG_TARGET_LOCK;
+        targetBtn.onClick = [this]() { OnTargetLock(); };
+        m_buttons.push_back(targetBtn);
 
-        SwirButton magBtn;
-        magBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
-        magBtn.label = L"SET MAG";
-        magBtn.tag = TAG_SET_MAG;
-        magBtn.onClick = [this]() { OnSetMagnification(); };
-        m_buttons.push_back(magBtn);
+        SwirButton resetBtn;
+        resetBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
+        resetBtn.label = L"RESET DIST";
+        resetBtn.tag = TAG_RESET_DISTANCE;
+        resetBtn.onClick = [this]() { OnResetDistance(); };
+        m_buttons.push_back(resetBtn);
     }
     y += btnHeight + btnSpacing;
 
@@ -1124,6 +1122,17 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
         optimizeBtn.tag = TAG_BEAM_OPTIMIZE;
         optimizeBtn.onClick = [this]() { OnBeamOptimize(); };
         m_buttons.push_back(optimizeBtn);
+    }
+    y += btnHeight + btnSpacing;
+
+    // Row 4: SET MAG
+    {
+        SwirButton magBtn;
+        magBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+        magBtn.label = L"SET MAG";
+        magBtn.tag = TAG_SET_MAG;
+        magBtn.onClick = [this]() { OnSetMagnification(); };
+        m_buttons.push_back(magBtn);
     }
     y += btnHeight + btnSpacing;
 
@@ -1187,6 +1196,9 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
         } else {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : CLR_BTN_OFF);
         }
+    } else if (btn.tag == TAG_TARGET_LOCK && !m_distTracking.hasRef) {
+        // TARGET button disabled (dimmed) when no ref point set
+        bgColor = Gdiplus::Color(255, 50, 50, 50);
     } else {
         // Exposure preset buttons - highlight active one
         bool isActive = false;
@@ -1222,8 +1234,9 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
     Gdiplus::Pen pen(Gdiplus::Color(255, 90, 90, 90), 1.0f);
     gfx.DrawPath(&pen, &path);
 
-    // Label text
-    Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
+    // Label text (dimmed for disabled TARGET button)
+    bool disabled = (btn.tag == TAG_TARGET_LOCK && !m_distTracking.hasRef);
+    Gdiplus::SolidBrush textBrush(disabled ? Gdiplus::Color(255, 100, 100, 100) : Gdiplus::Color(255, 255, 255, 255));
     static Gdiplus::Font font(L"Segoe UI", 8.5f, Gdiplus::FontStyleBold);
     Gdiplus::StringFormat format;
     format.SetAlignment(Gdiplus::StringAlignmentCenter);
@@ -1598,8 +1611,8 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
         gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     }
 
-    // Draw world-locked markers (before crosshair so crosshair draws on top)
-    DrawWorldMarkers(gfx);
+    // Draw distance overlay (ref → target tracking)
+    DrawDistanceOverlay(gfx);
 
     int centerX = m_lastRenderX + m_lastRenderW / 2;
     int centerY = m_lastRenderY + m_lastRenderH / 2;
@@ -1755,185 +1768,175 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
 // World-Locked Markers
 // ============================================================================
 
-double SwirBeamWindow::GetDisplayPxPerMm() const
+// ============================================================================
+// Distance Tracking (Ref Point → Target Lock with hex-right Z compensation)
+// ============================================================================
+
+void SwirBeamWindow::DrawDistanceOverlay(Gdiplus::Graphics& gfx)
 {
-    if (m_lastRenderW <= 0 || m_frameWidth == 0 || m_magnification <= 0.0) return 0.0;
+    std::lock_guard<std::mutex> lock(m_distMutex);
+    if (!m_distTracking.hasTarget) return;
 
-    // effectiveMmPerPx is the sensor-plane mm per pixel (image-space)
-    double effectiveMmPerPx = m_pixelToMmFactorX;
-    if (m_calibrationRefWidth > 0 && m_frameWidth > 0) {
-        effectiveMmPerPx = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_frameWidth;
-    }
-    if (effectiveMmPerPx <= 0.0) return 0.0;
+    // Calculate compensated X distance: base distance + hex-right Z delta
+    double baseDistX = m_distTracking.targetX - m_distTracking.refX;
+    double compensatedDistX = baseDistX + m_distTracking.hexZDelta;
 
-    // Real-world mm per pixel = sensor mm/px / magnification
-    double realWorldMmPerPx = effectiveMmPerPx / m_magnification;
+    // Overlay in top-left corner of image viewport
+    float overlayX = static_cast<float>(m_lastRenderX + 8);
+    float overlayY = static_cast<float>(m_lastRenderY + 8);
 
-    double displayScale = static_cast<double>(m_lastRenderW) / m_frameWidth;
-    return displayScale / realWorldMmPerPx;
-}
+    // Background box
+    Gdiplus::SolidBrush bgBrush(Gdiplus::Color(180, 0, 0, 0));
+    Gdiplus::RectF bgRect(overlayX, overlayY, 220.0f, 52.0f);
+    gfx.FillRectangle(&bgBrush, bgRect);
 
-void SwirBeamWindow::DrawWorldMarkers(Gdiplus::Graphics& gfx)
-{
-    if (!m_motionManager || m_lastRenderW <= 0 || m_lastRenderH <= 0) return;
+    // Border
+    Gdiplus::Pen borderPen(Gdiplus::Color(200, 0, 200, 255), 1.0f);
+    gfx.DrawRectangle(&borderPen, bgRect);
 
-    double pxPerMm = GetDisplayPxPerMm();
-    if (pxPerMm <= 0.0) return;
+    Gdiplus::Font titleFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+    Gdiplus::Font valueFont(L"Consolas", 11.0f, Gdiplus::FontStyleBold);
+    Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 160, 160, 160));
+    Gdiplus::SolidBrush valueBrush(Gdiplus::Color(255, 0, 255, 200));
 
-    PositionStruct gantryPos = m_motionManager->GetCurrentPosition("gantry-main");
-    int renderCenterX = m_lastRenderX + m_lastRenderW / 2;
-    int renderCenterY = m_lastRenderY + m_lastRenderH / 2;
+    // Title line
+    gfx.DrawString(L"REF\u2192TARGET  \u0394X (mm)", -1, &titleFont,
+                   Gdiplus::PointF(overlayX + 6, overlayY + 4), &labelBrush);
 
-    Gdiplus::Pen markerPen(Gdiplus::Color(200, 255, 140, 0), 1.5f);  // Orange
-    Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
-    Gdiplus::SolidBrush labelBrush(Gdiplus::Color(230, 255, 140, 0));
-    Gdiplus::SolidBrush labelBgBrush(Gdiplus::Color(160, 0, 0, 0));
+    // Distance value
+    wchar_t distStr[64];
+    swprintf_s(distStr, L"%.4f", compensatedDistX);
+    gfx.DrawString(distStr, -1, &valueFont,
+                   Gdiplus::PointF(overlayX + 6, overlayY + 22), &valueBrush);
 
-    std::lock_guard<std::mutex> lock(m_markerMutex);
-    for (const auto& marker : m_worldMarkers) {
-        double screenX = renderCenterX + (marker.worldX - gantryPos.x) * pxPerMm;
-        double screenY = renderCenterY + (marker.worldY - gantryPos.y) * pxPerMm;
-
-        int sx = static_cast<int>(std::round(screenX));
-        int sy = static_cast<int>(std::round(screenY));
-
-        std::wstring wlabel(marker.label.begin(), marker.label.end());
-
-        if (marker.type == SwirMarkerType::VLine) {
-            // Clip: only draw if within horizontal render bounds
-            if (sx < m_lastRenderX || sx > m_lastRenderX + m_lastRenderW) continue;
-            gfx.DrawLine(&markerPen, sx, m_lastRenderY, sx, m_lastRenderY + m_lastRenderH);
-            // Label at top
-            Gdiplus::RectF bgRect(static_cast<float>(sx + 2), static_cast<float>(m_lastRenderY + 2), 28.0f, 14.0f);
-            gfx.FillRectangle(&labelBgBrush, bgRect);
-            gfx.DrawString(wlabel.c_str(), -1, &labelFont,
-                           Gdiplus::PointF(static_cast<float>(sx + 3), static_cast<float>(m_lastRenderY + 1)),
-                           &labelBrush);
-        } else {
-            // HLine: clip to vertical render bounds
-            if (sy < m_lastRenderY || sy > m_lastRenderY + m_lastRenderH) continue;
-            gfx.DrawLine(&markerPen, m_lastRenderX, sy, m_lastRenderX + m_lastRenderW, sy);
-            // Label at left
-            Gdiplus::RectF bgRect(static_cast<float>(m_lastRenderX + 2), static_cast<float>(sy + 2), 28.0f, 14.0f);
-            gfx.FillRectangle(&labelBgBrush, bgRect);
-            gfx.DrawString(wlabel.c_str(), -1, &labelFont,
-                           Gdiplus::PointF(static_cast<float>(m_lastRenderX + 3), static_cast<float>(sy + 1)),
-                           &labelBrush);
-        }
+    // Hex-Z delta indicator (small, right side)
+    if (std::abs(m_distTracking.hexZDelta) > 0.0001) {
+        wchar_t hexStr[64];
+        swprintf_s(hexStr, L"hexZ: %+.4f", m_distTracking.hexZDelta);
+        Gdiplus::SolidBrush hexBrush(Gdiplus::Color(255, 255, 200, 100));
+        Gdiplus::Font hexFont(L"Consolas", 7.0f, Gdiplus::FontStyleRegular);
+        gfx.DrawString(hexStr, -1, &hexFont,
+                       Gdiplus::PointF(overlayX + 120, overlayY + 28), &hexBrush);
     }
 }
 
-void SwirBeamWindow::OnPlaceMarker()
+void SwirBeamWindow::OnRefPoint()
 {
     if (!m_motionManager) {
-        MessageBoxW(m_hwnd, L"Motion manager not available.", L"Place Marker", MB_OK | MB_ICONWARNING);
+        MessageBoxW(m_hwnd, L"Motion manager not available.", L"Ref Point", MB_OK | MB_ICONWARNING);
         return;
     }
 
-    int result = MessageBoxW(m_hwnd,
-        L"Place a world-locked marker at current gantry position.\n\n"
-        L"YES = Vertical line\n"
-        L"NO = Horizontal line\n"
-        L"CANCEL = Abort",
-        L"Place Marker", MB_YESNOCANCEL | MB_ICONQUESTION);
-
-    if (result == IDCANCEL) return;
-
-    SwirMarkerType type = (result == IDYES) ? SwirMarkerType::VLine : SwirMarkerType::HLine;
     PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
 
-    SwirWorldMarker marker;
     {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        marker.id = m_nextMarkerId++;
-    }
-    marker.type = type;
-    marker.worldX = pos.x;
-    marker.worldY = pos.y;
-    marker.label = (type == SwirMarkerType::VLine ? "V" : "H") + std::to_string(marker.id);
-
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        m_worldMarkers.push_back(marker);
+        std::lock_guard<std::mutex> lock(m_distMutex);
+        m_distTracking.hasRef = true;
+        m_distTracking.hasTarget = false;  // Reset target when new ref is set
+        m_distTracking.refX = pos.x;
+        m_distTracking.refY = pos.y;
+        m_distTracking.hexZDelta = 0.0;
     }
 
-    std::cout << "[SwirBeamWindow] Placed marker " << marker.label
-              << " at (" << marker.worldX << ", " << marker.worldY << ")" << std::endl;
+    // Stop hex-Z monitor (will restart when target is locked)
+    StopHexZMonitorThread();
 
-    SaveMarkersToFile();
+    std::cout << "[SwirBeamWindow] Ref point set at X=" << pos.x << " Y=" << pos.y << std::endl;
+
+    InvalidatePanel();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
-void SwirBeamWindow::OnClearAllMarkers()
+void SwirBeamWindow::OnTargetLock()
 {
-    int result = MessageBoxW(m_hwnd,
-        L"Clear all markers?", L"Clear Markers", MB_YESNO | MB_ICONQUESTION);
-    if (result != IDYES) return;
-
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        m_worldMarkers.clear();
-        m_nextMarkerId = 1;
+    if (!m_motionManager) {
+        MessageBoxW(m_hwnd, L"Motion manager not available.", L"Target Lock", MB_OK | MB_ICONWARNING);
+        return;
     }
 
-    std::cout << "[SwirBeamWindow] All markers cleared" << std::endl;
-    SaveMarkersToFile();
-    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
-}
-
-void SwirBeamWindow::SaveMarkersToFile()
-{
-    if (m_markerFilePath.empty()) return;
-
-    nlohmann::json jArray = nlohmann::json::array();
     {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        for (const auto& m : m_worldMarkers) {
-            nlohmann::json j;
-            j["id"] = m.id;
-            j["type"] = (m.type == SwirMarkerType::VLine) ? "VLine" : "HLine";
-            j["worldX"] = m.worldX;
-            j["worldY"] = m.worldY;
-            j["label"] = m.label;
-            jArray.push_back(j);
+        std::lock_guard<std::mutex> lock(m_distMutex);
+        if (!m_distTracking.hasRef) {
+            // Should not happen (button is disabled), but guard anyway
+            return;
         }
     }
 
-    std::ofstream ofs(m_markerFilePath);
-    if (ofs.is_open()) {
-        ofs << jArray.dump(2);
+    PositionStruct gantryPos = m_motionManager->GetCurrentPosition("gantry-main");
+    PositionStruct hexPos = m_motionManager->GetCurrentPosition("hex-right");
+
+    {
+        std::lock_guard<std::mutex> lock(m_distMutex);
+        m_distTracking.hasTarget = true;
+        m_distTracking.targetX = gantryPos.x;
+        m_distTracking.targetY = gantryPos.y;
+        m_distTracking.hexZAtLock = hexPos.z;
+        m_distTracking.hexZDelta = 0.0;
     }
+
+    double distX = gantryPos.x - m_distTracking.refX;
+    std::cout << "[SwirBeamWindow] Target locked at X=" << gantryPos.x
+              << " Y=" << gantryPos.y
+              << "  dX=" << distX << " mm"
+              << "  hexZ0=" << hexPos.z << std::endl;
+
+    // Start background hex-right Z monitor thread
+    StartHexZMonitorThread();
+
+    InvalidatePanel();
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
-void SwirBeamWindow::LoadMarkersFromFile()
+void SwirBeamWindow::OnResetDistance()
 {
-    if (m_markerFilePath.empty()) return;
+    StopHexZMonitorThread();
 
-    std::ifstream ifs(m_markerFilePath);
-    if (!ifs.is_open()) return;
-
-    nlohmann::json jArray;
-    jArray = nlohmann::json::parse(ifs, nullptr, false);
-    if (jArray.is_discarded() || !jArray.is_array()) return;
-
-    std::lock_guard<std::mutex> lock(m_markerMutex);
-    m_worldMarkers.clear();
-    int maxId = 0;
-
-    for (const auto& j : jArray) {
-        SwirWorldMarker marker;
-        marker.id = j.value("id", 0);
-        std::string typeStr = j.value("type", "VLine");
-        marker.type = (typeStr == "HLine") ? SwirMarkerType::HLine : SwirMarkerType::VLine;
-        marker.worldX = j.value("worldX", 0.0);
-        marker.worldY = j.value("worldY", 0.0);
-        marker.label = j.value("label", "");
-        m_worldMarkers.push_back(marker);
-        if (marker.id > maxId) maxId = marker.id;
+    {
+        std::lock_guard<std::mutex> lock(m_distMutex);
+        m_distTracking = DistanceTrackingState{};  // Reset all fields
     }
 
-    m_nextMarkerId = maxId + 1;
-    std::cout << "[SwirBeamWindow] Loaded " << m_worldMarkers.size() << " markers from file" << std::endl;
+    std::cout << "[SwirBeamWindow] Distance tracking reset" << std::endl;
+
+    InvalidatePanel();
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+void SwirBeamWindow::StartHexZMonitorThread()
+{
+    StopHexZMonitorThread();  // Stop any existing thread first
+
+    m_hexZMonitorShutdown.store(false);
+
+    m_hexZMonitorThread = std::thread([this]() {
+        static constexpr int MAX_ITERATIONS = 100000;  // bounded loop
+        for (int i = 0; i < MAX_ITERATIONS; ++i) {
+            if (m_hexZMonitorShutdown.load()) break;
+
+            if (m_motionManager) {
+                PositionStruct hexPos = m_motionManager->GetCurrentPosition("hex-right");
+
+                std::lock_guard<std::mutex> lock(m_distMutex);
+                if (m_distTracking.hasTarget) {
+                    m_distTracking.hexZDelta = hexPos.z - m_distTracking.hexZAtLock;
+                }
+            }
+
+            // Poll at ~10 Hz
+            for (int s = 0; s < 10; ++s) {
+                if (m_hexZMonitorShutdown.load()) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+    });
+}
+
+void SwirBeamWindow::StopHexZMonitorThread()
+{
+    m_hexZMonitorShutdown.store(true);
+    if (m_hexZMonitorThread.joinable()) {
+        m_hexZMonitorThread.join();
+    }
 }
 
 // ============================================================================

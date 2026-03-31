@@ -22,14 +22,16 @@
 #include "BeamOptimizer/BeamHillClimb.h"
 #include "BeamOptimizer/BeamScoreProvider.h"
 
-enum class SwirMarkerType { VLine, HLine };
-
-struct SwirWorldMarker {
-    int id = 0;
-    SwirMarkerType type = SwirMarkerType::VLine;
-    double worldX = 0.0;    // Gantry X (mm) at placement time
-    double worldY = 0.0;    // Gantry Y (mm) at placement time
-    std::string label;       // Auto-label: "V1", "H2", etc.
+// Distance tracking: reference point → target lock with hex-right Z compensation
+struct DistanceTrackingState {
+    bool hasRef = false;
+    bool hasTarget = false;
+    double refX = 0.0;          // Gantry-main X at reference point (mm)
+    double refY = 0.0;          // Gantry-main Y at reference point (mm)
+    double targetX = 0.0;       // Gantry-main X at target lock (mm)
+    double targetY = 0.0;       // Gantry-main Y at target lock (mm)
+    double hexZAtLock = 0.0;    // Hex-right Z when target was locked (mm)
+    double hexZDelta = 0.0;     // Accumulated hex-right Z change since lock (mm)
 };
 
 class BeamResultBroker;
@@ -165,13 +167,13 @@ private:
     void DrawOverlays(HDC hdc);
     void DrawGroupBox(Gdiplus::Graphics& gfx, const RECT& rect, const wchar_t* title);
 
-    // World-locked markers
-    void OnPlaceMarker();
-    void OnClearAllMarkers();
-    void DrawWorldMarkers(Gdiplus::Graphics& gfx);
-    void SaveMarkersToFile();
-    void LoadMarkersFromFile();
-    double GetDisplayPxPerMm() const;
+    // Distance tracking (ref point → target lock)
+    void OnRefPoint();
+    void OnTargetLock();
+    void OnResetDistance();
+    void DrawDistanceOverlay(Gdiplus::Graphics& gfx);
+    void StartHexZMonitorThread();
+    void StopHexZMonitorThread();
 
     // Magnification
     void OnSetMagnification();
@@ -300,8 +302,9 @@ private:
     static constexpr int TAG_PSU_TOGGLE = 200;
     static constexpr int TAG_AUTO_EXP = 300;
     static constexpr int TAG_CLICK_TO_MOVE = 400;
-    static constexpr int TAG_PLACE_MARKER = 500;
-    static constexpr int TAG_CLEAR_MARKERS = 600;
+    static constexpr int TAG_REF_POINT = 500;
+    static constexpr int TAG_TARGET_LOCK = 510;
+    static constexpr int TAG_RESET_DISTANCE = 520;
     static constexpr int TAG_APPLY_EXP = 450;
     static constexpr int TAG_SET_MAG = 700;
     static constexpr int TAG_SWIR_HEAD = 800;
@@ -324,11 +327,11 @@ private:
     // Magnification (optical objective)
     double m_magnification = 20.0;
 
-    // World-locked markers
-    std::vector<SwirWorldMarker> m_worldMarkers;
-    std::mutex m_markerMutex;
-    int m_nextMarkerId = 1;
-    std::string m_markerFilePath;
+    // Distance tracking (ref point → target lock with hex-right Z compensation)
+    DistanceTrackingState m_distTracking;
+    std::mutex m_distMutex;
+    std::thread m_hexZMonitorThread;
+    std::atomic<bool> m_hexZMonitorShutdown{false};
 
     // Beam detection
     bool m_beamDetectionEnabled = false;
