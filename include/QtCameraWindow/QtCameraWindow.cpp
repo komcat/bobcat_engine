@@ -362,8 +362,8 @@ void QtCameraWindow::showQuickMoveConfigDialog(int index)
     layout->setContentsMargins(12, 12, 12, 12);
 
     auto* labelEdit = new QLineEdit(existing.label);
-    labelEdit->setMaxLength(4);
-    labelEdit->setPlaceholderText("4 chars max");
+    labelEdit->setMaxLength(10);
+    labelEdit->setPlaceholderText("10 chars max");
     layout->addRow("Label:", labelEdit);
 
     auto makeSpinBox = [&](double val) {
@@ -397,7 +397,7 @@ void QtCameraWindow::showQuickMoveConfigDialog(int index)
     if (dlg.exec() == QDialog::Accepted) {
         auto& data = m_quickMoveData[index];
         data.assigned = true;
-        data.label = labelEdit->text().left(4);
+        data.label = labelEdit->text().left(10);
         data.relX  = xSpin->value();
         data.relY  = ySpin->value();
         data.relZ  = zSpin->value();
@@ -468,7 +468,7 @@ void QtCameraWindow::loadQuickMoveSettings()
         const QString prefix = quickMoveKey(QString::number(i));
         auto& d = m_quickMoveData[i];
         d.assigned = settings.value(prefix + "/assigned", false).toBool();
-        d.label    = settings.value(prefix + "/label", "").toString().left(4);
+        d.label    = settings.value(prefix + "/label", "").toString().left(10);
         d.relX     = settings.value(prefix + "/relX", 0.0).toDouble();
         d.relY     = settings.value(prefix + "/relY", 0.0).toDouble();
         d.relZ     = settings.value(prefix + "/relZ", 0.0).toDouble();

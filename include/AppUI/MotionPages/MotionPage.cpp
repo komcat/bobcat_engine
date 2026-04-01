@@ -746,6 +746,30 @@ void MotionPage::showEvent(QShowEvent* event)
 
 	// Refresh device list to show only connected devices
 	refreshDeviceList();
+
+	// After refresh, check if the previously selected device is still valid
+	// DeviceButtonStack::refreshDevices() restores the selection if possible,
+	// but if it couldn't, we must clear MotionPage's stale state to prevent
+	// moves with no valid device selected
+	QString activeDevice = m_deviceButtonStack ? m_deviceButtonStack->getCurrentDevice() : QString();
+	if (activeDevice.isEmpty() && !m_currentDevice.isEmpty()) {
+		// Device was deselected (no longer connected or buttons were rebuilt)
+		// Clear stale state to prevent operating on a non-existent device
+		m_currentDevice.clear();
+		m_selectedPositionName.clear();
+		m_currentPositions.clear();
+		if (m_controlPanel) {
+			m_controlPanel->clearSelectedPosition();
+			m_controlPanel->updateBreadcrumb(QString(), QString());
+		}
+		if (m_deviceButtonStack) {
+			m_deviceButtonStack->clearSelectedPosition();
+		}
+		if (m_graphicsView) {
+			m_graphicsView->setDeviceName(QString());
+		}
+		refreshPositionDisplay();
+	}
 }
 
 void MotionPage::loadPositionsForDevice(const QString& deviceName)

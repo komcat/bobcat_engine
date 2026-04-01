@@ -277,7 +277,7 @@ void JogPanelWindow::createJogTab()
   QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
   leftLayout->setContentsMargins(0, 0, 0, 0);
   leftLayout->setSpacing(6);
-  leftColumn->setMaximumWidth(140);
+  leftColumn->setMaximumWidth(220);
 
   createDevicePanel(leftColumn);
   createStepSizePanel(leftColumn);
@@ -339,6 +339,53 @@ void JogPanelWindow::createLightingTab()
     layout->addWidget(label);
     m_tabWidget->addTab(placeholder, "Lighting");
   }
+}
+
+QString JogPanelWindow::getDeviceButtonStyleSheet(const std::string& deviceId)
+{
+  // Assign distinct colors per device type
+  struct DeviceColor {
+    const char* bgChecked;
+    const char* textChecked;
+    const char* borderChecked;
+  };
+
+  DeviceColor color = { "#f0ad4e", "#000000", "#ffcc00" }; // default orange
+
+  if (deviceId.find("gantry") != std::string::npos) {
+    color = { "#f0ad4e", "#000000", "#ffcc00" }; // orange
+  }
+  else if (deviceId.find("hex") != std::string::npos) {
+    color = { "#00bcd4", "#000000", "#14ffec" }; // cyan/teal
+  }
+  else if (deviceId.find("stage") != std::string::npos) {
+    color = { "#4caf50", "#000000", "#66ff66" }; // green
+  }
+  else if (deviceId.find("rotary") != std::string::npos) {
+    color = { "#bb86fc", "#000000", "#d4aaff" }; // purple
+  }
+
+  return QString(
+    "QPushButton { "
+    "  background-color: #3a3a3a; "
+    "  color: white; "
+    "  border: 1px solid #555; "
+    "  border-radius: 3px; "
+    "  padding: 2px 2px; "
+    "  font-size: 10px; "
+    "  font-weight: bold; "
+    "  text-align: left; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #777; "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 2px solid %3; "
+    "}"
+  ).arg(color.bgChecked, color.textChecked, color.borderChecked);
 }
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
@@ -406,33 +453,13 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     // ✅ Sort devices alphabetically (ascending)
     std::sort(validDevices.begin(), validDevices.end());
 
-    // Create compact push buttons
+    // Create compact push buttons with per-device colors
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
       btn->setMinimumHeight(26);
       btn->setMaximumHeight(26);
-      btn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #3a3a3a; "
-        "  color: white; "
-        "  border: 1px solid #555; "
-        "  border-radius: 3px; "
-        "  padding: 2px 2px; "
-        "  font-size: 10px; "
-        "  font-weight: bold; "
-        "  text-align: left; "
-        "} "
-        "QPushButton:hover { "
-        "  background-color: #4a4a4a; "
-        "  border-color: #777; "
-        "} "
-        "QPushButton:checked { "
-        "  background-color: #f0ad4e; "
-        "  color: #000000; "
-        "  border: 2px solid #ffcc00; "
-        "}"
-      );
+      btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
       groupLayout->addWidget(btn);
@@ -535,33 +562,13 @@ void JogPanelWindow::refreshDeviceList()
     // ✅ Sort devices alphabetically (ascending)
     std::sort(validDevices.begin(), validDevices.end());
 
-    // Create compact push buttons
+    // Create compact push buttons with per-device colors
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
       btn->setMinimumHeight(26);
       btn->setMaximumHeight(26);
-      btn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #3a3a3a; "
-        "  color: white; "
-        "  border: 1px solid #555; "
-        "  border-radius: 3px; "
-        "  padding: 2px 2px; "
-        "  font-size: 10px; "
-        "  font-weight: bold; "
-        "  text-align: left; "
-        "} "
-        "QPushButton:hover { "
-        "  background-color: #4a4a4a; "
-        "  border-color: #777; "
-        "} "
-        "QPushButton:checked { "
-        "  background-color: #f0ad4e; "
-        "  color: #000000; "
-        "  border: 2px solid #ffcc00; "
-        "}"
-      );
+      btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
       groupLayout->addWidget(btn);
@@ -628,7 +635,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
   const std::vector<QString> labels = {
-    "0.1µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
+    "0.1µ", "0.2µ", "0.3µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
     "100µ", "200µ", "250µ", "500µ", "1mm", "2mm", "5mm"
   };
 
@@ -658,7 +665,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
     }
 
     col++;
-    if (col >= 2) {  // 2 columns instead of 3
+    if (col >= 3) {  // 3 columns
       col = 0;
       row++;
     }

@@ -207,7 +207,7 @@ private:
 
     struct QuickMoveButtonData {
         bool assigned = false;
-        QString label;           // max 4 chars
+        QString label;           // max 10 chars
         double relX = 0.0;      // mm
         double relY = 0.0;      // mm
         double relZ = 0.0;      // mm

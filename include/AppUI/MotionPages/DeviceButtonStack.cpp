@@ -251,6 +251,9 @@ void DeviceButtonStack::refreshDevices()
     return;
   }
 
+  // Save previously selected device so we can restore it after rebuild
+  QString previousDevice = m_currentDevice;
+
   // Get all device names
   std::vector<std::string> allDevices = m_motionManager->GetAllDeviceNames();
 
@@ -277,4 +280,9 @@ void DeviceButtonStack::refreshDevices()
 
   // Update device buttons
   setDevices(deviceList);
+
+  // Restore previous device selection if it still exists in the new list
+  if (!previousDevice.isEmpty() && deviceList.contains(previousDevice)) {
+    setCurrentDevice(previousDevice);
+  }
 }
