@@ -50,7 +50,9 @@ public:
       {"safety_height", "1.0"},
       {"velocity_safety", "5.0"},
       {"auto_confirm", "false"},  // Auto-confirm after first-time setup
-      {"skip_camera_verify", "false"}  // Skip camera view over dispensing position
+      {"skip_camera_verify", "false"},  // Skip camera view over dispensing position
+      {"reteach_z_height", "false"},  // Force re-teach XY and Z height and save to data file
+      {"save_xy_after_confirm", "false"}  // Save camera XY to data file after verification
     };
   }
 
@@ -102,6 +104,18 @@ public:
 
     widget->addParameterField("velocity_safety", "Safety Velocity (mm/s)",
                              getParam("velocity_safety"));
+
+    // Reteach XY and Z height checkbox
+    widget->addCheckboxParameter("reteach_z_height", "Re-teach XY and Z height, save to data file",
+                                getParam("reteach_z_height"),
+                                "Force manual XY positioning and Z-height adjustment even if saved data exists. "
+                                "The new XY position and Z height will be saved to their respective data files.");
+
+    // Save XY after camera confirm checkbox
+    widget->addCheckboxParameter("save_xy_after_confirm", "After camera XY confirm, save to data file",
+                                getParam("save_xy_after_confirm"),
+                                "Save the camera XY position to the navigation data file "
+                                "after camera verification of the dispense result.");
 
     // Auto-confirm checkbox
     widget->addCheckboxParameter("auto_confirm", "Auto-confirm (skip manual confirmations)",
@@ -185,6 +199,8 @@ public:
     std::string velocity = getParam("velocity");
     bool autoConfirm = (getParam("auto_confirm") == "true");
     bool skipCameraVerify = (getParam("skip_camera_verify") == "true");
+    bool reteachZHeight = (getParam("reteach_z_height") == "true");
+    bool saveXyAfterConfirm = (getParam("save_xy_after_confirm") == "true");
 
     // Get the process instance UID for unique dispense position files
     std::string uid = step->uniqueId;
@@ -300,7 +316,8 @@ public:
     // ✅ Only show manual adjust if NOT in auto-confirm mode with complete setup
     // AND NOT skipping camera verification (which implies using saved positions directly)
     // When auto-confirm is enabled and position exists, skip manual adjustment
-    if ((!setupComplete || !autoConfirm) && !skipCameraVerify) {
+    // reteachZHeight forces XY re-teach as well (re-teach both XY and Z)
+    if (((!setupComplete || !autoConfirm) && !skipCameraVerify) || reteachZHeight) {
       // Manual adjust to position camera (either from scratch or to confirm auto-nav)
       sequence->AddAction("system", "ManualAdjust", {
         {"message", "Position camera over desired dispensing location.\n\n"
@@ -409,6 +426,15 @@ public:
       {"uid", uid}
     });
 
+    // Check if Z-height exists AND reteach is not requested
+    if (reteachZHeight) {
+      // Force context value to false so we always take PATH B (manual adjust)
+      sequence->AddAction("context", "SetValue", {
+        {"key", "dispense_z_exists"},
+        {"value", "false"}
+      });
+    }
+
     // Check if Z-height exists
     sequence->BeginIf("dispense_z_exists", ConditionalBlock::ComparisonType::IS_TRUE);
     {
@@ -477,8 +503,8 @@ public:
       // =========================================================================
 
       sequence->AddAction("system", "UserPrompt", {
-        {"title", "First Time Dispense Setup"},
-        {"message", "No saved Z-height found for this dispense location.\n\n"
+        {"title", "Dispense Z-Height Setup"},
+        {"message", "No saved Z-height found (or re-teach requested).\n\n"
                     "Next step: Manually adjust Z to desired dispensing height."},
         {"blocking", "true"}
       });
@@ -516,6 +542,12 @@ public:
       // Already at correct dispense height - skip automated approach
     }
     sequence->EndIf();
+
+    // Reset Z velocity to approach speed after Z-height positioning
+    // (PATH A leaves Z at slow safety velocity, PATH B doesn't set it at all)
+    sequence->AddAction(device, "SetVelocity", {
+      {"axis", "Z"}, {"velocity", velocityApproach}
+    });
 
     // =========================================================================
     // STEP 5: CONFIRM AND DISPENSE
@@ -615,17 +647,42 @@ public:
           {"blocking", "true"}
         });
       }
+
+      // Save camera XY to navigation data file after verification (if enabled)
+      if (saveXyAfterConfirm) {
+        // Capture current camera position after any manual adjustments
+        sequence->AddAction("calibration", "CapturePosition", {
+          {"device", device},
+          {"key_prefix", "verified"}
+        });
+
+        // Update camera_x/camera_y with verified position
+        sequence->AddAction("context", "CopyValue", {
+          {"source_key", "verified_x"},
+          {"dest_key", "camera_x"}
+        });
+        sequence->AddAction("context", "CopyValue", {
+          {"source_key", "verified_y"},
+          {"dest_key", "camera_y"}
+        });
+
+        // Save updated navigation data
+        sequence->AddAction("calibration", "SaveNavigationData", {
+          {"uid", uid},
+          {"device", device}
+        });
+
+        sequence->AddAction("system", "UserPrompt", {
+          {"title", "XY Position Saved"},
+          {"message", "Camera XY position saved to navigation data file."},
+          {"blocking", "false"}
+        });
+      }
     }
 
     // =========================================================================
-    // STEP 7: RETURN TO SAFE
+    // STEP 7: Dispensing complete (no move to safe - let next step handle positioning)
     // =========================================================================
-
-    // Move back to Safe position
-    sequence->AddAction(device, "MoveToNamedPosition", {
-      {"positionName", "safe"}
-    });
-    sequence->AddAction(device, "WaitForMotionComplete", {});
 
     }  // End IF (offset exists)
     sequence->Else();
@@ -644,7 +701,9 @@ public:
     std::cout << "[DispensePlugin] Built dispense sequence for: "
       << step->userNickname << " (Device: " << device << ", Slide: " << pneumaticSlide
       << ", DelayBefore: " << delayBeforeDispense << "ms, DelayAfter: " << delayAfterDispense << "ms"
-      << ", SkipCameraVerify: " << (skipCameraVerify ? "yes" : "no") << ")" << std::endl;
+      << ", SkipCameraVerify: " << (skipCameraVerify ? "yes" : "no")
+      << ", ReteachZ: " << (reteachZHeight ? "yes" : "no")
+      << ", SaveXYAfterConfirm: " << (saveXyAfterConfirm ? "yes" : "no") << ")" << std::endl;
   }
 };
 

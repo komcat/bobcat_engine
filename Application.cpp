@@ -316,6 +316,16 @@ void Application::initializeManagers()
     initializeGdiCameraWindow2();
     completeSplash("GdiCameraWindow2");
 
+#ifdef USE_QT_CAMERA_WINDOW
+    updateSplash("QtCameraWindow");
+    initializeQtCameraWindow();
+    completeSplash("QtCameraWindow");
+
+    updateSplash("QtCameraWindow2");
+    initializeQtCameraWindow2();
+    completeSplash("QtCameraWindow2");
+#endif
+
     updateSplash("SwirBeamWindow");
     initializeSwirBeamWindow();
     completeSplash("SwirBeamWindow");
@@ -1179,6 +1189,17 @@ void Application::shutdownManagers()
     m_gdiCameraWindowManager.reset();
   }
 
+#ifdef USE_QT_CAMERA_WINDOW
+  if (m_qtCameraWindow2) {
+    m_qtCameraWindow2->shutdown();
+    m_qtCameraWindow2.reset();
+  }
+  if (m_qtCameraWindow) {
+    m_qtCameraWindow->shutdown();
+    m_qtCameraWindow.reset();
+  }
+#endif
+
   if (m_auxWindowManager) {
     m_auxWindowManager->shutdown();
     m_auxWindowManager.reset();
@@ -1964,6 +1985,66 @@ void Application::initializeGdiCameraWindow2()
     m_logManager->Warning("GdiCameraWindow2 failed to initialize", "Application");
   }
 }
+
+#ifdef USE_QT_CAMERA_WINDOW
+void Application::initializeQtCameraWindow()
+{
+  m_logManager->Debug("Initializing QtCameraWindow...", "Application");
+
+  m_qtCameraWindow = std::make_unique<QtCameraWindow>();
+
+  m_qtCameraWindow->setCameraManager(m_cameraManager.get());
+  m_qtCameraWindow->setDataStore(m_dataStore.get());
+  m_qtCameraWindow->setMotionManager(m_motionManager.get());
+
+  if (m_cameraConfigManager) {
+    m_qtCameraWindow->setCameraConfigManager(m_cameraConfigManager.get());
+  }
+
+  if (m_qtCameraWindow->initialize()) {
+    m_context.qtCameraWindow = m_qtCameraWindow.get();
+
+    // Respect saved visibility — show only if previously visible (default: true for first run)
+    QSettings settings("Fabrinet", "BobcatEngine");
+    const bool wasVisible = settings.value("GdiCameraWindow/visible", true).toBool();
+    if (wasVisible) {
+      m_qtCameraWindow->show();
+    }
+    m_logManager->Info("QtCameraWindow initialized", "Application");
+  } else {
+    m_logManager->Warning("QtCameraWindow failed to initialize", "Application");
+  }
+}
+
+void Application::initializeQtCameraWindow2()
+{
+  m_logManager->Debug("Initializing QtCameraWindow2...", "Application");
+
+  m_qtCameraWindow2 = std::make_unique<QtCameraWindow>("2");
+
+  m_qtCameraWindow2->setCameraManager(m_cameraManager.get());
+  m_qtCameraWindow2->setDataStore(m_dataStore.get());
+  m_qtCameraWindow2->setMotionManager(m_motionManager.get());
+
+  if (m_cameraConfigManager) {
+    m_qtCameraWindow2->setCameraConfigManager(m_cameraConfigManager.get());
+  }
+
+  if (m_qtCameraWindow2->initialize()) {
+    m_context.qtCameraWindow2 = m_qtCameraWindow2.get();
+
+    // Respect saved visibility — hidden by default for second window
+    QSettings settings("Fabrinet", "BobcatEngine");
+    const bool wasVisible = settings.value("GdiCameraWindow2/visible", false).toBool();
+    if (wasVisible) {
+      m_qtCameraWindow2->show();
+    }
+    m_logManager->Info("QtCameraWindow2 initialized", "Application");
+  } else {
+    m_logManager->Warning("QtCameraWindow2 failed to initialize", "Application");
+  }
+}
+#endif
 
 void Application::initializeSwirBeamWindow()
 {

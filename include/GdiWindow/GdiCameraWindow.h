@@ -24,10 +24,6 @@
 #include "camera/CameraFrameData.h"
 #include "nlohmann/json.hpp"
 
-#ifdef HAS_OPENCV
-#include "vision/VisionResult.h"
-#endif
-
 class DataStore;
 class UnifiedMotionManager;
 class CameraManager;
@@ -77,144 +73,12 @@ class BeamServerClient;
 // Calibration config file (shared with CameraClickToMoveWidget)
 #define CALIBRATION_CONFIG_FILE     "config/SYSTEM/val_pixelmm.json"
 
-/**
- * @brief Chart overlay for displaying live data on camera view
- */
-class ChartOverlay {
-public:
-    void SetEnabled(bool enabled) { m_enabled = enabled; }
-    bool IsEnabled() const { return m_enabled; }
-
-    void AddDataPoint(const std::string& channelId, double value);
-    void Clear();
-
-    void SetChannelEnabled(const std::string& channelId, bool enabled);
-    bool IsChannelEnabled(const std::string& channelId) const;
-    std::vector<std::string> GetEnabledChannels() const;
-
-    void Draw(HDC hDC, const RECT& windowRect);
-
-    // Scale factor for overlay size (1.0 = default, 0.5 = half, 2.0 = double)
-    void SetScale(float scale);
-    float GetScale() const { return m_scale; }
-    void IncreaseScale();
-    void DecreaseScale();
-
-private:
-    bool m_enabled = false;
-    float m_scale = 1.0f;  // Scale factor for overlay size
-    mutable std::mutex m_dataMutex;
-
-    struct ChannelData {
-        std::deque<double> values;
-        double runningMin = 1e30;
-        double runningMax = -1e30;
-    };
-    std::map<std::string, ChannelData> m_channels;
-    std::set<std::string> m_enabledChannels;
-
-    static constexpr size_t MAX_POINTS = 200;
-    static constexpr int BASE_CHART_WIDTH = 320;
-    static constexpr int BASE_CHART_HEIGHT = 180;
-    static constexpr int CHART_MARGIN = 10;
-    static constexpr float MIN_SCALE = 0.5f;
-    static constexpr float MAX_SCALE = 3.0f;
-    static constexpr float SCALE_STEP = 0.25f;
-
-    // Computed dimensions based on scale
-    int GetChartWidth() const { return static_cast<int>(BASE_CHART_WIDTH * m_scale); }
-    int GetChartHeight() const { return static_cast<int>(BASE_CHART_HEIGHT * m_scale); }
-
-    static Gdiplus::Color GetChannelColor(int index);
-    static std::wstring FormatValue(double value);
-};
-
+// Overlay classes (extracted to separate files)
+#include "ChartOverlay.h"
 #ifdef HAS_OPENCV
-/**
- * @brief Vision result overlay for displaying detection results on camera view
- */
-class VisionResultOverlay {
-public:
-    void SetEnabled(bool enabled) { m_enabled = enabled; }
-    bool IsEnabled() const { return m_enabled; }
-
-    void SetResult(const VisionResult& result, const std::string& profileName);
-    void Clear();
-
-    void Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
-              int destX, int destY, int destWidth, int destHeight);
-
-    // Thread-safe copy of the latest result (for SequenceContext injection)
-    VisionResult GetResult() const {
-        std::lock_guard<std::mutex> lock(m_resultMutex);
-        return m_lastResult;
-    }
-    uint64_t GetResultSequence() const { return m_resultSequence.load(); }
-
-private:
-    bool m_enabled = false;
-    mutable std::mutex m_resultMutex;
-    VisionResult m_lastResult;
-    std::string m_profileName;
-    std::atomic<uint64_t> m_resultSequence{0};
-
-    static constexpr int OVERLAY_WIDTH = 280;
-    static constexpr int OVERLAY_MARGIN = 10;
-
-    void DrawInfoPanel(Gdiplus::Graphics& gfx, const Gdiplus::RectF& panelRect);
-    void DrawGeometricOverlays(HDC hDC, int frameWidth, int frameHeight,
-                                int destX, int destY, int destWidth, int destHeight);
-
-    // Convert image pixel coordinates to screen coordinates
-    static Gdiplus::PointF ImageToScreen(double imgX, double imgY,
-                                          int frameWidth, int frameHeight,
-                                          int destX, int destY,
-                                          int destWidth, int destHeight);
-};
+#include "VisionResultOverlay.h"
 #endif
-
-/**
- * @brief Beam stream overlay for displaying live beam detection results on camera view
- */
-class BeamStreamOverlay {
-public:
-    void SetEnabled(bool enabled) { m_enabled = enabled; }
-    bool IsEnabled() const { return m_enabled; }
-
-    void SetResult(const nlohmann::json& result);
-    void Clear();
-
-    void Draw(HDC hDC, const RECT& windowRect, int frameWidth, int frameHeight,
-              int destX, int destY, int destWidth, int destHeight,
-              double umPerPxX, double umPerPxY,
-              int displayRotation = 0, int origFrameWidth = 0, int origFrameHeight = 0);
-
-    double GetFps() const { return m_fps; }
-    void SetFps(double fps) { m_fps = fps; }
-
-    // Thread-safe accessors for SequenceContext injection
-    nlohmann::json GetResult() const {
-        std::lock_guard<std::mutex> lock(m_resultMutex);
-        return m_lastResult;
-    }
-    uint64_t GetResultSequence() const { return m_resultSequence.load(); }
-
-private:
-    bool m_enabled = false;
-    mutable std::mutex m_resultMutex;
-    nlohmann::json m_lastResult;
-    double m_fps = 0.0;
-    std::atomic<uint64_t> m_resultSequence{0};
-
-    static constexpr int OVERLAY_WIDTH = 280;
-    static constexpr int OVERLAY_MARGIN = 10;
-
-    // Convert image pixel coordinates to screen coordinates
-    static Gdiplus::PointF ImageToScreen(double imgX, double imgY,
-                                          int frameWidth, int frameHeight,
-                                          int destX, int destY,
-                                          int destWidth, int destHeight);
-};
+#include "BeamStreamOverlay.h"
 
 /**
  * @brief Pure Win32 GDI window for camera live streaming with data chart overlay

@@ -78,19 +78,19 @@ bobcat_engine (Client)                    Beam Server UI (Server)
 
 ## Command Details
 
-### CMD_DETECT (0x01) — Detect beam from raw image
+### CMD_DETECT (0x01) — Detect beam from raw image(s)
 
-The client captures a camera frame and sends the raw pixel data to the server for D4Sigma analysis.
+The client captures one or more camera frames and sends the raw pixel data to the server for D4Sigma analysis. When multiple frames are sent, the server detects beams on each frame independently and averages the results.
 
 #### Request Payload
 
-The payload has **two parts**: a JSON header followed by raw pixel data.
+The payload has **two parts**: a JSON header followed by raw pixel data (one or more frames concatenated).
 
 ```
-┌───────────────────────────┬────────────────────────┬────────────────────────┐
-│ JSON Header Len (4 bytes) │ JSON Header (N bytes)  │ Raw Pixel Data (M bytes│
-│ uint32 LE                 │ UTF-8 JSON             │ uint16[] LE            │
-└───────────────────────────┴────────────────────────┴────────────────────────┘
+┌───────────────────────────┬────────────────────────┬──────────────────────────────────────────┐
+│ JSON Header Len (4 bytes) │ JSON Header (N bytes)  │ Raw Pixel Data (num_frames * W * H bytes)│
+│ uint32 LE                 │ UTF-8 JSON             │ uint8[] (frame0 | frame1 | ...)          │
+└───────────────────────────┴────────────────────────┴──────────────────────────────────────────┘
 ```
 
 **JSON Header:**
@@ -101,7 +101,8 @@ The payload has **two parts**: a JSON header followed by raw pixel data.
   "height": 480,
   "z_um": 1500.0,
   "rotate_180": false,
-  "um_per_px": [0.25, 0.25]
+  "um_per_px": [0.25, 0.25],
+  "num_frames": 5
 }
 ```
 
@@ -112,12 +113,13 @@ The payload has **two parts**: a JSON header followed by raw pixel data.
 | `z_um` | float | Z-axis position in micrometers (for z-scan accumulation) |
 | `rotate_180` | bool | Whether to rotate the image 180° before processing |
 | `um_per_px` | [float, float] | Pixel scale [X, Y] in micrometers per pixel |
+| `num_frames` | int | Number of frames in the pixel data (default 1). Server detects each frame independently and averages results. |
 
 **Raw Pixel Data:**
 
-- `width × height` values, each `uint16_t` in little-endian byte order
-- Total size: `width * height * 2` bytes
-- If the source camera is 8-bit, the client upconverts by `value * 256`
+- `num_frames × width × height` values, each `uint8_t` (1 byte per pixel)
+- Total size: `num_frames * width * height` bytes
+- Frames are concatenated sequentially: `[frame0][frame1]...[frameN-1]`
 - Multi-channel images are converted to grayscale (channel average) before sending
 
 #### Response — Success
@@ -125,6 +127,8 @@ The payload has **two parts**: a JSON header followed by raw pixel data.
 ```json
 {
   "num_beams": 2,
+  "z_um": 1500.0,
+  "num_frames_averaged": 5,
   "beams": [
     {
       "side": "TX",
@@ -151,6 +155,8 @@ The payload has **two parts**: a JSON header followed by raw pixel data.
 | Field | Type | Description |
 |-------|------|-------------|
 | `num_beams` | int | Number of beams detected in the image |
+| `z_um` | float | Z-axis position echoed back from request |
+| `num_frames_averaged` | int | Number of frames that were averaged for results |
 | `beams` | array | Array of beam result objects |
 | `beams[].side` | string | Beam label — `"TX"` or `"RX"` |
 | `beams[].centroid_x_px` | float | Beam centroid X position in pixels |
@@ -399,7 +405,7 @@ Your new server UI must implement:
 
 | Command | What your server must do |
 |---------|--------------------------|
-| `CMD_DETECT` | Parse JSON header + raw uint16 image → run D4Sigma analysis → return beam results → accumulate for later Fit |
+| `CMD_DETECT` | Parse JSON header + raw uint8 image → run D4Sigma analysis → return beam results → accumulate for later Fit |
 | `CMD_DETECT_FILE` | Read image from file path → same D4Sigma analysis as Detect → accumulate |
 | `CMD_FIT` | Run M² Gaussian beam propagation fit on all accumulated data → return fit results |
 | `CMD_RESET` | Clear all accumulated detections → return `{"status":"ok"}` |

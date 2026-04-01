@@ -14,6 +14,7 @@
 #include "TransformationMatrixLoader.h"
 #include "AuxWindowManager.h"
 #include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor
+#include "QtCameraWindow/QtCameraWindow.h"     // Qt camera monitor
 #include "SwirBeamWindow/SwirBeamWindowManager.h"  // SWIR beam processing window
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
@@ -638,47 +639,57 @@ void MainWindow::onToggleAuxWindow()
 
 void MainWindow::onToggleRtlmWindow()
 {
+  // Try Qt camera window first, fall back to GDI
+  if (m_context && m_context->qtCameraWindow) {
+    if (m_context->qtCameraWindow->isVisible()) {
+      m_context->qtCameraWindow->hide();
+      std::cout << "[MainWindow] Qt camera monitor hidden (Ctrl+R)" << std::endl;
+    } else {
+      m_context->qtCameraWindow->show();
+      std::cout << "[MainWindow] Qt camera monitor shown (Ctrl+R)" << std::endl;
+    }
+    return;
+  }
+
   if (!m_context || !m_context->gdiCameraWindowManager) {
-    std::cerr << "[MainWindow] GDI Camera window manager not initialized!" << std::endl;
+    std::cerr << "[MainWindow] Camera window not initialized!" << std::endl;
     return;
   }
 
   if (m_context->gdiCameraWindowManager->isVisible()) {
     m_context->gdiCameraWindowManager->hide();
-    std::cout << "[MainWindow] Realtime camera monitor hidden (Ctrl+R)" << std::endl;
-    if (m_context->logManager) {
-      m_context->logManager->Info("Realtime camera monitor hidden", "MainWindow");
-    }
-  }
-  else {
+    std::cout << "[MainWindow] GDI camera monitor hidden (Ctrl+R)" << std::endl;
+  } else {
     m_context->gdiCameraWindowManager->show();
-    std::cout << "[MainWindow] Realtime camera monitor shown (Ctrl+R)" << std::endl;
-    if (m_context->logManager) {
-      m_context->logManager->Info("Realtime camera monitor shown", "MainWindow");
-    }
+    std::cout << "[MainWindow] GDI camera monitor shown (Ctrl+R)" << std::endl;
   }
 }
 
 void MainWindow::onToggleRtlmWindow2()
 {
+  // Try Qt camera window 2 first, fall back to GDI
+  if (m_context && m_context->qtCameraWindow2) {
+    if (m_context->qtCameraWindow2->isVisible()) {
+      m_context->qtCameraWindow2->hide();
+      std::cout << "[MainWindow] Qt camera monitor 2 hidden (Ctrl+T)" << std::endl;
+    } else {
+      m_context->qtCameraWindow2->show();
+      std::cout << "[MainWindow] Qt camera monitor 2 shown (Ctrl+T)" << std::endl;
+    }
+    return;
+  }
+
   if (!m_context || !m_context->gdiCameraWindowManager2) {
-    std::cerr << "[MainWindow] GDI Camera window manager 2 not initialized!" << std::endl;
+    std::cerr << "[MainWindow] Camera window 2 not initialized!" << std::endl;
     return;
   }
 
   if (m_context->gdiCameraWindowManager2->isVisible()) {
     m_context->gdiCameraWindowManager2->hide();
-    std::cout << "[MainWindow] Realtime camera monitor 2 hidden (Ctrl+T)" << std::endl;
-    if (m_context->logManager) {
-      m_context->logManager->Info("Realtime camera monitor 2 hidden", "MainWindow");
-    }
-  }
-  else {
+    std::cout << "[MainWindow] GDI camera monitor 2 hidden (Ctrl+T)" << std::endl;
+  } else {
     m_context->gdiCameraWindowManager2->show();
-    std::cout << "[MainWindow] Realtime camera monitor 2 shown (Ctrl+T)" << std::endl;
-    if (m_context->logManager) {
-      m_context->logManager->Info("Realtime camera monitor 2 shown", "MainWindow");
-    }
+    std::cout << "[MainWindow] GDI camera monitor 2 shown (Ctrl+T)" << std::endl;
   }
 }
 

@@ -27,6 +27,10 @@
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "BeamOptimizer/BeamOptimizerManager.h"
 
+#ifdef USE_QT_CAMERA_WINDOW
+#include "QtCameraWindow/QtCameraWindow.h"
+#endif
+
 class QApplication;
 class MainWindow;
 class CameraManager;
@@ -77,6 +81,10 @@ private:
   void initializeAuxWindowManager();  // ✅ ADD THIS
   void initializeGdiCameraWindow();   // GDI camera monitor window
   void initializeGdiCameraWindow2();  // Second GDI camera monitor window
+#ifdef USE_QT_CAMERA_WINDOW
+  void initializeQtCameraWindow();   // Qt-based camera monitor
+  void initializeQtCameraWindow2();  // Second Qt-based camera monitor
+#endif
   void initializeSwirBeamWindow();   // SWIR beam processing window
   void initializePowerSupplySystem();
   void initializeSMUSystem();  // ✅ ADD SMU System initialization
@@ -130,6 +138,10 @@ private:
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager2;  // Second GDI camera monitor
+#ifdef USE_QT_CAMERA_WINDOW
+  std::unique_ptr<QtCameraWindow> m_qtCameraWindow;                  // Qt camera monitor
+  std::unique_ptr<QtCameraWindow> m_qtCameraWindow2;                 // Second Qt camera monitor
+#endif
   std::unique_ptr<SwirBeamWindowManager> m_swirBeamWindowManager;    // SWIR beam processing window
   std::unique_ptr<Startup::ConnectionWorkerPool> m_connectionPool;
   std::unique_ptr<ApplicationSettings> m_applicationSettings;  // Application-wide settings
