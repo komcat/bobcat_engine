@@ -293,6 +293,42 @@ void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& rect)
   painter->setPen(QColor(255, 255, 255));
   painter->drawText(x, y, zoomText);
 
+  // Draw device name label (top-left, large, color-coded)
+  if (!m_deviceName.isEmpty()) {
+    // Assign color based on device name
+    QColor deviceColor;
+    if (m_deviceName.contains("gantry", Qt::CaseInsensitive)) {
+      deviceColor = QColor(52, 152, 219);   // blue
+    } else if (m_deviceName.contains("hex-left", Qt::CaseInsensitive)) {
+      deviceColor = QColor(46, 204, 113);   // green
+    } else if (m_deviceName.contains("hex-right", Qt::CaseInsensitive)) {
+      deviceColor = QColor(231, 76, 60);    // red
+    } else if (m_deviceName.contains("hex-bottom", Qt::CaseInsensitive)) {
+      deviceColor = QColor(155, 89, 182);   // purple
+    } else if (m_deviceName.contains("stage", Qt::CaseInsensitive)) {
+      deviceColor = QColor(241, 196, 15);   // yellow
+    } else {
+      deviceColor = QColor(149, 165, 166);  // gray
+    }
+
+    QFont deviceFont("Arial", 24, QFont::Bold);
+    painter->setFont(deviceFont);
+    QFontMetrics dfm(deviceFont);
+    QRect deviceTextRect = dfm.boundingRect(m_deviceName);
+    int dPadding = 15;
+
+    // Background pill
+    QRect dBgRect(dPadding - 8, dPadding - 4,
+                  deviceTextRect.width() + 24, deviceTextRect.height() + 12);
+    painter->setBrush(QColor(0, 0, 0, 160));
+    painter->setPen(QPen(deviceColor, 2));
+    painter->drawRoundedRect(dBgRect, 6, 6);
+
+    // Device name text
+    painter->setPen(deviceColor);
+    painter->drawText(dPadding + 4, dPadding + deviceTextRect.height() + 1, m_deviceName);
+  }
+
   painter->restore();
 }
 
@@ -601,6 +637,7 @@ QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
 void MotionGraphicsView::setDeviceName(const QString& deviceName)
 {
   m_deviceName = deviceName;
+  viewport()->update();  // Repaint to show device name label
 }
 
 // ✅ NEW: Save current zoom and pan state to QSettings

@@ -32,6 +32,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	DataStore* dataStore,
 	CoordinateSystemManager* coordinateSystemManager,
 	SequenceEngine* sequenceEngine,
+	InterlockManager* interlockManager,
 	QWidget* parent)
 	: QWidget(parent)
 	, m_motionManager(motionManager)
@@ -40,6 +41,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_dataStore(dataStore)
 	, m_coordinateSystemManager(coordinateSystemManager)
 	, m_sequenceEngine(sequenceEngine)
+	, m_interlockManager(interlockManager)
 	, m_tabWidget(nullptr)
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
@@ -443,6 +445,17 @@ void MotionPage::setupUI()
 	// GraphWidget will be created in onDeviceChanged() when device is selected
 	m_tabWidget->addTab(graphTab, "Graph");
 
+	// ============================================================================
+	// TAB 4: INTERLOCK
+	// ============================================================================
+	QWidget* interlockTab = new QWidget();
+	interlockTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* interlockTabLayout = new QVBoxLayout(interlockTab);
+	interlockTabLayout->setContentsMargins(0, 0, 0, 0);
+	InterlockWidget* interlockWidget = new InterlockWidget(m_motionManager, m_interlockManager, interlockTab);
+	interlockTabLayout->addWidget(interlockWidget);
+	m_tabWidget->addTab(interlockTab, "Interlock");
+
 	// Add tab widget to content layout
 	contentLayout->addWidget(m_tabWidget, 1);
 
@@ -499,6 +512,28 @@ void MotionPage::setupUI()
 
 	connect(m_controlPanel, &MotionControlPanel::stopClicked,
 		this, &MotionPage::onStopClicked);
+
+	// Velocity preset: apply velocity based on device type (ACS per-axis, PI system)
+	connect(m_controlPanel, &MotionControlPanel::velocityPresetClicked,
+		this, [this](double velocity) {
+		if (m_currentDevice.isEmpty() || !m_motionManager) return;
+		std::string dev = m_currentDevice.toStdString();
+		std::string type = m_motionManager->GetDeviceType(dev);
+
+		// Normalize type
+		std::string upperType = type;
+		for (auto& c : upperType) c = static_cast<char>(toupper(c));
+
+		if (upperType == "PI") {
+			m_motionManager->SetSystemVelocity(dev, velocity);
+		} else {
+			// ACS: set all installed axes
+			std::string axes = m_motionManager->GetInstalledAxes(dev);
+			for (char c : axes) {
+				m_motionManager->SetVelocity(dev, std::string(1, c), velocity);
+			}
+		}
+	});
 
 	connect(m_graphicsView, &MotionGraphicsView::positionSelected,
 		this, &MotionPage::onPositionSelected);
@@ -932,6 +967,13 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 
 	// ✅ NEW: Update breadcrumb with device only (no position selected yet)
 	m_controlPanel->updateBreadcrumb(m_currentDevice, QString());
+
+	// Update velocity presets based on device type (ACS vs PI)
+	if (m_motionManager) {
+		std::string type = m_motionManager->GetDeviceType(deviceName.toStdString());
+		for (auto& c : type) c = static_cast<char>(toupper(c));
+		m_controlPanel->updateVelocityPresets(QString::fromStdString(type));
+	}
 
 	// ✅ NEW: Set device name and restore its saved view state
 	if (m_graphicsView) {

@@ -4,6 +4,18 @@
 #include <QFrame>
 #include <algorithm>
 
+namespace {
+// Device color mapping - matches MotionGraphicsView overlay
+QColor getDeviceColor(const QString& deviceName) {
+    if (deviceName.contains("gantry", Qt::CaseInsensitive))     return QColor(52, 152, 219);   // blue
+    if (deviceName.contains("hex-left", Qt::CaseInsensitive))   return QColor(46, 204, 113);   // green
+    if (deviceName.contains("hex-right", Qt::CaseInsensitive))  return QColor(231, 76, 60);    // red
+    if (deviceName.contains("hex-bottom", Qt::CaseInsensitive)) return QColor(155, 89, 182);   // purple
+    if (deviceName.contains("stage", Qt::CaseInsensitive))      return QColor(241, 196, 15);   // yellow
+    return QColor(149, 165, 166);  // gray
+}
+} // namespace
+
 DeviceButtonStack::DeviceButtonStack(QWidget* parent)
   : QWidget(parent)
   , m_motionManager(nullptr)
@@ -112,15 +124,23 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
     btn->setMaximumHeight(80);
     btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    // Style for device buttons - 3D Windows Style
-    btn->setStyleSheet(
+    // Get device-specific color
+    QColor dc = getDeviceColor(device);
+    QString colorStr = dc.name();
+    QColor dcDark = dc.darker(130);
+    QString darkStr = dcDark.name();
+    QColor dcLight = dc.lighter(120);
+    QString lightStr = dcLight.name();
+
+    // Style for device buttons - 3D style with device-specific checked color
+    btn->setStyleSheet(QString(
       "QPushButton { "
       "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
       "  color: white; "
       "  border-radius: 6px; "
-      "  font-size: 13px; "
+      "  font-size: 16px; "
       "  font-weight: bold; "
-      "  padding: 6px; "
+      "  padding: 8px; "
       "  text-align: center; "
       "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
@@ -138,11 +158,11 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
       "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
       "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-      "  padding-top: 8px; "
-      "  padding-left: 8px; "
+      "  padding-top: 10px; "
+      "  padding-left: 10px; "
       "} "
       "QPushButton:checked { "
-      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e73ac, stop:1 #0e639c); "
+      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %1, stop:1 %2); "
       "  color: white; "
       "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
@@ -150,11 +170,11 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
       "} "
       "QPushButton:checked:hover { "
-      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2e83bc, stop:1 #1e73ac); "
+      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %3, stop:1 %1); "
       "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
       "}"
-    );
+    ).arg(colorStr, darkStr, lightStr));
 
     m_mainLayout->addWidget(btn);
     m_buttonGroup->addButton(btn, buttonId);

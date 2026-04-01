@@ -56,6 +56,7 @@ signals:
   void autoFitClicked();  // ✅ NEW: Auto-fit view to positions
   void homeClicked();
   void stopClicked();
+  void velocityPresetClicked(double velocity);  // Velocity preset button clicked
   void positionSelectedFromList(const QString& positionName);  // ✅ NEW: Position selected from list
 
 private slots:
@@ -92,5 +93,13 @@ private:
   QPushButton* m_homeButton;
   QPushButton* m_stopButton;
 
+  // Velocity presets
+  QWidget* m_velocityPresetsWidget;
+  QList<QPushButton*> m_velocityButtons;
+
   QString m_selectedPositionName;
+
+public:
+  // Update velocity preset buttons based on device type
+  void updateVelocityPresets(const QString& deviceType);
 };

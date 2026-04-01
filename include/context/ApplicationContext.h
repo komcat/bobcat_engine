@@ -21,6 +21,7 @@ class CoordinateSystemManager;
 class DeviceUnderTest;
 class SafetyWatchManager;
 class DeviceLinkManager;
+class InterlockManager;
 class GdiCameraWindowManager;  // GDI-based camera monitor window
 class QtCameraWindow;          // Qt-based camera monitor window
 class SwirBeamWindowManager;   // SWIR beam processing window
@@ -58,6 +59,7 @@ struct ApplicationContext
   Lighting::LightingManager* lightingManager = nullptr;  // LED lighting controller
   SafetyWatchManager* safetyWatchManager = nullptr;  // Safety monitoring layer
   DeviceLinkManager* deviceLinkManager = nullptr;  // Linked device motion manager
+  InterlockManager* interlockManager = nullptr;    // Motion interlock rules
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
   GdiCameraWindowManager* gdiCameraWindowManager2 = nullptr; // Second GDI camera monitor window
   QtCameraWindow* qtCameraWindow = nullptr;                  // Qt camera monitor window

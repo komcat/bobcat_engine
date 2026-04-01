@@ -470,10 +470,23 @@ void MotionControlPanel::setupActionsTab()
   line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   buttonsLayout->addWidget(line2);
 
-  // Home Button - Removed (user can select Home position from list and click Move to Position)
-  // m_homeButton = new QPushButton("⌂ Home");
-  // m_homeButton->setMinimumHeight(28);
-  // buttonsLayout->addWidget(m_homeButton);
+  // Velocity Presets Section
+  QLabel* velLabel = new QLabel("Velocity:");
+  velLabel->setStyleSheet("QLabel { color: #d4d4d4; font-size: 11px; font-weight: bold; }");
+  buttonsLayout->addWidget(velLabel);
+
+  m_velocityPresetsWidget = new QWidget();
+  m_velocityPresetsWidget->setStyleSheet("QWidget { background-color: transparent; }");
+  QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
+  velGrid->setContentsMargins(0, 0, 0, 0);
+  velGrid->setSpacing(3);
+  buttonsLayout->addWidget(m_velocityPresetsWidget);
+
+  // Separator before STOP
+  QFrame* line3 = new QFrame();
+  line3->setFrameShape(QFrame::HLine);
+  line3->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+  buttonsLayout->addWidget(line3);
 
   // Emergency Stop
   m_stopButton = new QPushButton("⚠ STOP");
@@ -738,4 +751,79 @@ void MotionControlPanel::onPositionListSelectionChanged()
 
   // Emit signal to notify MotionPage
   emit positionSelectedFromList(positionName);
+}
+
+void MotionControlPanel::updateVelocityPresets(const QString& deviceType)
+{
+  // Clear existing buttons
+  for (auto* btn : m_velocityButtons) {
+    btn->deleteLater();
+  }
+  m_velocityButtons.clear();
+
+  QGridLayout* velGrid = qobject_cast<QGridLayout*>(m_velocityPresetsWidget->layout());
+  if (!velGrid) return;
+
+  // Choose presets based on device type
+  QList<double> presets;
+  if (deviceType == "PI") {
+    presets = { 1, 2, 5, 10, 12.5 };
+  } else {
+    // ACS or default
+    presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
+  }
+
+  int col = 0;
+  int row = 0;
+  int maxCols = 4;
+
+  for (double vel : presets) {
+    QString label;
+    if (vel == static_cast<int>(vel)) {
+      label = QString::number(static_cast<int>(vel));
+    } else {
+      label = QString::number(vel, 'f', 1);
+    }
+
+    QPushButton* btn = new QPushButton(label);
+    btn->setMinimumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton {"
+      "  background-color: #3c3c3c;"
+      "  color: #d4d4d4;"
+      "  border: 1px solid #555555;"
+      "  border-radius: 3px;"
+      "  font-size: 11px;"
+      "  font-weight: bold;"
+      "  padding: 4px 2px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #0e639c;"
+      "  color: white;"
+      "  border-color: #1177bb;"
+      "}"
+      "QPushButton:pressed {"
+      "  background-color: #0c5280;"
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this, [this, vel]() {
+      emit velocityPresetClicked(vel);
+    });
+
+    velGrid->addWidget(btn, row, col);
+    m_velocityButtons.append(btn);
+
+    col++;
+    if (col >= maxCols) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // Add "mm/s" label at the end
+  QLabel* unitLabel = new QLabel("mm/s");
+  unitLabel->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  unitLabel->setAlignment(Qt::AlignCenter);
+  velGrid->addWidget(unitLabel, row, col);
 }

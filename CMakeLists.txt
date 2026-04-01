@@ -579,6 +579,7 @@ set(SOURCES
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
     include/motions/DeviceLinkManager.cpp
+    include/motions/InterlockManager.cpp
     src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogWorker.cpp
@@ -590,6 +591,7 @@ set(SOURCES
     include/AppUI/MotionPages/DeviceButtonStack.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
+    include/AppUI/MotionPages/InterlockWidget.cpp
     include/AppUI/MotionPages/CollapsiblePanel.cpp
     include/AppUI/CoordinateSystem/CreateSystemWidget.cpp
     include/AppUI/CoordinateSystem/TestSystemWidget.cpp

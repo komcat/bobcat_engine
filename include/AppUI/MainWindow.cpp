@@ -243,6 +243,7 @@ void MainWindow::createPages()
     m_context->dataStore,
     m_context->coordinateSystemManager,
     m_context->sequenceEngine,
+    m_context->interlockManager,
     this
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,

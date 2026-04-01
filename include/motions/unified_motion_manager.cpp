@@ -1,5 +1,6 @@
 ﻿// unified_motion_manager.cpp - Complete Implementation
 #include "unified_motion_manager.h"
+#include "InterlockManager.h"
 #include "MotionJsonLoader.h"
 #include "safety/SafetyWatchManager.h"
 #include <algorithm>
@@ -283,6 +284,15 @@ bool UnifiedMotionManager::MoveToAbs(const std::string& deviceName,
 
   LOG_INFO("MoveToAbs on " + deviceName + " to (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
 
+  // Interlock check
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
+
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
@@ -311,6 +321,15 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
   }
 
   LOG_INFO("MoveToAbs6 on " + deviceName + " to (" + std::to_string(pos.x) + ", " + std::to_string(pos.y) + ", " + std::to_string(pos.z) + ", " + std::to_string(pos.u) + ", " + std::to_string(pos.v) + ", " + std::to_string(pos.w) + ")");
+
+  // Interlock check
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
@@ -379,6 +398,15 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
 
   LOG_INFO("MoveToPosition on " + deviceName + " axis " + axis + " to " + std::to_string(position));
 
+  // Interlock check
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
+
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
     if (!controller) return false;
@@ -408,6 +436,15 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   }
 
   LOG_INFO("MoveRelative on " + deviceName + " axis " + axis + " by " + std::to_string(distance) + " (type=" + type + ")");
+
+  // Interlock check
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
 
   if (NormalizeType(type) == "ACS") {
     ACSController* controller = GetACSController(deviceName);
@@ -1365,6 +1402,15 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
   if (!GetPositionWithCalculation(deviceName, positionName, testPos)) {
     LOG_ERROR("Position '" + positionName + "' not found for device " + deviceName);
     return false;
+  }
+
+  // Interlock check
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
+      return false;
+    }
   }
 
   // ✅ BLOCKING MODE - Use old direct implementation

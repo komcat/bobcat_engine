@@ -388,6 +388,14 @@ void Application::initializeManagers()
     initializeSafetyWatch();
     completeSplash("SafetyWatch");
 
+    // Initialize InterlockManager
+    m_interlockManager = std::make_unique<InterlockManager>();
+    m_interlockManager->SetMotionManager(m_motionManager.get());
+    m_interlockManager->LoadConfig("config/interlocks.json");
+    m_motionManager->SetInterlockManager(m_interlockManager.get());
+    m_context.interlockManager = m_interlockManager.get();
+    m_logManager->Info("InterlockManager initialized", "Application");
+
     // Optional: run test commands to verify managers
     //testMotionCommands();
     //testIOCommands();  // Test IO with Vacuum_Base
@@ -1237,6 +1245,7 @@ void Application::shutdownManagers()
   m_safetyWatchManager.reset();
   m_safetyEventLog.reset();
   m_deviceLinkManager.reset();
+  m_interlockManager.reset();
   m_powerSupplyManager.reset();
   m_smuManager.reset();
   m_lightingManager.reset();
