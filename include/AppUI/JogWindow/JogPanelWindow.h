@@ -101,7 +101,9 @@ private:
   void flashButton(QPushButton* button);
   void saveWindowSettings();       // Save window position to settings
   void restoreWindowSettings();    // Restore window position from settings
+  void loadStepSizes();            // Load step sizes from JSON config
   static QString getDeviceButtonStyleSheet(const std::string& deviceId);
+  static QString formatStepLabel(double stepUm);
 
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
@@ -161,8 +163,6 @@ private:
   // Auto-focus state
   std::future<void> m_autoFocusFuture;
 
-  // Step sizes in microns
-  const std::vector<double> m_stepSizes = {
-    0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0
-  };
+  // Step sizes in microns (loaded from config/jog_stepsize.json)
+  std::vector<double> m_stepSizes;
 };

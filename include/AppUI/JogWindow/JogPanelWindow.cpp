@@ -17,6 +17,8 @@
 #include "CameraManager.h"
 
 #include <iostream>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -103,6 +105,7 @@ JogPanelWindow::JogPanelWindow(
     }
   }
 
+  loadStepSizes();  // Load step sizes from JSON config (before UI creation)
   setupUI();
   restoreWindowSettings();  // Restore saved window position and size
 
@@ -339,6 +342,115 @@ void JogPanelWindow::createLightingTab()
     layout->addWidget(label);
     m_tabWidget->addTab(placeholder, "Lighting");
   }
+}
+
+void JogPanelWindow::loadStepSizes()
+{
+  // Default step sizes (fallback if no config file found)
+  const std::vector<double> defaultSteps = {
+    0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
+    100.0, 200.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0
+  };
+  double defaultStepSize = 10.0;
+
+  std::string localConfigPath = "config/jog_stepsize.local.json";
+  std::string defaultConfigPath = "config/jog_stepsize.json";
+  std::string configPath;
+  bool loaded = false;
+
+  // Try local configuration first
+  if (QFile::exists(QString::fromStdString(localConfigPath))) {
+    configPath = localConfigPath;
+  }
+  else if (QFile::exists(QString::fromStdString(defaultConfigPath))) {
+    configPath = defaultConfigPath;
+  }
+
+  if (!configPath.empty()) {
+    std::ifstream file(configPath);
+    if (file.is_open()) {
+      try {
+        nlohmann::json j;
+        file >> j;
+        file.close();
+
+        if (j.contains("step_sizes_um") && j["step_sizes_um"].is_array()) {
+          m_stepSizes.clear();
+          for (const auto& val : j["step_sizes_um"]) {
+            if (val.is_number()) {
+              m_stepSizes.push_back(val.get<double>());
+            }
+          }
+          std::sort(m_stepSizes.begin(), m_stepSizes.end());
+
+          // Enforce maximum of 30 step sizes
+          const size_t MAX_STEP_SIZES = 30;
+          if (m_stepSizes.size() > MAX_STEP_SIZES) {
+            m_stepSizes.resize(MAX_STEP_SIZES);
+            if (m_context && m_context->logManager) {
+              m_context->logManager->Warning(
+                "Jog step sizes truncated to " + std::to_string(MAX_STEP_SIZES) + " entries",
+                "JogPanel"
+              );
+            }
+          }
+        }
+
+        m_currentStepSize = j.value("default_step_um", defaultStepSize);
+        loaded = true;
+
+        if (m_context && m_context->logManager) {
+          m_context->logManager->Info(
+            "Loaded " + std::to_string(m_stepSizes.size()) + " jog step sizes from " + configPath,
+            "JogPanel"
+          );
+        }
+      }
+      catch (const std::exception& e) {
+        if (m_context && m_context->logManager) {
+          m_context->logManager->Warning(
+            "Failed to parse jog step size config: " + std::string(e.what()),
+            "JogPanel"
+          );
+        }
+      }
+    }
+  }
+
+  // Fall back to hardcoded defaults
+  if (!loaded || m_stepSizes.empty()) {
+    m_stepSizes = defaultSteps;
+    m_currentStepSize = defaultStepSize;
+
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Info("Using default jog step sizes (no config file found)", "JogPanel");
+    }
+  }
+}
+
+QString JogPanelWindow::formatStepLabel(double stepUm)
+{
+  if (stepUm >= 1000.0) {
+    double mm = stepUm / 1000.0;
+    if (mm == static_cast<int>(mm)) {
+      return QString::number(static_cast<int>(mm)) + "mm";
+    }
+    return QString::number(mm, 'f', 1) + "mm";
+  }
+  if (stepUm < 1.0) {
+    // Sub-micron: show decimal (e.g., "0.1µ", "0.3µ")
+    QString num = QString::number(stepUm, 'f', 1);
+    // Trim trailing zero after decimal if not needed (0.10 → 0.1)
+    if (num.endsWith('0') && num.contains('.')) {
+      num.chop(1);
+    }
+    return num + QStringLiteral("\u00B5");
+  }
+  // Whole micron values
+  if (stepUm == static_cast<int>(stepUm)) {
+    return QString::number(static_cast<int>(stepUm)) + QStringLiteral("\u00B5");
+  }
+  return QString::number(stepUm, 'f', 1) + QStringLiteral("\u00B5");
 }
 
 QString JogPanelWindow::getDeviceButtonStyleSheet(const std::string& deviceId)
@@ -634,14 +746,9 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
   gridLayout->setSpacing(2);
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
-  const std::vector<QString> labels = {
-    "0.1µ", "0.2µ", "0.3µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
-    "100µ", "200µ", "250µ", "500µ", "1mm", "2mm", "5mm"
-  };
-
   int row = 0, col = 0;
   for (size_t i = 0; i < m_stepSizes.size(); ++i) {
-    QPushButton* btn = new QPushButton(labels[i]);
+    QPushButton* btn = new QPushButton(formatStepLabel(m_stepSizes[i]));
     btn->setCheckable(true);
     btn->setProperty("stepSize", m_stepSizes[i]);
     btn->setMinimumHeight(22);
