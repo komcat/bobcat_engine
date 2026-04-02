@@ -64,7 +64,7 @@ void LogManager::InitializeSpdlog()
 
     // Create logger with console sink only (file sink added later via EnableFileOutput)
     m_logger = std::make_shared<spdlog::logger>("bobcat", m_consoleSink);
-    m_logger->set_level(spdlog::level::trace);
+    m_logger->set_level(spdlog::level::info);
     m_logger->set_pattern("[%H:%M:%S.%e] [%l] %v");
 
     spdlog::register_logger(m_logger);

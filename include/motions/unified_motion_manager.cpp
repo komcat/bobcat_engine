@@ -396,7 +396,7 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
     return false;
   }
 
-  LOG_INFO("MoveToPosition on " + deviceName + " axis " + axis + " to " + std::to_string(position));
+  LOG_DEBUG("MoveToPosition on " + deviceName + " axis " + axis + " to " + std::to_string(position));
 
   // Interlock check
   if (m_interlockManager) {

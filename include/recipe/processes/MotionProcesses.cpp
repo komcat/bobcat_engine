@@ -1340,7 +1340,7 @@ public:
 
     table->addCategoryHeader("Step Size");
     table->addNumericProperty("step_size_um", "Step Size",
-      std::stod(getParam("step_size_um")), 1, 100, 1, 0, "um",
+      std::stod(getParam("step_size_um")), 0.5, 100, 0.5, 1, "um",
       "Distance between grid points (same for both axes)");
 
     table->addCategoryHeader("Data Source");
@@ -1409,7 +1409,8 @@ public:
       {"exit_threshold", getParam("exit_threshold")},
       {"capture_as", getParam("capture_as")},
       {"capture_position_as", getParam("capture_position_as")},
-      {"timeout_ms", getParam("timeout_ms")}  // Custom timeout for long scans
+      {"timeout_ms", getParam("timeout_ms")},  // Custom timeout for long scans
+      {"process_uid", step->uniqueId}           // For result file naming
     };
 
     sequence->AddAction(device, "GridScanExtended", actionParams);
@@ -1419,6 +1420,232 @@ public:
               << ", range=" << getParam("range_axis1_um") << "x" << getParam("range_axis2_um") << "um"
               << ", step=" << getParam("step_size_um") << "um"
               << ", channel=" << getParam("channel") << ")"
+              << std::endl;
+  }
+};
+
+//=============================================================================
+// GRID SCAN DUAL CHANNEL PLUGIN - Two-channel grid scan for PIC waveguide alignment
+//=============================================================================
+
+class GridScanDualChannelPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Grid Scan Dual Channel";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "2D grid scan with dual channel readout for PIC waveguide alignment. "
+           "Tracks peak positions independently per channel and reports axis offset.";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"plane", "XY"},
+      {"range_axis1_um", "100"},
+      {"direction_axis1", "centered"},
+      {"range_axis2_um", "100"},
+      {"direction_axis2", "centered"},
+      {"step_size_um", "10"},
+      {"channel1", ""},
+      {"channel2", ""},
+      {"waveguide_spacing_um", "2500"},
+      {"settling_time_ms", "300"},
+      {"snake_pattern", "true"},
+      {"return_to_peak", "channel1"},
+      {"exit_threshold", ""},
+      {"capture_peak1_as", ""},
+      {"capture_peak2_as", ""},
+      {"capture_peak1_position_as", ""},
+      {"capture_peak2_position_as", ""},
+      {"capture_peak_delta_as", ""},
+      {"timeout_ms", "10800000"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    widget->addDeviceSelector("device", "Motion Device", getParam("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addDropdownParameter("plane", "Scan Plane", getParam("plane"),
+      {"XY", "XZ", "YZ"});
+    widget->addParameterField("range_axis1_um", "Range Axis 1 (um)", getParam("range_axis1_um"));
+    widget->addDropdownParameter("direction_axis1", "Direction Axis 1", getParam("direction_axis1"),
+      {"centered", "positive", "negative"});
+    widget->addParameterField("range_axis2_um", "Range Axis 2 (um)", getParam("range_axis2_um"));
+    widget->addDropdownParameter("direction_axis2", "Direction Axis 2", getParam("direction_axis2"),
+      {"centered", "positive", "negative"});
+    widget->addParameterField("step_size_um", "Step Size (um)", getParam("step_size_um"));
+    widget->addDataChannelSelector("channel1", "Data Channel 1", getParam("channel1"));
+    widget->addDataChannelSelector("channel2", "Data Channel 2", getParam("channel2"));
+    widget->addNumericParameter("waveguide_spacing_um", "Waveguide Spacing (um)",
+      getParam("waveguide_spacing_um"), 0, 50000, 100, 0, "um");
+    widget->addNumericParameter("settling_time_ms", "Settling Time (ms)",
+      getParam("settling_time_ms"), 50, 2000, 10, 0, "ms");
+    widget->addDropdownParameter("snake_pattern", "Snake Pattern", getParam("snake_pattern"),
+      {"true", "false"});
+    widget->addDropdownParameter("return_to_peak", "Return to Peak", getParam("return_to_peak"),
+      {"channel1", "channel2", "none"});
+    widget->addParameterField("exit_threshold", "Exit Threshold (optional)", getParam("exit_threshold"));
+    widget->addParameterField("capture_peak1_as", "Capture Peak 1 As", getParam("capture_peak1_as"));
+    widget->addParameterField("capture_peak2_as", "Capture Peak 2 As", getParam("capture_peak2_as"));
+    widget->addParameterField("capture_peak1_position_as", "Capture Peak 1 Position As", getParam("capture_peak1_position_as"));
+    widget->addParameterField("capture_peak2_position_as", "Capture Peak 2 Position As", getParam("capture_peak2_position_as"));
+    widget->addParameterField("capture_peak_delta_as", "Capture Peak Delta As", getParam("capture_peak_delta_as"));
+    widget->addNumericParameter("timeout_ms", "Timeout (ms)",
+      getParam("timeout_ms"), 60000, 10800000, 60000, 0, "ms");
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    auto defaults = GetDefaultParameters();
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", getParam("device"),
+      "Select the motion device for grid scanning");
+
+    table->addCategoryHeader("Grid Configuration");
+    table->addDropdownProperty("plane", "Scan Plane", getParam("plane"),
+      {"XY", "XZ", "YZ"},
+      "2D plane to scan: XY scans X then Y, XZ scans X then Z, YZ scans Y then Z");
+
+    table->addCategoryHeader("Axis 1 (1st letter of plane)");
+    table->addNumericProperty("range_axis1_um", "Range",
+      std::stod(getParam("range_axis1_um")), 10, 1000, 10, 0, "um",
+      "Scan range for 1st axis");
+    table->addDropdownProperty("direction_axis1", "Direction", getParam("direction_axis1"),
+      {"centered", "positive", "negative"},
+      "centered=+/-half, positive=0 to +range, negative=-range to 0");
+
+    table->addCategoryHeader("Axis 2 (2nd letter of plane)");
+    table->addNumericProperty("range_axis2_um", "Range",
+      std::stod(getParam("range_axis2_um")), 10, 1000, 10, 0, "um",
+      "Scan range for 2nd axis");
+    table->addDropdownProperty("direction_axis2", "Direction", getParam("direction_axis2"),
+      {"centered", "positive", "negative"},
+      "centered=+/-half, positive=0 to +range, negative=-range to 0");
+
+    table->addCategoryHeader("Step Size");
+    table->addNumericProperty("step_size_um", "Step Size",
+      std::stod(getParam("step_size_um")), 0.5, 100, 0.5, 1, "um",
+      "Distance between grid points (same for both axes)");
+
+    table->addCategoryHeader("Data Source (Dual Channel)");
+    table->addDataChannelProperty("channel1", "Data Channel 1", getParam("channel1"),
+      "First DataStore channel (e.g. waveguide 1)");
+    table->addDataChannelProperty("channel2", "Data Channel 2", getParam("channel2"),
+      "Second DataStore channel (e.g. waveguide 2)");
+
+    table->addCategoryHeader("Waveguide");
+    table->addNumericProperty("waveguide_spacing_um", "Waveguide Spacing",
+      std::stod(getParam("waveguide_spacing_um")), 0, 50000, 100, 0, "um",
+      "Expected distance between waveguides for reference (recorded in results)");
+
+    table->addCategoryHeader("Timing");
+    table->addNumericProperty("settling_time_ms", "Settling Time",
+      std::stod(getParam("settling_time_ms")),
+      50, 2000, 10, 0, "ms",
+      "Wait time after each position move for signal stabilization");
+
+    table->addCategoryHeader("Scan Options");
+    table->addCheckboxProperty("snake_pattern", "Snake Pattern",
+      (getParam("snake_pattern") == "true" || getParam("snake_pattern") == "1"),
+      "Use serpentine pattern to minimize backlash (recommended)");
+    table->addDropdownProperty("return_to_peak", "Return to Peak", getParam("return_to_peak"),
+      {"channel1", "channel2", "none"},
+      "Which channel's peak position to move to after scan completes");
+
+    table->addCategoryHeader("Exit Criteria");
+    table->addTextProperty("exit_threshold", "Exit Threshold", getParam("exit_threshold"),
+      "Stop scan early if either channel exceeds this value (leave empty to disable)");
+
+    table->addCategoryHeader("Result Capture");
+    table->addTextProperty("capture_peak1_as", "Save Ch1 Peak Value As", getParam("capture_peak1_as"),
+      "Context variable for channel 1 peak value");
+    table->addTextProperty("capture_peak2_as", "Save Ch2 Peak Value As", getParam("capture_peak2_as"),
+      "Context variable for channel 2 peak value");
+    table->addTextProperty("capture_peak1_position_as", "Save Ch1 Peak Position As", getParam("capture_peak1_position_as"),
+      "Context variable for channel 1 peak position as 'axis1,axis2'");
+    table->addTextProperty("capture_peak2_position_as", "Save Ch2 Peak Position As", getParam("capture_peak2_position_as"),
+      "Context variable for channel 2 peak position as 'axis1,axis2'");
+    table->addTextProperty("capture_peak_delta_as", "Save Peak Delta As", getParam("capture_peak_delta_as"),
+      "Context variable for axis1 offset between ch1 and ch2 peaks (mm)");
+
+    table->addCategoryHeader("Timeout");
+    table->addNumericProperty("timeout_ms", "Command Timeout",
+      std::stod(getParam("timeout_ms")),
+      60000, 10800000, 60000, 0, "ms",
+      "Maximum time allowed for scan (60s-3hrs).");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    auto defaults = GetDefaultParameters();
+    auto getParam = [&](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      if (it != params.end()) return it->second;
+      auto dit = defaults.find(key);
+      if (dit != defaults.end()) return dit->second;
+      return "";
+    };
+
+    std::string device = getParam("device");
+
+    std::map<std::string, std::string> actionParams = {
+      {"plane", getParam("plane")},
+      {"range_axis1_um", getParam("range_axis1_um")},
+      {"direction_axis1", getParam("direction_axis1")},
+      {"range_axis2_um", getParam("range_axis2_um")},
+      {"direction_axis2", getParam("direction_axis2")},
+      {"step_size_um", getParam("step_size_um")},
+      {"channel1", getParam("channel1")},
+      {"channel2", getParam("channel2")},
+      {"waveguide_spacing_um", getParam("waveguide_spacing_um")},
+      {"settling_time_ms", getParam("settling_time_ms")},
+      {"snake_pattern", getParam("snake_pattern")},
+      {"return_to_peak", getParam("return_to_peak")},
+      {"exit_threshold", getParam("exit_threshold")},
+      {"capture_peak1_as", getParam("capture_peak1_as")},
+      {"capture_peak2_as", getParam("capture_peak2_as")},
+      {"capture_peak1_position_as", getParam("capture_peak1_position_as")},
+      {"capture_peak2_position_as", getParam("capture_peak2_position_as")},
+      {"capture_peak_delta_as", getParam("capture_peak_delta_as")},
+      {"timeout_ms", getParam("timeout_ms")},
+      {"process_uid", step->uniqueId}
+    };
+
+    sequence->AddAction(device, "GridScanDualChannel", actionParams);
+
+    std::cout << "[MotionProcesses] Built GridScanDualChannel sequence for: " << step->userNickname
+              << " (plane=" << getParam("plane")
+              << ", range=" << getParam("range_axis1_um") << "x" << getParam("range_axis2_um") << "um"
+              << ", step=" << getParam("step_size_um") << "um"
+              << ", ch1=" << getParam("channel1")
+              << ", ch2=" << getParam("channel2") << ")"
               << std::endl;
   }
 };
@@ -2256,6 +2483,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<XCANExtendedPlugin>());
       registry.RegisterPlugin(std::make_unique<GridScanPlugin>());
       registry.RegisterPlugin(std::make_unique<GridScanExtendedPlugin>());
+      registry.RegisterPlugin(std::make_unique<GridScanDualChannelPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToGraphNodePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMovePlugin>());
       registry.RegisterPlugin(std::make_unique<ParallelMoveRelativePlugin>());
@@ -2264,7 +2492,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<FastAlignZXYPlugin>());
       registry.RegisterPlugin(std::make_unique<ReadPositionPlugin>());
 
-      std::cout << "[MotionProcesses] Registered 20 motion process plugins" << std::endl;
+      std::cout << "[MotionProcesses] Registered 21 motion process plugins" << std::endl;
     }
   };
 

@@ -23,6 +23,29 @@
 #include <sstream>                    // ✅ NEW: For XCANExtended step size parsing
 #include <algorithm>                  // ✅ NEW: For std::sort, std::greater
 #include <limits>                     // ✅ NEW: For std::numeric_limits
+#include <filesystem>                 // For grid scan result file output
+#include <fstream>                    // For grid scan result file output
+
+// Helper to format a value with SI suffix (pico to unit)
+static std::string FormatSI(double value) {
+  double absVal = std::abs(value);
+  const char* suffix;
+  double scaled;
+  if (absVal < 1e-9) {
+    suffix = "p"; scaled = value * 1e12;
+  } else if (absVal < 1e-6) {
+    suffix = "n"; scaled = value * 1e9;
+  } else if (absVal < 1e-3) {
+    suffix = "u"; scaled = value * 1e6;
+  } else if (absVal < 1.0) {
+    suffix = "m"; scaled = value * 1e3;
+  } else {
+    suffix = ""; scaled = value;
+  }
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.3f%s", scaled, suffix);
+  return std::string(buf);
+}
 
 // Helper to resolve context: references or parse direct values
 double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
@@ -1475,8 +1498,8 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
     double stepSizeUm = std::stod(stepIt->second);
-    if (stepSizeUm < 1 || stepSizeUm > 100) {
-      errorMessage = "GridScanExtended: step_size_um must be between 1 and 100 um";
+    if (stepSizeUm < 0.5 || stepSizeUm > 100) {
+      errorMessage = "GridScanExtended: step_size_um must be between 0.5 and 100 um";
       return false;
     }
 
@@ -1567,6 +1590,13 @@ bool MotionCommandHandler::ExecuteCommand(
       capturePositionAs = capturePosIt->second;
     }
 
+    // ✅ OPTIONAL PARAMETER: process_uid (for result file naming)
+    std::string processUID;
+    auto uidIt = params.find("process_uid");
+    if (uidIt != params.end()) {
+      processUID = uidIt->second;
+    }
+
     // ✅ GET DATA STORE
     if (!m_dataStore) {
       errorMessage = "GridScanExtended: DataStore not available";
@@ -1611,6 +1641,11 @@ bool MotionCommandHandler::ExecuteCommand(
     if (axis2 == "X") centerAxis2 = currentPosExt.x;
     else if (axis2 == "Y") centerAxis2 = currentPosExt.y;
     else if (axis2 == "Z") centerAxis2 = currentPosExt.z;
+
+    // ✅ GRID SCAN DATA COLLECTION (in-memory, saved to file after scan)
+    auto scanStartTime = std::chrono::system_clock::now();
+    std::vector<nlohmann::json> scanMeasurements;
+    scanMeasurements.reserve(totalPoints);
 
     // ✅ EXECUTE GRID SCAN
     double peakValue = std::numeric_limits<double>::lowest();
@@ -1712,6 +1747,23 @@ bool MotionCommandHandler::ExecuteCommand(
         // Read channel value
         double value = static_cast<double>(m_dataStore->GetValue(channel, 0.0f));
 
+        // Record data point with full XYZUVW position
+        {
+          PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
+          nlohmann::json point;
+          point["index"] = currentPoint;
+          point["row"] = row;
+          point["col"] = actualCol;
+          point["target_axis1"] = targetAxis1;
+          point["target_axis2"] = targetAxis2;
+          point["position"] = {
+            {"x", fullPos.x}, {"y", fullPos.y}, {"z", fullPos.z},
+            {"u", fullPos.u}, {"v", fullPos.v}, {"w", fullPos.w}
+          };
+          point["value"] = value;
+          scanMeasurements.push_back(std::move(point));
+        }
+
         // Track peak (maximize)
         if (value > peakValue) {
           peakValue = value;
@@ -1720,7 +1772,7 @@ bool MotionCommandHandler::ExecuteCommand(
           if (m_logger) {
             m_logger->Info(
               "GridScanExtended: New peak at (" + std::to_string(targetAxis1) + ", " +
-              std::to_string(targetAxis2) + ") = " + std::to_string(value),
+              std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
             );
           }
@@ -1817,6 +1869,623 @@ bool MotionCommandHandler::ExecuteCommand(
         " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")",
         "MotionHandler"
       );
+    }
+
+    // ✅ SAVE GRID SCAN RESULTS TO FILE
+    {
+      auto scanEndTime = std::chrono::system_clock::now();
+      auto durationSec = std::chrono::duration_cast<std::chrono::seconds>(scanEndTime - scanStartTime).count();
+
+      // Generate timestamp for filename
+      auto endTimeT = std::chrono::system_clock::to_time_t(scanEndTime);
+      struct tm tmBuf {};
+      localtime_s(&tmBuf, &endTimeT);
+      char timeBuf[32];
+      std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &tmBuf);
+
+      // Format timestamps for JSON
+      char startTimeFmt[32], endTimeFmt[32];
+      auto startTimeT = std::chrono::system_clock::to_time_t(scanStartTime);
+      struct tm startTmBuf {};
+      localtime_s(&startTmBuf, &startTimeT);
+      std::strftime(startTimeFmt, sizeof(startTimeFmt), "%Y-%m-%d %H:%M:%S", &startTmBuf);
+      std::strftime(endTimeFmt, sizeof(endTimeFmt), "%Y-%m-%d %H:%M:%S", &tmBuf);
+
+      // Build filename: {process_uid}_{timestamp}.json
+      std::string filePrefix = processUID.empty() ? "grid" : processUID;
+      std::string filename = filePrefix + "_" + std::string(timeBuf) + ".json";
+
+      // Create output directory
+      std::filesystem::path outDir = std::filesystem::current_path() / "logs" / "scanning" / "grid";
+      std::filesystem::create_directories(outDir);
+      std::filesystem::path outPath = outDir / filename;
+
+      // Assemble result JSON
+      nlohmann::json result;
+      result["process_uid"] = processUID;
+      result["device"] = deviceName;
+      result["plane"] = plane;
+      result["scan_config"] = {
+        {"range_axis1_um", rangeAxis1Um},
+        {"direction_axis1", directionAxis1},
+        {"range_axis2_um", rangeAxis2Um},
+        {"direction_axis2", directionAxis2},
+        {"step_size_um", stepSizeUm},
+        {"settling_time_ms", settlingTimeMs},
+        {"channel", channel},
+        {"snake_pattern", snakePattern}
+      };
+      result["grid"] = {
+        {"axis1", axis1}, {"axis2", axis2},
+        {"points_axis1", numPoints1}, {"points_axis2", numPoints2},
+        {"total_points", totalPoints}
+      };
+      result["center_position"] = {
+        {"x", currentPosExt.x}, {"y", currentPosExt.y}, {"z", currentPosExt.z},
+        {"u", currentPosExt.u}, {"v", currentPosExt.v}, {"w", currentPosExt.w}
+      };
+      result["start_time"] = std::string(startTimeFmt);
+      result["end_time"] = std::string(endTimeFmt);
+      result["duration_seconds"] = durationSec;
+      result["results"] = {
+        {"peak_value", peakValue},
+        {"peak_position", {{"axis1", peakAxis1}, {"axis2", peakAxis2}}},
+        {"total_points_measured", currentPoint},
+        {"early_exit", earlyExit}
+      };
+      result["measurements"] = scanMeasurements;
+
+      // Write to file
+      std::ofstream ofs(outPath);
+      if (ofs.is_open()) {
+        ofs << result.dump(2);
+        ofs.close();
+        if (m_logger) {
+          m_logger->Info(
+            "GridScanExtended: Results saved to " + outPath.string() +
+            " (" + std::to_string(currentPoint) + " points)",
+            "MotionHandler"
+          );
+        }
+      } else {
+        if (m_logger) {
+          m_logger->Warning(
+            "GridScanExtended: Failed to save results to " + outPath.string(),
+            "MotionHandler"
+          );
+        }
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // GRID SCAN DUAL CHANNEL - Two-channel grid scan for PIC waveguide alignment
+  // ============================================================================
+  else if (methodName == "GridScanDualChannel") {
+    // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
+    auto planeItDC = params.find("plane");
+    if (planeItDC == params.end()) {
+      errorMessage = "GridScanDualChannel: Missing required parameter 'plane'";
+      return false;
+    }
+    std::string plane = planeItDC->second;
+
+    std::string axis1, axis2;
+    if (plane == "XY" || plane == "xy") {
+      axis1 = "X"; axis2 = "Y";
+    } else if (plane == "XZ" || plane == "xz") {
+      axis1 = "X"; axis2 = "Z";
+    } else if (plane == "YZ" || plane == "yz") {
+      axis1 = "Y"; axis2 = "Z";
+    } else {
+      errorMessage = "GridScanDualChannel: Invalid plane '" + plane + "'";
+      return false;
+    }
+
+    // ✅ REQUIRED: range_axis1_um
+    auto range1ItDC = params.find("range_axis1_um");
+    if (range1ItDC == params.end() || range1ItDC->second.empty()) {
+      errorMessage = "GridScanDualChannel: Missing 'range_axis1_um'";
+      return false;
+    }
+    double rangeAxis1Um = std::stod(range1ItDC->second);
+    if (rangeAxis1Um <= 0 || rangeAxis1Um > 1000) {
+      errorMessage = "GridScanDualChannel: range_axis1_um must be 1-1000";
+      return false;
+    }
+
+    // ✅ REQUIRED: range_axis2_um
+    auto range2ItDC = params.find("range_axis2_um");
+    if (range2ItDC == params.end() || range2ItDC->second.empty()) {
+      errorMessage = "GridScanDualChannel: Missing 'range_axis2_um'";
+      return false;
+    }
+    double rangeAxis2Um = std::stod(range2ItDC->second);
+    if (rangeAxis2Um <= 0 || rangeAxis2Um > 1000) {
+      errorMessage = "GridScanDualChannel: range_axis2_um must be 1-1000";
+      return false;
+    }
+
+    // ✅ REQUIRED: step_size_um
+    auto stepItDC = params.find("step_size_um");
+    if (stepItDC == params.end() || stepItDC->second.empty()) {
+      errorMessage = "GridScanDualChannel: Missing 'step_size_um'";
+      return false;
+    }
+    double stepSizeUm = std::stod(stepItDC->second);
+    if (stepSizeUm < 0.5 || stepSizeUm > 100) {
+      errorMessage = "GridScanDualChannel: step_size_um must be 0.5-100";
+      return false;
+    }
+
+    // ✅ REQUIRED: channel1
+    auto ch1It = params.find("channel1");
+    if (ch1It == params.end() || ch1It->second.empty()) {
+      errorMessage = "GridScanDualChannel: Missing 'channel1'";
+      return false;
+    }
+    std::string channel1 = ch1It->second;
+
+    // ✅ REQUIRED: channel2
+    auto ch2It = params.find("channel2");
+    if (ch2It == params.end() || ch2It->second.empty()) {
+      errorMessage = "GridScanDualChannel: Missing 'channel2'";
+      return false;
+    }
+    std::string channel2 = ch2It->second;
+
+    // ✅ OPTIONAL: waveguide_spacing_um (default 2500)
+    double waveguideSpacingUm = 2500.0;
+    auto wgIt = params.find("waveguide_spacing_um");
+    if (wgIt != params.end() && !wgIt->second.empty()) {
+      waveguideSpacingUm = std::stod(wgIt->second);
+    }
+
+    // ✅ OPTIONAL: settling_time_ms (default 300)
+    int settlingTimeMs = 300;
+    auto settlingItDC = params.find("settling_time_ms");
+    if (settlingItDC != params.end() && !settlingItDC->second.empty()) {
+      settlingTimeMs = std::stoi(settlingItDC->second);
+      if (settlingTimeMs < 50 || settlingTimeMs > 2000) {
+        errorMessage = "GridScanDualChannel: settling_time_ms must be 50-2000";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL: snake_pattern (default true)
+    bool snakePattern = true;
+    auto snakeItDC = params.find("snake_pattern");
+    if (snakeItDC != params.end()) {
+      snakePattern = (snakeItDC->second == "true" || snakeItDC->second == "1");
+    }
+
+    // ✅ OPTIONAL: return_to_peak (channel1/channel2/none, default channel1)
+    std::string returnToPeak = "channel1";
+    auto returnItDC = params.find("return_to_peak");
+    if (returnItDC != params.end() && !returnItDC->second.empty()) {
+      returnToPeak = returnItDC->second;
+    }
+
+    // ✅ OPTIONAL: direction_axis1
+    std::string directionAxis1 = "centered";
+    auto dir1ItDC = params.find("direction_axis1");
+    if (dir1ItDC != params.end() && !dir1ItDC->second.empty()) {
+      directionAxis1 = dir1ItDC->second;
+      if (directionAxis1 != "centered" && directionAxis1 != "positive" && directionAxis1 != "negative") {
+        errorMessage = "GridScanDualChannel: Invalid direction_axis1 '" + directionAxis1 + "'";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL: direction_axis2
+    std::string directionAxis2 = "centered";
+    auto dir2ItDC = params.find("direction_axis2");
+    if (dir2ItDC != params.end() && !dir2ItDC->second.empty()) {
+      directionAxis2 = dir2ItDC->second;
+      if (directionAxis2 != "centered" && directionAxis2 != "positive" && directionAxis2 != "negative") {
+        errorMessage = "GridScanDualChannel: Invalid direction_axis2 '" + directionAxis2 + "'";
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL: exit_threshold
+    double exitThreshold = std::numeric_limits<double>::max();
+    bool hasExitThreshold = false;
+    auto exitItDC = params.find("exit_threshold");
+    if (exitItDC != params.end() && !exitItDC->second.empty()) {
+      try {
+        exitThreshold = std::stod(exitItDC->second);
+        hasExitThreshold = true;
+      } catch (...) {
+        errorMessage = "GridScanDualChannel: Invalid exit_threshold: " + exitItDC->second;
+        return false;
+      }
+    }
+
+    // ✅ OPTIONAL: capture params
+    std::string capturePeak1As, capturePeak2As, capturePeak1PosAs, capturePeak2PosAs, capturePeakDeltaAs;
+    auto cp1 = params.find("capture_peak1_as");
+    if (cp1 != params.end()) capturePeak1As = cp1->second;
+    auto cp2 = params.find("capture_peak2_as");
+    if (cp2 != params.end()) capturePeak2As = cp2->second;
+    auto cp1p = params.find("capture_peak1_position_as");
+    if (cp1p != params.end()) capturePeak1PosAs = cp1p->second;
+    auto cp2p = params.find("capture_peak2_position_as");
+    if (cp2p != params.end()) capturePeak2PosAs = cp2p->second;
+    auto cpd = params.find("capture_peak_delta_as");
+    if (cpd != params.end()) capturePeakDeltaAs = cpd->second;
+
+    // ✅ OPTIONAL: process_uid
+    std::string processUID;
+    auto uidItDC = params.find("process_uid");
+    if (uidItDC != params.end()) processUID = uidItDC->second;
+
+    // ✅ GET DATA STORE
+    if (!m_dataStore) {
+      errorMessage = "GridScanDualChannel: DataStore not available";
+      return false;
+    }
+
+    // Convert to mm
+    double rangeAxis1Mm = rangeAxis1Um / 1000.0;
+    double rangeAxis2Mm = rangeAxis2Um / 1000.0;
+    double stepMm = stepSizeUm / 1000.0;
+
+    // Grid dimensions
+    int numPoints1 = static_cast<int>(rangeAxis1Um / stepSizeUm) + 1;
+    int numPoints2 = static_cast<int>(rangeAxis2Um / stepSizeUm) + 1;
+    int totalPoints = numPoints1 * numPoints2;
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScanDualChannel: Starting dual-channel scan on " + deviceName +
+        " (plane=" + plane +
+        ", grid=" + std::to_string(numPoints1) + "x" + std::to_string(numPoints2) +
+        " = " + std::to_string(totalPoints) + " points" +
+        ", ch1='" + channel1 + "', ch2='" + channel2 + "'" +
+        ", waveguide=" + std::to_string(waveguideSpacingUm) + "um" +
+        ", returnTo=" + returnToPeak + ")",
+        "MotionHandler"
+      );
+    }
+
+    // Get current position (center of grid)
+    PositionStruct currentPosDC = motionManager->GetCurrentPosition(deviceName);
+    double centerAxis1 = 0.0, centerAxis2 = 0.0;
+    if (axis1 == "X") centerAxis1 = currentPosDC.x;
+    else if (axis1 == "Y") centerAxis1 = currentPosDC.y;
+    else if (axis1 == "Z") centerAxis1 = currentPosDC.z;
+
+    if (axis2 == "X") centerAxis2 = currentPosDC.x;
+    else if (axis2 == "Y") centerAxis2 = currentPosDC.y;
+    else if (axis2 == "Z") centerAxis2 = currentPosDC.z;
+
+    // Data collection
+    auto scanStartTimeDC = std::chrono::system_clock::now();
+    std::vector<nlohmann::json> scanMeasurementsDC;
+    scanMeasurementsDC.reserve(totalPoints);
+
+    // Dual peak tracking
+    double peakValue1 = std::numeric_limits<double>::lowest();
+    double peakAxis1_ch1 = centerAxis1, peakAxis2_ch1 = centerAxis2;
+    double peakValue2 = std::numeric_limits<double>::lowest();
+    double peakAxis1_ch2 = centerAxis1, peakAxis2_ch2 = centerAxis2;
+    int currentPoint = 0;
+    bool earlyExit = false;
+
+    // Calculate start positions
+    double startAxis1, startAxis2;
+    if (directionAxis1 == "positive") startAxis1 = centerAxis1;
+    else if (directionAxis1 == "negative") startAxis1 = centerAxis1 - rangeAxis1Mm;
+    else startAxis1 = centerAxis1 - rangeAxis1Mm / 2.0;
+
+    if (directionAxis2 == "positive") startAxis2 = centerAxis2;
+    else if (directionAxis2 == "negative") startAxis2 = centerAxis2 - rangeAxis2Mm;
+    else startAxis2 = centerAxis2 - rangeAxis2Mm / 2.0;
+
+    // ✅ EXECUTE GRID SCAN (dual channel)
+    for (int row = 0; row < numPoints2 && !earlyExit; ++row) {
+      bool reverse = snakePattern && (row % 2 == 1);
+
+      for (int col = 0; col < numPoints1 && !earlyExit; ++col) {
+        if (context && context->IsStopRequestedAny()) {
+          if (m_logger) m_logger->Info("GridScanDualChannel: Stop requested", "MotionHandler");
+          errorMessage = "GridScanDualChannel: Scan stopped by user";
+          return false;
+        }
+
+        int actualCol = reverse ? (numPoints1 - 1 - col) : col;
+        double targetAxis1 = startAxis1 + actualCol * stepMm;
+        double targetAxis2 = startAxis2 + row * stepMm;
+
+        // Move axis1
+        if (!motionManager->MoveToPosition(deviceName, axis1, targetAxis1, false)) {
+          errorMessage = "GridScanDualChannel: Failed to move " + axis1;
+          return false;
+        }
+        auto startMoveDC = std::chrono::steady_clock::now();
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScanDualChannel: Stopped during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - startMoveDC > std::chrono::seconds(10)) {
+            errorMessage = "GridScanDualChannel: Timeout waiting for " + axis1;
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Move axis2
+        if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
+          errorMessage = "GridScanDualChannel: Failed to move " + axis2;
+          return false;
+        }
+        startMoveDC = std::chrono::steady_clock::now();
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
+          if (context && context->IsStopRequestedAny()) {
+            errorMessage = "GridScanDualChannel: Stopped during motion";
+            return false;
+          }
+          if (std::chrono::steady_clock::now() - startMoveDC > std::chrono::seconds(10)) {
+            errorMessage = "GridScanDualChannel: Timeout waiting for " + axis2;
+            return false;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Settling time
+        std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+        // Read both channels
+        double value1 = static_cast<double>(m_dataStore->GetValue(channel1, 0.0f));
+        double value2 = static_cast<double>(m_dataStore->GetValue(channel2, 0.0f));
+
+        // Record data point with full XYZUVW
+        {
+          PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
+          nlohmann::json point;
+          point["index"] = currentPoint;
+          point["row"] = row;
+          point["col"] = actualCol;
+          point["target_axis1"] = targetAxis1;
+          point["target_axis2"] = targetAxis2;
+          point["position"] = {
+            {"x", fullPos.x}, {"y", fullPos.y}, {"z", fullPos.z},
+            {"u", fullPos.u}, {"v", fullPos.v}, {"w", fullPos.w}
+          };
+          point["value1"] = value1;
+          point["value2"] = value2;
+          scanMeasurementsDC.push_back(std::move(point));
+        }
+
+        // Track ch1 peak
+        if (value1 > peakValue1) {
+          peakValue1 = value1;
+          peakAxis1_ch1 = targetAxis1;
+          peakAxis2_ch1 = targetAxis2;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScanDualChannel: New Ch1 peak at (" + std::to_string(targetAxis1) + ", " +
+              std::to_string(targetAxis2) + ") = " + FormatSI(value1),
+              "MotionHandler"
+            );
+          }
+        }
+
+        // Track ch2 peak
+        if (value2 > peakValue2) {
+          peakValue2 = value2;
+          peakAxis1_ch2 = targetAxis1;
+          peakAxis2_ch2 = targetAxis2;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScanDualChannel: New Ch2 peak at (" + std::to_string(targetAxis1) + ", " +
+              std::to_string(targetAxis2) + ") = " + FormatSI(value2),
+              "MotionHandler"
+            );
+          }
+        }
+
+        // Exit threshold (either channel)
+        if (hasExitThreshold && (value1 > exitThreshold || value2 > exitThreshold)) {
+          earlyExit = true;
+          if (m_logger) {
+            m_logger->Info(
+              "GridScanDualChannel: Exit threshold reached (ch1=" + FormatSI(value1) +
+              ", ch2=" + FormatSI(value2) + " > " + FormatSI(exitThreshold) + ")",
+              "MotionHandler"
+            );
+          }
+        }
+
+        currentPoint++;
+        if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
+          m_logger->Info(
+            "GridScanDualChannel: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
+            " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
+            "MotionHandler"
+          );
+        }
+      }
+    }
+
+    // ✅ COMPUTE PEAK DELTA (axis1 difference between ch1 and ch2 peaks)
+    double peakDeltaAxis1 = peakAxis1_ch1 - peakAxis1_ch2;
+
+    if (m_logger) {
+      m_logger->Info(
+        "GridScanDualChannel: Peak delta axis1 = " + std::to_string(peakDeltaAxis1 * 1000.0) + " um" +
+        " (ch1@" + std::to_string(peakAxis1_ch1) + " - ch2@" + std::to_string(peakAxis1_ch2) + ")" +
+        ", waveguide spacing=" + std::to_string(waveguideSpacingUm) + "um",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ RETURN TO PEAK POSITION
+    if (returnToPeak == "channel1" || returnToPeak == "channel2") {
+      double returnAxis1 = (returnToPeak == "channel1") ? peakAxis1_ch1 : peakAxis1_ch2;
+      double returnAxis2 = (returnToPeak == "channel1") ? peakAxis2_ch1 : peakAxis2_ch2;
+      double returnVal = (returnToPeak == "channel1") ? peakValue1 : peakValue2;
+
+      if (m_logger) {
+        m_logger->Info(
+          "GridScanDualChannel: Returning to " + returnToPeak + " peak (" +
+          std::to_string(returnAxis1) + ", " + std::to_string(returnAxis2) +
+          ") value=" + FormatSI(returnVal),
+          "MotionHandler"
+        );
+      }
+
+      if (!motionManager->MoveToPosition(deviceName, axis1, returnAxis1, false)) {
+        errorMessage = "GridScanDualChannel: Failed to return to peak on " + axis1;
+        return false;
+      }
+      auto startReturnDC = std::chrono::steady_clock::now();
+      for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
+        if (std::chrono::steady_clock::now() - startReturnDC > std::chrono::seconds(10)) {
+          errorMessage = "GridScanDualChannel: Timeout returning to peak on " + axis1;
+          return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
+      if (!motionManager->MoveToPosition(deviceName, axis2, returnAxis2, false)) {
+        errorMessage = "GridScanDualChannel: Failed to return to peak on " + axis2;
+        return false;
+      }
+      startReturnDC = std::chrono::steady_clock::now();
+      for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
+        if (std::chrono::steady_clock::now() - startReturnDC > std::chrono::seconds(10)) {
+          errorMessage = "GridScanDualChannel: Timeout returning to peak on " + axis2;
+          return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+
+    // ✅ CAPTURE RESULTS TO CONTEXT
+    if (!capturePeak1As.empty() && context) {
+      context->SetValue(capturePeak1As, static_cast<float>(peakValue1), deviceName, "GridScanDualChannel");
+      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak " + std::to_string(peakValue1) + " to context:" + capturePeak1As, "MotionHandler");
+    }
+    if (!capturePeak2As.empty() && context) {
+      context->SetValue(capturePeak2As, static_cast<float>(peakValue2), deviceName, "GridScanDualChannel");
+      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak " + std::to_string(peakValue2) + " to context:" + capturePeak2As, "MotionHandler");
+    }
+    if (!capturePeak1PosAs.empty() && context) {
+      std::string pos1Str = std::to_string(peakAxis1_ch1) + "," + std::to_string(peakAxis2_ch1);
+      context->SetValue(capturePeak1PosAs, pos1Str, deviceName, "GridScanDualChannel");
+      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak position " + pos1Str + " to context:" + capturePeak1PosAs, "MotionHandler");
+    }
+    if (!capturePeak2PosAs.empty() && context) {
+      std::string pos2Str = std::to_string(peakAxis1_ch2) + "," + std::to_string(peakAxis2_ch2);
+      context->SetValue(capturePeak2PosAs, pos2Str, deviceName, "GridScanDualChannel");
+      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak position " + pos2Str + " to context:" + capturePeak2PosAs, "MotionHandler");
+    }
+    if (!capturePeakDeltaAs.empty() && context) {
+      context->SetValue(capturePeakDeltaAs, static_cast<float>(peakDeltaAxis1), deviceName, "GridScanDualChannel");
+      if (m_logger) m_logger->Info("GridScanDualChannel: Captured peak delta " + std::to_string(peakDeltaAxis1) + " mm to context:" + capturePeakDeltaAs, "MotionHandler");
+    }
+
+    if (m_logger) {
+      std::string completionReason = earlyExit ? " (early exit)" : "";
+      m_logger->Info(
+        "GridScanDualChannel: Completed" + completionReason +
+        " - Ch1 peak: " + FormatSI(peakValue1) + " at (" + std::to_string(peakAxis1_ch1) + ", " + std::to_string(peakAxis2_ch1) + ")" +
+        " - Ch2 peak: " + FormatSI(peakValue2) + " at (" + std::to_string(peakAxis1_ch2) + ", " + std::to_string(peakAxis2_ch2) + ")" +
+        " - Delta axis1: " + std::to_string(peakDeltaAxis1 * 1000.0) + " um",
+        "MotionHandler"
+      );
+    }
+
+    // ✅ SAVE RESULTS TO FILE
+    {
+      auto scanEndTimeDC = std::chrono::system_clock::now();
+      auto durationSecDC = std::chrono::duration_cast<std::chrono::seconds>(scanEndTimeDC - scanStartTimeDC).count();
+
+      auto endTimeTDC = std::chrono::system_clock::to_time_t(scanEndTimeDC);
+      struct tm tmBufDC {};
+      localtime_s(&tmBufDC, &endTimeTDC);
+      char timeBufDC[32];
+      std::strftime(timeBufDC, sizeof(timeBufDC), "%Y%m%d_%H%M%S", &tmBufDC);
+
+      char startTimeFmtDC[32], endTimeFmtDC[32];
+      auto startTimeTDC = std::chrono::system_clock::to_time_t(scanStartTimeDC);
+      struct tm startTmBufDC {};
+      localtime_s(&startTmBufDC, &startTimeTDC);
+      std::strftime(startTimeFmtDC, sizeof(startTimeFmtDC), "%Y-%m-%d %H:%M:%S", &startTmBufDC);
+      std::strftime(endTimeFmtDC, sizeof(endTimeFmtDC), "%Y-%m-%d %H:%M:%S", &tmBufDC);
+
+      std::string filePrefix = processUID.empty() ? "grid_dual" : processUID;
+      std::string filename = filePrefix + "_" + std::string(timeBufDC) + ".json";
+
+      std::filesystem::path outDir = std::filesystem::current_path() / "logs" / "scanning" / "grid";
+      std::filesystem::create_directories(outDir);
+      std::filesystem::path outPath = outDir / filename;
+
+      nlohmann::json result;
+      result["process_uid"] = processUID;
+      result["device"] = deviceName;
+      result["plane"] = plane;
+      result["scan_config"] = {
+        {"range_axis1_um", rangeAxis1Um},
+        {"direction_axis1", directionAxis1},
+        {"range_axis2_um", rangeAxis2Um},
+        {"direction_axis2", directionAxis2},
+        {"step_size_um", stepSizeUm},
+        {"settling_time_ms", settlingTimeMs},
+        {"channel1", channel1},
+        {"channel2", channel2},
+        {"waveguide_spacing_um", waveguideSpacingUm},
+        {"snake_pattern", snakePattern},
+        {"return_to_peak", returnToPeak}
+      };
+      result["grid"] = {
+        {"axis1", axis1}, {"axis2", axis2},
+        {"points_axis1", numPoints1}, {"points_axis2", numPoints2},
+        {"total_points", totalPoints}
+      };
+      result["center_position"] = {
+        {"x", currentPosDC.x}, {"y", currentPosDC.y}, {"z", currentPosDC.z},
+        {"u", currentPosDC.u}, {"v", currentPosDC.v}, {"w", currentPosDC.w}
+      };
+      result["start_time"] = std::string(startTimeFmtDC);
+      result["end_time"] = std::string(endTimeFmtDC);
+      result["duration_seconds"] = durationSecDC;
+      result["results"] = {
+        {"channel1_peak", {{"value", peakValue1}, {"position", {{"axis1", peakAxis1_ch1}, {"axis2", peakAxis2_ch1}}}}},
+        {"channel2_peak", {{"value", peakValue2}, {"position", {{"axis1", peakAxis1_ch2}, {"axis2", peakAxis2_ch2}}}}},
+        {"peak_delta_axis1", peakDeltaAxis1},
+        {"peak_delta_axis1_um", peakDeltaAxis1 * 1000.0},
+        {"waveguide_spacing_um", waveguideSpacingUm},
+        {"total_points_measured", currentPoint},
+        {"early_exit", earlyExit},
+        {"returned_to", returnToPeak}
+      };
+      result["measurements"] = scanMeasurementsDC;
+
+      std::ofstream ofs(outPath);
+      if (ofs.is_open()) {
+        ofs << result.dump(2);
+        ofs.close();
+        if (m_logger) {
+          m_logger->Info(
+            "GridScanDualChannel: Results saved to " + outPath.string() +
+            " (" + std::to_string(currentPoint) + " points)",
+            "MotionHandler"
+          );
+        }
+      } else {
+        if (m_logger) {
+          m_logger->Warning(
+            "GridScanDualChannel: Failed to save results to " + outPath.string(),
+            "MotionHandler"
+          );
+        }
+      }
     }
 
     return true;
