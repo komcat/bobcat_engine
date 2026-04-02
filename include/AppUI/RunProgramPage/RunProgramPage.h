@@ -141,6 +141,9 @@ private slots:
   void onMoveToCH1Requested(QString deviceName);
   void onMoveToCH2Requested(QString deviceName);
   void onCorrectWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm);
+  void onFineGridScanRequested(QString deviceName);
+  void onStopGridScanRequested();
+  void onGridScanFinished(bool success, QString deviceName, QString errorMessage);
   void onRollCorrectionClearRequested(QString deviceName);
 
 private:
@@ -232,6 +235,7 @@ private:
   ScanControlWidget* m_scanWidget;
   ScanExecutor* m_scanExecutor;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
+  std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
   // Prompt system

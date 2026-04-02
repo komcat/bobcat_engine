@@ -27,8 +27,29 @@ void RollCorrectionWidget::setupUI()
   m_spacingInput->setValidator(new QDoubleValidator(0.001, 100000.0, 3, this));
   m_spacingInput->setFixedWidth(100);
   m_spacingInput->setToolTip("Physical spacing between CH1 and CH2 fibers in micrometers");
+  m_stopScanButton = new QPushButton("STOP Scan");
+  m_stopScanButton->setFixedWidth(100);
+  m_stopScanButton->setMinimumHeight(28);
+  m_stopScanButton->setEnabled(false);
+  m_stopScanButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #F44336; color: white; font-weight: bold; padding: 4px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { background-color: #D32F2F; } "
+    "QPushButton:pressed { background-color: #B71C1C; } "
+    "QPushButton:disabled { background-color: #BDBDBD; color: #757575; }"
+  );
+  connect(m_stopScanButton, &QPushButton::clicked, this, [this]() {
+    emit stopScanRequested();
+  });
+
   spacingLayout->addWidget(spacingLabel);
   spacingLayout->addWidget(m_spacingInput);
+  spacingLayout->addWidget(m_stopScanButton);
   spacingLayout->addStretch();
   mainLayout->addLayout(spacingLayout);
 
@@ -214,6 +235,32 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   actionRow->addWidget(dev.correctWButton, 1);
   layout->addLayout(actionRow);
 
+  // === FINE GRID SCAN BUTTON ===
+  dev.fineGridScanButton = new QPushButton("Fine Grid Scan");
+  dev.fineGridScanButton->setMinimumHeight(32);
+  dev.fineGridScanButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #7B1FA2; "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 8px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
+    "} "
+    "QPushButton:hover { background-color: #6A1B9A; } "
+    "QPushButton:pressed { "
+    "  background-color: #4A148C; "
+    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
+    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
+    "}"
+  );
+  dev.fineGridScanButton->setToolTip("Run fine grid scan (XY 10um, 0.5um step, dual channel)");
+  layout->addWidget(dev.fineGridScanButton);
+
   // === RESULT DISPLAY ===
   dev.resultDisplay = new QTextEdit();
   dev.resultDisplay->setReadOnly(true);
@@ -247,6 +294,9 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   connect(dev.correctWButton, &QPushButton::clicked, this, [this, deviceName]() {
     DeviceUI& d = getDeviceUI(deviceName);
     emit correctWRequested(deviceName, d.correctionAngleDeg, d.correctionPositiveW, d.correctionHalfwayXmm);
+  });
+  connect(dev.fineGridScanButton, &QPushButton::clicked, this, [this, deviceName]() {
+    emit fineGridScanRequested(deviceName);
   });
   connect(dev.clearButton, &QPushButton::clicked, this, [this, deviceName]() {
     emit clearRequested(deviceName);
@@ -420,4 +470,11 @@ RollCorrectionWidget::StoredPosition RollCorrectionWidget::getCH2Position(const 
 {
   const DeviceUI& dev = getDeviceUI(deviceName);
   return { dev.ch2Registered, dev.ch2X, dev.ch2Y, dev.ch2Z, dev.ch2U, dev.ch2V, dev.ch2W };
+}
+
+void RollCorrectionWidget::setScanRunning(bool running)
+{
+  m_stopScanButton->setEnabled(running);
+  m_leftDevice.fineGridScanButton->setEnabled(!running);
+  m_rightDevice.fineGridScanButton->setEnabled(!running);
 }

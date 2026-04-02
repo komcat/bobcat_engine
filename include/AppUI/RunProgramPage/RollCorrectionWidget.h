@@ -39,6 +39,9 @@ public:
   // Get spacing value in microns
   double spacing() const;
 
+  // Scanning state control
+  void setScanRunning(bool running);
+
   // Position getters for move-to functionality (returns stored XYZUVW)
   struct StoredPosition {
     bool valid = false;
@@ -63,6 +66,12 @@ signals:
   /** Emitted when user clicks "Correct W" - moves to CH1 peak, applies halfway X + W correction */
   void correctWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm);
 
+  /** Emitted when user clicks "Fine Grid Scan" for a device */
+  void fineGridScanRequested(QString deviceName);
+
+  /** Emitted when user clicks "Stop Scan" */
+  void stopScanRequested();
+
   /** Emitted when user clicks "Clear" for a device */
   void clearRequested(QString deviceName);
 
@@ -73,6 +82,7 @@ private:
 
   // Shared spacing input
   QLineEdit* m_spacingInput;
+  QPushButton* m_stopScanButton = nullptr;
 
   // Per-device UI elements
   struct DeviceUI {
@@ -82,6 +92,7 @@ private:
     QPushButton* registerCH2Button = nullptr;
     QPushButton* moveToCH2Button = nullptr;
     QPushButton* correctWButton = nullptr;
+    QPushButton* fineGridScanButton = nullptr;
     QPushButton* clearButton = nullptr;
     QLabel* ch1PositionLabel = nullptr;
     QLabel* ch1FullPosLabel = nullptr;

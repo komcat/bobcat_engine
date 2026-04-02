@@ -15,7 +15,10 @@
 #include "RollCorrectionWidget.h"
 #include "ScanExecutor.h"
 #include "motions/unified_motion_manager.h"
+#include "SequenceEngine.h"
+#include "MotionCommandHandler.h"
 #include "CameraClickToMoveWidget.h"
+#include <future>
 #include "RetraceEditWidget.h"
 #include "ILogger.h"
 #include "LogManager.h"
@@ -2177,6 +2180,10 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onMoveToCH2Requested);
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::correctWRequested,
     this, &RunProgramPage::onCorrectWRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::fineGridScanRequested,
+    this, &RunProgramPage::onFineGridScanRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::stopScanRequested,
+    this, &RunProgramPage::onStopGridScanRequested);
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::clearRequested,
     this, &RunProgramPage::onRollCorrectionClearRequested);
 
@@ -4197,6 +4204,84 @@ void RunProgramPage::onCorrectWRequested(QString deviceName, double angleDeg, bo
   m_logTextEdit->appendPlainText(ok ?
     QString("[RollCorrection] Correction complete for %1").arg(deviceName) :
     QString("[RollCorrection] FAILED W correction for %1").arg(deviceName));
+}
+
+void RunProgramPage::onFineGridScanRequested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager || !m_context->sequenceEngine) return;
+
+  auto* handler = m_context->sequenceEngine->GetMotionCommandHandler();
+  if (!handler) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: MotionCommandHandler not available");
+    return;
+  }
+
+  // Create a fresh context for stop control
+  m_gridScanContext = std::make_unique<SequenceContext>();
+
+  // Update UI state
+  m_rollCorrectionWidget->setScanRunning(true);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Starting fine grid scan on %1...").arg(deviceName));
+
+  // Grid Scan Dual Channel parameters matching screenshot config
+  std::map<std::string, std::string> params;
+  params["plane"] = "XY";
+  params["range_axis1_um"] = "10";
+  params["range_axis2_um"] = "10";
+  params["direction_axis1"] = "centered";
+  params["direction_axis2"] = "centered";
+  params["step_size_um"] = "0.5";
+  params["channel1"] = "SMU_SMU1S_Ch1";
+  params["channel2"] = "SMU_SMU1S_Ch2";
+  params["waveguide_spacing_um"] = std::to_string(static_cast<int>(m_rollCorrectionWidget->spacing()));
+  params["settling_time_ms"] = "300";
+  params["snake_pattern"] = "true";
+  params["return_to_peak"] = "channel1";
+
+  // Run on background thread (GridScanDualChannel is blocking)
+  auto* ctx = m_gridScanContext.get();
+  auto* mgr = m_context->motionManager;
+  std::string dev = deviceName.toStdString();
+
+  auto future = std::async(std::launch::async, [handler, mgr, dev, params, ctx]() {
+    std::string errorMessage;
+    bool ok = handler->ExecuteCommand(mgr, dev, "GridScanDualChannel", params, errorMessage, ctx);
+    return std::make_pair(ok, errorMessage);
+  });
+
+  // Use a QTimer to poll for completion (avoid blocking UI)
+  auto* pollTimer = new QTimer(this);
+  auto futurePtr = std::make_shared<std::future<std::pair<bool, std::string>>>(std::move(future));
+  connect(pollTimer, &QTimer::timeout, this, [this, pollTimer, futurePtr, deviceName]() {
+    if (futurePtr->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+      pollTimer->stop();
+      pollTimer->deleteLater();
+      auto [ok, errMsg] = futurePtr->get();
+      onGridScanFinished(ok, deviceName, QString::fromStdString(errMsg));
+    }
+  });
+  pollTimer->start(100);
+}
+
+void RunProgramPage::onStopGridScanRequested()
+{
+  if (m_gridScanContext) {
+    m_logTextEdit->appendPlainText("[RollCorrection] Stopping grid scan...");
+    m_gridScanContext->RequestStop();
+  }
+}
+
+void RunProgramPage::onGridScanFinished(bool success, QString deviceName, QString errorMessage)
+{
+  m_rollCorrectionWidget->setScanRunning(false);
+  m_gridScanContext.reset();
+
+  if (success) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] Fine grid scan completed on %1").arg(deviceName));
+  } else {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] Fine grid scan stopped/failed on %1: %2")
+      .arg(deviceName, errorMessage));
+  }
 }
 
 void RunProgramPage::onRollCorrectionClearRequested(QString deviceName)
