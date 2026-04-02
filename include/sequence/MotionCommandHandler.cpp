@@ -47,6 +47,205 @@ static std::string FormatSI(double value) {
   return std::string(buf);
 }
 
+// Helper to generate timestamp string for filenames (YYYYMMDD_HHMMSS)
+static std::string MakeTimestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  struct tm tmBuf {};
+  localtime_s(&tmBuf, &t);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &tmBuf);
+  return std::string(buf);
+}
+
+// Helper to format time_point as "YYYY-MM-DD HH:MM:SS"
+static std::string FormatTime(std::chrono::system_clock::time_point tp) {
+  auto t = std::chrono::system_clock::to_time_t(tp);
+  struct tm tmBuf {};
+  localtime_s(&tmBuf, &t);
+  char buf[32];
+  std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tmBuf);
+  return std::string(buf);
+}
+
+// Helper to write grid scan JSON + human-readable summary text file
+static void WriteGridScanFiles(
+    const std::string& processUID,
+    const nlohmann::json& resultJson,
+    ILogger* logger)
+{
+  std::string timestamp = MakeTimestamp();
+  std::string filePrefix = processUID.empty() ? "grid" : processUID;
+  std::string baseName = filePrefix + "_" + timestamp;
+
+  std::filesystem::path outDir = std::filesystem::current_path() / "logs" / "scanning" / "grid";
+  std::filesystem::create_directories(outDir);
+
+  // Write JSON data file
+  std::filesystem::path jsonPath = outDir / (baseName + ".json");
+  std::ofstream jsonOfs(jsonPath);
+  if (jsonOfs.is_open()) {
+    jsonOfs << resultJson.dump(2);
+    jsonOfs.close();
+    if (logger) {
+      logger->LogInfo("GridScan: Data saved to " + jsonPath.string(), "MotionHandler");
+    }
+  } else if (logger) {
+    logger->LogWarning("GridScan: Failed to save data to " + jsonPath.string(), "MotionHandler");
+  }
+
+  // Write human-readable summary text file
+  std::filesystem::path txtPath = outDir / (baseName + "_summary.txt");
+  std::ofstream txtOfs(txtPath);
+  if (txtOfs.is_open()) {
+    txtOfs << "========================================\n";
+    txtOfs << "  Grid Scan Summary\n";
+    txtOfs << "========================================\n\n";
+
+    if (resultJson.contains("process_uid"))
+      txtOfs << "Process UID:    " << resultJson["process_uid"].get<std::string>() << "\n";
+    if (resultJson.contains("scan_type"))
+      txtOfs << "Scan Type:      " << resultJson["scan_type"].get<std::string>() << "\n";
+    txtOfs << "Device:         " << resultJson.value("device", "") << "\n";
+    txtOfs << "Plane:          " << resultJson.value("plane", "") << "\n";
+    txtOfs << "Start Time:     " << resultJson.value("start_time", "") << "\n";
+    txtOfs << "End Time:       " << resultJson.value("end_time", "") << "\n";
+    txtOfs << "Duration:       " << resultJson.value("duration_seconds", 0) << " s\n\n";
+
+    // Grid info
+    if (resultJson.contains("grid")) {
+      auto& grid = resultJson["grid"];
+      txtOfs << "--- Grid ---\n";
+      txtOfs << "Axis 1:         " << grid.value("axis1", "") << "\n";
+      txtOfs << "Axis 2:         " << grid.value("axis2", "") << "\n";
+      txtOfs << "Points:         " << grid.value("points_axis1", 0) << " x " << grid.value("points_axis2", 0) << "\n";
+      txtOfs << "Total Points:   " << grid.value("total_points", 0) << "\n\n";
+    }
+
+    // Scan config
+    if (resultJson.contains("scan_config")) {
+      auto& cfg = resultJson["scan_config"];
+      txtOfs << "--- Configuration ---\n";
+      if (cfg.contains("mode"))
+        txtOfs << "Mode:           " << cfg["mode"].get<std::string>() << "\n";
+      if (cfg.contains("range_axis1_um"))
+        txtOfs << "Range Axis1:    " << cfg["range_axis1_um"].get<double>() << " um\n";
+      if (cfg.contains("range_axis2_um"))
+        txtOfs << "Range Axis2:    " << cfg["range_axis2_um"].get<double>() << " um\n";
+      if (cfg.contains("step_size_um"))
+        txtOfs << "Step Size:      " << cfg["step_size_um"].get<double>() << " um\n";
+      if (cfg.contains("settling_time_ms"))
+        txtOfs << "Settling Time:  " << cfg["settling_time_ms"].get<int>() << " ms\n";
+      if (cfg.contains("channel"))
+        txtOfs << "Channel:        " << cfg["channel"].get<std::string>() << "\n";
+      if (cfg.contains("channel1"))
+        txtOfs << "Channel 1:      " << cfg["channel1"].get<std::string>() << "\n";
+      if (cfg.contains("channel2"))
+        txtOfs << "Channel 2:      " << cfg["channel2"].get<std::string>() << "\n";
+      if (cfg.contains("waveguide_spacing_um"))
+        txtOfs << "WG Spacing:     " << cfg["waveguide_spacing_um"].get<double>() << " um\n";
+      if (cfg.contains("snake_pattern"))
+        txtOfs << "Snake Pattern:  " << (cfg["snake_pattern"].get<bool>() ? "yes" : "no") << "\n";
+      if (cfg.contains("return_to_peak"))
+        txtOfs << "Return to Peak: " << cfg["return_to_peak"].get<std::string>() << "\n";
+      txtOfs << "\n";
+    }
+
+    // Center position
+    if (resultJson.contains("center_position")) {
+      auto& cp = resultJson["center_position"];
+      txtOfs << "--- Center Position ---\n";
+      char posBuf[128];
+      std::snprintf(posBuf, sizeof(posBuf), "X=%.6f  Y=%.6f  Z=%.6f\nU=%.6f  V=%.6f  W=%.6f",
+        cp.value("x", 0.0), cp.value("y", 0.0), cp.value("z", 0.0),
+        cp.value("u", 0.0), cp.value("v", 0.0), cp.value("w", 0.0));
+      txtOfs << posBuf << "\n\n";
+    }
+
+    // Results
+    if (resultJson.contains("results")) {
+      auto& res = resultJson["results"];
+      txtOfs << "--- Results ---\n";
+      txtOfs << "Points Measured: " << res.value("total_points_measured", 0) << "\n";
+      txtOfs << "Early Exit:      " << (res.value("early_exit", false) ? "yes" : "no") << "\n";
+      if (res.contains("user_stopped") && res["user_stopped"].get<bool>()) {
+        txtOfs << "User Stopped:    yes (returned to peak)\n";
+      }
+
+      // Single channel peak
+      if (res.contains("peak_value")) {
+        txtOfs << "Peak Value:      " << FormatSI(res["peak_value"].get<double>()) << "\n";
+        if (res.contains("peak_position")) {
+          auto& pp = res["peak_position"];
+          txtOfs << "Peak Position:   axis1=" << pp.value("axis1", 0.0)
+                 << "  axis2=" << pp.value("axis2", 0.0) << "\n";
+        }
+      }
+
+      // Dual channel peaks
+      if (res.contains("channel1_peak")) {
+        auto& p1 = res["channel1_peak"];
+        txtOfs << "Ch1 Peak Value:  " << FormatSI(p1["value"].get<double>()) << "\n";
+        if (p1.contains("position")) {
+          txtOfs << "Ch1 Peak Pos:    axis1=" << p1["position"].value("axis1", 0.0)
+                 << "  axis2=" << p1["position"].value("axis2", 0.0) << "\n";
+        }
+        if (p1.contains("full_position")) {
+          auto& fp = p1["full_position"];
+          char buf[256];
+          std::snprintf(buf, sizeof(buf), "Ch1 Full Pos:    X=%.6f  Y=%.6f  Z=%.6f  U=%.6f  V=%.6f  W=%.6f",
+            fp.value("x", 0.0), fp.value("y", 0.0), fp.value("z", 0.0),
+            fp.value("u", 0.0), fp.value("v", 0.0), fp.value("w", 0.0));
+          txtOfs << buf << "\n";
+        }
+      }
+      if (res.contains("channel2_peak")) {
+        auto& p2 = res["channel2_peak"];
+        txtOfs << "Ch2 Peak Value:  " << FormatSI(p2["value"].get<double>()) << "\n";
+        if (p2.contains("position")) {
+          txtOfs << "Ch2 Peak Pos:    axis1=" << p2["position"].value("axis1", 0.0)
+                 << "  axis2=" << p2["position"].value("axis2", 0.0) << "\n";
+        }
+        if (p2.contains("full_position")) {
+          auto& fp = p2["full_position"];
+          char buf[256];
+          std::snprintf(buf, sizeof(buf), "Ch2 Full Pos:    X=%.6f  Y=%.6f  Z=%.6f  U=%.6f  V=%.6f  W=%.6f",
+            fp.value("x", 0.0), fp.value("y", 0.0), fp.value("z", 0.0),
+            fp.value("u", 0.0), fp.value("v", 0.0), fp.value("w", 0.0));
+          txtOfs << buf << "\n";
+        }
+      }
+      if (res.contains("peak_delta_axis1")) {
+        txtOfs << "Peak Delta:      " << res["peak_delta_axis1"].get<double>() * 1000.0 << " um"
+               << " (" << res["peak_delta_axis1"].get<double>() << " mm)\n";
+      }
+      if (res.contains("peak_delta_xyzuvw")) {
+        auto& d = res["peak_delta_xyzuvw"];
+        txtOfs << "\n--- Peak Position Delta (Ch1 - Ch2) ---\n";
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), "dX=%.4f um  dY=%.4f um  dZ=%.4f um",
+          d.value("x_um", 0.0), d.value("y_um", 0.0), d.value("z_um", 0.0));
+        txtOfs << buf << "\n";
+        std::snprintf(buf, sizeof(buf), "dU=%.6f deg  dV=%.6f deg  dW=%.6f deg",
+          d.value("u_deg", 0.0), d.value("v_deg", 0.0), d.value("w_deg", 0.0));
+        txtOfs << buf << "\n";
+      }
+      if (res.contains("returned_to")) {
+        txtOfs << "Returned to:     " << res["returned_to"].get<std::string>() << "\n";
+      }
+    }
+
+    txtOfs << "\n========================================\n";
+    txtOfs << "  Data file: " << baseName << ".json\n";
+    txtOfs << "========================================\n";
+    txtOfs.close();
+
+    if (logger) {
+      logger->LogInfo("GridScan: Summary saved to " + txtPath.string(), "MotionHandler");
+    }
+  }
+}
+
 // Helper to resolve context: references or parse direct values
 double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, SequenceContext* context)
 {
@@ -1254,6 +1453,11 @@ bool MotionCommandHandler::ExecuteCommand(
       captureAs = captureAsIt->second;
     }
 
+    // ✅ OPTIONAL: process_uid
+    std::string processUID;
+    auto uidItGS = params.find("process_uid");
+    if (uidItGS != params.end()) processUID = uidItGS->second;
+
     // ✅ GET DATA STORE
     if (!m_dataStore) {
       errorMessage = "GridScan: DataStore not available";
@@ -1287,29 +1491,35 @@ bool MotionCommandHandler::ExecuteCommand(
     else if (axis2 == "Y") centerAxis2 = currentPos.y;
     else if (axis2 == "Z") centerAxis2 = currentPos.z;
 
+    // ✅ DATA COLLECTION
+    auto scanStartTimeGS = std::chrono::system_clock::now();
+    std::vector<nlohmann::json> scanMeasurementsGS;
+    int totalPoints = gridPoints * gridPoints;
+    scanMeasurementsGS.reserve(totalPoints);
+
     // ✅ EXECUTE GRID SCAN
     double peakValue = std::numeric_limits<double>::lowest();
     double peakAxis1 = centerAxis1;
     double peakAxis2 = centerAxis2;
-    int totalPoints = gridPoints * gridPoints;
     int currentPoint = 0;
+    bool userStopped = false;
 
     // Start position (corner of grid)
     double startAxis1 = centerAxis1 - rangeMm / 2.0;
     double startAxis2 = centerAxis2 - rangeMm / 2.0;
 
-    for (int row = 0; row < gridPoints; ++row) {
+    for (int row = 0; row < gridPoints && !userStopped; ++row) {
       // Snake pattern: alternate direction each row
       bool reverse = (row % 2 == 1);
 
-      for (int col = 0; col < gridPoints; ++col) {
+      for (int col = 0; col < gridPoints && !userStopped; ++col) {
         // Check stop flag
         if (context && context->IsStopRequestedAny()) {
           if (m_logger) {
-            m_logger->Info("GridScan: Stop requested, halting scan", "MotionHandler");
+            m_logger->Info("GridScan: Stop requested, will return to best peak found so far", "MotionHandler");
           }
-          errorMessage = "GridScan: Scan stopped by user";
-          return false;
+          userStopped = true;
+          break;
         }
 
         int actualCol = reverse ? (gridPoints - 1 - col) : col;
@@ -1324,10 +1534,10 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Wait for axis1 move
         auto start = std::chrono::steady_clock::now();
-        while (motionManager->IsMoving(deviceName, axis1)) {
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScan: Scan stopped by user during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
             errorMessage = "GridScan: Timeout waiting for " + axis1 + " motion";
@@ -1335,6 +1545,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
           errorMessage = "GridScan: Failed to start move on " + axis2;
@@ -1342,10 +1553,10 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Wait for axis2 move
         start = std::chrono::steady_clock::now();
-        while (motionManager->IsMoving(deviceName, axis2)) {
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScan: Scan stopped by user during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
             errorMessage = "GridScan: Timeout waiting for " + axis2 + " motion";
@@ -1353,12 +1564,30 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         // Settling time
         std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
 
         // Read channel value
         double value = static_cast<double>(m_dataStore->GetValue(channel, 0.0f));
+
+        // Record data point
+        {
+          PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
+          nlohmann::json point;
+          point["index"] = currentPoint;
+          point["row"] = row;
+          point["col"] = actualCol;
+          point["target_axis1"] = targetAxis1;
+          point["target_axis2"] = targetAxis2;
+          point["position"] = {
+            {"x", fullPos.x}, {"y", fullPos.y}, {"z", fullPos.z},
+            {"u", fullPos.u}, {"v", fullPos.v}, {"w", fullPos.w}
+          };
+          point["value"] = value;
+          scanMeasurementsGS.push_back(std::move(point));
+        }
 
         // Track peak (maximize)
         if (value > peakValue) {
@@ -1368,7 +1597,7 @@ bool MotionCommandHandler::ExecuteCommand(
           if (m_logger) {
             m_logger->Info(
               "GridScan: New peak at (" + std::to_string(targetAxis1) + ", " +
-              std::to_string(targetAxis2) + ") = " + std::to_string(value),
+              std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
             );
           }
@@ -1385,11 +1614,12 @@ bool MotionCommandHandler::ExecuteCommand(
       }
     }
 
-    // ✅ RETURN TO PEAK POSITION
+    // ✅ RETURN TO PEAK POSITION (always, even if stopped by user)
     if (m_logger) {
       m_logger->Info(
         "GridScan: Returning to peak position (" + std::to_string(peakAxis1) + ", " +
-        std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue),
+        std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue) +
+        (userStopped ? " (stopped by user, returning to best peak found)" : ""),
         "MotionHandler"
       );
     }
@@ -1399,7 +1629,7 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
     auto startReturn = std::chrono::steady_clock::now();
-    while (motionManager->IsMoving(deviceName, axis1)) {
+    for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
       if (std::chrono::steady_clock::now() - startReturn > std::chrono::seconds(10)) {
         errorMessage = "GridScan: Timeout returning to peak on " + axis1;
         return false;
@@ -1412,7 +1642,7 @@ bool MotionCommandHandler::ExecuteCommand(
       return false;
     }
     startReturn = std::chrono::steady_clock::now();
-    while (motionManager->IsMoving(deviceName, axis2)) {
+    for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
       if (std::chrono::steady_clock::now() - startReturn > std::chrono::seconds(10)) {
         errorMessage = "GridScan: Timeout returning to peak on " + axis2;
         return false;
@@ -1432,13 +1662,61 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
+      std::string status = userStopped ? "Stopped by user" : "Completed successfully";
       m_logger->Info(
-        "GridScan: Completed successfully - Peak value: " + std::to_string(peakValue) +
-        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")",
+        "GridScan: " + status + " - Peak value: " + FormatSI(peakValue) +
+        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")" +
+        " (" + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) + " points)",
         "MotionHandler"
       );
     }
 
+    // ✅ SAVE GRID SCAN RESULTS TO FILE (always, even partial)
+    {
+      auto scanEndTimeGS = std::chrono::system_clock::now();
+      auto durationSecGS = std::chrono::duration_cast<std::chrono::seconds>(scanEndTimeGS - scanStartTimeGS).count();
+
+      nlohmann::json result;
+      result["process_uid"] = processUID;
+      result["scan_type"] = "Grid Scan";
+      result["device"] = deviceName;
+      result["plane"] = plane;
+      result["scan_config"] = {
+        {"mode", mode},
+        {"range_um", rangeUm},
+        {"step_size_um", stepUm},
+        {"settling_time_ms", settlingTimeMs},
+        {"channel", channel},
+        {"snake_pattern", true}
+      };
+      result["grid"] = {
+        {"axis1", axis1}, {"axis2", axis2},
+        {"points_axis1", gridPoints}, {"points_axis2", gridPoints},
+        {"total_points", totalPoints}
+      };
+      result["center_position"] = {
+        {"x", currentPos.x}, {"y", currentPos.y}, {"z", currentPos.z},
+        {"u", currentPos.u}, {"v", currentPos.v}, {"w", currentPos.w}
+      };
+      result["start_time"] = FormatTime(scanStartTimeGS);
+      result["end_time"] = FormatTime(scanEndTimeGS);
+      result["duration_seconds"] = durationSecGS;
+      result["results"] = {
+        {"peak_value", peakValue},
+        {"peak_position", {{"axis1", peakAxis1}, {"axis2", peakAxis2}}},
+        {"total_points_measured", currentPoint},
+        {"early_exit", false},
+        {"user_stopped", userStopped}
+      };
+      result["measurements"] = scanMeasurementsGS;
+
+      WriteGridScanFiles(processUID, result, m_logger);
+    }
+
+    if (userStopped) {
+      errorMessage = "GridScan: Stopped by user (returned to peak)";
+      return false;
+    }
     return true;
   }
 
@@ -1653,6 +1931,7 @@ bool MotionCommandHandler::ExecuteCommand(
     double peakAxis2 = centerAxis2;
     int currentPoint = 0;
     bool earlyExit = false;
+    bool userStopped = false;
 
     // Calculate start position based on direction
     // centered: current - range/2 to current + range/2
@@ -1685,18 +1964,18 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    for (int row = 0; row < numPoints2 && !earlyExit; ++row) {
+    for (int row = 0; row < numPoints2 && !earlyExit && !userStopped; ++row) {
       // Snake pattern: alternate direction each row
       bool reverse = snakePattern && (row % 2 == 1);
 
-      for (int col = 0; col < numPoints1 && !earlyExit; ++col) {
+      for (int col = 0; col < numPoints1 && !earlyExit && !userStopped; ++col) {
         // Check stop flag
         if (context && context->IsStopRequestedAny()) {
           if (m_logger) {
-            m_logger->Info("GridScanExtended: Stop requested, halting scan", "MotionHandler");
+            m_logger->Info("GridScanExtended: Stop requested, will return to best peak found so far", "MotionHandler");
           }
-          errorMessage = "GridScanExtended: Scan stopped by user";
-          return false;
+          userStopped = true;
+          break;
         }
 
         int actualCol = reverse ? (numPoints1 - 1 - col) : col;
@@ -1711,10 +1990,10 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Wait for axis1 move
         auto startMove = std::chrono::steady_clock::now();
-        while (motionManager->IsMoving(deviceName, axis1)) {
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScanExtended: Scan stopped by user during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - startMove > std::chrono::seconds(10)) {
             errorMessage = "GridScanExtended: Timeout waiting for " + axis1 + " motion";
@@ -1722,6 +2001,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
           errorMessage = "GridScanExtended: Failed to start move on " + axis2;
@@ -1729,10 +2009,10 @@ bool MotionCommandHandler::ExecuteCommand(
         }
         // Wait for axis2 move
         startMove = std::chrono::steady_clock::now();
-        while (motionManager->IsMoving(deviceName, axis2)) {
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScanExtended: Scan stopped by user during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - startMove > std::chrono::seconds(10)) {
             errorMessage = "GridScanExtended: Timeout waiting for " + axis2 + " motion";
@@ -1740,6 +2020,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         // Settling time
         std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
@@ -1801,12 +2082,13 @@ bool MotionCommandHandler::ExecuteCommand(
       }
     }
 
-    // ✅ RETURN TO PEAK POSITION IF ENABLED
-    if (returnToPeak) {
+    // ✅ RETURN TO PEAK POSITION (always when enabled, even if stopped by user)
+    if (returnToPeak || userStopped) {
       if (m_logger) {
         m_logger->Info(
           "GridScanExtended: Returning to peak position (" + std::to_string(peakAxis1) + ", " +
-          std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue),
+          std::to_string(peakAxis2) + ") with value " + std::to_string(peakValue) +
+          (userStopped ? " (stopped by user, returning to best peak found)" : ""),
           "MotionHandler"
         );
       }
@@ -1816,7 +2098,7 @@ bool MotionCommandHandler::ExecuteCommand(
         return false;
       }
       auto startReturnExt = std::chrono::steady_clock::now();
-      while (motionManager->IsMoving(deviceName, axis1)) {
+      for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
         if (std::chrono::steady_clock::now() - startReturnExt > std::chrono::seconds(10)) {
           errorMessage = "GridScanExtended: Timeout returning to peak on " + axis1;
           return false;
@@ -1829,7 +2111,7 @@ bool MotionCommandHandler::ExecuteCommand(
         return false;
       }
       startReturnExt = std::chrono::steady_clock::now();
-      while (motionManager->IsMoving(deviceName, axis2)) {
+      for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
         if (std::chrono::steady_clock::now() - startReturnExt > std::chrono::seconds(10)) {
           errorMessage = "GridScanExtended: Timeout returning to peak on " + axis2;
           return false;
@@ -1862,47 +2144,25 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      std::string completionReason = earlyExit ? " (early exit - threshold reached)" : "";
+      std::string status = userStopped ? "Stopped by user" :
+        (earlyExit ? "Completed (early exit - threshold reached)" : "Completed successfully");
       m_logger->Info(
-        "GridScanExtended: Completed successfully" + completionReason +
+        "GridScanExtended: " + status +
         " - Peak value: " + std::to_string(peakValue) +
-        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")",
+        " at (" + std::to_string(peakAxis1) + ", " + std::to_string(peakAxis2) + ")" +
+        " (" + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) + " points)",
         "MotionHandler"
       );
     }
 
-    // ✅ SAVE GRID SCAN RESULTS TO FILE
+    // ✅ SAVE GRID SCAN RESULTS TO FILE (always, even partial)
     {
       auto scanEndTime = std::chrono::system_clock::now();
       auto durationSec = std::chrono::duration_cast<std::chrono::seconds>(scanEndTime - scanStartTime).count();
 
-      // Generate timestamp for filename
-      auto endTimeT = std::chrono::system_clock::to_time_t(scanEndTime);
-      struct tm tmBuf {};
-      localtime_s(&tmBuf, &endTimeT);
-      char timeBuf[32];
-      std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d_%H%M%S", &tmBuf);
-
-      // Format timestamps for JSON
-      char startTimeFmt[32], endTimeFmt[32];
-      auto startTimeT = std::chrono::system_clock::to_time_t(scanStartTime);
-      struct tm startTmBuf {};
-      localtime_s(&startTmBuf, &startTimeT);
-      std::strftime(startTimeFmt, sizeof(startTimeFmt), "%Y-%m-%d %H:%M:%S", &startTmBuf);
-      std::strftime(endTimeFmt, sizeof(endTimeFmt), "%Y-%m-%d %H:%M:%S", &tmBuf);
-
-      // Build filename: {process_uid}_{timestamp}.json
-      std::string filePrefix = processUID.empty() ? "grid" : processUID;
-      std::string filename = filePrefix + "_" + std::string(timeBuf) + ".json";
-
-      // Create output directory
-      std::filesystem::path outDir = std::filesystem::current_path() / "logs" / "scanning" / "grid";
-      std::filesystem::create_directories(outDir);
-      std::filesystem::path outPath = outDir / filename;
-
-      // Assemble result JSON
       nlohmann::json result;
       result["process_uid"] = processUID;
+      result["scan_type"] = "Grid Scan Extended";
       result["device"] = deviceName;
       result["plane"] = plane;
       result["scan_config"] = {
@@ -1924,39 +2184,25 @@ bool MotionCommandHandler::ExecuteCommand(
         {"x", currentPosExt.x}, {"y", currentPosExt.y}, {"z", currentPosExt.z},
         {"u", currentPosExt.u}, {"v", currentPosExt.v}, {"w", currentPosExt.w}
       };
-      result["start_time"] = std::string(startTimeFmt);
-      result["end_time"] = std::string(endTimeFmt);
+      result["start_time"] = FormatTime(scanStartTime);
+      result["end_time"] = FormatTime(scanEndTime);
       result["duration_seconds"] = durationSec;
       result["results"] = {
         {"peak_value", peakValue},
         {"peak_position", {{"axis1", peakAxis1}, {"axis2", peakAxis2}}},
         {"total_points_measured", currentPoint},
-        {"early_exit", earlyExit}
+        {"early_exit", earlyExit},
+        {"user_stopped", userStopped}
       };
       result["measurements"] = scanMeasurements;
 
-      // Write to file
-      std::ofstream ofs(outPath);
-      if (ofs.is_open()) {
-        ofs << result.dump(2);
-        ofs.close();
-        if (m_logger) {
-          m_logger->Info(
-            "GridScanExtended: Results saved to " + outPath.string() +
-            " (" + std::to_string(currentPoint) + " points)",
-            "MotionHandler"
-          );
-        }
-      } else {
-        if (m_logger) {
-          m_logger->Warning(
-            "GridScanExtended: Failed to save results to " + outPath.string(),
-            "MotionHandler"
-          );
-        }
-      }
+      WriteGridScanFiles(processUID, result, m_logger);
     }
 
+    if (userStopped) {
+      errorMessage = "GridScanExtended: Stopped by user (returned to peak)";
+      return false;
+    }
     return true;
   }
 
@@ -2170,8 +2416,10 @@ bool MotionCommandHandler::ExecuteCommand(
     // Dual peak tracking
     double peakValue1 = std::numeric_limits<double>::lowest();
     double peakAxis1_ch1 = centerAxis1, peakAxis2_ch1 = centerAxis2;
+    PositionStruct peakFullPos_ch1 = currentPosDC;
     double peakValue2 = std::numeric_limits<double>::lowest();
     double peakAxis1_ch2 = centerAxis1, peakAxis2_ch2 = centerAxis2;
+    PositionStruct peakFullPos_ch2 = currentPosDC;
     int currentPoint = 0;
     bool earlyExit = false;
 
@@ -2186,14 +2434,15 @@ bool MotionCommandHandler::ExecuteCommand(
     else startAxis2 = centerAxis2 - rangeAxis2Mm / 2.0;
 
     // ✅ EXECUTE GRID SCAN (dual channel)
-    for (int row = 0; row < numPoints2 && !earlyExit; ++row) {
+    bool userStopped = false;
+    for (int row = 0; row < numPoints2 && !earlyExit && !userStopped; ++row) {
       bool reverse = snakePattern && (row % 2 == 1);
 
-      for (int col = 0; col < numPoints1 && !earlyExit; ++col) {
+      for (int col = 0; col < numPoints1 && !earlyExit && !userStopped; ++col) {
         if (context && context->IsStopRequestedAny()) {
-          if (m_logger) m_logger->Info("GridScanDualChannel: Stop requested", "MotionHandler");
-          errorMessage = "GridScanDualChannel: Scan stopped by user";
-          return false;
+          if (m_logger) m_logger->Info("GridScanDualChannel: Stop requested, will return to best peak found so far", "MotionHandler");
+          userStopped = true;
+          break;
         }
 
         int actualCol = reverse ? (numPoints1 - 1 - col) : col;
@@ -2208,8 +2457,8 @@ bool MotionCommandHandler::ExecuteCommand(
         auto startMoveDC = std::chrono::steady_clock::now();
         for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis1); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScanDualChannel: Stopped during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - startMoveDC > std::chrono::seconds(10)) {
             errorMessage = "GridScanDualChannel: Timeout waiting for " + axis1;
@@ -2217,6 +2466,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         // Move axis2
         if (!motionManager->MoveToPosition(deviceName, axis2, targetAxis2, false)) {
@@ -2226,8 +2476,8 @@ bool MotionCommandHandler::ExecuteCommand(
         startMoveDC = std::chrono::steady_clock::now();
         for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis2); ++w) {
           if (context && context->IsStopRequestedAny()) {
-            errorMessage = "GridScanDualChannel: Stopped during motion";
-            return false;
+            userStopped = true;
+            break;
           }
           if (std::chrono::steady_clock::now() - startMoveDC > std::chrono::seconds(10)) {
             errorMessage = "GridScanDualChannel: Timeout waiting for " + axis2;
@@ -2235,6 +2485,7 @@ bool MotionCommandHandler::ExecuteCommand(
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (userStopped) break;
 
         // Settling time
         std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
@@ -2244,8 +2495,8 @@ bool MotionCommandHandler::ExecuteCommand(
         double value2 = static_cast<double>(m_dataStore->GetValue(channel2, 0.0f));
 
         // Record data point with full XYZUVW
+        PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
         {
-          PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
           nlohmann::json point;
           point["index"] = currentPoint;
           point["row"] = row;
@@ -2266,6 +2517,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakValue1 = value1;
           peakAxis1_ch1 = targetAxis1;
           peakAxis2_ch1 = targetAxis2;
+          peakFullPos_ch1 = fullPos;
           if (m_logger) {
             m_logger->Info(
               "GridScanDualChannel: New Ch1 peak at (" + std::to_string(targetAxis1) + ", " +
@@ -2280,6 +2532,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakValue2 = value2;
           peakAxis1_ch2 = targetAxis1;
           peakAxis2_ch2 = targetAxis2;
+          peakFullPos_ch2 = fullPos;
           if (m_logger) {
             m_logger->Info(
               "GridScanDualChannel: New Ch2 peak at (" + std::to_string(targetAxis1) + ", " +
@@ -2324,17 +2577,23 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    // ✅ RETURN TO PEAK POSITION
-    if (returnToPeak == "channel1" || returnToPeak == "channel2") {
-      double returnAxis1 = (returnToPeak == "channel1") ? peakAxis1_ch1 : peakAxis1_ch2;
-      double returnAxis2 = (returnToPeak == "channel1") ? peakAxis2_ch1 : peakAxis2_ch2;
-      double returnVal = (returnToPeak == "channel1") ? peakValue1 : peakValue2;
+    // ✅ RETURN TO PEAK POSITION (always when configured, even if stopped by user)
+    // On user stop: default to channel1 peak if return_to_peak was "none"
+    std::string effectiveReturnTo = returnToPeak;
+    if (userStopped && effectiveReturnTo == "none") {
+      effectiveReturnTo = "channel1";
+    }
+    if (effectiveReturnTo == "channel1" || effectiveReturnTo == "channel2") {
+      double returnAxis1 = (effectiveReturnTo == "channel1") ? peakAxis1_ch1 : peakAxis1_ch2;
+      double returnAxis2 = (effectiveReturnTo == "channel1") ? peakAxis2_ch1 : peakAxis2_ch2;
+      double returnVal = (effectiveReturnTo == "channel1") ? peakValue1 : peakValue2;
 
       if (m_logger) {
         m_logger->Info(
-          "GridScanDualChannel: Returning to " + returnToPeak + " peak (" +
+          "GridScanDualChannel: Returning to " + effectiveReturnTo + " peak (" +
           std::to_string(returnAxis1) + ", " + std::to_string(returnAxis2) +
-          ") value=" + FormatSI(returnVal),
+          ") value=" + FormatSI(returnVal) +
+          (userStopped ? " (stopped by user, returning to best peak found)" : ""),
           "MotionHandler"
         );
       }
@@ -2391,12 +2650,21 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      std::string completionReason = earlyExit ? " (early exit)" : "";
+      std::string status = userStopped ? "Stopped by user" :
+        (earlyExit ? "Completed (early exit)" : "Completed");
+      double dxUm = (peakFullPos_ch1.x - peakFullPos_ch2.x) * 1000.0;
+      double dyUm = (peakFullPos_ch1.y - peakFullPos_ch2.y) * 1000.0;
+      double dzUm = (peakFullPos_ch1.z - peakFullPos_ch2.z) * 1000.0;
+      double duDeg = peakFullPos_ch1.u - peakFullPos_ch2.u;
+      double dvDeg = peakFullPos_ch1.v - peakFullPos_ch2.v;
+      double dwDeg = peakFullPos_ch1.w - peakFullPos_ch2.w;
       m_logger->Info(
-        "GridScanDualChannel: Completed" + completionReason +
+        "GridScanDualChannel: " + status +
+        " (" + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) + " points)" +
         " - Ch1 peak: " + FormatSI(peakValue1) + " at (" + std::to_string(peakAxis1_ch1) + ", " + std::to_string(peakAxis2_ch1) + ")" +
         " - Ch2 peak: " + FormatSI(peakValue2) + " at (" + std::to_string(peakAxis1_ch2) + ", " + std::to_string(peakAxis2_ch2) + ")" +
-        " - Delta axis1: " + std::to_string(peakDeltaAxis1 * 1000.0) + " um",
+        " - Delta XYZUVW: dX=" + std::to_string(dxUm) + "um dY=" + std::to_string(dyUm) + "um dZ=" + std::to_string(dzUm) + "um" +
+        " dU=" + std::to_string(duDeg) + "deg dV=" + std::to_string(dvDeg) + "deg dW=" + std::to_string(dwDeg) + "deg",
         "MotionHandler"
       );
     }
@@ -2406,28 +2674,9 @@ bool MotionCommandHandler::ExecuteCommand(
       auto scanEndTimeDC = std::chrono::system_clock::now();
       auto durationSecDC = std::chrono::duration_cast<std::chrono::seconds>(scanEndTimeDC - scanStartTimeDC).count();
 
-      auto endTimeTDC = std::chrono::system_clock::to_time_t(scanEndTimeDC);
-      struct tm tmBufDC {};
-      localtime_s(&tmBufDC, &endTimeTDC);
-      char timeBufDC[32];
-      std::strftime(timeBufDC, sizeof(timeBufDC), "%Y%m%d_%H%M%S", &tmBufDC);
-
-      char startTimeFmtDC[32], endTimeFmtDC[32];
-      auto startTimeTDC = std::chrono::system_clock::to_time_t(scanStartTimeDC);
-      struct tm startTmBufDC {};
-      localtime_s(&startTmBufDC, &startTimeTDC);
-      std::strftime(startTimeFmtDC, sizeof(startTimeFmtDC), "%Y-%m-%d %H:%M:%S", &startTmBufDC);
-      std::strftime(endTimeFmtDC, sizeof(endTimeFmtDC), "%Y-%m-%d %H:%M:%S", &tmBufDC);
-
-      std::string filePrefix = processUID.empty() ? "grid_dual" : processUID;
-      std::string filename = filePrefix + "_" + std::string(timeBufDC) + ".json";
-
-      std::filesystem::path outDir = std::filesystem::current_path() / "logs" / "scanning" / "grid";
-      std::filesystem::create_directories(outDir);
-      std::filesystem::path outPath = outDir / filename;
-
       nlohmann::json result;
       result["process_uid"] = processUID;
+      result["scan_type"] = "Grid Scan Dual Channel";
       result["device"] = deviceName;
       result["plane"] = plane;
       result["scan_config"] = {
@@ -2452,42 +2701,54 @@ bool MotionCommandHandler::ExecuteCommand(
         {"x", currentPosDC.x}, {"y", currentPosDC.y}, {"z", currentPosDC.z},
         {"u", currentPosDC.u}, {"v", currentPosDC.v}, {"w", currentPosDC.w}
       };
-      result["start_time"] = std::string(startTimeFmtDC);
-      result["end_time"] = std::string(endTimeFmtDC);
+      result["start_time"] = FormatTime(scanStartTimeDC);
+      result["end_time"] = FormatTime(scanEndTimeDC);
       result["duration_seconds"] = durationSecDC;
       result["results"] = {
-        {"channel1_peak", {{"value", peakValue1}, {"position", {{"axis1", peakAxis1_ch1}, {"axis2", peakAxis2_ch1}}}}},
-        {"channel2_peak", {{"value", peakValue2}, {"position", {{"axis1", peakAxis1_ch2}, {"axis2", peakAxis2_ch2}}}}},
+        {"channel1_peak", {
+          {"value", peakValue1},
+          {"position", {{"axis1", peakAxis1_ch1}, {"axis2", peakAxis2_ch1}}},
+          {"full_position", {
+            {"x", peakFullPos_ch1.x}, {"y", peakFullPos_ch1.y}, {"z", peakFullPos_ch1.z},
+            {"u", peakFullPos_ch1.u}, {"v", peakFullPos_ch1.v}, {"w", peakFullPos_ch1.w}
+          }}
+        }},
+        {"channel2_peak", {
+          {"value", peakValue2},
+          {"position", {{"axis1", peakAxis1_ch2}, {"axis2", peakAxis2_ch2}}},
+          {"full_position", {
+            {"x", peakFullPos_ch2.x}, {"y", peakFullPos_ch2.y}, {"z", peakFullPos_ch2.z},
+            {"u", peakFullPos_ch2.u}, {"v", peakFullPos_ch2.v}, {"w", peakFullPos_ch2.w}
+          }}
+        }},
         {"peak_delta_axis1", peakDeltaAxis1},
         {"peak_delta_axis1_um", peakDeltaAxis1 * 1000.0},
+        {"peak_delta_xyzuvw", {
+          {"x_mm", peakFullPos_ch1.x - peakFullPos_ch2.x},
+          {"y_mm", peakFullPos_ch1.y - peakFullPos_ch2.y},
+          {"z_mm", peakFullPos_ch1.z - peakFullPos_ch2.z},
+          {"u_deg", peakFullPos_ch1.u - peakFullPos_ch2.u},
+          {"v_deg", peakFullPos_ch1.v - peakFullPos_ch2.v},
+          {"w_deg", peakFullPos_ch1.w - peakFullPos_ch2.w},
+          {"x_um", (peakFullPos_ch1.x - peakFullPos_ch2.x) * 1000.0},
+          {"y_um", (peakFullPos_ch1.y - peakFullPos_ch2.y) * 1000.0},
+          {"z_um", (peakFullPos_ch1.z - peakFullPos_ch2.z) * 1000.0}
+        }},
         {"waveguide_spacing_um", waveguideSpacingUm},
         {"total_points_measured", currentPoint},
         {"early_exit", earlyExit},
-        {"returned_to", returnToPeak}
+        {"user_stopped", userStopped},
+        {"returned_to", effectiveReturnTo}
       };
       result["measurements"] = scanMeasurementsDC;
 
-      std::ofstream ofs(outPath);
-      if (ofs.is_open()) {
-        ofs << result.dump(2);
-        ofs.close();
-        if (m_logger) {
-          m_logger->Info(
-            "GridScanDualChannel: Results saved to " + outPath.string() +
-            " (" + std::to_string(currentPoint) + " points)",
-            "MotionHandler"
-          );
-        }
-      } else {
-        if (m_logger) {
-          m_logger->Warning(
-            "GridScanDualChannel: Failed to save results to " + outPath.string(),
-            "MotionHandler"
-          );
-        }
-      }
+      WriteGridScanFiles(processUID, result, m_logger);
     }
 
+    if (userStopped) {
+      errorMessage = "GridScanDualChannel: Stopped by user (returned to peak)";
+      return false;
+    }
     return true;
   }
 

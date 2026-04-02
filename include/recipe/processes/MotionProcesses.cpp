@@ -1210,7 +1210,8 @@ public:
       {"channel", getParam("channel")},
       {"settling_time_ms", getParam("settling_time_ms")},
       {"capture_as", getParam("capture_as")},
-      {"timeout_ms", getParam("timeout_ms")}  // Custom timeout for long scans
+      {"timeout_ms", getParam("timeout_ms")},
+      {"process_uid", step->uniqueId}
     });
 
     std::cout << "[MotionProcesses] Built GridScan sequence for: " << step->userNickname
