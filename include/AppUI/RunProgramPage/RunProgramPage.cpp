@@ -12,7 +12,9 @@
 #include "ManualAlignPointWidget.h"
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
+#include "RollCorrectionWidget.h"
 #include "ScanExecutor.h"
+#include "motions/unified_motion_manager.h"
 #include "CameraClickToMoveWidget.h"
 #include "RetraceEditWidget.h"
 #include "ILogger.h"
@@ -2152,6 +2154,32 @@ void RunProgramPage::createExecutionWidget()
 
   m_executionTabWidget->addTab(visionTab, "Vision");
 
+  // === ROLL CORRECTION TAB (Index 5) ===
+  QWidget* rollCorrectionTab = new QWidget();
+  QVBoxLayout* rollTabLayout = new QVBoxLayout(rollCorrectionTab);
+  rollTabLayout->setContentsMargins(10, 10, 10, 10);
+  rollTabLayout->setSpacing(10);
+
+  m_rollCorrectionWidget = new RollCorrectionWidget();
+  rollTabLayout->addWidget(m_rollCorrectionWidget);
+  rollTabLayout->addStretch();
+
+  m_executionTabWidget->addTab(rollCorrectionTab, "Roll Correction");
+
+  // Connect roll correction signals
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH1Requested,
+    this, &RunProgramPage::onRegisterCH1Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH2Requested,
+    this, &RunProgramPage::onRegisterCH2Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::moveToCH1Requested,
+    this, &RunProgramPage::onMoveToCH1Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::moveToCH2Requested,
+    this, &RunProgramPage::onMoveToCH2Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::correctWRequested,
+    this, &RunProgramPage::onCorrectWRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::clearRequested,
+    this, &RunProgramPage::onRollCorrectionClearRequested);
+
   // Connect scan widget to this page
   connect(m_scanWidget, &ScanControlWidget::scanRequested,
     this, &RunProgramPage::onScanRequested);
@@ -4011,6 +4039,170 @@ void RunProgramPage::onStopScanRequested()
 
   // Log completion
   m_logTextEdit->appendPlainText("Scan stopped - device returned to peak position");
+}
+
+// === ROLL CORRECTION SLOTS ===
+
+void RunProgramPage::onRegisterCH1Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_context->motionManager->GetCurrentPosition(deviceName.toStdString());
+  m_rollCorrectionWidget->setCH1Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
+
+  QString msg = QString("[RollCorrection] Registered CH1 peak for %1: X=%2 um")
+    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+  m_logTextEdit->appendPlainText(msg);
+}
+
+void RunProgramPage::onRegisterCH2Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_context->motionManager->GetCurrentPosition(deviceName.toStdString());
+  m_rollCorrectionWidget->setCH2Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
+
+  QString msg = QString("[RollCorrection] Registered CH2 peak for %1: X=%2 um")
+    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+  m_logTextEdit->appendPlainText(msg);
+}
+
+void RunProgramPage::onMoveToCH1Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_rollCorrectionWidget->getCH1Position(deviceName);
+  if (!pos.valid) return;
+
+  std::string dev = deviceName.toStdString();
+
+  // Save current velocity, set to 1 mm/s for safe move
+  double originalVelocity = 0.0;
+  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
+  m_context->motionManager->SetSystemVelocity(dev, 1.0);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Moving %1 to CH1 peak position...").arg(deviceName));
+
+  PositionStruct target;
+  target.x = pos.x; target.y = pos.y; target.z = pos.z;
+  target.u = pos.u; target.v = pos.v; target.w = pos.w;
+  bool ok = m_context->motionManager->MoveToAbs6(dev, target, true);
+
+  // Restore original velocity
+  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(ok ?
+    QString("[RollCorrection] %1 moved to CH1 peak").arg(deviceName) :
+    QString("[RollCorrection] FAILED to move %1 to CH1 peak").arg(deviceName));
+}
+
+void RunProgramPage::onMoveToCH2Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_rollCorrectionWidget->getCH2Position(deviceName);
+  if (!pos.valid) return;
+
+  std::string dev = deviceName.toStdString();
+
+  // Save current velocity, set to 1 mm/s for safe move
+  double originalVelocity = 0.0;
+  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
+  m_context->motionManager->SetSystemVelocity(dev, 1.0);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Moving %1 to CH2 peak position...").arg(deviceName));
+
+  PositionStruct target;
+  target.x = pos.x; target.y = pos.y; target.z = pos.z;
+  target.u = pos.u; target.v = pos.v; target.w = pos.w;
+  bool ok = m_context->motionManager->MoveToAbs6(dev, target, true);
+
+  // Restore original velocity
+  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(ok ?
+    QString("[RollCorrection] %1 moved to CH2 peak").arg(deviceName) :
+    QString("[RollCorrection] FAILED to move %1 to CH2 peak").arg(deviceName));
+}
+
+void RunProgramPage::onCorrectWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  std::string dev = deviceName.toStdString();
+
+  // Step 1: Verify CH1 position is available (we move to CH1 peak first)
+  auto ch1Pos = m_rollCorrectionWidget->getCH1Position(deviceName);
+  if (!ch1Pos.valid) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] ERROR: CH1 peak not registered for %1").arg(deviceName));
+    return;
+  }
+
+  // Save current velocity, set to 1 mm/s for all correction moves
+  double originalVelocity = 0.0;
+  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
+  m_context->motionManager->SetSystemVelocity(dev, 1.0);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  // Step 2: Move to CH1 peak position first
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 1: Moving %1 to CH1 peak position...").arg(deviceName));
+  PositionStruct ch1Target;
+  ch1Target.x = ch1Pos.x; ch1Target.y = ch1Pos.y; ch1Target.z = ch1Pos.z;
+  ch1Target.u = ch1Pos.u; ch1Target.v = ch1Pos.v; ch1Target.w = ch1Pos.w;
+  bool ok = m_context->motionManager->MoveToAbs6(dev, ch1Target, true);
+  if (!ok) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] FAILED to move %1 to CH1 peak - aborting correction").arg(deviceName));
+    m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+    return;
+  }
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 at CH1 peak").arg(deviceName));
+
+  // Step 3: Move halfway X offset (direction per case table)
+  auto currentPos = m_context->motionManager->GetCurrentPosition(dev);
+  // halfwayXmm is signed: negative = move UP (case 1,3), positive = move DOWN (case 2,4)
+  // The action is opposite: we negate halfway to get the correction direction
+  double newX = currentPos.x - halfwayXmm;  // subtract because halfway is (ch2-ch1)/2, we move opposite
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 2: Moving %1 X halfway: %2 -> %3 mm (offset %4 mm)")
+    .arg(deviceName)
+    .arg(currentPos.x, 0, 'f', 4)
+    .arg(newX, 0, 'f', 4)
+    .arg(-halfwayXmm, 0, 'f', 4));
+  ok = m_context->motionManager->MoveToPosition(dev, "X", newX, true);
+  if (!ok) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] FAILED X halfway move for %1 - aborting correction").arg(deviceName));
+    m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+    return;
+  }
+
+  // Step 4: Apply W rotation correction
+  currentPos = m_context->motionManager->GetCurrentPosition(dev);
+  double wCorrection = positiveW ? angleDeg : -angleDeg;
+  double newW = currentPos.w + wCorrection;
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 3: Correcting W for %1: %2 -> %3 (%4%5 deg)")
+    .arg(deviceName)
+    .arg(currentPos.w, 0, 'f', 4)
+    .arg(newW, 0, 'f', 4)
+    .arg(positiveW ? "+" : "-")
+    .arg(angleDeg, 0, 'f', 4));
+  ok = m_context->motionManager->MoveToPosition(dev, "W", newW, true);
+
+  // Restore original velocity
+  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(ok ?
+    QString("[RollCorrection] Correction complete for %1").arg(deviceName) :
+    QString("[RollCorrection] FAILED W correction for %1").arg(deviceName));
+}
+
+void RunProgramPage::onRollCorrectionClearRequested(QString deviceName)
+{
+  m_rollCorrectionWidget->clearPositions(deviceName);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Cleared positions for %1").arg(deviceName));
 }
 
 // ✅ ADDED: Handle channel change from scan widget

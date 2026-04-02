@@ -997,12 +997,14 @@ set(HEADERS
     include/AppUI/RunProgramPage/RetraceEditWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
+    include/AppUI/RunProgramPage/RollCorrectionWidget.h
     include/AppUI/RunProgramPage/RecipeNodeItem.h
     include/AppUI/RunProgramPage/DependencyEdgeItem.h
     include/AppUI/RunProgramPage/DependencyGraphScene.h
     include/AppUI/RunProgramPage/DependencyGraphWindow.h
     include/AppUI/RunProgramPage/LoopConfigDialog.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
+    include/AppUI/RunProgramPage/RollCorrectionWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system
     include/lighting/LightingTypes.h

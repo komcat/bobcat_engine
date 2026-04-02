@@ -36,6 +36,7 @@ class ScanExecutor;
 enum class ScanMode;
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
+class RollCorrectionWidget;
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -134,6 +135,14 @@ private slots:
   // ✅ ADDED: Periodic channel list refresh
   void refreshDataStoreChannels();
 
+  // Roll correction handling
+  void onRegisterCH1Requested(QString deviceName);
+  void onRegisterCH2Requested(QString deviceName);
+  void onMoveToCH1Requested(QString deviceName);
+  void onMoveToCH2Requested(QString deviceName);
+  void onCorrectWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm);
+  void onRollCorrectionClearRequested(QString deviceName);
+
 private:
   void setupUI();
   void createLeftPanel(QVBoxLayout* leftLayout);
@@ -222,6 +231,7 @@ private:
   // Scanning controls (refactored)
   ScanControlWidget* m_scanWidget;
   ScanExecutor* m_scanExecutor;
+  RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
   // Prompt system
