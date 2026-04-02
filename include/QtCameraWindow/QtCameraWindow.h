@@ -201,8 +201,8 @@ private:
     QComboBox* m_beamCameraCombo = nullptr;
 
     // Quick-move panel (second left panel)
-    static constexpr int QUICK_MOVE_ROWS = 5;
-    static constexpr int QUICK_MOVE_COLS = 3;
+    static constexpr int QUICK_MOVE_ROWS = 6;
+    static constexpr int QUICK_MOVE_COLS = 4;
     static constexpr int QUICK_MOVE_COUNT = QUICK_MOVE_ROWS * QUICK_MOVE_COLS;
 
     struct QuickMoveButtonData {

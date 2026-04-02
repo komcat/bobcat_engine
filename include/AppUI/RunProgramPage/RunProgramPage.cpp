@@ -46,6 +46,8 @@
 #include <QSet>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QDir>
 #include <QClipboard>
@@ -4438,24 +4440,73 @@ void RunProgramPage::renameRecipe(int recipeIndex)
   newName = newName.trimmed();
   if (newName == currentName) return;  // No change
 
-  // Update display name in ProgramManager
-  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
-
-  // Also update the recipe file itself
-  RecipeManager tempRecipeManager;
-  if (tempRecipeManager.loadRecipe(recipeFilePath.toStdString())) {
-    tempRecipeManager.setRecipeName(newName.toStdString());
-    if (tempRecipeManager.saveRecipe(recipeFilePath.toStdString())) {
-      QMessageBox::information(this, "Recipe Renamed",
-        QString("Recipe renamed to \"%1\" and saved to file.").arg(newName));
-    } else {
-      QMessageBox::warning(this, "Save Failed",
-        "Recipe display name updated but failed to save to recipe file.");
+  // Validate filename characters
+  QString invalidChars = "<>:\"/\\|?*";
+  for (QChar c : invalidChars) {
+    if (newName.contains(c)) {
+      QMessageBox::warning(this, "Invalid Name",
+        "Recipe name contains invalid characters.\n\nInvalid characters: < > : \" / \\ | ? *");
+      return;
     }
-  } else {
-    QMessageBox::warning(this, "Load Failed",
-      "Recipe display name updated but failed to load recipe file for saving.");
   }
+
+  // Compute new file path
+  QFileInfo oldFileInfo(recipeFilePath);
+  QString newFilePath = oldFileInfo.absolutePath() + "/" + newName + ".json";
+
+  // Check if target file already exists (and is a different file)
+  if (newFilePath != recipeFilePath && QFile::exists(newFilePath)) {
+    QMessageBox::warning(this, "Name Exists",
+      QString("A recipe file named '%1.json' already exists.").arg(newName));
+    return;
+  }
+
+  // Update the recipe JSON content and rename the file
+  QFile file(recipeFilePath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    QMessageBox::critical(this, "Error", "Failed to open recipe file for reading.");
+    return;
+  }
+  QByteArray fileData = file.readAll();
+  file.close();
+
+  QJsonDocument doc = QJsonDocument::fromJson(fileData);
+  if (!doc.isObject()) {
+    QMessageBox::critical(this, "Error", "Recipe file is not valid JSON.");
+    return;
+  }
+
+  QJsonObject obj = doc.object();
+  obj["recipe_name"] = newName;
+
+  // Write to new file path
+  QFile newFile(newFilePath);
+  if (!newFile.open(QIODevice::WriteOnly)) {
+    QMessageBox::critical(this, "Error", "Failed to write renamed recipe file.");
+    return;
+  }
+  newFile.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+  newFile.close();
+
+  // Remove old file if the path changed
+  if (newFilePath != recipeFilePath) {
+    QFile::remove(recipeFilePath);
+  }
+
+  // Update ProgramManager with new display name and file path
+  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
+  RecipeReference* mutableRecipe = m_programManager->getRecipe(recipeIndex);
+  if (mutableRecipe) {
+    mutableRecipe->recipeFilePath = newFilePath.toStdString();
+  }
+
+  // Auto-save program to persist the new file path
+  if (!m_currentProgramPath.isEmpty()) {
+    m_programManager->saveProgram(m_currentProgramPath.toStdString());
+  }
+
+  QMessageBox::information(this, "Recipe Renamed",
+    QString("Recipe renamed to \"%1\" and file saved.").arg(newName));
 
   // Refresh the table to show new name
   updateRecipeList();

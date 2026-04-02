@@ -1111,7 +1111,7 @@ public:
       {"channel", ""},                     // DataStore feedback channel
       {"settling_time_ms", "300"},
       {"capture_as", ""},                  // Optional: store peak result
-      {"timeout_ms", "600000"}             // 10 minute timeout for scans
+      {"timeout_ms", "10800000"}            // 3 hour timeout for scans
     };
   }
 
@@ -1141,7 +1141,7 @@ public:
       getParam("settling_time_ms"), 50, 2000, 10, 0, "ms");
     widget->addParameterField("capture_as", "Capture Peak As (optional)", getParam("capture_as"));
     widget->addNumericParameter("timeout_ms", "Timeout (ms)",
-      getParam("timeout_ms"), 60000, 1800000, 60000, 0, "ms");
+      getParam("timeout_ms"), 60000, 10800000, 60000, 0, "ms");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -1184,8 +1184,8 @@ public:
     table->addCategoryHeader("Timeout");
     table->addNumericProperty("timeout_ms", "Command Timeout",
       std::stod(getParam("timeout_ms")),
-      60000, 1800000, 60000, 0, "ms",
-      "Maximum time allowed for scan (60s-30min). Default 10 minutes.");
+      60000, 10800000, 60000, 0, "ms",
+      "Maximum time allowed for scan (60s-3hrs). Default 10 minutes.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -1256,7 +1256,7 @@ public:
       {"exit_threshold", ""},              // Early exit if value exceeds
       {"capture_as", ""},                  // Store peak value to context
       {"capture_position_as", ""},         // Store peak position to context
-      {"timeout_ms", "600000"}             // 10 minute timeout for long scans
+      {"timeout_ms", "10800000"}            // 3 hour timeout for long scans
     };
   }
 
@@ -1297,7 +1297,7 @@ public:
     widget->addParameterField("capture_as", "Capture Peak As", getParam("capture_as"));
     widget->addParameterField("capture_position_as", "Capture Position As", getParam("capture_position_as"));
     widget->addNumericParameter("timeout_ms", "Timeout (ms)",
-      getParam("timeout_ms"), 60000, 1800000, 60000, 0, "ms");
+      getParam("timeout_ms"), 60000, 10800000, 60000, 0, "ms");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -1375,8 +1375,8 @@ public:
     table->addCategoryHeader("Timeout");
     table->addNumericProperty("timeout_ms", "Command Timeout",
       std::stod(getParam("timeout_ms")),
-      60000, 1800000, 60000, 0, "ms",
-      "Maximum time allowed for scan (60s-30min). Default 10 minutes for large grids.");
+      60000, 10800000, 60000, 0, "ms",
+      "Maximum time allowed for scan (60s-3hrs). Default 10 minutes for large grids.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {

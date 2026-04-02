@@ -463,6 +463,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlanarAdjustmentTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/YawTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/PlacementCorrectionTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -804,6 +805,12 @@ set(SOURCES
     include/AppUI/YawTrainer/YawResultWidget.cpp
     include/AppUI/YawTrainer/YawApplyCorrectionWidget.cpp
     include/AppUI/YawTrainer/YawRetraceWidget.cpp
+    # Placement Correction Trainer
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionStore.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionPage.cpp
+    include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -1057,6 +1064,13 @@ set(HEADERS
     include/AppUI/YawTrainer/YawResultWidget.h
     include/AppUI/YawTrainer/YawApplyCorrectionWidget.h
     include/AppUI/YawTrainer/YawRetraceWidget.h
+    # Placement Correction Trainer
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionData.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionStore.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionPage.h
+    include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
