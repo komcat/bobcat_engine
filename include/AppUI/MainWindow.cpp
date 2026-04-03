@@ -23,6 +23,7 @@
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
 #include "TrainerContainerPage.h"                  // Trainer container
+#include "Common/ShutdownConfirmDialog.h"          // Shutdown confirmation
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
@@ -135,6 +136,12 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+  // Show shutdown confirmation dialog — user must confirm save & machine state
+  if (!ShutdownConfirmDialog::confirmShutdown(this)) {
+    event->ignore();
+    return;
+  }
+
   std::cout << "[MainWindow] Close event triggered - shutting down application..." << std::endl;
 
   // Save window geometry before closing

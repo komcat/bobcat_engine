@@ -4,8 +4,11 @@
 #include <QWidget>
 #include <QLabel>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QStackedWidget>
 #include <QTimer>
+#include <future>
+#include <functional>
 #include "PlacementCorrectionData.h"
 #include "TransformationMatrixLoader.h"
 
@@ -37,6 +40,7 @@ private slots:
     void onConfirmTgtP1();
     void onConfirmTgtP2();
     void onSaveToTarget();
+    void onMoveToTarget();
     void onReset();
     void onEnd();
     void updatePositionDisplay();
@@ -48,6 +52,10 @@ private:
     void setState(WizardState state);
     void autoNavigateToRefP1();
     void autoNavigateToTgtP1();
+    void applyCameraExposure(double exposureUs);
+    void loadReferenceImage(QLabel* label, const std::string& imageFile);
+    std::string getImageDirectory() const;
+    void runMotionAsync(std::function<bool()> motionFunc, std::function<void(bool)> onComplete);
     void computeRetraceResults();
 
     ApplicationContext* m_context;
@@ -81,6 +89,9 @@ private:
     WizardState m_state = Idle;
     QStackedWidget* m_wizardStack = nullptr;
     QTimer* m_positionTimer = nullptr;
+    std::future<bool> m_motionFuture;
+    QTimer* m_motionPollTimer = nullptr;
+    std::function<void(bool)> m_motionCallback;
 
     // Page 0: Idle
     QLabel* m_idleSummaryLabel = nullptr;
@@ -89,26 +100,32 @@ private:
     // Page 1: WaitRefP1
     QLabel* m_refP1InstructionLabel = nullptr;
     QLabel* m_refP1PositionLabel = nullptr;
+    QLabel* m_refP1ImageLabel = nullptr;
     QPushButton* m_confirmRefP1Btn = nullptr;
 
     // Page 2: WaitRefP2
     QLabel* m_refP2InstructionLabel = nullptr;
     QLabel* m_refP2PositionLabel = nullptr;
+    QLabel* m_refP2ImageLabel = nullptr;
     QPushButton* m_confirmRefP2Btn = nullptr;
 
     // Page 3: WaitTgtP1
     QLabel* m_tgtP1InstructionLabel = nullptr;
     QLabel* m_tgtP1PositionLabel = nullptr;
+    QLabel* m_tgtP1ImageLabel = nullptr;
     QPushButton* m_confirmTgtP1Btn = nullptr;
 
     // Page 4: WaitTgtP2
     QLabel* m_tgtP2InstructionLabel = nullptr;
     QLabel* m_tgtP2PositionLabel = nullptr;
+    QLabel* m_tgtP2ImageLabel = nullptr;
     QPushButton* m_confirmTgtP2Btn = nullptr;
 
     // Page 5: Review
     QLabel* m_reviewLabel = nullptr;
+    QCheckBox* m_applyUCheckbox = nullptr;
     QPushButton* m_saveBtn = nullptr;
+    QPushButton* m_moveToTargetBtn = nullptr;
     QPushButton* m_resetBtn = nullptr;
     QPushButton* m_endBtn = nullptr;
 };

@@ -1351,11 +1351,8 @@ void QtCameraWindow::saveSettings()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
 
-    // Geometry
-    settings.setValue(settingsKey("x"),       x());
-    settings.setValue(settingsKey("y"),       y());
-    settings.setValue(settingsKey("width"),   width());
-    settings.setValue(settingsKey("height"),  height());
+    // Geometry — use saveGeometry() for reliable cross-platform persistence
+    settings.setValue(settingsKey("geometry"), saveGeometry());
     settings.setValue(settingsKey("visible"), isVisible());
 
     // Camera selection
@@ -1408,19 +1405,20 @@ void QtCameraWindow::loadSettings()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
 
-    // Geometry — only restore if previously saved
-    if (settings.contains(settingsKey("x"))) {
+    // Geometry — use restoreGeometry() for reliable cross-platform persistence
+    const QByteArray geom = settings.value(settingsKey("geometry")).toByteArray();
+    if (!geom.isEmpty()) {
+        restoreGeometry(geom);
+    } else if (settings.contains(settingsKey("x"))) {
+        // Backward compatibility: load old manual x/y/w/h format
         int sx = settings.value(settingsKey("x"),      100).toInt();
         int sy = settings.value(settingsKey("y"),      100).toInt();
         int sw = settings.value(settingsKey("width"),  800).toInt();
         int sh = settings.value(settingsKey("height"), 600).toInt();
-
-        // Clamp to sane values in case the screen configuration changed
         if (sx < -100) sx = 100;
         if (sy < -100) sy = 100;
         if (sw < 200)  sw = 800;
         if (sh < 150)  sh = 600;
-
         setGeometry(sx, sy, sw, sh);
     }
 

@@ -73,6 +73,7 @@ void AuxWindowManager::shutdown()
 {
   if (m_window) {
     std::cout << "[AuxWindowManager] Shutting down auxiliary window" << std::endl;
+    m_window->allowClose();
     m_window->close();
     m_window.reset();
   }

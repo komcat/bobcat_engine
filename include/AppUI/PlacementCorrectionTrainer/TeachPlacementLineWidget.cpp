@@ -2,11 +2,15 @@
 #include "TeachPlacementLineWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
+#include "CameraManager.h"
+#include "product_position_manager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QMessageBox>
 #include <iostream>
+#include <filesystem>
+#include <chrono>
 
 TeachPlacementLineWidget::TeachPlacementLineWidget(const QString& lineName,
                                                    ApplicationContext* context,
@@ -27,9 +31,16 @@ void TeachPlacementLineWidget::SetDeviceName(const std::string& deviceName)
     m_deviceName = deviceName;
 }
 
+void TeachPlacementLineWidget::SetCameraId(const std::string& cameraId)
+{
+    m_cameraId = cameraId;
+}
+
 void TeachPlacementLineWidget::SetLine(const PlacementLinePoints& lp)
 {
     m_line = lp;
+    m_p1ExposureSpin->setValue(static_cast<int>(lp.p1Exposure));
+    m_p2ExposureSpin->setValue(static_cast<int>(lp.p2Exposure));
     if (lp.valid) {
         setState(Captured);
     } else {
@@ -71,6 +82,11 @@ void TeachPlacementLineWidget::setupUI()
         "QGroupBox { font-weight: bold; color: #aabbcc; border: 1px solid #3d5a8c; "
         "border-radius: 4px; margin-top: 10px; padding-top: 15px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }";
+
+    QString spinStyle =
+        "QSpinBox { background-color: #1a1f2e; color: white; border: 1px solid #4d6e9f; "
+        "border-radius: 3px; padding: 4px; font-size: 13px; }"
+        "QSpinBox::up-button, QSpinBox::down-button { background-color: #2d3e5f; border: none; }";
 
     // ========================================
     // Page 0: Idle
@@ -121,6 +137,28 @@ void TeachPlacementLineWidget::setupUI()
     p1PosLayout->addWidget(m_p1PositionLabel);
     p1Layout->addWidget(p1PosGroup);
 
+    QHBoxLayout* p1ExpRow = new QHBoxLayout();
+    QLabel* p1ExpLabel = new QLabel("Exposure:");
+    p1ExpLabel->setStyleSheet("color: #ccc; font-size: 12px;");
+    p1ExpRow->addWidget(p1ExpLabel);
+    m_p1ExposureSpin = new QSpinBox();
+    m_p1ExposureSpin->setRange(1, 100000);
+    m_p1ExposureSpin->setValue(800);
+    m_p1ExposureSpin->setSuffix(" us");
+    m_p1ExposureSpin->setStyleSheet(spinStyle);
+    p1ExpRow->addWidget(m_p1ExposureSpin);
+    m_applyP1ExposureBtn = new QPushButton("Apply");
+    m_applyP1ExposureBtn->setFixedSize(60, 28);
+    m_applyP1ExposureBtn->setStyleSheet(
+        "QPushButton { background-color: #e67e22; color: white; font-weight: bold; "
+        "font-size: 11px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #f39c12; }");
+    connect(m_applyP1ExposureBtn, &QPushButton::clicked, this, [this]() {
+        applyCameraExposure(static_cast<double>(m_p1ExposureSpin->value()));
+    });
+    p1ExpRow->addWidget(m_applyP1ExposureBtn);
+    p1Layout->addLayout(p1ExpRow);
+
     p1Layout->addStretch();
 
     QHBoxLayout* p1BtnRow = new QHBoxLayout();
@@ -165,6 +203,28 @@ void TeachPlacementLineWidget::setupUI()
     m_p2PositionLabel->setAlignment(Qt::AlignCenter);
     p2PosLayout->addWidget(m_p2PositionLabel);
     p2Layout->addWidget(p2PosGroup);
+
+    QHBoxLayout* p2ExpRow = new QHBoxLayout();
+    QLabel* p2ExpLabel = new QLabel("Exposure:");
+    p2ExpLabel->setStyleSheet("color: #ccc; font-size: 12px;");
+    p2ExpRow->addWidget(p2ExpLabel);
+    m_p2ExposureSpin = new QSpinBox();
+    m_p2ExposureSpin->setRange(1, 100000);
+    m_p2ExposureSpin->setValue(800);
+    m_p2ExposureSpin->setSuffix(" us");
+    m_p2ExposureSpin->setStyleSheet(spinStyle);
+    p2ExpRow->addWidget(m_p2ExposureSpin);
+    m_applyP2ExposureBtn = new QPushButton("Apply");
+    m_applyP2ExposureBtn->setFixedSize(60, 28);
+    m_applyP2ExposureBtn->setStyleSheet(
+        "QPushButton { background-color: #e67e22; color: white; font-weight: bold; "
+        "font-size: 11px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #f39c12; }");
+    connect(m_applyP2ExposureBtn, &QPushButton::clicked, this, [this]() {
+        applyCameraExposure(static_cast<double>(m_p2ExposureSpin->value()));
+    });
+    p2ExpRow->addWidget(m_applyP2ExposureBtn);
+    p2Layout->addLayout(p2ExpRow);
 
     p2Layout->addStretch();
 
@@ -283,9 +343,15 @@ void TeachPlacementLineWidget::onCaptureP1()
     m_line.p1x = pos.x;
     m_line.p1y = pos.y;
     m_line.p1z = pos.z;
+    m_line.p1Exposure = static_cast<double>(m_p1ExposureSpin->value());
+    m_line.p1ImageFile = capturePointImage("P1");
 
     std::cout << "[TeachPlacementLine] " << m_lineName.toStdString()
-              << " P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
+              << " P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z
+              << " exp=" << m_line.p1Exposure << "us" << std::endl;
+
+    // Pre-fill P2 exposure with same value as P1
+    m_p2ExposureSpin->setValue(m_p1ExposureSpin->value());
 
     setState(TeachingP2);
 }
@@ -302,6 +368,8 @@ void TeachPlacementLineWidget::onCaptureP2()
     m_line.p2x = pos.x;
     m_line.p2y = pos.y;
     m_line.p2z = pos.z;
+    m_line.p2Exposure = static_cast<double>(m_p2ExposureSpin->value());
+    m_line.p2ImageFile = capturePointImage("P2");
     m_line.valid = true;
 
     // Compute line angle
@@ -319,6 +387,54 @@ void TeachPlacementLineWidget::onCaptureP2()
 void TeachPlacementLineWidget::onReteach()
 {
     setState(TeachingP1);
+}
+
+void TeachPlacementLineWidget::applyCameraExposure(double exposureUs)
+{
+    if (!m_context || !m_context->cameraManager || m_cameraId.empty()) return;
+
+    ICameraHardware::ExposureSettings expSettings;
+    expSettings.auto_exposure = false;
+    expSettings.auto_gain = false;
+    expSettings.gain = 0.0;
+    expSettings.exposure_time = exposureUs;
+
+    bool ok = m_context->cameraManager->ApplyExposureSettings(m_cameraId, expSettings);
+    std::cout << "[TeachPlacementLine] Camera \"" << m_cameraId
+              << "\" exposure=" << exposureUs << "us "
+              << (ok ? "OK" : "FAILED") << std::endl;
+}
+
+std::string TeachPlacementLineWidget::capturePointImage(const std::string& pointLabel)
+{
+    if (!m_context || !m_context->cameraManager || m_cameraId.empty()) {
+        return "";
+    }
+
+    // Build image directory: config/<product>/images/trainer/
+    std::string imageDir = "config/images/trainer";
+    if (m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+        std::filesystem::path productPath(
+            m_context->productPositionManager->GetCurrentProductPath());
+        imageDir = (productPath.parent_path() / "images" / "trainer").string();
+    }
+    std::filesystem::create_directories(imageDir);
+
+    // Generate unique filename
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    std::string filename = m_lineName.toStdString() + "_" + pointLabel + "_"
+                         + std::to_string(ms) + ".bmp";
+
+    m_context->cameraManager->SetImageOutputDirectory(imageDir);
+    bool ok = m_context->cameraManager->CaptureImage(m_cameraId, filename);
+    if (ok) {
+        std::cout << "[TeachPlacementLine] Captured image: " << imageDir << "/" << filename << std::endl;
+        return filename;
+    }
+    std::cerr << "[TeachPlacementLine] Failed to capture image for " << pointLabel << std::endl;
+    return "";
 }
 
 void TeachPlacementLineWidget::updatePositionDisplay()

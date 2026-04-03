@@ -4,21 +4,35 @@
 #include "unified_motion_manager.h"
 #include "CoordinateTransformer.h"
 #include "MotionJsonLoader.h"
+#include "CameraManager.h"
+#include "product_position_manager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QPixmap>
+#include <QPainter>
 #include <iostream>
 #include <cmath>
+#include <filesystem>
 
 PlacementRetraceWidget::PlacementRetraceWidget(ApplicationContext* context, QWidget* parent)
     : QWidget(parent)
     , m_context(context)
     , m_positionTimer(new QTimer(this))
+    , m_motionPollTimer(new QTimer(this))
 {
     setupUI();
     connect(m_positionTimer, &QTimer::timeout, this, &PlacementRetraceWidget::updatePositionDisplay);
+    connect(m_motionPollTimer, &QTimer::timeout, this, [this]() {
+        if (m_motionFuture.valid() &&
+            m_motionFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+            m_motionPollTimer->stop();
+            bool result = m_motionFuture.get();
+            if (m_motionCallback) m_motionCallback(result);
+        }
+    });
 
     m_matrixLoaded = m_matrixLoader.LoadFromFile("config/transformation_matrix.json");
     if (!m_matrixLoaded) {
@@ -53,7 +67,8 @@ void PlacementRetraceWidget::setupUI()
     QString greenBtnStyle =
         "QPushButton { background-color: #27ae60; color: white; font-weight: bold; "
         "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
-        "QPushButton:hover { background-color: #2ecc71; }";
+        "QPushButton:hover { background-color: #2ecc71; }"
+        "QPushButton:disabled { background-color: #1a1f2e; color: #555; }";
 
     QString orangeBtnStyle =
         "QPushButton { background-color: #e67e22; color: white; font-weight: bold; "
@@ -114,6 +129,14 @@ void PlacementRetraceWidget::setupUI()
     refP1PosLayout->addWidget(m_refP1PositionLabel);
     refP1Layout->addWidget(refP1Group);
 
+    m_refP1ImageLabel = new QLabel("No reference image");
+    m_refP1ImageLabel->setFixedSize(320, 240);
+    m_refP1ImageLabel->setAlignment(Qt::AlignCenter);
+    m_refP1ImageLabel->setStyleSheet(
+        "QLabel { color: #555; font-size: 11px; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; background-color: #0a0f1e; }");
+    refP1Layout->addWidget(m_refP1ImageLabel, 0, Qt::AlignCenter);
+
     refP1Layout->addStretch();
 
     m_confirmRefP1Btn = new QPushButton("Confirm Reference P1");
@@ -146,6 +169,14 @@ void PlacementRetraceWidget::setupUI()
     refP2PosLayout->addWidget(m_refP2PositionLabel);
     refP2Layout->addWidget(refP2Group);
 
+    m_refP2ImageLabel = new QLabel("No reference image");
+    m_refP2ImageLabel->setFixedSize(320, 240);
+    m_refP2ImageLabel->setAlignment(Qt::AlignCenter);
+    m_refP2ImageLabel->setStyleSheet(
+        "QLabel { color: #555; font-size: 11px; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; background-color: #0a0f1e; }");
+    refP2Layout->addWidget(m_refP2ImageLabel, 0, Qt::AlignCenter);
+
     refP2Layout->addStretch();
 
     m_confirmRefP2Btn = new QPushButton("Confirm Reference P2");
@@ -176,6 +207,14 @@ void PlacementRetraceWidget::setupUI()
     m_tgtP1PositionLabel->setAlignment(Qt::AlignCenter);
     tgtP1PosLayout->addWidget(m_tgtP1PositionLabel);
     tgtP1Layout->addWidget(tgtP1Group);
+
+    m_tgtP1ImageLabel = new QLabel("No reference image");
+    m_tgtP1ImageLabel->setFixedSize(320, 240);
+    m_tgtP1ImageLabel->setAlignment(Qt::AlignCenter);
+    m_tgtP1ImageLabel->setStyleSheet(
+        "QLabel { color: #555; font-size: 11px; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; background-color: #0a0f1e; }");
+    tgtP1Layout->addWidget(m_tgtP1ImageLabel, 0, Qt::AlignCenter);
 
     tgtP1Layout->addStretch();
 
@@ -209,6 +248,14 @@ void PlacementRetraceWidget::setupUI()
     tgtP2PosLayout->addWidget(m_tgtP2PositionLabel);
     tgtP2Layout->addWidget(tgtP2Group);
 
+    m_tgtP2ImageLabel = new QLabel("No reference image");
+    m_tgtP2ImageLabel->setFixedSize(320, 240);
+    m_tgtP2ImageLabel->setAlignment(Qt::AlignCenter);
+    m_tgtP2ImageLabel->setStyleSheet(
+        "QLabel { color: #555; font-size: 11px; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; background-color: #0a0f1e; }");
+    tgtP2Layout->addWidget(m_tgtP2ImageLabel, 0, Qt::AlignCenter);
+
     tgtP2Layout->addStretch();
 
     m_confirmTgtP2Btn = new QPushButton("Confirm Target P2");
@@ -241,6 +288,27 @@ void PlacementRetraceWidget::setupUI()
     m_reviewLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     reviewLayout->addWidget(m_reviewLabel);
 
+    // Apply U correction checkbox
+    m_applyUCheckbox = new QCheckBox("Apply U (rotation) correction");
+    m_applyUCheckbox->setChecked(true);
+    m_applyUCheckbox->setStyleSheet(
+        "QCheckBox { color: #f0c040; font-size: 13px; font-weight: bold; padding: 8px; }"
+        "QCheckBox::indicator { width: 18px; height: 18px; }"
+        "QCheckBox::indicator:unchecked { border: 1px solid #4d6e9f; background: #1a1f2e; border-radius: 3px; }"
+        "QCheckBox::indicator:checked { border: 1px solid #4d6e9f; background: #2980b9; border-radius: 3px; }");
+    connect(m_applyUCheckbox, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_set) {
+            m_set->config.applyUCorrection = checked;
+            if (m_state == Review) {
+                m_saveBtn->setEnabled(true);
+                QString targetName = QString::fromStdString(m_set->config.targetPositionName);
+                m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));
+                computeRetraceResults();
+            }
+        }
+    });
+    reviewLayout->addWidget(m_applyUCheckbox);
+
     reviewLayout->addStretch();
 
     QHBoxLayout* reviewBtnRow = new QHBoxLayout();
@@ -257,6 +325,17 @@ void PlacementRetraceWidget::setupUI()
     reviewBtnRow->addWidget(m_resetBtn);
 
     reviewLayout->addLayout(reviewBtnRow);
+
+    m_moveToTargetBtn = new QPushButton("Move to Target Position");
+    m_moveToTargetBtn->setFixedHeight(44);
+    m_moveToTargetBtn->setStyleSheet(
+        "QPushButton { background-color: #8e44ad; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #9b59b6; }"
+        "QPushButton:disabled { background-color: #1a1f2e; color: #555; }");
+    m_moveToTargetBtn->setEnabled(false);
+    connect(m_moveToTargetBtn, &QPushButton::clicked, this, &PlacementRetraceWidget::onMoveToTarget);
+    reviewLayout->addWidget(m_moveToTargetBtn);
 
     QString redBtnStyle =
         "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
@@ -319,6 +398,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_wizardStack->setCurrentIndex(1);
         m_confirmRefP1Btn->setEnabled(false);
         m_refP1InstructionLabel->setText("Step 1/4: Navigating to Reference Point 1...");
+        if (m_set) loadReferenceImage(m_refP1ImageLabel, m_set->referenceLine.p1ImageFile);
         m_positionTimer->start(100);
         QTimer::singleShot(0, this, [this]() { autoNavigateToRefP1(); });
         break;
@@ -326,6 +406,7 @@ void PlacementRetraceWidget::setState(WizardState state)
     case WaitRefP2:
         m_wizardStack->setCurrentIndex(2);
         m_refP2InstructionLabel->setText("Step 2/4: Moved to Reference P2 area. Verify and press Confirm.");
+        if (m_set) loadReferenceImage(m_refP2ImageLabel, m_set->referenceLine.p2ImageFile);
         m_positionTimer->start(100);
         break;
 
@@ -333,6 +414,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_wizardStack->setCurrentIndex(3);
         m_confirmTgtP1Btn->setEnabled(false);
         m_tgtP1InstructionLabel->setText("Step 3/4: Navigating to Target Point 1...");
+        if (m_set) loadReferenceImage(m_tgtP1ImageLabel, m_set->targetLine.p1ImageFile);
         m_positionTimer->start(100);
         QTimer::singleShot(0, this, [this]() { autoNavigateToTgtP1(); });
         break;
@@ -340,6 +422,7 @@ void PlacementRetraceWidget::setState(WizardState state)
     case WaitTgtP2:
         m_wizardStack->setCurrentIndex(4);
         m_tgtP2InstructionLabel->setText("Step 4/4: Moved to Target P2 area. Verify and press Confirm.");
+        if (m_set) loadReferenceImage(m_tgtP2ImageLabel, m_set->targetLine.p2ImageFile);
         m_positionTimer->start(100);
         break;
 
@@ -349,6 +432,10 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_saveBtn->setEnabled(true);
         QString targetName = m_set ? QString::fromStdString(m_set->config.targetPositionName) : "Target";
         m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));
+        // Sync checkbox from loaded set
+        if (m_set) {
+            m_applyUCheckbox->setChecked(m_set->config.applyUCorrection);
+        }
         computeRetraceResults();
         break;
     }
@@ -388,7 +475,86 @@ void PlacementRetraceWidget::onStartRetrace()
     std::cout << "[PlacementRetrace] Start retrace. Master vector: dX=" << m_masterVecX
               << " dY=" << m_masterVecY << " dAngle=" << m_masterDeltaAngle << std::endl;
 
+    // Apply Ref P1 camera exposure before first motion
+    applyCameraExposure(m_set->referenceLine.p1Exposure);
+
     setState(WaitRefP1);
+}
+
+void PlacementRetraceWidget::applyCameraExposure(double exposureUs)
+{
+    if (!m_context || !m_context->cameraManager || !m_set) return;
+    if (m_set->config.cameraId.empty()) return;
+
+    ICameraHardware::ExposureSettings expSettings;
+    expSettings.auto_exposure = false;
+    expSettings.auto_gain = false;
+    expSettings.gain = 0.0;
+    expSettings.exposure_time = exposureUs;
+
+    bool ok = m_context->cameraManager->ApplyExposureSettings(
+        m_set->config.cameraId, expSettings);
+
+    std::cout << "[PlacementRetrace] Camera \"" << m_set->config.cameraId
+              << "\" exposure=" << exposureUs << "us "
+              << (ok ? "OK" : "FAILED") << std::endl;
+}
+
+std::string PlacementRetraceWidget::getImageDirectory() const
+{
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+        std::filesystem::path productPath(
+            m_context->productPositionManager->GetCurrentProductPath());
+        return (productPath.parent_path() / "images" / "trainer").string();
+    }
+    return "config/images/trainer";
+}
+
+void PlacementRetraceWidget::loadReferenceImage(QLabel* label, const std::string& imageFile)
+{
+    if (!label) return;
+    if (imageFile.empty()) {
+        label->setText("No reference image");
+        label->setPixmap(QPixmap());
+        return;
+    }
+    std::string fullPath = getImageDirectory() + "/" + imageFile;
+    QPixmap pixmap(QString::fromStdString(fullPath));
+    if (pixmap.isNull()) {
+        label->setText("Image not found");
+        return;
+    }
+
+    // Crop center 25% of the image
+    int cropW = pixmap.width() / 2;
+    int cropH = pixmap.height() / 2;
+    int cropX = (pixmap.width() - cropW) / 2;
+    int cropY = (pixmap.height() - cropH) / 2;
+    QPixmap cropped = pixmap.copy(cropX, cropY, cropW, cropH);
+
+    // Scale to label size
+    QPixmap scaled = cropped.scaled(label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    // Draw crosshair overlay
+    QPainter painter(&scaled);
+    painter.setPen(QPen(QColor(255, 0, 0), 1));
+    int cx = scaled.width() / 2;
+    int cy = scaled.height() / 2;
+    painter.drawLine(cx, 0, cx, scaled.height());
+    painter.drawLine(0, cy, scaled.width(), cy);
+    painter.end();
+
+    label->setText("");
+    label->setPixmap(scaled);
+}
+
+void PlacementRetraceWidget::runMotionAsync(std::function<bool()> motionFunc,
+                                             std::function<void(bool)> onComplete)
+{
+    m_motionCallback = onComplete;
+    m_motionFuture = std::async(std::launch::async, motionFunc);
+    m_motionPollTimer->start(50);
 }
 
 void PlacementRetraceWidget::autoNavigateToRefP1()
@@ -399,21 +565,29 @@ void PlacementRetraceWidget::autoNavigateToRefP1()
         return;
     }
 
+    auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    bool moveOk = m_context->motionManager->MoveToPosition(dev, "X", m_set->referenceLine.p1x, true);
-    if (moveOk)
-        moveOk = m_context->motionManager->MoveToPosition(dev, "Y", m_set->referenceLine.p1y, true);
-    if (moveOk)
-        moveOk = m_context->motionManager->MoveToPosition(dev, "Z", m_set->referenceLine.p1z, true);
+    double tx = m_set->referenceLine.p1x;
+    double ty = m_set->referenceLine.p1y;
+    double tz = m_set->referenceLine.p1z;
 
-    if (moveOk) {
-        m_refP1InstructionLabel->setText(
-            "Step 1/4: Arrived at Reference P1.\nVerify position and press Confirm.");
-    } else {
-        m_refP1InstructionLabel->setText(
-            "Step 1/4: Auto-navigate FAILED.\nManually jog to Reference P1, then press Confirm.");
-    }
-    m_confirmRefP1Btn->setEnabled(true);
+    runMotionAsync(
+        [mm, dev, tx, ty, tz]() {
+            bool ok = mm->MoveToPosition(dev, "X", tx, true);
+            if (ok) ok = mm->MoveToPosition(dev, "Y", ty, true);
+            if (ok) ok = mm->MoveToPosition(dev, "Z", tz, true);
+            return ok;
+        },
+        [this](bool ok) {
+            if (ok) {
+                m_refP1InstructionLabel->setText(
+                    "Step 1/4: Arrived at Reference P1.\nVerify position and press Confirm.");
+            } else {
+                m_refP1InstructionLabel->setText(
+                    "Step 1/4: Auto-navigate FAILED.\nManually jog to Reference P1, then press Confirm.");
+            }
+            m_confirmRefP1Btn->setEnabled(true);
+        });
 }
 
 void PlacementRetraceWidget::autoNavigateToTgtP1()
@@ -424,21 +598,29 @@ void PlacementRetraceWidget::autoNavigateToTgtP1()
         return;
     }
 
+    auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    bool moveOk = m_context->motionManager->MoveToPosition(dev, "X", m_set->targetLine.p1x, true);
-    if (moveOk)
-        moveOk = m_context->motionManager->MoveToPosition(dev, "Y", m_set->targetLine.p1y, true);
-    if (moveOk)
-        moveOk = m_context->motionManager->MoveToPosition(dev, "Z", m_set->targetLine.p1z, true);
+    double tx = m_set->targetLine.p1x;
+    double ty = m_set->targetLine.p1y;
+    double tz = m_set->targetLine.p1z;
 
-    if (moveOk) {
-        m_tgtP1InstructionLabel->setText(
-            "Step 3/4: Arrived at Target P1.\nVerify position and press Confirm.");
-    } else {
-        m_tgtP1InstructionLabel->setText(
-            "Step 3/4: Auto-navigate FAILED.\nManually jog to Target P1, then press Confirm.");
-    }
-    m_confirmTgtP1Btn->setEnabled(true);
+    runMotionAsync(
+        [mm, dev, tx, ty, tz]() {
+            bool ok = mm->MoveToPosition(dev, "X", tx, true);
+            if (ok) ok = mm->MoveToPosition(dev, "Y", ty, true);
+            if (ok) ok = mm->MoveToPosition(dev, "Z", tz, true);
+            return ok;
+        },
+        [this](bool ok) {
+            if (ok) {
+                m_tgtP1InstructionLabel->setText(
+                    "Step 3/4: Arrived at Target P1.\nVerify position and press Confirm.");
+            } else {
+                m_tgtP1InstructionLabel->setText(
+                    "Step 3/4: Auto-navigate FAILED.\nManually jog to Target P1, then press Confirm.");
+            }
+            m_confirmTgtP1Btn->setEnabled(true);
+        });
 }
 
 void PlacementRetraceWidget::onConfirmRefP1()
@@ -452,21 +634,29 @@ void PlacementRetraceWidget::onConfirmRefP1()
 
     std::cout << "[PlacementRetrace] Ref P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
-    // Auto-move to P2 by taught delta
+    // Apply Ref P2 exposure before moving
+    applyCameraExposure(m_set->referenceLine.p2Exposure);
+
+    auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    bool moveOk = true;
-    if (std::abs(m_refDeltaX) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "X", m_refDeltaX, true);
-    if (moveOk && std::abs(m_refDeltaY) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "Y", m_refDeltaY, true);
-    if (moveOk && std::abs(m_refDeltaZ) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "Z", m_refDeltaZ, true);
+    double dx = m_refDeltaX, dy = m_refDeltaY, dz = m_refDeltaZ;
 
-    if (!moveOk) {
-        m_refP2InstructionLabel->setText("Step 2/4: Auto-move FAILED. Manually jog to Ref P2, then Confirm.");
-    }
-
+    m_confirmRefP1Btn->setEnabled(false);
     setState(WaitRefP2);
+
+    runMotionAsync(
+        [mm, dev, dx, dy, dz]() {
+            bool ok = true;
+            if (std::abs(dx) > 1e-6) ok = mm->MoveRelative(dev, "X", dx, true);
+            if (ok && std::abs(dy) > 1e-6) ok = mm->MoveRelative(dev, "Y", dy, true);
+            if (ok && std::abs(dz) > 1e-6) ok = mm->MoveRelative(dev, "Z", dz, true);
+            return ok;
+        },
+        [this](bool ok) {
+            if (!ok) {
+                m_refP2InstructionLabel->setText("Step 2/4: Auto-move FAILED. Manually jog to Ref P2, then Confirm.");
+            }
+        });
 }
 
 void PlacementRetraceWidget::onConfirmRefP2()
@@ -484,6 +674,9 @@ void PlacementRetraceWidget::onConfirmRefP2()
     std::cout << "[PlacementRetrace] Ref P2: X=" << pos.x << " Y=" << pos.y
               << " Angle=" << m_retracedRef.angleDeg << std::endl;
 
+    // Apply Tgt P1 exposure before navigating to target
+    applyCameraExposure(m_set->targetLine.p1Exposure);
+
     setState(WaitTgtP1);
 }
 
@@ -498,21 +691,29 @@ void PlacementRetraceWidget::onConfirmTgtP1()
 
     std::cout << "[PlacementRetrace] Tgt P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
-    // Auto-move to P2 by taught delta
+    // Apply Tgt P2 exposure before moving
+    applyCameraExposure(m_set->targetLine.p2Exposure);
+
+    auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    bool moveOk = true;
-    if (std::abs(m_tgtDeltaX) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "X", m_tgtDeltaX, true);
-    if (moveOk && std::abs(m_tgtDeltaY) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "Y", m_tgtDeltaY, true);
-    if (moveOk && std::abs(m_tgtDeltaZ) > 1e-6)
-        moveOk = m_context->motionManager->MoveRelative(dev, "Z", m_tgtDeltaZ, true);
+    double dx = m_tgtDeltaX, dy = m_tgtDeltaY, dz = m_tgtDeltaZ;
 
-    if (!moveOk) {
-        m_tgtP2InstructionLabel->setText("Step 4/4: Auto-move FAILED. Manually jog to Target P2, then Confirm.");
-    }
-
+    m_confirmTgtP1Btn->setEnabled(false);
     setState(WaitTgtP2);
+
+    runMotionAsync(
+        [mm, dev, dx, dy, dz]() {
+            bool ok = true;
+            if (std::abs(dx) > 1e-6) ok = mm->MoveRelative(dev, "X", dx, true);
+            if (ok && std::abs(dy) > 1e-6) ok = mm->MoveRelative(dev, "Y", dy, true);
+            if (ok && std::abs(dz) > 1e-6) ok = mm->MoveRelative(dev, "Z", dz, true);
+            return ok;
+        },
+        [this](bool ok) {
+            if (!ok) {
+                m_tgtP2InstructionLabel->setText("Step 4/4: Auto-move FAILED. Manually jog to Target P2, then Confirm.");
+            }
+        });
 }
 
 void PlacementRetraceWidget::onConfirmTgtP2()
@@ -591,7 +792,9 @@ void PlacementRetraceWidget::computeRetraceResults()
     m_correctedX = m_liveHexX + corrLocalX;
     m_correctedY = m_liveHexY + corrLocalY;
     m_correctedZ = m_liveHexZ + corrLocalZ;
-    m_correctedU = m_liveHexU + actualDeltaAngle;
+    m_correctedU = m_set->config.applyUCorrection
+        ? (m_liveHexU + actualDeltaAngle)
+        : m_liveHexU;
     m_correctedV = m_liveHexV;
     m_correctedW = m_liveHexW;
 
@@ -621,7 +824,9 @@ void PlacementRetraceWidget::computeRetraceResults()
     text += QString("--- Angles ---\n");
     text += QString("Ref Angle:  %1%2\n").arg(m_retracedRef.angleDeg, 0, 'f', 3).arg(deg);
     text += QString("Tgt Angle:  %1%2\n").arg(m_retracedTgt.angleDeg, 0, 'f', 3).arg(deg);
-    text += QString("Actual Delta: %1%2\n\n").arg(actualDeltaAngle, 0, 'f', 3).arg(deg);
+    text += QString("Actual Delta: %1%2%3\n\n")
+        .arg(actualDeltaAngle, 0, 'f', 3).arg(deg)
+        .arg(m_set->config.applyUCorrection ? "" : "  (U correction DISABLED)");
 
     text += QString("--- Vectors (gantry global) ---\n");
     text += QString("Master Vector:  dX=%1  dY=%2\n").arg(m_masterVecX, 0, 'f', 4).arg(m_masterVecY, 0, 'f', 4);
@@ -720,6 +925,10 @@ void PlacementRetraceWidget::onSaveToTarget()
 
         m_saveBtn->setEnabled(false);
         m_saveBtn->setText(QString("Saved to \"%1\"").arg(QString::fromStdString(posName)));
+        m_moveToTargetBtn->setEnabled(true);
+        m_moveToTargetBtn->setText(QString("Move %1 to \"%2\"")
+            .arg(QString::fromStdString(device))
+            .arg(QString::fromStdString(posName)));
 
         emit retraceCompleted(*m_set);
 
@@ -730,8 +939,42 @@ void PlacementRetraceWidget::onSaveToTarget()
     }
 }
 
+void PlacementRetraceWidget::onMoveToTarget()
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::string device = m_set->config.targetDevice;
+    std::string posName = m_set->config.targetPositionName;
+
+    m_moveToTargetBtn->setEnabled(false);
+    m_moveToTargetBtn->setText("Moving...");
+
+    auto* mm = m_context->motionManager;
+    runMotionAsync(
+        [mm, device, posName]() {
+            return mm->MoveToNamedPosition(device, posName, true);
+        },
+        [this, device, posName](bool ok) {
+            if (ok) {
+                m_moveToTargetBtn->setText(QString("Moved %1 to \"%2\"")
+                    .arg(QString::fromStdString(device))
+                    .arg(QString::fromStdString(posName)));
+                std::cout << "[PlacementRetrace] Moved " << device << " to " << posName << std::endl;
+            } else {
+                m_moveToTargetBtn->setText("Move FAILED");
+                m_moveToTargetBtn->setEnabled(true);
+                QMessageBox::warning(this, "Move Failed",
+                    QString("Failed to move %1 to \"%2\".")
+                        .arg(QString::fromStdString(device))
+                        .arg(QString::fromStdString(posName)));
+            }
+        });
+}
+
 void PlacementRetraceWidget::onReset()
 {
+    m_moveToTargetBtn->setEnabled(false);
+    m_moveToTargetBtn->setText("Move to Target Position");
     m_saveBtn->setEnabled(true);
     QString targetName = m_set ? QString::fromStdString(m_set->config.targetPositionName) : "Target";
     m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));

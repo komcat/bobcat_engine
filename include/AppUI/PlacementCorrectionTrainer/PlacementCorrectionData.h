@@ -17,9 +17,13 @@ struct PlacementLinePoints {
     double p1x = 0.0;      // gantry-main X of first point (mm)
     double p1y = 0.0;      // gantry-main Y of first point (mm)
     double p1z = 0.0;      // gantry-main Z of first point (mm)
+    double p1Exposure = 800.0; // camera exposure for P1 (us)
+    std::string p1ImageFile;   // captured image filename for P1
     double p2x = 0.0;      // gantry-main X of second point (mm)
     double p2y = 0.0;      // gantry-main Y of second point (mm)
     double p2z = 0.0;      // gantry-main Z of second point (mm)
+    double p2Exposure = 800.0; // camera exposure for P2 (us)
+    std::string p2ImageFile;   // captured image filename for P2
     double angleDeg = 0.0;  // computed line angle in XY plane (degrees)
     bool valid = false;     // true when both points have been captured
 };
@@ -46,6 +50,10 @@ struct PlacementCorrectionConfig {
     double targetW = 0.0;
 
     bool reverseSign = false;           // flip correction sign
+    bool applyUCorrection = true;       // apply U (rotation) correction; default yes
+
+    // Camera for retrace exposure control
+    std::string cameraId;               // camera to configure during retrace
 };
 
 // ============================================================================
@@ -134,6 +142,15 @@ inline double Distance2D(double x1, double y1, double x2, double y2)
 } // namespace PlacementCorrectionMath
 
 // ============================================================================
+// Summary diagram thumbnail offset (scene-space, persisted)
+// ============================================================================
+
+struct ThumbOffset {
+    double dx = 80.0;
+    double dy = -60.0;
+};
+
+// ============================================================================
 // PlacementCorrectionSet (defined after math namespace so it can use it)
 // ============================================================================
 
@@ -156,6 +173,9 @@ struct PlacementCorrectionSet {
     std::string createdAt;
     bool valid = false;
     std::string sourceFilename;
+
+    // Summary diagram thumbnail offsets: [0]=RefP1 [1]=RefP2 [2]=TgtP1 [3]=TgtP2
+    ThumbOffset summaryThumbOffsets[4];
 
     void Recalculate() {
         if (!referenceLine.valid || !targetLine.valid) {

@@ -3,6 +3,9 @@
 #include "TeachPlacementLineWidget.h"
 #include "PlacementResultWidget.h"
 #include "PlacementRetraceWidget.h"
+#include "ExposureAdjustWidget.h"
+#include "ImageGalleryWidget.h"
+#include "SummaryDiagramWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -21,6 +24,7 @@
 #include <QListWidget>
 #include <QDialogButtonBox>
 #include "FileSelectorDialog.h"
+#include "CameraManager.h"
 #include <iostream>
 #include <filesystem>
 
@@ -34,6 +38,7 @@ PlacementCorrectionPage::PlacementCorrectionPage(ApplicationContext* context, QW
     , m_deleteBtn(nullptr)
     , m_saveBtn(nullptr)
     , m_targetDeviceCombo(nullptr)
+    , m_cameraCombo(nullptr)
     , m_masterPositionCombo(nullptr)
     , m_masterUVWLabel(nullptr)
     , m_targetPositionCombo(nullptr)
@@ -45,6 +50,9 @@ PlacementCorrectionPage::PlacementCorrectionPage(ApplicationContext* context, QW
     , m_teachTgtLineWidget(nullptr)
     , m_resultWidget(nullptr)
     , m_retraceWidget(nullptr)
+    , m_exposureAdjustWidget(nullptr)
+    , m_imageGalleryWidget(nullptr)
+    , m_summaryDiagramWidget(nullptr)
     , m_topBarWidget(nullptr)
 {
     updateStoreBasePath();
@@ -201,6 +209,27 @@ void PlacementCorrectionPage::setupUI()
 
     leftLayout->addWidget(targetGroup);
 
+    // Camera selection for retrace exposure
+    QGroupBox* cameraGroup = new QGroupBox("Camera (retrace)");
+    cameraGroup->setStyleSheet(groupStyle);
+    QVBoxLayout* cameraLayout = new QVBoxLayout(cameraGroup);
+
+    m_cameraCombo = new QComboBox();
+    m_cameraCombo->setStyleSheet(comboStyle);
+    if (m_context && m_context->cameraManager) {
+        auto ids = m_context->cameraManager->GetCameraIds();
+        for (const auto& id : ids) {
+            m_cameraCombo->addItem(QString::fromStdString(id));
+        }
+    }
+    connect(m_cameraCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int /*index*/) {
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
+    });
+    cameraLayout->addWidget(m_cameraCombo);
+
+    leftLayout->addWidget(cameraGroup);
+
     // Populate both combos after both are created
     populateNamedPositions();
     connect(m_masterPositionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -221,7 +250,10 @@ void PlacementCorrectionPage::setupUI()
     m_navList->addItem("1. Teach Reference Line");
     m_navList->addItem("2. Teach Target Line");
     m_navList->addItem("3. View Results");
-    m_navList->addItem("4. Retrace & Review");
+    m_navList->addItem("4. Adjust Exposure");
+    m_navList->addItem("5. Retrace & Review");
+    m_navList->addItem("6. Reference Images");
+    m_navList->addItem("7. Summary Diagram");
     connect(m_navList, &QListWidget::currentRowChanged,
             this, &PlacementCorrectionPage::onNavItemChanged);
     navLayout->addWidget(m_navList);
@@ -272,9 +304,21 @@ void PlacementCorrectionPage::setupUI()
     m_resultWidget = new PlacementResultWidget(m_context, this);
     m_contentStack->addWidget(m_resultWidget);
 
-    // PlacementRetraceWidget (index 4)
+    // ExposureAdjustWidget (index 4)
+    m_exposureAdjustWidget = new ExposureAdjustWidget(m_context, this);
+    m_contentStack->addWidget(m_exposureAdjustWidget);
+
+    // PlacementRetraceWidget (index 5)
     m_retraceWidget = new PlacementRetraceWidget(m_context, this);
     m_contentStack->addWidget(m_retraceWidget);
+
+    // ImageGalleryWidget (index 6)
+    m_imageGalleryWidget = new ImageGalleryWidget(m_context, this);
+    m_contentStack->addWidget(m_imageGalleryWidget);
+
+    // SummaryDiagramWidget (index 7)
+    m_summaryDiagramWidget = new SummaryDiagramWidget(m_context, this);
+    m_contentStack->addWidget(m_summaryDiagramWidget);
 
     // Wire signals
     connect(m_teachRefLineWidget, &TeachPlacementLineWidget::lineCaptured,
@@ -289,6 +333,21 @@ void PlacementCorrectionPage::setupUI()
         m_currentSet.targetLine = lp;
         m_currentSet.Recalculate();
         updateCurrentSet();
+    });
+
+    connect(m_exposureAdjustWidget, &ExposureAdjustWidget::adjustEnded,
+            this, [this]() {
+        m_navList->clearSelection();
+        m_contentStack->setCurrentIndex(0);
+    });
+
+    connect(m_exposureAdjustWidget, &ExposureAdjustWidget::exposureSaved,
+            this, [this](const PlacementCorrectionSet& updatedSet) {
+        m_currentSet.referenceLine.p1Exposure = updatedSet.referenceLine.p1Exposure;
+        m_currentSet.referenceLine.p2Exposure = updatedSet.referenceLine.p2Exposure;
+        m_currentSet.targetLine.p1Exposure = updatedSet.targetLine.p1Exposure;
+        m_currentSet.targetLine.p2Exposure = updatedSet.targetLine.p2Exposure;
+        m_store.SaveSet(m_currentSet);
     });
 
     connect(m_retraceWidget, &PlacementRetraceWidget::retraceEnded,
@@ -322,6 +381,15 @@ void PlacementCorrectionPage::setupUI()
         updateCurrentSet();
     });
 
+    connect(m_summaryDiagramWidget, &SummaryDiagramWidget::thumbnailOffsetChanged,
+            this, [this](int index, double dx, double dy) {
+        if (index >= 0 && index < 4) {
+            m_currentSet.summaryThumbOffsets[index].dx = dx;
+            m_currentSet.summaryThumbOffsets[index].dy = dy;
+            m_store.SaveSet(m_currentSet);
+        }
+    });
+
     // Add panels to splitter
     splitter->addWidget(leftPanel);
     splitter->addWidget(m_contentStack);
@@ -342,12 +410,16 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
 
     switch (currentRow) {
     case 0:  // Teach Reference Line
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
         m_teachRefLineWidget->SetDeviceName(m_currentSet.measureDevice);
+        m_teachRefLineWidget->SetCameraId(m_currentSet.config.cameraId);
         m_teachRefLineWidget->SetLine(m_currentSet.referenceLine);
         m_contentStack->setCurrentIndex(1);
         break;
     case 1:  // Teach Target Line
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
         m_teachTgtLineWidget->SetDeviceName(m_currentSet.measureDevice);
+        m_teachTgtLineWidget->SetCameraId(m_currentSet.config.cameraId);
         m_teachTgtLineWidget->SetLine(m_currentSet.targetLine);
         m_contentStack->setCurrentIndex(2);
         break;
@@ -356,10 +428,29 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
         m_resultWidget->SetData(m_currentSet);
         m_contentStack->setCurrentIndex(3);
         break;
-    case 3:  // Retrace & Review
+    case 3:  // Adjust Exposure
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
+        m_exposureAdjustWidget->SetData(&m_currentSet);
+        m_contentStack->setCurrentIndex(4);
+        break;
+    case 4:  // Retrace & Review
+        m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
+        m_currentSet.config.masterPositionName = m_masterPositionCombo->currentText().toStdString();
+        m_currentSet.config.targetPositionName = m_targetPositionCombo->currentText().toStdString();
+        updateMasterFromPosition();
+        updateTargetFromPosition();
         m_currentSet.Recalculate();
         m_retraceWidget->SetData(&m_currentSet);
-        m_contentStack->setCurrentIndex(4);
+        m_contentStack->setCurrentIndex(5);
+        break;
+    case 5:  // Reference Images
+        m_imageGalleryWidget->SetData(m_currentSet);
+        m_contentStack->setCurrentIndex(6);
+        break;
+    case 6:  // Summary Diagram
+        m_currentSet.Recalculate();
+        m_summaryDiagramWidget->SetData(m_currentSet);
+        m_contentStack->setCurrentIndex(7);
         break;
     default:
         m_contentStack->setCurrentIndex(0);
@@ -450,6 +541,11 @@ void PlacementCorrectionPage::onLoadSet()
         if (idx >= 0) m_targetPositionCombo->setCurrentIndex(idx);
     }
 
+    if (!m_currentSet.config.cameraId.empty()) {
+        int idx = m_cameraCombo->findText(
+            QString::fromStdString(m_currentSet.config.cameraId));
+        if (idx >= 0) m_cameraCombo->setCurrentIndex(idx);
+    }
     m_setLabel->setText(QString::fromStdString(stem));
     updateCurrentSet();
 

@@ -39,8 +39,8 @@ static std::string GenerateUUID() {
 static json LinePointsToJson(const PlacementLinePoints& lp) {
     return {
         {"name", lp.name},
-        {"p1x", lp.p1x}, {"p1y", lp.p1y}, {"p1z", lp.p1z},
-        {"p2x", lp.p2x}, {"p2y", lp.p2y}, {"p2z", lp.p2z},
+        {"p1x", lp.p1x}, {"p1y", lp.p1y}, {"p1z", lp.p1z}, {"p1Exposure", lp.p1Exposure}, {"p1ImageFile", lp.p1ImageFile},
+        {"p2x", lp.p2x}, {"p2y", lp.p2y}, {"p2z", lp.p2z}, {"p2Exposure", lp.p2Exposure}, {"p2ImageFile", lp.p2ImageFile},
         {"valid", lp.valid}
     };
 }
@@ -51,9 +51,13 @@ static PlacementLinePoints LinePointsFromJson(const json& j, const std::string& 
     lp.p1x = j.value("p1x", 0.0);
     lp.p1y = j.value("p1y", 0.0);
     lp.p1z = j.value("p1z", 0.0);
+    lp.p1Exposure = j.value("p1Exposure", 800.0);
+    lp.p1ImageFile = j.value("p1ImageFile", std::string(""));
     lp.p2x = j.value("p2x", 0.0);
     lp.p2y = j.value("p2y", 0.0);
     lp.p2z = j.value("p2z", 0.0);
+    lp.p2Exposure = j.value("p2Exposure", 800.0);
+    lp.p2ImageFile = j.value("p2ImageFile", std::string(""));
     lp.valid = j.value("valid", false);
     return lp;
 }
@@ -111,8 +115,20 @@ bool PlacementCorrectionStore::SaveSet(const PlacementCorrectionSet& set)
         {"targetU", set.config.targetU},
         {"targetV", set.config.targetV},
         {"targetW", set.config.targetW},
-        {"reverseSign", set.config.reverseSign}
+        {"reverseSign", set.config.reverseSign},
+        {"applyUCorrection", set.config.applyUCorrection},
+        {"cameraId", set.config.cameraId}
     };
+
+    // Summary diagram thumbnail offsets
+    json thumbOffsets = json::array();
+    for (int i = 0; i < 4; ++i) {
+        thumbOffsets.push_back({
+            {"dx", set.summaryThumbOffsets[i].dx},
+            {"dy", set.summaryThumbOffsets[i].dy}
+        });
+    }
+    j["summaryThumbOffsets"] = thumbOffsets;
 
     std::string saveAs = set.sourceFilename.empty() ? set.name : set.sourceFilename;
     std::string filePath = MakeFilePath(saveAs);
@@ -205,6 +221,17 @@ std::optional<PlacementCorrectionSet> PlacementCorrectionStore::LoadSet(const st
         set.config.targetV = c.value("targetV", 0.0);
         set.config.targetW = c.value("targetW", 0.0);
         set.config.reverseSign = c.value("reverseSign", false);
+        set.config.applyUCorrection = c.value("applyUCorrection", true);
+        set.config.cameraId = c.value("cameraId", "");
+    }
+
+    // Load summary thumbnail offsets (backward-compatible: defaults if absent)
+    if (j.contains("summaryThumbOffsets") && j["summaryThumbOffsets"].is_array()) {
+        const auto& arr = j["summaryThumbOffsets"];
+        for (int i = 0; i < 4 && i < static_cast<int>(arr.size()); ++i) {
+            set.summaryThumbOffsets[i].dx = arr[i].value("dx", ThumbOffset{}.dx);
+            set.summaryThumbOffsets[i].dy = arr[i].value("dy", ThumbOffset{}.dy);
+        }
     }
 
     // Recalculate derived values from line points

@@ -14,6 +14,9 @@ struct ApplicationContext;
 class TeachPlacementLineWidget;
 class PlacementResultWidget;
 class PlacementRetraceWidget;
+class ExposureAdjustWidget;
+class ImageGalleryWidget;
+class SummaryDiagramWidget;
 
 /**
  * @brief Main Placement Correction Trainer page: left nav (30%) + right content (70%)
@@ -74,6 +77,7 @@ private:
     QLabel* m_masterUVWLabel;
     QComboBox* m_targetPositionCombo;
     QLabel* m_targetUVWLabel;
+    QComboBox* m_cameraCombo;
     QLabel* m_statusLabel;
 
     // Right panel
@@ -83,6 +87,9 @@ private:
     TeachPlacementLineWidget* m_teachTgtLineWidget;
     PlacementResultWidget* m_resultWidget;
     PlacementRetraceWidget* m_retraceWidget;
+    ExposureAdjustWidget* m_exposureAdjustWidget;
+    ImageGalleryWidget* m_imageGalleryWidget;
+    SummaryDiagramWidget* m_summaryDiagramWidget;
 
     // Top bar container
     QWidget* m_topBarWidget;

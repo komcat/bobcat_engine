@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 5)
+set(BOBCAT_VERSION_MINOR 6)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -692,6 +692,7 @@ set(SOURCES
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
+    include/AppUI/Common/ShutdownConfirmDialog.cpp
     include/AppUI/Common/ProductSelectorDialog.cpp
     include/AuxWindow/AuxWindowManager.cpp
     include/AuxWindow/AuxViewWindow.cpp
@@ -811,6 +812,9 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -958,6 +962,7 @@ set(HEADERS
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
     include/AppUI/Common/CreateProductDialog.h
+    include/AppUI/Common/ShutdownConfirmDialog.h
     include/AppUI/Common/ProductSelectorDialog.h
     include/AuxWindow/AuxWindowManager.h
     include/AuxWindow/AuxViewWindow.h
@@ -1073,6 +1078,9 @@ set(HEADERS
     include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.h
     include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.h
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.h
+    include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.h
+    include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.h
+    include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
@@ -1314,6 +1322,12 @@ if(WIN32)
 endif()
 
 add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE})
+
+# Ensure the .rc is recompiled when the .ico file changes
+if(WIN32)
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
+                 PROPERTY OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+endif()
 
 # ============================================================================
 # Set Debugger Environment for Visual Studio
