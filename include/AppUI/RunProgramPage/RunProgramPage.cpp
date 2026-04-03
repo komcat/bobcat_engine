@@ -4706,6 +4706,11 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
     "}"
   );
 
+  // Edit in Recipe Page option
+  QAction* editAction = contextMenu.addAction("Edit in Recipe Page");
+  editAction->setToolTip("Open this recipe in the Recipe editor");
+  contextMenu.addSeparator();
+
   // Add retrace edit option (only if not currently running)
   QAction* retraceAction = nullptr;
   if (!m_isExecuting) {
@@ -4718,7 +4723,13 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
 
   QAction* selectedAction = contextMenu.exec(m_recipeListWidget->viewport()->mapToGlobal(pos));
 
-  if (retraceAction && selectedAction == retraceAction) {
+  if (selectedAction == editAction) {
+    const RecipeReference* recipe = m_programManager->getRecipe(row);
+    if (recipe) {
+      emit requestEditRecipe(QString::fromStdString(recipe->recipeFilePath));
+    }
+  }
+  else if (retraceAction && selectedAction == retraceAction) {
     onStartRetraceEdit(row);
   }
 }
@@ -5047,25 +5058,21 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
 
 void RunProgramPage::onPlacementRetraceCompleted(const PlacementCorrectionSet& /*updatedSet*/)
 {
-  // Widget already saved corrected positions internally via onSaveToTarget
+  // Position saved — stay on retrace widget so user can "Move to Target" or click "Continue"
   m_placementRetraceResponse = true;
 
-  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace completed - corrected position saved");
-
-  // Switch back to execution tabs
-  m_executionStack->setCurrentIndex(0);
-
-  if (m_promptEventLoop) {
-    m_promptEventLoop->quit();
-  }
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Corrected position saved - waiting for user to Continue or Move to Target");
 }
 
 void RunProgramPage::onPlacementRetraceSkipped()
 {
-  // User reviewed results but chose to continue without saving
+  // User clicked Continue (after save) or Skip (without save)
+  if (!m_placementRetraceResponse) {
+    m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace skipped - continuing without correction");
+  } else {
+    m_logTextEdit->appendPlainText("[PlacementRetrace] Continuing to next step after save");
+  }
   m_placementRetraceResponse = true;
-
-  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace skipped - continuing without correction");
 
   m_executionStack->setCurrentIndex(0);
 

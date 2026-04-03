@@ -73,6 +73,9 @@ signals:
   // Placement correction retrace signal
   void showPlacementRetrace(QString trainingSetName, bool autoStart);
 
+  // Request to navigate to RecipePage and load a recipe for editing
+  void requestEditRecipe(QString filePath);
+
 private slots:
   // File operations
   void onNewProgram();

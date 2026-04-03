@@ -63,6 +63,7 @@ public:
 
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
+  void loadRecipeFromFile(const QString& filePath);  // Load recipe by file path (used by RunProgramPage)
 
 signals:
   void backToMainMenu();
@@ -250,6 +251,7 @@ private:
 
   // Recipes tab widgets
   QListWidget* m_recipeListWidget;
+  QLineEdit* m_recipeFilterEdit;
   QPushButton* m_refreshRecipeListButton;
   QLabel* m_recipeCountLabel;
 

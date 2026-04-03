@@ -589,10 +589,7 @@ void PlacementRetraceWidget::autoNavigateToRefP1()
 
     runMotionAsync(
         [mm, dev, tx, ty, tz]() {
-            bool ok = mm->MoveToPosition(dev, "X", tx, true);
-            if (ok) ok = mm->MoveToPosition(dev, "Y", ty, true);
-            if (ok) ok = mm->MoveToPosition(dev, "Z", tz, true);
-            return ok;
+            return mm->MoveToAbs(dev, tx, ty, tz);
         },
         [this](bool ok) {
             if (ok) {
@@ -622,10 +619,7 @@ void PlacementRetraceWidget::autoNavigateToTgtP1()
 
     runMotionAsync(
         [mm, dev, tx, ty, tz]() {
-            bool ok = mm->MoveToPosition(dev, "X", tx, true);
-            if (ok) ok = mm->MoveToPosition(dev, "Y", ty, true);
-            if (ok) ok = mm->MoveToPosition(dev, "Z", tz, true);
-            return ok;
+            return mm->MoveToAbs(dev, tx, ty, tz);
         },
         [this](bool ok) {
             if (ok) {
@@ -655,18 +649,16 @@ void PlacementRetraceWidget::onConfirmRefP1()
 
     auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    double dx = m_refDeltaX, dy = m_refDeltaY, dz = m_refDeltaZ;
+    double targetX = pos.x + m_refDeltaX;
+    double targetY = pos.y + m_refDeltaY;
+    double targetZ = pos.z + m_refDeltaZ;
 
     m_confirmRefP1Btn->setEnabled(false);
     setState(WaitRefP2);
 
     runMotionAsync(
-        [mm, dev, dx, dy, dz]() {
-            bool ok = true;
-            if (std::abs(dx) > 1e-6) ok = mm->MoveRelative(dev, "X", dx, true);
-            if (ok && std::abs(dy) > 1e-6) ok = mm->MoveRelative(dev, "Y", dy, true);
-            if (ok && std::abs(dz) > 1e-6) ok = mm->MoveRelative(dev, "Z", dz, true);
-            return ok;
+        [mm, dev, targetX, targetY, targetZ]() {
+            return mm->MoveToAbs(dev, targetX, targetY, targetZ);
         },
         [this](bool ok) {
             if (!ok) {
@@ -712,18 +704,16 @@ void PlacementRetraceWidget::onConfirmTgtP1()
 
     auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
-    double dx = m_tgtDeltaX, dy = m_tgtDeltaY, dz = m_tgtDeltaZ;
+    double targetX = pos.x + m_tgtDeltaX;
+    double targetY = pos.y + m_tgtDeltaY;
+    double targetZ = pos.z + m_tgtDeltaZ;
 
     m_confirmTgtP1Btn->setEnabled(false);
     setState(WaitTgtP2);
 
     runMotionAsync(
-        [mm, dev, dx, dy, dz]() {
-            bool ok = true;
-            if (std::abs(dx) > 1e-6) ok = mm->MoveRelative(dev, "X", dx, true);
-            if (ok && std::abs(dy) > 1e-6) ok = mm->MoveRelative(dev, "Y", dy, true);
-            if (ok && std::abs(dz) > 1e-6) ok = mm->MoveRelative(dev, "Z", dz, true);
-            return ok;
+        [mm, dev, targetX, targetY, targetZ]() {
+            return mm->MoveToAbs(dev, targetX, targetY, targetZ);
         },
         [this](bool ok) {
             if (!ok) {
@@ -946,6 +936,13 @@ void PlacementRetraceWidget::onSaveToTarget()
             .arg(QString::fromStdString(device))
             .arg(QString::fromStdString(posName)));
 
+        // Update skip button to "Continue" now that position is saved
+        m_skipBtn->setText("Continue");
+        m_skipBtn->setStyleSheet(
+            "QPushButton { background-color: #27ae60; color: white; font-weight: bold; "
+            "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+            "QPushButton:hover { background-color: #2ecc71; }");
+
         emit retraceCompleted(*m_set);
 
         std::cout << "[PlacementRetrace] Saved corrected position to " << device << "/" << posName << std::endl;
@@ -994,12 +991,18 @@ void PlacementRetraceWidget::onReset()
     m_saveBtn->setEnabled(true);
     QString targetName = m_set ? QString::fromStdString(m_set->config.targetPositionName) : "Target";
     m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));
+    // Reset skip button back to original style
+    m_skipBtn->setText("Continue Without Saving");
+    m_skipBtn->setStyleSheet(
+        "QPushButton { background-color: #7f8c8d; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #95a5a6; }");
     setState(Idle);
 }
 
 void PlacementRetraceWidget::onSkip()
 {
-    std::cout << "[PlacementRetrace] User chose to continue without saving" << std::endl;
+    std::cout << "[PlacementRetrace] User chose to continue" << std::endl;
     m_positionTimer->stop();
     setState(Idle);
     emit retraceSkipped();

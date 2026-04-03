@@ -286,6 +286,13 @@ void MainWindow::createPages()
     m_runProgramPage, &RunProgramPage::onProductChanged);
   m_pageStack->addWidget(m_runProgramPage);
 
+  // Connect "Edit in Recipe Page" from RunProgramPage to RecipePage
+  connect(m_runProgramPage, &RunProgramPage::requestEditRecipe,
+    this, [this](const QString& filePath) {
+      m_recipePage->loadRecipeFromFile(filePath);
+      m_pageStack->setCurrentWidget(m_recipePage);
+    });
+
   // Vision Manager page
   m_visionManagerPage = new VisionManagerPage(m_context, this);
   connect(m_visionManagerPage, &VisionManagerPage::backToMainMenu,

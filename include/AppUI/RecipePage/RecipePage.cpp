@@ -534,6 +534,32 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
 
   layout->addLayout(headerLayout);
 
+  // Filter/search box
+  m_recipeFilterEdit = new QLineEdit();
+  m_recipeFilterEdit->setPlaceholderText("Filter recipes...");
+  m_recipeFilterEdit->setClearButtonEnabled(true);
+  m_recipeFilterEdit->setStyleSheet(
+    "QLineEdit { "
+    "  background-color: #2d2d30; "
+    "  color: #d4d4d4; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 3px; "
+    "  padding: 5px 8px; "
+    "  font-size: 12px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 1px solid #007acc; "
+    "}"
+  );
+  connect(m_recipeFilterEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+    for (int i = 0; i < m_recipeListWidget->count(); ++i) {
+      QListWidgetItem* item = m_recipeListWidget->item(i);
+      bool match = text.isEmpty() || item->text().contains(text, Qt::CaseInsensitive);
+      item->setHidden(!match);
+    }
+  });
+  layout->addWidget(m_recipeFilterEdit);
+
   // Recipe list widget
   m_recipeListWidget = new QListWidget();
   m_recipeListWidget->setStyleSheet(
@@ -1254,6 +1280,15 @@ void RecipePage::populateRecipeListWidget()
   }
 
   m_recipeCountLabel->setText(QString("%1 recipe(s)").arg(fileList.size()));
+
+  // Re-apply current filter text
+  if (m_recipeFilterEdit && !m_recipeFilterEdit->text().isEmpty()) {
+    QString text = m_recipeFilterEdit->text();
+    for (int i = 0; i < m_recipeListWidget->count(); ++i) {
+      QListWidgetItem* item = m_recipeListWidget->item(i);
+      item->setHidden(!item->text().contains(text, Qt::CaseInsensitive));
+    }
+  }
 }
 
 void RecipePage::onRefreshRecipeList()
@@ -1372,6 +1407,63 @@ void RecipePage::onLoadSelectedRecipe()
   }
   else {
     QMessageBox::critical(this, "Error", "Failed to load recipe file.");
+  }
+}
+
+void RecipePage::loadRecipeFromFile(const QString& filePath)
+{
+  if (filePath.isEmpty()) return;
+
+  if (m_recipeManager->loadRecipe(filePath.toStdString())) {
+    m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
+    refreshRecipeList();
+    clearConfigurationForm();
+    updateRecipeFileNameDisplay();
+    saveLastRecipeToSettings(filePath);
+
+    // Auto-load associated product file
+    std::string productFile = m_recipeManager->getProductFile();
+    if (!productFile.empty()) {
+      if (m_context->productPositionManager) {
+        if (m_context->productPositionManager->LoadProduct(productFile)) {
+          m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
+
+          std::string productName = m_context->productPositionManager->GetCurrentProductName();
+
+          m_productStatusLabel->setText(QString("Product: %1")
+            .arg(QString::fromStdString(productName)));
+          m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabelLoaded());
+
+          if (m_loadedProductLabel) {
+            m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
+              .arg(QString::fromStdString(productName))
+              .arg(QString::fromStdString(productFile)));
+            m_loadedProductLabel->setStyleSheet(
+              "font-size: 11px; "
+              "color: #4ec9b0; "
+              "font-weight: bold; "
+              "padding: 5px; "
+              "border: 1px solid #4ec9b0; "
+              "border-radius: 3px; "
+              "background-color: #1e3a32;"
+            );
+          }
+
+          std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
+        }
+      }
+    }
+
+    // Switch to Steps tab after loading
+    if (m_middleTabWidget) {
+      m_middleTabWidget->setCurrentIndex(1);
+    }
+
+    std::cout << "[RecipePage] Loaded recipe from file: " << filePath.toStdString() << std::endl;
+  }
+  else {
+    QMessageBox::critical(this, "Error",
+      QString("Failed to load recipe file:\n%1").arg(filePath));
   }
 }
 
@@ -2774,9 +2866,9 @@ void RecipePage::onRunSelectedStep()
     return;
   }
 
-  // Get the selected step index
+  // Get the selected step index (stored in UserRole data, not tree position)
   QTreeWidgetItem* selectedItem = selectedItems.first();
-  int stepIndex = m_recipeTree->indexOfTopLevelItem(selectedItem);
+  int stepIndex = selectedItem->data(0, Qt::UserRole).toInt();
 
   if (stepIndex < 0 || stepIndex >= m_recipeManager->getStepCount()) {
     QMessageBox::warning(this, "Invalid Selection",

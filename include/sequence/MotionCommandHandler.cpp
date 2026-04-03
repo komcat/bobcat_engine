@@ -1736,12 +1736,14 @@ bool MotionCommandHandler::ExecuteCommand(
     std::string axis1, axis2;
     if (plane == "XY" || plane == "xy") {
       axis1 = "X"; axis2 = "Y";
+    } else if (plane == "YX" || plane == "yx") {
+      axis1 = "Y"; axis2 = "X";
     } else if (plane == "XZ" || plane == "xz") {
       axis1 = "X"; axis2 = "Z";
     } else if (plane == "YZ" || plane == "yz") {
       axis1 = "Y"; axis2 = "Z";
     } else {
-      errorMessage = "GridScanExtended: Invalid plane '" + plane + "' (must be 'XY', 'XZ', or 'YZ')";
+      errorMessage = "GridScanExtended: Invalid plane '" + plane + "' (must be 'XY', 'YX', 'XZ', or 'YZ')";
       return false;
     }
 
@@ -2753,6 +2755,391 @@ bool MotionCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // AXIS SCAN - 1D scan on a single axis with peak/valley detection
+  // ============================================================================
+  else if (methodName == "AxisScan") {
+    // REQUIRED: axis
+    auto axisIt = params.find("axis");
+    if (axisIt == params.end() || axisIt->second.empty()) {
+      errorMessage = "AxisScan: Missing required parameter 'axis'";
+      return false;
+    }
+    std::string axis = axisIt->second;
+
+    // REQUIRED: range_um
+    auto rangeIt = params.find("range_um");
+    if (rangeIt == params.end() || rangeIt->second.empty()) {
+      errorMessage = "AxisScan: Missing required parameter 'range_um'";
+      return false;
+    }
+    double rangeUm = std::stod(rangeIt->second);
+    if (rangeUm <= 0 || rangeUm > 50000) {
+      errorMessage = "AxisScan: range_um must be between 1 and 50000 um";
+      return false;
+    }
+    double rangeMm = rangeUm / 1000.0;
+
+    // REQUIRED: step_size_um
+    auto stepIt = params.find("step_size_um");
+    if (stepIt == params.end() || stepIt->second.empty()) {
+      errorMessage = "AxisScan: Missing required parameter 'step_size_um'";
+      return false;
+    }
+    double stepSizeUm = std::stod(stepIt->second);
+    if (stepSizeUm < 0.1 || stepSizeUm > 1000) {
+      errorMessage = "AxisScan: step_size_um must be between 0.1 and 1000 um";
+      return false;
+    }
+    double stepMm = stepSizeUm / 1000.0;
+
+    // REQUIRED: channel
+    auto channelIt = params.find("channel");
+    if (channelIt == params.end() || channelIt->second.empty()) {
+      errorMessage = "AxisScan: Missing required parameter 'channel'";
+      return false;
+    }
+    std::string channel = channelIt->second;
+
+    // OPTIONAL: direction (default "centered")
+    std::string direction = "centered";
+    auto dirIt = params.find("direction");
+    if (dirIt != params.end() && !dirIt->second.empty()) {
+      direction = dirIt->second;
+    }
+
+    // OPTIONAL: seek_mode (default "peak")
+    bool seekPeak = true;
+    auto seekIt = params.find("seek_mode");
+    if (seekIt != params.end() && seekIt->second == "valley") {
+      seekPeak = false;
+    }
+
+    // OPTIONAL: velocity (mm/s, 0 = don't change)
+    double scanVelocity = 0.0;
+    auto velIt = params.find("velocity");
+    if (velIt != params.end() && !velIt->second.empty()) {
+      scanVelocity = std::stod(velIt->second);
+    }
+
+    // OPTIONAL: settling_time_ms (default 200)
+    int settlingTimeMs = 200;
+    auto settleIt = params.find("settling_time_ms");
+    if (settleIt != params.end() && !settleIt->second.empty()) {
+      settlingTimeMs = std::stoi(settleIt->second);
+      if (settlingTimeMs < 10) settlingTimeMs = 10;
+      if (settlingTimeMs > 5000) settlingTimeMs = 5000;
+    }
+
+    // OPTIONAL: exit_threshold
+    bool hasExitThreshold = false;
+    double exitThreshold = 0.0;
+    auto exitIt = params.find("exit_threshold");
+    if (exitIt != params.end() && !exitIt->second.empty()) {
+      exitThreshold = std::stod(exitIt->second);
+      hasExitThreshold = true;
+    }
+
+    // OPTIONAL: return_to_best (default true)
+    bool returnToBest = true;
+    auto retIt = params.find("return_to_best");
+    if (retIt != params.end() && (retIt->second == "false" || retIt->second == "0")) {
+      returnToBest = false;
+    }
+
+    // OPTIONAL: capture_as, capture_position_as
+    std::string captureAs;
+    auto capIt = params.find("capture_as");
+    if (capIt != params.end()) captureAs = capIt->second;
+    std::string capturePosAs;
+    auto capPosIt = params.find("capture_position_as");
+    if (capPosIt != params.end()) capturePosAs = capPosIt->second;
+
+    // OPTIONAL: process_uid
+    std::string processUid;
+    auto uidIt = params.find("process_uid");
+    if (uidIt != params.end()) processUid = uidIt->second;
+
+    // ---- Get current position as baseline ----
+    PositionStruct baselinePos = motionManager->GetCurrentPosition(deviceName);
+    double baselineAxisPos = 0.0;
+    if (axis == "X") baselineAxisPos = baselinePos.x;
+    else if (axis == "Y") baselineAxisPos = baselinePos.y;
+    else if (axis == "Z") baselineAxisPos = baselinePos.z;
+    else if (axis == "U") baselineAxisPos = baselinePos.u;
+    else if (axis == "V") baselineAxisPos = baselinePos.v;
+    else if (axis == "W") baselineAxisPos = baselinePos.w;
+    else {
+      errorMessage = "AxisScan: Invalid axis '" + axis + "' (must be X/Y/Z/U/V/W)";
+      return false;
+    }
+
+    // ---- Compute scan start and end ----
+    double scanStart = 0.0, scanEnd = 0.0;
+    if (direction == "positive") {
+      scanStart = baselineAxisPos;
+      scanEnd = baselineAxisPos + rangeMm;
+    } else if (direction == "negative") {
+      scanStart = baselineAxisPos;
+      scanEnd = baselineAxisPos - rangeMm;
+    } else {  // centered
+      scanStart = baselineAxisPos - rangeMm / 2.0;
+      scanEnd = baselineAxisPos + rangeMm / 2.0;
+    }
+
+    // Ensure iterStart < iterEnd for step arithmetic
+    double iterStart = std::min(scanStart, scanEnd);
+    double iterEnd   = std::max(scanStart, scanEnd);
+    int numSteps = static_cast<int>(std::round((iterEnd - iterStart) / stepMm)) + 1;
+    if (numSteps < 2) numSteps = 2;
+
+    // Direction of iteration: if negative direction, iterate from high to low
+    bool iterateReverse = (scanStart > scanEnd);
+
+    if (m_logger) {
+      m_logger->Info("AxisScan: device=" + deviceName + " axis=" + axis +
+                     " range=" + std::to_string(rangeUm) + "um step=" + std::to_string(stepSizeUm) + "um" +
+                     " direction=" + direction + " seek=" + (seekPeak ? "peak" : "valley") +
+                     " baseline=" + std::to_string(baselineAxisPos) + "mm" +
+                     " start=" + std::to_string(scanStart) + "mm end=" + std::to_string(scanEnd) + "mm" +
+                     " steps=" + std::to_string(numSteps), "MotionHandler");
+    }
+
+    // ---- Save and set velocity ----
+    double savedVelocity = 0.0;
+    bool velocityChanged = false;
+    if (scanVelocity > 0.0) {
+      if (motionManager->GetVelocity(deviceName, axis, savedVelocity)) {
+        if (motionManager->SetVelocity(deviceName, axis, scanVelocity)) {
+          velocityChanged = true;
+          if (m_logger) {
+            m_logger->Info("AxisScan: Set velocity " + axis + "=" + std::to_string(scanVelocity) +
+                           "mm/s (saved: " + std::to_string(savedVelocity) + "mm/s)", "MotionHandler");
+          }
+        }
+      }
+    }
+
+    // ---- Move to scan start position ----
+    double scanStartPos = iterateReverse ? iterEnd : iterStart;
+    if (!motionManager->MoveToPosition(deviceName, axis, scanStartPos, false)) {
+      errorMessage = "AxisScan: Failed to move to scan start";
+      if (velocityChanged) motionManager->SetVelocity(deviceName, axis, savedVelocity);
+      return false;
+    }
+    for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis); ++w) {
+      if (context && context->IsStopRequestedAny()) {
+        if (velocityChanged) motionManager->SetVelocity(deviceName, axis, savedVelocity);
+        errorMessage = "AxisScan: Stopped by user before scan started";
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    // Settle at start
+    std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+    // ---- Scan loop ----
+    double bestValue    = seekPeak ? -1e30 : 1e30;
+    double bestPosition = scanStartPos;
+    bool earlyExit  = false;
+    bool userStopped = false;
+    int measuredPoints = 0;
+    nlohmann::json measurements = nlohmann::json::array();
+
+    constexpr int MAX_SCAN_STEPS = 100000;  // Safety bound
+    for (int step = 0; step < numSteps && step < MAX_SCAN_STEPS && !earlyExit && !userStopped; ++step) {
+      // Check stop request
+      if (context && context->IsStopRequestedAny()) {
+        if (m_logger) {
+          m_logger->Info("AxisScan: Stop requested at step " + std::to_string(step), "MotionHandler");
+        }
+        userStopped = true;
+        break;
+      }
+
+      // Compute target position for this step
+      double targetPos = iterateReverse
+          ? (iterEnd   - step * stepMm)
+          : (iterStart + step * stepMm);
+
+      // Clamp to valid range
+      if (targetPos < iterStart) targetPos = iterStart;
+      if (targetPos > iterEnd)   targetPos = iterEnd;
+
+      // Move to position
+      if (!motionManager->MoveToPosition(deviceName, axis, targetPos, false)) {
+        errorMessage = "AxisScan: Failed to start move at step " + std::to_string(step);
+        if (velocityChanged) motionManager->SetVelocity(deviceName, axis, savedVelocity);
+        return false;
+      }
+
+      // Wait for move completion (10 s timeout)
+      auto moveStart = std::chrono::steady_clock::now();
+      for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis); ++w) {
+        if (context && context->IsStopRequestedAny()) {
+          userStopped = true;
+          break;
+        }
+        if (std::chrono::steady_clock::now() - moveStart > std::chrono::seconds(10)) {
+          errorMessage = "AxisScan: Timeout waiting for " + axis + " motion at step " + std::to_string(step);
+          if (velocityChanged) motionManager->SetVelocity(deviceName, axis, savedVelocity);
+          return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+      if (userStopped) break;
+
+      // Settling time
+      std::this_thread::sleep_for(std::chrono::milliseconds(settlingTimeMs));
+
+      // Read channel value
+      double value = static_cast<double>(m_dataStore->GetValue(channel, 0.0f));
+
+      // Record measurement
+      PositionStruct fullPos = motionManager->GetCurrentPosition(deviceName);
+      {
+        nlohmann::json point;
+        point["step"]          = step;
+        point["target_pos_mm"] = targetPos;
+        point["value"]         = value;
+        point["x"] = fullPos.x;
+        point["y"] = fullPos.y;
+        point["z"] = fullPos.z;
+        point["u"] = fullPos.u;
+        point["v"] = fullPos.v;
+        point["w"] = fullPos.w;
+        measurements.push_back(point);
+      }
+      measuredPoints++;
+
+      // Track best value
+      bool newBest = seekPeak ? (value > bestValue) : (value < bestValue);
+      if (newBest) {
+        bestValue    = value;
+        bestPosition = targetPos;
+        if (m_logger) {
+          m_logger->Info("AxisScan: New best at step " + std::to_string(step) +
+                         " pos=" + std::to_string(targetPos) + "mm value=" + std::to_string(value),
+                         "MotionHandler");
+        }
+      }
+
+      // Check exit threshold
+      if (hasExitThreshold) {
+        bool thresholdMet = seekPeak ? (value >= exitThreshold) : (value <= exitThreshold);
+        if (thresholdMet) {
+          if (m_logger) {
+            m_logger->Info("AxisScan: Exit threshold met at step " + std::to_string(step) +
+                           " value=" + std::to_string(value) + " threshold=" + std::to_string(exitThreshold),
+                           "MotionHandler");
+          }
+          earlyExit = true;
+        }
+      }
+
+      // Log progress every 10 steps
+      if (step > 0 && step % 10 == 0 && m_logger) {
+        m_logger->Info("AxisScan: Progress " + std::to_string(step) + "/" + std::to_string(numSteps) +
+                       " best=" + std::to_string(bestValue) + " at " + std::to_string(bestPosition) + "mm",
+                       "MotionHandler");
+      }
+    }
+
+    // ---- Return to best or baseline ----
+    if (returnToBest || userStopped) {
+      const bool noBestFound = (seekPeak ? (bestValue == -1e30) : (bestValue == 1e30));
+      double returnPos = noBestFound ? baselineAxisPos : bestPosition;
+      if (m_logger) {
+        m_logger->Info("AxisScan: Returning to " +
+                       std::string(noBestFound ? "baseline" : "best") +
+                       " position: " + std::to_string(returnPos) + "mm", "MotionHandler");
+      }
+      if (!motionManager->MoveToPosition(deviceName, axis, returnPos, false)) {
+        if (m_logger) {
+          m_logger->Warning("AxisScan: Failed to start return move", "MotionHandler");
+        }
+      } else {
+        auto retStart = std::chrono::steady_clock::now();
+        for (int w = 0; w < 1000 && motionManager->IsMoving(deviceName, axis); ++w) {
+          if (std::chrono::steady_clock::now() - retStart > std::chrono::seconds(10)) break;
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+      }
+    }
+
+    // ---- Restore velocity ----
+    if (velocityChanged) {
+      motionManager->SetVelocity(deviceName, axis, savedVelocity);
+      if (m_logger) {
+        m_logger->Info("AxisScan: Restored velocity " + axis + "=" + std::to_string(savedVelocity) + "mm/s",
+                       "MotionHandler");
+      }
+    }
+
+    // ---- Capture results to context ----
+    if (context) {
+      if (!captureAs.empty()) {
+        context->SetValue(captureAs, std::to_string(bestValue));
+      }
+      if (!capturePosAs.empty()) {
+        context->SetValue(capturePosAs, std::to_string(bestPosition));
+      }
+      context->SetValue("axis_scan.best_value",        std::to_string(bestValue));
+      context->SetValue("axis_scan.best_position",     std::to_string(bestPosition));
+      context->SetValue("axis_scan.measured_points",   std::to_string(measuredPoints));
+      context->SetValue("axis_scan.baseline_position", std::to_string(baselineAxisPos));
+    }
+
+    // ---- Save results to file ----
+    {
+      nlohmann::json result;
+      result["device"]               = deviceName;
+      result["axis"]                 = axis;
+      result["seek_mode"]            = seekPeak ? "peak" : "valley";
+      result["direction"]            = direction;
+      result["range_um"]             = rangeUm;
+      result["step_size_um"]         = stepSizeUm;
+      result["settling_time_ms"]     = settlingTimeMs;
+      result["baseline_position_mm"] = baselineAxisPos;
+      result["scan_start_mm"]        = scanStart;
+      result["scan_end_mm"]          = scanEnd;
+      result["best_value"]           = bestValue;
+      result["best_position_mm"]     = bestPosition;
+      result["measured_points"]      = measuredPoints;
+      result["early_exit"]           = earlyExit;
+      result["user_stopped"]         = userStopped;
+      result["channel"]              = channel;
+      result["measurements"]         = measurements;
+
+      std::string filename = "logs/axis_scan_result";
+      if (!processUid.empty()) filename += "_" + processUid;
+      filename += ".json";
+
+      std::ofstream outFile(filename);
+      if (outFile.is_open()) {
+        outFile << result.dump(2);
+        outFile.close();
+        if (m_logger) {
+          m_logger->Info("AxisScan: Results saved to " + filename, "MotionHandler");
+        }
+      }
+    }
+
+    if (m_logger) {
+      m_logger->Info("AxisScan: Completed. " + std::to_string(measuredPoints) + " points measured. Best " +
+                     (seekPeak ? "peak" : "valley") + "=" + std::to_string(bestValue) +
+                     " at " + std::to_string(bestPosition) + "mm" +
+                     (earlyExit ? " (early exit)" : "") + (userStopped ? " (user stopped)" : ""),
+                     "MotionHandler");
+    }
+
+    if (userStopped) {
+      errorMessage = "AxisScan: Stopped by user (returned to best position)";
+      return false;
+    }
+    return true;
+  }
+
+  // ============================================================================
   // MOVE TO GRAPH NODE - Execute graph-based path planning
   // ============================================================================
   else if (methodName == "MoveToGraphNode") {
@@ -3380,13 +3767,11 @@ bool MotionCommandHandler::ExecuteCommand(
           });
       }
 
-      // Auto-delete when finished
-      QObject::connect(worker, &GraphMoveWorker::finished,
-                       worker, &QObject::deleteLater);
-
       graphWorkers.push_back(worker);
 
       // Start the worker thread (non-blocking!)
+      // NOTE: Do NOT connect deleteLater here — workers are referenced in the poll loop
+      // and will be cleaned up manually in PHASE 5
       worker->start();
     }
 
@@ -3408,10 +3793,12 @@ bool MotionCommandHandler::ExecuteCommand(
         for (const auto& s : moveSpecs) {
           (void)motionManager->EmergencyStop(s.deviceName);
         }
-        // Wait for workers to finish
+        // Wait for workers to finish and clean up
         for (auto* w : graphWorkers) {
           w->wait();
+          delete w;
         }
+        graphWorkers.clear();
         return false;
       }
 
@@ -3484,10 +3871,12 @@ bool MotionCommandHandler::ExecuteCommand(
         for (const auto& spec : moveSpecs) {
           (void)motionManager->EmergencyStop(spec.deviceName);
         }
-        // Wait for workers to finish
+        // Wait for workers to finish and clean up
         for (auto* w : graphWorkers) {
           w->wait();
+          delete w;
         }
+        graphWorkers.clear();
         errorMessage = "ParallelMove: Stopped by user request";
         return false;
       }
@@ -3564,34 +3953,41 @@ bool MotionCommandHandler::ExecuteCommand(
         for (const auto& spec : moveSpecs) {
           (void)motionManager->EmergencyStop(spec.deviceName);
         }
-        // Wait for workers to finish
+        // Wait for workers to finish and clean up
         for (auto* w : graphWorkers) {
           w->wait();
+          delete w;
         }
+        graphWorkers.clear();
         errorMessage = "ParallelMove: Overall timeout exceeded (" + std::to_string(OVERALL_TIMEOUT_MS) + "ms)";
         return false;
       }
 
       // Sleep to avoid busy waiting
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+      // Check if loop is about to exhaust — if so, treat as timeout
+      if (iteration == MAX_ITERATIONS_PARALLEL - 1) {
+        if (m_logger) {
+          m_logger->Error("Loop safety bound reached in ParallelMove", "MotionHandler");
+        }
+        for (auto* w : graphWorkers) {
+          w->requestStop();
+        }
+        for (const auto& spec : moveSpecs) {
+          (void)motionManager->EmergencyStop(spec.deviceName);
+        }
+        for (auto* w : graphWorkers) {
+          w->wait();
+          delete w;
+        }
+        graphWorkers.clear();
+        errorMessage = "ParallelMove: Loop safety bound exhausted";
+        return false;
+      }
     }
 
-    // Safety bound exhausted - treat as timeout
-    if (m_logger) {
-      m_logger->Error("Loop safety bound reached in ParallelMove", "MotionHandler");
-    }
-    for (auto* w : graphWorkers) {
-      w->requestStop();
-    }
-    for (const auto& spec : moveSpecs) {
-      (void)motionManager->EmergencyStop(spec.deviceName);
-    }
-    for (auto* w : graphWorkers) {
-      w->wait();
-    }
-    // Fall through to PHASE 5 to clean up and report
-
-    // ✅ PHASE 5: Check results
+    // ✅ PHASE 5: Check results (reached only via successful break)
     bool allSuccess = true;
     std::string failedDevices;
 
@@ -3605,8 +4001,17 @@ bool MotionCommandHandler::ExecuteCommand(
       }
     }
 
+    // Clean up graph workers (not auto-deleted — we manage their lifetime)
+    for (auto* w : graphWorkers) {
+      delete w;
+    }
+    graphWorkers.clear();
+
     if (!allSuccess) {
       errorMessage = "ParallelMove: GraphNode moves failed for: " + failedDevices;
+      if (m_logger) {
+        m_logger->Error(errorMessage, "MotionHandler");
+      }
       return false;
     }
 
