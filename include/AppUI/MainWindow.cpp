@@ -13,6 +13,7 @@
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
 #include "AuxWindowManager.h"
+#include "AuxViewWindow.h"
 #include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor
 #include "QtCameraWindow/QtCameraWindow.h"     // Qt camera monitor
 #include "SwirBeamWindow/SwirBeamWindowManager.h"  // SWIR beam processing window
@@ -146,6 +147,12 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
   // Save window geometry before closing
   saveWindowSettings();
+
+  // Allow auxiliary windows to close (they normally hide instead of closing)
+  if (m_context && m_context->auxWindowManager) {
+    auto* win = m_context->auxWindowManager->getWindow();
+    if (win) win->allowClose();
+  }
 
   // Accept the close event
   event->accept();
