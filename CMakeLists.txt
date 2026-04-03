@@ -642,6 +642,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/PlacementCorrectionProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/ZOffsetProcesses.cpp
     include/recipe/processes/YawTrainerProcesses.cpp

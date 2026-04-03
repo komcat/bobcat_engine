@@ -29,8 +29,12 @@ public:
 
     void SetData(PlacementCorrectionSet* set);
 
+    // Programmatically trigger start (for recipe integration — skips Idle page)
+    void AutoStart();
+
 signals:
     void retraceCompleted(const PlacementCorrectionSet& updatedSet);
+    void retraceSkipped();   // User reviewed results but chose to continue without saving
     void retraceEnded();
 
 private slots:
@@ -41,6 +45,7 @@ private slots:
     void onConfirmTgtP2();
     void onSaveToTarget();
     void onMoveToTarget();
+    void onSkip();
     void onReset();
     void onEnd();
     void updatePositionDisplay();
@@ -126,6 +131,7 @@ private:
     QCheckBox* m_applyUCheckbox = nullptr;
     QPushButton* m_saveBtn = nullptr;
     QPushButton* m_moveToTargetBtn = nullptr;
+    QPushButton* m_skipBtn = nullptr;
     QPushButton* m_resetBtn = nullptr;
     QPushButton* m_endBtn = nullptr;
 };

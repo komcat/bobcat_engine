@@ -156,6 +156,10 @@ public:
   void addTrainingSetSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // Helper to add placement correction set selector (QLineEdit + Browse button)
+  void addPlacementSetSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
   // Helper to add camera offset calibration set selector (QLineEdit + Browse button)
   void addCameraOffsetSetSelector(const std::string& key, const std::string& label,
     const std::string& value);

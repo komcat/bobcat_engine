@@ -44,6 +44,7 @@ RecipeWorker::~RecipeWorker()
     m_engine->SetUserPromptCallback(nullptr);
     m_engine->SetManualAdjustCallback(nullptr);
     m_engine->SetUserInputCallback(nullptr);
+    m_engine->SetPlacementRetraceCallback(nullptr);
 
     // ✅ CRITICAL FIX: Also clear LogManager callback to prevent memory leak
     LogManager* logger = m_engine->GetLogger();
@@ -105,6 +106,11 @@ void RecipeWorker::setManualAdjustCallback(ManualAdjustCallback callback)
 void RecipeWorker::setUserInputCallback(UserInputCallback callback)
 {
   m_userInputCallback = callback;
+}
+
+void RecipeWorker::setPlacementRetraceCallback(PlacementRetraceCallback callback)
+{
+  m_placementRetraceCallback = callback;
 }
 
 void RecipeWorker::setExternalContext(SequenceContext* context)
@@ -242,6 +248,22 @@ void RecipeWorker::run()
       }
       );
       if (!m_loopMode) emit logMessage("UserInput auto-fail mode enabled (no callback configured)");
+    }
+
+    // Step 4.7: Set up PlacementRetrace callback
+    if (m_placementRetraceCallback) {
+      m_engine->SetPlacementRetraceCallback(m_placementRetraceCallback);
+      if (!m_loopMode) emit logMessage("PlacementRetrace callback configured");
+    }
+    else {
+      m_engine->SetPlacementRetraceCallback(
+        [this](const std::string& setName, bool /*autoStart*/) -> bool {
+        emit logMessage(QString("ERROR: Placement Correction Retrace '%1' requires Run Program page. "
+          "Please add this recipe to a Program and execute from Run Program.")
+          .arg(QString::fromStdString(setName)));
+        return false;
+      }
+      );
     }
 
     // Count enabled steps

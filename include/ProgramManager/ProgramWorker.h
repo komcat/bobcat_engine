@@ -64,6 +64,13 @@ public:
   )>;
   void setUserInputCallback(UserInputCallback callback);
 
+  // Set callback for placement correction retrace (optional)
+  using PlacementRetraceCallback = std::function<bool(
+    const std::string& trainingSetName,
+    bool autoStart
+  )>;
+  void setPlacementRetraceCallback(PlacementRetraceCallback callback);
+
   // ✅ NEW: Configure execution mode
   void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
   void setStartRecipeIndex(int index);  // Which recipe to start from (for single mode)
@@ -176,6 +183,7 @@ private:
   UserPromptCallback m_userPromptCallback;
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
+  PlacementRetraceCallback m_placementRetraceCallback;
 
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe

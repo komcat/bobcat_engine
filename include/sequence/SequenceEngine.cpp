@@ -515,6 +515,13 @@ void SequenceEngine::SetManualAlignPointCallback(ManualAlignPointCallback callba
   }
 }
 
+void SequenceEngine::SetPlacementRetraceCallback(PlacementRetraceCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetPlacementRetraceCallback(callback);
+  }
+}
+
 void SequenceEngine::SetStepStartedCallback(StepStartedCallback callback)
 {
   m_stepStartedCallback = callback;

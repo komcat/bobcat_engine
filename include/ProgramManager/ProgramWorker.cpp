@@ -65,6 +65,11 @@ void ProgramWorker::setUserInputCallback(UserInputCallback callback)
   m_userInputCallback = callback;
 }
 
+void ProgramWorker::setPlacementRetraceCallback(PlacementRetraceCallback callback)
+{
+  m_placementRetraceCallback = callback;
+}
+
 // ✅ NEW: Set execution mode
 void ProgramWorker::setAutoRunMode(bool autoRun)
 {
@@ -576,6 +581,10 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // ✅ Set UserInput callback if available
   if (m_userInputCallback) {
     recipeWorker->setUserInputCallback(m_userInputCallback);
+  }
+
+  if (m_placementRetraceCallback) {
+    recipeWorker->setPlacementRetraceCallback(m_placementRetraceCallback);
   }
 
   // ✅ Set shared context for vision result storage

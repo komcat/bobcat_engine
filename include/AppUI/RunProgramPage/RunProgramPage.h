@@ -37,6 +37,8 @@ enum class ScanMode;
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class RollCorrectionWidget;
+class PlacementRetraceWidget;
+#include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -67,6 +69,9 @@ signals:
   // Manual adjust signal
   void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
                         bool enableX, bool enableY, bool enableZ);
+
+  // Placement correction retrace signal
+  void showPlacementRetrace(QString trainingSetName, bool autoStart);
 
 private slots:
   // File operations
@@ -134,6 +139,12 @@ private slots:
 
   // ✅ ADDED: Periodic channel list refresh
   void refreshDataStoreChannels();
+
+  // Placement correction retrace handling
+  void onShowPlacementRetrace(QString trainingSetName, bool autoStart);
+  void onPlacementRetraceCompleted(const PlacementCorrectionSet& updatedSet);
+  void onPlacementRetraceSkipped();
+  void onPlacementRetraceEnded();
 
   // Roll correction handling
   void onRegisterCH1Requested(QString deviceName);
@@ -235,6 +246,9 @@ private:
   ScanControlWidget* m_scanWidget;
   ScanExecutor* m_scanExecutor;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
+  PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
+  PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
+  bool m_placementRetraceResponse = false;
   std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 

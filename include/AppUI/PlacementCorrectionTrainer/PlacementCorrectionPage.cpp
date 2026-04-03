@@ -356,6 +356,12 @@ void PlacementCorrectionPage::setupUI()
         m_contentStack->setCurrentIndex(0);
     });
 
+    connect(m_retraceWidget, &PlacementRetraceWidget::retraceSkipped,
+            this, [this]() {
+        m_navList->clearSelection();
+        m_contentStack->setCurrentIndex(0);
+    });
+
     connect(m_retraceWidget, &PlacementRetraceWidget::retraceCompleted,
             this, [this](const PlacementCorrectionSet& updatedSet) {
         m_currentSet.config.targetX = updatedSet.config.targetX;

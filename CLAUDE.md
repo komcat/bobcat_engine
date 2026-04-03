@@ -50,6 +50,7 @@ The build also produces these standalone tools:
 - **`config_editor`** - Standalone JSON configuration file editor (`tools/config_editor/`)
 - **`data_explorer`** - Browse and filter serial number result data (`tools/data_explorer/`)
 - **`find_visa_devices`** - Scan for connected VISA instruments (only built when VISA SDK found)
+- **`vision_profile_tester`** - Vision algorithm profiling tool (`tools/vision_profile_tester/`)
 
 ## Project Layout (Non-Standard)
 
@@ -60,12 +61,16 @@ bobcat_engine/
 ├── Application.cpp, bobcat_engine.cpp    # Entry points (root level)
 ├── include/                               # Headers AND implementations
 │   ├── AppUI/                            # Qt UI (pages, forms, dialogs)
+│   │   ├── AccuracyTrainer/             # Accuracy trainer module (teach + run alignment)
+│   │   ├── PlacementCorrectionTrainer/  # Placement angle correction module
+│   │   ├── MotionPages/                 # Motion control UI (jog, interlock widget)
+│   │   └── RunProgramPage/             # Recipe execution UI + RollCorrectionWidget
 │   ├── AuxWindow/                        # Auxiliary display windows
 │   ├── camera/                           # Camera management
 │   ├── context/ApplicationContext.h      # DI container (raw pointer struct)
 │   ├── graph/                            # Motion graph navigation
 │   ├── IO/                               # Digital I/O (EziIO, WAGO)
-│   ├── motions/                          # Motion control (ACS, PI, scanning)
+│   ├── motions/                          # Motion control (ACS, PI, scanning, interlocks)
 │   ├── pneumatics/                       # Pneumatic slides
 │   ├── ProgramManager/                   # Recipe execution state machine
 │   ├── recipe/                           # Recipe system + plugin processes
@@ -96,7 +101,9 @@ A simple struct (`include/context/ApplicationContext.h`) holding raw pointers to
 ```
 ApplicationContext (dependency injection container)
 ├── UnifiedMotionManager    - Multi-brand motion control (ACS gantry + PI hexapod)
+├── InterlockManager        - Position-based motion interlock rules
 ├── CameraManager           - Multi-camera (Pylon/IDS uEye) via CameraHardwareFactory
+├── CameraConfigManager     - Per-camera calibration settings
 ├── EziIOManager            - Digital I/O (EziIO + WAGO Modbus TCP)
 ├── PneumaticManager        - Pneumatic slide control
 ├── TECManager              - Thermoelectric cooler control (CLD101x, TED4015)
@@ -115,8 +122,14 @@ ApplicationContext (dependency injection container)
 ├── DeviceUnderTest         - Current DUT instance
 ├── DeviceLinkManager       - Linked multi-device motion
 ├── AuxWindowManager        - Auxiliary display windows
-├── GdiCameraWindowManager  - GDI-based camera monitor
-└── ApplicationSettings     - INI-based app settings (config/system/applicationSettings.ini)
+├── GdiCameraWindowManager  - GDI-based camera monitor (x2 instances)
+├── QtCameraWindow          - Qt-based camera monitor (x2 instances)
+├── SwirBeamWindowManager   - SWIR beam processing window
+├── BeamServerClient        - TCP server client for beam detection
+├── BeamResultBroker        - Beam detection pub-sub broker
+├── BeamOptimizerManager    - Beam optimization coordinator
+├── ApplicationSettings     - INI-based app settings (config/system/applicationSettings.ini)
+└── SafetyEventLog          - Structured JSON-lines audit trail
 ```
 
 ### Core Execution Pipeline
@@ -136,7 +149,7 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 
 | Handler | Domain | Notable Commands |
 |---------|--------|-----------------|
-| MotionCommandHandler | Motion control | MoveToAbs, MoveToNamedPosition, HomeAxis, SetVelocity |
+| MotionCommandHandler | Motion control | MoveToAbs, MoveToNamedPosition, HomeAxis, SetVelocity, GridScanDualChannel |
 | IOCommandHandler | Digital I/O | SetOutput, ReadInput, WaitForInput |
 | PneumaticCommandHandler | Pneumatic slides | Extend, Retract, WaitForState |
 | CameraCommandHandler | Camera ops | Capture, StartLive, StopLive |
@@ -146,13 +159,14 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 | PSUCommandHandler | Power supply | SetVoltage, SetCurrent, EnableOutput |
 | SMUCommandHandler | SMU | Configure, Measure, EnableOutput |
 | LightingCommandHandler | Lighting | SetIntensity, EnableChannel |
-| VisionCommandHandler | Vision (OpenCV) | RunPlugin, DetectCircle, PatternMatch |
+| VisionCommandHandler | Vision (OpenCV) | RunPlugin, DetectCircle, PatternMatch, execute_profile |
 | CalibrationCommandHandler | Calibration | Various calibration procedures |
 | DUTCommandHandler | Device under test | CreateDUT, SetSerialNumber |
 | AuxWindowCommandHandler | Aux windows | ShowChart, ShowCamera |
 | CoordinateAlignCommandHandler | Coord alignment | AlignToPoints, TransformCoordinates |
 | RelativePositionCommandHandler | Relative positions | CalculateOffset, MoveRelative |
 | SequenceContextCommandHandler | Context vars | SetVariable, GetVariable, Evaluate |
+| AccuracyTrainerCommandHandler | Accuracy training | RunAlignment (headless, no Qt dependency) |
 
 ### Motion Control System
 - **UnifiedMotionManager** (`include/motions/unified_motion_manager.h`) - requires both ACS and PI SDKs
@@ -162,6 +176,15 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 - **Calculated positions** - offset notation: `"lensgrip+Y1"`, `"safe+X-2+Z5"`
 - **Graph navigation** - `include/graph/MotionGraph*.cpp` provides graph-based pathfinding between positions
 - **6-axis support** - XYZUVW (position + rotation)
+- **Interlock enforcement** - `InterlockManager::CheckMove()` called in all 5 move methods; blocks moves when monitored device axis meets a condition
+
+### Motion Interlock System
+`InterlockManager` (`include/motions/InterlockManager.h`) provides position-based motion safety rules:
+- Up to `MAX_INTERLOCK_RULES` (3) rules, each monitoring one device/axis and blocking another device
+- Rule structure: "if `monitorDevice.monitorAxis` `op` `threshold`, block all moves on `blockedDevice`"
+- Operators: `<`, `>`, `<=`, `>=`
+- Config persisted to `config/interlocks.json` (local-first pattern)
+- UI widget: `InterlockWidget` in `include/AppUI/MotionPages/`
 
 ### Recipe Plugin System
 Plugin-based architecture for process types. See `docs/creating_recipe_plugins.md`.
@@ -173,10 +196,78 @@ Plugin-based architecture for process types. See `docs/creating_recipe_plugins.m
 4. If new category: add to `RecipeManager::getProcessCategories()`
 5. Add source file to CMakeLists.txt `SOURCES` list
 
-Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`, `SystemProcesses.cpp`, `TECProcesses.cpp`, `PSUProcesses.cpp`, `SMUProcesses.cpp`, `DataStoreProcesses.cpp`, `DUTProcesses.cpp`, `ConditionalProcesses.cpp`, `CalibrationProcesses.cpp`, `VisionProcesses.cpp`, `CameraProcesses.cpp`, `LightingProcesses.cpp`, `AuxWindowProcesses.cpp`, `DispenseProcesses.cpp`, etc.
+Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`, `SystemProcesses.cpp`, `TECProcesses.cpp`, `PSUProcesses.cpp`, `SMUProcesses.cpp`, `DataStoreProcesses.cpp`, `DUTProcesses.cpp`, `ConditionalProcesses.cpp`, `CalibrationProcesses.cpp`, `VisionProcesses.cpp`, `CameraProcesses.cpp`, `LightingProcesses.cpp`, `AuxWindowProcesses.cpp`, `DispenseProcesses.cpp`, `AccuracyTrainerProcesses.cpp`, etc.
 
 ### Adding New Commands
 See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for the full guide on extending the sequence system with new command handlers.
+
+## Accuracy Trainer Module
+
+Located in `include/AppUI/AccuracyTrainer/` (10 files). Teaches and corrects bonding position accuracy using a local coordinate frame. Activated via F7 shortcut in MainWindow.
+
+### Architecture
+```
+AccuracyTrainerPage (main container, 30% left nav + 70% right content)
+├── TeachBondingWidget      - Teach 2-3 corner positions → compute bonding center
+├── TeachReferenceWidget    - Teach 2-3 reference landmarks → compute local coordinate frame
+├── TeachMultiDeviceWidget  - Teach hex device 6-axis + gantry viewing positions + corners + Z offsets
+├── EditZOffsetWidget       - Edit Z offset parameters (component/bondline thickness)
+├── RunAlignmentWidget      - Single-device: capture refs → rigid transform → corrected bonding moves
+└── MultiDeviceRunAlignmentWidget - Multi-device: refs + hex registration + coordinate transforms
+
+AccuracyTrainerStore       - JSON persistence (v2 format) to {productDir}/accuracy_trainer/
+AccuracyTrainerData.h      - Data structs (ReferencePoint, BondingPoint, HexDeviceTeachData, TrainingSet) + math
+AccuracyTrainerLogger      - SQLite3 logging of corner confirmations with taught vs confirmed deltas
+```
+
+### Data Flow
+1. **Teach Phase**: User teaches reference points (Ref1/Ref2/Ref3) to define a local coordinate frame. Origin = Ref1, X-axis = Ref1→Ref2, Y-axis = perpendicular (CCW 90deg). Bonding points are taught by 2-3 corners, center computed automatically. All stored as `TrainingSet`.
+2. **Run Phase**: Move to taught reference positions, user adjusts to actual positions (or vision auto-detects). Compute rigid 2D transform (rotation + translation) from taught→actual. Apply transform to all bonding points, move to corrected positions.
+3. **Multi-Device Run**: Additionally registers hex devices by 3-corner capture in gantry frame, uses `TransformationMatrixLoader` to transform bonding positions between gantry and hex coordinate systems.
+
+### Headless Execution
+`AccuracyTrainerCommandHandler` (device type `"accuracytrainer"`) runs alignment without Qt widgets. Parameters: `training_set_name`, `register_hex_left`, `register_hex_right`, `move_to_bonding`. Results stored in SequenceContext as `accuracy_trainer.result.*` (success, corrected positions, deltas).
+
+### Key Design Decisions
+- **Re-entrancy guard**: `TeachMultiDeviceWidget` is NOT refreshed in `updateCurrentTrainingSet()` to prevent data loss during teaching
+- **Vision integration** (conditional `HAS_OPENCV`): `VisionCommandHandler::execute_profile` + `calculate_world_position` for auto-detect in reference and hex corner teaching
+- **File format v2**: Includes UUID, Z parameters, hex corner data. v1 files auto-upgraded on load with sensible defaults
+- **SQLite logging**: Corner confirmations logged to `logs/accuracy_trainer/accuracy_trainer_log.db` with unique point UIDs (`ref_{name}`, `hex_{device}_{corner}`)
+
+## Placement Correction Trainer Module
+
+Located in `include/AppUI/PlacementCorrectionTrainer/` (9 files). Corrects hexapod placement angle by comparing reference and target line angles measured on the gantry.
+
+### Architecture
+```
+PlacementCorrectionPage (main container)
+├── TeachPlacementLineWidget  - Teach 2 points each for reference and target lines
+├── PlacementResultWidget     - Show angle delta and corrected U value
+├── PlacementRetraceWidget    - Re-measure and validate correction
+├── ExposureAdjustWidget      - Camera exposure controls during measurement
+├── ImageGalleryWidget        - Captured placement images
+└── SummaryDiagramWidget      - Visual summary of corrections
+
+PlacementCorrectionStore     - JSON persistence to {productDir}/placement_correction/
+PlacementCorrectionData.h    - Structs (PlacementLinePoints, PlacementCorrectionConfig, PlacementCorrectionSet) + math
+```
+
+### Data Flow
+1. **Teach**: Capture 2 gantry XY points each for a reference line and target line
+2. **Compute**: `PlacementCorrectionMath::ComputeLineAngle()` for each line, delta angle = target - reference
+3. **Correct**: Apply delta to hex device U axis: `correctedU = masterU + deltaAngle` (with optional sign reversal)
+4. **Config**: `PlacementCorrectionConfig` maps a master position (golden reference, never modified) to a target position that receives the corrected values
+
+## Roll Correction Widget
+
+Located in `include/AppUI/RunProgramPage/RollCorrectionWidget.h/.cpp`. Corrects hexapod roll (W axis) using dual-channel peak position measurement.
+
+### Workflow
+1. Register CH1/CH2 peak X positions per hex device (hex-left, hex-right)
+2. Compute roll angle: `arctan(deltaX / spacing)`
+3. Apply 3-step correction: move to CH1 peak, shift X halfway, rotate W per direction table
+4. All moves use 1mm/s safe velocity with automatic restore
+5. "Fine Grid Scan" button runs `GridScanDualChannel` on background thread; "STOP Scan" uses SequenceContext-based stop control
 
 ## Configuration System
 
@@ -196,6 +287,9 @@ All hardware configuration is JSON-based in `config/`:
 | `lighting_config.json` | Lighting controller settings |
 | `safety_watch.json` | Safety I/O monitoring |
 | `pi_pivot_config.json` | PI hexapod pivot point config |
+| `interlocks.json` | Motion interlock rules (up to 3) |
+| `jog_stepsize.json` | Jog step sizes (17 presets, 0.1um to 5000um) |
+| `beam_detection.json` | SWIR/beam detection settings |
 | `system/applicationSettings.ini` | Application-wide settings |
 | `SYSTEM/needlexyoffset.json` | Needle XY offset data |
 
@@ -237,6 +331,7 @@ sequence->AddAction(device, "MoveToAbs", {
 - **NI-VISA** - VISA instrument communication (TEC, SMU devices)
 - **OpenCV 4.12** - Computer vision (optional, compile def `HAS_OPENCV`)
 - **Halcon** - Machine vision (optional, delay-loaded, compile def `HAS_HALCON`)
+- **SQLite3** - Database for accuracy trainer logging (bundled in `external/sqlite3/`)
 - **nlohmann/json** - JSON parsing (header-only)
 - **spdlog** - Logging (header-only)
 
@@ -247,6 +342,7 @@ sequence->AddAction(device, "MoveToAbs", {
 - UnifiedMotionManager requires **both** ACS and PI SDKs
 - Vision plugins require OpenCV; Halcon plugins require **both** OpenCV and Halcon
 - VISA-based adapters (CLD101x, TED4015, Keithley) require NI-VISA
+- Accuracy Trainer vision features require `HAS_OPENCV`
 
 ## Coding Conventions (MISRA-Aligned)
 
@@ -279,12 +375,12 @@ This codebase follows MISRA-inspired safety conventions. When modifying code, fo
 ## Safety Infrastructure
 
 - **`include/common/ErrorCode.h`** — Unified error code enum (40+ codes, categorized 0x0000-0x0F00)
-- **`include/safety/SafetyEventLog.h`** — Structured JSON-lines audit trail (`logs/safety_events.jsonl`), wired into ApplicationContext
-- **`include/safety/SafetyWatchManager.h`** — I/O safety monitoring with E-stop broadcast to all hardware managers
+- **`include/safety/SafetyEventLog.h`** — Structured JSON-lines audit trail (`logs/safety_events.jsonl`), wired into ApplicationContext, with 10MB file rotation
+- **`include/safety/SafetyWatchManager.h`** — I/O safety monitoring with E-stop broadcast, heartbeat health monitor (2s QTimer), `pollingThreadStalled` signal
 - **`include/common/ThreadPriority.h`** — Cross-platform thread priority utility
 
 ### E-Stop Cascade
-When `SafetyWatchManager` triggers, it broadcasts to: TECManager → `DisableAllOutputs()`, PowerSupplyManager → `disableAllOutputs()`, SMUManager → `OutputOffAll()`, PneumaticManager → `StopAll()`, LightingManager → `AllOff()`. All actions are logged to SafetyEventLog with CRITICAL severity.
+When `SafetyWatchManager` triggers, `Application::performEStopCascade()` broadcasts to: TECManager → `DisableAllOutputs()`, PowerSupplyManager → `disableAllOutputs()`, SMUManager → `OutputOffAll()`, PneumaticManager → `StopAll()`, LightingManager → `AllOff()`. All actions are logged to SafetyEventLog with CRITICAL severity. Results are consolidated into a single `ESTOP_CASCADE_COMPLETE` log entry.
 
 ## Static Analysis
 
@@ -299,15 +395,18 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 5. **Builder Pattern** - `SequenceBuilder` for constructing command sequences
 6. **Plugin Architecture** - `IProcessPlugin` for recipe processes, `IVisionPlugin` for vision algorithms
 7. **State Machine** - Waypoint navigation, recipe execution (`RecipeExecutionStateMachine`)
+8. **Trainer Pattern** - Teach-then-run workflow: `AccuracyTrainer` and `PlacementCorrectionTrainer` both use a teach phase (store reference geometry) followed by a run phase (measure actual, compute transform, apply correction)
 
 ## Important Files
 
-- `Application.cpp` - App initialization, manager creation, hardware connection
+- `Application.cpp` - App initialization, manager creation, hardware connection, E-stop cascade
 - `include/context/ApplicationContext.h` - Central dependency container (struct)
 - `include/motions/unified_motion_manager.h` - Motion control unified interface
+- `include/motions/InterlockManager.h` - Position-based motion interlock rules
 - `include/sequence/SequenceEngine.h` - Command execution engine
 - `include/sequence/SequenceBuilder.h` - Sequence construction API
 - `include/sequence/CommandDispatcher.h` - Routes commands to handlers
+- `include/sequence/AccuracyTrainerCommandHandler.h` - Headless alignment execution
 - `include/recipe/IProcessPlugin.h` - Recipe plugin interface
 - `include/recipe/ProcessPluginRegistry.h` - Plugin auto-registration
 - `include/recipe/RecipeManager.h` - Recipe data management
@@ -317,6 +416,8 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 - `include/common/ErrorCode.h` - Unified error codes for the entire application
 - `include/safety/SafetyEventLog.h` - Structured safety audit logging
 - `include/IO/SocketGuard.h` - RAII wrapper for socket lifetime
+- `include/AppUI/AccuracyTrainer/AccuracyTrainerData.h` - Trainer data structures + transform math
+- `include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionData.h` - Placement correction data + angle math
 - `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
 
 ## Quick Reference
@@ -336,3 +437,10 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 **Add machine-specific config:**
 1. Copy `config/xxx.json` to `config/xxx.local.json`
 2. Edit local file (gitignored, won't be overwritten by builds)
+
+**Add a new trainer module:**
+1. Create data structures in `*Data.h` with pure math functions (no dependencies)
+2. Create store class for JSON persistence (product-relative path, local-first)
+3. Create teach widgets and run widgets as separate `QWidget` subclasses
+4. Create container page that manages widget switching and training set selection
+5. Optionally add a `*CommandHandler` for headless recipe execution

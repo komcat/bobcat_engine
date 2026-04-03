@@ -36,6 +36,12 @@ using ManualAlignPointCallback = std::function<bool(
   bool enableZ
 )>;
 
+// Callback type for placement correction retrace - returns true if user saved, false if ended without save
+using PlacementRetraceCallback = std::function<bool(
+  const std::string& trainingSetName,
+  bool autoStart
+)>;
+
 class SystemCommandHandler : public ICommandHandler
 {
 public:
@@ -75,10 +81,16 @@ public:
     m_manualAlignPointCallback = callback;
   }
 
+  // Set the UI callback for placement correction retrace (must be called from main thread)
+  void SetPlacementRetraceCallback(PlacementRetraceCallback callback) {
+    m_placementRetraceCallback = callback;
+  }
+
 private:
   UserPromptCallback m_userPromptCallback;
   UserNotificationCallback m_userNotificationCallback;
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
   ManualAlignPointCallback m_manualAlignPointCallback;
+  PlacementRetraceCallback m_placementRetraceCallback;
 };

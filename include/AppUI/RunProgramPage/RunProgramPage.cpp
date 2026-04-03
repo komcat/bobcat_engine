@@ -20,6 +20,10 @@
 #include "CameraClickToMoveWidget.h"
 #include <future>
 #include "RetraceEditWidget.h"
+#include "PlacementRetraceWidget.h"
+#include "PlacementCorrectionStore.h"
+#include "PlacementCorrectionData.h"
+#include <filesystem>
 #include "ILogger.h"
 #include "LogManager.h"
 #include "DataStore.h"
@@ -2048,6 +2052,17 @@ void RunProgramPage::createExecutionWidget()
   m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
   m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
   m_executionStack->addWidget(m_retraceEditWidget);       // Index 5: Retrace Edit
+
+  // Placement Retrace Widget (reuses PlacementRetraceWidget from trainer module)
+  m_placementRetraceWidget = new PlacementRetraceWidget(m_context);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceCompleted,
+    this, &RunProgramPage::onPlacementRetraceCompleted);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceSkipped,
+    this, &RunProgramPage::onPlacementRetraceSkipped);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
+    this, &RunProgramPage::onPlacementRetraceEnded);
+  m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
+
   m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
   layout->addWidget(m_executionStack, 1);
@@ -2864,6 +2879,8 @@ void RunProgramPage::onExecuteProgram()
   // Set ManualAdjust callback
   connect(this, &RunProgramPage::showManualAdjust,
     this, &RunProgramPage::onShowManualAdjust);
+  connect(this, &RunProgramPage::showPlacementRetrace,
+    this, &RunProgramPage::onShowPlacementRetrace);
 
   m_programWorker->setManualAdjustCallback(
     [this](const std::string& message, const std::string& deviceName,
@@ -2903,6 +2920,19 @@ void RunProgramPage::onExecuteProgram()
 
     // Return the stored result
     return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+  });
+
+  // Set PlacementRetrace callback - uses PlacementRetraceWidget from trainer module
+  m_programWorker->setPlacementRetraceCallback(
+    [this](const std::string& trainingSetName, bool autoStart) -> bool {
+    emit showPlacementRetrace(QString::fromStdString(trainingSetName), autoStart);
+
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_placementRetraceResponse;
   });
 
   // Connect signals (use Qt::QueuedConnection for cross-thread safety)
@@ -4969,6 +4999,94 @@ void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsS
 
   m_isRetraceEditMode = false;
   m_retraceEditRecipeIndex = -1;
+}
+
+// ============================================================================
+// PLACEMENT CORRECTION RETRACE (overlay in execution stack)
+// ============================================================================
+
+void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoStart)
+{
+  // Resolve store base path from current product
+  PlacementCorrectionStore store;
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
+    std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
+    store.SetBasePath((productDir / "placement_correction").string());
+  } else {
+    store.SetBasePath("config/placement_correction");
+  }
+
+  // Load the training set by name
+  auto optSet = store.LoadSet(trainingSetName.toStdString());
+  if (!optSet.has_value()) {
+    m_logTextEdit->appendPlainText(
+      QString("[PlacementRetrace] ERROR: Training set '%1' not found").arg(trainingSetName));
+    m_placementRetraceResponse = false;
+    if (m_promptEventLoop) {
+      m_promptEventLoop->quit();
+    }
+    return;
+  }
+
+  m_activePlacementSet = optSet.value();
+  m_activePlacementSet.Recalculate();
+
+  // Configure widget with loaded data
+  m_placementRetraceWidget->SetData(&m_activePlacementSet);
+
+  // Switch to placement retrace view (full right panel)
+  m_executionStack->setCurrentIndex(6);
+
+  // Auto-start the wizard if requested (skip Idle page)
+  if (autoStart) {
+    m_placementRetraceWidget->AutoStart();
+  }
+}
+
+void RunProgramPage::onPlacementRetraceCompleted(const PlacementCorrectionSet& /*updatedSet*/)
+{
+  // Widget already saved corrected positions internally via onSaveToTarget
+  m_placementRetraceResponse = true;
+
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace completed - corrected position saved");
+
+  // Switch back to execution tabs
+  m_executionStack->setCurrentIndex(0);
+
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onPlacementRetraceSkipped()
+{
+  // User reviewed results but chose to continue without saving
+  m_placementRetraceResponse = true;
+
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace skipped - continuing without correction");
+
+  m_executionStack->setCurrentIndex(0);
+
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onPlacementRetraceEnded()
+{
+  // User clicked End without saving
+  m_placementRetraceResponse = false;
+
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace ended without saving");
+
+  // Switch back to execution tabs
+  m_executionStack->setCurrentIndex(0);
+
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
 }
 
 void RunProgramPage::onEditRecipeSelectionChanged()

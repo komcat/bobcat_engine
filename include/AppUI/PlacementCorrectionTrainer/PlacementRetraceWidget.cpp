@@ -46,6 +46,13 @@ void PlacementRetraceWidget::SetData(PlacementCorrectionSet* set)
     setState(Idle);
 }
 
+void PlacementRetraceWidget::AutoStart()
+{
+    if (m_state == Idle && m_set) {
+        onStartRetrace();
+    }
+}
+
 void PlacementRetraceWidget::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
@@ -336,6 +343,15 @@ void PlacementRetraceWidget::setupUI()
     m_moveToTargetBtn->setEnabled(false);
     connect(m_moveToTargetBtn, &QPushButton::clicked, this, &PlacementRetraceWidget::onMoveToTarget);
     reviewLayout->addWidget(m_moveToTargetBtn);
+
+    m_skipBtn = new QPushButton("Continue Without Saving");
+    m_skipBtn->setFixedHeight(44);
+    m_skipBtn->setStyleSheet(
+        "QPushButton { background-color: #7f8c8d; color: white; font-weight: bold; "
+        "font-size: 14px; border-radius: 4px; padding: 8px 20px; }"
+        "QPushButton:hover { background-color: #95a5a6; }");
+    connect(m_skipBtn, &QPushButton::clicked, this, &PlacementRetraceWidget::onSkip);
+    reviewLayout->addWidget(m_skipBtn);
 
     QString redBtnStyle =
         "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
@@ -979,6 +995,14 @@ void PlacementRetraceWidget::onReset()
     QString targetName = m_set ? QString::fromStdString(m_set->config.targetPositionName) : "Target";
     m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));
     setState(Idle);
+}
+
+void PlacementRetraceWidget::onSkip()
+{
+    std::cout << "[PlacementRetrace] User chose to continue without saving" << std::endl;
+    m_positionTimer->stop();
+    setState(Idle);
+    emit retraceSkipped();
 }
 
 void PlacementRetraceWidget::onEnd()
