@@ -94,10 +94,7 @@ private:
   bool getCurrentDevicePosition(double& x, double& y, double& z,
     double& u, double& v, double& w);
 
-  // Label offset methods
-  void loadLabelOffsets();
-  void saveLabelOffsets();
-  void onLabelOffsetChanged(const QString& name, double offsetX, double offsetY);
+  void loadGraphEdges(const QString& graphName);
 
   // Scan helper methods
   void createScanController();
@@ -145,6 +142,5 @@ private:
   std::unique_ptr<AdaptiveScanController> m_scanController;
 
   QMap<QString, QVector<double>> m_currentPositions;
-  QMap<QString, QPointF> m_labelOffsets;
-  QString m_labelOffsetsFilePath;
+  QMap<QString, QVector<double>> m_rawPositions;  // Raw (local) axis values before transformation
 };

@@ -11,6 +11,9 @@
 #include "TestSystemWidget.h"
 #include "SequenceBuilder.h"     // ✅ NEW: For sequence execution
 #include "SequenceContext.h"     // ✅ NEW: For sequence execution
+#include "graph/MotionGraph.h"
+#include "graph/MotionGraphManager.h"
+#include "products/product_position_manager.h"
 #include <iostream>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -50,7 +53,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_scanController(nullptr)
 	, m_livePositionTimer(nullptr)
 	, m_motionUpdateTimer(nullptr)
-	, m_labelOffsetsFilePath("config/position_labels.json")
+	// Label offsets removed — isometric view uses plain text labels
 {
 	if (!m_productManager) {
 		std::cout << "[ERROR] MotionPage: ProductPositionManager is NULL!" << std::endl;
@@ -70,8 +73,6 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 
 	setupUI();
 	loadDevices();
-	loadLabelOffsets();
-
 	// Product is already loaded at application level - just update UI
 	if (m_productManager && m_productManager->HasLoadedProduct()) {
 		// Export positions to motion manager
@@ -108,9 +109,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	});
 	m_motionUpdateTimer->start();
 
-	// Connect label offset changes to save
-	connect(m_graphicsView, &MotionGraphicsView::labelOffsetChanged,
-		this, &MotionPage::onLabelOffsetChanged);
+	// Label offsets removed - isometric view uses plain text labels
 }
 
 MotionPage::~MotionPage()
@@ -514,7 +513,8 @@ void MotionPage::setupUI()
 		this, &MotionPage::onStopClicked);
 
 	// Velocity preset: apply velocity based on device type (ACS per-axis, PI system)
-	connect(m_controlPanel, &MotionControlPanel::velocityPresetClicked,
+	// Velocity controls moved to DeviceButtonStack
+	connect(m_deviceButtonStack, &DeviceButtonStack::velocityPresetClicked,
 		this, [this](double velocity) {
 		if (m_currentDevice.isEmpty() || !m_motionManager) return;
 		std::string dev = m_currentDevice.toStdString();
@@ -535,15 +535,15 @@ void MotionPage::setupUI()
 		}
 	});
 
-	connect(m_graphicsView, &MotionGraphicsView::positionSelected,
-		this, &MotionPage::onPositionSelected);
+	// Click-to-select removed from graphics view — selection only via position list
 
-	connect(m_graphicsView, &MotionGraphicsView::positionDeselected,
-		this, &MotionPage::onPositionDeselected);
-
-	// ✅ NEW: Connect position selection from list
+	// Connect position selection from list
 	connect(m_controlPanel, &MotionControlPanel::positionSelectedFromList,
 		this, &MotionPage::onPositionSelectedFromList);
+
+	// Connect graph selector change
+	connect(m_controlPanel, &MotionControlPanel::graphChanged,
+		this, &MotionPage::loadGraphEdges);
 
 	// ✅ REMOVED: Scan panel connections (scan panel is hidden)
 	// connect(m_scanPanel, &ScanControlPanel::deviceChanged,
@@ -798,7 +798,7 @@ void MotionPage::showEvent(QShowEvent* event)
 			m_controlPanel->updateBreadcrumb(QString(), QString());
 		}
 		if (m_deviceButtonStack) {
-			m_deviceButtonStack->clearSelectedPosition();
+			// Selected position display moved to graphic view overlay
 		}
 		if (m_graphicsView) {
 			m_graphicsView->setDeviceName(QString());
@@ -811,6 +811,7 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 {
 	m_currentDevice = deviceName;
 	m_currentPositions.clear();
+	m_rawPositions.clear();
 
 	if (!m_motionManager) {
 		return;
@@ -863,6 +864,7 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 
 			QString qPosName = QString::fromStdString(posName);
 			m_currentPositions[qPosName] = values;
+			m_rawPositions[qPosName] = { pos.x, pos.y, pos.z, pos.u, pos.v, pos.w };
 
 			qDebug() << "  -" << qPosName
 				<< "Local:" << pos.x << pos.y << pos.z
@@ -870,13 +872,20 @@ void MotionPage::loadPositionsForDevice(const QString& deviceName)
 		}
 	}
 
-	loadLabelOffsets();
+	m_graphicsView->updatePositions(m_rawPositions);
 
-	m_graphicsView->updatePositions(m_currentPositions, m_labelOffsets);
-	// ✅ REMOVED: Auto-fit on device switch - now using persistent zoom/pan
-	// m_graphicsView->autoFitView();
+	// Populate graph selector and load edges for the first/current graph
+	if (m_productManager) {
+		QList<QString> graphNames = m_productManager->GetGraphManager().getGraphNames(deviceName);
+		QStringList graphNameList;
+		for (const auto& name : graphNames) {
+			graphNameList << name;
+		}
+		m_controlPanel->updateGraphList(graphNameList);
+		loadGraphEdges(m_controlPanel->getCurrentGraph());
+	}
 
-	// ✅ NEW: Update position list in control panel
+	// Update position list in control panel
 	QStringList positionList = m_currentPositions.keys();
 	m_controlPanel->updatePositionList(positionList);
 
@@ -891,6 +900,30 @@ void MotionPage::refreshPositionDisplay()
 	}
 
 	loadPositionsForDevice(m_currentDevice);
+}
+
+void MotionPage::loadGraphEdges(const QString& graphName)
+{
+	if (!m_productManager || m_currentDevice.isEmpty() || graphName.isEmpty()) {
+		m_graphicsView->setGraphEdges({});
+		return;
+	}
+
+	const MotionGraph* graph = m_productManager->GetGraphManager().getGraph(m_currentDevice, graphName);
+	if (!graph) {
+		m_graphicsView->setGraphEdges({});
+		return;
+	}
+
+	QList<MotionGraphicsView::GraphEdge> edges;
+	for (const MotionEdge& edge : graph->getAllEdges()) {
+		const MotionNode* fromNode = graph->getNode(edge.fromNodeId);
+		const MotionNode* toNode = graph->getNode(edge.toNodeId);
+		if (fromNode && toNode && !fromNode->position.isEmpty() && !toNode->position.isEmpty()) {
+			edges.append({fromNode->position, toNode->position});
+		}
+	}
+	m_graphicsView->setGraphEdges(edges);
 }
 
 void MotionPage::onProductChanged()
@@ -962,7 +995,7 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 
 	refreshPositionDisplay();
 	m_controlPanel->clearSelectedPosition();
-	m_deviceButtonStack->clearSelectedPosition();
+	// Selected position display moved to graphic view overlay
 	m_selectedPositionName.clear();
 
 	// ✅ NEW: Update breadcrumb with device only (no position selected yet)
@@ -973,6 +1006,7 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 		std::string type = m_motionManager->GetDeviceType(deviceName.toStdString());
 		for (auto& c : type) c = static_cast<char>(toupper(c));
 		m_controlPanel->updateVelocityPresets(QString::fromStdString(type));
+		m_deviceButtonStack->updateVelocityPresets(QString::fromStdString(type));
 	}
 
 	// ✅ NEW: Set device name and restore its saved view state
@@ -1382,16 +1416,21 @@ void MotionPage::onPositionSelected(const QString& name, double /*x*/, double /*
 			}
 		}
 
-		// Update both control panel and device button stack with position info
+		// Use raw axis values for display (not transformed global)
+		QVector<double> raw = m_rawPositions.value(name, pos);
+
+		// Update both control panel and device button stack with raw position info
 		m_controlPanel->setSelectedPosition(name,
-			pos[0], pos[1], pos[2],
-			pos[3], pos[4], pos[5],
+			raw[0], raw[1], raw[2],
+			raw[3], raw[4], raw[5],
 			entryWaypoints);
 
-		m_deviceButtonStack->setSelectedPosition(name,
-			pos[0], pos[1], pos[2],
-			pos[3], pos[4], pos[5],
-			entryWaypoints);
+		// Selected position display moved to graphic view overlay
+
+		// Update graphic view overlay with raw axis values
+		m_graphicsView->setSelectedPositionInfo(name,
+			raw[0], raw[1], raw[2],
+			raw[3], raw[4], raw[5]);
 
 		// ✅ NEW: Also select in position list
 		m_controlPanel->selectPositionInList(name);
@@ -1399,9 +1438,10 @@ void MotionPage::onPositionSelected(const QString& name, double /*x*/, double /*
 		// ✅ NEW: Update breadcrumb with device and position
 		m_controlPanel->updateBreadcrumb(m_currentDevice, name);
 
-		m_graphicsView->showPathPreview(name,
-			entryWaypoints,
-			currentExitWaypoints);
+		// Path preview removed — graph edges show connectivity
+
+		// Highlight connected graph edges
+		m_graphicsView->highlightEdgesForPosition(name);
 	}
 }
 
@@ -1409,8 +1449,10 @@ void MotionPage::onPositionDeselected()
 {
 	m_selectedPositionName.clear();
 	m_controlPanel->clearSelectedPosition();
-	m_deviceButtonStack->clearSelectedPosition();
-	m_graphicsView->hidePathPreview();
+	// Selected position display moved to graphic view overlay
+	m_graphicsView->clearSelectedPositionInfo();
+	// Path preview removed — graph edges show connectivity
+	m_graphicsView->clearEdgeHighlight();
 
 	// ✅ NEW: Update breadcrumb to show only device (no position)
 	m_controlPanel->updateBreadcrumb(m_currentDevice, QString());
@@ -1458,19 +1500,25 @@ void MotionPage::onPositionSelectedFromList(const QString& name)
 		}
 	}
 
-	// Update control panel and device button stack
-	m_controlPanel->setSelectedPosition(name, pos[0], pos[1], pos[2],
-		pos[3], pos[4], pos[5], entryWaypoints);
-	m_deviceButtonStack->setSelectedPosition(name, pos[0], pos[1], pos[2],
-		pos[3], pos[4], pos[5], entryWaypoints);
+	// Use raw axis values for display (not transformed global)
+	QVector<double> raw = m_rawPositions.value(name, pos);
+
+	// Update control panel with raw values
+	m_controlPanel->setSelectedPosition(name, raw[0], raw[1], raw[2],
+		raw[3], raw[4], raw[5], entryWaypoints);
+
+	// Update graphic view overlay with raw axis values
+	m_graphicsView->setSelectedPositionInfo(name,
+		raw[0], raw[1], raw[2],
+		raw[3], raw[4], raw[5]);
 
 	// ✅ NEW: Update breadcrumb with device and position
 	m_controlPanel->updateBreadcrumb(m_currentDevice, name);
 
-	// Show path preview in graphics view (with 3 arguments)
-	m_graphicsView->showPathPreview(name, entryWaypoints, currentExitWaypoints);
+	// Highlight connected graph edges
+	m_graphicsView->highlightEdgesForPosition(name);
 
-	// ✅ NEW: Center on position with high zoom (2300% = zoom level 23.0)
+	// Center on position with high zoom (2300% = zoom level 23.0)
 	m_graphicsView->centerOnPosition(name, 23.0);
 
 	qDebug() << "[MotionPage] Position selected from list:" << name;
@@ -1510,9 +1558,9 @@ void MotionPage::onUpdateLivePosition()
 
 	double localX, localY, localZ, u, v, w;
 	if (getCurrentDevicePosition(localX, localY, localZ, u, v, w)) {
-		double globalX, globalY, globalZ;
-		transformLocalToGlobal(localX, localY, localZ, globalX, globalY, globalZ);
-		m_graphicsView->updateLiveMarker(m_currentDevice, globalX, globalY);
+		// Use raw local coordinates to match isometric view
+		m_graphicsView->updateLiveMarker(m_currentDevice, localX, localY, localZ);
+		m_graphicsView->setLivePositionInfo(localX, localY, localZ, u, v, w);
 	}
 	else {
 		m_graphicsView->showLiveMarker(false);
@@ -1522,86 +1570,6 @@ void MotionPage::onUpdateLivePosition()
 // ============================================================================
 // LABEL OFFSET MANAGEMENT
 // ============================================================================
-
-void MotionPage::loadLabelOffsets()
-{
-	m_labelOffsets.clear();
-
-	QFile file(m_labelOffsetsFilePath);
-	if (!file.open(QIODevice::ReadOnly)) {
-		qDebug() << "No label offsets file found, using defaults";
-		return;
-	}
-
-	QByteArray fileData = file.readAll();
-	file.close();
-
-	QJsonDocument doc = QJsonDocument::fromJson(fileData);
-	if (!doc.isObject()) {
-		qWarning() << "Invalid label offsets JSON format";
-		return;
-	}
-
-	QJsonObject root = doc.object();
-
-	if (root.contains(m_currentDevice)) {
-		QJsonObject deviceObj = root[m_currentDevice].toObject();
-
-		for (auto it = deviceObj.begin(); it != deviceObj.end(); ++it) {
-			QString posName = it.key();
-			QJsonObject offsetObj = it.value().toObject();
-
-			double offsetX = offsetObj["offsetX"].toDouble();
-			double offsetY = offsetObj["offsetY"].toDouble();
-
-			m_labelOffsets[posName] = QPointF(offsetX, offsetY);
-		}
-	}
-
-	qDebug() << "Loaded" << m_labelOffsets.size() << "label offsets for" << m_currentDevice;
-}
-
-void MotionPage::saveLabelOffsets()
-{
-	QJsonObject root;
-	QFile readFile(m_labelOffsetsFilePath);
-	if (readFile.open(QIODevice::ReadOnly)) {
-		QJsonDocument doc = QJsonDocument::fromJson(readFile.readAll());
-		if (doc.isObject()) {
-			root = doc.object();
-		}
-		readFile.close();
-	}
-
-	QJsonObject deviceObj;
-	for (auto it = m_labelOffsets.begin(); it != m_labelOffsets.end(); ++it) {
-		QJsonObject offsetObj;
-		offsetObj["offsetX"] = it.value().x();
-		offsetObj["offsetY"] = it.value().y();
-		deviceObj[it.key()] = offsetObj;
-	}
-
-	root[m_currentDevice] = deviceObj;
-
-	QJsonDocument doc(root);
-	QFile writeFile(m_labelOffsetsFilePath);
-	if (!writeFile.open(QIODevice::WriteOnly)) {
-		qWarning() << "Could not open" << m_labelOffsetsFilePath << "for writing";
-		return;
-	}
-
-	writeFile.write(doc.toJson(QJsonDocument::Indented));
-	writeFile.close();
-
-	qDebug() << "Saved" << m_labelOffsets.size() << "label offsets for" << m_currentDevice;
-}
-
-void MotionPage::onLabelOffsetChanged(const QString& name, double offsetX, double offsetY)
-{
-	m_labelOffsets[name] = QPointF(offsetX, offsetY);
-	saveLabelOffsets();
-	qDebug() << "Label offset changed:" << name << "(" << offsetX << "," << offsetY << ")";
-}
 
 // ============================================================================
 // WAYPOINT EDITOR

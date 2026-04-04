@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 #include <QTabWidget>
 #include <QListWidget>
+#include <QLineEdit>
 #include <vector>
 #include <string>
 
@@ -38,6 +39,10 @@ public:
   void updatePositionList(const QStringList& positions);
   void selectPositionInList(const QString& positionName);
 
+  // Graph selector
+  void updateGraphList(const QStringList& graphNames);
+  QString getCurrentGraph() const;
+
   // Get current selected device
   QString getCurrentDevice() const;
 
@@ -57,10 +62,12 @@ signals:
   void homeClicked();
   void stopClicked();
   void velocityPresetClicked(double velocity);  // Velocity preset button clicked
-  void positionSelectedFromList(const QString& positionName);  // ✅ NEW: Position selected from list
+  void positionSelectedFromList(const QString& positionName);
+  void graphChanged(const QString& graphName);
 
 private slots:
   void onPositionListSelectionChanged();
+  void onFilterTextChanged(const QString& text);
 
 private:
   void setupUI();
@@ -70,7 +77,9 @@ private:
   // Widgets
   QTabWidget* m_tabWidget;
   QComboBox* m_deviceCombo;
-  QListWidget* m_positionList;  // ✅ NEW: Position list widget
+  QListWidget* m_positionList;
+  QLineEdit* m_positionFilter;
+  QComboBox* m_graphSelector;
   QLabel* m_breadcrumbLabel;  // ✅ NEW: Breadcrumb display for device >> position
 
   QLabel* m_posNameLabel;

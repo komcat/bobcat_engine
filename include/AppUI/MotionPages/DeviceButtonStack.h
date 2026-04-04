@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QGridLayout>
 #include <QButtonGroup>
 #include <QStringList>
 #include <QMap>
@@ -14,9 +15,8 @@
 class UnifiedMotionManager;
 
 /**
- * @brief Vertical stack of device selection buttons with selected position display
- * Replaces the device dropdown with large, easy-to-click buttons
- * Also shows information about the currently selected position
+ * @brief Vertical stack of device selection buttons with velocity controls
+ * Shows device buttons at top, velocity presets below
  */
 class DeviceButtonStack : public QWidget
 {
@@ -32,7 +32,7 @@ public:
   // Set available devices
   void setDevices(const QStringList& devices);
 
-  // ✅ NEW: Refresh device list showing only connected devices, sorted alphabetically
+  // Refresh device list showing only connected devices, sorted alphabetically
   void refreshDevices();
 
   // Get currently selected device
@@ -41,14 +41,12 @@ public:
   // Set selected device programmatically
   void setCurrentDevice(const QString& deviceName);
 
-  // Update selected position info display
-  void setSelectedPosition(const QString& name, double x, double y, double z,
-    double u, double v, double w,
-    const std::vector<std::string>& waypoints = {});
-  void clearSelectedPosition();
+  // Velocity presets
+  void updateVelocityPresets(const QString& deviceType);
 
 signals:
   void deviceChanged(const QString& deviceName);
+  void velocityPresetClicked(double velocity);
 
 private slots:
   void onButtonClicked(int id);
@@ -56,23 +54,20 @@ private slots:
 private:
   void setupUI();
   void clearButtons();
-  void setupPositionInfoSection();
 
   QVBoxLayout* m_mainLayout;
   QButtonGroup* m_buttonGroup;
   QMap<int, QString> m_deviceMap;  // Button ID -> Device name
   QString m_currentDevice;
 
-  // ✅ NEW: Motion manager for connection status
+  // Container for dynamically added device buttons
+  QWidget* m_deviceButtonsContainer;
+  QVBoxLayout* m_deviceButtonsLayout;
+
+  // Motion manager for connection status
   UnifiedMotionManager* m_motionManager;
 
-  // Selected position info widgets
-  QLabel* m_posNameLabel;
-  QLabel* m_posXLabel;
-  QLabel* m_posYLabel;
-  QLabel* m_posZLabel;
-  QLabel* m_posULabel;
-  QLabel* m_posVLabel;
-  QLabel* m_posWLabel;
-  QString m_selectedPositionName;
+  // Velocity presets
+  QWidget* m_velocityPresetsWidget;
+  QList<QPushButton*> m_velocityButtons;
 };
