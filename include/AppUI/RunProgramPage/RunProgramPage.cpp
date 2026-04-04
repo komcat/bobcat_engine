@@ -2922,7 +2922,14 @@ void RunProgramPage::onExecuteProgram()
     return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
   });
 
-  // Set PlacementRetrace callback - uses PlacementRetraceWidget from trainer module
+  // PlacementRetrace callback — bridges the recipe thread to the UI.
+  // Called from SystemCommandHandler on the recipe worker thread.
+  // Emits showPlacementRetrace (cross-thread signal) to trigger
+  // onShowPlacementRetrace on the UI thread, then blocks here in a
+  // QEventLoop until the retrace widget signals completion/skip/end.
+  // The event loop is quit by onPlacementRetraceSkipped or onPlacementRetraceEnded.
+  // NOTE: onPlacementRetraceCompleted does NOT quit the loop — it just records
+  // the save. The user must click "Continue" or "End" to advance the recipe.
   m_programWorker->setPlacementRetraceCallback(
     [this](const std::string& trainingSetName, bool autoStart) -> bool {
     emit showPlacementRetrace(QString::fromStdString(trainingSetName), autoStart);

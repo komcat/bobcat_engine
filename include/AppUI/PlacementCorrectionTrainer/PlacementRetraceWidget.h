@@ -1,4 +1,33 @@
 // PlacementRetraceWidget.h - Retrace wizard for placement correction
+//
+// This widget is used in two contexts:
+//   1. Standalone: inside PlacementCorrectionPage (the trainer UI, F8 shortcut)
+//   2. Recipe execution: embedded in RunProgramPage's execution stack (index 6)
+//
+// RECIPE INTEGRATION FLOW:
+//   Recipe step "Placement Correction Retrace"
+//     → PlacementCorrectionProcesses.cpp builds: system.PlacementCorrectionRetrace
+//     → SystemCommandHandler invokes m_placementRetraceCallback (blocking)
+//     → RunProgramPage callback: emits showPlacementRetrace signal, enters QEventLoop
+//     → RunProgramPage::onShowPlacementRetrace: loads set, calls SetData + AutoStart
+//     → This widget runs the 6-state wizard
+//     → On save: emits retraceCompleted (does NOT quit event loop — user stays here)
+//     → On "Continue" click: emits retraceSkipped → RunProgramPage quits event loop
+//     → On "End" click: emits retraceEnded → RunProgramPage quits loop with false
+//     → SystemCommandHandler returns true/false → recipe continues or stops
+//
+// SIGNALS AND RECIPE ADVANCEMENT:
+//   retraceCompleted — position saved, but recipe does NOT advance yet.
+//     The user can still "Move to Target" or click "Continue".
+//   retraceSkipped   — user clicked Continue (after save) or Skip (no save).
+//     This is what actually advances the recipe to the next step.
+//   retraceEnded     — user clicked End. Recipe stops (returns false).
+//
+// IMPORTANT: If you change the signal flow or add new signals, update the
+// corresponding handlers in RunProgramPage.cpp (onPlacementRetraceCompleted,
+// onPlacementRetraceSkipped, onPlacementRetraceEnded) to keep recipe
+// advancement behavior correct.
+//
 #pragma once
 
 #include <QWidget>

@@ -1,4 +1,63 @@
 // PlacementCorrectionData.h - Data structures and math for Placement Correction Trainer
+//
+// ============================================================================
+// PLACEMENT CORRECTION MODULE — OVERVIEW
+// ============================================================================
+//
+// PURPOSE:
+//   Corrects hexapod placement angle by comparing a reference line and a
+//   target line measured on the gantry. The angular difference (delta) is
+//   applied to the hex device's U axis (rotation) and/or XY position.
+//
+// CONCEPT:
+//   1. TEACH phase (PlacementCorrectionPage / TeachPlacementLineWidget):
+//      - User captures 2 gantry XY points for a "reference line" (golden edge)
+//      - User captures 2 gantry XY points for a "target line" (placed component edge)
+//      - Each point stores gantry position (X,Y,Z) and camera exposure
+//      - A "master position" on the hex device is the golden reference pose
+//      - A "target position" on the hex device receives the corrected values
+//
+//   2. RETRACE phase (PlacementRetraceWidget):
+//      - Re-measures reference and target lines at current gantry positions
+//      - Computes angular delta between the two lines
+//      - Computes XY correction vector: expected center vs actual center
+//      - Optionally transforms correction from gantry-global to device-local
+//        coordinates using a transformation matrix
+//      - Saves corrected XYZUVW to the hex device's "target position"
+//
+//   3. RECIPE INTEGRATION:
+//      - PlacementCorrectionProcesses.cpp defines the recipe plugin
+//        ("Placement Correction Retrace") that creates a system command
+//      - SystemCommandHandler.cpp handles "PlacementCorrectionRetrace" by
+//        invoking a UI callback to show the retrace wizard
+//      - RunProgramPage.cpp provides the callback, manages the QEventLoop
+//        blocking, and handles the widget's completion/skip/end signals
+//
+// DATA FLOW (retrace):
+//   PlacementCorrectionSet (loaded from JSON)
+//     → PlacementRetraceWidget.SetData()
+//     → 6-state wizard: Idle → WaitRefP1 → WaitRefP2 → WaitTgtP1 → WaitTgtP2 → Review
+//     → computeRetraceResults(): angle delta + XY correction + optional matrix transform
+//     → onSaveToTarget(): writes corrected XYZUVW to motor_devices.json
+//     → User clicks "Continue" → recipe proceeds to next step
+//
+// IMPORTANT — KEEPING TRAINER AND PLUGIN IN SYNC:
+//   If you modify the trainer (data structures, math, retrace logic, or UI),
+//   verify that the following files remain consistent:
+//     - PlacementCorrectionData.h        (this file — structs and math)
+//     - PlacementCorrectionStore.h/cpp   (JSON serialization of these structs)
+//     - PlacementRetraceWidget.h/cpp     (retrace wizard — uses these structs)
+//     - PlacementCorrectionProcesses.cpp (recipe plugin — parameter names)
+//     - SystemCommandHandler.cpp         (command handler — callback interface)
+//     - RunProgramPage.cpp               (callback wiring and signal handlers)
+//   In particular:
+//     - Adding a new parameter to PlacementCorrectionConfig requires updating
+//       the Store (JSON read/write), the plugin (UI + BuildSequence), and
+//       the retrace widget (if it uses the new parameter)
+//     - Changing the retrace flow (signals, states) requires updating the
+//       RunProgramPage signal handlers that control recipe advancement
+//
+// ============================================================================
 #pragma once
 
 #include <string>
@@ -12,6 +71,8 @@
 // Data Structures
 // ============================================================================
 
+// Two gantry XY(Z) points that define a line on the measurement device.
+// Used for both teach and retrace — the line angle is computed from P1→P2.
 struct PlacementLinePoints {
     std::string name;       // "Reference" or "Target"
     double p1x = 0.0;      // gantry-main X of first point (mm)
@@ -28,6 +89,10 @@ struct PlacementLinePoints {
     bool valid = false;     // true when both points have been captured
 };
 
+// Configuration that maps the correction to a hex device's named positions.
+// masterPosition is the golden reference (read-only); targetPosition receives
+// the corrected XYZUVW after retrace. These position names correspond to
+// entries in motor_devices.json / motor_devices.local.json.
 struct PlacementCorrectionConfig {
     std::string targetDevice;           // "hex-left" or "hex-right"
 
@@ -154,6 +219,11 @@ struct ThumbOffset {
 // PlacementCorrectionSet (defined after math namespace so it can use it)
 // ============================================================================
 
+// Complete training set — contains everything needed for a retrace:
+// the taught reference/target lines, the correction config (device + positions),
+// and computed results. Persisted as JSON via PlacementCorrectionStore.
+// The measureDevice is the gantry that physically moves to measure lines;
+// the targetDevice (in config) is the hex that receives the correction.
 struct PlacementCorrectionSet {
     std::string uid;
     std::string name;

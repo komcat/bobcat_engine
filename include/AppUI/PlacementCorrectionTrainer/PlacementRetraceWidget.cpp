@@ -1,4 +1,18 @@
 // PlacementRetraceWidget.cpp - Retrace wizard for placement correction
+//
+// 6-state wizard: Idle → WaitRefP1 → WaitRefP2 → WaitTgtP1 → WaitTgtP2 → Review
+//
+// Key methods and their roles:
+//   autoNavigateToRefP1/TgtP1  — MoveToAbs to taught P1 positions (async)
+//   onConfirmRefP1/TgtP1       — Capture current position, MoveToAbs to P2 via delta
+//   onConfirmRefP2/TgtP2       — Capture P2, compute line angle, advance state
+//   computeRetraceResults      — Core math: angle delta, XY correction, matrix transform
+//   onSaveToTarget             — Write corrected XYZUVW to motor_devices.json
+//   onMoveToTarget             — Move hex to saved position (user-initiated)
+//   onSkip                     — Continue recipe without saving (or after saving)
+//   onEnd                      — Abort retrace, recipe stops
+//
+// See PlacementRetraceWidget.h header comments for recipe integration details.
 #include "PlacementRetraceWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
@@ -740,6 +754,23 @@ void PlacementRetraceWidget::onConfirmTgtP2()
     setState(Review);
 }
 
+// Core correction computation. Called when all 4 points (RefP1, RefP2, TgtP1, TgtP2) are confirmed.
+//
+// Algorithm:
+//   1. Read current hex device position (live XYZUVW)
+//   2. Compute midpoints of retraced reference line and target line
+//   3. Compute "master vector": ref_center → (ref_center + taught_delta)
+//      where taught_delta = taught_target_center - taught_reference_center
+//   4. Compute "expected point" = retraced_ref_center + master_vector
+//   5. Compute "actual point" = retraced_target_center
+//   6. Correction = expected - actual (in gantry global coordinates)
+//   7. Optionally transform correction from gantry-global to device-local
+//      coordinates using the transformation matrix (if loaded)
+//   8. Compute angle correction: delta = retraced_target_angle - retraced_ref_angle
+//   9. Apply corrections to live hex position → corrected XYZUVW
+//  10. If applyUCorrection enabled: correctedU = liveU + deltaAngle
+//
+// The corrected position is stored in m_correctedX..W for use by onSaveToTarget().
 void PlacementRetraceWidget::computeRetraceResults()
 {
     if (!m_context || !m_context->motionManager || !m_set) {

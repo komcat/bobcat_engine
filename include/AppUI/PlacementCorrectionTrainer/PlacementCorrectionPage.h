@@ -1,4 +1,12 @@
 // PlacementCorrectionPage.h - Main page for Placement Correction Trainer
+//
+// Standalone trainer UI (accessed via F8 shortcut in MainWindow).
+// Left panel: training set list + management. Right panel: teach/retrace widgets.
+//
+// The retrace functionality is also available as a recipe step via
+// PlacementCorrectionProcesses.cpp ("Placement Correction Retrace" plugin).
+// That plugin reuses PlacementRetraceWidget embedded in RunProgramPage.
+// See PlacementCorrectionData.h header for the full module overview.
 #pragma once
 
 #include <QWidget>

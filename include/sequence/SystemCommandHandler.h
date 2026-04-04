@@ -36,10 +36,14 @@ using ManualAlignPointCallback = std::function<bool(
   bool enableZ
 )>;
 
-// Callback type for placement correction retrace - returns true if user saved, false if ended without save
+// Callback for placement correction retrace — blocks the recipe thread.
+// The callback shows the PlacementRetraceWidget UI and enters a QEventLoop.
+// Returns true if user saved or skipped (recipe continues to next step).
+// Returns false if user clicked "End" (recipe execution stops).
+// Set by RunProgramPage; see RunProgramPage.cpp "setPlacementRetraceCallback".
 using PlacementRetraceCallback = std::function<bool(
-  const std::string& trainingSetName,
-  bool autoStart
+  const std::string& trainingSetName,  // Name of PlacementCorrectionSet to load
+  bool autoStart                        // Skip Idle page and begin retrace immediately
 )>;
 
 class SystemCommandHandler : public ICommandHandler

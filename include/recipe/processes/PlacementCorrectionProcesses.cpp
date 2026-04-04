@@ -1,5 +1,27 @@
 // PlacementCorrectionProcesses.cpp
 // Recipe plugin: Placement Correction Retrace
+//
+// This plugin creates a "system.PlacementCorrectionRetrace" action in the
+// sequence engine. When executed, it invokes a UI callback that displays the
+// PlacementRetraceWidget (6-state retrace wizard) and blocks the recipe
+// until the user completes, skips, or ends the retrace.
+//
+// Parameters:
+//   training_set_name — name of the PlacementCorrectionSet to load from
+//                       the product's placement_correction/ folder
+//   auto_start        — if "true", skip the Idle page and start retracing
+//
+// Execution flow:
+//   BuildSequence → AddAction("system", "PlacementCorrectionRetrace", params)
+//   → SystemCommandHandler handles "PlacementCorrectionRetrace"
+//   → Invokes m_placementRetraceCallback (set by RunProgramPage)
+//   → RunProgramPage loads the set, shows the retrace widget, enters QEventLoop
+//   → Widget signals (completed/skipped/ended) control when recipe continues
+//
+// IMPORTANT: If you add new parameters here, also update:
+//   - SystemCommandHandler.cpp (to read and use the new parameter)
+//   - PlacementRetraceWidget (if it needs the parameter during retrace)
+//   - PlacementCorrectionStore (if the parameter is persisted in the set JSON)
 
 #include "../IProcessPlugin.h"
 #include "../ProcessPluginRegistry.h"
