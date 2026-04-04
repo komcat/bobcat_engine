@@ -6,8 +6,100 @@ import siphog
 import serial
 from pyqtgraph import GraphicsLayoutWidget, PlotItem, TextItem
 import contextlib
+import time
+from collections import deque
+
+# Debug flag for rate monitoring
+DEBUG_EMIT_RATE = True
+DEBUG_RATE_LOG_INTERVAL = 5.0  # Log rate statistics every N seconds
+
+# Network tethering configuration
+NETWORK_SEND_RATE_HZ = 10  # Tether network send rate to 10Hz
+NETWORK_SEND_INTERVAL = 1.0 / NETWORK_SEND_RATE_HZ  # 0.1 seconds
 
 data_key = ["SLED_Current (mA)", "Photo Current (uA)", "SLED_Temp (C)", "Target SAG_PWR (V)", "SAG_PWR (V)", "TEC_Current (mA)"]
+
+
+class RateMonitor:
+    """Monitor and track data emission rate for debugging"""
+    def __init__(self, name, window_size=100):
+        self.name = name
+        self.window_size = window_size
+        self.timestamps = deque(maxlen=window_size)
+        self.intervals = deque(maxlen=window_size)  # Time between samples
+        self.last_log_time = time.perf_counter()
+        self.total_count = 0
+        self.start_time = None
+        self.min_interval = float('inf')
+        self.max_interval = 0.0
+
+    def tick(self):
+        """Record a data emission event"""
+        now = time.perf_counter()
+        if self.start_time is None:
+            self.start_time = now
+
+        if len(self.timestamps) > 0:
+            interval = now - self.timestamps[-1]
+            self.intervals.append(interval)
+            self.min_interval = min(self.min_interval, interval)
+            self.max_interval = max(self.max_interval, interval)
+
+        self.timestamps.append(now)
+        self.total_count += 1
+
+    def get_instant_rate(self):
+        """Get instantaneous rate based on last two samples"""
+        if len(self.timestamps) < 2:
+            return 0.0
+        dt = self.timestamps[-1] - self.timestamps[-2]
+        return 1.0 / dt if dt > 0 else 0.0
+
+    def get_average_rate(self):
+        """Get average rate over the window"""
+        if len(self.timestamps) < 2:
+            return 0.0
+        dt = self.timestamps[-1] - self.timestamps[0]
+        return (len(self.timestamps) - 1) / dt if dt > 0 else 0.0
+
+    def get_overall_rate(self):
+        """Get overall rate since start"""
+        if self.start_time is None or self.total_count < 2:
+            return 0.0
+        dt = time.perf_counter() - self.start_time
+        return self.total_count / dt if dt > 0 else 0.0
+
+    def get_jitter_ms(self):
+        """Get jitter (variation in interval) in milliseconds"""
+        if len(self.intervals) < 2:
+            return 0.0
+        intervals_list = list(self.intervals)
+        mean = sum(intervals_list) / len(intervals_list)
+        variance = sum((x - mean) ** 2 for x in intervals_list) / len(intervals_list)
+        return (variance ** 0.5) * 1000  # Convert to ms
+
+    def get_min_max_interval_ms(self):
+        """Get min and max intervals in milliseconds"""
+        if self.min_interval == float('inf'):
+            return 0.0, 0.0
+        return self.min_interval * 1000, self.max_interval * 1000
+
+    def should_log(self, interval=None):
+        """Check if it's time to log stats"""
+        if interval is None:
+            interval = DEBUG_RATE_LOG_INTERVAL
+        now = time.perf_counter()
+        if now - self.last_log_time >= interval:
+            self.last_log_time = now
+            return True
+        return False
+
+    def get_stats_string(self):
+        """Get formatted statistics string"""
+        min_int, max_int = self.get_min_max_interval_ms()
+        return (f"[{self.name}] Rate: {self.get_average_rate():.1f} Hz (instant: {self.get_instant_rate():.1f} Hz), "
+                f"Total: {self.total_count}, Jitter: {self.get_jitter_ms():.2f}ms, "
+                f"Interval: {min_int:.1f}-{max_int:.1f}ms")
 host = "127.0.0.63"
 port = 65432
 
@@ -41,6 +133,7 @@ class SiPhOGThread(QtCore.QThread):
     data_updated = QtCore.pyqtSignal(list)  # Emitting list of floats
     status_updated = QtCore.pyqtSignal(str)  # Emitting status messages
     current_changed = QtCore.pyqtSignal(int)  # Signal to confirm current change
+    rate_updated = QtCore.pyqtSignal(dict)  # Signal for rate monitoring updates
 
     def __init__(self, current_mA, parent=None):
         super().__init__(parent)
@@ -53,6 +146,15 @@ class SiPhOGThread(QtCore.QThread):
         self.new_current_mA = None
         self.current_change_requested = False
         self.mutex = QtCore.QMutex()
+
+        # Rate monitors for debugging
+        if DEBUG_EMIT_RATE:
+            self.device_read_monitor = RateMonitor("DeviceRead")
+            self.gui_emit_monitor = RateMonitor("GUIEmit")
+            self.network_send_monitor = RateMonitor("NetworkSend")
+
+        # Network tethering - track last send time
+        self.last_network_send_time = 0.0
 
     def set_current(self, new_current_mA):
         """Thread-safe method to request current change"""
@@ -174,6 +276,10 @@ class SiPhOGThread(QtCore.QThread):
                     # Read data from device
                     msg = next(gen_msg)
 
+                    # Debug: Track device read rate
+                    if DEBUG_EMIT_RATE:
+                        self.device_read_monitor.tick()
+
                     # translate from new names to old names
                     tmp_dict = {}
                     tmp_dict["SLED_Current (mA)"] = msg.parsed['sld_current_sense']
@@ -192,23 +298,48 @@ class SiPhOGThread(QtCore.QThread):
                     values = [tmp_dict[key] for key in data_key]
 
                     # Create string for client if needed with $START/$END format
+                    # Tethered to NETWORK_SEND_RATE_HZ (10Hz by default)
                     if conn is not None:
-                        values_str = ",".join(["{:f}".format(tmp_dict[key]) for key in data_key])
-                        out_msg_str = f"$START,{values_str},$END"
-                        try:
-                            conn.send(out_msg_str.encode())
-                        except socket.error:
-                            # Client disconnected
-                            self.status_updated.emit("Client disconnected")
-                            print("\tClient disconnected")
+                        current_time = time.perf_counter()
+                        if current_time - self.last_network_send_time >= NETWORK_SEND_INTERVAL:
+                            self.last_network_send_time = current_time
+                            values_str = ",".join(["{:f}".format(tmp_dict[key]) for key in data_key])
+                            out_msg_str = f"$START,{values_str},$END"
                             try:
-                                conn.close()
-                            except:
-                                pass
-                            conn = None
+                                conn.send(out_msg_str.encode())
+                                # Debug: Track network send rate
+                                if DEBUG_EMIT_RATE:
+                                    self.network_send_monitor.tick()
+                            except socket.error:
+                                # Client disconnected
+                                self.status_updated.emit("Client disconnected")
+                                print("\tClient disconnected")
+                                try:
+                                    conn.close()
+                                except:
+                                    pass
+                                conn = None
 
                     # Always emit data for GUI update (regardless of client connection)
                     self.data_updated.emit(values)
+
+                    # Debug: Track GUI emit rate and log statistics
+                    if DEBUG_EMIT_RATE:
+                        self.gui_emit_monitor.tick()
+                        if self.device_read_monitor.should_log():
+                            print(f"\n{'='*60}")
+                            print(f"[RATE DEBUG] Emission Rate Statistics:")
+                            print(f"  {self.device_read_monitor.get_stats_string()}")
+                            print(f"  {self.gui_emit_monitor.get_stats_string()}")
+                            print(f"  {self.network_send_monitor.get_stats_string()}")
+                            print(f"{'='*60}\n")
+                            # Emit rate data for potential GUI display
+                            rate_data = {
+                                'device_read': self.device_read_monitor.get_average_rate(),
+                                'gui_emit': self.gui_emit_monitor.get_average_rate(),
+                                'network_send': self.network_send_monitor.get_average_rate(),
+                            }
+                            self.rate_updated.emit(rate_data)
 
                 except StopIteration:
                     # End of data stream
@@ -290,14 +421,23 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
         self.plot.addLegend(labelTextSize='12pt')
         self.plot.showGrid(x=True, y=True)
 
-        # Data buffers for plotting
+        # Data buffers for plotting - use deque for efficient append/remove
         self.max_points = 100
-        self.target_data = []
-        self.actual_data = []
+        self.target_data = deque(maxlen=self.max_points)
+        self.actual_data = deque(maxlen=self.max_points)
+
+        # Pre-allocate numpy arrays for setData (avoids allocation each frame)
+        self._target_array = np.zeros(self.max_points)
+        self._actual_array = np.zeros(self.max_points)
+        self._x_array = np.arange(self.max_points)
 
         # Plot curves
         self.target_curve = self.plot.plot(pen=pg.mkPen(color='#FFA07A', width=4), name='Target SAG (V)')
         self.actual_curve = self.plot.plot(pen=pg.mkPen(color='#98D8C8', width=4), name='Actual SAG (V)')
+
+        # Throttle chart updates to reduce jiggle (update chart at ~30Hz max)
+        self._last_chart_update = 0.0
+        self._chart_update_interval = 1.0 / 30.0  # 30 Hz
 
         # Value displays below the chart
         self.values_container = QtWidgets.QWidget()
@@ -359,7 +499,7 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
 
     def update_data(self, target_sag, actual_sag):
         """Update the comparison display with new data"""
-        # Update value labels
+        # Update value labels (always update text - it's lightweight)
         self.target_value_label.setText(f'{target_sag:.4f}')
         self.actual_value_label.setText(f'{actual_sag:.4f}')
 
@@ -399,18 +539,34 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
         self.status_label.setStyleSheet(f"color: {color};")
         self.percent_container.setStyleSheet(f"background-color: {bg_color}; border-radius: 10px;")
 
-        # Update chart data
+        # Update chart data buffers (deque handles max size automatically)
         self.target_data.append(target_sag)
         self.actual_data.append(actual_sag)
 
-        # Keep only last max_points
-        if len(self.target_data) > self.max_points:
-            self.target_data = self.target_data[-self.max_points:]
-            self.actual_data = self.actual_data[-self.max_points:]
+        # Throttle chart updates to reduce jiggle
+        current_time = time.perf_counter()
+        if current_time - self._last_chart_update >= self._chart_update_interval:
+            self._last_chart_update = current_time
+            self._update_chart()
 
-        # Update curves
-        self.target_curve.setData(self.target_data)
-        self.actual_curve.setData(self.actual_data)
+    def _update_chart(self):
+        """Internal method to update chart curves (throttled)"""
+        n = len(self.target_data)
+        if n == 0:
+            return
+
+        # Copy deque data to numpy arrays efficiently
+        target_list = list(self.target_data)
+        actual_list = list(self.actual_data)
+
+        # Use numpy array for smoother rendering
+        target_arr = np.array(target_list)
+        actual_arr = np.array(actual_list)
+        x_arr = np.arange(n)
+
+        # Update curves with numpy arrays
+        self.target_curve.setData(x_arr, target_arr)
+        self.actual_curve.setData(x_arr, actual_arr)
 
 
 class RealTimePlotWidget(QtWidgets.QWidget):
@@ -518,6 +674,25 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         self.layout.addLayout(self.current_control_layout)
         self.layout.addWidget(self.tab_widget)
 
+        # Rate monitoring display (for debugging)
+        if DEBUG_EMIT_RATE:
+            self.rate_layout = QtWidgets.QHBoxLayout()
+            self.rate_label = QtWidgets.QLabel("Rate Monitor:")
+            self.device_rate_label = QtWidgets.QLabel("Device: -- Hz")
+            self.gui_rate_label = QtWidgets.QLabel("GUI: -- Hz")
+            self.network_rate_label = QtWidgets.QLabel("Network: -- Hz")
+
+            self.device_rate_label.setStyleSheet("color: #FF6B6B; font-weight: bold;")
+            self.gui_rate_label.setStyleSheet("color: #4ECDC4; font-weight: bold;")
+            self.network_rate_label.setStyleSheet("color: #45B7D1; font-weight: bold;")
+
+            self.rate_layout.addWidget(self.rate_label)
+            self.rate_layout.addWidget(self.device_rate_label)
+            self.rate_layout.addWidget(self.gui_rate_label)
+            self.rate_layout.addWidget(self.network_rate_label)
+            self.rate_layout.addStretch()
+            self.layout.insertLayout(2, self.rate_layout)
+
         # Thread and signal connections
         self.server_thread = None
         self.start_button.clicked.connect(self.start_server)
@@ -557,6 +732,13 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         self.update_current_status(current_mA)
         self.apply_current_button.setEnabled(True)  # Re-enable the button
 
+    def update_rate_display(self, rate_data):
+        """Update the rate monitoring display in the GUI"""
+        if DEBUG_EMIT_RATE:
+            self.device_rate_label.setText(f"Device: {rate_data.get('device_read', 0):.1f} Hz")
+            self.gui_rate_label.setText(f"GUI: {rate_data.get('gui_emit', 0):.1f} Hz")
+            self.network_rate_label.setText(f"Network: {rate_data.get('network_send', 0):.1f} Hz")
+
     def start_server(self):
         self.current_mA_dropdown.setEnabled(False)
         self.start_button.setEnabled(False)
@@ -572,6 +754,8 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         self.server_thread.data_updated.connect(self.update_plot)
         self.server_thread.status_updated.connect(self.update_status)
         self.server_thread.current_changed.connect(self.on_current_changed)
+        if DEBUG_EMIT_RATE:
+            self.server_thread.rate_updated.connect(self.update_rate_display)
         self.server_thread.start()
 
     def stop_server(self):
@@ -586,6 +770,12 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         self.apply_current_button.setEnabled(False)
         self.update_status("Server stopped")
         self.current_status_label.setText("Current: -- mA")
+
+        # Reset rate display
+        if DEBUG_EMIT_RATE:
+            self.device_rate_label.setText("Device: -- Hz")
+            self.gui_rate_label.setText("GUI: -- Hz")
+            self.network_rate_label.setText("Network: -- Hz")
 
 def main():
     app = QtWidgets.QApplication([])
