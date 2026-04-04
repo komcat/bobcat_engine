@@ -46,8 +46,12 @@ void PowerSupplyFormWidget::clear()
   m_serverPort = nullptr;
 
   if (m_formContent->layout()) {
-    QLayoutItem* item;
-    while ((item = m_formContent->layout()->takeAt(0)) != nullptr) {
+    static constexpr int MAX_LAYOUT_ITEMS = 1000;
+    for (int i = 0; i < MAX_LAYOUT_ITEMS; ++i) {
+      QLayoutItem* item = m_formContent->layout()->takeAt(0);
+      if (item == nullptr) {
+        break;
+      }
       delete item->widget();
       delete item;
     }

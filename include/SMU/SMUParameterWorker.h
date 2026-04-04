@@ -57,12 +57,12 @@ signals:
 
 public slots:
     // Command requests (queued from UI thread)
-    void requestSetVoltage(double voltage);
-    void requestSetCurrent(double current);
+    void requestSetVoltage(int channel, double voltage);
+    void requestSetCurrent(int channel, double current);
     void requestSetVoltageCompliance(double compliance);
     void requestSetCurrentCompliance(double compliance);
-    void requestOutputOn();
-    void requestOutputOff();
+    void requestOutputOn(int channel);
+    void requestOutputOff(int channel);
     void requestReadMeasurements(int channel);
     void requestRefreshAll(int channel);
 
@@ -122,5 +122,5 @@ private:
 
     // Processing intervals (ms)
     static constexpr int PROCESS_INTERVAL_MS = 50;
-    static constexpr int DEFAULT_POLL_INTERVAL_MS = 1000;
+    static constexpr int DEFAULT_POLL_INTERVAL_MS = 200;
 };

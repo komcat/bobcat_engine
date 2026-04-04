@@ -20,6 +20,24 @@ class SMUManager;
 class SMUConnectionWorker;
 class SMUParameterWorker;
 
+struct SMUChannelWidgets
+{
+  int channel = 1;
+  // Measurement display
+  QLabel* outputStateLabel = nullptr;
+  QLabel* voltageLabel = nullptr;
+  QLabel* currentLabel = nullptr;
+  QPushButton* refreshButton = nullptr;
+  // Controls
+  QDoubleSpinBox* voltageSpinBox = nullptr;
+  QPushButton* setVoltageButton = nullptr;
+  QDoubleSpinBox* currentSpinBox = nullptr;
+  QPushButton* setCurrentButton = nullptr;
+  QPushButton* outputOnButton = nullptr;
+  QPushButton* outputOffButton = nullptr;
+  QGroupBox* outputControlGroup = nullptr;
+};
+
 /**
  * @brief Control page for SMU devices
  * Two-panel layout: Device list (left) + Controls (right)
@@ -54,13 +72,13 @@ private slots:
   void onMeasurementTypeChanged(int index);
 
   // Output control
-  void onOutputOnClicked();
-  void onOutputOffClicked();
+  void onOutputOnClicked(int channel);
+  void onOutputOffClicked(int channel);
   void updateOutputState();
 
   // Set voltage/current/compliance (NEW)
-  void onSetVoltageClicked();
-  void onSetCurrentClicked();
+  void onSetVoltageClicked(int channel);
+  void onSetCurrentClicked(int channel);
   void onSetVoltageComplianceClicked();
   void onSetCurrentComplianceClicked();
 
@@ -71,7 +89,7 @@ private slots:
   void refreshActiveSessionsList();
 
   // Measurement update
-  void onRefreshClicked();
+  void onRefreshClicked(int channel);
   void updateMeasurements();
 
   // Polling measurement callback
@@ -93,6 +111,8 @@ private:
   void setupUI();
   void createSimpleTab();
   void createPollingTab();
+  QWidget* createSMUChannelTab(int channel);
+  void rebuildSimpleTabs();
 
   void loadDevices();
   void updateConnectionStatus();
@@ -124,28 +144,15 @@ private:
 
   // Channel tabs (for channel selection)
   QTabWidget* m_channelTabWidget;
-  QWidget* m_channelControlsWidget;  // Controls container (permanent child, not reparented)
 
   // Channel selection (hidden, for compatibility)
   QComboBox* m_channelComboBox;
   QLabel* m_channelCountLabel;
 
-  // Output control
-  QGroupBox* m_outputControlGroup;
-  QPushButton* m_outputOnButton;
-  QPushButton* m_outputOffButton;
-  QLabel* m_outputStateLabel;
+  // Per-channel widget sets
+  std::vector<SMUChannelWidgets> m_channelControls;
 
-  // Read measurements
-  QLabel* m_voltageReadLabel;
-  QLabel* m_currentReadLabel;
-  QPushButton* m_refreshButton;
-
-  // Set voltage/current (NEW)
-  QDoubleSpinBox* m_setVoltageSpinBox;
-  QPushButton* m_setVoltageButton;
-  QDoubleSpinBox* m_setCurrentSpinBox;
-  QPushButton* m_setCurrentButton;
+  // Compliance controls (shared, not per-channel)
   QDoubleSpinBox* m_voltageComplianceSpinBox;
   QPushButton* m_setVoltageComplianceButton;
   QDoubleSpinBox* m_currentComplianceSpinBox;
@@ -184,4 +191,5 @@ private:
 
   // ===== CACHED STATE (updated by worker) =====
   bool m_cachedOutputOn = false;  // Cached output state from worker
+  int m_outputCommandPending = 0; // Suppress polling output updates while command in flight
 };

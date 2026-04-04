@@ -109,10 +109,10 @@ void SMUParameterWorker::setChannelCount(int count)
 // PUBLIC SLOTS - Queue requests from UI (thread-safe)
 // ============================================================================
 
-void SMUParameterWorker::requestSetVoltage(double voltage)
+void SMUParameterWorker::requestSetVoltage(int channel, double voltage)
 {
     QMutexLocker locker(&m_queueMutex);
-    std::cout << "[SMUParameterWorker] requestSetVoltage: " << voltage << " V" << std::endl;
+    std::cout << "[SMUParameterWorker] requestSetVoltage ch" << channel << ": " << voltage << " V" << std::endl;
 
     // Remove existing voltage commands (coalescing)
     m_pendingCommands.erase(
@@ -122,13 +122,13 @@ void SMUParameterWorker::requestSetVoltage(double voltage)
             }),
         m_pendingCommands.end());
 
-    m_pendingCommands.push_back({PendingCommand::SetVoltage, 0, voltage});
+    m_pendingCommands.push_back({PendingCommand::SetVoltage, channel, voltage});
 }
 
-void SMUParameterWorker::requestSetCurrent(double current)
+void SMUParameterWorker::requestSetCurrent(int channel, double current)
 {
     QMutexLocker locker(&m_queueMutex);
-    std::cout << "[SMUParameterWorker] requestSetCurrent: " << current << " A" << std::endl;
+    std::cout << "[SMUParameterWorker] requestSetCurrent ch" << channel << ": " << current << " A" << std::endl;
 
     m_pendingCommands.erase(
         std::remove_if(m_pendingCommands.begin(), m_pendingCommands.end(),
@@ -137,7 +137,7 @@ void SMUParameterWorker::requestSetCurrent(double current)
             }),
         m_pendingCommands.end());
 
-    m_pendingCommands.push_back({PendingCommand::SetCurrent, 0, current});
+    m_pendingCommands.push_back({PendingCommand::SetCurrent, channel, current});
 }
 
 void SMUParameterWorker::requestSetVoltageCompliance(double compliance)
@@ -170,10 +170,10 @@ void SMUParameterWorker::requestSetCurrentCompliance(double compliance)
     m_pendingCommands.push_back({PendingCommand::SetCurrentCompliance, 0, compliance});
 }
 
-void SMUParameterWorker::requestOutputOn()
+void SMUParameterWorker::requestOutputOn(int channel)
 {
     QMutexLocker locker(&m_queueMutex);
-    std::cout << "[SMUParameterWorker] requestOutputOn" << std::endl;
+    std::cout << "[SMUParameterWorker] requestOutputOn ch" << channel << std::endl;
 
     // Remove any pending output commands
     m_pendingCommands.erase(
@@ -184,13 +184,13 @@ void SMUParameterWorker::requestOutputOn()
             }),
         m_pendingCommands.end());
 
-    m_pendingCommands.push_back({PendingCommand::OutputOn, 0, 0.0});
+    m_pendingCommands.push_back({PendingCommand::OutputOn, channel, 0.0});
 }
 
-void SMUParameterWorker::requestOutputOff()
+void SMUParameterWorker::requestOutputOff(int channel)
 {
     QMutexLocker locker(&m_queueMutex);
-    std::cout << "[SMUParameterWorker] requestOutputOff" << std::endl;
+    std::cout << "[SMUParameterWorker] requestOutputOff ch" << channel << std::endl;
 
     m_pendingCommands.erase(
         std::remove_if(m_pendingCommands.begin(), m_pendingCommands.end(),
@@ -200,7 +200,7 @@ void SMUParameterWorker::requestOutputOff()
             }),
         m_pendingCommands.end());
 
-    m_pendingCommands.push_back({PendingCommand::OutputOff, 0, 0.0});
+    m_pendingCommands.push_back({PendingCommand::OutputOff, channel, 0.0});
 }
 
 void SMUParameterWorker::requestReadMeasurements(int channel)

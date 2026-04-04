@@ -1,4 +1,4 @@
-// PowerSupplyControlPage.h - UI page for power supply control (Redesigned)
+// PowerSupplyControlPage.h - UI page for power supply control
 #pragma once
 
 #include <QWidget>
@@ -10,7 +10,6 @@
 #include <QFrame>
 #include <QVBoxLayout>
 #include <QTabWidget>
-#include <QScrollArea>
 #include <vector>
 
 struct ApplicationContext;
@@ -23,6 +22,7 @@ class PSUParameterWorker;
 struct ChannelControlWidgets
 {
   int channel = 1;
+  // Controls
   QPushButton* outputOnButton = nullptr;
   QPushButton* outputOffButton = nullptr;
   QDoubleSpinBox* voltageSpinBox = nullptr;
@@ -33,23 +33,16 @@ struct ChannelControlWidgets
   QPushButton* setOVPButton = nullptr;
   QDoubleSpinBox* ocpSpinBox = nullptr;
   QPushButton* setOCPButton = nullptr;
-};
-
-/**
- * @brief Per-channel measurement display
- */
-struct ChannelMeasurementWidgets
-{
-  int channel = 1;
-  QLabel* channelLabel = nullptr;
+  // Embedded live measurements
+  QLabel* outputStateLabel = nullptr;
   QLabel* voltageLabel = nullptr;
   QLabel* currentLabel = nullptr;
-  QLabel* outputStateLabel = nullptr;
+  QPushButton* refreshButton = nullptr;
 };
 
 /**
  * @brief Control page for power supply devices
- * Three-panel layout: Device list (left) + Channel tabs (middle) + All measurements (right)
+ * Two-panel layout: Device list (left) + Channel tabs with embedded measurements (right)
  */
 class PowerSupplyControlPage : public QWidget
 {
@@ -96,16 +89,13 @@ private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
-  void createRightPanel(QWidget* rightPanel);
 
   QWidget* createChannelTab(int channel);
-  QWidget* createChannelMeasurementWidget(int channel);
 
   void loadDevices();
   void updateConnectionStatus();
   void updateDeviceList();
   void rebuildChannelTabs();
-  void rebuildMeasurementPanel();
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
@@ -126,12 +116,7 @@ private:
   QTabWidget* m_channelTabs;
   std::vector<ChannelControlWidgets> m_channelControls;
 
-  // Right Panel - All Channel Measurements
-  QWidget* m_rightPanel;
-  QWidget* m_measurementContainer;
-  QVBoxLayout* m_measurementLayout;
-  std::vector<ChannelMeasurementWidgets> m_channelMeasurements;
-  QPushButton* m_refreshButton;
+  // Refresh timer (fallback when worker not available)
   QTimer* m_refreshTimer;
 
   // Current device
@@ -141,4 +126,5 @@ private:
   // Background worker for non-blocking operations
   PSUParameterWorker* m_parameterWorker = nullptr;
   bool m_useParameterWorker = true;
+  int m_outputCommandPending = 0; // Suppress polling output updates while command in flight
 };
