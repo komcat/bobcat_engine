@@ -53,6 +53,10 @@ public:
     std::string GetChannelName(const std::string& deviceId, int channel) const;
     std::vector<ChannelConfig> GetChannelConfigs(const std::string& deviceId) const;
 
+    // Channel Group Queries
+    std::vector<std::string> GetChannelGroups(const std::string& deviceId) const;
+    std::vector<ChannelConfig> GetChannelsByGroup(const std::string& deviceId, const std::string& group) const;
+
     // Configuration Access
     const ControllerConfig* GetControllerConfig(const std::string& deviceId) const;
 

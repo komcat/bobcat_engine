@@ -13,6 +13,7 @@ static ChannelConfig ParseChannelConfig(const json& j) {
     config.channelNumber = j.value("channel", 0);
     config.name = j.value("name", "L" + std::to_string(config.channelNumber + 1));
     config.color = j.value("color", "");
+    config.group = j.value("group", "");
     config.defaultIntensity = j.value("default_intensity", 0);
     config.enabled = j.value("enabled", true);
 
@@ -129,6 +130,7 @@ bool LightingJsonLoader::SaveToFile(const LightingManager& manager, const std::s
             chJson["channel"] = ch.channelNumber;
             chJson["name"] = ch.name;
             chJson["color"] = ch.color;
+            chJson["group"] = ch.group;
             chJson["default_intensity"] = ch.defaultIntensity;
             chJson["enabled"] = ch.enabled;
             channelsArray.push_back(chJson);

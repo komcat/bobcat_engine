@@ -9,7 +9,8 @@ namespace Lighting {
 struct ChannelConfig {
     int channelNumber = 0;          // 0-7 (L1-L8)
     std::string name;               // e.g., "Collimate", "Red", "Green", "Blue"
-    std::string color;              // Optional: color identifier
+    std::string color;              // Optional: color identifier for grouping (e.g., "red", "white")
+    std::string group;              // Optional: physical light group (e.g., "light1", "light2")
     int defaultIntensity = 0;       // Default intensity 0-255
     bool enabled = true;            // Channel enabled/disabled
 };

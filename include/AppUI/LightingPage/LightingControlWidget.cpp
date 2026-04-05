@@ -6,7 +6,9 @@
 #include "lighting/LightingParameterWorker.h"
 #include "safety/SafetyWatchManager.h"
 #include <QScrollArea>
+#include <QGridLayout>
 #include <QFrame>
+#include <QDateTime>
 #include <iostream>
 #include <iomanip>
 
@@ -26,6 +28,7 @@ LightingChannelWidget::LightingChannelWidget(int channelNumber,
     , m_isConnected(false)
     , m_isUpdating(false)
     , m_currentIntensity(0)
+    , m_lastUserChangeTime(0)
 {
     setupUI();
 }
@@ -189,8 +192,16 @@ QColor LightingChannelWidget::getColorFromString(const QString& colorStr)
     return QColor(128, 128, 128);  // Default gray
 }
 
-void LightingChannelWidget::setIntensity(int intensity)
+void LightingChannelWidget::setIntensity(int intensity, bool fromPoll)
 {
+    // Skip poll updates during suppression window after user input
+    if (fromPoll) {
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_lastUserChangeTime < POLL_SUPPRESS_MS) {
+            return;
+        }
+    }
+
     m_isUpdating = true;
     m_currentIntensity = intensity;
     m_intensityValue->setText(QString("(%1)").arg(intensity));
@@ -199,8 +210,16 @@ void LightingChannelWidget::setIntensity(int intensity)
     m_isUpdating = false;
 }
 
-void LightingChannelWidget::setOn(bool on)
+void LightingChannelWidget::setOn(bool on, bool fromPoll)
 {
+    // Skip poll updates during suppression window after user input
+    if (fromPoll) {
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_lastUserChangeTime < POLL_SUPPRESS_MS) {
+            return;
+        }
+    }
+
     m_isOn = on;
     m_isUpdating = true;
     m_toggleButton->setChecked(on);
@@ -280,6 +299,7 @@ void LightingChannelWidget::onDecrementClicked()
 void LightingChannelWidget::sendIntensityUpdate(int intensity)
 {
     m_currentIntensity = intensity;
+    m_lastUserChangeTime = QDateTime::currentMSecsSinceEpoch();
     emit intensityChanged(m_channelNumber, intensity);
 }
 
@@ -319,6 +339,7 @@ void LightingChannelWidget::onToggleClicked()
     if (m_isUpdating) return;
 
     m_isOn = m_toggleButton->isChecked();
+    m_lastUserChangeTime = QDateTime::currentMSecsSinceEpoch();
     updateButtonState();
     emit toggleChanged(m_channelNumber, m_isOn);
 }
@@ -473,15 +494,29 @@ void LightingControlWidget::hideEvent(QHideEvent* event)
 void LightingControlWidget::setupUI()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(15, 15, 15, 15);
-    mainLayout->setSpacing(15);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(10);
 
-    createHeaderSection();
-    createPresetsSection();
-    createChannelWidgets();
+    // Header spans full width
+    mainLayout->addWidget(createHeaderSection());
+
+    // Two-column layout: Presets (left) | Channels (right)
+    QHBoxLayout* columnsLayout = new QHBoxLayout();
+    columnsLayout->setSpacing(10);
+
+    // Left column: Presets (top-aligned)
+    QVBoxLayout* leftColumn = new QVBoxLayout();
+    leftColumn->addWidget(createPresetsSection());
+    leftColumn->addStretch();
+    columnsLayout->addLayout(leftColumn, 4);
+
+    // Right column: Channels (fills height)
+    columnsLayout->addWidget(createChannelWidgets(), 6);
+
+    mainLayout->addLayout(columnsLayout, 1);
 }
 
-void LightingControlWidget::createHeaderSection()
+QWidget* LightingControlWidget::createHeaderSection()
 {
     QGroupBox* headerGroup = new QGroupBox("Lighting Controller");
     headerGroup->setStyleSheet(
@@ -591,13 +626,10 @@ void LightingControlWidget::createHeaderSection()
     buttonRow->addStretch();
     headerLayout->addLayout(buttonRow);
 
-    QVBoxLayout* parentLayout = qobject_cast<QVBoxLayout*>(layout());
-    if (parentLayout) {
-        parentLayout->addWidget(headerGroup);
-    }
+    return headerGroup;
 }
 
-void LightingControlWidget::createPresetsSection()
+QWidget* LightingControlWidget::createPresetsSection()
 {
     QGroupBox* presetsGroup = new QGroupBox("Presets");
     presetsGroup->setStyleSheet(
@@ -621,13 +653,108 @@ void LightingControlWidget::createPresetsSection()
     QVBoxLayout* presetsLayout = new QVBoxLayout(presetsGroup);
     presetsLayout->setSpacing(10);
 
-    // Row 1: Intensity presets (0% - 100% in 10% increments)
-    QLabel* intensityLabel = new QLabel("Intensity Presets:");
+    m_colorButtons.clear();
+
+    // Helper to get button style colors from a color key
+    auto getButtonColors = [](const QString& colorKey,
+                              QString& bg, QString& hover, QString& pressed, QString& border) {
+        if (colorKey.contains("red")) {
+            bg = "#8a2a2a"; hover = "#aa3a3a"; pressed = "#6a1a1a"; border = "#aa4444";
+        } else if (colorKey.contains("green")) {
+            bg = "#2a6a2a"; hover = "#3a8a3a"; pressed = "#1a4a1a"; border = "#44aa44";
+        } else if (colorKey.contains("blue")) {
+            bg = "#2a4a8a"; hover = "#3a5aaa"; pressed = "#1a3a6a"; border = "#4466aa";
+        } else if (colorKey.contains("white") || colorKey.contains("collimate")) {
+            bg = "#5a5a5a"; hover = "#6a6a6a"; pressed = "#4a4a4a"; border = "#999";
+        } else {
+            bg = "#4a4a4a"; hover = "#5a5a5a"; pressed = "#3a3a3a"; border = "#888";
+        }
+    };
+
+    // Build color buttons grouped by physical light group
+    if (m_lightingManager && !m_currentDeviceId.empty()) {
+        auto groups = m_lightingManager->GetChannelGroups(m_currentDeviceId);
+
+        for (const auto& groupName : groups) {
+            auto groupChannels = m_lightingManager->GetChannelsByGroup(m_currentDeviceId, groupName);
+            if (groupChannels.empty()) continue;
+
+            // Group label
+            QString groupLabel = QString::fromStdString(groupName);
+            QLabel* label = new QLabel(groupLabel + ":");
+            label->setStyleSheet("color: #ccc; font-size: 12px; font-weight: bold;");
+            presetsLayout->addWidget(label);
+
+            // Color buttons for this group
+            QHBoxLayout* colorRow = new QHBoxLayout();
+            colorRow->setSpacing(8);
+
+            // Collect unique colors within this group
+            std::vector<std::pair<QString, QString>> uniqueColors; // {colorKey, displayName}
+            for (const auto& ch : groupChannels) {
+                QString colorKey = QString::fromStdString(ch.color).toLower().trimmed();
+                if (colorKey.isEmpty()) {
+                    colorKey = QString::fromStdString(ch.name).toLower().trimmed();
+                }
+
+                bool dup = false;
+                for (const auto& uc : uniqueColors) {
+                    if (uc.first == colorKey) { dup = true; break; }
+                }
+                if (!dup) {
+                    uniqueColors.push_back({colorKey, QString::fromStdString(ch.name)});
+                }
+            }
+
+            for (const auto& [colorKey, displayName] : uniqueColors) {
+                QString bg, hover, pressed, border;
+                getButtonColors(colorKey, bg, hover, pressed, border);
+
+                QPushButton* btn = new QPushButton(displayName);
+                btn->setCheckable(true);
+                btn->setProperty("colorName", colorKey);
+                btn->setProperty("groupName", QString::fromStdString(groupName));
+                btn->setStyleSheet(
+                    QString(
+                        "QPushButton {"
+                        "  background-color: %1;"
+                        "  color: white;"
+                        "  font-size: 12px;"
+                        "  font-weight: bold;"
+                        "  border: 1px solid %4;"
+                        "  border-radius: 4px;"
+                        "  padding: 6px 15px;"
+                        "}"
+                        "QPushButton:hover { background-color: %2; }"
+                        "QPushButton:pressed { background-color: %3; }"
+                        "QPushButton:checked {"
+                        "  border: 2px solid #00aaff;"
+                        "  background-color: %2;"
+                        "}"
+                        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
+                    ).arg(bg, hover, pressed, border)
+                );
+
+                QString grp = QString::fromStdString(groupName);
+                connect(btn, &QPushButton::clicked, this, [this, grp, colorKey]() {
+                    onColorSelected(grp, colorKey);
+                });
+                colorRow->addWidget(btn);
+                m_colorButtons.push_back(btn);
+            }
+
+            colorRow->addStretch();
+            presetsLayout->addLayout(colorRow);
+        }
+    }
+
+    // Intensity presets in 2-column grid (apply to active color in active group)
+    QLabel* intensityLabel = new QLabel("Intensity (applies to active color):");
     intensityLabel->setStyleSheet("color: #aaa; font-size: 12px; font-weight: normal;");
     presetsLayout->addWidget(intensityLabel);
 
-    QHBoxLayout* intensityRow = new QHBoxLayout();
-    intensityRow->setSpacing(5);
+    QGridLayout* intensityGrid = new QGridLayout();
+    intensityGrid->setSpacing(5);
 
     QString presetBtnStyle =
         "QPushButton {"
@@ -637,119 +764,28 @@ void LightingControlWidget::createPresetsSection()
         "  font-weight: bold;"
         "  border: 1px solid #555;"
         "  border-radius: 3px;"
-        "  padding: 4px 8px;"
-        "  min-width: 35px;"
+        "  padding: 6px 4px;"
         "}"
         "QPushButton:hover { background-color: #4a4a4a; border-color: #00aaff; }"
         "QPushButton:pressed { background-color: #2a2a2a; }"
         "QPushButton:disabled { background-color: #2a2a2a; color: #555; }";
 
+    int idx = 0;
     for (int percent = 0; percent <= 100; percent += 10) {
         QPushButton* btn = new QPushButton(QString("%1%").arg(percent));
         btn->setStyleSheet(presetBtnStyle);
-        btn->setProperty("presetPercent", percent);
         connect(btn, &QPushButton::clicked, this, [this, percent]() {
             onPresetClicked(percent);
         });
-        intensityRow->addWidget(btn);
+        intensityGrid->addWidget(btn, idx / 2, idx % 2);
+        idx++;
     }
-    intensityRow->addStretch();
-    presetsLayout->addLayout(intensityRow);
+    presetsLayout->addLayout(intensityGrid);
 
-    // Row 2: Color presets (Collimate, Red, Green, Blue)
-    QLabel* colorLabel = new QLabel("Color Presets:");
-    colorLabel->setStyleSheet("color: #aaa; font-size: 12px; font-weight: normal;");
-    presetsLayout->addWidget(colorLabel);
-
-    QHBoxLayout* colorRow = new QHBoxLayout();
-    colorRow->setSpacing(8);
-
-    // Collimate Light preset
-    QPushButton* collimateBtn = new QPushButton("Collimate");
-    collimateBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #4a4a4a;"
-        "  color: white;"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  border: 1px solid #888;"
-        "  border-radius: 4px;"
-        "  padding: 6px 15px;"
-        "}"
-        "QPushButton:hover { background-color: #5a5a5a; border-color: #aaa; }"
-        "QPushButton:pressed { background-color: #3a3a3a; }"
-        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
-    );
-    connect(collimateBtn, &QPushButton::clicked, this, &LightingControlWidget::onCollimatePreset);
-    colorRow->addWidget(collimateBtn);
-
-    // Red preset
-    QPushButton* redBtn = new QPushButton("Red");
-    redBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #8a2a2a;"
-        "  color: white;"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  border: 1px solid #aa4444;"
-        "  border-radius: 4px;"
-        "  padding: 6px 15px;"
-        "}"
-        "QPushButton:hover { background-color: #aa3a3a; }"
-        "QPushButton:pressed { background-color: #6a1a1a; }"
-        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
-    );
-    connect(redBtn, &QPushButton::clicked, this, &LightingControlWidget::onRedPreset);
-    colorRow->addWidget(redBtn);
-
-    // Green preset
-    QPushButton* greenBtn = new QPushButton("Green");
-    greenBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #2a6a2a;"
-        "  color: white;"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  border: 1px solid #44aa44;"
-        "  border-radius: 4px;"
-        "  padding: 6px 15px;"
-        "}"
-        "QPushButton:hover { background-color: #3a8a3a; }"
-        "QPushButton:pressed { background-color: #1a4a1a; }"
-        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
-    );
-    connect(greenBtn, &QPushButton::clicked, this, &LightingControlWidget::onGreenPreset);
-    colorRow->addWidget(greenBtn);
-
-    // Blue preset
-    QPushButton* blueBtn = new QPushButton("Blue");
-    blueBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #2a4a8a;"
-        "  color: white;"
-        "  font-size: 12px;"
-        "  font-weight: bold;"
-        "  border: 1px solid #4466aa;"
-        "  border-radius: 4px;"
-        "  padding: 6px 15px;"
-        "}"
-        "QPushButton:hover { background-color: #3a5aaa; }"
-        "QPushButton:pressed { background-color: #1a3a6a; }"
-        "QPushButton:disabled { background-color: #2a2a2a; color: #555; }"
-    );
-    connect(blueBtn, &QPushButton::clicked, this, &LightingControlWidget::onBluePreset);
-    colorRow->addWidget(blueBtn);
-
-    colorRow->addStretch();
-    presetsLayout->addLayout(colorRow);
-
-    QVBoxLayout* parentLayout = qobject_cast<QVBoxLayout*>(layout());
-    if (parentLayout) {
-        parentLayout->addWidget(presetsGroup);
-    }
+    return presetsGroup;
 }
 
-void LightingControlWidget::createChannelWidgets()
+QWidget* LightingControlWidget::createChannelWidgets()
 {
     QGroupBox* channelsGroup = new QGroupBox("Channels");
     channelsGroup->setStyleSheet(
@@ -784,47 +820,63 @@ void LightingControlWidget::createChannelWidgets()
     m_channelsLayout->setContentsMargins(0, 0, 0, 0);
     m_channelsLayout->setSpacing(5);
 
-    // Create channel widgets from config (only enabled channels)
+    // Create channel widgets grouped by physical light group
     if (m_lightingManager && !m_currentDeviceId.empty()) {
-        auto channels = m_lightingManager->GetChannelConfigs(m_currentDeviceId);
+        auto groups = m_lightingManager->GetChannelGroups(m_currentDeviceId);
 
-        // Filter to only enabled channels
-        std::vector<Lighting::ChannelConfig> enabledChannels;
-        for (const auto& ch : channels) {
-            if (ch.enabled) {
-                enabledChannels.push_back(ch);
-            }
-        }
+        for (size_t gi = 0; gi < groups.size(); ++gi) {
+            const auto& groupName = groups[gi];
+            auto groupChannels = m_lightingManager->GetChannelsByGroup(m_currentDeviceId, groupName);
+            if (groupChannels.empty()) continue;
 
-        for (size_t i = 0; i < enabledChannels.size(); ++i) {
-            const auto& ch = enabledChannels[i];
-            auto* widget = new LightingChannelWidget(
-                ch.channelNumber,
-                QString::fromStdString(ch.name),
-                QString::fromStdString(ch.color),
-                this
+            // Group header label
+            QLabel* groupHeader = new QLabel(QString::fromStdString(groupName));
+            groupHeader->setStyleSheet(
+                "font-weight: bold; font-size: 13px; color: #00aaff;"
+                "padding: 6px 5px 2px 5px;"
             );
-            // Store color as property for preset functionality
-            widget->setProperty("channelColor", QString::fromStdString(ch.color));
-            connect(widget, &LightingChannelWidget::intensityChanged,
-                    this, &LightingControlWidget::onChannelIntensityChanged);
-            connect(widget, &LightingChannelWidget::toggleChanged,
-                    this, &LightingControlWidget::onChannelToggleChanged);
+            m_channelsLayout->addWidget(groupHeader);
 
-            m_channelWidgets.push_back(widget);
-            m_channelsLayout->addWidget(widget);
+            // Channel widgets for this group
+            for (size_t ci = 0; ci < groupChannels.size(); ++ci) {
+                const auto& ch = groupChannels[ci];
+                auto* widget = new LightingChannelWidget(
+                    ch.channelNumber,
+                    QString::fromStdString(ch.name),
+                    QString::fromStdString(ch.color),
+                    this
+                );
+                widget->setProperty("channelColor", QString::fromStdString(ch.color));
+                widget->setProperty("channelGroup", QString::fromStdString(groupName));
+                connect(widget, &LightingChannelWidget::intensityChanged,
+                        this, &LightingControlWidget::onChannelIntensityChanged);
+                connect(widget, &LightingChannelWidget::toggleChanged,
+                        this, &LightingControlWidget::onChannelToggleChanged);
 
-            // Add separator line between channels (not after last one)
-            if (i < enabledChannels.size() - 1) {
-                QFrame* line = new QFrame();
-                line->setFrameShape(QFrame::HLine);
-                line->setStyleSheet("background-color: #3a3a3a;");
-                line->setFixedHeight(1);
-                m_channelsLayout->addWidget(line);
+                m_channelWidgets.push_back(widget);
+                m_channelsLayout->addWidget(widget);
+
+                // Separator between channels within group (not after last)
+                if (ci < groupChannels.size() - 1) {
+                    QFrame* line = new QFrame();
+                    line->setFrameShape(QFrame::HLine);
+                    line->setStyleSheet("background-color: #3a3a3a;");
+                    line->setFixedHeight(1);
+                    m_channelsLayout->addWidget(line);
+                }
+            }
+
+            // Thicker separator between groups (not after last group)
+            if (gi < groups.size() - 1) {
+                QFrame* groupSep = new QFrame();
+                groupSep->setFrameShape(QFrame::HLine);
+                groupSep->setStyleSheet("background-color: #555;");
+                groupSep->setFixedHeight(2);
+                m_channelsLayout->addWidget(groupSep);
             }
         }
     } else {
-        // Default 8 channels if no config
+        // Default 8 channels if no config (single default group)
         for (int i = 0; i < 8; ++i) {
             auto* widget = new LightingChannelWidget(
                 i,
@@ -832,6 +884,7 @@ void LightingControlWidget::createChannelWidgets()
                 "",
                 this
             );
+            widget->setProperty("channelGroup", "default");
             connect(widget, &LightingChannelWidget::intensityChanged,
                     this, &LightingControlWidget::onChannelIntensityChanged);
             connect(widget, &LightingChannelWidget::toggleChanged,
@@ -854,10 +907,7 @@ void LightingControlWidget::createChannelWidgets()
     scrollArea->setWidget(m_channelsContainer);
     groupLayout->addWidget(scrollArea);
 
-    QVBoxLayout* parentLayout = qobject_cast<QVBoxLayout*>(layout());
-    if (parentLayout) {
-        parentLayout->addWidget(channelsGroup, 1);
-    }
+    return channelsGroup;
 }
 
 void LightingControlWidget::updateStatus()
@@ -1039,90 +1089,121 @@ void LightingControlWidget::onRefreshClicked()
 }
 
 // ============================================================================
-// Preset Implementations
+// Preset & Color Selector Implementations
 // ============================================================================
+
+QString LightingControlWidget::getChannelColor(LightingChannelWidget* widget) const
+{
+    QString color = widget->property("channelColor").toString().toLower().trimmed();
+    if (!color.isEmpty()) {
+        return color;
+    }
+    return widget->channelName().toLower().trimmed();
+}
+
+QString LightingControlWidget::getChannelGroup(LightingChannelWidget* widget) const
+{
+    return widget->property("channelGroup").toString();
+}
+
+void LightingControlWidget::onColorSelected(const QString& group, const QString& color)
+{
+    if (!m_isConnected) return;
+
+    // Toggle: clicking the already-active group+color deselects it
+    if (m_activeGroup == group && m_activeColor == color) {
+        m_activeGroup.clear();
+        m_activeColor.clear();
+    } else {
+        m_activeGroup = group;
+        m_activeColor = color;
+    }
+
+    // Update button checked states (only one can be active across all groups)
+    for (auto* btn : m_colorButtons) {
+        bool match = (btn->property("groupName").toString() == m_activeGroup &&
+                      btn->property("colorName").toString() == m_activeColor);
+        btn->setChecked(match);
+    }
+
+    // If no color selected, do nothing further (just deselect)
+    if (m_activeColor.isEmpty()) {
+        std::cout << "[LightingControlWidget] Color deselected" << std::endl;
+        return;
+    }
+
+    // Activate: within the selected group, turn on matching color, turn off others
+    activateColor(m_activeGroup, m_activeColor);
+
+    std::cout << "[LightingControlWidget] Active: " << m_activeGroup.toStdString()
+              << "." << m_activeColor.toStdString() << std::endl;
+}
+
+void LightingControlWidget::activateColor(const QString& group, const QString& color)
+{
+    if (!m_parameterWorker || !m_isConnected) return;
+
+    for (auto* widget : m_channelWidgets) {
+        int channel = widget->channelNumber();
+        QString chGroup = getChannelGroup(widget);
+        QString chColor = getChannelColor(widget);
+
+        // Only affect channels in the selected group
+        if (chGroup != group) continue;
+
+        if (chColor == color) {
+            // Matching channel: turn ON, if intensity is 0 set to 50%
+            if (widget->currentIntensity() <= 0) {
+                int defaultIntensity = Lighting::PercentToIntensity(50.0);
+                m_parameterWorker->requestSetIntensity(channel, defaultIntensity);
+                widget->setIntensity(defaultIntensity);
+            }
+            m_parameterWorker->requestSetOn(channel, true);
+            widget->setOn(true);
+        } else {
+            // Non-matching channel in same group: turn OFF
+            m_parameterWorker->requestSetIntensity(channel, 0);
+            m_parameterWorker->requestSetOn(channel, false);
+            widget->setIntensity(0);
+            widget->setOn(false);
+        }
+    }
+}
 
 void LightingControlWidget::onPresetClicked(int percent)
 {
     if (!m_isConnected) return;
 
     int intensity = Lighting::PercentToIntensity(static_cast<double>(percent));
-    setAllChannelsIntensity(intensity);
+    applyIntensityToActiveColor(intensity);
 
-    std::cout << "[LightingControlWidget] Applied preset: " << percent << "% (" << intensity << ")" << std::endl;
+    std::cout << "[LightingControlWidget] Intensity " << percent << "% applied to "
+              << (m_activeColor.isEmpty() ? "all" :
+                  m_activeGroup.toStdString() + "." + m_activeColor.toStdString()) << std::endl;
 }
 
-void LightingControlWidget::onCollimatePreset()
-{
-    // Collimate light - typically white/neutral, set all channels to same value
-    setColorPreset("white", 50);  // 50% intensity for all channels
-    std::cout << "[LightingControlWidget] Applied Collimate preset (50% all)" << std::endl;
-}
-
-void LightingControlWidget::onRedPreset()
-{
-    setColorPreset("red", 100);  // Full red
-    std::cout << "[LightingControlWidget] Applied Red preset" << std::endl;
-}
-
-void LightingControlWidget::onGreenPreset()
-{
-    setColorPreset("green", 100);  // Full green
-    std::cout << "[LightingControlWidget] Applied Green preset" << std::endl;
-}
-
-void LightingControlWidget::onBluePreset()
-{
-    setColorPreset("blue", 100);  // Full blue
-    std::cout << "[LightingControlWidget] Applied Blue preset" << std::endl;
-}
-
-void LightingControlWidget::setAllChannelsIntensity(int intensity)
+void LightingControlWidget::applyIntensityToActiveColor(int intensity)
 {
     if (!m_parameterWorker || !m_isConnected) return;
 
     for (auto* widget : m_channelWidgets) {
         int channel = widget->channelNumber();
-        m_parameterWorker->requestSetIntensity(channel, intensity);
-        widget->setIntensity(intensity);
-    }
-}
+        QString chColor = getChannelColor(widget);
+        QString chGroup = getChannelGroup(widget);
 
-void LightingControlWidget::setColorPreset(const QString& color, int percentIntensity)
-{
-    if (!m_parameterWorker || !m_isConnected) return;
-
-    QString targetColor = color.toLower();
-    int intensity = Lighting::PercentToIntensity(static_cast<double>(percentIntensity));
-
-    for (auto* widget : m_channelWidgets) {
-        int channel = widget->channelNumber();
-        QString channelColor = widget->property("channelColor").toString().toLower();
-
-        // If no color property, try to get from channel name
-        if (channelColor.isEmpty()) {
-            QString name = widget->channelName().toLower();
-            if (name.contains("red")) channelColor = "red";
-            else if (name.contains("green")) channelColor = "green";
-            else if (name.contains("blue")) channelColor = "blue";
-            else if (name.contains("white")) channelColor = "white";
-        }
-
-        int targetIntensity = 0;
-
-        if (targetColor == "white") {
-            // White/Collimate - set all channels to same intensity
-            targetIntensity = intensity;
-        } else if (channelColor == targetColor) {
-            // This channel matches the target color - full intensity
-            targetIntensity = intensity;
+        bool match = false;
+        if (m_activeColor.isEmpty()) {
+            // No selection: apply to all channels
+            match = true;
         } else {
-            // Different color - turn off
-            targetIntensity = 0;
+            // Apply only to matching group + color
+            match = (chGroup == m_activeGroup && chColor == m_activeColor);
         }
 
-        m_parameterWorker->requestSetIntensity(channel, targetIntensity);
-        widget->setIntensity(targetIntensity);
+        if (match) {
+            m_parameterWorker->requestSetIntensity(channel, intensity);
+            widget->setIntensity(intensity);
+        }
     }
 }
 
@@ -1176,17 +1257,16 @@ void LightingControlWidget::onWorkerStatusUpdated(QString deviceId, std::vector<
         return;
     }
 
-    // Update channel widgets with new status
+    // Update channel widgets with new status (fromPoll=true to respect suppression)
     for (size_t i = 0; i < m_channelWidgets.size() && i < intensities.size(); ++i) {
         auto* widget = m_channelWidgets[i];
         int channelNum = widget->channelNumber();
 
-        // Find matching channel in status arrays
         if (channelNum < static_cast<int>(intensities.size())) {
-            widget->setIntensity(intensities[channelNum]);
+            widget->setIntensity(intensities[channelNum], true);
         }
         if (channelNum < static_cast<int>(onStates.size())) {
-            widget->setOn(onStates[channelNum]);
+            widget->setOn(onStates[channelNum], true);
         }
     }
 }

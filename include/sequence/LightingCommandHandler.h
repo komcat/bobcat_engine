@@ -49,6 +49,13 @@ private:
     std::string FindDeviceIdByName(void* manager, const std::string& deviceName);
 
     /**
+     * @brief Resolve channel param to channel number
+     * Tries name lookup first, falls back to parsing as integer (0-7)
+     * @return channel number, or -1 if not found
+     */
+    int ResolveChannel(void* manager, const std::string& deviceId, const std::string& channelParam);
+
+    /**
      * @brief Parse intensity value (0-100%) from parameters
      */
     bool ParseIntensity(const std::map<std::string, std::string>& params, double& outIntensity);
