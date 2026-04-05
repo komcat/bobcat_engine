@@ -125,16 +125,16 @@ void MotionGraphicsView::setupViewButtons()
     autoFitView();
   });
   connect(rotCCW, &QPushButton::clicked, this, [this]() {
-    setCamera(m_azimuthDeg - 45.0, m_elevationDeg);
-    autoFitView();
+    rotate(-45.0);  // Rotate viewport CCW around screen center
+    viewport()->update();
   });
   connect(rotCW, &QPushButton::clicked, this, [this]() {
-    setCamera(m_azimuthDeg + 45.0, m_elevationDeg);
-    autoFitView();
+    rotate(45.0);   // Rotate viewport CW around screen center
+    viewport()->update();
   });
   connect(resetBtn, &QPushButton::clicked, this, [this]() {
     resetCamera();
-    autoFitView();
+    resetZoom();  // Also resets viewport rotation
   });
 
   m_viewButtonBar->setFixedHeight(30);
