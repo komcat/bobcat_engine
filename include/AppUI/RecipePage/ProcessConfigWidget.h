@@ -148,6 +148,11 @@ public:
   void addFileSelector(const std::string& key, const std::string& label,
     const std::string& value, const std::string& fileFilter = "All Files (*.*)");
 
+  // Helper to add recipe file selector (QLineEdit + Browse button using FileSelectorDialog)
+  // Scans config/<product>/recipes/ for available recipe JSON files
+  void addRecipeSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
   // Helper to add folder selector (QLineEdit + Browse button using QFileDialog::getExistingDirectory)
   void addFolderSelector(const std::string& key, const std::string& label,
     const std::string& value);

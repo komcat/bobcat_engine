@@ -10,7 +10,6 @@
 #include <QScrollArea>
 #include <QLabel>
 #include <QPointer>
-#include <QListWidget>
 #include <QEventLoop>
 #include <QTreeWidget>
 #include <QGroupBox>
@@ -155,12 +154,24 @@ private slots:
   void onContextRefreshRequested();
 
   // Recipes tab slots
-  void onRecipeListItemDoubleClicked(QListWidgetItem* item);
+  void onRecipeListItemDoubleClicked(QTreeWidgetItem* item, int column);
   void onRecipeListContextMenu(const QPoint& pos);
   void onRefreshRecipeList();
   void onLoadSelectedRecipe();
   void onDeleteSelectedRecipe();
   void onRenameSelectedRecipe();
+  void onCopyRecipe();
+
+  // Recipe folder management
+  void onCreateFolder();
+  void onRenameFolder(QTreeWidgetItem* folderItem);
+  void onDeleteFolder(QTreeWidgetItem* folderItem);
+  void moveRecipeToFolder(const QString& srcPath, const QString& targetFolderName);
+  bool confirmRecipeMove(const QString& recipeName, const QString& targetFolder);
+
+  // Recipe usage checking
+  QStringList findRecipeUsageInPrograms(const QString& recipeFilePath);
+  QStringList findRecipeUsageAsSubRecipe(const QString& recipeFilePath);
 
 private:
   // Live data injection for Context Viewer
@@ -250,10 +261,14 @@ private:
   QLabel* m_selectedProcessLabel;  // Shows currently selected process type
 
   // Recipes tab widgets
-  QListWidget* m_recipeListWidget;
+  QTreeWidget* m_recipeListWidget;
   QLineEdit* m_recipeFilterEdit;
   QPushButton* m_refreshRecipeListButton;
   QLabel* m_recipeCountLabel;
+  QPushButton* m_createFolderButton;
+  QPushButton* m_removeFolderButton;
+  QPushButton* m_copyRecipeButton;
+  QPushButton* m_deleteRecipeButton;
 
   // Right panel widgets
   QScrollArea* m_configScrollArea;
@@ -308,4 +323,5 @@ private:
 protected:
   void keyPressEvent(QKeyEvent* event) override;
   void showEvent(QShowEvent* event) override;  // Hot reload when page becomes visible
+  bool eventFilter(QObject* watched, QEvent* event) override;  // Drag-drop intercept for recipe tree
 };

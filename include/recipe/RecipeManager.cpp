@@ -674,7 +674,8 @@ std::vector<std::string> RecipeManager::getProcessCategories()
     "Dispensing",
     "Custom Server",
     "Aux Window",
-    "Comment"
+    "Comment",
+    "Sub-Recipe"
   };
 }
 

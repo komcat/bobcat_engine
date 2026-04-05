@@ -632,6 +632,7 @@ set(SOURCES
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
+    include/recipe/processes/SubRecipeProcesses.cpp
     include/recipe/processes/MotionProcesses.cpp
     include/recipe/processes/DeviceLinkProcesses.cpp
     include/recipe/processes/IOProcesses.cpp
