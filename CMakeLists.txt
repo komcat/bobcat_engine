@@ -767,6 +767,7 @@ set(SOURCES
     include/settings/ApplicationSettings.cpp
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
+    include/AppUI/SettingsPage/ConfigBackupManager.cpp
     # Trainer container (side panel navigation)
     include/AppUI/TrainerContainerPage.cpp
     # Accuracy Trainer
@@ -1032,6 +1033,7 @@ set(HEADERS
     include/settings/ApplicationSettings.h
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.h
+    include/AppUI/SettingsPage/ConfigBackupManager.h
     # Accuracy Trainer
     include/AppUI/AccuracyTrainer/AccuracyTrainerData.h
     include/AppUI/AccuracyTrainer/AccuracyTrainerStore.h
