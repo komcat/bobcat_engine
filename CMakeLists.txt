@@ -1259,6 +1259,12 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.cpp
         include/vision/ui/VisionRightPanelWidget.cpp
         include/vision/ui/VisionReliabilityTestDialog.cpp
+        # Wizard step widgets
+        include/vision/ui/VisionNavWidget.cpp
+        include/vision/ui/CameraLightingStepWidget.cpp
+        include/vision/ui/CaptureROIStepWidget.cpp
+        include/vision/ui/PluginConfigStepWidget.cpp
+        include/vision/ui/ExecuteTuneStepWidget.cpp
     )
     list(APPEND HEADERS
         include/vision/OpenCVTest.h
@@ -1285,6 +1291,13 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.h
         include/vision/ui/VisionRightPanelWidget.h
         include/vision/ui/VisionReliabilityTestDialog.h
+        # Wizard step widget headers
+        include/vision/ui/VisionWizardState.h
+        include/vision/ui/VisionNavWidget.h
+        include/vision/ui/CameraLightingStepWidget.h
+        include/vision/ui/CaptureROIStepWidget.h
+        include/vision/ui/PluginConfigStepWidget.h
+        include/vision/ui/ExecuteTuneStepWidget.h
     )
     message(STATUS "OpenCV vision support enabled (v4.12.0)")
 else()

@@ -3,8 +3,10 @@
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QResizeEvent>
+#include <QShowEvent>
 #include <QMouseEvent>
 #include <QCursor>
+#include <QTimer>
 #include <cmath>
 
 // ============ ImageDisplayLabel Implementation ============
@@ -467,14 +469,14 @@ void VisionImageWidget::updateDisplayImage()
             int scaledEndY = static_cast<int>(m_searchBoxEndY * scaleY);
 
             // Search Box rectangle - use orange/magenta color to distinguish from ROI
-            QPen searchBoxPen(QColor(255, 165, 0), 2, Qt::DashDotLine);  // Orange dashed
+            QPen searchBoxPen(QColor(255, 165, 0), 1, Qt::DashDotLine);  // Orange dashed
             painter.setPen(searchBoxPen);
             painter.setBrush(Qt::NoBrush);
             painter.drawRect(scaledStartX, scaledStartY,
                            scaledEndX - scaledStartX, scaledEndY - scaledStartY);
 
-            // Corner markers (larger for easier grabbing)
-            int markerSize = 12;
+            // Corner markers
+            int markerSize = 6;
             painter.setBrush(QColor(255, 165, 0));  // Orange
             painter.drawRect(scaledStartX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
             painter.drawRect(scaledEndX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
@@ -515,14 +517,14 @@ void VisionImageWidget::updateDisplayImage()
             int scaledEndY = static_cast<int>(m_templateSelectionEndY * scaleY);
 
             // Template selection rectangle - RED for visibility
-            QPen templatePen(QColor(255, 0, 0), 3, Qt::SolidLine);  // Thick red solid line
+            QPen templatePen(QColor(255, 0, 0), 1, Qt::SolidLine);  // Red solid line
             painter.setPen(templatePen);
             painter.setBrush(Qt::NoBrush);
             painter.drawRect(scaledStartX, scaledStartY,
                            scaledEndX - scaledStartX, scaledEndY - scaledStartY);
 
             // Corner markers (larger for easier grabbing)
-            int markerSize = 14;  // Slightly larger than ROI/SearchBox
+            int markerSize = 6;
             painter.setBrush(QColor(255, 0, 0));  // Red
             painter.drawRect(scaledStartX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
             painter.drawRect(scaledEndX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
@@ -560,14 +562,14 @@ void VisionImageWidget::updateDisplayImage()
             int scaledEndY = static_cast<int>(m_roiEndY * scaleY);
 
             // ROI rectangle
-            QPen roiPen(Qt::cyan, 2, Qt::SolidLine);
+            QPen roiPen(Qt::cyan, 1, Qt::SolidLine);
             painter.setPen(roiPen);
             painter.setBrush(Qt::NoBrush);
             painter.drawRect(scaledStartX, scaledStartY,
                            scaledEndX - scaledStartX, scaledEndY - scaledStartY);
 
-            // Corner markers (larger for easier grabbing)
-            int markerSize = 12;
+            // Corner markers
+            int markerSize = 6;
             painter.setBrush(Qt::cyan);
             painter.drawRect(scaledStartX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
             painter.drawRect(scaledEndX - markerSize/2, scaledStartY - markerSize/2, markerSize, markerSize);
@@ -587,7 +589,7 @@ void VisionImageWidget::updateDisplayImage()
             painter.drawLine(roiCenterX, scaledStartY, roiCenterX, scaledEndY);
 
             // Center marker
-            painter.setPen(QPen(Qt::yellow, 2));
+            painter.setPen(QPen(Qt::yellow, 1));
             painter.setBrush(Qt::NoBrush);
             painter.drawEllipse(QPoint(roiCenterX, roiCenterY), 5, 5);
 
@@ -822,16 +824,19 @@ QPixmap VisionImageWidget::scaleToFit(const QPixmap& pixmap)
         return pixmap;
     }
 
-    // Get available size in scroll area
+    // Get available size in scroll area viewport
     QSize availableSize = m_scrollArea->viewport()->size();
 
-    // Only shrink if image is larger than available space
-    if (pixmap.width() <= availableSize.width() &&
-        pixmap.height() <= availableSize.height()) {
+    // Guard: if viewport hasn't been laid out yet, use widget size as fallback
+    if (availableSize.width() < 10 || availableSize.height() < 10) {
+        availableSize = m_scrollArea->size();
+    }
+    // Still too small — return original and let resizeEvent fix it later
+    if (availableSize.width() < 10 || availableSize.height() < 10) {
         return pixmap;
     }
 
-    // Scale to fit while maintaining aspect ratio
+    // Always scale to fit (both up and down) while maintaining aspect ratio
     return pixmap.scaled(availableSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
@@ -842,6 +847,19 @@ void VisionImageWidget::resizeEvent(QResizeEvent* event)
     // Re-scale image when widget is resized
     if (!m_originalImage.isNull()) {
         updateDisplayImage();
+    }
+}
+
+void VisionImageWidget::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+
+    // Re-scale image when widget becomes visible (e.g., after reparenting)
+    if (!m_originalImage.isNull()) {
+        // Defer to next event loop so layout is finalized
+        QTimer::singleShot(0, this, [this]() {
+            updateDisplayImage();
+        });
     }
 }
 
