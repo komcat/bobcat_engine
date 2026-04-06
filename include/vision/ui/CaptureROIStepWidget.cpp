@@ -164,7 +164,7 @@ void CaptureROIStepWidget::setupUI()
     // -------- Left config panel (fixed ~300px) --------
     QScrollArea* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
-    scrollArea->setFixedWidth(300);
+    scrollArea->setFixedWidth(350);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setFrameShape(QFrame::NoFrame);
@@ -258,6 +258,7 @@ void CaptureROIStepWidget::setupROISection(QVBoxLayout* parentLayout)
         spin->setRange(0, 10000);
         spin->setSingleStep(10);
         spin->setValue(defaultVal);
+        spin->setMaximumWidth(70);
         connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
                 this, &CaptureROIStepWidget::onROIValueChanged);
         return spin;
@@ -265,7 +266,7 @@ void CaptureROIStepWidget::setupROISection(QVBoxLayout* parentLayout)
 
     QGridLayout* grid = new QGridLayout();
     grid->setContentsMargins(0, 0, 0, 0);
-    grid->setSpacing(3);
+    grid->setSpacing(2);
     // Row 0: X1 | Y1
     grid->addWidget(new QLabel("X1:"), 0, 0);
     m_roiStartXSpin = makeSpinBox(0);
@@ -321,6 +322,7 @@ void CaptureROIStepWidget::setupSearchBoxSection(QVBoxLayout* parentLayout)
         spin->setRange(0, 10000);
         spin->setSingleStep(10);
         spin->setValue(defaultVal);
+        spin->setMaximumWidth(70);
         connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
                 this, &CaptureROIStepWidget::onSearchBoxValueChanged);
         return spin;
@@ -328,7 +330,7 @@ void CaptureROIStepWidget::setupSearchBoxSection(QVBoxLayout* parentLayout)
 
     QGridLayout* grid = new QGridLayout();
     grid->setContentsMargins(0, 0, 0, 0);
-    grid->setSpacing(3);
+    grid->setSpacing(2);
     // Row 0: X1 | Y1
     grid->addWidget(new QLabel("X1:"), 0, 0);
     m_searchBoxStartXSpin = makeSpinBox(0);

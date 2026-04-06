@@ -29,7 +29,7 @@ void PluginConfigStepWidget::setupUI()
     // ── Left: plugin config (scrollable, fixed 350px) ─────────────────────
     QScrollArea* configScrollArea = new QScrollArea(this);
     configScrollArea->setWidgetResizable(true);
-    configScrollArea->setFixedWidth(280);
+    configScrollArea->setFixedWidth(350);
     configScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     configScrollArea->setFrameShape(QFrame::NoFrame);
 
@@ -40,7 +40,7 @@ void PluginConfigStepWidget::setupUI()
         "margin-top: 8px; padding: 4px 4px 2px 4px; }"
         "QGroupBox::title { subcontrol-origin: margin; left: 6px; font-weight: bold; font-size: 11px; }"
         "QLabel { font-size: 11px; }"
-        "QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit { padding: 2px; max-width: 140px; }"
+        "QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit { padding: 1px; max-width: 105px; }"
     );
 
     m_pluginScrollArea = configScrollArea;

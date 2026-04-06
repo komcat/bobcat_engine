@@ -75,7 +75,7 @@ void CameraLightingStepWidget::setupUI()
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setFixedWidth(280);
+    scrollArea->setFixedWidth(350);
 
     QWidget* scrollContent = new QWidget();
     QVBoxLayout* configCol = new QVBoxLayout(scrollContent);
@@ -157,11 +157,13 @@ void CameraLightingStepWidget::setupCameraSection(QVBoxLayout* col)
     m_exposureSpinBox->setSingleStep(50);
     m_exposureSpinBox->setValue(1000);
     m_exposureSpinBox->setSuffix(" us");
+    m_exposureSpinBox->setMaximumWidth(100);
     connect(m_exposureSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [this](int v) { updateExposureLabel(v); });
     grid->addWidget(m_exposureSpinBox, 0, 1);
     m_exposureValueLabel = new QLabel("1.00 ms");
     m_exposureValueLabel->setStyleSheet("color: #888; font-size: 10px;");
+    m_exposureValueLabel->setMaximumWidth(50);
     grid->addWidget(m_exposureValueLabel, 0, 2);
 
     // Row 1: Gain
@@ -171,11 +173,13 @@ void CameraLightingStepWidget::setupCameraSection(QVBoxLayout* col)
     m_gainSpinBox->setValue(1.0);
     m_gainSpinBox->setSingleStep(0.1);
     m_gainSpinBox->setDecimals(1);
+    m_gainSpinBox->setMaximumWidth(100);
     connect(m_gainSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, [this](double v) { updateGainLabel(v); });
     grid->addWidget(m_gainSpinBox, 1, 1);
     m_gainValueLabel = new QLabel("1.0");
     m_gainValueLabel->setStyleSheet("color: #888; font-size: 10px;");
+    m_gainValueLabel->setMaximumWidth(50);
     grid->addWidget(m_gainValueLabel, 1, 2);
 
     // Row 2: Frame Rate
@@ -186,11 +190,13 @@ void CameraLightingStepWidget::setupCameraSection(QVBoxLayout* col)
     m_frameRateSpinBox->setSingleStep(0.5);
     m_frameRateSpinBox->setDecimals(1);
     m_frameRateSpinBox->setSuffix(" fps");
+    m_frameRateSpinBox->setMaximumWidth(100);
     connect(m_frameRateSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, [this](double v) { updateFrameRateLabel(v); });
     grid->addWidget(m_frameRateSpinBox, 2, 1);
     m_frameRateValueLabel = new QLabel("8.0");
     m_frameRateValueLabel->setStyleSheet("color: #888; font-size: 10px;");
+    m_frameRateValueLabel->setMaximumWidth(50);
     grid->addWidget(m_frameRateValueLabel, 2, 2);
 
     camLayout->addLayout(grid);
@@ -658,24 +664,20 @@ void CameraLightingStepWidget::loadLightingChannels()
 
         QWidget* channelWidget = new QWidget();
         QHBoxLayout* channelLayout = new QHBoxLayout(channelWidget);
-        channelLayout->setContentsMargins(0, 2, 0, 2);
-        channelLayout->setSpacing(8);
+        channelLayout->setContentsMargins(0, 1, 0, 1);
+        channelLayout->setSpacing(2);
 
-        // Channel label (L1, L2, ... + optional name)
+        // Channel label (compact: L1, L2, ...)
         QString labelText = QString("L%1").arg(ch.channelNumber + 1);
-        if (!ch.name.empty()) {
-            labelText += " " + QString::fromStdString(ch.name);
-        }
         QLabel* channelLabel = new QLabel(labelText);
-        channelLabel->setFixedWidth(80);
-        channelLabel->setStyleSheet("font-size: 11px;");
+        channelLabel->setFixedWidth(20);
+        channelLabel->setStyleSheet("font-size: 10px;");
         channelLayout->addWidget(channelLabel);
 
-        // Intensity slider
+        // Intensity slider (flex)
         QSlider* slider = new QSlider(Qt::Horizontal);
         slider->setRange(0, 255);
         slider->setValue(0);
-        slider->setMinimumWidth(100);
         slider->setProperty("channelIndex", static_cast<int>(i));
         connect(slider, &QSlider::valueChanged, this, [this, i](int value) {
             if (i < m_lightingChannelNumbers.size()) {
@@ -687,18 +689,18 @@ void CameraLightingStepWidget::loadLightingChannels()
 
         // Intensity value label
         QLabel* valueLabel = new QLabel("0");
-        valueLabel->setFixedWidth(30);
+        valueLabel->setFixedWidth(22);
         valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        valueLabel->setStyleSheet("font-size: 11px; color: #00aaff;");
+        valueLabel->setStyleSheet("font-size: 10px; color: #00aaff;");
         channelLayout->addWidget(valueLabel);
         m_lightingValueLabels.push_back(valueLabel);
 
         // Toggle button (ON / OFF)
         QPushButton* toggleBtn = new QPushButton("OFF");
-        toggleBtn->setFixedSize(45, 22);
+        toggleBtn->setFixedSize(30, 18);
         toggleBtn->setCheckable(true);
         toggleBtn->setStyleSheet(
-            "QPushButton { background-color: #555; color: #aaa; font-size: 10px; font-weight: bold; border: none; border-radius: 3px; }"
+            "QPushButton { background-color: #555; color: #aaa; font-size: 9px; font-weight: bold; border: none; border-radius: 3px; }"
             "QPushButton:checked { background-color: #00aa00; color: white; }"
         );
         connect(toggleBtn, &QPushButton::clicked, this, [this, i](bool checked) {
