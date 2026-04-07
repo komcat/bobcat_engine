@@ -937,6 +937,10 @@ void PowerSupplyControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
+  // Refresh connection status in case devices were connected externally
+  updateDeviceList();
+  updateConnectionStatus();
+
   if (!m_currentDevice.isEmpty()) {
     auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
     if (psu && psu->isConnected()) {

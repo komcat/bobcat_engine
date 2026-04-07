@@ -578,14 +578,10 @@ QWidget* SMUControlPage::createSMUChannelTab(int channel)
   ctrl.currentSpinBox->setSingleStep(0.001);
   ctrl.currentSpinBox->setValue(0.0);
   ctrl.currentSpinBox->setStyleSheet(spinBoxStyle);
+  ctrl.currentSpinBox->setReadOnly(true);
+  ctrl.currentSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
   currentRow->addWidget(ctrl.currentSpinBox, 1);
-  ctrl.setCurrentButton = new QPushButton("Set");
-  ctrl.setCurrentButton->setStyleSheet(setButtonStyle);
-  ctrl.setCurrentButton->setFixedWidth(60);
-  connect(ctrl.setCurrentButton, &QPushButton::clicked, this, [this, channel]() {
-    onSetCurrentClicked(channel);
-  });
-  currentRow->addWidget(ctrl.setCurrentButton);
+  ctrl.setCurrentButton = nullptr;
   ctrlLayout->addLayout(currentRow);
 
   // Output ON/OFF row
@@ -1623,18 +1619,30 @@ void SMUControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
-  // Enable measurement polling when page becomes visible
-  if (m_parameterWorker && !m_currentDevice.isEmpty()) {
+  // Refresh connection status in case devices were connected externally
+  updateConnectionStatus();
+  updateDeviceLabels();
+
+  if (!m_currentDevice.isEmpty()) {
     auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
     if (smu && smu->IsConnected()) {
-      m_parameterWorker->setMeasurementPollingEnabled(true);
-      std::cout << "[SMUControlPage] Page shown - enabled status polling" << std::endl;
+      // Rebuild channel tabs if they haven't been set up yet
+      updateChannelList();
+      updateDeviceCapabilities();
 
-      // Request initial measurements for active channel
-      int index = m_channelTabWidget->currentIndex();
-      int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
-        ? m_channelControls[index].channel : 1;
-      m_parameterWorker->requestRefreshAll(channel);
+      // Configure and enable parameter worker polling
+      if (m_parameterWorker) {
+        m_parameterWorker->setCurrentDevice(m_currentDevice.toStdString());
+        m_parameterWorker->setChannelCount(smu->GetChannelCount());
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+        std::cout << "[SMUControlPage] Page shown - enabled status polling" << std::endl;
+
+        // Request initial measurements for active channel
+        int index = m_channelTabWidget->currentIndex();
+        int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
+          ? m_channelControls[index].channel : 1;
+        m_parameterWorker->requestRefreshAll(channel);
+      }
     }
   }
 }
