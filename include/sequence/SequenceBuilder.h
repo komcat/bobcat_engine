@@ -10,6 +10,8 @@
 #include <memory>
 #include <functional>
 
+class ProcessSequenceFactory;
+
 //=============================================================================
 // SEQUENCE BUILDER
 //=============================================================================
@@ -49,9 +51,19 @@ public:
   std::string GetName() const { return m_name; }
   const std::vector<std::shared_ptr<ISequenceStep>>& GetSteps() const { return m_steps; }
 
+  // Factory access (used by sub-recipe plugin to inline steps)
+  void SetFactory(ProcessSequenceFactory* factory) { m_factory = factory; }
+  ProcessSequenceFactory* GetFactory() const { return m_factory; }
+
+  // Parent recipe path (used by sub-recipe plugin for self-reference detection)
+  void SetRecipeFilePath(const std::string& path) { m_recipeFilePath = path; }
+  std::string GetRecipeFilePath() const { return m_recipeFilePath; }
+
 private:
   std::string m_name;
   SequenceEngine* m_engine;
+  ProcessSequenceFactory* m_factory = nullptr;
+  std::string m_recipeFilePath;
   std::vector<std::shared_ptr<ISequenceStep>> m_steps;
 
   // Stack to track nested blocks (for loops/conditionals)

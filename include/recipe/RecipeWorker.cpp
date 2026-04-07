@@ -481,6 +481,10 @@ void RecipeWorker::run()
 
 bool RecipeWorker::buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager)
 {
+  // Make factory and recipe path available to plugins (used by Sub-Recipe plugin)
+  sequence->SetFactory(m_factory);
+  sequence->SetRecipeFilePath(m_recipeFilePath);
+
   int enabledStepIndex = 0;
   int totalStepIndex = 0;
 

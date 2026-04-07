@@ -1,5 +1,6 @@
 // ApplicationSettingsPage.cpp
 #include "ApplicationSettingsPage.h"
+#include "ConfigBackupManager.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "camera/CameraManager.h"
@@ -27,11 +28,17 @@ static const QString QSETTINGS_APP = "BobcatEngine";
 ApplicationSettingsPage::ApplicationSettingsPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
+  , m_backupManager(new ConfigBackupManager(context))
   , m_modified(false)
 {
   initializeSettingDefinitions();
   setupUI();
   loadSettings();
+}
+
+ApplicationSettingsPage::~ApplicationSettingsPage()
+{
+  delete m_backupManager;
 }
 
 void ApplicationSettingsPage::initializeSettingDefinitions()
@@ -45,7 +52,8 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"ChartOverlay", "Chart overlay display settings"},
     {"Vision", "Vision processing settings"},
     {"Tools", "Tool overlay settings"},
-    {"BeamServer", "Beam analyser server connection settings (command + stream ports)"}
+    {"BeamServer", "Beam analyser server connection settings (command + stream ports)"},
+    {"Backup", "Configuration backup and restore settings"}
   };
 
   // Get dynamic options
@@ -137,7 +145,12 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
 
     {"BeamServer", "StreamIntervalMs", "100",
      "Target interval between stream frames in milliseconds (100 = 10Hz)",
-     "int", 50, 1000, {}}
+     "int", 50, 1000, {}},
+
+    // === Backup ===
+    {"Backup", "DestinationPath", "",
+     "Folder path where config backups are stored. Leave empty to use default (config_backups/ next to executable).",
+     "string", 0, 0, {}}
   };
 }
 
@@ -356,8 +369,50 @@ void ApplicationSettingsPage::setupUI()
     }
   });
 
+  m_backupButton = new QPushButton("Backup Config");
+  m_backupButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #1e40af; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 10px 20px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #1e3a8a; "
+    "}"
+  );
+  connect(m_backupButton, &QPushButton::clicked, this, [this]() {
+    if (m_backupManager->showBackupDialog(this)) {
+      // Update the in-memory setting value so the tree reflects the saved path
+      m_currentValues["Backup"]["DestinationPath"] =
+        m_backupManager->getBackupBasePath().string();
+    }
+  });
+
+  m_restoreButton = new QPushButton("Restore Config");
+  m_restoreButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #78350f; "
+    "  color: white; "
+    "  border: none; "
+    "  border-radius: 4px; "
+    "  padding: 10px 20px; "
+    "  font-weight: bold; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #92400e; "
+    "}"
+  );
+  connect(m_restoreButton, &QPushButton::clicked, this, [this]() {
+    m_backupManager->showRestoreDialog(this);
+  });
+
   buttonBar->addWidget(m_resetButton);
   buttonBar->addWidget(openConfigButton);
+  buttonBar->addWidget(m_backupButton);
+  buttonBar->addWidget(m_restoreButton);
   buttonBar->addStretch();
   buttonBar->addWidget(m_reloadButton);
   buttonBar->addWidget(m_saveButton);
@@ -670,7 +725,7 @@ void ApplicationSettingsPage::populateTree()
   // Define section order
   std::vector<std::string> sectionOrder = {
     "CameraMonitor", "ChartOverlay", "Vision", "Tools",
-    "BeamServer", "ChainExecution", "Scanning", "UI"
+    "BeamServer", "ChainExecution", "Scanning", "UI", "Backup"
   };
 
   // Create tree items in order
@@ -999,3 +1054,4 @@ void ApplicationSettingsPage::updateModifiedIndicator()
     m_statusLabel->setText("");
   }
 }
+

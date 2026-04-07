@@ -128,6 +128,7 @@ signals:
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private slots:
     void onROICornerDragged(int startX, int startY, int endX, int endY);

@@ -1429,8 +1429,8 @@ void RunProgramPage::createEditWidget()
   tableLayout->addWidget(tableLabel);
 
   m_editRecipeTable = new QTableWidget();
-  m_editRecipeTable->setColumnCount(4);
-  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "Dependencies", "Status"});
+  m_editRecipeTable->setColumnCount(5);
+  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "File", "Dependencies", "Status"});
   m_editRecipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_editRecipeTable->setSelectionMode(QAbstractItemView::SingleSelection);
   m_editRecipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1438,9 +1438,10 @@ void RunProgramPage::createEditWidget()
   m_editRecipeTable->verticalHeader()->setVisible(false);
   m_editRecipeTable->horizontalHeader()->setStretchLastSection(false);
   m_editRecipeTable->setColumnWidth(0, 40);   // # column
-  m_editRecipeTable->setColumnWidth(1, 250);  // Recipe Name
-  m_editRecipeTable->setColumnWidth(2, 180);  // Dependencies
-  m_editRecipeTable->setColumnWidth(3, 80);   // Status
+  m_editRecipeTable->setColumnWidth(1, 200);  // Recipe Name
+  m_editRecipeTable->setColumnWidth(2, 180);  // File
+  m_editRecipeTable->setColumnWidth(3, 120);  // Dependencies
+  m_editRecipeTable->setColumnWidth(4, 80);   // Status
   m_editRecipeTable->setStyleSheet(
     "QTableWidget { "
     "  background-color: #1e1e1e; "
@@ -4415,7 +4416,8 @@ void RunProgramPage::onAddRecipe()
     recipesPath,  // Folder path: config/[product]/recipes/
     "*.json",  // File pattern
     "Add Recipe",  // Dialog title
-    "recipe files"  // File type description
+    "recipe files",  // File type description
+    true  // Recursive: scan subfolders
   );
 
   if (filename.isEmpty()) return;
@@ -5241,7 +5243,14 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
     m_editRecipeTable->setItem(rowIndex, 1, nameItem);
 
-    // Column 2: Dependencies
+    // Column 2: File (recipe filename)
+    QFileInfo recipeFileInfo(QString::fromStdString(recipe->recipeFilePath));
+    QTableWidgetItem* fileItem = new QTableWidgetItem(recipeFileInfo.fileName());
+    fileItem->setForeground(QColor("#a1a1aa"));  // gray, secondary info
+    fileItem->setToolTip(QString::fromStdString(recipe->recipeFilePath));
+    m_editRecipeTable->setItem(rowIndex, 2, fileItem);
+
+    // Column 3: Dependencies
     std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(rowIndex);
     QString depsText;
     if (deps.empty()) {
@@ -5255,9 +5264,9 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* depsItem = new QTableWidgetItem(depsText);
     depsItem->setTextAlignment(Qt::AlignCenter);
     depsItem->setForeground(QColor(155, 135, 245));  // Purple color for dependencies
-    m_editRecipeTable->setItem(rowIndex, 2, depsItem);
+    m_editRecipeTable->setItem(rowIndex, 3, depsItem);
 
-    // Column 3: Status
+    // Column 4: Status
     QString status = recipe->enabled ? "Enabled" : "Disabled";
     QTableWidgetItem* statusItem = new QTableWidgetItem(status);
     statusItem->setTextAlignment(Qt::AlignCenter);
@@ -5265,9 +5274,10 @@ void RunProgramPage::updateRecipeList()
       statusItem->setForeground(QColor(150, 150, 150));
       numItem->setForeground(QColor(150, 150, 150));
       nameItem->setForeground(QColor(150, 150, 150));
+      fileItem->setForeground(QColor(150, 150, 150));
       depsItem->setForeground(QColor(150, 150, 150));
     }
-    m_editRecipeTable->setItem(rowIndex, 3, statusItem);
+    m_editRecipeTable->setItem(rowIndex, 4, statusItem);
 
     rowIndex++;
   }

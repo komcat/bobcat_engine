@@ -632,6 +632,7 @@ set(SOURCES
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
+    include/recipe/processes/SubRecipeProcesses.cpp
     include/recipe/processes/MotionProcesses.cpp
     include/recipe/processes/DeviceLinkProcesses.cpp
     include/recipe/processes/IOProcesses.cpp
@@ -767,6 +768,7 @@ set(SOURCES
     include/settings/ApplicationSettings.cpp
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
+    include/AppUI/SettingsPage/ConfigBackupManager.cpp
     # Trainer container (side panel navigation)
     include/AppUI/TrainerContainerPage.cpp
     # Accuracy Trainer
@@ -1032,6 +1034,7 @@ set(HEADERS
     include/settings/ApplicationSettings.h
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.h
+    include/AppUI/SettingsPage/ConfigBackupManager.h
     # Accuracy Trainer
     include/AppUI/AccuracyTrainer/AccuracyTrainerData.h
     include/AppUI/AccuracyTrainer/AccuracyTrainerStore.h
@@ -1256,6 +1259,12 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.cpp
         include/vision/ui/VisionRightPanelWidget.cpp
         include/vision/ui/VisionReliabilityTestDialog.cpp
+        # Wizard step widgets
+        include/vision/ui/VisionNavWidget.cpp
+        include/vision/ui/CameraLightingStepWidget.cpp
+        include/vision/ui/CaptureROIStepWidget.cpp
+        include/vision/ui/PluginConfigStepWidget.cpp
+        include/vision/ui/ExecuteTuneStepWidget.cpp
     )
     list(APPEND HEADERS
         include/vision/OpenCVTest.h
@@ -1282,6 +1291,13 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.h
         include/vision/ui/VisionRightPanelWidget.h
         include/vision/ui/VisionReliabilityTestDialog.h
+        # Wizard step widget headers
+        include/vision/ui/VisionWizardState.h
+        include/vision/ui/VisionNavWidget.h
+        include/vision/ui/CameraLightingStepWidget.h
+        include/vision/ui/CaptureROIStepWidget.h
+        include/vision/ui/PluginConfigStepWidget.h
+        include/vision/ui/ExecuteTuneStepWidget.h
     )
     message(STATUS "OpenCV vision support enabled (v4.12.0)")
 else()
