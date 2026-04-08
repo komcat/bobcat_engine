@@ -283,14 +283,6 @@ void ProgramWorker::runSequential()
     emit logMessage(QString("PROGRAM COMPLETED: %1").arg(completionMsg));
 
     emit programExecutionCompleted(true, completionMsg);
-
-    // ✅ Also invoke parent's slot directly if parent exists (more reliable than signal)
-    if (parent()) {
-      QMetaObject::invokeMethod(parent(), "onProgramExecutionCompleted",
-        Qt::QueuedConnection,
-        Q_ARG(bool, true),
-        Q_ARG(QString, completionMsg));
-    }
   }
   catch (const std::exception& e) {
     QString failMsg = QString("Program exception: %1").arg(e.what());

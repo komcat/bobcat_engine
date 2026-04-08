@@ -2064,6 +2064,16 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onPlacementRetraceEnded);
   m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
 
+  // Cross-thread signal bridges for recipe callbacks (this → this connections).
+  // Must be connected once here, NOT in onExecuteProgram(), to avoid accumulating
+  // duplicate connections on each execution.
+  connect(this, &RunProgramPage::showUserPrompt,
+    this, &RunProgramPage::onShowUserPrompt);
+  connect(this, &RunProgramPage::showManualAdjust,
+    this, &RunProgramPage::onShowManualAdjust);
+  connect(this, &RunProgramPage::showPlacementRetrace,
+    this, &RunProgramPage::onShowPlacementRetrace);
+
   m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
   layout->addWidget(m_executionStack, 1);
@@ -2861,10 +2871,7 @@ void RunProgramPage::onExecuteProgram()
     m_currentLoopIteration = 0;
   }
 
-  // Set UserPrompt callback
-  connect(this, &RunProgramPage::showUserPrompt,
-    this, &RunProgramPage::onShowUserPrompt);
-
+  // Set UserPrompt callback (signal connection is in constructor)
   m_programWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message));
@@ -2877,12 +2884,7 @@ void RunProgramPage::onExecuteProgram()
     return m_promptResponse;
   });
 
-  // Set ManualAdjust callback
-  connect(this, &RunProgramPage::showManualAdjust,
-    this, &RunProgramPage::onShowManualAdjust);
-  connect(this, &RunProgramPage::showPlacementRetrace,
-    this, &RunProgramPage::onShowPlacementRetrace);
-
+  // Set ManualAdjust callback (signal connections are in constructor)
   m_programWorker->setManualAdjustCallback(
     [this](const std::string& message, const std::string& deviceName,
            double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
