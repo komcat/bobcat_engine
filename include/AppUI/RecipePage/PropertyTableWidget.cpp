@@ -8,8 +8,13 @@
 #include "MotionDeviceSelectorDialog.h"
 #include "products/product_position_manager.h"
 #include "DataStore.h"
+#include "SMU/SMUManager.h"
+#include "SMU/ISMUDevice.h"
 #include <QLabel>
 #include <QPushButton>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QTreeWidget>
 #include <iostream>
 
 PropertyTableWidget::PropertyTableWidget(ApplicationContext* context, QWidget* parent)
@@ -307,6 +312,127 @@ void PropertyTableWidget::addDeviceProperty(const std::string& key, const std::s
   });
 
   addPropertyRow(key, label, combo, tooltip);
+}
+
+void PropertyTableWidget::addSMUDeviceProperty(const std::string& key, const std::string& label,
+                                               const std::string& value, const std::string& tooltip)
+{
+  // Create container with line edit + browse button
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(4);
+
+  QLineEdit* lineEdit = new QLineEdit();
+  lineEdit->setText(QString::fromStdString(value));
+  lineEdit->setReadOnly(true);
+  if (!tooltip.empty()) {
+    lineEdit->setToolTip(QString::fromStdString(tooltip));
+  }
+  layout->addWidget(lineEdit, 1);
+
+  QPushButton* browseBtn = new QPushButton("...");
+  browseBtn->setFixedWidth(30);
+  browseBtn->setToolTip("Browse registered SMU devices");
+  layout->addWidget(browseBtn);
+
+  // Connect browse button to open SMU device selector dialog
+  connect(browseBtn, &QPushButton::clicked, this, [this, key, lineEdit]() {
+    if (!m_context || !m_context->smuManager) return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Select SMU Device");
+    dialog.setMinimumSize(450, 300);
+
+    QVBoxLayout* dlgLayout = new QVBoxLayout(&dialog);
+
+    QTreeWidget* tree = new QTreeWidget();
+    tree->setHeaderLabels({"Device", "Type", "Channels", "Connected"});
+    tree->setRootIsDecorated(false);
+    tree->setAlternatingRowColors(true);
+    tree->header()->setStretchLastSection(false);
+    tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    tree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    tree->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    dlgLayout->addWidget(tree);
+
+    // Populate with registered SMU devices (connect first if needed)
+    auto deviceNames = m_context->smuManager->GetDeviceNames();
+    for (const auto& name : deviceNames) {
+      auto device = m_context->smuManager->GetDevice(name);
+      if (!device) continue;
+
+      // Try to connect if not already connected
+      if (!device->IsConnected()) {
+        device->Connect();
+      }
+
+      auto* item = new QTreeWidgetItem();
+      item->setText(0, QString::fromStdString(name));
+      item->setText(1, QString::fromStdString(device->GetDeviceID().empty() ? "(unknown)" : device->GetDeviceID()));
+
+      auto enabled = device->GetEnabledChannels();
+      QStringList chList;
+      for (int ch : enabled) chList << QString::number(ch);
+      item->setText(2, chList.join(", "));
+
+      bool connected = device->IsConnected();
+      item->setText(3, connected ? "Yes" : "No");
+      if (connected) {
+        item->setForeground(3, QColor(100, 200, 100));
+      } else {
+        item->setForeground(3, QColor(200, 100, 100));
+      }
+
+      // Highlight currently selected device
+      if (name == lineEdit->text().toStdString()) {
+        item->setSelected(true);
+      }
+
+      tree->addTopLevelItem(item);
+    }
+
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    dlgLayout->addWidget(buttons);
+
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(tree, &QTreeWidget::itemDoubleClicked, &dialog, &QDialog::accept);
+
+    if (dialog.exec() == QDialog::Accepted) {
+      auto selected = tree->selectedItems();
+      if (!selected.isEmpty()) {
+        QString deviceName = selected.first()->text(0);
+        if (deviceName != lineEdit->text()) {
+          lineEdit->setText(deviceName);
+          emit propertyChanged(QString::fromStdString(key), deviceName);
+          emit propertyChanged();
+        }
+      }
+    }
+  });
+
+  // Store line edit as the value widget
+  m_valueWidgets[key] = lineEdit;
+
+  // Add row with container
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+
+  QWidget* labelWidget = createPropertyLabel(label, tooltip);
+  m_table->setCellWidget(row, 0, labelWidget);
+
+  QWidget* valueContainer = new QWidget();
+  QHBoxLayout* valueLayout = new QHBoxLayout(valueContainer);
+  valueLayout->setContentsMargins(6, 4, 6, 4);
+  valueLayout->setSpacing(0);
+  valueLayout->addWidget(container);
+  m_table->setCellWidget(row, 1, valueContainer);
+
+  m_keyToRow[key] = row;
+  updateTableHeight();
 }
 
 void PropertyTableWidget::addMotionDeviceProperty(const std::string& key, const std::string& label,

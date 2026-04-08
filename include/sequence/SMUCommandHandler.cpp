@@ -66,12 +66,17 @@ bool SMUCommandHandler::ExecuteCommand(
       }
     }
 
+    bool pollAllChannels = false;
     if (channelIt != params.end()) {
-      try {
-        channel = std::stoi(channelIt->second);
-      } catch (...) {
-        errorMessage = "Invalid channel parameter: " + channelIt->second;
-        return false;
+      if (channelIt->second == "all") {
+        pollAllChannels = true;
+      } else {
+        try {
+          channel = std::stoi(channelIt->second);
+        } catch (...) {
+          errorMessage = "Invalid channel parameter: " + channelIt->second;
+          return false;
+        }
       }
     }
 
@@ -100,31 +105,45 @@ bool SMUCommandHandler::ExecuteCommand(
         return false;
       }
 
-      // Select channel for 6482
-      keithley6482->SelectChannel(channel);
+      if (!pollAllChannels) {
+        keithley6482->SelectChannel(channel);
+      }
     }
     // For other SMU devices (like KeithleySMUAdapter), mode is ignored
     // and polling just uses the default measurement settings
 
+    // Determine which channels to poll
+    std::vector<int> channelsToPoll;
+    if (pollAllChannels) {
+      channelsToPoll = device->GetEnabledChannels();
+      if (channelsToPoll.empty()) {
+        errorMessage = "No enabled channels on device: " + deviceName;
+        return false;
+      }
+    } else {
+      channelsToPoll.push_back(channel);
+    }
+
     if (m_logger) {
+      std::string channelStr = pollAllChannels ? "all(" + std::to_string(channelsToPoll.size()) + ")" : std::to_string(channel);
       m_logger->Info(
         "Starting polling on " + deviceName + " (mode=" + mode +
-        ", interval=" + std::to_string(intervalMs) + "ms, channel=" + std::to_string(channel) + ")",
+        ", interval=" + std::to_string(intervalMs) + "ms, channels=" + channelStr + ")",
         "SMUHandler"
       );
     }
 
-    // ✅ NEW: Use polling manager (thread-safe!)
-    // Default to CURRENT measurement for backward compatibility
-    // TODO: Add measurement type parameter to recipe if voltage polling is needed
-    if (!pollingManager->StartPolling(deviceName, device, channel, intervalMs,
-                                      SMUPollingManager::MeasurementType::CURRENT)) {
-      errorMessage = "Failed to start polling";
-      return false;
+    // Start polling on each channel
+    for (int ch : channelsToPoll) {
+      if (!pollingManager->StartPolling(deviceName, device, ch, intervalMs,
+                                        SMUPollingManager::MeasurementType::CURRENT)) {
+        errorMessage = "Failed to start polling on channel " + std::to_string(ch);
+        return false;
+      }
     }
 
     if (m_logger) {
-      m_logger->Info("Polling started on " + deviceName, "SMUHandler");
+      m_logger->Info("Polling started on " + deviceName + " (" + std::to_string(channelsToPoll.size()) + " channels)", "SMUHandler");
     }
 
     return true;

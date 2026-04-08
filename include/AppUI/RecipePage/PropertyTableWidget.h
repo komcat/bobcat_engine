@@ -60,6 +60,10 @@ public:
                          const std::string& value, int deviceType,
                          const std::string& tooltip = "");
 
+  // SMU device selector with browse button (shows registered SMU devices with details)
+  void addSMUDeviceProperty(const std::string& key, const std::string& label,
+                            const std::string& value, const std::string& tooltip = "");
+
   // Motion device selector with browse button (shows only connected devices)
   void addMotionDeviceProperty(const std::string& key, const std::string& label,
                                const std::string& value, const std::string& tooltip = "");
