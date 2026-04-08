@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 6)
+set(BOBCAT_VERSION_MINOR 7)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -98,6 +98,7 @@ else()
 endif()
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -1338,7 +1339,7 @@ if(WIN32)
     set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
 endif()
 
-add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE})
+add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE} icons.qrc)
 
 # Ensure the .rc is recompiled when the .ico file changes
 if(WIN32)
@@ -1592,6 +1593,14 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         ${CMAKE_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:bobcat_engine>/assets
     COMMENT "Copying assets folder to output directory"
+)
+
+# Copy CHANGELOG.md to output directory (for in-app changelog viewer)
+add_custom_command(TARGET bobcat_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/CHANGELOG.md
+        $<TARGET_FILE_DIR:bobcat_engine>/CHANGELOG.md
+    COMMENT "Copying CHANGELOG.md to output directory"
 )
 
 # ============================================================================

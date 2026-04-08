@@ -2,6 +2,40 @@
 
 All notable changes to bobcat_engine, tracked by git commit.
 
+---
+
+## v1.7.0 — 2026-04-07
+
+### Highlights
+
+- **Sub-Recipe System** — Recipes can now inline other recipes as sub-steps, with folder-based categorization, drag-drop organization, and usage-aware deletion
+- **Config Backup & Restore** — One-click backup of all config/SYSTEM/product folders with timestamped restore points
+- **Lighting System Overhaul** — Grouped channels, two-column UI, improved sequence plugins
+- **Motion Page Redesign** — Isometric 3D viewport with CCW/CW rotation, graph edge visualization
+- **PSU & SMU Page Redesign** — Per-channel UI template, multi-channel SCPI commands, external connection detection
+- **Placement Correction Trainer** — Teach reference/target line angles, compute hex U-axis correction, retrace validation, recipe-executable step
+- **Roll Correction Widget** — Dual-channel peak measurement, arctan-based W-axis correction, fine grid scan with background stop control
+- **Dual-Channel Grid Scan** — GridScanDualChannel plugin with data logging, SI formatting, and delta tracking
+- **Motion Interlock System** — Position-based safety rules (up to 3), configurable operators, persisted to interlocks.json
+- **Beam Detection Pipeline** — SWIR beam processing, encircled energy (EE) metric, D4sigma detection (Halcon), beam focus optimizer, CE/EE charts
+- **Qt Camera Monitor** — Qt-based camera window with side panel, window persistence, dual instances, click-to-move calibration
+- **Accuracy Trainer Enhancements** — SQLite corner logging, unique point UIDs, reference image crop+crosshair, vision profile detect & center, Z offset trainer, yaw trainer, 2-3 corner hex teach
+- **Safety Infrastructure (MISRA Phases 1-5)** — Bounded loops, [[nodiscard]], /W4, SocketGuard RAII, exception removal, unified ErrorCode enum, SafetyEventLog, thread priority, E-stop cascade, command timeout watchdog, concurrency hardening, health monitor, file rotation
+
+### All Changes (by date)
+
+## 2026-04-07
+
+- **uprev to v1.7: main menu redesign, changelog viewer, embedded icons, product image**
+  - Version bumped from 1.6 to 1.7 with build number reset
+  - Added in-app Changelog button next to version title, opens scrollable dialog with CHANGELOG.md
+  - Main menu buttons reorganized to 4-column x 2-row grid layout with F1-F7 shortcut tooltips
+  - Embedded menu icons via Qt resource system (.qrc) — no runtime file dependency
+  - New icons: RunProgramPage.png (Process), accuracy_trainer.png, visionmanager.png, logo.png (app icon)
+  - Application window icon set to logo.png via QApplication::setWindowIcon
+  - Product image placeholder (250x250): auto-loads product.png from active product folder
+  - Removed Delete Product button from main menu
+
 ## 2026-04-05
 
 - `fb97882` — **add sub-recipe plugin, recipe folder categories, and recipe management UI**

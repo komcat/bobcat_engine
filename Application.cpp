@@ -36,6 +36,7 @@
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
+#include <QIcon>
 #include <QSettings>
 #include <QTimer>  // ✅ NEW: For deferred hardware connection
 #include <iostream>
@@ -162,6 +163,9 @@ bool Application::initialize()
       QFont fallbackFont("Segoe UI", 9);
       m_qApplication->setFont(fallbackFont);
     }
+
+    // Set application icon from embedded resource
+    m_qApplication->setWindowIcon(QIcon(":/icons/logo.png"));
 
     // ✅ Set Fusion style for better stylesheet support (prevents Windows native style interference)
     m_qApplication->setStyle("Fusion");
