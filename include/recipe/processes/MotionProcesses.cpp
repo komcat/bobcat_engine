@@ -81,7 +81,7 @@ namespace {
     table->addCategoryHeader("Timing & Velocity");
     table->addNumericProperty("velocity", "Velocity",
       std::stod(getParamOr(params, "velocity", "0")),
-      0, 70, 0.1, 1, "mm/s",
+      0, 70, 0.01, 2, "mm/s",
       "Move speed (0 = use controller default, hex devices max 20 mm/s)");
     table->addNumericProperty("delay_before_ms", "Delay Before",
       std::stod(getParamOr(params, "delay_before_ms", "0")),
@@ -97,7 +97,7 @@ namespace {
   void addTimingAndVelocityFormUI(ProcessConfigWidget* widget,
                                    const std::map<std::string, std::string>& params) {
     widget->addNumericParameter("velocity", "Velocity (mm/s, 0=default)",
-      getParamOr(params, "velocity", "0"), 0, 70, 0.1, 1, "mm/s");
+      getParamOr(params, "velocity", "0"), 0, 70, 0.01, 2, "mm/s");
     widget->addNumericParameter("delay_before_ms", "Delay Before (ms)",
       getParamOr(params, "delay_before_ms", "0"), 0, 60000, 100, 0, "ms");
     widget->addNumericParameter("delay_after_ms", "Delay After (ms)",
