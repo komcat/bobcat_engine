@@ -38,6 +38,7 @@
 #include <QTimer>
 #include <future>
 #include <functional>
+#include <atomic>
 #include "PlacementCorrectionData.h"
 #include "TransformationMatrixLoader.h"
 
@@ -86,11 +87,17 @@ private:
     void setState(WizardState state);
     void autoNavigateToRefP1();
     void autoNavigateToTgtP1();
-    void applyCameraExposure(double exposureUs);
+    void applyCameraExposureAsync(double exposureUs);
     void loadReferenceImage(QLabel* label, const std::string& imageFile);
     std::string getImageDirectory() const;
     void runMotionAsync(std::function<bool()> motionFunc, std::function<void(bool)> onComplete);
     void computeRetraceResults();
+    void setHexVelocity(double velocityMmPerSec);
+
+    // Async position polling to avoid blocking UI thread with hardware queries
+    std::future<void> m_positionFuture;
+    double m_cachedPosX = 0.0, m_cachedPosY = 0.0, m_cachedPosZ = 0.0;
+    std::atomic<bool> m_positionReady{false};
 
     ApplicationContext* m_context;
     PlacementCorrectionSet* m_set = nullptr;
@@ -163,4 +170,8 @@ private:
     QPushButton* m_skipBtn = nullptr;
     QPushButton* m_resetBtn = nullptr;
     QPushButton* m_endBtn = nullptr;
+
+    // Hex velocity preset buttons
+    QPushButton* m_vel01Btn = nullptr;
+    QPushButton* m_vel005Btn = nullptr;
 };

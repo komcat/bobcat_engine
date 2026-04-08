@@ -30,6 +30,7 @@
 #include <iostream>
 #include <cmath>
 #include <filesystem>
+#include <thread>
 
 PlacementRetraceWidget::PlacementRetraceWidget(ApplicationContext* context, QWidget* parent)
     : QWidget(parent)
@@ -347,6 +348,44 @@ void PlacementRetraceWidget::setupUI()
 
     reviewLayout->addLayout(reviewBtnRow);
 
+    // Hex velocity preset buttons
+    QString velBtnStyle =
+        "QPushButton { background-color: #34495e; color: white; font-weight: bold; "
+        "font-size: 12px; border-radius: 4px; padding: 6px 12px; }"
+        "QPushButton:hover { background-color: #4a6785; }"
+        "QPushButton:checked { background-color: #2980b9; border: 2px solid #5dade2; }";
+
+    QHBoxLayout* velRow = new QHBoxLayout();
+    QLabel* velLabel = new QLabel("Hex Velocity:");
+    velLabel->setStyleSheet("color: #aabbcc; font-size: 12px; font-weight: bold;");
+    velRow->addWidget(velLabel);
+
+    m_vel01Btn = new QPushButton("0.1 mm/s");
+    m_vel01Btn->setFixedHeight(34);
+    m_vel01Btn->setCheckable(true);
+    m_vel01Btn->setChecked(true);
+    m_vel01Btn->setStyleSheet(velBtnStyle);
+    connect(m_vel01Btn, &QPushButton::clicked, this, [this]() {
+        m_vel01Btn->setChecked(true);
+        m_vel005Btn->setChecked(false);
+        setHexVelocity(0.1);
+    });
+    velRow->addWidget(m_vel01Btn);
+
+    m_vel005Btn = new QPushButton("0.05 mm/s");
+    m_vel005Btn->setFixedHeight(34);
+    m_vel005Btn->setCheckable(true);
+    m_vel005Btn->setStyleSheet(velBtnStyle);
+    connect(m_vel005Btn, &QPushButton::clicked, this, [this]() {
+        m_vel005Btn->setChecked(true);
+        m_vel01Btn->setChecked(false);
+        setHexVelocity(0.05);
+    });
+    velRow->addWidget(m_vel005Btn);
+
+    velRow->addStretch();
+    reviewLayout->addLayout(velRow);
+
     m_moveToTargetBtn = new QPushButton("Move to Target Position");
     m_moveToTargetBtn->setFixedHeight(44);
     m_moveToTargetBtn->setStyleSheet(
@@ -429,7 +468,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_confirmRefP1Btn->setEnabled(false);
         m_refP1InstructionLabel->setText("Step 1/4: Navigating to Reference Point 1...");
         if (m_set) loadReferenceImage(m_refP1ImageLabel, m_set->referenceLine.p1ImageFile);
-        m_positionTimer->start(100);
+        m_positionTimer->start(250);
         QTimer::singleShot(0, this, [this]() { autoNavigateToRefP1(); });
         break;
 
@@ -437,7 +476,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_wizardStack->setCurrentIndex(2);
         m_refP2InstructionLabel->setText("Step 2/4: Moved to Reference P2 area. Verify and press Confirm.");
         if (m_set) loadReferenceImage(m_refP2ImageLabel, m_set->referenceLine.p2ImageFile);
-        m_positionTimer->start(100);
+        m_positionTimer->start(250);
         break;
 
     case WaitTgtP1:
@@ -445,7 +484,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_confirmTgtP1Btn->setEnabled(false);
         m_tgtP1InstructionLabel->setText("Step 3/4: Navigating to Target Point 1...");
         if (m_set) loadReferenceImage(m_tgtP1ImageLabel, m_set->targetLine.p1ImageFile);
-        m_positionTimer->start(100);
+        m_positionTimer->start(250);
         QTimer::singleShot(0, this, [this]() { autoNavigateToTgtP1(); });
         break;
 
@@ -453,7 +492,7 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_wizardStack->setCurrentIndex(4);
         m_tgtP2InstructionLabel->setText("Step 4/4: Moved to Target P2 area. Verify and press Confirm.");
         if (m_set) loadReferenceImage(m_tgtP2ImageLabel, m_set->targetLine.p2ImageFile);
-        m_positionTimer->start(100);
+        m_positionTimer->start(250);
         break;
 
     case Review: {
@@ -466,6 +505,10 @@ void PlacementRetraceWidget::setState(WizardState state)
         if (m_set) {
             m_applyUCheckbox->setChecked(m_set->config.applyUCorrection);
         }
+        // Reset velocity buttons to default 0.1 mm/s
+        m_vel01Btn->setChecked(true);
+        m_vel005Btn->setChecked(false);
+        setHexVelocity(0.1);
         computeRetraceResults();
         break;
     }
@@ -506,28 +549,32 @@ void PlacementRetraceWidget::onStartRetrace()
               << " dY=" << m_masterVecY << " dAngle=" << m_masterDeltaAngle << std::endl;
 
     // Apply Ref P1 camera exposure before first motion
-    applyCameraExposure(m_set->referenceLine.p1Exposure);
+    applyCameraExposureAsync(m_set->referenceLine.p1Exposure);
 
     setState(WaitRefP1);
 }
 
-void PlacementRetraceWidget::applyCameraExposure(double exposureUs)
+void PlacementRetraceWidget::applyCameraExposureAsync(double exposureUs)
 {
     if (!m_context || !m_context->cameraManager || !m_set) return;
     if (m_set->config.cameraId.empty()) return;
 
-    ICameraHardware::ExposureSettings expSettings;
-    expSettings.auto_exposure = false;
-    expSettings.auto_gain = false;
-    expSettings.gain = 0.0;
-    expSettings.exposure_time = exposureUs;
+    auto* camMgr = m_context->cameraManager;
+    std::string cameraId = m_set->config.cameraId;
 
-    bool ok = m_context->cameraManager->ApplyExposureSettings(
-        m_set->config.cameraId, expSettings);
+    std::thread([camMgr, cameraId, exposureUs]() {
+        ICameraHardware::ExposureSettings expSettings;
+        expSettings.auto_exposure = false;
+        expSettings.auto_gain = false;
+        expSettings.gain = 0.0;
+        expSettings.exposure_time = exposureUs;
 
-    std::cout << "[PlacementRetrace] Camera \"" << m_set->config.cameraId
-              << "\" exposure=" << exposureUs << "us "
-              << (ok ? "OK" : "FAILED") << std::endl;
+        bool ok = camMgr->ApplyExposureSettings(cameraId, expSettings);
+
+        std::cout << "[PlacementRetrace] Camera \"" << cameraId
+                  << "\" exposure=" << exposureUs << "us "
+                  << (ok ? "OK" : "FAILED") << std::endl;
+    }).detach();
 }
 
 std::string PlacementRetraceWidget::getImageDirectory() const
@@ -564,7 +611,7 @@ void PlacementRetraceWidget::loadReferenceImage(QLabel* label, const std::string
     QPixmap cropped = pixmap.copy(cropX, cropY, cropW, cropH);
 
     // Scale to label size
-    QPixmap scaled = cropped.scaled(label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    QPixmap scaled = cropped.scaled(label->size(), Qt::KeepAspectRatio, Qt::FastTransformation);
 
     // Draw crosshair overlay
     QPainter painter(&scaled);
@@ -659,7 +706,7 @@ void PlacementRetraceWidget::onConfirmRefP1()
     std::cout << "[PlacementRetrace] Ref P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
     // Apply Ref P2 exposure before moving
-    applyCameraExposure(m_set->referenceLine.p2Exposure);
+    applyCameraExposureAsync(m_set->referenceLine.p2Exposure);
 
     auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
@@ -697,7 +744,7 @@ void PlacementRetraceWidget::onConfirmRefP2()
               << " Angle=" << m_retracedRef.angleDeg << std::endl;
 
     // Apply Tgt P1 exposure before navigating to target
-    applyCameraExposure(m_set->targetLine.p1Exposure);
+    applyCameraExposureAsync(m_set->targetLine.p1Exposure);
 
     setState(WaitTgtP1);
 }
@@ -714,7 +761,7 @@ void PlacementRetraceWidget::onConfirmTgtP1()
     std::cout << "[PlacementRetrace] Tgt P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
     // Apply Tgt P2 exposure before moving
-    applyCameraExposure(m_set->targetLine.p2Exposure);
+    applyCameraExposureAsync(m_set->targetLine.p2Exposure);
 
     auto* mm = m_context->motionManager;
     std::string dev = m_set->measureDevice;
@@ -1015,6 +1062,18 @@ void PlacementRetraceWidget::onMoveToTarget()
         });
 }
 
+void PlacementRetraceWidget::setHexVelocity(double velocityMmPerSec)
+{
+    if (!m_context || !m_context->motionManager || !m_set) return;
+
+    std::string device = m_set->config.targetDevice;
+    bool ok = m_context->motionManager->SetSystemVelocity(device, velocityMmPerSec);
+
+    std::cout << "[PlacementRetrace] Set " << device
+              << " system velocity to " << velocityMmPerSec << " mm/s "
+              << (ok ? "OK" : "FAILED") << std::endl;
+}
+
 void PlacementRetraceWidget::onReset()
 {
     m_moveToTargetBtn->setEnabled(false);
@@ -1050,17 +1109,33 @@ void PlacementRetraceWidget::updatePositionDisplay()
 {
     if (!m_context || !m_context->motionManager || !m_set) return;
 
-    auto pos = m_context->motionManager->GetCurrentPosition(m_set->measureDevice);
-    QString text = QString("X: %1  Y: %2  Z: %3")
-        .arg(pos.x, 10, 'f', 4)
-        .arg(pos.y, 10, 'f', 4)
-        .arg(pos.z, 10, 'f', 4);
+    // If a previous async query completed, update the display
+    if (m_positionReady.exchange(false)) {
+        QString text = QString("X: %1  Y: %2  Z: %3")
+            .arg(m_cachedPosX, 10, 'f', 4)
+            .arg(m_cachedPosY, 10, 'f', 4)
+            .arg(m_cachedPosZ, 10, 'f', 4);
 
-    switch (m_state) {
-    case WaitRefP1: m_refP1PositionLabel->setText(text); break;
-    case WaitRefP2: m_refP2PositionLabel->setText(text); break;
-    case WaitTgtP1: m_tgtP1PositionLabel->setText(text); break;
-    case WaitTgtP2: m_tgtP2PositionLabel->setText(text); break;
-    default: break;
+        switch (m_state) {
+        case WaitRefP1: m_refP1PositionLabel->setText(text); break;
+        case WaitRefP2: m_refP2PositionLabel->setText(text); break;
+        case WaitTgtP1: m_tgtP1PositionLabel->setText(text); break;
+        case WaitTgtP2: m_tgtP2PositionLabel->setText(text); break;
+        default: break;
+        }
+    }
+
+    // Launch async position query for next timer tick (skip if previous query still running)
+    if (!m_positionFuture.valid() ||
+        m_positionFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+        auto* mm = m_context->motionManager;
+        std::string dev = m_set->measureDevice;
+        m_positionFuture = std::async(std::launch::async, [this, mm, dev]() {
+            auto pos = mm->GetCurrentPosition(dev);
+            m_cachedPosX = pos.x;
+            m_cachedPosY = pos.y;
+            m_cachedPosZ = pos.z;
+            m_positionReady.store(true);
+        });
     }
 }
