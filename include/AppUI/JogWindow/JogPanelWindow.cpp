@@ -59,6 +59,7 @@ JogPanelWindow::JogPanelWindow(
   , m_quickOutputWidget(nullptr)
   , m_lightingWidget(nullptr)
   , m_jogWorker(nullptr)
+  , m_velocityPresetsWidget(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
   , m_keyboardActive(false)
 {
@@ -710,6 +711,134 @@ void JogPanelWindow::refreshDeviceList()
 
   // Add stretch back
   groupLayout->addStretch();
+
+  // Update velocity presets for the selected device
+  updateVelocityPresets();
+}
+
+void JogPanelWindow::createVelocityPanel(QWidget* /*parent*/)
+{
+  // Velocity presets are now created inside createMovementPanel
+}
+
+void JogPanelWindow::updateVelocityPresets()
+{
+  if (!m_velocityPresetsWidget) return;
+
+  // Clear existing buttons
+  for (auto* btn : m_velocityButtons) {
+    btn->deleteLater();
+  }
+  m_velocityButtons.clear();
+
+  QGridLayout* velGrid = qobject_cast<QGridLayout*>(m_velocityPresetsWidget->layout());
+  if (!velGrid) return;
+
+  // Remove any remaining widgets (unit label from previous update)
+  while (velGrid->count() > 0) {
+    QLayoutItem* item = velGrid->takeAt(0);
+    if (item->widget()) {
+      item->widget()->deleteLater();
+    }
+    delete item;
+  }
+
+  // Determine device type
+  QString deviceType = "ACS";
+  if (m_context && m_context->motionManager && !m_selectedDevice.empty()) {
+    std::string type = m_context->motionManager->GetDeviceType(m_selectedDevice);
+    std::string upperType = type;
+    for (auto& c : upperType) c = static_cast<char>(toupper(c));
+    deviceType = QString::fromStdString(upperType);
+  }
+
+  // Choose presets based on device type
+  QList<double> presets;
+  if (deviceType == "PI") {
+    presets = { 1, 2, 5, 10, 12.5 };
+  } else {
+    presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
+  }
+
+  int col = 0;
+  int row = 0;
+  int maxCols = 4;
+
+  for (double vel : presets) {
+    QString label;
+    if (vel == static_cast<int>(vel)) {
+      label = QString::number(static_cast<int>(vel));
+    } else {
+      label = QString::number(vel, 'f', 1);
+    }
+
+    QPushButton* btn = new QPushButton(label);
+    btn->setMinimumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton {"
+      "  background-color: #3c3c3c;"
+      "  color: #d4d4d4;"
+      "  border: 1px solid #555555;"
+      "  border-radius: 3px;"
+      "  font-size: 11px;"
+      "  font-weight: bold;"
+      "  padding: 4px 2px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #0e639c;"
+      "  color: white;"
+      "  border-color: #1177bb;"
+      "}"
+      "QPushButton:pressed {"
+      "  background-color: #0c5280;"
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this, [this, vel]() {
+      applyVelocity(vel);
+    });
+
+    velGrid->addWidget(btn, row, col);
+    m_velocityButtons.append(btn);
+
+    col++;
+    if (col >= maxCols) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // Add "mm/s" label at the end
+  QLabel* unitLabel = new QLabel("mm/s");
+  unitLabel->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  unitLabel->setAlignment(Qt::AlignCenter);
+  velGrid->addWidget(unitLabel, row, col);
+}
+
+void JogPanelWindow::applyVelocity(double velocity)
+{
+  if (!m_context || !m_context->motionManager || m_selectedDevice.empty()) return;
+
+  std::string type = m_context->motionManager->GetDeviceType(m_selectedDevice);
+  std::string upperType = type;
+  for (auto& c : upperType) c = static_cast<char>(toupper(c));
+
+  if (upperType == "PI") {
+    m_context->motionManager->SetSystemVelocity(m_selectedDevice, velocity);
+  } else {
+    // ACS: set all installed axes
+    std::string axes = m_context->motionManager->GetInstalledAxes(m_selectedDevice);
+    for (char c : axes) {
+      m_context->motionManager->SetVelocity(m_selectedDevice, std::string(1, c), velocity);
+    }
+  }
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "Velocity set to " + std::to_string(velocity) + " mm/s for " + m_selectedDevice,
+      "JogPanel"
+    );
+  }
 }
 
 void JogPanelWindow::createStepSizePanel(QWidget* parent)
@@ -965,6 +1094,20 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   uvwPosLayout->addWidget(m_posWLabel, 0, 2);
 
   groupLayout->addWidget(uvwPosWidget);
+
+  // Velocity presets
+  QLabel* velLabel = new QLabel("Velocity");
+  velLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+  groupLayout->addWidget(velLabel);
+
+  m_velocityPresetsWidget = new QWidget();
+  QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
+  velGrid->setSpacing(2);
+  velGrid->setContentsMargins(0, 0, 0, 0);
+  groupLayout->addWidget(m_velocityPresetsWidget);
+
+  // Populate initial presets
+  updateVelocityPresets();
 
   groupLayout->addStretch();
 
@@ -1307,6 +1450,9 @@ void JogPanelWindow::onDeviceSelected()
         "JogPanel"
       );
     }
+
+    // Update velocity presets based on device type
+    updateVelocityPresets();
 
     // Update UVW button enabled state based on device capabilities
     updateUVWButtonState();

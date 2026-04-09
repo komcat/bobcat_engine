@@ -88,6 +88,7 @@ private:
   void createQuickOutputTab();
   void createLightingTab();
   void createDevicePanel(QWidget* parent);
+  void createVelocityPanel(QWidget* parent);
   void createStepSizePanel(QWidget* parent);
   void createMovementPanel(QWidget* parent);
   void createAutoFocusPanel(QWidget* parent);
@@ -98,6 +99,8 @@ private:
                     double zRangeMm, double zStepMm, QPushButton* button);
   void applyExposure(const std::string& cameraId, QSpinBox* spinBox);
   void updateStepSizeDisplay();
+  void updateVelocityPresets();    // Update velocity preset buttons for selected device
+  void applyVelocity(double velocity);  // Apply velocity to selected device
   void flashButton(QPushButton* button);
   void saveWindowSettings();       // Save window position to settings
   void restoreWindowSettings();    // Restore window position from settings
@@ -154,6 +157,10 @@ private:
 
   // Jog worker for async motion commands
   JogWorker* m_jogWorker;
+
+  // Velocity preset widgets
+  QWidget* m_velocityPresetsWidget;
+  QList<QPushButton*> m_velocityButtons;
 
   // State
   std::string m_selectedDevice;
