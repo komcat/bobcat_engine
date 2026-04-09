@@ -3,13 +3,17 @@
 #include "ApplicationContext.h"
 #include "PowerSupplyManager.h"
 #include "PSUParameterWorker.h"
+#include <QThread>
 #include "IPowerSupply.h"
+#include "KeysightE36103B.h"
+#include "KeysightE36441A.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QSplitter>
 #include <QFrame>
+#include <QInputDialog>
 #include <iostream>
 #include <cmath>
 
@@ -221,8 +225,8 @@ void PowerSupplyControlPage::setupUI()
 
   mainLayout->addWidget(splitter);
 
-  // Initially disable control panels
-  m_middlePanel->setEnabled(false);
+  // Initially disable channel tabs (but keep connection bar clickable)
+  m_channelTabs->setEnabled(false);
 }
 
 void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
@@ -241,38 +245,6 @@ void PowerSupplyControlPage::createLeftPanel(QWidget* leftPanel)
   connect(m_deviceList, &QListWidget::currentRowChanged,
     this, &PowerSupplyControlPage::onDeviceSelected);
 
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-  buttonLayout->setSpacing(4);
-
-  m_connectButton = new QPushButton("Connect");
-  m_connectButton->setStyleSheet(
-    "QPushButton { background-color: #27ae60; }"
-    "QPushButton:hover { background-color: #2ecc71; }");
-  connect(m_connectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onConnectClicked);
-
-  m_disconnectButton = new QPushButton("Disconnect");
-  m_disconnectButton->setEnabled(false);
-  m_disconnectButton->setStyleSheet(
-    "QPushButton { background-color: #e74c3c; }"
-    "QPushButton:hover { background-color: #c0392b; }");
-  connect(m_disconnectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onDisconnectClicked);
-
-  buttonLayout->addWidget(m_connectButton);
-  buttonLayout->addWidget(m_disconnectButton);
-  layout->addLayout(buttonLayout);
-
-  m_connectionStatus = new QLabel("● Disconnected");
-  m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold; padding: 2px;");
-  m_connectionStatus->setAlignment(Qt::AlignCenter);
-  layout->addWidget(m_connectionStatus);
-
-  m_deviceInfoLabel = new QLabel("Select a device");
-  m_deviceInfoLabel->setStyleSheet(
-    "font-size: 10px; color: #aaaaaa; padding: 4px; "
-    "background-color: #252526; border-radius: 4px;");
-  m_deviceInfoLabel->setWordWrap(true);
-  layout->addWidget(m_deviceInfoLabel);
-
   m_statusLabel = new QLabel("Ready");
   m_statusLabel->setStyleSheet("font-size: 10px; color: #888888; padding: 2px;");
   m_statusLabel->setWordWrap(true);
@@ -285,9 +257,45 @@ void PowerSupplyControlPage::createMiddlePanel(QWidget* middlePanel)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(8);
 
+  // --- Connection bar: title + buttons + status (single row) ---
+  QHBoxLayout* connectionBar = new QHBoxLayout();
+  connectionBar->setSpacing(8);
+
   QLabel* titleLabel = new QLabel("Channel Settings");
   titleLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; padding: 4px;");
-  layout->addWidget(titleLabel);
+  connectionBar->addWidget(titleLabel);
+
+  connectionBar->addStretch();
+
+  m_deviceInfoLabel = new QLabel("Select a device");
+  m_deviceInfoLabel->setStyleSheet(
+    "font-size: 10px; color: #aaaaaa; padding: 4px; "
+    "background-color: #252526; border-radius: 4px;");
+  m_deviceInfoLabel->setWordWrap(false);
+  connectionBar->addWidget(m_deviceInfoLabel);
+
+  m_connectionStatus = new QLabel("● Disconnected");
+  m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold; padding: 2px;");
+  connectionBar->addWidget(m_connectionStatus);
+
+  m_connectButton = new QPushButton("Connect");
+  m_connectButton->setFixedWidth(90);
+  m_connectButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; }"
+    "QPushButton:hover { background-color: #2ecc71; }");
+  connect(m_connectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onConnectClicked);
+  connectionBar->addWidget(m_connectButton);
+
+  m_disconnectButton = new QPushButton("Disconnect");
+  m_disconnectButton->setFixedWidth(90);
+  m_disconnectButton->setEnabled(false);
+  m_disconnectButton->setStyleSheet(
+    "QPushButton { background-color: #e74c3c; }"
+    "QPushButton:hover { background-color: #c0392b; }");
+  connect(m_disconnectButton, &QPushButton::clicked, this, &PowerSupplyControlPage::onDisconnectClicked);
+  connectionBar->addWidget(m_disconnectButton);
+
+  layout->addLayout(connectionBar);
 
   m_channelTabs = new QTabWidget();
   layout->addWidget(m_channelTabs);
@@ -349,10 +357,20 @@ QWidget* PowerSupplyControlPage::createChannelTab(int channel)
     "font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
   measLayout->addWidget(controls.voltageLabel);
 
+  controls.voltageSetpointLabel = new QLabel("V set: ---");
+  controls.voltageSetpointLabel->setStyleSheet(
+    "font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
+  measLayout->addWidget(controls.voltageSetpointLabel);
+
   controls.currentLabel = new QLabel("A: --- A");
   controls.currentLabel->setStyleSheet(
     "font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
   measLayout->addWidget(controls.currentLabel);
+
+  controls.currentSetpointLabel = new QLabel("A set: ---");
+  controls.currentSetpointLabel->setStyleSheet(
+    "font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
+  measLayout->addWidget(controls.currentSetpointLabel);
 
   controls.refreshButton = new QPushButton("Refresh");
   controls.refreshButton->setMaximumWidth(80);
@@ -369,6 +387,17 @@ QWidget* PowerSupplyControlPage::createChannelTab(int channel)
   });
   measLayout->addWidget(controls.refreshButton);
 
+  controls.readStatusButton = new QPushButton("Read Status");
+  controls.readStatusButton->setMaximumWidth(100);
+  controls.readStatusButton->setStyleSheet(
+    "QPushButton { background-color: #1a3a6a; color: #ffdd00; font-size: 11px; "
+    "border: 1px solid #b8860b; border-radius: 3px; padding: 3px 8px; }"
+    "QPushButton:hover { background-color: #254b82; color: #ffee44; }");
+  connect(controls.readStatusButton, &QPushButton::clicked, this, [this, channel]() {
+    onReadStatusClicked(channel);
+  });
+  measLayout->addWidget(controls.readStatusButton);
+
   topRow->addWidget(measFrame, 0);
 
   // --- Right: Voltage/Current inputs + Output buttons (fixed width, left-aligned) ---
@@ -377,10 +406,15 @@ QWidget* PowerSupplyControlPage::createChannelTab(int channel)
     "border-radius: 4px; padding: 4px; font-size: 16px; font-weight: bold; }";
 
   QWidget* controlPanel = new QWidget();
-  controlPanel->setFixedWidth(380);
+  controlPanel->setFixedWidth(460);
   QVBoxLayout* controlLayout = new QVBoxLayout(controlPanel);
   controlLayout->setContentsMargins(0, 0, 0, 0);
   controlLayout->setSpacing(4);
+
+  const QString limitButtonStyle =
+    "QPushButton { background-color: #8b4513; color: #ffdd00; font-size: 11px; font-weight: bold; "
+    "border: 1px solid #b8860b; border-radius: 3px; padding: 3px 4px; }"
+    "QPushButton:hover { background-color: #a0522d; color: #ffee44; }";
 
   // Voltage row
   QHBoxLayout* voltageRow = new QHBoxLayout();
@@ -403,6 +437,14 @@ QWidget* PowerSupplyControlPage::createChannelTab(int channel)
     onSetVoltageClicked(channel);
   });
   voltageRow->addWidget(controls.setVoltageButton);
+  controls.voltageLimitButton = new QPushButton(QString("max %1V").arg(controls.maxVoltageLimit, 0, 'f', 1));
+  controls.voltageLimitButton->setFixedWidth(70);
+  controls.voltageLimitButton->setStyleSheet(limitButtonStyle);
+  controls.voltageLimitButton->setToolTip("Click to change software voltage limit");
+  connect(controls.voltageLimitButton, &QPushButton::clicked, this, [this, channel]() {
+    onVoltageLimitClicked(channel);
+  });
+  voltageRow->addWidget(controls.voltageLimitButton);
   controlLayout->addLayout(voltageRow);
 
   // Current row
@@ -426,7 +468,43 @@ QWidget* PowerSupplyControlPage::createChannelTab(int channel)
     onSetCurrentClicked(channel);
   });
   currentRow->addWidget(controls.setCurrentButton);
+  controls.currentLimitButton = new QPushButton(QString("max %1A").arg(controls.maxCurrentLimit, 0, 'f', 2));
+  controls.currentLimitButton->setFixedWidth(70);
+  controls.currentLimitButton->setStyleSheet(limitButtonStyle);
+  controls.currentLimitButton->setToolTip("Click to change software current limit");
+  connect(controls.currentLimitButton, &QPushButton::clicked, this, [this, channel]() {
+    onCurrentLimitClicked(channel);
+  });
+  currentRow->addWidget(controls.currentLimitButton);
   controlLayout->addLayout(currentRow);
+
+  // Current ±10mA adjustment row
+  QHBoxLayout* currentAdjustRow = new QHBoxLayout();
+  currentAdjustRow->setSpacing(4);
+  QLabel* spacerLabel = new QLabel("");
+  spacerLabel->setFixedWidth(26);
+  currentAdjustRow->addWidget(spacerLabel);
+  controls.currentMinus10mAButton = new QPushButton("-10 mA");
+  controls.currentMinus10mAButton->setMinimumHeight(28);
+  controls.currentMinus10mAButton->setStyleSheet(
+    "QPushButton { background-color: #1a3a6a; color: #aaccff; font-size: 12px; font-weight: bold; "
+    "border: 1px solid #1565c0; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #254b82; color: white; }");
+  connect(controls.currentMinus10mAButton, &QPushButton::clicked, this, [this, channel]() {
+    onCurrentMinus10mA(channel);
+  });
+  currentAdjustRow->addWidget(controls.currentMinus10mAButton, 1);
+  controls.currentPlus10mAButton = new QPushButton("+10 mA");
+  controls.currentPlus10mAButton->setMinimumHeight(28);
+  controls.currentPlus10mAButton->setStyleSheet(
+    "QPushButton { background-color: #1a3a6a; color: #aaccff; font-size: 12px; font-weight: bold; "
+    "border: 1px solid #1565c0; border-radius: 3px; }"
+    "QPushButton:hover { background-color: #254b82; color: white; }");
+  connect(controls.currentPlus10mAButton, &QPushButton::clicked, this, [this, channel]() {
+    onCurrentPlus10mA(channel);
+  });
+  currentAdjustRow->addWidget(controls.currentPlus10mAButton, 1);
+  controlLayout->addLayout(currentAdjustRow);
 
   // Output ON/OFF row
   QHBoxLayout* outputRow = new QHBoxLayout();
@@ -597,6 +675,28 @@ void PowerSupplyControlPage::onDeviceSelected(int row)
     m_parameterWorker->setChannelCount(m_currentChannelCount);
   }
 
+  // Disable OCP controls for devices that don't support programmable OCP
+  bool ocpSupported = (info.type != "keysight_e36103b_direct" &&
+                       info.type != "keysight_direct" &&
+                       info.type != "keysight_e36103b");
+  for (auto& ctrl : m_channelControls) {
+    ctrl.ocpSpinBox->setEnabled(ocpSupported);
+    ctrl.setOCPButton->setEnabled(ocpSupported);
+    if (!ocpSupported) {
+      ctrl.ocpSpinBox->setToolTip("OCP not supported on E36103B");
+      ctrl.setOCPButton->setToolTip("OCP not supported on E36103B");
+      ctrl.ocpSpinBox->setStyleSheet(
+        "QDoubleSpinBox { background-color: #2a2a2a; color: #666666; border: 1px solid #444444; "
+        "border-radius: 4px; padding: 4px; font-size: 16px; }");
+    } else {
+      ctrl.ocpSpinBox->setToolTip("");
+      ctrl.setOCPButton->setToolTip("");
+    }
+  }
+
+  // Load per-device software limits from QSettings
+  loadSoftwareLimits();
+
   updateConnectionStatus();
 }
 
@@ -724,9 +824,17 @@ void PowerSupplyControlPage::onOutputOffClicked(int channel)
 void PowerSupplyControlPage::onSetVoltageClicked(int channel)
 {
   // Find the control widgets for this channel
-  for (const auto& ctrl : m_channelControls) {
+  for (auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double voltage = ctrl.voltageSpinBox->value();
+
+      // Software safety limit check
+      if (voltage > ctrl.maxVoltageLimit) {
+        showError(QString("Ch %1: Voltage %2V exceeds software limit %3V - rolled back")
+          .arg(channel).arg(voltage, 0, 'f', 2).arg(ctrl.maxVoltageLimit, 0, 'f', 1));
+        ctrl.voltageSpinBox->setValue(ctrl.maxVoltageLimit);
+        return;
+      }
 
       if (m_parameterWorker && m_useParameterWorker) {
         // Non-blocking request via worker
@@ -754,9 +862,17 @@ void PowerSupplyControlPage::onSetVoltageClicked(int channel)
 
 void PowerSupplyControlPage::onSetCurrentClicked(int channel)
 {
-  for (const auto& ctrl : m_channelControls) {
+  for (auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
       double current = ctrl.currentSpinBox->value();
+
+      // Software safety limit check
+      if (current > ctrl.maxCurrentLimit) {
+        showError(QString("Ch %1: Current %2A exceeds software limit %3A - rolled back")
+          .arg(channel).arg(current, 0, 'f', 3).arg(ctrl.maxCurrentLimit, 0, 'f', 2));
+        ctrl.currentSpinBox->setValue(ctrl.maxCurrentLimit);
+        return;
+      }
 
       if (m_parameterWorker && m_useParameterWorker) {
         // Non-blocking request via worker
@@ -842,9 +958,225 @@ void PowerSupplyControlPage::onSetOCPClicked(int channel)
   }
 }
 
+void PowerSupplyControlPage::onVoltageLimitClicked(int channel)
+{
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      bool ok = false;
+      double newLimit = QInputDialog::getDouble(
+        this, "Voltage Software Limit",
+        QString("Set max voltage limit for Ch %1 (V):").arg(channel),
+        ctrl.maxVoltageLimit, 0.0, 200.0, 2, &ok);
+      if (ok) {
+        ctrl.maxVoltageLimit = newLimit;
+        ctrl.voltageLimitButton->setText(QString("max %1V").arg(newLimit, 0, 'f', 1));
+        // Clamp spinbox if current value exceeds new limit
+        if (ctrl.voltageSpinBox->value() > newLimit) {
+          ctrl.voltageSpinBox->setValue(newLimit);
+        }
+        saveSoftwareLimits();
+        showSuccess(QString("Ch %1: Voltage limit set to %2 V").arg(channel).arg(newLimit, 0, 'f', 1));
+      }
+      break;
+    }
+  }
+}
+
+void PowerSupplyControlPage::onCurrentLimitClicked(int channel)
+{
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      bool ok = false;
+      double newLimit = QInputDialog::getDouble(
+        this, "Current Software Limit",
+        QString("Set max current limit for Ch %1 (A):").arg(channel),
+        ctrl.maxCurrentLimit, 0.0, 10.0, 3, &ok);
+      if (ok) {
+        ctrl.maxCurrentLimit = newLimit;
+        ctrl.currentLimitButton->setText(QString("max %1A").arg(newLimit, 0, 'f', 2));
+        // Clamp spinbox if current value exceeds new limit
+        if (ctrl.currentSpinBox->value() > newLimit) {
+          ctrl.currentSpinBox->setValue(newLimit);
+        }
+        saveSoftwareLimits();
+        showSuccess(QString("Ch %1: Current limit set to %2 A").arg(channel).arg(newLimit, 0, 'f', 3));
+      }
+      break;
+    }
+  }
+}
+
+void PowerSupplyControlPage::onCurrentMinus10mA(int channel)
+{
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
+      // Pause polling to avoid socket contention
+      if (m_parameterWorker) {
+        m_parameterWorker->setMeasurementPollingEnabled(false);
+      }
+      QThread::msleep(100);
+
+      double currentSetpoint = psu->readSetCurrent(channel);
+
+      // Resume polling
+      if (m_parameterWorker) {
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+      }
+
+      if (currentSetpoint < 0) {
+        showError("Failed to read current setpoint");
+        return;
+      }
+
+      double newCurrent = currentSetpoint - 0.010;
+      if (newCurrent < 0.0) {
+        newCurrent = 0.0;
+      }
+
+      ctrl.currentSpinBox->setValue(newCurrent);
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        m_parameterWorker->requestSetCurrent(channel, newCurrent);
+      } else {
+        psu->setCurrent(newCurrent, channel);
+      }
+      showSuccess(QString("Ch %1: Current %2 -> %3 A (-10mA)")
+        .arg(channel).arg(currentSetpoint, 0, 'f', 3).arg(newCurrent, 0, 'f', 3));
+      break;
+    }
+  }
+}
+
+void PowerSupplyControlPage::onCurrentPlus10mA(int channel)
+{
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+      if (!psu || !psu->isConnected()) {
+        showError("Device not connected");
+        return;
+      }
+
+      // Pause polling to avoid socket contention
+      if (m_parameterWorker) {
+        m_parameterWorker->setMeasurementPollingEnabled(false);
+      }
+      QThread::msleep(100);
+
+      double currentSetpoint = psu->readSetCurrent(channel);
+
+      // Resume polling
+      if (m_parameterWorker) {
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+      }
+
+      if (currentSetpoint < 0) {
+        showError("Failed to read current setpoint");
+        return;
+      }
+
+      double newCurrent = currentSetpoint + 0.010;
+
+      // Software safety limit check
+      if (newCurrent > ctrl.maxCurrentLimit) {
+        showError(QString("Ch %1: +10mA would exceed software limit %2A")
+          .arg(channel).arg(ctrl.maxCurrentLimit, 0, 'f', 2));
+        return;
+      }
+
+      ctrl.currentSpinBox->setValue(newCurrent);
+
+      if (m_parameterWorker && m_useParameterWorker) {
+        m_parameterWorker->requestSetCurrent(channel, newCurrent);
+      } else {
+        psu->setCurrent(newCurrent, channel);
+      }
+      showSuccess(QString("Ch %1: Current %2 -> %3 A (+10mA)")
+        .arg(channel).arg(currentSetpoint, 0, 'f', 3).arg(newCurrent, 0, 'f', 3));
+      break;
+    }
+  }
+}
+
 void PowerSupplyControlPage::onRefreshClicked()
 {
   updateMeasurements();
+}
+
+void PowerSupplyControlPage::onReadStatusClicked(int channel)
+{
+  if (m_currentDevice.isEmpty()) {
+    showError("No device selected");
+    return;
+  }
+
+  auto psu = m_psuManager->getPowerSupply(m_currentDevice.toStdString());
+  if (!psu || !psu->isConnected()) {
+    showError("Device not connected");
+    return;
+  }
+
+  // Pause polling to avoid socket contention during direct SCPI queries
+  if (m_parameterWorker) {
+    m_parameterWorker->setMeasurementPollingEnabled(false);
+  }
+
+  // Small delay to let any in-flight poll complete
+  QThread::msleep(100);
+
+  double setV = psu->readSetVoltage(channel);
+  double setA = psu->readSetCurrent(channel);
+
+  // Query OVP/OCP directly via SCPI
+  std::string ovpStr;
+  std::string ocpStr;
+
+  // Try direct query for devices that support it
+  auto* e36103b = dynamic_cast<KeysightE36103B*>(psu.get());
+  auto* e36441a = dynamic_cast<KeysightE36441A*>(psu.get());
+  if (e36103b) {
+    ovpStr = e36103b->query("VOLT:PROT?");
+    ocpStr = "(not supported on E36103B)";
+  } else if (e36441a) {
+    ovpStr = e36441a->query("INST CH" + std::to_string(channel) + ";VOLT:PROT?");
+    ocpStr = e36441a->query("INST CH" + std::to_string(channel) + ";CURR:PROT?");
+  }
+
+  // Resume polling
+  if (m_parameterWorker) {
+    m_parameterWorker->setMeasurementPollingEnabled(true);
+  }
+
+  // Trim whitespace/newlines from responses
+  auto trim = [](std::string& s) {
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r' || s.back() == ' ')) {
+      s.pop_back();
+    }
+  };
+  trim(ovpStr);
+  trim(ocpStr);
+
+  std::cout << "========================================" << std::endl;
+  std::cout << "[PSU ReadStatus] Device: " << m_currentDevice.toStdString()
+            << " Ch" << channel << std::endl;
+  std::cout << "[PSU ReadStatus]   VOLT? (set point) = " << setV << " V" << std::endl;
+  std::cout << "[PSU ReadStatus]   CURR? (set point) = " << setA << " A" << std::endl;
+  std::cout << "[PSU ReadStatus]   VOLT:PROT? (OVP)  = " << ovpStr << std::endl;
+  std::cout << "[PSU ReadStatus]   CURR:PROT? (OCP)  = " << ocpStr << std::endl;
+  std::cout << "========================================" << std::endl;
+
+  showSuccess(QString("Ch %1: V=%2V, A=%3A, OVP=%4, OCP=%5")
+    .arg(channel)
+    .arg(setV, 0, 'f', 3)
+    .arg(setA, 0, 'f', 3)
+    .arg(QString::fromStdString(ovpStr))
+    .arg(QString::fromStdString(ocpStr)));
 }
 
 void PowerSupplyControlPage::updateMeasurements()
@@ -879,9 +1211,17 @@ void PowerSupplyControlPage::updateMeasurements()
       ctrl.voltageLabel->setText("V: " + formatSI(voltage, "V"));
       ctrl.voltageLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
 
+      double sv = psu->readSetVoltage(ctrl.channel);
+      ctrl.voltageSetpointLabel->setText(QString("V set: %1 V").arg(sv, 0, 'f', 3));
+      ctrl.voltageSetpointLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
+
       double current = psu->readCurrent(ctrl.channel);
       ctrl.currentLabel->setText("A: " + formatSI(current, "A"));
       ctrl.currentLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
+
+      double sc = psu->readSetCurrent(ctrl.channel);
+      ctrl.currentSetpointLabel->setText(QString("A set: %1 A").arg(sc, 0, 'f', 3));
+      ctrl.currentSetpointLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
     }
   }
 }
@@ -893,7 +1233,7 @@ void PowerSupplyControlPage::updateConnectionStatus()
     m_disconnectButton->setEnabled(false);
     m_connectionStatus->setText("● No device selected");
     m_connectionStatus->setStyleSheet("color: #666666; font-size: 11px; padding: 2px;");
-    m_middlePanel->setEnabled(false);
+    m_channelTabs->setEnabled(false);
     return;
   }
 
@@ -910,12 +1250,48 @@ void PowerSupplyControlPage::updateConnectionStatus()
   if (connected) {
     m_connectionStatus->setText("● Connected");
     m_connectionStatus->setStyleSheet("color: #27ae60; font-size: 11px; font-weight: bold; padding: 2px;");
-    m_middlePanel->setEnabled(true);
+    m_channelTabs->setEnabled(true);
   }
   else {
     m_connectionStatus->setText("● Disconnected");
     m_connectionStatus->setStyleSheet("color: #e74c3c; font-size: 11px; font-weight: bold; padding: 2px;");
-    m_middlePanel->setEnabled(false);
+    m_channelTabs->setEnabled(false);
+  }
+}
+
+void PowerSupplyControlPage::saveSoftwareLimits()
+{
+  if (m_currentDevice.isEmpty()) {
+    return;
+  }
+
+  QSettings settings("BobcatEngine", "PowerSupply");
+  for (const auto& ctrl : m_channelControls) {
+    QString key = m_currentDevice + "/Ch" + QString::number(ctrl.channel);
+    settings.setValue(key + "/maxVoltage", ctrl.maxVoltageLimit);
+    settings.setValue(key + "/maxCurrent", ctrl.maxCurrentLimit);
+  }
+}
+
+void PowerSupplyControlPage::loadSoftwareLimits()
+{
+  if (m_currentDevice.isEmpty()) {
+    return;
+  }
+
+  QSettings settings("BobcatEngine", "PowerSupply");
+  for (auto& ctrl : m_channelControls) {
+    QString key = m_currentDevice + "/Ch" + QString::number(ctrl.channel);
+    ctrl.maxVoltageLimit = settings.value(key + "/maxVoltage", 3.0).toDouble();
+    ctrl.maxCurrentLimit = settings.value(key + "/maxCurrent", 0.35).toDouble();
+
+    // Update button labels
+    if (ctrl.voltageLimitButton) {
+      ctrl.voltageLimitButton->setText(QString("max %1V").arg(ctrl.maxVoltageLimit, 0, 'f', 1));
+    }
+    if (ctrl.currentLimitButton) {
+      ctrl.currentLimitButton->setText(QString("max %1A").arg(ctrl.maxCurrentLimit, 0, 'f', 2));
+    }
   }
 }
 
@@ -999,7 +1375,8 @@ void PowerSupplyControlPage::onWorkerOutputChanged(int channel, bool on)
   showSuccess(QString("Ch %1: Output %2").arg(channel).arg(on ? "ON" : "OFF"));
 }
 
-void PowerSupplyControlPage::onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
+void PowerSupplyControlPage::onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn,
+                                                         double setVoltage, double setCurrent)
 {
   for (auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
@@ -1020,8 +1397,15 @@ void PowerSupplyControlPage::onWorkerMeasurementsUpdated(int channel, double vol
       ctrl.voltageLabel->setText("V: " + formatSI(voltage, "V"));
       ctrl.voltageLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
 
+      ctrl.voltageSetpointLabel->setText(QString("V set: %1 V").arg(setVoltage, 0, 'f', 3));
+      ctrl.voltageSetpointLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
+
       ctrl.currentLabel->setText("A: " + formatSI(current, "A"));
       ctrl.currentLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
+
+      ctrl.currentSetpointLabel->setText(QString("A set: %1 A").arg(setCurrent, 0, 'f', 3));
+      ctrl.currentSetpointLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ffdd00; background: transparent;");
+
       break;
     }
   }

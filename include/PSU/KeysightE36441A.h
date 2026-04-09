@@ -74,6 +74,7 @@ public:
     // Multi-channel measurements (channel: 1-4)
     double readVoltage(int channel = 1) override;
     double readCurrent(int channel = 1) override;
+    double readSetVoltage(int channel = 1) override;
     double readSetCurrent(int channel = 1) override;
     bool readOutputState(int channel = 1) override;
 

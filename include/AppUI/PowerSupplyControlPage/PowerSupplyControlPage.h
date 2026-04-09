@@ -10,6 +10,7 @@
 #include <QFrame>
 #include <QVBoxLayout>
 #include <QTabWidget>
+#include <QSettings>
 #include <vector>
 
 struct ApplicationContext;
@@ -27,8 +28,12 @@ struct ChannelControlWidgets
   QPushButton* outputOffButton = nullptr;
   QDoubleSpinBox* voltageSpinBox = nullptr;
   QPushButton* setVoltageButton = nullptr;
+  QPushButton* voltageLimitButton = nullptr;
   QDoubleSpinBox* currentSpinBox = nullptr;
   QPushButton* setCurrentButton = nullptr;
+  QPushButton* currentLimitButton = nullptr;
+  QPushButton* currentMinus10mAButton = nullptr;
+  QPushButton* currentPlus10mAButton = nullptr;
   QDoubleSpinBox* ovpSpinBox = nullptr;
   QPushButton* setOVPButton = nullptr;
   QDoubleSpinBox* ocpSpinBox = nullptr;
@@ -36,8 +41,14 @@ struct ChannelControlWidgets
   // Embedded live measurements
   QLabel* outputStateLabel = nullptr;
   QLabel* voltageLabel = nullptr;
+  QLabel* voltageSetpointLabel = nullptr;
   QLabel* currentLabel = nullptr;
+  QLabel* currentSetpointLabel = nullptr;
   QPushButton* refreshButton = nullptr;
+  QPushButton* readStatusButton = nullptr;
+  // Software safety limits
+  double maxVoltageLimit = 3.0;
+  double maxCurrentLimit = 0.35;
 };
 
 /**
@@ -69,9 +80,14 @@ private slots:
   void onSetCurrentClicked(int channel);
   void onSetOVPClicked(int channel);
   void onSetOCPClicked(int channel);
+  void onVoltageLimitClicked(int channel);
+  void onCurrentLimitClicked(int channel);
+  void onCurrentMinus10mA(int channel);
+  void onCurrentPlus10mA(int channel);
 
   // Measurement update
   void onRefreshClicked();
+  void onReadStatusClicked(int channel);
   void updateMeasurements();
 
   // Worker signal handlers
@@ -80,7 +96,8 @@ private slots:
   void onWorkerOVPApplied(int channel, double ovp);
   void onWorkerOCPApplied(int channel, double ocp);
   void onWorkerOutputChanged(int channel, bool on);
-  void onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn);
+  void onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn,
+                                   double setVoltage, double setCurrent);
   void onWorkerError(int channel, QString operation, QString error);
   void onWorkerDeviceConnected(QString deviceName);
   void onWorkerDeviceDisconnected(QString deviceName);
@@ -99,6 +116,10 @@ private:
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
+
+  // Per-device software limit persistence
+  void saveSoftwareLimits();
+  void loadSoftwareLimits();
 
   ApplicationContext* m_context;
   PowerSupplyManager* m_psuManager;

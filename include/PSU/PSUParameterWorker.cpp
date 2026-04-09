@@ -527,8 +527,10 @@ void PSUParameterWorker::readMeasurements(const std::string& deviceName, int cha
         double voltage = psu->readVoltage(channel);
         double current = psu->readCurrent(channel);
         bool outputOn = psu->readOutputState(channel);
+        double setVoltage = psu->readSetVoltage(channel);
+        double setCurrent = psu->readSetCurrent(channel);
 
-        emit measurementsUpdated(channel, voltage, current, outputOn);
+        emit measurementsUpdated(channel, voltage, current, outputOn, setVoltage, setCurrent);
     }
     catch (const std::exception& e) {
         std::cerr << "[PSUParameterWorker] Read error Ch" << channel

@@ -441,6 +441,30 @@ double KeysightE36441A::readCurrent(int channel)
     }
 }
 
+double KeysightE36441A::readSetVoltage(int channel)
+{
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return -1.0;
+    }
+
+    // VOLT? returns the programmed voltage level (not measured)
+    std::string response = queryChannel("VOLT?", channel);
+
+    if (response.empty()) {
+        return -1.0;
+    }
+
+    try {
+        return std::stod(response);
+    }
+    catch (const std::exception& e) {
+        m_lastError = "Failed to parse set voltage: " + std::string(e.what());
+        std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+        return -1.0;
+    }
+}
+
 double KeysightE36441A::readSetCurrent(int channel)
 {
     if (channel < 1 || channel > NUM_CHANNELS) {
