@@ -140,13 +140,27 @@ void SwirBeamWindowManager::saveWindowGeometry()
 {
     if (!m_window || !m_window->GetHwnd()) return;
     HWND hwnd = m_window->GetHwnd();
-    RECT rect;
-    GetWindowRect(hwnd, &rect);
+
+    // Use GetWindowPlacement so a minimized/maximized window still saves its
+    // restored (normal) position rather than the iconic sentinel (-32000,-32000).
+    WINDOWPLACEMENT wp = {};
+    wp.length = sizeof(WINDOWPLACEMENT);
+    if (!GetWindowPlacement(hwnd, &wp)) return;
+    const RECT& rect = wp.rcNormalPosition;
+
+    const int x = static_cast<int>(rect.left);
+    const int y = static_cast<int>(rect.top);
+    const int width = static_cast<int>(rect.right - rect.left);
+    const int height = static_cast<int>(rect.bottom - rect.top);
+
+    // Sanity-check before persisting; refuse to save absurd geometry.
+    if (width < 200 || height < 200) return;
+
     QSettings settings("Fabrinet", "BobcatEngine");
-    settings.setValue("SwirBeamWindow/x", static_cast<int>(rect.left));
-    settings.setValue("SwirBeamWindow/y", static_cast<int>(rect.top));
-    settings.setValue("SwirBeamWindow/width", static_cast<int>(rect.right - rect.left));
-    settings.setValue("SwirBeamWindow/height", static_cast<int>(rect.bottom - rect.top));
+    settings.setValue("SwirBeamWindow/x", x);
+    settings.setValue("SwirBeamWindow/y", y);
+    settings.setValue("SwirBeamWindow/width", width);
+    settings.setValue("SwirBeamWindow/height", height);
     settings.setValue("SwirBeamWindow/visible", m_window->IsVisible());
 }
 
@@ -154,10 +168,26 @@ void SwirBeamWindowManager::loadWindowGeometry()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
     if (settings.contains("SwirBeamWindow/x")) {
-        m_initialX = settings.value("SwirBeamWindow/x", 100).toInt();
-        m_initialY = settings.value("SwirBeamWindow/y", 100).toInt();
-        m_initialWidth = settings.value("SwirBeamWindow/width", 1200).toInt();
-        m_initialHeight = settings.value("SwirBeamWindow/height", 700).toInt();
-        m_restoreVisible = settings.value("SwirBeamWindow/visible", false).toBool();
+        const int x = settings.value("SwirBeamWindow/x", 100).toInt();
+        const int y = settings.value("SwirBeamWindow/y", 100).toInt();
+        const int width = settings.value("SwirBeamWindow/width", 1200).toInt();
+        const int height = settings.value("SwirBeamWindow/height", 700).toInt();
+
+        // Reject corrupt/offscreen/minuscule values that were previously
+        // persisted from a minimized window (e.g. x=y=-32000, width=198, height=56).
+        const bool sizeOk = (width >= 200 && height >= 200);
+        const bool posOk = (x > -10000 && y > -10000);
+        if (sizeOk && posOk) {
+            m_initialX = x;
+            m_initialY = y;
+            m_initialWidth = width;
+            m_initialHeight = height;
+            m_restoreVisible = settings.value("SwirBeamWindow/visible", false).toBool();
+        } else {
+            std::cerr << "[SwirBeamWindowManager] Ignoring corrupt saved geometry "
+                      << "(x=" << x << ", y=" << y
+                      << ", w=" << width << ", h=" << height << "); using defaults"
+                      << std::endl;
+        }
     }
 }
