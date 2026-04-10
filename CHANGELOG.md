@@ -24,6 +24,17 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ### All Changes (by date)
 
+## 2026-04-09
+
+- **stepwise roll W correction with channel tracking and per-substep XCANExtended re-peak**
+  - Added "Tracking Channel" dropdown to RollCorrectionWidget; populated from DataStore via existing periodic refresh + one-shot populate at construction
+  - Correct W button now requires both CH1/CH2 registration AND a selected tracking channel
+  - Replaced single-shot W rotation with stepwise procedure: split total W into N sub-steps no larger than 0.085 deg each (hard cap 0.1 deg), e.g. 0.3 deg → 4 × 0.075 deg
+  - Velocity reduced from 1.0 to 0.1 mm/s for all correction moves
+  - After every W sub-step, runs XCANExtended (axes=XY, step=0.5 µm, settling=300 ms) on the selected channel to re-peak optical power before applying the next sub-step
+  - Background-threaded with SequenceContext stop control; STOP Scan button reused to abort mid-correction (halts before next W sub-step or scan)
+  - Original system velocity restored on every exit path including failure and stop
+
 ## 2026-04-07
 
 - **uprev to v1.7: main menu redesign, changelog viewer, embedded icons, product image**

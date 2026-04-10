@@ -154,10 +154,11 @@ private slots:
   void onRegisterCH2Requested(QString deviceName);
   void onMoveToCH1Requested(QString deviceName);
   void onMoveToCH2Requested(QString deviceName);
-  void onCorrectWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm);
+  void onCorrectWRequested(QString deviceName, QString channel, double angleDeg, bool positiveW, double halfwayXmm);
   void onFineGridScanRequested(QString deviceName);
   void onStopGridScanRequested();
   void onGridScanFinished(bool success, QString deviceName, QString errorMessage);
+  void onRollCorrectionFinished(bool success, QString deviceName, QString message);
   void onRollCorrectionClearRequested(QString deviceName);
 
 private:
@@ -253,6 +254,8 @@ private:
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
   bool m_placementRetraceResponse = false;
   std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
+  std::unique_ptr<SequenceContext> m_rollCorrectionContext;  // Context for stepwise roll correction stop control
+  bool m_rollCorrectionRunning = false;
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
   // Prompt system

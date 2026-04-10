@@ -7,6 +7,9 @@
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QGroupBox>
+#include <QStringList>
+
+class QComboBox;
 
 /**
  * @brief Pure UI widget for roll correction angle calculation
@@ -39,8 +42,17 @@ public:
   // Get spacing value in microns
   double spacing() const;
 
+  // Channel dropdown — populated by parent (RunProgramPage::refreshDataStoreChannels)
+  void setAvailableChannels(const QStringList& channels);
+  // Returns selected channel, or empty string when no real channel is selected
+  QString currentChannel() const;
+
   // Scanning state control
   void setScanRunning(bool running);
+
+  // Roll correction running state — disables register/move/correct/grid-scan/clear
+  // controls and enables the Stop button so the user can abort.
+  void setCorrectionRunning(bool running);
 
   // Position getters for move-to functionality (returns stored XYZUVW)
   struct StoredPosition {
@@ -63,8 +75,8 @@ signals:
   /** Emitted when user clicks "Move to CH2" for a device */
   void moveToCH2Requested(QString deviceName);
 
-  /** Emitted when user clicks "Correct W" - moves to CH1 peak, applies halfway X + W correction */
-  void correctWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm);
+  /** Emitted when user clicks "Correct W" - moves to CH1 peak, applies halfway X + stepwise W correction */
+  void correctWRequested(QString deviceName, QString channel, double angleDeg, bool positiveW, double halfwayXmm);
 
   /** Emitted when user clicks "Fine Grid Scan" for a device */
   void fineGridScanRequested(QString deviceName);
@@ -83,6 +95,13 @@ private:
   // Shared spacing input
   QLineEdit* m_spacingInput;
   QPushButton* m_stopScanButton = nullptr;
+
+  // Tracking channel selector (shared by both devices)
+  QComboBox* m_channelCombo = nullptr;
+  QLabel*    m_channelHintLabel = nullptr;
+
+  // Re-evaluate Correct W enable state after channel selection changes
+  void refreshCorrectionEnableState();
 
   // Per-device UI elements
   struct DeviceUI {

@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QDoubleValidator>
+#include <QComboBox>
 #include <cmath>
 
 RollCorrectionWidget::RollCorrectionWidget(QWidget* parent)
@@ -52,6 +53,25 @@ void RollCorrectionWidget::setupUI()
   spacingLayout->addWidget(m_stopScanButton);
   spacingLayout->addStretch();
   mainLayout->addLayout(spacingLayout);
+
+  // === TRACKING CHANNEL SELECTOR ===
+  // Required for stepwise W correction — XCANExtended re-peak runs against this channel.
+  QHBoxLayout* channelLayout = new QHBoxLayout();
+  QLabel* channelLabel = new QLabel("Tracking Channel:");
+  channelLabel->setStyleSheet("font-weight: bold;");
+  m_channelCombo = new QComboBox();
+  m_channelCombo->setMinimumWidth(220);
+  m_channelCombo->addItem("-- select channel --");
+  m_channelCombo->setToolTip("DataStore channel used by XCANExtended re-peak between W sub-steps");
+  m_channelHintLabel = new QLabel("required for correction");
+  m_channelHintLabel->setStyleSheet("color: #F44336; font-style: italic;");
+  connect(m_channelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    this, [this](int /*idx*/) { refreshCorrectionEnableState(); });
+  channelLayout->addWidget(channelLabel);
+  channelLayout->addWidget(m_channelCombo);
+  channelLayout->addWidget(m_channelHintLabel);
+  channelLayout->addStretch();
+  mainLayout->addLayout(channelLayout);
 
   // === DEVICE GROUPS SIDE BY SIDE ===
   QHBoxLayout* devicesLayout = new QHBoxLayout();
@@ -293,7 +313,8 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   });
   connect(dev.correctWButton, &QPushButton::clicked, this, [this, deviceName]() {
     DeviceUI& d = getDeviceUI(deviceName);
-    emit correctWRequested(deviceName, d.correctionAngleDeg, d.correctionPositiveW, d.correctionHalfwayXmm);
+    emit correctWRequested(deviceName, currentChannel(),
+                           d.correctionAngleDeg, d.correctionPositiveW, d.correctionHalfwayXmm);
   });
   connect(dev.fineGridScanButton, &QPushButton::clicked, this, [this, deviceName]() {
     emit fineGridScanRequested(deviceName);
@@ -438,10 +459,77 @@ void RollCorrectionWidget::computeAndDisplayResults(const QString& deviceName)
   dev.correctionHalfwayXmm = halfwayOffsetMm;
   // Case 1: left+down -> W- (false), Case 2: left+up -> W+ (true)
   // Case 3: right+down -> W+ (true), Case 4: right+up -> W- (false)
-  dev.correctWButton->setEnabled(true);
+  // Button is enabled only when a tracking channel is selected as well
+  dev.correctWButton->setEnabled(!currentChannel().isEmpty());
   dev.correctWButton->setText(QString("Correct W (%1%2 deg)")
     .arg(dev.correctionPositiveW ? "+" : "-")
     .arg(angleDeg, 0, 'f', 4));
+}
+
+void RollCorrectionWidget::refreshCorrectionEnableState()
+{
+  const bool hasChannel = !currentChannel().isEmpty();
+  if (m_channelHintLabel) {
+    m_channelHintLabel->setVisible(!hasChannel);
+  }
+  // Re-run compute (no-op if both peaks not yet registered) so the button
+  // enable state and label stay in sync with the current channel selection.
+  if (m_leftDevice.ch1Registered && m_leftDevice.ch2Registered) {
+    computeAndDisplayResults("hex-left");
+  }
+  if (m_rightDevice.ch1Registered && m_rightDevice.ch2Registered) {
+    computeAndDisplayResults("hex-right");
+  }
+}
+
+void RollCorrectionWidget::setAvailableChannels(const QStringList& channels)
+{
+  if (!m_channelCombo) return;
+  const QString prev = currentChannel();
+  m_channelCombo->blockSignals(true);
+  m_channelCombo->clear();
+  m_channelCombo->addItem("-- select channel --");
+  m_channelCombo->addItems(channels);
+  if (!prev.isEmpty()) {
+    int idx = m_channelCombo->findText(prev);
+    if (idx > 0) {
+      m_channelCombo->setCurrentIndex(idx);
+    }
+  }
+  m_channelCombo->blockSignals(false);
+  refreshCorrectionEnableState();
+}
+
+QString RollCorrectionWidget::currentChannel() const
+{
+  if (!m_channelCombo) return QString();
+  const QString text = m_channelCombo->currentText();
+  if (text.startsWith("-- ")) return QString();
+  return text;
+}
+
+void RollCorrectionWidget::setCorrectionRunning(bool running)
+{
+  // Stop button is the only control enabled while a correction is in progress
+  m_stopScanButton->setEnabled(running);
+  if (m_channelCombo) m_channelCombo->setEnabled(!running);
+  m_spacingInput->setEnabled(!running);
+
+  auto setDeviceEnabled = [running](DeviceUI& d) {
+    if (d.registerCH1Button)  d.registerCH1Button->setEnabled(!running);
+    if (d.registerCH2Button)  d.registerCH2Button->setEnabled(!running);
+    if (d.moveToCH1Button)    d.moveToCH1Button->setEnabled(!running && d.ch1Registered);
+    if (d.moveToCH2Button)    d.moveToCH2Button->setEnabled(!running && d.ch2Registered);
+    if (d.fineGridScanButton) d.fineGridScanButton->setEnabled(!running);
+    if (d.clearButton)        d.clearButton->setEnabled(!running);
+    if (d.correctWButton)     d.correctWButton->setEnabled(false);  // re-enabled by refreshCorrectionEnableState() after run
+  };
+  setDeviceEnabled(m_leftDevice);
+  setDeviceEnabled(m_rightDevice);
+
+  if (!running) {
+    refreshCorrectionEnableState();
+  }
 }
 
 RollCorrectionWidget::DeviceUI& RollCorrectionWidget::getDeviceUI(const QString& deviceName)

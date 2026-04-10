@@ -2193,6 +2193,17 @@ void RunProgramPage::createExecutionWidget()
   rollTabLayout->addWidget(m_rollCorrectionWidget);
   rollTabLayout->addStretch();
 
+  // Populate the roll-correction channel dropdown immediately. The static
+  // de-dup cache in refreshDataStoreChannels() means a plain re-call won't
+  // push to the freshly-constructed widget, so we feed the current list directly.
+  if (m_context && m_context->dataStore) {
+    QStringList channels;
+    for (const auto& ch : m_context->dataStore->GetAllChannelNames()) {
+      channels << QString::fromStdString(ch);
+    }
+    m_rollCorrectionWidget->setAvailableChannels(channels);
+  }
+
   m_executionTabWidget->addTab(rollCorrectionTab, "Roll Correction");
 
   // Connect roll correction signals
@@ -4176,74 +4187,179 @@ void RunProgramPage::onMoveToCH2Requested(QString deviceName)
     QString("[RollCorrection] FAILED to move %1 to CH2 peak").arg(deviceName));
 }
 
-void RunProgramPage::onCorrectWRequested(QString deviceName, double angleDeg, bool positiveW, double halfwayXmm)
+void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
+                                         double angleDeg, bool positiveW, double halfwayXmm)
 {
-  if (!m_context || !m_context->motionManager) return;
+  // ----- Pre-flight validation (UI thread) -----
+  if (!m_context || !m_context->motionManager || !m_context->sequenceEngine || !m_context->dataStore) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: ApplicationContext incomplete");
+    return;
+  }
+  if (m_rollCorrectionRunning) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: a correction is already running");
+    return;
+  }
+  if (channel.isEmpty()) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: tracking channel required - select one in the dropdown");
+    return;
+  }
 
-  std::string dev = deviceName.toStdString();
+  // Verify the selected channel still exists in DataStore
+  {
+    const auto names = m_context->dataStore->GetAllChannelNames();
+    const std::string needle = channel.toStdString();
+    bool found = false;
+    for (const auto& n : names) {
+      if (n == needle) { found = true; break; }
+    }
+    if (!found) {
+      m_logTextEdit->appendPlainText(QString("[RollCorrection] ERROR: channel '%1' not present in DataStore").arg(channel));
+      return;
+    }
+  }
 
-  // Step 1: Verify CH1 position is available (we move to CH1 peak first)
   auto ch1Pos = m_rollCorrectionWidget->getCH1Position(deviceName);
   if (!ch1Pos.valid) {
     m_logTextEdit->appendPlainText(QString("[RollCorrection] ERROR: CH1 peak not registered for %1").arg(deviceName));
     return;
   }
 
-  // Save current velocity, set to 1 mm/s for all correction moves
-  double originalVelocity = 0.0;
-  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
-  m_context->motionManager->SetSystemVelocity(dev, 1.0);
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
-
-  // Step 2: Move to CH1 peak position first
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 1: Moving %1 to CH1 peak position...").arg(deviceName));
-  PositionStruct ch1Target;
-  ch1Target.x = ch1Pos.x; ch1Target.y = ch1Pos.y; ch1Target.z = ch1Pos.z;
-  ch1Target.u = ch1Pos.u; ch1Target.v = ch1Pos.v; ch1Target.w = ch1Pos.w;
-  bool ok = m_context->motionManager->MoveToAbs6(dev, ch1Target, true);
-  if (!ok) {
-    m_logTextEdit->appendPlainText(QString("[RollCorrection] FAILED to move %1 to CH1 peak - aborting correction").arg(deviceName));
-    m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
-    return;
-  }
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 at CH1 peak").arg(deviceName));
-
-  // Step 3: Move halfway X offset (direction per case table)
-  auto currentPos = m_context->motionManager->GetCurrentPosition(dev);
-  // halfwayXmm is signed: negative = move UP (case 1,3), positive = move DOWN (case 2,4)
-  // The action is opposite: we negate halfway to get the correction direction
-  double newX = currentPos.x - halfwayXmm;  // subtract because halfway is (ch2-ch1)/2, we move opposite
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 2: Moving %1 X halfway: %2 -> %3 mm (offset %4 mm)")
-    .arg(deviceName)
-    .arg(currentPos.x, 0, 'f', 4)
-    .arg(newX, 0, 'f', 4)
-    .arg(-halfwayXmm, 0, 'f', 4));
-  ok = m_context->motionManager->MoveToPosition(dev, "X", newX, true);
-  if (!ok) {
-    m_logTextEdit->appendPlainText(QString("[RollCorrection] FAILED X halfway move for %1 - aborting correction").arg(deviceName));
-    m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  auto* handler = m_context->sequenceEngine->GetMotionCommandHandler();
+  if (!handler) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: MotionCommandHandler unavailable");
     return;
   }
 
-  // Step 4: Apply W rotation correction
-  currentPos = m_context->motionManager->GetCurrentPosition(dev);
-  double wCorrection = positiveW ? angleDeg : -angleDeg;
-  double newW = currentPos.w + wCorrection;
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] Step 3: Correcting W for %1: %2 -> %3 (%4%5 deg)")
+  // ----- Compute W sub-step splitting -----
+  // Hard limit: 0.1 deg per sub-step. Ideal upper bound: 0.085 deg.
+  constexpr double kIdealWStepUpper = 0.085;
+  const double totalAbs = std::abs(angleDeg);
+  int steps = static_cast<int>(std::ceil(totalAbs / kIdealWStepUpper));
+  if (steps < 1) steps = 1;
+  const double subStepAbs = totalAbs / static_cast<double>(steps);  // <= 0.085 deg
+  const double signedSubStep = (positiveW ? +1.0 : -1.0) * subStepAbs;
+
+  m_logTextEdit->appendPlainText(QString(
+    "[RollCorrection] %1: total=%2%3 deg, splitting into %4 sub-step(s) of %5 deg each (channel=%6)")
     .arg(deviceName)
-    .arg(currentPos.w, 0, 'f', 4)
-    .arg(newW, 0, 'f', 4)
     .arg(positiveW ? "+" : "-")
-    .arg(angleDeg, 0, 'f', 4));
-  ok = m_context->motionManager->MoveToPosition(dev, "W", newW, true);
+    .arg(angleDeg, 0, 'f', 4)
+    .arg(steps)
+    .arg(subStepAbs, 0, 'f', 4)
+    .arg(channel));
 
-  // Restore original velocity
-  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
-  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+  // ----- Set up running state -----
+  m_rollCorrectionContext = std::make_unique<SequenceContext>();
+  m_rollCorrectionRunning = true;
+  m_rollCorrectionWidget->setCorrectionRunning(true);
 
-  m_logTextEdit->appendPlainText(ok ?
-    QString("[RollCorrection] Correction complete for %1").arg(deviceName) :
-    QString("[RollCorrection] FAILED W correction for %1").arg(deviceName));
+  // Snapshot values needed by the worker thread
+  const std::string dev = deviceName.toStdString();
+  const std::string channelStd = channel.toStdString();
+  auto* mgr = m_context->motionManager;
+  auto* ctx = m_rollCorrectionContext.get();
+  RollCorrectionWidget::StoredPosition ch1Snapshot = ch1Pos;
+  const double halfwayMm = halfwayXmm;
+  const int totalSteps = steps;
+  const double signedStepDeg = signedSubStep;
+
+  // ----- Background worker -----
+  auto future = std::async(std::launch::async,
+    [handler, mgr, ctx, dev, channelStd, ch1Snapshot, halfwayMm, totalSteps, signedStepDeg]()
+      -> std::pair<bool, std::string>
+    {
+      double originalVelocity = 0.0;
+      mgr->GetSystemVelocity(dev, originalVelocity);
+      mgr->SetSystemVelocity(dev, 0.1);  // 0.1 mm/s safe velocity for all moves
+
+      auto restoreAndReturn = [&](bool ok, const std::string& msg) -> std::pair<bool, std::string> {
+        mgr->SetSystemVelocity(dev, originalVelocity);
+        return { ok, msg };
+      };
+
+      // Step 1: Move to CH1 peak (full 6-axis)
+      PositionStruct ch1Target;
+      ch1Target.x = ch1Snapshot.x; ch1Target.y = ch1Snapshot.y; ch1Target.z = ch1Snapshot.z;
+      ch1Target.u = ch1Snapshot.u; ch1Target.v = ch1Snapshot.v; ch1Target.w = ch1Snapshot.w;
+      if (!mgr->MoveToAbs6(dev, ch1Target, true)) {
+        return restoreAndReturn(false, "FAILED move to CH1 peak");
+      }
+
+      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after CH1 move");
+
+      // Step 2: Halfway X shift (subtract because halfway is (ch2-ch1)/2, move opposite)
+      auto curr = mgr->GetCurrentPosition(dev);
+      const double newX = curr.x - halfwayMm;
+      if (!mgr->MoveToPosition(dev, "X", newX, true)) {
+        return restoreAndReturn(false, "FAILED halfway X move");
+      }
+
+      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after halfway X");
+
+      // Step 3..N: Stepwise W loop with XCANExtended re-peak after each W sub-step
+      const std::map<std::string, std::string> scanParams = {
+        {"axes", "XY"},
+        {"step_sizes_um", "0.5"},
+        {"channel", channelStd},
+        {"settling_time_ms", "300"}
+      };
+
+      for (int i = 0; i < totalSteps; ++i) {
+        if (ctx->IsStopRequested()) {
+          return restoreAndReturn(false, "stopped at sub-step " + std::to_string(i + 1));
+        }
+
+        // Apply one W sub-step
+        curr = mgr->GetCurrentPosition(dev);
+        const double newW = curr.w + signedStepDeg;
+        if (!mgr->MoveToPosition(dev, "W", newW, true)) {
+          return restoreAndReturn(false, "FAILED W sub-step " + std::to_string(i + 1));
+        }
+
+        if (ctx->IsStopRequested()) {
+          return restoreAndReturn(false, "stopped after W sub-step " + std::to_string(i + 1));
+        }
+
+        // Re-peak XY power on the selected channel.
+        // ExecuteCommand is BLOCKING (we're already on a worker thread) and leaves
+        // the device at the discovered peak. It honors ctx->IsStopRequested.
+        std::string scanErr;
+        const bool scanOk = handler->ExecuteCommand(
+          mgr, dev, "XCANExtended", scanParams, scanErr, ctx);
+        if (!scanOk) {
+          return restoreAndReturn(false,
+            "FAILED XCANExtended after W sub-step " + std::to_string(i + 1) + ": " + scanErr);
+        }
+      }
+
+      return restoreAndReturn(true, "complete (" + std::to_string(totalSteps) + " sub-steps)");
+    });
+
+  // ----- Poll for completion (UI thread, no blocking) -----
+  auto* pollTimer = new QTimer(this);
+  auto futurePtr = std::make_shared<std::future<std::pair<bool, std::string>>>(std::move(future));
+  connect(pollTimer, &QTimer::timeout, this, [this, pollTimer, futurePtr, deviceName]() {
+    if (futurePtr->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+      pollTimer->stop();
+      pollTimer->deleteLater();
+      auto [ok, msg] = futurePtr->get();
+      onRollCorrectionFinished(ok, deviceName, QString::fromStdString(msg));
+    }
+  });
+  pollTimer->start(100);
+}
+
+void RunProgramPage::onRollCorrectionFinished(bool success, QString deviceName, QString message)
+{
+  m_rollCorrectionWidget->setCorrectionRunning(false);
+  m_rollCorrectionContext.reset();
+  m_rollCorrectionRunning = false;
+
+  if (success) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] %1: %2").arg(deviceName, message));
+  } else {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] %1: %2").arg(deviceName, message));
+  }
 }
 
 void RunProgramPage::onFineGridScanRequested(QString deviceName)
@@ -4309,6 +4425,10 @@ void RunProgramPage::onStopGridScanRequested()
     m_logTextEdit->appendPlainText("[RollCorrection] Stopping grid scan...");
     m_gridScanContext->RequestStop();
   }
+  if (m_rollCorrectionContext) {
+    m_logTextEdit->appendPlainText("[RollCorrection] Stop requested - will halt before next sub-step");
+    m_rollCorrectionContext->RequestStop();
+  }
 }
 
 void RunProgramPage::onGridScanFinished(bool success, QString deviceName, QString errorMessage)
@@ -4334,10 +4454,11 @@ void RunProgramPage::onRollCorrectionClearRequested(QString deviceName)
 // ✅ ADDED: Refresh DataStore channels in the dropdown
 void RunProgramPage::refreshDataStoreChannels()
 {
-  if (!m_context || !m_context->dataStore || !m_scanWidget) return;
+  if (!m_context || !m_context->dataStore) return;
+  if (!m_scanWidget && !m_rollCorrectionWidget) return;
 
   // Get current selection to preserve it
-  QString currentSelection = m_scanWidget->currentChannel();
+  QString currentSelection = m_scanWidget ? m_scanWidget->currentChannel() : QString();
 
   // Get all available channels from DataStore
   QStringList channels;
@@ -4349,11 +4470,16 @@ void RunProgramPage::refreshDataStoreChannels()
   // Only update if the channel list has changed
   static QStringList s_lastChannelList;
   if (channels != s_lastChannelList) {
-    m_scanWidget->setAvailableChannels(channels);
+    if (m_scanWidget) {
+      m_scanWidget->setAvailableChannels(channels);
+    }
+    if (m_rollCorrectionWidget) {
+      m_rollCorrectionWidget->setAvailableChannels(channels);
+    }
     s_lastChannelList = channels;
 
     // ✅ Restore previous selection if it still exists
-    if (!currentSelection.isEmpty() && channels.contains(currentSelection)) {
+    if (m_scanWidget && !currentSelection.isEmpty() && channels.contains(currentSelection)) {
       m_scanWidget->setCurrentChannel(currentSelection);
     }
 
