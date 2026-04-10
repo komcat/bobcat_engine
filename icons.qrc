@@ -1,0 +1,11 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file alias="process.png">assets/icons/RunProgramPage.png</file>
+    <file alias="recipe.png">assets/icons/recipe.png</file>
+    <file alias="motion.png">assets/icons/motion.png</file>
+    <file alias="hardware.png">assets/icons/hardware.png</file>
+    <file alias="accuracy_trainer.png">assets/icons/accuracy_trainer.png</file>
+    <file alias="logo.png">assets/icons/logo.png</file>
+    <file alias="visionmanager.png">assets/icons/visionmanager.png</file>
+  </qresource>
+</RCC>

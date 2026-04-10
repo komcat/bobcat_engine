@@ -34,22 +34,22 @@ private slots:
   void onLoadProduct();
   void onSaveProduct();
   void onSaveProductAs();
-  void onDeleteProduct();
 
 private:
   void setupUI();
   QToolButton* createMenuButton(const QString& text, const QString& icon = "");
   void updateProductDisplay();
+  void showChangelogDialog();
 
   ApplicationContext* m_context;
 
   // Product controls
+  QLabel* m_productImage;
   QLabel* m_productLabel;
   QPushButton* m_newProductBtn;
   QPushButton* m_loadProductBtn;
   QPushButton* m_saveProductBtn;
   QPushButton* m_saveProductAsBtn;
-  QPushButton* m_deleteProductBtn;
 
   // Menu buttons
   QToolButton* m_processButton;

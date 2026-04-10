@@ -12,6 +12,7 @@ MotionControlPanel::MotionControlPanel(QWidget* parent)
   : QWidget(parent)
   , m_deviceCombo(nullptr)
   , m_positionList(nullptr)  // ✅ NEW
+  , m_positionFilter(nullptr)
   , m_breadcrumbLabel(nullptr)  // ✅ NEW
   , m_posNameLabel(nullptr)
   , m_moveToButton(nullptr)
@@ -397,6 +398,7 @@ void MotionControlPanel::setupActionsTab()
   m_breadcrumbLabel->setAlignment(Qt::AlignCenter);
   m_breadcrumbLabel->setWordWrap(true);
   mainVLayout->addWidget(m_breadcrumbLabel);
+  m_breadcrumbLabel->hide();  // Breadcrumb moved to graphic view overlay
 
   // ✅ Two-column layout - Left: Buttons, Right: Position List
   QHBoxLayout* contentLayout = new QHBoxLayout();
@@ -464,16 +466,19 @@ void MotionControlPanel::setupActionsTab()
   m_autoFitButton->setMinimumHeight(28);
   buttonsLayout->addWidget(m_autoFitButton);
 
-  // Separator
+  // Velocity presets moved to DeviceButtonStack
+  m_velocityPresetsWidget = new QWidget();
+  m_velocityPresetsWidget->setStyleSheet("QWidget { background-color: transparent; }");
+  QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
+  velGrid->setContentsMargins(0, 0, 0, 0);
+  velGrid->setSpacing(3);
+  m_velocityPresetsWidget->hide();
+
+  // Separator before STOP
   QFrame* line2 = new QFrame();
   line2->setFrameShape(QFrame::HLine);
   line2->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
   buttonsLayout->addWidget(line2);
-
-  // Home Button - Removed (user can select Home position from list and click Move to Position)
-  // m_homeButton = new QPushButton("⌂ Home");
-  // m_homeButton->setMinimumHeight(28);
-  // buttonsLayout->addWidget(m_homeButton);
 
   // Emergency Stop
   m_stopButton = new QPushButton("⚠ STOP");
@@ -495,12 +500,57 @@ void MotionControlPanel::setupActionsTab()
   listTitle->setStyleSheet(
     "QLabel {"
     "  color: #d4d4d4;"
-    "  font-size: 11px;"
+    "  font-size: 14px;"
     "  font-weight: bold;"
     "  padding: 2px;"
     "}"
   );
   listLayout->addWidget(listTitle);
+
+  // Graph selector
+  m_graphSelector = new QComboBox();
+  m_graphSelector->setStyleSheet(
+    "QComboBox {"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #3f3f46;"
+    "  border-radius: 3px;"
+    "  padding: 4px;"
+    "  font-size: 12px;"
+    "}"
+    "QComboBox:hover {"
+    "  border-color: #0e639c;"
+    "}"
+    "QComboBox::drop-down {"
+    "  border: none;"
+    "}"
+    "QComboBox QAbstractItemView {"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #3f3f46;"
+    "  selection-background-color: #0e639c;"
+    "}"
+  );
+  m_graphSelector->hide();  // Hidden until graphs are loaded
+  listLayout->addWidget(m_graphSelector);
+
+  // Filter input above the position list
+  m_positionFilter = new QLineEdit();
+  m_positionFilter->setPlaceholderText("Filter...");
+  m_positionFilter->setStyleSheet(
+    "QLineEdit {"
+    "  background-color: #1e1e1e;"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #3f3f46;"
+    "  border-radius: 3px;"
+    "  padding: 4px;"
+    "  font-size: 13px;"
+    "}"
+    "QLineEdit:focus {"
+    "  border-color: #0e639c;"
+    "}"
+  );
+  listLayout->addWidget(m_positionFilter);
 
   // Position list
   m_positionList = new QListWidget();
@@ -510,11 +560,11 @@ void MotionControlPanel::setupActionsTab()
     "  color: #d4d4d4;"
     "  border: 1px solid #3f3f46;"
     "  border-radius: 3px;"
-    "  font-size: 11px;"
+    "  font-size: 14px;"
     "  padding: 2px;"
     "}"
     "QListWidget::item {"
-    "  padding: 6px 8px;"
+    "  padding: 8px 10px;"
     "  border-radius: 2px;"
     "}"
     "QListWidget::item:hover {"
@@ -571,6 +621,13 @@ void MotionControlPanel::setupActionsTab()
   // ✅ NEW: Connect position list selection
   connect(m_positionList, &QListWidget::itemSelectionChanged,
     this, &MotionControlPanel::onPositionListSelectionChanged);
+
+  // Connect filter input to slot
+  connect(m_positionFilter, &QLineEdit::textChanged,
+    this, &MotionControlPanel::onFilterTextChanged);
+
+  connect(m_graphSelector, &QComboBox::currentTextChanged,
+    this, &MotionControlPanel::graphChanged);
 }
 
 void MotionControlPanel::setupGraphTab()
@@ -738,4 +795,111 @@ void MotionControlPanel::onPositionListSelectionChanged()
 
   // Emit signal to notify MotionPage
   emit positionSelectedFromList(positionName);
+}
+
+// Filter the position list by hiding items that do not match the search text
+void MotionControlPanel::onFilterTextChanged(const QString& text)
+{
+  for (int i = 0; i < m_positionList->count(); ++i) {
+    QListWidgetItem* item = m_positionList->item(i);
+    bool matches = text.isEmpty() || item->text().contains(text, Qt::CaseInsensitive);
+    item->setHidden(!matches);
+  }
+}
+
+void MotionControlPanel::updateGraphList(const QStringList& graphNames)
+{
+  m_graphSelector->blockSignals(true);
+  QString current = m_graphSelector->currentText();
+  m_graphSelector->clear();
+  m_graphSelector->addItems(graphNames);
+
+  // Restore previous selection if still available
+  int idx = m_graphSelector->findText(current);
+  if (idx >= 0) {
+    m_graphSelector->setCurrentIndex(idx);
+  }
+
+  m_graphSelector->setVisible(graphNames.size() > 1);
+  m_graphSelector->blockSignals(false);
+}
+
+QString MotionControlPanel::getCurrentGraph() const
+{
+  return m_graphSelector->currentText();
+}
+
+void MotionControlPanel::updateVelocityPresets(const QString& deviceType)
+{
+  // Clear existing buttons
+  for (auto* btn : m_velocityButtons) {
+    btn->deleteLater();
+  }
+  m_velocityButtons.clear();
+
+  QGridLayout* velGrid = qobject_cast<QGridLayout*>(m_velocityPresetsWidget->layout());
+  if (!velGrid) return;
+
+  // Choose presets based on device type
+  QList<double> presets;
+  if (deviceType == "PI") {
+    presets = { 1, 2, 5, 10, 12.5 };
+  } else {
+    // ACS or default
+    presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
+  }
+
+  int col = 0;
+  int row = 0;
+  int maxCols = 4;
+
+  for (double vel : presets) {
+    QString label;
+    if (vel == static_cast<int>(vel)) {
+      label = QString::number(static_cast<int>(vel));
+    } else {
+      label = QString::number(vel, 'f', 1);
+    }
+
+    QPushButton* btn = new QPushButton(label);
+    btn->setMinimumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton {"
+      "  background-color: #3c3c3c;"
+      "  color: #d4d4d4;"
+      "  border: 1px solid #555555;"
+      "  border-radius: 3px;"
+      "  font-size: 11px;"
+      "  font-weight: bold;"
+      "  padding: 4px 2px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #0e639c;"
+      "  color: white;"
+      "  border-color: #1177bb;"
+      "}"
+      "QPushButton:pressed {"
+      "  background-color: #0c5280;"
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this, [this, vel]() {
+      emit velocityPresetClicked(vel);
+    });
+
+    velGrid->addWidget(btn, row, col);
+    m_velocityButtons.append(btn);
+
+    col++;
+    if (col >= maxCols) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // Add "mm/s" label at the end
+  QLabel* unitLabel = new QLabel("mm/s");
+  unitLabel->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  unitLabel->setAlignment(Qt::AlignCenter);
+  velGrid->addWidget(unitLabel, row, col);
 }

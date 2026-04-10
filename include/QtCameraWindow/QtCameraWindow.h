@@ -7,6 +7,8 @@
 #include <QGroupBox>
 #include <QScrollArea>
 #include <QLabel>
+#include <QPushButton>
+#include <array>
 
 #include "camera/CameraFrameData.h"
 #include <mutex>
@@ -164,11 +166,14 @@ private:
     QtCameraViewport* m_viewport = nullptr;
     QScrollArea* m_sidePanelScroll = nullptr;
 
-    // Side panel controls — Camera group
+    // Side panel controls — Camera tab
     QComboBox* m_primaryCameraCombo = nullptr;
     QComboBox* m_secondaryCameraCombo = nullptr;
     QLabel*    m_secondaryCameraLabel = nullptr;
     QCheckBox* m_dualModeCheck = nullptr;
+
+    // Side panel controls — Exposure tab
+    QLabel*    m_exposureValueLabel = nullptr;
 
     // Side panel controls — Tools group
     QCheckBox* m_crosshairCheck = nullptr;
@@ -197,6 +202,32 @@ private:
     QGroupBox* m_beamGroup       = nullptr;
     QCheckBox* m_beamEnableCheck = nullptr;
     QComboBox* m_beamCameraCombo = nullptr;
+
+    // Quick-move panel (second left panel)
+    static constexpr int QUICK_MOVE_ROWS = 6;
+    static constexpr int QUICK_MOVE_COLS = 4;
+    static constexpr int QUICK_MOVE_COUNT = QUICK_MOVE_ROWS * QUICK_MOVE_COLS;
+
+    struct QuickMoveButtonData {
+        bool assigned = false;
+        QString label;           // max 10 chars
+        double relX = 0.0;      // mm
+        double relY = 0.0;      // mm
+        double relZ = 0.0;      // mm
+    };
+
+    QWidget* m_quickMovePanel = nullptr;
+    std::array<QPushButton*, QUICK_MOVE_COUNT> m_quickMoveBtns{};
+    std::array<QuickMoveButtonData, QUICK_MOVE_COUNT> m_quickMoveData{};
+
+    void buildQuickMovePanel();
+    void onQuickMoveClicked(int index);
+    void onQuickMoveRightClicked(int index);
+    void showQuickMoveConfigDialog(int index);
+    void updateQuickMoveButton(int index);
+    void saveQuickMoveSettings();
+    void loadQuickMoveSettings();
+    QString quickMoveKey(const QString& key) const;
 
     // Dependencies (non-owning)
     CameraManager*       m_cameraManager       = nullptr;
@@ -325,11 +356,18 @@ private:
 
     // Side panel construction helpers
     void buildSidePanel();
-    QGroupBox* createCameraGroup();
+    QWidget*   createCameraTabs();
+    QWidget*   createCameraSelectionTab();
+    QWidget*   createExposureTab();
     QGroupBox* createToolsGroup();
     QGroupBox* createChartGroup();
     QGroupBox* createVisionGroup();
     QGroupBox* createBeamGroup();
+
+    // Exposure control helpers
+    void applyExposureValue(double exposureUs);
+    void adjustExposure(double deltaUs);
+    void refreshExposureDisplay();
 
     // QSettings key helpers
     // settingsKey: geometry / visibility (uses "GdiCameraWindow" prefix for backward compat)

@@ -49,7 +49,8 @@ signals:
     void outputStateChanged(int channel, bool on);
 
     // Measurement update signals
-    void measurementsUpdated(int channel, double voltage, double current, bool outputOn);
+    void measurementsUpdated(int channel, double voltage, double current, bool outputOn,
+                             double setVoltage, double setCurrent);
 
     // Error/status signals
     void commandError(int channel, QString operation, QString error);
@@ -124,5 +125,5 @@ private:
 
     // Processing intervals (ms)
     static constexpr int PROCESS_INTERVAL_MS = 50;
-    static constexpr int DEFAULT_POLL_INTERVAL_MS = 2000;
+    static constexpr int DEFAULT_POLL_INTERVAL_MS = 200;
 };

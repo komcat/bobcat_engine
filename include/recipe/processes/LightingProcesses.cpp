@@ -15,6 +15,33 @@
 namespace {
 
 //=============================================================================
+// HELPERS
+//=============================================================================
+
+static std::string GetParam(const std::map<std::string, std::string>& params,
+                            const std::string& key, const std::string& defaultVal) {
+    auto it = params.find(key);
+    return (it != params.end()) ? it->second : defaultVal;
+}
+
+static void AddDelayAction(SequenceBuilder* sequence, const std::string& msStr) {
+    if (msStr.empty() || msStr == "0") return;
+    try {
+        int ms = static_cast<int>(std::stod(msStr));
+        if (ms <= 0) return;
+        sequence->AddAction("system", "Wait", {{"milliseconds", std::to_string(ms)}});
+    } catch (...) {}
+}
+
+static void AddDelayUI(ProcessConfigWidget* widget,
+                       const std::map<std::string, std::string>& params) {
+    widget->addNumericParameter("delay_before_ms", "Delay Before (ms)",
+        GetParam(params, "delay_before_ms", "0"), 0, 60000, 100, 0, "ms");
+    widget->addNumericParameter("delay_after_ms", "Delay After (ms)",
+        GetParam(params, "delay_after_ms", "0"), 0, 60000, 100, 0, "ms");
+}
+
+//=============================================================================
 // LIGHT SET INTENSITY PLUGIN
 //=============================================================================
 
@@ -36,47 +63,42 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"device_name", "light-main"},
+            {"group", ""},
             {"channel", "Red"},
-            {"intensity", "50"}
+            {"intensity", "50"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
         };
     }
 
     void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
         const auto& params = instance->parameters;
 
-        // Device selector for lighting controller
         widget->addDeviceSelector("device_name", "Lighting Device", params.at("device_name"),
                                   static_cast<int>(DeviceComboBox::DeviceType::Lighting));
 
-        // Channel name (text field - user types channel name from config)
-        widget->addParameterField("channel", "Channel Name", params.at("channel"));
+        widget->addParameterField("group", "Group (e.g. light1, empty=any)",
+                                  GetParam(params, "group", ""));
 
-        // Intensity percentage
+        widget->addParameterField("channel", "Channel Name", params.at("channel"));
         widget->addParameterField("intensity", "Intensity (0-100%)", params.at("intensity"));
+
+        AddDelayUI(widget, params);
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
         const auto& params = step->parameters;
 
-        std::string deviceName = "light-main";
-        std::string channel = "Red";
-        std::string intensity = "50";
-
-        auto it = params.find("device_name");
-        if (it != params.end()) deviceName = it->second;
-
-        it = params.find("channel");
-        if (it != params.end()) channel = it->second;
-
-        it = params.find("intensity");
-        if (it != params.end()) intensity = it->second;
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
 
         std::map<std::string, std::string> cmdParams;
-        cmdParams["channel"] = channel;
-        cmdParams["intensity"] = intensity;
+        cmdParams["channel"] = GetParam(params, "channel", "Red");
+        cmdParams["intensity"] = GetParam(params, "intensity", "50");
 
-        sequence->AddAction(deviceName, "SetIntensity", cmdParams);
-        (void)step;
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "SetIntensity", cmdParams);
+
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
     }
 };
 
@@ -102,7 +124,10 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"device_name", "light-main"},
-            {"channel", "Red"}
+            {"group", ""},
+            {"channel", "Red"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
         };
     }
 
@@ -112,26 +137,26 @@ public:
         widget->addDeviceSelector("device_name", "Lighting Device", params.at("device_name"),
                                   static_cast<int>(DeviceComboBox::DeviceType::Lighting));
 
+        widget->addParameterField("group", "Group (e.g. light1, empty=any)",
+                                  GetParam(params, "group", ""));
+
         widget->addParameterField("channel", "Channel Name", params.at("channel"));
+
+        AddDelayUI(widget, params);
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
         const auto& params = step->parameters;
 
-        std::string deviceName = "light-main";
-        std::string channel = "Red";
-
-        auto it = params.find("device_name");
-        if (it != params.end()) deviceName = it->second;
-
-        it = params.find("channel");
-        if (it != params.end()) channel = it->second;
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
 
         std::map<std::string, std::string> cmdParams;
-        cmdParams["channel"] = channel;
+        cmdParams["channel"] = GetParam(params, "channel", "Red");
 
-        sequence->AddAction(deviceName, "TurnOn", cmdParams);
-        (void)step;
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "TurnOn", cmdParams);
+
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
     }
 };
 
@@ -157,7 +182,10 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"device_name", "light-main"},
-            {"channel", "Red"}
+            {"group", ""},
+            {"channel", "Red"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
         };
     }
 
@@ -167,26 +195,26 @@ public:
         widget->addDeviceSelector("device_name", "Lighting Device", params.at("device_name"),
                                   static_cast<int>(DeviceComboBox::DeviceType::Lighting));
 
+        widget->addParameterField("group", "Group (e.g. light1, empty=any)",
+                                  GetParam(params, "group", ""));
+
         widget->addParameterField("channel", "Channel Name", params.at("channel"));
+
+        AddDelayUI(widget, params);
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
         const auto& params = step->parameters;
 
-        std::string deviceName = "light-main";
-        std::string channel = "Red";
-
-        auto it = params.find("device_name");
-        if (it != params.end()) deviceName = it->second;
-
-        it = params.find("channel");
-        if (it != params.end()) channel = it->second;
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
 
         std::map<std::string, std::string> cmdParams;
-        cmdParams["channel"] = channel;
+        cmdParams["channel"] = GetParam(params, "channel", "Red");
 
-        sequence->AddAction(deviceName, "TurnOff", cmdParams);
-        (void)step;
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "TurnOff", cmdParams);
+
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
     }
 };
 
@@ -211,7 +239,9 @@ public:
 
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
-            {"device_name", "light-main"}
+            {"device_name", "light-main"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
         };
     }
 
@@ -220,18 +250,19 @@ public:
 
         widget->addDeviceSelector("device_name", "Lighting Device", params.at("device_name"),
                                   static_cast<int>(DeviceComboBox::DeviceType::Lighting));
+
+        AddDelayUI(widget, params);
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
         const auto& params = step->parameters;
 
-        std::string deviceName = "light-main";
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
 
-        auto it = params.find("device_name");
-        if (it != params.end()) deviceName = it->second;
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "AllOff", {});
 
-        sequence->AddAction(deviceName, "AllOff", {});
-        (void)step;
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
     }
 };
 
@@ -257,7 +288,9 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"device_name", "light-main"},
-            {"intensity", "50"}
+            {"intensity", "50"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
         };
     }
 
@@ -268,25 +301,103 @@ public:
                                   static_cast<int>(DeviceComboBox::DeviceType::Lighting));
 
         widget->addParameterField("intensity", "Intensity (0-100%)", params.at("intensity"));
+
+        AddDelayUI(widget, params);
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
         const auto& params = step->parameters;
 
-        std::string deviceName = "light-main";
-        std::string intensity = "50";
-
-        auto it = params.find("device_name");
-        if (it != params.end()) deviceName = it->second;
-
-        it = params.find("intensity");
-        if (it != params.end()) intensity = it->second;
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
 
         std::map<std::string, std::string> cmdParams;
-        cmdParams["intensity"] = intensity;
+        cmdParams["intensity"] = GetParam(params, "intensity", "50");
 
-        sequence->AddAction(deviceName, "AllOn", cmdParams);
-        (void)step;
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "AllOn", cmdParams);
+
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
+    }
+};
+
+//=============================================================================
+// LIGHT CONFIGURE PLUGIN
+// Set per-color intensities for a specific light group in one step.
+//=============================================================================
+
+class LightConfigurePlugin : public IProcessPlugin
+{
+public:
+    std::string GetName() const override {
+        return "Light: Configure";
+    }
+
+    std::string GetCategory() const override {
+        return "Vision";
+    }
+
+    std::string GetDescription() const override {
+        return "Configure per-color intensities for a light group (channels not listed are turned off)";
+    }
+
+    std::map<std::string, std::string> GetDefaultParameters() const override {
+        return {
+            {"device_name", "light-main"},
+            {"group", "light1"},
+            {"white_intensity", "0"},
+            {"red_intensity", "0"},
+            {"green_intensity", "0"},
+            {"blue_intensity", "0"},
+            {"delay_before_ms", "0"},
+            {"delay_after_ms", "0"}
+        };
+    }
+
+    void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+        const auto& params = instance->parameters;
+
+        widget->addDeviceSelector("device_name", "Lighting Device",
+                                  GetParam(params, "device_name", "light-main"),
+                                  static_cast<int>(DeviceComboBox::DeviceType::Lighting));
+
+        widget->addParameterField("group", "Light Group (e.g. light1)",
+                                  GetParam(params, "group", "light1"));
+
+        widget->addNumericParameter("white_intensity", "White / Collimate (%)",
+                                    GetParam(params, "white_intensity", "0"),
+                                    0.0, 100.0, 5.0, 1, "%");
+
+        widget->addNumericParameter("red_intensity", "Red (%)",
+                                    GetParam(params, "red_intensity", "0"),
+                                    0.0, 100.0, 5.0, 1, "%");
+
+        widget->addNumericParameter("green_intensity", "Green (%)",
+                                    GetParam(params, "green_intensity", "0"),
+                                    0.0, 100.0, 5.0, 1, "%");
+
+        widget->addNumericParameter("blue_intensity", "Blue (%)",
+                                    GetParam(params, "blue_intensity", "0"),
+                                    0.0, 100.0, 5.0, 1, "%");
+
+        AddDelayUI(widget, params);
+    }
+
+    void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+        const auto& params = step->parameters;
+
+        AddDelayAction(sequence, GetParam(params, "delay_before_ms", "0"));
+
+        std::map<std::string, std::string> cmdParams;
+        cmdParams["group"] = GetParam(params, "group", "light1");
+        cmdParams["white_intensity"] = GetParam(params, "white_intensity", "0");
+        cmdParams["red_intensity"] = GetParam(params, "red_intensity", "0");
+        cmdParams["green_intensity"] = GetParam(params, "green_intensity", "0");
+        cmdParams["blue_intensity"] = GetParam(params, "blue_intensity", "0");
+
+        sequence->AddAction(GetParam(params, "device_name", "light-main"),
+                           "Configure", cmdParams);
+
+        AddDelayAction(sequence, GetParam(params, "delay_after_ms", "0"));
     }
 };
 
@@ -313,7 +424,10 @@ struct LightingProcessesRegistrar {
         registry.RegisterPlugin(std::make_unique<LightAllOnPlugin>());
         std::cout << "[ProcessPluginRegistry] Registered plugin: Light: All On (Category: Vision)" << std::endl;
 
-        std::cout << "[LightingProcesses] Registered 5 lighting process plugins" << std::endl;
+        registry.RegisterPlugin(std::make_unique<LightConfigurePlugin>());
+        std::cout << "[ProcessPluginRegistry] Registered plugin: Light: Configure (Category: Vision)" << std::endl;
+
+        std::cout << "[LightingProcesses] Registered 6 lighting process plugins" << std::endl;
     }
 };
 

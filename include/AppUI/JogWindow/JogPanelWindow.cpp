@@ -17,6 +17,8 @@
 #include "CameraManager.h"
 
 #include <iostream>
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -57,6 +59,7 @@ JogPanelWindow::JogPanelWindow(
   , m_quickOutputWidget(nullptr)
   , m_lightingWidget(nullptr)
   , m_jogWorker(nullptr)
+  , m_velocityPresetsWidget(nullptr)
   , m_currentStepSize(10.0)  // Default 10um
   , m_keyboardActive(false)
 {
@@ -103,6 +106,7 @@ JogPanelWindow::JogPanelWindow(
     }
   }
 
+  loadStepSizes();  // Load step sizes from JSON config (before UI creation)
   setupUI();
   restoreWindowSettings();  // Restore saved window position and size
 
@@ -277,7 +281,7 @@ void JogPanelWindow::createJogTab()
   QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
   leftLayout->setContentsMargins(0, 0, 0, 0);
   leftLayout->setSpacing(6);
-  leftColumn->setMaximumWidth(140);
+  leftColumn->setMaximumWidth(220);
 
   createDevicePanel(leftColumn);
   createStepSizePanel(leftColumn);
@@ -339,6 +343,162 @@ void JogPanelWindow::createLightingTab()
     layout->addWidget(label);
     m_tabWidget->addTab(placeholder, "Lighting");
   }
+}
+
+void JogPanelWindow::loadStepSizes()
+{
+  // Default step sizes (fallback if no config file found)
+  const std::vector<double> defaultSteps = {
+    0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
+    100.0, 200.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0
+  };
+  double defaultStepSize = 10.0;
+
+  std::string localConfigPath = "config/jog_stepsize.local.json";
+  std::string defaultConfigPath = "config/jog_stepsize.json";
+  std::string configPath;
+  bool loaded = false;
+
+  // Try local configuration first
+  if (QFile::exists(QString::fromStdString(localConfigPath))) {
+    configPath = localConfigPath;
+  }
+  else if (QFile::exists(QString::fromStdString(defaultConfigPath))) {
+    configPath = defaultConfigPath;
+  }
+
+  if (!configPath.empty()) {
+    std::ifstream file(configPath);
+    if (file.is_open()) {
+      try {
+        nlohmann::json j;
+        file >> j;
+        file.close();
+
+        if (j.contains("step_sizes_um") && j["step_sizes_um"].is_array()) {
+          m_stepSizes.clear();
+          for (const auto& val : j["step_sizes_um"]) {
+            if (val.is_number()) {
+              m_stepSizes.push_back(val.get<double>());
+            }
+          }
+          std::sort(m_stepSizes.begin(), m_stepSizes.end());
+
+          // Enforce maximum of 30 step sizes
+          const size_t MAX_STEP_SIZES = 30;
+          if (m_stepSizes.size() > MAX_STEP_SIZES) {
+            m_stepSizes.resize(MAX_STEP_SIZES);
+            if (m_context && m_context->logManager) {
+              m_context->logManager->Warning(
+                "Jog step sizes truncated to " + std::to_string(MAX_STEP_SIZES) + " entries",
+                "JogPanel"
+              );
+            }
+          }
+        }
+
+        m_currentStepSize = j.value("default_step_um", defaultStepSize);
+        loaded = true;
+
+        if (m_context && m_context->logManager) {
+          m_context->logManager->Info(
+            "Loaded " + std::to_string(m_stepSizes.size()) + " jog step sizes from " + configPath,
+            "JogPanel"
+          );
+        }
+      }
+      catch (const std::exception& e) {
+        if (m_context && m_context->logManager) {
+          m_context->logManager->Warning(
+            "Failed to parse jog step size config: " + std::string(e.what()),
+            "JogPanel"
+          );
+        }
+      }
+    }
+  }
+
+  // Fall back to hardcoded defaults
+  if (!loaded || m_stepSizes.empty()) {
+    m_stepSizes = defaultSteps;
+    m_currentStepSize = defaultStepSize;
+
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Info("Using default jog step sizes (no config file found)", "JogPanel");
+    }
+  }
+}
+
+QString JogPanelWindow::formatStepLabel(double stepUm)
+{
+  if (stepUm >= 1000.0) {
+    double mm = stepUm / 1000.0;
+    if (mm == static_cast<int>(mm)) {
+      return QString::number(static_cast<int>(mm)) + "mm";
+    }
+    return QString::number(mm, 'f', 1) + "mm";
+  }
+  if (stepUm < 1.0) {
+    // Sub-micron: show decimal (e.g., "0.1µ", "0.3µ")
+    QString num = QString::number(stepUm, 'f', 1);
+    // Trim trailing zero after decimal if not needed (0.10 → 0.1)
+    if (num.endsWith('0') && num.contains('.')) {
+      num.chop(1);
+    }
+    return num + QStringLiteral("\u00B5");
+  }
+  // Whole micron values
+  if (stepUm == static_cast<int>(stepUm)) {
+    return QString::number(static_cast<int>(stepUm)) + QStringLiteral("\u00B5");
+  }
+  return QString::number(stepUm, 'f', 1) + QStringLiteral("\u00B5");
+}
+
+QString JogPanelWindow::getDeviceButtonStyleSheet(const std::string& deviceId)
+{
+  // Assign distinct colors per device type
+  struct DeviceColor {
+    const char* bgChecked;
+    const char* textChecked;
+    const char* borderChecked;
+  };
+
+  DeviceColor color = { "#f0ad4e", "#000000", "#ffcc00" }; // default orange
+
+  if (deviceId.find("gantry") != std::string::npos) {
+    color = { "#f0ad4e", "#000000", "#ffcc00" }; // orange
+  }
+  else if (deviceId.find("hex") != std::string::npos) {
+    color = { "#00bcd4", "#000000", "#14ffec" }; // cyan/teal
+  }
+  else if (deviceId.find("stage") != std::string::npos) {
+    color = { "#4caf50", "#000000", "#66ff66" }; // green
+  }
+  else if (deviceId.find("rotary") != std::string::npos) {
+    color = { "#bb86fc", "#000000", "#d4aaff" }; // purple
+  }
+
+  return QString(
+    "QPushButton { "
+    "  background-color: #3a3a3a; "
+    "  color: white; "
+    "  border: 1px solid #555; "
+    "  border-radius: 3px; "
+    "  padding: 2px 2px; "
+    "  font-size: 10px; "
+    "  font-weight: bold; "
+    "  text-align: left; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border-color: #777; "
+    "} "
+    "QPushButton:checked { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 2px solid %3; "
+    "}"
+  ).arg(color.bgChecked, color.textChecked, color.borderChecked);
 }
 
 void JogPanelWindow::createDevicePanel(QWidget* parent)
@@ -406,33 +566,13 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     // ✅ Sort devices alphabetically (ascending)
     std::sort(validDevices.begin(), validDevices.end());
 
-    // Create compact push buttons
+    // Create compact push buttons with per-device colors
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
       btn->setMinimumHeight(26);
       btn->setMaximumHeight(26);
-      btn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #3a3a3a; "
-        "  color: white; "
-        "  border: 1px solid #555; "
-        "  border-radius: 3px; "
-        "  padding: 2px 2px; "
-        "  font-size: 10px; "
-        "  font-weight: bold; "
-        "  text-align: left; "
-        "} "
-        "QPushButton:hover { "
-        "  background-color: #4a4a4a; "
-        "  border-color: #777; "
-        "} "
-        "QPushButton:checked { "
-        "  background-color: #f0ad4e; "
-        "  color: #000000; "
-        "  border: 2px solid #ffcc00; "
-        "}"
-      );
+      btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
       groupLayout->addWidget(btn);
@@ -535,33 +675,13 @@ void JogPanelWindow::refreshDeviceList()
     // ✅ Sort devices alphabetically (ascending)
     std::sort(validDevices.begin(), validDevices.end());
 
-    // Create compact push buttons
+    // Create compact push buttons with per-device colors
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
       btn->setMinimumHeight(26);
       btn->setMaximumHeight(26);
-      btn->setStyleSheet(
-        "QPushButton { "
-        "  background-color: #3a3a3a; "
-        "  color: white; "
-        "  border: 1px solid #555; "
-        "  border-radius: 3px; "
-        "  padding: 2px 2px; "
-        "  font-size: 10px; "
-        "  font-weight: bold; "
-        "  text-align: left; "
-        "} "
-        "QPushButton:hover { "
-        "  background-color: #4a4a4a; "
-        "  border-color: #777; "
-        "} "
-        "QPushButton:checked { "
-        "  background-color: #f0ad4e; "
-        "  color: #000000; "
-        "  border: 2px solid #ffcc00; "
-        "}"
-      );
+      btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
       groupLayout->addWidget(btn);
@@ -591,6 +711,134 @@ void JogPanelWindow::refreshDeviceList()
 
   // Add stretch back
   groupLayout->addStretch();
+
+  // Update velocity presets for the selected device
+  updateVelocityPresets();
+}
+
+void JogPanelWindow::createVelocityPanel(QWidget* /*parent*/)
+{
+  // Velocity presets are now created inside createMovementPanel
+}
+
+void JogPanelWindow::updateVelocityPresets()
+{
+  if (!m_velocityPresetsWidget) return;
+
+  // Clear existing buttons
+  for (auto* btn : m_velocityButtons) {
+    btn->deleteLater();
+  }
+  m_velocityButtons.clear();
+
+  QGridLayout* velGrid = qobject_cast<QGridLayout*>(m_velocityPresetsWidget->layout());
+  if (!velGrid) return;
+
+  // Remove any remaining widgets (unit label from previous update)
+  while (velGrid->count() > 0) {
+    QLayoutItem* item = velGrid->takeAt(0);
+    if (item->widget()) {
+      item->widget()->deleteLater();
+    }
+    delete item;
+  }
+
+  // Determine device type
+  QString deviceType = "ACS";
+  if (m_context && m_context->motionManager && !m_selectedDevice.empty()) {
+    std::string type = m_context->motionManager->GetDeviceType(m_selectedDevice);
+    std::string upperType = type;
+    for (auto& c : upperType) c = static_cast<char>(toupper(c));
+    deviceType = QString::fromStdString(upperType);
+  }
+
+  // Choose presets based on device type
+  QList<double> presets;
+  if (deviceType == "PI") {
+    presets = { 1, 2, 5, 10, 12.5 };
+  } else {
+    presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
+  }
+
+  int col = 0;
+  int row = 0;
+  int maxCols = 4;
+
+  for (double vel : presets) {
+    QString label;
+    if (vel == static_cast<int>(vel)) {
+      label = QString::number(static_cast<int>(vel));
+    } else {
+      label = QString::number(vel, 'f', 1);
+    }
+
+    QPushButton* btn = new QPushButton(label);
+    btn->setMinimumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton {"
+      "  background-color: #3c3c3c;"
+      "  color: #d4d4d4;"
+      "  border: 1px solid #555555;"
+      "  border-radius: 3px;"
+      "  font-size: 11px;"
+      "  font-weight: bold;"
+      "  padding: 4px 2px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #0e639c;"
+      "  color: white;"
+      "  border-color: #1177bb;"
+      "}"
+      "QPushButton:pressed {"
+      "  background-color: #0c5280;"
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this, [this, vel]() {
+      applyVelocity(vel);
+    });
+
+    velGrid->addWidget(btn, row, col);
+    m_velocityButtons.append(btn);
+
+    col++;
+    if (col >= maxCols) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // Add "mm/s" label at the end
+  QLabel* unitLabel = new QLabel("mm/s");
+  unitLabel->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  unitLabel->setAlignment(Qt::AlignCenter);
+  velGrid->addWidget(unitLabel, row, col);
+}
+
+void JogPanelWindow::applyVelocity(double velocity)
+{
+  if (!m_context || !m_context->motionManager || m_selectedDevice.empty()) return;
+
+  std::string type = m_context->motionManager->GetDeviceType(m_selectedDevice);
+  std::string upperType = type;
+  for (auto& c : upperType) c = static_cast<char>(toupper(c));
+
+  if (upperType == "PI") {
+    m_context->motionManager->SetSystemVelocity(m_selectedDevice, velocity);
+  } else {
+    // ACS: set all installed axes
+    std::string axes = m_context->motionManager->GetInstalledAxes(m_selectedDevice);
+    for (char c : axes) {
+      m_context->motionManager->SetVelocity(m_selectedDevice, std::string(1, c), velocity);
+    }
+  }
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "Velocity set to " + std::to_string(velocity) + " mm/s for " + m_selectedDevice,
+      "JogPanel"
+    );
+  }
 }
 
 void JogPanelWindow::createStepSizePanel(QWidget* parent)
@@ -627,14 +875,9 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
   gridLayout->setSpacing(2);
   gridLayout->setContentsMargins(0, 0, 0, 0);
 
-  const std::vector<QString> labels = {
-    "0.1µ", "0.5µ", "1µ", "2µ", "5µ", "10µ", "20µ", "50µ",
-    "100µ", "200µ", "250µ", "500µ", "1mm", "2mm", "5mm"
-  };
-
   int row = 0, col = 0;
   for (size_t i = 0; i < m_stepSizes.size(); ++i) {
-    QPushButton* btn = new QPushButton(labels[i]);
+    QPushButton* btn = new QPushButton(formatStepLabel(m_stepSizes[i]));
     btn->setCheckable(true);
     btn->setProperty("stepSize", m_stepSizes[i]);
     btn->setMinimumHeight(22);
@@ -658,7 +901,7 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
     }
 
     col++;
-    if (col >= 2) {  // 2 columns instead of 3
+    if (col >= 3) {  // 3 columns
       col = 0;
       row++;
     }
@@ -851,6 +1094,20 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   uvwPosLayout->addWidget(m_posWLabel, 0, 2);
 
   groupLayout->addWidget(uvwPosWidget);
+
+  // Velocity presets
+  QLabel* velLabel = new QLabel("Velocity");
+  velLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+  groupLayout->addWidget(velLabel);
+
+  m_velocityPresetsWidget = new QWidget();
+  QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
+  velGrid->setSpacing(2);
+  velGrid->setContentsMargins(0, 0, 0, 0);
+  groupLayout->addWidget(m_velocityPresetsWidget);
+
+  // Populate initial presets
+  updateVelocityPresets();
 
   groupLayout->addStretch();
 
@@ -1193,6 +1450,9 @@ void JogPanelWindow::onDeviceSelected()
         "JogPanel"
       );
     }
+
+    // Update velocity presets based on device type
+    updateVelocityPresets();
 
     // Update UVW button enabled state based on device capabilities
     updateUVWButtonState();

@@ -11,6 +11,7 @@
 #include "DeviceButtonStack.h"
 #include "GraphWidget.h"
 #include "AdaptiveScanController.h"
+#include "InterlockWidget.h"
 #include "DataStore.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -22,6 +23,7 @@
 #include <memory>
 
 class SequenceEngine;
+class InterlockManager;
 
 class MotionPage : public QWidget
 {
@@ -34,6 +36,7 @@ public:
     DataStore* dataStore,
     CoordinateSystemManager* coordinateSystemManager,
     SequenceEngine* sequenceEngine,
+    InterlockManager* interlockManager = nullptr,
     QWidget* parent = nullptr);
   ~MotionPage() override;
 
@@ -91,10 +94,7 @@ private:
   bool getCurrentDevicePosition(double& x, double& y, double& z,
     double& u, double& v, double& w);
 
-  // Label offset methods
-  void loadLabelOffsets();
-  void saveLabelOffsets();
-  void onLabelOffsetChanged(const QString& name, double offsetX, double offsetY);
+  void loadGraphEdges(const QString& graphName);
 
   // Scan helper methods
   void createScanController();
@@ -111,6 +111,7 @@ private:
   DataStore* m_dataStore;
   CoordinateSystemManager* m_coordinateSystemManager;
   SequenceEngine* m_sequenceEngine;
+  InterlockManager* m_interlockManager;
 
   // Tab widget
   QTabWidget* m_tabWidget;
@@ -141,6 +142,5 @@ private:
   std::unique_ptr<AdaptiveScanController> m_scanController;
 
   QMap<QString, QVector<double>> m_currentPositions;
-  QMap<QString, QPointF> m_labelOffsets;
-  QString m_labelOffsetsFilePath;
+  QMap<QString, QVector<double>> m_rawPositions;  // Raw (local) axis values before transformation
 };

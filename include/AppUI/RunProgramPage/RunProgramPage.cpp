@@ -12,9 +12,18 @@
 #include "ManualAlignPointWidget.h"
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
+#include "RollCorrectionWidget.h"
 #include "ScanExecutor.h"
+#include "motions/unified_motion_manager.h"
+#include "SequenceEngine.h"
+#include "MotionCommandHandler.h"
 #include "CameraClickToMoveWidget.h"
+#include <future>
 #include "RetraceEditWidget.h"
+#include "PlacementRetraceWidget.h"
+#include "PlacementCorrectionStore.h"
+#include "PlacementCorrectionData.h"
+#include <filesystem>
 #include "ILogger.h"
 #include "LogManager.h"
 #include "DataStore.h"
@@ -46,6 +55,8 @@
 #include <QSet>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QDir>
 #include <QClipboard>
@@ -1418,8 +1429,8 @@ void RunProgramPage::createEditWidget()
   tableLayout->addWidget(tableLabel);
 
   m_editRecipeTable = new QTableWidget();
-  m_editRecipeTable->setColumnCount(4);
-  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "Dependencies", "Status"});
+  m_editRecipeTable->setColumnCount(5);
+  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "File", "Dependencies", "Status"});
   m_editRecipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
   m_editRecipeTable->setSelectionMode(QAbstractItemView::SingleSelection);
   m_editRecipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1427,9 +1438,10 @@ void RunProgramPage::createEditWidget()
   m_editRecipeTable->verticalHeader()->setVisible(false);
   m_editRecipeTable->horizontalHeader()->setStretchLastSection(false);
   m_editRecipeTable->setColumnWidth(0, 40);   // # column
-  m_editRecipeTable->setColumnWidth(1, 250);  // Recipe Name
-  m_editRecipeTable->setColumnWidth(2, 180);  // Dependencies
-  m_editRecipeTable->setColumnWidth(3, 80);   // Status
+  m_editRecipeTable->setColumnWidth(1, 200);  // Recipe Name
+  m_editRecipeTable->setColumnWidth(2, 180);  // File
+  m_editRecipeTable->setColumnWidth(3, 120);  // Dependencies
+  m_editRecipeTable->setColumnWidth(4, 80);   // Status
   m_editRecipeTable->setStyleSheet(
     "QTableWidget { "
     "  background-color: #1e1e1e; "
@@ -2041,6 +2053,27 @@ void RunProgramPage::createExecutionWidget()
   m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
   m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
   m_executionStack->addWidget(m_retraceEditWidget);       // Index 5: Retrace Edit
+
+  // Placement Retrace Widget (reuses PlacementRetraceWidget from trainer module)
+  m_placementRetraceWidget = new PlacementRetraceWidget(m_context);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceCompleted,
+    this, &RunProgramPage::onPlacementRetraceCompleted);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceSkipped,
+    this, &RunProgramPage::onPlacementRetraceSkipped);
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
+    this, &RunProgramPage::onPlacementRetraceEnded);
+  m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
+
+  // Cross-thread signal bridges for recipe callbacks (this → this connections).
+  // Must be connected once here, NOT in onExecuteProgram(), to avoid accumulating
+  // duplicate connections on each execution.
+  connect(this, &RunProgramPage::showUserPrompt,
+    this, &RunProgramPage::onShowUserPrompt);
+  connect(this, &RunProgramPage::showManualAdjust,
+    this, &RunProgramPage::onShowManualAdjust);
+  connect(this, &RunProgramPage::showPlacementRetrace,
+    this, &RunProgramPage::onShowPlacementRetrace);
+
   m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
   layout->addWidget(m_executionStack, 1);
@@ -2149,6 +2182,47 @@ void RunProgramPage::createExecutionWidget()
   visionTabLayout->addWidget(m_visionResultGroup, 1);  // Give vision group stretch
 
   m_executionTabWidget->addTab(visionTab, "Vision");
+
+  // === ROLL CORRECTION TAB (Index 5) ===
+  QWidget* rollCorrectionTab = new QWidget();
+  QVBoxLayout* rollTabLayout = new QVBoxLayout(rollCorrectionTab);
+  rollTabLayout->setContentsMargins(10, 10, 10, 10);
+  rollTabLayout->setSpacing(10);
+
+  m_rollCorrectionWidget = new RollCorrectionWidget();
+  rollTabLayout->addWidget(m_rollCorrectionWidget);
+  rollTabLayout->addStretch();
+
+  // Populate the roll-correction channel dropdown immediately. The static
+  // de-dup cache in refreshDataStoreChannels() means a plain re-call won't
+  // push to the freshly-constructed widget, so we feed the current list directly.
+  if (m_context && m_context->dataStore) {
+    QStringList channels;
+    for (const auto& ch : m_context->dataStore->GetAllChannelNames()) {
+      channels << QString::fromStdString(ch);
+    }
+    m_rollCorrectionWidget->setAvailableChannels(channels);
+  }
+
+  m_executionTabWidget->addTab(rollCorrectionTab, "Roll Correction");
+
+  // Connect roll correction signals
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH1Requested,
+    this, &RunProgramPage::onRegisterCH1Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH2Requested,
+    this, &RunProgramPage::onRegisterCH2Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::moveToCH1Requested,
+    this, &RunProgramPage::onMoveToCH1Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::moveToCH2Requested,
+    this, &RunProgramPage::onMoveToCH2Requested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::correctWRequested,
+    this, &RunProgramPage::onCorrectWRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::fineGridScanRequested,
+    this, &RunProgramPage::onFineGridScanRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::stopScanRequested,
+    this, &RunProgramPage::onStopGridScanRequested);
+  connect(m_rollCorrectionWidget, &RollCorrectionWidget::clearRequested,
+    this, &RunProgramPage::onRollCorrectionClearRequested);
 
   // Connect scan widget to this page
   connect(m_scanWidget, &ScanControlWidget::scanRequested,
@@ -2808,10 +2882,7 @@ void RunProgramPage::onExecuteProgram()
     m_currentLoopIteration = 0;
   }
 
-  // Set UserPrompt callback
-  connect(this, &RunProgramPage::showUserPrompt,
-    this, &RunProgramPage::onShowUserPrompt);
-
+  // Set UserPrompt callback (signal connection is in constructor)
   m_programWorker->setUserPromptCallback(
     [this](const std::string& title, const std::string& message) -> bool {
     emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message));
@@ -2824,10 +2895,7 @@ void RunProgramPage::onExecuteProgram()
     return m_promptResponse;
   });
 
-  // Set ManualAdjust callback
-  connect(this, &RunProgramPage::showManualAdjust,
-    this, &RunProgramPage::onShowManualAdjust);
-
+  // Set ManualAdjust callback (signal connections are in constructor)
   m_programWorker->setManualAdjustCallback(
     [this](const std::string& message, const std::string& deviceName,
            double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
@@ -2866,6 +2934,26 @@ void RunProgramPage::onExecuteProgram()
 
     // Return the stored result
     return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
+  });
+
+  // PlacementRetrace callback — bridges the recipe thread to the UI.
+  // Called from SystemCommandHandler on the recipe worker thread.
+  // Emits showPlacementRetrace (cross-thread signal) to trigger
+  // onShowPlacementRetrace on the UI thread, then blocks here in a
+  // QEventLoop until the retrace widget signals completion/skip/end.
+  // The event loop is quit by onPlacementRetraceSkipped or onPlacementRetraceEnded.
+  // NOTE: onPlacementRetraceCompleted does NOT quit the loop — it just records
+  // the save. The user must click "Continue" or "End" to advance the recipe.
+  m_programWorker->setPlacementRetraceCallback(
+    [this](const std::string& trainingSetName, bool autoStart) -> bool {
+    emit showPlacementRetrace(QString::fromStdString(trainingSetName), autoStart);
+
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_placementRetraceResponse;
   });
 
   // Connect signals (use Qt::QueuedConnection for cross-thread safety)
@@ -4011,14 +4099,366 @@ void RunProgramPage::onStopScanRequested()
   m_logTextEdit->appendPlainText("Scan stopped - device returned to peak position");
 }
 
+// === ROLL CORRECTION SLOTS ===
+
+void RunProgramPage::onRegisterCH1Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_context->motionManager->GetCurrentPosition(deviceName.toStdString());
+  m_rollCorrectionWidget->setCH1Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
+
+  QString msg = QString("[RollCorrection] Registered CH1 peak for %1: X=%2 um")
+    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+  m_logTextEdit->appendPlainText(msg);
+}
+
+void RunProgramPage::onRegisterCH2Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_context->motionManager->GetCurrentPosition(deviceName.toStdString());
+  m_rollCorrectionWidget->setCH2Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
+
+  QString msg = QString("[RollCorrection] Registered CH2 peak for %1: X=%2 um")
+    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+  m_logTextEdit->appendPlainText(msg);
+}
+
+void RunProgramPage::onMoveToCH1Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_rollCorrectionWidget->getCH1Position(deviceName);
+  if (!pos.valid) return;
+
+  std::string dev = deviceName.toStdString();
+
+  // Save current velocity, set to 1 mm/s for safe move
+  double originalVelocity = 0.0;
+  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
+  m_context->motionManager->SetSystemVelocity(dev, 1.0);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Moving %1 to CH1 peak position...").arg(deviceName));
+
+  PositionStruct target;
+  target.x = pos.x; target.y = pos.y; target.z = pos.z;
+  target.u = pos.u; target.v = pos.v; target.w = pos.w;
+  bool ok = m_context->motionManager->MoveToAbs6(dev, target, true);
+
+  // Restore original velocity
+  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(ok ?
+    QString("[RollCorrection] %1 moved to CH1 peak").arg(deviceName) :
+    QString("[RollCorrection] FAILED to move %1 to CH1 peak").arg(deviceName));
+}
+
+void RunProgramPage::onMoveToCH2Requested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager) return;
+
+  auto pos = m_rollCorrectionWidget->getCH2Position(deviceName);
+  if (!pos.valid) return;
+
+  std::string dev = deviceName.toStdString();
+
+  // Save current velocity, set to 1 mm/s for safe move
+  double originalVelocity = 0.0;
+  m_context->motionManager->GetSystemVelocity(dev, originalVelocity);
+  m_context->motionManager->SetSystemVelocity(dev, 1.0);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity: %2 -> 1.0 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Moving %1 to CH2 peak position...").arg(deviceName));
+
+  PositionStruct target;
+  target.x = pos.x; target.y = pos.y; target.z = pos.z;
+  target.u = pos.u; target.v = pos.v; target.w = pos.w;
+  bool ok = m_context->motionManager->MoveToAbs6(dev, target, true);
+
+  // Restore original velocity
+  m_context->motionManager->SetSystemVelocity(dev, originalVelocity);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] %1 velocity restored to %2 mm/s").arg(deviceName).arg(originalVelocity, 0, 'f', 2));
+
+  m_logTextEdit->appendPlainText(ok ?
+    QString("[RollCorrection] %1 moved to CH2 peak").arg(deviceName) :
+    QString("[RollCorrection] FAILED to move %1 to CH2 peak").arg(deviceName));
+}
+
+void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
+                                         double angleDeg, bool positiveW, double halfwayXmm)
+{
+  // ----- Pre-flight validation (UI thread) -----
+  if (!m_context || !m_context->motionManager || !m_context->sequenceEngine || !m_context->dataStore) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: ApplicationContext incomplete");
+    return;
+  }
+  if (m_rollCorrectionRunning) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: a correction is already running");
+    return;
+  }
+  if (channel.isEmpty()) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: tracking channel required - select one in the dropdown");
+    return;
+  }
+
+  // Verify the selected channel still exists in DataStore
+  {
+    const auto names = m_context->dataStore->GetAllChannelNames();
+    const std::string needle = channel.toStdString();
+    bool found = false;
+    for (const auto& n : names) {
+      if (n == needle) { found = true; break; }
+    }
+    if (!found) {
+      m_logTextEdit->appendPlainText(QString("[RollCorrection] ERROR: channel '%1' not present in DataStore").arg(channel));
+      return;
+    }
+  }
+
+  auto ch1Pos = m_rollCorrectionWidget->getCH1Position(deviceName);
+  if (!ch1Pos.valid) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] ERROR: CH1 peak not registered for %1").arg(deviceName));
+    return;
+  }
+
+  auto* handler = m_context->sequenceEngine->GetMotionCommandHandler();
+  if (!handler) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: MotionCommandHandler unavailable");
+    return;
+  }
+
+  // ----- Compute W sub-step splitting -----
+  // Hard limit: 0.1 deg per sub-step. Ideal upper bound: 0.085 deg.
+  constexpr double kIdealWStepUpper = 0.085;
+  const double totalAbs = std::abs(angleDeg);
+  int steps = static_cast<int>(std::ceil(totalAbs / kIdealWStepUpper));
+  if (steps < 1) steps = 1;
+  const double subStepAbs = totalAbs / static_cast<double>(steps);  // <= 0.085 deg
+  const double signedSubStep = (positiveW ? +1.0 : -1.0) * subStepAbs;
+
+  m_logTextEdit->appendPlainText(QString(
+    "[RollCorrection] %1: total=%2%3 deg, splitting into %4 sub-step(s) of %5 deg each (channel=%6)")
+    .arg(deviceName)
+    .arg(positiveW ? "+" : "-")
+    .arg(angleDeg, 0, 'f', 4)
+    .arg(steps)
+    .arg(subStepAbs, 0, 'f', 4)
+    .arg(channel));
+
+  // ----- Set up running state -----
+  m_rollCorrectionContext = std::make_unique<SequenceContext>();
+  m_rollCorrectionRunning = true;
+  m_rollCorrectionWidget->setCorrectionRunning(true);
+
+  // Snapshot values needed by the worker thread
+  const std::string dev = deviceName.toStdString();
+  const std::string channelStd = channel.toStdString();
+  auto* mgr = m_context->motionManager;
+  auto* ctx = m_rollCorrectionContext.get();
+  RollCorrectionWidget::StoredPosition ch1Snapshot = ch1Pos;
+  const double halfwayMm = halfwayXmm;
+  const int totalSteps = steps;
+  const double signedStepDeg = signedSubStep;
+
+  // ----- Background worker -----
+  auto future = std::async(std::launch::async,
+    [handler, mgr, ctx, dev, channelStd, ch1Snapshot, halfwayMm, totalSteps, signedStepDeg]()
+      -> std::pair<bool, std::string>
+    {
+      double originalVelocity = 0.0;
+      mgr->GetSystemVelocity(dev, originalVelocity);
+      mgr->SetSystemVelocity(dev, 0.1);  // 0.1 mm/s safe velocity for all moves
+
+      auto restoreAndReturn = [&](bool ok, const std::string& msg) -> std::pair<bool, std::string> {
+        mgr->SetSystemVelocity(dev, originalVelocity);
+        return { ok, msg };
+      };
+
+      // Step 1: Move to CH1 peak (full 6-axis)
+      PositionStruct ch1Target;
+      ch1Target.x = ch1Snapshot.x; ch1Target.y = ch1Snapshot.y; ch1Target.z = ch1Snapshot.z;
+      ch1Target.u = ch1Snapshot.u; ch1Target.v = ch1Snapshot.v; ch1Target.w = ch1Snapshot.w;
+      if (!mgr->MoveToAbs6(dev, ch1Target, true)) {
+        return restoreAndReturn(false, "FAILED move to CH1 peak");
+      }
+
+      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after CH1 move");
+
+      // Step 2: Halfway X shift (subtract because halfway is (ch2-ch1)/2, move opposite)
+      auto curr = mgr->GetCurrentPosition(dev);
+      const double newX = curr.x - halfwayMm;
+      if (!mgr->MoveToPosition(dev, "X", newX, true)) {
+        return restoreAndReturn(false, "FAILED halfway X move");
+      }
+
+      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after halfway X");
+
+      // Step 3..N: Stepwise W loop with XCANExtended re-peak after each W sub-step
+      const std::map<std::string, std::string> scanParams = {
+        {"axes", "XY"},
+        {"step_sizes_um", "0.5"},
+        {"channel", channelStd},
+        {"settling_time_ms", "300"}
+      };
+
+      for (int i = 0; i < totalSteps; ++i) {
+        if (ctx->IsStopRequested()) {
+          return restoreAndReturn(false, "stopped at sub-step " + std::to_string(i + 1));
+        }
+
+        // Apply one W sub-step
+        curr = mgr->GetCurrentPosition(dev);
+        const double newW = curr.w + signedStepDeg;
+        if (!mgr->MoveToPosition(dev, "W", newW, true)) {
+          return restoreAndReturn(false, "FAILED W sub-step " + std::to_string(i + 1));
+        }
+
+        if (ctx->IsStopRequested()) {
+          return restoreAndReturn(false, "stopped after W sub-step " + std::to_string(i + 1));
+        }
+
+        // Re-peak XY power on the selected channel.
+        // ExecuteCommand is BLOCKING (we're already on a worker thread) and leaves
+        // the device at the discovered peak. It honors ctx->IsStopRequested.
+        std::string scanErr;
+        const bool scanOk = handler->ExecuteCommand(
+          mgr, dev, "XCANExtended", scanParams, scanErr, ctx);
+        if (!scanOk) {
+          return restoreAndReturn(false,
+            "FAILED XCANExtended after W sub-step " + std::to_string(i + 1) + ": " + scanErr);
+        }
+      }
+
+      return restoreAndReturn(true, "complete (" + std::to_string(totalSteps) + " sub-steps)");
+    });
+
+  // ----- Poll for completion (UI thread, no blocking) -----
+  auto* pollTimer = new QTimer(this);
+  auto futurePtr = std::make_shared<std::future<std::pair<bool, std::string>>>(std::move(future));
+  connect(pollTimer, &QTimer::timeout, this, [this, pollTimer, futurePtr, deviceName]() {
+    if (futurePtr->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+      pollTimer->stop();
+      pollTimer->deleteLater();
+      auto [ok, msg] = futurePtr->get();
+      onRollCorrectionFinished(ok, deviceName, QString::fromStdString(msg));
+    }
+  });
+  pollTimer->start(100);
+}
+
+void RunProgramPage::onRollCorrectionFinished(bool success, QString deviceName, QString message)
+{
+  m_rollCorrectionWidget->setCorrectionRunning(false);
+  m_rollCorrectionContext.reset();
+  m_rollCorrectionRunning = false;
+
+  if (success) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] %1: %2").arg(deviceName, message));
+  } else {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] %1: %2").arg(deviceName, message));
+  }
+}
+
+void RunProgramPage::onFineGridScanRequested(QString deviceName)
+{
+  if (!m_context || !m_context->motionManager || !m_context->sequenceEngine) return;
+
+  auto* handler = m_context->sequenceEngine->GetMotionCommandHandler();
+  if (!handler) {
+    m_logTextEdit->appendPlainText("[RollCorrection] ERROR: MotionCommandHandler not available");
+    return;
+  }
+
+  // Create a fresh context for stop control
+  m_gridScanContext = std::make_unique<SequenceContext>();
+
+  // Update UI state
+  m_rollCorrectionWidget->setScanRunning(true);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Starting fine grid scan on %1...").arg(deviceName));
+
+  // Grid Scan Dual Channel parameters matching screenshot config
+  std::map<std::string, std::string> params;
+  params["plane"] = "XY";
+  params["range_axis1_um"] = "10";
+  params["range_axis2_um"] = "10";
+  params["direction_axis1"] = "centered";
+  params["direction_axis2"] = "centered";
+  params["step_size_um"] = "0.5";
+  params["channel1"] = "SMU_SMU1S_Ch1";
+  params["channel2"] = "SMU_SMU1S_Ch2";
+  params["waveguide_spacing_um"] = std::to_string(static_cast<int>(m_rollCorrectionWidget->spacing()));
+  params["settling_time_ms"] = "300";
+  params["snake_pattern"] = "true";
+  params["return_to_peak"] = "channel1";
+
+  // Run on background thread (GridScanDualChannel is blocking)
+  auto* ctx = m_gridScanContext.get();
+  auto* mgr = m_context->motionManager;
+  std::string dev = deviceName.toStdString();
+
+  auto future = std::async(std::launch::async, [handler, mgr, dev, params, ctx]() {
+    std::string errorMessage;
+    bool ok = handler->ExecuteCommand(mgr, dev, "GridScanDualChannel", params, errorMessage, ctx);
+    return std::make_pair(ok, errorMessage);
+  });
+
+  // Use a QTimer to poll for completion (avoid blocking UI)
+  auto* pollTimer = new QTimer(this);
+  auto futurePtr = std::make_shared<std::future<std::pair<bool, std::string>>>(std::move(future));
+  connect(pollTimer, &QTimer::timeout, this, [this, pollTimer, futurePtr, deviceName]() {
+    if (futurePtr->wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+      pollTimer->stop();
+      pollTimer->deleteLater();
+      auto [ok, errMsg] = futurePtr->get();
+      onGridScanFinished(ok, deviceName, QString::fromStdString(errMsg));
+    }
+  });
+  pollTimer->start(100);
+}
+
+void RunProgramPage::onStopGridScanRequested()
+{
+  if (m_gridScanContext) {
+    m_logTextEdit->appendPlainText("[RollCorrection] Stopping grid scan...");
+    m_gridScanContext->RequestStop();
+  }
+  if (m_rollCorrectionContext) {
+    m_logTextEdit->appendPlainText("[RollCorrection] Stop requested - will halt before next sub-step");
+    m_rollCorrectionContext->RequestStop();
+  }
+}
+
+void RunProgramPage::onGridScanFinished(bool success, QString deviceName, QString errorMessage)
+{
+  m_rollCorrectionWidget->setScanRunning(false);
+  m_gridScanContext.reset();
+
+  if (success) {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] Fine grid scan completed on %1").arg(deviceName));
+  } else {
+    m_logTextEdit->appendPlainText(QString("[RollCorrection] Fine grid scan stopped/failed on %1: %2")
+      .arg(deviceName, errorMessage));
+  }
+}
+
+void RunProgramPage::onRollCorrectionClearRequested(QString deviceName)
+{
+  m_rollCorrectionWidget->clearPositions(deviceName);
+  m_logTextEdit->appendPlainText(QString("[RollCorrection] Cleared positions for %1").arg(deviceName));
+}
+
 // ✅ ADDED: Handle channel change from scan widget
 // ✅ ADDED: Refresh DataStore channels in the dropdown
 void RunProgramPage::refreshDataStoreChannels()
 {
-  if (!m_context || !m_context->dataStore || !m_scanWidget) return;
+  if (!m_context || !m_context->dataStore) return;
+  if (!m_scanWidget && !m_rollCorrectionWidget) return;
 
   // Get current selection to preserve it
-  QString currentSelection = m_scanWidget->currentChannel();
+  QString currentSelection = m_scanWidget ? m_scanWidget->currentChannel() : QString();
 
   // Get all available channels from DataStore
   QStringList channels;
@@ -4030,11 +4470,16 @@ void RunProgramPage::refreshDataStoreChannels()
   // Only update if the channel list has changed
   static QStringList s_lastChannelList;
   if (channels != s_lastChannelList) {
-    m_scanWidget->setAvailableChannels(channels);
+    if (m_scanWidget) {
+      m_scanWidget->setAvailableChannels(channels);
+    }
+    if (m_rollCorrectionWidget) {
+      m_rollCorrectionWidget->setAvailableChannels(channels);
+    }
     s_lastChannelList = channels;
 
     // ✅ Restore previous selection if it still exists
-    if (!currentSelection.isEmpty() && channels.contains(currentSelection)) {
+    if (m_scanWidget && !currentSelection.isEmpty() && channels.contains(currentSelection)) {
       m_scanWidget->setCurrentChannel(currentSelection);
     }
 
@@ -4099,7 +4544,8 @@ void RunProgramPage::onAddRecipe()
     recipesPath,  // Folder path: config/[product]/recipes/
     "*.json",  // File pattern
     "Add Recipe",  // Dialog title
-    "recipe files"  // File type description
+    "recipe files",  // File type description
+    true  // Recursive: scan subfolders
   );
 
   if (filename.isEmpty()) return;
@@ -4397,6 +4843,11 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
     "}"
   );
 
+  // Edit in Recipe Page option
+  QAction* editAction = contextMenu.addAction("Edit in Recipe Page");
+  editAction->setToolTip("Open this recipe in the Recipe editor");
+  contextMenu.addSeparator();
+
   // Add retrace edit option (only if not currently running)
   QAction* retraceAction = nullptr;
   if (!m_isExecuting) {
@@ -4409,7 +4860,13 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
 
   QAction* selectedAction = contextMenu.exec(m_recipeListWidget->viewport()->mapToGlobal(pos));
 
-  if (retraceAction && selectedAction == retraceAction) {
+  if (selectedAction == editAction) {
+    const RecipeReference* recipe = m_programManager->getRecipe(row);
+    if (recipe) {
+      emit requestEditRecipe(QString::fromStdString(recipe->recipeFilePath));
+    }
+  }
+  else if (retraceAction && selectedAction == retraceAction) {
     onStartRetraceEdit(row);
   }
 }
@@ -4438,24 +4895,73 @@ void RunProgramPage::renameRecipe(int recipeIndex)
   newName = newName.trimmed();
   if (newName == currentName) return;  // No change
 
-  // Update display name in ProgramManager
-  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
-
-  // Also update the recipe file itself
-  RecipeManager tempRecipeManager;
-  if (tempRecipeManager.loadRecipe(recipeFilePath.toStdString())) {
-    tempRecipeManager.setRecipeName(newName.toStdString());
-    if (tempRecipeManager.saveRecipe(recipeFilePath.toStdString())) {
-      QMessageBox::information(this, "Recipe Renamed",
-        QString("Recipe renamed to \"%1\" and saved to file.").arg(newName));
-    } else {
-      QMessageBox::warning(this, "Save Failed",
-        "Recipe display name updated but failed to save to recipe file.");
+  // Validate filename characters
+  QString invalidChars = "<>:\"/\\|?*";
+  for (QChar c : invalidChars) {
+    if (newName.contains(c)) {
+      QMessageBox::warning(this, "Invalid Name",
+        "Recipe name contains invalid characters.\n\nInvalid characters: < > : \" / \\ | ? *");
+      return;
     }
-  } else {
-    QMessageBox::warning(this, "Load Failed",
-      "Recipe display name updated but failed to load recipe file for saving.");
   }
+
+  // Compute new file path
+  QFileInfo oldFileInfo(recipeFilePath);
+  QString newFilePath = oldFileInfo.absolutePath() + "/" + newName + ".json";
+
+  // Check if target file already exists (and is a different file)
+  if (newFilePath != recipeFilePath && QFile::exists(newFilePath)) {
+    QMessageBox::warning(this, "Name Exists",
+      QString("A recipe file named '%1.json' already exists.").arg(newName));
+    return;
+  }
+
+  // Update the recipe JSON content and rename the file
+  QFile file(recipeFilePath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    QMessageBox::critical(this, "Error", "Failed to open recipe file for reading.");
+    return;
+  }
+  QByteArray fileData = file.readAll();
+  file.close();
+
+  QJsonDocument doc = QJsonDocument::fromJson(fileData);
+  if (!doc.isObject()) {
+    QMessageBox::critical(this, "Error", "Recipe file is not valid JSON.");
+    return;
+  }
+
+  QJsonObject obj = doc.object();
+  obj["recipe_name"] = newName;
+
+  // Write to new file path
+  QFile newFile(newFilePath);
+  if (!newFile.open(QIODevice::WriteOnly)) {
+    QMessageBox::critical(this, "Error", "Failed to write renamed recipe file.");
+    return;
+  }
+  newFile.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+  newFile.close();
+
+  // Remove old file if the path changed
+  if (newFilePath != recipeFilePath) {
+    QFile::remove(recipeFilePath);
+  }
+
+  // Update ProgramManager with new display name and file path
+  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
+  RecipeReference* mutableRecipe = m_programManager->getRecipe(recipeIndex);
+  if (mutableRecipe) {
+    mutableRecipe->recipeFilePath = newFilePath.toStdString();
+  }
+
+  // Auto-save program to persist the new file path
+  if (!m_currentProgramPath.isEmpty()) {
+    m_programManager->saveProgram(m_currentProgramPath.toStdString());
+  }
+
+  QMessageBox::information(this, "Recipe Renamed",
+    QString("Recipe renamed to \"%1\" and file saved.").arg(newName));
 
   // Refresh the table to show new name
   updateRecipeList();
@@ -4643,6 +5149,90 @@ void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsS
   m_retraceEditRecipeIndex = -1;
 }
 
+// ============================================================================
+// PLACEMENT CORRECTION RETRACE (overlay in execution stack)
+// ============================================================================
+
+void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoStart)
+{
+  // Resolve store base path from current product
+  PlacementCorrectionStore store;
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
+    std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
+    store.SetBasePath((productDir / "placement_correction").string());
+  } else {
+    store.SetBasePath("config/placement_correction");
+  }
+
+  // Load the training set by name
+  auto optSet = store.LoadSet(trainingSetName.toStdString());
+  if (!optSet.has_value()) {
+    m_logTextEdit->appendPlainText(
+      QString("[PlacementRetrace] ERROR: Training set '%1' not found").arg(trainingSetName));
+    m_placementRetraceResponse = false;
+    if (m_promptEventLoop) {
+      m_promptEventLoop->quit();
+    }
+    return;
+  }
+
+  m_activePlacementSet = optSet.value();
+  m_activePlacementSet.Recalculate();
+
+  // Configure widget with loaded data
+  m_placementRetraceWidget->SetData(&m_activePlacementSet);
+
+  // Switch to placement retrace view (full right panel)
+  m_executionStack->setCurrentIndex(6);
+
+  // Auto-start the wizard if requested (skip Idle page)
+  if (autoStart) {
+    m_placementRetraceWidget->AutoStart();
+  }
+}
+
+void RunProgramPage::onPlacementRetraceCompleted(const PlacementCorrectionSet& /*updatedSet*/)
+{
+  // Position saved — stay on retrace widget so user can "Move to Target" or click "Continue"
+  m_placementRetraceResponse = true;
+
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Corrected position saved - waiting for user to Continue or Move to Target");
+}
+
+void RunProgramPage::onPlacementRetraceSkipped()
+{
+  // User clicked Continue (after save) or Skip (without save)
+  if (!m_placementRetraceResponse) {
+    m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace skipped - continuing without correction");
+  } else {
+    m_logTextEdit->appendPlainText("[PlacementRetrace] Continuing to next step after save");
+  }
+  m_placementRetraceResponse = true;
+
+  m_executionStack->setCurrentIndex(0);
+
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onPlacementRetraceEnded()
+{
+  // User clicked End without saving
+  m_placementRetraceResponse = false;
+
+  m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace ended without saving");
+
+  // Switch back to execution tabs
+  m_executionStack->setCurrentIndex(0);
+
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
 void RunProgramPage::onEditRecipeSelectionChanged()
 {
   int currentRow = m_editRecipeTable->currentRow();
@@ -4781,7 +5371,14 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
     m_editRecipeTable->setItem(rowIndex, 1, nameItem);
 
-    // Column 2: Dependencies
+    // Column 2: File (recipe filename)
+    QFileInfo recipeFileInfo(QString::fromStdString(recipe->recipeFilePath));
+    QTableWidgetItem* fileItem = new QTableWidgetItem(recipeFileInfo.fileName());
+    fileItem->setForeground(QColor("#a1a1aa"));  // gray, secondary info
+    fileItem->setToolTip(QString::fromStdString(recipe->recipeFilePath));
+    m_editRecipeTable->setItem(rowIndex, 2, fileItem);
+
+    // Column 3: Dependencies
     std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(rowIndex);
     QString depsText;
     if (deps.empty()) {
@@ -4795,9 +5392,9 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* depsItem = new QTableWidgetItem(depsText);
     depsItem->setTextAlignment(Qt::AlignCenter);
     depsItem->setForeground(QColor(155, 135, 245));  // Purple color for dependencies
-    m_editRecipeTable->setItem(rowIndex, 2, depsItem);
+    m_editRecipeTable->setItem(rowIndex, 3, depsItem);
 
-    // Column 3: Status
+    // Column 4: Status
     QString status = recipe->enabled ? "Enabled" : "Disabled";
     QTableWidgetItem* statusItem = new QTableWidgetItem(status);
     statusItem->setTextAlignment(Qt::AlignCenter);
@@ -4805,9 +5402,10 @@ void RunProgramPage::updateRecipeList()
       statusItem->setForeground(QColor(150, 150, 150));
       numItem->setForeground(QColor(150, 150, 150));
       nameItem->setForeground(QColor(150, 150, 150));
+      fileItem->setForeground(QColor(150, 150, 150));
       depsItem->setForeground(QColor(150, 150, 150));
     }
-    m_editRecipeTable->setItem(rowIndex, 3, statusItem);
+    m_editRecipeTable->setItem(rowIndex, 4, statusItem);
 
     rowIndex++;
   }

@@ -1,4 +1,4 @@
-// PowerSupplyControlPage.h - UI page for power supply control (Redesigned)
+// PowerSupplyControlPage.h - UI page for power supply control
 #pragma once
 
 #include <QWidget>
@@ -10,7 +10,7 @@
 #include <QFrame>
 #include <QVBoxLayout>
 #include <QTabWidget>
-#include <QScrollArea>
+#include <QSettings>
 #include <vector>
 
 struct ApplicationContext;
@@ -23,33 +23,37 @@ class PSUParameterWorker;
 struct ChannelControlWidgets
 {
   int channel = 1;
+  // Controls
   QPushButton* outputOnButton = nullptr;
   QPushButton* outputOffButton = nullptr;
   QDoubleSpinBox* voltageSpinBox = nullptr;
   QPushButton* setVoltageButton = nullptr;
+  QPushButton* voltageLimitButton = nullptr;
   QDoubleSpinBox* currentSpinBox = nullptr;
   QPushButton* setCurrentButton = nullptr;
+  QPushButton* currentLimitButton = nullptr;
+  QPushButton* currentMinus10mAButton = nullptr;
+  QPushButton* currentPlus10mAButton = nullptr;
   QDoubleSpinBox* ovpSpinBox = nullptr;
   QPushButton* setOVPButton = nullptr;
   QDoubleSpinBox* ocpSpinBox = nullptr;
   QPushButton* setOCPButton = nullptr;
-};
-
-/**
- * @brief Per-channel measurement display
- */
-struct ChannelMeasurementWidgets
-{
-  int channel = 1;
-  QLabel* channelLabel = nullptr;
-  QLabel* voltageLabel = nullptr;
-  QLabel* currentLabel = nullptr;
+  // Embedded live measurements
   QLabel* outputStateLabel = nullptr;
+  QLabel* voltageLabel = nullptr;
+  QLabel* voltageSetpointLabel = nullptr;
+  QLabel* currentLabel = nullptr;
+  QLabel* currentSetpointLabel = nullptr;
+  QPushButton* refreshButton = nullptr;
+  QPushButton* readStatusButton = nullptr;
+  // Software safety limits
+  double maxVoltageLimit = 3.0;
+  double maxCurrentLimit = 0.35;
 };
 
 /**
  * @brief Control page for power supply devices
- * Three-panel layout: Device list (left) + Channel tabs (middle) + All measurements (right)
+ * Two-panel layout: Device list (left) + Channel tabs with embedded measurements (right)
  */
 class PowerSupplyControlPage : public QWidget
 {
@@ -76,9 +80,14 @@ private slots:
   void onSetCurrentClicked(int channel);
   void onSetOVPClicked(int channel);
   void onSetOCPClicked(int channel);
+  void onVoltageLimitClicked(int channel);
+  void onCurrentLimitClicked(int channel);
+  void onCurrentMinus10mA(int channel);
+  void onCurrentPlus10mA(int channel);
 
   // Measurement update
   void onRefreshClicked();
+  void onReadStatusClicked(int channel);
   void updateMeasurements();
 
   // Worker signal handlers
@@ -87,7 +96,8 @@ private slots:
   void onWorkerOVPApplied(int channel, double ovp);
   void onWorkerOCPApplied(int channel, double ocp);
   void onWorkerOutputChanged(int channel, bool on);
-  void onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn);
+  void onWorkerMeasurementsUpdated(int channel, double voltage, double current, bool outputOn,
+                                   double setVoltage, double setCurrent);
   void onWorkerError(int channel, QString operation, QString error);
   void onWorkerDeviceConnected(QString deviceName);
   void onWorkerDeviceDisconnected(QString deviceName);
@@ -96,19 +106,20 @@ private:
   void setupUI();
   void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
-  void createRightPanel(QWidget* rightPanel);
 
   QWidget* createChannelTab(int channel);
-  QWidget* createChannelMeasurementWidget(int channel);
 
   void loadDevices();
   void updateConnectionStatus();
   void updateDeviceList();
   void rebuildChannelTabs();
-  void rebuildMeasurementPanel();
   void showError(const QString& message);
   void showSuccess(const QString& message);
   QString createStyleSheet();
+
+  // Per-device software limit persistence
+  void saveSoftwareLimits();
+  void loadSoftwareLimits();
 
   ApplicationContext* m_context;
   PowerSupplyManager* m_psuManager;
@@ -126,12 +137,7 @@ private:
   QTabWidget* m_channelTabs;
   std::vector<ChannelControlWidgets> m_channelControls;
 
-  // Right Panel - All Channel Measurements
-  QWidget* m_rightPanel;
-  QWidget* m_measurementContainer;
-  QVBoxLayout* m_measurementLayout;
-  std::vector<ChannelMeasurementWidgets> m_channelMeasurements;
-  QPushButton* m_refreshButton;
+  // Refresh timer (fallback when worker not available)
   QTimer* m_refreshTimer;
 
   // Current device
@@ -141,4 +147,5 @@ private:
   // Background worker for non-blocking operations
   PSUParameterWorker* m_parameterWorker = nullptr;
   bool m_useParameterWorker = true;
+  int m_outputCommandPending = 0; // Suppress polling output updates while command in flight
 };

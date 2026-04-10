@@ -18,16 +18,21 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QPixmap>
+#include <QTextEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QCoreApplication>
 
 MainMenuPage::MainMenuPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
+  , m_productImage(nullptr)
   , m_productLabel(nullptr)
   , m_newProductBtn(nullptr)
   , m_loadProductBtn(nullptr)
   , m_saveProductBtn(nullptr)
   , m_saveProductAsBtn(nullptr)
-  , m_deleteProductBtn(nullptr)
 {
   setupUI();
   updateProductDisplay();
@@ -39,7 +44,12 @@ void MainMenuPage::setupUI()
   mainLayout->setContentsMargins(50, 50, 50, 50);
   mainLayout->setSpacing(30);
 
-  // Title with version
+  // Title row with version + changelog button
+  QHBoxLayout* titleRow = new QHBoxLayout();
+  titleRow->setSpacing(10);
+
+  titleRow->addStretch();
+
   QString titleText = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
   QLabel* titleLabel = new QLabel(titleText);
   titleLabel->setAlignment(Qt::AlignCenter);
@@ -50,7 +60,33 @@ void MainMenuPage::setupUI()
     "  color: #ffffff; "
     "  padding: 10px; "
     "}");
-  mainLayout->addWidget(titleLabel);
+  titleRow->addWidget(titleLabel);
+
+  QPushButton* changelogBtn = new QPushButton("Changelog");
+  changelogBtn->setFixedHeight(30);
+  changelogBtn->setStyleSheet(
+    "QPushButton {"
+    "  background-color: #3d5a8c;"
+    "  color: #aaccff;"
+    "  font-size: 11px;"
+    "  font-weight: bold;"
+    "  padding: 4px 12px;"
+    "  border: 1px solid #5577aa;"
+    "  border-radius: 4px;"
+    "}"
+    "QPushButton:hover {"
+    "  background-color: #4d6a9c;"
+    "  color: #ffffff;"
+    "}"
+  );
+  connect(changelogBtn, &QPushButton::clicked, this, [this]() {
+    showChangelogDialog();
+  });
+  titleRow->addWidget(changelogBtn);
+
+  titleRow->addStretch();
+
+  mainLayout->addLayout(titleRow);
 
   // ========================================
   // Product Controls Section
@@ -65,8 +101,29 @@ void MainMenuPage::setupUI()
     "}"
   );
 
-  QVBoxLayout* productLayout = new QVBoxLayout(productFrame);
+  QHBoxLayout* productOuterLayout = new QHBoxLayout(productFrame);
+  productOuterLayout->setSpacing(15);
+
+  // Product image placeholder (250x250)
+  m_productImage = new QLabel();
+  m_productImage->setFixedSize(250, 250);
+  m_productImage->setAlignment(Qt::AlignCenter);
+  m_productImage->setText("No Image");
+  m_productImage->setStyleSheet(
+    "QLabel {"
+    "  background-color: #1a2540;"
+    "  color: #556688;"
+    "  font-size: 14px;"
+    "  border: 2px dashed #3d5a8c;"
+    "  border-radius: 6px;"
+    "}"
+  );
+  productOuterLayout->addWidget(m_productImage);
+
+  // Right side: label + buttons
+  QVBoxLayout* productLayout = new QVBoxLayout();
   productLayout->setSpacing(10);
+  productOuterLayout->addLayout(productLayout);
 
   // Product label
   m_productLabel = new QLabel("Product: None");
@@ -216,51 +273,11 @@ void MainMenuPage::setupUI()
     "}"
   );
 
-  m_deleteProductBtn = new QPushButton("Delete Product");
-  m_deleteProductBtn->setMinimumHeight(40);
-  m_deleteProductBtn->setEnabled(false);
-  m_deleteProductBtn->setStyleSheet(
-    "QPushButton {"
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #e74c3c);"
-    "  color: white;"
-    "  font-size: 14px;"
-    "  font-weight: bold;"
-    "  padding: 8px 20px;"
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5);"
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5);"
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5);"
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5);"
-    "}"
-    "QPushButton:hover {"
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fc8073, stop:1 #ec7063);"
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6);"
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6);"
-    "}"
-    "QPushButton:pressed {"
-    "  background-color: #c0392b;"
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5);"
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5);"
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3);"
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3);"
-    "  padding-top: 10px;"
-    "  padding-left: 22px;"
-    "}"
-    "QPushButton:disabled {"
-    "  background-color: #7f8c8d;"
-    "  color: #bdc3c7;"
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2);"
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2);"
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3);"
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3);"
-    "}"
-  );
-
   buttonLayout->addStretch();
   buttonLayout->addWidget(m_newProductBtn);
   buttonLayout->addWidget(m_loadProductBtn);
   buttonLayout->addWidget(m_saveProductBtn);
   buttonLayout->addWidget(m_saveProductAsBtn);
-  buttonLayout->addWidget(m_deleteProductBtn);
   buttonLayout->addStretch();
 
   productLayout->addLayout(buttonLayout);
@@ -271,32 +288,41 @@ void MainMenuPage::setupUI()
   connect(m_loadProductBtn, &QPushButton::clicked, this, &MainMenuPage::onLoadProduct);
   connect(m_saveProductBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProduct);
   connect(m_saveProductAsBtn, &QPushButton::clicked, this, &MainMenuPage::onSaveProductAs);
-  connect(m_deleteProductBtn, &QPushButton::clicked, this, &MainMenuPage::onDeleteProduct);
 
   // Add stretch to center buttons vertically
   mainLayout->addStretch();
 
-  // Button grid (3x2 - 3 columns, 2 rows)
+  // Button grid (4 columns x 2 rows)
   QGridLayout* buttonGrid = new QGridLayout();
-  buttonGrid->setSpacing(30);
+  buttonGrid->setSpacing(20);
 
-  // Create buttons WITH ICONS
-  m_processButton = createMenuButton("Process", "assets/icons/process.png");
-  m_recipeButton = createMenuButton("Recipe", "assets/icons/recipe.png");
-  m_motionButton = createMenuButton("Motion", "assets/icons/motion.png");
-  m_hardwareButton = createMenuButton("Hardware &\nInstrument", "assets/icons/hardware.png");
-  m_editConfigButton = createMenuButton("Settings", "assets/icons/config.png");
-  m_futureUpdateButton = createMenuButton("Vision Manager", "assets/icons/future.png");
-  m_accuracyTrainerButton = createMenuButton("Accuracy\nTrainer", "assets/icons/future.png");
+  // Create buttons with embedded icons (:/icons/...)
+  m_processButton = createMenuButton("Process", ":/icons/process.png");
+  m_recipeButton = createMenuButton("Recipe", ":/icons/recipe.png");
+  m_motionButton = createMenuButton("Motion", ":/icons/motion.png");
+  m_hardwareButton = createMenuButton("Hardware &\nInstrument", ":/icons/hardware.png");
+  m_editConfigButton = createMenuButton("Settings");
+  m_futureUpdateButton = createMenuButton("Vision Manager", ":/icons/visionmanager.png");
+  m_accuracyTrainerButton = createMenuButton("Accuracy\nTrainer", ":/icons/accuracy_trainer.png");
 
-  // Add to grid (3 columns, 3 rows)
+  // Shortcut tooltips
+  m_processButton->setToolTip("Process (F1)");
+  m_recipeButton->setToolTip("Recipe (F2)");
+  m_motionButton->setToolTip("Motion (F3)");
+  m_hardwareButton->setToolTip("Hardware & Instrument (F4)");
+  m_editConfigButton->setToolTip("Settings (F5)");
+  m_futureUpdateButton->setToolTip("Vision Manager (F6)");
+  m_accuracyTrainerButton->setToolTip("Accuracy Trainer (F7)");
+
+  // Row 0
   buttonGrid->addWidget(m_processButton, 0, 0);
   buttonGrid->addWidget(m_recipeButton, 0, 1);
   buttonGrid->addWidget(m_motionButton, 0, 2);
-  buttonGrid->addWidget(m_hardwareButton, 1, 0);
-  buttonGrid->addWidget(m_editConfigButton, 1, 1);
-  buttonGrid->addWidget(m_futureUpdateButton, 1, 2);
-  buttonGrid->addWidget(m_accuracyTrainerButton, 2, 0);
+  buttonGrid->addWidget(m_hardwareButton, 0, 3);
+  // Row 1
+  buttonGrid->addWidget(m_editConfigButton, 1, 0);
+  buttonGrid->addWidget(m_futureUpdateButton, 1, 1);
+  buttonGrid->addWidget(m_accuracyTrainerButton, 1, 2);
 
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
@@ -328,7 +354,7 @@ QToolButton* MainMenuPage::createMenuButton(const QString& text, const QString& 
     // Check if icon loaded successfully
     if (!icon.isNull()) {
       button->setIcon(icon);
-      button->setIconSize(QSize(48, 48));  // Icon display size
+      button->setIconSize(QSize(100, 100));  // Icon display size
     }
     else {
       // Icon failed to load - print warning
@@ -467,12 +493,29 @@ void MainMenuPage::updateProductDisplay()
     );
     m_productLabel->setText("Product: " + productName);
     m_saveProductBtn->setEnabled(true);
-    m_deleteProductBtn->setEnabled(true);
+
+    // Try to load product.png from the product folder
+    QString productPath = QString::fromStdString(
+      m_context->productPositionManager->GetCurrentProductPath()
+    );
+    QString productDir = QFileInfo(productPath).absolutePath();
+    QString imagePath = productDir + "/product.png";
+
+    QPixmap pixmap(imagePath);
+    if (!pixmap.isNull()) {
+      m_productImage->setPixmap(pixmap.scaled(250, 250, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+      m_productImage->setText("");
+    }
+    else {
+      m_productImage->setPixmap(QPixmap());
+      m_productImage->setText("No Image\n\nPlace product.png\nin product folder");
+    }
   }
   else {
     m_productLabel->setText("Product: None");
     m_saveProductBtn->setEnabled(false);
-    m_deleteProductBtn->setEnabled(false);
+    m_productImage->setPixmap(QPixmap());
+    m_productImage->setText("No Image");
   }
 }
 
@@ -681,127 +724,76 @@ void MainMenuPage::onSaveProductAs()
   }
 }
 
-void MainMenuPage::onDeleteProduct()
+
+void MainMenuPage::showChangelogDialog()
 {
-  if (!m_context || !m_context->productPositionManager) {
-    QMessageBox msgBox(this);
-    msgBox.setIcon(QMessageBox::Critical);
-    msgBox.setWindowTitle("Error");
-    msgBox.setText("Product manager not initialized");
-    msgBox.setStyleSheet(DIALOG_STYLESHEET);
-    msgBox.exec();
-    return;
+  // Find CHANGELOG.md relative to the executable
+  QString changelogPath;
+  QStringList searchPaths = {
+    QCoreApplication::applicationDirPath() + "/CHANGELOG.md",
+    QCoreApplication::applicationDirPath() + "/../../CHANGELOG.md",
+    QCoreApplication::applicationDirPath() + "/../../../CHANGELOG.md",
+    "CHANGELOG.md"
+  };
+
+  for (const auto& path : searchPaths) {
+    if (QFile::exists(path)) {
+      changelogPath = path;
+      break;
+    }
   }
 
-  if (!m_context->productPositionManager->HasLoadedProduct()) {
-    QMessageBox msgBox(this);
-    msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setWindowTitle("No Product");
-    msgBox.setText("No product loaded to delete.");
-    msgBox.setStyleSheet(DIALOG_STYLESHEET);
-    msgBox.exec();
-    return;
+  QString content;
+  if (!changelogPath.isEmpty()) {
+    QFile file(changelogPath);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      content = file.readAll();
+      file.close();
+    }
   }
 
-  QString productName = QString::fromStdString(
-    m_context->productPositionManager->GetCurrentProductName()
+  if (content.isEmpty()) {
+    content = "Changelog file not found.";
+  }
+
+  QDialog dialog(this);
+  dialog.setWindowTitle(QString("Bobcat Engine v%1 — Changelog").arg(BobcatVersion::VERSION_STRING));
+  dialog.resize(700, 500);
+  dialog.setStyleSheet("QDialog { background-color: #1e2a3a; }");
+
+  QVBoxLayout* layout = new QVBoxLayout(&dialog);
+  layout->setContentsMargins(10, 10, 10, 10);
+
+  QTextEdit* textEdit = new QTextEdit();
+  textEdit->setReadOnly(true);
+  textEdit->setPlainText(content);
+  textEdit->setStyleSheet(
+    "QTextEdit {"
+    "  background-color: #0d1520;"
+    "  color: #ccddee;"
+    "  font-family: 'RobotoMono', 'Consolas', monospace;"
+    "  font-size: 12px;"
+    "  border: 1px solid #3d5a8c;"
+    "  border-radius: 4px;"
+    "  padding: 8px;"
+    "}"
   );
+  layout->addWidget(textEdit);
 
-  // Show warning message first
-  QMessageBox warningBox(this);
-  warningBox.setIcon(QMessageBox::Warning);
-  warningBox.setWindowTitle("Delete Product - WARNING");
-  warningBox.setText(QString("You are about to DELETE the entire product folder:\n\n"
-                             "Product: %1\n"
-                             "Folder: config/%1/\n\n"
-                             "This will permanently delete:\n"
-                             "• All positions\n"
-                             "• All recipes\n"
-                             "• All programs\n"
-                             "• All configuration files\n\n"
-                             "THIS CANNOT BE UNDONE!").arg(productName));
-  warningBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
-  warningBox.setDefaultButton(QMessageBox::Cancel);
-  warningBox.setStyleSheet(DIALOG_STYLESHEET);
+  QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Close);
+  buttonBox->setStyleSheet(
+    "QPushButton {"
+    "  background-color: #3d5a8c;"
+    "  color: white;"
+    "  font-size: 12px;"
+    "  padding: 6px 20px;"
+    "  border: 1px solid #5577aa;"
+    "  border-radius: 4px;"
+    "}"
+    "QPushButton:hover { background-color: #4d6a9c; }"
+  );
+  connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::accept);
+  layout->addWidget(buttonBox);
 
-  if (warningBox.exec() != QMessageBox::Ok) {
-    return;
-  }
-
-  // Require user to type exact phrase
-  bool ok;
-  QInputDialog confirmDialog(this);
-  confirmDialog.setWindowTitle("Confirm Deletion");
-  confirmDialog.setLabelText(QString("To confirm deletion of product '%1', please type exactly:\n\n"
-            "I want to delete everything and everything.\n\n"
-            "Type the confirmation phrase below:").arg(productName));
-  confirmDialog.setTextValue("");
-  confirmDialog.setStyleSheet(DIALOG_STYLESHEET);
-
-  ok = confirmDialog.exec() == QDialog::Accepted;
-  QString confirmText = confirmDialog.textValue();
-
-  if (!ok) {
-    return;
-  }
-
-  // Check if text matches exactly
-  if (confirmText != "I want to delete everything and everything.") {
-    QMessageBox errorBox(this);
-    errorBox.setIcon(QMessageBox::Critical);
-    errorBox.setWindowTitle("Deletion Cancelled");
-    errorBox.setText("The confirmation text did not match.\n\n"
-      "Expected: I want to delete everything and everything.\n"
-      "You typed: " + confirmText + "\n\n"
-      "Product deletion cancelled.");
-    errorBox.setStyleSheet(DIALOG_STYLESHEET);
-    errorBox.exec();
-    return;
-  }
-
-  // Perform deletion
-  std::string productDir = "config/" + productName.toStdString();
-
-  try {
-    if (std::filesystem::exists(productDir)) {
-      std::filesystem::remove_all(productDir);
-
-      // Clear product from manager
-      m_context->productPositionManager->ClearAllPositions();
-
-      // Clear application setting
-      QSettings settings("Fabrinet", "BobcatEngine");
-      settings.remove("Application/lastProductFile");
-
-      updateProductDisplay();
-
-      // Notify other pages that product has been deleted
-      emit productChanged();
-
-      QMessageBox successBox(this);
-      successBox.setIcon(QMessageBox::Information);
-      successBox.setWindowTitle("Product Deleted");
-      successBox.setText(QString("Product '%1' has been permanently deleted.").arg(productName));
-      successBox.setStyleSheet(DIALOG_STYLESHEET);
-      successBox.exec();
-    }
-    else {
-      QMessageBox errorBox(this);
-      errorBox.setIcon(QMessageBox::Critical);
-      errorBox.setWindowTitle("Error");
-      errorBox.setText(QString("Product folder not found:\n%1").arg(QString::fromStdString(productDir)));
-      errorBox.setStyleSheet(DIALOG_STYLESHEET);
-      errorBox.exec();
-    }
-  }
-  catch (const std::exception& e) {
-    QMessageBox errorBox(this);
-    errorBox.setIcon(QMessageBox::Critical);
-    errorBox.setWindowTitle("Error");
-    errorBox.setText(QString("Failed to delete product folder:\n%1\n\nError: %2")
-        .arg(QString::fromStdString(productDir))
-        .arg(e.what()));
-    errorBox.setStyleSheet(DIALOG_STYLESHEET);
-    errorBox.exec();
-  }
+  dialog.exec();
 }

@@ -80,9 +80,13 @@ private:
   // Velocity control widgets (system-wide velocity, not per-axis)
   QComboBox* m_deviceSelector;
   QDoubleSpinBox* m_systemVelocity;
+  QDoubleSpinBox* m_turtleVelocitySpin;
   QPushButton* m_turtleButton;
+  QDoubleSpinBox* m_rabbitVelocitySpin;
   QPushButton* m_rabbitButton;
   QPushButton* m_applyButton;
+  void loadPresetSettings();
+  void savePresetSettings();
 
   // Device status display - vertical cards arranged horizontally
   QWidget* m_deviceStatusWidget;

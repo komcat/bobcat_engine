@@ -16,6 +16,32 @@
 #include <QFrame>
 #include <QScrollArea>
 #include <iostream>
+#include <cmath>
+
+namespace {
+// Format a value with SI prefix (e.g. 0.001 -> "1.000 m", 0.000002 -> "2.000 u")
+QString formatSI(double value, const QString& unit, int decimals = 3)
+{
+  double absVal = std::abs(value);
+  const char* prefix = "";
+  double scale = 1.0;
+
+  if (absVal >= 1e6)       { scale = 1e6;  prefix = "M"; }
+  else if (absVal >= 1e3)  { scale = 1e3;  prefix = "k"; }
+  else if (absVal >= 1.0)  { scale = 1.0;  prefix = "";  }
+  else if (absVal >= 1e-3) { scale = 1e-3; prefix = "m"; }
+  else if (absVal >= 1e-6) { scale = 1e-6; prefix = "u"; }
+  else if (absVal >= 1e-9) { scale = 1e-9; prefix = "n"; }
+  else if (absVal >= 1e-12){ scale = 1e-12; prefix = "p"; }
+  else if (absVal == 0.0)  { scale = 1.0;  prefix = "";  }
+  else                     { scale = 1e-12; prefix = "p"; }
+
+  return QString("%1 %2%3")
+    .arg(value / scale, 0, 'f', decimals)
+    .arg(prefix)
+    .arg(unit);
+}
+} // anonymous namespace
 
 SMUControlPage::SMUControlPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
@@ -342,341 +368,384 @@ void SMUControlPage::setupUI()
 
   mainLayout->addWidget(splitter);
 
-  // Status bar at bottom
+  // Status label (hidden — messages go to console only)
   m_statusLabel = new QLabel("");
-  m_statusLabel->setAlignment(Qt::AlignCenter);
-  m_statusLabel->setStyleSheet("QLabel { font-size: 12px; padding: 8px; background-color: #1e1e1e; border-radius: 4px; }");
-  mainLayout->addWidget(m_statusLabel);
+  m_statusLabel->hide();
 }
 
 // ========== TAB 1: SIMPLE (Controls) ==========
 void SMUControlPage::createSimpleTab()
 {
   QWidget* tab = new QWidget();
-  QHBoxLayout* outerLayout = new QHBoxLayout(tab);
-  outerLayout->setContentsMargins(15, 15, 15, 15);
+  QVBoxLayout* tabLayout = new QVBoxLayout(tab);
+  tabLayout->setContentsMargins(10, 10, 10, 10);
+  tabLayout->setSpacing(6);
 
-  // Fixed-width content container (aligned left)
-  QWidget* contentWidget = new QWidget();
-  contentWidget->setMaximumWidth(550);
-  QVBoxLayout* mainLayout = new QVBoxLayout(contentWidget);
-  mainLayout->setContentsMargins(0, 0, 0, 0);
-  mainLayout->setSpacing(10);
-
-  // ===== DEVICE INFO (Top) =====
+  // Device info
   QHBoxLayout* deviceInfoLayout = new QHBoxLayout();
-
   m_simpleDeviceLabel = new QLabel("Device: ---");
   m_simpleDeviceLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #d4d4d4; }");
   deviceInfoLayout->addWidget(m_simpleDeviceLabel);
-
   m_simpleConnectionLabel = new QLabel("Disconnected");
   m_simpleConnectionLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
   deviceInfoLayout->addWidget(m_simpleConnectionLabel);
   deviceInfoLayout->addStretch();
+  tabLayout->addLayout(deviceInfoLayout);
 
-  mainLayout->addLayout(deviceInfoLayout);
-
-  // ===== CHANNEL TABS (just for channel selection, no content inside) =====
+  // Channel tabs — content goes INSIDE each tab (built by rebuildSimpleTabs)
   m_channelTabWidget = new QTabWidget();
   m_channelTabWidget->setStyleSheet(R"(
-    QTabWidget::pane {
-      border: 1px solid #3f3f46;
-      background-color: #2d2d30;
-      padding: 5px;
-      min-height: 10px;
-    }
+    QTabWidget::pane { border: 1px solid #3f3f46; background-color: #2d2d30; }
     QTabBar::tab {
-      background-color: #3c3c3c;
-      color: #d4d4d4;
-      padding: 8px 20px;
-      margin-right: 2px;
-      border-top-left-radius: 4px;
-      border-top-right-radius: 4px;
-      font-size: 13px;
-      font-weight: bold;
+      background-color: #3c3c3c; color: #d4d4d4;
+      padding: 6px 18px; margin-right: 2px;
+      border-top-left-radius: 4px; border-top-right-radius: 4px;
+      font-size: 13px; font-weight: bold;
     }
-    QTabBar::tab:selected {
-      background-color: #0e639c;
-      color: white;
-    }
-    QTabBar::tab:hover {
-      background-color: #4a4a4a;
-    }
+    QTabBar::tab:selected { background-color: #0e639c; color: white; }
+    QTabBar::tab:hover { background-color: #4a4a4a; }
   )");
-  m_channelTabWidget->setFixedHeight(50);  // Minimal height - just shows tabs
   connect(m_channelTabWidget, &QTabWidget::currentChanged, this, &SMUControlPage::onChannelTabChanged);
-  mainLayout->addWidget(m_channelTabWidget);
+  tabLayout->addWidget(m_channelTabWidget);
 
-  // ===== CONTROLS (always visible below channel tabs) =====
-  // Using a regular QWidget instead of QPointer since we won't be reparenting anymore
-  m_channelControlsWidget = new QWidget();
-  QVBoxLayout* controlsLayout = new QVBoxLayout(m_channelControlsWidget);
-  controlsLayout->setContentsMargins(5, 10, 5, 5);
-  controlsLayout->setSpacing(10);
-
-  // ===== OUTPUT ROW =====
-  m_outputControlGroup = new QGroupBox();
-  m_outputControlGroup->setStyleSheet("QGroupBox { border: none; margin: 0; padding: 0; background: transparent; }");
-  QHBoxLayout* outputLayout = new QHBoxLayout(m_outputControlGroup);
-  outputLayout->setContentsMargins(0, 5, 0, 5);
-  outputLayout->setSpacing(10);
-
-  QLabel* outputLabel = new QLabel("Output");
-  outputLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #d4d4d4; min-width: 60px; }");
-  outputLayout->addWidget(outputLabel);
-
-  m_outputOnButton = new QPushButton("On");
-  m_outputOnButton->setMinimumSize(60, 30);
-  m_outputOnButton->setStyleSheet("QPushButton { background-color: #27ae60; font-weight: bold; }");
-  connect(m_outputOnButton, &QPushButton::clicked, this, &SMUControlPage::onOutputOnClicked);
-  outputLayout->addWidget(m_outputOnButton);
-
-  m_outputOffButton = new QPushButton("Off");
-  m_outputOffButton->setMinimumSize(60, 30);
-  m_outputOffButton->setStyleSheet("QPushButton { background-color: #e74c3c; font-weight: bold; }");
-  connect(m_outputOffButton, &QPushButton::clicked, this, &SMUControlPage::onOutputOffClicked);
-  outputLayout->addWidget(m_outputOffButton);
-
-  m_outputStateLabel = new QLabel("OFF");
-  m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
-  outputLayout->addWidget(m_outputStateLabel);
-
-  outputLayout->addStretch();
-  controlsLayout->addWidget(m_outputControlGroup);
-
-  // ===== READ ROW =====
-  QGroupBox* readGroup = new QGroupBox();
-  readGroup->setStyleSheet("QGroupBox { border: none; margin: 0; padding: 0; background: transparent; }");
-  QGridLayout* readGrid = new QGridLayout(readGroup);
-  readGrid->setContentsMargins(0, 5, 0, 5);
-  readGrid->setHorizontalSpacing(15);
-  readGrid->setVerticalSpacing(5);
-
-  QLabel* readLabel = new QLabel("Read");
-  readLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #d4d4d4; }");
-  readGrid->addWidget(readLabel, 0, 0);
-
-  m_voltageReadLabel = new QLabel("Voltage = 0.000 V");
-  m_voltageReadLabel->setStyleSheet("QLabel { font-size: 13px; color: #3498db; }");
-  readGrid->addWidget(m_voltageReadLabel, 0, 1);
-
-  m_currentReadLabel = new QLabel("Current = 0.000 A");
-  m_currentReadLabel->setStyleSheet("QLabel { font-size: 13px; color: #27ae60; }");
-  readGrid->addWidget(m_currentReadLabel, 1, 1);
-
-  m_refreshButton = new QPushButton("Refresh");
-  m_refreshButton->setMinimumSize(70, 30);
-  connect(m_refreshButton, &QPushButton::clicked, this, &SMUControlPage::onRefreshClicked);
-  readGrid->addWidget(m_refreshButton, 0, 2, 2, 1, Qt::AlignVCenter);
-
-  controlsLayout->addWidget(readGroup);
-
-  // ===== SET VOLTAGE ROW =====
-  QGroupBox* setVoltageGroup = new QGroupBox();
-  setVoltageGroup->setStyleSheet("QGroupBox { border: none; margin: 0; padding: 0; background: transparent; }");
-  QHBoxLayout* setVoltageLayout = new QHBoxLayout(setVoltageGroup);
-  setVoltageLayout->setContentsMargins(0, 5, 0, 5);
-  setVoltageLayout->setSpacing(10);
-
-  QLabel* setVoltageLabel = new QLabel("Set");
-  setVoltageLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #d4d4d4; min-width: 60px; }");
-  setVoltageLayout->addWidget(setVoltageLabel);
-
-  QLabel* voltageTitleLabel = new QLabel("Voltage");
-  voltageTitleLabel->setStyleSheet("QLabel { font-size: 13px; color: #d4d4d4; }");
-  setVoltageLayout->addWidget(voltageTitleLabel);
-
-  m_setVoltageSpinBox = new QDoubleSpinBox();
-  m_setVoltageSpinBox->setRange(-100.0, 100.0);
-  m_setVoltageSpinBox->setDecimals(3);
-  m_setVoltageSpinBox->setSingleStep(0.1);
-  m_setVoltageSpinBox->setValue(0.0);
-  m_setVoltageSpinBox->setSuffix(" V");
-  m_setVoltageSpinBox->setMinimumWidth(100);
-  setVoltageLayout->addWidget(m_setVoltageSpinBox);
-
-  m_setVoltageButton = new QPushButton("(Apply)");
-  m_setVoltageButton->setMinimumSize(60, 30);
-  connect(m_setVoltageButton, &QPushButton::clicked, this, &SMUControlPage::onSetVoltageClicked);
-  setVoltageLayout->addWidget(m_setVoltageButton);
-
-  setVoltageLayout->addStretch();
-  controlsLayout->addWidget(setVoltageGroup);
-
-  // ===== SET CURRENT ROW =====
-  QGroupBox* setCurrentGroup = new QGroupBox();
-  setCurrentGroup->setStyleSheet("QGroupBox { border: none; margin: 0; padding: 0; background: transparent; }");
-  QHBoxLayout* setCurrentLayout = new QHBoxLayout(setCurrentGroup);
-  setCurrentLayout->setContentsMargins(0, 5, 0, 5);
-  setCurrentLayout->setSpacing(10);
-
-  QLabel* setCurrentLabel = new QLabel("Set");
-  setCurrentLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #d4d4d4; min-width: 60px; }");
-  setCurrentLayout->addWidget(setCurrentLabel);
-
-  QLabel* currentTitleLabel = new QLabel("Current");
-  currentTitleLabel->setStyleSheet("QLabel { font-size: 13px; color: #d4d4d4; }");
-  setCurrentLayout->addWidget(currentTitleLabel);
-
-  m_setCurrentSpinBox = new QDoubleSpinBox();
-  m_setCurrentSpinBox->setRange(-1.0, 1.0);
-  m_setCurrentSpinBox->setDecimals(6);
-  m_setCurrentSpinBox->setSingleStep(0.001);
-  m_setCurrentSpinBox->setValue(0.0);
-  m_setCurrentSpinBox->setSuffix(" A");
-  m_setCurrentSpinBox->setMinimumWidth(100);
-  setCurrentLayout->addWidget(m_setCurrentSpinBox);
-
-  m_setCurrentButton = new QPushButton("(Apply)");
-  m_setCurrentButton->setMinimumSize(60, 30);
-  connect(m_setCurrentButton, &QPushButton::clicked, this, &SMUControlPage::onSetCurrentClicked);
-  setCurrentLayout->addWidget(m_setCurrentButton);
-
-  setCurrentLayout->addStretch();
-  controlsLayout->addWidget(setCurrentGroup);
-
-  controlsLayout->addStretch();
-
-  // Add controls widget directly to main layout (no reparenting)
-  mainLayout->addWidget(m_channelControlsWidget);
-
-  // Initialize hidden compliance spinboxes (keep functionality but hide UI)
+  // Hidden compliance spinboxes (shared, not per-channel)
   m_voltageComplianceSpinBox = new QDoubleSpinBox(tab);
   m_voltageComplianceSpinBox->setRange(0.0, 100.0);
   m_voltageComplianceSpinBox->setValue(5.0);
   m_voltageComplianceSpinBox->hide();
-
   m_currentComplianceSpinBox = new QDoubleSpinBox(tab);
   m_currentComplianceSpinBox->setRange(0.0, 1.0);
   m_currentComplianceSpinBox->setValue(0.01);
   m_currentComplianceSpinBox->hide();
-
   m_setVoltageComplianceButton = new QPushButton(tab);
   connect(m_setVoltageComplianceButton, &QPushButton::clicked, this, &SMUControlPage::onSetVoltageComplianceClicked);
   m_setVoltageComplianceButton->hide();
-
-  m_setCurrentComplianceButton = new QPushButton(contentWidget);
+  m_setCurrentComplianceButton = new QPushButton(tab);
   connect(m_setCurrentComplianceButton, &QPushButton::clicked, this, &SMUControlPage::onSetCurrentComplianceClicked);
   m_setCurrentComplianceButton->hide();
 
-  // Hidden channel combo and label (for compatibility)
-  m_channelComboBox = new QComboBox(contentWidget);
+  // Hidden channel combo (for compatibility)
+  m_channelComboBox = new QComboBox(tab);
   connect(m_channelComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SMUControlPage::onChannelSelected);
   m_channelComboBox->hide();
-  m_channelCountLabel = new QLabel(contentWidget);
+  m_channelCountLabel = new QLabel(tab);
   m_channelCountLabel->hide();
 
-  // Align content to left (don't stretch to fill width)
-  outerLayout->addWidget(contentWidget, 0, Qt::AlignLeft | Qt::AlignTop);
-  outerLayout->addStretch();
-
   m_tabWidget->addTab(tab, "Simple");
+}
+
+QWidget* SMUControlPage::createSMUChannelTab(int channel)
+{
+  QWidget* tabWidget = new QWidget();
+  QVBoxLayout* layout = new QVBoxLayout(tabWidget);
+  layout->setContentsMargins(8, 8, 8, 8);
+  layout->setSpacing(6);
+
+  SMUChannelWidgets ctrl;
+  ctrl.channel = channel;
+
+  // Shared styles
+  const QString spinBoxStyle =
+    "QDoubleSpinBox { background-color: #3c3c3c; color: #ffffff; border: 1px solid #555555; "
+    "border-radius: 4px; padding: 4px; font-size: 16px; font-weight: bold; }";
+  const QString setButtonStyle =
+    "QPushButton { background-color: #0e639c; color: white; font-weight: bold; font-size: 13px; "
+    "border: none; border-radius: 4px; padding: 6px 14px; }"
+    "QPushButton:hover { background-color: #1177bb; }"
+    "QPushButton:pressed { background-color: #0c5280; }";
+  const QString presetStyle =
+    "QPushButton { background-color: #2a4a6a; color: #aaccff; font-size: 12px; font-weight: bold; "
+    "border: 1px solid #3a6a9a; border-radius: 3px; padding: 4px 0px; }"
+    "QPushButton:hover { background-color: #3a6a9a; color: white; }"
+    "QPushButton:pressed { background-color: #1a3a5a; }";
+
+  // ---- Top row: Blue measurement panel (left) + Controls (right) ----
+  QHBoxLayout* topRow = new QHBoxLayout();
+  topRow->setSpacing(6);
+
+  // Left: Blue measurement panel (fixed width to prevent layout jumps)
+  QFrame* measFrame = new QFrame();
+  measFrame->setFixedWidth(240);
+  measFrame->setStyleSheet(
+    "QFrame { background-color: #0a1e3d; border: 2px solid #1565c0; border-radius: 8px; }");
+  QVBoxLayout* measLayout = new QVBoxLayout(measFrame);
+  measLayout->setContentsMargins(14, 10, 14, 10);
+  measLayout->setSpacing(2);
+
+  ctrl.outputStateLabel = new QLabel("Output: ---");
+  ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #888888; background: transparent;");
+  measLayout->addWidget(ctrl.outputStateLabel);
+
+  ctrl.voltageLabel = new QLabel("V: --- V");
+  ctrl.voltageLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
+  measLayout->addWidget(ctrl.voltageLabel);
+
+  ctrl.currentLabel = new QLabel("A: --- A");
+  ctrl.currentLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
+  measLayout->addWidget(ctrl.currentLabel);
+
+  ctrl.refreshButton = new QPushButton("Refresh");
+  ctrl.refreshButton->setMaximumWidth(80);
+  ctrl.refreshButton->setStyleSheet(
+    "QPushButton { background-color: #1a3a6a; color: #aaccff; font-size: 11px; "
+    "border: 1px solid #1565c0; border-radius: 3px; padding: 3px 8px; }"
+    "QPushButton:hover { background-color: #254b82; color: white; }");
+  connect(ctrl.refreshButton, &QPushButton::clicked, this, [this, channel]() {
+    onRefreshClicked(channel);
+  });
+  measLayout->addWidget(ctrl.refreshButton);
+
+  topRow->addWidget(measFrame, 0);
+
+  // Right: V/A inputs + Output buttons (fixed width)
+  QWidget* controlPanel = new QWidget();
+  controlPanel->setFixedWidth(380);
+  QVBoxLayout* ctrlLayout = new QVBoxLayout(controlPanel);
+  ctrlLayout->setContentsMargins(0, 0, 0, 0);
+  ctrlLayout->setSpacing(4);
+
+  // Voltage row
+  QHBoxLayout* voltageRow = new QHBoxLayout();
+  voltageRow->setSpacing(4);
+  QLabel* vLabel = new QLabel("V:");
+  vLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #d4d4d4;");
+  vLabel->setFixedWidth(26);
+  voltageRow->addWidget(vLabel);
+  ctrl.voltageSpinBox = new QDoubleSpinBox();
+  ctrl.voltageSpinBox->setRange(-100.0, 100.0);
+  ctrl.voltageSpinBox->setDecimals(3);
+  ctrl.voltageSpinBox->setSingleStep(0.1);
+  ctrl.voltageSpinBox->setValue(0.0);
+  ctrl.voltageSpinBox->setStyleSheet(spinBoxStyle);
+  voltageRow->addWidget(ctrl.voltageSpinBox, 1);
+  ctrl.setVoltageButton = new QPushButton("Set");
+  ctrl.setVoltageButton->setStyleSheet(setButtonStyle);
+  ctrl.setVoltageButton->setFixedWidth(60);
+  connect(ctrl.setVoltageButton, &QPushButton::clicked, this, [this, channel]() {
+    onSetVoltageClicked(channel);
+  });
+  voltageRow->addWidget(ctrl.setVoltageButton);
+  ctrlLayout->addLayout(voltageRow);
+
+  // Quick voltage preset buttons
+  QHBoxLayout* presetRow = new QHBoxLayout();
+  presetRow->setSpacing(4);
+  QLabel* presetSpacer = new QLabel();
+  presetSpacer->setFixedWidth(26);
+  presetRow->addWidget(presetSpacer);
+  for (int v = 1; v <= 4; ++v) {
+    QPushButton* btn = new QPushButton(QString("%1V").arg(v));
+    btn->setStyleSheet(presetStyle);
+    connect(btn, &QPushButton::clicked, this, [this, channel, v]() {
+      for (auto& c : m_channelControls) {
+        if (c.channel == channel) {
+          c.voltageSpinBox->setValue(static_cast<double>(v));
+          break;
+        }
+      }
+      onSetVoltageClicked(channel);
+    });
+    presetRow->addWidget(btn, 1);
+  }
+  QPushButton* zeroBtn = new QPushButton("0V");
+  zeroBtn->setStyleSheet(presetStyle);
+  connect(zeroBtn, &QPushButton::clicked, this, [this, channel]() {
+    for (auto& c : m_channelControls) {
+      if (c.channel == channel) {
+        c.voltageSpinBox->setValue(0.0);
+        break;
+      }
+    }
+    onSetVoltageClicked(channel);
+  });
+  presetRow->addWidget(zeroBtn, 1);
+  QWidget* presetEndSpacer = new QWidget();
+  presetEndSpacer->setFixedWidth(60);
+  presetRow->addWidget(presetEndSpacer);
+  ctrlLayout->addLayout(presetRow);
+
+  // Current row
+  QHBoxLayout* currentRow = new QHBoxLayout();
+  currentRow->setSpacing(4);
+  QLabel* aLabel = new QLabel("A:");
+  aLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #d4d4d4;");
+  aLabel->setFixedWidth(26);
+  currentRow->addWidget(aLabel);
+  ctrl.currentSpinBox = new QDoubleSpinBox();
+  ctrl.currentSpinBox->setRange(-1.0, 1.0);
+  ctrl.currentSpinBox->setDecimals(6);
+  ctrl.currentSpinBox->setSingleStep(0.001);
+  ctrl.currentSpinBox->setValue(0.0);
+  ctrl.currentSpinBox->setStyleSheet(spinBoxStyle);
+  ctrl.currentSpinBox->setReadOnly(true);
+  ctrl.currentSpinBox->setButtonSymbols(QAbstractSpinBox::NoButtons);
+  currentRow->addWidget(ctrl.currentSpinBox, 1);
+  ctrl.setCurrentButton = nullptr;
+  ctrlLayout->addLayout(currentRow);
+
+  // Output ON/OFF row
+  ctrl.outputControlGroup = new QGroupBox();
+  ctrl.outputControlGroup->setStyleSheet("QGroupBox { border: none; margin: 0; padding: 0; background: transparent; }");
+  QHBoxLayout* outputRow = new QHBoxLayout(ctrl.outputControlGroup);
+  outputRow->setContentsMargins(0, 0, 0, 0);
+  outputRow->setSpacing(4);
+  ctrl.outputOnButton = new QPushButton("OUTPUT ON");
+  ctrl.outputOnButton->setMinimumHeight(36);
+  ctrl.outputOnButton->setStyleSheet(
+    "QPushButton { background-color: #27ae60; color: white; font-size: 15px; font-weight: bold; "
+    "border: none; border-radius: 4px; }"
+    "QPushButton:hover { background-color: #2ecc71; }"
+    "QPushButton:pressed { background-color: #1e8449; }");
+  connect(ctrl.outputOnButton, &QPushButton::clicked, this, [this, channel]() {
+    onOutputOnClicked(channel);
+  });
+  ctrl.outputOffButton = new QPushButton("OUTPUT OFF");
+  ctrl.outputOffButton->setMinimumHeight(36);
+  ctrl.outputOffButton->setStyleSheet(
+    "QPushButton { background-color: #e74c3c; color: white; font-size: 15px; font-weight: bold; "
+    "border: none; border-radius: 4px; }"
+    "QPushButton:hover { background-color: #c0392b; }"
+    "QPushButton:pressed { background-color: #a93226; }");
+  connect(ctrl.outputOffButton, &QPushButton::clicked, this, [this, channel]() {
+    onOutputOffClicked(channel);
+  });
+  outputRow->addWidget(ctrl.outputOnButton);
+  outputRow->addWidget(ctrl.outputOffButton);
+  ctrlLayout->addWidget(ctrl.outputControlGroup);
+
+  topRow->addWidget(controlPanel, 0);
+  topRow->addStretch();
+  layout->addLayout(topRow);
+  layout->addStretch();
+
+  m_channelControls.push_back(ctrl);
+  return tabWidget;
+}
+
+void SMUControlPage::rebuildSimpleTabs()
+{
+  m_channelTabWidget->clear();
+  m_channelControls.clear();
+
+  if (m_currentDevice.isEmpty() || !m_smuManager) {
+    return;
+  }
+
+  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
+  if (!smu) {
+    return;
+  }
+
+  auto enabledChannels = smu->GetEnabledChannels();
+  for (int ch : enabledChannels) {
+    QWidget* tab = createSMUChannelTab(ch);
+    m_channelTabWidget->addTab(tab, QString("Ch%1").arg(ch));
+  }
 }
 
 // ========== TAB 2: POLLING ==========
 void SMUControlPage::createPollingTab()
 {
-  // Create scroll area for tab content
-  QScrollArea* scrollArea = new QScrollArea();
-  scrollArea->setWidgetResizable(true);
-  scrollArea->setFrameShape(QFrame::NoFrame);
-  scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-
-  // Container for horizontal layout (align left)
-  QWidget* outerTab = new QWidget();
-  QHBoxLayout* outerLayout = new QHBoxLayout(outerTab);
-  outerLayout->setContentsMargins(20, 20, 20, 20);
-
-  // Fixed-width content container
   QWidget* tab = new QWidget();
-  tab->setMaximumWidth(450);
-  QVBoxLayout* layout = new QVBoxLayout(tab);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(15);
+  QVBoxLayout* tabLayout = new QVBoxLayout(tab);
+  tabLayout->setContentsMargins(10, 10, 10, 10);
+  tabLayout->setSpacing(6);
+
+  // ---- Two-column layout ----
+  QHBoxLayout* columnsLayout = new QHBoxLayout();
+  columnsLayout->setSpacing(10);
+
+  // ==================== LEFT COLUMN ====================
+  QWidget* leftCol = new QWidget();
+  leftCol->setFixedWidth(400);
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftCol);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+  leftLayout->setSpacing(8);
 
   // Title
   QLabel* title = new QLabel("Continuous Polling");
   title->setStyleSheet("QLabel { font-size: 18px; font-weight: bold; color: #ffffff; }");
-  layout->addWidget(title);
+  leftLayout->addWidget(title);
 
-  // ✅ NEW: Selected Device Indicator
+  // Device indicator
   m_pollingDeviceLabel = new QLabel("No device selected");
   m_pollingDeviceLabel->setStyleSheet("QLabel { "
-    "font-size: 14px; font-weight: bold; color: #0e639c; "
+    "font-size: 13px; font-weight: bold; color: #0e639c; "
     "background-color: #1e1e1e; border: 2px solid #0e639c; "
-    "border-radius: 4px; padding: 10px; }");
+    "border-radius: 4px; padding: 8px; }");
   m_pollingDeviceLabel->setAlignment(Qt::AlignCenter);
-  layout->addWidget(m_pollingDeviceLabel);
+  leftLayout->addWidget(m_pollingDeviceLabel);
 
-  // ========== ADD NEW POLLING SESSION ==========
+  // Config group
   QGroupBox* configGroup = new QGroupBox("Add New Polling Session");
   QGridLayout* configGrid = new QGridLayout(configGroup);
-  configGrid->setSpacing(10);
+  configGrid->setSpacing(6);
 
-  // Channel selection
   configGrid->addWidget(new QLabel("Channel:"), 0, 0);
   m_pollingChannelComboBox = new QComboBox();
   configGrid->addWidget(m_pollingChannelComboBox, 0, 1);
 
-  // Measurement mode
   configGrid->addWidget(new QLabel("Measurement Mode:"), 1, 0);
   m_pollingModeComboBox = new QComboBox();
   m_pollingModeComboBox->addItem("ACCURATE (1.0 NPLC, ~10 Hz)");
   m_pollingModeComboBox->addItem("FAST (0.1 NPLC, ~80 Hz)");
   m_pollingModeComboBox->addItem("ULTRA_FAST (0.01 NPLC, ~150 Hz)");
-  m_pollingModeComboBox->setCurrentIndex(1);  // Default: FAST
+  m_pollingModeComboBox->setCurrentIndex(1);
   connect(m_pollingModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SMUControlPage::onModeChanged);
   configGrid->addWidget(m_pollingModeComboBox, 1, 1);
 
-  // Measurement type
   configGrid->addWidget(new QLabel("Measurement Type:"), 2, 0);
   m_pollingTypeComboBox = new QComboBox();
   m_pollingTypeComboBox->addItem("Current (A)");
   m_pollingTypeComboBox->addItem("Voltage (V)");
-  m_pollingTypeComboBox->setCurrentIndex(0);  // Default: Current
+  m_pollingTypeComboBox->setCurrentIndex(0);
   connect(m_pollingTypeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &SMUControlPage::onMeasurementTypeChanged);
   configGrid->addWidget(m_pollingTypeComboBox, 2, 1);
 
-  // Measurement range
   configGrid->addWidget(new QLabel("Range:"), 3, 0);
   m_pollingRangeComboBox = new QComboBox();
-  m_pollingRangeComboBox->addItem("Auto", QVariant::fromValue(-1.0));  // Auto-range
+  m_pollingRangeComboBox->addItem("Auto", QVariant::fromValue(-1.0));
   m_pollingRangeComboBox->addItem("2 nA",   QVariant::fromValue(2e-9));
   m_pollingRangeComboBox->addItem("20 nA",  QVariant::fromValue(20e-9));
   m_pollingRangeComboBox->addItem("200 nA", QVariant::fromValue(200e-9));
-  m_pollingRangeComboBox->addItem("2 µA",   QVariant::fromValue(2e-6));
-  m_pollingRangeComboBox->addItem("20 µA",  QVariant::fromValue(20e-6));
-  m_pollingRangeComboBox->addItem("200 µA", QVariant::fromValue(200e-6));
+  m_pollingRangeComboBox->addItem("2 uA",   QVariant::fromValue(2e-6));
+  m_pollingRangeComboBox->addItem("20 uA",  QVariant::fromValue(20e-6));
+  m_pollingRangeComboBox->addItem("200 uA", QVariant::fromValue(200e-6));
   m_pollingRangeComboBox->addItem("2 mA",   QVariant::fromValue(2e-3));
   m_pollingRangeComboBox->addItem("20 mA",  QVariant::fromValue(20e-3));
-  m_pollingRangeComboBox->setCurrentIndex(0);  // Default: Auto
+  m_pollingRangeComboBox->setCurrentIndex(0);
   configGrid->addWidget(m_pollingRangeComboBox, 3, 1);
 
-  // Add polling button
   m_addPollingButton = new QPushButton("Add Polling Session");
-  m_addPollingButton->setMinimumHeight(45);
+  m_addPollingButton->setMinimumHeight(40);
   m_addPollingButton->setStyleSheet("QPushButton { background-color: #27ae60; font-weight: bold; font-size: 14px; }");
   connect(m_addPollingButton, &QPushButton::clicked, this, &SMUControlPage::onAddPollingClicked);
   configGrid->addWidget(m_addPollingButton, 4, 0, 1, 2);
 
-  layout->addWidget(configGroup);
+  leftLayout->addWidget(configGroup);
+  leftLayout->addStretch();
 
-  // ========== ACTIVE POLLING SESSIONS ==========
+  columnsLayout->addWidget(leftCol, 0);
+
+  // ==================== RIGHT COLUMN ====================
+  QWidget* rightCol = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightCol);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
+  rightLayout->setSpacing(8);
+
+  // Active sessions group
   QGroupBox* sessionsGroup = new QGroupBox("Active Polling Sessions");
   QVBoxLayout* sessionsLayout = new QVBoxLayout(sessionsGroup);
-  sessionsLayout->setSpacing(10);
+  sessionsLayout->setSpacing(6);
 
   m_activeSessionsList = new QListWidget();
-  m_activeSessionsList->setMinimumHeight(150);
+  m_activeSessionsList->setMinimumHeight(120);
   m_activeSessionsList->setStyleSheet("QListWidget::item { padding: 5px; }");
   sessionsLayout->addWidget(m_activeSessionsList);
 
-  // Session control buttons
   QHBoxLayout* sessionButtonsLayout = new QHBoxLayout();
   m_stopSelectedSessionButton = new QPushButton("Stop Selected");
   m_stopSelectedSessionButton->setStyleSheet("QPushButton { background-color: #e67e22; font-weight: bold; }");
@@ -689,14 +758,13 @@ void SMUControlPage::createPollingTab()
   sessionButtonsLayout->addWidget(m_stopAllSessionsButton);
 
   sessionsLayout->addLayout(sessionButtonsLayout);
-  layout->addWidget(sessionsGroup);
+  rightLayout->addWidget(sessionsGroup);
 
-  // ========== POLLING DISPLAY ==========
+  // Live measurements display
   QGroupBox* displayGroup = new QGroupBox("Live Measurements");
   QVBoxLayout* displayLayout = new QVBoxLayout(displayGroup);
-  displayLayout->setSpacing(10);
+  displayLayout->setSpacing(6);
 
-  // Real-time value
   QLabel* valueTitle = new QLabel("Current Value:");
   valueTitle->setStyleSheet("QLabel { font-weight: bold; }");
   displayLayout->addWidget(valueTitle);
@@ -705,29 +773,23 @@ void SMUControlPage::createPollingTab()
   m_pollingValueLabel->setStyleSheet("QLabel { "
     "font-size: 32px; font-weight: bold; color: #3498db; "
     "background-color: #1e1e1e; border: 2px solid #3f3f46; "
-    "border-radius: 4px; padding: 20px; }");
+    "border-radius: 4px; padding: 15px; }");
   m_pollingValueLabel->setAlignment(Qt::AlignCenter);
-  m_pollingValueLabel->setMinimumHeight(100);
+  m_pollingValueLabel->setMinimumHeight(80);
   displayLayout->addWidget(m_pollingValueLabel);
 
-  // Sample count
   m_pollingSampleLabel = new QLabel("Samples: 0");
-  m_pollingSampleLabel->setStyleSheet("QLabel { "
-    "font-size: 12px; color: #888888; padding: 5px; }");
+  m_pollingSampleLabel->setStyleSheet("QLabel { font-size: 12px; color: #888888; padding: 4px; }");
   m_pollingSampleLabel->setAlignment(Qt::AlignCenter);
   displayLayout->addWidget(m_pollingSampleLabel);
 
-  layout->addWidget(displayGroup);
+  rightLayout->addWidget(displayGroup);
+  rightLayout->addStretch();
 
-  layout->addStretch();
+  columnsLayout->addWidget(rightCol, 1);
 
-  // Align content to left
-  outerLayout->addWidget(tab, 0, Qt::AlignLeft | Qt::AlignTop);
-  outerLayout->addStretch();
-
-  // Set tab as scroll area content
-  scrollArea->setWidget(outerTab);
-  m_tabWidget->addTab(scrollArea, "Polling");
+  tabLayout->addLayout(columnsLayout);
+  m_tabWidget->addTab(tab, "Polling");
 }
 
 // ========== DEVICE MANAGEMENT ==========
@@ -829,28 +891,21 @@ void SMUControlPage::onChannelSelected(int index)
 // Channel tab changed - just update the selected channel (no widget reparenting)
 void SMUControlPage::onChannelTabChanged(int index)
 {
-  if (index < 0) return;
+  if (index < 0 || index >= static_cast<int>(m_channelControls.size())) return;
 
-  // Get channel number from tab data
-  QWidget* tabWidget = m_channelTabWidget->widget(index);
-  if (!tabWidget) return;
-
-  int channel = tabWidget->property("channelNumber").toInt();
-  if (channel <= 0) channel = index + 1;
-
+  int channel = m_channelControls[index].channel;
   std::cout << "[SMUControlPage] Channel tab changed: " << channel << std::endl;
 
-  // Update the hidden combo box to stay in sync
+  // Sync hidden combo
   if (m_channelComboBox && index < m_channelComboBox->count()) {
     m_channelComboBox->blockSignals(true);
     m_channelComboBox->setCurrentIndex(index);
     m_channelComboBox->blockSignals(false);
   }
 
-  // Update parameter worker with selected channel
+  // Update worker polling channel
   if (m_parameterWorker) {
     m_parameterWorker->setPollingChannel(channel);
-    // Request measurements for the newly selected channel
     m_parameterWorker->requestRefreshAll(channel);
   }
 }
@@ -904,131 +959,99 @@ void SMUControlPage::onMeasurementTypeChanged(int index)
   m_pollingValueLabel->setText("---" + unit);
 }
 
-// Output control
-void SMUControlPage::onOutputOnClicked()
+// Output control (per-channel)
+void SMUControlPage::onOutputOnClicked(int channel)
 {
-  if (m_currentDevice.isEmpty()) {
-    showError("No device selected");
-    return;
-  }
-
+  if (m_currentDevice.isEmpty() || !m_parameterWorker) return;
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    showError("Device not connected");
-    return;
-  }
+  if (!smu || !smu->IsConnected()) return;
 
-  // Use parameter worker for non-blocking operation
-  if (m_parameterWorker) {
-    m_parameterWorker->requestOutputOn();
+  // Optimistic UI update
+  m_cachedOutputOn = true;
+  m_outputCommandPending = 5;
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      ctrl.outputStateLabel->setText("Output: ON");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+      break;
+    }
   }
+  m_parameterWorker->requestOutputOn(channel);
 }
 
-void SMUControlPage::onOutputOffClicked()
+void SMUControlPage::onOutputOffClicked(int channel)
 {
-  if (m_currentDevice.isEmpty()) {
-    showError("No device selected");
-    return;
-  }
-
+  if (m_currentDevice.isEmpty() || !m_parameterWorker) return;
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    showError("Device not connected");
-    return;
-  }
+  if (!smu || !smu->IsConnected()) return;
 
-  // Use parameter worker for non-blocking operation
-  if (m_parameterWorker) {
-    m_parameterWorker->requestOutputOff();
+  m_cachedOutputOn = false;
+  m_outputCommandPending = 5;
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      ctrl.outputStateLabel->setText("Output: OFF");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+      break;
+    }
   }
+  m_parameterWorker->requestOutputOff(channel);
 }
 
 void SMUControlPage::updateOutputState()
 {
-  // Safety check - if controls widget was deleted, don't access child labels
-  if (!m_channelControlsWidget) {
-    return;
+  if (m_channelControls.empty()) return;
+
+  for (auto& ctrl : m_channelControls) {
+    if (m_currentDevice.isEmpty()) {
+      ctrl.outputStateLabel->setText("Output: ---");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #888888; background: transparent;");
+    } else if (m_cachedOutputOn) {
+      ctrl.outputStateLabel->setText("Output: ON");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+    } else {
+      ctrl.outputStateLabel->setText("Output: OFF");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+    }
   }
 
-  if (m_currentDevice.isEmpty()) {
-    m_outputStateLabel->setText("---");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #888888; }");
-    return;
-  }
-
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    m_outputStateLabel->setText("---");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #888888; }");
-    return;
-  }
-
-  // Use cached state from worker instead of direct SMU call (non-blocking)
-  // The cached state is updated by onMeasurementsUpdated() callback
-  if (m_cachedOutputOn) {
-    m_outputStateLabel->setText("ON");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #27ae60; }");
-  } else {
-    m_outputStateLabel->setText("OFF");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
-  }
-
-  // Request fresh data from worker (off-thread)
-  if (m_parameterWorker) {
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = 1;
+  if (m_parameterWorker && !m_currentDevice.isEmpty()) {
+    int index = m_channelTabWidget->currentIndex();
+    int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
+      ? m_channelControls[index].channel : 1;
     m_parameterWorker->requestRefreshAll(channel);
   }
 }
 
-// Set voltage/current/compliance
-void SMUControlPage::onSetVoltageClicked()
+// Set voltage/current (per-channel)
+void SMUControlPage::onSetVoltageClicked(int channel)
 {
-  if (m_currentDevice.isEmpty()) {
-    showError("No device selected");
-    return;
-  }
-
+  if (m_currentDevice.isEmpty() || !m_parameterWorker) return;
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    showError("Device not connected");
-    return;
-  }
+  if (!smu || !smu->IsConnected()) return;
 
-  double voltage = m_setVoltageSpinBox->value();
-
-  // Use parameter worker for non-blocking operation
-  if (m_parameterWorker) {
-    m_parameterWorker->requestSetVoltage(voltage);
-    // Request a refresh after setting
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
-    m_parameterWorker->requestRefreshAll(channel);
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double voltage = ctrl.voltageSpinBox->value();
+      m_parameterWorker->requestSetVoltage(channel, voltage);
+      m_parameterWorker->requestRefreshAll(channel);
+      break;
+    }
   }
 }
 
-void SMUControlPage::onSetCurrentClicked()
+void SMUControlPage::onSetCurrentClicked(int channel)
 {
-  if (m_currentDevice.isEmpty()) {
-    showError("No device selected");
-    return;
-  }
-
+  if (m_currentDevice.isEmpty() || !m_parameterWorker) return;
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    showError("Device not connected");
-    return;
-  }
+  if (!smu || !smu->IsConnected()) return;
 
-  double current = m_setCurrentSpinBox->value();
-
-  // Use parameter worker for non-blocking operation
-  if (m_parameterWorker) {
-    m_parameterWorker->requestSetCurrent(current);
-    // Request a refresh after setting
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
-    m_parameterWorker->requestRefreshAll(channel);
+  for (const auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      double current = ctrl.currentSpinBox->value();
+      m_parameterWorker->requestSetCurrent(channel, current);
+      m_parameterWorker->requestRefreshAll(channel);
+      break;
+    }
   }
 }
 
@@ -1229,66 +1252,22 @@ void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, doubl
 }
 
 // Measurement update
-void SMUControlPage::onRefreshClicked()
+void SMUControlPage::onRefreshClicked(int channel)
 {
-  if (m_currentDevice.isEmpty()) {
-    showError("No device selected");
-    return;
-  }
-
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    // Safety check before accessing child labels
-    if (m_channelControlsWidget) {
-      m_voltageReadLabel->setText("Voltage = --- V");
-      m_currentReadLabel->setText("Current = --- A");
-    }
-    showError("Device not connected");
-    return;
-  }
-
-  // Use parameter worker for non-blocking operation
-  if (m_parameterWorker) {
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
-    m_parameterWorker->requestRefreshAll(channel);
-  }
+  if (m_currentDevice.isEmpty() || !m_parameterWorker) return;
+  m_parameterWorker->requestRefreshAll(channel);
 }
 
 void SMUControlPage::updateMeasurements()
 {
-  // All SMU reads are now handled by the parameter worker (off-thread)
-  // This function only requests a refresh - actual UI update happens in onMeasurementsUpdated()
-
-  // Safety check - if controls widget was deleted, don't access child labels
-  if (!m_channelControlsWidget) {
+  if (m_channelControls.empty() || m_currentDevice.isEmpty() || !m_parameterWorker) {
     return;
   }
 
-  if (m_currentDevice.isEmpty()) {
-    m_voltageReadLabel->setText("Voltage = --- V");
-    m_currentReadLabel->setText("Current = --- A");
-    return;
-  }
-
-  auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
-  if (!smu || !smu->IsConnected()) {
-    m_voltageReadLabel->setText("Voltage = --- V");
-    m_currentReadLabel->setText("Current = --- A");
-    return;
-  }
-
-  // Request refresh via worker (non-blocking, off UI thread)
-  if (m_parameterWorker) {
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
-    m_parameterWorker->requestRefreshAll(channel);
-  } else {
-    // Worker not available - show placeholder (don't block UI with direct calls)
-    m_voltageReadLabel->setText("Voltage = --- V");
-    m_currentReadLabel->setText("Current = --- A");
-    std::cerr << "[SMUControlPage] Warning: Parameter worker not available" << std::endl;
-  }
+  int index = m_channelTabWidget->currentIndex();
+  int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
+    ? m_channelControls[index].channel : 1;
+  m_parameterWorker->requestRefreshAll(channel);
 }
 
 // Helper methods
@@ -1315,40 +1294,31 @@ void SMUControlPage::updateChannelList()
   m_channelComboBox->clear();
   m_pollingChannelComboBox->clear();
 
-  // Clear channel tabs (simplified - no widget reparenting needed)
-  while (m_channelTabWidget->count() > 0) {
-    QWidget* w = m_channelTabWidget->widget(0);
-    m_channelTabWidget->removeTab(0);
-    delete w;
-  }
-
   if (m_currentDevice.isEmpty()) {
     m_channelCountLabel->setText("0");
+    rebuildSimpleTabs();
     return;
   }
 
   auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
   if (!smu || !smu->IsConnected()) {
     m_channelCountLabel->setText("0");
+    rebuildSimpleTabs();
     return;
   }
 
   int channelCount = smu->GetChannelCount();
   auto enabledChannels = smu->GetEnabledChannels();
-
   m_channelCountLabel->setText(QString::number(channelCount));
 
-  // Populate channel combo boxes and create minimal tabs (just for selection)
+  // Populate hidden combo + polling combo
   for (int ch : enabledChannels) {
-    // Hidden combo box (for compatibility)
     m_channelComboBox->addItem(QString("Channel %1").arg(ch));
     m_pollingChannelComboBox->addItem(QString("Channel %1").arg(ch));
-
-    // Channel tab - empty widget (controls are below, not inside tabs)
-    QWidget* tabContent = new QWidget();
-    tabContent->setProperty("channelNumber", ch);
-    m_channelTabWidget->addTab(tabContent, QString("Ch%1").arg(ch));
   }
+
+  // Build per-channel tabs with full controls inside
+  rebuildSimpleTabs();
 }
 
 void SMUControlPage::updateDeviceCapabilities()
@@ -1382,14 +1352,14 @@ void SMUControlPage::updateDeviceCapabilities()
   m_deviceInfoLabel->setText(deviceInfo);
 
   // ========== Output Control Section (Simple Tab) ==========
-  // Hide output controls for measurement-only devices
-  if (mode == SMUMode::MEASURE_ONLY) {
-    m_outputControlGroup->setVisible(false);
-    std::cout << "[SMUControlPage] Device is MEASURE_ONLY - hiding output controls" << std::endl;
-  } else {
-    m_outputControlGroup->setVisible(true);
-    std::cout << "[SMUControlPage] Device supports sourcing - showing output controls" << std::endl;
+  // Hide/show output controls per channel based on device mode
+  bool showOutput = (mode != SMUMode::MEASURE_ONLY);
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.outputControlGroup) {
+      ctrl.outputControlGroup->setVisible(showOutput);
+    }
   }
+  std::cout << "[SMUControlPage] Device mode: " << (showOutput ? "source" : "MEASURE_ONLY") << std::endl;
 
   // ========== Polling Tab - Measurement Type ==========
   // For measurement-only devices, only allow current measurement in polling
@@ -1565,64 +1535,68 @@ void SMUControlPage::onConnectionOperationStarted(QString operation, QString dev
 
 // ========== PARAMETER WORKER CALLBACKS ==========
 
-void SMUControlPage::onMeasurementsUpdated(int /*channel*/, double voltage, double current, bool outputOn)
+void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double current, bool outputOn)
 {
-  // Update cached output state (for use by updateOutputState())
-  m_cachedOutputOn = outputOn;
+  if (m_channelControls.empty()) return;
 
-  // Safety check - if controls widget was deleted, don't access child labels
-  // This can happen when a queued signal is delivered after device switch
-  if (!m_channelControlsWidget) {
-    return;
-  }
+  for (auto& ctrl : m_channelControls) {
+    if (ctrl.channel == channel) {
+      // Update voltage with SI prefix
+      if (voltage != -999.0) {
+        ctrl.voltageLabel->setText("V: " + formatSI(voltage, "V"));
+      } else {
+        ctrl.voltageLabel->setText("V: --- V");
+      }
+      ctrl.voltageLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
 
-  // Update voltage display (new format: "Voltage = X.XXX V")
-  if (voltage != -999.0) {
-    m_voltageReadLabel->setText(QString("Voltage = %1 V").arg(QString::number(voltage, 'f', 3)));
-  } else {
-    m_voltageReadLabel->setText("Voltage = --- V");
-  }
+      // Update current with SI prefix
+      if (current != -999.0) {
+        ctrl.currentLabel->setText("A: " + formatSI(current, "A"));
+      } else {
+        ctrl.currentLabel->setText("A: --- A");
+      }
+      ctrl.currentLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
 
-  // Update current display (new format: "Current = X.XXX A")
-  if (current != -999.0) {
-    m_currentReadLabel->setText(QString("Current = %1 A").arg(QString::number(current, 'f', 3)));
-  } else {
-    m_currentReadLabel->setText("Current = --- A");
-  }
+      // Skip output state while command in flight
+      if (m_outputCommandPending > 0) {
+        --m_outputCommandPending;
+        return;
+      }
 
-  // Update output state display (simplified)
-  if (outputOn) {
-    m_outputStateLabel->setText("ON");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #27ae60; }");
-  } else {
-    m_outputStateLabel->setText("OFF");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
+      m_cachedOutputOn = outputOn;
+      if (outputOn) {
+        ctrl.outputStateLabel->setText("Output: ON");
+        ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+      } else {
+        ctrl.outputStateLabel->setText("Output: OFF");
+        ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+      }
+      break;
+    }
   }
 }
 
 void SMUControlPage::onOutputStateChangedByWorker(bool on)
 {
-  // Update cached output state
+  m_outputCommandPending = 0;
   m_cachedOutputOn = on;
 
-  // Safety check - if controls widget was deleted, don't access child labels
-  if (!m_channelControlsWidget) {
-    return;
+  // Update all channel displays (output state is device-wide, not per-channel)
+  for (auto& ctrl : m_channelControls) {
+    if (on) {
+      ctrl.outputStateLabel->setText("Output: ON");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+    } else {
+      ctrl.outputStateLabel->setText("Output: OFF");
+      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+    }
   }
 
-  // Update output state display (simplified)
-  if (on) {
-    m_outputStateLabel->setText("ON");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #27ae60; }");
-  } else {
-    m_outputStateLabel->setText("OFF");
-    m_outputStateLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: bold; color: #e74c3c; }");
-  }
-
-  // Request a full measurement refresh after output state change
+  // Request refresh for active channel
   if (m_parameterWorker && !m_currentDevice.isEmpty()) {
-    int channel = m_channelTabWidget->currentIndex() + 1;
-    if (channel <= 0) channel = m_channelComboBox->currentIndex() + 1;
+    int index = m_channelTabWidget->currentIndex();
+    int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
+      ? m_channelControls[index].channel : 1;
     m_parameterWorker->requestRefreshAll(channel);
   }
 }
@@ -1645,17 +1619,30 @@ void SMUControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
-  // Enable measurement polling when page becomes visible
-  if (m_parameterWorker && !m_currentDevice.isEmpty()) {
+  // Refresh connection status in case devices were connected externally
+  updateConnectionStatus();
+  updateDeviceLabels();
+
+  if (!m_currentDevice.isEmpty()) {
     auto smu = m_smuManager->GetDevice(m_currentDevice.toStdString());
     if (smu && smu->IsConnected()) {
-      m_parameterWorker->setMeasurementPollingEnabled(true);
-      std::cout << "[SMUControlPage] Page shown - enabled status polling" << std::endl;
+      // Rebuild channel tabs if they haven't been set up yet
+      updateChannelList();
+      updateDeviceCapabilities();
 
-      // Request initial measurements
-      int channel = m_channelTabWidget->currentIndex() + 1;
-      if (channel <= 0) channel = 1;
-      m_parameterWorker->requestRefreshAll(channel);
+      // Configure and enable parameter worker polling
+      if (m_parameterWorker) {
+        m_parameterWorker->setCurrentDevice(m_currentDevice.toStdString());
+        m_parameterWorker->setChannelCount(smu->GetChannelCount());
+        m_parameterWorker->setMeasurementPollingEnabled(true);
+        std::cout << "[SMUControlPage] Page shown - enabled status polling" << std::endl;
+
+        // Request initial measurements for active channel
+        int index = m_channelTabWidget->currentIndex();
+        int channel = (index >= 0 && index < static_cast<int>(m_channelControls.size()))
+          ? m_channelControls[index].channel : 1;
+        m_parameterWorker->requestRefreshAll(channel);
+      }
     }
   }
 }

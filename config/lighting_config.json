@@ -12,6 +12,7 @@
           "channel": 0,
           "name": "Collimate",
           "color": "white",
+          "group": "light1",
           "default_intensity": 0,
           "enabled": true
         },
@@ -19,6 +20,7 @@
           "channel": 1,
           "name": "Red",
           "color": "red",
+          "group": "light1",
           "default_intensity": 0,
           "enabled": true
         },
@@ -26,6 +28,7 @@
           "channel": 2,
           "name": "Green",
           "color": "green",
+          "group": "light1",
           "default_intensity": 0,
           "enabled": true
         },
@@ -33,6 +36,7 @@
           "channel": 3,
           "name": "Blue",
           "color": "blue",
+          "group": "light1",
           "default_intensity": 0,
           "enabled": true
         },
@@ -40,6 +44,7 @@
           "channel": 4,
           "name": "L5",
           "color": "",
+          "group": "light2",
           "default_intensity": 0,
           "enabled": false
         },
@@ -47,6 +52,7 @@
           "channel": 5,
           "name": "L6",
           "color": "",
+          "group": "light2",
           "default_intensity": 0,
           "enabled": false
         },
@@ -54,6 +60,7 @@
           "channel": 6,
           "name": "L7",
           "color": "",
+          "group": "light2",
           "default_intensity": 0,
           "enabled": false
         },
@@ -61,6 +68,7 @@
           "channel": 7,
           "name": "L8",
           "color": "",
+          "group": "light2",
           "default_intensity": 0,
           "enabled": false
         }

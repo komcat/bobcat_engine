@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QScrollArea>
 #include <vector>
+#include <map>
 #include <string>
 
 struct ApplicationContext;
@@ -33,12 +34,13 @@ public:
                                     const QString& color,
                                     QWidget* parent = nullptr);
 
-    void setIntensity(int intensity);
-    void setOn(bool on);
+    void setIntensity(int intensity, bool fromPoll = false);
+    void setOn(bool on, bool fromPoll = false);
     void setConnected(bool connected);
 
     int channelNumber() const { return m_channelNumber; }
     QString channelName() const { return m_channelName; }
+    int currentIntensity() const { return m_currentIntensity; }
 
 signals:
     void intensityChanged(int channel, int intensity);
@@ -74,6 +76,10 @@ private:
     bool m_isConnected;
     bool m_isUpdating;  // Prevent feedback loops
     int m_currentIntensity;  // Current intensity value (0-255)
+
+    // Suppress poll updates briefly after user input to avoid race condition
+    qint64 m_lastUserChangeTime;  // msecsSinceEpoch of last user-initiated change
+    static constexpr int POLL_SUPPRESS_MS = 1000;  // Ignore polls for 1s after user change
 };
 
 /**
@@ -102,10 +108,7 @@ private slots:
 
     // Preset slots
     void onPresetClicked(int percent);
-    void onCollimatePreset();
-    void onRedPreset();
-    void onGreenPreset();
-    void onBluePreset();
+    void onColorSelected(const QString& group, const QString& color);
 
     // Worker callbacks
     void onWorkerConnectionSuccess(QString deviceId);
@@ -117,13 +120,15 @@ private slots:
 
 private:
     void setupUI();
-    void createHeaderSection();
-    void createPresetsSection();
-    void createChannelWidgets();
+    QWidget* createHeaderSection();
+    QWidget* createPresetsSection();
+    QWidget* createChannelWidgets();
     void updateStatus();
     void updateChannelWidgets();
-    void setAllChannelsIntensity(int intensity);
-    void setColorPreset(const QString& color, int intensity);
+    void applyIntensityToActiveColor(int intensity);
+    void activateColor(const QString& group, const QString& color);
+    QString getChannelColor(LightingChannelWidget* widget) const;
+    QString getChannelGroup(LightingChannelWidget* widget) const;
 
     ApplicationContext* m_context;
     Lighting::LightingManager* m_lightingManager;
@@ -150,4 +155,9 @@ private:
     // Parameter worker for non-blocking operations
     LightingParameterWorker* m_parameterWorker;
     bool m_connectionPending;
+
+    // Active color selection (per group)
+    QString m_activeGroup;  // Currently selected group ("light1", etc.), empty = none
+    QString m_activeColor;  // Currently selected color within group ("red", etc.), empty = none
+    std::vector<QPushButton*> m_colorButtons;  // All color buttons across groups
 };

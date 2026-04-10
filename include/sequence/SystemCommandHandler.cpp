@@ -825,6 +825,70 @@ bool SystemCommandHandler::ExecuteCommand(
   }
 
   // ============================================================================
+  // PLACEMENT CORRECTION RETRACE
+  // ============================================================================
+  // Interactive command: blocks the recipe thread and shows the PlacementRetraceWidget
+  // in RunProgramPage. The callback is a blocking function that enters a QEventLoop
+  // on the UI thread and waits for the user to complete/skip/end the retrace.
+  //
+  // Returns true if user saved or skipped (recipe continues).
+  // Returns false if user ended without saving (recipe stops).
+  //
+  // The callback is set by RunProgramPage::setPlacementRetraceCallback() during
+  // ProgramWorker setup. If running outside RunProgramPage (e.g., RecipePage),
+  // the callback may not be configured — handled by the null check below.
+  //
+  // Plugin source: PlacementCorrectionProcesses.cpp
+  // Widget source: PlacementRetraceWidget.h/cpp
+  // Callback wiring: RunProgramPage.cpp (search for "setPlacementRetraceCallback")
+  // ============================================================================
+  else if (methodName == "PlacementCorrectionRetrace") {
+    auto setNameIt = params.find("training_set_name");
+    auto autoStartIt = params.find("auto_start");
+
+    if (setNameIt == params.end() || setNameIt->second.empty()) {
+      errorMessage = "Missing required parameter: training_set_name";
+      return false;
+    }
+
+    std::string trainingSetName = ExpandContextReferences(setNameIt->second, context);
+    bool autoStart = (autoStartIt != params.end() && autoStartIt->second == "true");
+
+    // Skip in loop mode — retrace requires operator interaction, not suitable for loops
+    if (context && context->IsLoopExecutionMode()) {
+      if (m_logger) {
+        m_logger->Info("Loop mode: Skipping placement retrace for: " + trainingSetName, "SystemHandler");
+      }
+      return true;
+    }
+
+    if (!m_placementRetraceCallback) {
+      errorMessage = "PlacementRetrace callback not configured";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Showing placement correction retrace for set: " + trainingSetName, "SystemHandler");
+    }
+
+    bool success = m_placementRetraceCallback(trainingSetName, autoStart);
+
+    if (!success) {
+      errorMessage = "User ended placement retrace without saving";
+      if (m_logger) {
+        m_logger->Warning("Placement retrace ended without save for: " + trainingSetName, "SystemHandler");
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("Placement retrace completed for: " + trainingSetName, "SystemHandler");
+    }
+
+    return true;
+  }
+
+  // ============================================================================
   // UNKNOWN METHOD
   // ============================================================================
   else {

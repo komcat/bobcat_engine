@@ -241,7 +241,14 @@ void AuxViewWindow::closeEvent(QCloseEvent* event)
   // Save window geometry before hiding
   saveWindowSettings();
 
-  // Prevent closing - hide instead
+  if (m_allowClose) {
+    // Application shutdown — accept the close
+    event->accept();
+    std::cout << "[AuxViewWindow] Window closed (shutdown)" << std::endl;
+    return;
+  }
+
+  // Normal user close — hide instead of closing
   event->ignore();
   hide();
   std::cout << "[AuxViewWindow] Close prevented - window hidden instead" << std::endl;

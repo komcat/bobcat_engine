@@ -12,6 +12,7 @@
 #include "ProcessPluginRegistry.h"
 #include "IProcessPlugin.h"
 #include "products/product_position_manager.h"
+#include "FileSelectorDialog.h"
 #include <QLabel>
 #include <QFrame>
 #include <QVBoxLayout>
@@ -1449,6 +1450,72 @@ void ProcessConfigWidget::addFileSelector(const std::string& key,
   m_parameterEdits[key] = edit;
 }
 
+void ProcessConfigWidget::addRecipeSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setReadOnly(true);
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Select Recipe...");
+  browseBtn->setFixedWidth(120);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    // Determine recipes folder from active product
+    QString recipesPath;
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+      QString productName = QString::fromStdString(
+        m_context->productPositionManager->GetCurrentProductName());
+      recipesPath = QString("config/%1/recipes").arg(productName);
+    } else {
+      recipesPath = "recipes";
+    }
+
+    QString selected = FileSelectorDialog::getOpenFileName(
+      this->window(),
+      recipesPath,
+      "*.json",
+      "Select Sub-Recipe",
+      "recipe files",
+      true  // Recursive: scan subfolders
+    );
+
+    if (!selected.isEmpty()) {
+      edit->setText(selected);
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
 void ProcessConfigWidget::addFolderSelector(const std::string& key,
   const std::string& label,
   const std::string& value)
@@ -1534,6 +1601,48 @@ void ProcessConfigWidget::addTrainingSetSelector(const std::string& key,
   connect(browseBtn, &QPushButton::clicked, [this, edit]() {
     std::string currentSet = edit->text().toStdString();
     std::string selected = TrainingSetSelectorDialog::SelectTrainingSet(
+      m_context, currentSet, this
+    );
+    if (!selected.empty()) {
+      edit->setText(QString::fromStdString(selected));
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+void ProcessConfigWidget::addPlacementSetSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; background-color: #3c3c3c; color: #d4d4d4; "
+    "border: 1px solid #555555; border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { background-color: #5a8fd6; color: white; "
+    "border-radius: 3px; padding: 5px; } "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    std::string currentSet = edit->text().toStdString();
+    std::string selected = PlacementSetSelectorDialog::SelectPlacementSet(
       m_context, currentSet, this
     );
     if (!selected.empty()) {

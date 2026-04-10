@@ -7,6 +7,8 @@
 #include "MotionTypes.h"
 #include "ILogger.h"
 
+class InterlockManager;
+
 #include <string>
 #include <map>
 #include <vector>
@@ -55,6 +57,17 @@ public:
 	 * @brief Enable/disable verbose debug logging for waypoint system
 	 * @param enable true to enable detailed logging, false to suppress
 	 */
+	// ============================================================================
+	// INTERLOCK SUPPORT
+	// ============================================================================
+
+	/**
+	 * @brief Set interlock manager for pre-move position checks
+	 * @param mgr Pointer to InterlockManager (owned externally)
+	 */
+	void SetInterlockManager(InterlockManager* mgr) { m_interlockManager = mgr; }
+	InterlockManager* GetInterlockManager() const { return m_interlockManager; }
+
 	void SetDebugLogging(bool enable) { m_debugLogging = enable; }
 	bool IsDebugLoggingEnabled() const { return m_debugLogging; }
 
@@ -504,6 +517,9 @@ private:
 
 	// Waypoint state for each device: deviceName -> state
 	std::map<std::string, DeviceWaypointState> m_waypointStates;
+
+	// Interlock manager (owned externally)
+	InterlockManager* m_interlockManager = nullptr;
 
 	// Debug logging flag
 	bool m_debugLogging = false;  // Set to true to enable verbose waypoint logging

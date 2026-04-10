@@ -75,6 +75,13 @@ public:
   )>;
   void setUserInputCallback(UserInputCallback callback);
 
+  // Set callback for placement correction retrace (optional - if not set, auto-accepts)
+  using PlacementRetraceCallback = std::function<bool(
+    const std::string& trainingSetName,
+    bool autoStart
+  )>;
+  void setPlacementRetraceCallback(PlacementRetraceCallback callback);
+
   // ✅ NEW: Set external context (for sharing with ProgramWorker)
   // If set, this context will be used instead of creating a local one
   void setExternalContext(SequenceContext* context);
@@ -164,6 +171,7 @@ private:
   UserPromptCallback m_userPromptCallback;
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
+  PlacementRetraceCallback m_placementRetraceCallback;
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
   std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
   bool m_loopMode = false;                       // ✅ NEW: Loop mode (reduces logging)

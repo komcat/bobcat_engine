@@ -20,6 +20,7 @@
 #include "safety/SafetyWatchManager.h"
 #include "customserver/BeamServerClient.h"
 #include "motions/DeviceLinkManager.h"
+#include "motions/InterlockManager.h"
 #include "version.h"
 #include "startup/ConnectionWorkerPool.h"
 #include "settings/ApplicationSettings.h"
@@ -136,6 +137,7 @@ private:
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
+  std::unique_ptr<InterlockManager> m_interlockManager;
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager2;  // Second GDI camera monitor
 #ifdef USE_QT_CAMERA_WINDOW

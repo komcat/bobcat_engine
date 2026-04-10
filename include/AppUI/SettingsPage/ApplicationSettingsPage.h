@@ -17,6 +17,7 @@
 #include <functional>
 
 struct ApplicationContext;
+class ConfigBackupManager;
 
 // Setting definition for the property panel
 struct SettingDefinition {
@@ -43,7 +44,7 @@ class ApplicationSettingsPage : public QWidget
 
 public:
   explicit ApplicationSettingsPage(ApplicationContext* context, QWidget* parent = nullptr);
-  ~ApplicationSettingsPage() = default;
+  ~ApplicationSettingsPage() override;
 
 signals:
   void backToMainMenu();
@@ -79,12 +80,15 @@ private:
   std::vector<std::pair<std::string, std::string>> getAvailableVisionProfiles();
 
   ApplicationContext* m_context;
+  ConfigBackupManager* m_backupManager;
 
   // UI Components - Top bar
   QPushButton* m_backButton;
   QPushButton* m_saveButton;
   QPushButton* m_reloadButton;
   QPushButton* m_resetButton;
+  QPushButton* m_backupButton;
+  QPushButton* m_restoreButton;
   QLabel* m_titleLabel;
   QLabel* m_statusLabel;
   QLabel* m_filePathLabel;

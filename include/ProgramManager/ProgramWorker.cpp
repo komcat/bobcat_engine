@@ -65,6 +65,11 @@ void ProgramWorker::setUserInputCallback(UserInputCallback callback)
   m_userInputCallback = callback;
 }
 
+void ProgramWorker::setPlacementRetraceCallback(PlacementRetraceCallback callback)
+{
+  m_placementRetraceCallback = callback;
+}
+
 // ✅ NEW: Set execution mode
 void ProgramWorker::setAutoRunMode(bool autoRun)
 {
@@ -278,14 +283,6 @@ void ProgramWorker::runSequential()
     emit logMessage(QString("PROGRAM COMPLETED: %1").arg(completionMsg));
 
     emit programExecutionCompleted(true, completionMsg);
-
-    // ✅ Also invoke parent's slot directly if parent exists (more reliable than signal)
-    if (parent()) {
-      QMetaObject::invokeMethod(parent(), "onProgramExecutionCompleted",
-        Qt::QueuedConnection,
-        Q_ARG(bool, true),
-        Q_ARG(QString, completionMsg));
-    }
   }
   catch (const std::exception& e) {
     QString failMsg = QString("Program exception: %1").arg(e.what());
@@ -576,6 +573,10 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   // ✅ Set UserInput callback if available
   if (m_userInputCallback) {
     recipeWorker->setUserInputCallback(m_userInputCallback);
+  }
+
+  if (m_placementRetraceCallback) {
+    recipeWorker->setPlacementRetraceCallback(m_placementRetraceCallback);
   }
 
   // ✅ Set shared context for vision result storage

@@ -5,6 +5,7 @@
 #include "../../sequence/SequenceBuilder.h"
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
 #include "../../AppUI/RecipePage/DeviceSelectorWidgets.h"
+#include "../../AppUI/RecipePage/PropertyTableWidget.h"
 
 #include <iostream>
 #include <memory>
@@ -19,6 +20,39 @@ std::string getParam(const std::map<std::string, std::string>& params,
   auto it = params.find(key);
   return (it != params.end()) ? it->second : defaultValue;
 }
+// Helper to add a delay/wait action (if ms > 0)
+void addDelayAction(SequenceBuilder* sequence, const std::string& msStr) {
+  if (msStr.empty() || msStr == "0") return;
+  try {
+    int ms = static_cast<int>(std::stod(msStr));
+    if (ms <= 0) return;
+    sequence->AddAction("system", "Wait", {{"milliseconds", std::to_string(ms)}});
+  } catch (...) {}
+}
+
+// Helper to add delay table UI entries
+void addDelayTableUI(PropertyTableWidget* table,
+                      const std::map<std::string, std::string>& params) {
+  table->addCategoryHeader("Timing");
+  table->addNumericProperty("delay_before_ms", "Delay Before",
+    std::stod(getParam(params, "delay_before_ms", "0")),
+    0, 60000, 100, 0, "ms",
+    "Wait before executing the action (0 = no delay)");
+  table->addNumericProperty("delay_after_ms", "Delay After",
+    std::stod(getParam(params, "delay_after_ms", "0")),
+    0, 60000, 100, 0, "ms",
+    "Wait after the action completes (0 = no delay)");
+}
+
+// Helper to add delay form UI entries
+void addDelayFormUI(ProcessConfigWidget* widget,
+                     const std::map<std::string, std::string>& params) {
+  widget->addNumericParameter("delay_before_ms", "Delay Before (ms)",
+    getParam(params, "delay_before_ms", "0"), 0, 60000, 100, 0, "ms");
+  widget->addNumericParameter("delay_after_ms", "Delay After (ms)",
+    getParam(params, "delay_after_ms", "0"), 0, 60000, 100, 0, "ms");
+}
+
 } // namespace
 
 //=============================================================================
@@ -42,7 +76,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},  // ✅ FIXED: Hardcoded default like IO processes
+      {"device", "SMU1"},  // ✅ FIXED: Hardcoded default like IO processes
       {"mode", "ACCURATE"},
       {"intervalMs", "100"},
       {"channel", "1"}
@@ -131,7 +165,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"}  // ✅ FIXED: Hardcoded default like IO processes
+      {"device", "SMU1"}  // ✅ FIXED: Hardcoded default like IO processes
     };
   }
 
@@ -184,7 +218,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},  // ✅ FIXED: Hardcoded default like IO processes
+      {"device", "SMU1"},  // ✅ FIXED: Hardcoded default like IO processes
       {"channel", "1"},
       {"captureAs", ""}
     };
@@ -259,7 +293,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},
+      {"device", "SMU1"},
       {"channel", "1"},
       {"captureAs", ""}  // Optional: store result with custom variable name
     };
@@ -318,7 +352,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},
+      {"device", "SMU1"},
       {"channel", "1"},
       {"voltage", "0.0"}
     };
@@ -370,7 +404,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},
+      {"device", "SMU1"},
       {"channel", "1"},
       {"current", "0.0"}
     };
@@ -422,7 +456,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"},
+      {"device", "SMU1"},
       {"channel", "1"},
       {"limit", "0.1"}
     };
@@ -474,7 +508,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_2400"},
+      {"device", "SMU1"},
       {"channel", "1"}
     };
   }
@@ -519,7 +553,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_2400"},
+      {"device", "SMU1"},
       {"channel", "1"}
     };
   }
@@ -564,7 +598,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"}
+      {"device", "SMU1"}
     };
   }
 
@@ -596,7 +630,7 @@ public:
 
   std::map<std::string, std::string> GetDefaultParameters() const override {
     return {
-      {"device", "Keithley_6482"}
+      {"device", "SMU1"}
     };
   }
 
@@ -614,6 +648,200 @@ public:
 };
 
 //=============================================================================
+// SMU CONFIGURE PLUGIN (all-in-one: connect + bias voltage + start polling)
+//=============================================================================
+
+class SMUConfigurePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "SMU Configure";
+  }
+
+  std::string GetCategory() const override {
+    return "SMU Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Configure SMU in one step: connect, set bias voltage, enable output, "
+           "and start polling per selected channel";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "SMU1"},
+      {"enable_ch1", "true"},
+      {"enable_ch2", "true"},
+      {"enable_ch3", "false"},
+      {"enable_ch4", "false"},
+      {"bias_voltage", "2.0"},
+      {"polling_mode", "FAST"},
+      {"polling_interval_ms", "100"},
+      {"delay_after_connect_ms", "300"},
+      {"delay_between_commands_ms", "150"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    widget->addDeviceSelector("device", "SMU Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::SMU));
+
+    widget->addCheckboxParameter("enable_ch1", "Enable Channel 1",
+      getParam(params, "enable_ch1", "true"), "Configure and poll channel 1");
+    widget->addCheckboxParameter("enable_ch2", "Enable Channel 2",
+      getParam(params, "enable_ch2", "true"), "Configure and poll channel 2");
+    widget->addCheckboxParameter("enable_ch3", "Enable Channel 3",
+      getParam(params, "enable_ch3", "false"), "Configure and poll channel 3");
+    widget->addCheckboxParameter("enable_ch4", "Enable Channel 4",
+      getParam(params, "enable_ch4", "false"), "Configure and poll channel 4");
+
+    widget->addNumericParameter("bias_voltage", "Bias Voltage (V)",
+      getParam(params, "bias_voltage", "2.0"), -100, 100, 0.1, 2, "V");
+
+    widget->addParameterField("polling_mode", "Polling Mode (ACCURATE/FAST/ULTRA_FAST)",
+      getParam(params, "polling_mode", "FAST"));
+
+    widget->addNumericParameter("polling_interval_ms", "Polling Interval (ms)",
+      getParam(params, "polling_interval_ms", "100"), 10, 1000, 10, 0, "ms");
+
+    widget->addNumericParameter("delay_after_connect_ms", "Delay After Connect (ms)",
+      getParam(params, "delay_after_connect_ms", "300"), 0, 5000, 100, 0, "ms");
+
+    widget->addNumericParameter("delay_between_commands_ms", "Delay Between Commands (ms)",
+      getParam(params, "delay_between_commands_ms", "150"), 0, 5000, 10, 0, "ms");
+
+    addDelayFormUI(widget, params);
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addSMUDeviceProperty("device", "SMU Device", params.at("device"),
+      "SMU device name");
+
+    table->addCategoryHeader("Channels");
+    table->addCheckboxProperty("enable_ch1", "Channel 1",
+      getParam(params, "enable_ch1", "true") == "true",
+      "Connect, set voltage, enable output, and start polling on channel 1");
+    table->addCheckboxProperty("enable_ch2", "Channel 2",
+      getParam(params, "enable_ch2", "true") == "true",
+      "Connect, set voltage, enable output, and start polling on channel 2");
+    table->addCheckboxProperty("enable_ch3", "Channel 3",
+      getParam(params, "enable_ch3", "false") == "true",
+      "Connect, set voltage, enable output, and start polling on channel 3");
+    table->addCheckboxProperty("enable_ch4", "Channel 4",
+      getParam(params, "enable_ch4", "false") == "true",
+      "Connect, set voltage, enable output, and start polling on channel 4");
+
+    table->addCategoryHeader("Configuration");
+    table->addNumericProperty("bias_voltage", "Bias Voltage",
+      std::stod(getParam(params, "bias_voltage", "2.0")),
+      -100, 100, 0.1, 2, "V",
+      "Bias voltage applied per channel (no current setting)");
+
+    table->addCategoryHeader("Polling");
+    table->addDropdownProperty("polling_mode", "Polling Mode",
+      getParam(params, "polling_mode", "FAST"),
+      {"ACCURATE", "FAST", "ULTRA_FAST"},
+      "Measurement speed mode for polling");
+    table->addNumericProperty("polling_interval_ms", "Polling Interval",
+      std::stod(getParam(params, "polling_interval_ms", "100")),
+      10, 1000, 10, 0, "ms",
+      "Time between measurements per channel");
+
+    table->addCategoryHeader("Timing");
+    table->addNumericProperty("delay_after_connect_ms", "Delay After Connect",
+      std::stod(getParam(params, "delay_after_connect_ms", "300")),
+      0, 5000, 100, 0, "ms",
+      "Wait after connecting before configuring (default 300ms)");
+    table->addNumericProperty("delay_between_commands_ms", "Delay Between Commands",
+      std::stod(getParam(params, "delay_between_commands_ms", "150")),
+      0, 5000, 10, 0, "ms",
+      "Wait between each command (default 150ms)");
+    table->addNumericProperty("delay_before_ms", "Delay Before",
+      std::stod(getParam(params, "delay_before_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait before executing the action (0 = no delay)");
+    table->addNumericProperty("delay_after_ms", "Delay After",
+      std::stod(getParam(params, "delay_after_ms", "0")),
+      0, 60000, 100, 0, "ms",
+      "Wait after the action completes (0 = no delay)");
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string biasVoltage = getParam(params, "bias_voltage", "2.0");
+    std::string pollingMode = getParam(params, "polling_mode", "FAST");
+    std::string pollingIntervalMs = getParam(params, "polling_interval_ms", "100");
+    std::string delayAfterConnect = getParam(params, "delay_after_connect_ms", "300");
+    std::string cmdDelay = getParam(params, "delay_between_commands_ms", "150");
+
+    // Collect enabled channels
+    std::vector<int> enabledChannels;
+    if (getParam(params, "enable_ch1", "true") == "true")  enabledChannels.push_back(1);
+    if (getParam(params, "enable_ch2", "true") == "true")  enabledChannels.push_back(2);
+    if (getParam(params, "enable_ch3", "false") == "true") enabledChannels.push_back(3);
+    if (getParam(params, "enable_ch4", "false") == "true") enabledChannels.push_back(4);
+
+    // 1. Delay before
+    addDelayAction(sequence, getParam(params, "delay_before_ms", "0"));
+
+    // 2. Connect device
+    sequence->AddAction(device, "Connect", {});
+
+    // 3. Delay after connect (default 300ms settling time)
+    addDelayAction(sequence, delayAfterConnect);
+
+    // 4. For each enabled channel: SetVoltage → delay → OutputOn → delay → StartPolling → delay
+    for (int ch : enabledChannels) {
+      std::string chStr = std::to_string(ch);
+
+      // Set bias voltage on this channel
+      sequence->AddAction(device, "SetVoltage", {
+        {"voltage", biasVoltage},
+        {"channel", chStr}
+      });
+      addDelayAction(sequence, cmdDelay);
+
+      // Enable output on this channel
+      sequence->AddAction(device, "OutputOn", {
+        {"channel", chStr}
+      });
+      addDelayAction(sequence, cmdDelay);
+
+      // Start polling on this channel
+      sequence->AddAction(device, "StartPolling", {
+        {"mode", pollingMode},
+        {"intervalMs", pollingIntervalMs},
+        {"channel", chStr}
+      });
+      addDelayAction(sequence, cmdDelay);
+    }
+
+    // 5. Delay after
+    addDelayAction(sequence, getParam(params, "delay_after_ms", "0"));
+
+    std::cout << "[SMUConfigurePlugin] Built SMU Configure for: " << step->userNickname
+              << " (Device: " << device << ", Bias: " << biasVoltage << "V"
+              << ", Polling: " << pollingMode << " @ " << pollingIntervalMs << "ms"
+              << ", Channels:";
+    for (int ch : enabledChannels) {
+      std::cout << " " << ch;
+    }
+    std::cout << ")" << std::endl;
+  }
+};
+
+//=============================================================================
 // PLUGIN REGISTRATION
 //=============================================================================
 
@@ -622,6 +850,7 @@ static bool RegisterSMUPlugins()
 {
   auto& registry = ProcessPluginRegistry::Instance();
 
+  registry.RegisterPlugin(std::make_unique<SMUConfigurePlugin>());
   registry.RegisterPlugin(std::make_unique<SMUConnectPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUDisconnectPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUStartPollingPlugin>());
@@ -634,7 +863,7 @@ static bool RegisterSMUPlugins()
   registry.RegisterPlugin(std::make_unique<SMUOutputOnPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUOutputOffPlugin>());
 
-  std::cout << "[SMUProcesses] Registered 11 SMU process plugins" << std::endl;
+  std::cout << "[SMUProcesses] Registered 12 SMU process plugins" << std::endl;
   return true;
 }
 

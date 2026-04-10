@@ -293,6 +293,45 @@ std::vector<ChannelConfig> LightingManager::GetChannelConfigs(const std::string&
     return it->second.channels;
 }
 
+std::vector<std::string> LightingManager::GetChannelGroups(const std::string& deviceId) const {
+    auto it = m_configs.find(deviceId);
+    if (it == m_configs.end()) {
+        return {};
+    }
+
+    std::vector<std::string> groups;
+    for (const auto& ch : it->second.channels) {
+        if (!ch.enabled) continue;
+        std::string grp = ch.group.empty() ? "default" : ch.group;
+        // Add if not already present
+        bool found = false;
+        for (const auto& g : groups) {
+            if (g == grp) { found = true; break; }
+        }
+        if (!found) {
+            groups.push_back(grp);
+        }
+    }
+    return groups;
+}
+
+std::vector<ChannelConfig> LightingManager::GetChannelsByGroup(const std::string& deviceId, const std::string& group) const {
+    auto it = m_configs.find(deviceId);
+    if (it == m_configs.end()) {
+        return {};
+    }
+
+    std::vector<ChannelConfig> result;
+    for (const auto& ch : it->second.channels) {
+        if (!ch.enabled) continue;
+        std::string chGroup = ch.group.empty() ? "default" : ch.group;
+        if (chGroup == group) {
+            result.push_back(ch);
+        }
+    }
+    return result;
+}
+
 const ControllerConfig* LightingManager::GetControllerConfig(const std::string& deviceId) const {
     auto it = m_configs.find(deviceId);
     if (it == m_configs.end()) {

@@ -4,16 +4,24 @@
 #include <QFrame>
 #include <algorithm>
 
+namespace {
+// Device color mapping - matches MotionGraphicsView overlay
+QColor getDeviceColor(const QString& deviceName) {
+    if (deviceName.contains("gantry", Qt::CaseInsensitive))     return QColor(52, 152, 219);   // blue
+    if (deviceName.contains("hex-left", Qt::CaseInsensitive))   return QColor(46, 204, 113);   // green
+    if (deviceName.contains("hex-right", Qt::CaseInsensitive))  return QColor(231, 76, 60);    // red
+    if (deviceName.contains("hex-bottom", Qt::CaseInsensitive)) return QColor(155, 89, 182);   // purple
+    if (deviceName.contains("stage", Qt::CaseInsensitive))      return QColor(241, 196, 15);   // yellow
+    return QColor(149, 165, 166);  // gray
+}
+} // namespace
+
 DeviceButtonStack::DeviceButtonStack(QWidget* parent)
   : QWidget(parent)
   , m_motionManager(nullptr)
-  , m_posNameLabel(nullptr)
-  , m_posXLabel(nullptr)
-  , m_posYLabel(nullptr)
-  , m_posZLabel(nullptr)
-  , m_posULabel(nullptr)
-  , m_posVLabel(nullptr)
-  , m_posWLabel(nullptr)
+  , m_deviceButtonsContainer(nullptr)
+  , m_deviceButtonsLayout(nullptr)
+  , m_velocityPresetsWidget(nullptr)
 {
   setupUI();
 }
@@ -31,10 +39,40 @@ void DeviceButtonStack::setupUI()
   connect(m_buttonGroup, QOverload<int>::of(&QButtonGroup::idClicked),
     this, &DeviceButtonStack::onButtonClicked);
 
-  // Setup selected position info section
-  setupPositionInfoSection();
+  // === Devices section (TOP) ===
+  QLabel* deviceLabel = new QLabel("Devices");
+  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; background-color: transparent; }");
+  m_mainLayout->addWidget(deviceLabel);
 
-  // Set fixed width for the button stack (increased to accommodate position info and larger fonts)
+  // Container widget for dynamically added device buttons
+  m_deviceButtonsContainer = new QWidget();
+  m_deviceButtonsContainer->setStyleSheet("background-color: transparent;");
+  m_deviceButtonsLayout = new QVBoxLayout(m_deviceButtonsContainer);
+  m_deviceButtonsLayout->setContentsMargins(0, 0, 0, 0);
+  m_deviceButtonsLayout->setSpacing(8);
+  m_mainLayout->addWidget(m_deviceButtonsContainer);
+
+  // === Velocity Presets Section ===
+  QFrame* separatorLine = new QFrame();
+  separatorLine->setFrameShape(QFrame::HLine);
+  separatorLine->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
+  m_mainLayout->addWidget(separatorLine);
+
+  QLabel* velLabel = new QLabel("Velocity:");
+  velLabel->setStyleSheet("QLabel { color: #d4d4d4; font-size: 12px; font-weight: bold; background-color: transparent; }");
+  m_mainLayout->addWidget(velLabel);
+
+  m_velocityPresetsWidget = new QWidget();
+  m_velocityPresetsWidget->setStyleSheet("QWidget { background-color: transparent; }");
+  QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
+  velGrid->setContentsMargins(0, 0, 0, 0);
+  velGrid->setSpacing(3);
+  m_mainLayout->addWidget(m_velocityPresetsWidget);
+
+  // Push everything above to the top
+  m_mainLayout->addStretch();
+
+  // Set fixed width
   setFixedWidth(240);
 
   // Style for the container - Dark Theme
@@ -46,60 +84,6 @@ void DeviceButtonStack::setupUI()
   );
 }
 
-void DeviceButtonStack::setupPositionInfoSection()
-{
-  // Add separator before device buttons section
-  QFrame* topLine = new QFrame();
-  topLine->setFrameShape(QFrame::HLine);
-  topLine->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  m_mainLayout->addWidget(topLine);
-
-  // === Selected Position Section ===
-  QLabel* posLabel = new QLabel("Selected Position");
-  posLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; background-color: transparent; }");
-  m_mainLayout->addWidget(posLabel);
-
-  // Compact info widget
-  QWidget* posWidget = new QWidget();
-  posWidget->setStyleSheet("QWidget { background-color: #1e1e1e; border: 1px solid #3f3f46; border-radius: 4px; }");
-  QVBoxLayout* posLayout = new QVBoxLayout(posWidget);
-  posLayout->setContentsMargins(6, 6, 6, 6);
-  posLayout->setSpacing(3);
-
-  m_posNameLabel = new QLabel("-");
-  m_posXLabel = new QLabel("X: -");
-  m_posYLabel = new QLabel("Y: -");
-  m_posZLabel = new QLabel("Z: -");
-  m_posULabel = new QLabel("U: -");
-  m_posVLabel = new QLabel("V: -");
-  m_posWLabel = new QLabel("W: -");
-
-  // Position name label style
-  m_posNameLabel->setStyleSheet("QLabel { color: #d4d4d4; font-size: 14px; }");
-  posLayout->addWidget(m_posNameLabel);
-
-  // XYZUVW labels with larger font
-  QList<QLabel*> posLabels = { m_posXLabel, m_posYLabel, m_posZLabel,
-                               m_posULabel, m_posVLabel, m_posWLabel };
-  for (auto* label : posLabels) {
-    label->setStyleSheet("QLabel { color: #d4d4d4; font-size: 16px; }");
-    posLayout->addWidget(label);
-  }
-
-  m_mainLayout->addWidget(posWidget);
-
-  // Add separator after position info
-  QFrame* bottomLine = new QFrame();
-  bottomLine->setFrameShape(QFrame::HLine);
-  bottomLine->setStyleSheet("QFrame { background-color: #3f3f46; margin: 3px 0; }");
-  m_mainLayout->addWidget(bottomLine);
-
-  // Add label for device buttons section
-  QLabel* deviceLabel = new QLabel("Devices");
-  deviceLabel->setStyleSheet("QLabel { color: #ffffff; font-size: 14px; font-weight: bold; background-color: transparent; }");
-  m_mainLayout->addWidget(deviceLabel);
-}
-
 void DeviceButtonStack::setDevices(const QStringList& devices)
 {
   clearButtons();
@@ -108,19 +92,27 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
   for (const QString& device : devices) {
     QPushButton* btn = new QPushButton(device);
     btn->setCheckable(true);
-    btn->setMinimumHeight(50);
-    btn->setMaximumHeight(80);
+    btn->setMinimumHeight(100);
+    btn->setMaximumHeight(160);
     btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    // Style for device buttons - 3D Windows Style
-    btn->setStyleSheet(
+    // Get device-specific color
+    QColor dc = getDeviceColor(device);
+    QString colorStr = dc.name();
+    QColor dcDark = dc.darker(130);
+    QString darkStr = dcDark.name();
+    QColor dcLight = dc.lighter(120);
+    QString lightStr = dcLight.name();
+
+    // Style for device buttons - 3D style with device-specific checked color
+    btn->setStyleSheet(QString(
       "QPushButton { "
       "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
       "  color: white; "
       "  border-radius: 6px; "
-      "  font-size: 13px; "
+      "  font-size: 18px; "
       "  font-weight: bold; "
-      "  padding: 6px; "
+      "  padding: 8px; "
       "  text-align: center; "
       "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
@@ -138,11 +130,11 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
       "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
       "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-      "  padding-top: 8px; "
-      "  padding-left: 8px; "
+      "  padding-top: 10px; "
+      "  padding-left: 10px; "
       "} "
       "QPushButton:checked { "
-      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1e73ac, stop:1 #0e639c); "
+      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %1, stop:1 %2); "
       "  color: white; "
       "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
@@ -150,25 +142,18 @@ void DeviceButtonStack::setDevices(const QStringList& devices)
       "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
       "} "
       "QPushButton:checked:hover { "
-      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2e83bc, stop:1 #1e73ac); "
+      "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %3, stop:1 %1); "
       "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
       "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
       "}"
-    );
+    ).arg(colorStr, darkStr, lightStr));
 
-    m_mainLayout->addWidget(btn);
+    m_deviceButtonsLayout->addWidget(btn);
     m_buttonGroup->addButton(btn, buttonId);
     m_deviceMap[buttonId] = device;
 
     buttonId++;
   }
-
-  // Add stretch to push buttons to top
-  m_mainLayout->addStretch();
-
-  // ✅ FIX: Do NOT auto-select first device on startup
-  // User must explicitly click a device button to select it
-  // m_currentDevice remains empty until user clicks
 }
 
 QString DeviceButtonStack::getCurrentDevice() const
@@ -197,42 +182,88 @@ void DeviceButtonStack::onButtonClicked(int id)
   }
 }
 
-void DeviceButtonStack::setSelectedPosition(const QString& name, double x, double y, double z,
-  double u, double v, double w,
-  const std::vector<std::string>& waypoints)
+void DeviceButtonStack::updateVelocityPresets(const QString& deviceType)
 {
-  Q_UNUSED(waypoints);  // Waypoints field removed from UI
-  m_selectedPositionName = name;
+  // Clear existing buttons
+  for (auto* btn : m_velocityButtons) {
+    btn->deleteLater();
+  }
+  m_velocityButtons.clear();
 
-  m_posNameLabel->setText(QString("<b>%1</b>").arg(name));
-  m_posXLabel->setText(QString("X: %1").arg(x, 0, 'f', 3));
-  m_posYLabel->setText(QString("Y: %1").arg(y, 0, 'f', 3));
-  m_posZLabel->setText(QString("Z: %1").arg(z, 0, 'f', 3));
-  m_posULabel->setText(QString("U: %1").arg(u, 0, 'f', 3));
-  m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
-  m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
-}
+  QGridLayout* velGrid = qobject_cast<QGridLayout*>(m_velocityPresetsWidget->layout());
+  if (!velGrid) return;
 
-void DeviceButtonStack::clearSelectedPosition()
-{
-  m_selectedPositionName.clear();
+  // Choose presets based on device type
+  QList<double> presets;
+  if (deviceType == "PI") {
+    presets = { 1, 2, 5, 10, 12.5 };
+  } else {
+    // ACS or default
+    presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
+  }
 
-  m_posNameLabel->setText("-");
-  m_posXLabel->setText("X: -");
-  m_posYLabel->setText("Y: -");
-  m_posZLabel->setText("Z: -");
-  m_posULabel->setText("U: -");
-  m_posVLabel->setText("V: -");
-  m_posWLabel->setText("W: -");
+  int col = 0;
+  int row = 0;
+  int maxCols = 4;
+
+  for (double vel : presets) {
+    QString label;
+    if (vel == static_cast<int>(vel)) {
+      label = QString::number(static_cast<int>(vel));
+    } else {
+      label = QString::number(vel, 'f', 1);
+    }
+
+    QPushButton* btn = new QPushButton(label);
+    btn->setMinimumHeight(26);
+    btn->setStyleSheet(
+      "QPushButton {"
+      "  background-color: #3c3c3c;"
+      "  color: #d4d4d4;"
+      "  border: 1px solid #555555;"
+      "  border-radius: 3px;"
+      "  font-size: 11px;"
+      "  font-weight: bold;"
+      "  padding: 4px 2px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #0e639c;"
+      "  color: white;"
+      "  border-color: #1177bb;"
+      "}"
+      "QPushButton:pressed {"
+      "  background-color: #0c5280;"
+      "}"
+    );
+
+    connect(btn, &QPushButton::clicked, this, [this, vel]() {
+      emit velocityPresetClicked(vel);
+    });
+
+    velGrid->addWidget(btn, row, col);
+    m_velocityButtons.append(btn);
+
+    col++;
+    if (col >= maxCols) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // Add "mm/s" label at the end
+  QLabel* unitLabel = new QLabel("mm/s");
+  unitLabel->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  unitLabel->setAlignment(Qt::AlignCenter);
+  velGrid->addWidget(unitLabel, row, col);
 }
 
 void DeviceButtonStack::clearButtons()
 {
-  // Remove all buttons from layout and button group
+  // Remove all buttons from device container layout and button group
   QList<QAbstractButton*> buttons = m_buttonGroup->buttons();
   for (QAbstractButton* btn : buttons) {
     m_buttonGroup->removeButton(btn);
-    m_mainLayout->removeWidget(btn);
+    m_deviceButtonsLayout->removeWidget(btn);
     btn->deleteLater();
   }
 
@@ -250,6 +281,9 @@ void DeviceButtonStack::refreshDevices()
   if (!m_motionManager) {
     return;
   }
+
+  // Save previously selected device so we can restore it after rebuild
+  QString previousDevice = m_currentDevice;
 
   // Get all device names
   std::vector<std::string> allDevices = m_motionManager->GetAllDeviceNames();
@@ -277,4 +311,9 @@ void DeviceButtonStack::refreshDevices()
 
   // Update device buttons
   setDevices(deviceList);
+
+  // Restore previous device selection if it still exists in the new list
+  if (!previousDevice.isEmpty() && deviceList.contains(previousDevice)) {
+    setCurrentDevice(previousDevice);
+  }
 }

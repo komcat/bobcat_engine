@@ -232,6 +232,7 @@ public:
   void SetManualAdjustCallback(ManualAdjustCallback callback);
   void SetUserInputCallback(UserInputCallback callback);
   void SetManualAlignPointCallback(ManualAlignPointCallback callback);
+  void SetPlacementRetraceCallback(PlacementRetraceCallback callback);
 
   // Step execution event callbacks (pub-sub)
   void SetStepStartedCallback(StepStartedCallback callback);

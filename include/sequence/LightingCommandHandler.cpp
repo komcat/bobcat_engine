@@ -14,7 +14,7 @@ bool LightingCommandHandler::ExecuteCommand(
     const std::string& methodName,
     const std::map<std::string, std::string>& params,
     std::string& errorMessage,
-    SequenceContext* /*context*/)
+    SequenceContext* context)
 {
     Lighting::LightingManager* lightingManager = static_cast<Lighting::LightingManager*>(manager);
 
@@ -32,8 +32,9 @@ bool LightingCommandHandler::ExecuteCommand(
     }
 
     // ============================================================================
-    // SET ON/OFF - Turn channel on or off by name
-    // Params: channel (name), state (on/off/true/false/1/0)
+    // SET ON/OFF - Turn channel on or off by name or number
+    // Uses the L (on/off) command, preserving current intensity
+    // Params: channel (name or number), state (on/off/true/false/1/0)
     // ============================================================================
     if (methodName == "SetOn" || methodName == "SetState" || methodName == "TurnOn" || methodName == "TurnOff") {
         auto channelIt = params.find("channel");
@@ -42,7 +43,12 @@ bool LightingCommandHandler::ExecuteCommand(
             return false;
         }
 
-        std::string channelName = channelIt->second;
+        int channelNumber = ResolveChannel(lightingManager, deviceId, channelIt->second);
+        if (channelNumber < 0) {
+            errorMessage = "Channel not found: '" + channelIt->second + "'";
+            return false;
+        }
+
         bool turnOn = true;
 
         // For TurnOn/TurnOff, state is implicit
@@ -59,15 +65,18 @@ bool LightingCommandHandler::ExecuteCommand(
         }
 
         if (m_logger) {
+            std::string channelName = lightingManager->GetChannelName(deviceId, channelNumber);
             m_logger->Info(
-                "Lighting " + deviceName + ": Setting " + channelName + " " + (turnOn ? "ON" : "OFF"),
+                "Lighting " + deviceName + ": " + channelName + " (L" +
+                std::to_string(channelNumber + 1) + ") " + (turnOn ? "ON" : "OFF"),
                 "LightingHandler"
             );
         }
 
-        auto result = lightingManager->SetIntensityByName(deviceId, channelName, turnOn ? 128 : 0);
+        // Use SetOn (L command) to preserve current intensity
+        auto result = lightingManager->SetOn(deviceId, channelNumber, turnOn);
         if (result != Lighting::LightingResult::Success) {
-            errorMessage = "SetOn failed for channel '" + channelName + "': " +
+            errorMessage = "SetOn failed for channel " + std::to_string(channelNumber) + ": " +
                           Lighting::LightingResultToString(result);
             return false;
         }
@@ -76,8 +85,8 @@ bool LightingCommandHandler::ExecuteCommand(
     }
 
     // ============================================================================
-    // SET INTENSITY - Set channel intensity by name (percentage)
-    // Params: channel (name), intensity (0-100%)
+    // SET INTENSITY - Set channel intensity by name or number (percentage)
+    // Params: channel (name or number), intensity (0-100%)
     // ============================================================================
     else if (methodName == "SetIntensity") {
         auto channelIt = params.find("channel");
@@ -86,9 +95,13 @@ bool LightingCommandHandler::ExecuteCommand(
             return false;
         }
 
-        std::string channelName = channelIt->second;
-        double intensityPercent;
+        int channelNumber = ResolveChannel(lightingManager, deviceId, channelIt->second);
+        if (channelNumber < 0) {
+            errorMessage = "Channel not found: '" + channelIt->second + "'";
+            return false;
+        }
 
+        double intensityPercent;
         if (!ParseIntensity(params, intensityPercent)) {
             errorMessage = "Missing or invalid parameter: intensity (0-100)";
             return false;
@@ -97,16 +110,18 @@ bool LightingCommandHandler::ExecuteCommand(
         int intensityValue = Lighting::PercentToIntensity(intensityPercent);
 
         if (m_logger) {
+            std::string channelName = lightingManager->GetChannelName(deviceId, channelNumber);
             m_logger->Info(
-                "Lighting " + deviceName + ": Setting " + channelName + " intensity to " +
+                "Lighting " + deviceName + ": " + channelName + " (L" +
+                std::to_string(channelNumber + 1) + ") intensity " +
                 std::to_string(intensityPercent) + "% (" + std::to_string(intensityValue) + ")",
                 "LightingHandler"
             );
         }
 
-        auto result = lightingManager->SetIntensityByName(deviceId, channelName, intensityValue);
+        auto result = lightingManager->SetIntensity(deviceId, channelNumber, intensityValue);
         if (result != Lighting::LightingResult::Success) {
-            errorMessage = "SetIntensity failed for channel '" + channelName + "': " +
+            errorMessage = "SetIntensity failed for channel " + std::to_string(channelNumber) + ": " +
                           Lighting::LightingResultToString(result);
             return false;
         }
@@ -159,11 +174,18 @@ bool LightingCommandHandler::ExecuteCommand(
     }
 
     // ============================================================================
-    // GET STATUS - Log current status of all channels
+    // GET STATUS - Read and store current status of all channels
+    // Params (optional): captureAs (prefix for context variables)
+    // Context output:
+    //   {deviceName}.connected → bool
+    //   {deviceName}.{channelName}.intensity → float (0-100%)
+    //   {deviceName}.{channelName}.on → bool
+    //   If captureAs provided, also stores under {captureAs}.* prefix
     // ============================================================================
     else if (methodName == "GetStatus") {
         auto status = lightingManager->GetControllerStatus(deviceId);
 
+        // Log status
         if (m_logger) {
             std::ostringstream oss;
             oss << deviceName << " Status:\n";
@@ -177,6 +199,122 @@ bool LightingCommandHandler::ExecuteCommand(
             }
 
             m_logger->Info(oss.str(), "LightingHandler");
+        }
+
+        // Store results in SequenceContext
+        if (context) {
+            context->SetValue(deviceName + ".connected", status.connected,
+                             deviceName, methodName);
+
+            for (const auto& ch : status.channelStatuses) {
+                std::string chName = ch.name.empty()
+                    ? "L" + std::to_string(ch.channelNumber + 1)
+                    : ch.name;
+
+                float percent = static_cast<float>(Lighting::IntensityToPercent(ch.intensity));
+                context->SetValue(deviceName + "." + chName + ".intensity", percent,
+                                 deviceName, methodName);
+                context->SetValue(deviceName + "." + chName + ".on", ch.isOn,
+                                 deviceName, methodName);
+            }
+
+            // If captureAs provided, duplicate under that prefix
+            auto captureAsIt = params.find("captureAs");
+            if (captureAsIt != params.end() && !captureAsIt->second.empty()) {
+                std::string prefix = captureAsIt->second;
+
+                context->SetValue(prefix + ".connected", status.connected,
+                                 deviceName, methodName);
+
+                for (const auto& ch : status.channelStatuses) {
+                    std::string chName = ch.name.empty()
+                        ? "L" + std::to_string(ch.channelNumber + 1)
+                        : ch.name;
+
+                    float percent = static_cast<float>(Lighting::IntensityToPercent(ch.intensity));
+                    context->SetValue(prefix + "." + chName + ".intensity", percent,
+                                     deviceName, methodName);
+                    context->SetValue(prefix + "." + chName + ".on", ch.isOn,
+                                     deviceName, methodName);
+                }
+
+                if (m_logger) {
+                    m_logger->Info("Status stored with prefix '" + prefix + "'",
+                                 "LightingHandler");
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // ============================================================================
+    // CONFIGURE - Set multiple channels at once by color
+    // Params: group (optional, e.g. "light1"), then per-color intensity:
+    //   white_intensity, red_intensity, green_intensity, blue_intensity (0-100%)
+    //   Channels not listed are turned off (intensity=0)
+    // ============================================================================
+    else if (methodName == "Configure") {
+        // Optional group filter
+        std::string group;
+        auto groupIt = params.find("group");
+        if (groupIt != params.end()) {
+            group = groupIt->second;
+        }
+
+        auto channels = lightingManager->GetChannelConfigs(deviceId);
+
+        if (m_logger) {
+            m_logger->Info("Lighting " + deviceName + ": Configure" +
+                          (group.empty() ? "" : " (group: " + group + ")"),
+                          "LightingHandler");
+        }
+
+        for (const auto& ch : channels) {
+            if (!ch.enabled) continue;
+
+            // Filter by group if specified
+            std::string chGroup = ch.group.empty() ? "default" : ch.group;
+            if (!group.empty() && chGroup != group) continue;
+
+            // Look for a matching intensity param by color (e.g., "red_intensity")
+            std::string colorKey = ch.color;
+            if (colorKey.empty()) {
+                // Fall back to channel name
+                colorKey = ch.name;
+            }
+            // Lowercase for param key
+            std::transform(colorKey.begin(), colorKey.end(), colorKey.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+
+            std::string paramKey = colorKey + "_intensity";
+            auto intensityIt = params.find(paramKey);
+
+            int intensityValue = 0;  // Default: off
+            if (intensityIt != params.end()) {
+                try {
+                    double percent = std::stod(intensityIt->second);
+                    if (percent < 0.0) percent = 0.0;
+                    if (percent > 100.0) percent = 100.0;
+                    intensityValue = Lighting::PercentToIntensity(percent);
+                }
+                catch (...) {
+                    // Invalid value, leave at 0
+                }
+            }
+
+            auto result = lightingManager->SetIntensity(deviceId, ch.channelNumber, intensityValue);
+            if (result != Lighting::LightingResult::Success) {
+                if (m_logger) {
+                    m_logger->Warning("Configure: failed to set channel " + ch.name +
+                                     ": " + Lighting::LightingResultToString(result),
+                                     "LightingHandler");
+                }
+            } else if (m_logger) {
+                double percent = Lighting::IntensityToPercent(intensityValue);
+                m_logger->Info("  " + ch.name + " (" + colorKey + "): " +
+                             std::to_string(percent) + "%", "LightingHandler");
+            }
         }
 
         return true;
@@ -207,6 +345,31 @@ std::string LightingCommandHandler::FindDeviceIdByName(void* manager, const std:
     }
 
     return "";
+}
+
+int LightingCommandHandler::ResolveChannel(void* manager, const std::string& deviceId,
+                                            const std::string& channelParam)
+{
+    Lighting::LightingManager* lightingManager = static_cast<Lighting::LightingManager*>(manager);
+
+    // Try name lookup first (case-insensitive)
+    int channel = lightingManager->GetChannelByName(deviceId, channelParam);
+    if (channel >= 0) {
+        return channel;
+    }
+
+    // Fall back to parsing as integer (0-7)
+    try {
+        int num = std::stoi(channelParam);
+        if (num >= 0 && num <= 7) {
+            return num;
+        }
+    }
+    catch (...) {
+        // Not a valid number either
+    }
+
+    return -1;
 }
 
 bool LightingCommandHandler::ParseIntensity(

@@ -1,18 +1,23 @@
 // VisionManagerPage.h
+// Wizard-style vision profile configuration page
 #pragma once
 
 #include <QWidget>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QPushButton>
+#include <QTimer>
 #include <memory>
 #include <functional>
+#include "VisionWizardState.h"
 
 struct ApplicationContext;
-class VisionToolbarWidget;
-class VisionProfileListWidget;
-class VisionLeftPanelWidget;
+class VisionNavWidget;
+class CameraLightingStepWidget;
+class CaptureROIStepWidget;
+class PluginConfigStepWidget;
+class ExecuteTuneStepWidget;
 class VisionImageWidget;
-class VisionRightPanelWidget;
 class LiveVideoSubscriber;
 class VisionProcessingWorker;
 struct VisionResult;
@@ -28,58 +33,48 @@ public:
     void startTemplateSelectionMode(std::function<void(int, int, int, int)> onConfirm,
                                    std::function<void()> onCancel = nullptr);
     void stopTemplateSelectionMode();
-    void onTemplateSelectionConfirmed();  // Public method to trigger confirmation
-    void onTemplateSelectionCancelled();  // Public method to trigger cancellation
+    void onTemplateSelectionConfirmed();
+    void onTemplateSelectionCancelled();
     VisionImageWidget* getImageWidget() { return m_imageWidget; }
 
 signals:
     void backToMainMenu();
 
 private slots:
-    // Toolbar actions (mockup - just logging for now)
-    void onNewRecipe();
-    void onLoadRecipe();       // Load vision profile (single plugin settings)
-    void onSaveRecipe();       // Save vision profile
-    void onSaveAsRecipe();     // Save vision profile as
-    void onRunRecipe();        // Run loaded recipe (multi-step)
-    void onStopRecipe();
+    // Navigation
+    void onNavItemChanged(int step);
 
-    // Left panel actions
-    void onAddToNode();
-    void onPluginSelected(const QString& pluginName);
-
-    // Recipe management (multi-step processing)
-    void loadVisionRecipeFile();   // Load recipe JSON with multiple steps
-    void saveVisionRecipeFile();   // Save recipe JSON with multiple steps
-
-    // Image widget actions
-    void onCaptureImage();
-    void onClearImage();
-    void onROIDragged(int startX, int startY, int endX, int endY);
-
-    // Right panel actions
-    void onApplyParams();
-    void onCameraSelected(const QString& cameraId);
-    void onCameraSettingsChanged();
-    void onCalibrationChanged(double xMmPerPx, double yMmPerPx);
-    void onROIChanged(int startX, int startY, int endX, int endY);
-    void onROIEnabledChanged(bool enabled);
-
-    // Reliability test
-    void onTestReliability();
-
-    // Search Box actions
-    void onSearchBoxDragged(int startX, int startY, int endX, int endY);
-    void onSearchBoxChanged(int startX, int startY, int endX, int endY);
-    void onSearchBoxEnabledChanged(bool enabled);
-
-    // Template Selection actions
-    void onTemplateSelectionDragged(int startX, int startY, int endX, int endY);
-
-    // Profile list actions
+    // Profile management
+    void onNewProfile();
+    void onLoadProfile();
+    void onSaveProfile();
+    void onSaveAsProfile();
+    void onDeleteProfile();
     void onProfileLoadRequested(const QString& filePath);
     void onProfileDeleted(const QString& filePath);
     void onProfileRenamed(const QString& oldPath, const QString& newPath);
+
+    // Image mode
+    void onImageModeChanged(bool isLive);
+    void onLiveTimerTick();
+
+    // Step callbacks
+    void onCameraSelected(const QString& cameraId);
+    void onCameraSettingsChanged();
+    void onLightingSettingsChanged();
+    void onCaptureClicked();
+    void onClearClicked();
+    void onROIChanged(int startX, int startY, int endX, int endY);
+    void onROIEnabledChanged(bool enabled);
+    void onSearchBoxChanged(int startX, int startY, int endX, int endY);
+    void onSearchBoxEnabledChanged(bool enabled);
+    void onPluginSelected(const QString& pluginName);
+    void onExecuteRequested();
+    void onStopRequested();
+    void onReliabilityTestRequested();
+
+    // Template selection
+    void onTemplateSelectionDragged(int startX, int startY, int endX, int endY);
 
     // Worker thread callbacks
     void onProcessingStarted(const QString& pluginName);
@@ -96,48 +91,55 @@ private:
     void loadPluginConfig(const QString& pluginName);
     void updatePatternMatchingSourceImage();
 
-    // Profile/Recipe save helpers
+    // Profile/Recipe save/load helpers
     void saveProfileToPath(const QString& filePath);
     void saveRecipeToPath(const QString& filePath);
-    void updateProfileDisplay();
+    void loadProfileFromFile(const QString& filePath);
+    void loadVisionRecipeFile();
+    void saveVisionRecipeFile();
 
     // Worker thread management
     void setupWorker();
     void setUIProcessingState(bool isProcessing);
 
-    // Profile list management
-    void refreshProfileList();
+    // Image widget reparenting
+    void reparentImageWidget(int targetStep);
+
+    // State management
+    void refreshCautionIcons();
     void updateVisionDirectory();
+    void refreshProfileList();
 
     ApplicationContext* m_context;
+    VisionWizardState m_state;
 
-    // Child widgets
-    VisionToolbarWidget* m_toolbar;
-    VisionProfileListWidget* m_profileListWidget;
-    VisionLeftPanelWidget* m_leftPanel;
-    VisionImageWidget* m_imageWidget;
-    VisionRightPanelWidget* m_rightPanel;
-
+    // Layout
     QSplitter* m_mainSplitter;
     QPushButton* m_backButton;
 
-    // Currently selected plugin name
-    QString m_selectedPluginName;
+    // Left navigation
+    VisionNavWidget* m_navWidget;
+
+    // Right content area
+    QStackedWidget* m_contentStack;
+    QWidget* m_welcomeWidget;                   // index 0
+    CameraLightingStepWidget* m_cameraStep;     // index 1
+    CaptureROIStepWidget* m_captureStep;        // index 2
+    PluginConfigStepWidget* m_pluginStep;        // index 3
+    ExecuteTuneStepWidget* m_executeStep;        // index 4
+
+    // Shared image widget (reparented between steps)
+    VisionImageWidget* m_imageWidget;
 
     // Camera frame subscriber
     std::shared_ptr<LiveVideoSubscriber> m_frameSubscriber;
-    QString m_selectedCameraId;
-
-    // Current profile/recipe state
-    QString m_currentProfilePath;
-    QString m_currentRecipePath;
-    bool m_profileModified = false;
 
     // Vision processing worker
     VisionProcessingWorker* m_worker = nullptr;
 
-    // Template selection mode callbacks
-    std::function<void(int, int, int, int)> m_templateSelectionOnConfirm;
-    std::function<void()> m_templateSelectionOnCancel;
-    bool m_templateSelectionMode = false;
+    // Live mode timer
+    QTimer* m_liveTimer = nullptr;
+
+    // Current step index
+    int m_currentStep = -1;
 };

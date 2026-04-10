@@ -279,16 +279,12 @@ std::string KeysightE36441A::queryChannel(const std::string& command, int channe
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first using INST CH<n> format
-    std::ostringstream selectCmd;
-    selectCmd << "INST CH" << channel;
-    if (!writeInternal(selectCmd.str())) {
-        return "";
-    }
+    // Send channel select + query as single SCPI message to avoid interleaving
+    std::ostringstream oss;
+    oss << "INST CH" << channel << ";" << command;
     m_currentChannel = channel;
 
-    // Execute query
-    return queryInternal(command);
+    return queryInternal(oss.str());
 }
 
 bool KeysightE36441A::writeChannel(const std::string& command, int channel)
@@ -301,16 +297,12 @@ bool KeysightE36441A::writeChannel(const std::string& command, int channel)
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first using INST CH<n> format
-    std::ostringstream selectCmd;
-    selectCmd << "INST CH" << channel;
-    if (!writeInternal(selectCmd.str())) {
-        return false;
-    }
+    // Send channel select + command as single SCPI message to avoid interleaving
+    std::ostringstream oss;
+    oss << "INST CH" << channel << ";" << command;
     m_currentChannel = channel;
 
-    // Execute command
-    return writeInternal(command);
+    return writeInternal(oss.str());
 }
 
 bool KeysightE36441A::setOutputOn(int channel)
@@ -376,22 +368,12 @@ bool KeysightE36441A::setOVP(double voltage, int channel)
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first using INST CH<n> format
-    std::ostringstream selectCmd;
-    selectCmd << "INST CH" << channel;
-    if (!writeInternal(selectCmd.str())) {
-        return false;
-    }
-
-    // Set OVP value
+    // Send channel select + OVP value + enable as single SCPI compound command
     std::ostringstream oss;
-    oss << "VOLT:PROT " << voltage;
-    if (!writeInternal(oss.str())) {
-        return false;
-    }
+    oss << "INST CH" << channel << ";VOLT:PROT " << voltage << ";VOLT:PROT:STAT ON";
+    m_currentChannel = channel;
 
-    // Enable OVP
-    return writeInternal("VOLT:PROT:STAT ON");
+    return writeInternal(oss.str());
 }
 
 bool KeysightE36441A::setOCP(double current, int channel)
@@ -403,22 +385,12 @@ bool KeysightE36441A::setOCP(double current, int channel)
 
     std::lock_guard<std::mutex> lock(m_socketMutex);
 
-    // Select channel first using INST CH<n> format
-    std::ostringstream selectCmd;
-    selectCmd << "INST CH" << channel;
-    if (!writeInternal(selectCmd.str())) {
-        return false;
-    }
-
-    // Set OCP value
+    // Send channel select + OCP value + enable as single SCPI compound command
     std::ostringstream oss;
-    oss << "CURR:PROT " << current;
-    if (!writeInternal(oss.str())) {
-        return false;
-    }
+    oss << "INST CH" << channel << ";CURR:PROT " << current << ";CURR:PROT:STAT ON";
+    m_currentChannel = channel;
 
-    // Enable OCP
-    return writeInternal("CURR:PROT:STAT ON");
+    return writeInternal(oss.str());
 }
 
 double KeysightE36441A::readVoltage(int channel)
@@ -464,6 +436,30 @@ double KeysightE36441A::readCurrent(int channel)
     }
     catch (const std::exception& e) {
         m_lastError = "Failed to parse current: " + std::string(e.what());
+        std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+        return -1.0;
+    }
+}
+
+double KeysightE36441A::readSetVoltage(int channel)
+{
+    if (channel < 1 || channel > NUM_CHANNELS) {
+        m_lastError = "Invalid channel: " + std::to_string(channel);
+        return -1.0;
+    }
+
+    // VOLT? returns the programmed voltage level (not measured)
+    std::string response = queryChannel("VOLT?", channel);
+
+    if (response.empty()) {
+        return -1.0;
+    }
+
+    try {
+        return std::stod(response);
+    }
+    catch (const std::exception& e) {
+        m_lastError = "Failed to parse set voltage: " + std::string(e.what());
         std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
         return -1.0;
     }

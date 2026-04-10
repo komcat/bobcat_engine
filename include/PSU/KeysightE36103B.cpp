@@ -276,17 +276,41 @@ bool KeysightE36103B::setOutputOff(int /*channel*/)
 bool KeysightE36103B::setVoltage(double voltage, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
+    std::lock_guard<std::mutex> lock(m_socketMutex);
+
     std::ostringstream oss;
     oss << "VOLT " << voltage;
-    return write(oss.str());
+    if (!writeInternal(oss.str())) {
+        return false;
+    }
+
+    // Read back to verify
+    std::string readback = queryInternal("VOLT?");
+    std::cout << "[KeysightE36103B] " << m_deviceName
+              << " SetVoltage: requested=" << voltage
+              << " V, VOLT?=" << readback << std::endl;
+
+    return true;
 }
 
 bool KeysightE36103B::setCurrent(double current, int /*channel*/)
 {
     // E36103B is single-channel, ignore channel parameter
+    std::lock_guard<std::mutex> lock(m_socketMutex);
+
     std::ostringstream oss;
     oss << "CURR " << current;
-    return write(oss.str());
+    if (!writeInternal(oss.str())) {
+        return false;
+    }
+
+    // Read back to verify what was actually set
+    std::string readback = queryInternal("CURR?");
+    std::cout << "[KeysightE36103B] " << m_deviceName
+              << " SetCurrent: requested=" << current
+              << " A, CURR?=" << readback << std::endl;
+
+    return true;
 }
 
 bool KeysightE36103B::setOVP(double voltage, int /*channel*/)
@@ -299,20 +323,29 @@ bool KeysightE36103B::setOVP(double voltage, int /*channel*/)
     if (!writeInternal(oss.str())) {
         return false;
     }
-    return writeInternal("VOLT:PROT:STAT ON");
-}
-
-bool KeysightE36103B::setOCP(double current, int /*channel*/)
-{
-    // E36103B is single-channel, ignore channel parameter
-    std::lock_guard<std::mutex> lock(m_socketMutex);
-
-    std::ostringstream oss;
-    oss << "CURR:PROT " << current;
-    if (!writeInternal(oss.str())) {
+    if (!writeInternal("VOLT:PROT:STAT ON")) {
         return false;
     }
-    return writeInternal("CURR:PROT:STAT ON");
+
+    // Read back to verify
+    std::string voltReadback = queryInternal("VOLT?");
+    std::string ovpReadback = queryInternal("VOLT:PROT?");
+    std::cout << "[KeysightE36103B] " << m_deviceName
+              << " SetOVP: requested=" << voltage
+              << " V, VOLT?=" << voltReadback
+              << ", VOLT:PROT?=" << ovpReadback << std::endl;
+
+    return true;
+}
+
+bool KeysightE36103B::setOCP(double /*current*/, int /*channel*/)
+{
+    // E36103B does NOT support programmable OCP (CURR:PROT).
+    // Sending CURR:PROT may be silently ignored or misinterpreted as CURR (bias current).
+    m_lastError = "OCP not supported on E36103B";
+    std::cerr << "[KeysightE36103B] " << m_deviceName
+              << " SetOCP BLOCKED - E36103B does not support CURR:PROT" << std::endl;
+    return false;
 }
 
 double KeysightE36103B::readVoltage(int /*channel*/)
@@ -346,6 +379,24 @@ double KeysightE36103B::readCurrent(int /*channel*/)
     }
     catch (const std::exception& e) {
         m_lastError = "Failed to parse current: " + std::string(e.what());
+        std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
+        return -1.0;
+    }
+}
+
+double KeysightE36103B::readSetVoltage(int /*channel*/)
+{
+    // VOLT? returns the programmed voltage level (not measured)
+    std::string response = query("VOLT?");
+    if (response.empty()) {
+        return -1.0;
+    }
+
+    try {
+        return std::stod(response);
+    }
+    catch (const std::exception& e) {
+        m_lastError = "Failed to parse set voltage: " + std::string(e.what());
         std::cerr << "[KeysightE36103B] " << m_lastError << std::endl;
         return -1.0;
     }

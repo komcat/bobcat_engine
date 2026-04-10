@@ -413,7 +413,7 @@ std::string SequenceEngine::ResolveManagerType(const std::string& deviceName)
 bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const
 {
   auto typeIt = m_deviceToTypeMap.find(deviceName);
-  if (typeIt == m_deviceToTypeMap.end()) return false;
+  if (typeIt == m_deviceToTypeMap.end()) return true;  // Not a hardware device — assume connected
 
   const std::string& type = typeIt->second;
 
@@ -512,6 +512,13 @@ void SequenceEngine::SetManualAlignPointCallback(ManualAlignPointCallback callba
   }
   if (m_accuracyTrainerHandler) {
     m_accuracyTrainerHandler->SetManualAlignPointCallback(callback);
+  }
+}
+
+void SequenceEngine::SetPlacementRetraceCallback(PlacementRetraceCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetPlacementRetraceCallback(callback);
   }
 }
 

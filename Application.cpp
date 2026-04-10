@@ -36,6 +36,7 @@
 #include <QApplication>
 #include <QFont>
 #include <QFontDatabase>
+#include <QIcon>
 #include <QSettings>
 #include <QTimer>  // ✅ NEW: For deferred hardware connection
 #include <iostream>
@@ -162,6 +163,9 @@ bool Application::initialize()
       QFont fallbackFont("Segoe UI", 9);
       m_qApplication->setFont(fallbackFont);
     }
+
+    // Set application icon from embedded resource
+    m_qApplication->setWindowIcon(QIcon(":/icons/logo.png"));
 
     // ✅ Set Fusion style for better stylesheet support (prevents Windows native style interference)
     m_qApplication->setStyle("Fusion");
@@ -387,6 +391,14 @@ void Application::initializeManagers()
     updateSplash("SafetyWatch");
     initializeSafetyWatch();
     completeSplash("SafetyWatch");
+
+    // Initialize InterlockManager
+    m_interlockManager = std::make_unique<InterlockManager>();
+    m_interlockManager->SetMotionManager(m_motionManager.get());
+    m_interlockManager->LoadConfig("config/interlocks.json");
+    m_motionManager->SetInterlockManager(m_interlockManager.get());
+    m_context.interlockManager = m_interlockManager.get();
+    m_logManager->Info("InterlockManager initialized", "Application");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -1237,6 +1249,7 @@ void Application::shutdownManagers()
   m_safetyWatchManager.reset();
   m_safetyEventLog.reset();
   m_deviceLinkManager.reset();
+  m_interlockManager.reset();
   m_powerSupplyManager.reset();
   m_smuManager.reset();
   m_lightingManager.reset();

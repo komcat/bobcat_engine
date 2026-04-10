@@ -13,6 +13,7 @@
 #include "JogKeyBindingHandler.h"
 #include "TransformationMatrixLoader.h"
 #include "AuxWindowManager.h"
+#include "AuxViewWindow.h"
 #include "GdiWindow/GdiCameraWindowManager.h"  // GDI camera monitor
 #include "QtCameraWindow/QtCameraWindow.h"     // Qt camera monitor
 #include "SwirBeamWindow/SwirBeamWindowManager.h"  // SWIR beam processing window
@@ -23,6 +24,7 @@
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
 #include "TrainerContainerPage.h"                  // Trainer container
+#include "Common/ShutdownConfirmDialog.h"          // Shutdown confirmation
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
@@ -135,10 +137,22 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+  // Show shutdown confirmation dialog — user must confirm save & machine state
+  if (!ShutdownConfirmDialog::confirmShutdown(this)) {
+    event->ignore();
+    return;
+  }
+
   std::cout << "[MainWindow] Close event triggered - shutting down application..." << std::endl;
 
   // Save window geometry before closing
   saveWindowSettings();
+
+  // Allow auxiliary windows to close (they normally hide instead of closing)
+  if (m_context && m_context->auxWindowManager) {
+    auto* win = m_context->auxWindowManager->getWindow();
+    if (win) win->allowClose();
+  }
 
   // Accept the close event
   event->accept();
@@ -243,6 +257,7 @@ void MainWindow::createPages()
     m_context->dataStore,
     m_context->coordinateSystemManager,
     m_context->sequenceEngine,
+    m_context->interlockManager,
     this
   );
   connect(m_motionPage, &MotionPage::backToMainMenu,
@@ -270,6 +285,13 @@ void MainWindow::createPages()
   connect(m_mainMenuPage, &MainMenuPage::productChanged,
     m_runProgramPage, &RunProgramPage::onProductChanged);
   m_pageStack->addWidget(m_runProgramPage);
+
+  // Connect "Edit in Recipe Page" from RunProgramPage to RecipePage
+  connect(m_runProgramPage, &RunProgramPage::requestEditRecipe,
+    this, [this](const QString& filePath) {
+      m_recipePage->loadRecipeFromFile(filePath);
+      m_pageStack->setCurrentWidget(m_recipePage);
+    });
 
   // Vision Manager page
   m_visionManagerPage = new VisionManagerPage(m_context, this);

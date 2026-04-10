@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QFrame>
+#include <QSettings>
 #include <iostream>
 
 PIControllerPage::PIControllerPage(ApplicationContext* context, QWidget* parent)
@@ -267,10 +268,11 @@ void PIControllerPage::createMainTab()
   velocityRow->addWidget(velocityLabel);
 
   m_systemVelocity = new QDoubleSpinBox();
-  m_systemVelocity->setRange(1.0, 10.0);
+  m_systemVelocity->setRange(0.01, 20.0);
   m_systemVelocity->setValue(5.0);
   m_systemVelocity->setSuffix(" mm/s");
-  m_systemVelocity->setDecimals(1);
+  m_systemVelocity->setDecimals(2);
+  m_systemVelocity->setSingleStep(0.1);
   m_systemVelocity->setStyleSheet(
     "QDoubleSpinBox { "
     "  background-color: #3c3c3c; "
@@ -292,38 +294,60 @@ void PIControllerPage::createMainTab()
 
   groupLayout->addLayout(velocityRow);
 
-  // Preset buttons and apply button row
+  // Preset buttons row with user-configurable velocities
+  QString spinStyle =
+    "QDoubleSpinBox { "
+    "  background-color: #3c3c3c; color: #d4d4d4; "
+    "  border: 1px solid #555555; border-radius: 3px; padding: 4px; "
+    "} "
+    "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { "
+    "  background-color: #2d2d30; border: 1px solid #555555; "
+    "} "
+    "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { "
+    "  background-color: #3c3c3c; "
+    "}";
+
   QHBoxLayout* buttonRow = new QHBoxLayout();
 
   QLabel* presetLabel = new QLabel("Quick Presets:");
   presetLabel->setStyleSheet("QLabel { font-size: 14px; font-weight: normal; color: #d4d4d4; }");
   buttonRow->addWidget(presetLabel);
 
-  m_turtleButton = new QPushButton("🐢 Turtle (5 mm/s)");
+  m_turtleVelocitySpin = new QDoubleSpinBox();
+  m_turtleVelocitySpin->setRange(0.01, 20.0);
+  m_turtleVelocitySpin->setValue(5.0);
+  m_turtleVelocitySpin->setSuffix(" mm/s");
+  m_turtleVelocitySpin->setDecimals(2);
+  m_turtleVelocitySpin->setSingleStep(0.1);
+  m_turtleVelocitySpin->setFixedWidth(110);
+  m_turtleVelocitySpin->setStyleSheet(spinStyle);
+  buttonRow->addWidget(m_turtleVelocitySpin);
+
+  m_turtleButton = new QPushButton("Slow");
   m_turtleButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #3498db; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  padding: 8px 15px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
+    "  background-color: #3498db; color: white; border: none; "
+    "  border-radius: 5px; padding: 8px 15px; font-size: 14px; font-weight: bold; "
     "} "
     "QPushButton:hover { background-color: #2980b9; }");
   connect(m_turtleButton, &QPushButton::clicked, this, &PIControllerPage::onPresetTurtleClicked);
   buttonRow->addWidget(m_turtleButton);
 
-  m_rabbitButton = new QPushButton("🐇 Rabbit (10 mm/s)");
+  m_rabbitVelocitySpin = new QDoubleSpinBox();
+  m_rabbitVelocitySpin->setRange(0.01, 20.0);
+  m_rabbitVelocitySpin->setValue(10.0);
+  m_rabbitVelocitySpin->setSuffix(" mm/s");
+  m_rabbitVelocitySpin->setDecimals(2);
+  m_rabbitVelocitySpin->setSingleStep(0.5);
+  m_rabbitVelocitySpin->setFixedWidth(110);
+  m_rabbitVelocitySpin->setStyleSheet(spinStyle);
+  buttonRow->addWidget(m_rabbitVelocitySpin);
+
+  m_rabbitButton = new QPushButton("Fast");
   m_rabbitButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #e74c3c; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  padding: 8px 15px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
+    "  background-color: #e74c3c; color: white; border: none; "
+    "  border-radius: 5px; padding: 8px 15px; font-size: 14px; font-weight: bold; "
     "} "
     "QPushButton:hover { background-color: #c0392b; }");
   connect(m_rabbitButton, &QPushButton::clicked, this, &PIControllerPage::onPresetRabbitClicked);
@@ -331,22 +355,20 @@ void PIControllerPage::createMainTab()
 
   buttonRow->addStretch();
 
-  m_applyButton = new QPushButton("✓ Apply Velocity");
+  m_applyButton = new QPushButton("Apply Velocity");
   m_applyButton->setStyleSheet(
     "QPushButton { "
-    "  background-color: #27ae60; "
-    "  color: white; "
-    "  border: none; "
-    "  border-radius: 5px; "
-    "  padding: 10px 20px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
+    "  background-color: #27ae60; color: white; border: none; "
+    "  border-radius: 5px; padding: 10px 20px; font-size: 14px; font-weight: bold; "
     "} "
     "QPushButton:hover { background-color: #229954; }");
   connect(m_applyButton, &QPushButton::clicked, this, &PIControllerPage::onApplyVelocityClicked);
   buttonRow->addWidget(m_applyButton);
 
   groupLayout->addLayout(buttonRow);
+
+  // Load saved preset values from settings
+  loadPresetSettings();
 
   // Add velocity group to main tab layout
   mainTabLayout->addWidget(velocityGroup);
@@ -1119,14 +1141,36 @@ void PIControllerPage::onDeviceSelected(const QString& deviceName)
 
 void PIControllerPage::onPresetTurtleClicked()
 {
-  m_systemVelocity->setValue(5.0);
-  std::cout << "[PIControllerPage] Turtle preset applied (5 mm/s)" << std::endl;
+  double vel = m_turtleVelocitySpin->value();
+  m_systemVelocity->setValue(vel);
+  savePresetSettings();
+  std::cout << "[PIControllerPage] Slow preset applied (" << vel << " mm/s)" << std::endl;
 }
 
 void PIControllerPage::onPresetRabbitClicked()
 {
-  m_systemVelocity->setValue(10.0);
-  std::cout << "[PIControllerPage] Rabbit preset applied (10 mm/s)" << std::endl;
+  double vel = m_rabbitVelocitySpin->value();
+  m_systemVelocity->setValue(vel);
+  savePresetSettings();
+  std::cout << "[PIControllerPage] Fast preset applied (" << vel << " mm/s)" << std::endl;
+}
+
+void PIControllerPage::loadPresetSettings()
+{
+  QSettings settings("config/system/applicationSettings.ini", QSettings::IniFormat);
+  settings.beginGroup("PIVelocityPresets");
+  m_turtleVelocitySpin->setValue(settings.value("slow", 5.0).toDouble());
+  m_rabbitVelocitySpin->setValue(settings.value("fast", 10.0).toDouble());
+  settings.endGroup();
+}
+
+void PIControllerPage::savePresetSettings()
+{
+  QSettings settings("config/system/applicationSettings.ini", QSettings::IniFormat);
+  settings.beginGroup("PIVelocityPresets");
+  settings.setValue("slow", m_turtleVelocitySpin->value());
+  settings.setValue("fast", m_rabbitVelocitySpin->value());
+  settings.endGroup();
 }
 
 void PIControllerPage::onApplyVelocityClicked()

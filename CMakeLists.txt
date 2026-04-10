@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 5)
+set(BOBCAT_VERSION_MINOR 7)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -98,6 +98,7 @@ else()
 endif()
 
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -463,6 +464,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlanarAdjustmentTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/YawTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/PlacementCorrectionTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -579,6 +581,7 @@ set(SOURCES
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
     include/motions/DeviceLinkManager.cpp
+    include/motions/InterlockManager.cpp
     src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogWorker.cpp
@@ -590,6 +593,7 @@ set(SOURCES
     include/AppUI/MotionPages/DeviceButtonStack.cpp
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
+    include/AppUI/MotionPages/InterlockWidget.cpp
     include/AppUI/MotionPages/CollapsiblePanel.cpp
     include/AppUI/CoordinateSystem/CreateSystemWidget.cpp
     include/AppUI/CoordinateSystem/TestSystemWidget.cpp
@@ -629,6 +633,7 @@ set(SOURCES
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
+    include/recipe/processes/SubRecipeProcesses.cpp
     include/recipe/processes/MotionProcesses.cpp
     include/recipe/processes/DeviceLinkProcesses.cpp
     include/recipe/processes/IOProcesses.cpp
@@ -639,6 +644,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/PlacementCorrectionProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/ZOffsetProcesses.cpp
     include/recipe/processes/YawTrainerProcesses.cpp
@@ -689,6 +695,7 @@ set(SOURCES
     include/AppUI/Common/FileSelectorDialog.cpp
     include/AppUI/Common/RecipeSaveAsDialog.cpp
     include/AppUI/Common/CreateProductDialog.cpp
+    include/AppUI/Common/ShutdownConfirmDialog.cpp
     include/AppUI/Common/ProductSelectorDialog.cpp
     include/AuxWindow/AuxWindowManager.cpp
     include/AuxWindow/AuxViewWindow.cpp
@@ -762,6 +769,7 @@ set(SOURCES
     include/settings/ApplicationSettings.cpp
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
+    include/AppUI/SettingsPage/ConfigBackupManager.cpp
     # Trainer container (side panel navigation)
     include/AppUI/TrainerContainerPage.cpp
     # Accuracy Trainer
@@ -802,6 +810,15 @@ set(SOURCES
     include/AppUI/YawTrainer/YawResultWidget.cpp
     include/AppUI/YawTrainer/YawApplyCorrectionWidget.cpp
     include/AppUI/YawTrainer/YawRetraceWidget.cpp
+    # Placement Correction Trainer
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionStore.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionPage.cpp
+    include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -949,6 +966,7 @@ set(HEADERS
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h
     include/AppUI/Common/CreateProductDialog.h
+    include/AppUI/Common/ShutdownConfirmDialog.h
     include/AppUI/Common/ProductSelectorDialog.h
     include/AuxWindow/AuxWindowManager.h
     include/AuxWindow/AuxViewWindow.h
@@ -988,12 +1006,14 @@ set(HEADERS
     include/AppUI/RunProgramPage/RetraceEditWidget.h
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
+    include/AppUI/RunProgramPage/RollCorrectionWidget.h
     include/AppUI/RunProgramPage/RecipeNodeItem.h
     include/AppUI/RunProgramPage/DependencyEdgeItem.h
     include/AppUI/RunProgramPage/DependencyGraphScene.h
     include/AppUI/RunProgramPage/DependencyGraphWindow.h
     include/AppUI/RunProgramPage/LoopConfigDialog.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
+    include/AppUI/RunProgramPage/RollCorrectionWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system
     include/lighting/LightingTypes.h
@@ -1015,6 +1035,7 @@ set(HEADERS
     include/settings/ApplicationSettings.h
     # Settings UI page
     include/AppUI/SettingsPage/ApplicationSettingsPage.h
+    include/AppUI/SettingsPage/ConfigBackupManager.h
     # Accuracy Trainer
     include/AppUI/AccuracyTrainer/AccuracyTrainerData.h
     include/AppUI/AccuracyTrainer/AccuracyTrainerStore.h
@@ -1055,6 +1076,16 @@ set(HEADERS
     include/AppUI/YawTrainer/YawResultWidget.h
     include/AppUI/YawTrainer/YawApplyCorrectionWidget.h
     include/AppUI/YawTrainer/YawRetraceWidget.h
+    # Placement Correction Trainer
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionData.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionStore.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionPage.h
+    include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.h
+    include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.h
+    include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.h
+    include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
@@ -1229,6 +1260,12 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.cpp
         include/vision/ui/VisionRightPanelWidget.cpp
         include/vision/ui/VisionReliabilityTestDialog.cpp
+        # Wizard step widgets
+        include/vision/ui/VisionNavWidget.cpp
+        include/vision/ui/CameraLightingStepWidget.cpp
+        include/vision/ui/CaptureROIStepWidget.cpp
+        include/vision/ui/PluginConfigStepWidget.cpp
+        include/vision/ui/ExecuteTuneStepWidget.cpp
     )
     list(APPEND HEADERS
         include/vision/OpenCVTest.h
@@ -1255,6 +1292,13 @@ if(OPENCV_FOUND)
         include/vision/ui/VisionImageWidget.h
         include/vision/ui/VisionRightPanelWidget.h
         include/vision/ui/VisionReliabilityTestDialog.h
+        # Wizard step widget headers
+        include/vision/ui/VisionWizardState.h
+        include/vision/ui/VisionNavWidget.h
+        include/vision/ui/CameraLightingStepWidget.h
+        include/vision/ui/CaptureROIStepWidget.h
+        include/vision/ui/PluginConfigStepWidget.h
+        include/vision/ui/ExecuteTuneStepWidget.h
     )
     message(STATUS "OpenCV vision support enabled (v4.12.0)")
 else()
@@ -1295,7 +1339,13 @@ if(WIN32)
     set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
 endif()
 
-add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE})
+add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE} icons.qrc)
+
+# Ensure the .rc is recompiled when the .ico file changes
+if(WIN32)
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
+                 PROPERTY OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+endif()
 
 # ============================================================================
 # Set Debugger Environment for Visual Studio
@@ -1531,6 +1581,9 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/config/beam_detection.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/beam_detection.json
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config/jog_stepsize.json
+        $<TARGET_FILE_DIR:bobcat_engine>/config/jog_stepsize.json
     COMMENT "Copying config templates (preserving *.local.json files)"
 )
 
@@ -1540,6 +1593,14 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         ${CMAKE_SOURCE_DIR}/assets
         $<TARGET_FILE_DIR:bobcat_engine>/assets
     COMMENT "Copying assets folder to output directory"
+)
+
+# Copy CHANGELOG.md to output directory (for in-app changelog viewer)
+add_custom_command(TARGET bobcat_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/CHANGELOG.md
+        $<TARGET_FILE_DIR:bobcat_engine>/CHANGELOG.md
+    COMMENT "Copying CHANGELOG.md to output directory"
 )
 
 # ============================================================================

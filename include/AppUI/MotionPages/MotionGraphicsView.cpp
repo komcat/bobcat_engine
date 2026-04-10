@@ -1,21 +1,39 @@
-﻿// MotionGraphicsView.cpp - FIXED connection lines for zoom
+// MotionGraphicsView.cpp - Isometric 3D projection view
 #include "MotionGraphicsView.h"
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QResizeEvent>
+#include <QFrame>
 #include <QtMath>
 #include <QPainter>
 #include <QSettings>
 #include <QDebug>
+#include <cmath>
+
+// Default isometric angles for reference
+// static constexpr double ISO_COS30 = 0.866025;
+// static constexpr double ISO_SIN30 = 0.5;
 
 MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   : QGraphicsView(parent)
   , m_scene(nullptr)
   , m_liveMarker(nullptr)
-  , m_pathPreview(nullptr)
+  // PathPreview removed
   , m_zoomFactor(1.0)
   , m_zMin(0.0)
   , m_zMax(0.0)
   , m_isPanning(false)
+  , m_isRotating(false)
+  , m_hasSelectedPositionInfo(false)
+  , m_selectedPosX(0.0), m_selectedPosY(0.0), m_selectedPosZ(0.0)
+  , m_selectedPosU(0.0), m_selectedPosV(0.0), m_selectedPosW(0.0)
+  , m_hasLivePositionInfo(false)
+  , m_livePosX(0.0), m_livePosY(0.0), m_livePosZ(0.0)
+  , m_livePosU(0.0), m_livePosV(0.0), m_livePosW(0.0)
+  , m_zScaleFactor(5.0)
+  , m_azimuthDeg(45.0)
+  , m_elevationDeg(35.264)
+  , m_viewButtonBar(nullptr)
 {
   setupScene();
 
@@ -33,17 +51,111 @@ MotionGraphicsView::MotionGraphicsView(QWidget* parent)
   m_scene->addItem(m_liveMarker);
   m_liveMarker->setVisible(false);
 
-  m_pathPreview = new PathPreview(m_scene);
+  setupViewButtons();
+}
+
+void MotionGraphicsView::setupViewButtons()
+{
+  m_viewButtonBar = new QWidget(this);
+  QHBoxLayout* layout = new QHBoxLayout(m_viewButtonBar);
+  layout->setContentsMargins(4, 2, 4, 2);
+  layout->setSpacing(4);
+
+  QString btnStyle =
+    "QPushButton {"
+    "  background-color: rgba(30, 30, 30, 200);"
+    "  color: #d4d4d4;"
+    "  border: 1px solid #555;"
+    "  border-radius: 3px;"
+    "  font-size: 11px;"
+    "  font-weight: bold;"
+    "  padding: 4px 8px;"
+    "}"
+    "QPushButton:hover {"
+    "  background-color: #0e639c;"
+    "  color: white;"
+    "}";
+
+  auto addBtn = [&](const QString& text) -> QPushButton* {
+    QPushButton* btn = new QPushButton(text);
+    btn->setStyleSheet(btnStyle);
+    btn->setFixedHeight(24);
+    layout->addWidget(btn);
+    return btn;
+  };
+
+  // Preset views
+  QPushButton* xyBtn = addBtn("XY");
+  QPushButton* yzBtn = addBtn("YZ");
+  QPushButton* xzBtn = addBtn("XZ");
+
+  // Separator
+  QFrame* sep = new QFrame();
+  sep->setFrameShape(QFrame::VLine);
+  sep->setStyleSheet("QFrame { color: #555; }");
+  layout->addWidget(sep);
+
+  // Rotation buttons
+  QPushButton* rotCCW = addBtn("< CCW");
+  QPushButton* rotCW = addBtn("CW >");
+
+  // Separator
+  QFrame* sep2 = new QFrame();
+  sep2->setFrameShape(QFrame::VLine);
+  sep2->setStyleSheet("QFrame { color: #555; }");
+  layout->addWidget(sep2);
+
+  // Reset
+  QPushButton* resetBtn = addBtn("Reset");
+
+  layout->addStretch();
+
+  // Connect buttons
+  connect(xyBtn, &QPushButton::clicked, this, [this]() {
+    setCamera(0.0, 90.0);  // Top-down XY view (elevation 90 = looking straight down, clamped to 80)
+    setCamera(0.0, 80.0);
+    autoFitView();
+  });
+  connect(yzBtn, &QPushButton::clicked, this, [this]() {
+    setCamera(0.0, 10.0);  // Front view: Y horizontal, Z vertical
+    autoFitView();
+  });
+  connect(xzBtn, &QPushButton::clicked, this, [this]() {
+    setCamera(90.0, 10.0);  // Side view: X horizontal, Z vertical
+    autoFitView();
+  });
+  connect(rotCCW, &QPushButton::clicked, this, [this]() {
+    rotate(-45.0);  // Rotate viewport CCW around screen center
+    viewport()->update();
+  });
+  connect(rotCW, &QPushButton::clicked, this, [this]() {
+    rotate(45.0);   // Rotate viewport CW around screen center
+    viewport()->update();
+  });
+  connect(resetBtn, &QPushButton::clicked, this, [this]() {
+    resetCamera();
+    resetZoom();  // Also resets viewport rotation
+  });
+
+  m_viewButtonBar->setFixedHeight(30);
+  m_viewButtonBar->show();
+}
+
+void MotionGraphicsView::resizeEvent(QResizeEvent* event)
+{
+  QGraphicsView::resizeEvent(event);
+  if (m_viewButtonBar) {
+    int barWidth = qMin(width(), 500);
+    m_viewButtonBar->setGeometry(
+      (width() - barWidth) / 2, height() - 34,
+      barWidth, 30);
+  }
 }
 
 MotionGraphicsView::~MotionGraphicsView()
 {
-  // Disconnect all signals to prevent queued invocations after destruction
   disconnect();
-
-  delete m_pathPreview;
-  m_pathPreview = nullptr;
-
+  // PathPreview removed
   qDebug() << "[MotionGraphicsView] Destroyed";
 }
 
@@ -51,62 +163,61 @@ void MotionGraphicsView::setupScene()
 {
   m_scene = new QGraphicsScene(this);
   setScene(m_scene);
-  connect(m_scene, &QGraphicsScene::selectionChanged,
-    this, &MotionGraphicsView::onSelectionChanged);
 }
 
-void MotionGraphicsView::addPosition(const QString& name, double x, double y, double z,
-  double labelOffsetX, double labelOffsetY)
+// ============================================================================
+// ISOMETRIC PROJECTION
+// ============================================================================
+
+QPointF MotionGraphicsView::toIsometric(double x, double y, double z) const
+{
+  double azRad = qDegreesToRadians(m_azimuthDeg);
+  double elRad = qDegreesToRadians(m_elevationDeg);
+
+  // Rotate XY plane by azimuth
+  double rotX = x * std::cos(azRad) - y * std::sin(azRad);
+  double rotY = x * std::sin(azRad) + y * std::cos(azRad);
+
+  // Project with elevation
+  double isoX = rotX;
+  double isoY = rotY * std::sin(elRad) - z * m_zScaleFactor * std::cos(elRad);
+  return QPointF(isoX, isoY);
+}
+
+// ============================================================================
+// POSITION MANAGEMENT
+// ============================================================================
+
+void MotionGraphicsView::addPosition(const QString& name, double x, double y, double z)
 {
   if (m_anchors.contains(name)) {
     return;
   }
 
-  // Create anchor (small fixed dot at actual position)
+  // Compute isometric positions
+  QPointF elevatedPt = toIsometric(x, y, z);
+  QPointF groundPt = toIsometric(x, y, 0.0);
+
+  // Create elevated anchor (main position dot, colored by Z)
   PositionAnchor* anchor = new PositionAnchor(name, x, y, z);
+  anchor->setPos(elevatedPt);
+  anchor->setZValue(5);
   m_scene->addItem(anchor);
   m_anchors[name] = anchor;
 
-  // Create connection line
-  QGraphicsLineItem* line = new QGraphicsLineItem();
+  // Text labels are drawn in drawForeground() for pixel-perfect alignment
 
-  // ✅ FIXED: Use cosmetic pen to keep line width constant
-  QPen linePen(QColor(149, 165, 166, 150), 1, Qt::DashLine);
-  linePen.setCosmetic(true);
-  line->setPen(linePen);
-
-  line->setZValue(1);
-  m_scene->addItem(line);
-  m_connectionLines[name] = line;
-
-  // Create label (draggable circle)
-  PositionLabel* label = new PositionLabel(name, x, y, labelOffsetX, labelOffsetY);
-  m_scene->addItem(label);
-  m_labels[name] = label;
-
-  // Set connection line for the label
-  label->setConnectionLine(line);
-
-  // Connect label position changes to save offset
-  connect(label, &PositionLabel::positionChanged,
-    this, &MotionGraphicsView::labelOffsetChanged);
-
-  // Recalculate Z range and update colors
+  // Update Z range and colors
   calculateZRange();
   updateColors();
 }
 
 void MotionGraphicsView::clearPositions()
 {
-  if (m_scene) {
-    m_scene->blockSignals(true);
-    m_scene->clearSelection();
-  }
+  // Block scene signals during cleanup
+  bool blocked = m_scene->blockSignals(true);
 
-  if (m_pathPreview) {
-    m_pathPreview->hidePath();
-  }
-
+  // Remove elevated anchors
   for (auto* anchor : m_anchors) {
     if (anchor && m_scene) {
       m_scene->removeItem(anchor);
@@ -115,45 +226,29 @@ void MotionGraphicsView::clearPositions()
   }
   m_anchors.clear();
 
-  for (auto* label : m_labels) {
-    if (label && m_scene) {
-      m_scene->removeItem(label);
-      delete label;
-    }
-  }
-  m_labels.clear();
-
-  for (auto* line : m_connectionLines) {
+  // Remove edge lines
+  for (auto* line : m_edgeLines) {
     if (line && m_scene) {
       m_scene->removeItem(line);
       delete line;
     }
   }
-  m_connectionLines.clear();
+  m_edgeLines.clear();
 
-  // ✅ NEW - Clear stored positions
   m_positions.clear();
-
-  if (m_scene) {
-    m_scene->blockSignals(false);
-  }
+  m_scene->blockSignals(blocked);
 }
 
-void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& positions,
-  const QMap<QString, QPointF>& labelOffsets)
+void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& positions)
 {
   clearPositions();
-
-  // ✅ NEW - Store positions for waypoint lookup
   m_positions = positions;
 
   for (auto it = positions.begin(); it != positions.end(); ++it) {
     const QString& name = it.key();
     const QVector<double>& pos = it.value();
-
     if (pos.size() >= 3) {
-      QPointF offset = labelOffsets.value(name, QPointF(0, 0));
-      addPosition(name, pos[0], pos[1], pos[2], offset.x(), offset.y());
+      addPosition(name, pos[0], pos[1], pos[2]);
     }
   }
 
@@ -163,23 +258,113 @@ void MotionGraphicsView::updatePositions(const QMap<QString, QVector<double>>& p
   }
 }
 
-QMap<QString, QPointF> MotionGraphicsView::getLabelOffsets() const
+void MotionGraphicsView::setGraphEdges(const QList<GraphEdge>& edges)
 {
-  QMap<QString, QPointF> offsets;
+  // Remove old edge lines
+  for (auto* line : m_edgeLines) {
+    if (line && m_scene) {
+      m_scene->removeItem(line);
+      delete line;
+    }
+  }
+  m_edgeLines.clear();
+  m_graphEdges.clear();
 
-  for (auto it = m_labels.begin(); it != m_labels.end(); ++it) {
-    const QString& name = it.key();
-    PositionLabel* label = it.value();
+  // Draw edge lines between positions (keep parallel lists)
+  for (const auto& edge : edges) {
+    if (!m_positions.contains(edge.from) || !m_positions.contains(edge.to)) {
+      continue;
+    }
 
-    QPointF offset(label->getOffsetX(), label->getOffsetY());
+    const auto& fromPos = m_positions[edge.from];
+    const auto& toPos = m_positions[edge.to];
+    if (fromPos.size() < 3 || toPos.size() < 3) continue;
 
-    if (offset.x() != 0.0 || offset.y() != 0.0) {
-      offsets[name] = offset;
+    QPointF fromPt = toIsometric(fromPos[0], fromPos[1], fromPos[2]);
+    QPointF toPt = toIsometric(toPos[0], toPos[1], toPos[2]);
+
+    QGraphicsLineItem* line = new QGraphicsLineItem(
+      fromPt.x(), fromPt.y(), toPt.x(), toPt.y());
+    QPen edgePen(QColor(255, 255, 255, 60), 1, Qt::SolidLine);
+    edgePen.setCosmetic(true);
+    line->setPen(edgePen);
+    line->setZValue(1);
+    m_scene->addItem(line);
+    m_edgeLines.append(line);
+    m_graphEdges.append(edge);
+  }
+}
+
+void MotionGraphicsView::highlightEdgesForPosition(const QString& positionName)
+{
+  m_highlightedPosition = positionName;
+  for (int i = 0; i < m_graphEdges.size() && i < m_edgeLines.size(); ++i) {
+    bool connected = (m_graphEdges[i].from == positionName ||
+                      m_graphEdges[i].to == positionName);
+    QPen pen = m_edgeLines[i]->pen();
+    if (connected) {
+      pen.setColor(QColor(46, 204, 113, 200));  // Bright green
+      pen.setWidth(2);
+    } else {
+      pen.setColor(QColor(255, 255, 255, 30));   // Dimmed
+      pen.setWidth(1);
+    }
+    m_edgeLines[i]->setPen(pen);
+  }
+}
+
+void MotionGraphicsView::clearEdgeHighlight()
+{
+  m_highlightedPosition.clear();
+  for (auto* line : m_edgeLines) {
+    if (line) {
+      QPen pen = line->pen();
+      pen.setColor(QColor(255, 255, 255, 60));  // Default
+      pen.setWidth(1);
+      line->setPen(pen);
+    }
+  }
+}
+
+void MotionGraphicsView::rebuildScene()
+{
+  if (m_positions.isEmpty()) return;
+
+  // Save state
+  QMap<QString, QVector<double>> savedPositions = m_positions;
+  QList<GraphEdge> savedEdges = m_graphEdges;
+  QString savedHighlight = m_highlightedPosition;
+
+  // Rebuild positions (clearPositions + re-add)
+  clearPositions();
+  m_positions = savedPositions;
+
+  for (auto it = m_positions.begin(); it != m_positions.end(); ++it) {
+    const QVector<double>& pos = it.value();
+    if (pos.size() >= 3) {
+      addPosition(it.key(), pos[0], pos[1], pos[2]);
     }
   }
 
-  return offsets;
+  // Rebuild edge lines
+  setGraphEdges(savedEdges);
+
+  // Re-apply highlight
+  if (!savedHighlight.isEmpty()) {
+    highlightEdgesForPosition(savedHighlight);
+  }
+
+  // Update live marker with current projection
+  if (m_liveMarker && m_liveMarker->isVisible() && m_hasLivePositionInfo) {
+    // Live marker uses transformed coords, not raw — just trigger viewport repaint
+  }
+
+  viewport()->update();
 }
+
+// ============================================================================
+// Z RANGE AND COLOR CODING
+// ============================================================================
 
 void MotionGraphicsView::calculateZRange()
 {
@@ -208,38 +393,9 @@ void MotionGraphicsView::updateColors()
   }
 }
 
-void MotionGraphicsView::onSelectionChanged()
-{
-  if (!m_scene) {
-    return;
-  }
-
-  QList<QGraphicsItem*> selected = m_scene->selectedItems();
-
-  for (auto* label : m_labels) {
-    if (label) {
-      label->setSelected(false);
-    }
-  }
-
-  if (selected.isEmpty()) {
-    emit positionDeselected();
-    return;
-  }
-
-  PositionLabel* selectedLabel = dynamic_cast<PositionLabel*>(selected.first());
-  if (selectedLabel) {
-    selectedLabel->setSelected(true);
-
-    QString name = selectedLabel->getName();
-    if (m_anchors.contains(name)) {
-      PositionAnchor* anchor = m_anchors[name];
-      if (anchor) {
-        emit positionSelected(name, anchor->getX(), anchor->getY(), anchor->getZ());
-      }
-    }
-  }
-}
+// ============================================================================
+// BACKGROUND AND GRID
+// ============================================================================
 
 void MotionGraphicsView::drawBackground(QPainter* painter, const QRectF& rect)
 {
@@ -247,98 +403,313 @@ void MotionGraphicsView::drawBackground(QPainter* painter, const QRectF& rect)
   drawGrid(painter, rect);
 }
 
-// ✅ NEW: Draw zoom level indicator in top-right corner
-void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& rect)
-{
-  Q_UNUSED(rect);
-
-  // Get the viewport rectangle in scene coordinates
-  QRectF viewportRect = mapToScene(viewport()->rect()).boundingRect();
-
-  // Calculate zoom percentage (100% = zoom factor of 1.0)
-  int zoomPercent = static_cast<int>(m_zoomFactor * 100.0);
-
-  // Format zoom text
-  QString zoomText = QString("Zoom: %1%").arg(zoomPercent);
-
-  // Set up text drawing
-  painter->save();
-  painter->resetTransform();  // Draw in viewport coordinates
-
-  // Get viewport dimensions
-  int viewportWidth = viewport()->width();
-
-  // Set font
-  QFont font("Arial", 11, QFont::Bold);
-  painter->setFont(font);
-
-  // Calculate text dimensions
-  QFontMetrics fm(font);
-  QRect textRect = fm.boundingRect(zoomText);
-  int textWidth = textRect.width();
-  int textHeight = textRect.height();
-
-  // Position in top-right corner with padding
-  int padding = 10;
-  int x = viewportWidth - textWidth - padding - 10;
-  int y = padding + textHeight;
-
-  // Draw semi-transparent background
-  QRect bgRect(x - 5, y - textHeight - 2, textWidth + 10, textHeight + 6);
-  painter->setBrush(QColor(0, 0, 0, 150));
-  painter->setPen(Qt::NoPen);
-  painter->drawRoundedRect(bgRect, 3, 3);
-
-  // Draw text
-  painter->setPen(QColor(255, 255, 255));
-  painter->drawText(x, y, zoomText);
-
-  painter->restore();
-}
-
 void MotionGraphicsView::drawGrid(QPainter* painter, const QRectF& rect)
 {
   qreal viewScale = transform().m11();
   double gridSpacing = calculateGridSpacing(viewScale);
 
-  QPen gridPen(QColor(60, 70, 90), 1);
+  QPen gridPen(QColor(60, 70, 90, 80), 1, Qt::SolidLine);
   gridPen.setCosmetic(true);
   painter->setPen(gridPen);
 
-  double left = std::floor(rect.left() / gridSpacing) * gridSpacing;
-  double right = std::ceil(rect.right() / gridSpacing) * gridSpacing;
-  double top = std::floor(rect.top() / gridSpacing) * gridSpacing;
-  double bottom = std::ceil(rect.bottom() / gridSpacing) * gridSpacing;
+  // Compute grid directions from dynamic projection
+  QPointF origin = toIsometric(0, 0, 0);
+  QPointF xUnit = toIsometric(gridSpacing, 0, 0) - origin;
+  QPointF yUnit = toIsometric(0, gridSpacing, 0) - origin;
 
-  for (double x = left; x <= right; x += gridSpacing) {
-    painter->drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
+  double dirXx = xUnit.x();
+  double dirXy = xUnit.y();
+  double dirYx = yUnit.x();
+  double dirYy = yUnit.y();
+
+  // Calculate how many grid lines we need to cover the visible area
+  double maxDim = qMax(rect.width(), rect.height());
+  int numLines = static_cast<int>(maxDim / gridSpacing) + 10;
+
+  // Draw lines parallel to isometric X-axis (along Y-axis direction)
+  for (int i = -numLines; i <= numLines; ++i) {
+    double baseX = i * dirXx;
+    double baseY = i * dirXy;
+    // Draw line from (baseX - N*dirYx, baseY - N*dirYy) to (baseX + N*dirYx, baseY + N*dirYy)
+    painter->drawLine(
+      QPointF(baseX - numLines * dirYx, baseY - numLines * dirYy),
+      QPointF(baseX + numLines * dirYx, baseY + numLines * dirYy));
   }
 
-  for (double y = top; y <= bottom; y += gridSpacing) {
-    painter->drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
+  // Draw lines parallel to isometric Y-axis (along X-axis direction)
+  for (int i = -numLines; i <= numLines; ++i) {
+    double baseX = i * dirYx;
+    double baseY = i * dirYy;
+    painter->drawLine(
+      QPointF(baseX - numLines * dirXx, baseY - numLines * dirXy),
+      QPointF(baseX + numLines * dirXx, baseY + numLines * dirXy));
   }
 }
 
 double MotionGraphicsView::calculateGridSpacing(double viewScale)
 {
-  double baseSpacing = 10.0;
-  double pixelsPerUnit = baseSpacing * viewScale;
+  // Aim for ~50 pixels between grid lines
+  double targetPixels = 50.0;
+  double rawSpacing = targetPixels / viewScale;
 
-  if (pixelsPerUnit < 20) {
-    while (pixelsPerUnit < 20 && baseSpacing < 1000) {
-      baseSpacing *= 2;
-      pixelsPerUnit = baseSpacing * viewScale;
-    }
-  }
-  else if (pixelsPerUnit > 100) {
-    while (pixelsPerUnit > 100 && baseSpacing > 0.1) {
-      baseSpacing /= 2;
-      pixelsPerUnit = baseSpacing * viewScale;
-    }
+  // Snap to nice values: 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, ...
+  double magnitude = std::pow(10.0, std::floor(std::log10(rawSpacing)));
+  double normalized = rawSpacing / magnitude;
+
+  double baseSpacing;
+  if (normalized < 1.5) {
+    baseSpacing = 1.0 * magnitude;
+  } else if (normalized < 3.5) {
+    baseSpacing = 2.0 * magnitude;
+  } else if (normalized < 7.5) {
+    baseSpacing = 5.0 * magnitude;
+  } else {
+    baseSpacing = 10.0 * magnitude;
   }
 
   return baseSpacing;
 }
+
+// ============================================================================
+// FOREGROUND OVERLAY (drawn in viewport coordinates)
+// ============================================================================
+
+void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& /*rect*/)
+{
+  // Calculate zoom percentage
+  int zoomPercent = static_cast<int>(m_zoomFactor * 100.0);
+  QString zoomText = QString("Zoom: %1%").arg(zoomPercent);
+
+  painter->save();
+  painter->resetTransform();  // Draw in viewport coordinates
+
+  int viewportWidth = viewport()->width();
+
+  // === Zoom indicator (top-right) ===
+  QFont font("Arial", 11, QFont::Bold);
+  painter->setFont(font);
+  QFontMetrics fm(font);
+  QRect textRect = fm.boundingRect(zoomText);
+  int textWidth = textRect.width();
+  int textHeight = textRect.height();
+
+  int padding = 10;
+  int x = viewportWidth - textWidth - padding - 10;
+  int y = padding + textHeight;
+
+  QRect bgRect(x - 5, y - textHeight - 2, textWidth + 10, textHeight + 6);
+  painter->setBrush(QColor(0, 0, 0, 150));
+  painter->setPen(Qt::NoPen);
+  painter->drawRoundedRect(bgRect, 3, 3);
+  painter->setPen(QColor(255, 255, 255));
+  painter->drawText(x, y, zoomText);
+
+  // === Device name label (top-left) ===
+  if (!m_deviceName.isEmpty()) {
+    QColor deviceColor;
+    if (m_deviceName.contains("gantry", Qt::CaseInsensitive)) {
+      deviceColor = QColor(52, 152, 219);
+    } else if (m_deviceName.contains("hex-left", Qt::CaseInsensitive)) {
+      deviceColor = QColor(46, 204, 113);
+    } else if (m_deviceName.contains("hex-right", Qt::CaseInsensitive)) {
+      deviceColor = QColor(231, 76, 60);
+    } else if (m_deviceName.contains("hex-bottom", Qt::CaseInsensitive)) {
+      deviceColor = QColor(155, 89, 182);
+    } else if (m_deviceName.contains("stage", Qt::CaseInsensitive)) {
+      deviceColor = QColor(241, 196, 15);
+    } else {
+      deviceColor = QColor(149, 165, 166);
+    }
+
+    QFont deviceFont("Arial", 24, QFont::Bold);
+    painter->setFont(deviceFont);
+    QFontMetrics dfm(deviceFont);
+    QRect deviceTextRect = dfm.boundingRect(m_deviceName);
+    int dPadding = 15;
+
+    QRect dBgRect(dPadding - 8, dPadding - 4,
+                  deviceTextRect.width() + 24, deviceTextRect.height() + 12);
+    painter->setBrush(QColor(0, 0, 0, 160));
+    painter->setPen(QPen(deviceColor, 2));
+    painter->drawRoundedRect(dBgRect, 6, 6);
+
+    painter->setPen(deviceColor);
+    painter->drawText(dPadding + 4, dPadding + deviceTextRect.height() + 1, m_deviceName);
+
+    // === Current device position overlay (below device name) ===
+    int nextOverlayY = dBgRect.bottom() + 10;
+
+    if (m_hasLivePositionInfo) {
+      QFont posFont("RobotoMono", 11, QFont::Normal);
+      painter->setFont(posFont);
+      QFontMetrics pfm(posFont);
+      int lineHeight = pfm.height() + 2;
+
+      QStringList lines;
+      lines << "Current Position";
+      lines << QString("X: %1").arg(m_livePosX, 0, 'f', 3);
+      lines << QString("Y: %1").arg(m_livePosY, 0, 'f', 3);
+      lines << QString("Z: %1").arg(m_livePosZ, 0, 'f', 3);
+      lines << QString("U: %1").arg(m_livePosU, 0, 'f', 3);
+      lines << QString("V: %1").arg(m_livePosV, 0, 'f', 3);
+      lines << QString("W: %1").arg(m_livePosW, 0, 'f', 3);
+
+      int maxWidth = 0;
+      for (const auto& line : lines) {
+        maxWidth = qMax(maxWidth, pfm.horizontalAdvance(line));
+      }
+
+      int boxPad = 8;
+      QRect liveBg(dPadding - 8, nextOverlayY,
+                   maxWidth + boxPad * 2, static_cast<int>(lines.size()) * lineHeight + boxPad * 2);
+      painter->setBrush(QColor(0, 0, 0, 160));
+      painter->setPen(QPen(QColor(80, 80, 80), 1));
+      painter->drawRoundedRect(liveBg, 5, 5);
+
+      int textY = nextOverlayY + boxPad + pfm.ascent();
+      for (int i = 0; i < lines.size(); ++i) {
+        if (i == 0) {
+          QFont boldFont = posFont;
+          boldFont.setBold(true);
+          painter->setFont(boldFont);
+          painter->setPen(QColor(255, 215, 0));  // Gold for "Current Position"
+          painter->drawText(dPadding - 8 + boxPad, textY, lines[i]);
+          painter->setFont(posFont);
+        } else {
+          painter->setPen(QColor(180, 180, 180));
+          painter->drawText(dPadding - 8 + boxPad, textY, lines[i]);
+        }
+        textY += lineHeight;
+      }
+
+      nextOverlayY = liveBg.bottom() + 8;
+    }
+
+    // === Selected position info overlay ===
+    if (m_hasSelectedPositionInfo) {
+      int overlayY = nextOverlayY;
+
+      QFont posFont("RobotoMono", 12, QFont::Normal);
+      painter->setFont(posFont);
+      QFontMetrics pfm(posFont);
+      int lineHeight = pfm.height() + 2;
+
+      QStringList lines;
+      lines << QString("%1 >> %2").arg(m_deviceName, m_selectedPosName);
+      lines << QString("X: %1").arg(m_selectedPosX, 0, 'f', 3);
+      lines << QString("Y: %1").arg(m_selectedPosY, 0, 'f', 3);
+      lines << QString("Z: %1").arg(m_selectedPosZ, 0, 'f', 3);
+      lines << QString("U: %1").arg(m_selectedPosU, 0, 'f', 3);
+      lines << QString("V: %1").arg(m_selectedPosV, 0, 'f', 3);
+      lines << QString("W: %1").arg(m_selectedPosW, 0, 'f', 3);
+
+      int maxWidth = 0;
+      for (const auto& line : lines) {
+        maxWidth = qMax(maxWidth, pfm.horizontalAdvance(line));
+      }
+
+      int boxPad = 8;
+      QRect posInfoBg(dPadding - 8, overlayY,
+                      maxWidth + boxPad * 2, static_cast<int>(lines.size()) * lineHeight + boxPad * 2);
+      painter->setBrush(QColor(0, 0, 0, 180));
+      painter->setPen(QPen(QColor(100, 100, 100), 1));
+      painter->drawRoundedRect(posInfoBg, 5, 5);
+
+      painter->setPen(QColor(220, 220, 220));
+      int textY = overlayY + boxPad + pfm.ascent();
+      for (int i = 0; i < lines.size(); ++i) {
+        if (i == 0) {
+          QFont boldFont = posFont;
+          boldFont.setBold(true);
+          painter->setFont(boldFont);
+          painter->setPen(deviceColor);
+          painter->drawText(dPadding - 8 + boxPad, textY, lines[i]);
+          painter->setFont(posFont);
+          painter->setPen(QColor(220, 220, 220));
+        } else {
+          painter->drawText(dPadding - 8 + boxPad, textY, lines[i]);
+        }
+        textY += lineHeight;
+      }
+    }
+  }
+
+  // === Position name labels (drawn in viewport coords for pixel-perfect alignment) ===
+  {
+    QFont labelFont("RobotoMono", 8);
+    painter->setFont(labelFont);
+    QFontMetrics lfm(labelFont);
+    painter->setPen(QColor(210, 210, 210));
+
+    for (auto it = m_anchors.constBegin(); it != m_anchors.constEnd(); ++it) {
+      PositionAnchor* anchor = it.value();
+      if (!anchor) continue;
+
+      // Map anchor scene position to viewport pixel position
+      QPoint screenPos = mapFromScene(anchor->scenePos());
+      QString name = it.key();
+      int tw = lfm.horizontalAdvance(name);
+
+      // Draw centered above the marker
+      painter->drawText(screenPos.x() - tw / 2, screenPos.y() - 8, name);
+    }
+  }
+
+  // === Isometric axis indicator (bottom-left) ===
+  {
+    int axisLen = 40;
+    int axisOriginX = 50;
+    int axisOriginY = viewport()->height() - 50;
+
+    // Compute axis directions from current projection
+    QPointF origin = toIsometric(0, 0, 0);
+    QPointF xDir = toIsometric(1, 0, 0) - origin;
+    QPointF yDir = toIsometric(0, 1, 0) - origin;
+    QPointF zDir = toIsometric(0, 0, 1) - origin;
+
+    // Normalize and scale to axisLen
+    auto normalize = [](QPointF p, double len) -> QPointF {
+      double mag = std::sqrt(p.x() * p.x() + p.y() * p.y());
+      if (mag < 0.001) return QPointF(0, 0);
+      return QPointF(p.x() / mag * len, p.y() / mag * len);
+    };
+
+    QPointF xEnd(axisOriginX + normalize(xDir, axisLen).x(),
+                 axisOriginY + normalize(xDir, axisLen).y());
+    QPointF yEnd(axisOriginX + normalize(yDir, axisLen).x(),
+                 axisOriginY + normalize(yDir, axisLen).y());
+    QPointF zEnd(axisOriginX + normalize(zDir, axisLen).x(),
+                 axisOriginY + normalize(zDir, axisLen).y());
+
+    QPen axisPen;
+    axisPen.setWidth(2);
+
+    // X axis - red
+    axisPen.setColor(QColor(231, 76, 60));
+    painter->setPen(axisPen);
+    painter->drawLine(QPointF(axisOriginX, axisOriginY), xEnd);
+    painter->setFont(QFont("Arial", 10, QFont::Bold));
+    painter->drawText(static_cast<int>(xEnd.x()) + 3, static_cast<int>(xEnd.y()) + 4, "X");
+
+    // Y axis - green
+    axisPen.setColor(QColor(46, 204, 113));
+    painter->setPen(axisPen);
+    painter->drawLine(QPointF(axisOriginX, axisOriginY), yEnd);
+    painter->drawText(static_cast<int>(yEnd.x()) - 14, static_cast<int>(yEnd.y()) + 4, "Y");
+
+    // Z axis - blue
+    axisPen.setColor(QColor(52, 152, 219));
+    painter->setPen(axisPen);
+    painter->drawLine(QPointF(axisOriginX, axisOriginY), zEnd);
+    painter->drawText(static_cast<int>(zEnd.x()) - 4, static_cast<int>(zEnd.y()) - 6, "Z");
+  }
+
+  painter->restore();
+}
+
+// ============================================================================
+// ZOOM AND PAN
+// ============================================================================
 
 void MotionGraphicsView::zoomIn()
 {
@@ -373,22 +744,16 @@ void MotionGraphicsView::fitAllPositions()
     return;
   }
 
-  // Get bounding rect of all position anchors
   QRectF bounds;
   for (auto* anchor : m_anchors) {
     if (anchor) {
       bounds = bounds.united(anchor->sceneBoundingRect());
     }
   }
-
-  // Add padding around the bounds
   bounds = bounds.adjusted(-50, -50, 50, 50);
-
-  // Fit the view to show all positions
   resetTransform();
   fitInView(bounds, Qt::KeepAspectRatio);
   m_zoomFactor = transform().m11();
-
   viewport()->update();
 }
 
@@ -397,8 +762,6 @@ void MotionGraphicsView::centerOnDeviceMarker()
   if (!m_liveMarker || !m_liveMarker->isVisible()) {
     return;
   }
-
-  // Center view on the device marker position
   centerOn(m_liveMarker);
   viewport()->update();
 }
@@ -406,18 +769,14 @@ void MotionGraphicsView::centerOnDeviceMarker()
 void MotionGraphicsView::autoFitView()
 {
   if (!m_anchors.isEmpty()) {
-    // If positions exist, zoom to fit all positions
     fitAllPositions();
   } else if (m_liveMarker && m_liveMarker->isVisible()) {
-    // If no positions but device marker is visible, center on marker
     centerOnDeviceMarker();
   }
 }
 
-// ✅ NEW: Center on specific position with high zoom
 void MotionGraphicsView::centerOnPosition(const QString& positionName, double zoomLevel)
 {
-  // Check if position exists
   if (!m_anchors.contains(positionName)) {
     qWarning() << "Position" << positionName << "not found in graphics view";
     return;
@@ -428,27 +787,18 @@ void MotionGraphicsView::centerOnPosition(const QString& positionName, double zo
     return;
   }
 
-  // Get the position coordinates
   QPointF positionPoint = anchor->scenePos();
-
-  // Reset transform and set new zoom level
   resetTransform();
-
-  // Apply the zoom level (zoomLevel of 23.0 = 2300%)
   scale(zoomLevel, zoomLevel);
   m_zoomFactor = zoomLevel;
-
-  // Center the view on this position
   centerOn(positionPoint);
-
-  // Update the viewport to show changes
   viewport()->update();
 }
 
 void MotionGraphicsView::wheelEvent(QWheelEvent* event)
 {
-  bool zoomIn = event->angleDelta().y() > 0;
-  double scaleFactor = zoomIn ? 1.2 : (1.0 / 1.2);
+  bool isZoomIn = event->angleDelta().y() > 0;
+  double scaleFactor = isZoomIn ? 1.2 : (1.0 / 1.2);
 
   QPointF oldPos = mapToScene(event->position().toPoint());
   scale(scaleFactor, scaleFactor);
@@ -464,9 +814,17 @@ void MotionGraphicsView::wheelEvent(QWheelEvent* event)
 void MotionGraphicsView::mousePressEvent(QMouseEvent* event)
 {
   if (event->button() == Qt::MiddleButton) {
+    // Middle = Pan (default)
     m_isPanning = true;
     m_lastPanPoint = event->pos();
     setCursor(Qt::ClosedHandCursor);
+    event->accept();
+  }
+  else if (event->button() == Qt::RightButton) {
+    // Right = Rotate camera
+    m_isRotating = true;
+    m_lastRotatePoint = event->pos();
+    setCursor(Qt::SizeAllCursor);
     event->accept();
   }
   else {
@@ -476,8 +834,13 @@ void MotionGraphicsView::mousePressEvent(QMouseEvent* event)
 
 void MotionGraphicsView::mouseReleaseEvent(QMouseEvent* event)
 {
-  if (event->button() == Qt::MiddleButton) {
+  if (event->button() == Qt::MiddleButton && m_isPanning) {
     m_isPanning = false;
+    setCursor(Qt::ArrowCursor);
+    event->accept();
+  }
+  else if (event->button() == Qt::RightButton && m_isRotating) {
+    m_isRotating = false;
     setCursor(Qt::ArrowCursor);
     event->accept();
   }
@@ -488,13 +851,28 @@ void MotionGraphicsView::mouseReleaseEvent(QMouseEvent* event)
 
 void MotionGraphicsView::mouseMoveEvent(QMouseEvent* event)
 {
-  if (m_isPanning) {
+  if (m_isRotating) {
+    QPoint delta = event->pos() - m_lastRotatePoint;
+    m_lastRotatePoint = event->pos();
+
+    // Horizontal drag = azimuth rotation (0.3 deg per pixel)
+    m_azimuthDeg += delta.x() * 0.3;
+    if (m_azimuthDeg < 0.0) m_azimuthDeg += 360.0;
+    if (m_azimuthDeg >= 360.0) m_azimuthDeg -= 360.0;
+
+    // Vertical drag = elevation change (0.3 deg per pixel)
+    m_elevationDeg -= delta.y() * 0.3;
+    if (m_elevationDeg < 10.0) m_elevationDeg = 10.0;
+    if (m_elevationDeg > 80.0) m_elevationDeg = 80.0;
+
+    rebuildScene();
+    event->accept();
+  }
+  else if (m_isPanning) {
     QPoint delta = event->pos() - m_lastPanPoint;
     m_lastPanPoint = event->pos();
-
     horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
     verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
-
     event->accept();
   }
   else {
@@ -502,13 +880,45 @@ void MotionGraphicsView::mouseMoveEvent(QMouseEvent* event)
   }
 }
 
-void MotionGraphicsView::updateLiveMarker(const QString& deviceName, double x, double y)
+void MotionGraphicsView::keyPressEvent(QKeyEvent* event)
+{
+  if (event->key() == Qt::Key_R) {
+    // Reset camera to default isometric view
+    resetCamera();
+    autoFitView();
+    event->accept();
+  }
+  else {
+    QGraphicsView::keyPressEvent(event);
+  }
+}
+
+// ============================================================================
+// LIVE MARKER AND PATH PREVIEW
+// ============================================================================
+
+void MotionGraphicsView::updateLiveMarker(const QString& deviceName, double x, double y, double z)
 {
   if (m_liveMarker) {
     m_liveMarker->setDeviceName(deviceName);
-    m_liveMarker->updatePosition(x, y);
+    // Project live position to isometric with Z
+    QPointF isoPt = toIsometric(x, y, z);
+    m_liveMarker->updatePosition(isoPt.x(), isoPt.y());
     m_liveMarker->setVisible(true);
   }
+}
+
+void MotionGraphicsView::setLivePositionInfo(double x, double y, double z,
+  double u, double v, double w)
+{
+  m_hasLivePositionInfo = true;
+  m_livePosX = x;
+  m_livePosY = y;
+  m_livePosZ = z;
+  m_livePosU = u;
+  m_livePosV = v;
+  m_livePosW = w;
+  viewport()->update();
 }
 
 void MotionGraphicsView::showLiveMarker(bool show)
@@ -516,143 +926,123 @@ void MotionGraphicsView::showLiveMarker(bool show)
   if (m_liveMarker) {
     m_liveMarker->setVisible(show);
   }
-}
-
-// ✅ UPDATED - showPathPreview with entry and exit waypoints
-void MotionGraphicsView::showPathPreview(const QString& targetPositionName,
-  const std::vector<std::string>& entryWaypoints,
-  const std::vector<std::string>& exitWaypoints)
-{
-  if (!m_pathPreview) {
-    return;
-  }
-
-  // Get current device position from live marker
-  QPointF currentPos = m_liveMarker && m_liveMarker->isVisible()
-    ? m_liveMarker->pos()
-    : QPointF(0, 0);
-
-  // Get target position coordinates from stored positions
-  auto targetIt = m_positions.find(targetPositionName);
-  if (targetIt == m_positions.end()) {
-    qWarning() << "Target position not found:" << targetPositionName;
-    return;
-  }
-
-  QPointF targetPos(targetIt.value()[0], targetIt.value()[1]);
-
-  // ✅ Convert exit waypoint names to positions
-  std::vector<QPointF> exitWaypointPositions;
-  for (const auto& waypointName : exitWaypoints) {
-    QString qName = QString::fromStdString(waypointName);
-    auto wIt = m_positions.find(qName);
-    if (wIt != m_positions.end()) {
-      exitWaypointPositions.push_back(QPointF(wIt.value()[0], wIt.value()[1]));
-    }
-    else {
-      qWarning() << "Exit waypoint position not found:" << qName;
-    }
-  }
-
-  // ✅ Convert entry waypoint names to positions
-  std::vector<QPointF> entryWaypointPositions;
-  for (const auto& waypointName : entryWaypoints) {
-    QString qName = QString::fromStdString(waypointName);
-    auto wIt = m_positions.find(qName);
-    if (wIt != m_positions.end()) {
-      entryWaypointPositions.push_back(QPointF(wIt.value()[0], wIt.value()[1]));
-    }
-    else {
-      qWarning() << "Entry waypoint position not found:" << qName;
-    }
-  }
-
-  // ✅ Show path with both entry and exit waypoints
-  m_pathPreview->showPath(currentPos, targetPos, entryWaypointPositions, exitWaypointPositions);
-}
-
-void MotionGraphicsView::hidePathPreview()
-{
-  if (m_pathPreview) {
-    m_pathPreview->hidePath();
+  if (!show) {
+    m_hasLivePositionInfo = false;
   }
 }
+
+// ============================================================================
+// POSITION LOOKUP
+// ============================================================================
 
 QPointF MotionGraphicsView::getPositionPoint(const QString& positionName) const
 {
   if (m_anchors.contains(positionName)) {
     PositionAnchor* anchor = m_anchors[positionName];
     if (anchor) {
-      return QPointF(anchor->getX(), anchor->getY());
+      return anchor->scenePos();
     }
   }
-
-  if (m_labels.contains(positionName)) {
-    PositionLabel* label = m_labels[positionName];
-    if (label) {
-      return label->pos();
-    }
-  }
-
   return QPointF();
 }
 
-// ✅ NEW: Set device name for view state persistence
+// ============================================================================
+// SETTINGS AND STATE
+// ============================================================================
+
+void MotionGraphicsView::setZScaleFactor(double factor)
+{
+  if (std::abs(m_zScaleFactor - factor) > 0.001) {
+    m_zScaleFactor = factor;
+    rebuildScene();
+  }
+}
+
+void MotionGraphicsView::setCamera(double azimuthDeg, double elevationDeg)
+{
+  m_azimuthDeg = azimuthDeg;
+  m_elevationDeg = qBound(10.0, elevationDeg, 80.0);
+  rebuildScene();
+}
+
+void MotionGraphicsView::resetCamera()
+{
+  setCamera(45.0, 35.264);
+}
+
 void MotionGraphicsView::setDeviceName(const QString& deviceName)
 {
   m_deviceName = deviceName;
+  viewport()->update();
 }
 
-// ✅ NEW: Save current zoom and pan state to QSettings
+void MotionGraphicsView::setSelectedPositionInfo(const QString& name, double x, double y, double z,
+  double u, double v, double w)
+{
+  m_hasSelectedPositionInfo = true;
+  m_selectedPosName = name;
+  m_selectedPosX = x;
+  m_selectedPosY = y;
+  m_selectedPosZ = z;
+  m_selectedPosU = u;
+  m_selectedPosV = v;
+  m_selectedPosW = w;
+  viewport()->update();
+}
+
+void MotionGraphicsView::clearSelectedPositionInfo()
+{
+  m_hasSelectedPositionInfo = false;
+  m_selectedPosName.clear();
+  viewport()->update();
+}
+
 void MotionGraphicsView::saveViewState()
 {
   if (m_deviceName.isEmpty()) {
-    return;  // Can't save without a device name
+    return;
   }
 
   QSettings settings;
   QString prefix = QString("MotionPage/%1/").arg(m_deviceName);
-
-  // Save zoom factor
   settings.setValue(prefix + "zoomFactor", m_zoomFactor);
+  settings.setValue(prefix + "azimuth", m_azimuthDeg);
+  settings.setValue(prefix + "elevation", m_elevationDeg);
 
-  // Save view center point (in scene coordinates)
   QPointF centerPoint = mapToScene(viewport()->rect().center());
   settings.setValue(prefix + "centerX", centerPoint.x());
   settings.setValue(prefix + "centerY", centerPoint.y());
 }
 
-// ✅ NEW: Restore zoom and pan state from QSettings
 void MotionGraphicsView::restoreViewState()
 {
   if (m_deviceName.isEmpty()) {
-    return;  // Can't restore without a device name
+    return;
   }
 
   QSettings settings;
   QString prefix = QString("MotionPage/%1/").arg(m_deviceName);
 
-  // Check if saved state exists
   if (!settings.contains(prefix + "zoomFactor")) {
-    return;  // No saved state for this device
+    return;
   }
 
-  // Restore zoom factor
   double savedZoomFactor = settings.value(prefix + "zoomFactor", 1.0).toDouble();
   double savedCenterX = settings.value(prefix + "centerX", 0.0).toDouble();
   double savedCenterY = settings.value(prefix + "centerY", 0.0).toDouble();
+  m_azimuthDeg = settings.value(prefix + "azimuth", 45.0).toDouble();
+  m_elevationDeg = settings.value(prefix + "elevation", 35.264).toDouble();
 
-  // Reset transform first
+  // Rebuild scene with restored camera angles
+  rebuildScene();
+
   resetTransform();
   m_zoomFactor = 1.0;
 
-  // Apply saved zoom
   double scaleFactor = savedZoomFactor / m_zoomFactor;
   scale(scaleFactor, scaleFactor);
   m_zoomFactor = savedZoomFactor;
 
-  // Center on saved position
   centerOn(QPointF(savedCenterX, savedCenterY));
-
   viewport()->update();
 }

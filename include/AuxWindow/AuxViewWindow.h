@@ -78,6 +78,9 @@ public:
   void setLiveViewLayout(LiveViewLayout layout, bool saveSettings = true);
   LiveViewLayout liveViewLayout() const { return m_liveViewLayout; }
 
+  // Allow the next close event to actually close (called during app shutdown)
+  void allowClose() { m_allowClose = true; }
+
   // Window settings persistence
   void saveWindowSettings();
   void restoreWindowSettings();
@@ -121,4 +124,7 @@ private:
 
   // Tab 3: Exposure settings widget
   CameraSettingsWidget* m_cameraSettingsWidget = nullptr;
+
+  // When true, closeEvent accepts instead of hiding
+  bool m_allowClose = false;
 };
