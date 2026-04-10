@@ -166,11 +166,14 @@ private:
     QtCameraViewport* m_viewport = nullptr;
     QScrollArea* m_sidePanelScroll = nullptr;
 
-    // Side panel controls — Camera group
+    // Side panel controls — Camera tab
     QComboBox* m_primaryCameraCombo = nullptr;
     QComboBox* m_secondaryCameraCombo = nullptr;
     QLabel*    m_secondaryCameraLabel = nullptr;
     QCheckBox* m_dualModeCheck = nullptr;
+
+    // Side panel controls — Exposure tab
+    QLabel*    m_exposureValueLabel = nullptr;
 
     // Side panel controls — Tools group
     QCheckBox* m_crosshairCheck = nullptr;
@@ -353,11 +356,18 @@ private:
 
     // Side panel construction helpers
     void buildSidePanel();
-    QGroupBox* createCameraGroup();
+    QWidget*   createCameraTabs();
+    QWidget*   createCameraSelectionTab();
+    QWidget*   createExposureTab();
     QGroupBox* createToolsGroup();
     QGroupBox* createChartGroup();
     QGroupBox* createVisionGroup();
     QGroupBox* createBeamGroup();
+
+    // Exposure control helpers
+    void applyExposureValue(double exposureUs);
+    void adjustExposure(double deltaUs);
+    void refreshExposureDisplay();
 
     // QSettings key helpers
     // settingsKey: geometry / visibility (uses "GdiCameraWindow" prefix for backward compat)

@@ -34,6 +34,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QGridLayout>
+#include <QTabWidget>
 #include <QMenu>
 #include <QDialog>
 #include <QLineEdit>
@@ -218,7 +219,7 @@ void QtCameraWindow::buildSidePanel()
     vLayout->setContentsMargins(4, 4, 4, 4);
     vLayout->setSpacing(4);
 
-    vLayout->addWidget(createCameraGroup());
+    vLayout->addWidget(createCameraTabs());
     vLayout->addWidget(createToolsGroup());
 
     m_chartGroup  = createChartGroup();
@@ -488,16 +489,31 @@ QString QtCameraWindow::quickMoveKey(const QString& key) const
 // Side panel group factories
 // ============================================================================
 
-QGroupBox* QtCameraWindow::createCameraGroup()
+QWidget* QtCameraWindow::createCameraTabs()
 {
-    auto* group = new QGroupBox("Camera");
-    group->setStyleSheet(
-        "QGroupBox { color: #cccccc; border: 1px solid #3e3e42; border-radius: 4px; "
-        "            margin-top: 6px; padding-top: 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
+    auto* tabs = new QTabWidget();
+    tabs->setStyleSheet(
+        "QTabWidget::pane { border: 1px solid #3e3e42; border-radius: 4px; "
+        "                   background-color: #252526; top: -1px; }"
+        "QTabBar::tab { background-color: #333337; color: #cccccc; "
+        "               padding: 4px 10px; border: 1px solid #3e3e42; "
+        "               border-bottom: none; border-top-left-radius: 3px; "
+        "               border-top-right-radius: 3px; }"
+        "QTabBar::tab:selected { background-color: #252526; color: #ffffff; }"
+        "QTabBar::tab:hover { background-color: #3e3e42; }"
     );
 
-    auto* layout = new QVBoxLayout(group);
+    tabs->addTab(createCameraSelectionTab(), "Camera");
+    tabs->addTab(createExposureTab(),        "Exposure");
+
+    return tabs;
+}
+
+QWidget* QtCameraWindow::createCameraSelectionTab()
+{
+    auto* page = new QWidget();
+
+    auto* layout = new QVBoxLayout(page);
     layout->setSpacing(4);
     layout->setContentsMargins(6, 8, 6, 6);
 
@@ -525,6 +541,8 @@ QGroupBox* QtCameraWindow::createCameraGroup()
     m_secondaryCameraCombo->setVisible(false);
     layout->addWidget(m_secondaryCameraCombo);
 
+    layout->addStretch();
+
     // Connections
     connect(m_primaryCameraCombo, &QComboBox::currentTextChanged,
             this, &QtCameraWindow::onPrimaryCameraChanged);
@@ -533,7 +551,144 @@ QGroupBox* QtCameraWindow::createCameraGroup()
     connect(m_dualModeCheck, &QCheckBox::toggled,
             this, &QtCameraWindow::onDualModeToggled);
 
-    return group;
+    return page;
+}
+
+QWidget* QtCameraWindow::createExposureTab()
+{
+    auto* page = new QWidget();
+
+    auto* layout = new QVBoxLayout(page);
+    layout->setSpacing(4);
+    layout->setContentsMargins(6, 8, 6, 6);
+
+    static const QString btnStyle =
+        "QPushButton { background-color: #3e3e42; border: 1px solid #555; "
+        "              color: #cccccc; padding: 4px 2px; min-height: 24px; "
+        "              border-radius: 3px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #505054; }"
+        "QPushButton:pressed { background-color: #007acc; }";
+
+    // Current exposure readout
+    m_exposureValueLabel = new QLabel("Current: -- us");
+    m_exposureValueLabel->setStyleSheet(
+        "QLabel { color: #ffffff; background-color: #1e1e1e; "
+        "         border: 1px solid #3e3e42; padding: 4px; border-radius: 3px; }"
+    );
+    m_exposureValueLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(m_exposureValueLabel);
+
+    // Preset buttons (2 cols x 5 rows)
+    auto* presetLabel = new QLabel("Presets:");
+    presetLabel->setStyleSheet("color: #cccccc;");
+    layout->addWidget(presetLabel);
+
+    struct Preset { const char* label; double us; };
+    static const Preset kPresets[] = {
+        {  "30 us",    30.0 },
+        {  "50 us",    50.0 },
+        { "250 us",   250.0 },
+        { "300 us",   300.0 },
+        { "500 us",   500.0 },
+        {   "5k us",  5000.0 },
+        {   "8k us",  8000.0 },
+        {  "10k us", 10000.0 },
+        {  "15k us", 15000.0 },
+        {  "20k us", 20000.0 },
+    };
+
+    auto* presetGrid = new QGridLayout();
+    presetGrid->setSpacing(4);
+    constexpr int kPresetCols = 2;
+    const int kPresetCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
+    for (int i = 0; i < kPresetCount; ++i) {
+        auto* btn = new QPushButton(kPresets[i].label);
+        btn->setStyleSheet(btnStyle);
+        const double us = kPresets[i].us;
+        connect(btn, &QPushButton::clicked, this, [this, us]() {
+            applyExposureValue(us);
+        });
+        presetGrid->addWidget(btn, i / kPresetCols, i % kPresetCols);
+    }
+    layout->addLayout(presetGrid);
+
+    // Fine adjust row: -100, -10, +10, +100
+    auto* adjustLabel = new QLabel("Adjust:");
+    adjustLabel->setStyleSheet("color: #cccccc;");
+    layout->addWidget(adjustLabel);
+
+    auto* adjustRow = new QHBoxLayout();
+    adjustRow->setSpacing(4);
+
+    struct Step { const char* label; double delta; };
+    static const Step kSteps[] = {
+        { "-100", -100.0 },
+        {  "-10",  -10.0 },
+        {  "+10",  +10.0 },
+        { "+100", +100.0 },
+    };
+    for (const auto& s : kSteps) {
+        auto* btn = new QPushButton(s.label);
+        btn->setStyleSheet(btnStyle);
+        const double delta = s.delta;
+        connect(btn, &QPushButton::clicked, this, [this, delta]() {
+            adjustExposure(delta);
+        });
+        adjustRow->addWidget(btn);
+    }
+    layout->addLayout(adjustRow);
+
+    layout->addStretch();
+
+    return page;
+}
+
+// ============================================================================
+// Exposure control helpers
+// ============================================================================
+
+void QtCameraWindow::applyExposureValue(double exposureUs)
+{
+    if (!m_cameraManager) return;
+    if (m_targetCameraId.empty()) {
+        if (m_exposureValueLabel) {
+            m_exposureValueLabel->setText("No camera selected");
+        }
+        return;
+    }
+
+    auto settings = m_cameraManager->GetExposureSettings(m_targetCameraId);
+    settings.auto_exposure = false;
+    settings.exposure_time = exposureUs;
+
+    if (m_cameraManager->ApplyExposureSettings(m_targetCameraId, settings)) {
+        refreshExposureDisplay();
+    } else if (m_exposureValueLabel) {
+        m_exposureValueLabel->setText(QString("Failed: %1 us").arg(exposureUs, 0, 'f', 0));
+    }
+}
+
+void QtCameraWindow::adjustExposure(double deltaUs)
+{
+    if (!m_cameraManager) return;
+    if (m_targetCameraId.empty()) return;
+
+    auto settings = m_cameraManager->GetExposureSettings(m_targetCameraId);
+    double next = settings.exposure_time + deltaUs;
+    if (next < 1.0) next = 1.0;
+    applyExposureValue(next);
+}
+
+void QtCameraWindow::refreshExposureDisplay()
+{
+    if (!m_exposureValueLabel) return;
+    if (!m_cameraManager || m_targetCameraId.empty()) {
+        m_exposureValueLabel->setText("Current: -- us");
+        return;
+    }
+    const auto settings = m_cameraManager->GetExposureSettings(m_targetCameraId);
+    m_exposureValueLabel->setText(
+        QString("Current: %1 us").arg(settings.exposure_time, 0, 'f', 0));
 }
 
 QGroupBox* QtCameraWindow::createToolsGroup()
@@ -975,6 +1130,8 @@ void QtCameraWindow::setTargetCamera(const std::string& cameraId)
         if (idx >= 0) m_primaryCameraCombo->setCurrentIndex(idx);
         m_primaryCameraCombo->blockSignals(false);
     }
+
+    refreshExposureDisplay();
 }
 
 std::string QtCameraWindow::getTargetCamera() const
@@ -1551,6 +1708,7 @@ void QtCameraWindow::hideEvent(QHideEvent* event)
 void QtCameraWindow::onPrimaryCameraChanged(const QString& cameraId)
 {
     setTargetCamera(cameraId.toStdString());
+    refreshExposureDisplay();
 }
 
 void QtCameraWindow::onSecondaryCameraChanged(const QString& cameraId)
