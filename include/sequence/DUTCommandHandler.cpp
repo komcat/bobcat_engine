@@ -76,7 +76,7 @@ bool DUTCommandHandler::ExecuteCreate(const std::map<std::string, std::string>& 
     productName = m_context->productPositionManager->GetCurrentProductName();
     if (!productName.empty()) {
       if (m_logger) {
-        m_logger->Info("Using loaded product name from Position Manager: " + productName, "DUT");
+        m_logger->Debug("Using loaded product name from Position Manager: " + productName, "DUT");
       }
       std::cout << "[DUTCommandHandler] Auto-using product: " << productName << std::endl;
     }
@@ -146,7 +146,7 @@ bool DUTCommandHandler::ExecuteLoad(const std::map<std::string, std::string>& pa
     productName = m_context->productPositionManager->GetCurrentProductName();
     if (!productName.empty()) {
       if (m_logger) {
-        m_logger->Info("Using loaded product name from Position Manager: " + productName, "DUT");
+        m_logger->Debug("Using loaded product name from Position Manager: " + productName, "DUT");
       }
       std::cout << "[DUTCommandHandler] Auto-using product: " << productName << std::endl;
     }
@@ -218,7 +218,7 @@ bool DUTCommandHandler::ExecuteLoadOrCreate(const std::map<std::string, std::str
     productName = m_context->productPositionManager->GetCurrentProductName();
     if (!productName.empty()) {
       if (m_logger) {
-        m_logger->Info("Using loaded product name from Position Manager: " + productName, "DUT");
+        m_logger->Debug("Using loaded product name from Position Manager: " + productName, "DUT");
       }
       std::cout << "[DUTCommandHandler] Auto-using product: " << productName << std::endl;
     }

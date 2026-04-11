@@ -421,6 +421,7 @@ private:
   std::string ComparisonToString(ConditionalBlock::ComparisonType comp) const;
 
   void LogInfo(const std::string& message);
+  void LogDebug(const std::string& message);
   void LogWarning(const std::string& message);
   void LogError(const std::string& message);
 };

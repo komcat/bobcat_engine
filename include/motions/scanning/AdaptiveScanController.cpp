@@ -22,7 +22,7 @@ AdaptiveScanController::AdaptiveScanController(
 {
   // ✅ Check before use
   if (m_logger) {
-    m_logger->LogInfo("AdaptiveScanController created for device: " + deviceName);
+    m_logger->LogDebug("AdaptiveScanController created for device: " + deviceName);
   }
 
   m_stateMachine = std::make_unique<ScanStateMachine>();
@@ -48,7 +48,7 @@ AdaptiveScanController::~AdaptiveScanController() {
   }
 
   if (m_logger) {  // ✅ Check before use
-    m_logger->LogInfo("AdaptiveScanController destroyed for device: " + m_deviceName);
+    m_logger->LogDebug("AdaptiveScanController destroyed for device: " + m_deviceName);
   }
 }
 

@@ -61,7 +61,7 @@ bool IOCommandHandler::ExecuteCommand(
         int pin = std::stoi(trimmed);
 
         if (m_logger) {
-          m_logger->Info(
+          m_logger->Debug(
             "Pin name '" + pinValue + "' not found, trying as numeric pin " + std::to_string(pin),
             "IOHandler"
           );
@@ -413,7 +413,7 @@ bool IOCommandHandler::ExecuteCommand(
     int ms = std::stoi(msIt->second);
 
     if (m_logger) {
-      m_logger->Info("Delaying for " + std::to_string(ms) + "ms", "IOHandler");
+      m_logger->Debug("Delaying for " + std::to_string(ms) + "ms", "IOHandler");
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));

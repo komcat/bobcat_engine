@@ -551,7 +551,7 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
       auto it = connectionStatus.find(deviceId);
       if (it == connectionStatus.end() || !it->second) {
         if (m_context->logManager) {
-          m_context->logManager->Info(
+          m_context->logManager->Debug(
             "Device '" + deviceId + "' is not connected - skipping",
             "JogPanel"
           );
@@ -660,7 +660,7 @@ void JogPanelWindow::refreshDeviceList()
       auto it = connectionStatus.find(deviceId);
       if (it == connectionStatus.end() || !it->second) {
         if (m_context->logManager) {
-          m_context->logManager->Info(
+          m_context->logManager->Debug(
             "Device '" + deviceId + "' is not connected - skipping",
             "JogPanel"
           );
@@ -702,7 +702,7 @@ void JogPanelWindow::refreshDeviceList()
     }
 
     if (m_context->logManager) {
-      m_context->logManager->Info(
+      m_context->logManager->Debug(
         "Jog panel refreshed with " + std::to_string(validDevices.size()) + " devices",
         "JogPanel"
       );
@@ -1224,7 +1224,7 @@ void JogPanelWindow::applyExposure(const std::string& cameraId, QSpinBox* spinBo
 
   if (m_context->logManager) {
     if (ok) {
-      m_context->logManager->Info(
+      m_context->logManager->Debug(
         "Applied exposure " + std::to_string(spinBox->value()) + " us to " + cameraId,
         "JogPanel");
     } else {

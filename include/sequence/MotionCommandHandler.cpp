@@ -255,7 +255,7 @@ double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, Se
     if (context) {
       double value = static_cast<double>(context->GetNumeric(refKey, 0.0f));
       if (m_logger) {
-        m_logger->Info("Resolved " + valueStr + " = " + std::to_string(value), "MotionHandler");
+        m_logger->Debug("Resolved " + valueStr + " = " + std::to_string(value), "MotionHandler");
       }
       return value;
     }
@@ -267,7 +267,7 @@ double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, Se
     // Parse as direct numeric value
     double value = std::stod(valueStr);
     if (m_logger) {
-      m_logger->Info("Parsed direct value " + valueStr + " = " + std::to_string(value), "MotionHandler");
+      m_logger->Debug("Parsed direct value " + valueStr + " = " + std::to_string(value), "MotionHandler");
     }
     return value;
   }
@@ -508,12 +508,12 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    // DEBUG: Check if axis is currently moving before starting new move
+    // Check if axis is currently moving before starting new move (diagnostic)
     if (m_logger) {
       bool isMoving = motionManager->IsMoving(deviceName, axis);
       bool isEnabled = motionManager->IsServoEnabled(deviceName, axis);
-      m_logger->Info(
-        "[DEBUG] Pre-move state for " + deviceName + " axis " + axis +
+      m_logger->Debug(
+        "Pre-move state for " + deviceName + " axis " + axis +
         ": isMoving=" + std::to_string(isMoving) +
         ", servoEnabled=" + std::to_string(isEnabled),
         "MotionHandler"
@@ -522,21 +522,21 @@ bool MotionCommandHandler::ExecuteCommand(
 
     // ✅ SAFETY: Always use non-blocking mode + stop checking
     if (m_logger) {
-      m_logger->Info("[DEBUG] Calling MoveRelative on " + deviceName + " axis " + axis, "MotionHandler");
+      m_logger->Debug("Calling MoveRelative on " + deviceName + " axis " + axis, "MotionHandler");
     }
     if (!motionManager->MoveRelative(deviceName, axis, distance, false)) {
       // Get detailed error info from the controller
       int errorCode = motionManager->GetLastErrorCode(deviceName);
       std::string errorDetail = motionManager->GetLastErrorMessage(deviceName);
       if (m_logger) {
-        m_logger->Error("[DEBUG] MoveRelative FAILED for " + deviceName + " axis " + axis +
+        m_logger->Error("MoveRelative FAILED for " + deviceName + " axis " + axis +
           " - errorCode=" + std::to_string(errorCode) + " detail=" + errorDetail, "MotionHandler");
       }
       errorMessage = "MoveRelative failed to start (code=" + std::to_string(errorCode) + "): " + errorDetail;
       return false;
     }
     if (m_logger) {
-      m_logger->Info("[DEBUG] MoveRelative returned true for " + deviceName + " axis " + axis, "MotionHandler");
+      m_logger->Debug("MoveRelative returned true for " + deviceName + " axis " + axis, "MotionHandler");
     }
 
     // If explicit non-blocking requested, return immediately
@@ -842,7 +842,7 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Waiting for motion complete on: " + deviceName, "MotionHandler");
+      m_logger->Debug("Waiting for motion complete on: " + deviceName, "MotionHandler");
     }
 
     // ✅ SAFETY: Use unified wait method with stop checking
@@ -3693,7 +3693,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (debugMode && motionManager) {
       motionManager->SetDebugLogging(true);
       if (m_logger) {
-        m_logger->Info("ParallelMove: Debug logging ENABLED", "MotionHandler");
+        m_logger->Debug("ParallelMove: Debug logging ENABLED", "MotionHandler");
       }
     }
 
@@ -3745,9 +3745,9 @@ bool MotionCommandHandler::ExecuteCommand(
 
     for (const auto& spec : graphNodeMoves) {
       if (m_logger) {
-        m_logger->Info("ParallelMove: Creating worker for " + spec.deviceName +
-                       " graphNode -> " + spec.targetName + " (graph: " + spec.graphName + ")",
-                       "MotionHandler");
+        m_logger->Debug("ParallelMove: Creating worker for " + spec.deviceName +
+                        " graphNode -> " + spec.targetName + " (graph: " + spec.graphName + ")",
+                        "MotionHandler");
       }
 
       // Create worker (handles all path finding and execution internally)
@@ -3776,8 +3776,8 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger && !graphWorkers.empty()) {
-      m_logger->Info("ParallelMove: Started " + std::to_string(graphWorkers.size()) +
-                     " graphNode workers in parallel", "MotionHandler");
+      m_logger->Debug("ParallelMove: Started " + std::to_string(graphWorkers.size()) +
+                      " graphNode workers in parallel", "MotionHandler");
     }
 
     // ✅ PHASE 3: Start all position moves (non-blocking)
@@ -3803,7 +3803,7 @@ bool MotionCommandHandler::ExecuteCommand(
       }
 
       if (m_logger) {
-        m_logger->Info("ParallelMove: Started position move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
+        m_logger->Debug("ParallelMove: Started position move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
       }
     }
 
@@ -3841,8 +3841,8 @@ bool MotionCommandHandler::ExecuteCommand(
           state.motionStarted = true;
           state.completed = true;
           if (m_logger) {
-            m_logger->Info("ParallelMove: " + state.deviceName + " already at target '" + state.targetName +
-                         "' (dist: " + std::to_string(distToTarget) + "mm)", "MotionHandler");
+            m_logger->Debug("ParallelMove: " + state.deviceName + " already at target '" + state.targetName +
+                          "' (dist: " + std::to_string(distToTarget) + "mm)", "MotionHandler");
           }
         }
         positionMoveStates.push_back(state);
@@ -3920,8 +3920,8 @@ bool MotionCommandHandler::ExecuteCommand(
           if (distToTarget < POSITION_TOLERANCE) {
             state.completed = true;
             if (m_logger) {
-              m_logger->Info("ParallelMove: " + state.deviceName + " completed (dist to target: " +
-                           std::to_string(distToTarget) + "mm)", "MotionHandler");
+              m_logger->Debug("ParallelMove: " + state.deviceName + " completed (dist to target: " +
+                            std::to_string(distToTarget) + "mm)", "MotionHandler");
             }
             // Clear pending target
             motionManager->ClearPendingTarget(state.deviceName);
@@ -4112,7 +4112,7 @@ bool MotionCommandHandler::ExecuteCommand(
       // Skip zero distance moves
       if (std::abs(spec.distance) < 1e-9) {
         if (m_logger) {
-          m_logger->Info("ParallelMoveRelative: Skipping zero-distance move for " + spec.deviceName + " " + spec.axis, "MotionHandler");
+          m_logger->Debug("ParallelMoveRelative: Skipping zero-distance move for " + spec.deviceName + " " + spec.axis, "MotionHandler");
         }
         continue;
       }
@@ -4127,7 +4127,7 @@ bool MotionCommandHandler::ExecuteCommand(
       }
 
       if (m_logger) {
-        m_logger->Info("ParallelMoveRelative: Started move for " + spec.deviceName + " " + spec.axis + " by " + std::to_string(spec.distance), "MotionHandler");
+        m_logger->Debug("ParallelMoveRelative: Started move for " + spec.deviceName + " " + spec.axis + " by " + std::to_string(spec.distance), "MotionHandler");
       }
     }
 
@@ -5349,10 +5349,10 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
       usePendingTarget = true;
 
       if (m_logger) {
-        m_logger->Info("WaitForMotion: Using pending target '" + pendingTargetName +
-                       "' at [" + std::to_string(pendingTarget.x) + "," +
-                       std::to_string(pendingTarget.y) + "," +
-                       std::to_string(pendingTarget.z) + "]", "MotionHandler");
+        m_logger->Debug("WaitForMotion: Using pending target '" + pendingTargetName +
+                        "' at [" + std::to_string(pendingTarget.x) + "," +
+                        std::to_string(pendingTarget.y) + "," +
+                        std::to_string(pendingTarget.z) + "]", "MotionHandler");
       }
     }
   }
@@ -5526,7 +5526,7 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
       if (m_logger) {
         std::string stableStr = "WaitForMotion: Motion complete at [" +
                                std::to_string(currentPos.x) + "," + std::to_string(currentPos.y) + "," + std::to_string(currentPos.z) + "]";
-        m_logger->Info(stableStr, "MotionHandler");
+        m_logger->Debug(stableStr, "MotionHandler");
       }
 
       // ✅ Clear pending target now that move is confirmed complete
@@ -5631,8 +5631,8 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         if (m_logger) {
-          m_logger->Info("Position verification OK for " + deviceName + " (tolerance ±" +
-                         std::to_string(TOLERANCE) + "mm)", "MotionHandler");
+          m_logger->Debug("Position verification OK for " + deviceName + " (tolerance ±" +
+                          std::to_string(TOLERANCE) + "mm)", "MotionHandler");
         }
       }
 
@@ -5757,8 +5757,8 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
         completedCount++;
 
         if (m_logger) {
-          m_logger->Info("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
-                        " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
+          m_logger->Debug("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
+                         " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
         }
 
         // ✅ DEBUG: Verify waypoint state is Idle after marking complete
@@ -5866,8 +5866,8 @@ bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
         completedCount++;
 
         if (m_logger) {
-          m_logger->Info("ParallelMoveRelative: " + deviceName + " completed (" +
-                        std::to_string(completedCount) + "/" + std::to_string(deviceNames.size()) + ")", "MotionHandler");
+          m_logger->Debug("ParallelMoveRelative: " + deviceName + " completed (" +
+                         std::to_string(completedCount) + "/" + std::to_string(deviceNames.size()) + ")", "MotionHandler");
         }
       }
     }

@@ -53,6 +53,7 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"Vision", "Vision processing settings"},
     {"Tools", "Tool overlay settings"},
     {"BeamServer", "Beam analyser server connection settings (command + stream ports)"},
+    {"Logging", "Log verbosity settings. Disable debug logs for cleaner operator output."},
     {"Backup", "Configuration backup and restore settings"}
   };
 
@@ -146,6 +147,14 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"BeamServer", "StreamIntervalMs", "100",
      "Target interval between stream frames in milliseconds (100 = 10Hz)",
      "int", 50, 1000, {}},
+
+    // === Logging ===
+    {"Logging", "DebugEnabled", "false",
+     "Show verbose DEBUG-level log messages. When disabled (default), the log shows only "
+     "operator-meaningful events: recipe steps, hardware state changes, and errors. When enabled, "
+     "shows all developer debug traces (internal state, parameter echoes, wait cycles, handler "
+     "registration). Requires application restart to take effect.",
+     "bool", 0, 0, {}},
 
     // === Backup ===
     {"Backup", "DestinationPath", "",
@@ -725,7 +734,7 @@ void ApplicationSettingsPage::populateTree()
   // Define section order
   std::vector<std::string> sectionOrder = {
     "CameraMonitor", "ChartOverlay", "Vision", "Tools",
-    "BeamServer", "ChainExecution", "Scanning", "UI", "Backup"
+    "BeamServer", "ChainExecution", "Scanning", "UI", "Logging", "Backup"
   };
 
   // Create tree items in order

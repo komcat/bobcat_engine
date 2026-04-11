@@ -140,7 +140,7 @@ bool SystemCommandHandler::ExecuteCommand(
     int totalMs = std::stoi(msIt->second);
 
     if (m_logger) {
-      m_logger->Info("Waiting for " + std::to_string(totalMs) + "ms", "SystemHandler");
+      m_logger->Debug("Waiting for " + std::to_string(totalMs) + "ms", "SystemHandler");
     }
 
     // Use interruptible wait with progress updates
@@ -180,7 +180,7 @@ bool SystemCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Wait completed", "SystemHandler");
+      m_logger->Debug("Wait completed", "SystemHandler");
     }
 
     return true;

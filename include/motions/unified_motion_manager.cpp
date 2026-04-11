@@ -45,7 +45,7 @@ UnifiedMotionManager::UnifiedMotionManager() {
 void UnifiedMotionManager::SetLogger(ILogger* logger) {
   m_logger = logger;
 
-  LOG_INFO("Initialized with " + std::to_string(m_managers.size()) + " controller managers");
+  LOG_DEBUG("Initialized with " + std::to_string(m_managers.size()) + " controller managers");
 
   // Propagate logger to child managers
   ACSControllerManager* acsManager = GetACSManager();
@@ -125,7 +125,7 @@ std::string UnifiedMotionManager::GetDeviceType(const std::string& deviceName) c
 // ============================================================================
 
 void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
-  LOG_INFO("Adding device " + device.Name + " (Type: " + device.TypeController + ")");
+  LOG_DEBUG("Adding device " + device.Name + " (Type: " + device.TypeController + ")");
 
   // Store full device configuration
   m_deviceConfigs[device.Name] = device;
@@ -139,7 +139,7 @@ void UnifiedMotionManager::AddDevice(const MotionDevice& device) {
 
   if (managerIt != m_managers.end()) {
     managerIt->second->AddDevice(device);
-    LOG_INFO("Routed " + device.Name + " to " + normalizedType + " manager");
+    LOG_DEBUG("Routed " + device.Name + " to " + normalizedType + " manager");
   }
   else {
     LOG_ERROR("No manager found for type '" + device.TypeController + "'");
@@ -282,7 +282,7 @@ bool UnifiedMotionManager::MoveToAbs(const std::string& deviceName,
     return false;
   }
 
-  LOG_INFO("MoveToAbs on " + deviceName + " to (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
+  LOG_DEBUG("MoveToAbs on " + deviceName + " to (" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
 
   // Interlock check
   if (m_interlockManager) {
@@ -320,7 +320,7 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
     return false;
   }
 
-  LOG_INFO("MoveToAbs6 on " + deviceName + " to (" + std::to_string(pos.x) + ", " + std::to_string(pos.y) + ", " + std::to_string(pos.z) + ", " + std::to_string(pos.u) + ", " + std::to_string(pos.v) + ", " + std::to_string(pos.w) + ")");
+  LOG_DEBUG("MoveToAbs6 on " + deviceName + " to (" + std::to_string(pos.x) + ", " + std::to_string(pos.y) + ", " + std::to_string(pos.z) + ", " + std::to_string(pos.u) + ", " + std::to_string(pos.v) + ", " + std::to_string(pos.w) + ")");
 
   // Interlock check
   if (m_interlockManager) {
@@ -435,7 +435,7 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
     return false;
   }
 
-  LOG_INFO("MoveRelative on " + deviceName + " axis " + axis + " by " + std::to_string(distance) + " (type=" + type + ")");
+  LOG_DEBUG("MoveRelative on " + deviceName + " axis " + axis + " by " + std::to_string(distance) + " (type=" + type + ")");
 
   // Interlock check
   if (m_interlockManager) {
@@ -1213,7 +1213,7 @@ void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
     logMsg += " with " + std::to_string(position.exit_waypoints.size()) + " exit waypoint(s)";
   }
 
-  LOG_INFO(logMsg);
+  LOG_DEBUG(logMsg);
 }
 
 void UnifiedMotionManager::AddNamedPosition(const std::string& deviceName,
@@ -1291,7 +1291,7 @@ void UnifiedMotionManager::ClearNamedPositions(const std::string& deviceName) {
   auto it = m_namedPositions.find(deviceName);
   if (it != m_namedPositions.end()) {
     m_namedPositions.erase(it);
-    LOG_INFO("Cleared named positions for " + deviceName);
+    LOG_DEBUG("Cleared named positions for " + deviceName);
   }
 }
 
@@ -1448,7 +1448,7 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
 
   // ✅ SIMPLE PATH: No waypoints - just do direct move without state machine
   if (!hasEntryWaypoints && !hasExitWaypoints) {
-    LOG_INFO("Direct point-to-point move (no waypoints)");
+    LOG_DEBUG("Direct point-to-point move (no waypoints)");
 
     // ✅ Store pending target for position verification by WaitForMotionComplete
     m_pendingTargets[deviceName] = positionName;

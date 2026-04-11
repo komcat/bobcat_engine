@@ -261,6 +261,19 @@ void Application::initializeManagers()
     initializeApplicationSettings();
     completeSplash("ApplicationSettings");
 
+    // Apply Logging.DebugEnabled setting to LogManager.
+    // Must happen immediately after settings load so subsequent subsystem
+    // initialization (SequenceEngine registry, motion controllers, etc.) is
+    // filtered according to the user's choice. Default is INFO (quiet).
+    {
+      const bool debugEnabled = m_applicationSettings->GetBool("Logging", "DebugEnabled", false);
+      m_logManager->SetMinimumLevel(debugEnabled ? LogManager::Level::DEBUG
+                                                 : LogManager::Level::INFO);
+      m_logManager->Info(std::string("Log level: ") +
+                         (debugEnabled ? "DEBUG (verbose)" : "INFO (operator)"),
+                         "Application");
+    }
+
     // Now we can log properly
     m_logManager->Info("Initializing managers...", "Application");
     m_logManager->Info(getApplicationName() + " v" + getVersion(), "Application");

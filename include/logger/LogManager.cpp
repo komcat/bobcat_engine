@@ -23,12 +23,30 @@ constexpr size_t MAX_ROTATING_FILES = 5;           // Keep 5 rotated files per d
 LogManager::LogManager()
   : m_consoleEnabled(true)
   , m_fileEnabled(false)
-  , m_minimumLevel(Level::DEBUG)
+  , m_minimumLevel(Level::INFO)  // Default to INFO (operator-friendly); overridden by Logging.DebugEnabled setting
   , m_maxHistorySize(2000)
   , m_errorCount(0)
   , m_warningCount(0)
 {
   InitializeSpdlog();
+}
+
+void LogManager::SetMinimumLevel(Level level)
+{
+  m_minimumLevel = level;
+
+  // Sync spdlog level so both the custom history filter and the backend agree.
+  // Without this, DEBUG messages were silently dropped even when m_minimumLevel
+  // allowed them, because InitializeSpdlog() hard-codes spdlog to info level.
+  if (m_logger) {
+    switch (level) {
+      case Level::DEBUG:    m_logger->set_level(spdlog::level::debug); break;
+      case Level::INFO:     m_logger->set_level(spdlog::level::info); break;
+      case Level::WARNING:  m_logger->set_level(spdlog::level::warn); break;
+      case Level::FAILURE:  m_logger->set_level(spdlog::level::err); break;
+      case Level::CRITICAL: m_logger->set_level(spdlog::level::critical); break;
+    }
+  }
 }
 
 LogManager::~LogManager()
