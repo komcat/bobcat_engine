@@ -375,6 +375,15 @@ void PlacementCorrectionPage::setupUI()
         m_store.SaveSet(m_currentSet);
     });
 
+    // Manual tune offsets edited — persist immediately. m_currentSet already
+    // reflects the new values (the retrace widget holds a pointer to it).
+    connect(m_retraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
+            this, [this]() {
+        if (m_hasLoadedSet) {
+            m_store.SaveSet(m_currentSet);
+        }
+    });
+
     connect(m_resultWidget, &PlacementResultWidget::recomputeRequested,
             this, [this]() {
         m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
@@ -385,6 +394,24 @@ void PlacementCorrectionPage::setupUI()
         m_currentSet.Recalculate();
         m_resultWidget->SetData(m_currentSet);
         updateCurrentSet();
+    });
+
+    // Manual offset tuner on the View Results page re-saved the target
+    // position — mirror the new target XYZUVW into m_currentSet, refresh
+    // the sidebar readout, and persist the training set JSON.
+    connect(m_resultWidget, &PlacementResultWidget::targetResaved,
+            this, [this](const PlacementCorrectionSet& updatedSet) {
+        m_currentSet.config.targetX = updatedSet.config.targetX;
+        m_currentSet.config.targetY = updatedSet.config.targetY;
+        m_currentSet.config.targetZ = updatedSet.config.targetZ;
+        m_currentSet.config.targetU = updatedSet.config.targetU;
+        m_currentSet.config.targetV = updatedSet.config.targetV;
+        m_currentSet.config.targetW = updatedSet.config.targetW;
+        updateTargetFromPosition();
+        updateCurrentSet();
+        if (m_hasLoadedSet) {
+            m_store.SaveSet(m_currentSet);
+        }
     });
 
     connect(m_summaryDiagramWidget, &SummaryDiagramWidget::thumbnailOffsetChanged,

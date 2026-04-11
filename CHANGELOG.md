@@ -24,6 +24,16 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ### All Changes (by date)
 
+## 2026-04-11
+
+- **placement correction manual offset tuner on review and view-results pages**
+  - Added Manual Offset Tuner group box to PlacementRetraceWidget (Review state): nudge the corrected hex target position by XYZ (mm) and UVW (°) before saving; offsets are applied on top of the computed retrace correction and written to `motor_devices.local.json`
+  - Added "Re-save Target Position" tuner workflow to PlacementResultWidget (View Results state): adjust an already-saved target position by XYZ/UVW offsets and re-persist without requiring a full retrace cycle
+  - New persisted config fields in `PlacementCorrectionConfig`: `tuneOffsetX/Y/Z` (mm) and `tuneOffsetU/V/W` (°), serialized in PlacementCorrectionStore so offsets survive session restarts
+  - New signals `PlacementRetraceWidget::offsetsPersistRequested` and `PlacementResultWidget::targetResaved` wired in both PlacementCorrectionPage (F8 trainer flow) and RunProgramPage (recipe execution flow)
+  - `RunProgramPage` gains `m_activePlacementStoreBasePath` member so offsets tuned during a recipe run are saved to the correct per-product placement_correction directory
+  - UI convention: tuner group boxes use `setFixedWidth` + `Qt::AlignLeft | Qt::AlignTop` layout; spinboxes are fixed width; range ±1, step 0.001, 3 decimals
+
 ## 2026-04-09
 
 - **stepwise roll W correction with channel tracking and per-substep XCANExtended re-peak**

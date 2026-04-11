@@ -22,9 +22,11 @@
 #include "product_position_manager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QPixmap>
 #include <QPainter>
 #include <iostream>
@@ -59,6 +61,7 @@ void PlacementRetraceWidget::SetData(PlacementCorrectionSet* set)
 {
     m_set = set;
     setState(Idle);
+    loadTuneOffsetsFromConfig();
 }
 
 void PlacementRetraceWidget::AutoStart()
@@ -330,6 +333,143 @@ void PlacementRetraceWidget::setupUI()
         }
     });
     reviewLayout->addWidget(m_applyUCheckbox);
+
+    // ----------------------------------------------------------------
+    // Manual Offset Tuner — added to corrected position at Save time.
+    // Fixed width + top-left alignment (UI convention going forward).
+    // ----------------------------------------------------------------
+    QGroupBox* tuneGroup = new QGroupBox("Manual Offset Tuner");
+    tuneGroup->setStyleSheet(
+        "QGroupBox { color: #f0c040; font-size: 12px; font-weight: bold; "
+        "border: 1px solid #3d5a8c; border-radius: 6px; "
+        "margin-top: 10px; padding-top: 14px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }");
+    tuneGroup->setFixedWidth(420);
+    tuneGroup->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    QVBoxLayout* tuneOuter = new QVBoxLayout(tuneGroup);
+    tuneOuter->setContentsMargins(8, 6, 8, 8);
+    tuneOuter->setSpacing(6);
+
+    QLabel* tuneHint = new QLabel(
+        "Added directly to the corrected position at Save time.\n"
+        "XYZ in mm; UVW in degrees.");
+    tuneHint->setStyleSheet("color: #aabbcc; font-size: 11px;");
+    tuneHint->setWordWrap(true);
+    tuneOuter->addWidget(tuneHint);
+
+    QString spinStyle =
+        "QDoubleSpinBox { background-color: #1a1f2e; color: #ffffff; "
+        "border: 1px solid #4d6e9f; border-radius: 3px; "
+        "padding: 3px 6px; font-size: 12px; min-width: 120px; }"
+        "QDoubleSpinBox:focus { border: 1px solid #5dade2; }";
+    QString tuneLblStyle = "color: #d0d0d0; font-size: 12px;";
+
+    auto makeSpin = [spinStyle](const QString& suffix) {
+        QDoubleSpinBox* sp = new QDoubleSpinBox();
+        sp->setRange(-1.0, 1.0);        // ±1 mm / ±1 deg
+        sp->setDecimals(3);             // 0.001 resolution (1 μm / 1 m°)
+        sp->setSingleStep(0.001);       // arrow step = 1 μm or 1 m°
+        sp->setSuffix(suffix);
+        sp->setAlignment(Qt::AlignRight);
+        sp->setStyleSheet(spinStyle);
+        sp->setKeyboardTracking(false);
+        sp->setFixedWidth(140);
+        return sp;
+    };
+
+    QGridLayout* tuneGrid = new QGridLayout();
+    tuneGrid->setHorizontalSpacing(10);
+    tuneGrid->setVerticalSpacing(6);
+
+    const QString mmSuffix  = QString(" mm");
+    const QString degSuffix = QString::fromUtf8(" \xC2\xB0"); // " °"
+
+    m_tuneOffsetXSpin = makeSpin(mmSuffix);
+    m_tuneOffsetYSpin = makeSpin(mmSuffix);
+    m_tuneOffsetZSpin = makeSpin(mmSuffix);
+    m_tuneOffsetUSpin = makeSpin(degSuffix);
+    m_tuneOffsetVSpin = makeSpin(degSuffix);
+    m_tuneOffsetWSpin = makeSpin(degSuffix);
+
+    // Two columns: X|U, Y|V, Z|W
+    QLabel* xLbl = new QLabel("X:"); xLbl->setStyleSheet(tuneLblStyle);
+    QLabel* yLbl = new QLabel("Y:"); yLbl->setStyleSheet(tuneLblStyle);
+    QLabel* zLbl = new QLabel("Z:"); zLbl->setStyleSheet(tuneLblStyle);
+    QLabel* uLbl = new QLabel("U:"); uLbl->setStyleSheet(tuneLblStyle);
+    QLabel* vLbl = new QLabel("V:"); vLbl->setStyleSheet(tuneLblStyle);
+    QLabel* wLbl = new QLabel("W:"); wLbl->setStyleSheet(tuneLblStyle);
+
+    tuneGrid->addWidget(xLbl, 0, 0);
+    tuneGrid->addWidget(m_tuneOffsetXSpin, 0, 1);
+    tuneGrid->addWidget(uLbl, 0, 2);
+    tuneGrid->addWidget(m_tuneOffsetUSpin, 0, 3);
+
+    tuneGrid->addWidget(yLbl, 1, 0);
+    tuneGrid->addWidget(m_tuneOffsetYSpin, 1, 1);
+    tuneGrid->addWidget(vLbl, 1, 2);
+    tuneGrid->addWidget(m_tuneOffsetVSpin, 1, 3);
+
+    tuneGrid->addWidget(zLbl, 2, 0);
+    tuneGrid->addWidget(m_tuneOffsetZSpin, 2, 1);
+    tuneGrid->addWidget(wLbl, 2, 2);
+    tuneGrid->addWidget(m_tuneOffsetWSpin, 2, 3);
+
+    // Fixed widths — don't stretch to fill
+    QHBoxLayout* tuneGridRow = new QHBoxLayout();
+    tuneGridRow->setContentsMargins(0, 0, 0, 0);
+    tuneGridRow->addLayout(tuneGrid);
+    tuneGridRow->addStretch();
+    tuneOuter->addLayout(tuneGridRow);
+
+    m_tunePreviewLabel = new QLabel("(Preview available after retrace)");
+    m_tunePreviewLabel->setWordWrap(true);
+    m_tunePreviewLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_tunePreviewLabel->setStyleSheet(
+        "font-family: monospace; font-size: 11px; color: #d0e0f0; "
+        "background-color: #0f1520; border: 1px solid #2d3e5f; "
+        "border-radius: 4px; padding: 6px;");
+    tuneOuter->addWidget(m_tunePreviewLabel);
+
+    m_tuneResetBtn = new QPushButton("Clear Offsets");
+    m_tuneResetBtn->setFixedHeight(28);
+    m_tuneResetBtn->setStyleSheet(
+        "QPushButton { background-color: #34495e; color: white; font-size: 11px; "
+        "border-radius: 3px; padding: 4px 12px; }"
+        "QPushButton:hover { background-color: #4a6785; }");
+    connect(m_tuneResetBtn, &QPushButton::clicked, this, [this]() {
+        if (!m_tuneOffsetXSpin) return;
+        QSignalBlocker bX(m_tuneOffsetXSpin);
+        QSignalBlocker bY(m_tuneOffsetYSpin);
+        QSignalBlocker bZ(m_tuneOffsetZSpin);
+        QSignalBlocker bU(m_tuneOffsetUSpin);
+        QSignalBlocker bV(m_tuneOffsetVSpin);
+        QSignalBlocker bW(m_tuneOffsetWSpin);
+        m_tuneOffsetXSpin->setValue(0.0);
+        m_tuneOffsetYSpin->setValue(0.0);
+        m_tuneOffsetZSpin->setValue(0.0);
+        m_tuneOffsetUSpin->setValue(0.0);
+        m_tuneOffsetVSpin->setValue(0.0);
+        m_tuneOffsetWSpin->setValue(0.0);
+        onTuneOffsetChanged();
+    });
+    QHBoxLayout* tuneBtnRow = new QHBoxLayout();
+    tuneBtnRow->addStretch();
+    tuneBtnRow->addWidget(m_tuneResetBtn);
+    tuneOuter->addLayout(tuneBtnRow);
+
+    for (QDoubleSpinBox* sp : {m_tuneOffsetXSpin, m_tuneOffsetYSpin, m_tuneOffsetZSpin,
+                               m_tuneOffsetUSpin, m_tuneOffsetVSpin, m_tuneOffsetWSpin}) {
+        connect(sp, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, &PlacementRetraceWidget::onTuneOffsetChanged);
+    }
+
+    // Left-top aligned + fixed width (UI convention)
+    QHBoxLayout* tuneGroupRow = new QHBoxLayout();
+    tuneGroupRow->setContentsMargins(0, 0, 0, 0);
+    tuneGroupRow->addWidget(tuneGroup, 0, Qt::AlignLeft | Qt::AlignTop);
+    tuneGroupRow->addStretch();
+    reviewLayout->addLayout(tuneGroupRow);
 
     reviewLayout->addStretch();
 
@@ -961,6 +1101,9 @@ void PlacementRetraceWidget::computeRetraceResults()
 
     m_reviewLabel->setText(text);
 
+    // Refresh the tune-offset live preview now that m_correctedX..W are valid
+    updateTunePreview();
+
     std::cout << "[PlacementRetrace] Corrected " << m_set->config.targetPositionName
               << ": X=" << m_correctedX << " Y=" << m_correctedY << " Z=" << m_correctedZ
               << " U=" << m_correctedU << " V=" << m_correctedV << " W=" << m_correctedW << std::endl;
@@ -973,14 +1116,15 @@ void PlacementRetraceWidget::onSaveToTarget()
     std::string device = m_set->config.targetDevice;
     std::string posName = m_set->config.targetPositionName;
 
-    // Update in-memory position
+    // Apply manual tune offsets — stored in mm / deg directly (native units).
+    // Sign is direct-add (positive adds, negative subtracts) per user spec.
     PositionStruct corrected;
-    corrected.x = m_correctedX;
-    corrected.y = m_correctedY;
-    corrected.z = m_correctedZ;
-    corrected.u = m_correctedU;
-    corrected.v = m_correctedV;
-    corrected.w = m_correctedW;
+    corrected.x = m_correctedX + m_set->config.tuneOffsetX;
+    corrected.y = m_correctedY + m_set->config.tuneOffsetY;
+    corrected.z = m_correctedZ + m_set->config.tuneOffsetZ;
+    corrected.u = m_correctedU + m_set->config.tuneOffsetU;
+    corrected.v = m_correctedV + m_set->config.tuneOffsetV;
+    corrected.w = m_correctedW + m_set->config.tuneOffsetW;
 
     m_context->motionManager->AddNamedPosition(device, posName, corrected);
 
@@ -992,13 +1136,13 @@ void PlacementRetraceWidget::onSaveToTarget()
         localPath, basePath, device, posName, corrected, true, errMsg);
 
     if (saved) {
-        // Update set target position data
-        m_set->config.targetX = m_correctedX;
-        m_set->config.targetY = m_correctedY;
-        m_set->config.targetZ = m_correctedZ;
-        m_set->config.targetU = m_correctedU;
-        m_set->config.targetV = m_correctedV;
-        m_set->config.targetW = m_correctedW;
+        // Update set target position data (include manual tune offset)
+        m_set->config.targetX = corrected.x;
+        m_set->config.targetY = corrected.y;
+        m_set->config.targetZ = corrected.z;
+        m_set->config.targetU = corrected.u;
+        m_set->config.targetV = corrected.v;
+        m_set->config.targetW = corrected.w;
 
         QString deg = QString(QChar(0x00B0));
         QString savedMsg = m_reviewLabel->text();
@@ -1138,4 +1282,117 @@ void PlacementRetraceWidget::updatePositionDisplay()
             m_positionReady.store(true);
         });
     }
+}
+
+// ============================================================================
+// Manual Offset Tuner — slots and helpers
+// ============================================================================
+
+void PlacementRetraceWidget::loadTuneOffsetsFromConfig()
+{
+    if (!m_set || !m_tuneOffsetXSpin) return;
+
+    // Block valueChanged signals so we don't fire onTuneOffsetChanged during
+    // programmatic population.
+    QSignalBlocker bX(m_tuneOffsetXSpin);
+    QSignalBlocker bY(m_tuneOffsetYSpin);
+    QSignalBlocker bZ(m_tuneOffsetZSpin);
+    QSignalBlocker bU(m_tuneOffsetUSpin);
+    QSignalBlocker bV(m_tuneOffsetVSpin);
+    QSignalBlocker bW(m_tuneOffsetWSpin);
+
+    m_tuneOffsetXSpin->setValue(m_set->config.tuneOffsetX);
+    m_tuneOffsetYSpin->setValue(m_set->config.tuneOffsetY);
+    m_tuneOffsetZSpin->setValue(m_set->config.tuneOffsetZ);
+    m_tuneOffsetUSpin->setValue(m_set->config.tuneOffsetU);
+    m_tuneOffsetVSpin->setValue(m_set->config.tuneOffsetV);
+    m_tuneOffsetWSpin->setValue(m_set->config.tuneOffsetW);
+
+    updateTunePreview();
+}
+
+void PlacementRetraceWidget::updateTunePreview()
+{
+    if (!m_tunePreviewLabel) return;
+    if (!m_set) {
+        m_tunePreviewLabel->setText("(No training set loaded)");
+        return;
+    }
+
+    const double offX = m_set->config.tuneOffsetX;
+    const double offY = m_set->config.tuneOffsetY;
+    const double offZ = m_set->config.tuneOffsetZ;
+    const double offU = m_set->config.tuneOffsetU;
+    const double offV = m_set->config.tuneOffsetV;
+    const double offW = m_set->config.tuneOffsetW;
+
+    // Only show a meaningful preview once the retrace has computed a result.
+    // Before Review is reached, m_correctedX..W are still zero-initialized.
+    if (m_state != Review) {
+        QString text = QString("Offsets staged (applied at Save):\n"
+                               "  dX=%1 mm  dY=%2 mm  dZ=%3 mm\n"
+                               "  dU=%4 deg  dV=%5 deg  dW=%6 deg")
+            .arg(offX, 0, 'f', 4)
+            .arg(offY, 0, 'f', 4)
+            .arg(offZ, 0, 'f', 4)
+            .arg(offU, 0, 'f', 4)
+            .arg(offV, 0, 'f', 4)
+            .arg(offW, 0, 'f', 4);
+        m_tunePreviewLabel->setText(text);
+        return;
+    }
+
+    const double finalX = m_correctedX + offX;
+    const double finalY = m_correctedY + offY;
+    const double finalZ = m_correctedZ + offZ;
+    const double finalU = m_correctedU + offU;
+    const double finalV = m_correctedV + offV;
+    const double finalW = m_correctedW + offW;
+
+    QString text;
+    text += QString("Corrected (pre-offset):\n");
+    text += QString("  X=%1  Y=%2  Z=%3\n")
+        .arg(m_correctedX, 10, 'f', 4)
+        .arg(m_correctedY, 10, 'f', 4)
+        .arg(m_correctedZ, 10, 'f', 4);
+    text += QString("  U=%1  V=%2  W=%3\n")
+        .arg(m_correctedU, 10, 'f', 4)
+        .arg(m_correctedV, 10, 'f', 4)
+        .arg(m_correctedW, 10, 'f', 4);
+    text += QString("Final to SAVE (with offset):\n");
+    text += QString("  X=%1  Y=%2  Z=%3\n")
+        .arg(finalX, 10, 'f', 4)
+        .arg(finalY, 10, 'f', 4)
+        .arg(finalZ, 10, 'f', 4);
+    text += QString("  U=%1  V=%2  W=%3")
+        .arg(finalU, 10, 'f', 4)
+        .arg(finalV, 10, 'f', 4)
+        .arg(finalW, 10, 'f', 4);
+
+    m_tunePreviewLabel->setText(text);
+}
+
+void PlacementRetraceWidget::onTuneOffsetChanged()
+{
+    if (!m_set || !m_tuneOffsetXSpin) return;
+
+    m_set->config.tuneOffsetX = m_tuneOffsetXSpin->value();
+    m_set->config.tuneOffsetY = m_tuneOffsetYSpin->value();
+    m_set->config.tuneOffsetZ = m_tuneOffsetZSpin->value();
+    m_set->config.tuneOffsetU = m_tuneOffsetUSpin->value();
+    m_set->config.tuneOffsetV = m_tuneOffsetVSpin->value();
+    m_set->config.tuneOffsetW = m_tuneOffsetWSpin->value();
+
+    updateTunePreview();
+
+    // Re-enable Save button if it was disabled after a previous save — the
+    // user has changed the offset, so the pending "save" now needs to apply
+    // the new offset.
+    if (m_state == Review && m_saveBtn && !m_saveBtn->isEnabled()) {
+        m_saveBtn->setEnabled(true);
+        QString targetName = QString::fromStdString(m_set->config.targetPositionName);
+        m_saveBtn->setText(QString("Save to \"%1\"").arg(targetName));
+    }
+
+    emit offsetsPersistRequested();
 }

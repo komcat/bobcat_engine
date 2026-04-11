@@ -34,6 +34,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QStackedWidget>
 #include <QTimer>
 #include <future>
@@ -66,6 +67,10 @@ signals:
     void retraceCompleted(const PlacementCorrectionSet& updatedSet);
     void retraceSkipped();   // User reviewed results but chose to continue without saving
     void retraceEnded();
+    // Emitted when any manual tune offset spinbox is edited. The current
+    // m_set already reflects the new values (pointer semantics); the host
+    // page should persist the training set JSON on this signal.
+    void offsetsPersistRequested();
 
 private slots:
     void onStartRetrace();
@@ -79,6 +84,7 @@ private slots:
     void onReset();
     void onEnd();
     void updatePositionDisplay();
+    void onTuneOffsetChanged();
 
 private:
     enum WizardState { Idle, WaitRefP1, WaitRefP2, WaitTgtP1, WaitTgtP2, Review };
@@ -93,6 +99,8 @@ private:
     void runMotionAsync(std::function<bool()> motionFunc, std::function<void(bool)> onComplete);
     void computeRetraceResults();
     void setHexVelocity(double velocityMmPerSec);
+    void loadTuneOffsetsFromConfig();
+    void updateTunePreview();
 
     // Async position polling to avoid blocking UI thread with hardware queries
     std::future<void> m_positionFuture;
@@ -170,6 +178,16 @@ private:
     QPushButton* m_skipBtn = nullptr;
     QPushButton* m_resetBtn = nullptr;
     QPushButton* m_endBtn = nullptr;
+
+    // Manual offset tuner (on Review page; applied at Save time)
+    QDoubleSpinBox* m_tuneOffsetXSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetYSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetZSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetUSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetVSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetWSpin = nullptr;
+    QLabel* m_tunePreviewLabel = nullptr;
+    QPushButton* m_tuneResetBtn = nullptr;
 
     // Hex velocity preset buttons
     QPushButton* m_vel01Btn = nullptr;

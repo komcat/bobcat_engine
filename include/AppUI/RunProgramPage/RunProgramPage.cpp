@@ -2062,6 +2062,15 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onPlacementRetraceSkipped);
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
     this, &RunProgramPage::onPlacementRetraceEnded);
+  // Manual tune offsets edited during recipe execution — persist the active
+  // set back to its source JSON so the offset is remembered next run.
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
+    this, [this]() {
+      if (m_activePlacementStoreBasePath.empty()) return;
+      PlacementCorrectionStore store;
+      store.SetBasePath(m_activePlacementStoreBasePath);
+      store.SaveSet(m_activePlacementSet);
+    });
   m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
 
   // Cross-thread signal bridges for recipe callbacks (this → this connections).
@@ -5161,10 +5170,11 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
       m_context->productPositionManager->HasLoadedProduct()) {
     std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
     std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
-    store.SetBasePath((productDir / "placement_correction").string());
+    m_activePlacementStoreBasePath = (productDir / "placement_correction").string();
   } else {
-    store.SetBasePath("config/placement_correction");
+    m_activePlacementStoreBasePath = "config/placement_correction";
   }
+  store.SetBasePath(m_activePlacementStoreBasePath);
 
   // Load the training set by name
   auto optSet = store.LoadSet(trainingSetName.toStdString());

@@ -119,6 +119,23 @@ struct PlacementCorrectionConfig {
 
     // Camera for retrace exposure control
     std::string cameraId;               // camera to configure during retrace
+
+    // ------------------------------------------------------------------
+    // Manual offset tuner (persisted). Applied at Save time in
+    // PlacementRetraceWidget::onSaveToTarget() after computeRetraceResults.
+    // XYZ are in millimeters, UVW in degrees — both are added directly
+    // (positive = +, negative = -) to the corrected result:
+    //   savedX = correctedX + tuneOffsetX   (mm)
+    //   savedU = correctedU + tuneOffsetU   (deg)
+    // Persisted in the training set JSON so the offset sticks across
+    // retraces until the user clears it.
+    // ------------------------------------------------------------------
+    double tuneOffsetX = 0.0;
+    double tuneOffsetY = 0.0;
+    double tuneOffsetZ = 0.0;
+    double tuneOffsetU = 0.0;
+    double tuneOffsetV = 0.0;
+    double tuneOffsetW = 0.0;
 };
 
 // ============================================================================

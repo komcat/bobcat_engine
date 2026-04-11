@@ -117,7 +117,13 @@ bool PlacementCorrectionStore::SaveSet(const PlacementCorrectionSet& set)
         {"targetW", set.config.targetW},
         {"reverseSign", set.config.reverseSign},
         {"applyUCorrection", set.config.applyUCorrection},
-        {"cameraId", set.config.cameraId}
+        {"cameraId", set.config.cameraId},
+        {"tuneOffsetX", set.config.tuneOffsetX},
+        {"tuneOffsetY", set.config.tuneOffsetY},
+        {"tuneOffsetZ", set.config.tuneOffsetZ},
+        {"tuneOffsetU", set.config.tuneOffsetU},
+        {"tuneOffsetV", set.config.tuneOffsetV},
+        {"tuneOffsetW", set.config.tuneOffsetW}
     };
 
     // Summary diagram thumbnail offsets
@@ -223,6 +229,12 @@ std::optional<PlacementCorrectionSet> PlacementCorrectionStore::LoadSet(const st
         set.config.reverseSign = c.value("reverseSign", false);
         set.config.applyUCorrection = c.value("applyUCorrection", true);
         set.config.cameraId = c.value("cameraId", "");
+        set.config.tuneOffsetX = c.value("tuneOffsetX", 0.0);
+        set.config.tuneOffsetY = c.value("tuneOffsetY", 0.0);
+        set.config.tuneOffsetZ = c.value("tuneOffsetZ", 0.0);
+        set.config.tuneOffsetU = c.value("tuneOffsetU", 0.0);
+        set.config.tuneOffsetV = c.value("tuneOffsetV", 0.0);
+        set.config.tuneOffsetW = c.value("tuneOffsetW", 0.0);
     }
 
     // Load summary thumbnail offsets (backward-compatible: defaults if absent)

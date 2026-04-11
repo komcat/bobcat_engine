@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QLabel>
 #include <QPushButton>
+#include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QScrollArea>
 #include "PlacementCorrectionData.h"
@@ -27,9 +28,15 @@ public:
 
 signals:
     void recomputeRequested();
+    // Emitted after the user re-saves the target position with a manual
+    // offset. The updated set carries the new targetX..W values; the host
+    // page should mirror them into its set and persist the training set JSON.
+    void targetResaved(const PlacementCorrectionSet& updatedSet);
 
 private slots:
     void onToggleTransformDetails();
+    void onResaveTargetPosition();
+    void onManualOffsetChanged();
 
 private:
     void setupUI();
@@ -60,4 +67,17 @@ private:
     QLabel* m_matrixLabel;
     QLabel* m_targetGlobalDeltaLabel;
     QLabel* m_targetLocalDeltaLabel;
+
+    // Section E: Manual offset tuner (re-save target position)
+    QLabel* m_currentTargetLabel;
+    QDoubleSpinBox* m_offsetXSpin;
+    QDoubleSpinBox* m_offsetYSpin;
+    QDoubleSpinBox* m_offsetZSpin;
+    QDoubleSpinBox* m_offsetUSpin;
+    QDoubleSpinBox* m_offsetVSpin;
+    QDoubleSpinBox* m_offsetWSpin;
+    QLabel* m_offsetPreviewLabel;
+    QPushButton* m_offsetClearBtn;
+    QPushButton* m_resaveTargetBtn;
+    QLabel* m_resaveStatusLabel;
 };

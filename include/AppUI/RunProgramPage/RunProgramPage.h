@@ -252,6 +252,7 @@ private:
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
+  std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;
   std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
   std::unique_ptr<SequenceContext> m_rollCorrectionContext;  // Context for stepwise roll correction stop control
