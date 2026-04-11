@@ -40,6 +40,7 @@ class DataStore;
 class TcpClientManager;
 class ConnectionSplashScreen;  // ✅ NEW: Splash screen for hardware connection
 class SafetyEventLog;          // Structured safety event logging
+class ScanActivityTracker;     // Scan-busy broadcaster for TopBar indicator
 
 class Application : public QObject
 {
@@ -152,6 +153,7 @@ private:
   std::unique_ptr<CameraConfigManager> m_cameraConfigManager; // Camera config (per-camera calibration)
   std::unique_ptr<BeamResultBroker> m_beamResultBroker;       // Beam detection pub-sub broker
   std::unique_ptr<BeamOptimizerManager> m_beamOptimizerManager; // Beam optimization coordinator
+  std::unique_ptr<ScanActivityTracker> m_scanActivityTracker; // Scan-busy broadcaster for TopBar indicator
 
   ApplicationContext m_context;
 

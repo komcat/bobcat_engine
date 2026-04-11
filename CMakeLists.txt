@@ -768,6 +768,8 @@ set(SOURCES
     include/safety/SafetyWatchManager.cpp
     include/safety/SafetyEventLog.cpp
     include/safety/SafetyAlertDialog.cpp
+    # Common utilities
+    include/common/ScanActivityTracker.cpp
     # Application settings
     include/settings/ApplicationSettings.cpp
     # Settings UI page
@@ -1033,6 +1035,8 @@ set(HEADERS
     include/safety/SafetyEventLog.h
     include/common/ErrorCode.h
     include/common/ThreadPriority.h
+    include/common/ScanActivityTracker.h
+    include/common/ScanActivityGuard.h
     include/safety/SafetyAlertDialog.h
     # Application settings
     include/settings/ApplicationSettings.h

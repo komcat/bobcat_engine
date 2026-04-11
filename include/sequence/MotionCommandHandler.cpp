@@ -12,6 +12,7 @@
 #include "../vision/VisionManager.h"  // For pixel-to-mm calibration in MoveToContextPosition
 #include "../motions/DeviceLinkManager.h"  // For linked device commands
 #include "../motions/PI/pi_controller.h"   // For FastAlignXY/ZXY commands (direct PI access)
+#include "../common/ScanActivityGuard.h"   // RAII busy-state for TopBar indicator
 #include <chrono>
 #include <thread>
 #include <iostream>                   // ✅ For debug logging
@@ -890,6 +891,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // XCAN - HEXAPOD ADAPTIVE SCANNING
   // ============================================================================
   else if (methodName == "XCAN") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "XCAN");
+
     // ✅ VALIDATE DEVICE NAME (must match hex-*)
     std::regex hexPattern("^hex-.*");
     if (!std::regex_match(deviceName, hexPattern)) {
@@ -1066,7 +1070,8 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("XCAN: Scan completed successfully", "MotionHandler");
+      // Redundant with completion-callback log that already reports the peak value.
+      m_logger->Debug("XCAN: Scan completed successfully", "MotionHandler");
     }
 
     return true;
@@ -1076,6 +1081,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // XCAN EXTENDED - FLEXIBLE ADAPTIVE SCANNING WITH CUSTOM PARAMETERS
   // ============================================================================
   else if (methodName == "XCANExtended") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "XCANExtended");
+
     // ✅ REQUIRED PARAMETER: axes
     auto axesIt = params.find("axes");
     if (axesIt == params.end()) {
@@ -1346,7 +1354,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "XCANExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "XCANExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -1364,8 +1372,14 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
+      // Redundant with completion-callback log that already reports the peak value,
+      // except in the early-exit case — keep INFO only for early-exit, DEBUG otherwise.
       std::string completionReason = earlyExit.load() ? " (early exit - threshold reached)" : "";
-      m_logger->Info("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      if (earlyExit.load()) {
+        m_logger->Info("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      } else {
+        m_logger->Debug("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      }
     }
 
     return true;
@@ -1375,6 +1389,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN - 2D PLANAR GRID SCANNING WITH PRESET MODES
   // ============================================================================
   else if (methodName == "GridScan") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScan");
+
     // ✅ VALIDATE DEVICE NAME (must match hex-*)
     std::regex hexPattern("^hex-.*");
     if (!std::regex_match(deviceName, hexPattern)) {
@@ -1595,7 +1612,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis1 = targetAxis1;
           peakAxis2 = targetAxis2;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScan: New peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
@@ -1605,7 +1622,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScan: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -1654,7 +1671,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScan");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScan: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -1724,6 +1741,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN EXTENDED - FULL CONTROL 2D GRID SCANNING
   // ============================================================================
   else if (methodName == "GridScanExtended") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScanExtended");
+
     // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
     auto planeIt = params.find("plane");
     if (planeIt == params.end()) {
@@ -1957,7 +1977,7 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info(
+      m_logger->Debug(
         "GridScanExtended: Axis1(" + axis1 + ") dir=" + directionAxis1 +
         " start=" + std::to_string(startAxis1) +
         ", Axis2(" + axis2 + ") dir=" + directionAxis2 +
@@ -2053,7 +2073,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis1 = targetAxis1;
           peakAxis2 = targetAxis2;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanExtended: New peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
@@ -2075,7 +2095,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScanExtended: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -2126,7 +2146,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScanExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScanExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -2138,7 +2158,7 @@ bool MotionCommandHandler::ExecuteCommand(
       std::string positionStr = std::to_string(peakAxis1) + "," + std::to_string(peakAxis2);
       context->SetValue(capturePositionAs, positionStr, deviceName, "GridScanExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScanExtended: Captured peak position " + positionStr + " to context:" + capturePositionAs,
           "MotionHandler"
         );
@@ -2212,6 +2232,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN DUAL CHANNEL - Two-channel grid scan for PIC waveguide alignment
   // ============================================================================
   else if (methodName == "GridScanDualChannel") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScanDualChannel");
+
     // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
     auto planeItDC = params.find("plane");
     if (planeItDC == params.end()) {
@@ -2521,7 +2544,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis2_ch1 = targetAxis2;
           peakFullPos_ch1 = fullPos;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanDualChannel: New Ch1 peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value1),
               "MotionHandler"
@@ -2536,7 +2559,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis2_ch2 = targetAxis2;
           peakFullPos_ch2 = fullPos;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanDualChannel: New Ch2 peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value2),
               "MotionHandler"
@@ -2558,7 +2581,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScanDualChannel: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -2630,25 +2653,25 @@ bool MotionCommandHandler::ExecuteCommand(
     // ✅ CAPTURE RESULTS TO CONTEXT
     if (!capturePeak1As.empty() && context) {
       context->SetValue(capturePeak1As, static_cast<float>(peakValue1), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak " + std::to_string(peakValue1) + " to context:" + capturePeak1As, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch1 peak " + std::to_string(peakValue1) + " to context:" + capturePeak1As, "MotionHandler");
     }
     if (!capturePeak2As.empty() && context) {
       context->SetValue(capturePeak2As, static_cast<float>(peakValue2), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak " + std::to_string(peakValue2) + " to context:" + capturePeak2As, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch2 peak " + std::to_string(peakValue2) + " to context:" + capturePeak2As, "MotionHandler");
     }
     if (!capturePeak1PosAs.empty() && context) {
       std::string pos1Str = std::to_string(peakAxis1_ch1) + "," + std::to_string(peakAxis2_ch1);
       context->SetValue(capturePeak1PosAs, pos1Str, deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak position " + pos1Str + " to context:" + capturePeak1PosAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch1 peak position " + pos1Str + " to context:" + capturePeak1PosAs, "MotionHandler");
     }
     if (!capturePeak2PosAs.empty() && context) {
       std::string pos2Str = std::to_string(peakAxis1_ch2) + "," + std::to_string(peakAxis2_ch2);
       context->SetValue(capturePeak2PosAs, pos2Str, deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak position " + pos2Str + " to context:" + capturePeak2PosAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch2 peak position " + pos2Str + " to context:" + capturePeak2PosAs, "MotionHandler");
     }
     if (!capturePeakDeltaAs.empty() && context) {
       context->SetValue(capturePeakDeltaAs, static_cast<float>(peakDeltaAxis1), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured peak delta " + std::to_string(peakDeltaAxis1) + " mm to context:" + capturePeakDeltaAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured peak delta " + std::to_string(peakDeltaAxis1) + " mm to context:" + capturePeakDeltaAs, "MotionHandler");
     }
 
     if (m_logger) {

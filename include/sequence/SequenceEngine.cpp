@@ -79,6 +79,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   motionHandler->SetDataStore(m_context->dataStore);
   motionHandler->SetProductPositionManager(m_context->productPositionManager);
   motionHandler->SetDeviceLinkManager(m_context->deviceLinkManager);
+  motionHandler->SetScanActivityTracker(m_context->scanActivityTracker);
   m_motionHandler = motionHandler.get();  // ✅ Store raw pointer before move
   m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
 

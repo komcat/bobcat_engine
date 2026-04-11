@@ -26,6 +26,24 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ## 2026-04-11
 
+- **scan-busy indicator in top bar, Scanning tab cleanup, grid-scan log demotion**
+  - New `ScanActivityTracker` QObject (`include/common/`) — thread-safe, reference-counted broadcaster with `activeChanged(bool)` signal; scan operations register via RAII `ScanActivityGuard` so every return path (success, early failure, user stop) correctly pairs Begin/End
+  - `⚡ SCANNING` amber badge added to TopBar next to the safety LED; hidden when idle, visible whenever any scan is in progress (tab-initiated OR recipe-initiated), driven via `Qt::QueuedConnection` for cross-thread safety
+  - `MotionCommandHandler` — RAII guards at all 5 scan command entry points: `XCAN`, `XCANExtended`, `GridScan`, `GridScanExtended`, `GridScanDualChannel`; covers recipe-driven grid scans
+  - `ScanExecutor` — flag-guarded Begin/End around `executeScan()` + `executeRotationScan()` with pairing in `cleanup()`/`cleanupRotation()` so async completion and stop paths clear correctly
+  - `ApplicationContext.scanActivityTracker` field; instance owned by `Application`, created after settings load but before SequenceEngine init so MotionCommandHandler can be wired at registration time
+  - Scanning tab (`ScanControlWidget`): removed the "Rotation Optimization" group entirely (~200 LOC — device/axis/step/threshold/Start Rotation Scan button); `RotationScanController` and `ScanExecutor::executeRotationScan` left in place but no longer reachable from this UI
+  - Scanning tab compact layout: Hexapod Scanning group top-left anchored via `QSizePolicy::Fixed` + trailing horizontal/vertical stretches; all 6 Coarse/Fine/Ultra Fine buttons `setFixedSize(140, 26)`; STOP button `setFixedSize(140, 90)`; Data Channel combo `setFixedWidth(320)`; big value label `setFixedWidth(500)`
+  - Grid-scan log noise reduction (19 sites): demoted per-point "New peak", per-20-points "Progress", context-capture echoes, and redundant "Scan completed successfully" trailers across XCAN/XCANExtended/GridScan/GridScanExtended/GridScanDualChannel; KEPT at INFO: scan start, peak-value callbacks, returning-to-peak, final summary, exit threshold reached, stop requested
+
+- `8022a4a` — **add Logging.DebugEnabled application setting to suppress verbose developer logs**
+  - New `[Logging] DebugEnabled` bool in `config/system/applicationSettings.ini`, default `false` (quiet operator mode); editable via Application Settings → Logging section with a bool toggle
+  - `LogManager::SetMinimumLevel` moved out of header to sync both `m_minimumLevel` and spdlog's own level — fixes latent bug where spdlog's hard-coded info level silently dropped DEBUG messages even when `m_minimumLevel` allowed them
+  - `LogManager` constructor default minimum level changed from `DEBUG` to `INFO`
+  - Fixed 3 `MotionCommandHandler` messages literally prefixed `"[DEBUG]"` but emitted via `m_logger->Info` — stripped the prefix and demoted the calls
+  - Demoted ~80 call sites from INFO to DEBUG across `SequenceEngine` (22 "Registered X handler" startup lines + `⚙️ Executing`, `Custom timeout`, `Building device registry`), `MotionCommandHandler` (param-resolution echoes, `WaitForMotion` diagnostics, `ParallelMove` per-device progress), `ACSController`/`PIController`/`UnifiedMotionManager` (init/shutdown, thread start/stop, per-axis velocity echoes, `MoveToAbs`/`MoveRelative` routing), `SystemCommandHandler` (`Waiting for Xms` / `Wait completed` pairs), `IOCommandHandler` (pin-name fallback, `Delaying`), `DUTCommandHandler` (product-name loads), `CameraManager` (exposure setting echoes), `AdaptiveScanController` (ctor/dtor), `JogPanelWindow` (device-not-connected, panel-refreshed, applied-exposure)
+  - Outcome: trivial 8-step recipe log dropped from ~60 lines to ~10 operator-meaningful lines when the setting is off; scans no longer flood the log with 100+ per-iteration move traces
+
 - **placement correction manual offset tuner on review and view-results pages**
   - Added Manual Offset Tuner group box to PlacementRetraceWidget (Review state): nudge the corrected hex target position by XYZ (mm) and UVW (°) before saving; offsets are applied on top of the computed retrace correction and written to `motor_devices.local.json`
   - Added "Re-save Target Position" tuner workflow to PlacementResultWidget (View Results state): adjust an already-saved target position by XYZ/UVW offsets and re-persist without requiring a full retrace cycle

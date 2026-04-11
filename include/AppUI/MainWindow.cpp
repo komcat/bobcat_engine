@@ -184,6 +184,8 @@ void MainWindow::setupUI()
   connect(m_topBar, &TopBar::rtlmButtonClicked, this, &MainWindow::onToggleRtlmWindow);
   connect(m_topBar, &TopBar::rtlm2ButtonClicked, this, &MainWindow::onToggleRtlmWindow2);
   connect(m_topBar, &TopBar::swirWindowButtonClicked, this, &MainWindow::onToggleSwirWindow);
+  // Wire the scan-busy badge to the tracker so recipe/tab scans light it up.
+  m_topBar->connectScanActivityTracker(m_context->scanActivityTracker);
   mainLayout->addWidget(m_topBar, 0);
 
   // Page stack (main content area)

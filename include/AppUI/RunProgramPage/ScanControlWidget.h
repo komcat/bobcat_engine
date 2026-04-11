@@ -5,8 +5,6 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QPushButton>
-#include <QDoubleSpinBox>
-#include <QSpinBox>
 #include <QStringList>
 #include <QVBoxLayout>
 #include <QGroupBox>
@@ -18,10 +16,9 @@
  * - Selecting data channel
  * - Displaying current channel value
  * - Triggering coarse/fine translation scans on left/right devices
- * - Triggering rotation optimization scans
  * - Stopping active scans
  *
- * Emits signals when user requests a scan - does NOT contain business logic
+ * Emits signals when user requests a scan - does NOT contain business logic.
  */
 class ScanControlWidget : public QWidget
 {
@@ -58,19 +55,6 @@ signals:
   void scanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel);
 
   /**
-   * @brief Emitted when user requests a rotation scan
-   * @param deviceName Device to scan (e.g. "hex-right")
-   * @param rotationAxis Rotation axis ("U", "V", or "W")
-   * @param rotationStep Rotation step in degrees
-   * @param threshold Improvement threshold (0.01 = 1%)
-   * @param maxNoImprovement Max consecutive no-improvement steps
-   * @param channel Selected data channel
-   */
-  void rotationScanRequested(QString deviceName, QString rotationAxis,
-                              double rotationStep, double threshold,
-                              int maxNoImprovement, QString channel);
-
-  /**
    * @brief Emitted when user clicks stop button
    */
   void stopRequested();
@@ -89,14 +73,10 @@ private slots:
   void onRightFineClicked();
   void onRightUltraFineClicked();
   void onStopClicked();
-  void onRotationScanClicked();
-  void onRotationGroupToggled(bool checked);
 
 private:
   void setupUI();
-  void setupRotationUI(QVBoxLayout* parentLayout);
   void emitScanRequest(const QString& deviceName, ScanMode mode);
-  void emitRotationScanRequest();
 
   // UI Components - Translation Scanning
   QComboBox* m_channelCombo;
@@ -108,14 +88,4 @@ private:
   QPushButton* m_rightFineButton;
   QPushButton* m_rightUltraFineButton;
   QPushButton* m_stopButton;
-
-  // UI Components - Rotation Scanning
-  QGroupBox* m_rotationGroup;
-  QWidget* m_rotationContent;
-  QComboBox* m_rotationDeviceCombo;
-  QComboBox* m_rotationAxisCombo;
-  QDoubleSpinBox* m_rotationStepSpin;
-  QDoubleSpinBox* m_thresholdSpin;
-  QSpinBox* m_maxNoImprovementSpin;
-  QPushButton* m_rotationScanButton;
 };

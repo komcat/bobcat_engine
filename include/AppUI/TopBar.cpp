@@ -2,6 +2,7 @@
 #include "TopBar.h"
 #include "ApplicationContext.h"
 #include "safety/SafetyWatchManager.h"
+#include "common/ScanActivityTracker.h"
 #include "TECManager.h"
 #include "TECTypes.h"
 #include <QHBoxLayout>
@@ -159,6 +160,7 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
   , m_rtlm2Button(nullptr)
   , m_swirButton(nullptr)
   , m_safetyIndicator(nullptr)
+  , m_scanBusyLabel(nullptr)
   , m_tecTemperatureLabel(nullptr)
   , m_tecPollTimer(nullptr)
 {
@@ -234,6 +236,24 @@ void TopBar::setupUI()
   // Safety indicator (before the buttons)
   m_safetyIndicator = new SafetyIndicatorWidget(this);
   layout->addWidget(m_safetyIndicator);
+  layout->addSpacing(10);
+
+  // Scan-busy indicator: amber badge shown while any scan (tab-initiated
+  // or recipe-initiated GridScan/XCAN) is active. Driven by ScanActivityTracker.
+  m_scanBusyLabel = new QLabel(QString::fromUtf8("\xE2\x9A\xA1 SCANNING"), this);
+  m_scanBusyLabel->setStyleSheet(
+    "QLabel { "
+    "  background-color: #ca8a04; "   /* amber */
+    "  color: #1a1a1a; "
+    "  font-weight: bold; "
+    "  font-size: 11px; "
+    "  padding: 4px 10px; "
+    "  border-radius: 4px; "
+    "}"
+  );
+  m_scanBusyLabel->setFixedHeight(24);
+  m_scanBusyLabel->hide();  // idle by default
+  layout->addWidget(m_scanBusyLabel);
   layout->addSpacing(10);
 
   // Aux Window button (optional, can be enabled if needed)
@@ -550,4 +570,27 @@ void TopBar::connectSafetyManager(SafetyWatchManager* manager)
   }
 
   std::cout << "[TopBar] Connected to SafetyWatchManager" << std::endl;
+}
+
+void TopBar::connectScanActivityTracker(ScanActivityTracker* tracker)
+{
+  if (!tracker || !m_scanBusyLabel) {
+    std::cout << "[TopBar] Cannot connect scan activity tracker - null pointer" << std::endl;
+    return;
+  }
+
+  // Tracker may emit from the SequenceEngine worker thread — marshal to UI
+  // thread via QueuedConnection before touching the QLabel.
+  connect(tracker, &ScanActivityTracker::activeChanged, this,
+    [this](bool active) {
+      if (m_scanBusyLabel) {
+        m_scanBusyLabel->setVisible(active);
+      }
+    }, Qt::QueuedConnection);
+
+  // Initialize visibility from current state (in case tracker already has
+  // an active scan by the time we connect — defensive, shouldn't normally happen).
+  m_scanBusyLabel->setVisible(tracker->IsActive());
+
+  std::cout << "[TopBar] Connected to ScanActivityTracker" << std::endl;
 }

@@ -10,6 +10,7 @@ class TECManager;
 
 struct ApplicationContext;
 class SafetyWatchManager;
+class ScanActivityTracker;
 
 /**
  * @brief Visual indicator for SafetyWatchManager status
@@ -94,6 +95,14 @@ public:
   void connectSafetyManager(SafetyWatchManager* manager);
 
   /**
+   * @brief Wire the scan-busy indicator to the ScanActivityTracker.
+   * The "⚡ SCANNING" badge is shown while any scan is active (tab-initiated
+   * or recipe-initiated via MotionCommandHandler's GridScan/XCAN commands).
+   * Null tracker is a no-op.
+   */
+  void connectScanActivityTracker(ScanActivityTracker* tracker);
+
+  /**
    * @brief Start TEC temperature polling in the top bar
    * Reads temperature from the first connected TEC device and displays it.
    */
@@ -118,6 +127,7 @@ private:
   QPushButton* m_rtlm2Button;
   QPushButton* m_swirButton;
   SafetyIndicatorWidget* m_safetyIndicator;
+  QLabel* m_scanBusyLabel;       // ⚡ SCANNING badge, hidden when idle
   QLabel* m_tecTemperatureLabel;
   QTimer* m_tecPollTimer;
 };

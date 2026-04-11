@@ -27,6 +27,7 @@
 #include "settings/ApplicationSettings.h"
 #include "safety/SafetyEventLog.h"
 #include "customserver/BeamServerClient.h"
+#include "common/ScanActivityTracker.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
@@ -273,6 +274,13 @@ void Application::initializeManagers()
                          (debugEnabled ? "DEBUG (verbose)" : "INFO (operator)"),
                          "Application");
     }
+
+    // Create the scan-activity tracker now, before any subsystem that might
+    // reference it (SequenceEngine/MotionCommandHandler, ScanExecutor, TopBar).
+    // Owned by Application via unique_ptr; raw pointer lives in ApplicationContext.
+    m_scanActivityTracker = std::make_unique<ScanActivityTracker>();
+    m_context.scanActivityTracker = m_scanActivityTracker.get();
+    m_logManager->Debug("ScanActivityTracker initialized", "Application");
 
     // Now we can log properly
     m_logManager->Info("Initializing managers...", "Application");
