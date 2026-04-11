@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include <QVBoxLayout>
+#include <QString>
 #include <vector>
 #include "../VisionResult.h"
 
@@ -119,12 +120,18 @@ public:
     void setOverlays(const std::vector<OverlayCommand>& overlays);
     void clearOverlays();
 
+    // Test-mode image injection (load image from disk for vision profiling)
+    bool isInjectionMode() const;
+    void setInjectedFileName(const QString& fileName);
+
 signals:
     void captureClicked();
     void clearClicked();
     void roiDragged(int startX, int startY, int endX, int endY);
     void searchBoxDragged(int startX, int startY, int endX, int endY);
     void templateSelectionDragged(int startX, int startY, int endX, int endY);
+    void injectionModeToggled(bool enabled);
+    void loadInjectedImageRequested();
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -145,6 +152,12 @@ private:
     QPushButton* m_captureBtn;
     QPushButton* m_clearBtn;
     QCheckBox* m_crosshairToggle;
+
+    // Test-mode injection bar (above scroll area)
+    QCheckBox* m_injectModeToggle = nullptr;
+    QPushButton* m_loadInjectBtn = nullptr;
+    QLabel* m_injectPathLabel = nullptr;
+    QString m_injectFileNameFull;
 
     bool m_showCrosshair;
 

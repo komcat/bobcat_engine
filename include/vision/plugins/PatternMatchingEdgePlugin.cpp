@@ -216,15 +216,29 @@ bool PatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& output, V
         centerCmd.thickness = 2;
         result.overlays.push_back(centerCmd);
 
-        if (m_useCustomAnchor) {
-            OverlayCommand anchorCmd;
-            anchorCmd.type = OverlayCommand::DrawCrosshair;
-            anchorCmd.p1 = anchorPoint;
-            anchorCmd.radius = 20;
-            anchorCmd.color = cv::Scalar(0, 0, 255);
-            anchorCmd.thickness = 2;
-            result.overlays.push_back(anchorCmd);
+        // Always show the detected anchor point as a red filled dot + small
+        // red crosshair. When a custom anchor is configured the marker will
+        // sit at the offset position; otherwise it overlays the yellow center
+        // crosshair to visually confirm the reported point coordinate.
+        result.addPointOverlay(anchorPoint, cv::Scalar(0, 0, 255), 5);
+        {
+            const double ancCrossR = 8.0;
+            result.addLineOverlay(
+                cv::Point2d(anchorPoint.x - ancCrossR, anchorPoint.y),
+                cv::Point2d(anchorPoint.x + ancCrossR, anchorPoint.y),
+                cv::Scalar(0, 0, 255), 2);
+            result.addLineOverlay(
+                cv::Point2d(anchorPoint.x, anchorPoint.y - ancCrossR),
+                cv::Point2d(anchorPoint.x, anchorPoint.y + ancCrossR),
+                cv::Scalar(0, 0, 255), 2);
         }
+
+        // Score % text label, placed at the top-right of the match rectangle
+        char scoreText[32];
+        std::snprintf(scoreText, sizeof(scoreText), "%.1f%%", matchScore * 100.0);
+        result.addTextOverlay(scoreText,
+            cv::Point2d(bestLoc.x + m_templateEdge.cols + 5, bestLoc.y + 12),
+            cv::Scalar(0, 0, 255), 1);
 
         // Add point result
         std::string pointName = "match_" + std::to_string(i);

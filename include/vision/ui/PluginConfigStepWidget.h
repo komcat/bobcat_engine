@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QPointer>
+#include <QTimer>
 
 struct ApplicationContext;
 struct VisionWizardState;
@@ -29,9 +30,11 @@ public:
 
 signals:
     void applyParamsClicked();
+    void liveExecuteRequested();
 
 private:
     void setupUI();
+    void wireLiveExecution(QWidget* configWidget);
 
     ApplicationContext* m_context;
     VisionWizardState*  m_state = nullptr;
@@ -45,4 +48,8 @@ private:
     // Image widget placeholder (right side)
     QWidget*     m_imagePlaceholder;
     QVBoxLayout* m_imagePlaceholderLayout;
+
+    // Live-execute debounce: any spinbox/slider value change in the plugin
+    // config widget restarts this timer; on timeout we emit liveExecuteRequested.
+    QTimer*      m_liveExecuteTimer = nullptr;
 };

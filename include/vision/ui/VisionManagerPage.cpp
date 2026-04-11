@@ -48,6 +48,7 @@
 #include <QThread>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <fstream>
 #include <iostream>
 
@@ -259,6 +260,8 @@ void VisionManagerPage::connectSignals()
     // Step 3: Plugin config signals (plugin selection is via nav dialog)
     connect(m_pluginStep, &PluginConfigStepWidget::applyParamsClicked,
             this, &VisionManagerPage::onExecuteRequested);
+    connect(m_pluginStep, &PluginConfigStepWidget::liveExecuteRequested,
+            this, &VisionManagerPage::onExecuteRequested);
 
     // Step 4: Execute signals
     connect(m_executeStep, &ExecuteTuneStepWidget::executeClicked,
@@ -285,6 +288,12 @@ void VisionManagerPage::connectSignals()
     });
     connect(m_imageWidget, &VisionImageWidget::templateSelectionDragged,
             this, &VisionManagerPage::onTemplateSelectionDragged);
+
+    // Test-mode injection signals
+    connect(m_imageWidget, &VisionImageWidget::injectionModeToggled,
+            this, &VisionManagerPage::onInjectionModeToggled);
+    connect(m_imageWidget, &VisionImageWidget::loadInjectedImageRequested,
+            this, &VisionManagerPage::onLoadInjectedImageRequested);
 
     std::cout << "[VisionManagerPage] Signals connected" << std::endl;
 }
@@ -660,6 +669,10 @@ void VisionManagerPage::onImageModeChanged(bool isLive)
 
 void VisionManagerPage::onLiveTimerTick()
 {
+    if (m_useInjectedImage) {
+        return;  // Test mode: never overwrite injected image with live frame
+    }
+
     if (!m_frameSubscriber || !m_frameSubscriber->IsCameraConnected() || !m_frameSubscriber->IsCameraGrabbing()) {
         return;
     }
@@ -671,6 +684,122 @@ void VisionManagerPage::onLiveTimerTick()
     QImage qImage(frame.imageData.data(), frame.width, frame.height,
                   frame.width * frame.channels, format);
     m_imageWidget->setImage(QPixmap::fromImage(qImage));
+}
+
+// ========== Test-mode Image Injection ==========
+
+void VisionManagerPage::onInjectionModeToggled(bool enabled)
+{
+    m_useInjectedImage = enabled;
+
+    if (enabled) {
+        // Stop the live camera stream so it cannot overwrite the injected image
+        if (m_liveTimer && m_liveTimer->isActive()) {
+            m_liveTimer->stop();
+        }
+
+        // If we already have a previously loaded injected image, re-display it
+        if (!m_injectedImage.empty()) {
+            VisionManager::instance().setInputImage(m_injectedImage);
+            m_state.hasValidImage = true;
+            refreshCautionIcons();
+        }
+
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Info("Vision test-mode injection ENABLED", "VisionManagerPage");
+        }
+    } else {
+        // Drop the injected image and clear the display
+        m_injectedImage.release();
+        m_injectedImagePath.clear();
+        m_imageWidget->setInjectedFileName(QString());
+        m_imageWidget->clearImage();
+        m_imageWidget->clearResultMarkers();
+        m_imageWidget->clearOverlays();
+        VisionManager::instance().clearImages();
+        m_state.hasValidImage = false;
+        refreshCautionIcons();
+
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Info("Vision test-mode injection DISABLED", "VisionManagerPage");
+        }
+    }
+}
+
+void VisionManagerPage::onLoadInjectedImageRequested()
+{
+    QString path = QFileDialog::getOpenFileName(
+        this,
+        "Select Test Image",
+        QString(),
+        "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)");
+
+    if (path.isEmpty()) {
+        return;
+    }
+
+#ifdef HAS_OPENCV
+    cv::Mat loaded = cv::imread(path.toStdString(), cv::IMREAD_UNCHANGED);
+    if (loaded.empty()) {
+        m_executeStep->displayResult("Failed to load image:\n" + path);
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Error("Failed to load injected image: " + path.toStdString(), "VisionManagerPage");
+        }
+        return;
+    }
+
+    // Normalize to formats vision plugins accept (1 or 3 channels).
+    // Drop alpha from RGBA images so plugins like CircleDetect (which only
+    // supports 1/3-channel input) can process injected PNGs with transparency.
+    if (loaded.channels() == 4) {
+        cv::Mat bgr;
+        cv::cvtColor(loaded, bgr, cv::COLOR_BGRA2BGR);
+        loaded = bgr;
+    } else if (loaded.channels() != 1 && loaded.channels() != 3) {
+        m_executeStep->displayResult("Unsupported image channel count: " +
+                                     QString::number(loaded.channels()));
+        return;
+    }
+
+    m_injectedImage = loaded;
+    m_injectedImagePath = path;
+
+    // Build a QImage for display
+    QImage qImage;
+    if (loaded.channels() == 1) {
+        qImage = QImage(loaded.data, loaded.cols, loaded.rows,
+                        static_cast<int>(loaded.step), QImage::Format_Grayscale8).copy();
+    } else {  // 3 channels (BGR)
+        cv::Mat rgb;
+        cv::cvtColor(loaded, rgb, cv::COLOR_BGR2RGB);
+        qImage = QImage(rgb.data, rgb.cols, rgb.rows,
+                        static_cast<int>(rgb.step), QImage::Format_RGB888).copy();
+    }
+
+    m_imageWidget->setImage(QPixmap::fromImage(qImage));
+    m_imageWidget->clearResultMarkers();
+    m_imageWidget->clearOverlays();
+    m_imageWidget->setInjectedFileName(QFileInfo(path).fileName());
+
+    // Push to VisionManager (BGR/grayscale format, matching onCaptureClicked behavior)
+    VisionManager::instance().setInputImage(m_injectedImage);
+    m_state.hasValidImage = true;
+    refreshCautionIcons();
+
+    if (m_state.selectedPluginName == "PatternMatching") {
+        updatePatternMatchingSourceImage();
+    }
+
+    if (m_context && m_context->logManager) {
+        m_context->logManager->Info("Loaded injected test image: " + path.toStdString() +
+                                    " (" + std::to_string(loaded.cols) + "x" +
+                                    std::to_string(loaded.rows) + ", " +
+                                    std::to_string(loaded.channels()) + " channels)",
+                                    "VisionManagerPage");
+    }
+#else
+    m_executeStep->displayResult("OpenCV not available - cannot load injected image.");
+#endif
 }
 
 // ========== Step 1: Camera & Lighting ==========
@@ -739,6 +868,21 @@ void VisionManagerPage::onLightingSettingsChanged()
 void VisionManagerPage::onCaptureClicked()
 {
     std::cout << "[VisionManagerPage] Capture clicked" << std::endl;
+
+    if (m_useInjectedImage) {
+        if (m_injectedImage.empty()) {
+            m_executeStep->displayResult("Test Mode: no image loaded.\n\nClick 'Load Image...' above the view.");
+            return;
+        }
+        // Re-push the injected image into VisionManager (in case it was cleared)
+        VisionManager::instance().setInputImage(m_injectedImage);
+        m_state.hasValidImage = true;
+        refreshCautionIcons();
+        if (m_state.selectedPluginName == "PatternMatching") {
+            updatePatternMatchingSourceImage();
+        }
+        return;
+    }
 
     if (!m_frameSubscriber) {
         m_executeStep->displayResult("Error: No camera selected");
@@ -862,7 +1006,15 @@ void VisionManagerPage::onExecuteRequested()
 
     // Auto-recapture fresh image before execution
     cv::Mat inputImage;
-    if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected() && m_frameSubscriber->IsCameraGrabbing()) {
+    if (m_useInjectedImage) {
+        if (m_injectedImage.empty()) {
+            m_executeStep->displayResult("Test Mode: no image loaded.\n\nClick 'Load Image...' above the view.");
+            return;
+        }
+        inputImage = m_injectedImage.clone();
+        VisionManager::instance().setInputImage(inputImage);
+        m_state.hasValidImage = true;
+    } else if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected() && m_frameSubscriber->IsCameraGrabbing()) {
         QThread::msleep(100);
 
         CameraFrameData frame = m_frameSubscriber->GetLatestFrame();
@@ -942,7 +1094,14 @@ void VisionManagerPage::onReliabilityTestRequested()
     }
 
 #ifdef HAS_OPENCV
-    VisionReliabilityTestDialog dialog(m_context, m_state.selectedPluginName, m_frameSubscriber, this);
+    VisionReliabilityTestDialog dialog(
+        m_context,
+        m_state.selectedPluginName,
+        m_frameSubscriber,
+        m_state.searchBoxEnabled,
+        m_state.searchBoxStartX, m_state.searchBoxStartY,
+        m_state.searchBoxEndX,   m_state.searchBoxEndY,
+        this);
     dialog.exec();
 #else
     QMessageBox::warning(this, "OpenCV Not Available",

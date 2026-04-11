@@ -4,6 +4,9 @@
 #include "VisionImageWidget.h"
 #include "VisionWizardState.h"
 #include <QHBoxLayout>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QSlider>
 #include <iostream>
 
 PluginConfigStepWidget::PluginConfigStepWidget(ApplicationContext* context, QWidget* parent)
@@ -18,6 +21,15 @@ PluginConfigStepWidget::PluginConfigStepWidget(ApplicationContext* context, QWid
     , m_imagePlaceholderLayout(nullptr)
 {
     setupUI();
+
+    // Live-execute debounce timer (single-shot, restarted on every parameter
+    // change). Keeps the wizard from re-executing on every keystroke while a
+    // user holds the spinbox up/down arrow.
+    m_liveExecuteTimer = new QTimer(this);
+    m_liveExecuteTimer->setSingleShot(true);
+    m_liveExecuteTimer->setInterval(300);
+    connect(m_liveExecuteTimer, &QTimer::timeout,
+            this, &PluginConfigStepWidget::liveExecuteRequested);
 }
 
 void PluginConfigStepWidget::setupUI()
@@ -150,10 +162,66 @@ void PluginConfigStepWidget::setPluginConfigWidget(QWidget* configWidget)
 
     m_pluginParamsLayout->insertWidget(0, configWidget);
     m_currentPluginConfig = configWidget;
+
+    // Wire every spinbox/slider in the new plugin widget to the live-execute
+    // debounce timer so the user can tune parameters in real time.
+    wireLiveExecution(configWidget);
+}
+
+void PluginConfigStepWidget::wireLiveExecution(QWidget* configWidget)
+{
+    if (!configWidget || !m_liveExecuteTimer) return;
+
+    auto restartTimer = [this]() {
+        if (m_liveExecuteTimer) m_liveExecuteTimer->start();
+    };
+
+    // Opt-out marker: any widget that sets property "noLiveExecute" = true
+    // will be skipped (e.g. cosmetic spin boxes that should not re-execute).
+    auto isOptedOut = [](QWidget* w) {
+        return w && w->property("noLiveExecute").toBool();
+    };
+
+    // Connections are added AFTER the plugin's own valueChanged → m_member
+    // lambdas, so when the user changes a value Qt fires those FIRST (updating
+    // the plugin's internal members), then our handler runs and starts the
+    // debounce timer. By the time executePlugin() runs, the plugin already
+    // sees the new parameter values.
+    int wired = 0;
+    const auto intSpins = configWidget->findChildren<QSpinBox*>();
+    for (QSpinBox* sp : intSpins) {
+        if (isOptedOut(sp)) continue;
+        connect(sp, QOverload<int>::of(&QSpinBox::valueChanged),
+                this, [restartTimer](int) { restartTimer(); });
+        ++wired;
+    }
+
+    const auto dblSpins = configWidget->findChildren<QDoubleSpinBox*>();
+    for (QDoubleSpinBox* sp : dblSpins) {
+        if (isOptedOut(sp)) continue;
+        connect(sp, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [restartTimer](double) { restartTimer(); });
+        ++wired;
+    }
+
+    const auto sliders = configWidget->findChildren<QSlider*>();
+    for (QSlider* sl : sliders) {
+        if (isOptedOut(sl)) continue;
+        connect(sl, &QSlider::valueChanged,
+                this, [restartTimer](int) { restartTimer(); });
+        ++wired;
+    }
+
+    std::cout << "[PluginConfigStepWidget] Wired " << wired
+              << " parameter widgets for live execution" << std::endl;
 }
 
 void PluginConfigStepWidget::clearPluginConfigWidget()
 {
+    if (m_liveExecuteTimer && m_liveExecuteTimer->isActive()) {
+        m_liveExecuteTimer->stop();
+    }
+
     if (m_currentPluginConfig) {
         m_pluginParamsLayout->removeWidget(m_currentPluginConfig);
         m_currentPluginConfig->deleteLater();

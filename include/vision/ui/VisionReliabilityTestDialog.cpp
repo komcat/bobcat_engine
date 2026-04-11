@@ -29,11 +29,19 @@ VisionReliabilityTestDialog::VisionReliabilityTestDialog(
     ApplicationContext* context,
     const QString& pluginName,
     std::shared_ptr<LiveVideoSubscriber> frameSubscriber,
+    bool useSearchBox,
+    int searchStartX, int searchStartY,
+    int searchEndX, int searchEndY,
     QWidget* parent)
     : QDialog(parent)
     , m_context(context)
     , m_pluginName(pluginName)
     , m_frameSubscriber(frameSubscriber)
+    , m_useSearchBox(useSearchBox)
+    , m_searchStartX(searchStartX)
+    , m_searchStartY(searchStartY)
+    , m_searchEndX(searchEndX)
+    , m_searchEndY(searchEndY)
 {
     setupUI();
 
@@ -129,9 +137,8 @@ void VisionReliabilityTestDialog::setupUI()
     QGroupBox* tableGroup = new QGroupBox("Per-Iteration Results");
     QVBoxLayout* tableLayout = new QVBoxLayout(tableGroup);
 
-    m_resultsTable = new QTableWidget(0, 7);
-    m_resultsTable->setHorizontalHeaderLabels(
-        {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"});
+    m_resultsTable = new QTableWidget(0, 3);
+    m_resultsTable->setHorizontalHeaderLabels({"#", "Pass", "Time (ms)"});
     m_resultsTable->horizontalHeader()->setStretchLastSection(true);
     m_resultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_resultsTable->setAlternatingRowColors(true);
@@ -186,15 +193,15 @@ void VisionReliabilityTestDialog::onStartClicked()
     // Reset state
     m_results.clear();
     m_allMeasurementKeys.clear();
+    m_activeCountColumns.clear();
     m_currentIteration = 0;
     m_totalIterations = m_iterationsSpin->value();
     m_stopRequested = false;
 
-    // Reset table
+    // Reset table — only fixed columns, dynamic columns are added as iterations run
     m_resultsTable->setRowCount(0);
-    m_resultsTable->setColumnCount(7);
-    m_resultsTable->setHorizontalHeaderLabels(
-        {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"});
+    m_resultsTable->setColumnCount(3);
+    m_resultsTable->setHorizontalHeaderLabels({"#", "Pass", "Time (ms)"});
 
     // Reset stats
     m_statisticsText->setPlainText("Running...");
@@ -227,6 +234,7 @@ void VisionReliabilityTestDialog::onStopClicked()
     // Update statistics with whatever we have so far
     if (!m_results.empty()) {
         collectAllMeasurementKeys();
+        collectActiveCountColumns();
         rebuildTableColumns();
         updateStatisticsSummary();
     }
@@ -306,9 +314,13 @@ void VisionReliabilityTestDialog::captureAndExecute()
     // Get current ROI
     VisionROI currentROI = VisionManager::instance().getROI();
 
-    // Execute plugin (no search box in reliability test — direct execution)
+    // Execute plugin with the same search-box configuration the wizard had
+    // when this dialog was opened — otherwise plugins like PatternMatchEdge
+    // can produce 0 matches because the manual run was relying on a search box.
     m_worker->executePlugin(m_pluginName, inputImage, currentROI,
-                            false, 0, 0, 0, 0);
+                            m_useSearchBox,
+                            m_searchStartX, m_searchStartY,
+                            m_searchEndX, m_searchEndY);
 }
 
 void VisionReliabilityTestDialog::onIterationFinished(const VisionResult& result,
@@ -326,8 +338,80 @@ void VisionReliabilityTestDialog::onIterationFinished(const VisionResult& result
     iterResult.measurements = result.measurements;
     iterResult.errorMessage = result.errorMessage;
 
+    // Flatten every geometric result into the measurements map so the
+    // dynamic table picks it up automatically. Naming convention:
+    //   <type><index>_<field>  (e.g. pt0_x, line1_angle, circ0_radius)
+    // If a result has a non-empty name, the index is replaced with the name.
+    auto label = [](const std::string& prefix, int idx, const std::string& name) {
+        std::string base = prefix;
+        if (!name.empty()) {
+            base += name;
+        } else {
+            base += std::to_string(idx);
+        }
+        return base;
+    };
+
+    for (size_t i = 0; i < result.points.size(); ++i) {
+        const auto& p = result.points[i];
+        std::string base = label("pt", static_cast<int>(i), p.name);
+        iterResult.measurements[base + "_x"] = p.pixelCoord.x;
+        iterResult.measurements[base + "_y"] = p.pixelCoord.y;
+        if (p.confidence != 1.0) {
+            iterResult.measurements[base + "_conf"] = p.confidence;
+        }
+    }
+
+    for (size_t i = 0; i < result.lines.size(); ++i) {
+        const auto& l = result.lines[i];
+        std::string base = label("line", static_cast<int>(i), l.name);
+        iterResult.measurements[base + "_angle_deg"] = l.angleDeg;
+        iterResult.measurements[base + "_length_px"] = l.lengthPx;
+        iterResult.measurements[base + "_x1"] = l.startPx.x;
+        iterResult.measurements[base + "_y1"] = l.startPx.y;
+        iterResult.measurements[base + "_x2"] = l.endPx.x;
+        iterResult.measurements[base + "_y2"] = l.endPx.y;
+    }
+
+    for (size_t i = 0; i < result.circles.size(); ++i) {
+        const auto& c = result.circles[i];
+        std::string base = label("circ", static_cast<int>(i), c.name);
+        iterResult.measurements[base + "_cx"] = c.centerPx.x;
+        iterResult.measurements[base + "_cy"] = c.centerPx.y;
+        iterResult.measurements[base + "_radius_px"] = c.radiusPx;
+        if (c.radiusMm > 0.0) {
+            iterResult.measurements[base + "_radius_mm"] = c.radiusMm;
+        }
+    }
+
+    for (size_t i = 0; i < result.rectangles.size(); ++i) {
+        const auto& r = result.rectangles[i];
+        std::string base = label("rect", static_cast<int>(i), r.name);
+        iterResult.measurements[base + "_cx"] = r.centerPx.x;
+        iterResult.measurements[base + "_cy"] = r.centerPx.y;
+        iterResult.measurements[base + "_w"] = r.widthPx;
+        iterResult.measurements[base + "_h"] = r.heightPx;
+        iterResult.measurements[base + "_angle_deg"] = r.angleDeg;
+    }
+
+    for (size_t i = 0; i < result.beams.size(); ++i) {
+        const auto& b = result.beams[i];
+        std::string base = label("beam", static_cast<int>(i), b.name);
+        iterResult.measurements[base + "_cx"] = b.centerPx.x;
+        iterResult.measurements[base + "_cy"] = b.centerPx.y;
+        iterResult.measurements[base + "_fwhm_major_px"] = b.fwhmMajorPx;
+        iterResult.measurements[base + "_fwhm_minor_px"] = b.fwhmMinorPx;
+        iterResult.measurements[base + "_mean_intensity"] = b.meanIntensity;
+        iterResult.measurements[base + "_max_intensity"] = b.maxIntensity;
+        iterResult.measurements[base + "_angle_deg"] = b.angleDeg;
+        iterResult.measurements[base + "_ellipticity"] = b.ellipticity;
+    }
+
     m_results.push_back(iterResult);
     addResultRow(iterResult);
+    collectAllMeasurementKeys();
+    collectActiveCountColumns();
+    rebuildTableColumns();
 
     // Schedule next iteration via timer (event-driven, non-blocking)
     if (!m_stopRequested) {
@@ -344,6 +428,9 @@ void VisionReliabilityTestDialog::onIterationError(const QString& errorMessage)
 
     m_results.push_back(iterResult);
     addResultRow(iterResult);
+    collectAllMeasurementKeys();
+    collectActiveCountColumns();
+    rebuildTableColumns();
 
     // Continue to next iteration
     if (!m_stopRequested) {
@@ -356,7 +443,7 @@ void VisionReliabilityTestDialog::addResultRow(const ReliabilityIterationResult&
     int row = m_resultsTable->rowCount();
     m_resultsTable->insertRow(row);
 
-    // Fixed columns: #, Pass, Time, Circles, Points, Lines, Beams
+    // Fixed columns: #, Pass, Time. All other columns are filled by rebuildTableColumns().
     m_resultsTable->setItem(row, 0, new QTableWidgetItem(QString::number(result.iteration)));
 
     QTableWidgetItem* passItem = new QTableWidgetItem(result.success ? "PASS" : "FAIL");
@@ -366,13 +453,7 @@ void VisionReliabilityTestDialog::addResultRow(const ReliabilityIterationResult&
 
     m_resultsTable->setItem(row, 2, new QTableWidgetItem(
         QString::number(result.processingTimeMs, 'f', 2)));
-    m_resultsTable->setItem(row, 3, new QTableWidgetItem(QString::number(result.circleCount)));
-    m_resultsTable->setItem(row, 4, new QTableWidgetItem(QString::number(result.pointCount)));
-    m_resultsTable->setItem(row, 5, new QTableWidgetItem(QString::number(result.lineCount)));
-    m_resultsTable->setItem(row, 6, new QTableWidgetItem(QString::number(result.beamCount)));
 
-    // Measurement columns (dynamic — added during rebuildTableColumns)
-    // For now, just scroll to the latest row
     m_resultsTable->scrollToBottom();
 }
 
@@ -396,30 +477,83 @@ void VisionReliabilityTestDialog::collectAllMeasurementKeys()
     m_allMeasurementKeys.assign(keySet.begin(), keySet.end());
 }
 
+void VisionReliabilityTestDialog::collectActiveCountColumns()
+{
+    // A count column is "active" only if at least one iteration produced > 0
+    // of that object type — keeps the table free of irrelevant zero columns.
+    m_activeCountColumns.clear();
+
+    auto anyNonZero = [&](auto getter) {
+        for (const auto& r : m_results) {
+            if (getter(r) > 0) return true;
+        }
+        return false;
+    };
+
+    if (anyNonZero([](const ReliabilityIterationResult& r) { return r.circleCount; })) {
+        m_activeCountColumns.push_back("Circles");
+    }
+    if (anyNonZero([](const ReliabilityIterationResult& r) { return r.pointCount; })) {
+        m_activeCountColumns.push_back("Points");
+    }
+    if (anyNonZero([](const ReliabilityIterationResult& r) { return r.lineCount; })) {
+        m_activeCountColumns.push_back("Lines");
+    }
+    if (anyNonZero([](const ReliabilityIterationResult& r) { return r.rectangleCount; })) {
+        m_activeCountColumns.push_back("Rectangles");
+    }
+    if (anyNonZero([](const ReliabilityIterationResult& r) { return r.beamCount; })) {
+        m_activeCountColumns.push_back("Beams");
+    }
+}
+
 void VisionReliabilityTestDialog::rebuildTableColumns()
 {
-    int fixedCols = 7; // #, Pass, Time, Circles, Points, Lines, Beams
-    int totalCols = fixedCols + static_cast<int>(m_allMeasurementKeys.size());
+    const int fixedCols = 3;  // #, Pass, Time
+    const int countCols = static_cast<int>(m_activeCountColumns.size());
+    const int measCols  = static_cast<int>(m_allMeasurementKeys.size());
+    const int totalCols = fixedCols + countCols + measCols;
 
     m_resultsTable->setColumnCount(totalCols);
 
-    QStringList headers = {"#", "Pass", "Time (ms)", "Circles", "Points", "Lines", "Beams"};
+    QStringList headers = {"#", "Pass", "Time (ms)"};
+    for (const auto& name : m_activeCountColumns) {
+        headers << QString::fromStdString(name);
+    }
     for (const auto& key : m_allMeasurementKeys) {
         headers << QString::fromStdString(key);
     }
     m_resultsTable->setHorizontalHeaderLabels(headers);
 
-    // Fill in measurement data for all rows
+    // Helper to fetch a count value by column name
+    auto countValue = [](const std::string& name, const ReliabilityIterationResult& r) -> int {
+        if (name == "Circles")    return r.circleCount;
+        if (name == "Points")     return r.pointCount;
+        if (name == "Lines")      return r.lineCount;
+        if (name == "Rectangles") return r.rectangleCount;
+        if (name == "Beams")      return r.beamCount;
+        return 0;
+    };
+
+    // Fill in count + measurement columns for all rows
     for (int row = 0; row < static_cast<int>(m_results.size()); ++row) {
         const auto& r = m_results[static_cast<size_t>(row)];
-        for (int col = 0; col < static_cast<int>(m_allMeasurementKeys.size()); ++col) {
-            const auto& key = m_allMeasurementKeys[static_cast<size_t>(col)];
+
+        for (int c = 0; c < countCols; ++c) {
+            const auto& name = m_activeCountColumns[static_cast<size_t>(c)];
+            m_resultsTable->setItem(row, fixedCols + c,
+                new QTableWidgetItem(QString::number(countValue(name, r))));
+        }
+
+        for (int c = 0; c < measCols; ++c) {
+            const auto& key = m_allMeasurementKeys[static_cast<size_t>(c)];
             auto it = r.measurements.find(key);
             QString val = "-";
             if (it != r.measurements.end()) {
                 val = QString::number(it->second, 'f', 4);
             }
-            m_resultsTable->setItem(row, fixedCols + col, new QTableWidgetItem(val));
+            m_resultsTable->setItem(row, fixedCols + countCols + c,
+                new QTableWidgetItem(val));
         }
     }
 }
@@ -456,26 +590,28 @@ void VisionReliabilityTestDialog::updateStatisticsSummary()
                 .arg(timeStats.min, 0, 'f', 2)
                 .arg(timeStats.max, 0, 'f', 2);
 
-    // Object count stats
-    auto countStat = [&](const std::string& name, auto getter) {
-        std::vector<double> vals;
-        for (const auto& r : m_results) {
-            vals.push_back(static_cast<double>(getter(r)));
-        }
-        auto stats = computeStats(name, vals);
-        if (stats.max > 0.0) {
-            text += QString("%1:  Mean: %2  Min: %3  Max: %4\n")
-                        .arg(QString::fromStdString(name))
-                        .arg(stats.mean, 0, 'f', 1)
-                        .arg(stats.min, 0, 'f', 0)
-                        .arg(stats.max, 0, 'f', 0);
-        }
+    // Object count stats — only for column types the plugin actually produced
+    auto countValue = [](const std::string& name, const ReliabilityIterationResult& r) -> int {
+        if (name == "Circles")    return r.circleCount;
+        if (name == "Points")     return r.pointCount;
+        if (name == "Lines")      return r.lineCount;
+        if (name == "Rectangles") return r.rectangleCount;
+        if (name == "Beams")      return r.beamCount;
+        return 0;
     };
 
-    countStat("Circles", [](const ReliabilityIterationResult& r) { return r.circleCount; });
-    countStat("Points", [](const ReliabilityIterationResult& r) { return r.pointCount; });
-    countStat("Lines", [](const ReliabilityIterationResult& r) { return r.lineCount; });
-    countStat("Beams", [](const ReliabilityIterationResult& r) { return r.beamCount; });
+    for (const auto& name : m_activeCountColumns) {
+        std::vector<double> vals;
+        for (const auto& r : m_results) {
+            vals.push_back(static_cast<double>(countValue(name, r)));
+        }
+        auto stats = computeStats(name, vals);
+        text += QString("%1:  Mean: %2  Min: %3  Max: %4\n")
+                    .arg(QString::fromStdString(name))
+                    .arg(stats.mean, 0, 'f', 1)
+                    .arg(stats.min, 0, 'f', 0)
+                    .arg(stats.max, 0, 'f', 0);
+    }
 
     // Measurement stats
     if (!m_allMeasurementKeys.empty()) {
@@ -552,11 +688,24 @@ void VisionReliabilityTestDialog::onExportCsvClicked()
         return;
     }
 
-    // Ensure measurement keys are collected
+    // Ensure measurement keys and active count columns are collected
     collectAllMeasurementKeys();
+    collectActiveCountColumns();
+
+    auto countValue = [](const std::string& name, const ReliabilityIterationResult& r) -> int {
+        if (name == "Circles")    return r.circleCount;
+        if (name == "Points")     return r.pointCount;
+        if (name == "Lines")      return r.lineCount;
+        if (name == "Rectangles") return r.rectangleCount;
+        if (name == "Beams")      return r.beamCount;
+        return 0;
+    };
 
     // Write header
-    file << "Iteration,Pass,ProcessingTime_ms,Circles,Points,Lines,Rectangles,Beams";
+    file << "Iteration,Pass,ProcessingTime_ms";
+    for (const auto& name : m_activeCountColumns) {
+        file << "," << name;
+    }
     for (const auto& key : m_allMeasurementKeys) {
         file << "," << key;
     }
@@ -566,12 +715,11 @@ void VisionReliabilityTestDialog::onExportCsvClicked()
     for (const auto& r : m_results) {
         file << r.iteration << ","
              << (r.success ? "PASS" : "FAIL") << ","
-             << r.processingTimeMs << ","
-             << r.circleCount << ","
-             << r.pointCount << ","
-             << r.lineCount << ","
-             << r.rectangleCount << ","
-             << r.beamCount;
+             << r.processingTimeMs;
+
+        for (const auto& name : m_activeCountColumns) {
+            file << "," << countValue(name, r);
+        }
 
         for (const auto& key : m_allMeasurementKeys) {
             auto it = r.measurements.find(key);

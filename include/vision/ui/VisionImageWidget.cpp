@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QCursor>
 #include <QTimer>
+#include <QFontMetrics>
 #include <cmath>
 
 // ============ ImageDisplayLabel Implementation ============
@@ -356,6 +357,41 @@ void VisionImageWidget::setupUI()
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(10);
 
+    // Test-mode injection bar (above image area)
+    QHBoxLayout* injectBar = new QHBoxLayout();
+    injectBar->setSpacing(8);
+
+    m_injectModeToggle = new QCheckBox("Test Mode: Inject Image", this);
+    m_injectModeToggle->setToolTip("Disable live camera and run vision profiles on a static image loaded from disk");
+    m_injectModeToggle->setStyleSheet("QCheckBox { color: #FFB74D; font-weight: bold; }");
+
+    m_loadInjectBtn = new QPushButton("Load Image...", this);
+    m_loadInjectBtn->setToolTip("Choose an image file to use as test input");
+    m_loadInjectBtn->setMinimumWidth(110);
+    m_loadInjectBtn->setEnabled(false);
+
+    m_injectPathLabel = new QLabel(this);
+    m_injectPathLabel->setStyleSheet("QLabel { color: #aabbcc; }");
+    m_injectPathLabel->setMinimumWidth(120);
+
+    injectBar->addWidget(m_injectModeToggle);
+    injectBar->addWidget(m_loadInjectBtn);
+    injectBar->addWidget(m_injectPathLabel, 1);
+
+    layout->addLayout(injectBar);
+
+    connect(m_injectModeToggle, &QCheckBox::toggled, this, [this](bool checked) {
+        m_loadInjectBtn->setEnabled(checked);
+        if (!checked) {
+            m_injectFileNameFull.clear();
+            if (m_injectPathLabel) m_injectPathLabel->setText(QString());
+        }
+        emit injectionModeToggled(checked);
+    });
+    connect(m_loadInjectBtn, &QPushButton::clicked, this, [this]() {
+        emit loadInjectedImageRequested();
+    });
+
     // Image display area
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidgetResizable(true);
@@ -422,6 +458,27 @@ void VisionImageWidget::onROICornerDragged(int startX, int startY, int endX, int
 
     // Forward signal to parent (VisionManagerPage)
     emit roiDragged(startX, startY, endX, endY);
+}
+
+bool VisionImageWidget::isInjectionMode() const
+{
+    return m_injectModeToggle && m_injectModeToggle->isChecked();
+}
+
+void VisionImageWidget::setInjectedFileName(const QString& fileName)
+{
+    m_injectFileNameFull = fileName;
+    if (!m_injectPathLabel) return;
+
+    if (fileName.isEmpty()) {
+        m_injectPathLabel->setText(QString());
+        return;
+    }
+
+    QFontMetrics fm(m_injectPathLabel->font());
+    const int maxWidth = 260;
+    m_injectPathLabel->setText(fm.elidedText(fileName, Qt::ElideMiddle, maxWidth));
+    m_injectPathLabel->setToolTip(fileName);
 }
 
 void VisionImageWidget::setImage(const QPixmap& pixmap)

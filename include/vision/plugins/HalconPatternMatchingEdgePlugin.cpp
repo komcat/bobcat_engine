@@ -191,21 +191,27 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
             centerCmd.thickness = 2;
             result.overlays.push_back(centerCmd);
 
-            // Add anchor point crosshair if custom anchor (red)
-            if (m_useCustomAnchor) {
-                OverlayCommand anchorCmd;
-                anchorCmd.type = OverlayCommand::DrawCrosshair;
-                anchorCmd.p1 = anchorPoint;
-                anchorCmd.radius = 15;
-                anchorCmd.color = cv::Scalar(0, 0, 255);  // Red
-                anchorCmd.thickness = 2;
-                result.overlays.push_back(anchorCmd);
+            // Always show the detected anchor point as a red filled dot +
+            // small red crosshair. When a custom anchor is configured the
+            // marker sits at the offset position; otherwise it overlays the
+            // yellow center crosshair so the user can see the reported point.
+            result.addPointOverlay(anchorPoint, cv::Scalar(0, 0, 255), 5);
+            {
+                const double ancCrossR = 8.0;
+                result.addLineOverlay(
+                    cv::Point2d(anchorPoint.x - ancCrossR, anchorPoint.y),
+                    cv::Point2d(anchorPoint.x + ancCrossR, anchorPoint.y),
+                    cv::Scalar(0, 0, 255), 2);
+                result.addLineOverlay(
+                    cv::Point2d(anchorPoint.x, anchorPoint.y - ancCrossR),
+                    cv::Point2d(anchorPoint.x, anchorPoint.y + ancCrossR),
+                    cv::Scalar(0, 0, 255), 2);
             }
 
             // Add text label with score and angle
             std::string label = "S=" + std::to_string(static_cast<int>(matchScore * 100)) + "% A=" +
                                std::to_string(static_cast<int>(matchAngle)) + "deg";
-            result.addTextOverlay(label, cv::Point2d(matchCol + 25, matchRow - 10), cv::Scalar(0, 255, 255), 1);
+            result.addTextOverlay(label, cv::Point2d(matchCol + 25, matchRow - 10), cv::Scalar(0, 0, 255), 1);
 
             // Add point result
             std::string pointName = "match_" + std::to_string(i);
@@ -218,6 +224,32 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
             if (VisionManager::instance().isVerboseLogging()) {
                 std::cout << "[HalconPatternMatchEdge] Match " << i << " at (" << anchorPoint.x << ", " << anchorPoint.y
                           << ") score=" << matchScore << " angle=" << matchAngle << " deg" << std::endl;
+            }
+        }
+
+        // Detected-edges visualization overlay (yellow contours of the input
+        // image's edges). Independent of Halcon's shape matching — purely so
+        // the user can see what edges exist in the image vs the green template
+        // model contours drawn at each match location.
+        {
+            cv::Mat visEdges;
+            cv::Mat visBlurred;
+            const int visBlurSize = 5;       // fixed for visualization
+            const double visT1 = 50.0;
+            const double visT2 = 150.0;
+            cv::GaussianBlur(gray, visBlurred, cv::Size(visBlurSize, visBlurSize), 0);
+            cv::Canny(visBlurred, visEdges, visT1, visT2);
+
+            std::vector<std::vector<cv::Point>> detectedContours;
+            cv::findContours(visEdges, detectedContours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
+            for (const auto& contour : detectedContours) {
+                if (contour.size() < 2) continue;
+                OverlayCommand overlay;
+                overlay.type = OverlayCommand::DrawContour;
+                overlay.color = cv::Scalar(0, 255, 255);  // Yellow (BGR)
+                overlay.thickness = 1;
+                overlay.contour = contour;
+                result.overlays.push_back(overlay);
             }
         }
 

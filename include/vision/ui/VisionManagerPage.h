@@ -7,8 +7,10 @@
 #include <QStackedWidget>
 #include <QPushButton>
 #include <QTimer>
+#include <QString>
 #include <memory>
 #include <functional>
+#include <opencv2/core.hpp>
 #include "VisionWizardState.h"
 
 struct ApplicationContext;
@@ -57,6 +59,10 @@ private slots:
     // Image mode
     void onImageModeChanged(bool isLive);
     void onLiveTimerTick();
+
+    // Test-mode image injection
+    void onInjectionModeToggled(bool enabled);
+    void onLoadInjectedImageRequested();
 
     // Step callbacks
     void onCameraSelected(const QString& cameraId);
@@ -142,4 +148,9 @@ private:
 
     // Current step index
     int m_currentStep = -1;
+
+    // Test-mode injection state
+    cv::Mat m_injectedImage;
+    QString m_injectedImagePath;
+    bool m_useInjectedImage = false;
 };
