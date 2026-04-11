@@ -210,6 +210,36 @@ inline QString processNameLabel(const QString& bgColor, bool enabled, bool isCom
         QString::number(Fonts::SIZE_NORMAL), textDecoration, fontStyle);
 }
 
+// Inline parameter summary label shown in the new "Details" column.
+// Italic, dim, monospace, single-line.
+inline QString detailsLabel(const QString& bgColor, bool enabled) {
+  const QString color = enabled ? Colors::TEXT_SECONDARY : QString("#666666");
+  return QString(
+    "QLabel { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  padding: 4px 6px; "
+    "  font-family: %3; "
+    "  font-size: %4px; "
+    "  font-style: italic; "
+    "}"
+  ).arg(bgColor, color, Fonts::MONOSPACE,
+        QString::number(Fonts::SIZE_SMALL));
+}
+
+// 3px-wide colored stripe placed flush-left of each step row.
+// stripeColorHex is "#RRGGBB" or "transparent".
+inline QString categoryStripe(const QString& stripeColorHex) {
+  return QString(
+    "QWidget { "
+    "  background-color: %1; "
+    "  min-width: 3px; "
+    "  max-width: 3px; "
+    "  border: none; "
+    "}"
+  ).arg(stripeColorHex);
+}
+
 //=============================================================================
 // BUTTONS
 //=============================================================================

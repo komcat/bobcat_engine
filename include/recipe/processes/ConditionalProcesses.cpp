@@ -44,8 +44,9 @@ public:
     const auto& params = instance->parameters;
 
     widget->addParameterField("context_key", "Context Key", params.at("context_key"));
-    widget->addParameterField("comparison", "Comparison (>, <, ==, !=, >=, <=, IS_TRUE, IS_FALSE, EXISTS, NOT_EXISTS)",
-      params.at("comparison"));
+    widget->addDropdownParameter("comparison", "Comparison",
+      params.at("comparison"),
+      {">", "<", "==", "!=", ">=", "<=", "IS_TRUE", "IS_FALSE", "EXISTS", "NOT_EXISTS"});
     widget->addParameterField("threshold", "Threshold Value", params.at("threshold"));
   }
 

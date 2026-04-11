@@ -14,10 +14,14 @@
 #include <QTreeWidget>
 #include <QGroupBox>
 #include <QKeyEvent>
+#include <QResizeEvent>
 #include <QShowEvent>
+#include <QSplitter>
 #include <QTabWidget>
 #include <map>
 #include <memory>
+#include <string>
+#include <unordered_set>
 
 // Forward declarations
 struct ApplicationContext;
@@ -37,6 +41,8 @@ class SequenceContext;
 class RecipeTreeItemFactory;  // NEW: Factory for tree items
 class RecipeClipboard;        // NEW: Clipboard for copy/paste
 class ContextVariablePreviewWidget;  // NEW: Shows context variables from recipe
+class RecipeRunWindow;        // NEW: Floating window hosting execution-time widgets
+class ProcessVisibilityDialog;  // NEW: Modal dialog to manage hidden process list
 
 class RecipePage : public QWidget
 {
@@ -278,6 +284,20 @@ private:
   ManualAlignPointWidget* m_manualAlignPointWidget; // ✅ Manual align point widget
   UserInputWidget* m_userInputWidget;               // ✅ User input widget
 
+  // Floating window that hosts execution-time widgets (progress / manual
+  // adjust / manual align / user input).  Created in setupUI(), reused
+  // across runs.  See include/AppUI/RecipePage/RecipeRunWindow.h.
+  RecipeRunWindow* m_runWindow = nullptr;
+
+  // Hidden process types loaded from config/hidden_processes(.local).json.
+  // Mutated by the ProcessVisibilityDialog; consulted in
+  // refreshProcessTemplateList() and quick-add mode.
+  std::unordered_set<std::string> m_hiddenProcesses;
+
+  void loadHiddenProcessesFromDisk();
+  void refreshProcessTemplateList();   // Re-populate the available-processes tree
+  void onShowVisibilityDialog();        // Slot bound to the gear button
+
   QPushButton* m_backButton;
   RecipeWorker* m_recipeWorker;
 
@@ -323,5 +343,10 @@ private:
 protected:
   void keyPressEvent(QKeyEvent* event) override;
   void showEvent(QShowEvent* event) override;  // Hot reload when page becomes visible
+  void resizeEvent(QResizeEvent* event) override;  // Enforce fixed 20/55/25 panel widths
   bool eventFilter(QObject* watched, QEvent* event) override;  // Drag-drop intercept for recipe tree
+
+private:
+  QSplitter* m_mainSplitter = nullptr;  // Three-pane splitter (left/middle/right)
+  void applyPanelSizes();               // Push 20/55/25 sizes to m_mainSplitter
 };

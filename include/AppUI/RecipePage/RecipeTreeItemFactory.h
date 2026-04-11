@@ -70,9 +70,11 @@ public:
 
 private:
   // Widget creation helpers
-  QWidget* createStepNumberWidget(int stepIndex, const QString& bgColor, bool enabled);
+  QWidget* createStepNumberWidget(int stepIndex, const QString& bgColor, bool enabled,
+                                  const QString& stripeColor);
   QWidget* createSymbolWidget(const ProcessInstance* step, const QString& bgColor);
   QWidget* createProcessNameWidget(const ProcessInstance* step, const QString& bgColor);
+  QWidget* createDetailsWidget(const ProcessInstance* step, const QString& bgColor);
   QWidget* createRunCheckboxWidget(const ProcessInstance* step, int stepIndex, const QString& bgColor);
 
   // Helper to determine display text for process name
@@ -83,6 +85,9 @@ private:
 
   // Helper to get background color string
   QString getBackgroundColor(const ProcessInstance* step) const;
+
+  // Helper to look up the category color for a step (delegates to ProcessSummary).
+  QString getStripeColor(const ProcessInstance* step) const;
 
   QTreeWidget* m_treeWidget;
   RecipeManager* m_recipeManager;

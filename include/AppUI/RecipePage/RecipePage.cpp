@@ -4,6 +4,8 @@
 #include "RecipePageStyles.h"        // NEW: Centralized styles
 #include "RecipeTreeItemFactory.h"   // NEW: Tree item factory
 #include "RecipeClipboard.h"         // NEW: Clipboard
+#include "RecipeRunWindow.h"         // NEW: Floating execution window
+#include "ProcessVisibilityDialog.h" // NEW: Hide/show process dialog
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "safety/SafetyWatchManager.h"
@@ -110,6 +112,10 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_refreshRecipeListButton(nullptr) // Refresh button
   , m_recipeCountLabel(nullptr)      // Recipe count label
 {
+  // Load the hidden process set BEFORE setupUI so the initial tree
+  // populate already excludes them.
+  loadHiddenProcessesFromDisk();
+
   setupUI();
   setupSequenceEngine();
 
@@ -209,130 +215,67 @@ void RecipePage::setupUI()
   m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabel());
   titleLayout->addWidget(m_productStatusLabel);
 
-  // ========== EXECUTE BUTTONS IN TITLE BAR ==========
-  titleLayout->addSpacing(10);
-
-  // Run Recipe button (orange)
-  m_runRecipeButton = new QPushButton("Run Recipe");
-  m_runRecipeButton->setFixedHeight(28);
-  m_runRecipeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffa500, stop:1 #ff8c00); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffb52e, stop:1 #ff9d2e); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #ff7700; "
-    "}"
-  );
-  connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
-  titleLayout->addWidget(m_runRecipeButton);
-
-  // Run Selected button (blue)
-  m_runSelectedStepButton = new QPushButton("Run Selected");
-  m_runSelectedStepButton->setFixedHeight(28);
-  m_runSelectedStepButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a9ff2, stop:1 #4a90e2); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6aaff8, stop:1 #5a9ff2); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #3a80d2; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #cccccc; "
-    "  color: #666666; "
-    "}"
-  );
-  connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
-  titleLayout->addWidget(m_runSelectedStepButton);
-
-  // Breakpoint button - toggle breakpoint on selected step
-  m_breakpointButton = new QPushButton("B");
-  m_breakpointButton->setToolTip("Toggle breakpoint on selected step");
-  m_breakpointButton->setFixedSize(40, 28);
-  m_breakpointButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dc3545, stop:1 #c82333); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 10px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e4606d, stop:1 #dc3545); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #bd2130; "
-    "}"
-  );
-  connect(m_breakpointButton, &QPushButton::clicked, this, &RecipePage::onBreakpointButtonClicked);
-  titleLayout->addWidget(m_breakpointButton);
-
-  titleLayout->addSpacing(10);
-
-  // Context Viewer button (small button at far right)
-  m_contextViewerButton = new QPushButton("CV");
-  m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
-  m_contextViewerButton->setFixedSize(40, 28);
-  m_contextViewerButton->setStyleSheet(RecipeStyles::contextViewerButton());
-  connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
-  titleLayout->addWidget(m_contextViewerButton);
-
-  // STOP button (emergency stop for motors and sequence)
-  m_stopButton = new QPushButton("⚠ STOP");
-  m_stopButton->setObjectName("stopButton");
-  m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
-  m_stopButton->setFixedSize(70, 28);
-  m_stopButton->setStyleSheet(RecipeStyles::emergencyStopButton());
-  connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
-  titleLayout->addWidget(m_stopButton);
+  // Execute buttons (Run Recipe / Run Selected / Breakpoint / CV / STOP) are
+  // constructed later in createStepsTab() so they live directly under the
+  // recipe Name field instead of in the page title bar.
 
   titleLayout->addSpacing(m_backButton->width());
 
   mainLayout->addLayout(titleLayout);
 
-  QSplitter* splitter = new QSplitter(Qt::Horizontal);
-  splitter->setOpaqueResize(false);  // Defer resize until drag complete for smoother performance
-  splitter->setHandleWidth(5);
+  m_mainSplitter = new QSplitter(Qt::Horizontal);
+  m_mainSplitter->setOpaqueResize(false);
+  m_mainSplitter->setHandleWidth(1);          // Hairline handles (visually unobtrusive)
+  m_mainSplitter->setChildrenCollapsible(false);
 
   QWidget* leftPanel = new QWidget();
   createLeftPanel(leftPanel);
-  splitter->addWidget(leftPanel);
+  m_mainSplitter->addWidget(leftPanel);
 
   QWidget* middlePanel = new QWidget();
   createMiddlePanel(middlePanel);
-  splitter->addWidget(middlePanel);
+  m_mainSplitter->addWidget(middlePanel);
 
   QWidget* rightPanel = new QWidget();
   createRightPanel(rightPanel);
-  splitter->addWidget(rightPanel);
+  m_mainSplitter->addWidget(rightPanel);
 
-  splitter->setStretchFactor(0, 2);
-  splitter->setStretchFactor(1, 3);
-  splitter->setStretchFactor(2, 4);
+  // Lock the splitter handles so the user cannot drag the panels.
+  // Handle 0 is unused; handles 1 and 2 separate widgets 0|1 and 1|2.
+  if (auto* h1 = m_mainSplitter->handle(1)) h1->setEnabled(false);
+  if (auto* h2 = m_mainSplitter->handle(2)) h2->setEnabled(false);
 
-  mainLayout->addWidget(splitter, 1);
+  mainLayout->addWidget(m_mainSplitter, 1);
+
+  // Apply initial 20% / 55% / 25% sizing.  resizeEvent keeps it pinned on resize.
+  applyPanelSizes();
+}
+
+void RecipePage::applyPanelSizes()
+{
+  if (!m_mainSplitter) {
+    return;
+  }
+  // Compute pixel sizes from the current splitter width.
+  // Falls back to the page width if the splitter has not been laid out yet.
+  int totalWidth = m_mainSplitter->width();
+  if (totalWidth <= 0) {
+    totalWidth = width();
+  }
+  if (totalWidth <= 0) {
+    return;
+  }
+
+  const int leftWidth   = (totalWidth * 20) / 100;
+  const int rightWidth  = (totalWidth * 25) / 100;
+  const int middleWidth = totalWidth - leftWidth - rightWidth;
+  m_mainSplitter->setSizes({ leftWidth, middleWidth, rightWidth });
+}
+
+void RecipePage::resizeEvent(QResizeEvent* event)
+{
+  QWidget::resizeEvent(event);
+  applyPanelSizes();
 }
 
 void RecipePage::createLeftPanel(QWidget* leftPanel)
@@ -345,11 +288,25 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   title->setStyleSheet(RecipeStyles::sectionLabel());
   mainLayout->addWidget(title);
 
-  // Search box for filtering processes
+  // Search box + gear button to open the visibility manager
+  QHBoxLayout* searchRow = new QHBoxLayout();
+  searchRow->setSpacing(4);
+  searchRow->setContentsMargins(0, 0, 0, 0);
+
   QLineEdit* searchBox = new QLineEdit();
   searchBox->setPlaceholderText("Search processes...");
   searchBox->setStyleSheet(RecipeStyles::searchBox());
-  mainLayout->addWidget(searchBox);
+  searchRow->addWidget(searchBox, 1);
+
+  QPushButton* visibilityBtn = new QPushButton(QString::fromUtf8("\xE2\x9A\x99"));  // ⚙ gear
+  visibilityBtn->setFixedSize(28, 28);
+  visibilityBtn->setToolTip("Manage process visibility (hide/show old or experimental processes)");
+  visibilityBtn->setStyleSheet(RecipeStyles::smallToolButton());
+  connect(visibilityBtn, &QPushButton::clicked,
+    this, &RecipePage::onShowVisibilityDialog);
+  searchRow->addWidget(visibilityBtn);
+
+  mainLayout->addLayout(searchRow);
 
   // Quick tip for keyboard shortcut
   QLabel* quickTip = new QLabel("Tip: Press Ctrl+B for quick add");
@@ -391,27 +348,9 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   m_processTemplateList->setRootIsDecorated(true);  // Show expand/collapse arrows
   m_processTemplateList->setIndentation(20);        // Indentation for child items
 
-  // Populate tree with categories
-  for (const auto& category : RecipeManager::getProcessCategories()) {
-    QTreeWidgetItem* categoryItem = new QTreeWidgetItem(m_processTemplateList);
-    categoryItem->setText(0, QString::fromStdString(category));
-    categoryItem->setFlags(categoryItem->flags() & ~Qt::ItemIsSelectable);
-
-    QFont font = categoryItem->font(0);
-    font.setBold(true);
-    categoryItem->setFont(0, font);
-    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY));
-    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM));
-
-    // Add processes for this category
-    for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
-      QTreeWidgetItem* processItem = new QTreeWidgetItem(categoryItem);
-      processItem->setText(0, QString::fromStdString(processType));
-      processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
-    }
-
-    categoryItem->setExpanded(false);  // Start collapsed so user sees the arrows
-  }
+  // Populate tree (delegates to a reusable method so the visibility dialog
+  // and the showEvent hot-reload can call it too).
+  refreshProcessTemplateList();
 
   connect(m_processTemplateList, &QTreeWidget::itemClicked,
     this, &RecipePage::onProcessTemplateSelected);
@@ -444,10 +383,90 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
         }
       }
 
-      // Hide category if no children are visible
+      // Hide category if no children are visible.  Note: categories that
+      // were already hidden by refreshProcessTemplateList (because every
+      // child was filtered out) stay hidden too.
       categoryItem->setHidden(!categoryHasVisibleChildren);
     }
   });
+}
+
+// =======================================================================
+// Process visibility (hide old/experimental processes)
+// =======================================================================
+
+void RecipePage::loadHiddenProcessesFromDisk()
+{
+  m_hiddenProcesses = ProcessVisibilityDialog::loadHiddenFromDisk();
+  std::cout << "[RecipePage] Loaded " << m_hiddenProcesses.size()
+            << " hidden processes" << std::endl;
+}
+
+void RecipePage::refreshProcessTemplateList()
+{
+  if (!m_processTemplateList) {
+    return;
+  }
+
+  m_processTemplateList->clear();
+
+  for (const auto& category : RecipeManager::getProcessCategories()) {
+    QTreeWidgetItem* categoryItem = new QTreeWidgetItem(m_processTemplateList);
+    categoryItem->setText(0, QString::fromStdString(category));
+    categoryItem->setFlags(categoryItem->flags() & ~Qt::ItemIsSelectable);
+
+    QFont font = categoryItem->font(0);
+    font.setBold(true);
+    categoryItem->setFont(0, font);
+    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY));
+    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM));
+
+    for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
+      if (m_hiddenProcesses.count(processType) > 0) {
+        continue;  // Hidden by user via the visibility manager
+      }
+      QTreeWidgetItem* processItem = new QTreeWidgetItem(categoryItem);
+      processItem->setText(0, QString::fromStdString(processType));
+      processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
+    }
+
+    if (categoryItem->childCount() == 0) {
+      // Every process in this category is hidden — collapse the header too.
+      categoryItem->setHidden(true);
+    } else {
+      categoryItem->setExpanded(false);
+    }
+  }
+}
+
+void RecipePage::onShowVisibilityDialog()
+{
+  // Snapshot the registry into a flat process-name list + a category lookup
+  std::vector<std::string> allTypes;
+  for (const auto& cat : RecipeManager::getProcessCategories()) {
+    for (const auto& p : RecipeManager::getProcessesByCategory(cat)) {
+      allTypes.push_back(p);
+    }
+  }
+  auto categoryLookup = [](const std::string& proc) -> std::string {
+    return RecipeManager::getProcessCategory(proc);
+  };
+
+  ProcessVisibilityDialog dlg(allTypes, m_hiddenProcesses, categoryLookup, this);
+
+  // Live refresh of the tree behind the modal dialog as the user clicks
+  connect(&dlg, &ProcessVisibilityDialog::visibilityChanged,
+    this, [this](const std::unordered_set<std::string>& newHidden) {
+      m_hiddenProcesses = newHidden;
+      refreshProcessTemplateList();
+    });
+
+  dlg.exec();
+
+  // Defensive: in case the dialog closed without firing the signal, sync
+  // the final state.
+  m_hiddenProcesses = dlg.hiddenProcesses();
+  refreshProcessTemplateList();
 }
 
 void RecipePage::createMiddlePanel(QWidget* middlePanel)
@@ -492,12 +511,71 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
   // Create tabs
   QWidget* recipesTab = new QWidget();
   QWidget* stepsTab = new QWidget();
+  QWidget* contextTab = new QWidget();
+  QWidget* visionResultTab = new QWidget();
 
   createRecipesTab(recipesTab);
   createStepsTab(stepsTab);
 
+  // ===== Context Variables tab =====
+  {
+    QVBoxLayout* contextLayout = new QVBoxLayout(contextTab);
+    contextLayout->setContentsMargins(5, 5, 5, 5);
+
+    m_contextVariablePreview = new ContextVariablePreviewWidget();
+    connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
+      [](const QString& varName) {
+        // Copy variable name to clipboard when clicked
+        QApplication::clipboard()->setText(varName);
+        std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
+      });
+    contextLayout->addWidget(m_contextVariablePreview, 1);
+  }
+
+  // ===== Vision Result tab =====
+  {
+    QVBoxLayout* visionTabLayout = new QVBoxLayout(visionResultTab);
+    visionTabLayout->setContentsMargins(5, 5, 5, 5);
+
+    m_visionResultGroup = new QGroupBox("Vision Result");
+    m_visionResultGroup->setStyleSheet(
+      "QGroupBox { "
+      "  font-weight: bold; "
+      "  color: #FFA500; "
+      "  border: 1px solid #3f3f46; "
+      "  border-radius: 4px; "
+      "  margin-top: 5px; "
+      "  padding-top: 10px; "
+      "} "
+      "QGroupBox::title { "
+      "  subcontrol-origin: margin; "
+      "  left: 10px; "
+      "  padding: 0 5px; "
+      "}"
+    );
+    QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+    visionLayout->setContentsMargins(5, 15, 5, 5);
+
+    m_visionResultImageLabel = new QLabel("No vision result");
+    m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+    m_visionResultImageLabel->setMinimumHeight(150);
+    m_visionResultImageLabel->setStyleSheet(
+      "QLabel { "
+      "  background-color: #0f0f0f; "
+      "  border: 1px solid #3f3f46; "
+      "  color: #808080; "
+      "  font-style: italic; "
+      "}"
+    );
+    visionLayout->addWidget(m_visionResultImageLabel);
+
+    visionTabLayout->addWidget(m_visionResultGroup, 1);
+  }
+
   m_middleTabWidget->addTab(recipesTab, "Recipes");
   m_middleTabWidget->addTab(stepsTab, "Steps");
+  m_middleTabWidget->addTab(contextTab, "Context");
+  m_middleTabWidget->addTab(visionResultTab, "Vision Result");
 
   // Start on Steps tab by default
   m_middleTabWidget->setCurrentIndex(1);
@@ -762,6 +840,108 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
 
   layout->addLayout(nameLayout);
 
+  // ========== EXECUTE BUTTONS ROW (under the Name field) ==========
+  QHBoxLayout* executeRow = new QHBoxLayout();
+  executeRow->setSpacing(5);
+
+  // Run Recipe button (orange)
+  m_runRecipeButton = new QPushButton("Run Recipe");
+  m_runRecipeButton->setFixedHeight(28);
+  m_runRecipeButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffa500, stop:1 #ff8c00); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 4px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffb52e, stop:1 #ff9d2e); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #ff7700; "
+    "}"
+  );
+  connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
+  executeRow->addWidget(m_runRecipeButton);
+
+  // Run Selected button (blue)
+  m_runSelectedStepButton = new QPushButton("Run Selected");
+  m_runSelectedStepButton->setFixedHeight(28);
+  m_runSelectedStepButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a9ff2, stop:1 #4a90e2); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 4px 12px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6aaff8, stop:1 #5a9ff2); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #3a80d2; "
+    "} "
+    "QPushButton:disabled { "
+    "  background-color: #cccccc; "
+    "  color: #666666; "
+    "}"
+  );
+  connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
+  executeRow->addWidget(m_runSelectedStepButton);
+
+  // Breakpoint button - toggle breakpoint on selected step
+  m_breakpointButton = new QPushButton("B");
+  m_breakpointButton->setToolTip("Toggle breakpoint on selected step");
+  m_breakpointButton->setFixedSize(40, 28);
+  m_breakpointButton->setStyleSheet(
+    "QPushButton { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dc3545, stop:1 #c82333); "
+    "  color: white; "
+    "  font-weight: bold; "
+    "  padding: 4px 10px; "
+    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
+    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
+    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e4606d, stop:1 #dc3545); "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #bd2130; "
+    "}"
+  );
+  connect(m_breakpointButton, &QPushButton::clicked, this, &RecipePage::onBreakpointButtonClicked);
+  executeRow->addWidget(m_breakpointButton);
+
+  // Context Viewer button
+  m_contextViewerButton = new QPushButton("CV");
+  m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
+  m_contextViewerButton->setFixedSize(40, 28);
+  m_contextViewerButton->setStyleSheet(RecipeStyles::contextViewerButton());
+  connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
+  executeRow->addWidget(m_contextViewerButton);
+
+  executeRow->addStretch(1);
+
+  // STOP button (emergency stop for motors and sequence) - on the far right
+  m_stopButton = new QPushButton("⚠ STOP");
+  m_stopButton->setObjectName("stopButton");
+  m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
+  m_stopButton->setFixedSize(70, 28);
+  m_stopButton->setStyleSheet(RecipeStyles::emergencyStopButton());
+  connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
+  executeRow->addWidget(m_stopButton);
+
+  layout->addLayout(executeRow);
+
   // ========== DROPDOWN MENUS ROW ==========
   QHBoxLayout* menuRow = new QHBoxLayout();
   menuRow->setSpacing(3);
@@ -897,8 +1077,8 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
 
   // ========== PROCESS INSTANCE LIST ==========
   m_recipeTree = new QTreeWidget();
-  m_recipeTree->setColumnCount(4);
-  m_recipeTree->setHeaderLabels({ "#", "", "Process Instance", "Run" });  // Column 1 = symbol
+  m_recipeTree->setColumnCount(5);
+  m_recipeTree->setHeaderLabels({ "#", "", "Process Instance", "Details", "Run" });
   m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_recipeTree->setRootIsDecorated(false);  // Hide expand arrows for clean look
@@ -909,13 +1089,15 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   m_recipeTree->viewport()->setAttribute(Qt::WA_StaticContents);  // Reduce repaints
 
   m_recipeTree->header()->setStretchLastSection(false);
-  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);             // Step number fixed width
-  m_recipeTree->setColumnWidth(0, 35);
+  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);             // Step number + stripe
+  m_recipeTree->setColumnWidth(0, 38);
   m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Fixed);             // Symbol column fixed
   m_recipeTree->setColumnWidth(1, 30);
   m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);           // Process Instance stretches
-  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Fixed);             // Run checkbox fixed
-  m_recipeTree->setColumnWidth(3, 50);
+  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Interactive);       // Details (resizable)
+  m_recipeTree->setColumnWidth(3, 180);
+  m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::Fixed);             // Run checkbox fixed
+  m_recipeTree->setColumnWidth(4, 50);
 
   m_recipeTree->setStyleSheet(RecipeStyles::recipeStepsTree());
 
@@ -934,81 +1116,18 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   title->setStyleSheet(RecipeStyles::sectionLabel());
   layout->addWidget(title);
 
-  // ========================================
-  // Horizontal splitter: Parameters (full height) | Context Variables + Vision Result
-  // ========================================
-  QSplitter* mainSplitter = new QSplitter(Qt::Horizontal);
-  mainSplitter->setHandleWidth(5);
-  mainSplitter->setOpaqueResize(false);  // Smoother resize performance
-  mainSplitter->setStyleSheet(
-    "QSplitter::handle { background-color: #3f3f46; }"
-    "QSplitter::handle:hover { background-color: #007acc; }"
-  );
-
-  // LEFT side (Right.1): Process parameters - FULL HEIGHT
+  // Process parameters now occupy the full right panel.  Context Variables and
+  // Vision Result have been moved into tabs in the middle panel.
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
   m_configScrollArea->setStyleSheet(RecipeStyles::configScrollArea());
-  mainSplitter->addWidget(m_configScrollArea);
+  layout->addWidget(m_configScrollArea, 1);  // Stretch factor 1 to fill available space
 
-  // RIGHT side (Right.2): Container for Context Variables + Vision Result
-  QWidget* rightContainer = new QWidget();
-  QVBoxLayout* rightLayout = new QVBoxLayout(rightContainer);
-  rightLayout->setContentsMargins(0, 0, 0, 0);
-  rightLayout->setSpacing(5);
+  // Create the floating execution window.  Parented to `this` so destruction
+  // cascades, but flagged Qt::Window so it's a real top-level window.
+  m_runWindow = new RecipeRunWindow(this);
 
-  // Context variable preview widget (top of right side)
-  m_contextVariablePreview = new ContextVariablePreviewWidget();
-  connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
-    [](const QString& varName) {
-      // Copy variable name to clipboard when clicked
-      QApplication::clipboard()->setText(varName);
-      std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
-    });
-  rightLayout->addWidget(m_contextVariablePreview, 1);  // Stretch factor 1
-
-  // Vision result image display (bottom of right side)
-  m_visionResultGroup = new QGroupBox("Vision Result");
-  m_visionResultGroup->setStyleSheet(
-    "QGroupBox { "
-    "  font-weight: bold; "
-    "  color: #FFA500; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 5px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}"
-  );
-  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
-  visionLayout->setContentsMargins(5, 15, 5, 5);
-
-  m_visionResultImageLabel = new QLabel("No vision result");
-  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
-  m_visionResultImageLabel->setMinimumHeight(150);
-  m_visionResultImageLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #0f0f0f; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #808080; "
-    "  font-style: italic; "
-    "}"
-  );
-  visionLayout->addWidget(m_visionResultImageLabel);
-  rightLayout->addWidget(m_visionResultGroup, 1);  // Stretch factor 1
-
-  mainSplitter->addWidget(rightContainer);
-
-  // Set initial sizes (60% parameters, 40% context+vision)
-  mainSplitter->setSizes({600, 400});
-
-  layout->addWidget(mainSplitter, 1);  // Stretch factor 1 to fill available space
-
-  // Create manual adjust widget (will be shown when needed)
+  // Create manual adjust widget and register it with the run window
   m_manualAdjustWidget = new ManualAdjustWidget(
     m_context,
     m_matrixLoader
@@ -1019,8 +1138,9 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RecipePage::onManualAdjustResponse);
+  m_runWindow->setActiveWidget(m_manualAdjustWidget);
 
-  // Create manual align point widget (will be shown when needed)
+  // Create manual align point widget and register it with the run window
   m_manualAlignPointWidget = new ManualAlignPointWidget(
     m_context->motionManager,
     m_context
@@ -1031,8 +1151,9 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect manual align point response
   connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
     this, &RecipePage::onManualAlignPointResponse);
+  m_runWindow->setActiveWidget(m_manualAlignPointWidget);
 
-  // Create user input widget (will be shown when needed)
+  // Create user input widget and register it with the run window
   m_userInputWidget = new UserInputWidget();
   m_userInputWidget->setStyleSheet("background-color: #2d2d30;");
 
@@ -1047,6 +1168,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RecipePage::onUserInputResponse);
+  m_runWindow->setActiveWidget(m_userInputWidget);
 
   clearConfigurationForm();
 }
@@ -2685,6 +2807,9 @@ void RecipePage::onParameterChanged()
   for (const auto& [key, value] : params) {
     m_recipeManager->setStepParameter(m_selectedStepIndex, key, value);
   }
+
+  // Refresh the tree row so the inline Details column reflects the new params.
+  updateSingleStepItem(m_selectedStepIndex);
 }
 
 void RecipePage::onProcessTemplateSelected(QTreeWidgetItem* item, int column)
@@ -3050,11 +3175,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3076,11 +3200,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3112,11 +3235,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the manual align point widget in the scroll area
-      m_configScrollArea->setWidget(m_manualAlignPointWidget);
+      // Show the manual align point widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+      }
       m_manualAlignPointWidget->showAlignment(
         QString::fromStdString(pointName),
         QString::fromStdString(message),
@@ -3138,11 +3260,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the manual align point widget in the scroll area
-        m_configScrollArea->setWidget(m_manualAlignPointWidget);
+        // Show the manual align point widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+        }
         m_manualAlignPointWidget->showAlignment(
           QString::fromStdString(pointName),
           QString::fromStdString(message),
@@ -3174,11 +3295,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the manual adjust widget in the scroll area
-      m_configScrollArea->setWidget(m_manualAdjustWidget);
+      // Show the manual adjust widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_manualAdjustWidget);
+      }
       m_manualAdjustWidget->showAdjustment(
         QString::fromStdString(message),
         QString::fromStdString(deviceName),
@@ -3201,11 +3321,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the manual adjust widget in the scroll area
-        m_configScrollArea->setWidget(m_manualAdjustWidget);
+        // Show the manual adjust widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_manualAdjustWidget);
+        }
         m_manualAdjustWidget->showAdjustment(
           QString::fromStdString(message),
           QString::fromStdString(deviceName),
@@ -3382,11 +3501,10 @@ void RecipePage::onRunRecipe()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3408,11 +3526,10 @@ void RecipePage::onRunRecipe()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3660,11 +3777,10 @@ void RecipePage::onRunSelectedStep()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area (will be restored later)
-      (void)m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3686,11 +3802,10 @@ void RecipePage::onRunSelectedStep()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3981,26 +4096,20 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   // ✅ Update vision result image if available
   updateVisionResultImage();
 
-  // ✅ NEW: Auto-dismiss progress panel after 3 seconds
+  // ✅ Auto-dismiss the floating run window after 3 seconds
   QTimer::singleShot(3000, this, [this]() {
-    // ✅ FIX: Only dismiss if no execution is running (prevents dismissing new execution)
+    // Only dismiss if no execution is running (prevents dismissing new execution)
     if (m_recipeWorker && m_recipeWorker->isRunning()) {
       std::cout << "[RecipePage] Skipping auto-dismiss - new execution is running" << std::endl;
       return;
     }
-
-    // Only switch if user hasn't manually selected a step
-    if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
-      std::cout << "[RecipePage] Auto-dismissing progress panel" << std::endl;
-
-      // Switch back to last selected config or placeholder
-      if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
-        updateConfigurationForm();
-      }
-      else {
-        clearConfigurationForm();
-      }
+    // Already closed?
+    if (!m_runWindow || !m_runWindow->isRunning()) {
+      return;
     }
+
+    std::cout << "[RecipePage] Auto-dismissing run window" << std::endl;
+    showConfigPanel();   // Hides the run window and tears down m_progressWidget
   });
 
   m_recipeWorker = nullptr;
@@ -4343,26 +4452,13 @@ void RecipePage::setPageState(PageState state)
 
 void RecipePage::showProgressPanel()
 {
-  // ✅ ULTRA SAFE: Clear everything first
-  if (m_currentConfigWidget) {
-    m_configScrollArea->takeWidget();
-    m_currentConfigWidget->deleteLater();
-    m_currentConfigWidget = nullptr;
+  // Tear down any previous progress widget.  QPointer auto-nulls itself
+  // once Qt actually deletes the object.
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->deleteLater();
   }
 
-  // ✅ ULTRA SAFE: Clear scroll area completely and disconnect old widget
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
-  if (oldWidget) {
-    // DON'T delete reusable widgets (manual adjust widget)
-    if (oldWidget != m_manualAdjustWidget) {
-      oldWidget->disconnect();
-      oldWidget->deleteLater();
-    }
-  }
-
-  // QPointer automatically nulls itself when widget is deleted, no manual reset needed
-
-  // Create fresh widget
+  // Create a fresh progress widget for this run.
   m_progressWidget = new RecipeProgressWidget();
   connect(m_progressWidget, &RecipeProgressWidget::stopRequested,
     this, &RecipePage::onStopRecipeRequested);
@@ -4373,31 +4469,25 @@ void RecipePage::showProgressPanel()
   m_progressWidget->setStatusText("Initializing recipe execution...");
   m_progressWidget->startTimer();
 
-  m_configScrollArea->setWidget(m_progressWidget);
+  // Show in the floating run window.  The right panel of RecipePage is no
+  // longer touched during execution — it keeps showing Process Configuration.
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_progressWidget);
+    m_runWindow->openForRun();
+  }
 }
 
 
 void RecipePage::showConfigPanel()
 {
-  // ✅ ULTRA SAFE: Clear scroll area completely
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
-  if (oldWidget) {
-    // DON'T delete reusable widgets (manual adjust widget)
-    if (oldWidget != m_manualAdjustWidget) {
-      oldWidget->disconnect();
-      oldWidget->deleteLater();
-    }
+  // Hide the floating run window and tear down the progress widget.
+  if (m_runWindow) {
+    m_runWindow->closeAfterRun();
   }
-
-  // QPointer automatically nulls itself, no manual reset needed
-
-  // Show config
-  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
-    updateConfigurationForm();
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->deleteLater();
   }
-  else {
-    clearConfigurationForm();
-  }
+  // The right panel was never replaced — no swap needed here.
 }
 
 // ============================================================================
@@ -4582,13 +4672,10 @@ void RecipePage::loadLastRecipeFromSettings()
 void RecipePage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                                     bool enableX, bool enableY, bool enableZ)
 {
-  // Switch from current view to manual adjust view in the scroll area
-  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
-  // We'll just replace it in the scroll area
-  (void)m_configScrollArea->takeWidget();
-
-  // Show the manual adjust widget in the scroll area
-  m_configScrollArea->setWidget(m_manualAdjustWidget);
+  // Show the manual adjust widget in the floating run window
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_manualAdjustWidget);
+  }
   m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
 
   std::cout << "[RecipePage] Showing manual adjust widget" << std::endl;
@@ -4604,16 +4691,10 @@ void RecipePage::onManualAdjustResponse(bool completed)
   // Hide the manual adjust widget
   m_manualAdjustWidget->hideAdjustment();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
     std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
-  }
-  else {
-    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
   }
 
   // Exit the event loop to unblock the callback
@@ -4625,13 +4706,10 @@ void RecipePage::onManualAdjustResponse(bool completed)
 void RecipePage::onShowManualAlignPoint(QString pointName, QString message,
                                         bool enableX, bool enableY, bool enableZ)
 {
-  // Switch from current view to manual align point view in the scroll area
-  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
-  // We'll just replace it in the scroll area
-  (void)m_configScrollArea->takeWidget();
-
-  // Show the manual align point widget in the scroll area
-  m_configScrollArea->setWidget(m_manualAlignPointWidget);
+  // Show the manual align point widget in the floating run window
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+  }
   m_manualAlignPointWidget->showAlignment(pointName, message, enableX, enableY, enableZ);
 
   std::cout << "[RecipePage] Showing manual align point widget for point: "
@@ -4648,16 +4726,10 @@ void RecipePage::onManualAlignPointResponse(bool completed)
   // Hide the manual align point widget
   m_manualAlignPointWidget->hideAlignment();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
     std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
-  }
-  else {
-    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
   }
 
   // Exit the event loop to unblock the callback
@@ -4677,13 +4749,9 @@ void RecipePage::onUserInputResponse(bool accepted, QString inputText)
   // Hide the user input widget
   m_userInputWidget->hideInput();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
-    std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
   }
 
   // Exit the event loop to unblock the callback
@@ -5017,7 +5085,16 @@ void RecipePage::handleQuickAddProcessKey(int key)
   }
 
   std::string selectedCategory = categories[m_quickAddSelectedCategory];
-  auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+  auto allProcesses = RecipeManager::getProcessesByCategory(selectedCategory);
+
+  // Filter out hidden processes so the index matches what the user sees
+  std::vector<std::string> processes;
+  processes.reserve(allProcesses.size());
+  for (const auto& p : allProcesses) {
+    if (m_hiddenProcesses.count(p) == 0) {
+      processes.push_back(p);
+    }
+  }
 
   int processIndex = key - 1;  // 1-based to 0-based
 
@@ -5069,9 +5146,16 @@ void RecipePage::updateQuickAddDisplay()
 
     text += "<br><i>Press ESC to cancel</i>";
   } else {
-    // Show process list for selected category
+    // Show process list for selected category (filtered by hidden set)
     std::string selectedCategory = categories[m_quickAddSelectedCategory];
-    auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+    auto allProcesses = RecipeManager::getProcessesByCategory(selectedCategory);
+    std::vector<std::string> processes;
+    processes.reserve(allProcesses.size());
+    for (const auto& p : allProcesses) {
+      if (m_hiddenProcesses.count(p) == 0) {
+        processes.push_back(p);
+      }
+    }
 
     text = QString("<b>QUICK ADD: %1</b><br><br>")
       .arg(QString::fromStdString(selectedCategory));
@@ -5117,6 +5201,11 @@ void RecipePage::showEvent(QShowEvent* event)
     std::cout << "[RecipePage] Skipping hot reload - recipe is executing" << std::endl;
     return;
   }
+
+  // Pick up any external edits to hidden_processes(.local).json and refresh
+  // the available-processes tree.
+  loadHiddenProcessesFromDisk();
+  refreshProcessTemplateList();
 
   std::cout << "[RecipePage] Page activated - hot reloading position data..." << std::endl;
 

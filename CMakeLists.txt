@@ -627,6 +627,9 @@ set(SOURCES
     include/AppUI/RecipePage/RecipePage.cpp
     include/AppUI/RecipePage/RecipeTreeItemFactory.cpp
     include/AppUI/RecipePage/RecipeStepDelegate.cpp
+    include/AppUI/RecipePage/ProcessSummary.cpp
+    include/AppUI/RecipePage/RecipeRunWindow.cpp
+    include/AppUI/RecipePage/ProcessVisibilityDialog.cpp
     include/AppUI/RecipePage/RecipeClipboard.cpp
     include/AppUI/RecipePage/PropertyTableWidget.cpp
     include/recipe/RecipeManager.cpp

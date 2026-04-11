@@ -2,6 +2,7 @@
 #include "RecipeTreeItemFactory.h"
 #include "RecipePageStyles.h"
 #include "RecipeManager.h"
+#include "ProcessSummary.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QCheckBox>
@@ -131,14 +132,15 @@ QTreeWidgetItem* RecipeTreeItemFactory::createStepItem(
   item->setData(0, Qt::UserRole, stepIndex);
 
   // Clear all column text to prevent any default text from showing
-  for (int col = 0; col < 4; ++col) {
+  for (int col = 0; col < 5; ++col) {
     item->setText(col, "");
   }
 
   QString bgColor = getBackgroundColor(step);
+  QString stripeColor = getStripeColor(step);
 
-  // Column 0: Step number
-  m_treeWidget->setItemWidget(item, 0, createStepNumberWidget(stepIndex, bgColor, step->enabled));
+  // Column 0: Category stripe (3px) + step number
+  m_treeWidget->setItemWidget(item, 0, createStepNumberWidget(stepIndex, bgColor, step->enabled, stripeColor));
 
   // Column 1: Category symbol
   m_treeWidget->setItemWidget(item, 1, createSymbolWidget(step, bgColor));
@@ -146,8 +148,11 @@ QTreeWidgetItem* RecipeTreeItemFactory::createStepItem(
   // Column 2: Process name
   m_treeWidget->setItemWidget(item, 2, createProcessNameWidget(step, bgColor));
 
-  // Column 3: Run checkbox
-  m_treeWidget->setItemWidget(item, 3, createRunCheckboxWidget(step, stepIndex, bgColor));
+  // Column 3: Inline parameter summary
+  m_treeWidget->setItemWidget(item, 3, createDetailsWidget(step, bgColor));
+
+  // Column 4: Run checkbox
+  m_treeWidget->setItemWidget(item, 4, createRunCheckboxWidget(step, stepIndex, bgColor));
 
   return item;
 }
@@ -172,13 +177,24 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
   item->setData(0, Qt::UserRole, stepIndex);
 
   QString bgColor = getBackgroundColor(step);
+  QString stripeColor = getStripeColor(step);
 
-  // Column 0: Update step number label
-  QWidget* numWidget = m_treeWidget->itemWidget(item, 0);
-  QLabel* numLabel = qobject_cast<QLabel*>(numWidget);
-  if (numLabel) {
-    numLabel->setText(QString::number(stepIndex + 1));
-    numLabel->setStyleSheet(RecipeStyles::stepNumberLabel(bgColor, step->enabled));
+  // Column 0: Update step number label and stripe color.
+  // The widget is a container holding [stripe(QWidget) | numLabel(QLabel)].
+  QWidget* col0Widget = m_treeWidget->itemWidget(item, 0);
+  if (col0Widget) {
+    col0Widget->setStyleSheet(RecipeStyles::rowContainer(bgColor));
+    // First child = stripe, second = number label.
+    const auto children = col0Widget->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+    for (QWidget* child : children) {
+      if (auto* numLabel = qobject_cast<QLabel*>(child)) {
+        numLabel->setText(QString::number(stepIndex + 1));
+        numLabel->setStyleSheet(RecipeStyles::stepNumberLabel(bgColor, step->enabled));
+      } else {
+        // Plain QWidget = the stripe
+        child->setStyleSheet(RecipeStyles::categoryStripe(stripeColor));
+      }
+    }
   }
 
   // Column 1: Update symbol label
@@ -200,8 +216,16 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
     nameLabel->setStyleSheet(RecipeStyles::processNameLabel(bgColor, step->enabled, isComment));
   }
 
-  // Column 3: Update run checkbox
-  QWidget* runContainer = m_treeWidget->itemWidget(item, 3);
+  // Column 3: Update inline parameter summary
+  QWidget* detailsWidget = m_treeWidget->itemWidget(item, 3);
+  QLabel* detailsLabel = qobject_cast<QLabel*>(detailsWidget);
+  if (detailsLabel) {
+    detailsLabel->setText(summarizeProcess(step));
+    detailsLabel->setStyleSheet(RecipeStyles::detailsLabel(bgColor, step->enabled));
+  }
+
+  // Column 4: Update run checkbox
+  QWidget* runContainer = m_treeWidget->itemWidget(item, 4);
   if (runContainer) {
     QCheckBox* runChk = runContainer->findChild<QCheckBox*>();
     if (runChk) {
@@ -218,12 +242,27 @@ void RecipeTreeItemFactory::updateStepItem(QTreeWidgetItem* item, const ProcessI
 QWidget* RecipeTreeItemFactory::createStepNumberWidget(
   int stepIndex,
   const QString& bgColor,
-  bool enabled)
+  bool enabled,
+  const QString& stripeColor)
 {
+  // Container holds [3px stripe | step number label].
+  QWidget* container = new QWidget();
+  container->setStyleSheet(RecipeStyles::rowContainer(bgColor));
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+
+  QWidget* stripe = new QWidget();
+  stripe->setFixedWidth(3);
+  stripe->setStyleSheet(RecipeStyles::categoryStripe(stripeColor));
+  layout->addWidget(stripe);
+
   QLabel* label = new QLabel(QString::number(stepIndex + 1));
   label->setAlignment(Qt::AlignCenter);
   label->setStyleSheet(RecipeStyles::stepNumberLabel(bgColor, enabled));
-  return label;
+  layout->addWidget(label, 1);
+
+  return container;
 }
 
 QWidget* RecipeTreeItemFactory::createSymbolWidget(
@@ -252,6 +291,26 @@ QWidget* RecipeTreeItemFactory::createProcessNameWidget(
   label->setStyleSheet(RecipeStyles::processNameLabel(bgColor, step->enabled, isComment));
 
   return label;
+}
+
+QWidget* RecipeTreeItemFactory::createDetailsWidget(
+  const ProcessInstance* step,
+  const QString& bgColor)
+{
+  QLabel* label = new QLabel(summarizeProcess(step));
+  label->setStyleSheet(RecipeStyles::detailsLabel(bgColor, step->enabled));
+  // Allow Qt to elide visually if column is narrower than text.
+  label->setTextInteractionFlags(Qt::NoTextInteraction);
+  return label;
+}
+
+QString RecipeTreeItemFactory::getStripeColor(const ProcessInstance* step) const
+{
+  if (!step) {
+    return QString("transparent");
+  }
+  std::string category = m_recipeManager->getProcessCategory(step->processType);
+  return categoryColor(category);
 }
 
 QWidget* RecipeTreeItemFactory::createRunCheckboxWidget(
