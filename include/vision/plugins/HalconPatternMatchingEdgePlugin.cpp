@@ -169,7 +169,7 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
                         OverlayCommand contourOverlay;
                         contourOverlay.type = OverlayCommand::DrawContour;
                         contourOverlay.color = cv::Scalar(0, 255, 0);  // Green
-                        contourOverlay.thickness = 2;
+                        contourOverlay.thickness = 1;
                         contourOverlay.contour = contourPoints;
                         result.overlays.push_back(contourOverlay);
                     }
@@ -186,26 +186,25 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
             OverlayCommand centerCmd;
             centerCmd.type = OverlayCommand::DrawCrosshair;
             centerCmd.p1 = matchCenter;
-            centerCmd.radius = 20;
+            centerCmd.radius = 2;
             centerCmd.color = cv::Scalar(0, 255, 255);  // Yellow
-            centerCmd.thickness = 2;
+            centerCmd.thickness = 1;
             result.overlays.push_back(centerCmd);
 
-            // Always show the detected anchor point as a red filled dot +
-            // small red crosshair. When a custom anchor is configured the
-            // marker sits at the offset position; otherwise it overlays the
-            // yellow center crosshair so the user can see the reported point.
-            result.addPointOverlay(anchorPoint, cv::Scalar(0, 0, 255), 5);
+            // Always show the detected anchor point as a small red
+            // crosshair. When a custom anchor is configured the marker sits
+            // at the offset position; otherwise it overlays the yellow
+            // center crosshair so the user can see the reported point.
             {
-                const double ancCrossR = 8.0;
+                const double ancCrossR = 2.0;
                 result.addLineOverlay(
                     cv::Point2d(anchorPoint.x - ancCrossR, anchorPoint.y),
                     cv::Point2d(anchorPoint.x + ancCrossR, anchorPoint.y),
-                    cv::Scalar(0, 0, 255), 2);
+                    cv::Scalar(0, 0, 255), 1);
                 result.addLineOverlay(
                     cv::Point2d(anchorPoint.x, anchorPoint.y - ancCrossR),
                     cv::Point2d(anchorPoint.x, anchorPoint.y + ancCrossR),
-                    cv::Scalar(0, 0, 255), 2);
+                    cv::Scalar(0, 0, 255), 1);
             }
 
             // Add text label with score and angle
@@ -220,6 +219,12 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
             result.measurements[pointName + "_angle"] = matchAngle;
             result.measurements[pointName + "_row"] = matchRow;
             result.measurements[pointName + "_col"] = matchCol;
+            // New naming (preferred): .x, .y, .p. X/Y are anchor-relative so
+            // downstream code can use a consistent key regardless of custom
+            // anchor configuration. P is rotation in degrees.
+            result.measurements[pointName + "_x"] = anchorPoint.x;
+            result.measurements[pointName + "_y"] = anchorPoint.y;
+            result.measurements[pointName + "_p"] = matchAngle;
 
             if (VisionManager::instance().isVerboseLogging()) {
                 std::cout << "[HalconPatternMatchEdge] Match " << i << " at (" << anchorPoint.x << ", " << anchorPoint.y
@@ -257,6 +262,14 @@ bool HalconPatternMatchingEdgePlugin::execute(const cv::Mat& input, cv::Mat& out
         result.addMeasurement("num_matches", static_cast<double>(numMatches));
         result.addMeasurement("best_score", score[0].D());
         result.addMeasurement("best_angle", angle[0].D() * 180.0 / M_PI);
+        // Aggregate aliases using the new .x/.y/.p naming. These reference
+        // the first match's anchor point — if you want per-match access use
+        // match_0_x / match_0_y / match_0_p etc.
+        if (result.measurements.count("match_0_x")) {
+            result.addMeasurement("best_x", result.measurements["match_0_x"]);
+            result.addMeasurement("best_y", result.measurements["match_0_y"]);
+            result.addMeasurement("best_p", result.measurements["match_0_p"]);
+        }
 
         result.addMetadata("algorithm", "Halcon_ShapeMatch");
         result.addMetadata("min_score", std::to_string(m_minScore));

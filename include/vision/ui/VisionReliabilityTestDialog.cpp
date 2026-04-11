@@ -271,31 +271,20 @@ void VisionReliabilityTestDialog::startNextIteration()
 
 void VisionReliabilityTestDialog::captureAndExecute()
 {
-    // Capture fresh image (same pattern as VisionManagerPage::onApplyParams)
-    cv::Mat inputImage;
-
-    if (m_frameSubscriber && m_frameSubscriber->IsCameraConnected()
-        && m_frameSubscriber->IsCameraGrabbing()) {
-        // Wait briefly for camera exposure to stabilize
-        QThread::msleep(100);
-
-        CameraFrameData frame = m_frameSubscriber->GetLatestFrame();
-        if (frame.IsValid()) {
-            if (frame.channels == 3) {
-                inputImage = cv::Mat(frame.height, frame.width, CV_8UC3,
-                                     frame.imageData.data()).clone();
-                cv::cvtColor(inputImage, inputImage, cv::COLOR_RGB2BGR);
-            } else {
-                inputImage = cv::Mat(frame.height, frame.width, CV_8UC1,
-                                     frame.imageData.data()).clone();
-            }
-            VisionManager::instance().setInputImage(inputImage);
-        } else {
-            inputImage = VisionManager::instance().getInputImage();
-        }
-    } else {
-        inputImage = VisionManager::instance().getInputImage();
-    }
+    // Reuse whatever image the VisionManager already has as input. The user
+    // verified it with a manual execute before opening this dialog, so it's
+    // the right image to stress-test the plugin on.
+    //
+    // Rationale: earlier versions of this method re-grabbed a fresh camera
+    // frame each iteration. That had two problems:
+    //   1. It introduced camera noise as a confound — we were measuring
+    //      camera stability, not plugin stability.
+    //   2. It silently bypassed "Test Mode: Inject Image", so the test was
+    //      running on a live frame even though the user had loaded a
+    //      specific test image to validate against.
+    // Reliability testing should isolate the plugin's behavior, not the
+    // camera's — use the cached input image unconditionally.
+    cv::Mat inputImage = VisionManager::instance().getInputImage();
 
     if (inputImage.empty()) {
         // Record as a failure

@@ -75,7 +75,7 @@ void CameraLightingStepWidget::setupUI()
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setFixedWidth(350);
+    scrollArea->setFixedWidth(480);
 
     QWidget* scrollContent = new QWidget();
     QVBoxLayout* configCol = new QVBoxLayout(scrollContent);

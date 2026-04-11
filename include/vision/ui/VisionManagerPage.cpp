@@ -31,6 +31,9 @@
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
 #include "../plugins/HalconLineDetectionPlugin.h"
 #include "../plugins/HalconPatternMatchingEdgePlugin.h"
+#include "../plugins/HalconPatternMatchingNCCPlugin.h"
+#include "../plugins/HalconPatternMatchingDescriptorPlugin.h"
+#include "../plugins/HalconPatternMatchingGrayPlugin.h"
 #include "../plugins/HalconBeamDetectionPlugin.h"
 #include "../plugins/HalconD4SigmaBeamDetectionPlugin.h"
 #endif
@@ -135,11 +138,13 @@ void VisionManagerPage::setupUI()
     topLayout->addStretch();
     mainLayout->addLayout(topLayout);
 
-    // Main content: 2-panel splitter (30:70)
+    // Main content: 2-panel splitter. Column 1 (nav) is locked at 300 px
+    // and the splitter handle is hidden so the user cannot drag it.
     m_mainSplitter = new QSplitter(Qt::Horizontal, this);
 
-    // Left panel: Navigation
+    // Left panel: Navigation — fixed 300 px, non-resizable
     m_navWidget = new VisionNavWidget(m_context, this);
+    m_navWidget->setFixedWidth(300);
     m_mainSplitter->addWidget(m_navWidget);
 
     // Right panel: Content stack
@@ -180,10 +185,13 @@ void VisionManagerPage::setupUI()
 
     m_mainSplitter->addWidget(m_contentStack);
 
-    // Set splitter ratio: 30% nav, 70% content
-    m_mainSplitter->setStretchFactor(0, 3);
-    m_mainSplitter->setStretchFactor(1, 7);
-    m_mainSplitter->setHandleWidth(3);
+    // Nav pane is fixed width; content pane takes all remaining space.
+    // Handle width 0 hides the drag grip so the layout is truly locked.
+    m_mainSplitter->setStretchFactor(0, 0);
+    m_mainSplitter->setStretchFactor(1, 1);
+    m_mainSplitter->setHandleWidth(0);
+    m_mainSplitter->setCollapsible(0, false);
+    m_mainSplitter->setCollapsible(1, false);
 
     mainLayout->addWidget(m_mainSplitter, 1);
 
@@ -1204,6 +1212,25 @@ void VisionManagerPage::registerPlugins()
     halconPatternEdgePlugin->setVisionManagerPage(this);
     VisionManager::instance().registerPlugin(halconPatternEdgePlugin);
 
+    auto halconPatternNCCPlugin = std::make_shared<HalconPatternMatchingNCCPlugin>();
+    halconPatternNCCPlugin->setVisionManagerPage(this);
+    VisionManager::instance().registerPlugin(halconPatternNCCPlugin);
+
+    // PatternMatchDescriptor is NOT registered — the plugin has unresolved
+    // issues producing bogus matches with score=1.0 at nonsense coordinates,
+    // and was failing to locate templates that NCC/Edge match correctly on
+    // the same images. See comment block at the top of
+    // HalconPatternMatchingDescriptorPlugin.h for details. The source files
+    // are kept in the build so the work isn't lost; re-enable by
+    // uncommenting this block once the match/homography issue is resolved.
+    // auto halconPatternDescriptorPlugin = std::make_shared<HalconPatternMatchingDescriptorPlugin>();
+    // halconPatternDescriptorPlugin->setVisionManagerPage(this);
+    // VisionManager::instance().registerPlugin(halconPatternDescriptorPlugin);
+
+    auto halconPatternGrayPlugin = std::make_shared<HalconPatternMatchingGrayPlugin>();
+    halconPatternGrayPlugin->setVisionManagerPage(this);
+    VisionManager::instance().registerPlugin(halconPatternGrayPlugin);
+
     auto halconBeamPlugin = std::make_shared<HalconBeamDetectionPlugin>();
     VisionManager::instance().registerPlugin(halconBeamPlugin);
 
@@ -1286,6 +1313,44 @@ void VisionManagerPage::loadPluginConfig(const QString& pluginName)
 #ifdef HAS_HALCON
     if (pluginName == "PatternMatchEdge (Halcon)") {
         auto halconPlugin = std::dynamic_pointer_cast<HalconPatternMatchingEdgePlugin>(plugin);
+        if (halconPlugin) {
+            halconPlugin->setVisionManagerPage(this);
+            std::string templateDir, profileName;
+            resolveTemplateDir(templateDir, profileName);
+            if (!templateDir.empty()) {
+                halconPlugin->setTemplateDirectory(templateDir);
+                halconPlugin->setProfileName(profileName);
+            }
+        }
+    }
+    if (pluginName == "PatternMatchNCC (Halcon)") {
+        auto halconPlugin = std::dynamic_pointer_cast<HalconPatternMatchingNCCPlugin>(plugin);
+        if (halconPlugin) {
+            halconPlugin->setVisionManagerPage(this);
+            std::string templateDir, profileName;
+            resolveTemplateDir(templateDir, profileName);
+            if (!templateDir.empty()) {
+                halconPlugin->setTemplateDirectory(templateDir);
+                halconPlugin->setProfileName(profileName);
+            }
+        }
+    }
+    // PatternMatchDescriptor is disabled — see comment in plugin registration
+    // block above. Template-dir resolution kept commented out to match.
+    // if (pluginName == "PatternMatchDescriptor (Halcon)") {
+    //     auto halconPlugin = std::dynamic_pointer_cast<HalconPatternMatchingDescriptorPlugin>(plugin);
+    //     if (halconPlugin) {
+    //         halconPlugin->setVisionManagerPage(this);
+    //         std::string templateDir, profileName;
+    //         resolveTemplateDir(templateDir, profileName);
+    //         if (!templateDir.empty()) {
+    //             halconPlugin->setTemplateDirectory(templateDir);
+    //             halconPlugin->setProfileName(profileName);
+    //         }
+    //     }
+    // }
+    if (pluginName == "PatternMatchGray (Halcon)") {
+        auto halconPlugin = std::dynamic_pointer_cast<HalconPatternMatchingGrayPlugin>(plugin);
         if (halconPlugin) {
             halconPlugin->setVisionManagerPage(this);
             std::string templateDir, profileName;

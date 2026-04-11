@@ -18,6 +18,7 @@
 #include <QDialogButtonBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QFontMetrics>
 #include <QUuid>
 #include <iostream>
 #include <cmath>
@@ -231,60 +232,86 @@ void TemplateMatchingBase::resetTemplateWidgetPointers() {
 QGroupBox* TemplateMatchingBase::createTemplateGroupWidget(QWidget* parent) {
     QGroupBox* templateGroup = new QGroupBox("Template", parent);
     m_templateConfigWidget = templateGroup;
-    QVBoxLayout* templateLayout = new QVBoxLayout(templateGroup);
+
+    // Horizontal layout: fixed 350x350 preview on the left, vertical button
+    // column on the right. More compact than stacking everything vertically
+    // and matches the layout the user sketched.
+    QHBoxLayout* templateLayout = new QHBoxLayout(templateGroup);
+    templateLayout->setContentsMargins(0, 0, 0, 0);
+    templateLayout->setSpacing(6);
+    templateLayout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     // Connect to destroyed signal to reset our pointers
     QObject::connect(templateGroup, &QObject::destroyed, [this]() {
         resetTemplateWidgetPointers();
     });
 
-    // Preview label
+    // Preview label — fixed 350x350, top-left aligned. Size and filename
+    // are painted as overlays on the pixmap itself (see updatePreviewLabel),
+    // so no separate info labels are needed in the layout.
     m_previewLabel = new QLabel("No template", templateGroup);
-    m_previewLabel->setMinimumSize(100, 100);
-    m_previewLabel->setMaximumSize(150, 150);
+    m_previewLabel->setFixedSize(350, 350);
     m_previewLabel->setAlignment(Qt::AlignCenter);
     m_previewLabel->setStyleSheet("QLabel { background-color: #2a2a2a; border: 1px solid #555; }");
-    templateLayout->addWidget(m_previewLabel, 0, Qt::AlignCenter);
+    templateLayout->addWidget(m_previewLabel, 0, Qt::AlignTop | Qt::AlignLeft);
 
-    // Template info label
+    // Info/path labels still exist for backward compatibility with code that
+    // calls setText() on them, but they're not added to the layout — the
+    // information now shows as an overlay on the preview pixmap.
     m_templateInfoLabel = new QLabel("Size: N/A", templateGroup);
-    m_templateInfoLabel->setAlignment(Qt::AlignCenter);
-    templateLayout->addWidget(m_templateInfoLabel);
-
-    // Template path label
+    m_templateInfoLabel->hide();
     m_templatePathLabel = new QLabel("File: Not saved", templateGroup);
-    m_templatePathLabel->setAlignment(Qt::AlignCenter);
-    m_templatePathLabel->setStyleSheet("QLabel { color: #888; font-size: 9px; }");
-    templateLayout->addWidget(m_templatePathLabel);
+    m_templatePathLabel->hide();
 
-    // Teach/Clear buttons row
-    QHBoxLayout* teachButtonLayout = new QHBoxLayout();
-    m_teachBtn = new QPushButton("Select Template Area", templateGroup);
-    m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
-    m_teachBtn->setToolTip("Draw a red rectangle on the image to select template area");
-    teachButtonLayout->addWidget(m_teachBtn);
+    // Button column on the right — compact, fixed-width buttons
+    QVBoxLayout* buttonCol = new QVBoxLayout();
+    buttonCol->setContentsMargins(0, 0, 0, 0);
+    buttonCol->setSpacing(3);
 
+    const int kBtnWidth = 100;
+    const char* kCompactBtnStyle =
+        "QPushButton { padding: 4px 6px; font-size: 11px; }";
+
+    // Teach button — label swaps to "Confirm" while in selection mode.
+    m_teachBtn = new QPushButton("Teach", templateGroup);
+    m_teachBtn->setFixedWidth(kBtnWidth);
+    m_teachBtn->setStyleSheet(
+        "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+        "padding: 4px 6px; font-size: 11px; }");
+    m_teachBtn->setToolTip("Draw a red rectangle on the image to select the template area");
+    buttonCol->addWidget(m_teachBtn);
+
+    // Clear
     m_clearTemplateBtn = new QPushButton("Clear", templateGroup);
-    m_clearTemplateBtn->setStyleSheet("QPushButton { background-color: #C62828; color: white; }");
-    teachButtonLayout->addWidget(m_clearTemplateBtn);
-    templateLayout->addLayout(teachButtonLayout);
+    m_clearTemplateBtn->setFixedWidth(kBtnWidth);
+    m_clearTemplateBtn->setStyleSheet(
+        "QPushButton { background-color: #C62828; color: white; padding: 4px 6px; font-size: 11px; }");
+    buttonCol->addWidget(m_clearTemplateBtn);
 
-    // Save/Load buttons row
-    QHBoxLayout* fileButtonLayout = new QHBoxLayout();
-    m_saveTemplateBtn = new QPushButton("Save...", templateGroup);
+    // Save
+    m_saveTemplateBtn = new QPushButton("Save", templateGroup);
+    m_saveTemplateBtn->setFixedWidth(kBtnWidth);
+    m_saveTemplateBtn->setStyleSheet(kCompactBtnStyle);
     m_saveTemplateBtn->setToolTip("Save template to PNG file");
-    fileButtonLayout->addWidget(m_saveTemplateBtn);
+    buttonCol->addWidget(m_saveTemplateBtn);
 
-    m_loadTemplateBtn = new QPushButton("Load...", templateGroup);
+    // Load
+    m_loadTemplateBtn = new QPushButton("Load", templateGroup);
+    m_loadTemplateBtn->setFixedWidth(kBtnWidth);
+    m_loadTemplateBtn->setStyleSheet(kCompactBtnStyle);
     m_loadTemplateBtn->setToolTip("Load template from PNG file");
-    fileButtonLayout->addWidget(m_loadTemplateBtn);
-    templateLayout->addLayout(fileButtonLayout);
+    buttonCol->addWidget(m_loadTemplateBtn);
 
-    // Anchor point button
-    m_setAnchorBtn = new QPushButton("Set Anchor Point...", templateGroup);
+    // Anchor point
+    m_setAnchorBtn = new QPushButton("Anchor", templateGroup);
+    m_setAnchorBtn->setFixedWidth(kBtnWidth);
+    m_setAnchorBtn->setStyleSheet(
+        "QPushButton { background-color: #388E3C; color: white; padding: 4px 6px; font-size: 11px; }");
     m_setAnchorBtn->setToolTip("Set custom anchor point for pattern match reporting");
-    m_setAnchorBtn->setStyleSheet("QPushButton { background-color: #388E3C; color: white; }");
-    templateLayout->addWidget(m_setAnchorBtn);
+    buttonCol->addWidget(m_setAnchorBtn);
+
+    buttonCol->addStretch();
+    templateLayout->addLayout(buttonCol, 0);
 
     // Connect signals
     QObject::connect(m_teachBtn, &QPushButton::clicked, [this]() {
@@ -364,24 +391,62 @@ void TemplateMatchingBase::updatePreviewLabel() {
         return;
     }
 
-    cv::Mat preview = getTemplatePreview(150);
-    if (!preview.empty()) {
-        cv::Mat display;
-        if (preview.channels() == 1) {
-            cv::cvtColor(preview, display, cv::COLOR_GRAY2RGB);
-        } else if (preview.channels() == 4) {
-            cv::cvtColor(preview, display, cv::COLOR_BGRA2RGB);
-        } else {
-            cv::cvtColor(preview, display, cv::COLOR_BGR2RGB);
-        }
+    // Build the RGB QImage from the full-resolution template.
+    cv::Mat display;
+    if (m_template.channels() == 1) {
+        cv::cvtColor(m_template, display, cv::COLOR_GRAY2RGB);
+    } else if (m_template.channels() == 4) {
+        cv::cvtColor(m_template, display, cv::COLOR_BGRA2RGB);
+    } else {
+        cv::cvtColor(m_template, display, cv::COLOR_BGR2RGB);
+    }
+    QImage qImage(display.data, display.cols, display.rows, display.step, QImage::Format_RGB888);
+    QPixmap rawPixmap = QPixmap::fromImage(qImage.copy());
 
-        QImage qImage(display.data, display.cols, display.rows, display.step, QImage::Format_RGB888);
-        m_previewLabel->setPixmap(QPixmap::fromImage(qImage.copy()));
+    // Scale to the label size — always grow/shrink to fill the 350x350 box
+    // while preserving aspect ratio. Unlike getTemplatePreview(), QPixmap::scaled
+    // upscales small templates instead of leaving them tiny.
+    const QSize labelSize = m_previewLabel->size();
+    QPixmap scaledPixmap = rawPixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    // Overlay size + filename text on top of the scaled pixmap. Dark
+    // semi-transparent band at the top keeps it legible over any image.
+    {
+        QPainter painter(&scaledPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+
+        const int bandHeight = 32;
+        painter.fillRect(0, 0, scaledPixmap.width(), bandHeight, QColor(0, 0, 0, 170));
+
+        // Size (first line) — yellow-green, bold
+        painter.setPen(QColor(180, 255, 180));
+        painter.setFont(QFont("Arial", 9, QFont::Bold));
+        const QString sizeText = QString("Size: %1 x %2").arg(m_template.cols).arg(m_template.rows);
+        painter.drawText(6, 14, sizeText);
+
+        // Filename (second line) — light gray, smaller
+        painter.setPen(QColor(200, 200, 200));
+        painter.setFont(QFont("Arial", 8));
+        QString fileText;
+        if (!m_templateFilePath.empty()) {
+            QFileInfo fileInfo(QString::fromStdString(m_templateFilePath));
+            QString name = fileInfo.fileName();
+            // Elide very long names so they never overrun the preview width
+            QFontMetrics fm(painter.font());
+            name = fm.elidedText(name, Qt::ElideMiddle, scaledPixmap.width() - 12);
+            fileText = "File: " + name;
+        } else {
+            fileText = "File: Not saved";
+        }
+        painter.drawText(6, 27, fileText);
+        painter.end();
     }
 
-    QString sizeText = QString("Size: %1 x %2").arg(m_template.cols).arg(m_template.rows);
-    m_templateInfoLabel->setText(sizeText);
+    m_previewLabel->setPixmap(scaledPixmap);
 
+    // Keep the hidden labels in sync for anywhere else that queries them.
+    m_templateInfoLabel->setText(QString("Size: %1 x %2").arg(m_template.cols).arg(m_template.rows));
     if (m_templatePathLabel) {
         if (!m_templateFilePath.empty()) {
             QFileInfo fileInfo(QString::fromStdString(m_templateFilePath));
@@ -472,8 +537,10 @@ void TemplateMatchingBase::startTemplateSelection() {
 
     m_inTemplateSelectionMode = true;
     if (m_teachBtn) {
-        m_teachBtn->setText("OK - Confirm Template");
-        m_teachBtn->setStyleSheet("QPushButton { background-color: #2E7D32; color: white; font-weight: bold; }");
+        m_teachBtn->setText("Confirm");
+        m_teachBtn->setStyleSheet(
+            "QPushButton { background-color: #2E7D32; color: white; font-weight: bold; "
+            "padding: 4px 6px; font-size: 11px; }");
     }
 
     visionPage->startTemplateSelectionMode(
@@ -495,8 +562,10 @@ void TemplateMatchingBase::onTemplateSelectionComplete(int startX, int startY, i
         }
         m_inTemplateSelectionMode = false;
         if (m_teachBtn) {
-            m_teachBtn->setText("Select Template Area");
-            m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+            m_teachBtn->setText("Teach");
+            m_teachBtn->setStyleSheet(
+                "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+                "padding: 4px 6px; font-size: 11px; }");
         }
         return;
     }
@@ -513,8 +582,10 @@ void TemplateMatchingBase::onTemplateSelectionComplete(int startX, int startY, i
         }
         m_inTemplateSelectionMode = false;
         if (m_teachBtn) {
-            m_teachBtn->setText("Select Template Area");
-            m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+            m_teachBtn->setText("Teach");
+            m_teachBtn->setStyleSheet(
+                "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+                "padding: 4px 6px; font-size: 11px; }");
         }
         return;
     }
@@ -532,16 +603,20 @@ void TemplateMatchingBase::onTemplateSelectionComplete(int startX, int startY, i
 
     m_inTemplateSelectionMode = false;
     if (m_teachBtn) {
-        m_teachBtn->setText("Select Template Area");
-        m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+        m_teachBtn->setText("Teach");
+        m_teachBtn->setStyleSheet(
+            "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+            "padding: 4px 6px; font-size: 11px; }");
     }
 }
 
 void TemplateMatchingBase::onTemplateSelectionCancelled() {
     m_inTemplateSelectionMode = false;
     if (m_teachBtn) {
-        m_teachBtn->setText("Select Template Area");
-        m_teachBtn->setStyleSheet("QPushButton { background-color: #1565C0; color: white; font-weight: bold; }");
+        m_teachBtn->setText("Teach");
+        m_teachBtn->setStyleSheet(
+            "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+            "padding: 4px 6px; font-size: 11px; }");
     }
 }
 

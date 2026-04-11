@@ -36,6 +36,9 @@ signals:
     void roiCornerDragged(int startX, int startY, int endX, int endY);
     void searchBoxCornerDragged(int startX, int startY, int endX, int endY);
     void templateSelectionCornerDragged(int startX, int startY, int endX, int endY);
+    // Viewport interaction
+    void panDelta(const QPoint& delta);
+    void resetViewRequested();
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -81,6 +84,11 @@ private:
     DragCorner m_draggingCorner = DragCorner::None;
     DragTarget m_draggingTarget = DragTarget::None;
     bool m_isDragging = false;
+
+    // Pan state — left-click drag on the image (when no corner hit) scrolls
+    // the viewport. Separate from ROI/corner drag handling above.
+    bool m_isPanning = false;
+    QPoint m_panLastPos;
 };
 
 class VisionImageWidget : public QWidget {
@@ -124,6 +132,10 @@ public:
     bool isInjectionMode() const;
     void setInjectedFileName(const QString& fileName);
 
+    // Viewport navigation
+    void resetView();                       // Reset zoom to fit, scroll to top-left
+    double zoomFactor() const { return m_zoomFactor; }
+
 signals:
     void captureClicked();
     void clearClicked();
@@ -136,11 +148,14 @@ signals:
 protected:
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void onROICornerDragged(int startX, int startY, int endX, int endY);
     void onSearchBoxCornerDragged(int startX, int startY, int endX, int endY);
     void onTemplateSelectionCornerDragged(int startX, int startY, int endX, int endY);
+    void onPanDelta(const QPoint& delta);
+    void onResetViewRequested();
 
 private:
     void setupUI();
@@ -190,4 +205,11 @@ private:
 
     // Overlay commands
     std::vector<OverlayCommand> m_overlays;
+
+    // Viewport zoom/pan state
+    double m_zoomFactor = 1.0;      // 1.0 = fit-to-viewport; > 1 zoom in, < 1 zoom out
+    double m_fitScale = 1.0;        // Image-to-viewport scale at zoom=1 (cached)
+    static constexpr double kMinZoom = 0.25;
+    static constexpr double kMaxZoom = 20.0;
+    static constexpr double kZoomStep = 1.25;  // Multiplier per wheel notch
 };
