@@ -231,6 +231,14 @@ private:
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
   QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
+  // Base (non-scan) status snapshot — what the badge should revert to once
+  // any active scan ends. Set via setProgramStatus(); paint via applyProgramStatusLabel().
+  QString m_baseStatusText = "Idle";
+  QString m_baseStatusBgColor = "#3f3f46";
+  QString m_baseStatusFgColor = "#888888";
+  bool m_isScanActive = false;
+  void setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor);
+  void applyProgramStatusLabel();
   QPlainTextEdit* m_logTextEdit;  // Using QPlainTextEdit for better performance with large logs
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
   CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
@@ -241,6 +249,8 @@ private:
   QLabel* m_cmdCurrentLabel;
   QLabel* m_cmdNext1Label;
   QLabel* m_cmdNext2Label;
+  // Single-row human-readable description of the action currently running.
+  QLabel* m_actionDetailLabel = nullptr;
   std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
   // Scanning controls (refactored)
