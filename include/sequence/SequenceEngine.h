@@ -97,14 +97,36 @@ using RetraceEditCallback = std::function<bool(
 struct ActionInfo {
   std::string deviceName;
   std::string methodName;
+  std::map<std::string, std::string> params;
   bool isValid = false;
 
   ActionInfo() = default;
   ActionInfo(const std::string& dev, const std::string& method)
     : deviceName(dev), methodName(method), isValid(true) {}
+  ActionInfo(const std::string& dev, const std::string& method,
+             const std::map<std::string, std::string>& p)
+    : deviceName(dev), methodName(method), params(p), isValid(true) {}
 
   std::string toString() const {
     return isValid ? (deviceName + "." + methodName) : "";
+  }
+
+  // Human-readable single-line description for the run UI.
+  // Falls back to "device.method" when no parameters are known.
+  std::string toHumanReadable() const {
+    if (!isValid) return "";
+    std::string out = deviceName + " - " + methodName;
+    if (!params.empty()) {
+      out += " (";
+      bool first = true;
+      for (const auto& kv : params) {
+        if (!first) out += ", ";
+        out += kv.first + "=" + kv.second;
+        first = false;
+      }
+      out += ")";
+    }
+    return out;
   }
 };
 

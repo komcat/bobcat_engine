@@ -560,7 +560,7 @@ void SequenceEngine::FlattenSteps(const std::vector<std::shared_ptr<ISequenceSte
     switch (step->GetType()) {
     case ISequenceStep::Type::ACTION: {
       Action* action = static_cast<Action*>(step.get());
-      m_actionList.emplace_back(action->deviceName, action->methodName);
+      m_actionList.emplace_back(action->deviceName, action->methodName, action->params);
       break;
     }
     case ISequenceStep::Type::LOOP: {
@@ -892,7 +892,7 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
 
     // ✅ Notify action started callback with look-ahead info
     if (m_actionStartedCallback) {
-      ActionInfo current(action->deviceName, action->methodName);
+      ActionInfo current(action->deviceName, action->methodName, action->params);
       ActionInfo next;
       ActionInfo afterNext;
 

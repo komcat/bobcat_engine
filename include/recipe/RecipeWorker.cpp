@@ -315,10 +315,12 @@ void RecipeWorker::run()
           Q_ARG(bool, success));
       });
 
-      // Set up action callback for granular command tracking with look-ahead
+      // Set up action callback for granular command tracking with look-ahead.
+      // `current` carries a human-readable description (device, method, params);
+      // next/afterNext remain compact "device.method" look-ahead strings.
       m_engine->SetActionStartedCallback([this](const ActionInfo& current, const ActionInfo& next, const ActionInfo& afterNext) {
         QMetaObject::invokeMethod(this, "actionStarted", Qt::QueuedConnection,
-          Q_ARG(QString, QString::fromStdString(current.toString())),
+          Q_ARG(QString, QString::fromStdString(current.toHumanReadable())),
           Q_ARG(QString, QString::fromStdString(next.toString())),
           Q_ARG(QString, QString::fromStdString(afterNext.toString())));
       });
