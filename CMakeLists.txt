@@ -850,6 +850,8 @@ set(HEADERS
     include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
     include/AppUI/DarkTheme.h
+    include/AppUI/Theme.h
+    include/AppUI/ThemeButtonStyles.h
     include/AppUI/ConnectionSplashScreen.h
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h

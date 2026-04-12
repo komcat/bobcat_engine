@@ -233,9 +233,11 @@ private:
   QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
   // Base (non-scan) status snapshot — what the badge should revert to once
   // any active scan ends. Set via setProgramStatus(); paint via applyProgramStatusLabel().
+  // Defaults match the "Idle" appearance; setProgramStatus() at runtime reads
+  // from Theme::Color::* so a palette swap takes effect without code changes.
   QString m_baseStatusText = "Idle";
-  QString m_baseStatusBgColor = "#3f3f46";
-  QString m_baseStatusFgColor = "#888888";
+  QString m_baseStatusBgColor;    // initialized in ctor body from Theme::Color::bgSurface
+  QString m_baseStatusFgColor;    // initialized in ctor body from Theme::Color::textDisabled
   bool m_isScanActive = false;
   void setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor);
   void applyProgramStatusLabel();
