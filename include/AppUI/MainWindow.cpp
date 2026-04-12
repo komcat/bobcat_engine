@@ -20,6 +20,7 @@
 #include "RecipePage.h"           // ✅ ADD THIS
 #include "RunProgramPage.h"
 #include "DarkTheme.h"            // ✅ ADD THIS - Centralized theme
+#include "ThemeManager.h"         // Runtime theme switcher
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
@@ -316,11 +317,34 @@ void MainWindow::createPages()
   }
   m_pageStack->addWidget(m_applicationSettingsPage);
 
+  // ✅ Theme live reload: when settings are saved, read the Theme combo
+  // and call ThemeManager::setTheme() which reassigns palette pointers,
+  // re-applies the global QSS, and emits themeChanged() to all subscribers.
+  connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+    this, [this]() {
+      QSettings s("Fabrinet", "BobcatEngine");
+      QString t = s.value("UI/Theme", "Default").toString();
+      ThemeManager::instance().setTheme(
+        t == "CC29" ? Theme::ThemeId::CC29 : Theme::ThemeId::Default);
+    });
+
   // Trainer container page (wraps AccuracyTrainerPage + future trainer tools)
   m_trainerContainerPage = new TrainerContainerPage(m_context, this);
   connect(m_trainerContainerPage, &TrainerContainerPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_trainerContainerPage);
+
+  // ✅ Wire themeChanged to every widget that has local stylesheets.
+  // When ThemeManager flips the palette, these slots re-apply their
+  // bezel buttons, status badges, product labels, etc.
+  auto& tm = ThemeManager::instance();
+  connect(&tm, &ThemeManager::themeChanged, m_topBar, &TopBar::applyTheme);
+  connect(&tm, &ThemeManager::themeChanged, m_runProgramPage, &RunProgramPage::applyTheme);
+  connect(&tm, &ThemeManager::themeChanged, m_recipePage, &RecipePage::applyTheme);
+  // Also re-apply MainWindow's own stylesheet
+  connect(&tm, &ThemeManager::themeChanged, this, [this]() {
+    setStyleSheet(DarkTheme::getStyleSheet());
+  });
 
   std::cout << "[MainWindow] Pages created successfully" << std::endl;
 }

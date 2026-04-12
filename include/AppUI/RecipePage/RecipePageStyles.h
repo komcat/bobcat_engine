@@ -20,20 +20,20 @@ namespace RecipeStyles {
 // Const QString at namespace scope has internal linkage in C++, so each TU
 // gets its own copy at static-init. Cheap enough for ~14 strings.
 namespace Colors {
-  const QString BG_DARK            = QLatin1String(Theme::Color::bgDeep);
-  const QString BG_MEDIUM          = QLatin1String(Theme::Color::bgPrimary);
-  const QString BG_LIGHT           = QLatin1String(Theme::Color::bgSurface);
-  const QString BORDER             = QLatin1String(Theme::Color::borderSubtle);
-  const QString BORDER_LIGHT       = QLatin1String(Theme::Color::borderNormal);
-  const QString TEXT_PRIMARY       = QLatin1String(Theme::Color::textPrimary);
-  const QString TEXT_SECONDARY     = QLatin1String(Theme::Color::textSecondary);
-  const QString TEXT_CATEGORY      = QLatin1String(Theme::Color::warning);    // category labels (was yellow/gold)
-  const QString TEXT_COMMENT       = QLatin1String(Theme::Color::success);    // recipe comments (was muted green)
-  const QString ACCENT_BLUE        = QLatin1String(Theme::Color::primaryHover);
-  const QString ACCENT_RED         = QLatin1String(Theme::Color::danger);
-  const QString HOVER              = QLatin1String(Theme::Color::bgHover);
-  const QString SELECTED           = QLatin1String(Theme::Color::primary);
-  const QString HIGHLIGHT_EXECUTING = QLatin1String(Theme::Color::primaryPressed);
+  inline QString BG_DARK()             { return QLatin1String(Theme::Color::bgDeep); }
+  inline QString BG_MEDIUM()           { return QLatin1String(Theme::Color::bgPrimary); }
+  inline QString BG_LIGHT()            { return QLatin1String(Theme::Color::bgSurface); }
+  inline QString BORDER()              { return QLatin1String(Theme::Color::borderSubtle); }
+  inline QString BORDER_LIGHT()        { return QLatin1String(Theme::Color::borderNormal); }
+  inline QString TEXT_PRIMARY()        { return QLatin1String(Theme::Color::textPrimary); }
+  inline QString TEXT_SECONDARY()      { return QLatin1String(Theme::Color::textSecondary); }
+  inline QString TEXT_CATEGORY()       { return QLatin1String(Theme::Color::warning); }    // category labels (was yellow/gold)
+  inline QString TEXT_COMMENT()        { return QLatin1String(Theme::Color::success); }    // recipe comments (was muted green)
+  inline QString ACCENT_BLUE()         { return QLatin1String(Theme::Color::primaryHover); }
+  inline QString ACCENT_RED()          { return QLatin1String(Theme::Color::danger); }
+  inline QString HOVER()               { return QLatin1String(Theme::Color::bgHover); }
+  inline QString SELECTED()            { return QLatin1String(Theme::Color::primary); }
+  inline QString HIGHLIGHT_EXECUTING() { return QLatin1String(Theme::Color::primaryPressed); }
 }
 
 //=============================================================================
@@ -81,9 +81,9 @@ inline QString processTemplateTree() {
     "QTreeWidget::branch:has-children:open { "
     "  border-image: none; "
     "}"
-  ).arg(Colors::BG_DARK, Colors::BORDER, Colors::TEXT_PRIMARY,
+  ).arg(Colors::BG_DARK(), Colors::BORDER(), Colors::TEXT_PRIMARY(),
         Fonts::MONOSPACE, QString::number(Fonts::SIZE_NORMAL),
-        Colors::HOVER, Colors::SELECTED);
+        Colors::HOVER(), Colors::SELECTED());
 }
 
 // Recipe steps tree (main recipe list)
@@ -116,9 +116,9 @@ inline QString recipeStepsTree() {
     "  font-weight: bold; "
     "  font-size: %4px; "
     "}"
-  ).arg(Colors::BG_DARK, Colors::BORDER, Fonts::MONOSPACE,
-        QString::number(Fonts::SIZE_MEDIUM), Colors::SELECTED,
-        Colors::HOVER, Colors::BG_MEDIUM, Colors::TEXT_PRIMARY,
+  ).arg(Colors::BG_DARK(), Colors::BORDER(), Fonts::MONOSPACE,
+        QString::number(Fonts::SIZE_MEDIUM), Colors::SELECTED(),
+        Colors::HOVER(), Colors::BG_MEDIUM(), Colors::TEXT_PRIMARY(),
         QLatin1String(Theme::Color::bgSurfaceAlt));
 }
 
@@ -139,7 +139,7 @@ inline QString breakpointCheckbox() {
     "  border: 1px solid %3; "
     "  border-radius: 3px; "
     "}"
-  ).arg(Colors::BG_LIGHT, Colors::BORDER_LIGHT, Colors::ACCENT_RED);
+  ).arg(Colors::BG_LIGHT(), Colors::BORDER_LIGHT(), Colors::ACCENT_RED());
 }
 
 //=============================================================================
@@ -162,8 +162,8 @@ inline QString runCheckbox() {
     "  border: 1px solid %3; "
     "  border-radius: 3px; "
     "}"
-  ).arg(Colors::BORDER_LIGHT,
-        Colors::BORDER_LIGHT,
+  ).arg(Colors::BORDER_LIGHT(),
+        Colors::BORDER_LIGHT(),
         QLatin1String(Theme::Color::success));
 }
 
@@ -180,7 +180,7 @@ inline QString stepNumberLabel(const QString& bgColor, bool enabled) {
     "  font-weight: bold; "
     "  font-size: %4px; "
     "}"
-  ).arg(bgColor, enabled ? Colors::TEXT_PRIMARY : Colors::TEXT_SECONDARY,
+  ).arg(bgColor, enabled ? Colors::TEXT_PRIMARY() : Colors::TEXT_SECONDARY(),
         Fonts::MONOSPACE, QString::number(Fonts::SIZE_MEDIUM));
 }
 
@@ -192,7 +192,7 @@ inline QString symbolLabel(const QString& bgColor, bool enabled) {
     "  padding: 4px; "
     "  font-size: %3px; "
     "}"
-  ).arg(bgColor, enabled ? Colors::TEXT_PRIMARY : Colors::TEXT_SECONDARY,
+  ).arg(bgColor, enabled ? Colors::TEXT_PRIMARY() : Colors::TEXT_SECONDARY(),
         QString::number(Fonts::SIZE_MEDIUM));
 }
 
@@ -202,11 +202,11 @@ inline QString processNameLabel(const QString& bgColor, bool enabled, bool isCom
   QString color;
 
   if (!enabled) {
-    color = Colors::TEXT_SECONDARY;
+    color = Colors::TEXT_SECONDARY();
   } else if (isComment) {
-    color = Colors::TEXT_COMMENT;
+    color = Colors::TEXT_COMMENT();
   } else {
-    color = Colors::TEXT_PRIMARY;
+    color = Colors::TEXT_PRIMARY();
   }
 
   return QString(
@@ -226,7 +226,7 @@ inline QString processNameLabel(const QString& bgColor, bool enabled, bool isCom
 // Inline parameter summary label shown in the new "Details" column.
 // Italic, dim, monospace, single-line.
 inline QString detailsLabel(const QString& bgColor, bool enabled) {
-  const QString color = enabled ? Colors::TEXT_SECONDARY
+  const QString color = enabled ? Colors::TEXT_SECONDARY()
                                 : QLatin1String(Theme::Color::textDisabled);
   return QString(
     "QLabel { "
@@ -342,7 +342,7 @@ inline QString addProcessButton() {
     "  background-color: %3; "
     "}"
   ).arg(QLatin1String(Theme::Color::success),
-        Colors::BORDER,
+        Colors::BORDER(),
         QLatin1String(Theme::Color::successHover));
 }
 
@@ -363,8 +363,8 @@ inline QString recipeNameEdit() {
     "QLineEdit:focus { "
     "  border: 1px solid %5; "
     "}"
-  ).arg(QString::number(Fonts::SIZE_MEDIUM), Colors::TEXT_PRIMARY,
-        Colors::BG_MEDIUM, Colors::BORDER, Colors::ACCENT_BLUE);
+  ).arg(QString::number(Fonts::SIZE_MEDIUM), Colors::TEXT_PRIMARY(),
+        Colors::BG_MEDIUM(), Colors::BORDER(), Colors::ACCENT_BLUE());
 }
 
 //=============================================================================
@@ -376,7 +376,7 @@ inline QString titleLabel() {
     "color: %1; "
     "font-size: %2px; "
     "padding: 4px 0px;"
-  ).arg(Colors::TEXT_PRIMARY, QString::number(Fonts::SIZE_TITLE));
+  ).arg(Colors::TEXT_PRIMARY(), QString::number(Fonts::SIZE_TITLE));
 }
 
 inline QString sectionLabel() {
@@ -384,7 +384,7 @@ inline QString sectionLabel() {
     "font-weight: bold; "
     "color: %1; "
     "font-size: %2px;"
-  ).arg(Colors::TEXT_PRIMARY, QString::number(Fonts::SIZE_MEDIUM));
+  ).arg(Colors::TEXT_PRIMARY(), QString::number(Fonts::SIZE_MEDIUM));
 }
 
 //=============================================================================
@@ -398,7 +398,7 @@ inline QString rowContainer(const QString& bgColor) {
 // EXECUTING STEP HIGHLIGHT
 //=============================================================================
 inline QString executingStepHighlight() {
-  return QString("background-color: %1;").arg(Colors::HIGHLIGHT_EXECUTING);
+  return QString("background-color: %1;").arg(Colors::HIGHLIGHT_EXECUTING());
 }
 
 //=============================================================================
@@ -427,8 +427,8 @@ inline QString pageBackground() {
     "  background-color: %1; "
     "  border: none; "
     "}"
-  ).arg(Colors::BG_MEDIUM, Colors::TEXT_PRIMARY, Colors::BG_LIGHT,
-        Colors::BORDER_LIGHT, Colors::SELECTED);
+  ).arg(Colors::BG_MEDIUM(), Colors::TEXT_PRIMARY(), Colors::BG_LIGHT(),
+        Colors::BORDER_LIGHT(), Colors::SELECTED());
 }
 
 inline QString backButton() {
@@ -464,7 +464,7 @@ inline QString recipeFileLabel() {
     "background-color: %2; "
     "border: 1px solid %3; "
     "border-radius: 3px;"
-  ).arg(Colors::TEXT_PRIMARY, Colors::BG_DARK, Colors::BORDER);
+  ).arg(Colors::TEXT_PRIMARY(), Colors::BG_DARK(), Colors::BORDER());
 }
 
 inline QString productStatusLabel() {
@@ -472,7 +472,7 @@ inline QString productStatusLabel() {
     "font-size: 11px; "
     "color: %1; "
     "padding: 4px;"
-  ).arg(Colors::TEXT_PRIMARY);
+  ).arg(Colors::TEXT_PRIMARY());
 }
 
 inline QString productStatusLabelLoaded() {
@@ -514,7 +514,7 @@ inline QString menuBar() {
     "QMenu::item:selected { "
     "  background-color: %4; "
     "}"
-  ).arg(Colors::BG_LIGHT, Colors::TEXT_PRIMARY, Colors::BORDER, Colors::SELECTED);
+  ).arg(Colors::BG_LIGHT(), Colors::TEXT_PRIMARY(), Colors::BORDER(), Colors::SELECTED());
 }
 
 //=============================================================================
@@ -536,8 +536,8 @@ inline QString smallToolButton() {
     "QPushButton:pressed { "
     "  background-color: %4; "
     "}"
-  ).arg(Colors::BG_LIGHT, Colors::TEXT_PRIMARY, Colors::BORDER, Colors::BG_DARK,
-        Colors::HOVER);
+  ).arg(Colors::BG_LIGHT(), Colors::TEXT_PRIMARY(), Colors::BORDER(), Colors::BG_DARK(),
+        Colors::HOVER());
 }
 
 inline QString contextViewerButton() {
@@ -579,7 +579,7 @@ inline QString searchBox() {
     "  background-color: %2; "
     "  color: %3; "
     "}"
-  ).arg(Colors::BORDER_LIGHT, Colors::BG_LIGHT, Colors::TEXT_PRIMARY);
+  ).arg(Colors::BORDER_LIGHT(), Colors::BG_LIGHT(), Colors::TEXT_PRIMARY());
 }
 
 inline QString selectedProcessLabel() {
@@ -593,7 +593,7 @@ inline QString selectedProcessLabel() {
     "  font-style: italic; "
     "  font-size: 13px; "
     "}"
-  ).arg(Colors::BORDER_LIGHT, Colors::BG_MEDIUM,
+  ).arg(Colors::BORDER_LIGHT(), Colors::BG_MEDIUM(),
         QLatin1String(Theme::Color::accentSoft));
 }
 
@@ -625,7 +625,7 @@ inline QString configScrollArea() {
     "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { "
     "  height: 0px; "
     "}"
-  ).arg(Colors::BG_DARK, Colors::BORDER, Colors::BG_MEDIUM, Colors::BORDER_LIGHT,
+  ).arg(Colors::BG_DARK(), Colors::BORDER(), Colors::BG_MEDIUM(), Colors::BORDER_LIGHT(),
         QLatin1String(Theme::Palette::gray400));
 }
 

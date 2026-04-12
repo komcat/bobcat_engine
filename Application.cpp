@@ -30,6 +30,7 @@
 #include "common/ScanActivityTracker.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
+#include "Theme.h"      // Palette + runtime applyPalette()
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
 #include "startup/ConnectionConfig.h"
 #include "startup/ConnectionWorkerPool.h"
@@ -170,6 +171,15 @@ bool Application::initialize()
 
     // ✅ Set Fusion style for better stylesheet support (prevents Windows native style interference)
     m_qApplication->setStyle("Fusion");
+
+    // ✅ Boot-time theme: read the saved palette from QSettings BEFORE the
+    // first QSS build so the initial render uses the user's chosen palette.
+    {
+      QSettings bootSettings("Fabrinet", "BobcatEngine");
+      QString themeName = bootSettings.value("UI/Theme", "Default").toString();
+      Theme::applyPalette(themeName == "CC29" ? Theme::ThemeId::CC29
+                                              : Theme::ThemeId::Default);
+    }
 
     // ✅ UPDATED: Apply centralized dark theme globally to all Qt widgets
     m_qApplication->setStyleSheet(DarkTheme::getStyleSheet());

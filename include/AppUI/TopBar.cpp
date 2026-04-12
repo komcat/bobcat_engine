@@ -502,3 +502,112 @@ void TopBar::connectScanActivityTracker(ScanActivityTracker* tracker)
 
   std::cout << "[TopBar] Connected to ScanActivityTracker" << std::endl;
 }
+
+void TopBar::applyTheme()
+{
+  // Re-apply the TopBar background + accent underline.
+  setStyleSheet(QString(
+    "TopBar { "
+    "  background-color: %1; "
+    "  border-bottom: 2px solid %2; "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::accent)));
+
+  // Product name label — accent colour.
+  if (m_productNameLabel) {
+    m_productNameLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent)));
+  }
+
+  // Working path label — secondary text colour.
+  if (m_workingPathLabel) {
+    m_workingPathLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::textSecondary)));
+  }
+
+  // Scan-busy badge — accent background, bgDeep text.
+  if (m_scanBusyLabel) {
+    m_scanBusyLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  font-weight: bold; "
+      "  font-size: 11px; "
+      "  padding: 4px 10px; "
+      "  border-radius: 4px; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent),
+          QLatin1String(Theme::Color::bgDeep)));
+  }
+
+  // AUX button — primary blue family (bezelPrimary).
+  if (m_auxWindowButton) {
+    m_auxWindowButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::primaryHover,
+      Theme::Color::primary,
+      Theme::Color::primaryPressed
+    ));
+  }
+
+  // SWIR button — danger red family.
+  if (m_swirButton) {
+    m_swirButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::dangerHover,
+      Theme::Color::danger,
+      Theme::Palette::red700
+    ));
+  }
+
+  // Rltm button — success green family.
+  if (m_rtlmButton) {
+    m_rtlmButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::successHover,
+      Theme::Color::success,
+      Theme::Palette::green700
+    ));
+  }
+
+  // Rltm2 button — success green family (matches Rltm).
+  if (m_rtlm2Button) {
+    m_rtlm2Button->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::successHover,
+      Theme::Color::success,
+      Theme::Palette::green700
+    ));
+  }
+
+  // TEC temperature label — initial state uses textSecondary.
+  // (The poll timer will override this on the next tick once a device is found;
+  // resetting it here ensures consistency immediately after a theme change.)
+  if (m_tecTemperatureLabel) {
+    m_tecTemperatureLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "  font-size: 13px; "
+      "  font-weight: bold; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::textSecondary)));
+  }
+
+  // JOG button — warning orange family.
+  if (m_jogButton) {
+    m_jogButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::warningHover,
+      Theme::Color::warning,
+      Theme::Palette::orange700
+    ));
+  }
+}

@@ -6494,3 +6494,46 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
     m_contextStatusLabel->setText(QString("%1 of %2 %3variables%4").arg(shownCount).arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
   }
 }
+
+void RunProgramPage::applyTheme()
+{
+  applyProgramStatusLabel();
+
+  m_currentRecipeLabel->setStyleSheet(
+    QString("font-size: 16px; font-weight: bold; color: %1;")
+      .arg(QLatin1String(Theme::Color::primary)));
+
+  m_actionDetailLabel->setStyleSheet(
+    QString("QLabel { "
+            "  font-size: 12px; "
+            "  color: %1; "
+            "  background-color: %2; "
+            "  border: 1px solid %3; "
+            "  border-radius: 4px; "
+            "  padding: 6px 10px; "
+            "}")
+      .arg(QLatin1String(Theme::Color::textSecondary),
+           QLatin1String(Theme::Color::bgSurface),
+           QLatin1String(Theme::Color::borderSubtle)));
+
+  m_progressBar->setStyleSheet(
+    QString("QProgressBar { "
+            "  border: 1px solid %1; "
+            "  border-radius: 3px; "
+            "  background-color: %2; "
+            "  text-align: center; "
+            "  color: %3; "
+            "  font-weight: bold; "
+            "} "
+            "QProgressBar::chunk { "
+            "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+            "      stop:0 #58d68d, stop:1 #27ae60); "
+            "  border-radius: 2px; "
+            "}")
+      .arg(QLatin1String(Theme::Color::borderSubtle),
+           QLatin1String(Theme::Color::bgDeep),
+           QLatin1String(Theme::Color::textPrimary)));
+
+  m_backButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  m_executeButton->setStyleSheet(m_isExecuting ? Theme::Buttons::bezelDanger() : Theme::Buttons::bezelSuccess());
+}

@@ -69,6 +69,7 @@ public:
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
   void loadRecipeFromFile(const QString& filePath);  // Load recipe by file path (used by RunProgramPage)
+  void applyTheme();        // Re-applies all local stylesheets using current Theme::Color::* values
 
 signals:
   void backToMainMenu();

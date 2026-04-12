@@ -495,8 +495,8 @@ void RecipePage::refreshProcessTemplateList()
     QFont font = categoryItem->font(0);
     font.setBold(true);
     categoryItem->setFont(0, font);
-    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY));
-    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM));
+    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY()));
+    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM()));
 
     for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
       if (m_hiddenProcesses.count(processType) > 0) {
@@ -1162,7 +1162,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
     m_matrixLoader
   );
   m_manualAdjustWidget->setStyleSheet(
-    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM()));
 
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
@@ -1175,7 +1175,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
     m_context
   );
   m_manualAlignPointWidget->setStyleSheet(
-    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM()));
 
   // Connect manual align point response
   connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
@@ -5257,5 +5257,185 @@ bool RecipePage::canLeavePage()
   else {
     // Cancel button or dialog closed
     return false;  // Stay on page
+  }
+}
+
+// ============================================================================
+// THEME APPLICATION
+// ============================================================================
+
+void RecipePage::applyTheme()
+{
+  // Page background
+  setStyleSheet(RecipeStyles::pageBackground());
+
+  // Tab widget — inline QSS using Theme::Color::* (7 args)
+  m_middleTabWidget->setStyleSheet(QString(
+    "QTabWidget::pane { border: none; background-color: %1; }"
+    "QTabBar { background-color: %1; border: none; }"
+    "QTabBar::tab {"
+    "  background-color: %2;"
+    "  color: %3;"
+    "  padding: 8px 16px;"
+    "  margin-right: 2px;"
+    "  border: none;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  border-top-left-radius: 3px;"
+    "  border-top-right-radius: 3px;"
+    "  border-bottom: 3px solid transparent;"
+    "}"
+    "QTabBar::tab:selected {"
+    "  background-color: %4;"
+    "  color: %5;"
+    "  font-weight: bold;"
+    "  border-bottom: 3px solid %4;"
+    "}"
+    "QTabBar::tab:hover {"
+    "  background-color: %6;"
+    "  color: %7;"
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::textSecondary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary),
+        QLatin1String(Theme::Color::bgHover),
+        QLatin1String(Theme::Color::textPrimary)));
+
+  // Recipe list tree — inline QSS (7 args)
+  m_recipeListWidget->setStyleSheet(QString(
+    "QTreeWidget { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 1px solid %3; "
+    "  border-radius: 3px; "
+    "  font-size: 14px; "
+    "} "
+    "QTreeWidget::item { "
+    "  padding: 7px 8px; "
+    "  border-bottom: 1px solid %4; "
+    "} "
+    "QTreeWidget::item:selected { "
+    "  background-color: %5; "
+    "  color: %6; "
+    "} "
+    "QTreeWidget::item:hover { "
+    "  background-color: %7; "
+    "} "
+    "QTreeWidget::branch { "
+    "  background-color: %1; "
+    "} "
+    "QTreeWidget::branch:has-siblings:!adjoins-item { "
+    "  border-image: none; "
+    "} "
+    "QTreeWidget::branch:open:has-children { "
+    "  image: url(none); "
+    "} "
+    "QTreeWidget::branch:closed:has-children { "
+    "  image: url(none); "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::borderSubtle),
+        QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary),
+        QLatin1String(Theme::Color::bgHover)));
+
+  // Recipe name edit — inline QSS (5 args)
+  m_recipeNameEdit->setStyleSheet(QString(
+    "QLineEdit { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  padding: 6px 10px; "
+    "  border: 2px solid %3; "
+    "  border-radius: 4px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 2px solid %4; "
+    "  background-color: %5; "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::primaryHover),
+        QLatin1String(Theme::Color::bgDeep)));
+
+  // Folder / recipe action buttons — compact inline QSS patterns
+  const QString compactPrimary = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::primary),
+          QLatin1String(Theme::Color::primaryHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactNeutral = QString(
+      "QPushButton { background-color: %1; color: %2; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %3; }"
+      "QPushButton:disabled { background-color: %4; color: %5; }"
+    ).arg(QLatin1String(Theme::Color::bgSurface),
+          QLatin1String(Theme::Color::textPrimary),
+          QLatin1String(Theme::Color::bgHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactDanger = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::danger),
+          QLatin1String(Theme::Color::dangerHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  m_createFolderButton->setStyleSheet(compactPrimary);
+  m_removeFolderButton->setStyleSheet(compactNeutral);
+  m_copyRecipeButton->setStyleSheet(compactNeutral);
+  m_deleteRecipeButton->setStyleSheet(compactDanger);
+
+  // Bezel execute buttons — delegate to Theme::Buttons helpers
+  m_runRecipeButton->setStyleSheet(Theme::Buttons::bezelWarning());
+  m_runSelectedStepButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  m_breakpointButton->setStyleSheet(Theme::Buttons::bezelDanger());
+
+  // Vision result widgets — null-guarded inline QSS
+  if (m_visionResultGroup) {
+    m_visionResultGroup->setStyleSheet(QString(
+      "QGroupBox { "
+      "  font-weight: bold; "
+      "  color: %1; "
+      "  border: 1px solid %2; "
+      "  border-radius: 4px; "
+      "  margin-top: 5px; "
+      "  padding-top: 10px; "
+      "} "
+      "QGroupBox::title { "
+      "  subcontrol-origin: margin; "
+      "  left: 10px; "
+      "  padding: 0 5px; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent),
+          QLatin1String(Theme::Color::borderSubtle)));
+  }
+
+  if (m_visionResultImageLabel) {
+    m_visionResultImageLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  border: 1px solid %2; "
+      "  color: %3; "
+      "  font-style: italic; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::bgDeep),
+          QLatin1String(Theme::Color::borderSubtle),
+          QLatin1String(Theme::Color::textSecondary)));
   }
 }

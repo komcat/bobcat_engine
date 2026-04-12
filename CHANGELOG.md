@@ -26,6 +26,34 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ## 2026-04-11
 
+- **runtime theme switcher with CC-29 palette and live reload**
+  - New `Theme::ThemeId` enum (`Default`, `CC29`) and `Theme::applyPalette()` in `Theme.h` — bulk-reassigns all `Color::*` pointers to the chosen palette at runtime (constexpr dropped to mutable `inline const char*`)
+  - Added CC-29 palette (`Palette::CC29`) — 23 colors mapped to semantic roles: navy/purple backgrounds, cream text, cyan primary, sage green success, tan warning, coral danger, pink/mint accents; background `#212123`
+  - New `ThemeManager` QObject singleton (`include/AppUI/ThemeManager.h/.cpp`) — `setTheme()` reassigns palette pointers, re-applies global QSS via `qApp->setStyleSheet(DarkTheme::getStyleSheet())`, emits `themeChanged()` signal
+  - `RecipePageStyles::Colors::*` converted from `const QString` to `inline QString()` functions so they return fresh palette values after a theme switch (3 consumer files updated)
+  - New `UI/Theme` combo setting in Application Settings page (`Default (Dark)` / `CC-29 (Retro)`) — uses existing combo infrastructure, no new UI code
+  - Boot-time palette read in `Application.cpp` — reads `QSettings("UI/Theme")` before first `setStyleSheet()` so the initial render uses the saved theme
+  - Live reload wiring in `MainWindow.cpp` — `settingsChanged` → lambda reads QSettings → `ThemeManager::setTheme()` → `themeChanged()` → widget `applyTheme()` slots
+  - `applyTheme()` public slots added to `TopBar` (10 styled elements), `RunProgramPage` (status badge, buttons, progress bar), `RecipePage` (tabs, tree, bezel buttons, vision group, recipe name edit) — re-apply local QSS from current `Theme::Color::*` values
+
+- **compact settings page property editor**
+  - Value editor field resized from full-width/tall to compact 420px-wide fixed-height with top-left alignment
+  - Section badge (`m_propSectionLabel`) now `Maximum/Fixed` size policy — shrinks to text content
+  - `QStackedWidget` vertical policy set to `Fixed`, wrapped in `QHBoxLayout` with trailing stretch for flush-left alignment
+  - All 4 editor widgets (LineEdit, SpinBox, CheckBox, ComboBox) constrained to `kEditorMaxWidth`
+  - Property panel root layout set to `AlignTop | AlignLeft`
+
+- **Theme palette system and Phase 2 migration**
+  - New `Theme.h` — header-only `Theme::Palette::*` (raw hex constants) + `Theme::Color::*` (semantic role aliases) single source of truth for the entire app's color scheme
+  - New `ThemeButtonStyles.h` — `Theme::Buttons::bezel()` builder + 5 convenience variants (`bezelPrimary/Success/Warning/Danger/Neutral`) + `Theme::Boxes::groupBoxDark()`; eliminates ~30-line duplicated bezel QSS at every call site
+  - `DarkTheme.cpp` rewritten to use `__PLACEHOLDER__` template substituted from `Theme::Color::*` at runtime
+  - Phase 2 migration of TopBar (5 buttons + labels), RunProgramPage execution view + Edit Program subpage, RollCorrectionWidget (all buttons + labels), RecipePage + RecipePageStyles.h — ~550 lines of duplicated QSS removed
+  - `RecipePageStyles.h` Colors:: layer rebound to `Theme::Color::*` references
+
+- **scan-busy indicator mirrored to RunProgramPage status badge**
+  - Wired `ScanActivityTracker::activeChanged` to RunProgramPage execution badge via `QueuedConnection`; shows amber `SCANNING` overlay while any scan is active, reverts to base state (Idle/Running/Stopped/Loop) when scan ends
+  - Status badge resized to 250x150; `setProgramStatus()`/`applyProgramStatusLabel()` helpers centralize the 5 status set-sites
+
 - **scan-busy indicator in top bar, Scanning tab cleanup, grid-scan log demotion**
   - New `ScanActivityTracker` QObject (`include/common/`) — thread-safe, reference-counted broadcaster with `activeChanged(bool)` signal; scan operations register via RAII `ScanActivityGuard` so every return path (success, early failure, user stop) correctly pairs Begin/End
   - `⚡ SCANNING` amber badge added to TopBar next to the safety LED; hidden when idle, visible whenever any scan is in progress (tab-initiated OR recipe-initiated), driven via `Qt::QueuedConnection` for cross-thread safety

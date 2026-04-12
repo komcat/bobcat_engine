@@ -59,6 +59,7 @@ public:
 
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
+  void applyTheme();
 
 signals:
   void backToMainMenu();

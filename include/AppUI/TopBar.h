@@ -115,6 +115,14 @@ signals:
   void rtlm2ButtonClicked();
   void swirWindowButtonClicked();
 
+public slots:
+  /**
+   * @brief Re-apply all local stylesheets using current Theme::Color::* values.
+   * Call this whenever the active theme changes so that TopBar colors update
+   * without recreating any widgets.
+   */
+  void applyTheme();
+
 private:
   void setupUI();
 
