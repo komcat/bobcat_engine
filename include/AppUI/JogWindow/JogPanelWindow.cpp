@@ -755,7 +755,7 @@ void JogPanelWindow::updateVelocityPresets()
   // Choose presets based on device type
   QList<double> presets;
   if (deviceType == "PI") {
-    presets = { 1, 2, 5, 10, 12.5 };
+    presets = { 0.05, 0.1, 0.5, 1, 2, 5, 10, 12.5 };
   } else {
     presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
   }
@@ -768,6 +768,8 @@ void JogPanelWindow::updateVelocityPresets()
     QString label;
     if (vel == static_cast<int>(vel)) {
       label = QString::number(static_cast<int>(vel));
+    } else if (vel < 1.0) {
+      label = QString::number(vel, 'f', 2);
     } else {
       label = QString::number(vel, 'f', 1);
     }
