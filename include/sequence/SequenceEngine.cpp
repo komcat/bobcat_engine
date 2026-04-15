@@ -777,6 +777,14 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
   context->SetExecutionStartTime();
   context->ClearAll();
 
+  // Mark as executing for the entire body of this function (RAII clears on
+  // any exit path including exceptions). Used by UIs to interlock motion jobs.
+  m_isExecuting.store(true);
+  struct ExecGuard {
+    std::atomic<bool>& flag;
+    ~ExecGuard() { flag.store(false); }
+  } _execGuard{m_isExecuting};
+
   // ✅ Clear stop flag before execution
   ClearStopFlag();
   m_lastInjectedVisionSeq = 0;

@@ -1782,11 +1782,23 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onPlacementRetraceSkipped);
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
     this, &RunProgramPage::onPlacementRetraceEnded);
-  // Manual tune offsets edited during recipe execution — persist the active
-  // set back to its source JSON so the offset is remembered next run.
+  // Manual tune offsets edited during a retrace — persist the active set
+  // back to its source JSON so the offset is remembered next run.
+  //
+  // Guard: if a recipe is actively executing (m_isExecuting), skip the disk
+  // write to avoid overwriting the set mid-recipe. The offset is still
+  // applied in-memory for the current retrace; it just won't be persisted
+  // until the recipe finishes. This prevents a later recipe step that uses
+  // the same set from silently picking up a freshly-edited offset.
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
     this, [this]() {
       if (m_activePlacementStoreBasePath.empty()) return;
+      if (m_isExecuting) {
+        m_logTextEdit->appendPlainText(
+          "[PlacementRetrace] Tune offset edit applied in-memory; disk save "
+          "deferred (recipe is running).");
+        return;
+      }
       PlacementCorrectionStore store;
       store.SetBasePath(m_activePlacementStoreBasePath);
       store.SaveSet(m_activePlacementSet);
@@ -4819,6 +4831,7 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
   m_activePlacementSet.Recalculate();
 
   // Configure widget with loaded data
+  m_placementRetraceWidget->SetMode("recipe");
   m_placementRetraceWidget->SetData(&m_activePlacementSet);
 
   // Switch to placement retrace view (full right panel)

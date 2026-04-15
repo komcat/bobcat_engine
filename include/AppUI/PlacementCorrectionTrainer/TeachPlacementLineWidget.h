@@ -5,8 +5,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QComboBox>
 #include <QStackedWidget>
 #include <QTimer>
+#include <future>
 #include "PlacementCorrectionData.h"
 
 struct ApplicationContext;
@@ -39,6 +41,11 @@ private slots:
     void onCaptureP2();
     void onReteach();
     void updatePositionDisplay();
+    void refreshVisionProfiles();
+    void onAutoNavP1();
+    void onAutoNavP2();
+    void onDetectP1();
+    void onDetectP2();
 
 private:
     enum WizardState { Idle, TeachingP1, TeachingP2, Captured };
@@ -48,6 +55,16 @@ private:
 
     void applyCameraExposure(double exposureUs);
     std::string capturePointImage(const std::string& pointLabel);
+    QString getVisionDirectory() const;
+    static void selectComboItemByPath(QComboBox* combo, const QString& path);
+
+    // Background mover for Auto-Nav buttons: lowers gantry velocity to a safe
+    // value, runs MoveToAbs, restores velocity. Disables both nav buttons
+    // while running. `which` is "P1" or "P2" for status messages.
+    void startAutoNavAsync(double tx, double ty, double tz, const QString& which);
+
+    std::future<void> m_navFuture;
+    std::string m_navActiveDevice;
 
     ApplicationContext* m_context;
     std::string m_deviceName;
@@ -67,6 +84,10 @@ private:
     QLabel* m_p1PositionLabel;
     QSpinBox* m_p1ExposureSpin;
     QPushButton* m_applyP1ExposureBtn;
+    QComboBox* m_p1ProfileCombo = nullptr;
+    QPushButton* m_p1RefreshProfilesBtn = nullptr;
+    QPushButton* m_p1DetectBtn = nullptr;
+    QPushButton* m_autoNavP1Btn = nullptr;
     QPushButton* m_captureP1Btn;
     QPushButton* m_cancelP1Btn;
 
@@ -75,6 +96,10 @@ private:
     QLabel* m_p2PositionLabel;
     QSpinBox* m_p2ExposureSpin;
     QPushButton* m_applyP2ExposureBtn;
+    QComboBox* m_p2ProfileCombo = nullptr;
+    QPushButton* m_p2RefreshProfilesBtn = nullptr;
+    QPushButton* m_p2DetectBtn = nullptr;
+    QPushButton* m_autoNavP2Btn = nullptr;
     QPushButton* m_captureP2Btn;
     QPushButton* m_cancelP2Btn;
 

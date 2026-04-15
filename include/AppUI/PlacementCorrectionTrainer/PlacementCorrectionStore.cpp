@@ -10,7 +10,15 @@
 
 using json = nlohmann::json;
 
-static constexpr int CURRENT_FILE_VERSION = 1;
+// v2 (2026-04-14): added p1VisionProfilePath / p2VisionProfilePath to
+// PlacementLinePoints for retrace auto-detect. Backward-compatible — v1
+// files load with empty profile paths (manual-only behavior).
+// v3 (2026-04-14): added normalPlacementLine (2 pts at the predetermined
+// landing position). Retrace now re-measures normal, not target. Target line
+// remains taught and is used only to compute designOffset. Backward-compat:
+// v1/v2 files load with normalPlacementLine.valid=false — retrace requires
+// this to be taught before it can proceed.
+static constexpr int CURRENT_FILE_VERSION = 3;
 
 static std::string GenerateUUID() {
     static std::random_device rd;
@@ -40,7 +48,9 @@ static json LinePointsToJson(const PlacementLinePoints& lp) {
     return {
         {"name", lp.name},
         {"p1x", lp.p1x}, {"p1y", lp.p1y}, {"p1z", lp.p1z}, {"p1Exposure", lp.p1Exposure}, {"p1ImageFile", lp.p1ImageFile},
+        {"p1VisionProfilePath", lp.p1VisionProfilePath},
         {"p2x", lp.p2x}, {"p2y", lp.p2y}, {"p2z", lp.p2z}, {"p2Exposure", lp.p2Exposure}, {"p2ImageFile", lp.p2ImageFile},
+        {"p2VisionProfilePath", lp.p2VisionProfilePath},
         {"valid", lp.valid}
     };
 }
@@ -53,11 +63,13 @@ static PlacementLinePoints LinePointsFromJson(const json& j, const std::string& 
     lp.p1z = j.value("p1z", 0.0);
     lp.p1Exposure = j.value("p1Exposure", 800.0);
     lp.p1ImageFile = j.value("p1ImageFile", std::string(""));
+    lp.p1VisionProfilePath = j.value("p1VisionProfilePath", std::string(""));
     lp.p2x = j.value("p2x", 0.0);
     lp.p2y = j.value("p2y", 0.0);
     lp.p2z = j.value("p2z", 0.0);
     lp.p2Exposure = j.value("p2Exposure", 800.0);
     lp.p2ImageFile = j.value("p2ImageFile", std::string(""));
+    lp.p2VisionProfilePath = j.value("p2VisionProfilePath", std::string(""));
     lp.valid = j.value("valid", false);
     return lp;
 }
@@ -98,6 +110,7 @@ bool PlacementCorrectionStore::SaveSet(const PlacementCorrectionSet& set)
 
     j["referenceLine"] = LinePointsToJson(set.referenceLine);
     j["targetLine"] = LinePointsToJson(set.targetLine);
+    j["normalPlacementLine"] = LinePointsToJson(set.normalPlacementLine);
 
     j["config"] = {
         {"targetDevice", set.config.targetDevice},
@@ -123,7 +136,8 @@ bool PlacementCorrectionStore::SaveSet(const PlacementCorrectionSet& set)
         {"tuneOffsetZ", set.config.tuneOffsetZ},
         {"tuneOffsetU", set.config.tuneOffsetU},
         {"tuneOffsetV", set.config.tuneOffsetV},
-        {"tuneOffsetW", set.config.tuneOffsetW}
+        {"tuneOffsetW", set.config.tuneOffsetW},
+        {"normalPositionName", set.config.normalPositionName}
     };
 
     // Summary diagram thumbnail offsets
@@ -207,6 +221,11 @@ std::optional<PlacementCorrectionSet> PlacementCorrectionStore::LoadSet(const st
     if (j.contains("targetLine")) {
         set.targetLine = LinePointsFromJson(j["targetLine"], "Target");
     }
+    // v3+ field; v1/v2 files will not have it → default to invalid.
+    if (j.contains("normalPlacementLine")) {
+        set.normalPlacementLine = LinePointsFromJson(
+            j["normalPlacementLine"], "Normal");
+    }
 
     if (j.contains("config")) {
         const auto& c = j["config"];
@@ -235,6 +254,7 @@ std::optional<PlacementCorrectionSet> PlacementCorrectionStore::LoadSet(const st
         set.config.tuneOffsetU = c.value("tuneOffsetU", 0.0);
         set.config.tuneOffsetV = c.value("tuneOffsetV", 0.0);
         set.config.tuneOffsetW = c.value("tuneOffsetW", 0.0);
+        set.config.normalPositionName = c.value("normalPositionName", std::string(""));
     }
 
     // Load summary thumbnail offsets (backward-compatible: defaults if absent)
@@ -254,7 +274,9 @@ std::optional<PlacementCorrectionSet> PlacementCorrectionStore::LoadSet(const st
               << " [uid=" << set.uid << "]"
               << " ref=" << (set.referenceLine.valid ? "valid" : "empty")
               << " tgt=" << (set.targetLine.valid ? "valid" : "empty")
-              << " delta=" << (set.deltaValid ? "valid" : "N/A") << std::endl;
+              << " nrm=" << (set.normalPlacementLine.valid ? "valid" : "empty")
+              << " designOffset=" << (set.designOffsetValid ? "valid" : "N/A")
+              << std::endl;
     return set;
 }
 

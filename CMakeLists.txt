@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 7)
+set(BOBCAT_VERSION_MINOR 8)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -822,6 +822,8 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceLogger.cpp
+    include/AppUI/PlacementCorrectionTrainer/RetraceLogViewer.cpp
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp

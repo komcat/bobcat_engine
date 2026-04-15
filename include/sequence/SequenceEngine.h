@@ -275,6 +275,11 @@ public:
   void ClearStopFlag();      // Reset stop flag before execution
   bool IsStopRequested() const { return m_stopRequested.load(); }
 
+  // True while ExecuteSequence is actively running (set on entry, cleared on
+  // any exit). Thread-safe; usable from UI for interlocking against starting
+  // a second motion job while a recipe is in flight.
+  bool IsExecuting() const { return m_isExecuting.load(); }
+
   // Action timeout watchdog (monitoring only — logs slow commands)
   void SetActionTimeoutMs(int timeoutMs);
   int GetActionTimeoutMs() const { return m_actionTimeoutMs; }
@@ -360,6 +365,7 @@ private:
 
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
+  std::atomic<bool> m_isExecuting{false};
 
   // Action timeout — enforced via DispatchWithTimeout
   int m_actionTimeoutMs = 60000;  // Default 60 seconds

@@ -80,11 +80,13 @@ struct PlacementLinePoints {
     double p1z = 0.0;      // gantry-main Z of first point (mm)
     double p1Exposure = 800.0; // camera exposure for P1 (us)
     std::string p1ImageFile;   // captured image filename for P1
+    std::string p1VisionProfilePath; // optional vision profile for P1 auto-detect ("" = manual only)
     double p2x = 0.0;      // gantry-main X of second point (mm)
     double p2y = 0.0;      // gantry-main Y of second point (mm)
     double p2z = 0.0;      // gantry-main Z of second point (mm)
     double p2Exposure = 800.0; // camera exposure for P2 (us)
     std::string p2ImageFile;   // captured image filename for P2
+    std::string p2VisionProfilePath; // optional vision profile for P2 auto-detect ("" = manual only)
     double angleDeg = 0.0;  // computed line angle in XY plane (degrees)
     bool valid = false;     // true when both points have been captured
 };
@@ -119,6 +121,10 @@ struct PlacementCorrectionConfig {
 
     // Camera for retrace exposure control
     std::string cameraId;               // camera to configure during retrace
+
+    // Normal placement position (operator-defined safe/home for the target device).
+    // Used by a Move button on the training-set panel; not consumed by retrace math.
+    std::string normalPositionName;
 
     // ------------------------------------------------------------------
     // Manual offset tuner (persisted). Applied at Save time in
@@ -221,6 +227,21 @@ inline double Distance2D(double x1, double y1, double x2, double y2)
     return std::sqrt(dx * dx + dy * dy);
 }
 
+/**
+ * @brief Rotate a 2D vector (dx, dy) by angleDeg (CCW).
+ * Used at retrace to rotate the cached design offset through the new
+ * reference-frame angular delta.
+ */
+inline void Rotate2D(double dx, double dy, double angleDeg,
+                     double& outDx, double& outDy)
+{
+    const double rad = angleDeg * M_PI / 180.0;
+    const double c = std::cos(rad);
+    const double s = std::sin(rad);
+    outDx = c * dx - s * dy;
+    outDy = s * dx + c * dy;
+}
+
 } // namespace PlacementCorrectionMath
 
 // ============================================================================
@@ -248,13 +269,26 @@ struct PlacementCorrectionSet {
 
     PlacementLinePoints referenceLine;
     PlacementLinePoints targetLine;
+    // Normal placement line (v3): 2 pts taught at the predetermined motion-
+    // device landing position of the part. Re-measured during retrace instead
+    // of targetLine, because the physical lens lands here at run time.
+    // The target line remains taught (for computing designOffset) but is not
+    // re-measured.
+    PlacementLinePoints normalPlacementLine;
     PlacementCorrectionConfig config;
 
     // Computed (not stored, recalculated on load)
     double refAngleDeg = 0.0;
     double targetAngleDeg = 0.0;
-    double deltaAngleDeg = 0.0;     // theta-Y difference
-    double correctedU = 0.0;        // baseline U + delta
+    double normalAngleDeg = 0.0;
+    double deltaAngleDeg = 0.0;       // target − reference (taught)
+    double correctedU = 0.0;          // baseline U + delta (legacy display)
+    // Design offset = taught_target_center − taught_normal_center. This is
+    // the constant "engineering intent" vector, cached for retrace to add
+    // (rotated by the new frame's Δθ) to the retraced normal midpoint.
+    double designOffsetX = 0.0;
+    double designOffsetY = 0.0;
+    bool designOffsetValid = false;
     bool deltaValid = false;
 
     std::string createdAt;
@@ -265,22 +299,47 @@ struct PlacementCorrectionSet {
     ThumbOffset summaryThumbOffsets[4];
 
     void Recalculate() {
-        if (!referenceLine.valid || !targetLine.valid) {
+        // Reference + target angles and legacy deltaAngleDeg (still displayed
+        // in the UI and used for the U-correction suggestion).
+        if (referenceLine.valid && targetLine.valid) {
+            referenceLine.angleDeg = PlacementCorrectionMath::ComputeLineAngle(
+                referenceLine.p1x, referenceLine.p1y,
+                referenceLine.p2x, referenceLine.p2y);
+            targetLine.angleDeg = PlacementCorrectionMath::ComputeLineAngle(
+                targetLine.p1x, targetLine.p1y,
+                targetLine.p2x, targetLine.p2y);
+            refAngleDeg = referenceLine.angleDeg;
+            targetAngleDeg = targetLine.angleDeg;
+            deltaAngleDeg = PlacementCorrectionMath::ComputeDeltaAngle(
+                referenceLine.angleDeg, targetLine.angleDeg);
+            correctedU = PlacementCorrectionMath::ComputeCorrectedU(
+                config.masterU, deltaAngleDeg, config.reverseSign);
+            deltaValid = true;
+        } else {
             deltaValid = false;
-            return;
         }
-        referenceLine.angleDeg = PlacementCorrectionMath::ComputeLineAngle(
-            referenceLine.p1x, referenceLine.p1y,
-            referenceLine.p2x, referenceLine.p2y);
-        targetLine.angleDeg = PlacementCorrectionMath::ComputeLineAngle(
-            targetLine.p1x, targetLine.p1y,
-            targetLine.p2x, targetLine.p2y);
-        refAngleDeg = referenceLine.angleDeg;
-        targetAngleDeg = targetLine.angleDeg;
-        deltaAngleDeg = PlacementCorrectionMath::ComputeDeltaAngle(
-            referenceLine.angleDeg, targetLine.angleDeg);
-        correctedU = PlacementCorrectionMath::ComputeCorrectedU(
-            config.masterU, deltaAngleDeg, config.reverseSign);
-        deltaValid = true;
+
+        if (normalPlacementLine.valid) {
+            normalPlacementLine.angleDeg = PlacementCorrectionMath::ComputeLineAngle(
+                normalPlacementLine.p1x, normalPlacementLine.p1y,
+                normalPlacementLine.p2x, normalPlacementLine.p2y);
+            normalAngleDeg = normalPlacementLine.angleDeg;
+        }
+
+        // designOffset = taught target center − taught normal center
+        if (targetLine.valid && normalPlacementLine.valid) {
+            double tcx = 0.0, tcy = 0.0, ncx = 0.0, ncy = 0.0;
+            PlacementCorrectionMath::Midpoint(
+                targetLine.p1x, targetLine.p1y,
+                targetLine.p2x, targetLine.p2y, tcx, tcy);
+            PlacementCorrectionMath::Midpoint(
+                normalPlacementLine.p1x, normalPlacementLine.p1y,
+                normalPlacementLine.p2x, normalPlacementLine.p2y, ncx, ncy);
+            designOffsetX = tcx - ncx;
+            designOffsetY = tcy - ncy;
+            designOffsetValid = true;
+        } else {
+            designOffsetValid = false;
+        }
     }
 };

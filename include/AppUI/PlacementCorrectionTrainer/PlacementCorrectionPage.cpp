@@ -6,9 +6,11 @@
 #include "ExposureAdjustWidget.h"
 #include "ImageGalleryWidget.h"
 #include "SummaryDiagramWidget.h"
+#include "RetraceLogViewer.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
+#include "SequenceEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -23,6 +25,8 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QDialogButtonBox>
+#include <QTabWidget>
+#include <QProgressBar>
 #include "FileSelectorDialog.h"
 #include "CameraManager.h"
 #include <iostream>
@@ -138,8 +142,9 @@ void PlacementCorrectionPage::setupUI()
     m_loadBtn = new QPushButton("Load");
     m_deleteBtn = new QPushButton("Delete");
     m_saveBtn = new QPushButton("Save");
+    m_saveAsBtn = new QPushButton("Save As");
 
-    for (auto* btn : {m_newBtn, m_loadBtn, m_deleteBtn, m_saveBtn}) {
+    for (auto* btn : {m_newBtn, m_loadBtn, m_deleteBtn, m_saveBtn, m_saveAsBtn}) {
         btn->setFixedHeight(28);
         btn->setStyleSheet(
             "QPushButton { background-color: #2d3e5f; color: white; border: 1px solid #4d6e9f; "
@@ -152,37 +157,75 @@ void PlacementCorrectionPage::setupUI()
     tsButtonRow->addWidget(m_loadBtn);
     tsButtonRow->addWidget(m_deleteBtn);
     tsButtonRow->addWidget(m_saveBtn);
+    tsButtonRow->addWidget(m_saveAsBtn);
     tsLayout->addLayout(tsButtonRow);
 
     connect(m_newBtn, &QPushButton::clicked, this, &PlacementCorrectionPage::onNewSet);
     connect(m_loadBtn, &QPushButton::clicked, this, &PlacementCorrectionPage::onLoadSet);
     connect(m_deleteBtn, &QPushButton::clicked, this, &PlacementCorrectionPage::onDeleteSet);
     connect(m_saveBtn, &QPushButton::clicked, this, &PlacementCorrectionPage::onSaveSet);
+    connect(m_saveAsBtn, &QPushButton::clicked, this, &PlacementCorrectionPage::onSaveAsSet);
 
     leftLayout->addWidget(tsGroup);
 
-    // Target Device group
-    QGroupBox* deviceGroup = new QGroupBox("Target Motion Device");
-    deviceGroup->setStyleSheet(groupStyle);
-    QVBoxLayout* deviceLayout = new QVBoxLayout(deviceGroup);
+    // Tabbed container: Device / Positions / Camera
+    QTabWidget* cfgTabs = new QTabWidget();
+    cfgTabs->setStyleSheet(
+        "QTabWidget::pane { border: 1px solid #3d5a8c; border-radius: 4px; "
+        "background-color: #1a1f2e; }"
+        "QTabBar::tab { background-color: #2d3e5f; color: #ccc; "
+        "padding: 6px 12px; border: 1px solid #3d5a8c; border-bottom: none; "
+        "border-top-left-radius: 4px; border-top-right-radius: 4px; font-size: 12px; }"
+        "QTabBar::tab:selected { background-color: #3d5a8c; color: white; }"
+        "QTabBar::tab:hover { background-color: #3d5a8c; }");
+
+    // --- Tab: Device ---
+    QWidget* deviceTab = new QWidget();
+    QVBoxLayout* deviceTabLayout = new QVBoxLayout(deviceTab);
+    deviceTabLayout->setContentsMargins(8, 10, 8, 8);
 
     m_targetDeviceCombo = new QComboBox();
     m_targetDeviceCombo->setStyleSheet(comboStyle);
     populateHexDevices();
     connect(m_targetDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PlacementCorrectionPage::onTargetDeviceChanged);
-    deviceLayout->addWidget(m_targetDeviceCombo);
+    deviceTabLayout->addWidget(m_targetDeviceCombo);
+    deviceTabLayout->addStretch(1);
+    cfgTabs->addTab(deviceTab, "Device");
 
-    leftLayout->addWidget(deviceGroup);
+    // --- Tab: Positions ---
+    QWidget* positionsTab = new QWidget();
+    QVBoxLayout* leftLayout_positions = new QVBoxLayout(positionsTab);
+    leftLayout_positions->setContentsMargins(8, 10, 8, 8);
+    leftLayout_positions->setSpacing(8);
 
-    // Master Position group
-    QGroupBox* masterGroup = new QGroupBox("Master Position (baseline)");
+    QString moveBtnStyle =
+        "QPushButton { background-color: #16a085; color: white; font-weight: bold; "
+        "border-radius: 3px; padding: 4px 10px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #1abc9c; }"
+        "QPushButton:disabled { background-color: #1a1f2e; color: #555; }";
+
+    // Master Position group — labeled "Target Position" in UI; internal
+    // data model name "master" kept for compatibility with saved JSON sets.
+    QGroupBox* masterGroup = new QGroupBox("Target Position");
     masterGroup->setStyleSheet(groupStyle);
+    masterGroup->setToolTip("first light position");
     QVBoxLayout* masterLayout = new QVBoxLayout(masterGroup);
 
-    m_masterPositionCombo = new QComboBox();
-    m_masterPositionCombo->setStyleSheet(comboStyle);
-    masterLayout->addWidget(m_masterPositionCombo);
+    {
+        QHBoxLayout* row = new QHBoxLayout();
+        m_masterPositionCombo = new QComboBox();
+        m_masterPositionCombo->setStyleSheet(comboStyle);
+        row->addWidget(m_masterPositionCombo, 1);
+        m_masterMoveBtn = new QPushButton("Move");
+        m_masterMoveBtn->setFixedSize(60, 28);
+        m_masterMoveBtn->setStyleSheet(moveBtnStyle);
+        m_masterMoveBtn->setToolTip("Move selected hex device to this position");
+        connect(m_masterMoveBtn, &QPushButton::clicked,
+                this, &PlacementCorrectionPage::onMoveMaster);
+        row->addWidget(m_masterMoveBtn);
+        masterLayout->addLayout(row);
+    }
 
     m_masterUVWLabel = new QLabel("UVW: ---");
     m_masterUVWLabel->setStyleSheet(
@@ -190,16 +233,27 @@ void PlacementCorrectionPage::setupUI()
     m_masterUVWLabel->setWordWrap(true);
     masterLayout->addWidget(m_masterUVWLabel);
 
-    leftLayout->addWidget(masterGroup);
+    leftLayout_positions->addWidget(masterGroup);
 
     // Target Position group
-    QGroupBox* targetGroup = new QGroupBox("Target Position (corrected)");
+    QGroupBox* targetGroup = new QGroupBox("Position after correction");
     targetGroup->setStyleSheet(groupStyle);
     QVBoxLayout* targetLayout = new QVBoxLayout(targetGroup);
 
-    m_targetPositionCombo = new QComboBox();
-    m_targetPositionCombo->setStyleSheet(comboStyle);
-    targetLayout->addWidget(m_targetPositionCombo);
+    {
+        QHBoxLayout* row = new QHBoxLayout();
+        m_targetPositionCombo = new QComboBox();
+        m_targetPositionCombo->setStyleSheet(comboStyle);
+        row->addWidget(m_targetPositionCombo, 1);
+        m_targetMoveBtn = new QPushButton("Move");
+        m_targetMoveBtn->setFixedSize(60, 28);
+        m_targetMoveBtn->setStyleSheet(moveBtnStyle);
+        m_targetMoveBtn->setToolTip("Move selected hex device to this position");
+        connect(m_targetMoveBtn, &QPushButton::clicked,
+                this, &PlacementCorrectionPage::onMoveTarget);
+        row->addWidget(m_targetMoveBtn);
+        targetLayout->addLayout(row);
+    }
 
     m_targetUVWLabel = new QLabel("UVW: ---");
     m_targetUVWLabel->setStyleSheet(
@@ -207,12 +261,36 @@ void PlacementCorrectionPage::setupUI()
     m_targetUVWLabel->setWordWrap(true);
     targetLayout->addWidget(m_targetUVWLabel);
 
-    leftLayout->addWidget(targetGroup);
+    leftLayout_positions->addWidget(targetGroup);
 
-    // Camera selection for retrace exposure
-    QGroupBox* cameraGroup = new QGroupBox("Camera (retrace)");
-    cameraGroup->setStyleSheet(groupStyle);
-    QVBoxLayout* cameraLayout = new QVBoxLayout(cameraGroup);
+    // Normal Placement Position group
+    QGroupBox* normalGroup = new QGroupBox("Normal Placement Position");
+    normalGroup->setStyleSheet(groupStyle);
+    QVBoxLayout* normalLayout = new QVBoxLayout(normalGroup);
+
+    {
+        QHBoxLayout* row = new QHBoxLayout();
+        m_normalPositionCombo = new QComboBox();
+        m_normalPositionCombo->setStyleSheet(comboStyle);
+        row->addWidget(m_normalPositionCombo, 1);
+        m_normalMoveBtn = new QPushButton("Move");
+        m_normalMoveBtn->setFixedSize(60, 28);
+        m_normalMoveBtn->setStyleSheet(moveBtnStyle);
+        m_normalMoveBtn->setToolTip("Move selected hex device to this position");
+        connect(m_normalMoveBtn, &QPushButton::clicked,
+                this, &PlacementCorrectionPage::onMoveNormal);
+        row->addWidget(m_normalMoveBtn);
+        normalLayout->addLayout(row);
+    }
+
+    leftLayout_positions->addWidget(normalGroup);
+    leftLayout_positions->addStretch(1);
+    cfgTabs->addTab(positionsTab, "Positions");
+
+    // --- Tab: Camera ---
+    QWidget* cameraTab = new QWidget();
+    QVBoxLayout* cameraTabLayout = new QVBoxLayout(cameraTab);
+    cameraTabLayout->setContentsMargins(8, 10, 8, 8);
 
     m_cameraCombo = new QComboBox();
     m_cameraCombo->setStyleSheet(comboStyle);
@@ -226,16 +304,50 @@ void PlacementCorrectionPage::setupUI()
             this, [this](int /*index*/) {
         m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
     });
-    cameraLayout->addWidget(m_cameraCombo);
+    cameraTabLayout->addWidget(m_cameraCombo);
+    cameraTabLayout->addStretch(1);
+    cfgTabs->addTab(cameraTab, "Camera");
 
-    leftLayout->addWidget(cameraGroup);
+    leftLayout->addWidget(cfgTabs);
 
-    // Populate both combos after both are created
+    // --- Move-in-progress status (hidden when idle) ---
+    m_moveStatusWidget = new QWidget();
+    QHBoxLayout* moveStatusLayout = new QHBoxLayout(m_moveStatusWidget);
+    moveStatusLayout->setContentsMargins(0, 4, 0, 4);
+    moveStatusLayout->setSpacing(6);
+
+    m_moveProgressBar = new QProgressBar();
+    m_moveProgressBar->setRange(0, 0);   // indeterminate / busy
+    m_moveProgressBar->setTextVisible(false);
+    m_moveProgressBar->setFixedHeight(22);
+    m_moveProgressBar->setStyleSheet(
+        "QProgressBar { background-color: #1a1f2e; border: 1px solid #3d5a8c; "
+        "border-radius: 3px; }"
+        "QProgressBar::chunk { background-color: #16a085; border-radius: 2px; }");
+    moveStatusLayout->addWidget(m_moveProgressBar, 1);
+
+    m_moveStopBtn = new QPushButton("Stop");
+    m_moveStopBtn->setFixedSize(70, 26);
+    m_moveStopBtn->setStyleSheet(
+        "QPushButton { background-color: #c0392b; color: white; font-weight: bold; "
+        "border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
+        "QPushButton:hover { background-color: #e74c3c; }");
+    m_moveStopBtn->setToolTip("Emergency-stop the running move");
+    connect(m_moveStopBtn, &QPushButton::clicked,
+            this, &PlacementCorrectionPage::onStopMove);
+    moveStatusLayout->addWidget(m_moveStopBtn);
+
+    m_moveStatusWidget->setVisible(false);
+    leftLayout->addWidget(m_moveStatusWidget);
+
+    // Populate all combos after all are created
     populateNamedPositions();
     connect(m_masterPositionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PlacementCorrectionPage::onMasterPositionChanged);
     connect(m_targetPositionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PlacementCorrectionPage::onTargetPositionChanged);
+    connect(m_normalPositionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PlacementCorrectionPage::onNormalPositionChanged);
 
     // Navigation list
     QGroupBox* navGroup = new QGroupBox("Workflow");
@@ -249,11 +361,13 @@ void PlacementCorrectionPage::setupUI()
         "QListWidget::item:hover { background-color: #2d3e5f; }");
     m_navList->addItem("1. Teach Reference Line");
     m_navList->addItem("2. Teach Target Line");
-    m_navList->addItem("3. View Results");
-    m_navList->addItem("4. Adjust Exposure");
-    m_navList->addItem("5. Retrace & Review");
-    m_navList->addItem("6. Reference Images");
-    m_navList->addItem("7. Summary Diagram");
+    m_navList->addItem("3. Teach Normal Placement Line");
+    m_navList->addItem("4. View Results");
+    m_navList->addItem("5. Adjust Exposure");
+    m_navList->addItem("6. Retrace & Review");
+    m_navList->addItem("7. Reference Images");
+    m_navList->addItem("8. Summary Diagram");
+    m_navList->addItem("9. View Retrace Log");
     connect(m_navList, &QListWidget::currentRowChanged,
             this, &PlacementCorrectionPage::onNavItemChanged);
     navLayout->addWidget(m_navList);
@@ -300,25 +414,33 @@ void PlacementCorrectionPage::setupUI()
     m_teachTgtLineWidget = new TeachPlacementLineWidget("Target", m_context, this);
     m_contentStack->addWidget(m_teachTgtLineWidget);
 
-    // PlacementResultWidget (index 3)
+    // TeachPlacementLineWidget for Normal Placement (index 3) — v3 feature
+    m_teachNrmLineWidget = new TeachPlacementLineWidget("Normal", m_context, this);
+    m_contentStack->addWidget(m_teachNrmLineWidget);
+
+    // PlacementResultWidget (index 4)
     m_resultWidget = new PlacementResultWidget(m_context, this);
     m_contentStack->addWidget(m_resultWidget);
 
-    // ExposureAdjustWidget (index 4)
+    // ExposureAdjustWidget (index 5)
     m_exposureAdjustWidget = new ExposureAdjustWidget(m_context, this);
     m_contentStack->addWidget(m_exposureAdjustWidget);
 
-    // PlacementRetraceWidget (index 5)
+    // PlacementRetraceWidget (index 6)
     m_retraceWidget = new PlacementRetraceWidget(m_context, this);
     m_contentStack->addWidget(m_retraceWidget);
 
-    // ImageGalleryWidget (index 6)
+    // ImageGalleryWidget (index 7)
     m_imageGalleryWidget = new ImageGalleryWidget(m_context, this);
     m_contentStack->addWidget(m_imageGalleryWidget);
 
-    // SummaryDiagramWidget (index 7)
+    // SummaryDiagramWidget (index 8)
     m_summaryDiagramWidget = new SummaryDiagramWidget(m_context, this);
     m_contentStack->addWidget(m_summaryDiagramWidget);
+
+    // RetraceLogViewer (index 9)
+    m_retraceLogViewer = new RetraceLogViewer(m_context, this);
+    m_contentStack->addWidget(m_retraceLogViewer);
 
     // Wire signals
     connect(m_teachRefLineWidget, &TeachPlacementLineWidget::lineCaptured,
@@ -331,6 +453,13 @@ void PlacementCorrectionPage::setupUI()
     connect(m_teachTgtLineWidget, &TeachPlacementLineWidget::lineCaptured,
             this, [this](const PlacementLinePoints& lp) {
         m_currentSet.targetLine = lp;
+        m_currentSet.Recalculate();
+        updateCurrentSet();
+    });
+
+    connect(m_teachNrmLineWidget, &TeachPlacementLineWidget::lineCaptured,
+            this, [this](const PlacementLinePoints& lp) {
+        m_currentSet.normalPlacementLine = lp;
         m_currentSet.Recalculate();
         updateCurrentSet();
     });
@@ -456,17 +585,24 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
         m_teachTgtLineWidget->SetLine(m_currentSet.targetLine);
         m_contentStack->setCurrentIndex(2);
         break;
-    case 2:  // View Results
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
+    case 2:  // Teach Normal Placement Line
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
+        m_teachNrmLineWidget->SetDeviceName(m_currentSet.measureDevice);
+        m_teachNrmLineWidget->SetCameraId(m_currentSet.config.cameraId);
+        m_teachNrmLineWidget->SetLine(m_currentSet.normalPlacementLine);
         m_contentStack->setCurrentIndex(3);
         break;
-    case 3:  // Adjust Exposure
-        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
-        m_exposureAdjustWidget->SetData(&m_currentSet);
+    case 3:  // View Results
+        m_currentSet.Recalculate();
+        m_resultWidget->SetData(m_currentSet);
         m_contentStack->setCurrentIndex(4);
         break;
-    case 4:  // Retrace & Review
+    case 4:  // Adjust Exposure
+        m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
+        m_exposureAdjustWidget->SetData(&m_currentSet);
+        m_contentStack->setCurrentIndex(5);
+        break;
+    case 5:  // Retrace & Review
         m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
         m_currentSet.config.masterPositionName = m_masterPositionCombo->currentText().toStdString();
         m_currentSet.config.targetPositionName = m_targetPositionCombo->currentText().toStdString();
@@ -474,16 +610,20 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
         updateTargetFromPosition();
         m_currentSet.Recalculate();
         m_retraceWidget->SetData(&m_currentSet);
-        m_contentStack->setCurrentIndex(5);
-        break;
-    case 5:  // Reference Images
-        m_imageGalleryWidget->SetData(m_currentSet);
         m_contentStack->setCurrentIndex(6);
         break;
-    case 6:  // Summary Diagram
+    case 6:  // Reference Images
+        m_imageGalleryWidget->SetData(m_currentSet);
+        m_contentStack->setCurrentIndex(7);
+        break;
+    case 7:  // Summary Diagram
         m_currentSet.Recalculate();
         m_summaryDiagramWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(7);
+        m_contentStack->setCurrentIndex(8);
+        break;
+    case 8:  // View Retrace Log
+        if (m_retraceLogViewer) m_retraceLogViewer->SetData(m_currentSet);
+        m_contentStack->setCurrentIndex(9);
         break;
     default:
         m_contentStack->setCurrentIndex(0);
@@ -665,9 +805,32 @@ void PlacementCorrectionPage::onSaveSet()
         return;
     }
 
+    // If the set already has a source filename (loaded from disk or previously
+    // saved), overwrite directly without prompting. Otherwise fall back to Save As.
+    if (m_currentSet.sourceFilename.empty()) {
+        onSaveAsSet();
+        return;
+    }
+
+    if (m_store.SaveSet(m_currentSet)) {
+        QString name = QString::fromStdString(m_currentSet.name);
+        m_setLabel->setText(name);
+        m_statusLabel->setText(QString("Saved: %1").arg(name));
+    } else {
+        QMessageBox::warning(this, "Save Failed", "Could not save set.");
+    }
+}
+
+void PlacementCorrectionPage::onSaveAsSet()
+{
+    if (!m_hasLoadedSet) {
+        QMessageBox::information(this, "Save As", "No set to save.");
+        return;
+    }
+
     // Show save dialog with current name pre-filled and option to rename
     QDialog dlg(this);
-    dlg.setWindowTitle("Save Training Set");
+    dlg.setWindowTitle("Save Training Set As");
     dlg.setMinimumSize(400, 200);
     dlg.setStyleSheet(
         "QDialog { background-color: #1e2233; }"
@@ -790,14 +953,163 @@ void PlacementCorrectionPage::populateHexDevices()
     }
 }
 
+void PlacementCorrectionPage::onNormalPositionChanged(int /*index*/)
+{
+    if (!m_normalPositionCombo) return;
+    m_currentSet.config.normalPositionName =
+        m_normalPositionCombo->currentText().toStdString();
+}
+
+// Background safe-move worker: lower velocity → MoveToAbs (using named-position
+// coords) → restore velocity. Runs entirely off the UI thread; status updates
+// are marshalled back via QMetaObject::invokeMethod.
+void PlacementCorrectionPage::startSafeMoveAsync(const std::string& device,
+                                                  const std::string& posName,
+                                                  QPushButton* btn)
+{
+    if (!m_context || !m_context->motionManager) {
+        QMessageBox::warning(this, "Move Failed", "Motion manager not available.");
+        return;
+    }
+    if (device.empty()) {
+        QMessageBox::warning(this, "Move Failed", "No target device selected.");
+        return;
+    }
+    if (posName.empty()) {
+        QMessageBox::warning(this, "Move Failed", "No position selected.");
+        return;
+    }
+
+    // Interlock: refuse to start if a recipe is currently executing on the
+    // SequenceEngine, or if a previous trainer move is still in flight.
+    if (m_context->sequenceEngine && m_context->sequenceEngine->IsExecuting()) {
+        QMessageBox::warning(this, "Move Blocked",
+            "A recipe is currently running. Stop the running program before "
+            "moving from the trainer.");
+        return;
+    }
+    if (!m_moveActiveDevice.empty()) {
+        QMessageBox::information(this, "Move Busy",
+            QString("A move on \"%1\" is already in progress. Wait or click Stop.")
+                .arg(QString::fromStdString(m_moveActiveDevice)));
+        return;
+    }
+
+    // Resolve named position on the UI thread (motionManager calls are usually
+    // safe but reading combo widgets isn't; we have the strings already).
+    PositionStruct target;
+    if (!m_context->motionManager->GetNamedPosition(device, posName, target)) {
+        QMessageBox::warning(this, "Move Failed",
+            QString("Position \"%1\" not found on %2.")
+                .arg(QString::fromStdString(posName))
+                .arg(QString::fromStdString(device)));
+        return;
+    }
+
+    constexpr double kSafeVel    = 0.1;  // mm/s during the move
+    constexpr double kDefaultVel = 2.0;  // mm/s restored after
+
+    // Disable all three Move buttons while one is running
+    auto setButtonsEnabled = [this](bool en) {
+        if (m_masterMoveBtn) m_masterMoveBtn->setEnabled(en);
+        if (m_targetMoveBtn) m_targetMoveBtn->setEnabled(en);
+        if (m_normalMoveBtn) m_normalMoveBtn->setEnabled(en);
+    };
+    setButtonsEnabled(false);
+    if (btn) btn->setText("Moving...");
+    m_statusLabel->setText(QString("Moving %1 to \"%2\" @ 0.1 mm/s ...")
+        .arg(QString::fromStdString(device))
+        .arg(QString::fromStdString(posName)));
+
+    m_moveActiveDevice = device;
+    if (m_moveStatusWidget) m_moveStatusWidget->setVisible(true);
+    if (m_moveStopBtn)      m_moveStopBtn->setEnabled(true);
+
+    auto* mm = m_context->motionManager;
+
+    m_moveFuture = std::async(std::launch::async,
+        [this, mm, device, posName, target, btn, setButtonsEnabled]() {
+        bool velSlowOk = mm->SetSystemVelocity(device, kSafeVel);
+        // Coordinated 6-axis absolute move (XYZ + UVW). MoveToAbs is XYZ-only
+        // and leaves UVW at the current value, which on a hex device causes
+        // axis-by-axis sequencing for the rotation deltas.
+        bool moveOk    = mm->MoveToAbs6(device, target, /*blocking*/ true);
+        bool velRestoreOk = mm->SetSystemVelocity(device, kDefaultVel);
+
+        std::cout << "[PlacementPage] Safe-move " << device << " -> " << posName
+                  << "  velSlow=" << (velSlowOk ? "OK" : "FAIL")
+                  << "  move="    << (moveOk ? "OK" : "FAIL")
+                  << "  velRestore=" << (velRestoreOk ? "OK" : "FAIL") << std::endl;
+
+        QMetaObject::invokeMethod(this,
+            [this, device, posName, btn, moveOk, setButtonsEnabled]() {
+            setButtonsEnabled(true);
+            if (btn) btn->setText("Move");
+            if (m_moveStatusWidget) m_moveStatusWidget->setVisible(false);
+            m_moveActiveDevice.clear();
+            if (moveOk) {
+                m_statusLabel->setText(QString("Moved %1 to \"%2\"")
+                    .arg(QString::fromStdString(device))
+                    .arg(QString::fromStdString(posName)));
+            } else {
+                m_statusLabel->setText(QString("Move FAILED: %1 -> %2")
+                    .arg(QString::fromStdString(device))
+                    .arg(QString::fromStdString(posName)));
+                QMessageBox::warning(this, "Move Failed",
+                    QString("Failed to move %1 to \"%2\".")
+                        .arg(QString::fromStdString(device))
+                        .arg(QString::fromStdString(posName)));
+            }
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PlacementCorrectionPage::onMoveMaster()
+{
+    startSafeMoveAsync(m_targetDeviceCombo->currentText().toStdString(),
+                       m_masterPositionCombo->currentText().toStdString(),
+                       m_masterMoveBtn);
+}
+
+void PlacementCorrectionPage::onMoveTarget()
+{
+    startSafeMoveAsync(m_targetDeviceCombo->currentText().toStdString(),
+                       m_targetPositionCombo->currentText().toStdString(),
+                       m_targetMoveBtn);
+}
+
+void PlacementCorrectionPage::onMoveNormal()
+{
+    startSafeMoveAsync(m_targetDeviceCombo->currentText().toStdString(),
+                       m_normalPositionCombo
+                           ? m_normalPositionCombo->currentText().toStdString()
+                           : std::string(),
+                       m_normalMoveBtn);
+}
+
+void PlacementCorrectionPage::onStopMove()
+{
+    if (m_moveActiveDevice.empty() || !m_context || !m_context->motionManager) return;
+    bool ok = m_context->motionManager->EmergencyStop(m_moveActiveDevice);
+    std::cout << "[PlacementPage] EmergencyStop " << m_moveActiveDevice
+              << " " << (ok ? "OK" : "FAILED") << std::endl;
+    if (m_moveStopBtn) m_moveStopBtn->setEnabled(false);
+    m_statusLabel->setText(QString("Stopping %1 ...")
+        .arg(QString::fromStdString(m_moveActiveDevice)));
+    // The blocking MoveToAbs in the worker thread will return (failed) on stop;
+    // worker callback will hide the progress widget and re-enable buttons.
+}
+
 void PlacementCorrectionPage::populateNamedPositions()
 {
     // Block signals to avoid cascading updates during population
     m_masterPositionCombo->blockSignals(true);
     m_targetPositionCombo->blockSignals(true);
+    if (m_normalPositionCombo) m_normalPositionCombo->blockSignals(true);
 
     m_masterPositionCombo->clear();
     m_targetPositionCombo->clear();
+    if (m_normalPositionCombo) m_normalPositionCombo->clear();
 
     std::string deviceName = m_targetDeviceCombo->currentText().toStdString();
     if (!deviceName.empty() && m_context && m_context->motionManager) {
@@ -805,6 +1117,7 @@ void PlacementCorrectionPage::populateNamedPositions()
         for (const auto& pos : positions) {
             m_masterPositionCombo->addItem(QString::fromStdString(pos));
             m_targetPositionCombo->addItem(QString::fromStdString(pos));
+            if (m_normalPositionCombo) m_normalPositionCombo->addItem(QString::fromStdString(pos));
         }
     }
 
@@ -825,8 +1138,17 @@ void PlacementCorrectionPage::populateNamedPositions()
         }
     }
 
+    // Restore normal selection from current set if present
+    if (m_normalPositionCombo && !m_currentSet.config.normalPositionName.empty()) {
+        int idx = m_normalPositionCombo->findText(
+            QString::fromStdString(m_currentSet.config.normalPositionName),
+            Qt::MatchFixedString);
+        if (idx >= 0) m_normalPositionCombo->setCurrentIndex(idx);
+    }
+
     m_masterPositionCombo->blockSignals(false);
     m_targetPositionCombo->blockSignals(false);
+    if (m_normalPositionCombo) m_normalPositionCombo->blockSignals(false);
 
     updateMasterFromPosition();
     updateTargetFromPosition();
@@ -946,6 +1268,7 @@ void PlacementCorrectionPage::setSetLoaded(bool loaded)
 {
     m_hasLoadedSet = loaded;
     m_saveBtn->setEnabled(loaded);
+    if (m_saveAsBtn) m_saveAsBtn->setEnabled(loaded);
     m_deleteBtn->setEnabled(loaded);
 
     if (!loaded) {

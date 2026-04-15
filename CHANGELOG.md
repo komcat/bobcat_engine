@@ -4,7 +4,46 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ---
 
-## v1.7.0 — 2026-04-07
+## v1.8.0 — 2026-04-14
+
+### Highlights
+
+- **Placement Correction v3 — Normal-Placement Model** — Redesigned retrace to re-measure a new *Normal Placement* line (where the lens physically lands) instead of the ideal Target line, using a cached *design offset* rotated by the reference-frame Δθ. Adds a 3rd teach widget, new JSON field `normalPlacementLine`, cached `designOffsetX/Y`, and file schema v3 (backward-compat with v1/v2 — retrace stays disabled until normal line is taught).
+- **Retrace Audit Log** — Every retrace run (manual / autoRunAll / recipe) appends a JSONL entry to `{productDir}/placement_correction/{setName}.retrace_log.jsonl` with retraced points, frame Δθ, design offset, correction vectors, live hex, corrected pose, tune offsets, per-step metadata, and outcome (saved/skipped/ended/failed). Rotates at 10 MB.
+- **Retrace Log Viewer** — New read-only workflow tab with color-coded outcome table, JSON detail pane, Refresh/Open-in-Explorer buttons.
+- **Auto-Disable U Correction at Large Δθ** — If retraced frame rotation exceeds 3.0°, applyUCorrection is auto-unchecked with a visible ⚠ warning in the review text. Operator must manually re-enable after verifying reference points.
+- **Recipe Interlock** — `SequenceEngine::IsExecuting()` exposes thread-safe execution state. Trainer Move buttons refuse to start when a recipe is running; also prevents double-click races.
+- **Async Safe-Move Workers** — All trainer-initiated moves (hex Move buttons on Positions tab; gantry Auto-Nav in teach widgets) now run off the UI thread with SetSystemVelocity → MoveToAbs → restore velocity. Indeterminate progress bar + red Stop (EmergencyStop) while moving.
+- **UI Tabs for Left Panel** — Device / Positions / Camera grouped into a QTabWidget with fixed-width, top-left-aligned fields.
+- **Teach Widget Enhancements** — Per-point vision profile selector + "Detect & Center" (single-shot world-position centering); Auto-Nav to previously-captured P1/P2 (disabled until first capture); instruction label sized to fit wrapped text.
+- **Save vs Save As** — Save overwrites the loaded set silently; Save As opens the rename dialog. Labels "Target Position" (tooltip: *first light position*) and "Position after correction".
+
+### All Changes (by date)
+
+## 2026-04-14
+
+- **placement correction v3: normal-placement retrace model + retrace log + UI polish**
+  - **Data model** (`PlacementCorrectionData.h`): added `PlacementLinePoints normalPlacementLine`, cached scalars `designOffsetX/Y/designOffsetValid`, new `normalAngleDeg`; `Recalculate()` now handles all three lines and computes `designOffset = target_midpoint − normal_midpoint`; new math helper `Rotate2D(dx, dy, angleDeg, outDx, outDy)`
+  - **Store** (`PlacementCorrectionStore.cpp`): serialize/load `normalPlacementLine`; bumped `CURRENT_FILE_VERSION` → **3** (v1/v2 files load with `normalPlacementLine.valid=false`; retrace guard short-circuits until taught); load log prints `nrm=` and `designOffset=` status
+  - **Teach widget integration** (`PlacementCorrectionPage.{h,cpp}`): new 3rd `TeachPlacementLineWidget("Normal", …)` at stack index 3, wired to `m_currentSet.normalPlacementLine` via `lineCaptured`; workflow nav renumbered 1..9 with **"3. Teach Normal Placement Line"** inserted; `SetLine()` routing restores normal line on load
+  - **Retrace widget v3 rewrite** (`PlacementRetraceWidget.{h,cpp}`): mass-rename `Tgt/tgt` → `Nrm/nrm` across states/slots/members/labels; steps 3/4 re-measure `normalPlacementLine` (not `targetLine`); `onStartRetrace` caches `designOffsetX/Y`; **`computeRetraceResults` replaced**: `Δθ = retracedRefAngle − taughtRefAngle`, `rotatedOffset = Rotate2D(designOffset, Δθ)`, `correctionGlobal = rotatedOffset`, transform to device-local via matrix, apply to live hex with `correctedU += Δθ` (if applyU); Idle summary shows per-point profile status (RefP1/P2, NrmP1/P2); if ready=false, enumerates which exact field is missing
+  - **AutoStart preflight guard**: if `designOffsetValid/referenceLine.valid/normalPlacementLine.valid` is false, immediately emit `retraceEnded` so recipe `QEventLoop` exits instead of hanging indefinitely on pre-v3 sets
+  - **Auto-disable U correction at |Δθ| > 3°**: `computeRetraceResults` unchecks the UI checkbox (signal-blocked to avoid recompute) and sets `applyUCorrection=false`; review text shows ⚠ warning with threshold value and guidance to verify retraced reference
+  - **`PlacementRetraceLogger` (new)**: JSONL append writer at `{productDir}/placement_correction/{setName}.retrace_log.jsonl`; `RetraceLogEntry` + `RetracePointMeta` structs capture timestamp, set identity, mode (`manual`/`autoRunAll`/`recipe`), outcome (`saved`/`skipped`/`ended`/`failed`), retraced XYZ pts + angles, taught/retraced ref angles, `frameDeltaTheta`, taught+rotated design offsets, `idealTarget`, correction global+local, live hex XYZUVW, tune offsets, corrected pose, per-step meta (`autoDetected`/`visionIters`/`finalResidualMm`/`reason`), optional `failureStep`/`failureDetail`; 10 MB rotation → `.jsonl.1`
+  - **Logger wiring in retrace widget**: `SetMode(mode)` sets the log-line mode; `onAutoRunAll` auto-upgrades to `"autoRunAll"` unless already `"recipe"`; per-step meta stamped in `runAutoDetect` success branch and in each `onConfirm*` slot for manual fallback; `computeRetraceResults` stashes intermediates (`m_logFrameDeltaTheta`, `m_logRotatedOffsetX/Y`, `m_logIdealTargetX/Y`, `m_logCorrGlobal*`, `m_logCorrLocal*`) for the log entry; `writeLogEntry(outcome, failureStep, failureDetail)` builds + appends; call sites: `onSaveToTarget("saved")`, `onSkip("skipped")`, `onEnd("ended")`, AutoStart-refused `("failed", "preflight", …)`; `m_loggedThisRun` flag suppresses duplicate on save→continue
+  - **`RetraceLogViewer` (new)**: read-only widget at stack index 9 ("9. View Retrace Log" nav); color-coded QTableWidget (most recent first) with Timestamp/Outcome/Mode/Δθ/Corr dX/Corr dY/Corrected X/Corrected Y; detail pane shows selected entry's pretty JSON; Refresh + Open-in-Explorer buttons; `SetData(set)` resolves log path via `PlacementRetraceLogger::ResolvePathForSet` and reloads
+  - **Recipe interlock**: `SequenceEngine::IsExecuting()` — new thread-safe `std::atomic<bool>` set via RAII `ExecGuard` in `ExecuteSequence` so it clears on any return path; `RunProgramPage::SetMode("recipe")` called before `SetData` so recipe-run retraces log with the correct mode
+  - **Tune-offset mid-recipe guard** (`RunProgramPage.cpp`): `offsetsPersistRequested` lambda now skips the disk save if `m_isExecuting`; logs "applied in-memory; disk save deferred" to the recipe log pane. Prevents a live-edited tune offset from overwriting the set JSON that a later recipe step might load.
+  - **Async safe-move workers**: `PlacementCorrectionPage::startSafeMoveAsync` (hex Move buttons) lowers velocity → `MoveToAbs6` (coordinated 6-axis, was XYZ-only single-axis `MoveToAbs`) → restore velocity; disables all 3 Move buttons during; red **Stop** triggers `EmergencyStop(device)`; indeterminate `QProgressBar` during move. `TeachPlacementLineWidget::startAutoNavAsync` (gantry Auto-Nav to taught P1/P2) mirrors the pattern with 10 mm/s safe velocity and 50 mm/s restore; Auto-Nav buttons default-disabled until `m_line.valid`; interlocked against `SequenceEngine::IsExecuting()`
+  - **Left panel tabs**: `QTabWidget` with **Device** / **Positions** / **Camera** tabs replaces the stacked group boxes; fixed-width combos/spinboxes + `addStretch` for top-left alignment; "Master Position (baseline)" relabeled **"Target Position"** (tooltip: *first light position*); "Target Position (corrected)" relabeled **"Position after correction"**; new **Normal Placement Position** combo (third Move row) backed by `PlacementCorrectionConfig::normalPositionName`
+  - **Save / Save As split**: Save overwrites the currently-loaded set silently (falls through to Save As if no `sourceFilename`); Save As always opens the rename dialog; Save As button added next to Save
+  - **Teach widget polish**: per-point `QComboBox` + **Refresh** for vision profile (written to `pNVisionProfilePath` on selection change, emits `lineCaptured` if line valid); **Detect & Center** (purple, single-shot — runs profile, MoveToAbs to detected world XY keeping Z); **Auto-Nav to P1 / P2** (green, disabled until first capture); instruction label min-height + `MinimumExpanding` vertical policy so wrapped text isn't clipped
+  - **Vision-no-match guard in detect paths** (`TeachPlacementLineWidget::runDetectAndCenter` and `PlacementRetraceWidget::runAutoDetect`): check `SequenceContext::HasValue("vision.detected.world_x_mm"/"_y_mm")` before trusting world coords — prevents `MoveToAbs(0, 0, Z)` when Halcon pattern match returns `success=true` with no anchor/corner/center
+  - **Stop button on retrace wait pages**: red Stop beside each Confirm button on Ref P1/P2 and Nrm P1/P2 pages; calls `onEnd` → `retraceEnded`
+  - **Retrace Idle page buttons**: Start Retrace fixed 180×44 + Auto-Run All 4 (currently hidden via `setVisible(false)` until feature matures); both left-aligned via `addStretch(1)`
+  - **Docs**: new `docs/placement_correction.md` — full v3 model explanation (three-line design, master-pose correlation, 6-state wizard, computeRetraceResults math, edge cases, JSON schema, source-file map) with a worked example using `VISION LEFT FIRST LIGHT.json`
+
+
 
 ### Highlights
 
