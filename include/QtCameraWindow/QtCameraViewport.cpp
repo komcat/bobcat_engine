@@ -8,6 +8,8 @@
 #include <QTransform>
 #include <QFont>
 #include <QString>
+#include <QStringList>
+#include <QList>
 
 #include <cstring>
 #include <cmath>
@@ -181,6 +183,11 @@ void QtCameraViewport::setBeamOverlayData(bool enabled, const nlohmann::json& re
     m_beamUmPerPxY       = umPerPxY;
 }
 
+void QtCameraViewport::setDeviceTrackingOverlayData(const DeviceTrackingOverlayData& data)
+{
+    m_deviceTracking = data;
+}
+
 // ============================================================================
 // Dimension accessors (post-rotation)
 // ============================================================================
@@ -333,6 +340,8 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
 #endif
     if (m_beamOverlayEnabled)  drawBeamOverlay(p, widgetRect);
     if (m_chartOverlayEnabled) drawChartOverlay(p, widgetRect);
+
+    if (m_deviceTracking.enabled) drawDeviceTrackingOverlay(p, widgetRect);
 
     drawFpsOverlay(p, widgetRect);
 
@@ -1124,3 +1133,66 @@ void QtCameraViewport::drawVisionOverlay(QPainter& p)
     p.restore();
 }
 #endif // HAS_OPENCV
+
+// ============================================================================
+// drawDeviceTrackingOverlay (bottom-right): live hex device positions in
+// gantry frame, expressed as deltas from registered zero point P0.
+// ============================================================================
+
+void QtCameraViewport::drawDeviceTrackingOverlay(QPainter& p, const QRect& widgetRect)
+{
+    const auto& d = m_deviceTracking;
+
+    auto fmt = [](double v) {
+        return QString("%1%2")
+            .arg(v >= 0 ? "+" : "")
+            .arg(QString::number(v, 'f', 3));
+    };
+
+    QStringList lines;
+    if (d.p0Set) {
+        lines << QString("P0: %1, %2").arg(fmt(d.p0X), fmt(d.p0Y));
+    } else {
+        lines << "P0: not set";
+    }
+    QList<bool> alertFlags;
+    alertFlags << false;  // P0 line never alerts
+    if (d.hexLeftActive) {
+        lines << QString("hex-L: %1, %2").arg(fmt(d.hexLeftDX), fmt(d.hexLeftDY));
+        alertFlags << d.hexLeftAlert;
+    } else {
+        lines << "hex-L: --";
+        alertFlags << false;
+    }
+    if (d.hexRightActive) {
+        lines << QString("hex-R: %1, %2").arg(fmt(d.hexRightDX), fmt(d.hexRightDY));
+        alertFlags << d.hexRightAlert;
+    } else {
+        lines << "hex-R: --";
+        alertFlags << false;
+    }
+
+    p.save();
+    p.setFont(QFont("Consolas", 10));
+    const QFontMetrics fm(p.font());
+    int textW = 0;
+    for (const auto& l : lines) textW = std::max(textW, fm.horizontalAdvance(l));
+
+    const int padding   = 6;
+    const int lineH     = fm.height();
+    const int overlayW  = textW + padding * 2;
+    const int overlayH  = lineH * lines.size() + padding * 2;
+    const int margin    = 5;
+    const QRect bgRect(widgetRect.right() - overlayW - margin,
+                       widgetRect.bottom() - overlayH - margin,
+                       overlayW, overlayH);
+
+    p.fillRect(bgRect, QColor(0, 0, 0, 160));
+    int y = bgRect.top() + padding + fm.ascent();
+    for (int i = 0; i < lines.size(); ++i) {
+        p.setPen(alertFlags[i] ? QColor(255, 60, 60) : QColor(255, 220, 100));
+        p.drawText(bgRect.left() + padding, y, lines[i]);
+        y += lineH;
+    }
+    p.restore();
+}

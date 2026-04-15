@@ -38,6 +38,8 @@ class QtCameraViewport;
 class BeamServerClient;
 class QListWidget;
 class QPushButton;
+class QTimer;
+class TransformationMatrixLoader;
 
 /**
  * @brief Top-level Qt window for camera live streaming with side panel controls.
@@ -228,6 +230,52 @@ private:
     void saveQuickMoveSettings();
     void loadQuickMoveSettings();
     QString quickMoveKey(const QString& key) const;
+
+    // Device tracking (session-only): register a gantry-frame zero point P0
+    // from gantry-main XY, then live-monitor hex-left / hex-right positions
+    // (transformed local -> global) as deltas from P0.
+    QGroupBox*   m_trackingGroup       = nullptr;
+    QPushButton* m_zeroP0Btn           = nullptr;
+    QPushButton* m_setHexLeftBtn       = nullptr;
+    QPushButton* m_setHexRightBtn      = nullptr;
+    QPushButton* m_clearTrackingBtn    = nullptr;
+    QLabel*      m_p0StatusLabel       = nullptr;
+    QLabel*      m_hexLeftStatusLabel  = nullptr;
+    QLabel*      m_hexRightStatusLabel = nullptr;
+    QTimer*      m_trackingTimer       = nullptr;
+    std::unique_ptr<TransformationMatrixLoader> m_matrixLoader;
+    bool   m_p0Set = false;
+    double m_p0X = 0.0, m_p0Y = 0.0;
+    bool   m_hexLeftReg = false;
+    double m_hexLeftRegDX = 0.0, m_hexLeftRegDY = 0.0;
+    double m_hexLeftRegLocalX = 0.0, m_hexLeftRegLocalY = 0.0, m_hexLeftRegLocalZ = 0.0;
+    bool   m_hexRightReg = false;
+    double m_hexRightRegDX = 0.0, m_hexRightRegDY = 0.0;
+    double m_hexRightRegLocalX = 0.0, m_hexRightRegLocalY = 0.0, m_hexRightRegLocalZ = 0.0;
+
+    // Alert thresholds (Euclidean distance in mm). Persisted via QSettings.
+    static constexpr double DEFAULT_HEX_ALERT_THRESHOLD = 0.005;
+    double m_hexLeftAlertThreshold  = DEFAULT_HEX_ALERT_THRESHOLD;
+    double m_hexRightAlertThreshold = DEFAULT_HEX_ALERT_THRESHOLD;
+    bool   m_hexLeftAlertActive  = false;
+    bool   m_hexRightAlertActive = false;
+
+    QGroupBox* buildDeviceTrackingGroup();
+    void onZeroP0Clicked();
+    void onSetHexLeftClicked();
+    void onSetHexRightClicked();
+    void onClearTrackingClicked();
+    void onTrackingTimerTick();
+    bool getGantryMainXY(double& x, double& y) const;
+    bool getHexLocalXYZ(const std::string& hexDevice,
+                        double& lx, double& ly, double& lz) const;
+    void updateTrackingStatusLabels();
+    void onSetHexLeftRightClicked();
+    void onSetHexRightRightClicked();
+    void promptThresholdDialog(const QString& which, double& threshold);
+    void applyHexButtonAlertStyle(QPushButton* btn, bool alert);
+    void loadTrackingSettings();
+    void saveTrackingSettings();
 
     // Dependencies (non-owning)
     CameraManager*       m_cameraManager       = nullptr;

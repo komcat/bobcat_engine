@@ -85,6 +85,21 @@ public:
     void setBeamOverlayData(bool enabled, const nlohmann::json& result, double fps,
                              double umPerPxX, double umPerPxY);
 
+    // Device tracking overlay (bottom-right): live hex device positions in
+    // gantry frame, expressed as delta from a registered zero point P0.
+    struct DeviceTrackingOverlayData {
+        bool enabled = false;
+        bool p0Set = false;
+        double p0X = 0.0, p0Y = 0.0;
+        bool hexLeftActive = false;   // registered + matrix available + live data ok
+        double hexLeftDX = 0.0, hexLeftDY = 0.0;
+        bool hexLeftAlert = false;    // distance below threshold
+        bool hexRightActive = false;
+        double hexRightDX = 0.0, hexRightDY = 0.0;
+        bool hexRightAlert = false;
+    };
+    void setDeviceTrackingOverlayData(const DeviceTrackingOverlayData& data);
+
 signals:
     void imageClicked(int imageX, int imageY);
     void mouseMoved(int imageX, int imageY);
@@ -145,6 +160,9 @@ private:
     std::string m_visionProfileName;
 #endif
 
+    // Device tracking overlay state
+    DeviceTrackingOverlayData m_deviceTracking;
+
     // Beam overlay state
     bool m_beamOverlayEnabled = false;
     nlohmann::json m_beamResult;
@@ -167,6 +185,7 @@ private:
     void drawVisionOverlay(QPainter& p);
 #endif
     void drawBeamOverlay(QPainter& p, const QRect& widgetRect);
+    void drawDeviceTrackingOverlay(QPainter& p, const QRect& widgetRect);
 
     // Chart helpers
     static QColor chartChannelColor(int index);
