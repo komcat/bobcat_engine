@@ -24,6 +24,16 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ### All Changes (by date)
 
+## 2026-04-14
+
+- **fix VisionCommandHandler reporting success on no-match**
+  - Halcon pattern-match plugins (Gray, NCC, Edge, Descriptor) intentionally return `num_matches=0` with `success=true` on no-match; this caused `execute_profile` to leave `vision.result.success=true` while skipping `world_x_mm`/`world_y_mm`, so callers reading defaults saw `(0, 0)` and downstream consumers (e.g. `PlacementRetraceWidget::runAutoDetect`) could issue `MoveToAbs(0, 0, currentZ)` — a dangerous garbage move
+  - Added `ApplyNoMatchGuardToContext()` helper in `VisionCommandHandler.cpp` (anonymous namespace) — flips `vision.result.success=false` and sets `vision.result.error` when either `vision.result.num_matches == 0` or none of `match_0_anchor_{x,y}`/`corner_{x,y}`/`center_{x,y}` keys are present
+  - Guard wired into `Execute()` right after `StoreResultInContext`, covering all three command paths (`execute`, `capture_and_execute`, `execute_profile`) via the common `CaptureAndExecute` → `Execute` chain
+  - `Execute()` now returns `false` when the guard flips success, aligning Halcon behavior with the OpenCV plugin convention where no-match is a dispatch-level failure; `execute_profile` still returns `true` from `ExecuteCommand` per the existing "dispatch OK" pattern, but context state is now correct
+  - `capture_as` prefix copies propagate the corrected `success=false`/`error` automatically via the existing `vision.*` → `<prefix>.*` copy loop
+  - Removed the now-redundant inline success-flip in the `calculate_world_position` / `!foundReference` branch; kept the diagnostic `⚠️ No reference point found` logs
+
 ## 2026-04-11
 
 - **runtime theme switcher with CC-29 palette and live reload**
