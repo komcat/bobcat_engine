@@ -10,6 +10,7 @@
 #include <QStringList>
 
 class QComboBox;
+class QCheckBox;
 
 /**
  * @brief Pure UI widget for roll correction angle calculation
@@ -46,6 +47,10 @@ public:
   void setAvailableChannels(const QStringList& channels);
   // Returns selected channel, or empty string when no real channel is selected
   QString currentChannel() const;
+
+  // When true, user opted to skip the DataStore channel requirement so the
+  // stepwise W correction runs without an XCANExtended re-peak between sub-steps.
+  bool bypassChannelRequirement() const;
 
   // Scanning state control
   void setScanRunning(bool running);
@@ -99,6 +104,7 @@ private:
   // Tracking channel selector (shared by both devices)
   QComboBox* m_channelCombo = nullptr;
   QLabel*    m_channelHintLabel = nullptr;
+  QCheckBox* m_bypassChannelCheckbox = nullptr;
 
   // Re-evaluate Correct W enable state after channel selection changes
   void refreshCorrectionEnableState();

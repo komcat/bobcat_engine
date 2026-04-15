@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QDoubleValidator>
 #include <QComboBox>
+#include <QCheckBox>
 #include <cmath>
 
 RollCorrectionWidget::RollCorrectionWidget(QWidget* parent)
@@ -59,9 +60,16 @@ void RollCorrectionWidget::setupUI()
                                       .arg(QLatin1String(Theme::Color::danger)));
   connect(m_channelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, [this](int /*idx*/) { refreshCorrectionEnableState(); });
+  m_bypassChannelCheckbox = new QCheckBox("Bypass channel (no re-peak between W steps)");
+  m_bypassChannelCheckbox->setToolTip(
+    "Skip the DataStore channel requirement. Stepwise W correction still splits\n"
+    "into small sub-steps but skips the XCANExtended re-peak between them.");
+  connect(m_bypassChannelCheckbox, &QCheckBox::toggled,
+    this, [this](bool /*checked*/) { refreshCorrectionEnableState(); });
   channelLayout->addWidget(channelLabel);
   channelLayout->addWidget(m_channelCombo);
   channelLayout->addWidget(m_channelHintLabel);
+  channelLayout->addWidget(m_bypassChannelCheckbox);
   channelLayout->addStretch();
   mainLayout->addLayout(channelLayout);
 
@@ -390,8 +398,9 @@ void RollCorrectionWidget::computeAndDisplayResults(const QString& deviceName)
   dev.correctionHalfwayXmm = halfwayOffsetMm;
   // Case 1: left+down -> W- (false), Case 2: left+up -> W+ (true)
   // Case 3: right+down -> W+ (true), Case 4: right+up -> W- (false)
-  // Button is enabled only when a tracking channel is selected as well
-  dev.correctWButton->setEnabled(!currentChannel().isEmpty());
+  // Button is enabled when a tracking channel is selected, OR when the user
+  // explicitly bypasses the channel requirement.
+  dev.correctWButton->setEnabled(!currentChannel().isEmpty() || bypassChannelRequirement());
   dev.correctWButton->setText(QString("Correct W (%1%2 deg)")
     .arg(dev.correctionPositiveW ? "+" : "-")
     .arg(angleDeg, 0, 'f', 4));
@@ -400,8 +409,12 @@ void RollCorrectionWidget::computeAndDisplayResults(const QString& deviceName)
 void RollCorrectionWidget::refreshCorrectionEnableState()
 {
   const bool hasChannel = !currentChannel().isEmpty();
+  const bool bypass = bypassChannelRequirement();
   if (m_channelHintLabel) {
-    m_channelHintLabel->setVisible(!hasChannel);
+    m_channelHintLabel->setVisible(!hasChannel && !bypass);
+  }
+  if (m_channelCombo) {
+    m_channelCombo->setEnabled(!bypass);
   }
   // Re-run compute (no-op if both peaks not yet registered) so the button
   // enable state and label stay in sync with the current channel selection.
@@ -431,6 +444,11 @@ void RollCorrectionWidget::setAvailableChannels(const QStringList& channels)
   refreshCorrectionEnableState();
 }
 
+bool RollCorrectionWidget::bypassChannelRequirement() const
+{
+  return m_bypassChannelCheckbox && m_bypassChannelCheckbox->isChecked();
+}
+
 QString RollCorrectionWidget::currentChannel() const
 {
   if (!m_channelCombo) return QString();
@@ -443,7 +461,8 @@ void RollCorrectionWidget::setCorrectionRunning(bool running)
 {
   // Stop button is the only control enabled while a correction is in progress
   m_stopScanButton->setEnabled(running);
-  if (m_channelCombo) m_channelCombo->setEnabled(!running);
+  if (m_channelCombo) m_channelCombo->setEnabled(!running && !bypassChannelRequirement());
+  if (m_bypassChannelCheckbox) m_bypassChannelCheckbox->setEnabled(!running);
   m_spacingInput->setEnabled(!running);
 
   auto setDeviceEnabled = [running](DeviceUI& d) {

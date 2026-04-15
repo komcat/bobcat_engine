@@ -3856,13 +3856,14 @@ void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
     m_logTextEdit->appendPlainText("[RollCorrection] ERROR: a correction is already running");
     return;
   }
-  if (channel.isEmpty()) {
+  const bool bypassChannel = m_rollCorrectionWidget->bypassChannelRequirement();
+  if (channel.isEmpty() && !bypassChannel) {
     m_logTextEdit->appendPlainText("[RollCorrection] ERROR: tracking channel required - select one in the dropdown");
     return;
   }
 
-  // Verify the selected channel still exists in DataStore
-  {
+  // Verify the selected channel still exists in DataStore (only when not bypassing)
+  if (!bypassChannel) {
     const auto names = m_context->dataStore->GetAllChannelNames();
     const std::string needle = channel.toStdString();
     bool found = false;
@@ -3903,7 +3904,7 @@ void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
     .arg(angleDeg, 0, 'f', 4)
     .arg(steps)
     .arg(subStepAbs, 0, 'f', 4)
-    .arg(channel));
+    .arg(bypassChannel ? QStringLiteral("<bypassed>") : channel));
 
   // ----- Set up running state -----
   m_rollCorrectionContext = std::make_unique<SequenceContext>();
@@ -3919,10 +3920,11 @@ void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
   const double halfwayMm = halfwayXmm;
   const int totalSteps = steps;
   const double signedStepDeg = signedSubStep;
+  const bool bypassChannelFlag = bypassChannel;
 
   // ----- Background worker -----
   auto future = std::async(std::launch::async,
-    [handler, mgr, ctx, dev, channelStd, ch1Snapshot, halfwayMm, totalSteps, signedStepDeg]()
+    [handler, mgr, ctx, dev, channelStd, ch1Snapshot, halfwayMm, totalSteps, signedStepDeg, bypassChannelFlag]()
       -> std::pair<bool, std::string>
     {
       double originalVelocity = 0.0;
@@ -3977,15 +3979,16 @@ void RunProgramPage::onCorrectWRequested(QString deviceName, QString channel,
           return restoreAndReturn(false, "stopped after W sub-step " + std::to_string(i + 1));
         }
 
-        // Re-peak XY power on the selected channel.
-        // ExecuteCommand is BLOCKING (we're already on a worker thread) and leaves
-        // the device at the discovered peak. It honors ctx->IsStopRequested.
-        std::string scanErr;
-        const bool scanOk = handler->ExecuteCommand(
-          mgr, dev, "XCANExtended", scanParams, scanErr, ctx);
-        if (!scanOk) {
-          return restoreAndReturn(false,
-            "FAILED XCANExtended after W sub-step " + std::to_string(i + 1) + ": " + scanErr);
+        // Re-peak XY power on the selected channel (skipped when user bypassed
+        // the channel requirement — W sub-steps still apply slowly, just no re-peak).
+        if (!bypassChannelFlag) {
+          std::string scanErr;
+          const bool scanOk = handler->ExecuteCommand(
+            mgr, dev, "XCANExtended", scanParams, scanErr, ctx);
+          if (!scanOk) {
+            return restoreAndReturn(false,
+              "FAILED XCANExtended after W sub-step " + std::to_string(i + 1) + ": " + scanErr);
+          }
         }
       }
 
