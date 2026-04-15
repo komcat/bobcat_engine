@@ -53,6 +53,7 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"Vision", "Vision processing settings"},
     {"Tools", "Tool overlay settings"},
     {"BeamServer", "Beam analyser server connection settings (command + stream ports)"},
+    {"Logging", "Log verbosity settings. Disable debug logs for cleaner operator output."},
     {"Backup", "Configuration backup and restore settings"}
   };
 
@@ -74,6 +75,10 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
      "int", 1000, 600000, {}},
 
     // === UI ===
+    {"UI", "Theme", "Default",
+     "Color theme for the application UI. Takes effect immediately on save.",
+     "combo", 0, 0, {{"Default", "Default (Dark)"}, {"CC29", "CC-29 (Retro)"}}},
+
     {"UI", "MaxLogLines", "200",
      "Maximum number of lines to keep in execution log",
      "int", 100, 10000, {}},
@@ -146,6 +151,14 @@ void ApplicationSettingsPage::initializeSettingDefinitions()
     {"BeamServer", "StreamIntervalMs", "100",
      "Target interval between stream frames in milliseconds (100 = 10Hz)",
      "int", 50, 1000, {}},
+
+    // === Logging ===
+    {"Logging", "DebugEnabled", "false",
+     "Show verbose DEBUG-level log messages. When disabled (default), the log shows only "
+     "operator-meaningful events: recipe steps, hardware state changes, and errors. When enabled, "
+     "shows all developer debug traces (internal state, parameter echoes, wait cycles, handler "
+     "registration). Requires application restart to take effect.",
+     "bool", 0, 0, {}},
 
     // === Backup ===
     {"Backup", "DestinationPath", "",
@@ -468,6 +481,9 @@ void ApplicationSettingsPage::setupPropertyPanel()
   QVBoxLayout* propLayout = new QVBoxLayout(m_propertyPanel);
   propLayout->setContentsMargins(20, 20, 20, 20);
   propLayout->setSpacing(15);
+  // Compact layout: anchor everything to the top-left so widgets don't
+  // stretch to fill the panel.
+  propLayout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
   // Title
   m_propTitleLabel = new QLabel("Select a setting");
@@ -478,7 +494,7 @@ void ApplicationSettingsPage::setupPropertyPanel()
   m_propTitleLabel->setStyleSheet("color: #60a5fa;");
   propLayout->addWidget(m_propTitleLabel);
 
-  // Section badge
+  // Section badge — sized to its content (not stretched across the panel).
   m_propSectionLabel = new QLabel("");
   m_propSectionLabel->setStyleSheet(
     "color: #a1a1aa; "
@@ -488,8 +504,9 @@ void ApplicationSettingsPage::setupPropertyPanel()
     "font-size: 11px;"
   );
   m_propSectionLabel->setFixedHeight(24);
+  m_propSectionLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
   m_propSectionLabel->hide();
-  propLayout->addWidget(m_propSectionLabel);
+  propLayout->addWidget(m_propSectionLabel, 0, Qt::AlignLeft);
 
   // Separator
   QFrame* sep1 = new QFrame();
@@ -498,21 +515,32 @@ void ApplicationSettingsPage::setupPropertyPanel()
   sep1->setFixedHeight(1);
   propLayout->addWidget(sep1);
 
-  // Value editor container
+  // Value editor container — compact: top-aligned, capped width.
+  // Single source of truth for "how wide is an editor field".
+  static constexpr int kEditorMaxWidth = 420;
+
   m_propEditorContainer = new QWidget();
+  m_propEditorContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
   QVBoxLayout* editorLayout = new QVBoxLayout(m_propEditorContainer);
   editorLayout->setContentsMargins(0, 0, 0, 0);
   editorLayout->setSpacing(8);
+  editorLayout->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
   QLabel* valueLabel = new QLabel("Value");
   valueLabel->setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: bold;");
   editorLayout->addWidget(valueLabel);
 
-  // Stacked widget for different editor types
+  // Stacked widget for different editor types — fixed vertical size so it
+  // only takes the natural height of whichever editor is active, and
+  // capped width so it stays compact instead of stretching across the panel.
   m_propValueStack = new QStackedWidget();
+  m_propValueStack->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_propValueStack->setMaximumWidth(kEditorMaxWidth);
 
   // String editor (QLineEdit) - index 0
   m_propValueEdit = new QLineEdit();
+  m_propValueEdit->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_propValueEdit->setMaximumWidth(kEditorMaxWidth);
   m_propValueEdit->setStyleSheet(
     "QLineEdit { "
     "  background-color: #3f3f46; "
@@ -531,6 +559,8 @@ void ApplicationSettingsPage::setupPropertyPanel()
 
   // Integer editor (QSpinBox) - index 1
   m_propValueSpin = new QSpinBox();
+  m_propValueSpin->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_propValueSpin->setMaximumWidth(kEditorMaxWidth);
   m_propValueSpin->setStyleSheet(
     "QSpinBox { "
     "  background-color: #3f3f46; "
@@ -560,6 +590,7 @@ void ApplicationSettingsPage::setupPropertyPanel()
 
   // Boolean editor (QCheckBox) - index 2
   m_propValueCheck = new QCheckBox("Enabled");
+  m_propValueCheck->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
   m_propValueCheck->setStyleSheet(
     "QCheckBox { "
     "  color: white; "
@@ -586,6 +617,8 @@ void ApplicationSettingsPage::setupPropertyPanel()
 
   // Combo editor (QComboBox) - index 3
   m_propValueCombo = new QComboBox();
+  m_propValueCombo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  m_propValueCombo->setMaximumWidth(kEditorMaxWidth);
   m_propValueCombo->setStyleSheet(
     "QComboBox { "
     "  background-color: #3f3f46; "
@@ -622,7 +655,14 @@ void ApplicationSettingsPage::setupPropertyPanel()
           this, &ApplicationSettingsPage::onSettingChanged);
   m_propValueStack->addWidget(m_propValueCombo);
 
-  editorLayout->addWidget(m_propValueStack);
+  // Wrap the stack in a row with a trailing stretch so it stays flush-left
+  // instead of being centered or stretched across the full container width.
+  QHBoxLayout* stackRow = new QHBoxLayout();
+  stackRow->setContentsMargins(0, 0, 0, 0);
+  stackRow->setSpacing(0);
+  stackRow->addWidget(m_propValueStack);
+  stackRow->addStretch(1);
+  editorLayout->addLayout(stackRow);
 
   // Type info
   m_propTypeLabel = new QLabel("");
@@ -725,7 +765,7 @@ void ApplicationSettingsPage::populateTree()
   // Define section order
   std::vector<std::string> sectionOrder = {
     "CameraMonitor", "ChartOverlay", "Vision", "Tools",
-    "BeamServer", "ChainExecution", "Scanning", "UI", "Backup"
+    "BeamServer", "ChainExecution", "Scanning", "UI", "Logging", "Backup"
   };
 
   // Create tree items in order

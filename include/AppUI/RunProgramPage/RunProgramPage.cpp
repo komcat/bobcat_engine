@@ -14,6 +14,9 @@
 #include "ScanControlWidget.h"
 #include "RollCorrectionWidget.h"
 #include "ScanExecutor.h"
+#include "Theme.h"
+#include "ThemeButtonStyles.h"
+#include "common/ScanActivityTracker.h"
 #include "motions/unified_motion_manager.h"
 #include "SequenceEngine.h"
 #include "MotionCommandHandler.h"
@@ -215,8 +218,30 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   if (m_context->safetyWatchManager) {
     m_scanExecutor->setSafetyWatchManager(m_context->safetyWatchManager);
   }
+  // Wire the scan-busy tracker so tab-initiated scans light up the TopBar indicator.
+  m_scanExecutor->setScanActivityTracker(m_context->scanActivityTracker);
+
+  // Initialize the status badge defaults from Theme so an "Idle" badge is
+  // painted with palette colors before the first setProgramStatus() call.
+  m_baseStatusBgColor = QLatin1String(Theme::Color::bgSurface);
+  m_baseStatusFgColor = QLatin1String(Theme::Color::textDisabled);
 
   setupUI();
+
+  // Mirror the TopBar scan-busy indicator on the execution status badge so the
+  // operator sees a SCANNING overlay on the RunProgramPage even when the TopBar
+  // is offscreen. The tracker may emit from the SequenceEngine worker thread,
+  // so route through QueuedConnection before touching the QLabel.
+  if (m_context->scanActivityTracker) {
+    connect(m_context->scanActivityTracker, &ScanActivityTracker::activeChanged,
+      this, [this](bool active) {
+        m_isScanActive = active;
+        applyProgramStatusLabel();
+      }, Qt::QueuedConnection);
+    // Defensive sync in case a scan is already running when the page is built.
+    m_isScanActive = m_context->scanActivityTracker->IsActive();
+    applyProgramStatusLabel();
+  }
 
   // Update product display
   if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
@@ -314,31 +339,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
   // === BACK BUTTON (at the very top) ===
   m_backButton = new QPushButton("← Back to Main Menu");
   m_backButton->setMinimumHeight(35);
-  m_backButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a8fd6, stop:1 #3d5a8c); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a9fe6, stop:1 #5a8fd6); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2d4a6c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "}");
+  m_backButton->setStyleSheet(Theme::Buttons::bezelPrimary());
   leftLayout->addWidget(m_backButton);
 
   // === Product Display with Chain Indicator ===
@@ -682,38 +683,7 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   m_executeButton = new QPushButton("▶ Execute Program");
   m_executeButton->setMinimumHeight(50);
-  m_executeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5cbf60, stop:1 #4CAF50); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6ccf70, stop:1 #5cbf60); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #3d9041; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
-    "}");
+  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
   executeLayout->addWidget(m_executeButton);
 
   // Progress bar moved to right panel (execution widget) for better visibility
@@ -1142,35 +1112,11 @@ void RunProgramPage::createEditWidget()
 
   QPushButton* closeButton = new QPushButton("← Close");
   closeButton->setMinimumHeight(35);
-  closeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #858585, stop:1 #757575); "
-    "  color: white; "
-    "  font-size: 13px; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #959595, stop:1 #858585); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #656565; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "}");
+  closeButton->setStyleSheet(Theme::Buttons::bezelNeutral());
 
   QLabel* titleLabel = new QLabel("Edit Program");
-  titleLabel->setStyleSheet("font-size: 18px; font-weight: bold;");
+  titleLabel->setStyleSheet(QString("font-size: 18px; font-weight: bold; color: %1;")
+                              .arg(QLatin1String(Theme::Color::textPrimary)));
 
   topBarLayout->addWidget(closeButton);
   topBarLayout->addWidget(titleLabel);
@@ -1183,23 +1129,7 @@ void RunProgramPage::createEditWidget()
 
   // === PROGRAM NAME FIELD WITH SAVE BUTTON ===
   QGroupBox* programNameGroup = new QGroupBox("Program Name");
-  programNameGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
+  programNameGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
   QVBoxLayout* programNameLayout = new QVBoxLayout(programNameGroup);
 
   // Horizontal layout for name field and save button
@@ -1215,32 +1145,7 @@ void RunProgramPage::createEditWidget()
   m_saveEditButton = new QPushButton("💾 Save");
   m_saveEditButton->setMinimumHeight(35);
   m_saveEditButton->setMinimumWidth(100);
-  m_saveEditButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #42a5f5, stop:1 #2196F3); "
-    "  color: white; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #52b5ff, stop:1 #42a5f5); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1976D2; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "}");
+  m_saveEditButton->setStyleSheet(Theme::Buttons::bezelPrimary());
   nameAndSaveLayout->addWidget(m_saveEditButton);
 
   programNameLayout->addLayout(nameAndSaveLayout);
@@ -1248,91 +1153,20 @@ void RunProgramPage::createEditWidget()
 
   // === SLOT MANAGEMENT BAR ===
   QGroupBox* slotManageGroup = new QGroupBox("Recipe Slot");
-  slotManageGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
+  slotManageGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
   QHBoxLayout* slotManageLayout = new QHBoxLayout(slotManageGroup);
   slotManageLayout->setSpacing(5);
 
   m_editSlotSelector = new QComboBox();
   m_editSlotSelector->setMinimumHeight(30);
   m_editSlotSelector->setMinimumWidth(150);
-  m_editSlotSelector->setStyleSheet(
-    "QComboBox { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 5px 10px; "
-    "  font-size: 13px; "
-    "} "
-    "QComboBox:hover { "
-    "  border-color: #0e639c; "
-    "} "
-    "QComboBox::drop-down { "
-    "  border: none; "
-    "  width: 25px; "
-    "} "
-    "QComboBox::down-arrow { "
-    "  image: none; "
-    "  border-left: 5px solid transparent; "
-    "  border-right: 5px solid transparent; "
-    "  border-top: 5px solid #d4d4d4; "
-    "} "
-    "QComboBox QAbstractItemView { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "  selection-background-color: #0e639c; "
-    "  selection-color: white; "
-    "  border: 1px solid #555555; "
-    "}"
-  );
+  // No local override — global DarkTheme QSS handles QComboBox via Theme palette.
   connect(m_editSlotSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
           this, &RunProgramPage::onEditSlotSelectionChanged);
   slotManageLayout->addWidget(m_editSlotSelector, 1);
 
-  // Slot management button style
-  QString slotButtonStyle =
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-size: 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #3c3c3c; "
-    "  color: #666666; "
-    "}";
+  // Slot management buttons (Rename/Add/Copy) all share the neutral style.
+  const QString slotButtonStyle = Theme::Buttons::bezelNeutral();
 
   m_renameSlotButton = new QPushButton("Rename");
   m_renameSlotButton->setMinimumHeight(30);
@@ -1357,63 +1191,17 @@ void RunProgramPage::createEditWidget()
 
   m_deleteSlotButton = new QPushButton("Delete");
   m_deleteSlotButton->setMinimumHeight(30);
-  m_deleteSlotButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #c0392b, stop:1 #a93226); "
-    "  color: white; "
-    "  padding: 5px 10px; "
-    "  font-size: 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d0493b, stop:1 #c0392b); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #8e2820; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #5a5a5a; "
-    "  color: #888888; "
-    "}"
-  );
+  m_deleteSlotButton->setStyleSheet(Theme::Buttons::bezelDanger());
   m_deleteSlotButton->setToolTip("Delete the current slot (cannot delete last slot)");
   connect(m_deleteSlotButton, &QPushButton::clicked, this, &RunProgramPage::onDeleteSlot);
   slotManageLayout->addWidget(m_deleteSlotButton);
 
   layout->addWidget(slotManageGroup);
 
-  // Add Recipe button
+  // Add Recipe button — success green family
   m_addRecipeButton = new QPushButton("+ Add Recipe");
   m_addRecipeButton->setMinimumHeight(40);
-  m_addRecipeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  font-size: 14px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3edc81, stop:1 #2ecc71); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1e8449; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_addRecipeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
   layout->addWidget(m_addRecipeButton);
 
   // === RECIPE TABLE AND PREVIEW (side by side) ===
@@ -1425,7 +1213,8 @@ void RunProgramPage::createEditWidget()
   tableLayout->setContentsMargins(0, 0, 0, 0);
 
   QLabel* tableLabel = new QLabel("Recipes in Program");
-  tableLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;");
+  tableLabel->setStyleSheet(QString("font-weight: bold; font-size: 13px; color: %1;")
+                              .arg(QLatin1String(Theme::Color::textPrimary)));
   tableLayout->addWidget(tableLabel);
 
   m_editRecipeTable = new QTableWidget();
@@ -1442,36 +1231,42 @@ void RunProgramPage::createEditWidget()
   m_editRecipeTable->setColumnWidth(2, 180);  // File
   m_editRecipeTable->setColumnWidth(3, 120);  // Dependencies
   m_editRecipeTable->setColumnWidth(4, 80);   // Status
-  m_editRecipeTable->setStyleSheet(
+  m_editRecipeTable->setStyleSheet(QString(
     "QTableWidget { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
+    "  background-color: %1; "
+    "  border: 1px solid %2; "
     "  border-radius: 4px; "
-    "  gridline-color: #3f3f46; "
-    "  font-size: 16px; "  // Increased from 13px to 16px
-    "  color: #d4d4d4; "
+    "  gridline-color: %2; "
+    "  font-size: 16px; "  // larger than the global default
+    "  color: %3; "
     "  show-decoration-selected: 1; "
     "} "
     "QTableWidget::item { "
-    "  border-bottom: 1px solid #3f3f46; "
-    "  padding: 10px 8px; "  // Increased from 2px to 10px vertical, 8px horizontal
+    "  border-bottom: 1px solid %2; "
+    "  padding: 10px 8px; "
     "} "
     "QTableWidget::item:hover { "
-    "  background-color: #2a2d2e; "
+    "  background-color: %4; "
     "} "
     "QTableWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
+    "  background-color: %5; "
+    "  color: %6; "
     "} "
     "QHeaderView::section { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "  padding: 8px; "  // Increased from 5px to 8px
-    "  border: 1px solid #3f3f46; "
-    "  font-size: 15px; "  // Added explicit font size for headers
+    "  background-color: %7; "
+    "  color: %3; "
+    "  padding: 8px; "
+    "  border: 1px solid %2; "
+    "  font-size: 15px; "
     "  font-weight: bold; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),         // %1 cell bg
+        QLatin1String(Theme::Color::borderSubtle),   // %2 grid + border
+        QLatin1String(Theme::Color::textPrimary),    // %3 text
+        QLatin1String(Theme::Color::bgHover),        // %4 hover
+        QLatin1String(Theme::Color::primary),        // %5 selected bg
+        QLatin1String(Theme::Color::textOnPrimary),  // %6 selected text
+        QLatin1String(Theme::Color::bgPrimary)));    // %7 header bg
 
   // Set minimum row height for better readability
   m_editRecipeTable->verticalHeader()->setDefaultSectionSize(42);
@@ -1492,22 +1287,25 @@ void RunProgramPage::createEditWidget()
   previewLayout->setContentsMargins(0, 0, 0, 0);
 
   QLabel* previewLabel = new QLabel("Recipe Preview");
-  previewLabel->setStyleSheet("font-weight: bold; font-size: 13px; color: #ffffff;");
+  previewLabel->setStyleSheet(QString("font-weight: bold; font-size: 13px; color: %1;")
+                                .arg(QLatin1String(Theme::Color::textPrimary)));
   previewLayout->addWidget(previewLabel);
 
   m_recipePreviewText = new QTextEdit();
   m_recipePreviewText->setReadOnly(true);
   m_recipePreviewText->setPlaceholderText("Select a recipe to see its steps...");
-  m_recipePreviewText->setStyleSheet(
+  m_recipePreviewText->setStyleSheet(QString(
     "QTextEdit { "
     "  font-family: 'Consolas', 'Courier New', monospace; "
     "  font-size: 12px; "
-    "  background-color: #1e1e1e; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #3f3f46; "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 1px solid %3; "
     "  border-radius: 4px; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::borderSubtle)));
   previewLayout->addWidget(m_recipePreviewText);
 
   recipeSplitter->addWidget(previewContainer);
@@ -1518,182 +1316,27 @@ void RunProgramPage::createEditWidget()
 
   layout->addWidget(recipeSplitter, 1);
 
-  // Control buttons
+  // Control buttons — themed by semantic role
   QHBoxLayout* controlLayout = new QHBoxLayout();
   m_removeRecipeButton = new QPushButton("Remove");
-  m_removeRecipeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ec7063, stop:1 #e74c3c); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #fc8073, stop:1 #ec7063); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #c0392b; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
-    "}"
-  );
+  m_removeRecipeButton->setStyleSheet(Theme::Buttons::bezelDanger());
 
   m_moveUpButton = new QPushButton("↑ Move Up");
-  m_moveUpButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #b5c5c6, stop:1 #a5b5b6); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #7f8c8d; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
-    "}"
-  );
+  m_moveUpButton->setStyleSheet(Theme::Buttons::bezelNeutral());
 
   m_moveDownButton = new QPushButton("↓ Move Down");
-  m_moveDownButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #a5b5b6, stop:1 #95a5a6); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #b5c5c6, stop:1 #a5b5b6); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #7f8c8d; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
-    "}"
-  );
+  m_moveDownButton->setStyleSheet(Theme::Buttons::bezelNeutral());
 
   // ✅ NEW: Toggle Enable/Disable button
   m_toggleEnableButton = new QPushButton("⇄ Toggle Enable/Disable");
-  m_toggleEnableButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f1c40f, stop:1 #f39c12); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffd41f, stop:1 #f1c40f); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #e67e22; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #7f8c8d; "
-    "  color: #bdc3c7; "
-    "  border-top: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-left: 1px solid rgba(255, 255, 255, 0.2); "
-    "  border-bottom: 1px solid rgba(0, 0, 0, 0.3); "
-    "  border-right: 1px solid rgba(0, 0, 0, 0.3); "
-    "}"
-  );
+  m_toggleEnableButton->setStyleSheet(Theme::Buttons::bezelWarning());
   m_toggleEnableButton->setEnabled(false);
 
   // ✅ NEW: Manage Dependencies button
   QPushButton* manageDepsButton = new QPushButton("🔗 Manage Dependencies");
-  manageDepsButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8e44ad, stop:1 #9b59b6); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 5px 15px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9b59b6, stop:1 #a06fbd); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #7d3c98; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 17px; "
-    "}"
-  );
+  // Manage Dependencies — primary blue (no purple in palette; lives at the
+  // far right of the row so it doesn't visually clash with Save at the top).
+  manageDepsButton->setStyleSheet(Theme::Buttons::bezelPrimary());
   connect(manageDepsButton, &QPushButton::clicked, this, &RunProgramPage::onManageDependencies);
 
   controlLayout->addWidget(m_removeRecipeButton);
@@ -1717,6 +1360,55 @@ void RunProgramPage::createEditWidget()
     this, &RunProgramPage::onEditRecipeSelectionChanged);
 }
 
+// Stores the requested base state and re-applies the badge. Use this instead
+// of touching m_programStatusLabel directly so that an active scan overlay
+// can hide the base state without losing it.
+void RunProgramPage::setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor)
+{
+  m_baseStatusText = text;
+  m_baseStatusBgColor = bgColor;
+  m_baseStatusFgColor = fgColor;
+  applyProgramStatusLabel();
+}
+
+// Paints the badge from m_baseStatus* unless a scan is active, in which case
+// the amber "SCANNING" overlay takes priority. Called from setProgramStatus()
+// and from the ScanActivityTracker signal handler.
+void RunProgramPage::applyProgramStatusLabel()
+{
+  if (!m_programStatusLabel) {
+    return;
+  }
+
+  QString text;
+  QString bg;
+  QString fg;
+  if (m_isScanActive) {
+    // Match the TopBar accent badge so the operator can connect the two indicators.
+    text = QString::fromUtf8("\xE2\x9A\xA1 SCANNING");
+    bg = QLatin1String(Theme::Color::accent);
+    fg = QLatin1String(Theme::Color::bgDeep);
+  } else {
+    text = m_baseStatusText;
+    bg = m_baseStatusBgColor;
+    fg = m_baseStatusFgColor;
+  }
+
+  m_programStatusLabel->setText(text);
+  m_programStatusLabel->setStyleSheet(
+    QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  padding: 4px 12px; "
+      "  border-radius: 4px; "
+      "  font-weight: bold; "
+      "  font-size: 18px; "
+      "}"
+    ).arg(bg, fg)
+  );
+}
+
 void RunProgramPage::createExecutionWidget()
 {
   m_executionWidget = new QWidget();
@@ -1724,40 +1416,45 @@ void RunProgramPage::createExecutionWidget()
   layout->setContentsMargins(20, 20, 20, 20);
 
   // === HEADER SECTION ===
-  // Title row: Program title on left, status on right
-  QHBoxLayout* titleRow = new QHBoxLayout();
+  // Header: large status badge on the left (250x150), program info on the right
+  QHBoxLayout* headerRow = new QHBoxLayout();
+  headerRow->setContentsMargins(0, 0, 0, 0);
+  headerRow->setSpacing(15);
+
+  // Program status indicator (Idle/Running/Stopped/Scanning) — 250x150 badge on the left
+  m_programStatusLabel = new QLabel("Idle");
+  m_programStatusLabel->setFixedSize(250, 150);
+  m_programStatusLabel->setAlignment(Qt::AlignCenter);
+  // Initial state mirrors the "Idle" defaults stored in m_baseStatus*; the
+  // helper paints from those members so a scan overlay can swap in/out
+  // without losing the underlying state.
+  applyProgramStatusLabel();
+  headerRow->addWidget(m_programStatusLabel, 0, Qt::AlignTop);
+
+  // Right side: program title + status line + current recipe (stacked)
+  QVBoxLayout* headerTextLayout = new QVBoxLayout();
+  headerTextLayout->setContentsMargins(0, 0, 0, 0);
+  headerTextLayout->setSpacing(4);
 
   m_executionTitleLabel = new QLabel("Program Execution");
   m_executionTitleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
-  titleRow->addWidget(m_executionTitleLabel);
-
-  titleRow->addStretch();
-
-  // Program status indicator (Idle/Running/Stopped)
-  m_programStatusLabel = new QLabel("Idle");
-  m_programStatusLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #3f3f46; "
-    "  color: #888888; "
-    "  padding: 4px 12px; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  font-size: 12px; "
-    "}"
-  );
-  titleRow->addWidget(m_programStatusLabel);
-
-  layout->addLayout(titleRow);
+  headerTextLayout->addWidget(m_executionTitleLabel);
 
   // Status row
   m_executionStatusLabel = new QLabel("Ready to execute");
   m_executionStatusLabel->setStyleSheet("font-size: 14px; color: #cccccc;");
-  layout->addWidget(m_executionStatusLabel);
+  headerTextLayout->addWidget(m_executionStatusLabel);
 
   // Current recipe
   m_currentRecipeLabel = new QLabel("Current Recipe: None");
   m_currentRecipeLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0e639c;");
-  layout->addWidget(m_currentRecipeLabel);
+  headerTextLayout->addWidget(m_currentRecipeLabel);
+
+  headerTextLayout->addStretch();
+
+  headerRow->addLayout(headerTextLayout, 1);
+
+  layout->addLayout(headerRow);
 
   layout->addSpacing(10);
 
@@ -1830,6 +1527,27 @@ void RunProgramPage::createExecutionWidget()
   trackerLayout->addWidget(next2Cell, 1);
 
   layout->addWidget(m_commandTrackerRow);
+  // Hidden from the UI by request; underlying labels remain wired so
+  // m_cmdPastLabel / m_cmdCurrentLabel / m_cmdNext1Label / m_cmdNext2Label
+  // continue to receive updates and can be re-enabled by removing this line.
+  m_commandTrackerRow->hide();
+
+  // === ACTION DETAIL LINE (human-readable description of current action) ===
+  m_actionDetailLabel = new QLabel("-");
+  m_actionDetailLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  color: #cccccc; "
+    "  background-color: #2d2d2d; "
+    "  border: 1px solid #3f3f46; "
+    "  border-radius: 4px; "
+    "  padding: 6px 10px; "
+    "}"
+  );
+  m_actionDetailLabel->setWordWrap(false);
+  m_actionDetailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  m_actionDetailLabel->setToolTip("Current sequence action");
+  layout->addWidget(m_actionDetailLabel);
 
   // === PROGRESS BAR (tracks step execution progress) ===
   m_progressBar = new QProgressBar();
@@ -1843,10 +1561,12 @@ void RunProgramPage::createExecutionWidget()
     "  border-radius: 3px; "
     "  background-color: #2d2d30; "
     "  text-align: center; "
-    "  color: #d4d4d4; "
+    "  color: #ffffff; "
+    "  font-weight: bold; "
     "} "
     "QProgressBar::chunk { "
-    "  background-color: #4CAF50; "
+    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+    "      stop:0 #58d68d, stop:1 #27ae60); "
     "  border-radius: 2px; "
     "}"
   );
@@ -2062,6 +1782,27 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onPlacementRetraceSkipped);
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
     this, &RunProgramPage::onPlacementRetraceEnded);
+  // Manual tune offsets edited during a retrace — persist the active set
+  // back to its source JSON so the offset is remembered next run.
+  //
+  // Guard: if a recipe is actively executing (m_isExecuting), skip the disk
+  // write to avoid overwriting the set mid-recipe. The offset is still
+  // applied in-memory for the current retrace; it just won't be persisted
+  // until the recipe finishes. This prevents a later recipe step that uses
+  // the same set from silently picking up a freshly-edited offset.
+  connect(m_placementRetraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
+    this, [this]() {
+      if (m_activePlacementStoreBasePath.empty()) return;
+      if (m_isExecuting) {
+        m_logTextEdit->appendPlainText(
+          "[PlacementRetrace] Tune offset edit applied in-memory; disk save "
+          "deferred (recipe is running).");
+        return;
+      }
+      PlacementCorrectionStore store;
+      store.SetBasePath(m_activePlacementStoreBasePath);
+      store.SaveSet(m_activePlacementSet);
+    });
   m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
 
   // Cross-thread signal bridges for recipe callbacks (this → this connections).
@@ -2227,8 +1968,6 @@ void RunProgramPage::createExecutionWidget()
   // Connect scan widget to this page
   connect(m_scanWidget, &ScanControlWidget::scanRequested,
     this, &RunProgramPage::onScanRequested);
-  connect(m_scanWidget, &ScanControlWidget::rotationScanRequested,
-    this, &RunProgramPage::onRotationScanRequested);
   connect(m_scanWidget, &ScanControlWidget::stopRequested,
     this, &RunProgramPage::onStopScanRequested);
   connect(m_scanWidget, &ScanControlWidget::channelChanged,
@@ -2799,26 +2538,10 @@ void RunProgramPage::onExecuteProgram()
   // Update UI
   m_isExecuting = true;
   m_executeButton->setText("⏹ Stop Program");
-  m_executeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #f44336; "
-    "  color: white; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "}");
+  m_executeButton->setStyleSheet(Theme::Buttons::bezelDanger());
 
   // Update program status indicator
-  m_programStatusLabel->setText("Running");
-  m_programStatusLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #4caf50; "
-    "  color: white; "
-    "  padding: 4px 12px; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  font-size: 12px; "
-    "}"
-  );
+  setProgramStatus("Running", Theme::Color::success, Theme::Color::textPrimary);
 
   m_autoRunNextCheckBox->setEnabled(false);
 
@@ -3125,6 +2848,7 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
   m_cmdCurrentLabel->setText("Starting...");
   m_cmdNext1Label->setText("-");
   m_cmdNext2Label->setText("-");
+  if (m_actionDetailLabel) m_actionDetailLabel->setText("Starting...");
 
   // Update list item to show running state
   QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
@@ -3504,6 +3228,7 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   m_cmdCurrentLabel->setText(success ? "Completed" : "Failed");
   m_cmdNext1Label->setText("-");
   m_cmdNext2Label->setText("-");
+  if (m_actionDetailLabel) m_actionDetailLabel->setText(success ? "Completed" : "Failed");
   m_recipeStepNames.clear();
 
   std::cout << "[RunProgramPage] Updating execute button..." << std::endl;
@@ -3512,33 +3237,10 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   // Re-enable execute button
   updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
   m_executeButton->setText("▶ Execute Program");
-  m_executeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border-radius: 5px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #45a049; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #cccccc; "
-    "}");
+  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
 
   // Update program status indicator
-  m_programStatusLabel->setText("Idle");
-  m_programStatusLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #3f3f46; "
-    "  color: #888888; "
-    "  padding: 4px 12px; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  font-size: 12px; "
-    "}"
-  );
+  setProgramStatus("Idle", Theme::Color::bgSurface, Theme::Color::textDisabled);
 
   std::cout << "[RunProgramPage] Enabling auto-run checkbox..." << std::endl;
   std::cout.flush();
@@ -3595,38 +3297,16 @@ void RunProgramPage::onProgramStopped()
   m_cmdCurrentLabel->setText("Stopped");
   m_cmdNext1Label->setText("-");
   m_cmdNext2Label->setText("-");
+  if (m_actionDetailLabel) m_actionDetailLabel->setText("Stopped");
   m_recipeStepNames.clear();
 
   // ✅ Update status label to "Stopped"
-  m_programStatusLabel->setText("Stopped");
-  m_programStatusLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #ef4444; "
-    "  color: white; "
-    "  padding: 4px 12px; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  font-size: 12px; "
-    "}"
-  );
+  setProgramStatus("Stopped", Theme::Color::danger, Theme::Color::textPrimary);
 
   // Re-enable execute button
   updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
   m_executeButton->setText("▶ Execute Program");
-  m_executeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
-    "  font-size: 16px; "
-    "  font-weight: bold; "
-    "  border-radius: 5px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #45a049; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #cccccc; "
-    "}");
+  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
 
   m_autoRunNextCheckBox->setEnabled(true);
 
@@ -3823,6 +3503,13 @@ void RunProgramPage::onActionStarted(int /*recipeIndex*/, QString current, QStri
   // Show next and after-next from look-ahead
   m_cmdNext1Label->setText(next.isEmpty() ? "-" : next);
   m_cmdNext2Label->setText(afterNext.isEmpty() ? "-" : afterNext);
+
+  // Mirror the current action into the visible single-row description.
+  // `current` here is already a human-readable string built by
+  // ActionInfo::toHumanReadable() in RecipeWorker.
+  if (m_actionDetailLabel) {
+    m_actionDetailLabel->setText(current.isEmpty() ? "-" : current);
+  }
 }
 
 void RunProgramPage::onSequenceExecutionStarted(int /*recipeIndex*/)
@@ -4009,36 +3696,6 @@ void RunProgramPage::onScanRequested(QString deviceName, ScanControlWidget::Scan
 
   // Execute scan - all business logic handled by ScanExecutor
   bool success = m_scanExecutor->executeScan(deviceName, execMode, channel);
-
-  if (!success) {
-    // Re-enable controls if scan failed to start
-    m_scanWidget->setScanButtonsEnabled(true);
-    m_scanWidget->setStopButtonEnabled(false);
-  }
-}
-
-void RunProgramPage::onRotationScanRequested(QString deviceName, QString rotationAxis,
-                                              double rotationStep, double threshold,
-                                              int maxNoImprovement, QString channel)
-{
-  // Validation
-  if (channel.isEmpty()) {
-    QMessageBox::warning(this, "Scan Error", "Please select a data channel");
-    return;
-  }
-
-  if (!m_context || !m_context->motionManager || !m_context->dataStore) {
-    QMessageBox::warning(this, "Scan Error", "Motion manager or data store not available");
-    return;
-  }
-
-  // Disable scan buttons, enable stop button
-  m_scanWidget->setScanButtonsEnabled(false);
-  m_scanWidget->setStopButtonEnabled(true);
-
-  // Execute rotation scan
-  bool success = m_scanExecutor->executeRotationScan(
-    deviceName, rotationAxis, rotationStep, threshold, maxNoImprovement, channel);
 
   if (!success) {
     // Re-enable controls if scan failed to start
@@ -4689,17 +4346,8 @@ void RunProgramPage::onLoopIterationStarted(int iteration)
   m_executionStatusLabel->setText(QString("Loop Iteration %1").arg(iteration));
 
   // Update program status indicator
-  m_programStatusLabel->setText(QString("Loop #%1").arg(iteration));
-  m_programStatusLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #4ec9b0; "
-    "  color: #1e1e1e; "
-    "  padding: 4px 12px; "
-    "  border-radius: 4px; "
-    "  font-weight: bold; "
-    "  font-size: 12px; "
-    "}"
-  );
+  setProgramStatus(QString("Loop #%1").arg(iteration),
+                   Theme::Color::accentSoft, Theme::Color::bgDeep);
 
   // Reset progress bar for new iteration
   m_progressBar->setValue(0);
@@ -5161,10 +4809,11 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
       m_context->productPositionManager->HasLoadedProduct()) {
     std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
     std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
-    store.SetBasePath((productDir / "placement_correction").string());
+    m_activePlacementStoreBasePath = (productDir / "placement_correction").string();
   } else {
-    store.SetBasePath("config/placement_correction");
+    m_activePlacementStoreBasePath = "config/placement_correction";
   }
+  store.SetBasePath(m_activePlacementStoreBasePath);
 
   // Load the training set by name
   auto optSet = store.LoadSet(trainingSetName.toStdString());
@@ -5182,6 +4831,7 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
   m_activePlacementSet.Recalculate();
 
   // Configure widget with loaded data
+  m_placementRetraceWidget->SetMode("recipe");
   m_placementRetraceWidget->SetData(&m_activePlacementSet);
 
   // Switch to placement retrace view (full right panel)
@@ -6856,4 +6506,47 @@ void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const Q
   } else {
     m_contextStatusLabel->setText(QString("%1 of %2 %3variables%4").arg(shownCount).arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
   }
+}
+
+void RunProgramPage::applyTheme()
+{
+  applyProgramStatusLabel();
+
+  m_currentRecipeLabel->setStyleSheet(
+    QString("font-size: 16px; font-weight: bold; color: %1;")
+      .arg(QLatin1String(Theme::Color::primary)));
+
+  m_actionDetailLabel->setStyleSheet(
+    QString("QLabel { "
+            "  font-size: 12px; "
+            "  color: %1; "
+            "  background-color: %2; "
+            "  border: 1px solid %3; "
+            "  border-radius: 4px; "
+            "  padding: 6px 10px; "
+            "}")
+      .arg(QLatin1String(Theme::Color::textSecondary),
+           QLatin1String(Theme::Color::bgSurface),
+           QLatin1String(Theme::Color::borderSubtle)));
+
+  m_progressBar->setStyleSheet(
+    QString("QProgressBar { "
+            "  border: 1px solid %1; "
+            "  border-radius: 3px; "
+            "  background-color: %2; "
+            "  text-align: center; "
+            "  color: %3; "
+            "  font-weight: bold; "
+            "} "
+            "QProgressBar::chunk { "
+            "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+            "      stop:0 #58d68d, stop:1 #27ae60); "
+            "  border-radius: 2px; "
+            "}")
+      .arg(QLatin1String(Theme::Color::borderSubtle),
+           QLatin1String(Theme::Color::bgDeep),
+           QLatin1String(Theme::Color::textPrimary)));
+
+  m_backButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  m_executeButton->setStyleSheet(m_isExecuting ? Theme::Buttons::bezelDanger() : Theme::Buttons::bezelSuccess());
 }

@@ -1,7 +1,10 @@
 // TopBar.cpp
 #include "TopBar.h"
 #include "ApplicationContext.h"
+#include "Theme.h"
+#include "ThemeButtonStyles.h"
 #include "safety/SafetyWatchManager.h"
+#include "common/ScanActivityTracker.h"
 #include "TECManager.h"
 #include "TECTypes.h"
 #include <QHBoxLayout>
@@ -159,6 +162,7 @@ TopBar::TopBar(ApplicationContext* context, QWidget* parent)
   , m_rtlm2Button(nullptr)
   , m_swirButton(nullptr)
   , m_safetyIndicator(nullptr)
+  , m_scanBusyLabel(nullptr)
   , m_tecTemperatureLabel(nullptr)
   , m_tecPollTimer(nullptr)
 {
@@ -176,23 +180,25 @@ TopBar::~TopBar()
 
 void TopBar::setupUI()
 {
-  // Set fixed height (reduced from 100 to 50)
-  setFixedHeight(50);
+  // Two-row layout: product info on top, buttons on bottom aligned right
+  setFixedHeight(95);
 
-  // Dark background styling
-  setStyleSheet(
+  // Dark background — uses the deep palette tone with an accent underline
+  // so the TopBar visually separates from the page below.
+  setStyleSheet(QString(
     "TopBar { "
-    "  background-color: #1a1a1a; "
-    "  border-bottom: 2px solid #ff6600; "
+    "  background-color: %1; "
+    "  border-bottom: 2px solid %2; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::accent)));
 
-  // Create horizontal layout
-  QHBoxLayout* layout = new QHBoxLayout(this);
-  layout->setContentsMargins(15, 5, 15, 5);
-  layout->setSpacing(15);
+  // Root vertical layout holds two rows
+  QVBoxLayout* rootLayout = new QVBoxLayout(this);
+  rootLayout->setContentsMargins(15, 5, 15, 5);
+  rootLayout->setSpacing(4);
 
-  // Left side: Product info (vertical layout for name and path)
+  // ---------- Row 1: Product info (name + path) ----------
   QVBoxLayout* productInfoLayout = new QVBoxLayout();
   productInfoLayout->setSpacing(2);
   productInfoLayout->setContentsMargins(0, 0, 0, 0);
@@ -203,13 +209,13 @@ void TopBar::setupUI()
   productFont.setPointSize(14);
   productFont.setBold(true);
   m_productNameLabel->setFont(productFont);
-  m_productNameLabel->setStyleSheet(
+  m_productNameLabel->setStyleSheet(QString(
     "QLabel { "
-    "  color: #ff6600; "
+    "  color: %1; "
     "  background: transparent; "
     "  border: none; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::accent)));
   productInfoLayout->addWidget(m_productNameLabel);
 
   // Working path label (bottom, smaller, gray)
@@ -217,16 +223,21 @@ void TopBar::setupUI()
   QFont pathFont;
   pathFont.setPointSize(9);
   m_workingPathLabel->setFont(pathFont);
-  m_workingPathLabel->setStyleSheet(
+  m_workingPathLabel->setStyleSheet(QString(
     "QLabel { "
-    "  color: #888888; "
+    "  color: %1; "
     "  background: transparent; "
     "  border: none; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::textSecondary)));
   productInfoLayout->addWidget(m_workingPathLabel);
 
-  layout->addLayout(productInfoLayout);
+  rootLayout->addLayout(productInfoLayout);
+
+  // ---------- Row 2: Buttons (right-aligned) ----------
+  QHBoxLayout* layout = new QHBoxLayout();
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(15);
 
   // Spacer to push buttons to the right
   layout->addStretch();
@@ -236,189 +247,100 @@ void TopBar::setupUI()
   layout->addWidget(m_safetyIndicator);
   layout->addSpacing(10);
 
-  // Aux Window button (optional, can be enabled if needed)
+  // Scan-busy indicator: amber badge shown while any scan (tab-initiated
+  // or recipe-initiated GridScan/XCAN) is active. Driven by ScanActivityTracker.
+  m_scanBusyLabel = new QLabel(QString::fromUtf8("\xE2\x9A\xA1 SCANNING"), this);
+  m_scanBusyLabel->setStyleSheet(QString(
+    "QLabel { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  font-weight: bold; "
+    "  font-size: 11px; "
+    "  padding: 4px 10px; "
+    "  border-radius: 4px; "
+    "}"
+  ).arg(QLatin1String(Theme::Color::accent),
+        QLatin1String(Theme::Color::bgDeep)));
+  m_scanBusyLabel->setFixedHeight(24);
+  m_scanBusyLabel->hide();  // idle by default
+  layout->addWidget(m_scanBusyLabel);
+  layout->addSpacing(10);
+
+  // Aux Window button — primary blue family
   m_auxWindowButton = new QPushButton("AUX", this);
   m_auxWindowButton->setFixedSize(70, 35);
-  m_auxWindowButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6dbdf2, stop:1 #5dade2); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2874a6; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_auxWindowButton->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Color::primaryHover,    // light (top of gradient + hover fill)
+    Theme::Color::primary,         // dark  (bottom of gradient)
+    Theme::Color::primaryPressed   // pressed
+  ));
   connect(m_auxWindowButton, &QPushButton::clicked, this, &TopBar::auxWindowButtonClicked);
   layout->addWidget(m_auxWindowButton);
 
-  // SWIR button (for SWIR Beam Processing Window)
+  // SWIR button — danger red family (matches the original red/crimson)
   m_swirButton = new QPushButton("SWIR", this);
   m_swirButton->setFixedSize(70, 35);
-  m_swirButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e74c8b, stop:1 #c0392b); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f75c9b, stop:1 #e74c8b); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #a93226; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_swirButton->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Color::dangerHover,   // light
+    Theme::Color::danger,        // dark
+    Theme::Palette::red700        // pressed (darkest red)
+  ));
   m_swirButton->setToolTip("Toggle SWIR Beam Processing Window");
   connect(m_swirButton, &QPushButton::clicked, this, &TopBar::swirWindowButtonClicked);
   layout->addWidget(m_swirButton);
 
-  // Rltm button (for GDI Camera Window - realtime view)
+  // Rltm button — success green family
   m_rtlmButton = new QPushButton("Rltm", this);
   m_rtlmButton->setFixedSize(70, 35);
-  m_rtlmButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #58d68d, stop:1 #27ae60); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #68e69d, stop:1 #58d68d); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1e8449; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_rtlmButton->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Color::successHover,   // light
+    Theme::Color::success,        // dark
+    Theme::Palette::green700      // pressed (dark green)
+  ));
   m_rtlmButton->setToolTip("Toggle Realtime Camera Monitor");
   connect(m_rtlmButton, &QPushButton::clicked, this, &TopBar::rtlmButtonClicked);
   layout->addWidget(m_rtlmButton);
 
-  // Rltm2 button (for second GDI Camera Window)
+  // Rltm2 button — success green family (matches Rltm)
   m_rtlm2Button = new QPushButton("Rltm2", this);
   m_rtlm2Button->setFixedSize(70, 35);
-  m_rtlm2Button->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #58d68d, stop:1 #27ae60); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #68e69d, stop:1 #58d68d); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1e8449; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_rtlm2Button->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Color::successHover,
+    Theme::Color::success,
+    Theme::Palette::green700
+  ));
   m_rtlm2Button->setToolTip("Toggle Realtime Camera Monitor 2");
   connect(m_rtlm2Button, &QPushButton::clicked, this, &TopBar::rtlm2ButtonClicked);
   layout->addWidget(m_rtlm2Button);
 
   // TEC temperature indicator (next to JOG button)
   m_tecTemperatureLabel = new QLabel("TEC: --", this);
-  m_tecTemperatureLabel->setStyleSheet(
+  m_tecTemperatureLabel->setStyleSheet(QString(
     "QLabel { "
-    "  color: #888888; "
+    "  color: %1; "
     "  background: transparent; "
     "  border: none; "
     "  font-size: 13px; "
     "  font-weight: bold; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::textSecondary)));
   m_tecTemperatureLabel->setToolTip("TEC Temperature");
   layout->addWidget(m_tecTemperatureLabel);
 
-  // JOG button (right side, orange)
+  // JOG button — warning orange family
   m_jogButton = new QPushButton("JOG", this);
   m_jogButton->setFixedSize(70, 35);
-  m_jogButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ff9d2e, stop:1 #ff8c00); "
-    "  color: white; "
-    "  border-radius: 5px; "
-    "  font-size: 14px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffad3e, stop:1 #ff9d2e); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.6); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.6); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #e67e00; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 2px; "
-    "  padding-left: 2px; "
-    "}"
-  );
+  m_jogButton->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Color::warningHover,   // light
+    Theme::Color::warning,        // dark
+    Theme::Palette::orange700     // pressed (darkest orange)
+  ));
   connect(m_jogButton, &QPushButton::clicked, this, &TopBar::jogButtonClicked);
   layout->addWidget(m_jogButton);
 
-  setLayout(layout);
+  rootLayout->addLayout(layout);
+
+  setLayout(rootLayout);
 }
 
 void TopBar::setProductInfo(const QString& productName, const QString& workingPath)
@@ -455,12 +377,18 @@ void TopBar::startTECTemperaturePolling()
       return;
     }
 
+    // Build the TEC label QSS once per branch (color is the only thing that
+    // changes between disconnected/connected/error states).
+    const QString labelQssTemplate = QStringLiteral(
+      "QLabel { color: %1; background: transparent; border: none; "
+      "font-size: 13px; font-weight: bold; }");
+
     // Find first connected TEC device and show cached temperature
     auto connectedDevices = m_context->tecManager->GetConnectedDeviceNames();
     if (connectedDevices.empty()) {
       m_tecTemperatureLabel->setText("TEC: --");
       m_tecTemperatureLabel->setStyleSheet(
-        "QLabel { color: #888888; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+        labelQssTemplate.arg(QLatin1String(Theme::Color::textDisabled)));
       return;
     }
 
@@ -471,15 +399,15 @@ void TopBar::startTECTemperaturePolling()
       m_tecTemperatureLabel->setText(
         QString("TEC: %1 °C").arg(status.CurrentTemperature, 0, 'f', 2));
       m_tecTemperatureLabel->setStyleSheet(
-        "QLabel { color: #1177bb; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+        labelQssTemplate.arg(QLatin1String(Theme::Color::primaryHover)));
     } else if (status.Connected) {
       m_tecTemperatureLabel->setText("TEC: ERR");
       m_tecTemperatureLabel->setStyleSheet(
-        "QLabel { color: #e74c3c; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+        labelQssTemplate.arg(QLatin1String(Theme::Color::danger)));
     } else {
       m_tecTemperatureLabel->setText("TEC: --");
       m_tecTemperatureLabel->setStyleSheet(
-        "QLabel { color: #888888; background: transparent; border: none; font-size: 13px; font-weight: bold; }");
+        labelQssTemplate.arg(QLatin1String(Theme::Color::textDisabled)));
     }
   });
 
@@ -550,4 +478,136 @@ void TopBar::connectSafetyManager(SafetyWatchManager* manager)
   }
 
   std::cout << "[TopBar] Connected to SafetyWatchManager" << std::endl;
+}
+
+void TopBar::connectScanActivityTracker(ScanActivityTracker* tracker)
+{
+  if (!tracker || !m_scanBusyLabel) {
+    std::cout << "[TopBar] Cannot connect scan activity tracker - null pointer" << std::endl;
+    return;
+  }
+
+  // Tracker may emit from the SequenceEngine worker thread — marshal to UI
+  // thread via QueuedConnection before touching the QLabel.
+  connect(tracker, &ScanActivityTracker::activeChanged, this,
+    [this](bool active) {
+      if (m_scanBusyLabel) {
+        m_scanBusyLabel->setVisible(active);
+      }
+    }, Qt::QueuedConnection);
+
+  // Initialize visibility from current state (in case tracker already has
+  // an active scan by the time we connect — defensive, shouldn't normally happen).
+  m_scanBusyLabel->setVisible(tracker->IsActive());
+
+  std::cout << "[TopBar] Connected to ScanActivityTracker" << std::endl;
+}
+
+void TopBar::applyTheme()
+{
+  // Re-apply the TopBar background + accent underline.
+  setStyleSheet(QString(
+    "TopBar { "
+    "  background-color: %1; "
+    "  border-bottom: 2px solid %2; "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::accent)));
+
+  // Product name label — accent colour.
+  if (m_productNameLabel) {
+    m_productNameLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent)));
+  }
+
+  // Working path label — secondary text colour.
+  if (m_workingPathLabel) {
+    m_workingPathLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::textSecondary)));
+  }
+
+  // Scan-busy badge — accent background, bgDeep text.
+  if (m_scanBusyLabel) {
+    m_scanBusyLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  color: %2; "
+      "  font-weight: bold; "
+      "  font-size: 11px; "
+      "  padding: 4px 10px; "
+      "  border-radius: 4px; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent),
+          QLatin1String(Theme::Color::bgDeep)));
+  }
+
+  // AUX button — primary blue family (bezelPrimary).
+  if (m_auxWindowButton) {
+    m_auxWindowButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::primaryHover,
+      Theme::Color::primary,
+      Theme::Color::primaryPressed
+    ));
+  }
+
+  // SWIR button — danger red family.
+  if (m_swirButton) {
+    m_swirButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::dangerHover,
+      Theme::Color::danger,
+      Theme::Palette::red700
+    ));
+  }
+
+  // Rltm button — success green family.
+  if (m_rtlmButton) {
+    m_rtlmButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::successHover,
+      Theme::Color::success,
+      Theme::Palette::green700
+    ));
+  }
+
+  // Rltm2 button — success green family (matches Rltm).
+  if (m_rtlm2Button) {
+    m_rtlm2Button->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::successHover,
+      Theme::Color::success,
+      Theme::Palette::green700
+    ));
+  }
+
+  // TEC temperature label — initial state uses textSecondary.
+  // (The poll timer will override this on the next tick once a device is found;
+  // resetting it here ensures consistency immediately after a theme change.)
+  if (m_tecTemperatureLabel) {
+    m_tecTemperatureLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  color: %1; "
+      "  background: transparent; "
+      "  border: none; "
+      "  font-size: 13px; "
+      "  font-weight: bold; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::textSecondary)));
+  }
+
+  // JOG button — warning orange family.
+  if (m_jogButton) {
+    m_jogButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Color::warningHover,
+      Theme::Color::warning,
+      Theme::Palette::orange700
+    ));
+  }
 }

@@ -136,6 +136,7 @@ private:
   QPushButton* m_btnVMinus;
   QPushButton* m_btnWPlus;
   QPushButton* m_btnWMinus;
+  QPushButton* m_btnEStop = nullptr;
 
   // ✅ NEW: Position display labels
   QLabel* m_posXLabel;

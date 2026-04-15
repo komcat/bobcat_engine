@@ -4,6 +4,9 @@
 #include "VisionImageWidget.h"
 #include "VisionWizardState.h"
 #include <QHBoxLayout>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QSlider>
 #include <iostream>
 
 PluginConfigStepWidget::PluginConfigStepWidget(ApplicationContext* context, QWidget* parent)
@@ -18,6 +21,15 @@ PluginConfigStepWidget::PluginConfigStepWidget(ApplicationContext* context, QWid
     , m_imagePlaceholderLayout(nullptr)
 {
     setupUI();
+
+    // Live-execute debounce timer (single-shot, restarted on every parameter
+    // change). Keeps the wizard from re-executing on every keystroke while a
+    // user holds the spinbox up/down arrow.
+    m_liveExecuteTimer = new QTimer(this);
+    m_liveExecuteTimer->setSingleShot(true);
+    m_liveExecuteTimer->setInterval(300);
+    connect(m_liveExecuteTimer, &QTimer::timeout,
+            this, &PluginConfigStepWidget::liveExecuteRequested);
 }
 
 void PluginConfigStepWidget::setupUI()
@@ -29,16 +41,17 @@ void PluginConfigStepWidget::setupUI()
     // ── Left: plugin config (scrollable, fixed 350px) ─────────────────────
     QScrollArea* configScrollArea = new QScrollArea(this);
     configScrollArea->setWidgetResizable(true);
-    configScrollArea->setFixedWidth(350);
+    configScrollArea->setFixedWidth(480);
     configScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     configScrollArea->setFrameShape(QFrame::NoFrame);
 
-    // Compact cascading style for plugin config widgets
-    // max-width on inputs prevents clipping; they resize to fit the container
+    // Compact cascading style for plugin config widgets. All groups are
+    // fixed-width (no stretching), so max-width on inputs keeps each
+    // control at its natural size rather than filling the column.
     configScrollArea->setStyleSheet(
         "QGroupBox { color: #CCCCCC; border: 1px solid #444; border-radius: 3px; "
-        "margin-top: 8px; padding: 4px 4px 2px 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 6px; font-weight: bold; font-size: 11px; }"
+        "margin-top: 6px; padding: 2px 2px 2px 2px; }"
+        "QGroupBox::title { subcontrol-origin: margin; left: 4px; font-weight: bold; font-size: 11px; }"
         "QLabel { font-size: 11px; }"
         "QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit { padding: 1px; max-width: 105px; }"
     );
@@ -47,8 +60,8 @@ void PluginConfigStepWidget::setupUI()
 
     QWidget* scrollContent = new QWidget();
     m_pluginParamsLayout = new QVBoxLayout(scrollContent);
-    m_pluginParamsLayout->setContentsMargins(4, 4, 4, 4);
-    m_pluginParamsLayout->setSpacing(4);
+    m_pluginParamsLayout->setContentsMargins(0, 0, 0, 0);
+    m_pluginParamsLayout->setSpacing(2);
 
     // Placeholder label when no plugin config loaded
     QLabel* noPluginLabel = new QLabel("Select a plugin using the\n\"Select Plugin...\" button\nin the left panel");
@@ -59,24 +72,28 @@ void PluginConfigStepWidget::setupUI()
 
     m_pluginParamsLayout->addStretch();
 
-    // Apply + Test Execute buttons
+    // Apply + Test Execute buttons — fixed width, top-left aligned like the
+    // rest of the plugin config column.
+    const int kCompactBtnWidth = 460;
     m_applyParamsBtn = new QPushButton("Apply Parameters", scrollContent);
     m_applyParamsBtn->setToolTip("Apply current parameter settings");
+    m_applyParamsBtn->setFixedWidth(kCompactBtnWidth);
     m_applyParamsBtn->setStyleSheet(
         "QPushButton { background-color: #1565C0; color: white; font-weight: bold; padding: 6px; border-radius: 3px; }"
         "QPushButton:hover { background-color: #1976D2; }"
         "QPushButton:pressed { background-color: #0D47A1; }"
     );
-    m_pluginParamsLayout->addWidget(m_applyParamsBtn);
+    m_pluginParamsLayout->addWidget(m_applyParamsBtn, 0, Qt::AlignLeft);
 
     auto* testBtn = new QPushButton("Test Execute", scrollContent);
     testBtn->setToolTip("Apply parameters and execute the vision profile");
+    testBtn->setFixedWidth(kCompactBtnWidth);
     testBtn->setStyleSheet(
         "QPushButton { background-color: #2E7D32; color: white; font-weight: bold; padding: 6px; border-radius: 3px; }"
         "QPushButton:hover { background-color: #388E3C; }"
         "QPushButton:pressed { background-color: #1B5E20; }"
     );
-    m_pluginParamsLayout->addWidget(testBtn);
+    m_pluginParamsLayout->addWidget(testBtn, 0, Qt::AlignLeft);
     connect(testBtn, &QPushButton::clicked, this, &PluginConfigStepWidget::applyParamsClicked);
 
     m_pluginScrollArea->setWidget(scrollContent);
@@ -148,12 +165,81 @@ void PluginConfigStepWidget::setPluginConfigWidget(QWidget* configWidget)
         delete item;
     }
 
-    m_pluginParamsLayout->insertWidget(0, configWidget);
+    // Lock the config widget to a fixed width so plugin group boxes don't
+    // stretch horizontally to fill the 480-px column. Pin top-left so blank
+    // space stays at the bottom-right of the column, not distributed around
+    // the widgets. Also force each contained QGroupBox to its minimum
+    // content height via a Preferred/Maximum size policy so the groups
+    // stack compactly.
+    const int kCompactWidth = 460;
+    configWidget->setFixedWidth(kCompactWidth);
+    const auto groupBoxes = configWidget->findChildren<QGroupBox*>();
+    for (QGroupBox* gb : groupBoxes) {
+        gb->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    }
+
+    m_pluginParamsLayout->insertWidget(0, configWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     m_currentPluginConfig = configWidget;
+
+    // Wire every spinbox/slider in the new plugin widget to the live-execute
+    // debounce timer so the user can tune parameters in real time.
+    wireLiveExecution(configWidget);
+}
+
+void PluginConfigStepWidget::wireLiveExecution(QWidget* configWidget)
+{
+    if (!configWidget || !m_liveExecuteTimer) return;
+
+    auto restartTimer = [this]() {
+        if (m_liveExecuteTimer) m_liveExecuteTimer->start();
+    };
+
+    // Opt-out marker: any widget that sets property "noLiveExecute" = true
+    // will be skipped (e.g. cosmetic spin boxes that should not re-execute).
+    auto isOptedOut = [](QWidget* w) {
+        return w && w->property("noLiveExecute").toBool();
+    };
+
+    // Connections are added AFTER the plugin's own valueChanged → m_member
+    // lambdas, so when the user changes a value Qt fires those FIRST (updating
+    // the plugin's internal members), then our handler runs and starts the
+    // debounce timer. By the time executePlugin() runs, the plugin already
+    // sees the new parameter values.
+    int wired = 0;
+    const auto intSpins = configWidget->findChildren<QSpinBox*>();
+    for (QSpinBox* sp : intSpins) {
+        if (isOptedOut(sp)) continue;
+        connect(sp, QOverload<int>::of(&QSpinBox::valueChanged),
+                this, [restartTimer](int) { restartTimer(); });
+        ++wired;
+    }
+
+    const auto dblSpins = configWidget->findChildren<QDoubleSpinBox*>();
+    for (QDoubleSpinBox* sp : dblSpins) {
+        if (isOptedOut(sp)) continue;
+        connect(sp, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [restartTimer](double) { restartTimer(); });
+        ++wired;
+    }
+
+    const auto sliders = configWidget->findChildren<QSlider*>();
+    for (QSlider* sl : sliders) {
+        if (isOptedOut(sl)) continue;
+        connect(sl, &QSlider::valueChanged,
+                this, [restartTimer](int) { restartTimer(); });
+        ++wired;
+    }
+
+    std::cout << "[PluginConfigStepWidget] Wired " << wired
+              << " parameter widgets for live execution" << std::endl;
 }
 
 void PluginConfigStepWidget::clearPluginConfigWidget()
 {
+    if (m_liveExecuteTimer && m_liveExecuteTimer->isActive()) {
+        m_liveExecuteTimer->stop();
+    }
+
     if (m_currentPluginConfig) {
         m_pluginParamsLayout->removeWidget(m_currentPluginConfig);
         m_currentPluginConfig->deleteLater();

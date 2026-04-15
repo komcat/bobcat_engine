@@ -203,6 +203,32 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
 
     result.addMetadata("preprocessing", preprocessingDesc);
 
+    // Detected-edges visualization overlay (yellow contours of the input image's
+    // edges). This is independent of m_useEdgeMatching — it's purely for the
+    // user to see what edges actually exist in the image vs the red template
+    // edges that are drawn at each match location.
+    {
+        cv::Mat visEdges;
+        cv::Mat visBlurred;
+        const int visBlurSize = 5;       // fixed for visualization
+        const double visT1 = 50.0;
+        const double visT2 = 150.0;
+        cv::GaussianBlur(grayInput, visBlurred, cv::Size(visBlurSize, visBlurSize), 0);
+        cv::Canny(visBlurred, visEdges, visT1, visT2);
+
+        std::vector<std::vector<cv::Point>> detectedContours;
+        cv::findContours(visEdges, detectedContours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
+        for (const auto& contour : detectedContours) {
+            if (contour.size() < 2) continue;
+            OverlayCommand overlay;
+            overlay.type = OverlayCommand::DrawContour;
+            overlay.color = cv::Scalar(0, 255, 255);  // Yellow (BGR)
+            overlay.thickness = 1;
+            overlay.contour = contour;
+            result.overlays.push_back(overlay);
+        }
+    }
+
     // Find matches
     std::vector<MatchResult> matches = findMatches(searchImage);
 
@@ -386,7 +412,7 @@ bool PatternMatchingPlugin::execute(const cv::Mat& input, cv::Mat& output, Visio
         char scoreText[32];
         std::snprintf(scoreText, sizeof(scoreText), "%.1f%%", match.score * 100);
         result.addTextOverlay(scoreText, cv::Point2d(match.location.x + halfW + 5, match.location.y - halfH),
-                              cv::Scalar(0, 255, 255), 1);
+                              cv::Scalar(0, 0, 255), 1);
 
         matchIndex++;
     }

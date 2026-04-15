@@ -12,6 +12,7 @@ class DataStore;
 class ProductPositionManager;
 class DeviceLinkManager;
 class UnifiedMotionManager;
+class ScanActivityTracker;
 
 class MotionCommandHandler : public ICommandHandler
 {
@@ -35,6 +36,10 @@ public:
 
   // Set DeviceLinkManager for linked device commands
   void SetDeviceLinkManager(DeviceLinkManager* linkManager) { m_linkManager = linkManager; }
+
+  // Set ScanActivityTracker for broadcasting scan-busy state to the TopBar indicator.
+  // Null is OK — scan commands no-op the tracker calls if unset.
+  void SetScanActivityTracker(ScanActivityTracker* tracker) { m_scanActivityTracker = tracker; }
 
   // ============================================================================
   // RETRACE EDIT MODE
@@ -132,6 +137,9 @@ private:
 
   // DeviceLinkManager for linked device commands
   DeviceLinkManager* m_linkManager = nullptr;
+
+  // Scan-busy broadcaster for TopBar indicator (optional, no-op if null)
+  ScanActivityTracker* m_scanActivityTracker = nullptr;
 
   // ✅ Retrace edit mode
   std::atomic<bool> m_retraceEditMode{false};

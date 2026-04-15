@@ -1,5 +1,7 @@
 // RollCorrectionWidget.cpp
 #include "RollCorrectionWidget.h"
+#include "Theme.h"
+#include "ThemeButtonStyles.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -32,18 +34,7 @@ void RollCorrectionWidget::setupUI()
   m_stopScanButton->setFixedWidth(100);
   m_stopScanButton->setMinimumHeight(28);
   m_stopScanButton->setEnabled(false);
-  m_stopScanButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #F44336; color: white; font-weight: bold; padding: 4px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { background-color: #D32F2F; } "
-    "QPushButton:pressed { background-color: #B71C1C; } "
-    "QPushButton:disabled { background-color: #BDBDBD; color: #757575; }"
-  );
+  m_stopScanButton->setStyleSheet(Theme::Buttons::bezelDanger());
   connect(m_stopScanButton, &QPushButton::clicked, this, [this]() {
     emit stopScanRequested();
   });
@@ -64,7 +55,8 @@ void RollCorrectionWidget::setupUI()
   m_channelCombo->addItem("-- select channel --");
   m_channelCombo->setToolTip("DataStore channel used by XCANExtended re-peak between W sub-steps");
   m_channelHintLabel = new QLabel("required for correction");
-  m_channelHintLabel->setStyleSheet("color: #F44336; font-style: italic;");
+  m_channelHintLabel->setStyleSheet(QString("color: %1; font-style: italic;")
+                                      .arg(QLatin1String(Theme::Color::danger)));
   connect(m_channelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
     this, [this](int /*idx*/) { refreshCorrectionEnableState(); });
   channelLayout->addWidget(channelLabel);
@@ -92,11 +84,11 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   DeviceUI& dev = getDeviceUI(deviceName);
 
   dev.group = new QGroupBox(displayName);
-  dev.group->setStyleSheet(
+  dev.group->setStyleSheet(QString(
     "QGroupBox { "
     "  font-weight: bold; "
-    "  color: #FFA500; "
-    "  border: 1px solid #3f3f46; "
+    "  color: %1; "
+    "  border: 1px solid %2; "
     "  border-radius: 4px; "
     "  margin-top: 10px; "
     "  padding-top: 10px; "
@@ -106,86 +98,32 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
     "  left: 10px; "
     "  padding: 0 5px; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::accent),
+        QLatin1String(Theme::Color::borderSubtle)));
 
   QVBoxLayout* layout = new QVBoxLayout(dev.group);
   layout->setSpacing(6);
   layout->setContentsMargins(8, 20, 8, 8);
 
-  // 3D beveled button style (blue for CH1)
-  QString ch1ButtonStyle =
-    "QPushButton { "
-    "  background-color: #2196F3; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 8px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #1976D2; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #0D47A1; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "}";
-
-  // Green/teal for CH2
-  QString ch2ButtonStyle =
-    "QPushButton { "
-    "  background-color: #FF9800; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 8px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #F57C00; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #E65100; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "}";
-
-  // Small move button style
-  QString moveButtonStyle =
-    "QPushButton { background-color: #37474F; color: #B0BEC5; padding: 4px 8px; "
-    "  font-size: 8pt; border: 1px solid #546E7A; } "
-    "QPushButton:hover { background-color: #546E7A; color: white; } "
-    "QPushButton:disabled { background-color: #263238; color: #455A64; }";
-
-  // Correct W button style (green)
-  QString correctWStyle =
-    "QPushButton { "
-    "  background-color: #4CAF50; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 8px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { background-color: #388E3C; } "
-    "QPushButton:pressed { "
-    "  background-color: #1B5E20; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "} "
-    "QPushButton:disabled { background-color: #424242; color: #757575; }";
+  // Themed button styles. CH1 is the primary action; CH2 uses warning so the
+  // pair is visually distinct on the page; CorrectW is success (the "go"
+  // action). Move is a small subdued neutral that doesn't compete for
+  // attention.
+  const QString ch1ButtonStyle = Theme::Buttons::bezelPrimary();
+  const QString ch2ButtonStyle = Theme::Buttons::bezelWarning();
+  const QString correctWStyle  = Theme::Buttons::bezelSuccess();
+  const QString moveButtonStyle = QString(
+    "QPushButton { background-color: %1; color: %2; padding: 4px 8px; "
+    "  font-size: 8pt; border: 1px solid %3; } "
+    "QPushButton:hover { background-color: %4; color: %5; } "
+    "QPushButton:disabled { background-color: %6; color: %7; }"
+  ).arg(QLatin1String(Theme::Color::bgSurface),
+        QLatin1String(Theme::Color::textSecondary),
+        QLatin1String(Theme::Color::borderNormal),
+        QLatin1String(Theme::Color::bgHover),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::disabledBg),
+        QLatin1String(Theme::Color::textDisabled));
 
   // === CH1 SECTION ===
   QHBoxLayout* ch1Row = new QHBoxLayout();
@@ -204,11 +142,13 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   layout->addLayout(ch1Row);
 
   dev.ch1PositionLabel = new QLabel("CH1 X: --");
-  dev.ch1PositionLabel->setStyleSheet("color: #64B5F6; font-weight: bold;");
+  dev.ch1PositionLabel->setStyleSheet(QString("color: %1; font-weight: bold;")
+                                        .arg(QLatin1String(Theme::Color::primaryHover)));
   layout->addWidget(dev.ch1PositionLabel);
 
   dev.ch1FullPosLabel = new QLabel("XYZUVW: --");
-  dev.ch1FullPosLabel->setStyleSheet("color: #808080; font-size: 8pt;");
+  dev.ch1FullPosLabel->setStyleSheet(QString("color: %1; font-size: 8pt;")
+                                       .arg(QLatin1String(Theme::Color::textSecondary)));
   dev.ch1FullPosLabel->setWordWrap(true);
   layout->addWidget(dev.ch1FullPosLabel);
 
@@ -229,11 +169,13 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   layout->addLayout(ch2Row);
 
   dev.ch2PositionLabel = new QLabel("CH2 X: --");
-  dev.ch2PositionLabel->setStyleSheet("color: #FFD54F; font-weight: bold;");
+  dev.ch2PositionLabel->setStyleSheet(QString("color: %1; font-weight: bold;")
+                                        .arg(QLatin1String(Theme::Color::warning)));
   layout->addWidget(dev.ch2PositionLabel);
 
   dev.ch2FullPosLabel = new QLabel("XYZUVW: --");
-  dev.ch2FullPosLabel->setStyleSheet("color: #808080; font-size: 8pt;");
+  dev.ch2FullPosLabel->setStyleSheet(QString("color: %1; font-size: 8pt;")
+                                       .arg(QLatin1String(Theme::Color::textSecondary)));
   dev.ch2FullPosLabel->setWordWrap(true);
   layout->addWidget(dev.ch2FullPosLabel);
 
@@ -241,11 +183,14 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   QHBoxLayout* actionRow = new QHBoxLayout();
   dev.clearButton = new QPushButton("Clear");
   dev.clearButton->setFixedWidth(80);
-  dev.clearButton->setStyleSheet(
-    "QPushButton { background-color: #424242; color: #cccccc; padding: 4px 8px; "
-    "  border: 1px solid #616161; } "
-    "QPushButton:hover { background-color: #616161; }"
-  );
+  dev.clearButton->setStyleSheet(QString(
+    "QPushButton { background-color: %1; color: %2; padding: 4px 8px; "
+    "  border: 1px solid %3; } "
+    "QPushButton:hover { background-color: %4; }"
+  ).arg(QLatin1String(Theme::Color::bgSurface),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::borderNormal),
+        QLatin1String(Theme::Color::bgHover)));
   dev.correctWButton = new QPushButton("Correct W");
   dev.correctWButton->setMinimumHeight(32);
   dev.correctWButton->setStyleSheet(correctWStyle);
@@ -256,28 +201,12 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   layout->addLayout(actionRow);
 
   // === FINE GRID SCAN BUTTON ===
+  // Reuses the primary blue family — visually distinct from CH2/CorrectW
+  // (warning/success) and lives in its own row, so the overlap with CH1 is
+  // not visually confusing.
   dev.fineGridScanButton = new QPushButton("Fine Grid Scan");
   dev.fineGridScanButton->setMinimumHeight(32);
-  dev.fineGridScanButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #7B1FA2; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 8px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { background-color: #6A1B9A; } "
-    "QPushButton:pressed { "
-    "  background-color: #4A148C; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "}"
-  );
+  dev.fineGridScanButton->setStyleSheet(Theme::Buttons::bezelPrimary());
   dev.fineGridScanButton->setToolTip("Run fine grid scan (XY 10um, 0.5um step, dual channel)");
   layout->addWidget(dev.fineGridScanButton);
 
@@ -285,16 +214,18 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   dev.resultDisplay = new QTextEdit();
   dev.resultDisplay->setReadOnly(true);
   dev.resultDisplay->setMinimumHeight(140);
-  dev.resultDisplay->setStyleSheet(
+  dev.resultDisplay->setStyleSheet(QString(
     "QTextEdit { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #00E676; "
+    "  background-color: %1; "
+    "  border: 1px solid %2; "
+    "  color: %3; "
     "  font-family: 'Consolas', 'Courier New', monospace; "
     "  font-size: 9pt; "
     "  padding: 6px; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::borderSubtle),
+        QLatin1String(Theme::Color::successHover)));
   dev.resultDisplay->setPlaceholderText("Register both CH1 and CH2 peaks to see results...");
   layout->addWidget(dev.resultDisplay);
 

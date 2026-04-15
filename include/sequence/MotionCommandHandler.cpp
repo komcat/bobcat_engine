@@ -12,6 +12,7 @@
 #include "../vision/VisionManager.h"  // For pixel-to-mm calibration in MoveToContextPosition
 #include "../motions/DeviceLinkManager.h"  // For linked device commands
 #include "../motions/PI/pi_controller.h"   // For FastAlignXY/ZXY commands (direct PI access)
+#include "../common/ScanActivityGuard.h"   // RAII busy-state for TopBar indicator
 #include <chrono>
 #include <thread>
 #include <iostream>                   // ✅ For debug logging
@@ -255,7 +256,7 @@ double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, Se
     if (context) {
       double value = static_cast<double>(context->GetNumeric(refKey, 0.0f));
       if (m_logger) {
-        m_logger->Info("Resolved " + valueStr + " = " + std::to_string(value), "MotionHandler");
+        m_logger->Debug("Resolved " + valueStr + " = " + std::to_string(value), "MotionHandler");
       }
       return value;
     }
@@ -267,7 +268,7 @@ double MotionCommandHandler::ResolveNumericValue(const std::string& valueStr, Se
     // Parse as direct numeric value
     double value = std::stod(valueStr);
     if (m_logger) {
-      m_logger->Info("Parsed direct value " + valueStr + " = " + std::to_string(value), "MotionHandler");
+      m_logger->Debug("Parsed direct value " + valueStr + " = " + std::to_string(value), "MotionHandler");
     }
     return value;
   }
@@ -508,12 +509,12 @@ bool MotionCommandHandler::ExecuteCommand(
       );
     }
 
-    // DEBUG: Check if axis is currently moving before starting new move
+    // Check if axis is currently moving before starting new move (diagnostic)
     if (m_logger) {
       bool isMoving = motionManager->IsMoving(deviceName, axis);
       bool isEnabled = motionManager->IsServoEnabled(deviceName, axis);
-      m_logger->Info(
-        "[DEBUG] Pre-move state for " + deviceName + " axis " + axis +
+      m_logger->Debug(
+        "Pre-move state for " + deviceName + " axis " + axis +
         ": isMoving=" + std::to_string(isMoving) +
         ", servoEnabled=" + std::to_string(isEnabled),
         "MotionHandler"
@@ -522,21 +523,21 @@ bool MotionCommandHandler::ExecuteCommand(
 
     // ✅ SAFETY: Always use non-blocking mode + stop checking
     if (m_logger) {
-      m_logger->Info("[DEBUG] Calling MoveRelative on " + deviceName + " axis " + axis, "MotionHandler");
+      m_logger->Debug("Calling MoveRelative on " + deviceName + " axis " + axis, "MotionHandler");
     }
     if (!motionManager->MoveRelative(deviceName, axis, distance, false)) {
       // Get detailed error info from the controller
       int errorCode = motionManager->GetLastErrorCode(deviceName);
       std::string errorDetail = motionManager->GetLastErrorMessage(deviceName);
       if (m_logger) {
-        m_logger->Error("[DEBUG] MoveRelative FAILED for " + deviceName + " axis " + axis +
+        m_logger->Error("MoveRelative FAILED for " + deviceName + " axis " + axis +
           " - errorCode=" + std::to_string(errorCode) + " detail=" + errorDetail, "MotionHandler");
       }
       errorMessage = "MoveRelative failed to start (code=" + std::to_string(errorCode) + "): " + errorDetail;
       return false;
     }
     if (m_logger) {
-      m_logger->Info("[DEBUG] MoveRelative returned true for " + deviceName + " axis " + axis, "MotionHandler");
+      m_logger->Debug("MoveRelative returned true for " + deviceName + " axis " + axis, "MotionHandler");
     }
 
     // If explicit non-blocking requested, return immediately
@@ -842,7 +843,7 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Waiting for motion complete on: " + deviceName, "MotionHandler");
+      m_logger->Debug("Waiting for motion complete on: " + deviceName, "MotionHandler");
     }
 
     // ✅ SAFETY: Use unified wait method with stop checking
@@ -890,6 +891,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // XCAN - HEXAPOD ADAPTIVE SCANNING
   // ============================================================================
   else if (methodName == "XCAN") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "XCAN");
+
     // ✅ VALIDATE DEVICE NAME (must match hex-*)
     std::regex hexPattern("^hex-.*");
     if (!std::regex_match(deviceName, hexPattern)) {
@@ -1066,7 +1070,8 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("XCAN: Scan completed successfully", "MotionHandler");
+      // Redundant with completion-callback log that already reports the peak value.
+      m_logger->Debug("XCAN: Scan completed successfully", "MotionHandler");
     }
 
     return true;
@@ -1076,6 +1081,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // XCAN EXTENDED - FLEXIBLE ADAPTIVE SCANNING WITH CUSTOM PARAMETERS
   // ============================================================================
   else if (methodName == "XCANExtended") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "XCANExtended");
+
     // ✅ REQUIRED PARAMETER: axes
     auto axesIt = params.find("axes");
     if (axesIt == params.end()) {
@@ -1346,7 +1354,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "XCANExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "XCANExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -1364,8 +1372,14 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
+      // Redundant with completion-callback log that already reports the peak value,
+      // except in the early-exit case — keep INFO only for early-exit, DEBUG otherwise.
       std::string completionReason = earlyExit.load() ? " (early exit - threshold reached)" : "";
-      m_logger->Info("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      if (earlyExit.load()) {
+        m_logger->Info("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      } else {
+        m_logger->Debug("XCANExtended: Scan completed successfully" + completionReason, "MotionHandler");
+      }
     }
 
     return true;
@@ -1375,6 +1389,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN - 2D PLANAR GRID SCANNING WITH PRESET MODES
   // ============================================================================
   else if (methodName == "GridScan") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScan");
+
     // ✅ VALIDATE DEVICE NAME (must match hex-*)
     std::regex hexPattern("^hex-.*");
     if (!std::regex_match(deviceName, hexPattern)) {
@@ -1595,7 +1612,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis1 = targetAxis1;
           peakAxis2 = targetAxis2;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScan: New peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
@@ -1605,7 +1622,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScan: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -1654,7 +1671,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScan");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScan: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -1724,6 +1741,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN EXTENDED - FULL CONTROL 2D GRID SCANNING
   // ============================================================================
   else if (methodName == "GridScanExtended") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScanExtended");
+
     // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
     auto planeIt = params.find("plane");
     if (planeIt == params.end()) {
@@ -1957,7 +1977,7 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info(
+      m_logger->Debug(
         "GridScanExtended: Axis1(" + axis1 + ") dir=" + directionAxis1 +
         " start=" + std::to_string(startAxis1) +
         ", Axis2(" + axis2 + ") dir=" + directionAxis2 +
@@ -2053,7 +2073,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis1 = targetAxis1;
           peakAxis2 = targetAxis2;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanExtended: New peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value),
               "MotionHandler"
@@ -2075,7 +2095,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScanExtended: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -2126,7 +2146,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!captureAs.empty() && context) {
       context->SetValue(captureAs, static_cast<float>(peakValue), deviceName, "GridScanExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScanExtended: Captured peak value " + std::to_string(peakValue) + " to context:" + captureAs,
           "MotionHandler"
         );
@@ -2138,7 +2158,7 @@ bool MotionCommandHandler::ExecuteCommand(
       std::string positionStr = std::to_string(peakAxis1) + "," + std::to_string(peakAxis2);
       context->SetValue(capturePositionAs, positionStr, deviceName, "GridScanExtended");
       if (m_logger) {
-        m_logger->Info(
+        m_logger->Debug(
           "GridScanExtended: Captured peak position " + positionStr + " to context:" + capturePositionAs,
           "MotionHandler"
         );
@@ -2212,6 +2232,9 @@ bool MotionCommandHandler::ExecuteCommand(
   // GRID SCAN DUAL CHANNEL - Two-channel grid scan for PIC waveguide alignment
   // ============================================================================
   else if (methodName == "GridScanDualChannel") {
+    // Scan-busy indicator — ref-counted Begin on enter, End on every return path.
+    ScanActivityGuard _scanBusy(m_scanActivityTracker, "GridScanDualChannel");
+
     // ✅ REQUIRED PARAMETER: plane (XY/XZ/YZ)
     auto planeItDC = params.find("plane");
     if (planeItDC == params.end()) {
@@ -2521,7 +2544,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis2_ch1 = targetAxis2;
           peakFullPos_ch1 = fullPos;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanDualChannel: New Ch1 peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value1),
               "MotionHandler"
@@ -2536,7 +2559,7 @@ bool MotionCommandHandler::ExecuteCommand(
           peakAxis2_ch2 = targetAxis2;
           peakFullPos_ch2 = fullPos;
           if (m_logger) {
-            m_logger->Info(
+            m_logger->Debug(
               "GridScanDualChannel: New Ch2 peak at (" + std::to_string(targetAxis1) + ", " +
               std::to_string(targetAxis2) + ") = " + FormatSI(value2),
               "MotionHandler"
@@ -2558,7 +2581,7 @@ bool MotionCommandHandler::ExecuteCommand(
 
         currentPoint++;
         if (m_logger && (currentPoint % 20 == 0 || currentPoint == totalPoints)) {
-          m_logger->Info(
+          m_logger->Debug(
             "GridScanDualChannel: Progress " + std::to_string(currentPoint) + "/" + std::to_string(totalPoints) +
             " (" + std::to_string(100 * currentPoint / totalPoints) + "%)",
             "MotionHandler"
@@ -2630,25 +2653,25 @@ bool MotionCommandHandler::ExecuteCommand(
     // ✅ CAPTURE RESULTS TO CONTEXT
     if (!capturePeak1As.empty() && context) {
       context->SetValue(capturePeak1As, static_cast<float>(peakValue1), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak " + std::to_string(peakValue1) + " to context:" + capturePeak1As, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch1 peak " + std::to_string(peakValue1) + " to context:" + capturePeak1As, "MotionHandler");
     }
     if (!capturePeak2As.empty() && context) {
       context->SetValue(capturePeak2As, static_cast<float>(peakValue2), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak " + std::to_string(peakValue2) + " to context:" + capturePeak2As, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch2 peak " + std::to_string(peakValue2) + " to context:" + capturePeak2As, "MotionHandler");
     }
     if (!capturePeak1PosAs.empty() && context) {
       std::string pos1Str = std::to_string(peakAxis1_ch1) + "," + std::to_string(peakAxis2_ch1);
       context->SetValue(capturePeak1PosAs, pos1Str, deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch1 peak position " + pos1Str + " to context:" + capturePeak1PosAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch1 peak position " + pos1Str + " to context:" + capturePeak1PosAs, "MotionHandler");
     }
     if (!capturePeak2PosAs.empty() && context) {
       std::string pos2Str = std::to_string(peakAxis1_ch2) + "," + std::to_string(peakAxis2_ch2);
       context->SetValue(capturePeak2PosAs, pos2Str, deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured ch2 peak position " + pos2Str + " to context:" + capturePeak2PosAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured ch2 peak position " + pos2Str + " to context:" + capturePeak2PosAs, "MotionHandler");
     }
     if (!capturePeakDeltaAs.empty() && context) {
       context->SetValue(capturePeakDeltaAs, static_cast<float>(peakDeltaAxis1), deviceName, "GridScanDualChannel");
-      if (m_logger) m_logger->Info("GridScanDualChannel: Captured peak delta " + std::to_string(peakDeltaAxis1) + " mm to context:" + capturePeakDeltaAs, "MotionHandler");
+      if (m_logger) m_logger->Debug("GridScanDualChannel: Captured peak delta " + std::to_string(peakDeltaAxis1) + " mm to context:" + capturePeakDeltaAs, "MotionHandler");
     }
 
     if (m_logger) {
@@ -3693,7 +3716,7 @@ bool MotionCommandHandler::ExecuteCommand(
     if (debugMode && motionManager) {
       motionManager->SetDebugLogging(true);
       if (m_logger) {
-        m_logger->Info("ParallelMove: Debug logging ENABLED", "MotionHandler");
+        m_logger->Debug("ParallelMove: Debug logging ENABLED", "MotionHandler");
       }
     }
 
@@ -3745,9 +3768,9 @@ bool MotionCommandHandler::ExecuteCommand(
 
     for (const auto& spec : graphNodeMoves) {
       if (m_logger) {
-        m_logger->Info("ParallelMove: Creating worker for " + spec.deviceName +
-                       " graphNode -> " + spec.targetName + " (graph: " + spec.graphName + ")",
-                       "MotionHandler");
+        m_logger->Debug("ParallelMove: Creating worker for " + spec.deviceName +
+                        " graphNode -> " + spec.targetName + " (graph: " + spec.graphName + ")",
+                        "MotionHandler");
       }
 
       // Create worker (handles all path finding and execution internally)
@@ -3776,8 +3799,8 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     if (m_logger && !graphWorkers.empty()) {
-      m_logger->Info("ParallelMove: Started " + std::to_string(graphWorkers.size()) +
-                     " graphNode workers in parallel", "MotionHandler");
+      m_logger->Debug("ParallelMove: Started " + std::to_string(graphWorkers.size()) +
+                      " graphNode workers in parallel", "MotionHandler");
     }
 
     // ✅ PHASE 3: Start all position moves (non-blocking)
@@ -3803,7 +3826,7 @@ bool MotionCommandHandler::ExecuteCommand(
       }
 
       if (m_logger) {
-        m_logger->Info("ParallelMove: Started position move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
+        m_logger->Debug("ParallelMove: Started position move for " + spec.deviceName + " -> " + spec.targetName, "MotionHandler");
       }
     }
 
@@ -3841,8 +3864,8 @@ bool MotionCommandHandler::ExecuteCommand(
           state.motionStarted = true;
           state.completed = true;
           if (m_logger) {
-            m_logger->Info("ParallelMove: " + state.deviceName + " already at target '" + state.targetName +
-                         "' (dist: " + std::to_string(distToTarget) + "mm)", "MotionHandler");
+            m_logger->Debug("ParallelMove: " + state.deviceName + " already at target '" + state.targetName +
+                          "' (dist: " + std::to_string(distToTarget) + "mm)", "MotionHandler");
           }
         }
         positionMoveStates.push_back(state);
@@ -3920,8 +3943,8 @@ bool MotionCommandHandler::ExecuteCommand(
           if (distToTarget < POSITION_TOLERANCE) {
             state.completed = true;
             if (m_logger) {
-              m_logger->Info("ParallelMove: " + state.deviceName + " completed (dist to target: " +
-                           std::to_string(distToTarget) + "mm)", "MotionHandler");
+              m_logger->Debug("ParallelMove: " + state.deviceName + " completed (dist to target: " +
+                            std::to_string(distToTarget) + "mm)", "MotionHandler");
             }
             // Clear pending target
             motionManager->ClearPendingTarget(state.deviceName);
@@ -4112,7 +4135,7 @@ bool MotionCommandHandler::ExecuteCommand(
       // Skip zero distance moves
       if (std::abs(spec.distance) < 1e-9) {
         if (m_logger) {
-          m_logger->Info("ParallelMoveRelative: Skipping zero-distance move for " + spec.deviceName + " " + spec.axis, "MotionHandler");
+          m_logger->Debug("ParallelMoveRelative: Skipping zero-distance move for " + spec.deviceName + " " + spec.axis, "MotionHandler");
         }
         continue;
       }
@@ -4127,7 +4150,7 @@ bool MotionCommandHandler::ExecuteCommand(
       }
 
       if (m_logger) {
-        m_logger->Info("ParallelMoveRelative: Started move for " + spec.deviceName + " " + spec.axis + " by " + std::to_string(spec.distance), "MotionHandler");
+        m_logger->Debug("ParallelMoveRelative: Started move for " + spec.deviceName + " " + spec.axis + " by " + std::to_string(spec.distance), "MotionHandler");
       }
     }
 
@@ -5349,10 +5372,10 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
       usePendingTarget = true;
 
       if (m_logger) {
-        m_logger->Info("WaitForMotion: Using pending target '" + pendingTargetName +
-                       "' at [" + std::to_string(pendingTarget.x) + "," +
-                       std::to_string(pendingTarget.y) + "," +
-                       std::to_string(pendingTarget.z) + "]", "MotionHandler");
+        m_logger->Debug("WaitForMotion: Using pending target '" + pendingTargetName +
+                        "' at [" + std::to_string(pendingTarget.x) + "," +
+                        std::to_string(pendingTarget.y) + "," +
+                        std::to_string(pendingTarget.z) + "]", "MotionHandler");
       }
     }
   }
@@ -5526,7 +5549,7 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
       if (m_logger) {
         std::string stableStr = "WaitForMotion: Motion complete at [" +
                                std::to_string(currentPos.x) + "," + std::to_string(currentPos.y) + "," + std::to_string(currentPos.z) + "]";
-        m_logger->Info(stableStr, "MotionHandler");
+        m_logger->Debug(stableStr, "MotionHandler");
       }
 
       // ✅ Clear pending target now that move is confirmed complete
@@ -5631,8 +5654,8 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
         }
 
         if (m_logger) {
-          m_logger->Info("Position verification OK for " + deviceName + " (tolerance ±" +
-                         std::to_string(TOLERANCE) + "mm)", "MotionHandler");
+          m_logger->Debug("Position verification OK for " + deviceName + " (tolerance ±" +
+                          std::to_string(TOLERANCE) + "mm)", "MotionHandler");
         }
       }
 
@@ -5757,8 +5780,8 @@ bool MotionCommandHandler::WaitForMultipleMotionsWithStopCheck(
         completedCount++;
 
         if (m_logger) {
-          m_logger->Info("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
-                        " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
+          m_logger->Debug("ParallelMove: " + spec.deviceName + " reached " + spec.targetName +
+                         " (" + std::to_string(completedCount) + "/" + std::to_string(moves.size()) + ")", "MotionHandler");
         }
 
         // ✅ DEBUG: Verify waypoint state is Idle after marking complete
@@ -5866,8 +5889,8 @@ bool MotionCommandHandler::WaitForMultipleRelativeMotionsWithStopCheck(
         completedCount++;
 
         if (m_logger) {
-          m_logger->Info("ParallelMoveRelative: " + deviceName + " completed (" +
-                        std::to_string(completedCount) + "/" + std::to_string(deviceNames.size()) + ")", "MotionHandler");
+          m_logger->Debug("ParallelMoveRelative: " + deviceName + " completed (" +
+                         std::to_string(completedCount) + "/" + std::to_string(deviceNames.size()) + ")", "MotionHandler");
         }
       }
     }

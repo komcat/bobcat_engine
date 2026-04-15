@@ -9,7 +9,7 @@ endif()
 # Version Configuration
 # ============================================================================
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 7)
+set(BOBCAT_VERSION_MINOR 8)
 
 # Auto-increment build number from file
 set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
@@ -539,6 +539,7 @@ set(SOURCES
     include/AppUI/MainWindow.cpp
     include/AppUI/TopBar.cpp
     include/AppUI/DarkTheme.cpp
+    include/AppUI/ThemeManager.cpp
     include/AppUI/ConnectionSplashScreen.cpp
     include/AppUI/MainMenuPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
@@ -627,6 +628,9 @@ set(SOURCES
     include/AppUI/RecipePage/RecipePage.cpp
     include/AppUI/RecipePage/RecipeTreeItemFactory.cpp
     include/AppUI/RecipePage/RecipeStepDelegate.cpp
+    include/AppUI/RecipePage/ProcessSummary.cpp
+    include/AppUI/RecipePage/RecipeRunWindow.cpp
+    include/AppUI/RecipePage/ProcessVisibilityDialog.cpp
     include/AppUI/RecipePage/RecipeClipboard.cpp
     include/AppUI/RecipePage/PropertyTableWidget.cpp
     include/recipe/RecipeManager.cpp
@@ -765,6 +769,8 @@ set(SOURCES
     include/safety/SafetyWatchManager.cpp
     include/safety/SafetyEventLog.cpp
     include/safety/SafetyAlertDialog.cpp
+    # Common utilities
+    include/common/ScanActivityTracker.cpp
     # Application settings
     include/settings/ApplicationSettings.cpp
     # Settings UI page
@@ -816,6 +822,8 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/TeachPlacementLineWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementResultWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementRetraceLogger.cpp
+    include/AppUI/PlacementCorrectionTrainer/RetraceLogViewer.cpp
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
@@ -845,6 +853,9 @@ set(HEADERS
     include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
     include/AppUI/DarkTheme.h
+    include/AppUI/Theme.h
+    include/AppUI/ThemeManager.h
+    include/AppUI/ThemeButtonStyles.h
     include/AppUI/ConnectionSplashScreen.h
     include/AppUI/HardwareInstrumentPage.h
     include/AppUI/PlaceholderPage.h
@@ -1030,6 +1041,8 @@ set(HEADERS
     include/safety/SafetyEventLog.h
     include/common/ErrorCode.h
     include/common/ThreadPriority.h
+    include/common/ScanActivityTracker.h
+    include/common/ScanActivityGuard.h
     include/safety/SafetyAlertDialog.h
     # Application settings
     include/settings/ApplicationSettings.h
@@ -1313,6 +1326,9 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
         include/vision/plugins/HalconLineDetectionPlugin.cpp
         include/vision/plugins/HalconPatternMatchingEdgePlugin.cpp
+        include/vision/plugins/HalconPatternMatchingNCCPlugin.cpp
+        include/vision/plugins/HalconPatternMatchingDescriptorPlugin.cpp
+        include/vision/plugins/HalconPatternMatchingGrayPlugin.cpp
         include/vision/plugins/HalconBeamDetectionPlugin.cpp
         include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.cpp
     )
@@ -1321,6 +1337,9 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconCircleDetectionRobustPlugin.h
         include/vision/plugins/HalconLineDetectionPlugin.h
         include/vision/plugins/HalconPatternMatchingEdgePlugin.h
+        include/vision/plugins/HalconPatternMatchingNCCPlugin.h
+        include/vision/plugins/HalconPatternMatchingDescriptorPlugin.h
+        include/vision/plugins/HalconPatternMatchingGrayPlugin.h
         include/vision/plugins/HalconBeamDetectionPlugin.h
         include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.h
     )

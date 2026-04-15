@@ -20,14 +20,14 @@ ACSController::ACSController()
   m_threadRunning.store(false);
   m_terminateThread.store(false);
 
-  LOG_INFO("Initializing controller");
+  LOG_DEBUG("Initializing controller");
 
   m_availableAxes = { "X", "Y", "Z" };
   StartCommunicationThread();
 }
 
 ACSController::~ACSController() {
-  LOG_INFO("Shutting down controller");
+  LOG_DEBUG("Shutting down controller");
   StopCommunicationThread();
   if (m_isConnected) {
     Disconnect();
@@ -39,7 +39,7 @@ void ACSController::StartCommunicationThread() {
     m_threadRunning.store(true);
     m_terminateThread.store(false);
     m_communicationThread = std::thread(&ACSController::CommunicationThreadFunc, this);
-    LOG_INFO("Communication thread started");
+    LOG_DEBUG("Communication thread started");
   }
 }
 
@@ -56,7 +56,7 @@ void ACSController::StopCommunicationThread() {
     }
 
     m_threadRunning.store(false);
-    LOG_INFO("Communication thread stopped");
+    LOG_DEBUG("Communication thread stopped");
   }
 }
 
@@ -728,7 +728,7 @@ bool ACSController::SetVelocity(const std::string& axis, double velocity) {
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  LOG_INFO("Setting velocity " + axis + " to " + std::to_string(velocity));
+  LOG_DEBUG("Setting velocity " + axis + " to " + std::to_string(velocity));
 
   if (!acsc_SetVelocity(m_controllerId, axisIndex, velocity, NULL)) {
     int error = acsc_GetLastError();
@@ -1075,7 +1075,7 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
     return false;
   }
 
-  LOG_INFO("Moving multiple axes");
+  LOG_DEBUG("Moving multiple axes");
 
   std::vector<int> axisIndices;
   for (const auto& axis : axes) {

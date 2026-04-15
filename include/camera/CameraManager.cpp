@@ -393,11 +393,11 @@ bool CameraManager::StartGrabbingWithBroadcast(const std::string& cameraId) {
 bool CameraManager::ApplyExposureSettings(const std::string& cameraId, const ICameraHardware::ExposureSettings& settings) {
   auto camera = GetCameraHardware(cameraId);
   if (camera) {
-    LOG_INFO("Applying exposure settings to camera: " + cameraId);
-    LOG_INFO("  Exposure: " + std::to_string(settings.exposure_time) + " μs");
-    LOG_INFO("  Gain: " + std::to_string(settings.gain));
-    LOG_INFO("  Auto Exposure: " + std::string(settings.auto_exposure ? "On" : "Off"));
-    LOG_INFO("  Auto Gain: " + std::string(settings.auto_gain ? "On" : "Off"));
+    LOG_DEBUG("Applying exposure settings to camera: " + cameraId);
+    LOG_DEBUG("  Exposure: " + std::to_string(settings.exposure_time) + " μs");
+    LOG_DEBUG("  Gain: " + std::to_string(settings.gain));
+    LOG_DEBUG("  Auto Exposure: " + std::string(settings.auto_exposure ? "On" : "Off"));
+    LOG_DEBUG("  Auto Gain: " + std::string(settings.auto_gain ? "On" : "Off"));
     return camera->SetExposureSettings(settings);
   }
   return false;

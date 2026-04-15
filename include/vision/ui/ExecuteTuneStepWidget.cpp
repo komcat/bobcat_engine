@@ -101,9 +101,9 @@ void ExecuteTuneStepWidget::setupUI()
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(0);
 
-    // Left: control + results panel (fixed 350px width)
+    // Left: control + results panel (fixed 480px width)
     QWidget* leftPanel = new QWidget(this);
-    leftPanel->setFixedWidth(350);
+    leftPanel->setFixedWidth(480);
     QVBoxLayout* leftLayout = new QVBoxLayout(leftPanel);
     leftLayout->setContentsMargins(4, 0, 4, 0);
     leftLayout->setSpacing(6);

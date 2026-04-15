@@ -436,6 +436,44 @@ void SafetyWatchManager::RaiseSafetyFlag(const WatchedInput& input, bool prevSta
   );
 }
 
+void SafetyWatchManager::TriggerManualEStop(const QString& source)
+{
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_safetyFlagRaised) {
+      std::cout << "[SafetyWatchManager] Manual E-Stop ignored, safety flag already raised" << std::endl;
+      return;
+    }
+
+    m_safetyFlagRaised = true;
+    m_criticalFlagRaised = true;
+    m_activeAlertTitle = "Manual E-Stop";
+    m_activeAlertMessage = "Triggered from: " + source.toStdString();
+    m_activeAlertCritical = true;
+  }
+
+  const std::string srcStd = source.toStdString();
+  std::cout << "[SafetyWatchManager] MANUAL E-STOP TRIGGERED from: " << srcStd << std::endl;
+
+  const std::string logMsg = "MANUAL E-STOP: " + srcStd;
+  LogEvent(logMsg, true);
+
+  if (m_safetyEventLog) {
+    m_safetyEventLog->LogSafetyTrigger(
+      "SafetyWatchManager",
+      logMsg,
+      true,
+      ErrorCode::SafetyManualEStop
+    );
+  }
+
+  emit safetyTriggered(
+    QStringLiteral("Manual E-Stop"),
+    QStringLiteral("Triggered from: ") + source,
+    true
+  );
+}
+
 std::string SafetyWatchManager::MakeInputKey(const std::string& deviceName, const std::string& pinName) const
 {
   return deviceName + ":" + pinName;

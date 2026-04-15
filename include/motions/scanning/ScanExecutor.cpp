@@ -8,6 +8,7 @@
 #include "DataStore.h"
 #include "ILogger.h"
 #include "safety/SafetyWatchManager.h"
+#include "common/ScanActivityTracker.h"
 
 #include <QMetaObject>
 #include <iostream>
@@ -47,6 +48,25 @@ void ScanExecutor::setSafetyWatchManager(SafetyWatchManager* safetyManager)
 void ScanExecutor::setLogger(ILogger* logger)
 {
   m_logger = logger;
+}
+
+void ScanExecutor::setScanActivityTracker(ScanActivityTracker* tracker)
+{
+  m_scanActivityTracker = tracker;
+}
+
+void ScanExecutor::beginScanBusy(const char* source)
+{
+  if (m_scanActivityTracker) {
+    m_scanActivityTracker->Begin(QString::fromLatin1(source));
+  }
+}
+
+void ScanExecutor::endScanBusy(const char* source)
+{
+  if (m_scanActivityTracker) {
+    m_scanActivityTracker->End(QString::fromLatin1(source));
+  }
 }
 
 bool ScanExecutor::executeScan(const QString& deviceName, ScanMode mode, const QString& channel)
@@ -115,13 +135,18 @@ bool ScanExecutor::executeScan(const QString& deviceName, ScanMode mode, const Q
     .arg(stepsDesc));
   emit logMessage(QString("  Data channel: %1").arg(channel));
 
+  // Mark scan-busy before starting — must pair with endScanBusy in cleanup().
+  // Set the flag first so cleanup() will correctly pair on the failure path.
+  m_scanBusyActive = true;
+  beginScanBusy("ScanExecutor");
+
   // Start the scan
   bool success = m_scanController->StartScan(params);
 
   if (!success) {
     emit logMessage("Failed to start scan");
     emit scanError("Failed to start scan");
-    cleanup();
+    cleanup();  // cleanup() will End the busy state via the flag guard
     return false;
   }
 
@@ -269,6 +294,13 @@ void ScanExecutor::cleanup()
 
     std::cout << "[ScanExecutor] Scan controller cleaned up" << std::endl;
   }
+
+  // Pair with beginScanBusy in executeScan. Flag guard ensures we only
+  // decrement if we incremented, so cleanup() can be called multiple times.
+  if (m_scanBusyActive) {
+    m_scanBusyActive = false;
+    endScanBusy("ScanExecutor");
+  }
 }
 
 void ScanExecutor::cleanupRotation()
@@ -282,6 +314,13 @@ void ScanExecutor::cleanupRotation()
     m_rotationScanController = nullptr;
 
     std::cout << "[ScanExecutor] Rotation scan controller cleaned up" << std::endl;
+  }
+
+  // Pair with beginScanBusy in executeRotationScan. Flag guard ensures we
+  // only decrement if we incremented.
+  if (m_rotationBusyActive) {
+    m_rotationBusyActive = false;
+    endScanBusy("ScanExecutor:rotation");
   }
 }
 
@@ -340,6 +379,10 @@ bool ScanExecutor::executeRotationScan(const QString& deviceName,
     .arg(QString::fromStdString(
       params.GetTranslationAxes()[0] + ", " + params.GetTranslationAxes()[1])));
   emit logMessage(QString("  Data channel: %1").arg(channel));
+
+  // Mark scan-busy before starting — must pair with endScanBusy in cleanupRotation().
+  m_rotationBusyActive = true;
+  beginScanBusy("ScanExecutor:rotation");
 
   // Start the scan
   bool success = m_rotationScanController->StartScan(params);

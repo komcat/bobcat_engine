@@ -34,12 +34,14 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QStackedWidget>
 #include <QTimer>
 #include <future>
 #include <functional>
 #include <atomic>
 #include "PlacementCorrectionData.h"
+#include "PlacementRetraceLogger.h"
 #include "TransformationMatrixLoader.h"
 
 struct ApplicationContext;
@@ -48,7 +50,7 @@ struct ApplicationContext;
  * @brief 6-state wizard that retraces ref/target points, computes correction
  * vector from master vector vs actual vector, and calculates PLACE_ADJ.
  *
- * States: Idle -> WaitRefP1 -> WaitRefP2 -> WaitTgtP1 -> WaitTgtP2 -> Review
+ * States: Idle -> WaitRefP1 -> WaitRefP2 -> WaitNrmP1 -> WaitNrmP2 -> Review
  */
 class PlacementRetraceWidget : public QWidget
 {
@@ -62,37 +64,61 @@ public:
     // Programmatically trigger start (for recipe integration — skips Idle page)
     void AutoStart();
 
+    // Set the mode string written to the retrace log for subsequent runs.
+    // "manual" (default, standalone trainer), "autoRunAll", or "recipe".
+    // Callers (e.g. RunProgramPage) should set this before SetData.
+    void SetMode(const std::string& mode) { m_logMode = mode; }
+
 signals:
     void retraceCompleted(const PlacementCorrectionSet& updatedSet);
     void retraceSkipped();   // User reviewed results but chose to continue without saving
     void retraceEnded();
+    // Emitted when any manual tune offset spinbox is edited. The current
+    // m_set already reflects the new values (pointer semantics); the host
+    // page should persist the training set JSON on this signal.
+    void offsetsPersistRequested();
 
 private slots:
     void onStartRetrace();
+    void onAutoRunAll();
     void onConfirmRefP1();
     void onConfirmRefP2();
-    void onConfirmTgtP1();
-    void onConfirmTgtP2();
+    void onConfirmNrmP1();
+    void onConfirmNrmP2();
+    void onAutoDetectRefP1();
+    void onAutoDetectRefP2();
+    void onAutoDetectNrmP1();
+    void onAutoDetectNrmP2();
     void onSaveToTarget();
     void onMoveToTarget();
     void onSkip();
     void onReset();
     void onEnd();
     void updatePositionDisplay();
+    void onTuneOffsetChanged();
 
 private:
-    enum WizardState { Idle, WaitRefP1, WaitRefP2, WaitTgtP1, WaitTgtP2, Review };
+    enum WizardState { Idle, WaitRefP1, WaitRefP2, WaitNrmP1, WaitNrmP2, Review };
 
     void setupUI();
     void setState(WizardState state);
     void autoNavigateToRefP1();
-    void autoNavigateToTgtP1();
+    void autoNavigateToNrmP1();
     void applyCameraExposureAsync(double exposureUs);
     void loadReferenceImage(QLabel* label, const std::string& imageFile);
     std::string getImageDirectory() const;
     void runMotionAsync(std::function<bool()> motionFunc, std::function<void(bool)> onComplete);
     void computeRetraceResults();
     void setHexVelocity(double velocityMmPerSec);
+    void loadTuneOffsetsFromConfig();
+    void updateTunePreview();
+
+    // Vision auto-detect: iterate detect→move→detect until residual<5um or 5 iters.
+    // step: 1=RefP1, 2=RefP2, 3=NrmP1, 4=NrmP2
+    void runAutoDetect(int step, const std::string& profilePath);
+    // Show/hide auto-detect buttons based on whether a profile path is set on the
+    // current step's PlacementLinePoints. Called from setState entries.
+    void updateAutoDetectVisibility();
 
     // Async position polling to avoid blocking UI thread with hardware queries
     std::future<void> m_positionFuture;
@@ -109,11 +135,11 @@ private:
 
     // Taught deltas for P1->P2 navigation
     double m_refDeltaX = 0.0, m_refDeltaY = 0.0, m_refDeltaZ = 0.0;
-    double m_tgtDeltaX = 0.0, m_tgtDeltaY = 0.0, m_tgtDeltaZ = 0.0;
+    double m_nrmDeltaX = 0.0, m_nrmDeltaY = 0.0, m_nrmDeltaZ = 0.0;
 
     // Retraced line data
     PlacementLinePoints m_retracedRef;
-    PlacementLinePoints m_retracedTgt;
+    PlacementLinePoints m_retracedNrm;
 
     // Live hex position captured at review time
     double m_liveHexX = 0.0, m_liveHexY = 0.0, m_liveHexZ = 0.0;
@@ -122,6 +148,25 @@ private:
     // Computed correction results
     double m_correctedX = 0.0, m_correctedY = 0.0, m_correctedZ = 0.0;
     double m_correctedU = 0.0, m_correctedV = 0.0, m_correctedW = 0.0;
+
+    // Extra correction fields captured by computeRetraceResults for the log
+    double m_logFrameDeltaTheta = 0.0;
+    double m_logRotatedOffsetX = 0.0, m_logRotatedOffsetY = 0.0;
+    double m_logIdealTargetX = 0.0,   m_logIdealTargetY = 0.0;
+    double m_logCorrGlobalX = 0.0,    m_logCorrGlobalY = 0.0;
+    double m_logCorrLocalX = 0.0, m_logCorrLocalY = 0.0, m_logCorrLocalZ = 0.0;
+
+    // Per-step meta (refP1, refP2, nrmP1, nrmP2). Populated by confirm/auto-detect.
+    RetracePointMeta m_stepMeta[4];
+
+    // Log dispatch state
+    std::string m_logMode = "manual";   // "manual" | "autoRunAll" | "recipe"
+    bool m_loggedThisRun = false;       // prevents duplicate log on save→continue
+
+    // Helper: build and append a log entry for the given outcome.
+    void writeLogEntry(const std::string& outcome,
+                       const std::string& failureStep = std::string(),
+                       const std::string& failureDetail = std::string());
 
     // Transform
     TransformationMatrixLoader m_matrixLoader;
@@ -137,30 +182,42 @@ private:
     // Page 0: Idle
     QLabel* m_idleSummaryLabel = nullptr;
     QPushButton* m_startBtn = nullptr;
+    QPushButton* m_autoRunAllBtn = nullptr;
+
+    // Auto-Run-All chaining flag — when true, completed auto-nav / P2-move
+    // events automatically trigger the next auto-detect step.
+    bool m_autoRunAll = false;
 
     // Page 1: WaitRefP1
     QLabel* m_refP1InstructionLabel = nullptr;
     QLabel* m_refP1PositionLabel = nullptr;
     QLabel* m_refP1ImageLabel = nullptr;
     QPushButton* m_confirmRefP1Btn = nullptr;
+    QPushButton* m_autoDetectRefP1Btn = nullptr;
 
     // Page 2: WaitRefP2
     QLabel* m_refP2InstructionLabel = nullptr;
     QLabel* m_refP2PositionLabel = nullptr;
     QLabel* m_refP2ImageLabel = nullptr;
     QPushButton* m_confirmRefP2Btn = nullptr;
+    QPushButton* m_autoDetectRefP2Btn = nullptr;
 
-    // Page 3: WaitTgtP1
-    QLabel* m_tgtP1InstructionLabel = nullptr;
-    QLabel* m_tgtP1PositionLabel = nullptr;
-    QLabel* m_tgtP1ImageLabel = nullptr;
-    QPushButton* m_confirmTgtP1Btn = nullptr;
+    // Page 3: WaitNrmP1
+    QLabel* m_nrmP1InstructionLabel = nullptr;
+    QLabel* m_nrmP1PositionLabel = nullptr;
+    QLabel* m_nrmP1ImageLabel = nullptr;
+    QPushButton* m_confirmNrmP1Btn = nullptr;
+    QPushButton* m_autoDetectNrmP1Btn = nullptr;
 
-    // Page 4: WaitTgtP2
-    QLabel* m_tgtP2InstructionLabel = nullptr;
-    QLabel* m_tgtP2PositionLabel = nullptr;
-    QLabel* m_tgtP2ImageLabel = nullptr;
-    QPushButton* m_confirmTgtP2Btn = nullptr;
+    // Page 4: WaitNrmP2
+    QLabel* m_nrmP2InstructionLabel = nullptr;
+    QLabel* m_nrmP2PositionLabel = nullptr;
+    QLabel* m_nrmP2ImageLabel = nullptr;
+    QPushButton* m_confirmNrmP2Btn = nullptr;
+    QPushButton* m_autoDetectNrmP2Btn = nullptr;
+
+    // Vision auto-detect background worker
+    std::future<void> m_visionFuture;
 
     // Page 5: Review
     QLabel* m_reviewLabel = nullptr;
@@ -170,6 +227,16 @@ private:
     QPushButton* m_skipBtn = nullptr;
     QPushButton* m_resetBtn = nullptr;
     QPushButton* m_endBtn = nullptr;
+
+    // Manual offset tuner (on Review page; applied at Save time)
+    QDoubleSpinBox* m_tuneOffsetXSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetYSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetZSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetUSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetVSpin = nullptr;
+    QDoubleSpinBox* m_tuneOffsetWSpin = nullptr;
+    QLabel* m_tunePreviewLabel = nullptr;
+    QPushButton* m_tuneResetBtn = nullptr;
 
     // Hex velocity preset buttons
     QPushButton* m_vel01Btn = nullptr;

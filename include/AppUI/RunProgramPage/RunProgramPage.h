@@ -59,6 +59,7 @@ public:
 
 public slots:
   void onProductChanged();  // Called when product is loaded/created in MainMenu
+  void applyTheme();
 
 signals:
   void backToMainMenu();
@@ -131,9 +132,6 @@ private slots:
 
   // Scanning integration (refactored)
   void onScanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel);
-  void onRotationScanRequested(QString deviceName, QString rotationAxis,
-                                double rotationStep, double threshold,
-                                int maxNoImprovement, QString channel);
   void onScanLogMessage(QString message);
   void onScanCompleted(QString deviceName, double peakValue, bool success);
   void onScanError(QString errorMessage);
@@ -234,6 +232,16 @@ private:
   QLabel* m_currentRecipeLabel;
   QLabel* m_executionLogLabel;
   QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
+  // Base (non-scan) status snapshot — what the badge should revert to once
+  // any active scan ends. Set via setProgramStatus(); paint via applyProgramStatusLabel().
+  // Defaults match the "Idle" appearance; setProgramStatus() at runtime reads
+  // from Theme::Color::* so a palette swap takes effect without code changes.
+  QString m_baseStatusText = "Idle";
+  QString m_baseStatusBgColor;    // initialized in ctor body from Theme::Color::bgSurface
+  QString m_baseStatusFgColor;    // initialized in ctor body from Theme::Color::textDisabled
+  bool m_isScanActive = false;
+  void setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor);
+  void applyProgramStatusLabel();
   QPlainTextEdit* m_logTextEdit;  // Using QPlainTextEdit for better performance with large logs
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
   CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
@@ -244,6 +252,8 @@ private:
   QLabel* m_cmdCurrentLabel;
   QLabel* m_cmdNext1Label;
   QLabel* m_cmdNext2Label;
+  // Single-row human-readable description of the action currently running.
+  QLabel* m_actionDetailLabel = nullptr;
   std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
   // Scanning controls (refactored)
@@ -252,6 +262,7 @@ private:
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
+  std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;
   std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
   std::unique_ptr<SequenceContext> m_rollCorrectionContext;  // Context for stepwise roll correction stop control

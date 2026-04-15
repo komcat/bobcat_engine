@@ -31,6 +31,7 @@ class BeamServerClient;     // Custom TCP server client for beam detection
 class CameraConfigManager;  // Camera configuration (per-camera calibration)
 class BeamResultBroker;     // Pub-sub broker for beam detection results
 class BeamOptimizerManager; // Beam optimization coordinator
+class ScanActivityTracker;  // Reference-counted scan-busy broadcaster (drives TopBar indicator)
 
 namespace Lighting {
 class LightingManager;
@@ -71,6 +72,7 @@ struct ApplicationContext
   CameraConfigManager* cameraConfigManager = nullptr;  // Camera config (per-camera calibration)
   BeamResultBroker* beamResultBroker = nullptr;          // Beam detection pub-sub broker
   BeamOptimizerManager* beamOptimizerManager = nullptr;  // Beam optimization coordinator
+  ScanActivityTracker* scanActivityTracker = nullptr;    // Reference-counted scan-busy broadcaster
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

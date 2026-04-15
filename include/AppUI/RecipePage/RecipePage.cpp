@@ -1,9 +1,13 @@
 // RecipePage.cpp
 #include "RecipePage.h"
 #include "RecipeManager.h"
-#include "RecipePageStyles.h"        // NEW: Centralized styles
+#include "Theme.h"
+#include "ThemeButtonStyles.h"
+#include "RecipePageStyles.h"        // NEW: Centralized styles (now bound to Theme::Color::*)
 #include "RecipeTreeItemFactory.h"   // NEW: Tree item factory
 #include "RecipeClipboard.h"         // NEW: Clipboard
+#include "RecipeRunWindow.h"         // NEW: Floating execution window
+#include "ProcessVisibilityDialog.h" // NEW: Hide/show process dialog
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "safety/SafetyWatchManager.h"
@@ -71,6 +75,81 @@
 #include <QPixmap>
 #endif
 
+namespace {
+
+// QSS builders for the runtime "product status" label that swaps between
+// loaded / not-found / neutral states. Themed via Theme::Color::* so the
+// palette propagates to all states from one place.
+QString productLabelLoadedQss()
+{
+    return QString(
+        "font-size: 11px; "
+        "color: %1; "
+        "font-weight: bold; "
+        "padding: 5px; "
+        "border: 1px solid %1; "
+        "border-radius: 3px; "
+        "background-color: %2;"
+    ).arg(QLatin1String(Theme::Color::accentSoft),  // bright green text + border
+          QLatin1String(Theme::Color::bgDeep));     // deep bg
+}
+
+QString productLabelErrorQss()
+{
+    return QString(
+        "font-size: 11px; "
+        "color: %1; "
+        "padding: 5px; "
+        "border: 1px solid %1; "
+        "border-radius: 3px; "
+        "background-color: %2;"
+    ).arg(QLatin1String(Theme::Color::danger),    // red text + border
+          QLatin1String(Theme::Color::bgDeep));   // deep neutral bg
+}
+
+QString productLabelNeutralQss()
+{
+    return QString(
+        "font-size: 11px; "
+        "color: %1; "
+        "padding: 5px; "
+        "background-color: %2;"
+    ).arg(QLatin1String(Theme::Color::textSecondary),
+          QLatin1String(Theme::Color::bgDeep));
+}
+
+// Same family as productLabelLoadedQss but used for the recipe-file label
+// (no font-weight bold). Kept distinct so it can diverge later if needed.
+QString recipeFileLabelLoadedQss()
+{
+    return QString(
+        "font-size: 11px; "
+        "color: %1; "
+        "font-weight: bold; "
+        "padding: 4px; "
+        "background-color: %2; "
+        "border: 1px solid %1; "
+        "border-radius: 3px;"
+    ).arg(QLatin1String(Theme::Color::accentSoft),
+          QLatin1String(Theme::Color::bgDeep));
+}
+
+QString recipeFileLabelNeutralQss()
+{
+    return QString(
+        "font-size: 11px; "
+        "color: %1; "
+        "padding: 4px; "
+        "background-color: %2; "
+        "border: 1px solid %3; "
+        "border-radius: 3px;"
+    ).arg(QLatin1String(Theme::Color::textSecondary),
+          QLatin1String(Theme::Color::bgDeep),
+          QLatin1String(Theme::Color::borderSubtle));
+}
+
+}  // namespace
+
 RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
@@ -110,6 +189,10 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_refreshRecipeListButton(nullptr) // Refresh button
   , m_recipeCountLabel(nullptr)      // Recipe count label
 {
+  // Load the hidden process set BEFORE setupUI so the initial tree
+  // populate already excludes them.
+  loadHiddenProcessesFromDisk();
+
   setupUI();
   setupSequenceEngine();
 
@@ -209,130 +292,67 @@ void RecipePage::setupUI()
   m_productStatusLabel->setStyleSheet(RecipeStyles::productStatusLabel());
   titleLayout->addWidget(m_productStatusLabel);
 
-  // ========== EXECUTE BUTTONS IN TITLE BAR ==========
-  titleLayout->addSpacing(10);
-
-  // Run Recipe button (orange)
-  m_runRecipeButton = new QPushButton("Run Recipe");
-  m_runRecipeButton->setFixedHeight(28);
-  m_runRecipeButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffa500, stop:1 #ff8c00); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffb52e, stop:1 #ff9d2e); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #ff7700; "
-    "}"
-  );
-  connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
-  titleLayout->addWidget(m_runRecipeButton);
-
-  // Run Selected button (blue)
-  m_runSelectedStepButton = new QPushButton("Run Selected");
-  m_runSelectedStepButton->setFixedHeight(28);
-  m_runSelectedStepButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a9ff2, stop:1 #4a90e2); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 12px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6aaff8, stop:1 #5a9ff2); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #3a80d2; "
-    "} "
-    "QPushButton:disabled { "
-    "  background-color: #cccccc; "
-    "  color: #666666; "
-    "}"
-  );
-  connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
-  titleLayout->addWidget(m_runSelectedStepButton);
-
-  // Breakpoint button - toggle breakpoint on selected step
-  m_breakpointButton = new QPushButton("B");
-  m_breakpointButton->setToolTip("Toggle breakpoint on selected step");
-  m_breakpointButton->setFixedSize(40, 28);
-  m_breakpointButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #dc3545, stop:1 #c82333); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 10px; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.5); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e4606d, stop:1 #dc3545); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #bd2130; "
-    "}"
-  );
-  connect(m_breakpointButton, &QPushButton::clicked, this, &RecipePage::onBreakpointButtonClicked);
-  titleLayout->addWidget(m_breakpointButton);
-
-  titleLayout->addSpacing(10);
-
-  // Context Viewer button (small button at far right)
-  m_contextViewerButton = new QPushButton("CV");
-  m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
-  m_contextViewerButton->setFixedSize(40, 28);
-  m_contextViewerButton->setStyleSheet(RecipeStyles::contextViewerButton());
-  connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
-  titleLayout->addWidget(m_contextViewerButton);
-
-  // STOP button (emergency stop for motors and sequence)
-  m_stopButton = new QPushButton("⚠ STOP");
-  m_stopButton->setObjectName("stopButton");
-  m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
-  m_stopButton->setFixedSize(70, 28);
-  m_stopButton->setStyleSheet(RecipeStyles::emergencyStopButton());
-  connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
-  titleLayout->addWidget(m_stopButton);
+  // Execute buttons (Run Recipe / Run Selected / Breakpoint / CV / STOP) are
+  // constructed later in createStepsTab() so they live directly under the
+  // recipe Name field instead of in the page title bar.
 
   titleLayout->addSpacing(m_backButton->width());
 
   mainLayout->addLayout(titleLayout);
 
-  QSplitter* splitter = new QSplitter(Qt::Horizontal);
-  splitter->setOpaqueResize(false);  // Defer resize until drag complete for smoother performance
-  splitter->setHandleWidth(5);
+  m_mainSplitter = new QSplitter(Qt::Horizontal);
+  m_mainSplitter->setOpaqueResize(false);
+  m_mainSplitter->setHandleWidth(1);          // Hairline handles (visually unobtrusive)
+  m_mainSplitter->setChildrenCollapsible(false);
 
   QWidget* leftPanel = new QWidget();
   createLeftPanel(leftPanel);
-  splitter->addWidget(leftPanel);
+  m_mainSplitter->addWidget(leftPanel);
 
   QWidget* middlePanel = new QWidget();
   createMiddlePanel(middlePanel);
-  splitter->addWidget(middlePanel);
+  m_mainSplitter->addWidget(middlePanel);
 
   QWidget* rightPanel = new QWidget();
   createRightPanel(rightPanel);
-  splitter->addWidget(rightPanel);
+  m_mainSplitter->addWidget(rightPanel);
 
-  splitter->setStretchFactor(0, 2);
-  splitter->setStretchFactor(1, 3);
-  splitter->setStretchFactor(2, 4);
+  // Lock the splitter handles so the user cannot drag the panels.
+  // Handle 0 is unused; handles 1 and 2 separate widgets 0|1 and 1|2.
+  if (auto* h1 = m_mainSplitter->handle(1)) h1->setEnabled(false);
+  if (auto* h2 = m_mainSplitter->handle(2)) h2->setEnabled(false);
 
-  mainLayout->addWidget(splitter, 1);
+  mainLayout->addWidget(m_mainSplitter, 1);
+
+  // Apply initial 20% / 55% / 25% sizing.  resizeEvent keeps it pinned on resize.
+  applyPanelSizes();
+}
+
+void RecipePage::applyPanelSizes()
+{
+  if (!m_mainSplitter) {
+    return;
+  }
+  // Compute pixel sizes from the current splitter width.
+  // Falls back to the page width if the splitter has not been laid out yet.
+  int totalWidth = m_mainSplitter->width();
+  if (totalWidth <= 0) {
+    totalWidth = width();
+  }
+  if (totalWidth <= 0) {
+    return;
+  }
+
+  const int leftWidth   = (totalWidth * 20) / 100;
+  const int rightWidth  = (totalWidth * 25) / 100;
+  const int middleWidth = totalWidth - leftWidth - rightWidth;
+  m_mainSplitter->setSizes({ leftWidth, middleWidth, rightWidth });
+}
+
+void RecipePage::resizeEvent(QResizeEvent* event)
+{
+  QWidget::resizeEvent(event);
+  applyPanelSizes();
 }
 
 void RecipePage::createLeftPanel(QWidget* leftPanel)
@@ -345,22 +365,36 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   title->setStyleSheet(RecipeStyles::sectionLabel());
   mainLayout->addWidget(title);
 
-  // Search box for filtering processes
+  // Search box + gear button to open the visibility manager
+  QHBoxLayout* searchRow = new QHBoxLayout();
+  searchRow->setSpacing(4);
+  searchRow->setContentsMargins(0, 0, 0, 0);
+
   QLineEdit* searchBox = new QLineEdit();
   searchBox->setPlaceholderText("Search processes...");
   searchBox->setStyleSheet(RecipeStyles::searchBox());
-  mainLayout->addWidget(searchBox);
+  searchRow->addWidget(searchBox, 1);
+
+  QPushButton* visibilityBtn = new QPushButton(QString::fromUtf8("\xE2\x9A\x99"));  // ⚙ gear
+  visibilityBtn->setFixedSize(28, 28);
+  visibilityBtn->setToolTip("Manage process visibility (hide/show old or experimental processes)");
+  visibilityBtn->setStyleSheet(RecipeStyles::smallToolButton());
+  connect(visibilityBtn, &QPushButton::clicked,
+    this, &RecipePage::onShowVisibilityDialog);
+  searchRow->addWidget(visibilityBtn);
+
+  mainLayout->addLayout(searchRow);
 
   // Quick tip for keyboard shortcut
   QLabel* quickTip = new QLabel("Tip: Press Ctrl+B for quick add");
-  quickTip->setStyleSheet(
+  quickTip->setStyleSheet(QString(
     "QLabel { "
-    "  color: #888888; "
+    "  color: %1; "
     "  font-size: 10px; "
     "  font-style: italic; "
     "  padding: 2px 0px; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::textSecondary)));
   mainLayout->addWidget(quickTip);
 
   // ========== Selected process label + Add button row ==========
@@ -391,27 +425,9 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
   m_processTemplateList->setRootIsDecorated(true);  // Show expand/collapse arrows
   m_processTemplateList->setIndentation(20);        // Indentation for child items
 
-  // Populate tree with categories
-  for (const auto& category : RecipeManager::getProcessCategories()) {
-    QTreeWidgetItem* categoryItem = new QTreeWidgetItem(m_processTemplateList);
-    categoryItem->setText(0, QString::fromStdString(category));
-    categoryItem->setFlags(categoryItem->flags() & ~Qt::ItemIsSelectable);
-
-    QFont font = categoryItem->font(0);
-    font.setBold(true);
-    categoryItem->setFont(0, font);
-    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY));
-    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM));
-
-    // Add processes for this category
-    for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
-      QTreeWidgetItem* processItem = new QTreeWidgetItem(categoryItem);
-      processItem->setText(0, QString::fromStdString(processType));
-      processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
-    }
-
-    categoryItem->setExpanded(false);  // Start collapsed so user sees the arrows
-  }
+  // Populate tree (delegates to a reusable method so the visibility dialog
+  // and the showEvent hot-reload can call it too).
+  refreshProcessTemplateList();
 
   connect(m_processTemplateList, &QTreeWidget::itemClicked,
     this, &RecipePage::onProcessTemplateSelected);
@@ -444,10 +460,90 @@ void RecipePage::createLeftPanel(QWidget* leftPanel)
         }
       }
 
-      // Hide category if no children are visible
+      // Hide category if no children are visible.  Note: categories that
+      // were already hidden by refreshProcessTemplateList (because every
+      // child was filtered out) stay hidden too.
       categoryItem->setHidden(!categoryHasVisibleChildren);
     }
   });
+}
+
+// =======================================================================
+// Process visibility (hide old/experimental processes)
+// =======================================================================
+
+void RecipePage::loadHiddenProcessesFromDisk()
+{
+  m_hiddenProcesses = ProcessVisibilityDialog::loadHiddenFromDisk();
+  std::cout << "[RecipePage] Loaded " << m_hiddenProcesses.size()
+            << " hidden processes" << std::endl;
+}
+
+void RecipePage::refreshProcessTemplateList()
+{
+  if (!m_processTemplateList) {
+    return;
+  }
+
+  m_processTemplateList->clear();
+
+  for (const auto& category : RecipeManager::getProcessCategories()) {
+    QTreeWidgetItem* categoryItem = new QTreeWidgetItem(m_processTemplateList);
+    categoryItem->setText(0, QString::fromStdString(category));
+    categoryItem->setFlags(categoryItem->flags() & ~Qt::ItemIsSelectable);
+
+    QFont font = categoryItem->font(0);
+    font.setBold(true);
+    categoryItem->setFont(0, font);
+    categoryItem->setForeground(0, QColor(RecipeStyles::Colors::TEXT_CATEGORY()));
+    categoryItem->setBackground(0, QColor(RecipeStyles::Colors::BG_MEDIUM()));
+
+    for (const auto& processType : RecipeManager::getProcessesByCategory(category)) {
+      if (m_hiddenProcesses.count(processType) > 0) {
+        continue;  // Hidden by user via the visibility manager
+      }
+      QTreeWidgetItem* processItem = new QTreeWidgetItem(categoryItem);
+      processItem->setText(0, QString::fromStdString(processType));
+      processItem->setData(0, Qt::UserRole, QString::fromStdString(processType));
+    }
+
+    if (categoryItem->childCount() == 0) {
+      // Every process in this category is hidden — collapse the header too.
+      categoryItem->setHidden(true);
+    } else {
+      categoryItem->setExpanded(false);
+    }
+  }
+}
+
+void RecipePage::onShowVisibilityDialog()
+{
+  // Snapshot the registry into a flat process-name list + a category lookup
+  std::vector<std::string> allTypes;
+  for (const auto& cat : RecipeManager::getProcessCategories()) {
+    for (const auto& p : RecipeManager::getProcessesByCategory(cat)) {
+      allTypes.push_back(p);
+    }
+  }
+  auto categoryLookup = [](const std::string& proc) -> std::string {
+    return RecipeManager::getProcessCategory(proc);
+  };
+
+  ProcessVisibilityDialog dlg(allTypes, m_hiddenProcesses, categoryLookup, this);
+
+  // Live refresh of the tree behind the modal dialog as the user clicks
+  connect(&dlg, &ProcessVisibilityDialog::visibilityChanged,
+    this, [this](const std::unordered_set<std::string>& newHidden) {
+      m_hiddenProcesses = newHidden;
+      refreshProcessTemplateList();
+    });
+
+  dlg.exec();
+
+  // Defensive: in case the dialog closed without firing the signal, sync
+  // the final state.
+  m_hiddenProcesses = dlg.hiddenProcesses();
+  refreshProcessTemplateList();
 }
 
 void RecipePage::createMiddlePanel(QWidget* middlePanel)
@@ -462,12 +558,12 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
 
   // ========== TAB WIDGET ==========
   m_middleTabWidget = new QTabWidget();
-  m_middleTabWidget->setStyleSheet(
-    "QTabWidget::pane { border: none; background-color: #2d2d30; }"
-    "QTabBar { background-color: #2d2d30; border: none; }"
+  m_middleTabWidget->setStyleSheet(QString(
+    "QTabWidget::pane { border: none; background-color: %1; }"
+    "QTabBar { background-color: %1; border: none; }"
     "QTabBar::tab {"
-    "  background-color: #1e1e1e;"
-    "  color: #888888;"
+    "  background-color: %2;"
+    "  color: %3;"
     "  padding: 8px 16px;"
     "  margin-right: 2px;"
     "  border: none;"
@@ -478,26 +574,94 @@ void RecipePage::createMiddlePanel(QWidget* middlePanel)
     "  border-bottom: 3px solid transparent;"
     "}"
     "QTabBar::tab:selected {"
-    "  background-color: #0e639c;"
-    "  color: #ffffff;"
+    "  background-color: %4;"
+    "  color: %5;"
     "  font-weight: bold;"
-    "  border-bottom: 3px solid #0e639c;"
+    "  border-bottom: 3px solid %4;"
     "}"
     "QTabBar::tab:hover {"
-    "  background-color: #2a2d2e;"
-    "  color: #d4d4d4;"
+    "  background-color: %6;"
+    "  color: %7;"
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgPrimary),     // %1 pane bg
+        QLatin1String(Theme::Color::bgDeep),        // %2 inactive tab
+        QLatin1String(Theme::Color::textSecondary), // %3 inactive text
+        QLatin1String(Theme::Color::primary),       // %4 selected bg
+        QLatin1String(Theme::Color::textOnPrimary), // %5 selected text
+        QLatin1String(Theme::Color::bgHover),       // %6 hover
+        QLatin1String(Theme::Color::textPrimary))); // %7 hover text
 
   // Create tabs
   QWidget* recipesTab = new QWidget();
   QWidget* stepsTab = new QWidget();
+  QWidget* contextTab = new QWidget();
+  QWidget* visionResultTab = new QWidget();
 
   createRecipesTab(recipesTab);
   createStepsTab(stepsTab);
 
+  // ===== Context Variables tab =====
+  {
+    QVBoxLayout* contextLayout = new QVBoxLayout(contextTab);
+    contextLayout->setContentsMargins(5, 5, 5, 5);
+
+    m_contextVariablePreview = new ContextVariablePreviewWidget();
+    connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
+      [](const QString& varName) {
+        // Copy variable name to clipboard when clicked
+        QApplication::clipboard()->setText(varName);
+        std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
+      });
+    contextLayout->addWidget(m_contextVariablePreview, 1);
+  }
+
+  // ===== Vision Result tab =====
+  {
+    QVBoxLayout* visionTabLayout = new QVBoxLayout(visionResultTab);
+    visionTabLayout->setContentsMargins(5, 5, 5, 5);
+
+    m_visionResultGroup = new QGroupBox("Vision Result");
+    m_visionResultGroup->setStyleSheet(QString(
+      "QGroupBox { "
+      "  font-weight: bold; "
+      "  color: %1; "
+      "  border: 1px solid %2; "
+      "  border-radius: 4px; "
+      "  margin-top: 5px; "
+      "  padding-top: 10px; "
+      "} "
+      "QGroupBox::title { "
+      "  subcontrol-origin: margin; "
+      "  left: 10px; "
+      "  padding: 0 5px; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent),
+          QLatin1String(Theme::Color::borderSubtle)));
+    QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
+    visionLayout->setContentsMargins(5, 15, 5, 5);
+
+    m_visionResultImageLabel = new QLabel("No vision result");
+    m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
+    m_visionResultImageLabel->setMinimumHeight(150);
+    m_visionResultImageLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  border: 1px solid %2; "
+      "  color: %3; "
+      "  font-style: italic; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::bgDeep),
+          QLatin1String(Theme::Color::borderSubtle),
+          QLatin1String(Theme::Color::textSecondary)));
+    visionLayout->addWidget(m_visionResultImageLabel);
+
+    visionTabLayout->addWidget(m_visionResultGroup, 1);
+  }
+
   m_middleTabWidget->addTab(recipesTab, "Recipes");
   m_middleTabWidget->addTab(stepsTab, "Steps");
+  m_middleTabWidget->addTab(contextTab, "Context");
+  m_middleTabWidget->addTab(visionResultTab, "Vision Result");
 
   // Start on Steps tab by default
   m_middleTabWidget->setCurrentIndex(1);
@@ -514,28 +678,15 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
   // Header row: count label + Refresh button
   QHBoxLayout* headerLayout = new QHBoxLayout();
   m_recipeCountLabel = new QLabel("0 recipe(s)");
-  m_recipeCountLabel->setStyleSheet("font-size: 12px; color: #a0a0a0;");
+  m_recipeCountLabel->setStyleSheet(QString("font-size: 12px; color: %1;")
+                                      .arg(QLatin1String(Theme::Color::textSecondary)));
   headerLayout->addWidget(m_recipeCountLabel);
   headerLayout->addStretch();
 
   m_refreshRecipeListButton = new QPushButton("Refresh");
   m_refreshRecipeListButton->setToolTip("Refresh recipe list");
   m_refreshRecipeListButton->setFixedSize(70, 28);
-  m_refreshRecipeListButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  font-size: 11px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #4a4a4a; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2d2d30; "
-    "}"
-  );
+  m_refreshRecipeListButton->setStyleSheet(RecipeStyles::smallToolButton());
   connect(m_refreshRecipeListButton, &QPushButton::clicked, this, &RecipePage::onRefreshRecipeList);
   headerLayout->addWidget(m_refreshRecipeListButton);
 
@@ -545,19 +696,7 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
   m_recipeFilterEdit = new QLineEdit();
   m_recipeFilterEdit->setPlaceholderText("Filter recipes...");
   m_recipeFilterEdit->setClearButtonEnabled(true);
-  m_recipeFilterEdit->setStyleSheet(
-    "QLineEdit { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 3px; "
-    "  padding: 5px 8px; "
-    "  font-size: 12px; "
-    "} "
-    "QLineEdit:focus { "
-    "  border: 1px solid #007acc; "
-    "}"
-  );
+  m_recipeFilterEdit->setStyleSheet(RecipeStyles::searchBox());
   connect(m_recipeFilterEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
     // Iterate all top-level items (folders + uncategorized recipes)
     for (int i = 0; i < m_recipeListWidget->topLevelItemCount(); ++i) {
@@ -589,27 +728,27 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
   m_recipeListWidget = new QTreeWidget();
   m_recipeListWidget->setColumnCount(1);
   m_recipeListWidget->setHeaderHidden(true);
-  m_recipeListWidget->setStyleSheet(
+  m_recipeListWidget->setStyleSheet(QString(
     "QTreeWidget { "
-    "  background-color: #1e1e1e; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #3f3f46; "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 1px solid %3; "
     "  border-radius: 3px; "
     "  font-size: 14px; "
     "} "
     "QTreeWidget::item { "
     "  padding: 7px 8px; "
-    "  border-bottom: 1px solid #2d2d30; "
+    "  border-bottom: 1px solid %4; "
     "} "
     "QTreeWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: #ffffff; "
+    "  background-color: %5; "
+    "  color: %6; "
     "} "
     "QTreeWidget::item:hover { "
-    "  background-color: #2a2d2e; "
+    "  background-color: %7; "
     "} "
     "QTreeWidget::branch { "
-    "  background-color: #1e1e1e; "
+    "  background-color: %1; "
     "} "
     "QTreeWidget::branch:has-siblings:!adjoins-item { "
     "  border-image: none; "
@@ -620,7 +759,13 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
     "QTreeWidget::branch:closed:has-children { "
     "  image: url(none); "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),         // %1
+        QLatin1String(Theme::Color::textPrimary),    // %2
+        QLatin1String(Theme::Color::borderSubtle),   // %3
+        QLatin1String(Theme::Color::bgPrimary),      // %4 row separator
+        QLatin1String(Theme::Color::primary),        // %5 selected bg
+        QLatin1String(Theme::Color::textOnPrimary),  // %6 selected text
+        QLatin1String(Theme::Color::bgHover)));      // %7 hover
   m_recipeListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
   m_recipeListWidget->setDragDropMode(QAbstractItemView::InternalMove);
   m_recipeListWidget->setDefaultDropAction(Qt::MoveAction);
@@ -649,22 +794,48 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
   QHBoxLayout* actionBar = new QHBoxLayout();
   actionBar->setSpacing(4);
 
+  // Compact action button QSS used by the 4 small folder/recipe buttons.
+  // Themed via Theme::Color so the palette applies uniformly.
+  const QString compactPrimary = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::primary),
+          QLatin1String(Theme::Color::primaryHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactNeutral = QString(
+      "QPushButton { background-color: %1; color: %2; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %3; }"
+      "QPushButton:disabled { background-color: %4; color: %5; }"
+    ).arg(QLatin1String(Theme::Color::bgSurface),
+          QLatin1String(Theme::Color::textPrimary),
+          QLatin1String(Theme::Color::bgHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactDanger = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::danger),
+          QLatin1String(Theme::Color::dangerHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
   m_createFolderButton = new QPushButton("+ Folder");
   m_createFolderButton->setFixedHeight(26);
-  m_createFolderButton->setStyleSheet(
-      "QPushButton { background-color: #1e40af; color: white; border: none; "
-      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-      "QPushButton:hover { background-color: #1e3a8a; }");
+  m_createFolderButton->setStyleSheet(compactPrimary);
   connect(m_createFolderButton, &QPushButton::clicked, this, &RecipePage::onCreateFolder);
 
   m_removeFolderButton = new QPushButton("- Folder");
   m_removeFolderButton->setFixedHeight(26);
   m_removeFolderButton->setEnabled(false);
-  m_removeFolderButton->setStyleSheet(
-      "QPushButton { background-color: #3f3f46; color: white; border: none; "
-      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-      "QPushButton:hover { background-color: #52525b; }"
-      "QPushButton:disabled { background-color: #27272a; color: #52525b; }");
+  m_removeFolderButton->setStyleSheet(compactNeutral);
   connect(m_removeFolderButton, &QPushButton::clicked, this, [this]() {
       QTreeWidgetItem* item = m_recipeListWidget->currentItem();
       if (item && item->data(0, Qt::UserRole + 1).toString() == "folder") {
@@ -675,21 +846,13 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
   m_copyRecipeButton = new QPushButton("Copy");
   m_copyRecipeButton->setFixedHeight(26);
   m_copyRecipeButton->setEnabled(false);
-  m_copyRecipeButton->setStyleSheet(
-      "QPushButton { background-color: #3f3f46; color: white; border: none; "
-      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-      "QPushButton:hover { background-color: #52525b; }"
-      "QPushButton:disabled { background-color: #27272a; color: #52525b; }");
+  m_copyRecipeButton->setStyleSheet(compactNeutral);
   connect(m_copyRecipeButton, &QPushButton::clicked, this, &RecipePage::onCopyRecipe);
 
   m_deleteRecipeButton = new QPushButton("Delete");
   m_deleteRecipeButton->setFixedHeight(26);
   m_deleteRecipeButton->setEnabled(false);
-  m_deleteRecipeButton->setStyleSheet(
-      "QPushButton { background-color: #7f1d1d; color: white; border: none; "
-      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-      "QPushButton:hover { background-color: #991b1b; }"
-      "QPushButton:disabled { background-color: #27272a; color: #52525b; }");
+  m_deleteRecipeButton->setStyleSheet(compactDanger);
   connect(m_deleteRecipeButton, &QPushButton::clicked, this, &RecipePage::onDeleteSelectedRecipe);
 
   actionBar->addWidget(m_createFolderButton);
@@ -702,7 +865,8 @@ void RecipePage::createRecipesTab(QWidget* recipesTab)
 
   // Help text
   QLabel* helpLabel = new QLabel("Double-click to load | Right-click for options | Drag to move");
-  helpLabel->setStyleSheet("font-size: 10px; color: #808080; font-style: italic;");
+  helpLabel->setStyleSheet(QString("font-size: 10px; color: %1; font-style: italic;")
+                             .arg(QLatin1String(Theme::Color::textSecondary)));
   helpLabel->setAlignment(Qt::AlignCenter);
   layout->addWidget(helpLabel);
 }
@@ -718,97 +882,142 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   QLabel* nameLabel = new QLabel("Name:");
   nameLabel->setStyleSheet(RecipeStyles::sectionLabel());
   m_recipeNameEdit = new QLineEdit(QString::fromStdString(m_recipeManager->getRecipeName()));
-  m_recipeNameEdit->setStyleSheet(
+  m_recipeNameEdit->setStyleSheet(QString(
     "QLineEdit { "
-    "  background-color: #2d2d30; "
-    "  color: #ffffff; "
+    "  background-color: %1; "
+    "  color: %2; "
     "  font-size: 14px; "
     "  font-weight: bold; "
     "  padding: 6px 10px; "
-    "  border: 2px solid #007acc; "
+    "  border: 2px solid %3; "
     "  border-radius: 4px; "
     "} "
     "QLineEdit:focus { "
-    "  border: 2px solid #0098ff; "
-    "  background-color: #1e1e1e; "
+    "  border: 2px solid %4; "
+    "  background-color: %5; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::primaryHover),
+        QLatin1String(Theme::Color::bgDeep)));
   connect(m_recipeNameEdit, &QLineEdit::textChanged, this, &RecipePage::onRecipeNameChanged);
   nameLayout->addWidget(nameLabel);
   nameLayout->addWidget(m_recipeNameEdit, 1);
 
-  // Quick Save button
+  // Quick Save button — success green family
   QPushButton* quickSaveButton = new QPushButton("Save");
   quickSaveButton->setToolTip("Save recipe (Ctrl+S)");
   quickSaveButton->setFixedSize(60, 32);
-  quickSaveButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #28a745, stop:1 #1e7e34); "
-    "  color: white; "
-    "  font-weight: bold; "
-    "  padding: 4px 8px; "
-    "  border: 1px solid #1e7e34; "
-    "  border-radius: 4px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34ce57, stop:1 #28a745); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #1c7430; "
-    "}"
-  );
+  quickSaveButton->setStyleSheet(Theme::Buttons::bezelSuccess());
   connect(quickSaveButton, &QPushButton::clicked, this, &RecipePage::onSaveRecipe);
   nameLayout->addWidget(quickSaveButton);
 
   layout->addLayout(nameLayout);
 
+  // ========== EXECUTE BUTTONS ROW (under the Name field) ==========
+  QHBoxLayout* executeRow = new QHBoxLayout();
+  executeRow->setSpacing(5);
+
+  // Run Recipe button — warning orange family ("go" action)
+  m_runRecipeButton = new QPushButton("Run Recipe");
+  m_runRecipeButton->setFixedHeight(28);
+  m_runRecipeButton->setStyleSheet(Theme::Buttons::bezelWarning());
+  connect(m_runRecipeButton, &QPushButton::clicked, this, &RecipePage::onRunRecipe);
+  executeRow->addWidget(m_runRecipeButton);
+
+  // Run Selected button — primary blue family
+  m_runSelectedStepButton = new QPushButton("Run Selected");
+  m_runSelectedStepButton->setFixedHeight(28);
+  m_runSelectedStepButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  connect(m_runSelectedStepButton, &QPushButton::clicked, this, &RecipePage::onRunSelectedStep);
+  executeRow->addWidget(m_runSelectedStepButton);
+
+  // Breakpoint button — danger red family ("halt here")
+  m_breakpointButton = new QPushButton("B");
+  m_breakpointButton->setToolTip("Toggle breakpoint on selected step");
+  m_breakpointButton->setFixedSize(40, 28);
+  m_breakpointButton->setStyleSheet(Theme::Buttons::bezelDanger());
+  connect(m_breakpointButton, &QPushButton::clicked, this, &RecipePage::onBreakpointButtonClicked);
+  executeRow->addWidget(m_breakpointButton);
+
+  // Context Viewer button
+  m_contextViewerButton = new QPushButton("CV");
+  m_contextViewerButton->setToolTip("Context Viewer - View execution context variables");
+  m_contextViewerButton->setFixedSize(40, 28);
+  m_contextViewerButton->setStyleSheet(RecipeStyles::contextViewerButton());
+  connect(m_contextViewerButton, &QPushButton::clicked, this, &RecipePage::onShowContextViewer);
+  executeRow->addWidget(m_contextViewerButton);
+
+  executeRow->addStretch(1);
+
+  // STOP button (emergency stop for motors and sequence) - on the far right
+  m_stopButton = new QPushButton("⚠ STOP");
+  m_stopButton->setObjectName("stopButton");
+  m_stopButton->setToolTip("Emergency stop - halt all motion and sequence execution");
+  m_stopButton->setFixedSize(70, 28);
+  m_stopButton->setStyleSheet(RecipeStyles::emergencyStopButton());
+  connect(m_stopButton, &QPushButton::clicked, this, &RecipePage::onStopRecipeRequested);
+  executeRow->addWidget(m_stopButton);
+
+  layout->addLayout(executeRow);
+
   // ========== DROPDOWN MENUS ROW ==========
   QHBoxLayout* menuRow = new QHBoxLayout();
   menuRow->setSpacing(3);
 
-  // Common dropdown button style
-  QString menuButtonStyle =
+  // Common dropdown button style — neutral palette family
+  const QString menuButtonStyle = QString(
     "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4a4a4a, stop:1 #3a3a3a); "
+    "  background-color: %1; "
     "  color: white; "
     "  font-weight: bold; "
     "  padding: 6px 12px; "
     "  min-height: 28px; "
-    "  border: 1px solid #555555; "
+    "  border: 1px solid %2; "
     "  border-radius: 3px; "
     "} "
     "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #4a4a4a); "
+    "  background-color: %3; "
     "} "
     "QPushButton:pressed, QPushButton:menu-open { "
-    "  background-color: #3a3a3a; "
+    "  background-color: %4; "
     "} "
     "QPushButton::menu-indicator { "
     "  subcontrol-origin: padding; "
     "  subcontrol-position: center right; "
     "  right: 5px; "
-    "}";
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgSurface),
+        QLatin1String(Theme::Color::borderNormal),
+        QLatin1String(Theme::Color::bgHover),
+        QLatin1String(Theme::Color::bgPrimary));
 
-  QString menuStyle =
+  const QString menuStyle = QString(
     "QMenu { "
-    "  background-color: #2d2d30; "
-    "  border: 1px solid #555555; "
+    "  background-color: %1; "
+    "  border: 1px solid %2; "
     "  padding: 4px; "
     "} "
     "QMenu::item { "
     "  background-color: transparent; "
     "  padding: 6px 20px; "
-    "  color: #d4d4d4; "
+    "  color: %3; "
     "} "
     "QMenu::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
+    "  background-color: %4; "
+    "  color: %5; "
     "} "
     "QMenu::separator { "
     "  height: 1px; "
-    "  background: #555555; "
+    "  background: %2; "
     "  margin: 4px 10px; "
-    "}";
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::borderNormal),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary));
 
   // ===== FILE MENU =====
   QPushButton* fileMenuBtn = new QPushButton("File \u25BC");
@@ -897,8 +1106,8 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
 
   // ========== PROCESS INSTANCE LIST ==========
   m_recipeTree = new QTreeWidget();
-  m_recipeTree->setColumnCount(4);
-  m_recipeTree->setHeaderLabels({ "#", "", "Process Instance", "Run" });  // Column 1 = symbol
+  m_recipeTree->setColumnCount(5);
+  m_recipeTree->setHeaderLabels({ "#", "", "Process Instance", "Details", "Run" });
   m_recipeTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
   m_recipeTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
   m_recipeTree->setRootIsDecorated(false);  // Hide expand arrows for clean look
@@ -909,13 +1118,15 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   m_recipeTree->viewport()->setAttribute(Qt::WA_StaticContents);  // Reduce repaints
 
   m_recipeTree->header()->setStretchLastSection(false);
-  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);             // Step number fixed width
-  m_recipeTree->setColumnWidth(0, 35);
+  m_recipeTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);             // Step number + stripe
+  m_recipeTree->setColumnWidth(0, 38);
   m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Fixed);             // Symbol column fixed
   m_recipeTree->setColumnWidth(1, 30);
   m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);           // Process Instance stretches
-  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Fixed);             // Run checkbox fixed
-  m_recipeTree->setColumnWidth(3, 50);
+  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Interactive);       // Details (resizable)
+  m_recipeTree->setColumnWidth(3, 180);
+  m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::Fixed);             // Run checkbox fixed
+  m_recipeTree->setColumnWidth(4, 50);
 
   m_recipeTree->setStyleSheet(RecipeStyles::recipeStepsTree());
 
@@ -934,107 +1145,47 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   title->setStyleSheet(RecipeStyles::sectionLabel());
   layout->addWidget(title);
 
-  // ========================================
-  // Horizontal splitter: Parameters (full height) | Context Variables + Vision Result
-  // ========================================
-  QSplitter* mainSplitter = new QSplitter(Qt::Horizontal);
-  mainSplitter->setHandleWidth(5);
-  mainSplitter->setOpaqueResize(false);  // Smoother resize performance
-  mainSplitter->setStyleSheet(
-    "QSplitter::handle { background-color: #3f3f46; }"
-    "QSplitter::handle:hover { background-color: #007acc; }"
-  );
-
-  // LEFT side (Right.1): Process parameters - FULL HEIGHT
+  // Process parameters now occupy the full right panel.  Context Variables and
+  // Vision Result have been moved into tabs in the middle panel.
   m_configScrollArea = new QScrollArea();
   m_configScrollArea->setWidgetResizable(true);
   m_configScrollArea->setStyleSheet(RecipeStyles::configScrollArea());
-  mainSplitter->addWidget(m_configScrollArea);
+  layout->addWidget(m_configScrollArea, 1);  // Stretch factor 1 to fill available space
 
-  // RIGHT side (Right.2): Container for Context Variables + Vision Result
-  QWidget* rightContainer = new QWidget();
-  QVBoxLayout* rightLayout = new QVBoxLayout(rightContainer);
-  rightLayout->setContentsMargins(0, 0, 0, 0);
-  rightLayout->setSpacing(5);
+  // Create the floating execution window.  Parented to `this` so destruction
+  // cascades, but flagged Qt::Window so it's a real top-level window.
+  m_runWindow = new RecipeRunWindow(this);
 
-  // Context variable preview widget (top of right side)
-  m_contextVariablePreview = new ContextVariablePreviewWidget();
-  connect(m_contextVariablePreview, &ContextVariablePreviewWidget::variableClicked,
-    [](const QString& varName) {
-      // Copy variable name to clipboard when clicked
-      QApplication::clipboard()->setText(varName);
-      std::cout << "[RecipePage] Copied to clipboard: " << varName.toStdString() << std::endl;
-    });
-  rightLayout->addWidget(m_contextVariablePreview, 1);  // Stretch factor 1
-
-  // Vision result image display (bottom of right side)
-  m_visionResultGroup = new QGroupBox("Vision Result");
-  m_visionResultGroup->setStyleSheet(
-    "QGroupBox { "
-    "  font-weight: bold; "
-    "  color: #FFA500; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 5px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}"
-  );
-  QVBoxLayout* visionLayout = new QVBoxLayout(m_visionResultGroup);
-  visionLayout->setContentsMargins(5, 15, 5, 5);
-
-  m_visionResultImageLabel = new QLabel("No vision result");
-  m_visionResultImageLabel->setAlignment(Qt::AlignCenter);
-  m_visionResultImageLabel->setMinimumHeight(150);
-  m_visionResultImageLabel->setStyleSheet(
-    "QLabel { "
-    "  background-color: #0f0f0f; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #808080; "
-    "  font-style: italic; "
-    "}"
-  );
-  visionLayout->addWidget(m_visionResultImageLabel);
-  rightLayout->addWidget(m_visionResultGroup, 1);  // Stretch factor 1
-
-  mainSplitter->addWidget(rightContainer);
-
-  // Set initial sizes (60% parameters, 40% context+vision)
-  mainSplitter->setSizes({600, 400});
-
-  layout->addWidget(mainSplitter, 1);  // Stretch factor 1 to fill available space
-
-  // Create manual adjust widget (will be shown when needed)
+  // Create manual adjust widget and register it with the run window
   m_manualAdjustWidget = new ManualAdjustWidget(
     m_context,
     m_matrixLoader
   );
   m_manualAdjustWidget->setStyleSheet(
-    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM()));
 
   // Connect manual adjust response
   connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
     this, &RecipePage::onManualAdjustResponse);
+  m_runWindow->setActiveWidget(m_manualAdjustWidget);
 
-  // Create manual align point widget (will be shown when needed)
+  // Create manual align point widget and register it with the run window
   m_manualAlignPointWidget = new ManualAlignPointWidget(
     m_context->motionManager,
     m_context
   );
   m_manualAlignPointWidget->setStyleSheet(
-    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM));
+    QString("background-color: %1;").arg(RecipeStyles::Colors::BG_MEDIUM()));
 
   // Connect manual align point response
   connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
     this, &RecipePage::onManualAlignPointResponse);
+  m_runWindow->setActiveWidget(m_manualAlignPointWidget);
 
-  // Create user input widget (will be shown when needed)
+  // Create user input widget and register it with the run window
   m_userInputWidget = new UserInputWidget();
-  m_userInputWidget->setStyleSheet("background-color: #2d2d30;");
+  m_userInputWidget->setStyleSheet(QString("background-color: %1;")
+                                     .arg(QLatin1String(Theme::Color::bgPrimary)));
 
   // Apply input alignment from application settings (same as prompt)
   if (m_context && m_context->applicationSettings) {
@@ -1047,6 +1198,7 @@ void RecipePage::createRightPanel(QWidget* rightPanel)
   // Connect user input response
   connect(m_userInputWidget, &UserInputWidget::responseReceived,
     this, &RecipePage::onUserInputResponse);
+  m_runWindow->setActiveWidget(m_userInputWidget);
 
   clearConfigurationForm();
 }
@@ -1093,15 +1245,7 @@ void RecipePage::onProductChanged()
       m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
         .arg(QString::fromStdString(productName))
         .arg(QString::fromStdString(productPath)));
-      m_loadedProductLabel->setStyleSheet(
-      "font-size: 11px; "
-      "color: #4ec9b0; "
-      "font-weight: bold; "
-      "padding: 5px; "
-      "border: 1px solid #4ec9b0; "
-      "border-radius: 3px; "
-      "background-color: #1e3a32;"
-    );
+      m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
     }
 
     std::cout << "[RecipePage] Product changed to: " << productName << std::endl;
@@ -1170,15 +1314,7 @@ void RecipePage::onLoadRecipe()
             m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
               .arg(QString::fromStdString(loadedProductName))
               .arg(QString::fromStdString(productFile)));
-            m_loadedProductLabel->setStyleSheet(
-            "font-size: 11px; "
-            "color: #4ec9b0; "
-            "font-weight: bold; "
-            "padding: 5px; "
-            "border: 1px solid #4ec9b0; "
-            "border-radius: 3px; "
-            "background-color: #1e3a32;"
-          );
+            m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
           }
 
           std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
@@ -1192,14 +1328,7 @@ void RecipePage::onLoadRecipe()
           if (m_loadedProductLabel) {
             m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
               .arg(QString::fromStdString(productFile)));
-            m_loadedProductLabel->setStyleSheet(
-            "font-size: 11px; "
-            "color: #f48771; "
-            "padding: 5px; "
-            "border: 1px solid #f48771; "
-            "border-radius: 3px; "
-            "background-color: #3d2121;"
-          );
+            m_loadedProductLabel->setStyleSheet(productLabelErrorQss());
           }
 
           QMessageBox::warning(this, "Product Not Found",
@@ -1211,14 +1340,7 @@ void RecipePage::onLoadRecipe()
     else {
       if (m_loadedProductLabel) {
         m_loadedProductLabel->setText("Product: None");
-        m_loadedProductLabel->setStyleSheet(
-        "font-size: 11px; "
-        "color: #888888; "
-        "padding: 5px; "
-        "border: 1px solid #3f3f46; "
-        "border-radius: 3px; "
-        "background-color: #1e1e1e;"
-      );
+        m_loadedProductLabel->setStyleSheet(productLabelNeutralQss());
       }
 
       QMessageBox::information(this, "Success", "Recipe loaded successfully!");
@@ -1412,7 +1534,7 @@ void RecipePage::populateRecipeListWidget()
     QFont folderFont = folderItem->font(0);
     folderFont.setBold(true);
     folderItem->setFont(0, folderFont);
-    folderItem->setForeground(0, QColor("#c8c030"));  // amber tint for folders
+    folderItem->setForeground(0, QColor(QLatin1String(Theme::Color::warning)));  // amber/orange tint for folders
 
     for (const QFileInfo& fi : subFiles) {
       QTreeWidgetItem* recipeItem = makeRecipeItem(fi);
@@ -1479,26 +1601,32 @@ void RecipePage::onRecipeListContextMenu(const QPoint& pos)
 {
   QTreeWidgetItem* item = m_recipeListWidget->itemAt(pos);
 
-  static const QString menuStyle =
+  // Themed context menu — same colors as the dropdown menus above.
+  const QString menuStyle = QString(
     "QMenu { "
-    "  background-color: #2d2d30; "
-    "  border: 1px solid #555555; "
+    "  background-color: %1; "
+    "  border: 1px solid %2; "
     "  padding: 4px; "
     "} "
     "QMenu::item { "
     "  background-color: transparent; "
     "  padding: 6px 20px; "
-    "  color: #d4d4d4; "
+    "  color: %3; "
     "} "
     "QMenu::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
+    "  background-color: %4; "
+    "  color: %5; "
     "} "
     "QMenu::separator { "
     "  height: 1px; "
-    "  background: #555555; "
+    "  background: %2; "
     "  margin: 4px 10px; "
-    "}";
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::borderNormal),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary));
 
   QMenu contextMenu(this);
   contextMenu.setStyleSheet(menuStyle);
@@ -1627,15 +1755,7 @@ void RecipePage::onLoadSelectedRecipe()
             m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
               .arg(QString::fromStdString(productName))
               .arg(QString::fromStdString(productFile)));
-            m_loadedProductLabel->setStyleSheet(
-              "font-size: 11px; "
-              "color: #4ec9b0; "
-              "font-weight: bold; "
-              "padding: 5px; "
-              "border: 1px solid #4ec9b0; "
-              "border-radius: 3px; "
-              "background-color: #1e3a32;"
-            );
+            m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
           }
 
           std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
@@ -1683,15 +1803,7 @@ void RecipePage::loadRecipeFromFile(const QString& filePath)
             m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
               .arg(QString::fromStdString(productName))
               .arg(QString::fromStdString(productFile)));
-            m_loadedProductLabel->setStyleSheet(
-              "font-size: 11px; "
-              "color: #4ec9b0; "
-              "font-weight: bold; "
-              "padding: 5px; "
-              "border: 1px solid #4ec9b0; "
-              "border-radius: 3px; "
-              "background-color: #1e3a32;"
-            );
+            m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
           }
 
           std::cout << "[RecipePage] Auto-loaded product: " << productFile << std::endl;
@@ -2352,15 +2464,7 @@ void RecipePage::onUpdateProductFile()
         m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
           .arg(QString::fromStdString(productName))
           .arg(QString::fromStdString(m_recipeManager->getProductFile())));
-        m_loadedProductLabel->setStyleSheet(
-        "font-size: 11px; "
-        "color: #27ae60; "
-        "font-weight: bold; "
-        "padding: 5px; "
-        "border: 1px solid #27ae60; "
-        "border-radius: 3px; "
-        "background-color: #e8f5e9;"
-      );
+        m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
       }
 
       QMessageBox::information(this, "Success",
@@ -2685,6 +2789,9 @@ void RecipePage::onParameterChanged()
   for (const auto& [key, value] : params) {
     m_recipeManager->setStepParameter(m_selectedStepIndex, key, value);
   }
+
+  // Refresh the tree row so the inline Details column reflects the new params.
+  updateSingleStepItem(m_selectedStepIndex);
 }
 
 void RecipePage::onProcessTemplateSelected(QTreeWidgetItem* item, int column)
@@ -2870,14 +2977,7 @@ void RecipePage::updateRecipeFileNameDisplay()
   if (currentPath.empty()) {
     // No file loaded yet
     m_recipeFileLabel->setText("No recipe file");
-    m_recipeFileLabel->setStyleSheet(
-      "font-size: 11px; "
-      "color: #888888; "
-      "padding: 4px; "
-      "background-color: #1e1e1e; "
-      "border: 1px solid #3f3f46; "
-      "border-radius: 3px;"
-    );
+    m_recipeFileLabel->setStyleSheet(recipeFileLabelNeutralQss());
   }
   else {
     // Extract just the filename from full path
@@ -2886,15 +2986,7 @@ void RecipePage::updateRecipeFileNameDisplay()
     QString fileName = fileInfo.fileName();
 
     m_recipeFileLabel->setText(QString("Recipe: %1").arg(fileName));
-    m_recipeFileLabel->setStyleSheet(
-      "font-size: 11px; "
-      "color: #4ec9b0; "
-      "font-weight: bold; "
-      "padding: 4px; "
-      "background-color: #1e3a32; "
-      "border: 1px solid #4ec9b0; "
-      "border-radius: 3px;"
-    );
+    m_recipeFileLabel->setStyleSheet(recipeFileLabelLoadedQss());
   }
 }
 
@@ -2983,7 +3075,9 @@ void RecipePage::clearConfigurationForm()
 
   QLabel* label = new QLabel("Select a process step to configure");
   label->setAlignment(Qt::AlignCenter);
-  label->setStyleSheet("color: #888888; font-size: 14px; padding: 50px; background-color: #1e1e1e;");
+  label->setStyleSheet(QString("color: %1; font-size: 14px; padding: 50px; background-color: %2;")
+                         .arg(QLatin1String(Theme::Color::textSecondary),
+                              QLatin1String(Theme::Color::bgDeep)));
 
   layout->addWidget(label);
   m_configScrollArea->setWidget(placeholder);
@@ -3050,11 +3144,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3076,11 +3169,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3112,11 +3204,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the manual align point widget in the scroll area
-      m_configScrollArea->setWidget(m_manualAlignPointWidget);
+      // Show the manual align point widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+      }
       m_manualAlignPointWidget->showAlignment(
         QString::fromStdString(pointName),
         QString::fromStdString(message),
@@ -3138,11 +3229,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the manual align point widget in the scroll area
-        m_configScrollArea->setWidget(m_manualAlignPointWidget);
+        // Show the manual align point widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+        }
         m_manualAlignPointWidget->showAlignment(
           QString::fromStdString(pointName),
           QString::fromStdString(message),
@@ -3174,11 +3264,10 @@ void RecipePage::setupSequenceEngine()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the manual adjust widget in the scroll area
-      m_configScrollArea->setWidget(m_manualAdjustWidget);
+      // Show the manual adjust widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_manualAdjustWidget);
+      }
       m_manualAdjustWidget->showAdjustment(
         QString::fromStdString(message),
         QString::fromStdString(deviceName),
@@ -3201,11 +3290,10 @@ void RecipePage::setupSequenceEngine()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the manual adjust widget in the scroll area
-        m_configScrollArea->setWidget(m_manualAdjustWidget);
+        // Show the manual adjust widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_manualAdjustWidget);
+        }
         m_manualAdjustWidget->showAdjustment(
           QString::fromStdString(message),
           QString::fromStdString(deviceName),
@@ -3382,11 +3470,10 @@ void RecipePage::onRunRecipe()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area
-      delete m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3408,11 +3495,10 @@ void RecipePage::onRunRecipe()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3660,11 +3746,10 @@ void RecipePage::onRunSelectedStep()
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
       // Already on UI thread - call directly to avoid deadlock
-      // Take the current widget out of the scroll area (will be restored later)
-      (void)m_configScrollArea->takeWidget();
-
-      // Show the user input widget in the scroll area
-      m_configScrollArea->setWidget(m_userInputWidget);
+      // Show the user input widget in the floating run window
+      if (m_runWindow) {
+        m_runWindow->setActiveWidget(m_userInputWidget);
+      }
       m_userInputWidget->showInput(
         QString::fromStdString(title),
         QString::fromStdString(prompt),
@@ -3686,11 +3771,10 @@ void RecipePage::onRunSelectedStep()
     } else {
       // Called from worker thread - use BlockingQueuedConnection
       QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue, &result]() {
-        // Take the current widget out of the scroll area
-        delete m_configScrollArea->takeWidget();
-
-        // Show the user input widget in the scroll area
-        m_configScrollArea->setWidget(m_userInputWidget);
+        // Show the user input widget in the floating run window
+        if (m_runWindow) {
+          m_runWindow->setActiveWidget(m_userInputWidget);
+        }
         m_userInputWidget->showInput(
           QString::fromStdString(title),
           QString::fromStdString(prompt),
@@ -3981,26 +4065,20 @@ void RecipePage::onExecutionCompleted(bool success, QString message)
   // ✅ Update vision result image if available
   updateVisionResultImage();
 
-  // ✅ NEW: Auto-dismiss progress panel after 3 seconds
+  // ✅ Auto-dismiss the floating run window after 3 seconds
   QTimer::singleShot(3000, this, [this]() {
-    // ✅ FIX: Only dismiss if no execution is running (prevents dismissing new execution)
+    // Only dismiss if no execution is running (prevents dismissing new execution)
     if (m_recipeWorker && m_recipeWorker->isRunning()) {
       std::cout << "[RecipePage] Skipping auto-dismiss - new execution is running" << std::endl;
       return;
     }
-
-    // Only switch if user hasn't manually selected a step
-    if (m_progressWidget && m_configScrollArea->widget() == m_progressWidget) {
-      std::cout << "[RecipePage] Auto-dismissing progress panel" << std::endl;
-
-      // Switch back to last selected config or placeholder
-      if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
-        updateConfigurationForm();
-      }
-      else {
-        clearConfigurationForm();
-      }
+    // Already closed?
+    if (!m_runWindow || !m_runWindow->isRunning()) {
+      return;
     }
+
+    std::cout << "[RecipePage] Auto-dismissing run window" << std::endl;
+    showConfigPanel();   // Hides the run window and tears down m_progressWidget
   });
 
   m_recipeWorker = nullptr;
@@ -4102,8 +4180,10 @@ void RecipePage::highlightExecutingStep(int stepIndex)
     }
 
     if (i == targetTreeIndex) {
-      // Highlight executing step with bold yellow text on brightened background
-      QString highlightBgColor = "#555555";  // Gray background for executing step visibility
+      // Highlight executing step: warning-orange text on a deep accent bg so
+      // it stands out against the normal row color while staying on-palette.
+      const QString highlightBgColor = QLatin1String(Theme::Color::primaryPressed);
+      const QString highlightTextColor = QLatin1String(Theme::Color::warning);
 
       // Update column 1 (step number label)
       QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
@@ -4113,13 +4193,13 @@ void RecipePage::highlightExecutingStep(int stepIndex)
           label->setStyleSheet(QString(
             "QLabel { "
             "  background-color: %1; "
-            "  color: #ffff00; "
+            "  color: %2; "
             "  padding: 4px; "
             "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
             "  font-weight: bold; "
             "  font-size: 14px; "
             "}"
-          ).arg(highlightBgColor));
+          ).arg(highlightBgColor, highlightTextColor));
         }
       }
 
@@ -4131,13 +4211,13 @@ void RecipePage::highlightExecutingStep(int stepIndex)
           label->setStyleSheet(QString(
             "QLabel { "
             "  background-color: %1; "
-            "  color: #ffff00; "
+            "  color: %2; "
             "  padding: 4px 8px; "
             "  font-family: 'RobotoMono-Regular', 'Roboto Mono', 'Consolas', monospace; "
             "  font-weight: bold; "
             "  font-size: 14px; "
             "}"
-          ).arg(highlightBgColor));
+          ).arg(highlightBgColor, highlightTextColor));
         }
       }
 
@@ -4146,7 +4226,8 @@ void RecipePage::highlightExecutingStep(int stepIndex)
     }
     else {
       // Restore normal colors for other items
-      QString textColor = step->enabled ? "#d4d4d4" : "#999999";
+      QString textColor = step->enabled ? QLatin1String(Theme::Color::textPrimary)
+                                        : QLatin1String(Theme::Color::textSecondary);
 
       // Restore column 1 (step number label)
       QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
@@ -4208,7 +4289,8 @@ void RecipePage::clearExecutingStepHighlight()
       bgColorStr = "transparent";  // No background color
     }
 
-    QString textColor = step->enabled ? "#d4d4d4" : "#999999";
+    QString textColor = step->enabled ? QLatin1String(Theme::Color::textPrimary)
+                                      : QLatin1String(Theme::Color::textSecondary);
 
     // Restore column 1 (step number label)
     QWidget* col1Widget = m_recipeTree->itemWidget(item, 1);
@@ -4343,26 +4425,13 @@ void RecipePage::setPageState(PageState state)
 
 void RecipePage::showProgressPanel()
 {
-  // ✅ ULTRA SAFE: Clear everything first
-  if (m_currentConfigWidget) {
-    m_configScrollArea->takeWidget();
-    m_currentConfigWidget->deleteLater();
-    m_currentConfigWidget = nullptr;
+  // Tear down any previous progress widget.  QPointer auto-nulls itself
+  // once Qt actually deletes the object.
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->deleteLater();
   }
 
-  // ✅ ULTRA SAFE: Clear scroll area completely and disconnect old widget
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
-  if (oldWidget) {
-    // DON'T delete reusable widgets (manual adjust widget)
-    if (oldWidget != m_manualAdjustWidget) {
-      oldWidget->disconnect();
-      oldWidget->deleteLater();
-    }
-  }
-
-  // QPointer automatically nulls itself when widget is deleted, no manual reset needed
-
-  // Create fresh widget
+  // Create a fresh progress widget for this run.
   m_progressWidget = new RecipeProgressWidget();
   connect(m_progressWidget, &RecipeProgressWidget::stopRequested,
     this, &RecipePage::onStopRecipeRequested);
@@ -4373,31 +4442,25 @@ void RecipePage::showProgressPanel()
   m_progressWidget->setStatusText("Initializing recipe execution...");
   m_progressWidget->startTimer();
 
-  m_configScrollArea->setWidget(m_progressWidget);
+  // Show in the floating run window.  The right panel of RecipePage is no
+  // longer touched during execution — it keeps showing Process Configuration.
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_progressWidget);
+    m_runWindow->openForRun();
+  }
 }
 
 
 void RecipePage::showConfigPanel()
 {
-  // ✅ ULTRA SAFE: Clear scroll area completely
-  QWidget* oldWidget = m_configScrollArea->takeWidget();
-  if (oldWidget) {
-    // DON'T delete reusable widgets (manual adjust widget)
-    if (oldWidget != m_manualAdjustWidget) {
-      oldWidget->disconnect();
-      oldWidget->deleteLater();
-    }
+  // Hide the floating run window and tear down the progress widget.
+  if (m_runWindow) {
+    m_runWindow->closeAfterRun();
   }
-
-  // QPointer automatically nulls itself, no manual reset needed
-
-  // Show config
-  if (m_selectedStepIndex >= 0 && m_selectedStepIndex < m_recipeManager->getStepCount()) {
-    updateConfigurationForm();
+  if (m_progressWidget && !m_progressWidget.isNull()) {
+    m_progressWidget->deleteLater();
   }
-  else {
-    clearConfigurationForm();
-  }
+  // The right panel was never replaced — no swap needed here.
 }
 
 // ============================================================================
@@ -4446,15 +4509,7 @@ void RecipePage::onLoadProductClicked()
       m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
         .arg(QString::fromStdString(productName))
         .arg(filePath));
-      m_loadedProductLabel->setStyleSheet(
-      "font-size: 11px; "
-      "color: #27ae60; "
-      "font-weight: bold; "
-      "padding: 5px; "
-      "border: 1px solid #27ae60; "
-      "border-radius: 3px; "
-      "background-color: #e8f5e9;"
-    );
+      m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
     }
 
     m_recipeManager->setProductFile(filePath.toStdString());
@@ -4523,15 +4578,7 @@ void RecipePage::loadLastRecipeFromSettings()
           m_loadedProductLabel->setText(QString("Product: %1\nFile: %2")
             .arg(QString::fromStdString(productName))
             .arg(QString::fromStdString(productFile)));
-          m_loadedProductLabel->setStyleSheet(
-          "font-size: 11px; "
-          "color: #27ae60; "
-          "font-weight: bold; "
-          "padding: 5px; "
-          "border: 1px solid #27ae60; "
-          "border-radius: 3px; "
-          "background-color: #e8f5e9;"
-        );
+          m_loadedProductLabel->setStyleSheet(productLabelLoadedQss());
         }
 
         std::cout << "[RecipePage] Auto-loaded product positions: " << productFile << std::endl;
@@ -4540,14 +4587,7 @@ void RecipePage::loadLastRecipeFromSettings()
         if (m_loadedProductLabel) {
           m_loadedProductLabel->setText(QString("⚠ Product file not found:\n%1")
           .arg(QString::fromStdString(productFile)));
-        m_loadedProductLabel->setStyleSheet(
-          "font-size: 11px; "
-          "color: #d32f2f; "
-          "padding: 5px; "
-          "border: 1px solid #d32f2f; "
-          "border-radius: 3px; "
-          "background-color: #ffebee;"
-        );
+          m_loadedProductLabel->setStyleSheet(productLabelErrorQss());
         }
 
         std::cout << "[RecipePage] Warning: Product file not found: " << productFile << std::endl;
@@ -4557,18 +4597,12 @@ void RecipePage::loadLastRecipeFromSettings()
   else {
     // No product file associated with recipe
     m_productStatusLabel->setText("Product: None");
-    m_productStatusLabel->setStyleSheet("font-size: 11px; color: #888888;");
+    m_productStatusLabel->setStyleSheet(QString("font-size: 11px; color: %1;")
+                                          .arg(QLatin1String(Theme::Color::textSecondary)));
 
     if (m_loadedProductLabel) {
       m_loadedProductLabel->setText("Product: None");
-      m_loadedProductLabel->setStyleSheet(
-        "font-size: 11px; "
-        "color: #666; "
-        "padding: 5px; "
-        "border: 1px solid #ddd; "
-        "border-radius: 3px; "
-        "background-color: #f9f9f9;"
-      );
+      m_loadedProductLabel->setStyleSheet(productLabelNeutralQss());
     }
 
     std::cout << "[RecipePage] No product file associated with recipe" << std::endl;
@@ -4582,13 +4616,10 @@ void RecipePage::loadLastRecipeFromSettings()
 void RecipePage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
                                     bool enableX, bool enableY, bool enableZ)
 {
-  // Switch from current view to manual adjust view in the scroll area
-  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
-  // We'll just replace it in the scroll area
-  (void)m_configScrollArea->takeWidget();
-
-  // Show the manual adjust widget in the scroll area
-  m_configScrollArea->setWidget(m_manualAdjustWidget);
+  // Show the manual adjust widget in the floating run window
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_manualAdjustWidget);
+  }
   m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
 
   std::cout << "[RecipePage] Showing manual adjust widget" << std::endl;
@@ -4604,16 +4635,10 @@ void RecipePage::onManualAdjustResponse(bool completed)
   // Hide the manual adjust widget
   m_manualAdjustWidget->hideAdjustment();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
     std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
-  }
-  else {
-    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
   }
 
   // Exit the event loop to unblock the callback
@@ -4625,13 +4650,10 @@ void RecipePage::onManualAdjustResponse(bool completed)
 void RecipePage::onShowManualAlignPoint(QString pointName, QString message,
                                         bool enableX, bool enableY, bool enableZ)
 {
-  // Switch from current view to manual align point view in the scroll area
-  // Don't delete the old widget - it's either progress (QPointer) or config (will be recreated)
-  // We'll just replace it in the scroll area
-  (void)m_configScrollArea->takeWidget();
-
-  // Show the manual align point widget in the scroll area
-  m_configScrollArea->setWidget(m_manualAlignPointWidget);
+  // Show the manual align point widget in the floating run window
+  if (m_runWindow) {
+    m_runWindow->setActiveWidget(m_manualAlignPointWidget);
+  }
   m_manualAlignPointWidget->showAlignment(pointName, message, enableX, enableY, enableZ);
 
   std::cout << "[RecipePage] Showing manual align point widget for point: "
@@ -4648,16 +4670,10 @@ void RecipePage::onManualAlignPointResponse(bool completed)
   // Hide the manual align point widget
   m_manualAlignPointWidget->hideAlignment();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
     std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
-  }
-  else {
-    std::cout << "[RecipePage] No progress widget to switch back to" << std::endl;
   }
 
   // Exit the event loop to unblock the callback
@@ -4677,13 +4693,9 @@ void RecipePage::onUserInputResponse(bool accepted, QString inputText)
   // Hide the user input widget
   m_userInputWidget->hideInput();
 
-  // Remove from scroll area
-  m_configScrollArea->takeWidget();
-
-  // Switch back to progress widget if it exists
-  if (m_progressWidget && !m_progressWidget.isNull()) {
-    m_configScrollArea->setWidget(m_progressWidget);
-    std::cout << "[RecipePage] Switched back to progress widget" << std::endl;
+  // Switch the run window back to the progress widget if it exists
+  if (m_runWindow && m_progressWidget && !m_progressWidget.isNull()) {
+    m_runWindow->setActiveWidget(m_progressWidget);
   }
 
   // Exit the event loop to unblock the callback
@@ -4880,12 +4892,13 @@ void RecipePage::updateVisionResultImage()
                          Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
   m_visionResultImageLabel->setPixmap(pixmap);
-  m_visionResultImageLabel->setStyleSheet(
+  m_visionResultImageLabel->setStyleSheet(QString(
     "QLabel { "
-    "  background-color: #0f0f0f; "
-    "  border: 1px solid #FFA500; "
+    "  background-color: %1; "
+    "  border: 1px solid %2; "
     "}"
-  );
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::accent)));
 
   std::cout << "[RecipePage] Vision result image updated: "
             << resultImage.cols << "x" << resultImage.rows << std::endl;
@@ -4954,17 +4967,18 @@ void RecipePage::activateQuickAddMode()
   if (!m_quickAddOverlay) {
     m_quickAddOverlay = new QLabel(this);
     m_quickAddOverlay->setAlignment(Qt::AlignCenter);
-    m_quickAddOverlay->setStyleSheet(
+    m_quickAddOverlay->setStyleSheet(QString(
       "QLabel { "
-      "  background-color: rgba(0, 120, 200, 0.95); "
+      "  background-color: %1; "
       "  color: white; "
       "  font-size: 14px; "
       "  font-weight: bold; "
-      "  border: 2px solid #00a0ff; "
+      "  border: 2px solid %2; "
       "  border-radius: 8px; "
       "  padding: 15px; "
       "}"
-    );
+    ).arg(QLatin1String(Theme::Color::primary),
+          QLatin1String(Theme::Color::primaryHover)));
   }
 
   updateQuickAddDisplay();
@@ -5017,7 +5031,16 @@ void RecipePage::handleQuickAddProcessKey(int key)
   }
 
   std::string selectedCategory = categories[m_quickAddSelectedCategory];
-  auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+  auto allProcesses = RecipeManager::getProcessesByCategory(selectedCategory);
+
+  // Filter out hidden processes so the index matches what the user sees
+  std::vector<std::string> processes;
+  processes.reserve(allProcesses.size());
+  for (const auto& p : allProcesses) {
+    if (m_hiddenProcesses.count(p) == 0) {
+      processes.push_back(p);
+    }
+  }
 
   int processIndex = key - 1;  // 1-based to 0-based
 
@@ -5069,9 +5092,16 @@ void RecipePage::updateQuickAddDisplay()
 
     text += "<br><i>Press ESC to cancel</i>";
   } else {
-    // Show process list for selected category
+    // Show process list for selected category (filtered by hidden set)
     std::string selectedCategory = categories[m_quickAddSelectedCategory];
-    auto processes = RecipeManager::getProcessesByCategory(selectedCategory);
+    auto allProcesses = RecipeManager::getProcessesByCategory(selectedCategory);
+    std::vector<std::string> processes;
+    processes.reserve(allProcesses.size());
+    for (const auto& p : allProcesses) {
+      if (m_hiddenProcesses.count(p) == 0) {
+        processes.push_back(p);
+      }
+    }
 
     text = QString("<b>QUICK ADD: %1</b><br><br>")
       .arg(QString::fromStdString(selectedCategory));
@@ -5117,6 +5147,11 @@ void RecipePage::showEvent(QShowEvent* event)
     std::cout << "[RecipePage] Skipping hot reload - recipe is executing" << std::endl;
     return;
   }
+
+  // Pick up any external edits to hidden_processes(.local).json and refresh
+  // the available-processes tree.
+  loadHiddenProcessesFromDisk();
+  refreshProcessTemplateList();
 
   std::cout << "[RecipePage] Page activated - hot reloading position data..." << std::endl;
 
@@ -5222,5 +5257,185 @@ bool RecipePage::canLeavePage()
   else {
     // Cancel button or dialog closed
     return false;  // Stay on page
+  }
+}
+
+// ============================================================================
+// THEME APPLICATION
+// ============================================================================
+
+void RecipePage::applyTheme()
+{
+  // Page background
+  setStyleSheet(RecipeStyles::pageBackground());
+
+  // Tab widget — inline QSS using Theme::Color::* (7 args)
+  m_middleTabWidget->setStyleSheet(QString(
+    "QTabWidget::pane { border: none; background-color: %1; }"
+    "QTabBar { background-color: %1; border: none; }"
+    "QTabBar::tab {"
+    "  background-color: %2;"
+    "  color: %3;"
+    "  padding: 8px 16px;"
+    "  margin-right: 2px;"
+    "  border: none;"
+    "  font-size: 12px;"
+    "  font-weight: bold;"
+    "  border-top-left-radius: 3px;"
+    "  border-top-right-radius: 3px;"
+    "  border-bottom: 3px solid transparent;"
+    "}"
+    "QTabBar::tab:selected {"
+    "  background-color: %4;"
+    "  color: %5;"
+    "  font-weight: bold;"
+    "  border-bottom: 3px solid %4;"
+    "}"
+    "QTabBar::tab:hover {"
+    "  background-color: %6;"
+    "  color: %7;"
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::textSecondary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary),
+        QLatin1String(Theme::Color::bgHover),
+        QLatin1String(Theme::Color::textPrimary)));
+
+  // Recipe list tree — inline QSS (7 args)
+  m_recipeListWidget->setStyleSheet(QString(
+    "QTreeWidget { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  border: 1px solid %3; "
+    "  border-radius: 3px; "
+    "  font-size: 14px; "
+    "} "
+    "QTreeWidget::item { "
+    "  padding: 7px 8px; "
+    "  border-bottom: 1px solid %4; "
+    "} "
+    "QTreeWidget::item:selected { "
+    "  background-color: %5; "
+    "  color: %6; "
+    "} "
+    "QTreeWidget::item:hover { "
+    "  background-color: %7; "
+    "} "
+    "QTreeWidget::branch { "
+    "  background-color: %1; "
+    "} "
+    "QTreeWidget::branch:has-siblings:!adjoins-item { "
+    "  border-image: none; "
+    "} "
+    "QTreeWidget::branch:open:has-children { "
+    "  image: url(none); "
+    "} "
+    "QTreeWidget::branch:closed:has-children { "
+    "  image: url(none); "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgDeep),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::borderSubtle),
+        QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::textOnPrimary),
+        QLatin1String(Theme::Color::bgHover)));
+
+  // Recipe name edit — inline QSS (5 args)
+  m_recipeNameEdit->setStyleSheet(QString(
+    "QLineEdit { "
+    "  background-color: %1; "
+    "  color: %2; "
+    "  font-size: 14px; "
+    "  font-weight: bold; "
+    "  padding: 6px 10px; "
+    "  border: 2px solid %3; "
+    "  border-radius: 4px; "
+    "} "
+    "QLineEdit:focus { "
+    "  border: 2px solid %4; "
+    "  background-color: %5; "
+    "}"
+  ).arg(QLatin1String(Theme::Color::bgPrimary),
+        QLatin1String(Theme::Color::textPrimary),
+        QLatin1String(Theme::Color::primary),
+        QLatin1String(Theme::Color::primaryHover),
+        QLatin1String(Theme::Color::bgDeep)));
+
+  // Folder / recipe action buttons — compact inline QSS patterns
+  const QString compactPrimary = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::primary),
+          QLatin1String(Theme::Color::primaryHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactNeutral = QString(
+      "QPushButton { background-color: %1; color: %2; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %3; }"
+      "QPushButton:disabled { background-color: %4; color: %5; }"
+    ).arg(QLatin1String(Theme::Color::bgSurface),
+          QLatin1String(Theme::Color::textPrimary),
+          QLatin1String(Theme::Color::bgHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  const QString compactDanger = QString(
+      "QPushButton { background-color: %1; color: white; border: none; "
+      "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
+      "QPushButton:hover { background-color: %2; }"
+      "QPushButton:disabled { background-color: %3; color: %4; }"
+    ).arg(QLatin1String(Theme::Color::danger),
+          QLatin1String(Theme::Color::dangerHover),
+          QLatin1String(Theme::Color::disabledBg),
+          QLatin1String(Theme::Color::textDisabled));
+
+  m_createFolderButton->setStyleSheet(compactPrimary);
+  m_removeFolderButton->setStyleSheet(compactNeutral);
+  m_copyRecipeButton->setStyleSheet(compactNeutral);
+  m_deleteRecipeButton->setStyleSheet(compactDanger);
+
+  // Bezel execute buttons — delegate to Theme::Buttons helpers
+  m_runRecipeButton->setStyleSheet(Theme::Buttons::bezelWarning());
+  m_runSelectedStepButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  m_breakpointButton->setStyleSheet(Theme::Buttons::bezelDanger());
+
+  // Vision result widgets — null-guarded inline QSS
+  if (m_visionResultGroup) {
+    m_visionResultGroup->setStyleSheet(QString(
+      "QGroupBox { "
+      "  font-weight: bold; "
+      "  color: %1; "
+      "  border: 1px solid %2; "
+      "  border-radius: 4px; "
+      "  margin-top: 5px; "
+      "  padding-top: 10px; "
+      "} "
+      "QGroupBox::title { "
+      "  subcontrol-origin: margin; "
+      "  left: 10px; "
+      "  padding: 0 5px; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::accent),
+          QLatin1String(Theme::Color::borderSubtle)));
+  }
+
+  if (m_visionResultImageLabel) {
+    m_visionResultImageLabel->setStyleSheet(QString(
+      "QLabel { "
+      "  background-color: %1; "
+      "  border: 1px solid %2; "
+      "  color: %3; "
+      "  font-style: italic; "
+      "}"
+    ).arg(QLatin1String(Theme::Color::bgDeep),
+          QLatin1String(Theme::Color::borderSubtle),
+          QLatin1String(Theme::Color::textSecondary)));
   }
 }

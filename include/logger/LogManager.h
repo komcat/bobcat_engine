@@ -70,7 +70,11 @@ public:
   // Output configuration
   void EnableConsoleOutput(bool enable) { m_consoleEnabled = enable; }
   void EnableFileOutput(bool enable, const std::string& filePath = "logs/bobcat.log");
-  void SetMinimumLevel(Level level) { m_minimumLevel = level; }
+  // Sets the minimum level for both the custom history filter and the
+  // underlying spdlog backend (they must stay in sync — spdlog silently
+  // drops anything below its own level, so updating just m_minimumLevel
+  // isn't enough).
+  void SetMinimumLevel(Level level);
 
   // UI callback for real-time updates
   void SetUICallback(LogCallback callback);

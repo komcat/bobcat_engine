@@ -80,7 +80,8 @@ enum class ErrorCode : uint16_t {
   SafetyCriticalStop = 0x0F01,
   SafetyEStopTriggered = 0x0F02,
   SafetyWatchdogTimeout = 0x0F03,
-  SafetyEStopCascadeComplete = 0x0F04
+  SafetyEStopCascadeComplete = 0x0F04,
+  SafetyManualEStop = 0x0F05
 };
 
 enum class ErrorCategory : uint8_t {
@@ -173,6 +174,7 @@ inline std::string ErrorCodeToString(ErrorCode code) {
     case ErrorCode::SafetyEStopTriggered:       return "SafetyEStopTriggered";
     case ErrorCode::SafetyWatchdogTimeout:        return "SafetyWatchdogTimeout";
     case ErrorCode::SafetyEStopCascadeComplete: return "SafetyEStopCascadeComplete";
+    case ErrorCode::SafetyManualEStop:          return "SafetyManualEStop";
     default:                                    return "Unknown(0x" + std::to_string(static_cast<uint16_t>(code)) + ")";
   }
 }

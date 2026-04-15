@@ -15,6 +15,7 @@
 #include "VisionCommandHandler.h"
 #include "SequenceContext.h"
 #include "CameraManager.h"
+#include "safety/SafetyWatchManager.h"
 
 #include <iostream>
 #include <fstream>
@@ -302,6 +303,29 @@ void JogPanelWindow::createJogTab()
   // Auto Focus buttons
   createAutoFocusPanel(m_jogWidget);
 
+  // Emergency Stop button - bottom-right of the Jog tab
+  QHBoxLayout* estopRow = new QHBoxLayout();
+  estopRow->setContentsMargins(4, 4, 4, 4);
+  estopRow->addStretch(1);
+  m_btnEStop = new QPushButton("E-STOP");
+  m_btnEStop->setMinimumSize(100, 44);
+  m_btnEStop->setToolTip("Emergency Stop - halts motion and disables all outputs");
+  m_btnEStop->setStyleSheet(
+    "QPushButton { background-color: #c00000; color: white; font-weight: bold; "
+    "font-size: 14px; border: 2px solid #800000; border-radius: 6px; padding: 4px 10px; }"
+    "QPushButton:hover { background-color: #e00000; }"
+    "QPushButton:pressed { background-color: #800000; }");
+  connect(m_btnEStop, &QPushButton::clicked, this, [this]() {
+    if (m_context && m_context->safetyWatchManager) {
+      m_context->safetyWatchManager->TriggerManualEStop(
+        QStringLiteral("Jog Panel E-Stop button"));
+    } else if (m_context && m_context->motionManager) {
+      (void)m_context->motionManager->EmergencyStopAll();
+    }
+  });
+  estopRow->addWidget(m_btnEStop);
+  jogLayout->addLayout(estopRow);
+
   // Add to tab widget
   m_tabWidget->addTab(m_jogWidget, "Jog");
 }
@@ -551,7 +575,7 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
       auto it = connectionStatus.find(deviceId);
       if (it == connectionStatus.end() || !it->second) {
         if (m_context->logManager) {
-          m_context->logManager->Info(
+          m_context->logManager->Debug(
             "Device '" + deviceId + "' is not connected - skipping",
             "JogPanel"
           );
@@ -660,7 +684,7 @@ void JogPanelWindow::refreshDeviceList()
       auto it = connectionStatus.find(deviceId);
       if (it == connectionStatus.end() || !it->second) {
         if (m_context->logManager) {
-          m_context->logManager->Info(
+          m_context->logManager->Debug(
             "Device '" + deviceId + "' is not connected - skipping",
             "JogPanel"
           );
@@ -702,7 +726,7 @@ void JogPanelWindow::refreshDeviceList()
     }
 
     if (m_context->logManager) {
-      m_context->logManager->Info(
+      m_context->logManager->Debug(
         "Jog panel refreshed with " + std::to_string(validDevices.size()) + " devices",
         "JogPanel"
       );
@@ -755,7 +779,7 @@ void JogPanelWindow::updateVelocityPresets()
   // Choose presets based on device type
   QList<double> presets;
   if (deviceType == "PI") {
-    presets = { 1, 2, 5, 10, 12.5 };
+    presets = { 0.05, 0.1, 0.5, 1, 2, 5, 10, 12.5 };
   } else {
     presets = { 1, 2, 5, 10, 20, 30, 40, 50 };
   }
@@ -768,6 +792,8 @@ void JogPanelWindow::updateVelocityPresets()
     QString label;
     if (vel == static_cast<int>(vel)) {
       label = QString::number(static_cast<int>(vel));
+    } else if (vel < 1.0) {
+      label = QString::number(vel, 'f', 2);
     } else {
       label = QString::number(vel, 'f', 1);
     }
@@ -1224,7 +1250,7 @@ void JogPanelWindow::applyExposure(const std::string& cameraId, QSpinBox* spinBo
 
   if (m_context->logManager) {
     if (ok) {
-      m_context->logManager->Info(
+      m_context->logManager->Debug(
         "Applied exposure " + std::to_string(spinBox->value()) + " us to " + cameraId,
         "JogPanel");
     } else {

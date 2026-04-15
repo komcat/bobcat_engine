@@ -27,8 +27,10 @@
 #include "settings/ApplicationSettings.h"
 #include "safety/SafetyEventLog.h"
 #include "customserver/BeamServerClient.h"
+#include "common/ScanActivityTracker.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
+#include "Theme.h"      // Palette + runtime applyPalette()
 #include "ConnectionSplashScreen.h"  // ✅ NEW: Connection progress splash
 #include "startup/ConnectionConfig.h"
 #include "startup/ConnectionWorkerPool.h"
@@ -170,6 +172,15 @@ bool Application::initialize()
     // ✅ Set Fusion style for better stylesheet support (prevents Windows native style interference)
     m_qApplication->setStyle("Fusion");
 
+    // ✅ Boot-time theme: read the saved palette from QSettings BEFORE the
+    // first QSS build so the initial render uses the user's chosen palette.
+    {
+      QSettings bootSettings("Fabrinet", "BobcatEngine");
+      QString themeName = bootSettings.value("UI/Theme", "Default").toString();
+      Theme::applyPalette(themeName == "CC29" ? Theme::ThemeId::CC29
+                                              : Theme::ThemeId::Default);
+    }
+
     // ✅ UPDATED: Apply centralized dark theme globally to all Qt widgets
     m_qApplication->setStyleSheet(DarkTheme::getStyleSheet());
 
@@ -260,6 +271,26 @@ void Application::initializeManagers()
     updateSplash("ApplicationSettings");
     initializeApplicationSettings();
     completeSplash("ApplicationSettings");
+
+    // Apply Logging.DebugEnabled setting to LogManager.
+    // Must happen immediately after settings load so subsequent subsystem
+    // initialization (SequenceEngine registry, motion controllers, etc.) is
+    // filtered according to the user's choice. Default is INFO (quiet).
+    {
+      const bool debugEnabled = m_applicationSettings->GetBool("Logging", "DebugEnabled", false);
+      m_logManager->SetMinimumLevel(debugEnabled ? LogManager::Level::DEBUG
+                                                 : LogManager::Level::INFO);
+      m_logManager->Info(std::string("Log level: ") +
+                         (debugEnabled ? "DEBUG (verbose)" : "INFO (operator)"),
+                         "Application");
+    }
+
+    // Create the scan-activity tracker now, before any subsystem that might
+    // reference it (SequenceEngine/MotionCommandHandler, ScanExecutor, TopBar).
+    // Owned by Application via unique_ptr; raw pointer lives in ApplicationContext.
+    m_scanActivityTracker = std::make_unique<ScanActivityTracker>();
+    m_context.scanActivityTracker = m_scanActivityTracker.get();
+    m_logManager->Debug("ScanActivityTracker initialized", "Application");
 
     // Now we can log properly
     m_logManager->Info("Initializing managers...", "Application");

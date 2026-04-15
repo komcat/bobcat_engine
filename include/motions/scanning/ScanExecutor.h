@@ -13,6 +13,7 @@ class UnifiedMotionManager;
 class DataStore;
 class ILogger;
 class SafetyWatchManager;
+class ScanActivityTracker;
 struct ScanParameters;
 struct ScanResults;
 struct ScanProgressEvent;
@@ -51,6 +52,9 @@ public:
   void setDataStore(DataStore* dataStore);
   void setLogger(ILogger* logger);
   void setSafetyWatchManager(SafetyWatchManager* safetyManager);
+  /// Wire the scan-busy broadcaster (drives TopBar indicator).
+  /// Null is OK — scan operations simply won't broadcast.
+  void setScanActivityTracker(ScanActivityTracker* tracker);
 
   /**
    * @brief Execute a hexapod translation scan
@@ -136,8 +140,18 @@ private:
   DataStore* m_dataStore;
   ILogger* m_logger;
   SafetyWatchManager* m_safetyWatchManager;
+  ScanActivityTracker* m_scanActivityTracker = nullptr;
 
   // Active scan controllers (created on-demand)
   AdaptiveScanController* m_scanController;
   RotationScanController* m_rotationScanController;
+
+  // Scan-busy tracking: guards pair Begin/End around executeScan() and
+  // executeRotationScan() so the TopBar indicator stays on from kickoff to
+  // completion/error/cleanup. Tracked here (rather than via RAII scope) because
+  // the scan is started non-blocking and completion arrives via a callback.
+  bool m_scanBusyActive = false;
+  bool m_rotationBusyActive = false;
+  void beginScanBusy(const char* source);
+  void endScanBusy(const char* source);
 };

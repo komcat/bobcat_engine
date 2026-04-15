@@ -53,6 +53,9 @@ public:
     explicit VisionReliabilityTestDialog(ApplicationContext* context,
                                          const QString& pluginName,
                                          std::shared_ptr<LiveVideoSubscriber> frameSubscriber,
+                                         bool useSearchBox,
+                                         int searchStartX, int searchStartY,
+                                         int searchEndX, int searchEndY,
                                          QWidget* parent = nullptr);
     ~VisionReliabilityTestDialog() override;
 
@@ -70,6 +73,7 @@ private:
     void addResultRow(const ReliabilityIterationResult& result);
     void updateProgressUI();
     void collectAllMeasurementKeys();
+    void collectActiveCountColumns();
     void updateStatisticsSummary();
     void rebuildTableColumns();
     void setRunningState(bool running);
@@ -81,6 +85,14 @@ private:
     ApplicationContext* m_context;
     QString m_pluginName;
     std::shared_ptr<LiveVideoSubscriber> m_frameSubscriber;
+
+    // Search box state captured from the wizard at construction time so
+    // every iteration runs with the same configuration as a manual Execute.
+    bool m_useSearchBox = false;
+    int m_searchStartX = 0;
+    int m_searchStartY = 0;
+    int m_searchEndX = 0;
+    int m_searchEndY = 0;
 
     // Own dedicated worker (NOT shared with VisionManagerPage)
     VisionProcessingWorker* m_worker = nullptr;
@@ -95,6 +107,10 @@ private:
 
     // All unique measurement keys discovered across iterations
     std::vector<std::string> m_allMeasurementKeys;
+
+    // Count columns (Circles/Points/Lines/Rectangles/Beams) that have
+    // at least one non-zero value across iterations — only these are shown
+    std::vector<std::string> m_activeCountColumns;
 
     // UI widgets
     QSpinBox* m_iterationsSpin = nullptr;

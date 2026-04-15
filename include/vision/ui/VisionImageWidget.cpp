@@ -5,8 +5,13 @@
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
+#include <QEvent>
+#include <QScrollBar>
 #include <QCursor>
 #include <QTimer>
+#include <QFontMetrics>
+#include <algorithm>
 #include <cmath>
 
 // ============ ImageDisplayLabel Implementation ============
@@ -156,43 +161,72 @@ void ImageDisplayLabel::updateCursor(const QPoint& pos)
 
 void ImageDisplayLabel::mousePressEvent(QMouseEvent* event)
 {
-    if ((!m_roiEnabled && !m_searchBoxEnabled && !m_templateSelectionEnabled) || event->button() != Qt::LeftButton) {
+    // Right-click anywhere on the image resets the viewport to fit.
+    if (event->button() == Qt::RightButton) {
+        emit resetViewRequested();
+        event->accept();
+        return;
+    }
+
+    if (event->button() != Qt::LeftButton) {
         QLabel::mousePressEvent(event);
         return;
     }
 
-    // Check template selection first (highest priority)
-    m_draggingCorner = hitTestTemplateSelectionCorner(event->pos());
-    if (m_draggingCorner != DragCorner::None) {
-        m_draggingTarget = DragTarget::TemplateSelection;
-        m_isDragging = true;
-        event->accept();
-        return;
+    // If a ROI/SearchBox/TemplateSelection overlay is active AND the click
+    // lands on one of its corners, fall into the existing corner-drag path.
+    // Otherwise the left-click starts a pan gesture.
+    if (m_roiEnabled || m_searchBoxEnabled || m_templateSelectionEnabled) {
+        // Check template selection first (highest priority)
+        m_draggingCorner = hitTestTemplateSelectionCorner(event->pos());
+        if (m_draggingCorner != DragCorner::None) {
+            m_draggingTarget = DragTarget::TemplateSelection;
+            m_isDragging = true;
+            event->accept();
+            return;
+        }
+
+        // Check ROI corners (higher priority)
+        m_draggingCorner = hitTestROICorner(event->pos());
+        if (m_draggingCorner != DragCorner::None) {
+            m_draggingTarget = DragTarget::ROI;
+            m_isDragging = true;
+            event->accept();
+            return;
+        }
+
+        // Check Search Box corners
+        m_draggingCorner = hitTestSearchBoxCorner(event->pos());
+        if (m_draggingCorner != DragCorner::None) {
+            m_draggingTarget = DragTarget::SearchBox;
+            m_isDragging = true;
+            event->accept();
+            return;
+        }
     }
 
-    // Check ROI corners (higher priority)
-    m_draggingCorner = hitTestROICorner(event->pos());
-    if (m_draggingCorner != DragCorner::None) {
-        m_draggingTarget = DragTarget::ROI;
-        m_isDragging = true;
-        event->accept();
-        return;
-    }
-
-    // Check Search Box corners
-    m_draggingCorner = hitTestSearchBoxCorner(event->pos());
-    if (m_draggingCorner != DragCorner::None) {
-        m_draggingTarget = DragTarget::SearchBox;
-        m_isDragging = true;
-        event->accept();
-        return;
-    }
-
-    QLabel::mousePressEvent(event);
+    // Left-click on non-corner area → start panning
+    m_isPanning = true;
+    m_panLastPos = event->globalPosition().toPoint();
+    setCursor(Qt::ClosedHandCursor);
+    event->accept();
 }
 
 void ImageDisplayLabel::mouseMoveEvent(QMouseEvent* event)
 {
+    // Panning takes priority if active — the user is mid-drag, don't let
+    // ROI hover logic or anything else interfere.
+    if (m_isPanning) {
+        const QPoint globalNow = event->globalPosition().toPoint();
+        const QPoint delta = globalNow - m_panLastPos;
+        m_panLastPos = globalNow;
+        if (!delta.isNull()) {
+            emit panDelta(delta);
+        }
+        event->accept();
+        return;
+    }
+
     if (!m_roiEnabled && !m_searchBoxEnabled && !m_templateSelectionEnabled) {
         QLabel::mouseMoveEvent(event);
         return;
@@ -311,6 +345,13 @@ void ImageDisplayLabel::mouseMoveEvent(QMouseEvent* event)
 
 void ImageDisplayLabel::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_isPanning && event->button() == Qt::LeftButton) {
+        m_isPanning = false;
+        setCursor(Qt::ArrowCursor);
+        event->accept();
+        return;
+    }
+
     if (m_isDragging) {
         m_isDragging = false;
         m_draggingCorner = DragCorner::None;
@@ -356,10 +397,50 @@ void VisionImageWidget::setupUI()
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(10);
 
-    // Image display area
+    // Test-mode injection bar (above image area)
+    QHBoxLayout* injectBar = new QHBoxLayout();
+    injectBar->setSpacing(8);
+
+    m_injectModeToggle = new QCheckBox("Test Mode: Inject Image", this);
+    m_injectModeToggle->setToolTip("Disable live camera and run vision profiles on a static image loaded from disk");
+    m_injectModeToggle->setStyleSheet("QCheckBox { color: #FFB74D; font-weight: bold; }");
+
+    m_loadInjectBtn = new QPushButton("Load Image...", this);
+    m_loadInjectBtn->setToolTip("Choose an image file to use as test input");
+    m_loadInjectBtn->setMinimumWidth(110);
+    m_loadInjectBtn->setEnabled(false);
+
+    m_injectPathLabel = new QLabel(this);
+    m_injectPathLabel->setStyleSheet("QLabel { color: #aabbcc; }");
+    m_injectPathLabel->setMinimumWidth(120);
+
+    injectBar->addWidget(m_injectModeToggle);
+    injectBar->addWidget(m_loadInjectBtn);
+    injectBar->addWidget(m_injectPathLabel, 1);
+
+    layout->addLayout(injectBar);
+
+    connect(m_injectModeToggle, &QCheckBox::toggled, this, [this](bool checked) {
+        m_loadInjectBtn->setEnabled(checked);
+        if (!checked) {
+            m_injectFileNameFull.clear();
+            if (m_injectPathLabel) m_injectPathLabel->setText(QString());
+        }
+        emit injectionModeToggled(checked);
+    });
+    connect(m_loadInjectBtn, &QPushButton::clicked, this, [this]() {
+        emit loadInjectedImageRequested();
+    });
+
+    // Image display area. widgetResizable=false lets the label exceed the
+    // viewport size when the user zooms in, triggering the scrollbars. At
+    // zoom=1 the label is sized to the fit-pixmap size (typically <=
+    // viewport) and the scroll area's AlignCenter centers it.
     m_scrollArea = new QScrollArea(this);
-    m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setWidgetResizable(false);
     m_scrollArea->setAlignment(Qt::AlignCenter);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_scrollArea->setStyleSheet("QScrollArea { background-color: #1E1E1E; border: 2px solid #3E3E3E; }");
 
     m_imageLabel = new ImageDisplayLabel(this);
@@ -375,8 +456,16 @@ void VisionImageWidget::setupUI()
             this, &VisionImageWidget::onSearchBoxCornerDragged);
     connect(m_imageLabel, &ImageDisplayLabel::templateSelectionCornerDragged,
             this, &VisionImageWidget::onTemplateSelectionCornerDragged);
+    // Viewport navigation: pan (left-drag) and reset-view (right-click)
+    connect(m_imageLabel, &ImageDisplayLabel::panDelta,
+            this, &VisionImageWidget::onPanDelta);
+    connect(m_imageLabel, &ImageDisplayLabel::resetViewRequested,
+            this, &VisionImageWidget::onResetViewRequested);
 
     m_scrollArea->setWidget(m_imageLabel);
+    // Install filter on the viewport so we can intercept wheel events for
+    // zoom before QScrollArea's built-in scroll handling consumes them.
+    m_scrollArea->viewport()->installEventFilter(this);
     layout->addWidget(m_scrollArea, 1);
 
     // Control buttons row
@@ -424,6 +513,27 @@ void VisionImageWidget::onROICornerDragged(int startX, int startY, int endX, int
     emit roiDragged(startX, startY, endX, endY);
 }
 
+bool VisionImageWidget::isInjectionMode() const
+{
+    return m_injectModeToggle && m_injectModeToggle->isChecked();
+}
+
+void VisionImageWidget::setInjectedFileName(const QString& fileName)
+{
+    m_injectFileNameFull = fileName;
+    if (!m_injectPathLabel) return;
+
+    if (fileName.isEmpty()) {
+        m_injectPathLabel->setText(QString());
+        return;
+    }
+
+    QFontMetrics fm(m_injectPathLabel->font());
+    const int maxWidth = 260;
+    m_injectPathLabel->setText(fm.elidedText(fileName, Qt::ElideMiddle, maxWidth));
+    m_injectPathLabel->setToolTip(fileName);
+}
+
 void VisionImageWidget::setImage(const QPixmap& pixmap)
 {
     // Store original image
@@ -439,8 +549,13 @@ void VisionImageWidget::updateDisplayImage()
         return;
     }
 
-    // Scale image to fit the scroll area
+    // Scale image to fit the scroll area (with current zoom factor applied)
     QPixmap scaledImage = scaleToFit(m_originalImage);
+
+    // With widgetResizable=false, we have to size the label explicitly.
+    // The label is sized to match the pixmap so the scroll area's scrollbars
+    // show correctly when the pixmap exceeds the viewport.
+    m_imageLabel->resize(scaledImage.size());
 
     // Calculate scale factor for overlay coordinates
     double scaleX = static_cast<double>(scaledImage.width()) / m_originalImage.width();
@@ -814,8 +929,90 @@ void VisionImageWidget::updateDisplayImage()
         m_imageLabel->setPixmap(scaledImage);
     }
 
-    // Don't call adjustSize() - let QScrollArea with widgetResizable(true)
-    // handle the label sizing so the image stays centered at any window size
+    // Don't call adjustSize() - the label is explicitly resize()'d above to
+    // match the scaled pixmap, and the scroll area centers it (or shows
+    // scrollbars) depending on viewport vs pixmap size.
+}
+
+void VisionImageWidget::resetView()
+{
+    m_zoomFactor = 1.0;
+    if (m_scrollArea) {
+        m_scrollArea->horizontalScrollBar()->setValue(0);
+        m_scrollArea->verticalScrollBar()->setValue(0);
+    }
+    updateDisplayImage();
+}
+
+void VisionImageWidget::onPanDelta(const QPoint& delta)
+{
+    if (!m_scrollArea) return;
+    // Pan by decreasing scrollbar values in the direction the mouse moved —
+    // if the user drags the image to the right (delta.x > 0), the content
+    // should appear to follow, which means scrolling LEFT (smaller hvalue).
+    QScrollBar* hBar = m_scrollArea->horizontalScrollBar();
+    QScrollBar* vBar = m_scrollArea->verticalScrollBar();
+    if (hBar) hBar->setValue(hBar->value() - delta.x());
+    if (vBar) vBar->setValue(vBar->value() - delta.y());
+}
+
+void VisionImageWidget::onResetViewRequested()
+{
+    resetView();
+}
+
+bool VisionImageWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    // Intercept wheel events on the scroll-area viewport so we can zoom
+    // instead of letting QScrollArea consume them as vertical scroll.
+    if (m_scrollArea && obj == m_scrollArea->viewport() && event->type() == QEvent::Wheel) {
+        QWheelEvent* we = static_cast<QWheelEvent*>(event);
+        const int angle = we->angleDelta().y();
+        if (angle == 0 || m_originalImage.isNull()) {
+            return QWidget::eventFilter(obj, event);
+        }
+
+        // Remember the image point currently under the cursor so we can
+        // keep it anchored across the zoom change (zoom-to-cursor).
+        const QPointF viewportPos = we->position();
+        QScrollBar* hBar = m_scrollArea->horizontalScrollBar();
+        QScrollBar* vBar = m_scrollArea->verticalScrollBar();
+        const int hVal = hBar ? hBar->value() : 0;
+        const int vVal = vBar ? vBar->value() : 0;
+
+        // The label is centered inside the viewport when smaller, so
+        // account for the current label position to get pixmap-relative
+        // coordinates of the point under the cursor.
+        const QPoint labelPos = m_imageLabel->pos();
+        const double pixmapX = viewportPos.x() - labelPos.x() + hVal;
+        const double pixmapY = viewportPos.y() - labelPos.y() + vVal;
+
+        const double oldZoom = m_zoomFactor;
+        double newZoom = (angle > 0) ? (oldZoom * kZoomStep) : (oldZoom / kZoomStep);
+        newZoom = std::max(kMinZoom, std::min(kMaxZoom, newZoom));
+        if (std::abs(newZoom - oldZoom) < 1e-6) {
+            event->accept();
+            return true;
+        }
+
+        m_zoomFactor = newZoom;
+        updateDisplayImage();
+
+        // After rescaling, re-center the viewport so the same image point
+        // stays under the cursor. New pixmap coord = old * (newZoom/oldZoom).
+        const double ratio = newZoom / oldZoom;
+        const double newPixmapX = pixmapX * ratio;
+        const double newPixmapY = pixmapY * ratio;
+        const QPoint newLabelPos = m_imageLabel->pos();
+        const int targetHVal = static_cast<int>(newPixmapX - viewportPos.x() + newLabelPos.x());
+        const int targetVVal = static_cast<int>(newPixmapY - viewportPos.y() + newLabelPos.y());
+        if (hBar) hBar->setValue(targetHVal);
+        if (vBar) vBar->setValue(targetVVal);
+
+        event->accept();
+        return true;
+    }
+    return QWidget::eventFilter(obj, event);
 }
 
 QPixmap VisionImageWidget::scaleToFit(const QPixmap& pixmap)
@@ -836,8 +1033,20 @@ QPixmap VisionImageWidget::scaleToFit(const QPixmap& pixmap)
         return pixmap;
     }
 
-    // Always scale to fit (both up and down) while maintaining aspect ratio
-    return pixmap.scaled(availableSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // Compute the fit scale — how much we'd scale the original to exactly
+    // fill the viewport while preserving aspect ratio. Cache it so zoom
+    // math knows the zoom=1 baseline.
+    const double sx = availableSize.width() / static_cast<double>(pixmap.width());
+    const double sy = availableSize.height() / static_cast<double>(pixmap.height());
+    m_fitScale = std::min(sx, sy);
+
+    // Apply user zoom on top of the fit scale.
+    const double effectiveScale = m_fitScale * m_zoomFactor;
+    QSize targetSize(
+        std::max(1, static_cast<int>(pixmap.width() * effectiveScale)),
+        std::max(1, static_cast<int>(pixmap.height() * effectiveScale))
+    );
+    return pixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
 void VisionImageWidget::resizeEvent(QResizeEvent* event)

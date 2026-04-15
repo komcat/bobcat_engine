@@ -79,6 +79,7 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   motionHandler->SetDataStore(m_context->dataStore);
   motionHandler->SetProductPositionManager(m_context->productPositionManager);
   motionHandler->SetDeviceLinkManager(m_context->deviceLinkManager);
+  motionHandler->SetScanActivityTracker(m_context->scanActivityTracker);
   m_motionHandler = motionHandler.get();  // ✅ Store raw pointer before move
   m_dispatcher.RegisterHandler("motion", std::move(motionHandler));
 
@@ -210,7 +211,7 @@ void SequenceEngine::SetActionTimeoutMs(int timeoutMs)
 
 void SequenceEngine::BuildDeviceRegistry()
 {
-  LogInfo("Building device registry...");
+  LogDebug("Building device registry...");
 
   m_deviceToManagerMap.clear();
   m_deviceToTypeMap.clear();
@@ -222,7 +223,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->motionManager;
       m_deviceToTypeMap[name] = "motion";
     }
-    LogInfo("Registered " + std::to_string(devices.size()) + " motion devices");
+    LogDebug("Registered " + std::to_string(devices.size()) + " motion devices");
   }
 
   // Scan IO devices
@@ -232,7 +233,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->ioManager;
       m_deviceToTypeMap[name] = "io";
     }
-    LogInfo("Registered " + std::to_string(devices.size()) + " IO devices");
+    LogDebug("Registered " + std::to_string(devices.size()) + " IO devices");
   }
 
   // Scan pneumatic slides
@@ -245,7 +246,7 @@ void SequenceEngine::BuildDeviceRegistry()
     // Register generic "pneumatic" device for manager-level commands (e.g., RetractAll)
     m_deviceToManagerMap["pneumatic"] = m_context->pneumaticManager;
     m_deviceToTypeMap["pneumatic"] = "pneumatic";
-    LogInfo("Registered " + std::to_string(slides.size()) + " pneumatic slides");
+    LogDebug("Registered " + std::to_string(slides.size()) + " pneumatic slides");
   }
 
   // Camera devices
@@ -255,7 +256,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->cameraManager;
       m_deviceToTypeMap[name] = "camera";
     }
-    LogInfo("Registered " + std::to_string(cameras.size()) + " camera devices");
+    LogDebug("Registered " + std::to_string(cameras.size()) + " camera devices");
   }
 
   // TEC devices
@@ -265,7 +266,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->tecManager;
       m_deviceToTypeMap[name] = "tec";
     }
-    LogInfo("Registered " + std::to_string(devices.size()) + " TEC devices");
+    LogDebug("Registered " + std::to_string(devices.size()) + " TEC devices");
   }
 
   // PSU devices
@@ -275,7 +276,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->powerSupplyManager;
       m_deviceToTypeMap[name] = "psu";
     }
-    LogInfo("Registered " + std::to_string(devices.size()) + " PSU devices");
+    LogDebug("Registered " + std::to_string(devices.size()) + " PSU devices");
   }
 
   // SMU devices
@@ -285,7 +286,7 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->smuManager;
       m_deviceToTypeMap[name] = "smu";
     }
-    LogInfo("Registered " + std::to_string(devices.size()) + " SMU devices");
+    LogDebug("Registered " + std::to_string(devices.size()) + " SMU devices");
   }
 
   // Lighting controllers (register by device_name from config)
@@ -299,98 +300,98 @@ void SequenceEngine::BuildDeviceRegistry()
         m_deviceToTypeMap[config->deviceName] = "lighting";
       }
     }
-    LogInfo("Registered " + std::to_string(deviceIds.size()) + " lighting controllers");
+    LogDebug("Registered " + std::to_string(deviceIds.size()) + " lighting controllers");
   }
 
   // Beam server client (custom server)
   if (m_context->beamServerClient) {
     m_deviceToManagerMap["beamserver"] = m_context->beamServerClient;
     m_deviceToTypeMap["beamserver"] = "customserver";
-    LogInfo("Registered beamserver device");
+    LogDebug("Registered beamserver device");
   }
 
   // Register DataStore as virtual device
   if (m_context->dataStore) {
     m_deviceToManagerMap["datastore"] = m_context->dataStore;
     m_deviceToTypeMap["datastore"] = "datastore";
-    LogInfo("Registered datastore");
+    LogDebug("Registered datastore");
   }
 
   // Register SequenceContext handler (special case - context passed at runtime)
   m_deviceToManagerMap["context"] = nullptr;
   m_deviceToTypeMap["context"] = "context";
-  LogInfo("Registered context command handler");
+  LogDebug("Registered context command handler");
 
   // System commands (special case - no manager needed, nullptr is OK)
   m_deviceToManagerMap["system"] = nullptr;
   m_deviceToTypeMap["system"] = "system";
-  LogInfo("Registered system command handler");
+  LogDebug("Registered system command handler");
 
   // Calibration commands (special case - uses ApplicationContext, nullptr for manager)
   m_deviceToManagerMap["calibration"] = nullptr;
   m_deviceToTypeMap["calibration"] = "calibration";
-  LogInfo("Registered calibration command handler");
+  LogDebug("Registered calibration command handler");
 
   // DUT commands (special case - uses ApplicationContext, nullptr for manager)
   m_deviceToManagerMap["dut"] = nullptr;
   m_deviceToTypeMap["dut"] = "dut";
-  LogInfo("Registered DUT command handler");
+  LogDebug("Registered DUT command handler");
 
   // AuxWindow commands (special case - controls auxiliary display window)
   if (m_context->auxWindowManager) {
     m_deviceToManagerMap["auxwindow"] = m_context->auxWindowManager;
     m_deviceToTypeMap["auxwindow"] = "auxwindow";
-    LogInfo("Registered auxiliary window command handler");
+    LogDebug("Registered auxiliary window command handler");
   }
 
   // Vision commands (special case - uses ApplicationContext internally, nullptr for manager)
   m_deviceToManagerMap["vision"] = nullptr;
   m_deviceToTypeMap["vision"] = "vision";
-  LogInfo("Registered vision command handler");
+  LogDebug("Registered vision command handler");
 
   // Relative position commands (special case - uses motion manager internally)
   m_deviceToManagerMap["relpos"] = nullptr;
   m_deviceToTypeMap["relpos"] = "relpos";
-  LogInfo("Registered relative position command handler");
+  LogDebug("Registered relative position command handler");
 
   // Coordinate alignment commands (special case - uses ApplicationContext internally)
   m_deviceToManagerMap["coordalign"] = nullptr;
   m_deviceToTypeMap["coordalign"] = "coordalign";
-  LogInfo("Registered coordinate alignment command handler");
+  LogDebug("Registered coordinate alignment command handler");
 
   // Accuracy trainer commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["accuracytrainer"] = nullptr;
   m_deviceToTypeMap["accuracytrainer"] = "accuracytrainer";
-  LogInfo("Registered accuracy trainer command handler");
+  LogDebug("Registered accuracy trainer command handler");
 
   // Camera offset commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["cameraoffset"] = nullptr;
   m_deviceToTypeMap["cameraoffset"] = "cameraoffset";
-  LogInfo("Registered camera offset command handler");
+  LogDebug("Registered camera offset command handler");
 
   // Planar adjustment commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["planaradjustment"] = nullptr;
   m_deviceToTypeMap["planaradjustment"] = "planaradjustment";
-  LogInfo("Registered planar adjustment command handler");
+  LogDebug("Registered planar adjustment command handler");
 
   // Z offset commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["zoffset"] = nullptr;
   m_deviceToTypeMap["zoffset"] = "zoffset";
-  LogInfo("Registered z offset command handler");
+  LogDebug("Registered z offset command handler");
 
   // Yaw trainer commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["yawtrainer"] = nullptr;
   m_deviceToTypeMap["yawtrainer"] = "yawtrainer";
-  LogInfo("Registered yaw trainer command handler");
+  LogDebug("Registered yaw trainer command handler");
 
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
     m_deviceToTypeMap["parallel"] = "motion";
-    LogInfo("Registered parallel motion command handler");
+    LogDebug("Registered parallel motion command handler");
   }
 
-  LogInfo("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
+  LogDebug("Device registry built: " + std::to_string(m_deviceToManagerMap.size()) + " devices");
 }
 
 SequenceBuilder* SequenceEngine::CreateSequence(const std::string& name)
@@ -559,7 +560,7 @@ void SequenceEngine::FlattenSteps(const std::vector<std::shared_ptr<ISequenceSte
     switch (step->GetType()) {
     case ISequenceStep::Type::ACTION: {
       Action* action = static_cast<Action*>(step.get());
-      m_actionList.emplace_back(action->deviceName, action->methodName);
+      m_actionList.emplace_back(action->deviceName, action->methodName, action->params);
       break;
     }
     case ISequenceStep::Type::LOOP: {
@@ -776,6 +777,14 @@ bool SequenceEngine::ExecuteSequence(SequenceBuilder* sequence, SequenceContext*
   context->SetExecutionStartTime();
   context->ClearAll();
 
+  // Mark as executing for the entire body of this function (RAII clears on
+  // any exit path including exceptions). Used by UIs to interlock motion jobs.
+  m_isExecuting.store(true);
+  struct ExecGuard {
+    std::atomic<bool>& flag;
+    ~ExecGuard() { flag.store(false); }
+  } _execGuard{m_isExecuting};
+
   // ✅ Clear stop flag before execution
   ClearStopFlag();
   m_lastInjectedVisionSeq = 0;
@@ -887,11 +896,11 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
   case ISequenceStep::Type::ACTION: {
     Action* action = static_cast<Action*>(step);
 
-    LogInfo("⚙️ Executing: " + action->deviceName + "." + action->methodName);
+    LogDebug("⚙️ Executing: " + action->deviceName + "." + action->methodName);
 
     // ✅ Notify action started callback with look-ahead info
     if (m_actionStartedCallback) {
-      ActionInfo current(action->deviceName, action->methodName);
+      ActionInfo current(action->deviceName, action->methodName, action->params);
       ActionInfo next;
       ActionInfo afterNext;
 
@@ -972,8 +981,8 @@ bool SequenceEngine::ExecuteStep(ISequenceStep* step, SequenceContext* context)
     if (timeoutMsIt != action->params.end()) {
       customTimeoutMs = std::stoi(timeoutMsIt->second);
       if (customTimeoutMs > 0) {
-        LogInfo("Custom timeout " + std::to_string(customTimeoutMs) + "ms for: " +
-                action->deviceName + "." + action->methodName);
+        LogDebug("Custom timeout " + std::to_string(customTimeoutMs) + "ms for: " +
+                 action->deviceName + "." + action->methodName);
       }
     }
 
@@ -1574,6 +1583,16 @@ void SequenceEngine::LogInfo(const std::string& message)
     m_logger->Info(message, "SequenceEngine");
   }
   // Note: spdlog is always available now, no fallback needed
+}
+
+void SequenceEngine::LogDebug(const std::string& message)
+{
+  // Intentionally NOT pushed into m_executionLog — debug traces should
+  // not clutter the in-app execution log widget shown to operators.
+  // They still reach the spdlog console/file sink when Logging.DebugEnabled=true.
+  if (m_logger) {
+    m_logger->Debug(message, "SequenceEngine");
+  }
 }
 
 void SequenceEngine::LogWarning(const std::string& message)

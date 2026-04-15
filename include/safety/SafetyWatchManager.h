@@ -166,6 +166,14 @@ public:
   void SetEStopSummary(const std::string& summary);
   std::string GetEStopSummary() const;
 
+  /**
+   * @brief Operator-initiated manual E-Stop.
+   * Emits safetyTriggered so the Application cascade runs and sets the
+   * internal safety flag state consistent with a hardware-triggered stop.
+   * @param source Human-readable source description (e.g. "Jog Panel E-Stop button")
+   */
+  void TriggerManualEStop(const QString& source);
+
 signals:
   /**
    * @brief Emitted when a safety condition is triggered

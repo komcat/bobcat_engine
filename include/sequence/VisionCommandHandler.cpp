@@ -35,6 +35,44 @@ int VisionCommandHandler::s_historyIndex = 0;
 const int VisionCommandHandler::MAX_HISTORY;  // Defined in header as 10
 const std::string VisionCommandHandler::HISTORY_DIR = "logs/vision_history";
 
+namespace {
+// Guard against Halcon pattern-match plugins that report success=true when no
+// match was actually found. We treat the result as unsuccessful if
+// num_matches is 0, or if no anchor/corner/center reference key was produced.
+// The plugin's own success flag is trusted only when a usable reference
+// actually exists in the context.
+void ApplyNoMatchGuardToContext(SequenceContext* context) {
+    if (!context) return;
+    if (!context->GetBoolean("vision.result.success", false)) {
+        return;  // already false — nothing to do
+    }
+
+    const bool hasNumMatchesKey = context->HasValue("vision.result.num_matches");
+    const bool zeroMatches = hasNumMatchesKey &&
+        context->GetNumeric("vision.result.num_matches", -1.0) == 0.0;
+
+    const bool hasAnchor =
+        context->HasValue("vision.result.match_0_anchor_x") &&
+        context->HasValue("vision.result.match_0_anchor_y");
+    const bool hasCorner =
+        context->HasValue("vision.result.corner_x") &&
+        context->HasValue("vision.result.corner_y");
+    const bool hasCenter =
+        context->HasValue("vision.result.center_x") &&
+        context->HasValue("vision.result.center_y");
+    const bool hasAnyReference = hasAnchor || hasCorner || hasCenter;
+
+    if (zeroMatches || !hasAnyReference) {
+        const std::string err =
+            zeroMatches ? "vision plugin reported num_matches=0"
+                        : "vision plugin produced no anchor/corner/center match";
+        context->SetValue("vision.result.success", false);
+        context->SetValue("vision.result.error", err);
+        std::cout << "[VisionCommandHandler] ⚠️ No-match guard tripped: " << err << std::endl;
+    }
+}
+}  // namespace
+
 bool VisionCommandHandler::ExecuteCommand(
     void* /*manager*/,
     const std::string& deviceName,
@@ -115,6 +153,7 @@ bool VisionCommandHandler::ExecuteCommand(
             std::cout << "[VisionCommandHandler] ❌ execute_profile: Execute failed - " << execError << std::endl;
             return true;  // Always return TRUE
         }
+        // Guard is applied inside Execute() (called by CaptureAndExecute).
 
         // Step 3: Copy results to custom prefix if capture_as is specified
         auto captureAsIt = params.find("capture_as");
@@ -304,6 +343,7 @@ bool VisionCommandHandler::ExecuteCommand(
                 std::cout << "[VisionCommandHandler] ⚠️ No reference point found in vision result (device Z still stored)" << std::endl;
                 std::cout << "[VisionCommandHandler]    Checked for: anchor, corner, center" << std::endl;
                 std::cout << "[VisionCommandHandler]    World X/Y not computed, but device_z_mm is available" << std::endl;
+                // vision.result.success already flipped to false by ApplyNoMatchGuardToContext.
             }
         }
 
@@ -842,15 +882,28 @@ bool VisionCommandHandler::Execute(const std::string& pluginName,
         } else {
             std::cout << "[VisionCommandHandler] ⚠️ No output image available from VisionManager" << std::endl;
         }
+
+        // Guard against plugins (notably Halcon pattern matchers) that set
+        // success=true while producing no usable match.
+        ApplyNoMatchGuardToContext(context);
     }
+
+    const bool guardedSuccess = context
+        ? context->GetBoolean("vision.result.success", result.success)
+        : result.success;
 
     if (m_context && m_context->logManager) {
         m_context->logManager->Info("Vision execution completed: " +
-            std::string(result.success ? "success" : "failed"), "VisionCommandHandler");
+            std::string(guardedSuccess ? "success" : "failed"), "VisionCommandHandler");
     }
 
     if (!result.success) {
         errorMessage = "Vision execution failed: " + result.errorMessage;
+        return false;
+    }
+    if (!guardedSuccess) {
+        errorMessage = context ? context->GetString("vision.result.error",
+            "Vision execution produced no usable match") : "Vision execution produced no usable match";
         return false;
     }
 

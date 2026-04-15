@@ -21,7 +21,7 @@ PIController::PIController()
   m_terminateThread.store(false);
   m_enableAnalogReading.store(true);
 
-  LOG_INFO("Initializing controller");
+  LOG_DEBUG("Initializing controller");
 
   m_availableAxes = { "X", "Y", "Z", "U", "V", "W" };
   m_lastStatusUpdate = std::chrono::steady_clock::now();
@@ -31,7 +31,7 @@ PIController::PIController()
 }
 
 PIController::~PIController() {
-  LOG_INFO("Shutting down controller");
+  LOG_DEBUG("Shutting down controller");
   StopCommunicationThread();
   if (m_isConnected) {
     Disconnect();
@@ -43,7 +43,7 @@ void PIController::StartCommunicationThread() {
     m_threadRunning.store(true);
     m_terminateThread.store(false);
     m_communicationThread = std::thread(&PIController::CommunicationThreadFunc, this);
-    LOG_INFO("Communication thread started");
+    LOG_DEBUG("Communication thread started");
   }
 }
 
@@ -60,7 +60,7 @@ void PIController::StopCommunicationThread() {
     }
 
     m_threadRunning.store(false);
-    LOG_INFO("Communication thread stopped");
+    LOG_DEBUG("Communication thread stopped");
   }
 }
 
@@ -235,7 +235,7 @@ void PIController::InitializeAnalogChannels() {
   if (!m_isConnected || !m_enableAnalogReading) return;
 
   if (GetAnalogChannelCount(m_numAnalogChannels)) {
-    LOG_INFO("Found " + std::to_string(m_numAnalogChannels) + " analog channels");
+    LOG_DEBUG("Found " + std::to_string(m_numAnalogChannels) + " analog channels");
 
     std::lock_guard<std::mutex> lock(m_mutex);
     for (int channel : m_activeAnalogChannels) {
@@ -506,7 +506,7 @@ bool PIController::SetVelocity(const std::string& axis, double velocity) {
     return false;
   }
 
-  LOG_INFO("Setting velocity " + axis + " to " + std::to_string(velocity));
+  LOG_DEBUG("Setting velocity " + axis + " to " + std::to_string(velocity));
 
   const char* axes = axis.c_str();
   double velocities[1] = { velocity };
@@ -665,7 +665,7 @@ bool PIController::MoveToPositionAll(double x, double y, double z, double u, dou
     return false;
   }
 
-  LOG_INFO("Moving all axes to X=" + std::to_string(x) + ", Y=" + std::to_string(y) + ", Z=" + std::to_string(z) + ", U=" + std::to_string(u) + ", V=" + std::to_string(v) + ", W=" + std::to_string(w));
+  LOG_DEBUG("Moving all axes to X=" + std::to_string(x) + ", Y=" + std::to_string(y) + ", Z=" + std::to_string(z) + ", U=" + std::to_string(u) + ", V=" + std::to_string(v) + ", W=" + std::to_string(w));
 
   const char* szAxes = "X Y Z U V W";
   double pdValueArray[6] = { x, y, z, u, v, w };
@@ -1046,7 +1046,7 @@ bool PIController::SetSystemVelocity(double velocity) {
     return false;
   }
 
-  LOG_INFO("Setting system velocity to " + std::to_string(velocity));
+  LOG_DEBUG("Setting system velocity to " + std::to_string(velocity));
 
   if (!PI_VLS(m_controllerId, velocity)) {
     int error = 0;

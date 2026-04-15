@@ -164,7 +164,7 @@ void CaptureROIStepWidget::setupUI()
     // -------- Left config panel (fixed ~300px) --------
     QScrollArea* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
-    scrollArea->setFixedWidth(350);
+    scrollArea->setFixedWidth(480);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setFrameShape(QFrame::NoFrame);

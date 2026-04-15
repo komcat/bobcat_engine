@@ -97,14 +97,36 @@ using RetraceEditCallback = std::function<bool(
 struct ActionInfo {
   std::string deviceName;
   std::string methodName;
+  std::map<std::string, std::string> params;
   bool isValid = false;
 
   ActionInfo() = default;
   ActionInfo(const std::string& dev, const std::string& method)
     : deviceName(dev), methodName(method), isValid(true) {}
+  ActionInfo(const std::string& dev, const std::string& method,
+             const std::map<std::string, std::string>& p)
+    : deviceName(dev), methodName(method), params(p), isValid(true) {}
 
   std::string toString() const {
     return isValid ? (deviceName + "." + methodName) : "";
+  }
+
+  // Human-readable single-line description for the run UI.
+  // Falls back to "device.method" when no parameters are known.
+  std::string toHumanReadable() const {
+    if (!isValid) return "";
+    std::string out = deviceName + " - " + methodName;
+    if (!params.empty()) {
+      out += " (";
+      bool first = true;
+      for (const auto& kv : params) {
+        if (!first) out += ", ";
+        out += kv.first + "=" + kv.second;
+        first = false;
+      }
+      out += ")";
+    }
+    return out;
   }
 };
 
@@ -253,6 +275,11 @@ public:
   void ClearStopFlag();      // Reset stop flag before execution
   bool IsStopRequested() const { return m_stopRequested.load(); }
 
+  // True while ExecuteSequence is actively running (set on entry, cleared on
+  // any exit). Thread-safe; usable from UI for interlocking against starting
+  // a second motion job while a recipe is in flight.
+  bool IsExecuting() const { return m_isExecuting.load(); }
+
   // Action timeout watchdog (monitoring only — logs slow commands)
   void SetActionTimeoutMs(int timeoutMs);
   int GetActionTimeoutMs() const { return m_actionTimeoutMs; }
@@ -338,6 +365,7 @@ private:
 
   // ✅ NEW: Stop flag for graceful cancellation
   std::atomic<bool> m_stopRequested;
+  std::atomic<bool> m_isExecuting{false};
 
   // Action timeout — enforced via DispatchWithTimeout
   int m_actionTimeoutMs = 60000;  // Default 60 seconds
@@ -421,6 +449,7 @@ private:
   std::string ComparisonToString(ConditionalBlock::ComparisonType comp) const;
 
   void LogInfo(const std::string& message);
+  void LogDebug(const std::string& message);
   void LogWarning(const std::string& message);
   void LogError(const std::string& message);
 };

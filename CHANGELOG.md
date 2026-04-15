@@ -4,7 +4,46 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ---
 
-## v1.7.0 — 2026-04-07
+## v1.8.0 — 2026-04-14
+
+### Highlights
+
+- **Placement Correction v3 — Normal-Placement Model** — Redesigned retrace to re-measure a new *Normal Placement* line (where the lens physically lands) instead of the ideal Target line, using a cached *design offset* rotated by the reference-frame Δθ. Adds a 3rd teach widget, new JSON field `normalPlacementLine`, cached `designOffsetX/Y`, and file schema v3 (backward-compat with v1/v2 — retrace stays disabled until normal line is taught).
+- **Retrace Audit Log** — Every retrace run (manual / autoRunAll / recipe) appends a JSONL entry to `{productDir}/placement_correction/{setName}.retrace_log.jsonl` with retraced points, frame Δθ, design offset, correction vectors, live hex, corrected pose, tune offsets, per-step metadata, and outcome (saved/skipped/ended/failed). Rotates at 10 MB.
+- **Retrace Log Viewer** — New read-only workflow tab with color-coded outcome table, JSON detail pane, Refresh/Open-in-Explorer buttons.
+- **Auto-Disable U Correction at Large Δθ** — If retraced frame rotation exceeds 3.0°, applyUCorrection is auto-unchecked with a visible ⚠ warning in the review text. Operator must manually re-enable after verifying reference points.
+- **Recipe Interlock** — `SequenceEngine::IsExecuting()` exposes thread-safe execution state. Trainer Move buttons refuse to start when a recipe is running; also prevents double-click races.
+- **Async Safe-Move Workers** — All trainer-initiated moves (hex Move buttons on Positions tab; gantry Auto-Nav in teach widgets) now run off the UI thread with SetSystemVelocity → MoveToAbs → restore velocity. Indeterminate progress bar + red Stop (EmergencyStop) while moving.
+- **UI Tabs for Left Panel** — Device / Positions / Camera grouped into a QTabWidget with fixed-width, top-left-aligned fields.
+- **Teach Widget Enhancements** — Per-point vision profile selector + "Detect & Center" (single-shot world-position centering); Auto-Nav to previously-captured P1/P2 (disabled until first capture); instruction label sized to fit wrapped text.
+- **Save vs Save As** — Save overwrites the loaded set silently; Save As opens the rename dialog. Labels "Target Position" (tooltip: *first light position*) and "Position after correction".
+
+### All Changes (by date)
+
+## 2026-04-14
+
+- **placement correction v3: normal-placement retrace model + retrace log + UI polish**
+  - **Data model** (`PlacementCorrectionData.h`): added `PlacementLinePoints normalPlacementLine`, cached scalars `designOffsetX/Y/designOffsetValid`, new `normalAngleDeg`; `Recalculate()` now handles all three lines and computes `designOffset = target_midpoint − normal_midpoint`; new math helper `Rotate2D(dx, dy, angleDeg, outDx, outDy)`
+  - **Store** (`PlacementCorrectionStore.cpp`): serialize/load `normalPlacementLine`; bumped `CURRENT_FILE_VERSION` → **3** (v1/v2 files load with `normalPlacementLine.valid=false`; retrace guard short-circuits until taught); load log prints `nrm=` and `designOffset=` status
+  - **Teach widget integration** (`PlacementCorrectionPage.{h,cpp}`): new 3rd `TeachPlacementLineWidget("Normal", …)` at stack index 3, wired to `m_currentSet.normalPlacementLine` via `lineCaptured`; workflow nav renumbered 1..9 with **"3. Teach Normal Placement Line"** inserted; `SetLine()` routing restores normal line on load
+  - **Retrace widget v3 rewrite** (`PlacementRetraceWidget.{h,cpp}`): mass-rename `Tgt/tgt` → `Nrm/nrm` across states/slots/members/labels; steps 3/4 re-measure `normalPlacementLine` (not `targetLine`); `onStartRetrace` caches `designOffsetX/Y`; **`computeRetraceResults` replaced**: `Δθ = retracedRefAngle − taughtRefAngle`, `rotatedOffset = Rotate2D(designOffset, Δθ)`, `correctionGlobal = rotatedOffset`, transform to device-local via matrix, apply to live hex with `correctedU += Δθ` (if applyU); Idle summary shows per-point profile status (RefP1/P2, NrmP1/P2); if ready=false, enumerates which exact field is missing
+  - **AutoStart preflight guard**: if `designOffsetValid/referenceLine.valid/normalPlacementLine.valid` is false, immediately emit `retraceEnded` so recipe `QEventLoop` exits instead of hanging indefinitely on pre-v3 sets
+  - **Auto-disable U correction at |Δθ| > 3°**: `computeRetraceResults` unchecks the UI checkbox (signal-blocked to avoid recompute) and sets `applyUCorrection=false`; review text shows ⚠ warning with threshold value and guidance to verify retraced reference
+  - **`PlacementRetraceLogger` (new)**: JSONL append writer at `{productDir}/placement_correction/{setName}.retrace_log.jsonl`; `RetraceLogEntry` + `RetracePointMeta` structs capture timestamp, set identity, mode (`manual`/`autoRunAll`/`recipe`), outcome (`saved`/`skipped`/`ended`/`failed`), retraced XYZ pts + angles, taught/retraced ref angles, `frameDeltaTheta`, taught+rotated design offsets, `idealTarget`, correction global+local, live hex XYZUVW, tune offsets, corrected pose, per-step meta (`autoDetected`/`visionIters`/`finalResidualMm`/`reason`), optional `failureStep`/`failureDetail`; 10 MB rotation → `.jsonl.1`
+  - **Logger wiring in retrace widget**: `SetMode(mode)` sets the log-line mode; `onAutoRunAll` auto-upgrades to `"autoRunAll"` unless already `"recipe"`; per-step meta stamped in `runAutoDetect` success branch and in each `onConfirm*` slot for manual fallback; `computeRetraceResults` stashes intermediates (`m_logFrameDeltaTheta`, `m_logRotatedOffsetX/Y`, `m_logIdealTargetX/Y`, `m_logCorrGlobal*`, `m_logCorrLocal*`) for the log entry; `writeLogEntry(outcome, failureStep, failureDetail)` builds + appends; call sites: `onSaveToTarget("saved")`, `onSkip("skipped")`, `onEnd("ended")`, AutoStart-refused `("failed", "preflight", …)`; `m_loggedThisRun` flag suppresses duplicate on save→continue
+  - **`RetraceLogViewer` (new)**: read-only widget at stack index 9 ("9. View Retrace Log" nav); color-coded QTableWidget (most recent first) with Timestamp/Outcome/Mode/Δθ/Corr dX/Corr dY/Corrected X/Corrected Y; detail pane shows selected entry's pretty JSON; Refresh + Open-in-Explorer buttons; `SetData(set)` resolves log path via `PlacementRetraceLogger::ResolvePathForSet` and reloads
+  - **Recipe interlock**: `SequenceEngine::IsExecuting()` — new thread-safe `std::atomic<bool>` set via RAII `ExecGuard` in `ExecuteSequence` so it clears on any return path; `RunProgramPage::SetMode("recipe")` called before `SetData` so recipe-run retraces log with the correct mode
+  - **Tune-offset mid-recipe guard** (`RunProgramPage.cpp`): `offsetsPersistRequested` lambda now skips the disk save if `m_isExecuting`; logs "applied in-memory; disk save deferred" to the recipe log pane. Prevents a live-edited tune offset from overwriting the set JSON that a later recipe step might load.
+  - **Async safe-move workers**: `PlacementCorrectionPage::startSafeMoveAsync` (hex Move buttons) lowers velocity → `MoveToAbs6` (coordinated 6-axis, was XYZ-only single-axis `MoveToAbs`) → restore velocity; disables all 3 Move buttons during; red **Stop** triggers `EmergencyStop(device)`; indeterminate `QProgressBar` during move. `TeachPlacementLineWidget::startAutoNavAsync` (gantry Auto-Nav to taught P1/P2) mirrors the pattern with 10 mm/s safe velocity and 50 mm/s restore; Auto-Nav buttons default-disabled until `m_line.valid`; interlocked against `SequenceEngine::IsExecuting()`
+  - **Left panel tabs**: `QTabWidget` with **Device** / **Positions** / **Camera** tabs replaces the stacked group boxes; fixed-width combos/spinboxes + `addStretch` for top-left alignment; "Master Position (baseline)" relabeled **"Target Position"** (tooltip: *first light position*); "Target Position (corrected)" relabeled **"Position after correction"**; new **Normal Placement Position** combo (third Move row) backed by `PlacementCorrectionConfig::normalPositionName`
+  - **Save / Save As split**: Save overwrites the currently-loaded set silently (falls through to Save As if no `sourceFilename`); Save As always opens the rename dialog; Save As button added next to Save
+  - **Teach widget polish**: per-point `QComboBox` + **Refresh** for vision profile (written to `pNVisionProfilePath` on selection change, emits `lineCaptured` if line valid); **Detect & Center** (purple, single-shot — runs profile, MoveToAbs to detected world XY keeping Z); **Auto-Nav to P1 / P2** (green, disabled until first capture); instruction label min-height + `MinimumExpanding` vertical policy so wrapped text isn't clipped
+  - **Vision-no-match guard in detect paths** (`TeachPlacementLineWidget::runDetectAndCenter` and `PlacementRetraceWidget::runAutoDetect`): check `SequenceContext::HasValue("vision.detected.world_x_mm"/"_y_mm")` before trusting world coords — prevents `MoveToAbs(0, 0, Z)` when Halcon pattern match returns `success=true` with no anchor/corner/center
+  - **Stop button on retrace wait pages**: red Stop beside each Confirm button on Ref P1/P2 and Nrm P1/P2 pages; calls `onEnd` → `retraceEnded`
+  - **Retrace Idle page buttons**: Start Retrace fixed 180×44 + Auto-Run All 4 (currently hidden via `setVisible(false)` until feature matures); both left-aligned via `addStretch(1)`
+  - **Docs**: new `docs/placement_correction.md` — full v3 model explanation (three-line design, master-pose correlation, 6-state wizard, computeRetraceResults math, edge cases, JSON schema, source-file map) with a worked example using `VISION LEFT FIRST LIGHT.json`
+
+
 
 ### Highlights
 
@@ -23,6 +62,72 @@ All notable changes to bobcat_engine, tracked by git commit.
 - **Safety Infrastructure (MISRA Phases 1-5)** — Bounded loops, [[nodiscard]], /W4, SocketGuard RAII, exception removal, unified ErrorCode enum, SafetyEventLog, thread priority, E-stop cascade, command timeout watchdog, concurrency hardening, health monitor, file rotation
 
 ### All Changes (by date)
+
+## 2026-04-14
+
+- **fix VisionCommandHandler reporting success on no-match**
+  - Halcon pattern-match plugins (Gray, NCC, Edge, Descriptor) intentionally return `num_matches=0` with `success=true` on no-match; this caused `execute_profile` to leave `vision.result.success=true` while skipping `world_x_mm`/`world_y_mm`, so callers reading defaults saw `(0, 0)` and downstream consumers (e.g. `PlacementRetraceWidget::runAutoDetect`) could issue `MoveToAbs(0, 0, currentZ)` — a dangerous garbage move
+  - Added `ApplyNoMatchGuardToContext()` helper in `VisionCommandHandler.cpp` (anonymous namespace) — flips `vision.result.success=false` and sets `vision.result.error` when either `vision.result.num_matches == 0` or none of `match_0_anchor_{x,y}`/`corner_{x,y}`/`center_{x,y}` keys are present
+  - Guard wired into `Execute()` right after `StoreResultInContext`, covering all three command paths (`execute`, `capture_and_execute`, `execute_profile`) via the common `CaptureAndExecute` → `Execute` chain
+  - `Execute()` now returns `false` when the guard flips success, aligning Halcon behavior with the OpenCV plugin convention where no-match is a dispatch-level failure; `execute_profile` still returns `true` from `ExecuteCommand` per the existing "dispatch OK" pattern, but context state is now correct
+  - `capture_as` prefix copies propagate the corrected `success=false`/`error` automatically via the existing `vision.*` → `<prefix>.*` copy loop
+  - Removed the now-redundant inline success-flip in the `calculate_world_position` / `!foundReference` branch; kept the diagnostic `⚠️ No reference point found` logs
+
+## 2026-04-11
+
+- **runtime theme switcher with CC-29 palette and live reload**
+  - New `Theme::ThemeId` enum (`Default`, `CC29`) and `Theme::applyPalette()` in `Theme.h` — bulk-reassigns all `Color::*` pointers to the chosen palette at runtime (constexpr dropped to mutable `inline const char*`)
+  - Added CC-29 palette (`Palette::CC29`) — 23 colors mapped to semantic roles: navy/purple backgrounds, cream text, cyan primary, sage green success, tan warning, coral danger, pink/mint accents; background `#212123`
+  - New `ThemeManager` QObject singleton (`include/AppUI/ThemeManager.h/.cpp`) — `setTheme()` reassigns palette pointers, re-applies global QSS via `qApp->setStyleSheet(DarkTheme::getStyleSheet())`, emits `themeChanged()` signal
+  - `RecipePageStyles::Colors::*` converted from `const QString` to `inline QString()` functions so they return fresh palette values after a theme switch (3 consumer files updated)
+  - New `UI/Theme` combo setting in Application Settings page (`Default (Dark)` / `CC-29 (Retro)`) — uses existing combo infrastructure, no new UI code
+  - Boot-time palette read in `Application.cpp` — reads `QSettings("UI/Theme")` before first `setStyleSheet()` so the initial render uses the saved theme
+  - Live reload wiring in `MainWindow.cpp` — `settingsChanged` → lambda reads QSettings → `ThemeManager::setTheme()` → `themeChanged()` → widget `applyTheme()` slots
+  - `applyTheme()` public slots added to `TopBar` (10 styled elements), `RunProgramPage` (status badge, buttons, progress bar), `RecipePage` (tabs, tree, bezel buttons, vision group, recipe name edit) — re-apply local QSS from current `Theme::Color::*` values
+
+- **compact settings page property editor**
+  - Value editor field resized from full-width/tall to compact 420px-wide fixed-height with top-left alignment
+  - Section badge (`m_propSectionLabel`) now `Maximum/Fixed` size policy — shrinks to text content
+  - `QStackedWidget` vertical policy set to `Fixed`, wrapped in `QHBoxLayout` with trailing stretch for flush-left alignment
+  - All 4 editor widgets (LineEdit, SpinBox, CheckBox, ComboBox) constrained to `kEditorMaxWidth`
+  - Property panel root layout set to `AlignTop | AlignLeft`
+
+- **Theme palette system and Phase 2 migration**
+  - New `Theme.h` — header-only `Theme::Palette::*` (raw hex constants) + `Theme::Color::*` (semantic role aliases) single source of truth for the entire app's color scheme
+  - New `ThemeButtonStyles.h` — `Theme::Buttons::bezel()` builder + 5 convenience variants (`bezelPrimary/Success/Warning/Danger/Neutral`) + `Theme::Boxes::groupBoxDark()`; eliminates ~30-line duplicated bezel QSS at every call site
+  - `DarkTheme.cpp` rewritten to use `__PLACEHOLDER__` template substituted from `Theme::Color::*` at runtime
+  - Phase 2 migration of TopBar (5 buttons + labels), RunProgramPage execution view + Edit Program subpage, RollCorrectionWidget (all buttons + labels), RecipePage + RecipePageStyles.h — ~550 lines of duplicated QSS removed
+  - `RecipePageStyles.h` Colors:: layer rebound to `Theme::Color::*` references
+
+- **scan-busy indicator mirrored to RunProgramPage status badge**
+  - Wired `ScanActivityTracker::activeChanged` to RunProgramPage execution badge via `QueuedConnection`; shows amber `SCANNING` overlay while any scan is active, reverts to base state (Idle/Running/Stopped/Loop) when scan ends
+  - Status badge resized to 250x150; `setProgramStatus()`/`applyProgramStatusLabel()` helpers centralize the 5 status set-sites
+
+- **scan-busy indicator in top bar, Scanning tab cleanup, grid-scan log demotion**
+  - New `ScanActivityTracker` QObject (`include/common/`) — thread-safe, reference-counted broadcaster with `activeChanged(bool)` signal; scan operations register via RAII `ScanActivityGuard` so every return path (success, early failure, user stop) correctly pairs Begin/End
+  - `⚡ SCANNING` amber badge added to TopBar next to the safety LED; hidden when idle, visible whenever any scan is in progress (tab-initiated OR recipe-initiated), driven via `Qt::QueuedConnection` for cross-thread safety
+  - `MotionCommandHandler` — RAII guards at all 5 scan command entry points: `XCAN`, `XCANExtended`, `GridScan`, `GridScanExtended`, `GridScanDualChannel`; covers recipe-driven grid scans
+  - `ScanExecutor` — flag-guarded Begin/End around `executeScan()` + `executeRotationScan()` with pairing in `cleanup()`/`cleanupRotation()` so async completion and stop paths clear correctly
+  - `ApplicationContext.scanActivityTracker` field; instance owned by `Application`, created after settings load but before SequenceEngine init so MotionCommandHandler can be wired at registration time
+  - Scanning tab (`ScanControlWidget`): removed the "Rotation Optimization" group entirely (~200 LOC — device/axis/step/threshold/Start Rotation Scan button); `RotationScanController` and `ScanExecutor::executeRotationScan` left in place but no longer reachable from this UI
+  - Scanning tab compact layout: Hexapod Scanning group top-left anchored via `QSizePolicy::Fixed` + trailing horizontal/vertical stretches; all 6 Coarse/Fine/Ultra Fine buttons `setFixedSize(140, 26)`; STOP button `setFixedSize(140, 90)`; Data Channel combo `setFixedWidth(320)`; big value label `setFixedWidth(500)`
+  - Grid-scan log noise reduction (19 sites): demoted per-point "New peak", per-20-points "Progress", context-capture echoes, and redundant "Scan completed successfully" trailers across XCAN/XCANExtended/GridScan/GridScanExtended/GridScanDualChannel; KEPT at INFO: scan start, peak-value callbacks, returning-to-peak, final summary, exit threshold reached, stop requested
+
+- `8022a4a` — **add Logging.DebugEnabled application setting to suppress verbose developer logs**
+  - New `[Logging] DebugEnabled` bool in `config/system/applicationSettings.ini`, default `false` (quiet operator mode); editable via Application Settings → Logging section with a bool toggle
+  - `LogManager::SetMinimumLevel` moved out of header to sync both `m_minimumLevel` and spdlog's own level — fixes latent bug where spdlog's hard-coded info level silently dropped DEBUG messages even when `m_minimumLevel` allowed them
+  - `LogManager` constructor default minimum level changed from `DEBUG` to `INFO`
+  - Fixed 3 `MotionCommandHandler` messages literally prefixed `"[DEBUG]"` but emitted via `m_logger->Info` — stripped the prefix and demoted the calls
+  - Demoted ~80 call sites from INFO to DEBUG across `SequenceEngine` (22 "Registered X handler" startup lines + `⚙️ Executing`, `Custom timeout`, `Building device registry`), `MotionCommandHandler` (param-resolution echoes, `WaitForMotion` diagnostics, `ParallelMove` per-device progress), `ACSController`/`PIController`/`UnifiedMotionManager` (init/shutdown, thread start/stop, per-axis velocity echoes, `MoveToAbs`/`MoveRelative` routing), `SystemCommandHandler` (`Waiting for Xms` / `Wait completed` pairs), `IOCommandHandler` (pin-name fallback, `Delaying`), `DUTCommandHandler` (product-name loads), `CameraManager` (exposure setting echoes), `AdaptiveScanController` (ctor/dtor), `JogPanelWindow` (device-not-connected, panel-refreshed, applied-exposure)
+  - Outcome: trivial 8-step recipe log dropped from ~60 lines to ~10 operator-meaningful lines when the setting is off; scans no longer flood the log with 100+ per-iteration move traces
+
+- **placement correction manual offset tuner on review and view-results pages**
+  - Added Manual Offset Tuner group box to PlacementRetraceWidget (Review state): nudge the corrected hex target position by XYZ (mm) and UVW (°) before saving; offsets are applied on top of the computed retrace correction and written to `motor_devices.local.json`
+  - Added "Re-save Target Position" tuner workflow to PlacementResultWidget (View Results state): adjust an already-saved target position by XYZ/UVW offsets and re-persist without requiring a full retrace cycle
+  - New persisted config fields in `PlacementCorrectionConfig`: `tuneOffsetX/Y/Z` (mm) and `tuneOffsetU/V/W` (°), serialized in PlacementCorrectionStore so offsets survive session restarts
+  - New signals `PlacementRetraceWidget::offsetsPersistRequested` and `PlacementResultWidget::targetResaved` wired in both PlacementCorrectionPage (F8 trainer flow) and RunProgramPage (recipe execution flow)
+  - `RunProgramPage` gains `m_activePlacementStoreBasePath` member so offsets tuned during a recipe run are saved to the correct per-product placement_correction directory
+  - UI convention: tuner group boxes use `setFixedWidth` + `Qt::AlignLeft | Qt::AlignTop` layout; spinboxes are fixed width; range ±1, step 0.001, 3 decimals
 
 ## 2026-04-09
 
