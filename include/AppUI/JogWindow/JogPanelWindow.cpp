@@ -15,6 +15,7 @@
 #include "VisionCommandHandler.h"
 #include "SequenceContext.h"
 #include "CameraManager.h"
+#include "safety/SafetyWatchManager.h"
 
 #include <iostream>
 #include <fstream>
@@ -301,6 +302,29 @@ void JogPanelWindow::createJogTab()
 
   // Auto Focus buttons
   createAutoFocusPanel(m_jogWidget);
+
+  // Emergency Stop button - bottom-right of the Jog tab
+  QHBoxLayout* estopRow = new QHBoxLayout();
+  estopRow->setContentsMargins(4, 4, 4, 4);
+  estopRow->addStretch(1);
+  m_btnEStop = new QPushButton("E-STOP");
+  m_btnEStop->setMinimumSize(100, 44);
+  m_btnEStop->setToolTip("Emergency Stop - halts motion and disables all outputs");
+  m_btnEStop->setStyleSheet(
+    "QPushButton { background-color: #c00000; color: white; font-weight: bold; "
+    "font-size: 14px; border: 2px solid #800000; border-radius: 6px; padding: 4px 10px; }"
+    "QPushButton:hover { background-color: #e00000; }"
+    "QPushButton:pressed { background-color: #800000; }");
+  connect(m_btnEStop, &QPushButton::clicked, this, [this]() {
+    if (m_context && m_context->safetyWatchManager) {
+      m_context->safetyWatchManager->TriggerManualEStop(
+        QStringLiteral("Jog Panel E-Stop button"));
+    } else if (m_context && m_context->motionManager) {
+      (void)m_context->motionManager->EmergencyStopAll();
+    }
+  });
+  estopRow->addWidget(m_btnEStop);
+  jogLayout->addLayout(estopRow);
 
   // Add to tab widget
   m_tabWidget->addTab(m_jogWidget, "Jog");
