@@ -63,6 +63,8 @@ PlacementRetraceWidget::PlacementRetraceWidget(ApplicationContext* context, QWid
 void PlacementRetraceWidget::SetData(PlacementCorrectionSet* set)
 {
     m_set = set;
+    m_autoDetectFromRecipe = false;
+    m_autoSaveContinue = false;
     setState(Idle);
     loadTuneOffsetsFromConfig();
 }
@@ -91,6 +93,10 @@ void PlacementRetraceWidget::AutoStart()
         // emit retraceEnded so the recipe's event loop exits with failure.
         emit retraceEnded();
         return;
+    }
+
+    if (m_autoDetectFromRecipe) {
+        m_autoRunAll = true;
     }
 
     onStartRetrace();
@@ -795,6 +801,9 @@ void PlacementRetraceWidget::setState(WizardState state)
         m_vel005Btn->setChecked(false);
         setHexVelocity(0.1);
         computeRetraceResults();
+        if (m_autoSaveContinue) {
+            QTimer::singleShot(0, this, &PlacementRetraceWidget::performAutoSaveContinue);
+        }
         break;
     }
     }
@@ -1021,6 +1030,11 @@ void PlacementRetraceWidget::onConfirmRefP1()
     m_retracedRef.p1z = pos.z;
     if (m_stepMeta[0].reason.empty()) m_stepMeta[0].reason = "manual";
 
+    // Re-enable auto-detect chain after manual fallback
+    if (m_autoDetectFromRecipe && !m_autoRunAll) {
+        m_autoRunAll = true;
+    }
+
     std::cout << "[PlacementRetrace] Ref P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
     // Apply Ref P2 exposure before moving
@@ -1062,6 +1076,11 @@ void PlacementRetraceWidget::onConfirmRefP2()
         m_retracedRef.p1x, m_retracedRef.p1y, m_retracedRef.p2x, m_retracedRef.p2y);
     if (m_stepMeta[1].reason.empty()) m_stepMeta[1].reason = "manual";
 
+    // Re-enable auto-detect chain after manual fallback
+    if (m_autoDetectFromRecipe && !m_autoRunAll) {
+        m_autoRunAll = true;
+    }
+
     std::cout << "[PlacementRetrace] Ref P2: X=" << pos.x << " Y=" << pos.y
               << " Angle=" << m_retracedRef.angleDeg << std::endl;
 
@@ -1080,6 +1099,11 @@ void PlacementRetraceWidget::onConfirmNrmP1()
     m_retracedNrm.p1y = pos.y;
     m_retracedNrm.p1z = pos.z;
     if (m_stepMeta[2].reason.empty()) m_stepMeta[2].reason = "manual";
+
+    // Re-enable auto-detect chain after manual fallback
+    if (m_autoDetectFromRecipe && !m_autoRunAll) {
+        m_autoRunAll = true;
+    }
 
     std::cout << "[PlacementRetrace] Nrm P1: X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
@@ -1827,6 +1851,59 @@ void PlacementRetraceWidget::runAutoDetect(int step, const std::string& profileP
             }
         }, Qt::QueuedConnection);
     });
+}
+
+void PlacementRetraceWidget::performAutoSaveContinue()
+{
+    if (!m_context || !m_context->motionManager || !m_set) {
+        std::cerr << "[PlacementRetrace] Auto-save-continue aborted: missing context/set" << std::endl;
+        return;
+    }
+
+    std::cout << "[PlacementRetrace] Auto-save-continue: saving corrected position" << std::endl;
+
+    onSaveToTarget();
+
+    // onSaveToTarget disables the save button on success
+    if (m_saveBtn && m_saveBtn->isEnabled()) {
+        std::cerr << "[PlacementRetrace] Auto-save failed — falling back to manual review" << std::endl;
+        return;
+    }
+
+    std::cout << "[PlacementRetrace] Auto-save-continue: moving to target" << std::endl;
+
+    std::string device = m_set->config.targetDevice;
+    std::string posName = m_set->config.targetPositionName;
+
+    if (m_moveToTargetBtn) {
+        m_moveToTargetBtn->setEnabled(false);
+        m_moveToTargetBtn->setText("Moving...");
+    }
+
+    auto* mm = m_context->motionManager;
+    runMotionAsync(
+        [mm, device, posName]() {
+            return mm->MoveToNamedPosition(device, posName, true);
+        },
+        [this, device, posName](bool ok) {
+            if (ok) {
+                if (m_moveToTargetBtn) {
+                    m_moveToTargetBtn->setText(QString("Moved %1 to \"%2\"")
+                        .arg(QString::fromStdString(device))
+                        .arg(QString::fromStdString(posName)));
+                }
+                std::cout << "[PlacementRetrace] Auto-save-continue: move complete, continuing recipe"
+                          << std::endl;
+                QTimer::singleShot(0, this, [this]() { onSkip(); });
+            } else {
+                if (m_moveToTargetBtn) {
+                    m_moveToTargetBtn->setText("Move FAILED");
+                    m_moveToTargetBtn->setEnabled(true);
+                }
+                std::cerr << "[PlacementRetrace] Auto-save-continue: move failed — "
+                          << "falling back to manual review" << std::endl;
+            }
+        });
 }
 
 void PlacementRetraceWidget::writeLogEntry(const std::string& outcome,

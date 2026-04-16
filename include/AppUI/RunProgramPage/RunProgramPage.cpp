@@ -2668,8 +2668,9 @@ void RunProgramPage::onExecuteProgram()
   // NOTE: onPlacementRetraceCompleted does NOT quit the loop — it just records
   // the save. The user must click "Continue" or "End" to advance the recipe.
   m_programWorker->setPlacementRetraceCallback(
-    [this](const std::string& trainingSetName, bool autoStart) -> bool {
-    emit showPlacementRetrace(QString::fromStdString(trainingSetName), autoStart);
+    [this](const PlacementRetraceParams& params) -> bool {
+    emit showPlacementRetrace(QString::fromStdString(params.trainingSetName),
+                              params.autoStart, params.autoDetect, params.autoSaveContinue);
 
     QEventLoop loop;
     m_promptEventLoop = &loop;
@@ -4804,7 +4805,8 @@ void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsS
 // PLACEMENT CORRECTION RETRACE (overlay in execution stack)
 // ============================================================================
 
-void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoStart)
+void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoStart,
+                                             bool autoDetect, bool autoSaveContinue)
 {
   // Resolve store base path from current product
   PlacementCorrectionStore store;
@@ -4836,6 +4838,10 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
   // Configure widget with loaded data
   m_placementRetraceWidget->SetMode("recipe");
   m_placementRetraceWidget->SetData(&m_activePlacementSet);
+
+  // Pass automation flags (must be after SetData which resets them)
+  m_placementRetraceWidget->SetAutoDetect(autoDetect);
+  m_placementRetraceWidget->SetAutoSaveContinue(autoSaveContinue);
 
   // Switch to placement retrace view (full right panel)
   m_executionStack->setCurrentIndex(6);

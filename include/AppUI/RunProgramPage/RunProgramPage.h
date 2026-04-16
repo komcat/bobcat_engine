@@ -72,7 +72,8 @@ signals:
                         bool enableX, bool enableY, bool enableZ);
 
   // Placement correction retrace signal
-  void showPlacementRetrace(QString trainingSetName, bool autoStart);
+  void showPlacementRetrace(QString trainingSetName, bool autoStart,
+                            bool autoDetect, bool autoSaveContinue);
 
   // Request to navigate to RecipePage and load a recipe for editing
   void requestEditRecipe(QString filePath);
@@ -142,7 +143,8 @@ private slots:
   void refreshDataStoreChannels();
 
   // Placement correction retrace handling
-  void onShowPlacementRetrace(QString trainingSetName, bool autoStart);
+  void onShowPlacementRetrace(QString trainingSetName, bool autoStart,
+                              bool autoDetect, bool autoSaveContinue);
   void onPlacementRetraceCompleted(const PlacementCorrectionSet& updatedSet);
   void onPlacementRetraceSkipped();
   void onPlacementRetraceEnded();

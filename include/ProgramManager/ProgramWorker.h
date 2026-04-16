@@ -16,6 +16,7 @@ class UnifiedMotionManager;
 class RecipeWorker;
 class RecipeExecutionStateMachine;
 class SequenceContext;  // ✅ Forward declaration for context sharing
+struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
 
 /**
  * @brief Worker thread for program execution
@@ -65,10 +66,7 @@ public:
   void setUserInputCallback(UserInputCallback callback);
 
   // Set callback for placement correction retrace (optional)
-  using PlacementRetraceCallback = std::function<bool(
-    const std::string& trainingSetName,
-    bool autoStart
-  )>;
+  using PlacementRetraceCallback = std::function<bool(const PlacementRetraceParams& params)>;
   void setPlacementRetraceCallback(PlacementRetraceCallback callback);
 
   // ✅ NEW: Configure execution mode

@@ -845,6 +845,8 @@ bool SystemCommandHandler::ExecuteCommand(
   else if (methodName == "PlacementCorrectionRetrace") {
     auto setNameIt = params.find("training_set_name");
     auto autoStartIt = params.find("auto_start");
+    auto autoDetectIt = params.find("auto_detect");
+    auto autoSaveContinueIt = params.find("auto_save_continue");
 
     if (setNameIt == params.end() || setNameIt->second.empty()) {
       errorMessage = "Missing required parameter: training_set_name";
@@ -853,6 +855,8 @@ bool SystemCommandHandler::ExecuteCommand(
 
     std::string trainingSetName = ExpandContextReferences(setNameIt->second, context);
     bool autoStart = (autoStartIt != params.end() && autoStartIt->second == "true");
+    bool autoDetect = (autoDetectIt != params.end() && autoDetectIt->second == "true");
+    bool autoSaveContinue = (autoSaveContinueIt != params.end() && autoSaveContinueIt->second == "true");
 
     // Skip in loop mode — retrace requires operator interaction, not suitable for loops
     if (context && context->IsLoopExecutionMode()) {
@@ -868,10 +872,18 @@ bool SystemCommandHandler::ExecuteCommand(
     }
 
     if (m_logger) {
-      m_logger->Info("Showing placement correction retrace for set: " + trainingSetName, "SystemHandler");
+      m_logger->Info("Showing placement correction retrace for set: " + trainingSetName
+                     + " (autoDetect=" + (autoDetect ? "true" : "false")
+                     + " autoSave=" + (autoSaveContinue ? "true" : "false") + ")", "SystemHandler");
     }
 
-    bool success = m_placementRetraceCallback(trainingSetName, autoStart);
+    PlacementRetraceParams retraceParams;
+    retraceParams.trainingSetName = trainingSetName;
+    retraceParams.autoStart = autoStart;
+    retraceParams.autoDetect = autoDetect;
+    retraceParams.autoSaveContinue = autoSaveContinue;
+
+    bool success = m_placementRetraceCallback(retraceParams);
 
     if (!success) {
       errorMessage = "User ended placement retrace without saving";

@@ -257,10 +257,10 @@ void RecipeWorker::run()
     }
     else {
       m_engine->SetPlacementRetraceCallback(
-        [this](const std::string& setName, bool /*autoStart*/) -> bool {
+        [this](const PlacementRetraceParams& params) -> bool {
         emit logMessage(QString("ERROR: Placement Correction Retrace '%1' requires Run Program page. "
           "Please add this recipe to a Program and execute from Run Program.")
-          .arg(QString::fromStdString(setName)));
+          .arg(QString::fromStdString(params.trainingSetName)));
         return false;
       }
       );

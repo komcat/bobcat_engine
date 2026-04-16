@@ -59,7 +59,9 @@ public:
     std::map<std::string, std::string> GetDefaultParameters() const override {
         return {
             {"training_set_name", ""},
-            {"auto_start", "true"}
+            {"auto_start", "true"},
+            {"auto_detect", "false"},
+            {"auto_save_continue", "false"}
         };
     }
 
@@ -80,6 +82,18 @@ public:
 
         widget->addCheckboxParameter("auto_start", "Auto-start retrace wizard",
                                      getParam("auto_start"));
+
+        widget->addCheckboxParameter("auto_detect", "Auto-detect with manual fallback",
+                                     getParam("auto_detect"),
+                                     "Automatically run vision detect for each point. "
+                                     "If vision fails, pauses for manual confirm, then "
+                                     "continues auto-detecting remaining points.");
+
+        widget->addCheckboxParameter("auto_save_continue", "Auto-save and continue",
+                                     getParam("auto_save_continue"),
+                                     "After all 4 points are confirmed, automatically save "
+                                     "the corrected position, move to target, and continue "
+                                     "the recipe without operator review.");
     }
 
     void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -96,16 +110,22 @@ public:
 
         std::string tsName = getParam("training_set_name");
         std::string autoStart = getParam("auto_start");
+        std::string autoDetect = getParam("auto_detect");
+        std::string autoSaveContinue = getParam("auto_save_continue");
 
         sequence->AddAction("system", "PlacementCorrectionRetrace", {
             {"training_set_name", tsName},
             {"auto_start", autoStart},
+            {"auto_detect", autoDetect},
+            {"auto_save_continue", autoSaveContinue},
             {"timeout", "0"}  // Disable action timeout (interactive wizard may block indefinitely)
         });
 
         std::cout << "[PlacementCorrectionProcesses] Built sequence for: "
                   << step->userNickname << " (Training Set: " << tsName
-                  << ", Auto-start: " << autoStart << ")" << std::endl;
+                  << ", Auto-start: " << autoStart
+                  << ", Auto-detect: " << autoDetect
+                  << ", Auto-save: " << autoSaveContinue << ")" << std::endl;
     }
 };
 
