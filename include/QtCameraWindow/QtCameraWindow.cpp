@@ -2473,6 +2473,33 @@ void QtCameraWindow::selectVisionProfile(const std::string& profilePath)
     m_activeVisionProfile = profilePath;
 }
 
+void QtCameraWindow::showExternalVisionOverlay(const VisionResult& result,
+                                               const std::string& profileName,
+                                               int durationMs)
+{
+    // Marshal to the GUI thread. AutoConnection resolves to direct invoke if
+    // already on the GUI thread, queued otherwise. Lambda captures by value
+    // so the VisionResult survives until the slot runs.
+    QMetaObject::invokeMethod(this,
+        [this, result, profileName, durationMs]() {
+            if (!m_viewport) return;
+            // Lazy-init timer on the GUI thread so it's parented to this
+            // QObject and lives on the correct thread for QTimer operations.
+            if (!m_externalVisionOverlayTimer) {
+                m_externalVisionOverlayTimer = new QTimer(this);
+                m_externalVisionOverlayTimer->setSingleShot(true);
+                connect(m_externalVisionOverlayTimer, &QTimer::timeout, this, [this]() {
+                    if (m_viewport) {
+                        VisionResult empty;
+                        m_viewport->setVisionOverlayData(false, empty, std::string());
+                    }
+                });
+            }
+            m_viewport->setVisionOverlayData(true, result, profileName);
+            m_externalVisionOverlayTimer->start(durationMs > 0 ? durationMs : 500);
+        }, Qt::AutoConnection);
+}
+
 // ============================================================================
 // Vision processing — private slots
 // ============================================================================

@@ -105,6 +105,16 @@ public:
     uint64_t getVisionResultSequence() const;
     void setVisionEnabled(bool enabled);
     void selectVisionProfile(const std::string& profilePath);
+
+    // External vision overlay feedback: pushes the given VisionResult onto
+    // the viewport for `durationMs` ms, then auto-clears. Used by callers
+    // that execute vision profiles outside this window's own vision loop
+    // (e.g. VisionCommandHandler::execute_profile). Thread-safe: may be
+    // invoked from any thread — internally marshalled to the GUI thread.
+    // Each call replaces any pending overlay and restarts the clear timer.
+    void showExternalVisionOverlay(const VisionResult& result,
+                                   const std::string& profileName,
+                                   int durationMs);
 #endif
 
     // Viewport access
@@ -349,6 +359,9 @@ private:
     std::string  m_visionProfileName;
     mutable std::mutex m_visionResultMutex;
     std::atomic<uint64_t> m_visionResultSequence{0};
+
+    // External vision overlay (from callers outside this window's vision loop)
+    QTimer* m_externalVisionOverlayTimer = nullptr;
 
     // Profile discovery
     struct VisionProfileInfo { std::string fullPath; std::string displayName; };
