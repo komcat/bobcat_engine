@@ -1195,6 +1195,7 @@ if(EZIIO_FOUND)
         include/IO/WagoIODevice.cpp
         include/IO/QuickOutputManager.cpp
         include/IO/QuickOutput_JsonLoader.cpp
+        include/IO/IoWatchManager.cpp
     )
     list(APPEND HEADERS
         include/IO/EziIO_Types.h
@@ -1206,6 +1207,7 @@ if(EZIIO_FOUND)
         include/IO/EziIO_JsonLoader.h
         include/IO/QuickOutputManager.h
         include/IO/QuickOutput_JsonLoader.h
+        include/IO/IoWatchManager.h
     )
     message(STATUS "EziIO support enabled (includes WAGO Modbus TCP adapter)")
 else()

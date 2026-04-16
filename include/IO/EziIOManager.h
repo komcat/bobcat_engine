@@ -70,6 +70,7 @@ public:
   // Pin name convenience methods
   [[nodiscard]] EziIOError SetOutputByName(const std::string& deviceName, const std::string& pinName, bool state);
   bool GetInputByName(const std::string& deviceName, const std::string& pinName, bool& state);
+  bool GetOutputByName(const std::string& deviceName, const std::string& pinName, bool& state);
 
   // ============================================================================
   // POLLING THREAD

@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "polling_interval_ms": 50,
+  "bindings": [
+    {
+      "name": "Switch 1 -> Vacuum Base",
+      "input":  { "device": "IOTop",    "pin_name": "Signal from switch 1" },
+      "output": { "device": "IOBottom", "pin_name": "Vacuum Base" },
+      "trigger": "rising",
+      "debounce_ms": 100,
+      "enabled": true
+    },
+    {
+      "name": "Switch 2 -> R Gripper Open/Close",
+      "input":  { "device": "IOTop",    "pin_name": "Signal from switch 2" },
+      "output": { "device": "IOBottom", "pin_name": "R Gripper Open/Close" },
+      "trigger": "rising",
+      "debounce_ms": 100,
+      "enabled": true
+    }
+  ]
+}

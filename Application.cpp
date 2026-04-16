@@ -423,6 +423,8 @@ void Application::initializeManagers()
     initializeSafetyWatch();
     completeSplash("SafetyWatch");
 
+    initializeIoWatch();
+
     // Initialize InterlockManager
     m_interlockManager = std::make_unique<InterlockManager>();
     m_interlockManager->SetMotionManager(m_motionManager.get());
@@ -1029,6 +1031,11 @@ void Application::onConnectionTaskCompleted(const Startup::ConnectionResult& res
         m_logManager->Error("Failed to start safety watch", "Application");
       }
     }
+    if (m_ioWatchManager && m_ioWatchManager->IsEnabled()) {
+      if (!m_ioWatchManager->StartWatching()) {
+        m_logManager->Error("Failed to start IO watch", "Application");
+      }
+    }
   }
 }
 
@@ -1186,6 +1193,12 @@ void Application::shutdownManagers()
     m_safetyWatchManager->StopWatching();
   }
 
+  // Stop IO watch (manual override layer)
+  if (m_ioWatchManager) {
+    if (m_logManager) m_logManager->Debug("Stopping IO watch...", "Application");
+    m_ioWatchManager->StopWatching();
+  }
+
   // ✅ CRITICAL: Stop SMU polling and disconnect signals BEFORE touching DataStore
   // This prevents crash where polling thread tries to access destroyed DataStore
   if (m_smuPollingManager) {
@@ -1277,6 +1290,7 @@ void Application::shutdownManagers()
 
   // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
   m_smuPollingManager.reset();
+  m_ioWatchManager.reset();
   m_safetyWatchManager.reset();
   m_safetyEventLog.reset();
   m_deviceLinkManager.reset();
@@ -2415,6 +2429,57 @@ void Application::initializeSafetyWatch()
       "Application"
     );
     // Don't throw - allow app to continue without safety watch
+  }
+}
+
+void Application::initializeIoWatch()
+{
+  m_logManager->Debug("Initializing IO Watch...", "Application");
+
+  try {
+    m_ioWatchManager = std::make_unique<IoWatchManager>(this);
+    m_ioWatchManager->SetIOManager(m_ioManager.get());
+    m_ioWatchManager->SetLogManager(m_logManager.get());
+
+    const std::string localConfigPath = "config/io_watch.local.json";
+    const std::string defaultConfigPath = "config/io_watch.json";
+
+    bool configLoaded = false;
+
+    std::ifstream localFile(localConfigPath);
+    if (localFile.good()) {
+      localFile.close();
+      if (m_ioWatchManager->LoadConfig(localConfigPath)) {
+        m_logManager->Info("IO watch configuration loaded from " + localConfigPath, "Application");
+        configLoaded = true;
+      }
+    }
+
+    if (!configLoaded) {
+      if (m_ioWatchManager->LoadConfig(defaultConfigPath)) {
+        m_logManager->Info("IO watch configuration loaded from " + defaultConfigPath, "Application");
+        configLoaded = true;
+      }
+    }
+
+    if (configLoaded) {
+      if (m_ioWatchManager->IsEnabled()) {
+        m_logManager->Info("IoWatchManager initialized (watching will start after IO connects)", "Application");
+      } else {
+        m_logManager->Info("IoWatchManager initialized but disabled in config", "Application");
+      }
+    } else {
+      m_logManager->Warning("IO watch config not found - manual override layer disabled", "Application");
+    }
+
+    m_logManager->Info("IO Watch initialized", "Application");
+  }
+  catch (const std::exception& e) {
+    m_logManager->Error(
+      std::string("IO watch initialization failed: ") + e.what(),
+      "Application"
+    );
+    // Don't throw - allow app to continue without IO watch
   }
 }
 
