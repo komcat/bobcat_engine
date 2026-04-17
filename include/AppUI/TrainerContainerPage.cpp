@@ -6,6 +6,7 @@
 #include "ZOffsetTrainer/ZOffsetPage.h"
 #include "YawTrainer/YawTrainerPage.h"
 #include "PlacementCorrectionTrainer/PlacementCorrectionPage.h"
+#include "EdgeTransferTrainer/EdgeTransferPage.h"
 #include "ApplicationContext.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,6 +24,7 @@ TrainerContainerPage::TrainerContainerPage(ApplicationContext* context, QWidget*
     , m_zOffsetPage(nullptr)
     , m_yawTrainerPage(nullptr)
     , m_placementCorrectionPage(nullptr)
+    , m_edgeTransferPage(nullptr)
     , m_activeIndex(0)
 {
     setupUI();
@@ -92,6 +94,7 @@ void TrainerContainerPage::setupUI()
         { "Z\nOffset",     true },
         { "Yaw\nTrainer",   true  },
         { "Place\nCorrect", true  },
+        { "Edge\nTransfer", true  },
     };
 
     QString btnStyle =
@@ -103,7 +106,7 @@ void TrainerContainerPage::setupUI()
         "QPushButton:checked { background-color: #3d5a8c; color: white; border-color: #5a8fc4; }"
         "QPushButton:disabled { background-color: #111520; color: #333; border-color: #1a1f2e; }";
 
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 7; ++i) {
         auto* btn = new QPushButton(defs[i].label);
         btn->setCheckable(true);
         btn->setEnabled(defs[i].enabled);
@@ -159,6 +162,11 @@ void TrainerContainerPage::setupUI()
     m_placementCorrectionPage = new PlacementCorrectionPage(m_context, this);
     m_placementCorrectionPage->setTopBarVisible(false);
     m_contentStack->addWidget(m_placementCorrectionPage);
+
+    // Index 6: EdgeTransferPage (with its own top bar hidden)
+    m_edgeTransferPage = new EdgeTransferPage(m_context, this);
+    m_edgeTransferPage->setTopBarVisible(false);
+    m_contentStack->addWidget(m_edgeTransferPage);
 
     bodyLayout->addWidget(m_contentStack, 1);
     mainLayout->addLayout(bodyLayout, 1);

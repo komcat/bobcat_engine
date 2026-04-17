@@ -465,6 +465,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/YawTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlacementCorrectionTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/EdgeTransferTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -827,6 +828,14 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
+    # Edge Transfer Trainer
+    include/AppUI/EdgeTransferTrainer/EdgeTransferStore.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeTeachWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeResultWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeImageGalleryWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeSummaryDiagramWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeRetraceWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeTransferPage.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -1099,6 +1108,15 @@ set(HEADERS
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.h
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.h
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.h
+    # Edge Transfer Trainer
+    include/AppUI/EdgeTransferTrainer/EdgeTransferData.h
+    include/AppUI/EdgeTransferTrainer/EdgeTransferStore.h
+    include/AppUI/EdgeTransferTrainer/EdgeTeachWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeResultWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeImageGalleryWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeSummaryDiagramWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeRetraceWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeTransferPage.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
