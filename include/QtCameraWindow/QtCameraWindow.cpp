@@ -1542,6 +1542,18 @@ void QtCameraWindow::setDisplayRotation(int degrees)
         m_rotationCombo->blockSignals(false);
     }
     if (m_viewport) m_viewport->setDisplayRotation(degrees);
+
+    // Keep Click-to-Move locked whenever a rotation is active.
+    const bool rotated = (degrees != 0);
+    if (rotated && m_clickToMoveEnabled) {
+        setClickToMoveEnabled(false);
+    }
+    if (m_clickToMoveCheck) {
+        m_clickToMoveCheck->setEnabled(!rotated);
+        m_clickToMoveCheck->setToolTip(rotated
+            ? QStringLiteral("Click-to-Move is disabled while display rotation is active.")
+            : QString());
+    }
 }
 
 // ============================================================================
@@ -2056,6 +2068,20 @@ void QtCameraWindow::onRotationChanged(int index)
 {
     const int deg = rotationFromIndex(index);
     if (m_viewport) m_viewport->setDisplayRotation(deg);
+
+    // Click-to-move math assumes unrotated display. Force-disable and lock the
+    // checkbox whenever a rotation is active so users can't issue mis-directed
+    // moves from a rotated view.
+    const bool rotated = (deg != 0);
+    if (rotated && m_clickToMoveEnabled) {
+        setClickToMoveEnabled(false);
+    }
+    if (m_clickToMoveCheck) {
+        m_clickToMoveCheck->setEnabled(!rotated);
+        m_clickToMoveCheck->setToolTip(rotated
+            ? QStringLiteral("Click-to-Move is disabled while display rotation is active.")
+            : QString());
+    }
 }
 
 void QtCameraWindow::onImageClicked(int imageX, int imageY)
