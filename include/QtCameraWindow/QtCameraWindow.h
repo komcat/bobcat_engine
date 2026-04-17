@@ -23,6 +23,7 @@
 #include <queue>
 #include <condition_variable>
 #include <thread>
+#include <future>
 #include <functional>
 #include "nlohmann/json.hpp"
 
@@ -40,6 +41,7 @@ class QListWidget;
 class QPushButton;
 class QTimer;
 class TransformationMatrixLoader;
+struct ApplicationContext;
 
 /**
  * @brief Top-level Qt window for camera live streaming with side panel controls.
@@ -71,6 +73,7 @@ public:
     void setDataStore(DataStore* store);
     void setMotionManager(UnifiedMotionManager* mgr);
     void setCameraConfigManager(CameraConfigManager* mgr);
+    void setApplicationContext(ApplicationContext* ctx);
 
     // Camera control
     void setTargetCamera(const std::string& cameraId);
@@ -282,6 +285,12 @@ private:
     DataStore*           m_dataStore            = nullptr;
     UnifiedMotionManager* m_motionManager       = nullptr;
     CameraConfigManager* m_cameraConfigManager  = nullptr;
+    ApplicationContext*  m_appContext           = nullptr;
+
+    // Auto-focus state
+    std::future<void> m_autoFocusFuture;
+    void runAutoFocus(const std::string& cameraId, const std::string& motionDevice,
+                       double zRangeMm, double zStepMm, QPushButton* button);
 
     // Camera state
     std::string m_targetCameraId;

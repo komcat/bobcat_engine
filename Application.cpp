@@ -2054,6 +2054,7 @@ void Application::initializeQtCameraWindow()
   m_qtCameraWindow->setCameraManager(m_cameraManager.get());
   m_qtCameraWindow->setDataStore(m_dataStore.get());
   m_qtCameraWindow->setMotionManager(m_motionManager.get());
+  m_qtCameraWindow->setApplicationContext(&m_context);
 
   if (m_cameraConfigManager) {
     m_qtCameraWindow->setCameraConfigManager(m_cameraConfigManager.get());
@@ -2083,6 +2084,7 @@ void Application::initializeQtCameraWindow2()
   m_qtCameraWindow2->setCameraManager(m_cameraManager.get());
   m_qtCameraWindow2->setDataStore(m_dataStore.get());
   m_qtCameraWindow2->setMotionManager(m_motionManager.get());
+  m_qtCameraWindow2->setApplicationContext(&m_context);
 
   if (m_cameraConfigManager) {
     m_qtCameraWindow2->setCameraConfigManager(m_cameraConfigManager.get());
