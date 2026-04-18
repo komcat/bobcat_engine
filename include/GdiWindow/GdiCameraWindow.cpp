@@ -1011,13 +1011,17 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
         }
     }
 
+    static std::mutex loggedCamerasMutex;
     static std::set<std::string> loggedCameras;
-    if (loggedCameras.find(frameData.cameraId) == loggedCameras.end()) {
-        std::cout << "[GdiCameraWindow] First frame received from camera: " << frameData.cameraId
-                  << " (" << frameData.width << "x" << frameData.height << ")"
-                  << (isPrimaryCamera ? " [Primary]" : "")
-                  << (isSecondaryCamera ? " [Secondary]" : "") << std::endl;
-        loggedCameras.insert(frameData.cameraId);
+    {
+        std::lock_guard<std::mutex> logLock(loggedCamerasMutex);
+        if (loggedCameras.find(frameData.cameraId) == loggedCameras.end()) {
+            std::cout << "[GdiCameraWindow] First frame received from camera: " << frameData.cameraId
+                      << " (" << frameData.width << "x" << frameData.height << ")"
+                      << (isPrimaryCamera ? " [Primary]" : "")
+                      << (isSecondaryCamera ? " [Secondary]" : "") << std::endl;
+            loggedCameras.insert(frameData.cameraId);
+        }
     }
 
     // Store frame in appropriate buffer

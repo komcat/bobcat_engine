@@ -876,7 +876,10 @@ void PlacementRetraceWidget::applyCameraExposureAsync(double exposureUs)
     auto* camMgr = m_context->cameraManager;
     std::string cameraId = m_set->config.cameraId;
 
-    std::thread([camMgr, cameraId, exposureUs]() {
+    if (m_exposureFuture.valid()) {
+        m_exposureFuture.wait();
+    }
+    m_exposureFuture = std::async(std::launch::async, [camMgr, cameraId, exposureUs]() {
         ICameraHardware::ExposureSettings expSettings;
         expSettings.auto_exposure = false;
         expSettings.auto_gain = false;
@@ -888,7 +891,7 @@ void PlacementRetraceWidget::applyCameraExposureAsync(double exposureUs)
         std::cout << "[PlacementRetrace] Camera \"" << cameraId
                   << "\" exposure=" << exposureUs << "us "
                   << (ok ? "OK" : "FAILED") << std::endl;
-    }).detach();
+    });
 }
 
 std::string PlacementRetraceWidget::getImageDirectory() const

@@ -235,6 +235,7 @@ private:
 
     // Vision auto-detect background worker
     std::future<void> m_visionFuture;
+    std::future<void> m_exposureFuture;
 
     // Page 5: Review
     QLabel* m_reviewLabel = nullptr;

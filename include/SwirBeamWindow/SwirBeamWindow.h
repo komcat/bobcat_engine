@@ -275,6 +275,8 @@ private:
     bool m_psuDiscovered = false;
     std::future<void> m_psuConnectFuture;  // background PSU auto-connect
     std::atomic<bool> m_psuPollInFlight{false};  // prevents overlapping polls
+    std::future<void> m_psuPollFuture;
+    std::future<void> m_tecPresetFuture;
 
     // Exposure state
     bool m_autoExposure = false;
@@ -350,6 +352,7 @@ private:
     // Beam focus optimization (reusable components)
     std::atomic<bool> m_beamFocusRunning{false};
     std::future<void> m_beamFocusFuture;
+    std::future<void> m_configReloadFuture;
     BeamScoreProvider m_beamScoreProvider;
     HillClimbConfig m_beamFocusConfig;  // configurable step sizes, settle time, etc.
 

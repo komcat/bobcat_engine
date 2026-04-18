@@ -144,6 +144,15 @@ void SwirBeamWindow::Destroy()
     if (m_beamFocusFuture.valid()) {
         m_beamFocusFuture.wait();
     }
+    if (m_configReloadFuture.valid()) {
+        m_configReloadFuture.wait();
+    }
+    if (m_psuPollFuture.valid()) {
+        m_psuPollFuture.wait();
+    }
+    if (m_tecPresetFuture.valid()) {
+        m_tecPresetFuture.wait();
+    }
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
@@ -487,7 +496,7 @@ void SwirBeamWindow::PollPSUReadings()
     m_psuPollInFlight.store(true);
     auto* psuMgr = m_psuManager;
     auto* self = this;
-    std::thread([self, psuMgr, names]() {
+    m_psuPollFuture = std::async(std::launch::async, [self, psuMgr, names]() {
         // Read from hardware (may block 50-100ms per call)
         struct Reading { std::string name; double voltage; double current; double setCurrentVal; bool outputOn; };
         std::vector<Reading> readings;
@@ -528,7 +537,7 @@ void SwirBeamWindow::PollPSUReadings()
         if (self->m_hwnd && self->IsVisible()) {
             InvalidateRect(self->m_hwnd, nullptr, FALSE);
         }
-    }).detach();
+    });
 }
 
 // ============================================================================
@@ -546,7 +555,10 @@ void SwirBeamWindow::OnTECPreset(double temperature)
     auto* tecMgr = m_tecManager;
     std::string devName = m_tecDeviceName;
 
-    std::thread([tecMgr, devName, temperature, this]() {
+    if (m_tecPresetFuture.valid()) {
+        m_tecPresetFuture.wait();
+    }
+    m_tecPresetFuture = std::async(std::launch::async, [tecMgr, devName, temperature, this]() {
         // Connect if needed
         auto status = tecMgr->GetDeviceStatus(devName);
         if (!status.Connected) {
@@ -576,7 +588,7 @@ void SwirBeamWindow::OnTECPreset(double temperature)
         }
 
         InvalidatePanel();
-    }).detach();
+    });
 }
 
 void SwirBeamWindow::PollTECReadings()
@@ -2251,13 +2263,16 @@ void SwirBeamWindow::OnEditBeamConfig()
 
     // Wait for notepad to close on a background thread, then reload config
     HANDLE hProc = sei.hProcess;
-    std::thread([this, hProc]() {
+    if (m_configReloadFuture.valid()) {
+        m_configReloadFuture.wait();
+    }
+    m_configReloadFuture = std::async(std::launch::async, [this, hProc]() {
         WaitForSingleObject(hProc, INFINITE);
         CloseHandle(hProc);
         std::cout << "[SwirBeamWindow] Notepad closed, reloading beam config..." << std::endl;
         LoadBeamConfig();
         std::cout << "[SwirBeamWindow] Beam config reloaded" << std::endl;
-    }).detach();
+    });
 }
 
 void SwirBeamWindow::OnBeamDetectToggle()
