@@ -24,6 +24,7 @@ class TopBar;
 class VisionManagerPage;       // Vision Manager UI
 class ApplicationSettingsPage; // Application Settings editor
 class TrainerContainerPage;   // Trainer container with side panel
+class DataBackupPage;
 
 class MainWindow : public QMainWindow
 {
@@ -52,6 +53,7 @@ private slots:
   void onMainMenuEditConfig();
   void onMainMenuFutureUpdate();
   void onMainMenuAccuracyTrainer();
+  void onMainMenuDataBackup();
   void onBackToMainMenu();
   void onOpenLogViewer();
   void onToggleJogPanel();
@@ -85,6 +87,7 @@ private:
   VisionManagerPage* m_visionManagerPage;  // Vision Manager page
   ApplicationSettingsPage* m_applicationSettingsPage;  // Application Settings page
   TrainerContainerPage* m_trainerContainerPage;  // Trainer container page
+  DataBackupPage* m_dataBackupPage;
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;

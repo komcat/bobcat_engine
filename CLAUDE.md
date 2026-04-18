@@ -269,6 +269,61 @@ Located in `include/AppUI/RunProgramPage/RollCorrectionWidget.h/.cpp`. Corrects 
 4. All moves use 1mm/s safe velocity with automatic restore
 5. "Fine Grid Scan" button runs `GridScanDualChannel` on background thread; "STOP Scan" uses SequenceContext-based stop control
 
+## Data Backup System
+
+Located in `include/AppUI/DataBackupPage.h/.cpp`. Product-scoped file backup with SHA-256 integrity verification. Accessed via "Data Backup" button on main menu (F8).
+
+### Backup Storage
+Backups are stored per-product in `config/{productName}/backups/{timestamp}_{type}[_{name}]/`. Each backup copies the entire product directory (positions, recipes, programs, trainer datasets) except the `backups/` subfolder itself.
+
+### Backup Types
+| Type | Trigger | Retention |
+|------|---------|-----------|
+| `save_point` | User clicks "Create Save Point" | Never auto-pruned |
+| `auto` | QTimer at configurable interval (default 30 min) | Keep last 10 |
+| `pre_revert` | Automatically before any restore | Keep last 3 |
+
+### Key Features
+- **SHA-256 manifest** (`manifest.json`) stores per-file hash and size for integrity verification
+- **Smart auto-backup** skips if no files changed since last backup (hash comparison)
+- **Show Changes** compares current product files against any backup: reports `[M]` modified, `[+]` added, `[-]` deleted files
+- **Pre-revert safety** always snapshots current state before restoring
+- Auto-backup settings persist in QSettings (`Backup/AutoEnabled`, `Backup/AutoIntervalMin`)
+
+## UI Page Navigation
+
+MainWindow uses a `QStackedWidget` with F-key shortcuts for page switching:
+
+| Key | Page | Class |
+|-----|------|-------|
+| F1 | Process (Run Program) | `RunProgramPage` |
+| F2 | Recipe | `RecipePage` |
+| F3 | Motion | `MotionPage` |
+| F4 | Hardware & Instrument | `HardwareInstrumentPage` |
+| F5 | Settings | `ApplicationSettingsPage` |
+| F6 | Vision Manager | `VisionManagerPage` |
+| F7 | Accuracy Trainer | `TrainerContainerPage` |
+| F8 | Data Backup | `DataBackupPage` |
+
+Window toggles: Ctrl+J (Jog Panel), Ctrl+K (Aux Window), Ctrl+R / Ctrl+T (Camera Monitors).
+
+All pages receive `ApplicationContext*` in constructor and emit `backToMainMenu()` signal. Pages that need product awareness connect to `MainMenuPage::productChanged()` signal.
+
+## Product Directory Structure
+
+Each product folder lives under `config/{productName}/` and contains:
+```
+config/SIPHOG101/
+├── positions.SIPHOG101.json     # Named positions (loaded by ProductPositionManager)
+├── recipes/                      # Recipe JSON files
+├── programs/                     # Run program JSON files
+├── accuracy_trainer/             # Accuracy trainer datasets
+├── placement_correction/         # Placement correction datasets
+└── backups/                      # Data backup snapshots (auto-managed)
+```
+
+Active product is managed by `ProductPositionManager` (accessible via `ApplicationContext`). Use `HasLoadedProduct()` / `GetCurrentProductName()` / `GetCurrentProductPath()`.
+
 ## Configuration System
 
 All hardware configuration is JSON-based in `config/`:
@@ -418,6 +473,8 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 - `include/IO/SocketGuard.h` - RAII wrapper for socket lifetime
 - `include/AppUI/AccuracyTrainer/AccuracyTrainerData.h` - Trainer data structures + transform math
 - `include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionData.h` - Placement correction data + angle math
+- `include/AppUI/DataBackupPage.h` - Product data backup/restore with SHA-256 integrity
+- `include/AppUI/SettingsPage/ConfigBackupManager.h` - Root/system config backup (dialog-based, in Settings)
 - `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
 
 ## Quick Reference

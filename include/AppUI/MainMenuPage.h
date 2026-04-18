@@ -27,6 +27,7 @@ signals:
   void editConfigClicked();
   void futureUpdateClicked();
   void accuracyTrainerClicked();
+  void dataBackupClicked();
   void productChanged();  // Emitted when product is loaded or created
 
 private slots:
@@ -59,4 +60,5 @@ private:
   QToolButton* m_editConfigButton;
   QToolButton* m_futureUpdateButton;
   QToolButton* m_accuracyTrainerButton;
+  QToolButton* m_dataBackupButton;
 };

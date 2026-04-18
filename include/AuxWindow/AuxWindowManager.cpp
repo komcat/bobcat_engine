@@ -59,9 +59,6 @@ void AuxWindowManager::initialize()
 
   m_initialized = true;
 
-  // Show window on startup
-  show();
-
   // ✅ FIX: Trigger delayed camera selection after window is shown and ready
   std::cout << "[AuxWindowManager] Triggering delayed camera initialization..." << std::endl;
   m_window->initializeCameraSelection();

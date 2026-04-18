@@ -543,6 +543,7 @@ set(SOURCES
     include/AppUI/ThemeManager.cpp
     include/AppUI/ConnectionSplashScreen.cpp
     include/AppUI/MainMenuPage.cpp
+    include/AppUI/DataBackupPage.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
     include/logger/LogManager.cpp

@@ -304,6 +304,7 @@ void MainMenuPage::setupUI()
   m_editConfigButton = createMenuButton("Settings");
   m_futureUpdateButton = createMenuButton("Vision Manager", ":/icons/visionmanager.png");
   m_accuracyTrainerButton = createMenuButton("Accuracy\nTrainer", ":/icons/accuracy_trainer.png");
+  m_dataBackupButton = createMenuButton("Data\nBackup", ":/icons/backup.png");
 
   // Shortcut tooltips
   m_processButton->setToolTip("Process (F1)");
@@ -313,6 +314,7 @@ void MainMenuPage::setupUI()
   m_editConfigButton->setToolTip("Settings (F5)");
   m_futureUpdateButton->setToolTip("Vision Manager (F6)");
   m_accuracyTrainerButton->setToolTip("Accuracy Trainer (F7)");
+  m_dataBackupButton->setToolTip("Data Backup (F8)");
 
   // Row 0
   buttonGrid->addWidget(m_processButton, 0, 0);
@@ -323,6 +325,7 @@ void MainMenuPage::setupUI()
   buttonGrid->addWidget(m_editConfigButton, 1, 0);
   buttonGrid->addWidget(m_futureUpdateButton, 1, 1);
   buttonGrid->addWidget(m_accuracyTrainerButton, 1, 2);
+  buttonGrid->addWidget(m_dataBackupButton, 1, 3);
 
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
@@ -335,6 +338,7 @@ void MainMenuPage::setupUI()
   connect(m_editConfigButton, &QToolButton::clicked, this, &MainMenuPage::editConfigClicked);
   connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);
   connect(m_accuracyTrainerButton, &QToolButton::clicked, this, &MainMenuPage::accuracyTrainerClicked);
+  connect(m_dataBackupButton, &QToolButton::clicked, this, &MainMenuPage::dataBackupClicked);
 
   // Set dark blue background
   setStyleSheet("QWidget { background-color: #1a1f2e; }");

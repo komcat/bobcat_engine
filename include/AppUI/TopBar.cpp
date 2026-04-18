@@ -274,6 +274,7 @@ void TopBar::setupUI()
     Theme::Color::primary,         // dark  (bottom of gradient)
     Theme::Color::primaryPressed   // pressed
   ));
+  m_auxWindowButton->setEnabled(false);
   connect(m_auxWindowButton, &QPushButton::clicked, this, &TopBar::auxWindowButtonClicked);
   layout->addWidget(m_auxWindowButton);
 

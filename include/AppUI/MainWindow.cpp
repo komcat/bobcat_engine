@@ -25,6 +25,7 @@
 #include "VisionManagerPage.h"    // Vision Manager UI
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
 #include "TrainerContainerPage.h"                  // Trainer container
+#include "DataBackupPage.h"
 #include "Common/ShutdownConfirmDialog.h"          // Shutdown confirmation
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
@@ -51,6 +52,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_visionManagerPage(nullptr) // Vision Manager page
   , m_applicationSettingsPage(nullptr) // Application Settings page
   , m_trainerContainerPage(nullptr)    // Trainer container page
+  , m_dataBackupPage(nullptr)
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -230,6 +232,8 @@ void MainWindow::createPages()
     this, &MainWindow::onMainMenuFutureUpdate);
   connect(m_mainMenuPage, &MainMenuPage::accuracyTrainerClicked,
     this, &MainWindow::onMainMenuAccuracyTrainer);
+  connect(m_mainMenuPage, &MainMenuPage::dataBackupClicked,
+    this, &MainWindow::onMainMenuDataBackup);
   connect(m_mainMenuPage, &MainMenuPage::productChanged,
     this, &MainWindow::updateProductInfo);
   m_pageStack->addWidget(m_mainMenuPage);
@@ -333,6 +337,14 @@ void MainWindow::createPages()
   connect(m_trainerContainerPage, &TrainerContainerPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_trainerContainerPage);
+
+  // Data Backup page
+  m_dataBackupPage = new DataBackupPage(m_context, this);
+  connect(m_dataBackupPage, &DataBackupPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    m_dataBackupPage, &DataBackupPage::onProductChanged);
+  m_pageStack->addWidget(m_dataBackupPage);
 
   // ✅ Wire themeChanged to every widget that has local stylesheets.
   // When ThemeManager flips the palette, these slots re-apply their
@@ -458,10 +470,10 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutF7, &QShortcut::activated, this, &MainWindow::onMainMenuAccuracyTrainer);
   std::cout << "[MainWindow]   F7 -> Accuracy Trainer Page" << std::endl;
 
-  // F8 - Reserved (not connected yet)
+  // F8 - Data Backup Page
   m_shortcutF8 = new QShortcut(QKeySequence(Qt::Key_F8), this);
-  m_shortcutF8->setEnabled(false);  // Disabled until implemented
-  std::cout << "[MainWindow]   F8 -> Reserved (Disabled)" << std::endl;
+  connect(m_shortcutF8, &QShortcut::activated, this, &MainWindow::onMainMenuDataBackup);
+  std::cout << "[MainWindow]   F8 -> Data Backup Page" << std::endl;
 
   // Ctrl+J - Toggle Jog Panel
   m_shortcutCtrlJ = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_J), this);
@@ -599,6 +611,19 @@ void MainWindow::onMainMenuAccuracyTrainer()
   std::cout << "[MainWindow] Accuracy Trainer clicked" << std::endl;
   m_context->logManager->Info("Navigating to Accuracy Trainer page", "MainWindow");
   m_pageStack->setCurrentWidget(m_trainerContainerPage);
+}
+
+void MainWindow::onMainMenuDataBackup()
+{
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;
+    }
+  }
+
+  std::cout << "[MainWindow] Data Backup clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Data Backup page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_dataBackupPage);
 }
 
 void MainWindow::onBackToMainMenu()
