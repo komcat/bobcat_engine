@@ -20,6 +20,7 @@
 #include "RelativePositionCommandHandler.h"
 #include "CoordinateAlignCommandHandler.h"
 #include "AccuracyTrainerCommandHandler.h"
+#include "EdgeTransferCommandHandler.h"
 #include "CameraOffsetCommandHandler.h"
 #include "PlanarAdjustmentCommandHandler.h"
 #include "ZOffsetCommandHandler.h"
@@ -123,6 +124,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   atHandler->SetContext(m_context);
   m_accuracyTrainerHandler = atHandler.get();
   m_dispatcher.RegisterHandler("accuracytrainer", std::move(atHandler));
+
+  // Register edge transfer handler for headless orientation correction
+  auto etHandler = std::make_unique<EdgeTransferCommandHandler>();
+  etHandler->SetContext(m_context);
+  m_dispatcher.RegisterHandler("edgetransfer", std::move(etHandler));
 
   // Register camera offset handler for low-mag/high-mag switching
   auto camOffsetHandler = std::make_unique<CameraOffsetCommandHandler>();

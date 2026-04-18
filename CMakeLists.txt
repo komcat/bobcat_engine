@@ -649,6 +649,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/EdgeTransferProcesses.cpp
     include/recipe/processes/PlacementCorrectionProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/ZOffsetProcesses.cpp
@@ -693,6 +694,7 @@ set(SOURCES
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
+    include/sequence/EdgeTransferCommandHandler.cpp
     include/sequence/PlanarAdjustmentCommandHandler.cpp
     include/sequence/ZOffsetCommandHandler.cpp
     include/sequence/YawTrainerCommandHandler.cpp
@@ -977,6 +979,7 @@ set(HEADERS
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
+    include/sequence/EdgeTransferCommandHandler.h
     include/sequence/PlanarAdjustmentCommandHandler.h
     include/sequence/ZOffsetCommandHandler.h
     include/sequence/YawTrainerCommandHandler.h
