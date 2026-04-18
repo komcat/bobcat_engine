@@ -13,6 +13,7 @@ class ProcessSequenceFactory;
 class ProductPositionManager;
 class UnifiedMotionManager;
 class SequenceContext;  // ✅ Forward declaration for external context
+struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
 
 /**
  * @brief Worker thread for recipe execution (Self-contained)
@@ -75,11 +76,8 @@ public:
   )>;
   void setUserInputCallback(UserInputCallback callback);
 
-  // Set callback for placement correction retrace (optional - if not set, auto-accepts)
-  using PlacementRetraceCallback = std::function<bool(
-    const std::string& trainingSetName,
-    bool autoStart
-  )>;
+  // Set callback for placement correction retrace (optional - if not set, auto-rejects)
+  using PlacementRetraceCallback = std::function<bool(const PlacementRetraceParams& params)>;
   void setPlacementRetraceCallback(PlacementRetraceCallback callback);
 
   // ✅ NEW: Set external context (for sharing with ProgramWorker)

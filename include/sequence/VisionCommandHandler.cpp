@@ -16,6 +16,8 @@
 #include "../motions/MotionTypes.h"              // For PositionStruct
 #include "../lighting/LightingManager.h"         // For lighting control
 #include "../lighting/LightingTypes.h"           // For Lighting::LightingResult
+#include "../QtCameraWindow/QtCameraWindow.h"    // For external vision overlay push
+#include <filesystem>                            // For profile name derivation
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <thread>
@@ -154,6 +156,21 @@ bool VisionCommandHandler::ExecuteCommand(
             return true;  // Always return TRUE
         }
         // Guard is applied inside Execute() (called by CaptureAndExecute).
+
+        // Push detection overlay to any QtCameraWindow targeting this camera,
+        // so every caller of execute_profile (recipe step, placement correction,
+        // accuracy trainer, etc.) gets consistent visual feedback. The window
+        // owns the 500ms auto-clear timer; a subsequent execute_profile call
+        // replaces the overlay immediately.
+        if (m_context) {
+            VisionResult overlayResult = VisionManager::instance().getLastResult();
+            std::string profileName = std::filesystem::path(profilePath).stem().string();
+            for (QtCameraWindow* win : { m_context->qtCameraWindow, m_context->qtCameraWindow2 }) {
+                if (!win) continue;
+                if (win->getTargetCamera() != cameraName) continue;
+                win->showExternalVisionOverlay(overlayResult, profileName, 500);
+            }
+        }
 
         // Step 3: Copy results to custom prefix if capture_as is specified
         auto captureAsIt = params.find("capture_as");

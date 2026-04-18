@@ -324,7 +324,7 @@ void RecipePage::setupUI()
 
   mainLayout->addWidget(m_mainSplitter, 1);
 
-  // Apply initial 20% / 40% / 40% sizing.  resizeEvent keeps it pinned on resize.
+  // Apply initial 20% / 30% / 50% sizing.  resizeEvent keeps it pinned on resize.
   applyPanelSizes();
 }
 
@@ -344,8 +344,8 @@ void RecipePage::applyPanelSizes()
   }
 
   const int leftWidth   = (totalWidth * 20) / 100;
-  const int middleWidth = (totalWidth * 40) / 100;
-  const int rightWidth  = totalWidth - leftWidth - middleWidth;
+  const int rightWidth  = (totalWidth * 50) / 100;
+  const int middleWidth = totalWidth - leftWidth - rightWidth;
   m_mainSplitter->setSizes({ leftWidth, middleWidth, rightWidth });
 }
 

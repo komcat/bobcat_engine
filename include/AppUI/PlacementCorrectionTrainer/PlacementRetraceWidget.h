@@ -69,6 +69,14 @@ public:
     // Callers (e.g. RunProgramPage) should set this before SetData.
     void SetMode(const std::string& mode) { m_logMode = mode; }
 
+    // Recipe automation flags — set after SetData() but before AutoStart().
+    // Auto-detect: enables m_autoRunAll so vision auto-detects all 4 points.
+    // On vision failure, pauses for manual confirm, then resumes auto-detecting.
+    void SetAutoDetect(bool enabled) { m_autoDetectFromRecipe = enabled; }
+    // Auto-save-continue: after computation in Review, automatically saves
+    // corrected position, moves to target, and emits retraceSkipped.
+    void SetAutoSaveContinue(bool enabled) { m_autoSaveContinue = enabled; }
+
 signals:
     void retraceCompleted(const PlacementCorrectionSet& updatedSet);
     void retraceSkipped();   // User reviewed results but chose to continue without saving
@@ -116,6 +124,11 @@ private:
     // Vision auto-detect: iterate detect→move→detect until residual<5um or 5 iters.
     // step: 1=RefP1, 2=RefP2, 3=NrmP1, 4=NrmP2
     void runAutoDetect(int step, const std::string& profilePath);
+
+    // Auto-save-continue chain: save -> move to target -> emit retraceSkipped.
+    // Triggered from setState(Review) when m_autoSaveContinue is true.
+    // Falls back to manual review on save or move failure.
+    void performAutoSaveContinue();
     // Show/hide auto-detect buttons based on whether a profile path is set on the
     // current step's PlacementLinePoints. Called from setState entries.
     void updateAutoDetectVisibility();
@@ -158,6 +171,10 @@ private:
 
     // Per-step meta (refP1, refP2, nrmP1, nrmP2). Populated by confirm/auto-detect.
     RetracePointMeta m_stepMeta[4];
+
+    // Recipe automation flags (reset in SetData, set by RunProgramPage before AutoStart)
+    bool m_autoDetectFromRecipe = false;  // Enable auto-detect chain with manual fallback
+    bool m_autoSaveContinue = false;      // Auto-save + move + continue after Review computation
 
     // Log dispatch state
     std::string m_logMode = "manual";   // "manual" | "autoRunAll" | "recipe"

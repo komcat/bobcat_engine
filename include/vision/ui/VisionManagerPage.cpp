@@ -988,6 +988,26 @@ void VisionManagerPage::onSearchBoxEnabledChanged(bool enabled)
 void VisionManagerPage::onPluginSelected(const QString& pluginName)
 {
     std::cout << "[VisionManagerPage] Plugin selected: " << pluginName.toStdString() << std::endl;
+
+    // Clear template selection UI state from any previously-selected plugin so
+    // its dangling confirm/cancel callbacks and image-widget overlay do not
+    // leak into the new plugin's session (prevents unrecoverable error dialog).
+    stopTemplateSelectionMode();
+
+    // Clear template data on the previous template-based plugin, if any, so
+    // that switching plugins starts each one from a clean slate.
+#ifdef HAS_OPENCV
+    if (!m_state.selectedPluginName.isEmpty() && m_state.selectedPluginName != pluginName) {
+        auto prevPlugin = VisionManager::instance().getPlugin(m_state.selectedPluginName);
+        if (auto prevTemplatePlugin = std::dynamic_pointer_cast<TemplateMatchingBase>(prevPlugin)) {
+            prevTemplatePlugin->clearTemplate();
+        }
+        if (auto prevPatternPlugin = std::dynamic_pointer_cast<PatternMatchingPlugin>(prevPlugin)) {
+            prevPatternPlugin->clearTemplate();
+        }
+    }
+#endif
+
     m_state.selectedPluginName = pluginName;
     m_state.pluginHasValidParams = true;
     m_navWidget->setSelectedPluginName(pluginName);
