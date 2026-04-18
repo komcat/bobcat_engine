@@ -8,6 +8,10 @@
 #include "motions/MotionTypes.h"
 #include "motions/CoordinateTransformer.h"
 #include "motions/TransformationMatrixLoader.h"
+#include "context/ApplicationContext.h"
+#include "VisionCommandHandler.h"
+#include "SequenceContext.h"
+#include "LogManager.h"
 #include <QTimer>
 #include <QInputDialog>
 #include <cmath>
@@ -849,6 +853,67 @@ QWidget* QtCameraWindow::createCameraSelectionTab()
     m_secondaryCameraCombo->setVisible(false);
     layout->addWidget(m_secondaryCameraCombo);
 
+    // Auto-focus buttons (per installed camera)
+    struct AutoFocusConfig {
+        std::string cameraId;
+        std::string motionDevice;
+        double zRangeMm;
+        double zStepMm;
+        std::string label;
+    };
+    static const std::vector<AutoFocusConfig> kAfConfigs = {
+        {"main_camera",   "gantry-main", 0.1, 0.02, "AF Main"},
+        {"swir_camera",   "gantry-main", 0.1, 0.01, "AF SWIR"},
+        {"gantry_camera", "gantry-main", 0.1, 0.02, "AF Gantry"}
+    };
+
+    std::vector<AutoFocusConfig> activeAf;
+    if (m_cameraManager) {
+        std::vector<std::string> cameraIds = m_cameraManager->GetCameraIds();
+        for (const auto& cfg : kAfConfigs) {
+            for (const auto& id : cameraIds) {
+                if (id == cfg.cameraId) {
+                    activeAf.push_back(cfg);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!activeAf.empty()) {
+        auto* afLayout = new QHBoxLayout();
+        afLayout->setSpacing(4);
+        afLayout->setContentsMargins(0, 4, 0, 0);
+
+        auto* afLabel = new QLabel("Auto Focus:");
+        afLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
+        afLayout->addWidget(afLabel);
+
+        static const QString afBtnStyle =
+            "QPushButton { background-color: #2d5a2d; color: white; "
+            "              border: 1px solid #3d8b3d; border-radius: 3px; "
+            "              padding: 2px 8px; font-size: 10px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #3d8b3d; border-color: #5cb85c; }"
+            "QPushButton:disabled { background-color: #555; color: #888; border-color: #666; }";
+
+        for (const auto& cfg : activeAf) {
+            auto* btn = new QPushButton(QString::fromStdString(cfg.label));
+            btn->setMinimumHeight(26);
+            btn->setMaximumHeight(26);
+            btn->setStyleSheet(afBtnStyle);
+
+            connect(btn, &QPushButton::clicked, this,
+                [this, camera = cfg.cameraId, device = cfg.motionDevice,
+                 range = cfg.zRangeMm, step = cfg.zStepMm, btn]() {
+                    runAutoFocus(camera, device, range, step, btn);
+                });
+
+            afLayout->addWidget(btn);
+        }
+        afLayout->addStretch();
+        layout->addLayout(afLayout);
+    }
+
     layout->addStretch();
 
     // Connections
@@ -1542,6 +1607,18 @@ void QtCameraWindow::setDisplayRotation(int degrees)
         m_rotationCombo->blockSignals(false);
     }
     if (m_viewport) m_viewport->setDisplayRotation(degrees);
+
+    // Keep Click-to-Move locked whenever a rotation is active.
+    const bool rotated = (degrees != 0);
+    if (rotated && m_clickToMoveEnabled) {
+        setClickToMoveEnabled(false);
+    }
+    if (m_clickToMoveCheck) {
+        m_clickToMoveCheck->setEnabled(!rotated);
+        m_clickToMoveCheck->setToolTip(rotated
+            ? QStringLiteral("Click-to-Move is disabled while display rotation is active.")
+            : QString());
+    }
 }
 
 // ============================================================================
@@ -1782,6 +1859,77 @@ void QtCameraWindow::setCameraConfigManager(CameraConfigManager* mgr)
     m_cameraConfigManager = mgr;
     // Reload calibration now that per-camera config is available
     loadCalibrationFactors();
+}
+
+void QtCameraWindow::setApplicationContext(ApplicationContext* ctx)
+{
+    m_appContext = ctx;
+}
+
+void QtCameraWindow::runAutoFocus(const std::string& cameraId, const std::string& motionDevice,
+                                   double zRangeMm, double zStepMm, QPushButton* button)
+{
+    if (m_autoFocusFuture.valid() &&
+        m_autoFocusFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        if (m_appContext && m_appContext->logManager) {
+            m_appContext->logManager->Warning("Auto focus already running", "QtCameraWindow");
+        }
+        return;
+    }
+
+    if (!m_appContext || !m_appContext->motionManager || !m_appContext->cameraManager) {
+        if (m_appContext && m_appContext->logManager) {
+            m_appContext->logManager->Warning(
+                "Auto focus unavailable: motion or camera manager missing", "QtCameraWindow");
+        }
+        return;
+    }
+
+    if (button) button->setEnabled(false);
+
+    if (m_appContext->logManager) {
+        m_appContext->logManager->Info(
+            "Starting auto focus: camera=" + cameraId + " device=" + motionDevice +
+            " range=" + std::to_string(zRangeMm) + "mm step=" + std::to_string(zStepMm) + "mm",
+            "QtCameraWindow");
+    }
+
+    ApplicationContext* ctx = m_appContext;
+    m_autoFocusFuture = std::async(std::launch::async,
+        [ctx, cameraId, motionDevice, zRangeMm, zStepMm, button]() {
+            VisionCommandHandler visionHandler(ctx);
+            SequenceContext seqCtx;
+            std::string error;
+
+            std::map<std::string, std::string> params = {
+                {"motion_device", motionDevice},
+                {"camera", cameraId},
+                {"z_range_mm", std::to_string(zRangeMm)},
+                {"z_step_mm", std::to_string(zStepMm)},
+                {"settle_time_ms", "100"},
+                {"use_center_roi", "true"},
+                {"roi_width", "300"},
+                {"roi_height", "300"},
+                {"context_prefix", "autofocus"}
+            };
+
+            bool ok = visionHandler.ExecuteCommand(
+                nullptr, "vision", "auto_focus", params, error, &seqCtx);
+
+            if (ctx && ctx->logManager) {
+                if (ok) {
+                    ctx->logManager->Info("Auto focus completed successfully", "QtCameraWindow");
+                } else {
+                    ctx->logManager->Warning("Auto focus failed: " + error, "QtCameraWindow");
+                }
+            }
+
+            if (button) {
+                QMetaObject::invokeMethod(button, [button]() {
+                    button->setEnabled(true);
+                }, Qt::QueuedConnection);
+            }
+        });
 }
 
 // ============================================================================
@@ -2056,6 +2204,20 @@ void QtCameraWindow::onRotationChanged(int index)
 {
     const int deg = rotationFromIndex(index);
     if (m_viewport) m_viewport->setDisplayRotation(deg);
+
+    // Click-to-move math assumes unrotated display. Force-disable and lock the
+    // checkbox whenever a rotation is active so users can't issue mis-directed
+    // moves from a rotated view.
+    const bool rotated = (deg != 0);
+    if (rotated && m_clickToMoveEnabled) {
+        setClickToMoveEnabled(false);
+    }
+    if (m_clickToMoveCheck) {
+        m_clickToMoveCheck->setEnabled(!rotated);
+        m_clickToMoveCheck->setToolTip(rotated
+            ? QStringLiteral("Click-to-Move is disabled while display rotation is active.")
+            : QString());
+    }
 }
 
 void QtCameraWindow::onImageClicked(int imageX, int imageY)

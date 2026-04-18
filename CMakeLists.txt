@@ -465,6 +465,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/AppUI/ZOffsetTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/YawTrainer
     ${CMAKE_SOURCE_DIR}/include/AppUI/PlacementCorrectionTrainer
+    ${CMAKE_SOURCE_DIR}/include/AppUI/EdgeTransferTrainer
     ${CMAKE_SOURCE_DIR}/include/AuxWindow
     ${CMAKE_SOURCE_DIR}/include/context
     ${CMAKE_SOURCE_DIR}/include/logger
@@ -648,6 +649,7 @@ set(SOURCES
     include/recipe/processes/ConditionalProcesses.cpp
     include/recipe/processes/CalibrationProcesses.cpp
     include/recipe/processes/AccuracyTrainerProcesses.cpp
+    include/recipe/processes/EdgeTransferProcesses.cpp
     include/recipe/processes/PlacementCorrectionProcesses.cpp
     include/recipe/processes/PlanarAdjustmentProcesses.cpp
     include/recipe/processes/ZOffsetProcesses.cpp
@@ -692,6 +694,7 @@ set(SOURCES
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
+    include/sequence/EdgeTransferCommandHandler.cpp
     include/sequence/PlanarAdjustmentCommandHandler.cpp
     include/sequence/ZOffsetCommandHandler.cpp
     include/sequence/YawTrainerCommandHandler.cpp
@@ -827,6 +830,14 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
+    # Edge Transfer Trainer
+    include/AppUI/EdgeTransferTrainer/EdgeTransferStore.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeTeachWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeResultWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeImageGalleryWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeSummaryDiagramWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeRetraceWidget.cpp
+    include/AppUI/EdgeTransferTrainer/EdgeTransferPage.cpp
     # Startup/Connection system
     include/startup/ConnectionTask.cpp
     include/startup/ConnectionConfig.cpp
@@ -968,6 +979,7 @@ set(HEADERS
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
+    include/sequence/EdgeTransferCommandHandler.h
     include/sequence/PlanarAdjustmentCommandHandler.h
     include/sequence/ZOffsetCommandHandler.h
     include/sequence/YawTrainerCommandHandler.h
@@ -1099,6 +1111,15 @@ set(HEADERS
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.h
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.h
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.h
+    # Edge Transfer Trainer
+    include/AppUI/EdgeTransferTrainer/EdgeTransferData.h
+    include/AppUI/EdgeTransferTrainer/EdgeTransferStore.h
+    include/AppUI/EdgeTransferTrainer/EdgeTeachWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeResultWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeImageGalleryWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeSummaryDiagramWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeRetraceWidget.h
+    include/AppUI/EdgeTransferTrainer/EdgeTransferPage.h
     # Startup/Connection system
     include/startup/ConnectionResult.h
     include/startup/ConnectionTask.h
@@ -1195,6 +1216,7 @@ if(EZIIO_FOUND)
         include/IO/WagoIODevice.cpp
         include/IO/QuickOutputManager.cpp
         include/IO/QuickOutput_JsonLoader.cpp
+        include/IO/IoWatchManager.cpp
     )
     list(APPEND HEADERS
         include/IO/EziIO_Types.h
@@ -1206,6 +1228,7 @@ if(EZIIO_FOUND)
         include/IO/EziIO_JsonLoader.h
         include/IO/QuickOutputManager.h
         include/IO/QuickOutput_JsonLoader.h
+        include/IO/IoWatchManager.h
     )
     message(STATUS "EziIO support enabled (includes WAGO Modbus TCP adapter)")
 else()

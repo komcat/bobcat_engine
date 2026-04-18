@@ -1122,9 +1122,9 @@ void RecipePage::createStepsTab(QWidget* stepsTab)
   m_recipeTree->setColumnWidth(0, 38);
   m_recipeTree->header()->setSectionResizeMode(1, QHeaderView::Fixed);             // Symbol column fixed
   m_recipeTree->setColumnWidth(1, 30);
-  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);           // Process Instance stretches
-  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Interactive);       // Details (resizable)
-  m_recipeTree->setColumnWidth(3, 180);
+  m_recipeTree->header()->setSectionResizeMode(2, QHeaderView::Fixed);             // Process Instance fixed
+  m_recipeTree->setColumnWidth(2, 400);
+  m_recipeTree->header()->setSectionResizeMode(3, QHeaderView::Stretch);            // Details stretches
   m_recipeTree->header()->setSectionResizeMode(4, QHeaderView::Fixed);             // Run checkbox fixed
   m_recipeTree->setColumnWidth(4, 50);
 

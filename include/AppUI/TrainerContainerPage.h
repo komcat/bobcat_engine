@@ -13,6 +13,7 @@ class PlanarAdjustmentPage;
 class ZOffsetPage;
 class YawTrainerPage;
 class PlacementCorrectionPage;
+class EdgeTransferPage;
 
 /**
  * @brief Container page with a narrow side panel for switching between trainer tools.
@@ -28,6 +29,7 @@ class PlacementCorrectionPage;
  *   3: "Z\nOffset"      -> ZOffsetPage
  *   4: "Yaw\nTrainer" -> YawTrainerPage
  *   5: "Place\nCorrect" -> PlacementCorrectionPage
+ *   6: "Edge\nTransfer" -> EdgeTransferPage
  */
 class TrainerContainerPage : public QWidget
 {
@@ -55,5 +57,6 @@ private:
     ZOffsetPage* m_zOffsetPage;
     YawTrainerPage* m_yawTrainerPage;
     PlacementCorrectionPage* m_placementCorrectionPage;
+    EdgeTransferPage* m_edgeTransferPage;
     int m_activeIndex;
 };

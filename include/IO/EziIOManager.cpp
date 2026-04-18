@@ -483,6 +483,35 @@ bool EziIOManager::GetInputByName(const std::string& deviceName,
   return true;
 }
 
+bool EziIOManager::GetOutputByName(const std::string& deviceName,
+  const std::string& pinName,
+  bool& state) {
+  IEziIODevice* device = GetDevice(deviceName);
+  if (!device || !device->IsConnected()) {
+    return false;
+  }
+
+  int pin = device->GetOutputPinByName(pinName);
+  if (pin < 0) {
+    if (m_enableLogging) {
+      std::cerr << "[EziIOManager] GetOutputByName failed: Pin name '"
+        << pinName << "' not found on device '" << deviceName << "'" << std::endl;
+    }
+    return false;
+  }
+
+  uint64_t outputs = 0, status = 0;
+  if (device->ReadOutputs(outputs, status) != EziIOError::SUCCESS) {
+    return false;
+  }
+
+  // Outputs occupy bits 8-15 for 8-pin devices, or bits 16-31 for 16-pin devices.
+  // WagoIODevice::ReadOutputs returns UI-formatted bits using the same offset rule.
+  const int bitOffset = (device->GetOutputCount() > 8) ? 16 : 8;
+  state = (outputs & (1ULL << (bitOffset + pin))) != 0;
+  return true;
+}
+
 // ============================================================================
 // POLLING THREAD
 // ============================================================================

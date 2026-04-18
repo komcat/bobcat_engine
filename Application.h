@@ -7,6 +7,7 @@
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "EziIOManager.h"  // Add EziIO include
+#include "IO/IoWatchManager.h"
 #include "PneumaticManager.h"
 #include "SequenceEngine.h"
 #include "AdaptiveScanController.h"  // ✅ ADD THIS
@@ -93,6 +94,7 @@ private:
   void initializeCoordinateSystemManager();
   void initializeLightingManager();
   void initializeSafetyWatch();
+  void initializeIoWatch();
   void initializeDeviceLinkManager();
   void initializeApplicationSettings();
   void initializeBeamOptimizer();
@@ -137,6 +139,7 @@ private:
   std::unique_ptr<CoordinateSystemManager> m_coordinateSystemManager;
   std::unique_ptr<Lighting::LightingManager> m_lightingManager;
   std::unique_ptr<SafetyWatchManager> m_safetyWatchManager;
+  std::unique_ptr<IoWatchManager> m_ioWatchManager;
   std::unique_ptr<DeviceLinkManager> m_deviceLinkManager;
   std::unique_ptr<InterlockManager> m_interlockManager;
   std::unique_ptr<GdiCameraWindowManager> m_gdiCameraWindowManager;   // GDI camera monitor
