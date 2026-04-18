@@ -352,7 +352,10 @@ public:
       {"target_position", "safe"},
       {"velocity", "0"},
       {"delay_before_ms", "0"},
-      {"delay_after_ms", "0"}
+      {"delay_after_ms", "0"},
+      {"apply_exposure", "false"},
+      {"exposure_camera", "main_camera"},
+      {"exposure_value", "1000"}
     };
   }
 
@@ -365,6 +368,15 @@ public:
       static_cast<int>(DeviceComboBox::DeviceType::Motion));
     widget->addNodeSelector("target_position", "Target Position", params.at("target_position"), "device");
     addTimingAndVelocityFormUI(widget, params);
+
+    widget->addCheckboxParameter("apply_exposure", "Apply Exposure",
+      getParamOr(params, "apply_exposure", "false"),
+      "Set camera exposure before moving (camera settles during motion)");
+    widget->addDeviceSelector("exposure_camera", "Exposure Camera",
+      getParamOr(params, "exposure_camera", "main_camera"),
+      static_cast<int>(DeviceComboBox::DeviceType::Camera));
+    widget->addNumericParameter("exposure_value", "Exposure (us)",
+      getParamOr(params, "exposure_value", "1000"), 1, 10000, 1, 0, "us");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -380,11 +392,32 @@ public:
       "Named position to move to (click [...] to browse)");
 
     addTimingAndVelocityTableUI(table, params);
+
+    table->addCategoryHeader("Camera Exposure");
+    table->addCheckboxProperty("apply_exposure", "Apply Exposure",
+      (getParamOr(params, "apply_exposure", "false") == "true" ||
+       getParamOr(params, "apply_exposure", "false") == "1"),
+      "Set camera exposure before moving (camera settles during motion)");
+    table->addDeviceProperty("exposure_camera", "Camera",
+      getParamOr(params, "exposure_camera", "main_camera"),
+      static_cast<int>(DeviceComboBox::DeviceType::Camera),
+      "Camera to set exposure on");
+    table->addNumericProperty("exposure_value", "Exposure",
+      std::stod(getParamOr(params, "exposure_value", "1000")),
+      1, 10000, 1, 0, "us",
+      "Exposure time in microseconds (1-10000)");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
     std::string device = params.at("device");
+
+    std::string applyExposure = getParamOr(params, "apply_exposure", "false");
+    if (applyExposure == "true" || applyExposure == "1") {
+      std::string camera = getParamOr(params, "exposure_camera", "main_camera");
+      std::string exposureVal = getParamOr(params, "exposure_value", "1000");
+      sequence->AddAction(camera, "SetExposure", {{"value", exposureVal}});
+    }
 
     addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
     addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
