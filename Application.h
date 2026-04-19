@@ -28,6 +28,7 @@
 #include "CameraConfigManager.h"
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "BeamOptimizer/BeamOptimizerManager.h"
+#include "scripting/ScriptEngine.h"
 
 #ifdef USE_QT_CAMERA_WINDOW
 #include "QtCameraWindow/QtCameraWindow.h"
@@ -98,6 +99,7 @@ private:
   void initializeDeviceLinkManager();
   void initializeApplicationSettings();
   void initializeBeamOptimizer();
+  void initializeScriptEngine();
 
   void testMotionCommands();
   void testIOCommands();
@@ -157,6 +159,7 @@ private:
   std::unique_ptr<BeamResultBroker> m_beamResultBroker;       // Beam detection pub-sub broker
   std::unique_ptr<BeamOptimizerManager> m_beamOptimizerManager; // Beam optimization coordinator
   std::unique_ptr<ScanActivityTracker> m_scanActivityTracker; // Scan-busy broadcaster for TopBar indicator
+  std::unique_ptr<ScriptEngine> m_scriptEngine;              // Lua 5.4 scripting engine
 
   ApplicationContext m_context;
 

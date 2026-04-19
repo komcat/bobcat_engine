@@ -32,6 +32,7 @@ class CameraConfigManager;  // Camera configuration (per-camera calibration)
 class BeamResultBroker;     // Pub-sub broker for beam detection results
 class BeamOptimizerManager; // Beam optimization coordinator
 class ScanActivityTracker;  // Reference-counted scan-busy broadcaster (drives TopBar indicator)
+class ScriptEngine;         // Lua 5.4 scripting engine
 
 namespace Lighting {
 class LightingManager;
@@ -73,6 +74,7 @@ struct ApplicationContext
   BeamResultBroker* beamResultBroker = nullptr;          // Beam detection pub-sub broker
   BeamOptimizerManager* beamOptimizerManager = nullptr;  // Beam optimization coordinator
   ScanActivityTracker* scanActivityTracker = nullptr;    // Reference-counted scan-busy broadcaster
+  ScriptEngine* scriptEngine = nullptr;                  // Lua 5.4 scripting engine
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

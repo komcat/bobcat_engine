@@ -39,6 +39,7 @@
 #include "safety/SafetyEventLog.h"
 #include "GdiWindow/GdiCameraWindowManager.h"
 #include "customserver/BeamServerClient.h"
+#include "scripting/ScriptCommandHandler.h"
 #ifdef HAS_OPENCV
 #include "VisionCommandHandler.h"
 #include "vision/VisionResult.h"
@@ -157,6 +158,11 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   auto customServerHandler = std::make_unique<CustomServerCommandHandler>();
   customServerHandler->SetContext(m_context);
   m_dispatcher.RegisterHandler("customserver", std::move(customServerHandler));
+
+  // Register scripting handler (ScriptEngine wired later via SetScriptEngine)
+  auto scriptHandler = std::make_unique<ScriptCommandHandler>();
+  m_scriptHandler = scriptHandler.get();
+  m_dispatcher.RegisterHandler("scripting", std::move(scriptHandler));
 
 #ifdef HAS_OPENCV
   // Register vision command handler for vision profile execution
@@ -390,6 +396,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["yawtrainer"] = "yawtrainer";
   LogDebug("Registered yaw trainer command handler");
 
+  // Scripting commands (virtual device - Lua script execution)
+  m_deviceToManagerMap["scripting"] = nullptr;
+  m_deviceToTypeMap["scripting"] = "scripting";
+  LogDebug("Registered scripting command handler");
+
   // Parallel motion commands (special case - uses motion manager for multiple devices)
   if (m_context->motionManager) {
     m_deviceToManagerMap["parallel"] = m_context->motionManager;
@@ -415,6 +426,32 @@ std::string SequenceEngine::ResolveManagerType(const std::string& deviceName)
 {
   auto it = m_deviceToTypeMap.find(deviceName);
   return (it != m_deviceToTypeMap.end()) ? it->second : "";
+}
+
+bool SequenceEngine::DispatchCommand(
+    const std::string& deviceName,
+    const std::string& methodName,
+    const std::map<std::string, std::string>& params,
+    std::string& errorMessage,
+    SequenceContext* context)
+{
+  auto managerType = ResolveManagerType(deviceName);
+  if (managerType.empty()) {
+    errorMessage = "Unknown device: " + deviceName;
+    return false;
+  }
+
+  void* manager = ResolveManager(deviceName);
+  return m_dispatcher.ExecuteCommand(
+      managerType, manager, deviceName, methodName, params, errorMessage, context);
+}
+
+void SequenceEngine::SetScriptEngine(ScriptEngine* engine)
+{
+  if (m_scriptHandler) {
+    m_scriptHandler->SetScriptEngine(engine);
+    LogInfo("ScriptEngine wired to ScriptCommandHandler");
+  }
 }
 
 bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const

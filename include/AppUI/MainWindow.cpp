@@ -26,6 +26,7 @@
 #include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
 #include "TrainerContainerPage.h"                  // Trainer container
 #include "DataBackupPage.h"
+#include "ScriptRunnerPage.h"
 #include "Common/ShutdownConfirmDialog.h"          // Shutdown confirmation
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
@@ -346,6 +347,14 @@ void MainWindow::createPages()
     m_dataBackupPage, &DataBackupPage::onProductChanged);
   m_pageStack->addWidget(m_dataBackupPage);
 
+  // Script Runner page
+  m_scriptRunnerPage = new ScriptRunnerPage(m_context, this);
+  connect(m_scriptRunnerPage, &ScriptRunnerPage::backToMainMenu,
+    this, &MainWindow::onBackToMainMenu);
+  connect(m_mainMenuPage, &MainMenuPage::productChanged,
+    m_scriptRunnerPage, &ScriptRunnerPage::onProductChanged);
+  m_pageStack->addWidget(m_scriptRunnerPage);
+
   // ✅ Wire themeChanged to every widget that has local stylesheets.
   // When ThemeManager flips the palette, these slots re-apply their
   // bezel buttons, status badges, product labels, etc.
@@ -475,6 +484,11 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutF8, &QShortcut::activated, this, &MainWindow::onMainMenuDataBackup);
   std::cout << "[MainWindow]   F8 -> Data Backup Page" << std::endl;
 
+  // F9 - Script Runner Page
+  m_shortcutF9 = new QShortcut(QKeySequence(Qt::Key_F9), this);
+  connect(m_shortcutF9, &QShortcut::activated, this, &MainWindow::onMainMenuScriptRunner);
+  std::cout << "[MainWindow]   F9 -> Script Runner Page" << std::endl;
+
   // Ctrl+J - Toggle Jog Panel
   m_shortcutCtrlJ = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_J), this);
   connect(m_shortcutCtrlJ, &QShortcut::activated, this, &MainWindow::onToggleJogPanel);
@@ -498,7 +512,7 @@ void MainWindow::setupKeyboardShortcuts()
   std::cout << "[MainWindow] Keyboard shortcuts setup complete!" << std::endl;
 
   if (m_context->logManager) {
-    m_context->logManager->Info("Keyboard shortcuts (F1-F8, Ctrl+J, Ctrl+K, Ctrl+R, Ctrl+T) registered", "MainWindow");
+    m_context->logManager->Info("Keyboard shortcuts (F1-F9, Ctrl+J, Ctrl+K, Ctrl+R, Ctrl+T) registered", "MainWindow");
   }
 }
 
@@ -624,6 +638,19 @@ void MainWindow::onMainMenuDataBackup()
   std::cout << "[MainWindow] Data Backup clicked" << std::endl;
   m_context->logManager->Info("Navigating to Data Backup page", "MainWindow");
   m_pageStack->setCurrentWidget(m_dataBackupPage);
+}
+
+void MainWindow::onMainMenuScriptRunner()
+{
+  if (m_pageStack->currentWidget() == m_recipePage) {
+    if (!m_recipePage->canLeavePage()) {
+      return;
+    }
+  }
+
+  std::cout << "[MainWindow] Script Runner clicked" << std::endl;
+  m_context->logManager->Info("Navigating to Script Runner page", "MainWindow");
+  m_pageStack->setCurrentWidget(m_scriptRunnerPage);
 }
 
 void MainWindow::onBackToMainMenu()

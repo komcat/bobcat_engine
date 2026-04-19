@@ -25,6 +25,7 @@ class VisionManagerPage;       // Vision Manager UI
 class ApplicationSettingsPage; // Application Settings editor
 class TrainerContainerPage;   // Trainer container with side panel
 class DataBackupPage;
+class ScriptRunnerPage;
 
 class MainWindow : public QMainWindow
 {
@@ -54,6 +55,7 @@ private slots:
   void onMainMenuFutureUpdate();
   void onMainMenuAccuracyTrainer();
   void onMainMenuDataBackup();
+  void onMainMenuScriptRunner();
   void onBackToMainMenu();
   void onOpenLogViewer();
   void onToggleJogPanel();
@@ -88,6 +90,7 @@ private:
   ApplicationSettingsPage* m_applicationSettingsPage;  // Application Settings page
   TrainerContainerPage* m_trainerContainerPage;  // Trainer container page
   DataBackupPage* m_dataBackupPage;
+  ScriptRunnerPage* m_scriptRunnerPage;
 
   JogPanelWindow* m_jogPanel;
   JogKeyBindingHandler* m_jogKeyHandler;
@@ -102,6 +105,7 @@ private:
   QShortcut* m_shortcutF6;  // Reserved
   QShortcut* m_shortcutF7;  // Reserved
   QShortcut* m_shortcutF8;  // Reserved
+  QShortcut* m_shortcutF9;  // Script Runner Page
 
   // ✅ NEW: Keyboard shortcuts for window toggles
   QShortcut* m_shortcutCtrlJ;  // Toggle Jog Panel

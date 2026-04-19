@@ -22,6 +22,8 @@ class AccuracyTrainerCommandHandler;
 class PlanarAdjustmentCommandHandler;
 class ZOffsetCommandHandler;
 class YawTrainerCommandHandler;
+class ScriptCommandHandler;
+class ScriptEngine;
 class LogManager;
 class SequenceContext;
 
@@ -348,6 +350,17 @@ public:
   void* ResolveManager(const std::string& deviceName);
   std::string ResolveManagerType(const std::string& deviceName);
 
+  // Wire script engine to the ScriptCommandHandler (called after both are created)
+  void SetScriptEngine(ScriptEngine* engine);
+
+  // Direct command dispatch (used by ScriptEngine to bypass SequenceBuilder)
+  [[nodiscard]] bool DispatchCommand(
+      const std::string& deviceName,
+      const std::string& methodName,
+      const std::map<std::string, std::string>& params,
+      std::string& errorMessage,
+      SequenceContext* context);
+
   // Connection pre-check for hardware commands
   [[nodiscard]] bool IsDeviceConnected(const std::string& deviceName) const;
 
@@ -393,6 +406,9 @@ private:
 
   // YawTrainerCommandHandler pointer for retrace callback forwarding
   YawTrainerCommandHandler* m_yawTrainerHandler = nullptr;
+
+  // ScriptCommandHandler pointer for late-binding ScriptEngine
+  ScriptCommandHandler* m_scriptHandler = nullptr;
 
   // Step execution event callbacks
   StepStartedCallback m_stepStartedCallback;

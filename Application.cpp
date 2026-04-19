@@ -383,6 +383,10 @@ void Application::initializeManagers()
     initializeSequenceEngine();
     completeSplash("SequenceEngine");
 
+    updateSplash("ScriptEngine");
+    initializeScriptEngine();
+    completeSplash("ScriptEngine");
+
     updateSplash("ScanController");
     initializeScanController();
     completeSplash("ScanController");
@@ -1308,6 +1312,7 @@ void Application::shutdownManagers()
   m_tcpClientManager.reset();
   m_dataStore.reset();
   m_beamServerClient.reset();
+  m_scriptEngine.reset();
   m_sequenceEngine.reset();
   // Note: Log final message before resetting logger
   if (m_logManager) m_logManager->Info("All managers shut down", "Application");
@@ -1556,7 +1561,26 @@ void Application::initializeSequenceEngine()
   }
 }
 
-// ✅ ADD THIS FUNCTION (OPTIONAL TEST)
+void Application::initializeScriptEngine()
+{
+  m_logManager->Debug("Initializing Script Engine (Lua 5.4)...", "Application");
+
+  m_scriptEngine = std::make_unique<ScriptEngine>(&m_context);
+  if (!m_scriptEngine->Initialize()) {
+    m_logManager->Error("ScriptEngine Lua state initialization failed", "Application");
+    m_scriptEngine.reset();
+    return;
+  }
+
+  m_context.scriptEngine = m_scriptEngine.get();
+
+  if (m_sequenceEngine) {
+    m_sequenceEngine->SetScriptEngine(m_scriptEngine.get());
+  }
+
+  m_logManager->Info("ScriptEngine initialized (Lua 5.4)", "Application");
+}
+
 void Application::testSequenceEngine()
 {
   if (!m_sequenceEngine) {

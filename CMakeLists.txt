@@ -111,6 +111,11 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Widgets Charts OpenGLWidgets)
 
 # ============================================================================
+# Lua 5.4 Configuration (embedded scripting engine)
+# ============================================================================
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildLua.cmake)
+
+# ============================================================================
 # spdlog Configuration (header-only)
 # ============================================================================
 set(SPDLOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog/include")
@@ -490,6 +495,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/lighting
     ${CMAKE_SOURCE_DIR}/include/settings
     ${CMAKE_SOURCE_DIR}/include/common
+    ${CMAKE_SOURCE_DIR}/include/scripting
+    ${CMAKE_SOURCE_DIR}/include/AppUI/ScriptRunnerPage
 )
 
 # External SDK include directories — stored for SYSTEM includes after target creation
@@ -544,6 +551,8 @@ set(SOURCES
     include/AppUI/ConnectionSplashScreen.cpp
     include/AppUI/MainMenuPage.cpp
     include/AppUI/DataBackupPage.cpp
+    include/AppUI/ScriptRunnerPage/ScriptRunnerPage.cpp
+    include/AppUI/ScriptRunnerPage/LuaSyntaxHighlighter.cpp
     include/AppUI/HardwareInstrumentPage.cpp
     include/AppUI/PlaceholderPage.cpp
     include/logger/LogManager.cpp
@@ -572,6 +581,9 @@ set(SOURCES
     include/AppUI/Forms/TECDevicesFormWidget.cpp
     include/sequence/SequenceEngine.cpp
     include/sequence/SequenceContext.cpp
+    include/scripting/ScriptEngine.cpp
+    include/scripting/ScriptCommandHandler.cpp
+    include/scripting/ScriptWorker.cpp
     include/sequence/SequenceContextCommandHandler.cpp
     include/sequence/SequenceWorker.cpp
     include/sequence/GraphMoveWorker.cpp
@@ -639,6 +651,7 @@ set(SOURCES
     include/recipe/ProcessSequenceFactory.cpp
     include/recipe/ProcessPluginRegistry.cpp
     include/recipe/processes/SystemProcesses.cpp
+    include/recipe/processes/ScriptProcesses.cpp
     include/recipe/processes/SubRecipeProcesses.cpp
     include/recipe/processes/MotionProcesses.cpp
     include/recipe/processes/DeviceLinkProcesses.cpp
@@ -864,6 +877,11 @@ set(HEADERS
     include/camera/CameraImageWidgetGL.h
     include/AppUI/MainMenuPage.h
     include/AppUI/MainWindow.h
+    include/AppUI/ScriptRunnerPage/ScriptRunnerPage.h
+    include/AppUI/ScriptRunnerPage/LuaSyntaxHighlighter.h
+    include/AppUI/ScriptRunnerPage/ScriptEditorWidget.h
+    include/scripting/ScriptWorker.h
+    include/scripting/ScriptEngine.h
     include/AppUI/DarkTheme.h
     include/AppUI/Theme.h
     include/AppUI/ThemeManager.h
@@ -1449,6 +1467,14 @@ set_source_files_properties(external/sqlite3/sqlite3.c PROPERTIES COMPILE_FLAGS 
 # Link Qt
 target_link_libraries(bobcat_engine PRIVATE Qt6::Widgets Qt6::Charts Qt6::OpenGLWidgets)
 
+# Link Lua 5.4 scripting engine
+if(LUA_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE lua54)
+    target_include_directories(bobcat_engine SYSTEM PRIVATE ${LUA_INCLUDE_DIR})
+    target_compile_definitions(bobcat_engine PRIVATE HAS_LUA)
+    message(STATUS "Linked Lua 5.4 scripting engine")
+endif()
+
 # Link ACS library if found
 if(ACSC_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${ACSC_LIBRARY})
@@ -1628,6 +1654,14 @@ add_custom_command(TARGET bobcat_engine POST_BUILD
         ${CMAKE_SOURCE_DIR}/config/jog_stepsize.json
         $<TARGET_FILE_DIR:bobcat_engine>/config/jog_stepsize.json
     COMMENT "Copying config templates (preserving *.local.json files)"
+)
+
+# Copy Lua scripts to output directory
+add_custom_command(TARGET bobcat_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/scripts
+        $<TARGET_FILE_DIR:bobcat_engine>/scripts
+    COMMENT "Copying Lua scripts to output directory"
 )
 
 # Copy assets folder (icons, images, etc.) to output directory
