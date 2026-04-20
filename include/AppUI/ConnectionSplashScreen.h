@@ -8,6 +8,8 @@
 #include <QTimer>
 #include <QString>
 #include <QMap>
+#include <QColor>
+#include <QElapsedTimer>
 
 /**
  * @brief Multi-phase splash screen for application startup
@@ -67,11 +69,18 @@ public slots:
   void setProgress(int percent);
   void onConnectionsComplete();
 
+protected:
+  void paintEvent(QPaintEvent* event) override;
+
+private slots:
+  void onSwirlTick();
+
 private:
   void setupUI();
   void updatePhaseUI();
   QString getPhaseIcon(Phase phase) const;
   QString getPhaseColor(Phase phase) const;
+  void setSwirlPalette(Phase phase);
 
   // UI Elements
   QLabel* m_titleLabel;
@@ -90,4 +99,18 @@ private:
   int m_totalComponents;
   int m_connectedComponents;
   QString m_componentStatuses;
+
+  // Gas swirl animated background
+  QTimer* m_swirlTimer;
+  QElapsedTimer m_swirlElapsed;
+  // Palette crossfade: paint interpolates prev -> target over kPaletteFadeMs.
+  QColor m_prevSwirlA;
+  QColor m_prevSwirlB;
+  QColor m_prevSwirlC;
+  QColor m_prevBorderColor;
+  QColor m_targetSwirlA;
+  QColor m_targetSwirlB;
+  QColor m_targetSwirlC;
+  QColor m_targetBorderColor;
+  qint64 m_phaseChangeElapsedMs;
 };
