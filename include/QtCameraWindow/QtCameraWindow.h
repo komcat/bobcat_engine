@@ -429,7 +429,8 @@ private:
     QWidget*   createCameraTabs();
     QWidget*   createCameraSelectionTab();
     QWidget*   createExposureTab();
-    QGroupBox* createToolsGroup();
+    QWidget*   createToolsPage();
+    QWidget*   createViewPage();
     QGroupBox* createChartGroup();
     QGroupBox* createVisionGroup();
     QGroupBox* createBeamGroup();

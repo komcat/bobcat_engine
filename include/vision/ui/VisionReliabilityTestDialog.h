@@ -71,6 +71,7 @@ private:
     void setupUI();
     void captureAndExecute();
     void addResultRow(const ReliabilityIterationResult& result);
+    void fillRowCells(int row, const ReliabilityIterationResult& result);
     void updateProgressUI();
     void collectAllMeasurementKeys();
     void collectActiveCountColumns();

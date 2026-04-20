@@ -230,15 +230,28 @@ void QtCameraWindow::buildSidePanel()
     vLayout->setSpacing(4);
 
     vLayout->addWidget(createCameraTabs());
-    vLayout->addWidget(createToolsGroup());
 
     m_chartGroup  = createChartGroup();
     m_visionGroup = createVisionGroup();
     m_beamGroup   = createBeamGroup();
 
-    vLayout->addWidget(m_chartGroup);
-    vLayout->addWidget(m_visionGroup);
-    vLayout->addWidget(m_beamGroup);
+    auto* sideTabs = new QTabWidget();
+    sideTabs->setStyleSheet(
+        "QTabWidget::pane { border: 1px solid #3e3e42; border-radius: 4px; "
+        "                   background-color: #252526; top: -1px; }"
+        "QTabBar::tab { background-color: #333337; color: #cccccc; "
+        "               padding: 4px 8px; border: 1px solid #3e3e42; "
+        "               border-bottom: none; border-top-left-radius: 3px; "
+        "               border-top-right-radius: 3px; }"
+        "QTabBar::tab:selected { background-color: #252526; color: #ffffff; }"
+        "QTabBar::tab:hover { background-color: #3e3e42; }"
+    );
+    sideTabs->addTab(createToolsPage(), "Tools");
+    sideTabs->addTab(createViewPage(),  "View");
+    sideTabs->addTab(m_chartGroup,      "Chart");
+    sideTabs->addTab(m_visionGroup,     "Vision");
+    sideTabs->addTab(m_beamGroup,       "Beam");
+    vLayout->addWidget(sideTabs);
 
     vLayout->addStretch();
 
@@ -1064,58 +1077,63 @@ void QtCameraWindow::refreshExposureDisplay()
         QString("Current: %1 us").arg(settings.exposure_time, 0, 'f', 0));
 }
 
-QGroupBox* QtCameraWindow::createToolsGroup()
+QWidget* QtCameraWindow::createToolsPage()
 {
-    auto* group = new QGroupBox("Tools");
-    group->setStyleSheet(
-        "QGroupBox { color: #cccccc; border: 1px solid #3e3e42; border-radius: 4px; "
-        "            margin-top: 6px; padding-top: 4px; }"
-        "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
-    );
-
-    auto* layout = new QVBoxLayout(group);
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
     layout->setSpacing(4);
     layout->setContentsMargins(6, 8, 6, 6);
 
-    m_crosshairCheck = new QCheckBox("Crosshair");
-    m_clickToMoveCheck = new QCheckBox("Click-to-Move");
+    m_crosshairCheck    = new QCheckBox("Crosshair");
+    m_clickToMoveCheck  = new QCheckBox("Click-to-Move");
     m_showDistanceCheck = new QCheckBox("Show Distance");
 
     layout->addWidget(m_crosshairCheck);
     layout->addWidget(m_clickToMoveCheck);
     layout->addWidget(m_showDistanceCheck);
+    layout->addStretch();
 
-    // Magnification
-    layout->addWidget(new QLabel("Magnification:"));
-    m_magnificationCombo = new QComboBox();
-    m_magnificationCombo->setStyleSheet(
-        "QComboBox { background-color: #3e3e42; border: 1px solid #555; "
-        "            color: #cccccc; padding: 2px 4px; }"
-        "QComboBox QAbstractItemView { background-color: #3e3e42; color: #cccccc; }"
-    );
-    m_magnificationCombo->addItems({"1x", "10x", "20x", "50x", "100x", "200x"});
-    layout->addWidget(m_magnificationCombo);
-
-    // Display rotation
-    layout->addWidget(new QLabel("Display Rotation:"));
-    m_rotationCombo = new QComboBox();
-    m_rotationCombo->setStyleSheet(m_magnificationCombo->styleSheet());
-    m_rotationCombo->addItems({"None", "-90 deg", "+90 deg"});
-    layout->addWidget(m_rotationCombo);
-
-    // Connections
     connect(m_crosshairCheck, &QCheckBox::toggled,
             this, &QtCameraWindow::onCrosshairToggled);
     connect(m_clickToMoveCheck, &QCheckBox::toggled,
             this, &QtCameraWindow::onClickToMoveToggled);
     connect(m_showDistanceCheck, &QCheckBox::toggled,
             this, &QtCameraWindow::onShowDistanceToggled);
+
+    return page;
+}
+
+QWidget* QtCameraWindow::createViewPage()
+{
+    static const char* kComboStyle =
+        "QComboBox { background-color: #3e3e42; border: 1px solid #555; "
+        "            color: #cccccc; padding: 2px 4px; }"
+        "QComboBox QAbstractItemView { background-color: #3e3e42; color: #cccccc; }";
+
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setSpacing(4);
+    layout->setContentsMargins(6, 8, 6, 6);
+
+    layout->addWidget(new QLabel("Magnification:"));
+    m_magnificationCombo = new QComboBox();
+    m_magnificationCombo->setStyleSheet(kComboStyle);
+    m_magnificationCombo->addItems({"1x", "10x", "20x", "50x", "100x", "200x"});
+    layout->addWidget(m_magnificationCombo);
+
+    layout->addWidget(new QLabel("Display Rotation:"));
+    m_rotationCombo = new QComboBox();
+    m_rotationCombo->setStyleSheet(kComboStyle);
+    m_rotationCombo->addItems({"None", "-90 deg", "+90 deg"});
+    layout->addWidget(m_rotationCombo);
+    layout->addStretch();
+
     connect(m_magnificationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &QtCameraWindow::onMagnificationChanged);
     connect(m_rotationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &QtCameraWindow::onRotationChanged);
 
-    return group;
+    return page;
 }
 
 QGroupBox* QtCameraWindow::createChartGroup()
@@ -2669,10 +2687,21 @@ void QtCameraWindow::showExternalVisionOverlay(const VisionResult& result,
 void QtCameraWindow::onVisionEnableToggled(bool checked)
 {
     if (checked) {
-        // Auto-select first profile if none selected
-        if (m_visionProfileCombo && m_visionProfileCombo->count() > 0 &&
-            m_visionProfileCombo->currentIndex() < 0) {
-            m_visionProfileCombo->setCurrentIndex(0);
+        // Sync m_activeVisionProfile with whatever the combo is currently
+        // showing. populateVisionProfileCombo() blocks signals around
+        // addItem(), so the first-item auto-selection never fires
+        // onVisionProfileChanged — without this sync the vision thread
+        // reads an empty profilePath and silently skips every frame, leaving
+        // the overlay stuck on the default "FAILED, 0.0 ms" VisionResult
+        // even though the user has clearly selected a profile in the combo.
+        if (m_visionProfileCombo && m_visionProfileCombo->count() > 0) {
+            const int idx = std::max(0, m_visionProfileCombo->currentIndex());
+            const std::string fullPath =
+                m_visionProfileCombo->itemData(idx).toString().toStdString();
+            std::lock_guard<std::mutex> lock(m_visionProfileMutex);
+            if (!fullPath.empty()) {
+                m_activeVisionProfile = fullPath;
+            }
         }
         m_visionEnabled.store(true);
         startVisionProcessing();

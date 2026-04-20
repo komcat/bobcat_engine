@@ -303,6 +303,11 @@ void PlacementCorrectionPage::setupUI()
     connect(m_cameraCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int /*index*/) {
         m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
+        // Propagate to already-created teach widgets so a mid-session camera
+        // switch takes effect without requiring re-navigation to the step.
+        if (m_teachRefLineWidget) m_teachRefLineWidget->SetCameraId(m_currentSet.config.cameraId);
+        if (m_teachTgtLineWidget) m_teachTgtLineWidget->SetCameraId(m_currentSet.config.cameraId);
+        if (m_teachNrmLineWidget) m_teachNrmLineWidget->SetCameraId(m_currentSet.config.cameraId);
     });
     cameraTabLayout->addWidget(m_cameraCombo);
     cameraTabLayout->addStretch(1);

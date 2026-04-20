@@ -923,6 +923,32 @@ void QtCameraViewport::drawBeamOverlay(QPainter& p, const QRect& widgetRect)
             p.drawLine(QPointF(sx - armLen, sy), QPointF(sx + armLen, sy));
             p.drawLine(QPointF(sx, sy - armLen), QPointF(sx, sy + armLen));
 
+            // Intensity label near centroid (drawn before ellipse so the
+            // ellipse stroke doesn't cross it). Placed just below-right of
+            // the crosshair with a translucent box for legibility against
+            // bright beams.
+            if (bj.contains("mean_intensity")) {
+                const double mi = bj["mean_intensity"].get<double>();
+                QString intText = QString("Int: %1").arg(mi, 0, 'f', 1);
+
+                QFont intFont("Segoe UI", 8, QFont::Bold);
+                p.setFont(intFont);
+
+                QFontMetrics fm(intFont);
+                const int textW = fm.horizontalAdvance(intText);
+                const int textH = fm.height();
+                const int boxPad = 3;
+                const QRectF box(sx + armLen + 2,
+                                 sy + armLen + 2,
+                                 textW + boxPad * 2,
+                                 textH + boxPad);
+                p.fillRect(box, QColor(0, 0, 0, 160));
+                p.setPen(bc);
+                p.drawText(box.x() + boxPad,
+                           box.y() + boxPad + fm.ascent(),
+                           intText);
+            }
+
             // Ellipse from d4sigma axes
             if (bj.contains("d4sigma_x") && bj.contains("d4sigma_y")) {
                 const double d4sx = bj["d4sigma_x"].get<double>() * scaleX;

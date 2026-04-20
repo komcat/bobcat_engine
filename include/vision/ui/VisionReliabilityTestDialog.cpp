@@ -139,8 +139,11 @@ void VisionReliabilityTestDialog::setupUI()
 
     m_resultsTable = new QTableWidget(0, 3);
     m_resultsTable->setHorizontalHeaderLabels({"#", "Pass", "Time (ms)"});
+    // Interactive resize: ResizeToContents recomputes column widths on every
+    // setItem() call, which became the dominant cost for >10 iterations.
+    // Columns are sized once when the schema changes via resizeColumnsToContents().
     m_resultsTable->horizontalHeader()->setStretchLastSection(true);
-    m_resultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_resultsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_resultsTable->setAlternatingRowColors(true);
     m_resultsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_resultsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -231,11 +234,11 @@ void VisionReliabilityTestDialog::onStopClicked()
     m_statusLabel->setStyleSheet("color: #FFA500;");
     setRunningState(false);
 
-    // Update statistics with whatever we have so far
+    // Update statistics with whatever we have so far. The table is already
+    // in sync because each iteration appended its own row.
     if (!m_results.empty()) {
         collectAllMeasurementKeys();
         collectActiveCountColumns();
-        rebuildTableColumns();
         updateStatisticsSummary();
     }
 
@@ -257,7 +260,7 @@ void VisionReliabilityTestDialog::startNextIteration()
         // Final statistics
         if (!m_results.empty()) {
             collectAllMeasurementKeys();
-            rebuildTableColumns();
+            collectActiveCountColumns();
             updateStatisticsSummary();
         }
         return;
@@ -397,14 +400,28 @@ void VisionReliabilityTestDialog::onIterationFinished(const VisionResult& result
     }
 
     m_results.push_back(iterResult);
-    addResultRow(iterResult);
+
+    // Detect if the dynamic column schema (measurement keys / active count columns)
+    // changed this iteration. For most plugins the schema stabilizes after the
+    // first successful iteration — skipping the full rebuild on every iteration
+    // turns the previously O(N²) loop into an O(N) append.
+    std::vector<std::string> prevKeys = m_allMeasurementKeys;
+    std::vector<std::string> prevCountCols = m_activeCountColumns;
     collectAllMeasurementKeys();
     collectActiveCountColumns();
-    rebuildTableColumns();
+    bool schemaChanged = (prevKeys != m_allMeasurementKeys) ||
+                         (prevCountCols != m_activeCountColumns);
 
-    // Schedule next iteration via timer (event-driven, non-blocking)
+    if (schemaChanged) {
+        rebuildTableColumns();
+    } else {
+        addResultRow(iterResult);
+    }
+
+    // Yield to the event loop; the previous 100 ms added 10 s to a 100-iter run
+    // for no benefit (worker is already async).
     if (!m_stopRequested) {
-        m_nextIterationTimer->start(100);
+        m_nextIterationTimer->start(1);
     }
 }
 
@@ -416,14 +433,22 @@ void VisionReliabilityTestDialog::onIterationError(const QString& errorMessage)
     iterResult.errorMessage = errorMessage.toStdString();
 
     m_results.push_back(iterResult);
-    addResultRow(iterResult);
+
+    std::vector<std::string> prevKeys = m_allMeasurementKeys;
+    std::vector<std::string> prevCountCols = m_activeCountColumns;
     collectAllMeasurementKeys();
     collectActiveCountColumns();
-    rebuildTableColumns();
+    bool schemaChanged = (prevKeys != m_allMeasurementKeys) ||
+                         (prevCountCols != m_activeCountColumns);
 
-    // Continue to next iteration
+    if (schemaChanged) {
+        rebuildTableColumns();
+    } else {
+        addResultRow(iterResult);
+    }
+
     if (!m_stopRequested) {
-        m_nextIterationTimer->start(100);
+        m_nextIterationTimer->start(1);
     }
 }
 
@@ -431,8 +456,15 @@ void VisionReliabilityTestDialog::addResultRow(const ReliabilityIterationResult&
 {
     int row = m_resultsTable->rowCount();
     m_resultsTable->insertRow(row);
+    fillRowCells(row, result);
+    m_resultsTable->scrollToBottom();
+}
 
-    // Fixed columns: #, Pass, Time. All other columns are filled by rebuildTableColumns().
+void VisionReliabilityTestDialog::fillRowCells(int row, const ReliabilityIterationResult& result)
+{
+    const int fixedCols = 3;
+    const int countCols = static_cast<int>(m_activeCountColumns.size());
+
     m_resultsTable->setItem(row, 0, new QTableWidgetItem(QString::number(result.iteration)));
 
     QTableWidgetItem* passItem = new QTableWidgetItem(result.success ? "PASS" : "FAIL");
@@ -443,7 +475,31 @@ void VisionReliabilityTestDialog::addResultRow(const ReliabilityIterationResult&
     m_resultsTable->setItem(row, 2, new QTableWidgetItem(
         QString::number(result.processingTimeMs, 'f', 2)));
 
-    m_resultsTable->scrollToBottom();
+    auto countValue = [](const std::string& name, const ReliabilityIterationResult& r) -> int {
+        if (name == "Circles")    return r.circleCount;
+        if (name == "Points")     return r.pointCount;
+        if (name == "Lines")      return r.lineCount;
+        if (name == "Rectangles") return r.rectangleCount;
+        if (name == "Beams")      return r.beamCount;
+        return 0;
+    };
+
+    for (int c = 0; c < countCols; ++c) {
+        const auto& name = m_activeCountColumns[static_cast<size_t>(c)];
+        m_resultsTable->setItem(row, fixedCols + c,
+            new QTableWidgetItem(QString::number(countValue(name, result))));
+    }
+
+    for (size_t c = 0; c < m_allMeasurementKeys.size(); ++c) {
+        const auto& key = m_allMeasurementKeys[c];
+        auto it = result.measurements.find(key);
+        QString val = "-";
+        if (it != result.measurements.end()) {
+            val = QString::number(it->second, 'f', 4);
+        }
+        m_resultsTable->setItem(row, fixedCols + countCols + static_cast<int>(c),
+            new QTableWidgetItem(val));
+    }
 }
 
 void VisionReliabilityTestDialog::updateProgressUI()
@@ -503,6 +559,10 @@ void VisionReliabilityTestDialog::rebuildTableColumns()
     const int measCols  = static_cast<int>(m_allMeasurementKeys.size());
     const int totalCols = fixedCols + countCols + measCols;
 
+    // Suppress repaints for the duration of the rebuild — without this,
+    // every setItem() call can trigger a visual update.
+    m_resultsTable->setUpdatesEnabled(false);
+
     m_resultsTable->setColumnCount(totalCols);
 
     QStringList headers = {"#", "Pass", "Time (ms)"};
@@ -514,37 +574,20 @@ void VisionReliabilityTestDialog::rebuildTableColumns()
     }
     m_resultsTable->setHorizontalHeaderLabels(headers);
 
-    // Helper to fetch a count value by column name
-    auto countValue = [](const std::string& name, const ReliabilityIterationResult& r) -> int {
-        if (name == "Circles")    return r.circleCount;
-        if (name == "Points")     return r.pointCount;
-        if (name == "Lines")      return r.lineCount;
-        if (name == "Rectangles") return r.rectangleCount;
-        if (name == "Beams")      return r.beamCount;
-        return 0;
-    };
-
-    // Fill in count + measurement columns for all rows
-    for (int row = 0; row < static_cast<int>(m_results.size()); ++row) {
-        const auto& r = m_results[static_cast<size_t>(row)];
-
-        for (int c = 0; c < countCols; ++c) {
-            const auto& name = m_activeCountColumns[static_cast<size_t>(c)];
-            m_resultsTable->setItem(row, fixedCols + c,
-                new QTableWidgetItem(QString::number(countValue(name, r))));
-        }
-
-        for (int c = 0; c < measCols; ++c) {
-            const auto& key = m_allMeasurementKeys[static_cast<size_t>(c)];
-            auto it = r.measurements.find(key);
-            QString val = "-";
-            if (it != r.measurements.end()) {
-                val = QString::number(it->second, 'f', 4);
-            }
-            m_resultsTable->setItem(row, fixedCols + countCols + c,
-                new QTableWidgetItem(val));
-        }
+    // Re-populate every row under the new column schema. Called only when
+    // the measurement-key set or active count columns change — usually once,
+    // on the first successful iteration.
+    m_resultsTable->setRowCount(0);
+    for (size_t i = 0; i < m_results.size(); ++i) {
+        m_resultsTable->insertRow(static_cast<int>(i));
+        fillRowCells(static_cast<int>(i), m_results[i]);
     }
+
+    // Size columns once after the bulk fill rather than per-setItem.
+    m_resultsTable->resizeColumnsToContents();
+
+    m_resultsTable->setUpdatesEnabled(true);
+    m_resultsTable->scrollToBottom();
 }
 
 void VisionReliabilityTestDialog::updateStatisticsSummary()

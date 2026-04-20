@@ -30,6 +30,7 @@
 #include "../plugins/HalconCircleDetectionPlugin.h"
 #include "../plugins/HalconCircleDetectionRobustPlugin.h"
 #include "../plugins/HalconLineDetectionPlugin.h"
+#include "../plugins/HalconSingleLineAnglePlugin.h"
 #include "../plugins/HalconPatternMatchingEdgePlugin.h"
 #include "../plugins/HalconPatternMatchingNCCPlugin.h"
 #include "../plugins/HalconPatternMatchingDescriptorPlugin.h"
@@ -1227,6 +1228,9 @@ void VisionManagerPage::registerPlugins()
 
     auto halconLinePlugin = std::make_shared<HalconLineDetectionPlugin>();
     VisionManager::instance().registerPlugin(halconLinePlugin);
+
+    auto halconSingleLineAnglePlugin = std::make_shared<HalconSingleLineAnglePlugin>();
+    VisionManager::instance().registerPlugin(halconSingleLineAnglePlugin);
 
     auto halconPatternEdgePlugin = std::make_shared<HalconPatternMatchingEdgePlugin>();
     halconPatternEdgePlugin->setVisionManagerPage(this);

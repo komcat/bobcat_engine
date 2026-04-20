@@ -1367,6 +1367,7 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconCircleDetectionPlugin.cpp
         include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
         include/vision/plugins/HalconLineDetectionPlugin.cpp
+        include/vision/plugins/HalconSingleLineAnglePlugin.cpp
         include/vision/plugins/HalconPatternMatchingEdgePlugin.cpp
         include/vision/plugins/HalconPatternMatchingNCCPlugin.cpp
         include/vision/plugins/HalconPatternMatchingDescriptorPlugin.cpp
@@ -1378,6 +1379,7 @@ if(HALCON_FOUND AND OPENCV_FOUND)
         include/vision/plugins/HalconCircleDetectionPlugin.h
         include/vision/plugins/HalconCircleDetectionRobustPlugin.h
         include/vision/plugins/HalconLineDetectionPlugin.h
+        include/vision/plugins/HalconSingleLineAnglePlugin.h
         include/vision/plugins/HalconPatternMatchingEdgePlugin.h
         include/vision/plugins/HalconPatternMatchingNCCPlugin.h
         include/vision/plugins/HalconPatternMatchingDescriptorPlugin.h
@@ -1771,6 +1773,7 @@ if(OPENCV_FOUND)
             include/vision/plugins/HalconCircleDetectionPlugin.cpp
             include/vision/plugins/HalconCircleDetectionRobustPlugin.cpp
             include/vision/plugins/HalconLineDetectionPlugin.cpp
+            include/vision/plugins/HalconSingleLineAnglePlugin.cpp
             include/vision/plugins/HalconBeamDetectionPlugin.cpp
             include/vision/plugins/HalconD4SigmaBeamDetectionPlugin.cpp
         )
