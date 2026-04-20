@@ -4,6 +4,8 @@
 #include "RecipeWorker.h"
 #include "RecipeExecutionStateMachine.h"
 #include "SequenceContext.h"
+#include "ScriptEngine.h"
+#include "SequenceEngine.h"
 #include <set>
 #include <QEventLoop>
 #include <QMutexLocker>
@@ -42,11 +44,17 @@ void ProgramWorker::requestStop()
   m_stopRequested.store(true);
   emit logMessage("Program stop requested");
 
-  // ✅ CRITICAL FIX: Forward stop to active RecipeWorker
+  // Forward stop to active RecipeWorker
   QMutexLocker locker(&m_activeWorkerMutex);
   if (m_activeRecipeWorker) {
     m_activeRecipeWorker->requestStop();
     emit logMessage("Stop forwarded to active recipe");
+  }
+
+  // Forward stop to ScriptEngine if running
+  if (m_scriptEngine && m_scriptEngine->IsRunning()) {
+    m_scriptEngine->RequestStop();
+    emit logMessage("Stop forwarded to script engine");
   }
 }
 
@@ -230,14 +238,19 @@ void ProgramWorker::runSequential()
         continue;
       }
 
-      // Execute this recipe using RecipeWorker
+      // Execute this recipe using RecipeWorker (or script via ScriptEngine)
       emit recipeStarted(recipeIndex, QString::fromStdString(recipeRef->displayName));
       emit logMessage(QString("Starting recipe %1 of %2: %3")
         .arg(executedCount + 1)
         .arg(totalEnabledRecipes)
         .arg(QString::fromStdString(recipeRef->displayName)));
 
-      bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+      bool success = false;
+      if (recipeRef->type == RecipeReference::SCRIPT) {
+        success = executeScript(recipeIndex, recipeRef->recipeFilePath);
+      } else {
+        success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+      }
 
       if (success) {
         // ✅ Mark recipe as completed
@@ -472,8 +485,13 @@ void ProgramWorker::runWithDependencies()
           emit logMessage(depStr);
         }
 
-        // Execute the recipe
-        bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+        // Execute the recipe or script
+        bool success = false;
+        if (recipeRef->type == RecipeReference::SCRIPT) {
+          success = executeScript(recipeIndex, recipeRef->recipeFilePath);
+        } else {
+          success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+        }
 
         // Mark recipe as completed
         if (success) {
@@ -706,6 +724,43 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
   return success;
 }
 
+bool ProgramWorker::executeScript(int /*scriptIndex*/, const std::string& scriptFilePath)
+{
+  if (!m_scriptEngine) {
+    emit logMessage("Script engine not available");
+    return false;
+  }
+
+  if (m_scriptEngine->IsRunning()) {
+    emit logMessage("Script engine is busy");
+    return false;
+  }
+
+  emit logMessage(QString("Executing script: %1").arg(QString::fromStdString(scriptFilePath)));
+
+  // Wire up user prompt callback so bobcat.prompt() works from scripts
+  if (m_userPromptCallback && m_engine) {
+    m_engine->SetUserPromptCallback(m_userPromptCallback);
+  }
+
+  // Set output callback to forward script output to log
+  m_scriptEngine->SetOutputCallback([this](const std::string& output) {
+    emit logMessage(QString("[Script] %1").arg(QString::fromStdString(output)));
+  });
+
+  std::string errorMessage;
+  bool success = m_scriptEngine->ExecuteFile(scriptFilePath, errorMessage);
+
+  // Clear output callback
+  m_scriptEngine->SetOutputCallback(nullptr);
+
+  if (!success) {
+    emit logMessage(QString("Script error: %1").arg(QString::fromStdString(errorMessage)));
+  }
+
+  return success;
+}
+
 bool ProgramWorker::checkPrerequisites(int recipeIndex, QString& errorMessage)
 {
   // Get dependencies for this recipe from the active POR set
@@ -919,7 +974,12 @@ void ProgramWorker::runWithLoop()
             .arg(QString::fromStdString(recipeRef->displayName)));
         }
 
-        bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+        bool success = false;
+        if (recipeRef->type == RecipeReference::SCRIPT) {
+          success = executeScript(recipeIndex, recipeRef->recipeFilePath);
+        } else {
+          success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+        }
 
         if (success) {
           m_completedRecipes[recipeIndex] = true;
@@ -982,7 +1042,12 @@ void ProgramWorker::runWithLoop()
               .arg(QString::fromStdString(recipeRef->displayName)));
           }
 
-          bool success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+          bool success = false;
+          if (recipeRef->type == RecipeReference::SCRIPT) {
+            success = executeScript(recipeIndex, recipeRef->recipeFilePath);
+          } else {
+            success = executeRecipe(recipeIndex, recipeRef->recipeFilePath);
+          }
 
           if (success) {
             m_completedRecipes[recipeIndex] = true;

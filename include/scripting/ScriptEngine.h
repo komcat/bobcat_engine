@@ -3,9 +3,13 @@
 
 #include <string>
 #include <map>
+#include <set>
+#include <vector>
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 
 struct lua_State;
 struct lua_Debug;
@@ -40,6 +44,29 @@ public:
     using OutputCallback = std::function<void(const std::string& message)>;
     void SetOutputCallback(OutputCallback callback) { m_outputCallback = callback; }
 
+    // ======================================================================
+    // DEBUGGER
+    // ======================================================================
+
+    using LocalVar = std::pair<std::string, std::string>;
+    using DebugPauseCallback = std::function<void(int line, const std::string& source,
+        const std::vector<LocalVar>& locals)>;
+
+    void SetDebugMode(bool enabled) { m_debugMode.store(enabled); }
+    [[nodiscard]] bool IsDebugMode() const { return m_debugMode.load(); }
+    [[nodiscard]] bool IsDebugPaused() const { return m_debugPaused.load(); }
+
+    void RequestDebugContinue();
+    void RequestDebugRunToEnd();
+
+    void SetBreakpoint(int line);
+    void ClearBreakpoint(int line);
+    void ToggleBreakpoint(int line);
+    void ClearAllBreakpoints();
+    [[nodiscard]] std::set<int> GetBreakpoints() const;
+
+    void SetDebugPauseCallback(DebugPauseCallback callback) { m_debugPauseCallback = callback; }
+
 private:
     lua_State* m_L = nullptr;
     ApplicationContext* m_appContext = nullptr;
@@ -52,11 +79,23 @@ private:
 
     OutputCallback m_outputCallback;
 
+    // Debug state
+    std::atomic<bool> m_debugMode{false};
+    std::atomic<bool> m_debugPaused{false};
+    std::atomic<bool> m_debugContinueRequested{false};
+    std::mutex m_debugMutex;
+    std::condition_variable m_debugCondition;
+    std::set<int> m_breakpoints;
+    mutable std::mutex m_breakpointMutex;
+    DebugPauseCallback m_debugPauseCallback;
+
+    std::vector<LocalVar> CollectLocals(lua_State* L, lua_Debug* ar);
+
     void RegisterBindings();
     void RegisterConvenienceModules();
     void Sandbox();
 
-    static void StopCheckHook(lua_State* L, lua_Debug* ar);
+    static void DebugHook(lua_State* L, lua_Debug* ar);
     static int LuaDispatch(lua_State* L);
     static int LuaPrint(lua_State* L);
 

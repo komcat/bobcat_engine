@@ -54,17 +54,19 @@ struct DependencySet {
 };
 
 /**
- * @brief RecipeReference - Points to a recipe file
+ * @brief RecipeReference - Points to a recipe file or Lua script
  */
 struct RecipeReference {
-  std::string recipeFilePath;        // Path to recipe JSON file
-  std::string displayName;           // Name shown in UI (extracted from recipe or filename)
-  bool enabled;                      // Can disable recipe without removing it
-  bool includeInLoop;                // Include this recipe in infinite loop execution
+  enum EntryType { RECIPE, SCRIPT };
+  EntryType type;                      // RECIPE or SCRIPT
+  std::string recipeFilePath;          // Path to recipe JSON file or script .lua file
+  std::string displayName;             // Name shown in UI (extracted from recipe or filename)
+  bool enabled;                        // Can disable recipe without removing it
+  bool includeInLoop;                  // Include this recipe in infinite loop execution
   // NOTE: Dependencies moved to DependencySet for multi-set support
 
-  RecipeReference(const std::string& path, const std::string& name, bool enable = true)
-    : recipeFilePath(path), displayName(name), enabled(enable), includeInLoop(false) {
+  RecipeReference(const std::string& path, const std::string& name, bool enable = true, EntryType entryType = RECIPE)
+    : type(entryType), recipeFilePath(path), displayName(name), enabled(enable), includeInLoop(false) {
   }
 };
 
@@ -183,6 +185,7 @@ public:
 
   // Recipe management
   void addRecipe(const std::string& recipeFilePath, const std::string& displayName);
+  void addScript(const std::string& scriptFilePath, const std::string& displayName);
   void removeRecipe(int index);
   bool moveRecipeUp(int index);
   bool moveRecipeDown(int index);

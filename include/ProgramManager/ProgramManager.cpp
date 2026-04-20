@@ -304,6 +304,22 @@ void ProgramManager::addRecipe(const std::string& recipeFilePath, const std::str
     << " (" << recipeFilePath << ")" << std::endl;
 }
 
+void ProgramManager::addScript(const std::string& scriptFilePath, const std::string& displayName)
+{
+  if (m_currentProgram.activeSlotIndex < 0 ||
+      m_currentProgram.activeSlotIndex >= static_cast<int>(m_currentProgram.recipeSlots.size())) {
+    std::cerr << "[ProgramManager] Invalid active slot index" << std::endl;
+    return;
+  }
+
+  auto& activeSlot = m_currentProgram.recipeSlots[m_currentProgram.activeSlotIndex];
+  auto scriptRef = std::make_unique<RecipeReference>(scriptFilePath, displayName, true, RecipeReference::SCRIPT);
+  activeSlot.recipes.push_back(std::move(scriptRef));
+
+  std::cout << "[ProgramManager] Added script to slot '" << activeSlot.name << "': " << displayName
+    << " (" << scriptFilePath << ")" << std::endl;
+}
+
 void ProgramManager::removeRecipe(int index)
 {
   if (m_currentProgram.activeSlotIndex < 0 ||
@@ -1043,6 +1059,9 @@ bool ProgramManager::saveToJson(const std::string& filename) const
       recipeObj["display_name"] = QString::fromStdString(recipe->displayName);
       recipeObj["enabled"] = recipe->enabled;
       recipeObj["include_in_loop"] = recipe->includeInLoop;
+      if (recipe->type == RecipeReference::SCRIPT) {
+        recipeObj["type"] = "script";
+      }
       recipesArray.append(recipeObj);
     }
     slotObj["recipes"] = recipesArray;
@@ -1169,8 +1188,12 @@ bool ProgramManager::loadFromJson(const std::string& filename)
         std::string displayName = recipeObj["display_name"].toString().toStdString();
         bool enabled = recipeObj["enabled"].toBool(true);
         bool includeInLoop = recipeObj["include_in_loop"].toBool(false);
+        RecipeReference::EntryType entryType = RecipeReference::RECIPE;
+        if (recipeObj.contains("type") && recipeObj["type"].toString() == "script") {
+          entryType = RecipeReference::SCRIPT;
+        }
 
-        auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled);
+        auto recipeRef = std::make_unique<RecipeReference>(filePath, displayName, enabled, entryType);
         recipeRef->includeInLoop = includeInLoop;
         newSlot.recipes.push_back(std::move(recipeRef));
       }

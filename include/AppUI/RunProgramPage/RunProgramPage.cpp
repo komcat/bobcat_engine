@@ -1199,10 +1199,20 @@ void RunProgramPage::createEditWidget()
   layout->addWidget(slotManageGroup);
 
   // Add Recipe button — success green family
+  auto* addButtonsLayout = new QHBoxLayout();
+  addButtonsLayout->setSpacing(6);
+
   m_addRecipeButton = new QPushButton("+ Add Recipe");
   m_addRecipeButton->setMinimumHeight(40);
   m_addRecipeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
-  layout->addWidget(m_addRecipeButton);
+  addButtonsLayout->addWidget(m_addRecipeButton);
+
+  m_addScriptButton = new QPushButton("+ Add Script");
+  m_addScriptButton->setMinimumHeight(40);
+  m_addScriptButton->setStyleSheet(Theme::Buttons::bezelPrimary());
+  addButtonsLayout->addWidget(m_addScriptButton);
+
+  layout->addLayout(addButtonsLayout);
 
   // === RECIPE TABLE AND PREVIEW (side by side) ===
   QSplitter* recipeSplitter = new QSplitter(Qt::Horizontal);
@@ -1351,6 +1361,7 @@ void RunProgramPage::createEditWidget()
 
   // Connect signals
   connect(m_addRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onAddRecipe);
+  connect(m_addScriptButton, &QPushButton::clicked, this, &RunProgramPage::onAddScript);
   connect(m_removeRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onRemoveRecipe);
   connect(m_moveUpButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeUp);
   connect(m_moveDownButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeDown);
@@ -2586,6 +2597,10 @@ void RunProgramPage::onExecuteProgram()
   );
   std::cout << "[RunProgramPage] Created m_programWorker=" << m_programWorker << std::endl;
   std::cout.flush();
+
+  if (m_context->scriptEngine) {
+    m_programWorker->setScriptEngine(m_context->scriptEngine);
+  }
 
   m_programWorker->setAutoRunMode(autoRunMode);
   if (!autoRunMode) {
@@ -4218,6 +4233,37 @@ void RunProgramPage::onAddRecipe()
   updateRecipeList();
 }
 
+void RunProgramPage::onAddScript()
+{
+  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
+    QMessageBox::warning(this, "No Product Loaded",
+      "Please load a product first before adding scripts.");
+    return;
+  }
+
+  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
+
+  // Try product scripts folder first, fallback to global
+  QString scriptsPath = QString("config/%1/scripts").arg(productName);
+  if (!QDir(scriptsPath).exists()) {
+    scriptsPath = "scripts";
+  }
+
+  QString filename = QFileDialog::getOpenFileName(
+    this,
+    "Add Script",
+    scriptsPath,
+    "Lua Scripts (*.lua)");
+
+  if (filename.isEmpty()) return;
+
+  QFileInfo fileInfo(filename);
+  QString displayName = fileInfo.baseName();
+
+  m_programManager->addScript(filename.toStdString(), displayName.toStdString());
+  updateRecipeList();
+}
+
 void RunProgramPage::onRemoveRecipe()
 {
   int selectedRow = m_editRecipeTable->currentRow();
@@ -4989,8 +5035,10 @@ void RunProgramPage::updateRecipeList()
     QString loopIndicator = recipe->includeInLoop ? " [L]" : "";
 
     if (recipe->enabled) {
-      displayText = QString("%1    %2%3")
+      QString typePrefix = recipe->type == RecipeReference::SCRIPT ? "[LUA] " : "";
+      displayText = QString("%1    %2%3%4")
         .arg(recipeNumber, 2, 10, QChar('0'))
+        .arg(typePrefix)
         .arg(QString::fromStdString(recipe->displayName))
         .arg(loopIndicator);
     }
@@ -5030,10 +5078,14 @@ void RunProgramPage::updateRecipeList()
     QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
     m_editRecipeTable->setItem(rowIndex, 1, nameItem);
 
-    // Column 2: File (recipe filename)
+    // Column 2: File (recipe filename, prefixed with [LUA] for scripts)
     QFileInfo recipeFileInfo(QString::fromStdString(recipe->recipeFilePath));
-    QTableWidgetItem* fileItem = new QTableWidgetItem(recipeFileInfo.fileName());
-    fileItem->setForeground(QColor("#a1a1aa"));  // gray, secondary info
+    QString fileDisplay = recipeFileInfo.fileName();
+    if (recipe->type == RecipeReference::SCRIPT) {
+      fileDisplay = "[LUA] " + fileDisplay;
+    }
+    QTableWidgetItem* fileItem = new QTableWidgetItem(fileDisplay);
+    fileItem->setForeground(recipe->type == RecipeReference::SCRIPT ? QColor("#60a5fa") : QColor("#a1a1aa"));
     fileItem->setToolTip(QString::fromStdString(recipe->recipeFilePath));
     m_editRecipeTable->setItem(rowIndex, 2, fileItem);
 

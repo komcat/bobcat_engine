@@ -220,6 +220,7 @@ private:
   // Edit widget components
   QLineEdit* m_programNameEdit;
   QPushButton* m_addRecipeButton;
+  QPushButton* m_addScriptButton;
   QTableWidget* m_editRecipeTable;
   QTextEdit* m_recipePreviewText;
   QPushButton* m_removeRecipeButton;
@@ -331,6 +332,7 @@ private:
 
   // Edit widget slots
   void onAddRecipe();
+  void onAddScript();
   void onRemoveRecipe();
   void onMoveRecipeUp();
   void onMoveRecipeDown();

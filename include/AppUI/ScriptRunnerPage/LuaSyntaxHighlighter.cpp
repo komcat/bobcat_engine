@@ -25,7 +25,9 @@ LuaSyntaxHighlighter::LuaSyntaxHighlighter(QTextDocument* parent)
     const QStringList modules = {
         "motion", "io", "pneumatic", "camera", "vision",
         "tec", "psu", "smu", "lighting", "ctx", "log",
-        "system", "datastore", "math", "string", "table"
+        "system", "datastore", "math", "string", "table",
+        "dut", "bobcat", "auxwindow", "cameraoffset",
+        "coordalign", "relpos", "trainer", "beamserver"
     };
     for (const QString& mod : modules) {
         HighlightingRule rule;

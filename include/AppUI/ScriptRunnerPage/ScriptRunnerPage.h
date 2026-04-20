@@ -1,4 +1,4 @@
-// ScriptRunnerPage.h - Script editor and runner UI page
+// ScriptRunnerPage.h - Script editor, runner, and debugger UI page
 #pragma once
 
 #include <QWidget>
@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QSplitter>
+#include <QTableWidget>
 
 struct ApplicationContext;
 class ScriptWorker;
@@ -35,12 +36,17 @@ private slots:
     void onNewClicked();
     void onSaveClicked();
     void onSaveAsClicked();
+    void onStepClicked();
+    void onContinueClicked();
+    void onFolderToggle();
     void onFileClicked(const QModelIndex& index);
     void onFileDoubleClicked(const QModelIndex& index);
     void onEditorModified();
+    void onBreakpointToggled(int line);
     void onExecutionStarted();
     void onExecutionCompleted(bool success, QString message);
     void onScriptOutput(QString message);
+    void onDebugPaused(int line, QString source, QStringList varNames, QStringList varValues);
 
 private:
     void setupUI();
@@ -51,14 +57,23 @@ private:
     bool saveFile(const QString& path);
     bool promptSaveIfModified();
     void updateFilenameLabel();
+    void setDebugButtonsEnabled(bool enabled);
+    void startExecution(bool debugMode);
 
     ApplicationContext* m_context;
 
     // Left panel
+    QPushButton* m_folderToggle = nullptr;
     QTreeView* m_fileTree = nullptr;
     QFileSystemModel* m_fileModel = nullptr;
     QPushButton* m_runButton = nullptr;
+    QPushButton* m_debugButton = nullptr;
     QPushButton* m_stopButton = nullptr;
+    QPushButton* m_stepButton = nullptr;
+    QPushButton* m_continueButton = nullptr;
+
+    // Left panel - variable watch
+    QTableWidget* m_variablesTable = nullptr;
 
     // Right panel - editor
     ScriptEditorWidget* m_editor = nullptr;
@@ -80,4 +95,6 @@ private:
     ScriptWorker* m_worker = nullptr;
     QString m_currentFilePath;
     bool m_modified = false;
+    bool m_debugging = false;
+    bool m_useProductScripts = false;
 };

@@ -16,6 +16,7 @@ class UnifiedMotionManager;
 class RecipeWorker;
 class RecipeExecutionStateMachine;
 class SequenceContext;  // ✅ Forward declaration for context sharing
+class ScriptEngine;
 struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
 
 /**
@@ -115,6 +116,9 @@ public:
   int getRetracePositionsVisited() const { return m_retracePositionsVisited; }
   int getRetracePositionsSaved() const { return m_retracePositionsSaved; }
 
+  // Script engine support
+  void setScriptEngine(ScriptEngine* engine) { m_scriptEngine = engine; }
+
   // ✅ Get current execution context (for vision result display)
   SequenceContext* getCurrentContext() const;
 
@@ -171,6 +175,7 @@ protected:
 
 private:
   bool executeRecipe(int recipeIndex, const std::string& recipeFilePath);
+  bool executeScript(int scriptIndex, const std::string& scriptFilePath);
 
   SequenceEngine* m_engine;
   ProgramManager* m_programManager;
@@ -193,6 +198,8 @@ private:
   bool m_ignoreDependencies;              // true = skip dependency checks, force sequential
   std::vector<int> m_loopRecipeIndices;   // Indices of recipes to loop
   int m_loopIteration;                    // Current loop iteration (1-based)
+
+  ScriptEngine* m_scriptEngine = nullptr;
 
   // ✅ Track active RecipeWorker for stop forwarding
   RecipeWorker* m_activeRecipeWorker;

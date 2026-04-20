@@ -1,4 +1,4 @@
-// ScriptRunnerPage.cpp - Script editor and runner UI implementation
+// ScriptRunnerPage.cpp - Script editor, runner, and debugger UI
 #include "ScriptRunnerPage.h"
 #include "ScriptEditorWidget.h"
 #include "LuaSyntaxHighlighter.h"
@@ -6,8 +6,11 @@
 #include "ScriptEngine.h"
 #include "ScriptWorker.h"
 #include "LogManager.h"
+#include "SequenceEngine.h"
+#include "SequencePromptDialog.h"
 #include "product_position_manager.h"
 
+#include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -18,6 +21,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QHeaderView>
+#include <QThread>
 #include <iostream>
 
 ScriptRunnerPage::ScriptRunnerPage(ApplicationContext* context, QWidget* parent)
@@ -49,7 +53,7 @@ void ScriptRunnerPage::setupUI()
 
     m_statusLabel = new QLabel("Idle");
     m_statusLabel->setFixedHeight(28);
-    m_statusLabel->setFixedWidth(120);
+    m_statusLabel->setFixedWidth(160);
     m_statusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_statusLabel->setStyleSheet("color: #888;");
 
@@ -63,14 +67,29 @@ void ScriptRunnerPage::setupUI()
     auto* contentLayout = new QHBoxLayout();
     contentLayout->setSpacing(6);
 
-    // === LEFT PANEL: file browser + controls (fixed 280px) ===
+    // === LEFT PANEL (fixed 280px) ===
     auto* leftPanel = new QVBoxLayout();
     leftPanel->setSpacing(2);
+
+    auto* folderBar = new QHBoxLayout();
+    folderBar->setSpacing(4);
 
     auto* fileLabel = new QLabel("Scripts");
     fileLabel->setStyleSheet("font-weight: bold;");
     fileLabel->setFixedHeight(20);
-    leftPanel->addWidget(fileLabel);
+    folderBar->addWidget(fileLabel);
+
+    m_folderToggle = new QPushButton("Product");
+    m_folderToggle->setFixedSize(70, 20);
+    m_folderToggle->setCheckable(true);
+    m_folderToggle->setStyleSheet(
+        "QPushButton { background-color: #444; color: #aaa; font-size: 11px; border: 1px solid #555; border-radius: 3px; }"
+        "QPushButton:checked { background-color: #2563eb; color: white; border: 1px solid #3b82f6; }");
+    connect(m_folderToggle, &QPushButton::clicked, this, &ScriptRunnerPage::onFolderToggle);
+    folderBar->addWidget(m_folderToggle);
+    folderBar->addStretch();
+
+    leftPanel->addLayout(folderBar);
 
     m_fileModel = new QFileSystemModel(this);
     m_fileModel->setNameFilters({"*.lua"});
@@ -88,24 +107,69 @@ void ScriptRunnerPage::setupUI()
     connect(m_fileTree, &QTreeView::doubleClicked, this, &ScriptRunnerPage::onFileDoubleClicked);
     leftPanel->addWidget(m_fileTree, 1);
 
-    auto* buttonBar = new QHBoxLayout();
-    buttonBar->setSpacing(4);
+    // Run/Debug/Stop buttons
+    auto* runBar = new QHBoxLayout();
+    runBar->setSpacing(4);
 
     m_runButton = new QPushButton("Run");
-    m_runButton->setFixedSize(80, 28);
+    m_runButton->setFixedSize(70, 28);
     m_runButton->setStyleSheet("background-color: #22c55e; color: white; font-weight: bold;");
     connect(m_runButton, &QPushButton::clicked, this, &ScriptRunnerPage::onRunClicked);
 
+    m_debugButton = new QPushButton("Debug");
+    m_debugButton->setFixedSize(70, 28);
+    m_debugButton->setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold;");
+    connect(m_debugButton, &QPushButton::clicked, this, [this]() { startExecution(true); });
+
     m_stopButton = new QPushButton("Stop");
-    m_stopButton->setFixedSize(80, 28);
+    m_stopButton->setFixedSize(70, 28);
     m_stopButton->setStyleSheet("background-color: #ef4444; color: white; font-weight: bold;");
     m_stopButton->setEnabled(false);
     connect(m_stopButton, &QPushButton::clicked, this, &ScriptRunnerPage::onStopClicked);
 
-    buttonBar->addWidget(m_runButton);
-    buttonBar->addWidget(m_stopButton);
-    buttonBar->addStretch();
-    leftPanel->addLayout(buttonBar);
+    runBar->addWidget(m_runButton);
+    runBar->addWidget(m_debugButton);
+    runBar->addWidget(m_stopButton);
+    runBar->addStretch();
+    leftPanel->addLayout(runBar);
+
+    // Step/Continue buttons
+    auto* debugBar = new QHBoxLayout();
+    debugBar->setSpacing(4);
+
+    m_stepButton = new QPushButton("Step");
+    m_stepButton->setFixedSize(70, 28);
+    m_stepButton->setStyleSheet("background-color: #3b82f6; color: white; font-weight: bold;");
+    m_stepButton->setEnabled(false);
+    connect(m_stepButton, &QPushButton::clicked, this, &ScriptRunnerPage::onStepClicked);
+
+    m_continueButton = new QPushButton("Continue");
+    m_continueButton->setFixedSize(90, 28);
+    m_continueButton->setStyleSheet("background-color: #8b5cf6; color: white; font-weight: bold;");
+    m_continueButton->setEnabled(false);
+    connect(m_continueButton, &QPushButton::clicked, this, &ScriptRunnerPage::onContinueClicked);
+
+    debugBar->addWidget(m_stepButton);
+    debugBar->addWidget(m_continueButton);
+    debugBar->addStretch();
+    leftPanel->addLayout(debugBar);
+
+    // Variable watch table
+    auto* varLabel = new QLabel("Variables");
+    varLabel->setStyleSheet("font-weight: bold;");
+    varLabel->setFixedHeight(20);
+    leftPanel->addWidget(varLabel);
+
+    m_variablesTable = new QTableWidget(0, 2);
+    m_variablesTable->setFixedWidth(280);
+    m_variablesTable->setHorizontalHeaderLabels({"Name", "Value"});
+    m_variablesTable->horizontalHeader()->setStretchLastSection(true);
+    m_variablesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_variablesTable->verticalHeader()->hide();
+    m_variablesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_variablesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_variablesTable->setFont(QFont("Consolas", 9));
+    leftPanel->addWidget(m_variablesTable, 1);
 
     contentLayout->addLayout(leftPanel);
 
@@ -118,7 +182,6 @@ void ScriptRunnerPage::setupUI()
     editorLayout->setContentsMargins(0, 0, 0, 0);
     editorLayout->setSpacing(2);
 
-    // Editor toolbar: filename + buttons
     auto* editorToolbar = new QHBoxLayout();
     editorToolbar->setSpacing(4);
 
@@ -148,6 +211,7 @@ void ScriptRunnerPage::setupUI()
     m_editor = new ScriptEditorWidget();
     m_highlighter = new LuaSyntaxHighlighter(m_editor->document());
     connect(m_editor, &QPlainTextEdit::textChanged, this, &ScriptRunnerPage::onEditorModified);
+    connect(m_editor, &ScriptEditorWidget::breakpointToggled, this, &ScriptRunnerPage::onBreakpointToggled);
     editorLayout->addWidget(m_editor, 1);
 
     rightSplitter->addWidget(editorContainer);
@@ -194,6 +258,19 @@ void ScriptRunnerPage::setupUI()
 
 void ScriptRunnerPage::onProductChanged()
 {
+    // Auto-switch to product scripts if the folder exists
+    if (m_context && m_context->productPositionManager) {
+        auto* ppm = m_context->productPositionManager;
+        if (ppm->HasLoadedProduct()) {
+            QString productPath = QString::fromStdString(ppm->GetCurrentProductPath());
+            bool productFolderExists = QDir(productPath + "/scripts").exists();
+            m_useProductScripts = productFolderExists;
+            m_folderToggle->setChecked(productFolderExists);
+        } else {
+            m_useProductScripts = false;
+            m_folderToggle->setChecked(false);
+        }
+    }
     refreshFileRoot();
 }
 
@@ -210,17 +287,30 @@ void ScriptRunnerPage::refreshFileRoot()
 
 QString ScriptRunnerPage::getScriptsDirectory() const
 {
-    if (m_context && m_context->productPositionManager) {
+    if (m_useProductScripts && m_context && m_context->productPositionManager) {
         auto* ppm = m_context->productPositionManager;
         if (ppm->HasLoadedProduct()) {
             QString productPath = QString::fromStdString(ppm->GetCurrentProductPath());
-            QString productScripts = productPath + "/scripts";
-            if (QDir(productScripts).exists()) {
-                return productScripts;
-            }
+            return productPath + "/scripts";
         }
     }
     return "scripts";
+}
+
+void ScriptRunnerPage::onFolderToggle()
+{
+    if (m_folderToggle->isChecked()) {
+        if (!m_context || !m_context->productPositionManager ||
+            !m_context->productPositionManager->HasLoadedProduct()) {
+            appendOutput("No product loaded - cannot switch to product scripts", "#f59e0b");
+            m_folderToggle->setChecked(false);
+            return;
+        }
+        m_useProductScripts = true;
+    } else {
+        m_useProductScripts = false;
+    }
+    refreshFileRoot();
 }
 
 // ============================================================================
@@ -367,11 +457,23 @@ void ScriptRunnerPage::onEditorModified()
     }
 }
 
+void ScriptRunnerPage::onBreakpointToggled(int line)
+{
+    if (m_context && m_context->scriptEngine) {
+        m_context->scriptEngine->ToggleBreakpoint(line);
+    }
+}
+
 // ============================================================================
-// Run / Stop
+// Run / Debug / Stop / Step / Continue
 // ============================================================================
 
 void ScriptRunnerPage::onRunClicked()
+{
+    startExecution(false);
+}
+
+void ScriptRunnerPage::startExecution(bool debugMode)
 {
     if (!m_context || !m_context->scriptEngine) {
         appendOutput("Script engine not available", "#ef4444");
@@ -388,21 +490,70 @@ void ScriptRunnerPage::onRunClicked()
         return;
     }
 
-    // Save if modified and has a file path
     if (m_modified && !m_currentFilePath.isEmpty()) {
         saveFile(m_currentFilePath);
     }
 
     m_outputConsole->clear();
+    m_editor->clearDebugLine();
+    m_debugging = debugMode;
+
+    m_context->scriptEngine->SetDebugMode(debugMode);
+
+    // Sync breakpoints from editor to engine
+    m_context->scriptEngine->ClearAllBreakpoints();
+    for (int bp : m_editor->getBreakpoints()) {
+        m_context->scriptEngine->SetBreakpoint(bp);
+    }
+
+    // Wire up user prompt callback so bobcat.prompt() works from scripts
+    if (m_context->sequenceEngine) {
+        m_context->sequenceEngine->SetUserPromptCallback(
+            [this](const std::string& title, const std::string& message) -> bool {
+                bool result = false;
+                if (QThread::currentThread() == QApplication::instance()->thread()) {
+                    result = SequencePromptDialog::ShowPrompt(
+                        QString::fromStdString(title),
+                        QString::fromStdString(message),
+                        this);
+                } else {
+                    QMetaObject::invokeMethod(this, [this, title, message, &result]() {
+                        result = SequencePromptDialog::ShowPrompt(
+                            QString::fromStdString(title),
+                            QString::fromStdString(message),
+                            this);
+                    }, Qt::BlockingQueuedConnection);
+                }
+                return result;
+            });
+    }
+
+    // Set debug pause callback
+    m_context->scriptEngine->SetDebugPauseCallback(
+        [this](int line, const std::string& source,
+               const std::vector<ScriptEngine::LocalVar>& locals) {
+            QStringList names, values;
+            for (const auto& lv : locals) {
+                names.append(QString::fromStdString(lv.first));
+                values.append(QString::fromStdString(lv.second));
+            }
+            QMetaObject::invokeMethod(this, "onDebugPaused",
+                Qt::QueuedConnection,
+                Q_ARG(int, line),
+                Q_ARG(QString, QString::fromStdString(source)),
+                Q_ARG(QStringList, names),
+                Q_ARG(QStringList, values));
+        });
 
     if (!m_currentFilePath.isEmpty()) {
-        appendOutput("Running: " + QFileInfo(m_currentFilePath).fileName(), "#60a5fa");
+        appendOutput((debugMode ? "Debugging: " : "Running: ") +
+                     QFileInfo(m_currentFilePath).fileName(), "#60a5fa");
         m_worker = new ScriptWorker(
             m_context->scriptEngine,
             m_currentFilePath.toStdString(),
             ScriptWorker::Mode::FILE, this);
     } else {
-        appendOutput("Running inline script...", "#60a5fa");
+        appendOutput(debugMode ? "Debugging inline script..." : "Running inline script...", "#60a5fa");
         m_worker = new ScriptWorker(
             m_context->scriptEngine,
             code.toStdString(),
@@ -421,15 +572,39 @@ void ScriptRunnerPage::onRunClicked()
 
 void ScriptRunnerPage::onStopClicked()
 {
-    if (m_worker) {
-        m_worker->requestStop();
-        appendOutput("Stop requested...", "#f59e0b");
+    if (m_context && m_context->scriptEngine) {
+        m_context->scriptEngine->RequestStop();
+    }
+    appendOutput("Stop requested...", "#f59e0b");
+}
+
+void ScriptRunnerPage::onStepClicked()
+{
+    if (m_context && m_context->scriptEngine) {
+        m_context->scriptEngine->RequestDebugContinue();
+    }
+}
+
+void ScriptRunnerPage::onContinueClicked()
+{
+    if (m_context && m_context->scriptEngine) {
+        m_context->scriptEngine->RequestDebugRunToEnd();
+        setDebugButtonsEnabled(false);
+        m_editor->clearDebugLine();
+        m_statusLabel->setText("Running...");
+        m_statusLabel->setStyleSheet("color: #22c55e; font-weight: bold;");
     }
 }
 
 void ScriptRunnerPage::onClearClicked()
 {
     m_outputConsole->clear();
+}
+
+void ScriptRunnerPage::setDebugButtonsEnabled(bool enabled)
+{
+    m_stepButton->setEnabled(enabled);
+    m_continueButton->setEnabled(enabled);
 }
 
 // ============================================================================
@@ -439,16 +614,34 @@ void ScriptRunnerPage::onClearClicked()
 void ScriptRunnerPage::onExecutionStarted()
 {
     m_runButton->setEnabled(false);
+    m_debugButton->setEnabled(false);
     m_stopButton->setEnabled(true);
-    m_statusLabel->setText("Running...");
-    m_statusLabel->setStyleSheet("color: #22c55e; font-weight: bold;");
+    if (m_debugging) {
+        m_statusLabel->setText("Debugging...");
+        m_statusLabel->setStyleSheet("color: #f59e0b; font-weight: bold;");
+    } else {
+        m_statusLabel->setText("Running...");
+        m_statusLabel->setStyleSheet("color: #22c55e; font-weight: bold;");
+    }
 }
 
 void ScriptRunnerPage::onExecutionCompleted(bool success, QString message)
 {
     m_runButton->setEnabled(true);
+    m_debugButton->setEnabled(true);
     m_stopButton->setEnabled(false);
+    setDebugButtonsEnabled(false);
+    m_editor->clearDebugLine();
     m_worker = nullptr;
+    m_debugging = false;
+
+    if (m_context && m_context->scriptEngine) {
+        m_context->scriptEngine->SetDebugPauseCallback(nullptr);
+        m_context->scriptEngine->SetDebugMode(false);
+    }
+    if (m_context && m_context->sequenceEngine) {
+        m_context->sequenceEngine->SetUserPromptCallback(nullptr);
+    }
 
     if (success) {
         m_statusLabel->setText("Completed");
@@ -464,6 +657,23 @@ void ScriptRunnerPage::onExecutionCompleted(bool success, QString message)
 void ScriptRunnerPage::onScriptOutput(QString message)
 {
     appendOutput(message);
+}
+
+void ScriptRunnerPage::onDebugPaused(int line, QString /*source*/,
+                                      QStringList varNames, QStringList varValues)
+{
+    m_editor->setDebugLine(line);
+    setDebugButtonsEnabled(true);
+
+    m_statusLabel->setText(QString("Paused: line %1").arg(line));
+    m_statusLabel->setStyleSheet("color: #f59e0b; font-weight: bold;");
+
+    // Update variables table
+    m_variablesTable->setRowCount(varNames.size());
+    for (int i = 0; i < varNames.size(); ++i) {
+        m_variablesTable->setItem(i, 0, new QTableWidgetItem(varNames[i]));
+        m_variablesTable->setItem(i, 1, new QTableWidgetItem(varValues[i]));
+    }
 }
 
 void ScriptRunnerPage::appendOutput(const QString& text, const QString& color)
