@@ -15,6 +15,7 @@ extern "C" {
 #include <chrono>
 #include <thread>
 #include <sstream>
+#include <ctime>
 
 // ============================================================================
 // Construction / Destruction
@@ -653,6 +654,60 @@ int ScriptEngine::LuaSystemWait(lua_State* L)
     return 0;
 }
 
+// bobcat.watch(key, value) -> publishes a named measurement to the host UI.
+// Accepts string keys and numeric or string values. Formats numbers with
+// enough precision to be useful for Poynt.Y readings (~4 decimal places).
+int ScriptEngine::LuaBobcatWatch(lua_State* L)
+{
+    auto* engine = GetEngine(L);
+    const char* key = luaL_checkstring(L, 1);
+
+    std::string valueStr;
+    if (lua_isnumber(L, 2)) {
+        double v = lua_tonumber(L, 2);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%+.4f", v);
+        valueStr = buf;
+    } else {
+        valueStr = luaL_checkstring(L, 2);
+    }
+
+    if (engine && engine->m_watchCallback) {
+        engine->m_watchCallback(key, valueStr);
+    }
+    // Also mirror into ctx so scripts can read it later via ctx.getString.
+    if (engine && engine->m_context) {
+        engine->m_context->SetValue(key, valueStr, "script", "watch");
+    }
+    return 0;
+}
+
+// bobcat.timestamp([format]) -> string
+// Returns a local-time timestamp. Default format "YYYYMMDD_HHMMSS" suitable for filenames.
+// Optional arg: "iso" returns "YYYY-MM-DDTHH:MM:SS".
+int ScriptEngine::LuaBobcatTimestamp(lua_State* L)
+{
+    const char* fmt = luaL_optstring(L, 1, "file");
+
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+
+    char buf[32];
+    if (std::string(fmt) == "iso") {
+        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+    } else {
+        std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &tm);
+    }
+    lua_pushstring(L, buf);
+    return 1;
+}
+
 // ============================================================================
 // Binding registration
 // ============================================================================
@@ -670,6 +725,8 @@ void ScriptEngine::RegisterBindings()
 
     registerClosure("_dispatch", LuaDispatch);
     registerClosure("print", LuaPrint);
+    registerClosure("_native_timestamp", LuaBobcatTimestamp);
+    registerClosure("_native_watch", LuaBobcatWatch);
 
     // ctx table
     lua_newtable(m_L);
@@ -740,6 +797,10 @@ motion = {
         else
             return _dispatch(device, "SetAllAxisVelocity", {velocity = tostring(velocity)})
         end
+    end,
+    getSystemVelocity = function(device)
+        _dispatch(device, "GetSystemVelocity", {captureAs = "_vel"})
+        return ctx.getNumeric("_vel")
     end,
     waitDone = function(device, timeoutMs)
         local p = {}
@@ -1183,9 +1244,18 @@ bobcat = {
     prompt = function(title, message)
         return _dispatch("system", "UserPrompt", {title = title or "", message = message or ""})
     end,
-    askInput = function(title, prompt, defaultVal, contextKey)
+    -- askInput(title, prompt, defaultVal, contextKey [, presets])
+    --   presets: optional Lua array of strings. If provided, the Script Runner
+    --   dialog shows one quick-pick button per preset (commas forbidden inside
+    --   individual preset strings; they are the delimiter).
+    askInput = function(title, prompt, defaultVal, contextKey, presets)
+        local effectivePrompt = prompt or ""
+        if presets and #presets > 0 then
+            effectivePrompt = effectivePrompt ..
+                "\n{presets:" .. table.concat(presets, ",") .. "}"
+        end
         return _dispatch("system", "AskForInput", {
-            title = title or "", prompt = prompt or "",
+            title = title or "", prompt = effectivePrompt,
             default_value = defaultVal or "", context_key = contextKey or "_input"
         })
     end,
@@ -1194,6 +1264,53 @@ bobcat = {
     end,
     stopSequence = function()
         return _dispatch("system", "StopSequence", {})
+    end,
+    timestamp = function(fmt)
+        return _native_timestamp(fmt)
+    end,
+    -- bobcat.watch("A1B0.P.Y_4.0", value) -> shows up in Script Runner
+    -- "Variables" panel live during the run.
+    watch = function(key, value)
+        _native_watch(key, value)
+    end
+}
+
+-- ================================================================
+-- Recipe execution (runs a recipe file synchronously)
+-- ================================================================
+recipe = {
+    -- recipe.run("Beam Detect Loop") -- resolved to {productDir}/recipes/Beam Detect Loop.json
+    -- recipe.run("C:/abs/path/file.json")
+    -- opts.fail_on_error = false -> do not propagate recipe failure to Lua
+    run = function(recipeName, opts)
+        local p = {recipe = recipeName}
+        if opts and opts.fail_on_error == false then
+            p.fail_on_error = "false"
+        end
+        return _dispatch("scripting", "RunRecipe", p)
+    end
+}
+
+-- ================================================================
+-- File output (CSV-oriented; path must be under a 'data/' directory)
+-- ================================================================
+file = {
+    appendCsv = function(path, row, header)
+        local p = {path = path, row = row}
+        if header then p.header = header end
+        return _dispatch("system", "AppendCsv", p)
+    end,
+    -- Build a CSV line from a Lua array, escaping commas/quotes/newlines per RFC 4180.
+    csvRow = function(values)
+        local parts = {}
+        for i, v in ipairs(values) do
+            local s = tostring(v)
+            if s:find('[,"\n\r]') then
+                s = '"' .. s:gsub('"', '""') .. '"'
+            end
+            parts[i] = s
+        end
+        return table.concat(parts, ",")
     end
 }
 

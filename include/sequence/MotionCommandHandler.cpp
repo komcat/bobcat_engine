@@ -23,6 +23,7 @@
 #include <vector>                     // ✅ NEW: For parallel workers
 #include <sstream>                    // ✅ NEW: For XCANExtended step size parsing
 #include <algorithm>                  // ✅ NEW: For std::sort, std::greater
+#include <cctype>                     // For std::toupper (axis normalization)
 #include <limits>                     // ✅ NEW: For std::numeric_limits
 #include <filesystem>                 // For grid scan result file output
 #include <fstream>                    // For grid scan result file output
@@ -483,6 +484,9 @@ bool MotionCommandHandler::ExecuteCommand(
     }
 
     std::string axis = axisIt->second;
+    // Normalize axis to uppercase so "x"/"X" both work (PI SDK, ACS SDK, and the
+    // target-verification block below all expect uppercase).
+    for (auto& c : axis) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     double distance = ResolveNumericValue(distIt->second, context);
 
     // Check if non-blocking mode requested explicitly
@@ -799,6 +803,33 @@ bool MotionCommandHandler::ExecuteCommand(
     if (!motionManager->SetSystemVelocity(deviceName, velocity)) {
       errorMessage = "SetSystemVelocity failed";
       return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // GET SYSTEM VELOCITY (PI hexapods) — captures mm/s to context
+  // ============================================================================
+  else if (methodName == "GetSystemVelocity") {
+    double velocity = 0.0;
+    if (!motionManager->GetSystemVelocity(deviceName, velocity)) {
+      errorMessage = "GetSystemVelocity failed (device may not be a PI hexapod)";
+      return false;
+    }
+
+    auto captureIt = params.find("captureAs");
+    if (captureIt != params.end() && !captureIt->second.empty() && context) {
+      context->SetValue(captureIt->second, static_cast<float>(velocity),
+                        deviceName, "GetSystemVelocity");
+    }
+
+    if (m_logger) {
+      m_logger->Debug(
+        "GetSystemVelocity " + deviceName + " = " +
+        std::to_string(velocity) + " mm/s",
+        "MotionHandler"
+      );
     }
 
     return true;

@@ -7,5 +7,6 @@
     <file alias="accuracy_trainer.png">assets/icons/accuracy_trainer.png</file>
     <file alias="logo.png">assets/icons/logo.png</file>
     <file alias="visionmanager.png">assets/icons/visionmanager.png</file>
+    <file alias="lua.png">assets/icons/lua.png</file>
   </qresource>
 </RCC>

@@ -52,6 +52,14 @@ RecipeWorker::~RecipeWorker()
       logger->ClearUICallback();
     }
   }
+  // ✅ CRITICAL: The wait-progress callback registered in run() captures 'this'
+  // and is stored on the SequenceContext.  If an EXTERNAL context was passed
+  // (e.g. from a Lua script calling recipe.run()), that context outlives the
+  // RecipeWorker and would fire the dangling callback on its next bobcat.wait
+  // / Wait dispatch.  Clear it here so it can't.
+  if (m_externalContext) {
+    m_externalContext->SetWaitProgressCallback(nullptr);
+  }
   std::cout << "[RecipeWorker] Destroyed - callbacks cleared" << std::endl;
 }
 

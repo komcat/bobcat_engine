@@ -32,6 +32,7 @@
 #include "safety/SafetyAlertDialog.h"
 #include <QVBoxLayout>
 #include <QApplication>
+#include <QMessageBox>
 #include <QSettings>
 #include <QScreen>
 #include <iostream>
@@ -235,6 +236,8 @@ void MainWindow::createPages()
     this, &MainWindow::onMainMenuAccuracyTrainer);
   connect(m_mainMenuPage, &MainMenuPage::dataBackupClicked,
     this, &MainWindow::onMainMenuDataBackup);
+  connect(m_mainMenuPage, &MainMenuPage::luaScriptClicked,
+    this, &MainWindow::onMainMenuScriptRunner);
   connect(m_mainMenuPage, &MainMenuPage::productChanged,
     this, &MainWindow::updateProductInfo);
   m_pageStack->addWidget(m_mainMenuPage);
@@ -353,6 +356,9 @@ void MainWindow::createPages()
     this, &MainWindow::onBackToMainMenu);
   connect(m_mainMenuPage, &MainMenuPage::productChanged,
     m_scriptRunnerPage, &ScriptRunnerPage::onProductChanged);
+  // Track script-running state so we can block page navigation while a script runs
+  connect(m_scriptRunnerPage, &ScriptRunnerPage::scriptRunningChanged,
+    this, [this](bool running) { m_scriptRunning = running; });
   m_pageStack->addWidget(m_scriptRunnerPage);
 
   // ✅ Wire themeChanged to every widget that has local stylesheets.
@@ -536,8 +542,23 @@ void MainWindow::updateProductInfo()
   }
 }
 
+bool MainWindow::canNavigateAwayFromCurrentPage()
+{
+  // Block navigation away from ScriptRunnerPage while a script is running —
+  // the Stop button lives there.
+  if (m_scriptRunning && m_pageStack->currentWidget() == m_scriptRunnerPage) {
+    QMessageBox::information(this, "Script Running",
+      "A Lua script is currently running.\n"
+      "Please stop the script (or wait for it to finish) before changing pages.");
+    return false;
+  }
+  return true;
+}
+
 void MainWindow::onMainMenuProcess()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -552,6 +573,8 @@ void MainWindow::onMainMenuProcess()
 
 void MainWindow::onMainMenuRecipe()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   std::cout << "[MainWindow] Recipe clicked" << std::endl;
   m_context->logManager->Info("Navigating to Recipe page", "MainWindow");
   m_pageStack->setCurrentWidget(m_recipePage);
@@ -559,6 +582,8 @@ void MainWindow::onMainMenuRecipe()
 
 void MainWindow::onMainMenuMotion()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -573,6 +598,8 @@ void MainWindow::onMainMenuMotion()
 
 void MainWindow::onMainMenuHardware()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -587,6 +614,8 @@ void MainWindow::onMainMenuHardware()
 
 void MainWindow::onMainMenuEditConfig()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -601,6 +630,8 @@ void MainWindow::onMainMenuEditConfig()
 
 void MainWindow::onMainMenuFutureUpdate()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -615,6 +646,8 @@ void MainWindow::onMainMenuFutureUpdate()
 
 void MainWindow::onMainMenuAccuracyTrainer()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   // Check for unsaved changes if leaving RecipePage
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
@@ -629,6 +662,8 @@ void MainWindow::onMainMenuAccuracyTrainer()
 
 void MainWindow::onMainMenuDataBackup()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
       return;
@@ -642,6 +677,8 @@ void MainWindow::onMainMenuDataBackup()
 
 void MainWindow::onMainMenuScriptRunner()
 {
+  // No canNavigateAwayFromCurrentPage() guard: F9 should always land on the
+  // script runner (never navigates *away* from it).
   if (m_pageStack->currentWidget() == m_recipePage) {
     if (!m_recipePage->canLeavePage()) {
       return;
@@ -655,6 +692,8 @@ void MainWindow::onMainMenuScriptRunner()
 
 void MainWindow::onBackToMainMenu()
 {
+  if (!canNavigateAwayFromCurrentPage()) return;
+
   std::cout << "[MainWindow] Back to main menu" << std::endl;
   m_context->logManager->Debug("Returning to main menu", "MainWindow");
 

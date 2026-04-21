@@ -4,9 +4,11 @@
 #include <QWidget>
 #include <QTreeView>
 #include <QFileSystemModel>
+#include <QFileSystemWatcher>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QLabel>
+#include <QLineEdit>
 #include <QSplitter>
 #include <QTableWidget>
 
@@ -28,6 +30,7 @@ public slots:
 
 signals:
     void backToMainMenu();
+    void scriptRunningChanged(bool running);
 
 private slots:
     void onRunClicked();
@@ -47,6 +50,11 @@ private slots:
     void onExecutionCompleted(bool success, QString message);
     void onScriptOutput(QString message);
     void onDebugPaused(int line, QString source, QStringList varNames, QStringList varValues);
+    void onFileChangedOnDisk(const QString& path);
+    void onReloadClicked();
+    void onFontIncrease();
+    void onFontDecrease();
+    void onFontReset();
 
 private:
     void setupUI();
@@ -59,6 +67,7 @@ private:
     void updateFilenameLabel();
     void setDebugButtonsEnabled(bool enabled);
     void startExecution(bool debugMode);
+    void applyEditorFontSize(int pt);  // Clamps, updates editor + tab stops + QSettings
 
     ApplicationContext* m_context;
 
@@ -74,6 +83,7 @@ private:
 
     // Left panel - variable watch
     QTableWidget* m_variablesTable = nullptr;
+    QLineEdit* m_variableFilter = nullptr;
 
     // Right panel - editor
     ScriptEditorWidget* m_editor = nullptr;
@@ -82,6 +92,10 @@ private:
     QPushButton* m_newButton = nullptr;
     QPushButton* m_saveButton = nullptr;
     QPushButton* m_saveAsButton = nullptr;
+    QPushButton* m_reloadButton = nullptr;
+    QPushButton* m_fontMinusButton = nullptr;
+    QPushButton* m_fontPlusButton = nullptr;
+    int m_editorFontPt = 10;
 
     // Right panel - console
     QPlainTextEdit* m_outputConsole = nullptr;
@@ -97,4 +111,15 @@ private:
     bool m_modified = false;
     bool m_debugging = false;
     bool m_useProductScripts = false;
+
+    // Watch currently-loaded file for external edits (e.g. Claude writing to it)
+    QFileSystemWatcher* m_fileWatcher = nullptr;
+    bool m_ignoreNextFileChange = false;  // Set before our own saves
+    bool m_externalChangePending = false; // True while the "Reload" button is armed
+
+    // Per-run log: buffer output lines during execution, flush to a file
+    // at data/{productName}/ScriptLog_{scriptName}_{SN}_{ts}.txt on completion.
+    QString m_runLogBuffer;
+    QString m_runLogStartTs;          // YYYYMMDD_HHMMSS captured at Run start
+    QString m_runLogScriptBaseName;   // e.g. "poyntA1A2Y_balancing"
 };

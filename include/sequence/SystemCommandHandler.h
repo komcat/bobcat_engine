@@ -96,6 +96,11 @@ public:
     m_placementRetraceCallback = callback;
   }
 
+  // Getters — needed by ScriptCommandHandler to save/restore callbacks across
+  // recipe.run() invocations from Lua (RecipeWorker clears them on destroy).
+  UserPromptCallback GetUserPromptCallback() const { return m_userPromptCallback; }
+  UserInputCallback  GetUserInputCallback()  const { return m_userInputCallback;  }
+
 private:
   UserPromptCallback m_userPromptCallback;
   UserNotificationCallback m_userNotificationCallback;

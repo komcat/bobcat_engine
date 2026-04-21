@@ -13,7 +13,7 @@
 
 struct lua_State;
 struct lua_Debug;
-class ApplicationContext;
+struct ApplicationContext;
 class SequenceEngine;
 class SequenceContext;
 class LogManager;
@@ -43,6 +43,11 @@ public:
 
     using OutputCallback = std::function<void(const std::string& message)>;
     void SetOutputCallback(OutputCallback callback) { m_outputCallback = callback; }
+
+    // bobcat.watch(key, value) -> publishes a named measurement to the host UI
+    // (e.g. ScriptRunnerPage populates its Variables table from this).
+    using WatchCallback = std::function<void(const std::string& key, const std::string& value)>;
+    void SetWatchCallback(WatchCallback callback) { m_watchCallback = callback; }
 
     // ======================================================================
     // DEBUGGER
@@ -78,6 +83,7 @@ private:
     std::atomic<bool> m_running{false};
 
     OutputCallback m_outputCallback;
+    WatchCallback m_watchCallback;
 
     // Debug state
     std::atomic<bool> m_debugMode{false};
@@ -115,6 +121,8 @@ private:
     static int LuaLogDebug(lua_State* L);
 
     static int LuaSystemWait(lua_State* L);
+    static int LuaBobcatTimestamp(lua_State* L);
+    static int LuaBobcatWatch(lua_State* L);
 
     static ScriptEngine* GetEngine(lua_State* L);
     static std::map<std::string, std::string> TableToParams(lua_State* L, int index);

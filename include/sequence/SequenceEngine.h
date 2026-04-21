@@ -252,9 +252,11 @@ public:
   LogManager* GetLogger() const { return m_logger; }
   void BuildDeviceRegistry();
   void SetUserPromptCallback(UserPromptCallback callback);
+  UserPromptCallback GetUserPromptCallback() const;
   void SetUserNotificationCallback(UserNotificationCallback callback);
   void SetManualAdjustCallback(ManualAdjustCallback callback);
   void SetUserInputCallback(UserInputCallback callback);
+  UserInputCallback GetUserInputCallback() const;
   void SetManualAlignPointCallback(ManualAlignPointCallback callback);
   void SetPlacementRetraceCallback(PlacementRetraceCallback callback);
 

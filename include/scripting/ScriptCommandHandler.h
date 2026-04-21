@@ -21,5 +21,10 @@ public:
     void SetScriptEngine(ScriptEngine* engine) { m_scriptEngine = engine; }
 
 private:
+    bool ExecuteRunRecipe(
+        const std::map<std::string, std::string>& params,
+        std::string& errorMessage,
+        SequenceContext* context);
+
     ScriptEngine* m_scriptEngine = nullptr;
 };

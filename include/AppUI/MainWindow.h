@@ -73,6 +73,10 @@ private:
   void saveWindowSettings();      // Save window geometry to settings
   void restoreWindowSettings();   // Restore window geometry from settings
 
+  // Returns true if page navigation is currently allowed.
+  // When a Lua script is running, the user must stay on ScriptRunnerPage.
+  bool canNavigateAwayFromCurrentPage();
+
   ApplicationContext* m_context;
   QStackedWidget* m_pageStack;
   TopBar* m_topBar;
@@ -112,4 +116,6 @@ private:
   QShortcut* m_shortcutCtrlK;  // Toggle Aux Window
   QShortcut* m_shortcutCtrlR;  // Toggle Realtime Camera Monitor
   QShortcut* m_shortcutCtrlT;  // Toggle Realtime Camera Monitor 2
+
+  bool m_scriptRunning = false;  // true while a Lua script is executing
 };

@@ -305,6 +305,7 @@ void MainMenuPage::setupUI()
   m_futureUpdateButton = createMenuButton("Vision Manager", ":/icons/visionmanager.png");
   m_accuracyTrainerButton = createMenuButton("Accuracy\nTrainer", ":/icons/accuracy_trainer.png");
   m_dataBackupButton = createMenuButton("Data\nBackup", ":/icons/backup.png");
+  m_luaScriptButton = createMenuButton("Lua\nScript", ":/icons/lua.png");
 
   // Shortcut tooltips
   m_processButton->setToolTip("Process (F1)");
@@ -315,6 +316,7 @@ void MainMenuPage::setupUI()
   m_futureUpdateButton->setToolTip("Vision Manager (F6)");
   m_accuracyTrainerButton->setToolTip("Accuracy Trainer (F7)");
   m_dataBackupButton->setToolTip("Data Backup (F8)");
+  m_luaScriptButton->setToolTip("Lua Script (F9)");
 
   // Row 0
   buttonGrid->addWidget(m_processButton, 0, 0);
@@ -326,6 +328,8 @@ void MainMenuPage::setupUI()
   buttonGrid->addWidget(m_futureUpdateButton, 1, 1);
   buttonGrid->addWidget(m_accuracyTrainerButton, 1, 2);
   buttonGrid->addWidget(m_dataBackupButton, 1, 3);
+  // Row 2
+  buttonGrid->addWidget(m_luaScriptButton, 2, 0);
 
   mainLayout->addLayout(buttonGrid);
   mainLayout->addStretch();
@@ -339,6 +343,7 @@ void MainMenuPage::setupUI()
   connect(m_futureUpdateButton, &QToolButton::clicked, this, &MainMenuPage::futureUpdateClicked);
   connect(m_accuracyTrainerButton, &QToolButton::clicked, this, &MainMenuPage::accuracyTrainerClicked);
   connect(m_dataBackupButton, &QToolButton::clicked, this, &MainMenuPage::dataBackupClicked);
+  connect(m_luaScriptButton, &QToolButton::clicked, this, &MainMenuPage::luaScriptClicked);
 
   // Set dark blue background
   setStyleSheet("QWidget { background-color: #1a1f2e; }");

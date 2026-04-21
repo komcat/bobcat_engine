@@ -6,6 +6,7 @@
 #include <chrono>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 #include <regex>
 #include <sstream>
 #include <iomanip>
@@ -897,6 +898,86 @@ bool SystemCommandHandler::ExecuteCommand(
       m_logger->Info("Placement retrace completed for: " + trainingSetName, "SystemHandler");
     }
 
+    return true;
+  }
+
+  // ============================================================================
+  // APPEND CSV — append a row to a CSV file (creates file + header on first write)
+  // ============================================================================
+  else if (methodName == "AppendCsv") {
+    auto pathIt = params.find("path");
+    auto rowIt = params.find("row");
+    if (pathIt == params.end() || pathIt->second.empty()) {
+      errorMessage = "AppendCsv requires 'path' parameter";
+      return false;
+    }
+    if (rowIt == params.end()) {
+      errorMessage = "AppendCsv requires 'row' parameter";
+      return false;
+    }
+
+    namespace fs = std::filesystem;
+    fs::path target(pathIt->second);
+
+    // Path safety: no ".." components anywhere in the path.
+    for (const auto& part : target) {
+      if (part == "..") {
+        errorMessage = "AppendCsv: path must not contain '..': " + pathIt->second;
+        return false;
+      }
+    }
+
+    // Must live under a "data" directory — either as a relative path starting
+    // with "data/" or an absolute path with "data" as a component.
+    bool underData = false;
+    for (const auto& part : target) {
+      if (part == "data") { underData = true; break; }
+    }
+    if (!underData) {
+      errorMessage = "AppendCsv: path must be under a 'data/' directory: " + pathIt->second;
+      return false;
+    }
+
+    if (pathIt->second.size() > 260) {
+      errorMessage = "AppendCsv: path exceeds 260 chars";
+      return false;
+    }
+
+    std::error_code ec;
+    fs::path parent = target.parent_path();
+    if (!parent.empty()) {
+      fs::create_directories(parent, ec);
+      if (ec) {
+        errorMessage = "AppendCsv: failed to create directory '" + parent.string() + "': " + ec.message();
+        return false;
+      }
+    }
+
+    const bool newFile = !fs::exists(target, ec);
+
+    std::ofstream ofs(target, std::ios::app | std::ios::binary);
+    if (!ofs.is_open()) {
+      errorMessage = "AppendCsv: failed to open '" + target.string() + "' for append";
+      return false;
+    }
+
+    if (newFile) {
+      auto headerIt = params.find("header");
+      if (headerIt != params.end() && !headerIt->second.empty()) {
+        ofs << headerIt->second << "\n";
+      }
+    }
+
+    ofs << rowIt->second << "\n";
+    ofs.flush();
+    if (!ofs) {
+      errorMessage = "AppendCsv: write failed on '" + target.string() + "'";
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Debug("AppendCsv wrote row to " + target.string(), "Recipe");
+    }
     return true;
   }
 

@@ -519,6 +519,22 @@ void SequenceEngine::SetUserPromptCallback(UserPromptCallback callback)
   }
 }
 
+UserPromptCallback SequenceEngine::GetUserPromptCallback() const
+{
+  if (m_systemHandler) {
+    return m_systemHandler->GetUserPromptCallback();
+  }
+  return {};
+}
+
+UserInputCallback SequenceEngine::GetUserInputCallback() const
+{
+  if (m_systemHandler) {
+    return m_systemHandler->GetUserInputCallback();
+  }
+  return {};
+}
+
 void SequenceEngine::SetUserNotificationCallback(UserNotificationCallback callback)
 {
   if (m_systemHandler) {
