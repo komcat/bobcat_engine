@@ -45,6 +45,7 @@ RecipeWorker::~RecipeWorker()
     m_engine->SetManualAdjustCallback(nullptr);
     m_engine->SetUserInputCallback(nullptr);
     m_engine->SetPlacementRetraceCallback(nullptr);
+    m_engine->SetEdgeTransferRetraceCallback(nullptr);
 
     // ✅ CRITICAL FIX: Also clear LogManager callback to prevent memory leak
     LogManager* logger = m_engine->GetLogger();
@@ -119,6 +120,11 @@ void RecipeWorker::setUserInputCallback(UserInputCallback callback)
 void RecipeWorker::setPlacementRetraceCallback(PlacementRetraceCallback callback)
 {
   m_placementRetraceCallback = callback;
+}
+
+void RecipeWorker::setEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback)
+{
+  m_edgeTransferRetraceCallback = callback;
 }
 
 void RecipeWorker::setExternalContext(SequenceContext* context)
@@ -270,6 +276,22 @@ void RecipeWorker::run()
           "Please add this recipe to a Program and execute from Run Program.")
           .arg(QString::fromStdString(params.trainingSetName)));
         return false;
+      }
+      );
+    }
+
+    // Step 4.8: Set up EdgeTransferRetrace callback (same pattern)
+    if (m_edgeTransferRetraceCallback) {
+      m_engine->SetEdgeTransferRetraceCallback(m_edgeTransferRetraceCallback);
+      if (!m_loopMode) emit logMessage("EdgeTransferRetrace callback configured");
+    }
+    else {
+      m_engine->SetEdgeTransferRetraceCallback(
+        [this](const EdgeTransferRetraceParams& params) -> EdgeTransferRetraceOutcome {
+        emit logMessage(QString("ERROR: Edge Transfer Retrace '%1' requires Run Program page. "
+          "Please add this recipe to a Program and execute from Run Program.")
+          .arg(QString::fromStdString(params.trainingSetName)));
+        return EdgeTransferRetraceOutcome::Cancelled;
       }
       );
     }

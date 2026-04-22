@@ -1003,6 +1003,7 @@ set(HEADERS
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
     include/sequence/EdgeTransferCommandHandler.h
+    include/sequence/EdgeTransferRetrace.h
     include/sequence/PlanarAdjustmentCommandHandler.h
     include/sequence/ZOffsetCommandHandler.h
     include/sequence/YawTrainerCommandHandler.h

@@ -37,7 +37,34 @@ void EdgeRetraceWidget::SetData(const EdgeTransferSet& set)
     // can't confuse downstream consumers.
     m_retracedSet.referenceEdge.valid = false;
     m_retracedSet.targetEdge.valid    = false;
-    setState(Idle);
+
+    if (m_recipeMode &&
+        m_taughtSet.referenceEdge.valid && m_taughtSet.targetEdge.valid) {
+        // Skip Idle — jump straight into WaitRefP1 and auto-start nav.
+        setState(WaitRefP1);
+        onAutoNav();
+    } else {
+        setState(Idle);
+    }
+}
+
+void EdgeRetraceWidget::SetRecipeMode(bool enabled)
+{
+    m_recipeMode = enabled;
+
+    // Wait-page buttons: keep Cancel visible but relabel in recipe mode so
+    // the user knows it aborts the recipe step, not just the wizard.
+    if (m_cancelBtn) {
+        m_cancelBtn->setText(enabled ? "Cancel (Fail Recipe Step)" : "Cancel Retrace");
+    }
+
+    // Review-page buttons: hide the trainer-only buttons, show the
+    // recipe-only buttons.
+    if (m_saveRetracedBtn) m_saveRetracedBtn->setVisible(!enabled);
+    if (m_startOverBtn)    m_startOverBtn->setVisible(!enabled);
+    if (m_doneBtn)         m_doneBtn->setVisible(!enabled);
+    if (m_skipCorrectionBtn) m_skipCorrectionBtn->setVisible(enabled);
+    if (m_cancelRecipeBtn)   m_cancelRecipeBtn->setVisible(enabled);
 }
 
 void EdgeRetraceWidget::setupUI()
@@ -235,6 +262,27 @@ void EdgeRetraceWidget::setupUI()
     connect(m_doneBtn, &QPushButton::clicked,
             this, &EdgeRetraceWidget::onDone);
     reviewBtnRow->addWidget(m_doneBtn);
+
+    // Recipe-mode buttons — hidden by default; shown by SetRecipeMode(true).
+    m_skipCorrectionBtn = new QPushButton("Skip Correction");
+    m_skipCorrectionBtn->setFixedHeight(40);
+    m_skipCorrectionBtn->setStyleSheet(orangeBtn);
+    m_skipCorrectionBtn->setToolTip(
+        "Do not move the hex device. The recipe continues to the next step\n"
+        "with success=true; applied_u/v/w will be absent from the context.");
+    m_skipCorrectionBtn->setVisible(false);
+    connect(m_skipCorrectionBtn, &QPushButton::clicked,
+            this, &EdgeRetraceWidget::onSkipCorrection);
+    reviewBtnRow->addWidget(m_skipCorrectionBtn);
+
+    m_cancelRecipeBtn = new QPushButton("Cancel (Fail Recipe Step)");
+    m_cancelRecipeBtn->setFixedHeight(40);
+    m_cancelRecipeBtn->setStyleSheet(redBtn);
+    m_cancelRecipeBtn->setVisible(false);
+    connect(m_cancelRecipeBtn, &QPushButton::clicked,
+            this, &EdgeRetraceWidget::onCancelRecipe);
+    reviewBtnRow->addWidget(m_cancelRecipeBtn);
+
     reviewLayout->addLayout(reviewBtnRow);
 
     m_wizardStack->addWidget(reviewPage);  // index 2
@@ -451,7 +499,21 @@ void EdgeRetraceWidget::onCancel()
             "A nav move is in progress - press STOP first.");
         return;
     }
+    if (m_recipeMode) {
+        emit recipeOutcomeReady(RecipeOutcome::Cancelled);
+        return;
+    }
     setState(Idle);
+}
+
+void EdgeRetraceWidget::onSkipCorrection()
+{
+    emit recipeOutcomeReady(RecipeOutcome::Skipped);
+}
+
+void EdgeRetraceWidget::onCancelRecipe()
+{
+    emit recipeOutcomeReady(RecipeOutcome::Cancelled);
 }
 
 void EdgeRetraceWidget::onAutoNav()
@@ -493,12 +555,21 @@ void EdgeRetraceWidget::onConfirm()
               << " at X=" << pos.x << " Y=" << pos.y << " Z=" << pos.z << std::endl;
 
     // Advance to next state in the chain.
+    WizardState next = m_state;
     switch (m_state) {
-    case WaitRefP1: setState(WaitRefP2); break;
-    case WaitRefP2: setState(WaitTgtP1); break;
-    case WaitTgtP1: setState(WaitTgtP2); break;
-    case WaitTgtP2: setState(Review);    break;
+    case WaitRefP1: next = WaitRefP2; break;
+    case WaitRefP2: next = WaitTgtP1; break;
+    case WaitTgtP1: next = WaitTgtP2; break;
+    case WaitTgtP2: next = Review;    break;
     default: break;
+    }
+    setState(next);
+
+    // In recipe mode, auto-launch Auto-Nav for each wait page so the user
+    // only has to manually adjust + Confirm at each stop.
+    if (m_recipeMode &&
+        (next == WaitRefP2 || next == WaitTgtP1 || next == WaitTgtP2)) {
+        onAutoNav();
     }
 }
 
@@ -542,7 +613,10 @@ void EdgeRetraceWidget::onApplyCorrections()
             "Motion manager not available.");
         return;
     }
-    if (m_context->sequenceEngine && m_context->sequenceEngine->IsExecuting()) {
+    // Skip the IsExecuting guard in recipe mode — the retrace dialog itself
+    // is being driven by the running recipe.
+    if (!m_recipeMode &&
+        m_context->sequenceEngine && m_context->sequenceEngine->IsExecuting()) {
         QMessageBox::warning(this, "Apply Corrections Blocked",
             "A recipe is currently running. Stop the program before applying.");
         return;
@@ -577,6 +651,8 @@ void EdgeRetraceWidget::onApplyCorrections()
     if (m_saveRetracedBtn)     m_saveRetracedBtn->setEnabled(false);
     if (m_startOverBtn)        m_startOverBtn->setEnabled(false);
     if (m_doneBtn)             m_doneBtn->setEnabled(false);
+    if (m_skipCorrectionBtn)   m_skipCorrectionBtn->setEnabled(false);
+    if (m_cancelRecipeBtn)     m_cancelRecipeBtn->setEnabled(false);
     m_applyStatusLabel->setText("Apply Corrections: starting...");
 
     auto* mm = m_context->motionManager;
@@ -628,12 +704,17 @@ void EdgeRetraceWidget::onApplyCorrections()
             if (m_saveRetracedBtn)     m_saveRetracedBtn->setEnabled(true);
             if (m_startOverBtn)        m_startOverBtn->setEnabled(true);
             if (m_doneBtn)             m_doneBtn->setEnabled(true);
+            if (m_skipCorrectionBtn)   m_skipCorrectionBtn->setEnabled(true);
+            if (m_cancelRecipeBtn)     m_cancelRecipeBtn->setEnabled(true);
             m_applyStatusLabel->setText(
                 QString(allOk ? "Done: Apply Corrections" : "Failed: Apply Corrections") +
                 (restoreOk ? "" : "  [velocity restore FAILED]"));
             if (!allOk) {
                 QMessageBox::warning(this, "Apply Corrections Failed",
                     "One or more axis moves failed:\n" + report);
+            }
+            if (m_recipeMode && allOk) {
+                emit recipeOutcomeReady(RecipeOutcome::Applied);
             }
         }, Qt::QueuedConnection);
     });
@@ -661,7 +742,10 @@ void EdgeRetraceWidget::startAutoNavAsync(double tx, double ty, double tz,
         QMessageBox::warning(this, "Auto-Nav", "Motion manager not available.");
         return;
     }
-    if (m_context->sequenceEngine && m_context->sequenceEngine->IsExecuting()) {
+    // The IsExecuting guard protects interactive trainer use — a recipe-driven
+    // retrace IS the executing recipe, so skip the check in recipe mode.
+    if (!m_recipeMode &&
+        m_context->sequenceEngine && m_context->sequenceEngine->IsExecuting()) {
         QMessageBox::warning(this, "Auto-Nav Blocked",
             "A recipe is currently running. Stop the program before Auto-Nav.");
         return;

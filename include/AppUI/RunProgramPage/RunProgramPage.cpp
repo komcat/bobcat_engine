@@ -26,6 +26,8 @@
 #include "RetraceEditWidget.h"
 #include "PlacementRetraceWidget.h"
 #include "PlacementCorrectionStore.h"
+#include "../EdgeTransferTrainer/EdgeRetraceWidget.h"
+#include "../EdgeTransferTrainer/EdgeTransferStore.h"
 #include "PlacementCorrectionData.h"
 #include <filesystem>
 #include "ILogger.h"
@@ -1817,6 +1819,13 @@ void RunProgramPage::createExecutionWidget()
     });
   m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
 
+  // Edge Transfer retrace widget (embedded, index 7)
+  m_edgeRetraceWidget = new EdgeRetraceWidget(m_context);
+  m_edgeRetraceWidget->SetRecipeMode(true);
+  connect(m_edgeRetraceWidget, &EdgeRetraceWidget::recipeOutcomeReady,
+    this, &RunProgramPage::onEdgeTransferRetraceOutcome);
+  m_executionStack->addWidget(m_edgeRetraceWidget);       // Index 7: Edge Transfer Retrace
+
   // Cross-thread signal bridges for recipe callbacks (this → this connections).
   // Must be connected once here, NOT in onExecuteProgram(), to avoid accumulating
   // duplicate connections on each execution.
@@ -1826,6 +1835,8 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onShowManualAdjust);
   connect(this, &RunProgramPage::showPlacementRetrace,
     this, &RunProgramPage::onShowPlacementRetrace);
+  connect(this, &RunProgramPage::showEdgeTransferRetrace,
+    this, &RunProgramPage::onShowEdgeTransferRetrace);
 
   m_executionStack->setCurrentIndex(0);                   // Start with tabs
 
@@ -2701,6 +2712,22 @@ void RunProgramPage::onExecuteProgram()
     m_promptEventLoop = nullptr;
 
     return m_placementRetraceResponse;
+  });
+
+  // Edge Transfer retrace callback — mirrors the placement pattern: emit a
+  // cross-thread signal to switch to the embedded widget, then block on a
+  // QEventLoop until onEdgeTransferRetraceOutcome stores the response and
+  // quits the loop.
+  m_programWorker->setEdgeTransferRetraceCallback(
+    [this](const EdgeTransferRetraceParams& params) -> EdgeTransferRetraceOutcome {
+    emit showEdgeTransferRetrace(QString::fromStdString(params.trainingSetName));
+
+    QEventLoop loop;
+    m_promptEventLoop = &loop;
+    loop.exec();
+    m_promptEventLoop = nullptr;
+
+    return m_edgeRetraceResponse;
   });
 
   // Connect signals (use Qt::QueuedConnection for cross-thread safety)
@@ -4971,6 +4998,61 @@ void RunProgramPage::onPlacementRetraceEnded()
   // Switch back to execution tabs
   m_executionStack->setCurrentIndex(0);
 
+  if (m_promptEventLoop) {
+    m_promptEventLoop->quit();
+  }
+}
+
+void RunProgramPage::onShowEdgeTransferRetrace(QString trainingSetName)
+{
+  // Resolve store base path from current product.
+  EdgeTransferStore store;
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
+    std::filesystem::path productDir = std::filesystem::path(productPath).parent_path();
+    store.SetBasePath((productDir / "edge_transfer").string());
+  } else {
+    store.SetBasePath("config/edge_transfer");
+  }
+
+  auto optSet = store.LoadSet(trainingSetName.toStdString());
+  if (!optSet.has_value()) {
+    m_logTextEdit->appendPlainText(
+      QString("[EdgeTransferRetrace] ERROR: set '%1' not found").arg(trainingSetName));
+    m_edgeRetraceResponse = EdgeTransferRetraceOutcome::Cancelled;
+    if (m_promptEventLoop) {
+      m_promptEventLoop->quit();
+    }
+    return;
+  }
+
+  m_activeEdgeTransferSet = optSet.value();
+  m_activeEdgeTransferSet.Recalculate();
+
+  // Switch to the embedded edge transfer retrace view.
+  m_executionStack->setCurrentIndex(7);
+
+  // SetRecipeMode was already set once at construction; SetData will
+  // auto-jump to WaitRefP1 and fire Auto-Nav (0.5 mm/s to taught P1).
+  m_edgeRetraceWidget->SetData(m_activeEdgeTransferSet);
+}
+
+void RunProgramPage::onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome outcome)
+{
+  m_edgeRetraceResponse = outcome;
+
+  const char* outcomeStr = "cancelled";
+  switch (outcome) {
+    case EdgeTransferRetraceOutcome::Applied:   outcomeStr = "applied";   break;
+    case EdgeTransferRetraceOutcome::Skipped:   outcomeStr = "skipped";   break;
+    case EdgeTransferRetraceOutcome::Cancelled: outcomeStr = "cancelled"; break;
+  }
+  m_logTextEdit->appendPlainText(
+    QString("[EdgeTransferRetrace] Outcome: %1").arg(outcomeStr));
+
+  // Return to execution tabs and unblock the recipe worker.
+  m_executionStack->setCurrentIndex(0);
   if (m_promptEventLoop) {
     m_promptEventLoop->quit();
   }

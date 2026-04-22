@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ICommandHandler.h"
+#include "EdgeTransferRetrace.h"
 
 struct ApplicationContext;
 
@@ -50,8 +51,17 @@ public:
 
     void SetContext(ApplicationContext* context) { m_appContext = context; }
 
+    // Set the blocking retrace callback. Set by the host page
+    // (RunProgramPage) via SequenceEngine; the handler invokes this when a
+    // recipe asks for apply_corrections=true so the retrace widget can be
+    // shown embedded in the execution panel instead of a modal dialog.
+    void SetRetraceCallback(EdgeTransferRetraceCallback callback) {
+        m_retraceCallback = std::move(callback);
+    }
+
 private:
     ApplicationContext* m_appContext = nullptr;
+    EdgeTransferRetraceCallback m_retraceCallback;
 
     bool HandleRunAlignment(
         const std::map<std::string, std::string>& params,

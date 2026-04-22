@@ -126,9 +126,10 @@ SequenceEngine::SequenceEngine(ApplicationContext* context)
   m_accuracyTrainerHandler = atHandler.get();
   m_dispatcher.RegisterHandler("accuracytrainer", std::move(atHandler));
 
-  // Register edge transfer handler for headless orientation correction
+  // Register edge transfer handler for interactive orientation retrace
   auto etHandler = std::make_unique<EdgeTransferCommandHandler>();
   etHandler->SetContext(m_context);
+  m_edgeTransferHandler = etHandler.get();
   m_dispatcher.RegisterHandler("edgetransfer", std::move(etHandler));
 
   // Register camera offset handler for low-mag/high-mag switching
@@ -376,6 +377,11 @@ void SequenceEngine::BuildDeviceRegistry()
   m_deviceToTypeMap["accuracytrainer"] = "accuracytrainer";
   LogDebug("Registered accuracy trainer command handler");
 
+  // Edge transfer commands (virtual device - uses ApplicationContext internally)
+  m_deviceToManagerMap["edgetransfer"] = nullptr;
+  m_deviceToTypeMap["edgetransfer"] = "edgetransfer";
+  LogDebug("Registered edge transfer command handler");
+
   // Camera offset commands (virtual device - uses ApplicationContext internally)
   m_deviceToManagerMap["cameraoffset"] = nullptr;
   m_deviceToTypeMap["cameraoffset"] = "cameraoffset";
@@ -607,6 +613,13 @@ void SequenceEngine::SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callba
 {
   if (m_systemHandler) {
     m_systemHandler->SetGetSwirBeamStateCallback(callback);
+  }
+}
+
+void SequenceEngine::SetEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback)
+{
+  if (m_edgeTransferHandler) {
+    m_edgeTransferHandler->SetRetraceCallback(std::move(callback));
   }
 }
 

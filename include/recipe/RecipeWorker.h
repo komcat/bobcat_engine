@@ -14,6 +14,7 @@ class ProductPositionManager;
 class UnifiedMotionManager;
 class SequenceContext;  // ✅ Forward declaration for external context
 struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
+#include "../sequence/EdgeTransferRetrace.h"
 
 /**
  * @brief Worker thread for recipe execution (Self-contained)
@@ -79,6 +80,10 @@ public:
   // Set callback for placement correction retrace (optional - if not set, auto-rejects)
   using PlacementRetraceCallback = std::function<bool(const PlacementRetraceParams& params)>;
   void setPlacementRetraceCallback(PlacementRetraceCallback callback);
+
+  // Set callback for edge transfer retrace (optional - if not set, auto-rejects)
+  using EdgeTransferRetraceCallback = std::function<EdgeTransferRetraceOutcome(const EdgeTransferRetraceParams& params)>;
+  void setEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback);
 
   // ✅ NEW: Set external context (for sharing with ProgramWorker)
   // If set, this context will be used instead of creating a local one
@@ -170,6 +175,7 @@ private:
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
   PlacementRetraceCallback m_placementRetraceCallback;
+  EdgeTransferRetraceCallback m_edgeTransferRetraceCallback;
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
   std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
   bool m_loopMode = false;                       // ✅ NEW: Loop mode (reduces logging)

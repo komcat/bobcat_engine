@@ -40,6 +40,8 @@ class RollCorrectionWidget;
 class PlacementRetraceWidget;
 class MotionInspectorWidget;
 #include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
+#include "../EdgeTransferTrainer/EdgeTransferData.h"  // EdgeTransferSet (value member)
+#include "../../sequence/EdgeTransferRetrace.h"       // EdgeTransferRetraceOutcome
 class QVBoxLayout;
 class QHBoxLayout;
 class QEventLoop;
@@ -75,6 +77,9 @@ signals:
   // Placement correction retrace signal
   void showPlacementRetrace(QString trainingSetName, bool autoStart,
                             bool autoDetect, bool autoSaveContinue);
+
+  // Edge Transfer retrace signal (cross-thread bridge for the callback).
+  void showEdgeTransferRetrace(QString trainingSetName);
 
   // Request to navigate to RecipePage and load a recipe for editing
   void requestEditRecipe(QString filePath);
@@ -149,6 +154,10 @@ private slots:
   void onPlacementRetraceCompleted(const PlacementCorrectionSet& updatedSet);
   void onPlacementRetraceSkipped();
   void onPlacementRetraceEnded();
+
+  // Edge Transfer retrace handling
+  void onShowEdgeTransferRetrace(QString trainingSetName);
+  void onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome outcome);
 
   // Roll correction handling
   void onRegisterCH1Requested(QString deviceName);
@@ -270,6 +279,11 @@ private:
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
   std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;
+
+  // Edge Transfer retrace — embedded widget + outcome delivered via callback.
+  class EdgeRetraceWidget* m_edgeRetraceWidget = nullptr;
+  EdgeTransferSet m_activeEdgeTransferSet;              // Loaded set for the widget
+  EdgeTransferRetraceOutcome m_edgeRetraceResponse = EdgeTransferRetraceOutcome::Cancelled;
   std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
   std::unique_ptr<SequenceContext> m_rollCorrectionContext;  // Context for stepwise roll correction stop control
   bool m_rollCorrectionRunning = false;

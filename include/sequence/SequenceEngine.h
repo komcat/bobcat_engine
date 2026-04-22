@@ -4,6 +4,7 @@
 #include "ApplicationContext.h"
 #include "CommandDispatcher.h"
 #include "SystemCommandHandler.h"  // For callback types
+#include "EdgeTransferRetrace.h"    // For EdgeTransferRetraceCallback
 #include <string>
 #include <vector>
 #include <map>
@@ -263,6 +264,7 @@ public:
   void SetBeamDetectToggleCallback(SetSwirToggleCallback callback);
   void SetAutoSatToggleCallback(SetSwirToggleCallback callback);
   void SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callback);
+  void SetEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback);
 
   // Step execution event callbacks (pub-sub)
   void SetStepStartedCallback(StepStartedCallback callback);
@@ -403,6 +405,9 @@ private:
 
   // AccuracyTrainerCommandHandler pointer for manual align callback forwarding
   AccuracyTrainerCommandHandler* m_accuracyTrainerHandler = nullptr;
+
+  // EdgeTransferCommandHandler pointer for retrace callback forwarding
+  class EdgeTransferCommandHandler* m_edgeTransferHandler = nullptr;
 
   // PlanarAdjustmentCommandHandler pointer for retrace callback forwarding
   PlanarAdjustmentCommandHandler* m_planarAdjustmentHandler = nullptr;
