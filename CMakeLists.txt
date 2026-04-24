@@ -1058,6 +1058,8 @@ set(HEADERS
     include/AppUI/RunProgramPage/LoopConfigDialog.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/AppUI/RunProgramPage/RollCorrectionWidget.cpp
+    include/AppUI/RunProgramPage/MotionInspectorWidget.h
+    include/AppUI/RunProgramPage/MotionInspectorWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system
     include/lighting/LightingTypes.h

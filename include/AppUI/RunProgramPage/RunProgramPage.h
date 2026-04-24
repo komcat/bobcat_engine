@@ -38,6 +38,7 @@ class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class RollCorrectionWidget;
 class PlacementRetraceWidget;
+class MotionInspectorWidget;
 #include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
 class QVBoxLayout;
 class QHBoxLayout;
@@ -264,6 +265,8 @@ private:
   ScanExecutor* m_scanExecutor;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
+  MotionInspectorWidget* m_motionInspectorWidget = nullptr;
+  int m_motionInspectorTabIndex = -1;  // Index of the Motion Inspector tab in m_executionTabWidget
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
   std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;

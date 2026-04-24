@@ -13,6 +13,7 @@
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
 #include "RollCorrectionWidget.h"
+#include "MotionInspectorWidget.h"
 #include "ScanExecutor.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
@@ -1957,6 +1958,13 @@ void RunProgramPage::createExecutionWidget()
   }
 
   m_executionTabWidget->addTab(rollCorrectionTab, "Roll Correction");
+
+  // === MOTION INSPECTOR TAB ===
+  // Populated on-demand when the user right-clicks a recipe and picks
+  // "Inspect Motion". Starts empty.
+  m_motionInspectorWidget = new MotionInspectorWidget();
+  m_motionInspectorTabIndex = m_executionTabWidget->addTab(
+    m_motionInspectorWidget, "Motion Inspector");
 
   // Connect roll correction signals
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH1Requested,
@@ -4455,6 +4463,8 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
   contextMenu.setStyleSheet(menuStyle);
 
   QAction* renameAction = contextMenu.addAction("Rename Recipe...");
+  QAction* inspectMotionAction = contextMenu.addAction("Inspect Motion");
+  inspectMotionAction->setToolTip("Show motion-related steps (velocity, axis, distance, position) in a table");
 
   // Add "Move to Slot" submenu if there are multiple slots
   QMenu* moveToSlotMenu = nullptr;
@@ -4488,6 +4498,19 @@ void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
 
   if (selectedAction == renameAction) {
     renameRecipe(row);
+  }
+  else if (selectedAction == inspectMotionAction) {
+    const RecipeReference* recipe = m_programManager->getRecipe(row);
+    if (recipe && m_motionInspectorWidget && m_motionInspectorTabIndex >= 0) {
+      m_motionInspectorWidget->loadRecipe(
+        QString::fromStdString(recipe->recipeFilePath),
+        QString::fromStdString(recipe->displayName));
+      // Switch the right-side view to the execution tabs so the Motion
+      // Inspector tab is visible (it lives in m_executionTabWidget).
+      showExecutionWidget();
+      m_executionStack->setCurrentIndex(0);
+      m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
+    }
   }
   else if (retraceAction && selectedAction == retraceAction) {
     onStartRetraceEdit(row);
@@ -4544,6 +4567,10 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
   // Edit in Recipe Page option
   QAction* editAction = contextMenu.addAction("Edit in Recipe Page");
   editAction->setToolTip("Open this recipe in the Recipe editor");
+
+  QAction* inspectMotionAction = contextMenu.addAction("Inspect Motion");
+  inspectMotionAction->setToolTip("Show motion-related steps (velocity, axis, distance, position) in a table");
+
   contextMenu.addSeparator();
 
   // Add retrace edit option (only if not currently running)
@@ -4562,6 +4589,17 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
     const RecipeReference* recipe = m_programManager->getRecipe(row);
     if (recipe) {
       emit requestEditRecipe(QString::fromStdString(recipe->recipeFilePath));
+    }
+  }
+  else if (selectedAction == inspectMotionAction) {
+    const RecipeReference* recipe = m_programManager->getRecipe(row);
+    if (recipe && m_motionInspectorWidget && m_motionInspectorTabIndex >= 0) {
+      m_motionInspectorWidget->loadRecipe(
+        QString::fromStdString(recipe->recipeFilePath),
+        QString::fromStdString(recipe->displayName));
+      showExecutionWidget();
+      m_executionStack->setCurrentIndex(0);  // Ensure tabs (not prompt) are visible
+      m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
     }
   }
   else if (retraceAction && selectedAction == retraceAction) {
