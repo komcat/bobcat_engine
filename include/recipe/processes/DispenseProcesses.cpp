@@ -49,6 +49,7 @@ public:
       {"velocity_approach", "20.0"},
       {"safety_height", "1.0"},
       {"velocity_safety", "5.0"},
+      {"z_offset", "0.0"},  // mm added to taught dispense Z (+ = needle lower, - = needle higher)
       {"auto_confirm", "false"},  // Auto-confirm after first-time setup
       {"skip_camera_verify", "false"},  // Skip camera view over dispensing position
       {"reteach_z_height", "false"},  // Force re-teach XY and Z height and save to data file
@@ -104,6 +105,9 @@ public:
 
     widget->addParameterField("velocity_safety", "Safety Velocity (mm/s)",
                              getParam("velocity_safety"));
+
+    widget->addParameterField("z_offset", "Z Offset (mm, + lower needle / - raise needle)",
+                             getParam("z_offset"));
 
     // Reteach XY and Z height checkbox
     widget->addCheckboxParameter("reteach_z_height", "Re-teach XY and Z height, save to data file",
@@ -197,6 +201,7 @@ public:
     std::string safetyHeight = getParam("safety_height");
     std::string velocitySafety = getParam("velocity_safety");
     std::string velocity = getParam("velocity");
+    std::string zOffset = getParam("z_offset");
     bool autoConfirm = (getParam("auto_confirm") == "true");
     bool skipCameraVerify = (getParam("skip_camera_verify") == "true");
     bool reteachZHeight = (getParam("reteach_z_height") == "true");
@@ -467,16 +472,30 @@ public:
         {"value", safetyHeight}
       });
 
+      // Store z_offset and apply it to taught dispense_z
+      // (+ offset = needle lower, - offset = needle higher; matches gantry convention
+      // where increasing Z moves the head down)
+      sequence->AddAction("context", "SetNumeric", {
+        {"key", "z_offset"},
+        {"value", zOffset}
+      });
+      sequence->AddAction("context", "Calculate", {
+        {"resultKey", "dispense_z_final"},
+        {"key1", "dispense_z"},
+        {"key2", "z_offset"},
+        {"operation", "+"}
+      });
+
       // Capture current Z position
       sequence->AddAction("calibration", "CapturePosition", {
         {"device", device},
         {"key_prefix", "current"}
       });
 
-      // Calculate target position: dispense_z - safety_height
+      // Calculate target safety position: dispense_z_final - safety_height
       sequence->AddAction("context", "Calculate", {
         {"resultKey", "target_safety_z"},
-        {"key1", "dispense_z"},
+        {"key1", "dispense_z_final"},
         {"key2", "safety_height"},
         {"operation", "-"}
       });
@@ -722,7 +741,8 @@ public:
       << ", DelayBefore: " << delayBeforeDispense << "ms, DelayAfter: " << delayAfterDispense << "ms"
       << ", SkipCameraVerify: " << (skipCameraVerify ? "yes" : "no")
       << ", ReteachZ: " << (reteachZHeight ? "yes" : "no")
-      << ", SaveXYAfterConfirm: " << (saveXyAfterConfirm ? "yes" : "no") << ")" << std::endl;
+      << ", SaveXYAfterConfirm: " << (saveXyAfterConfirm ? "yes" : "no")
+      << ", ZOffset: " << zOffset << "mm)" << std::endl;
   }
 };
 
