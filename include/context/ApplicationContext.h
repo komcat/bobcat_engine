@@ -33,6 +33,7 @@ class BeamResultBroker;     // Pub-sub broker for beam detection results
 class BeamOptimizerManager; // Beam optimization coordinator
 class ScanActivityTracker;  // Reference-counted scan-busy broadcaster (drives TopBar indicator)
 class ScriptEngine;         // Lua 5.4 scripting engine
+class IoWatchManager;       // IO manual-override watch layer
 
 namespace Lighting {
 class LightingManager;
@@ -75,6 +76,7 @@ struct ApplicationContext
   BeamOptimizerManager* beamOptimizerManager = nullptr;  // Beam optimization coordinator
   ScanActivityTracker* scanActivityTracker = nullptr;    // Reference-counted scan-busy broadcaster
   ScriptEngine* scriptEngine = nullptr;                  // Lua 5.4 scripting engine
+  IoWatchManager* ioWatchManager = nullptr;              // IO manual-override watch layer
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

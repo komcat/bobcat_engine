@@ -2498,6 +2498,7 @@ void Application::initializeIoWatch()
       m_logManager->Warning("IO watch config not found - manual override layer disabled", "Application");
     }
 
+    m_context.ioWatchManager = m_ioWatchManager.get();
     m_logManager->Info("IO Watch initialized", "Application");
   }
   catch (const std::exception& e) {

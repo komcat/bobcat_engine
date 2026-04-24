@@ -23,7 +23,8 @@
 #include "ThemeManager.h"         // Runtime theme switcher
 #include "version.h"              // Version information
 #include "VisionManagerPage.h"    // Vision Manager UI
-#include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings
+#include "SettingsPage/ApplicationSettingsPage.h"  // Application Settings (referenced through container)
+#include "SettingsPage/SettingsContainerPage.h"    // Settings container with sidebar
 #include "TrainerContainerPage.h"                  // Trainer container
 #include "DataBackupPage.h"
 #include "ScriptRunnerPage.h"
@@ -52,7 +53,7 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_recipePage(nullptr)        // ✅ ADD THIS
   , m_runProgramPage(nullptr)
   , m_visionManagerPage(nullptr) // Vision Manager page
-  , m_applicationSettingsPage(nullptr) // Application Settings page
+  , m_settingsContainerPage(nullptr)   // Settings container (App Settings + IO Watch)
   , m_trainerContainerPage(nullptr)    // Trainer container page
   , m_dataBackupPage(nullptr)
   , m_jogPanel(nullptr)
@@ -310,25 +311,26 @@ void MainWindow::createPages()
     this, &MainWindow::onBackToMainMenu);
   m_pageStack->addWidget(m_visionManagerPage);
 
-  // Application Settings page
-  m_applicationSettingsPage = new ApplicationSettingsPage(m_context, this);
-  connect(m_applicationSettingsPage, &ApplicationSettingsPage::backToMainMenu,
+  // Settings container page (sidebar: App Settings + IO Watch)
+  m_settingsContainerPage = new SettingsContainerPage(m_context, this);
+  connect(m_settingsContainerPage, &SettingsContainerPage::backToMainMenu,
     this, &MainWindow::onBackToMainMenu);
+
+  ApplicationSettingsPage* appSettings = m_settingsContainerPage->appSettingsPage();
+
   // Connect settings changes to GDI camera window managers
   if (m_context && m_context->gdiCameraWindowManager) {
-    connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+    connect(appSettings, &ApplicationSettingsPage::settingsChanged,
       m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
   }
   if (m_context && m_context->gdiCameraWindowManager2) {
-    connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+    connect(appSettings, &ApplicationSettingsPage::settingsChanged,
       m_context->gdiCameraWindowManager2, &GdiCameraWindowManager::applyApplicationSettings);
   }
-  m_pageStack->addWidget(m_applicationSettingsPage);
+  m_pageStack->addWidget(m_settingsContainerPage);
 
-  // ✅ Theme live reload: when settings are saved, read the Theme combo
-  // and call ThemeManager::setTheme() which reassigns palette pointers,
-  // re-applies the global QSS, and emits themeChanged() to all subscribers.
-  connect(m_applicationSettingsPage, &ApplicationSettingsPage::settingsChanged,
+  // Theme live reload: when settings are saved, re-apply the active theme.
+  connect(appSettings, &ApplicationSettingsPage::settingsChanged,
     this, [this]() {
       QSettings s("Fabrinet", "BobcatEngine");
       QString t = s.value("UI/Theme", "Default").toString();
@@ -625,7 +627,7 @@ void MainWindow::onMainMenuEditConfig()
 
   std::cout << "[MainWindow] Application Settings clicked" << std::endl;
   m_context->logManager->Info("Navigating to Application Settings page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_applicationSettingsPage);
+  m_pageStack->setCurrentWidget(m_settingsContainerPage);
 }
 
 void MainWindow::onMainMenuFutureUpdate()

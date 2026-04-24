@@ -107,6 +107,29 @@ bool IoWatchManager::LoadConfig(const std::string& configPath) {
   }
 }
 
+bool IoWatchManager::Reload(const std::string& configPath) {
+  LogEvent("Reload requested: " + configPath);
+
+  StopWatching();
+
+  if (!LoadConfig(configPath)) {
+    LogEvent("Reload failed: LoadConfig returned false", true);
+    return false;
+  }
+
+  if (!m_enabled) {
+    LogEvent("Reload: config loaded but disabled - not starting watch");
+    return true;
+  }
+
+  if (m_bindings.empty()) {
+    LogEvent("Reload: config loaded with no bindings - not starting watch");
+    return true;
+  }
+
+  return StartWatching();
+}
+
 bool IoWatchManager::StartWatching(int intervalMs) {
   if (!m_enabled) {
     LogEvent("Disabled in config");

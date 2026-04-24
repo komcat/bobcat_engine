@@ -51,6 +51,10 @@ public:
 
   [[nodiscard]] bool LoadConfig(const std::string& configPath);
 
+  // Stop watching, reload config from disk, and restart watching if enabled.
+  // Intended for UI-driven hot reload after editing io_watch.local.json.
+  [[nodiscard]] bool Reload(const std::string& configPath);
+
   bool IsEnabled() const { return m_enabled; }
   const std::vector<Binding>& GetBindings() const { return m_bindings; }
 
