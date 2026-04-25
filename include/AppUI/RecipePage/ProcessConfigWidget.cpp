@@ -26,6 +26,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QMessageBox>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <iostream>
@@ -1516,6 +1517,74 @@ void ProcessConfigWidget::addRecipeSelector(const std::string& key,
   m_parameterEdits[key] = edit;
 }
 
+void ProcessConfigWidget::addScriptSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setReadOnly(true);
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Select Script...");
+  browseBtn->setFixedWidth(120);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    if (!m_context || !m_context->productPositionManager ||
+        !m_context->productPositionManager->HasLoadedProduct()) {
+      QMessageBox::warning(this->window(), "No Product Loaded",
+        "Load a product before selecting a script.");
+      return;
+    }
+
+    QString productName = QString::fromStdString(
+      m_context->productPositionManager->GetCurrentProductName());
+    QString scriptsPath = QString("config/%1/scripts").arg(productName);
+
+    QDir().mkpath(scriptsPath);
+
+    QString selected = FileSelectorDialog::getOpenFileName(
+      this->window(),
+      scriptsPath,
+      "*.lua",
+      "Select Lua Script",
+      "script files",
+      true  // Recursive: scan subfolders
+    );
+
+    if (!selected.isEmpty()) {
+      edit->setText(selected);
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
 void ProcessConfigWidget::addFolderSelector(const std::string& key,
   const std::string& label,
   const std::string& value)
@@ -1839,6 +1908,55 @@ void ProcessConfigWidget::addYawTrainerSetSelector(const std::string& key,
   connect(browseBtn, &QPushButton::clicked, [this, edit]() {
     std::string currentSet = edit->text().toStdString();
     std::string selected = YawTrainerSetSelectorDialog::SelectYawTrainerSet(
+      m_context, currentSet, this
+    );
+    if (!selected.empty()) {
+      edit->setText(QString::fromStdString(selected));
+    }
+  });
+
+  layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+void ProcessConfigWidget::addEdgeTransferSetSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #5a8fd6; "
+    "  color: white; "
+    "  border-radius: 3px; "
+    "  padding: 5px; "
+    "} "
+    "QPushButton:hover { background-color: #4a7fc6; }"
+  );
+
+  connect(browseBtn, &QPushButton::clicked, [this, edit]() {
+    std::string currentSet = edit->text().toStdString();
+    std::string selected = EdgeTransferSetSelectorDialog::SelectEdgeTransferSet(
       m_context, currentSet, this
     );
     if (!selected.empty()) {

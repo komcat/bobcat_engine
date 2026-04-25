@@ -3094,6 +3094,7 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine = new SequenceEngine(m_context);
   m_sequenceEngine->SetLogger(m_context->logManager);
   m_sequenceEngine->BuildDeviceRegistry();
+  m_sequenceEngine->SetScriptEngine(m_context->scriptEngine);
 
   // Set blocking prompt callback
   m_sequenceEngine->SetUserPromptCallback(

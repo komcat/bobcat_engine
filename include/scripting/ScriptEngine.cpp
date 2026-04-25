@@ -4,6 +4,7 @@
 #include "SequenceContext.h"
 #include "ApplicationContext.h"
 #include "LogManager.h"
+#include "dut/DeviceUnderTest.h"
 
 extern "C" {
 #include <lua.h>
@@ -11,11 +12,13 @@ extern "C" {
 #include <lualib.h>
 }
 
-#include <iostream>
+#include <nlohmann/json.hpp>
+
 #include <chrono>
-#include <thread>
-#include <sstream>
 #include <ctime>
+#include <iostream>
+#include <sstream>
+#include <thread>
 
 // ============================================================================
 // Construction / Destruction
@@ -709,6 +712,195 @@ int ScriptEngine::LuaBobcatTimestamp(lua_State* L)
 }
 
 // ============================================================================
+// dut.insertJson(key, table) -> append a structured entry to the active DUT's
+// JSON file. Mirrors DeviceUnderTest::insertEntry(key, nlohmann::json) — the
+// same overload used internally by DUTCommandHandler::BulkInsertFromContext.
+// ============================================================================
+
+namespace {
+
+constexpr int kMaxLuaTableDepth = 6;
+
+// Recursively convert a Lua value at stack index `index` into nlohmann::json.
+// Tables with contiguous integer keys 1..n are emitted as JSON arrays; all
+// others are objects. Nested function/userdata/thread values become null.
+// Recursion is bounded to kMaxLuaTableDepth to guard against pathological
+// inputs. Caller is responsible for anchoring the input with lua_absindex()
+// if needed — this function does so for table iteration.
+nlohmann::json LuaValueToJson(lua_State* L, int index, int depth)
+{
+    switch (lua_type(L, index)) {
+    case LUA_TBOOLEAN:
+        return nlohmann::json(lua_toboolean(L, index) != 0);
+    case LUA_TNUMBER:
+        if (lua_isinteger(L, index)) {
+            return nlohmann::json(static_cast<long long>(lua_tointeger(L, index)));
+        }
+        return nlohmann::json(lua_tonumber(L, index));
+    case LUA_TSTRING: {
+        size_t len = 0;
+        const char* s = lua_tolstring(L, index, &len);
+        return nlohmann::json(std::string(s, len));
+    }
+    case LUA_TTABLE: {
+        if (depth >= kMaxLuaTableDepth) {
+            return nlohmann::json(nullptr);
+        }
+
+        // First pass: detect array-shaped tables (integer keys 1..n).
+        bool isArray = true;
+        lua_Integer expected = 1;
+        lua_Integer maxKey = 0;
+        int absIndex = lua_absindex(L, index);
+        lua_pushnil(L);
+        while (lua_next(L, absIndex) != 0) {
+            if (lua_type(L, -2) != LUA_TNUMBER || !lua_isinteger(L, -2)) {
+                isArray = false;
+            } else {
+                const lua_Integer k = lua_tointeger(L, -2);
+                if (k != expected) isArray = false;
+                if (k > maxKey) maxKey = k;
+                ++expected;
+            }
+            lua_pop(L, 1);  // value
+            if (!isArray) {
+                lua_pop(L, 1);  // key
+                break;
+            }
+        }
+        if (isArray && maxKey == 0) {
+            // Empty table — treat as object to preserve {} round-trip intent.
+            isArray = false;
+        }
+
+        if (isArray) {
+            nlohmann::json arr = nlohmann::json::array();
+            for (lua_Integer i = 1; i <= maxKey; ++i) {
+                lua_geti(L, absIndex, i);
+                arr.push_back(LuaValueToJson(L, -1, depth + 1));
+                lua_pop(L, 1);
+            }
+            return arr;
+        }
+
+        nlohmann::json obj = nlohmann::json::object();
+        lua_pushnil(L);
+        while (lua_next(L, absIndex) != 0) {
+            std::string key;
+            if (lua_type(L, -2) == LUA_TSTRING) {
+                size_t len = 0;
+                const char* s = lua_tolstring(L, -2, &len);
+                key.assign(s, len);
+            } else if (lua_type(L, -2) == LUA_TNUMBER) {
+                lua_pushvalue(L, -2);  // copy key so tostring doesn't mutate it in place
+                size_t len = 0;
+                const char* s = lua_tolstring(L, -1, &len);
+                if (s) key.assign(s, len);
+                lua_pop(L, 1);
+            }
+            if (!key.empty()) {
+                obj[key] = LuaValueToJson(L, -1, depth + 1);
+            }
+            lua_pop(L, 1);  // value; key kept for lua_next
+        }
+        return obj;
+    }
+    case LUA_TNIL:
+    default:
+        return nlohmann::json(nullptr);
+    }
+}
+
+}  // namespace
+
+// _native_dut_insert_json(key, table)
+//   key   — non-empty string entry identifier (may be reused across calls;
+//           DeviceUnderTest keys are not unique, entries are distinguished
+//           by their auto-attached timestamp)
+//   table — Lua table (object or array shape); converted to nlohmann::json
+//           via LuaValueToJson and passed to
+//           DeviceUnderTest::insertEntry(key, json).
+//
+// The insert autosaves to data/{product}/{sn}.json (path built inside
+// DeviceUnderTest itself). Returns true on success; raises a Lua error on
+// failure.
+int ScriptEngine::LuaDutInsertJson(lua_State* L)
+{
+    auto* engine = GetEngine(L);
+    if (!engine) {
+        return luaL_error(L, "dut.insertJson: ScriptEngine not available");
+    }
+
+    const char* key = luaL_checkstring(L, 1);
+    if (!key || *key == '\0') {
+        return luaL_error(L, "dut.insertJson: key must be a non-empty string");
+    }
+    luaL_checktype(L, 2, LUA_TTABLE);
+
+    nlohmann::json payload = LuaValueToJson(L, 2, /*depth=*/0);
+
+    if (!engine->m_appContext || !engine->m_appContext->currentDUT) {
+        return luaL_error(L,
+            "dut.insertJson: no DUT loaded — call dut.loadOrCreate(product, sn) first");
+    }
+
+    const bool ok = engine->m_appContext->currentDUT->insertEntry(
+        std::string(key), payload);
+    if (!ok) {
+        return luaL_error(L,
+            "dut.insertJson: insertEntry failed for key '%s' (disk write or path error)",
+            key);
+    }
+
+    if (engine->m_logger) {
+        engine->m_logger->Debug(
+            "dut.insertJson: appended entry key='" + std::string(key) +
+            "' to " + engine->m_appContext->currentDUT->getFilePath(),
+            "ScriptEngine");
+    }
+
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+// dut.serial()  -> string, or nil if no DUT loaded
+int ScriptEngine::LuaDutGetSerial(lua_State* L)
+{
+    auto* engine = GetEngine(L);
+    if (!engine || !engine->m_appContext || !engine->m_appContext->currentDUT) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const std::string s = engine->m_appContext->currentDUT->getSerialNumber();
+    lua_pushstring(L, s.c_str());
+    return 1;
+}
+
+// dut.product() -> string, or nil if no DUT loaded
+int ScriptEngine::LuaDutGetProduct(lua_State* L)
+{
+    auto* engine = GetEngine(L);
+    if (!engine || !engine->m_appContext || !engine->m_appContext->currentDUT) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const std::string p = engine->m_appContext->currentDUT->getProductName();
+    lua_pushstring(L, p.c_str());
+    return 1;
+}
+
+// dut.isLoaded() -> boolean
+int ScriptEngine::LuaDutIsLoaded(lua_State* L)
+{
+    auto* engine = GetEngine(L);
+    const bool loaded = engine &&
+                        engine->m_appContext &&
+                        engine->m_appContext->currentDUT != nullptr;
+    lua_pushboolean(L, loaded ? 1 : 0);
+    return 1;
+}
+
+// ============================================================================
 // Binding registration
 // ============================================================================
 
@@ -758,6 +950,18 @@ void ScriptEngine::RegisterBindings()
     lua_newtable(m_L);
     registerField("wait", LuaSystemWait);
     lua_setglobal(m_L, "system");
+
+    // _native_dut_insert_json(key, table) — preserves nested table structure
+    // by building nlohmann::json directly from the Lua stack. The public Lua
+    // surface is `dut.insertJson(key, t)` wired in RegisterConvenienceModules.
+    registerClosure("_native_dut_insert_json", LuaDutInsertJson);
+
+    // Getters that let a script discover the currently-loaded DUT without
+    // re-prompting for SN. Exposed via dut.serial() / dut.product() /
+    // dut.isLoaded() in RegisterConvenienceModules.
+    registerClosure("_native_dut_serial",     LuaDutGetSerial);
+    registerClosure("_native_dut_product",    LuaDutGetProduct);
+    registerClosure("_native_dut_is_loaded",  LuaDutIsLoaded);
 }
 
 // ============================================================================
@@ -1226,6 +1430,26 @@ dut = {
     insertFromContext = function(entryKey, contextKey, dataType)
         return _dispatch("dut", "InsertFromContext", {entry_key = entryKey, context_key = contextKey, data_type = dataType or "double"})
     end,
+    -- Append a structured entry (arbitrary JSON object/array) to the active
+    -- DUT's JSON file. The entry is auto-timestamped and saved immediately,
+    -- matching DeviceUnderTest::insertEntry(key, nlohmann::json) semantics.
+    -- Nested tables (e.g. b0 = {...}, b1 = {...}) are preserved verbatim.
+    -- Example:
+    --     dut.insertJson("step2_poyntY_zeroing", {
+    --         location = "MOE-A1", iter = 3,
+    --         b0 = { poynt_x_deg = 0.12, poynt_y_deg = -0.08 },
+    --         b1 = { poynt_x_deg = -0.05, poynt_y_deg = 0.11 },
+    --     })
+    insertJson = function(key, table)
+        return _native_dut_insert_json(key, table)
+    end,
+    -- Query the currently-loaded DUT without re-prompting.
+    -- isLoaded()      -> true/false
+    -- serial()        -> string SN, or nil if none loaded
+    -- product()       -> string product name, or nil if none loaded
+    isLoaded = function() return _native_dut_is_loaded() end,
+    serial   = function() return _native_dut_serial() end,
+    product  = function() return _native_dut_product() end,
     deleteEntry = function(key)
         return _dispatch("dut", "DeleteEntry", {key = key})
     end

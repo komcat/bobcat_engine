@@ -153,6 +153,11 @@ public:
   void addRecipeSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
+  // Helper to add Lua script selector (QLineEdit + Browse button using FileSelectorDialog)
+  // Scans config/<product>/scripts/ for available .lua files
+  void addScriptSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
   // Helper to add folder selector (QLineEdit + Browse button using QFileDialog::getExistingDirectory)
   void addFolderSelector(const std::string& key, const std::string& label,
     const std::string& value);
@@ -179,6 +184,10 @@ public:
 
   // Helper to add yaw trainer set selector (QLineEdit + Browse button)
   void addYawTrainerSetSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
+  // Helper to add edge transfer set selector (QLineEdit + Browse button)
+  void addEdgeTransferSetSelector(const std::string& key, const std::string& label,
     const std::string& value);
 
 protected:

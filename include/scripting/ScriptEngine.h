@@ -124,6 +124,11 @@ private:
     static int LuaBobcatTimestamp(lua_State* L);
     static int LuaBobcatWatch(lua_State* L);
 
+    static int LuaDutInsertJson(lua_State* L);
+    static int LuaDutGetSerial(lua_State* L);
+    static int LuaDutGetProduct(lua_State* L);
+    static int LuaDutIsLoaded(lua_State* L);
+
     static ScriptEngine* GetEngine(lua_State* L);
     static std::map<std::string, std::string> TableToParams(lua_State* L, int index);
     static std::string FormatLuaString(lua_State* L, int startArg);
