@@ -9,6 +9,8 @@ class QStackedWidget;
 struct ApplicationContext;
 class ApplicationSettingsPage;
 class IoWatchSettingsWidget;
+class PneumaticSettingsWidget;
+class IoDevicesSettingsWidget;
 
 /**
  * @brief Settings page container with left sidebar (mirrors HardwareInstrumentPage).
@@ -36,6 +38,8 @@ signals:
 private slots:
   void showAppSettings();
   void showIoWatch();
+  void showPneumatics();
+  void showIoDevices();
 
 private:
   void setupUI();
@@ -51,8 +55,12 @@ private:
   QPushButton* m_backButton;
   QPushButton* m_appSettingsButton;
   QPushButton* m_ioWatchButton;
+  QPushButton* m_pneumaticsButton;
+  QPushButton* m_ioDevicesButton;
   QPushButton* m_currentButton;
 
   ApplicationSettingsPage* m_appSettingsPage;
   IoWatchSettingsWidget* m_ioWatchWidget;
+  PneumaticSettingsWidget* m_pneumaticWidget;
+  IoDevicesSettingsWidget* m_ioDevicesWidget;
 };

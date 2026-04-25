@@ -794,6 +794,8 @@ set(SOURCES
     include/AppUI/SettingsPage/ApplicationSettingsPage.cpp
     include/AppUI/SettingsPage/SettingsContainerPage.cpp
     include/AppUI/SettingsPage/IoWatchSettingsWidget.cpp
+    include/AppUI/SettingsPage/PneumaticSettingsWidget.cpp
+    include/AppUI/SettingsPage/IoDevicesSettingsWidget.cpp
     include/AppUI/SettingsPage/ConfigBackupManager.cpp
     # Trainer container (side panel navigation)
     include/AppUI/TrainerContainerPage.cpp

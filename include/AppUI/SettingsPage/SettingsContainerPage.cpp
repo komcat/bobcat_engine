@@ -2,6 +2,8 @@
 #include "SettingsContainerPage.h"
 #include "ApplicationSettingsPage.h"
 #include "IoWatchSettingsWidget.h"
+#include "PneumaticSettingsWidget.h"
+#include "IoDevicesSettingsWidget.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -17,9 +19,13 @@ SettingsContainerPage::SettingsContainerPage(ApplicationContext* context, QWidge
   , m_backButton(nullptr)
   , m_appSettingsButton(nullptr)
   , m_ioWatchButton(nullptr)
+  , m_pneumaticsButton(nullptr)
+  , m_ioDevicesButton(nullptr)
   , m_currentButton(nullptr)
   , m_appSettingsPage(nullptr)
   , m_ioWatchWidget(nullptr)
+  , m_pneumaticWidget(nullptr)
+  , m_ioDevicesWidget(nullptr)
 {
   setupUI();
 }
@@ -80,6 +86,14 @@ void SettingsContainerPage::createSidebar()
   connect(m_ioWatchButton, &QPushButton::clicked, this, &SettingsContainerPage::showIoWatch);
   sidebarLayout->addWidget(m_ioWatchButton);
 
+  m_pneumaticsButton = createSidebarButton("Pneumatics");
+  connect(m_pneumaticsButton, &QPushButton::clicked, this, &SettingsContainerPage::showPneumatics);
+  sidebarLayout->addWidget(m_pneumaticsButton);
+
+  m_ioDevicesButton = createSidebarButton("IO Devices");
+  connect(m_ioDevicesButton, &QPushButton::clicked, this, &SettingsContainerPage::showIoDevices);
+  sidebarLayout->addWidget(m_ioDevicesButton);
+
   sidebarLayout->addStretch();
 }
 
@@ -97,6 +111,14 @@ void SettingsContainerPage::createContentArea()
   // Index 1: IO Watch
   m_ioWatchWidget = new IoWatchSettingsWidget(m_context);
   m_contentStack->addWidget(m_ioWatchWidget);
+
+  // Index 2: Pneumatics
+  m_pneumaticWidget = new PneumaticSettingsWidget(m_context);
+  m_contentStack->addWidget(m_pneumaticWidget);
+
+  // Index 3: IO Devices
+  m_ioDevicesWidget = new IoDevicesSettingsWidget(m_context);
+  m_contentStack->addWidget(m_ioDevicesWidget);
 }
 
 QPushButton* SettingsContainerPage::createSidebarButton(const QString& text)
@@ -137,4 +159,20 @@ void SettingsContainerPage::showIoWatch()
   if (m_currentButton) m_currentButton->setChecked(false);
   m_ioWatchButton->setChecked(true);
   m_currentButton = m_ioWatchButton;
+}
+
+void SettingsContainerPage::showPneumatics()
+{
+  m_contentStack->setCurrentIndex(2);
+  if (m_currentButton) m_currentButton->setChecked(false);
+  m_pneumaticsButton->setChecked(true);
+  m_currentButton = m_pneumaticsButton;
+}
+
+void SettingsContainerPage::showIoDevices()
+{
+  m_contentStack->setCurrentIndex(3);
+  if (m_currentButton) m_currentButton->setChecked(false);
+  m_ioDevicesButton->setChecked(true);
+  m_currentButton = m_ioDevicesButton;
 }
