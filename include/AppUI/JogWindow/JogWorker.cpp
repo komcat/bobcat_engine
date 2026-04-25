@@ -191,26 +191,27 @@ void JogWorker::processCommand(const JogCommand& cmd)
   double vMM = localMove.v / 1000.0;
   double wMM = localMove.w / 1000.0;
 
-  // Send commands for each non-zero axis
-  // Use blocking=false so we don't wait for motion completion
-  // The SDK call itself may still take time, but that's why we're in a worker thread
+  // Send commands for each non-zero axis.
+  // Threshold is 0.1 nm — well below any realistic jog step (smallest is 0.1 µm = 0.0001 mm).
+  // Previously was 0.0001 mm which silently dropped exact 0.1 µm jogs at the boundary.
+  constexpr double kZeroAxisThresholdMm = 1e-7;
   bool success = true;
-  if (std::abs(xMM) > 0.0001) {
+  if (std::abs(xMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "X", xMM, false);
   }
-  if (std::abs(yMM) > 0.0001) {
+  if (std::abs(yMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "Y", yMM, false);
   }
-  if (std::abs(zMM) > 0.0001) {
+  if (std::abs(zMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "Z", zMM, false);
   }
-  if (std::abs(uMM) > 0.0001) {
+  if (std::abs(uMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "U", uMM, false);
   }
-  if (std::abs(vMM) > 0.0001) {
+  if (std::abs(vMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "V", vMM, false);
   }
-  if (std::abs(wMM) > 0.0001) {
+  if (std::abs(wMM) > kZeroAxisThresholdMm) {
     success &= m_motionManager->MoveRelative(cmd.deviceName, "W", wMM, false);
   }
 

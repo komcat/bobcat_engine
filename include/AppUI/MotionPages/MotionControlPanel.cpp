@@ -319,12 +319,12 @@ void MotionControlPanel::setSelectedPosition(const QString& name, double x, doub
   m_selectedPositionName = name;
 
   m_posNameLabel->setText(QString("<b>%1</b>").arg(name));
-  m_posXLabel->setText(QString("X: %1").arg(x, 0, 'f', 3));
-  m_posYLabel->setText(QString("Y: %1").arg(y, 0, 'f', 3));
-  m_posZLabel->setText(QString("Z: %1").arg(z, 0, 'f', 3));
-  m_posULabel->setText(QString("U: %1").arg(u, 0, 'f', 3));
-  m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 3));
-  m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 3));
+  m_posXLabel->setText(QString("X: %1").arg(x, 0, 'f', 4));
+  m_posYLabel->setText(QString("Y: %1").arg(y, 0, 'f', 4));
+  m_posZLabel->setText(QString("Z: %1").arg(z, 0, 'f', 4));
+  m_posULabel->setText(QString("U: %1").arg(u, 0, 'f', 4));
+  m_posVLabel->setText(QString("V: %1").arg(v, 0, 'f', 4));
+  m_posWLabel->setText(QString("W: %1").arg(w, 0, 'f', 4));
 
   // ❌ REMOVED: Waypoint label updates (waypoints not used)
   // if (waypoints.empty()) {

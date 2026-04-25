@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <sstream>
+#include <iomanip>
 #include <algorithm>
 
 #define LOG_DEBUG(msg) if (m_logger) m_logger->LogDebug(msg, "ACSController")
@@ -488,6 +489,32 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
     return false;
   }
   LOG_DEBUG("StartMotion succeeded");
+
+  // Move diagnostic: log reference (commanded) and feedback (encoder) positions
+  // before/after each move at 6-decimal precision. Useful for diagnosing servo
+  // deadband, MIM, and step-loss issues across all step sizes.
+  // For non-blocking jogs the 30 ms sample may catch the servo mid-flight on
+  // larger moves — that's expected; the RPos value is still authoritative.
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    double refPos = 0.0;
+    double fbkPos = 0.0;
+    const bool gotRef = (acsc_GetRPosition(m_controllerId, axisIndex, &refPos, NULL) != 0);
+    const bool gotFbk = (acsc_GetFPosition(m_controllerId, axisIndex, &fbkPos, NULL) != 0);
+    std::ostringstream oss;
+    oss << "[MoveDiag] " << axis
+        << " req=" << std::fixed << std::setprecision(6) << std::showpos << distance << std::noshowpos
+        << " before=" << currentPos
+        << " expected=" << targetAbsPos;
+    if (gotRef) { oss << " RPos=" << refPos; } else { oss << " RPos=N/A"; }
+    if (gotFbk) {
+      oss << " FPos=" << fbkPos
+          << " dFPos=" << std::showpos << (fbkPos - currentPos) << std::noshowpos;
+    } else {
+      oss << " FPos=N/A";
+    }
+    LOG_INFO(oss.str());
+  }
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion");

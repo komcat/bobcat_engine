@@ -468,7 +468,7 @@ void QtCameraWindow::onClearTrackingClicked()
 void QtCameraWindow::updateTrackingStatusLabels()
 {
     auto fmt3 = [](double v) {
-        return QString("%1%2").arg(v >= 0 ? "+" : "").arg(QString::number(v, 'f', 3));
+        return QString("%1%2").arg(v >= 0 ? "+" : "").arg(QString::number(v, 'f', 4));
     };
     if (m_p0Set) {
         m_p0StatusLabel->setText(QString("P0: %1, %2").arg(fmt3(m_p0X), fmt3(m_p0Y)));

@@ -331,9 +331,9 @@ void ManualAlignPointWidget::updatePositionDisplay()
 
   PositionStruct pos = m_motionManager->GetCurrentPosition(m_currentDevice);
   QString posText = QString("Position: X: %1 | Y: %2 | Z: %3 mm")
-                      .arg(pos.x, 0, 'f', 3)
-                      .arg(pos.y, 0, 'f', 3)
-                      .arg(pos.z, 0, 'f', 3);
+                      .arg(pos.x, 0, 'f', 4)
+                      .arg(pos.y, 0, 'f', 4)
+                      .arg(pos.z, 0, 'f', 4);
   m_positionLabel->setText(posText);
 }
 

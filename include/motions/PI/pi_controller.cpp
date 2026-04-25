@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <sstream>
+#include <iomanip>
 #include <algorithm>
 
 // Logging macros
@@ -306,11 +307,12 @@ bool PIController::MoveRelative(const std::string& axis, double distance, bool b
   const char* axes = axis.c_str();
   double distances[1] = { distance };
 
-  if (m_debugVerbose) {
-    double currentPos = 0.0;
-    if (GetPosition(axis, currentPos)) {
-      LOG_DEBUG("Pre-move position: " + axis + " = " + std::to_string(currentPos));
-    }
+  // Capture pre-move encoder position for [MoveDiag] log below
+  double preMovePos = 0.0;
+  const bool gotPreMove = GetPosition(axis, preMovePos);
+
+  if (m_debugVerbose && gotPreMove) {
+    LOG_DEBUG("Pre-move position: " + axis + " = " + std::to_string(preMovePos));
   }
 
   bool moveResult = PI_MVR(m_controllerId, axes, distances);
@@ -332,6 +334,34 @@ bool PIController::MoveRelative(const std::string& axis, double distance, bool b
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_axisMoving[axis] = true;
+  }
+
+  // Move diagnostic: log commanded target (qMOV) and encoder readback (qPOS) before/after
+  // each move at 6-decimal precision. Useful for diagnosing servo deadband, MIM, and
+  // step-loss issues across all step sizes. For non-blocking jogs the 30 ms sample may
+  // catch the servo mid-flight on larger moves — that's expected; qMOV is authoritative.
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    double mov = 0.0;
+    double encPos = 0.0;
+    const bool gotMov = (PI_qMOV(m_controllerId, axes, &mov) != FALSE);
+    const bool gotPos = (PI_qPOS(m_controllerId, axes, &encPos) != FALSE);
+    const double expected = preMovePos + distance;
+    std::ostringstream oss;
+    oss << "[MoveDiag] " << axis
+        << " req=" << std::fixed << std::setprecision(6) << std::showpos << distance << std::noshowpos;
+    if (gotPreMove) { oss << " before=" << preMovePos; } else { oss << " before=N/A"; }
+    if (gotPreMove) { oss << " expected=" << expected; }
+    if (gotMov) { oss << " qMOV=" << mov; } else { oss << " qMOV=N/A"; }
+    if (gotPos) {
+      oss << " qPOS=" << encPos;
+      if (gotPreMove) {
+        oss << " dPos=" << std::showpos << (encPos - preMovePos) << std::noshowpos;
+      }
+    } else {
+      oss << " qPOS=N/A";
+    }
+    LOG_INFO(oss.str());
   }
 
   if (blocking) {

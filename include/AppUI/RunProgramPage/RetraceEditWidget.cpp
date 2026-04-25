@@ -340,18 +340,18 @@ void RetraceEditWidget::hideRetraceEdit()
 
 void RetraceEditWidget::updatePositionDisplay()
 {
-  // Helper to format number
+  // Helper to format number (4 decimals — 0.1 µm visible)
   auto formatNum = [](double val) {
-    return QString::number(val, 'f', 3);
+    return QString::number(val, 'f', 4);
   };
 
   // Helper to format delta with color
   auto formatDelta = [](double delta) -> QString {
-    if (std::abs(delta) < 0.001) {
-      return "0.000";
+    if (std::abs(delta) < 0.0001) {
+      return "0.0000";
     }
     QString sign = delta > 0 ? "+" : "";
-    return sign + QString::number(delta, 'f', 3);
+    return sign + QString::number(delta, 'f', 4);
   };
 
   // Update Original column

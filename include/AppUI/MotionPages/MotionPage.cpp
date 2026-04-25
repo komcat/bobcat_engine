@@ -1118,12 +1118,12 @@ void MotionPage::onUpdatePositionClicked()
 			"Current: X=%2, Y=%3, Z=%4\n"
 			"         U=%5, V=%6, W=%7")
 		.arg(m_selectedPositionName)
-		.arg(x, 0, 'f', 3)
-		.arg(y, 0, 'f', 3)
-		.arg(z, 0, 'f', 3)
-		.arg(u, 0, 'f', 3)
-		.arg(v, 0, 'f', 3)
-		.arg(w, 0, 'f', 3));
+		.arg(x, 0, 'f', 4)
+		.arg(y, 0, 'f', 4)
+		.arg(z, 0, 'f', 4)
+		.arg(u, 0, 'f', 4)
+		.arg(v, 0, 'f', 4)
+		.arg(w, 0, 'f', 4));
 	msgBox.setIcon(QMessageBox::Question);
 	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
 	msgBox.setStyleSheet(DarkTheme::getStyleSheet());
@@ -1930,9 +1930,9 @@ void MotionPage::onScanCompleted(const ScanResults& results)
 		"Results saved to logs/scanning/"
 	).arg(results.totalMeasurements)
 		.arg(results.globalPeak.value, 0, 'f', 6)
-		.arg(results.globalPeak.position.x, 0, 'f', 3)
-		.arg(results.globalPeak.position.y, 0, 'f', 3)
-		.arg(results.globalPeak.position.z, 0, 'f', 3);
+		.arg(results.globalPeak.position.x, 0, 'f', 4)
+		.arg(results.globalPeak.position.y, 0, 'f', 4)
+		.arg(results.globalPeak.position.z, 0, 'f', 4);
 
 	QMessageBox::information(this, "Scan Complete", message);
 

@@ -824,9 +824,9 @@ void TeachBondingWidget::refreshList()
     for (const auto& bp : m_trainingSet->bondingPoints) {
         QString text = QString("%1  |  Center: (%2, %3)  Z=%4")
             .arg(QString::fromStdString(bp.name))
-            .arg(bp.globalX, 0, 'f', 3)
-            .arg(bp.globalY, 0, 'f', 3)
-            .arg(bp.globalZ, 0, 'f', 3);
+            .arg(bp.globalX, 0, 'f', 4)
+            .arg(bp.globalY, 0, 'f', 4)
+            .arg(bp.globalZ, 0, 'f', 4);
         m_bondingList->addItem(text);
     }
 }

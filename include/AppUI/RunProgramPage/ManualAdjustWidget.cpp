@@ -443,9 +443,9 @@ void ManualAdjustWidget::updatePositionDisplay()
 
   m_positionLabel->setText(
     QString("Position: X: %1 | Y: %2 | Z: %3 mm")
-      .arg(x, 0, 'f', 3)
-      .arg(y, 0, 'f', 3)
-      .arg(z, 0, 'f', 3)
+      .arg(x, 0, 'f', 4)
+      .arg(y, 0, 'f', 4)
+      .arg(z, 0, 'f', 4)
   );
 }
 

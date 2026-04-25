@@ -500,9 +500,9 @@ void AlignmentWizardDialog::goToStep(int step)
     // Step 2: Show master F1 reference in realign mode
     if (m_mode == Mode::RealignPart && m_layer->localSystem.masterTaught) {
       m_f1PositionLabel->setText(QString("Master F1: X=%1, Y=%2, Z=%3")
-        .arg(m_layer->localSystem.masterF1X, 0, 'f', 3)
-        .arg(m_layer->localSystem.masterF1Y, 0, 'f', 3)
-        .arg(m_layer->localSystem.masterF1Z, 0, 'f', 3));
+        .arg(m_layer->localSystem.masterF1X, 0, 'f', 4)
+        .arg(m_layer->localSystem.masterF1Y, 0, 'f', 4)
+        .arg(m_layer->localSystem.masterF1Z, 0, 'f', 4));
       m_f1PositionLabel->setVisible(true);
       m_f1RefImageLabel->parentWidget()->setVisible(true);
       m_moveToMasterF1Button->setVisible(true);  // Show move button in realign mode
@@ -531,9 +531,9 @@ void AlignmentWizardDialog::goToStep(int step)
     // Step 3: Show master F2 reference in realign mode
     if (m_mode == Mode::RealignPart && m_layer->localSystem.masterTaught) {
       m_f2PositionLabel->setText(QString("Master F2: X=%1, Y=%2, Z=%3")
-        .arg(m_layer->localSystem.masterF2X, 0, 'f', 3)
-        .arg(m_layer->localSystem.masterF2Y, 0, 'f', 3)
-        .arg(m_layer->localSystem.masterF2Z, 0, 'f', 3));
+        .arg(m_layer->localSystem.masterF2X, 0, 'f', 4)
+        .arg(m_layer->localSystem.masterF2Y, 0, 'f', 4)
+        .arg(m_layer->localSystem.masterF2Z, 0, 'f', 4));
       m_f2PositionLabel->setVisible(true);
       m_f2RefImageLabel->parentWidget()->setVisible(true);
       m_moveToMasterF2Button->setVisible(true);  // Show move button in realign mode
@@ -623,9 +623,9 @@ void AlignmentWizardDialog::onCaptureF1Clicked()
   m_f1Captured = true;
 
   m_f1StatusLabel->setText(QString("F1 Captured: X=%1, Y=%2, Z=%3")
-    .arg(m_f1X, 0, 'f', 3)
-    .arg(m_f1Y, 0, 'f', 3)
-    .arg(m_f1Z, 0, 'f', 3));
+    .arg(m_f1X, 0, 'f', 4)
+    .arg(m_f1Y, 0, 'f', 4)
+    .arg(m_f1Z, 0, 'f', 4));
   m_f1StatusLabel->setStyleSheet("color: #00ff00; font-size: 12px;");
 
   // Capture reference image if in teach master mode and frame provider is available
@@ -664,9 +664,9 @@ void AlignmentWizardDialog::onCaptureF2Clicked()
   m_f2Captured = true;
 
   m_f2StatusLabel->setText(QString("F2 Captured: X=%1, Y=%2, Z=%3")
-    .arg(m_f2X, 0, 'f', 3)
-    .arg(m_f2Y, 0, 'f', 3)
-    .arg(m_f2Z, 0, 'f', 3));
+    .arg(m_f2X, 0, 'f', 4)
+    .arg(m_f2Y, 0, 'f', 4)
+    .arg(m_f2Z, 0, 'f', 4));
   m_f2StatusLabel->setStyleSheet("color: #00ff00; font-size: 12px;");
 
   // Capture reference image if in teach master mode and frame provider is available
@@ -732,8 +732,8 @@ void AlignmentWizardDialog::computePreviewTransform()
     // Update labels
     m_rotationLabel->setText(QString("%1°").arg(tempSystem.getRotationDegrees(), 0, 'f', 2));
     m_translationLabel->setText(QString("X: %1 mm, Y: %2 mm")
-      .arg(m_previewTranslateX, 0, 'f', 3)
-      .arg(m_previewTranslateY, 0, 'f', 3));
+      .arg(m_previewTranslateX, 0, 'f', 4)
+      .arg(m_previewTranslateY, 0, 'f', 4));
     m_scaleLabel->setText(QString("%1").arg(m_previewScale, 0, 'f', 3));
   }
 }
@@ -855,9 +855,9 @@ void AlignmentWizardDialog::updatePositionDisplay()
 
   PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
   QString posText = QString("X: %1  Y: %2  Z: %3")
-    .arg(pos.x, 8, 'f', 3)
-    .arg(pos.y, 8, 'f', 3)
-    .arg(pos.z, 8, 'f', 3);
+    .arg(pos.x, 9, 'f', 4)
+    .arg(pos.y, 9, 'f', 4)
+    .arg(pos.z, 9, 'f', 4);
 
   // Update both position labels
   if (m_currentStep == 1) {
@@ -884,9 +884,9 @@ void AlignmentWizardDialog::onMoveToMasterF1Clicked()
     this, "Move to Master F1",
     QString("Move gantry to master F1 position?\n\n"
             "X: %1\nY: %2\nZ: %3")
-      .arg(m_layer->localSystem.masterF1X, 0, 'f', 3)
-      .arg(m_layer->localSystem.masterF1Y, 0, 'f', 3)
-      .arg(m_layer->localSystem.masterF1Z, 0, 'f', 3),
+      .arg(m_layer->localSystem.masterF1X, 0, 'f', 4)
+      .arg(m_layer->localSystem.masterF1Y, 0, 'f', 4)
+      .arg(m_layer->localSystem.masterF1Z, 0, 'f', 4),
     QMessageBox::Yes | QMessageBox::No,
     QMessageBox::Yes);
 
@@ -932,9 +932,9 @@ void AlignmentWizardDialog::onMoveToMasterF2Clicked()
     this, "Move to Master F2",
     QString("Move gantry to master F2 position?\n\n"
             "X: %1\nY: %2\nZ: %3")
-      .arg(m_layer->localSystem.masterF2X, 0, 'f', 3)
-      .arg(m_layer->localSystem.masterF2Y, 0, 'f', 3)
-      .arg(m_layer->localSystem.masterF2Z, 0, 'f', 3),
+      .arg(m_layer->localSystem.masterF2X, 0, 'f', 4)
+      .arg(m_layer->localSystem.masterF2Y, 0, 'f', 4)
+      .arg(m_layer->localSystem.masterF2Z, 0, 'f', 4),
     QMessageBox::Yes | QMessageBox::No,
     QMessageBox::Yes);
 

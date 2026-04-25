@@ -148,8 +148,8 @@ void YawApplyCorrectionWidget::onApply()
             .arg(QChar(0x00B0))
             .arg(QString::fromStdString(m_correction.targetDevice))
             .arg(QString::fromStdString(m_correction.targetAxis))
-            .arg(beforePos.u, 0, 'f', 3).arg(beforePos.v, 0, 'f', 3).arg(beforePos.w, 0, 'f', 3)
-            .arg(afterPos.u, 0, 'f', 3).arg(afterPos.v, 0, 'f', 3).arg(afterPos.w, 0, 'f', 3));
+            .arg(beforePos.u, 0, 'f', 4).arg(beforePos.v, 0, 'f', 4).arg(beforePos.w, 0, 'f', 4)
+            .arg(afterPos.u, 0, 'f', 4).arg(afterPos.v, 0, 'f', 4).arg(afterPos.w, 0, 'f', 4));
         m_resultLabel->setStyleSheet("font-size: 13px; color: #27ae60; padding: 10px; font-family: monospace;");
 
         std::cout << "[YawApplyCorrection] Success." << std::endl;
@@ -176,6 +176,6 @@ void YawApplyCorrectionWidget::updateHexPosition()
         "  X: %2   Y: %3   Z: %4\n"
         "  U: %5   V: %6   W: %7")
         .arg(QString::fromStdString(m_correction.targetDevice))
-        .arg(pos.x, 8, 'f', 3).arg(pos.y, 8, 'f', 3).arg(pos.z, 8, 'f', 3)
-        .arg(pos.u, 8, 'f', 3).arg(pos.v, 8, 'f', 3).arg(pos.w, 8, 'f', 3));
+        .arg(pos.x, 9, 'f', 4).arg(pos.y, 9, 'f', 4).arg(pos.z, 9, 'f', 4)
+        .arg(pos.u, 9, 'f', 4).arg(pos.v, 9, 'f', 4).arg(pos.w, 9, 'f', 4));
 }

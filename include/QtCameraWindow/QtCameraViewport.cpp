@@ -480,8 +480,8 @@ void QtCameraViewport::drawDistanceText(QPainter& p)
     const double distX_mm = (scaledOffsetX * effectivePixToMmX) / m_magnification;
     const double distY_mm = (scaledOffsetY * effectivePixToMmY) / m_magnification;
 
-    const QString dxText = QString("dX: %1 mm").arg(distX_mm,  +7, 'f', 3);
-    const QString dyText = QString("dY: %1 mm").arg(distY_mm,  +7, 'f', 3);
+    const QString dxText = QString("dX: %1 mm").arg(distX_mm,  +8, 'f', 4);
+    const QString dyText = QString("dY: %1 mm").arg(distY_mm,  +8, 'f', 4);
 
     // Choose text position: offset to bottom-right of cursor, flip if near edges.
     const int textOffsetX = 18;
@@ -1172,7 +1172,7 @@ void QtCameraViewport::drawDeviceTrackingOverlay(QPainter& p, const QRect& widge
     auto fmt = [](double v) {
         return QString("%1%2")
             .arg(v >= 0 ? "+" : "")
-            .arg(QString::number(v, 'f', 3));
+            .arg(QString::number(v, 'f', 4));
     };
 
     QStringList lines;

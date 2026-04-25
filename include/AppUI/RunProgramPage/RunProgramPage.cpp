@@ -3790,7 +3790,7 @@ void RunProgramPage::onRegisterCH1Requested(QString deviceName)
   m_rollCorrectionWidget->setCH1Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
 
   QString msg = QString("[RollCorrection] Registered CH1 peak for %1: X=%2 um")
-    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+    .arg(deviceName).arg(pos.x, 0, 'f', 4);
   m_logTextEdit->appendPlainText(msg);
 }
 
@@ -3802,7 +3802,7 @@ void RunProgramPage::onRegisterCH2Requested(QString deviceName)
   m_rollCorrectionWidget->setCH2Position(deviceName, pos.x, pos.y, pos.z, pos.u, pos.v, pos.w);
 
   QString msg = QString("[RollCorrection] Registered CH2 peak for %1: X=%2 um")
-    .arg(deviceName).arg(pos.x, 0, 'f', 3);
+    .arg(deviceName).arg(pos.x, 0, 'f', 4);
   m_logTextEdit->appendPlainText(msg);
 }
 

@@ -172,9 +172,9 @@ void ShapeCreatorDialog::setupUI()
   QVBoxLayout* infoLayout = new QVBoxLayout(infoGroup);
 
   QLabel* posLabel = new QLabel(QString("X: %1\nY: %2\nZ: %3")
-      .arg(m_gantryX, 0, 'f', 3)
-      .arg(m_gantryY, 0, 'f', 3)
-      .arg(m_gantryZ, 0, 'f', 3));
+      .arg(m_gantryX, 0, 'f', 4)
+      .arg(m_gantryY, 0, 'f', 4)
+      .arg(m_gantryZ, 0, 'f', 4));
   posLabel->setStyleSheet("QLabel { color: #00ff00; font-family: monospace; }");
   infoLayout->addWidget(posLabel);
 
@@ -240,9 +240,9 @@ bool ShapeCreatorDialog::eventFilter(QObject* obj, QEvent* event)
 
         m_mousePositionLabel->setText(QString("Img: (%1, %2) World: (%3, %4, %5)")
             .arg(imgX).arg(imgY)
-            .arg(worldPt.worldX, 0, 'f', 3)
-            .arg(worldPt.worldY, 0, 'f', 3)
-            .arg(worldPt.worldZ, 0, 'f', 3));
+            .arg(worldPt.worldX, 0, 'f', 4)
+            .arg(worldPt.worldY, 0, 'f', 4)
+            .arg(worldPt.worldZ, 0, 'f', 4));
       }
 
       updatePreview();
@@ -370,9 +370,9 @@ void ShapeCreatorDialog::updatePointsList()
     const auto& pt = m_capturedPoints[i];
     QString text = QString("P%1: (%2, %3, %4)")
         .arg(i + 1)
-        .arg(pt.worldX, 0, 'f', 3)
-        .arg(pt.worldY, 0, 'f', 3)
-        .arg(pt.worldZ, 0, 'f', 3);
+        .arg(pt.worldX, 0, 'f', 4)
+        .arg(pt.worldY, 0, 'f', 4)
+        .arg(pt.worldZ, 0, 'f', 4);
     m_pointsList->addItem(text);
   }
 }

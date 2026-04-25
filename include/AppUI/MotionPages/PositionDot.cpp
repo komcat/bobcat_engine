@@ -88,7 +88,7 @@ void PositionDot::updateLabel()
 
   if (m_showZValue) {
     // Add Z value on second line
-    labelText += QString("\nZ: %1").arg(m_z, 0, 'f', 3);
+    labelText += QString("\nZ: %1").arg(m_z, 0, 'f', 4);
   }
 
   m_label->setPlainText(labelText);

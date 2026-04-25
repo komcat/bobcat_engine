@@ -575,8 +575,8 @@ void RetraceAndApplyWidget::onApplyCorrection()
             .arg(QChar(0x00B0))
             .arg(QString::fromStdString(m_set->correction.targetDevice))
             .arg(QString::fromStdString(m_set->correction.targetAxis))
-            .arg(beforePos.u, 0, 'f', 3).arg(beforePos.v, 0, 'f', 3).arg(beforePos.w, 0, 'f', 3)
-            .arg(afterPos.u, 0, 'f', 3).arg(afterPos.v, 0, 'f', 3).arg(afterPos.w, 0, 'f', 3));
+            .arg(beforePos.u, 0, 'f', 4).arg(beforePos.v, 0, 'f', 4).arg(beforePos.w, 0, 'f', 4)
+            .arg(afterPos.u, 0, 'f', 4).arg(afterPos.v, 0, 'f', 4).arg(afterPos.w, 0, 'f', 4));
 
         std::cout << "[Retrace] Applied. Before U=" << beforePos.u
                   << " After U=" << afterPos.u << std::endl;
@@ -622,6 +622,6 @@ void RetraceAndApplyWidget::updateHexPositionDisplay()
         "  X: %2   Y: %3   Z: %4\n"
         "  U: %5   V: %6   W: %7")
         .arg(QString::fromStdString(m_set->correction.targetDevice))
-        .arg(pos.x, 8, 'f', 3).arg(pos.y, 8, 'f', 3).arg(pos.z, 8, 'f', 3)
-        .arg(pos.u, 8, 'f', 3).arg(pos.v, 8, 'f', 3).arg(pos.w, 8, 'f', 3));
+        .arg(pos.x, 9, 'f', 4).arg(pos.y, 9, 'f', 4).arg(pos.z, 9, 'f', 4)
+        .arg(pos.u, 9, 'f', 4).arg(pos.v, 9, 'f', 4).arg(pos.w, 9, 'f', 4));
 }

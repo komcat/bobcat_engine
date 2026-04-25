@@ -212,6 +212,6 @@ void ZOffsetApplyWidget::updateHexPosition()
         "  X: %2   Y: %3   Z: %4\n"
         "  U: %5   V: %6   W: %7")
         .arg(QString::fromStdString(m_correction.targetDevice))
-        .arg(pos.x, 8, 'f', 3).arg(pos.y, 8, 'f', 3).arg(pos.z, 8, 'f', 3)
-        .arg(pos.u, 8, 'f', 3).arg(pos.v, 8, 'f', 3).arg(pos.w, 8, 'f', 3));
+        .arg(pos.x, 9, 'f', 4).arg(pos.y, 9, 'f', 4).arg(pos.z, 9, 'f', 4)
+        .arg(pos.u, 9, 'f', 4).arg(pos.v, 9, 'f', 4).arg(pos.w, 9, 'f', 4));
 }

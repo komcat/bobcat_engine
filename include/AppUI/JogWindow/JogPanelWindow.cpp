@@ -1731,24 +1731,24 @@ void JogPanelWindow::updatePositionDisplay()
   bool vValid = hasV && m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
   bool wValid = hasW && m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
 
-  // Update labels with formatted values (3 decimal places)
+  // Update labels with formatted values (4 decimal places — 0.1 µm visible)
   if (m_posXLabel) {
-    m_posXLabel->setText(xValid ? QString("X: %1").arg(x, 0, 'f', 3) : "X: ---");
+    m_posXLabel->setText(xValid ? QString("X: %1").arg(x, 0, 'f', 4) : "X: ---");
   }
   if (m_posYLabel) {
-    m_posYLabel->setText(yValid ? QString("Y: %1").arg(y, 0, 'f', 3) : "Y: ---");
+    m_posYLabel->setText(yValid ? QString("Y: %1").arg(y, 0, 'f', 4) : "Y: ---");
   }
   if (m_posZLabel) {
-    m_posZLabel->setText(zValid ? QString("Z: %1").arg(z, 0, 'f', 3) : "Z: ---");
+    m_posZLabel->setText(zValid ? QString("Z: %1").arg(z, 0, 'f', 4) : "Z: ---");
   }
   if (m_posULabel) {
-    m_posULabel->setText(uValid ? QString("U: %1").arg(u, 0, 'f', 3) : "U: ---");
+    m_posULabel->setText(uValid ? QString("U: %1").arg(u, 0, 'f', 4) : "U: ---");
   }
   if (m_posVLabel) {
-    m_posVLabel->setText(vValid ? QString("V: %1").arg(v, 0, 'f', 3) : "V: ---");
+    m_posVLabel->setText(vValid ? QString("V: %1").arg(v, 0, 'f', 4) : "V: ---");
   }
   if (m_posWLabel) {
-    m_posWLabel->setText(wValid ? QString("W: %1").arg(w, 0, 'f', 3) : "W: ---");
+    m_posWLabel->setText(wValid ? QString("W: %1").arg(w, 0, 'f', 4) : "W: ---");
   }
 }
 

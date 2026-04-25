@@ -271,9 +271,9 @@ void TestSystemWidget::onMoveToOriginClicked()
         QMessageBox::information(this, "Moving",
             QString("Moving to origin (0,0,0) in local coordinates\n"
                     "Global coordinates: X:%1 Y:%2 Z:%3")
-                .arg(globalPos.x, 0, 'f', 3)
-                .arg(globalPos.y, 0, 'f', 3)
-                .arg(globalPos.z, 0, 'f', 3));
+                .arg(globalPos.x, 0, 'f', 4)
+                .arg(globalPos.y, 0, 'f', 4)
+                .arg(globalPos.z, 0, 'f', 4));
     }
     else {
         QMessageBox::critical(this, "Error", "Failed to move to origin");
@@ -320,12 +320,12 @@ void TestSystemWidget::onMoveToLocalPosClicked()
         QMessageBox::information(this, "Moving",
             QString("Moving to local position X:%1 Y:%2 Z:%3\n"
                     "Global coordinates: X:%4 Y:%5 Z:%6")
-                .arg(localPos.x, 0, 'f', 3)
-                .arg(localPos.y, 0, 'f', 3)
-                .arg(localPos.z, 0, 'f', 3)
-                .arg(globalPos.x, 0, 'f', 3)
-                .arg(globalPos.y, 0, 'f', 3)
-                .arg(globalPos.z, 0, 'f', 3));
+                .arg(localPos.x, 0, 'f', 4)
+                .arg(localPos.y, 0, 'f', 4)
+                .arg(localPos.z, 0, 'f', 4)
+                .arg(globalPos.x, 0, 'f', 4)
+                .arg(globalPos.y, 0, 'f', 4)
+                .arg(globalPos.z, 0, 'f', 4));
     }
     else {
         QMessageBox::critical(this, "Error", "Failed to move to position");
@@ -387,9 +387,9 @@ void TestSystemWidget::updateSystemInfo()
     m_deviceLabel->setVisible(true);
 
     m_originLabel->setText(QString("Origin (global): X:%1 Y:%2 Z:%3")
-        .arg(system.origin_global.x, 0, 'f', 3)
-        .arg(system.origin_global.y, 0, 'f', 3)
-        .arg(system.origin_global.z, 0, 'f', 3));
+        .arg(system.origin_global.x, 0, 'f', 4)
+        .arg(system.origin_global.y, 0, 'f', 4)
+        .arg(system.origin_global.z, 0, 'f', 4));
     m_originLabel->setVisible(true);
 
     QString axesInfo = QString(

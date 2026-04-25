@@ -538,7 +538,7 @@ void PIControllerPage::updateDeviceStatusDisplay()
       if (isConnected) {
         double position = 0.0;
         if (motionMgr->GetPosition(deviceName, axis, position)) {
-          posText = QString::number(position, 'f', 3);
+          posText = QString::number(position, 'f', 4);
         }
       }
 
@@ -627,7 +627,7 @@ void PIControllerPage::onPositionPollTimer()
 
       double position = 0.0;
       if (motionMgr->GetPosition(deviceName, axis, position)) {
-        label->setText(QString::number(position, 'f', 3));
+        label->setText(QString::number(position, 'f', 4));
       } else {
         label->setText("--");
       }
@@ -1279,7 +1279,7 @@ void PIControllerPage::updatePivotPointDisplay()
         xLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
         deviceLayout->addWidget(xLabel);
 
-        QLabel* xValue = new QLabel(QString::number(pivotX, 'f', 3) + " mm");
+        QLabel* xValue = new QLabel(QString::number(pivotX, 'f', 4) + " mm");
         xValue->setStyleSheet(
           "QLabel { "
           "  font-size: 13px; "
@@ -1299,7 +1299,7 @@ void PIControllerPage::updatePivotPointDisplay()
         yLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
         deviceLayout->addWidget(yLabel);
 
-        QLabel* yValue = new QLabel(QString::number(pivotY, 'f', 3) + " mm");
+        QLabel* yValue = new QLabel(QString::number(pivotY, 'f', 4) + " mm");
         yValue->setStyleSheet(xValue->styleSheet());
         deviceLayout->addWidget(yValue);
 
@@ -1308,7 +1308,7 @@ void PIControllerPage::updatePivotPointDisplay()
         zLabel->setStyleSheet("QLabel { font-size: 13px; font-weight: bold; color: #14ffec; }");
         deviceLayout->addWidget(zLabel);
 
-        QLabel* zValue = new QLabel(QString::number(pivotZ, 'f', 3) + " mm");
+        QLabel* zValue = new QLabel(QString::number(pivotZ, 'f', 4) + " mm");
         zValue->setStyleSheet(xValue->styleSheet());
         deviceLayout->addWidget(zValue);
 

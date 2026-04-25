@@ -801,8 +801,8 @@ void TeachMultiDeviceWidget::setState(WizardState state)
                 "  Hex Z Adjustment: %5")
                 .arg(m_pendingTeach.zComp, 0, 'f', 4)
                 .arg(m_pendingTeach.zPlace, 0, 'f', 4)
-                .arg(m_pendingTeach.componentThickness, 0, 'f', 3)
-                .arg(m_pendingTeach.bondlineThickness, 0, 'f', 3)
+                .arg(m_pendingTeach.componentThickness, 0, 'f', 4)
+                .arg(m_pendingTeach.bondlineThickness, 0, 'f', 4)
                 .arg(m_pendingTeach.hexZAdjustment, 0, 'f', 4);
         }
 
@@ -1552,12 +1552,12 @@ void TeachMultiDeviceWidget::refreshList()
     for (const auto& hd : m_trainingSet->hexDevicePositions) {
         QString text = QString("%1  |  Hex(%2, %3, %4)  Gantry(%5, %6, %7)")
             .arg(QString::fromStdString(hd.deviceName))
-            .arg(hd.hexX, 0, 'f', 3)
-            .arg(hd.hexY, 0, 'f', 3)
-            .arg(hd.hexZ, 0, 'f', 3)
-            .arg(hd.gantryViewX, 0, 'f', 3)
-            .arg(hd.gantryViewY, 0, 'f', 3)
-            .arg(hd.gantryViewZ, 0, 'f', 3);
+            .arg(hd.hexX, 0, 'f', 4)
+            .arg(hd.hexY, 0, 'f', 4)
+            .arg(hd.hexZ, 0, 'f', 4)
+            .arg(hd.gantryViewX, 0, 'f', 4)
+            .arg(hd.gantryViewY, 0, 'f', 4)
+            .arg(hd.gantryViewZ, 0, 'f', 4);
         // Show teach mode
         if (hd.gantryTeachMode == 1) {
             text += "  [2-corner]";
@@ -1569,7 +1569,7 @@ void TeachMultiDeviceWidget::refreshList()
                 QFileInfo(QString::fromStdString(hd.visionProfilePath)).baseName());
         }
         if (std::abs(hd.hexZAdjustment) > 1e-6) {
-            text += QString("  [Zadj=%1]").arg(hd.hexZAdjustment, 0, 'f', 3);
+            text += QString("  [Zadj=%1]").arg(hd.hexZAdjustment, 0, 'f', 4);
         }
         if (!hd.valid) {
             text += "  [invalid]";

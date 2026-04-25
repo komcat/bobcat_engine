@@ -567,9 +567,9 @@ void WorldOverlayWidget::updateGantryPosition()
   }
 
   m_positionLabel->setText(QString("Gantry: X=%1 Y=%2 Z=%3")
-                             .arg(m_gantryX, 0, 'f', 3)
-                             .arg(m_gantryY, 0, 'f', 3)
-                             .arg(m_gantryZ, 0, 'f', 3));
+                             .arg(m_gantryX, 0, 'f', 4)
+                             .arg(m_gantryY, 0, 'f', 4)
+                             .arg(m_gantryZ, 0, 'f', 4));
 }
 
 void WorldOverlayWidget::onCameraChanged(int index)

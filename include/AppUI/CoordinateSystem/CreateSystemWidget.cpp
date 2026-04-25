@@ -700,9 +700,9 @@ void CreateSystemWidget::onCapturePoint1Clicked()
     if (captureCurrentPosition(m_point1)) {
         m_point1Captured = true;
         m_point1Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
-            .arg(m_point1.x, 0, 'f', 3)
-            .arg(m_point1.y, 0, 'f', 3)
-            .arg(m_point1.z, 0, 'f', 3));
+            .arg(m_point1.x, 0, 'f', 4)
+            .arg(m_point1.y, 0, 'f', 4)
+            .arg(m_point1.z, 0, 'f', 4));
         m_point1Label->setStyleSheet(
             "QLabel {"
             "  color: #27ae60;"
@@ -719,9 +719,9 @@ void CreateSystemWidget::onCapturePoint2Clicked()
     if (captureCurrentPosition(m_point2)) {
         m_point2Captured = true;
         m_point2Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
-            .arg(m_point2.x, 0, 'f', 3)
-            .arg(m_point2.y, 0, 'f', 3)
-            .arg(m_point2.z, 0, 'f', 3));
+            .arg(m_point2.x, 0, 'f', 4)
+            .arg(m_point2.y, 0, 'f', 4)
+            .arg(m_point2.z, 0, 'f', 4));
         m_point2Label->setStyleSheet(
             "QLabel {"
             "  color: #27ae60;"
@@ -738,9 +738,9 @@ void CreateSystemWidget::onCapturePoint3Clicked()
     if (captureCurrentPosition(m_point3)) {
         m_point3Captured = true;
         m_point3Label->setText(QString("✓ X:%1  Y:%2  Z:%3")
-            .arg(m_point3.x, 0, 'f', 3)
-            .arg(m_point3.y, 0, 'f', 3)
-            .arg(m_point3.z, 0, 'f', 3));
+            .arg(m_point3.x, 0, 'f', 4)
+            .arg(m_point3.y, 0, 'f', 4)
+            .arg(m_point3.z, 0, 'f', 4));
         m_point3Label->setStyleSheet(
             "QLabel {"
             "  color: #27ae60;"

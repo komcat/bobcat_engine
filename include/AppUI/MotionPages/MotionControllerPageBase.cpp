@@ -326,7 +326,7 @@ void MotionControllerPageBase::updatePositions()
       QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + static_cast<int>(i));
       if (posItem) {
         if (success) {
-          posItem->setText(QString::number(position, 'f', 3));
+          posItem->setText(QString::number(position, 'f', 4));
           posItem->setForeground(QColor("#d4d4d4"));
         }
         else {

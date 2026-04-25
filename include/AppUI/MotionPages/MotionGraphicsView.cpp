@@ -547,12 +547,12 @@ void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& /*rect*
 
       QStringList lines;
       lines << "Current Position";
-      lines << QString("X: %1").arg(m_livePosX, 0, 'f', 3);
-      lines << QString("Y: %1").arg(m_livePosY, 0, 'f', 3);
-      lines << QString("Z: %1").arg(m_livePosZ, 0, 'f', 3);
-      lines << QString("U: %1").arg(m_livePosU, 0, 'f', 3);
-      lines << QString("V: %1").arg(m_livePosV, 0, 'f', 3);
-      lines << QString("W: %1").arg(m_livePosW, 0, 'f', 3);
+      lines << QString("X: %1").arg(m_livePosX, 0, 'f', 4);
+      lines << QString("Y: %1").arg(m_livePosY, 0, 'f', 4);
+      lines << QString("Z: %1").arg(m_livePosZ, 0, 'f', 4);
+      lines << QString("U: %1").arg(m_livePosU, 0, 'f', 4);
+      lines << QString("V: %1").arg(m_livePosV, 0, 'f', 4);
+      lines << QString("W: %1").arg(m_livePosW, 0, 'f', 4);
 
       int maxWidth = 0;
       for (const auto& line : lines) {
@@ -596,12 +596,12 @@ void MotionGraphicsView::drawForeground(QPainter* painter, const QRectF& /*rect*
 
       QStringList lines;
       lines << QString("%1 >> %2").arg(m_deviceName, m_selectedPosName);
-      lines << QString("X: %1").arg(m_selectedPosX, 0, 'f', 3);
-      lines << QString("Y: %1").arg(m_selectedPosY, 0, 'f', 3);
-      lines << QString("Z: %1").arg(m_selectedPosZ, 0, 'f', 3);
-      lines << QString("U: %1").arg(m_selectedPosU, 0, 'f', 3);
-      lines << QString("V: %1").arg(m_selectedPosV, 0, 'f', 3);
-      lines << QString("W: %1").arg(m_selectedPosW, 0, 'f', 3);
+      lines << QString("X: %1").arg(m_selectedPosX, 0, 'f', 4);
+      lines << QString("Y: %1").arg(m_selectedPosY, 0, 'f', 4);
+      lines << QString("Z: %1").arg(m_selectedPosZ, 0, 'f', 4);
+      lines << QString("U: %1").arg(m_selectedPosU, 0, 'f', 4);
+      lines << QString("V: %1").arg(m_selectedPosV, 0, 'f', 4);
+      lines << QString("W: %1").arg(m_selectedPosW, 0, 'f', 4);
 
       int maxWidth = 0;
       for (const auto& line : lines) {
