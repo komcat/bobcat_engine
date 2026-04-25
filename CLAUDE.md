@@ -63,6 +63,7 @@ bobcat_engine/
 │   ├── AppUI/                            # Qt UI (pages, forms, dialogs)
 │   │   ├── AccuracyTrainer/             # Accuracy trainer module (teach + run alignment)
 │   │   ├── PlacementCorrectionTrainer/  # Placement angle correction module
+│   │   ├── EdgeTransferTrainer/         # Edge-transfer teach-then-run module
 │   │   ├── MotionPages/                 # Motion control UI (jog, interlock widget)
 │   │   └── RunProgramPage/             # Recipe execution UI + RollCorrectionWidget
 │   ├── AuxWindow/                        # Auxiliary display windows
@@ -258,6 +259,32 @@ PlacementCorrectionData.h    - Structs (PlacementLinePoints, PlacementCorrection
 3. **Correct**: Apply delta to hex device U axis: `correctedU = masterU + deltaAngle` (with optional sign reversal)
 4. **Config**: `PlacementCorrectionConfig` maps a master position (golden reference, never modified) to a target position that receives the corrected values
 
+## SWIR Beam Detection (`include/SwirBeamWindow/`)
+
+Real-time beam profiling/tracking shown in a Win32+GDI+ window (not Qt). Three detection modes coexist in `SwirBeamDetector.cpp` and are selected at runtime via `config/beam_detection.json`:
+
+| Mode | Function | Notes |
+|------|----------|-------|
+| `halcon` (plan of record) | `RunHalconBeamDetection` | HDevelop port: local-mean BG (51×51) + threshold + connected components + per-region first-moment D4σ. Requires `HAS_HALCON`. Toggle: `useHalconDetection: true`. |
+| `blob` | `RunBlobDetection` | OpenCV threshold + contour. Toggle: `useBlobDetection: true`. |
+| `d4sigma` (legacy) | `RunBeamDetection` | OpenCV X/Y projection peak finding + corner-patch BG. Default if neither flag is set. Has known robustness issues vs Halcon. |
+
+For new tuning/fixes prefer the Halcon path. Don't propose tuning d4sigma thresholds (`minPeakValue`, `aspectRatioMax`, etc.) unless the miss log shows `mode=d4sigma`.
+
+### Frame pipeline (single-slot, latest-wins)
+- `CameraManager` rate-limits broadcasts to subscribers (`GetMinFrameIntervalMs()` returns 33 ms — ~30 fps cap).
+- `SwirBeamWindow::OnNewFrame` writes two single-slot buffers under separate mutexes:
+  - `m_detectionBuffer` (gray) — overwritten if detection thread hasn't consumed previous frame; tracked by `m_detectionInputDrops`.
+  - `m_frameBuffer` (BGR) — write skipped entirely (`m_hasNewFrame` flag) when UI repaint hasn't completed.
+- Detection runs on its own `std::thread` at `THREAD_PRIORITY_BELOW_NORMAL`, sleeping on `m_detectionCV` between frames.
+- No queue. Frame drops at the detection input are silent except for the `[BeamDetect] detection-input drops total=...` console line.
+
+### Beam ID stability
+After detection, the caller in `SwirBeamWindow.cpp` (the detection thread lambda) re-orders the result vector via nearest-neighbour association to `m_prevBeams[2]` so that slot 0 / slot 1 keep following the same physical beam across frames. CE/EE history, broker publishing, and overlay rendering all depend on this slot identity. Single-beam frames are slot-aware: the lone candidate is matched to the closer prior slot rather than always overwriting slot 0.
+
+### GA quadrant labels
+`gaQuadrantLabels` in `beam_detection.json` maps each visual quadrant to a GA channel string. With the current Y-flip convention used by the labeling code, **set top-quadrants (`q1`, `q2`) to the GA channel that is physically at the bottom of the image** and vice versa — verify against the live overlay before committing changes.
+
 ## Roll Correction Widget
 
 Located in `include/AppUI/RunProgramPage/RollCorrectionWidget.h/.cpp`. Corrects hexapod roll (W axis) using dual-channel peak position measurement.
@@ -374,6 +401,19 @@ sequence->AddAction(device, "MoveToAbs", {
   {"x", "context:calculated_x"}
 });
 ```
+
+## Lua Scripting (`include/scripting/`)
+
+`ScriptEngine` (registered closure `_dispatch`) and the Lua wrapper modules in `ScriptEngine.cpp` expose the same command surface as the recipe handlers, but for procedural use. Scripts live under `scripts/` (global) or `config/{product}/scripts/` (per-product).
+
+- High-level wrappers: `motion.*`, `psu.*`, `tec.*`, `camera.*`, `vision.*`, `recipe.run(...)`, `dut.*`, `ctx.*`, `file.*`, `bobcat.*`, etc.
+- Low-level escape hatch: `_dispatch(deviceName, methodName, paramsTable)` calls any `*CommandHandler` method directly. Use this when a wrapper is missing or doesn't pass the parameter you need (e.g. `camera.captureToFile` doesn't forward `product_name`, so call `_dispatch(camera, "CaptureToFile", {product_name=..., filename=...})` instead).
+- `recipe.run(name, opts)` runs a recipe end-to-end and blocks until completion; respects `fail_on_error` flag.
+- Files written via `file.appendCsv` etc. are relative to the executable's working directory (`out/build/<preset>/`), not the source tree.
+
+## Edge Transfer Trainer (`include/AppUI/EdgeTransferTrainer/`)
+
+Same teach-then-run pattern as Accuracy / Placement trainers (8 widgets + `EdgeTransferStore` + `EdgeTransferData`). When working on trainer features, treat this as a peer of the other two — the data layout, JSON store, and run-time correction flow follow the same conventions.
 
 ## External Dependencies
 
