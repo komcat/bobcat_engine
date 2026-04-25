@@ -38,6 +38,17 @@ struct BeamDetectionResult {
     int profileYStart = 0;         // ROI y0 offset for chart alignment
 };
 
+/// GA quadrant label mapping.
+/// Quadrants are in VISUAL orientation (after display Y-flip):
+///   [0]=Q1 right-top, [1]=Q2 left-top, [2]=Q3 left-bottom, [3]=Q4 right-bottom.
+/// Default: top half (Q1,Q2)=GA2, bottom half (Q3,Q4)=GA1.
+struct GaQuadrantLabels {
+    std::string q1 = "GA2";  // right-top
+    std::string q2 = "GA2";  // left-top
+    std::string q3 = "GA1";  // left-bottom
+    std::string q4 = "GA1";  // right-bottom
+};
+
 struct BeamDetectionConfig {
     PeakFindParams xpeaks;
     PeakFindParams ypeaks;
@@ -45,22 +56,28 @@ struct BeamDetectionConfig {
     double combineYThresh = 20.0;
     double d4sigmaThreshold = 0.05;
     int maxBeams = 2;
-    uint8_t saturationValue = 200;
+    uint8_t saturationValue = 255;
     double roiWidthFactor = 2.5;
-    double minD4Sigma = 10.0;       // reject beams with max(dx,dy) < this
-    double minPeakValue = 20.0;     // reject beams with ROI peak < this (after bg sub)
+    double minD4Sigma = 3.0;        // reject beams with max(dx,dy) < this
+    double minPeakValue = 5.0;      // reject beams with ROI peak < this (after bg sub)
+    double aspectRatioMax = 10.0;   // reject beams with max(dx,dy)/min(dx,dy) > this
+    double roiSizeFactor = 3.0;     // reject beams with d4 > roi * this (diffuse noise)
+    bool   rejectEdgeClipped = false; // skip candidates whose EE circle clips the image edge
+    double micronsPerPixel = 0.17;  // SWIR camera calibration for overlay (um/px)
+    GaQuadrantLabels gaLabels;
 };
 
 /// Config for simple blob-based beam detection
 struct BlobDetectionConfig {
     int maxBeams = 2;
-    uint8_t saturationValue = 200;
+    uint8_t saturationValue = 255;
     int gaussianKernel = 5;         // blur kernel size (odd number, 0=disabled)
     double thresholdValue = 180.0;  // fixed threshold (0-255), ignored if useOtsu=true
     bool useOtsu = false;           // use Otsu auto-threshold instead of fixed
     double minBlobArea = 50.0;      // reject blobs smaller than this (pixels^2)
     double maxBlobArea = 50000.0;   // reject blobs larger than this (pixels^2)
     double roiPadding = 1.5;        // bounding rect padding factor for display
+    GaQuadrantLabels gaLabels;
 };
 
 #ifdef HAS_OPENCV
@@ -102,7 +119,7 @@ std::vector<BeamDetectionResult> RunBeamDetection(
 
 /// Simple blob detection: threshold + contour finding.
 /// Finds bright blobs, returns center + bounding rect as BeamDetectionResult.
-/// Uses the same result struct so overlay/EMA/charts work unchanged.
+/// Uses the same result struct so overlay and charts work unchanged.
 std::vector<BeamDetectionResult> RunBlobDetection(
     const uint8_t* grayData, uint32_t width, uint32_t height,
     const BlobDetectionConfig& config);

@@ -13,8 +13,19 @@
     "combineYThresh": 20.0,
     "d4sigmaThreshold": 0.05,
     "maxBeams": 2,
-    "saturationValue": 200,
+    "saturationValue": 255,
     "roiWidthFactor": 2.5,
-    "minD4Sigma": 10.0,
-    "minPeakValue": 20.0
+    "minD4Sigma": 3.0,
+    "minPeakValue": 5.0,
+    "aspectRatioMax": 10.0,
+    "roiSizeFactor": 3.0,
+    "rejectEdgeClipped": false,
+    "micronsPerPixel": 0.17,
+    "useBlobDetection": false,
+    "gaQuadrantLabels": {
+        "q1": "GA2",
+        "q2": "GA2",
+        "q3": "GA1",
+        "q4": "GA1"
+    }
 }

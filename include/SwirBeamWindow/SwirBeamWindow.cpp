@@ -1714,7 +1714,8 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
         if (!m_beamDisplayResults.empty()) {
             DrawBeamOverlays(gfx, m_beamDisplayResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
-                             m_frameWidth, m_frameHeight, m_useBlobDetection);
+                             m_frameWidth, m_frameHeight, m_useBlobDetection,
+                             m_beamConfig.micronsPerPixel);
         }
 
         // CE/EE charts (drawn even when no current detection — shows previous data)
@@ -2163,6 +2164,27 @@ void SwirBeamWindow::LoadBeamConfig()
     getD("roiWidthFactor", m_beamConfig.roiWidthFactor);
     getD("minD4Sigma", m_beamConfig.minD4Sigma);
     getD("minPeakValue", m_beamConfig.minPeakValue);
+    getD("aspectRatioMax", m_beamConfig.aspectRatioMax);
+    getD("roiSizeFactor", m_beamConfig.roiSizeFactor);
+    if (j.contains("rejectEdgeClipped") && j["rejectEdgeClipped"].is_boolean()) {
+        m_beamConfig.rejectEdgeClipped = j["rejectEdgeClipped"].get<bool>();
+    }
+    getD("micronsPerPixel", m_beamConfig.micronsPerPixel);
+
+    // Quadrant -> GA label mapping (shared between d4sigma and blob modes).
+    // Quadrants are in visual orientation (after display Y-flip):
+    //   q1=right-top, q2=left-top, q3=left-bottom, q4=right-bottom.
+    if (j.contains("gaQuadrantLabels") && j["gaQuadrantLabels"].is_object()) {
+        auto& qj = j["gaQuadrantLabels"];
+        auto getS = [&](const char* key, std::string& out) {
+            if (qj.contains(key) && qj[key].is_string()) out = qj[key].get<std::string>();
+        };
+        getS("q1", m_beamConfig.gaLabels.q1);
+        getS("q2", m_beamConfig.gaLabels.q2);
+        getS("q3", m_beamConfig.gaLabels.q3);
+        getS("q4", m_beamConfig.gaLabels.q4);
+        m_blobConfig.gaLabels = m_beamConfig.gaLabels;
+    }
 
     // Blob detection config
     if (j.contains("useBlobDetection") && j["useBlobDetection"].is_boolean()) {
@@ -2211,6 +2233,17 @@ void SwirBeamWindow::SaveBeamConfig()
     j["roiWidthFactor"] = m_beamConfig.roiWidthFactor;
     j["minD4Sigma"] = m_beamConfig.minD4Sigma;
     j["minPeakValue"] = m_beamConfig.minPeakValue;
+    j["aspectRatioMax"] = m_beamConfig.aspectRatioMax;
+    j["roiSizeFactor"] = m_beamConfig.roiSizeFactor;
+    j["rejectEdgeClipped"] = m_beamConfig.rejectEdgeClipped;
+    j["micronsPerPixel"] = m_beamConfig.micronsPerPixel;
+
+    j["gaQuadrantLabels"] = {
+        {"q1", m_beamConfig.gaLabels.q1},
+        {"q2", m_beamConfig.gaLabels.q2},
+        {"q3", m_beamConfig.gaLabels.q3},
+        {"q4", m_beamConfig.gaLabels.q4}
+    };
 
     // Blob detection config
     j["useBlobDetection"] = m_useBlobDetection;
@@ -2348,45 +2381,22 @@ void SwirBeamWindow::StartDetectionThread()
                 ? RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig)
                 : RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
 
-            // Publish raw results (for scoring) and EMA-smoothed results (for display)
+            // Publish raw results to both stores. m_beamResults feeds the score
+            // provider; m_beamDisplayResults feeds the overlay. On a detection
+            // miss (empty results) we leave both untouched so the crosshair and
+            // text keep showing the last good reading instead of flickering.
             {
                 std::lock_guard<std::mutex> lock(m_beamMutex);
-                // Keep previous results when detection misses (avoids overlay flicker)
                 if (!results.empty()) {
-                    m_beamResults = results;  // raw for score provider
-
-                    // EMA smoothing for display
-                    if (m_beamDisplayResults.size() != results.size()) {
-                        // Beam count changed, reset display to current raw values
-                        m_beamDisplayResults = results;
-                    } else {
-                        for (size_t bi = 0; bi < results.size(); ++bi) {
-                            auto& disp = m_beamDisplayResults[bi];
-                            const auto& raw = results[bi];
-                            disp.d4.cx = disp.d4.cx + EMA_ALPHA * (raw.d4.cx - disp.d4.cx);
-                            disp.d4.cy = disp.d4.cy + EMA_ALPHA * (raw.d4.cy - disp.d4.cy);
-                            disp.d4.dx = disp.d4.dx + EMA_ALPHA * (raw.d4.dx - disp.d4.dx);
-                            disp.d4.dy = disp.d4.dy + EMA_ALPHA * (raw.d4.dy - disp.d4.dy);
-                            disp.encircledEnergy = disp.encircledEnergy + EMA_ALPHA * (raw.encircledEnergy - disp.encircledEnergy);
-                            disp.circleEnergy = disp.circleEnergy + EMA_ALPHA * (raw.circleEnergy - disp.circleEnergy);
-                            disp.totalEnergy = disp.totalEnergy + EMA_ALPHA * (raw.totalEnergy - disp.totalEnergy);
-                            disp.label = raw.label;
-                            disp.gaLabel = raw.gaLabel;
-                            disp.saturated = raw.saturated;
-                            disp.peakIntensity = raw.peakIntensity;
-                            disp.saturatedPixelCount = raw.saturatedPixelCount;
-                            disp.d4.roi = raw.d4.roi;
-                        }
-                    }
+                    m_beamResults = results;
+                    m_beamDisplayResults = results;
                 }
 
-                // Push CE/SP values into history ring buffers (with outlier rejection)
-                // In blob mode, track saturated pixel count instead of circle energy
+                // Push peak intensity into history ring buffers (with outlier rejection).
+                // The chart tracks PK only for both detection modes.
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
-                    double newCE = m_useBlobDetection
-                        ? static_cast<double>(m_beamResults[bi].saturatedPixelCount)
-                        : m_beamResults[bi].circleEnergy;
+                    double newCE = static_cast<double>(m_beamResults[bi].peakIntensity);
 
                     // Outlier rejection: if we have enough history, reject values
                     // that drop below 50% of the recent median (last 5 samples).

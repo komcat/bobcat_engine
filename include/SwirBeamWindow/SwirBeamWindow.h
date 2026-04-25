@@ -347,7 +347,7 @@ private:
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
     BlobDetectionConfig m_blobConfig;
-    bool m_useBlobDetection = true;   // false=d4sigma, true=blob
+    bool m_useBlobDetection = false;  // false=d4sigma, true=blob
 
     // Beam focus optimization (reusable components)
     std::atomic<bool> m_beamFocusRunning{false};
@@ -364,9 +364,10 @@ private:
     std::array<int, 2> m_ceHistoryCount = {0, 0};     // filled count (shared CE/EE)
     std::array<int, 2> m_ceRejectCount = {0, 0};      // consecutive outlier rejection count
 
-    // EMA-smoothed beam results for display (raw results used for scoring)
+    // Display copy of beam results. Identical to m_beamResults when detection
+    // succeeds; preserved across frames where detection misses so the overlay
+    // text stays static instead of flickering.
     std::vector<BeamDetectionResult> m_beamDisplayResults;
-    static constexpr double EMA_ALPHA = 0.3;  // smoothing factor (0=full smooth, 1=no smooth)
 
     // Saturation auto-adjust state
     std::chrono::steady_clock::time_point m_lastSatAdjustTime{};

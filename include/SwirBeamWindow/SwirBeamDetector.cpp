@@ -367,24 +367,31 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         // Skip fake beams: reject if diameter > half the image dimension
         if (d4.dx > w * 0.5 || d4.dy > h * 0.5) { BD_LOG("    REJECT: too large vs image"); continue; }
 
-        // Skip if beam is larger than its ROI (diffuse noise, not a real beam)
-        if (d4.dx > roiW * 1.5 || d4.dy > roiH * 1.5) { BD_LOG("    REJECT: larger than ROI"); continue; }
+        // Skip if beam is much larger than its ROI (diffuse noise, not a real
+        // beam). Tune roiSizeFactor in beam_detection.json.
+        if (d4.dx > roiW * config.roiSizeFactor || d4.dy > roiH * config.roiSizeFactor) {
+            BD_LOG("    REJECT: larger than ROI (factor " << config.roiSizeFactor << ")");
+            continue;
+        }
 
-        // Skip beams that are too small (noise spikes)
+        // Skip beams that are too small (noise spikes). The 8px hardcode that
+        // used to sit here was redundant with this check — tune minD4Sigma in
+        // beam_detection.json if you need to discriminate smaller beams.
         if (std::max(d4.dx, d4.dy) < config.minD4Sigma) { BD_LOG("    REJECT: too small d4=" << std::max(d4.dx, d4.dy)); continue; }
 
-        // Skip beams with both diameters below 8 pixels (sub-pixel noise)
-        if (d4.dx < 8.0 && d4.dy < 8.0) { BD_LOG("    REJECT: both <8px"); continue; }
-
-        // Skip beams with extreme aspect ratio (>2:1) - likely detection artifact
+        // Skip beams with extreme aspect ratio — likely a detection artifact.
+        // Dim beams produce jittery d4sigma, so keep this permissive; tune
+        // aspectRatioMax in beam_detection.json.
         {
             double minD = std::min(d4.dx, d4.dy);
             double maxD = std::max(d4.dx, d4.dy);
-            if (minD > 1e-6 && (maxD / minD) > 2.0) { BD_LOG("    REJECT: aspect ratio " << (maxD/minD)); continue; }
+            if (minD > 1e-6 && (maxD / minD) > config.aspectRatioMax) { BD_LOG("    REJECT: aspect ratio " << (maxD/minD)); continue; }
         }
 
-        // Skip beams whose EE circle is clipped by image boundary
-        {
+        // Optional: skip beams whose EE circle clips the image boundary.
+        // Off by default so beams near the edge still register; enable by
+        // setting rejectEdgeClipped=true in beam_detection.json.
+        if (config.rejectEdgeClipped) {
             double eeRadius = std::max(d4.dx, d4.dy) / 2.0;
             if (d4.cx - eeRadius < 0 || d4.cx + eeRadius > w ||
                 d4.cy - eeRadius < 0 || d4.cy + eeRadius > h) { BD_LOG("    REJECT: EE clipped edge"); continue; }
@@ -442,6 +449,7 @@ std::vector<BeamDetectionResult> RunBeamDetection(
               });
 
     // Build results with labeling
+    double halfX = static_cast<double>(width) / 2.0;
     double halfY = static_cast<double>(height) / 2.0;
     std::vector<BeamDetectionResult> results;
     results.reserve(numBeams);
@@ -455,11 +463,14 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         res.totalEnergy = cand.totalEnergy;
         res.label = "B" + std::to_string(bi);
 
-        // GA labeling: top half = GA2, bottom half = GA1
-        if (cand.d4.cy < halfY) {
-            res.gaLabel = "GA2";
+        // GA labeling by visual quadrant. Display is Y-flipped from the
+        // detector frame, so detector cy > halfY = visual top.
+        const bool right = cand.d4.cx >= halfX;
+        const bool visualTop = cand.d4.cy >= halfY;
+        if (visualTop) {
+            res.gaLabel = right ? config.gaLabels.q1 : config.gaLabels.q2;
         } else {
-            res.gaLabel = "GA1";
+            res.gaLabel = right ? config.gaLabels.q4 : config.gaLabels.q3;
         }
 
         // Saturation check and peak intensity on original uint8 data within ROI
@@ -588,6 +599,7 @@ std::vector<BeamDetectionResult> RunBlobDetection(
               });
 
     // Build results
+    double halfX = static_cast<double>(width) / 2.0;
     double halfY = static_cast<double>(height) / 2.0;
     std::vector<BeamDetectionResult> results;
     results.reserve(numBeams);
@@ -615,11 +627,16 @@ std::vector<BeamDetectionResult> RunBlobDetection(
 
         res.label = "B" + std::to_string(bi);
 
-        // GA labeling: top half = GA2, bottom half = GA1
-        if (cand.cy < halfY) {
-            res.gaLabel = "GA2";
-        } else {
-            res.gaLabel = "GA1";
+        // GA labeling by visual quadrant. Display is Y-flipped from the
+        // detector frame, so detector cy > halfY = visual top.
+        {
+            const bool right = cand.cx >= halfX;
+            const bool visualTop = cand.cy >= halfY;
+            if (visualTop) {
+                res.gaLabel = right ? config.gaLabels.q1 : config.gaLabels.q2;
+            } else {
+                res.gaLabel = right ? config.gaLabels.q4 : config.gaLabels.q3;
+            }
         }
 
         // Peak intensity and total energy in ROI

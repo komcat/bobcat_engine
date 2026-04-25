@@ -23,11 +23,13 @@
 /// @param renderH   Viewport height (display pixels)
 /// @param frameW    Camera frame width (image pixels)
 /// @param frameH    Camera frame height (image pixels)
+/// @param micronsPerPixel Pixel-to-micron calibration for dx/dy/area labels
 void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       const std::vector<BeamDetectionResult>& results,
                       int renderX, int renderY, int renderW, int renderH,
                       uint32_t frameW, uint32_t frameH,
-                      bool blobMode = false);
+                      bool blobMode = false,
+                      double micronsPerPixel = 1.0);
 
 /// Draw real-time CE (circle energy) charts for B0 and B1.
 /// Charts are placed at the top-right of the viewport, stacked vertically.
