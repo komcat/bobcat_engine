@@ -15,6 +15,8 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
+#include <ctime>
 #include <nlohmann/json.hpp>
 #include <shellapi.h>
 #include <QSettings>
@@ -387,6 +389,17 @@ void SwirBeamWindow::OnNewFrame(const CameraFrameData& frameData)
             // Luminance from RGB: use green channel as fast approximation
             for (uint32_t i = 0; i < w * h; ++i) {
                 m_detectionBuffer[i] = src[i * channels + 1];
+            }
+        }
+        // Detection-input drop: writing while previous frame still pending
+        // means the detection thread won't see the older frame at all.
+        if (m_detectionReady.load()) {
+            ++m_detectionInputDrops;
+            if ((m_detectionInputDrops % 30) == 0) {
+                std::cout << "[BeamDetect] detection-input drops total="
+                          << m_detectionInputDrops
+                          << " (detection thread can't keep up with frame rate)"
+                          << std::endl;
             }
         }
         m_detectionReady.store(true);
@@ -1139,6 +1152,17 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     }
     y += btnHeight + btnSpacing;
 
+    // Row 4: SAVE IMG (full width)
+    {
+        SwirButton saveBtn;
+        saveBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
+        saveBtn.label = L"SAVE IMG";
+        saveBtn.tag = TAG_SAVE_IMAGE;
+        saveBtn.onClick = [this]() { OnSaveImage(); };
+        m_buttons.push_back(saveBtn);
+    }
+    y += btnHeight + btnSpacing;
+
     y += groupPad;
 
     y += sectionGap;
@@ -1540,6 +1564,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += btnHeight + btnSpacing;  // Row 1: HEAD | CLICK MOVE | BF
     y += btnHeight + btnSpacing;  // Row 2: MARKER | CLEAR ALL | SET MAG
     y += btnHeight + btnSpacing;  // Row 3: B DETECT | B CONFIG | B OPTIM
+    y += btnHeight + btnSpacing;  // Row 4: SAVE IMG
     y += groupPad;
 
     RECT toolsGroupRect = { panelRect.left + margin, toolsGroupTop,
@@ -2063,6 +2088,222 @@ void SwirBeamWindow::OnSetMagnification()
     }
 }
 
+// ============================================================================
+// Save Image
+// ============================================================================
+
+namespace {
+struct SaveImageDlgState {
+    bool useTimestamp = true;
+    std::wstring customName;
+};
+
+constexpr WORD ID_RADIO_TIMESTAMP = 201;
+constexpr WORD ID_RADIO_CUSTOM    = 202;
+constexpr WORD ID_EDIT_NAME       = 203;
+}
+
+static INT_PTR CALLBACK SaveImageDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case WM_INITDIALOG: {
+        auto* state = reinterpret_cast<SaveImageDlgState*>(lParam);
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        CheckRadioButton(hDlg, ID_RADIO_TIMESTAMP, ID_RADIO_CUSTOM, ID_RADIO_TIMESTAMP);
+        EnableWindow(GetDlgItem(hDlg, ID_EDIT_NAME), FALSE);
+        SetFocus(GetDlgItem(hDlg, ID_RADIO_TIMESTAMP));
+        return FALSE;
+    }
+    case WM_COMMAND: {
+        const WORD id = LOWORD(wParam);
+        if (id == ID_RADIO_TIMESTAMP || id == ID_RADIO_CUSTOM) {
+            BOOL custom = (id == ID_RADIO_CUSTOM);
+            EnableWindow(GetDlgItem(hDlg, ID_EDIT_NAME), custom);
+            if (custom) {
+                SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                SendDlgItemMessageW(hDlg, ID_EDIT_NAME, EM_SETSEL, 0, -1);
+            }
+            return TRUE;
+        }
+        if (id == IDOK) {
+            auto* state = reinterpret_cast<SaveImageDlgState*>(GetWindowLongPtr(hDlg, GWLP_USERDATA));
+            BOOL custom = (IsDlgButtonChecked(hDlg, ID_RADIO_CUSTOM) == BST_CHECKED);
+            state->useTimestamp = !custom;
+            if (custom) {
+                wchar_t buf[256] = {};
+                GetDlgItemTextW(hDlg, ID_EDIT_NAME, buf, 256);
+                std::wstring name(buf);
+                // Trim trailing/leading whitespace
+                while (!name.empty() && iswspace(name.back())) name.pop_back();
+                while (!name.empty() && iswspace(name.front())) name.erase(name.begin());
+                if (name.empty()) {
+                    MessageBoxW(hDlg, L"Please enter a file name.", L"Save Image",
+                                MB_OK | MB_ICONWARNING);
+                    SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                    return TRUE;
+                }
+                // Reject path separators and other illegal chars
+                if (name.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos) {
+                    MessageBoxW(hDlg, L"Name contains illegal characters: \\ / : * ? \" < > |",
+                                L"Save Image", MB_OK | MB_ICONWARNING);
+                    SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                    return TRUE;
+                }
+                state->customName = name;
+            }
+            EndDialog(hDlg, IDOK);
+            return TRUE;
+        }
+        if (id == IDCANCEL) { EndDialog(hDlg, IDCANCEL); return TRUE; }
+        break;
+    }
+    case WM_CLOSE:
+        EndDialog(hDlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void SwirBeamWindow::OnSaveImage()
+{
+    // Confirm a frame is available before showing the dialog
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
+            MessageBoxW(m_hwnd, L"No camera frame available to save.",
+                        L"Save Image", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+    }
+
+    // Build dialog template: title + 2 radio buttons + edit + OK/Cancel = 6 controls
+    alignas(4) BYTE dlgBuf[1024] = {};
+    DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(dlgBuf);
+    dlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
+    dlg->cdit = 6;
+    dlg->cx = 200;
+    dlg->cy = 90;
+
+    WORD* ptr = reinterpret_cast<WORD*>(dlg + 1);
+    *ptr++ = 0;
+    *ptr++ = 0;
+    const wchar_t* title = L"Save SWIR Image";
+    for (const wchar_t* c = title; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+    *ptr++ = 9;
+    const wchar_t* fontName = L"Segoe UI";
+    for (const wchar_t* c = fontName; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+
+    auto addCtrl = [&](DWORD style, short x, short y, short cx, short cy, WORD id,
+                       const wchar_t* cls, const wchar_t* text) {
+        ptr = reinterpret_cast<WORD*>((reinterpret_cast<uintptr_t>(ptr) + 3) & ~3);
+        DLGITEMTEMPLATE* item = reinterpret_cast<DLGITEMTEMPLATE*>(ptr);
+        item->style = WS_CHILD | WS_VISIBLE | style;
+        item->x = x; item->y = y; item->cx = cx; item->cy = cy;
+        item->id = id;
+        ptr = reinterpret_cast<WORD*>(item + 1);
+        for (const wchar_t* c = cls; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        for (const wchar_t* c = text; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        *ptr++ = 0;
+    };
+
+    addCtrl(SS_LEFT, 8, 6, 184, 10, 0xFFFF, L"Static", L"Choose how to name the saved file:");
+    addCtrl(BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 8, 20, 184, 12,
+            ID_RADIO_TIMESTAMP, L"Button", L"Use timestamp (e.g. swir_20260424_153012.png)");
+    addCtrl(BS_AUTORADIOBUTTON | WS_TABSTOP, 8, 36, 184, 12,
+            ID_RADIO_CUSTOM, L"Button", L"Custom name:");
+    addCtrl(ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, 16, 50, 176, 14,
+            ID_EDIT_NAME, L"Edit", L"");
+    addCtrl(BS_DEFPUSHBUTTON | WS_TABSTOP, 78, 70, 50, 16, IDOK, L"Button", L"Save");
+    addCtrl(WS_TABSTOP, 138, 70, 54, 16, IDCANCEL, L"Button", L"Cancel");
+
+    SaveImageDlgState state;
+    INT_PTR result = DialogBoxIndirectParamW(
+        GetModuleHandle(nullptr), dlg, m_hwnd, SaveImageDlgProc,
+        reinterpret_cast<LPARAM>(&state));
+
+    if (result != IDOK) return;
+
+    // Build output filename
+    std::wstring fileName;
+    if (state.useTimestamp) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        wchar_t buf[64];
+        swprintf_s(buf, L"swir_%04u%02u%02u_%02u%02u%02u.png",
+                   st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        fileName = buf;
+    } else {
+        fileName = state.customName;
+        // Append .png if no extension provided
+        size_t dotPos = fileName.find_last_of(L'.');
+        size_t sepPos = fileName.find_last_of(L"\\/");
+        if (dotPos == std::wstring::npos || (sepPos != std::wstring::npos && dotPos < sepPos)) {
+            fileName += L".png";
+        }
+    }
+
+    // Output directory: logs/swir_captures relative to the executable working dir
+    std::filesystem::path outDir = std::filesystem::path("logs") / "swir_captures";
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+    std::filesystem::path outPath = outDir / fileName;
+
+    if (!SaveFrameAsPng(outPath.wstring())) {
+        std::wstring msg = L"Failed to save image to:\n" + outPath.wstring();
+        MessageBoxW(m_hwnd, msg.c_str(), L"Save Image", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::cout << "[SwirBeamWindow] Saved frame to " << outPath.string() << std::endl;
+}
+
+bool SwirBeamWindow::SaveFrameAsPng(const std::wstring& fullPath)
+{
+    // Snapshot the BGR frame buffer under the frame mutex so the grab thread
+    // can't reallocate it mid-encode.
+    std::vector<uint8_t> snapshot;
+    uint32_t width = 0, height = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
+        snapshot = m_frameBuffer;  // copy
+        width = m_frameWidth;
+        height = m_frameHeight;
+    }
+
+    // The buffer is bottom-up BGR24. Point GDI+ at the last row with negative
+    // stride to present a top-down view without copying again.
+    const INT stride = static_cast<INT>(width) * 3;
+    BYTE* scan0 = snapshot.data() + static_cast<size_t>(height - 1) * stride;
+    Gdiplus::Bitmap bitmap(static_cast<INT>(width), static_cast<INT>(height),
+                            -stride, PixelFormat24bppRGB, scan0);
+    if (bitmap.GetLastStatus() != Gdiplus::Ok) return false;
+
+    // Find PNG encoder CLSID
+    UINT num = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&num, &size);
+    if (size == 0) return false;
+    std::vector<BYTE> codecBuf(size);
+    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(codecBuf.data());
+    Gdiplus::GetImageEncoders(num, size, codecs);
+    CLSID pngClsid = {};
+    bool found = false;
+    for (UINT i = 0; i < num; ++i) {
+        if (wcscmp(codecs[i].MimeType, L"image/png") == 0) {
+            pngClsid = codecs[i].Clsid;
+            found = true;
+            break;
+        }
+    }
+    if (!found) return false;
+
+    return bitmap.Save(fullPath.c_str(), &pngClsid, nullptr) == Gdiplus::Ok;
+}
+
 void SwirBeamWindow::SaveMagnification()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
@@ -2169,7 +2410,24 @@ void SwirBeamWindow::LoadBeamConfig()
     if (j.contains("rejectEdgeClipped") && j["rejectEdgeClipped"].is_boolean()) {
         m_beamConfig.rejectEdgeClipped = j["rejectEdgeClipped"].get<bool>();
     }
+    if (j.contains("excludeSaturated") && j["excludeSaturated"].is_boolean()) {
+        m_beamConfig.excludeSaturated = j["excludeSaturated"].get<bool>();
+    }
     getD("micronsPerPixel", m_beamConfig.micronsPerPixel);
+
+    // Beam ID tracking (caller-side, applies to both d4sigma and blob paths)
+    if (j.contains("tracking") && j["tracking"].is_object()) {
+        auto& tj = j["tracking"];
+        if (tj.contains("enabled") && tj["enabled"].is_boolean()) {
+            m_trackingEnabled = tj["enabled"].get<bool>();
+        }
+        if (tj.contains("maxJumpPx") && tj["maxJumpPx"].is_number()) {
+            m_trackingMaxJumpPx = tj["maxJumpPx"].get<double>();
+        }
+        if (tj.contains("staleFrames") && tj["staleFrames"].is_number_integer()) {
+            m_trackingStaleMax = tj["staleFrames"].get<int>();
+        }
+    }
 
     // Quadrant -> GA label mapping (shared between d4sigma and blob modes).
     // Quadrants are in visual orientation (after display Y-flip):
@@ -2212,8 +2470,35 @@ void SwirBeamWindow::LoadBeamConfig()
         getBD("roiPadding", m_blobConfig.roiPadding);
     }
 
+    // Halcon detection config (HDevelop port)
+    if (j.contains("useHalconDetection") && j["useHalconDetection"].is_boolean()) {
+        m_useHalconDetection = j["useHalconDetection"].get<bool>();
+    }
+    if (j.contains("halcon") && j["halcon"].is_object()) {
+        auto& hj = j["halcon"];
+        auto getHI = [&](const char* key, int& out) {
+            if (hj.contains(key) && hj[key].is_number_integer()) out = hj[key].get<int>();
+        };
+        auto getHD = [&](const char* key, double& out) {
+            if (hj.contains(key) && hj[key].is_number()) out = hj[key].get<double>();
+        };
+        getHI("bgKernelSize", m_halconConfig.bgKernelSize);
+        getHI("noiseThreshold", m_halconConfig.noiseThreshold);
+        getHI("minBeamArea", m_halconConfig.minBeamArea);
+        getHI("maxBeams", m_halconConfig.maxBeams);
+        getHD("widthFactor", m_halconConfig.widthFactor);
+        if (hj.contains("saturationValue") && hj["saturationValue"].is_number_integer()) {
+            m_halconConfig.saturationValue = static_cast<uint8_t>(hj["saturationValue"].get<int>());
+        }
+        getHD("micronsPerPixel", m_halconConfig.micronsPerPixel);
+    }
+    // Halcon shares the GA quadrant labels with the d4sigma path.
+    m_halconConfig.gaLabels = m_beamConfig.gaLabels;
+
+    const char* modeStr = m_useHalconDetection ? "halcon"
+                          : (m_useBlobDetection ? "blob" : "d4sigma");
     std::cout << "[SwirBeamWindow] Beam config loaded from " << path
-              << " (mode: " << (m_useBlobDetection ? "blob" : "d4sigma") << ")" << std::endl;
+              << " (mode: " << modeStr << ")" << std::endl;
 }
 
 void SwirBeamWindow::SaveBeamConfig()
@@ -2236,7 +2521,14 @@ void SwirBeamWindow::SaveBeamConfig()
     j["aspectRatioMax"] = m_beamConfig.aspectRatioMax;
     j["roiSizeFactor"] = m_beamConfig.roiSizeFactor;
     j["rejectEdgeClipped"] = m_beamConfig.rejectEdgeClipped;
+    j["excludeSaturated"] = m_beamConfig.excludeSaturated;
     j["micronsPerPixel"] = m_beamConfig.micronsPerPixel;
+
+    j["tracking"] = {
+        {"enabled", m_trackingEnabled},
+        {"maxJumpPx", m_trackingMaxJumpPx},
+        {"staleFrames", m_trackingStaleMax}
+    };
 
     j["gaQuadrantLabels"] = {
         {"q1", m_beamConfig.gaLabels.q1},
@@ -2256,6 +2548,18 @@ void SwirBeamWindow::SaveBeamConfig()
         {"minBlobArea", m_blobConfig.minBlobArea},
         {"maxBlobArea", m_blobConfig.maxBlobArea},
         {"roiPadding", m_blobConfig.roiPadding}
+    };
+
+    // Halcon detection config (HDevelop port)
+    j["useHalconDetection"] = m_useHalconDetection;
+    j["halcon"] = {
+        {"bgKernelSize", m_halconConfig.bgKernelSize},
+        {"noiseThreshold", m_halconConfig.noiseThreshold},
+        {"minBeamArea", m_halconConfig.minBeamArea},
+        {"maxBeams", m_halconConfig.maxBeams},
+        {"widthFactor", m_halconConfig.widthFactor},
+        {"saturationValue", static_cast<int>(m_halconConfig.saturationValue)},
+        {"micronsPerPixel", m_halconConfig.micronsPerPixel}
     };
 
     std::ofstream ofs("config/beam_detection.local.json");
@@ -2343,7 +2647,9 @@ void SwirBeamWindow::StartDetectionThread()
         m_ceHistoryIndex[i] = 0;
         m_ceHistoryCount[i] = 0;
         m_ceRejectCount[i] = 0;
+        m_prevBeams[i] = PrevBeamSlot{};
     }
+    m_detectMissCount = 0;
 
     m_detectionThread = std::thread([this]() {
 #ifdef HAS_OPENCV
@@ -2376,10 +2682,162 @@ void SwirBeamWindow::StartDetectionThread()
 
             if (localBuffer.empty() || localW == 0 || localH == 0) continue;
 
-            // Run detection on single frame (raw, no averaging)
-            auto results = m_useBlobDetection
-                ? RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig)
-                : RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            // Run detection on single frame (raw, no averaging).
+            // Mode priority: Halcon > Blob > D4sigma (toggled via JSON config).
+            std::vector<BeamDetectionResult> results;
+            const auto detectStart = std::chrono::steady_clock::now();
+#ifdef HAS_HALCON
+            if (m_useHalconDetection) {
+                results = RunHalconBeamDetection(localBuffer.data(), localW, localH, m_halconConfig);
+            } else
+#endif
+            if (m_useBlobDetection) {
+                results = RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig);
+            } else {
+                results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            }
+            const double detectMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - detectStart).count();
+
+            // Histogram: keep last DETECT_TIMING_SIZE timings, log mean+p95 every 100.
+            m_detectTimings[m_detectTimingIdx] = detectMs;
+            m_detectTimingIdx = (m_detectTimingIdx + 1) % DETECT_TIMING_SIZE;
+            if (m_detectTimingCount < DETECT_TIMING_SIZE) ++m_detectTimingCount;
+            if (++m_detectStatsCount >= 100 && m_detectTimingCount > 0) {
+                m_detectStatsCount = 0;
+                std::vector<double> sorted(m_detectTimings.begin(),
+                                           m_detectTimings.begin() + m_detectTimingCount);
+                std::sort(sorted.begin(), sorted.end());
+                double sum = 0.0;
+                for (double v : sorted) sum += v;
+                double mean = sum / sorted.size();
+                size_t p95idx = static_cast<size_t>(sorted.size() * 0.95);
+                if (p95idx >= sorted.size()) p95idx = sorted.size() - 1;
+                std::cout << "[BeamDetect] detect-time mean=" << std::fixed
+                          << std::setprecision(1) << mean
+                          << "ms  p95=" << sorted[p95idx]
+                          << "ms  max=" << sorted.back()
+                          << "ms  (n=" << sorted.size() << ")"
+                          << std::endl;
+            }
+
+            // Detection-miss diagnostics. Logs on transition (first miss) and
+            // every 30 consecutive misses thereafter so the console doesn't
+            // flood at ~30fps. The detector itself rejects candidates for
+            // size/aspect/peak reasons (BD_LOG in SwirBeamDetector.cpp);
+            // uncomment that macro to see per-candidate reject reasons.
+            {
+                int expected;
+                const char* modeName;
+                if (m_useHalconDetection) {
+                    expected = m_halconConfig.maxBeams;
+                    modeName = "halcon";
+                } else if (m_useBlobDetection) {
+                    expected = m_blobConfig.maxBeams;
+                    modeName = "blob";
+                } else {
+                    expected = m_beamConfig.maxBeams;
+                    modeName = "d4sigma";
+                }
+                int actual = static_cast<int>(results.size());
+                if (actual < expected) {
+                    ++m_detectMissCount;
+                    if (m_detectMissCount == 1 || (m_detectMissCount % 30) == 0) {
+                        std::cout << "[BeamDetect] miss x" << m_detectMissCount
+                                  << ": expected " << expected
+                                  << " got " << actual
+                                  << " mode=" << modeName
+                                  << " image=" << localW << "x" << localH
+                                  << std::endl;
+                    }
+                } else if (m_detectMissCount > 0) {
+                    std::cout << "[BeamDetect] recovered after " << m_detectMissCount
+                              << " miss frames" << std::endl;
+                    m_detectMissCount = 0;
+                }
+            }
+
+            // Beam ID tracking: re-order `results` so slot 0 / slot 1 keep
+            // following the same physical beam across frames. Detector returns
+            // candidates cy-sorted; the caller decides which slot each one
+            // occupies based on prior-frame centroids. Single-result frames
+            // skip the reorder and stay in slot 0 — preserving the existing
+            // index==slot invariant the CE/EE history loop depends on.
+            auto sqDist = [](double ax, double ay, double bx, double by) {
+                double dx = ax - bx, dy = ay - by;
+                return dx * dx + dy * dy;
+            };
+
+            if (m_trackingEnabled && results.size() >= 2 &&
+                m_prevBeams[0].valid && m_prevBeams[1].valid) {
+                const double d00 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                          m_prevBeams[0].cx, m_prevBeams[0].cy);
+                const double d11 = sqDist(results[1].d4.cx, results[1].d4.cy,
+                                          m_prevBeams[1].cx, m_prevBeams[1].cy);
+                const double d01 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                          m_prevBeams[1].cx, m_prevBeams[1].cy);
+                const double d10 = sqDist(results[1].d4.cx, results[1].d4.cy,
+                                          m_prevBeams[0].cx, m_prevBeams[0].cy);
+                const bool useSwapped = (d01 + d10) < (d00 + d11);
+                const double maxJump2 = m_trackingMaxJumpPx * m_trackingMaxJumpPx;
+                const double chosenWorst = useSwapped
+                    ? std::max(d01, d10) : std::max(d00, d11);
+
+                if (chosenWorst > maxJump2) {
+                    // Even the best pairing is implausibly far — prior is
+                    // stale (e.g. a single-beam frame poisoned a slot).
+                    // Don't trust the swap decision; keep detector cy-sort
+                    // and reset prev so next frame re-seeds clean.
+                    std::cout << "[BeamDetect] tracking jump > " << m_trackingMaxJumpPx
+                              << "px (worst=" << std::sqrt(chosenWorst)
+                              << "px) - prior reset, keeping cy-sort"
+                              << std::endl;
+                    m_prevBeams[0].valid = false;
+                    m_prevBeams[1].valid = false;
+                } else {
+                    if (useSwapped) std::swap(results[0], results[1]);
+                    results[0].label = "B0";
+                    results[1].label = "B1";
+                }
+            }
+
+            // Update prev-beam slots from the (possibly re-ordered) results.
+            // For single-result frames, pick the slot whose prior centroid is
+            // closer to the lone candidate so a missed-top frame doesn't
+            // poison slot 0 with the bottom beam's position.
+            std::array<bool, 2> updated = {false, false};
+            if (results.size() >= 2) {
+                for (int i = 0; i < 2; ++i) {
+                    m_prevBeams[i].cx = results[i].d4.cx;
+                    m_prevBeams[i].cy = results[i].d4.cy;
+                    m_prevBeams[i].valid = true;
+                    m_prevBeams[i].staleFrames = 0;
+                    updated[i] = true;
+                }
+            } else if (results.size() == 1) {
+                int targetSlot = 0;
+                if (m_prevBeams[0].valid && m_prevBeams[1].valid) {
+                    const double d0 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                             m_prevBeams[0].cx, m_prevBeams[0].cy);
+                    const double d1 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                             m_prevBeams[1].cx, m_prevBeams[1].cy);
+                    targetSlot = (d1 < d0) ? 1 : 0;
+                } else if (m_prevBeams[1].valid && !m_prevBeams[0].valid) {
+                    targetSlot = 1;
+                }
+                m_prevBeams[targetSlot].cx = results[0].d4.cx;
+                m_prevBeams[targetSlot].cy = results[0].d4.cy;
+                m_prevBeams[targetSlot].valid = true;
+                m_prevBeams[targetSlot].staleFrames = 0;
+                updated[targetSlot] = true;
+            }
+            for (int i = 0; i < 2; ++i) {
+                if (!updated[i] && m_prevBeams[i].valid) {
+                    if (++m_prevBeams[i].staleFrames > m_trackingStaleMax) {
+                        m_prevBeams[i].valid = false;
+                    }
+                }
+            }
 
             // Publish raw results to both stores. m_beamResults feeds the score
             // provider; m_beamDisplayResults feeds the overlay. On a detection
@@ -2392,46 +2850,13 @@ void SwirBeamWindow::StartDetectionThread()
                     m_beamDisplayResults = results;
                 }
 
-                // Push peak intensity into history ring buffers (with outlier rejection).
-                // The chart tracks PK only for both detection modes.
+                // Push peak intensity into history ring buffers.
+                // No outlier rejection — every detected sample goes in as-is.
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
-                    double newCE = static_cast<double>(m_beamResults[bi].peakIntensity);
-
-                    // Outlier rejection: if we have enough history, reject values
-                    // that drop below 50% of the recent median (last 5 samples).
-                    // Force-reset history if rejected too many times consecutively
-                    // (handles exposure/current changes that shift CE baseline).
-                    if (m_ceHistoryCount[idx] >= 5) {
-                        double recent[5];
-                        for (int k = 0; k < 5; ++k) {
-                            int hi = (m_ceHistoryIndex[idx] - 1 - k + CE_HISTORY_SIZE) % CE_HISTORY_SIZE;
-                            recent[k] = m_ceHistory[idx][hi];
-                        }
-                        std::sort(recent, recent + 5);
-                        double median = recent[2];
-
-                        if (median > 1.0 && newCE < median * 0.5) {
-                            ++m_ceRejectCount[idx];
-                            // After 10 consecutive rejections, the baseline has
-                            // genuinely shifted — reset history to accept new data
-                            if (m_ceRejectCount[idx] >= 10) {
-                                m_ceHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
-                                m_eeHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
-                                m_ceHistoryIndex[idx] = 0;
-                                m_ceHistoryCount[idx] = 0;
-                                m_ceRejectCount[idx] = 0;
-                            } else {
-                                continue;  // discard outlier, keep previous data
-                            }
-                        } else {
-                            m_ceRejectCount[idx] = 0;
-                        }
-                    }
-
                     int wi = m_ceHistoryIndex[idx];
-                    m_ceHistory[idx][wi] = newCE;
-                    m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;  // store as %
+                    m_ceHistory[idx][wi] = static_cast<double>(m_beamResults[bi].peakIntensity);
+                    m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;
                     m_ceHistoryIndex[idx] = (wi + 1) % CE_HISTORY_SIZE;
                     if (m_ceHistoryCount[idx] < CE_HISTORY_SIZE) ++m_ceHistoryCount[idx];
                 }

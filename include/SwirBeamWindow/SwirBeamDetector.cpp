@@ -13,9 +13,7 @@
 #include <opencv2/imgproc.hpp>
 
 // Diagnostic logging (disabled by default, uncomment to enable)
-// static int s_bdFrameCounter = 0;
-// static constexpr int BD_LOG_INTERVAL = 150;
-// #define BD_LOG(x) do { if (s_bdFrameCounter == 0) { std::cout << x << std::endl; } } while(0)
+// #define BD_LOG(x) do { std::cout << x << std::endl; } while(0)
 #define BD_LOG(x) do {} while(0)
 
 // ============================================================================
@@ -348,9 +346,28 @@ std::vector<BeamDetectionResult> RunBeamDetection(
         cv::Rect rect(r.x0, r.y0, roiW, roiH);
         cv::Mat roiMat = floatMat(rect);
 
+        // Saturation-aware centroid: zero clipped pixels in a local copy before
+        // moment computation. Saturated pixels otherwise pull the centroid
+        // toward the geometric middle of the clipped patch instead of the true
+        // peak. floatMat is left untouched so EE/CE still see the full ROI.
+        cv::Mat roiForMoments = roiMat;
+        cv::Mat roiMasked;
+        if (config.excludeSaturated) {
+            roiMasked = roiMat.clone();
+            cv::Mat roiGray = grayMat(rect);
+            for (int rr = 0; rr < roiH; ++rr) {
+                const uint8_t* gp = roiGray.ptr<uint8_t>(rr);
+                float* fp = roiMasked.ptr<float>(rr);
+                for (int cc = 0; cc < roiW; ++cc) {
+                    if (gp[cc] >= config.saturationValue) fp[cc] = 0.0f;
+                }
+            }
+            roiForMoments = roiMasked;
+        }
+
         // sqrt for amplitude (d4sigma on amplitude field)
         cv::Mat E;
-        cv::sqrt(roiMat, E);
+        cv::sqrt(roiForMoments, E);
 
         D4SigmaResult d4;
         d4sigma_fast(E, r.x0, r.y0, config.d4sigmaThreshold,
@@ -715,3 +732,236 @@ std::vector<BeamDetectionResult> RunBlobDetection(
 }
 
 #endif // HAS_OPENCV
+
+// ============================================================================
+// RunHalconBeamDetection - HDevelop port using Halcon
+// ============================================================================
+// Algorithm (from beam_swir_overlay.hdev):
+//   1. mean_image  (kernel=51x51) → MeanBg
+//   2. sub_image   (Image - MeanBg, mult=1.0, add=0.0)
+//   3. threshold   (>= NoiseThreshold) → binary region
+//   4. connection  → list of connected components
+//   5. per region: intensity-weighted centroid + D4sigma from 2nd moments
+//      Cx = Σ(I·x)/Σ(I),  Vx = Σ(I·(x-Cx)²)/Σ(I),  D4x = 4·sqrt(Vx)
+// ============================================================================
+
+#if defined(HAS_OPENCV) && defined(HAS_HALCON)
+
+#include <halconcpp/HalconCpp.h>
+
+std::vector<BeamDetectionResult> RunHalconBeamDetection(
+    const uint8_t* grayData, uint32_t width, uint32_t height,
+    const HalconBeamDetectionConfig& config) {
+
+    if (!grayData || width == 0 || height == 0) return {};
+
+    using namespace HalconCpp;
+    int w = static_cast<int>(width);
+    int h = static_cast<int>(height);
+
+    std::vector<BeamDetectionResult> results;
+
+    try {
+        const Hlong W = static_cast<Hlong>(w);
+        const Hlong H = static_cast<Hlong>(h);
+
+        HImage image;
+        image.GenImage1("byte", W, H, static_cast<void*>(const_cast<uint8_t*>(grayData)));
+
+        // 1+2: local-mean background subtract (matches HDevelop mean_image+sub_image).
+        // Skip when bgKernelSize <= 0 to allow A/B testing without bg sub.
+        HImage signalByte;
+        if (config.bgKernelSize > 0) {
+            HImage meanBg;
+            int k = config.bgKernelSize | 1;  // ensure odd
+            // MeanImage signature: (mask_w, mask_h)
+            MeanImage(image, &meanBg, k, k);
+            // SubImage(image1, image2, &result, mult, add) computes mult*(image1-image2)+add
+            // Halcon clips byte results into [0,255] which matches sub_image(...,1,0)+threshold.
+            SubImage(image, meanBg, &signalByte, 1.0, 0.0);
+        } else {
+            signalByte = image;
+        }
+
+        // 3: threshold above noise floor.
+        HRegion bright;
+        Threshold(signalByte, &bright, static_cast<double>(config.noiseThreshold), 255.0);
+
+        // 4: connection + area filter (HDev: only MinBeamArea, no max).
+        HRegion connected;
+        Connection(bright, &connected);
+        HRegion candidates;
+        SelectShape(connected, &candidates, "area", "and",
+                    static_cast<double>(config.minBeamArea),
+                    1.0e9);
+
+        Hlong numCand = candidates.CountObj();
+        if (numCand == 0) return {};
+
+        // Real-valued signal image and coordinate images for moment math.
+        HImage signalReal;
+        ConvertImageType(signalByte, &signalReal, "real");
+        HImage rowImg, colImg;
+        GenImageSurfaceFirstOrder(&rowImg, "real", 1.0, 0.0, 0.0, 0, 0, W, H);
+        GenImageSurfaceFirstOrder(&colImg, "real", 0.0, 1.0, 0.0, 0, 0, W, H);
+
+        struct Cand {
+            BeamDetectionResult res;
+            double intensity;
+        };
+        std::vector<Cand> cands;
+        cands.reserve(static_cast<size_t>(numCand));
+
+        for (Hlong i = 1; i <= numCand; ++i) {
+            HRegion region = candidates.SelectObj(i);
+
+            // First moments over the connected component.
+            HImage sigROI = signalReal.ReduceDomain(region);
+            HImage rowROI = rowImg.ReduceDomain(region);
+            HImage colROI = colImg.ReduceDomain(region);
+
+            HImage wRow = sigROI.MultImage(rowROI, 1.0, 0.0);
+            HImage wCol = sigROI.MultImage(colROI, 1.0, 0.0);
+
+            HTuple devTmp;
+            HTuple meanWR;  Intensity(region, wRow, &meanWR, &devTmp);
+            HTuple meanWC;  Intensity(region, wCol, &meanWC, &devTmp);
+            HTuple meanSig; Intensity(region, sigROI, &meanSig, &devTmp);
+
+            double mSig = meanSig.D();
+            if (std::abs(mSig) < 1e-12) continue;
+
+            double cy = meanWR.D() / mSig;
+            double cx = meanWC.D() / mSig;
+
+            // Second central moments for D4sigma.
+            HImage rowDiff = rowROI.ScaleImage(1.0, -cy);
+            HImage rowDiff2 = rowDiff.MultImage(rowDiff, 1.0, 0.0);
+            HImage wDR2 = sigROI.MultImage(rowDiff2, 1.0, 0.0);
+            HTuple meanWDR2; Intensity(region, wDR2, &meanWDR2, &devTmp);
+
+            HImage colDiff = colROI.ScaleImage(1.0, -cx);
+            HImage colDiff2 = colDiff.MultImage(colDiff, 1.0, 0.0);
+            HImage wDC2 = sigROI.MultImage(colDiff2, 1.0, 0.0);
+            HTuple meanWDC2; Intensity(region, wDC2, &meanWDC2, &devTmp);
+
+            double vy = meanWDR2.D() / mSig;
+            double vx = meanWDC2.D() / mSig;
+            double dy = 4.0 * std::sqrt(std::max(vy, 0.0));
+            double dx = 4.0 * std::sqrt(std::max(vx, 0.0));
+
+            // HDev script doesn't filter on D4sigma or aspect ratio — every
+            // region with area >= MinBeamArea makes it to the output.
+
+            // ROI from D4 * widthFactor around centroid.
+            int hx = static_cast<int>(std::round(dx * config.widthFactor / 2.0));
+            int hy = static_cast<int>(std::round(dy * config.widthFactor / 2.0));
+            int icx = static_cast<int>(std::round(cx));
+            int icy = static_cast<int>(std::round(cy));
+            Roi roi;
+            roi.x0 = std::max(0, icx - hx);
+            roi.y0 = std::max(0, icy - hy);
+            roi.x1 = std::min(w, icx + hx + 1);
+            roi.y1 = std::min(h, icy + hy + 1);
+            if (roi.x1 - roi.x0 < 2 || roi.y1 - roi.y0 < 2) continue;
+
+            BeamDetectionResult res;
+            res.d4.cx = cx;
+            res.d4.cy = cy;
+            res.d4.dx = dx;
+            res.d4.dy = dy;
+            res.d4.roi = roi;
+
+            // Peak intensity, saturation, and energy on raw uint8 within ROI.
+            uint8_t maxPixel = 0;
+            int satPx = 0;
+            double totalE = 0.0;
+            for (int rr = roi.y0; rr < roi.y1; ++rr) {
+                const uint8_t* row = grayData + static_cast<size_t>(rr) * w;
+                for (int cc = roi.x0; cc < roi.x1; ++cc) {
+                    uint8_t v = row[cc];
+                    if (v > maxPixel) maxPixel = v;
+                    if (v >= config.saturationValue) ++satPx;
+                    totalE += static_cast<double>(v);
+                }
+            }
+            res.peakIntensity = maxPixel;
+            res.saturated = (maxPixel >= config.saturationValue);
+            res.saturatedPixelCount = satPx;
+            res.totalEnergy = totalE;
+
+            // Encircled energy in a disk of radius max(dx,dy)/2 (matches existing modes).
+            double r2 = std::pow(std::max(dx, dy) / 2.0, 2);
+            double circleE = 0.0;
+            for (int rr = roi.y0; rr < roi.y1; ++rr) {
+                double ddy = static_cast<double>(rr) - cy;
+                double ddy2 = ddy * ddy;
+                const uint8_t* row = grayData + static_cast<size_t>(rr) * w;
+                for (int cc = roi.x0; cc < roi.x1; ++cc) {
+                    double ddx = static_cast<double>(cc) - cx;
+                    if (ddx * ddx + ddy2 <= r2) {
+                        circleE += static_cast<double>(row[cc]);
+                    }
+                }
+            }
+            res.circleEnergy = circleE;
+            res.encircledEnergy = (totalE > 1e-6) ? (circleE / totalE) : 0.0;
+
+            // 1D profiles at centroid row/col for chart rendering.
+            int centroidRow = std::clamp(icy, roi.y0, roi.y1 - 1);
+            int centroidCol = std::clamp(icx, roi.x0, roi.x1 - 1);
+            res.profileXStart = roi.x0;
+            res.xProfile.resize(static_cast<size_t>(roi.x1 - roi.x0));
+            for (int cc = roi.x0; cc < roi.x1; ++cc) {
+                res.xProfile[cc - roi.x0] = static_cast<double>(grayData[centroidRow * w + cc]);
+            }
+            res.profileYStart = roi.y0;
+            res.yProfile.resize(static_cast<size_t>(roi.y1 - roi.y0));
+            for (int rr = roi.y0; rr < roi.y1; ++rr) {
+                res.yProfile[rr - roi.y0] = static_cast<double>(grayData[rr * w + centroidCol]);
+            }
+
+            cands.push_back({res, totalE});
+        }
+
+        if (cands.empty()) return {};
+
+        // Sort by total intensity descending, take top maxBeams.
+        std::sort(cands.begin(), cands.end(),
+                  [](const Cand& a, const Cand& b) { return a.intensity > b.intensity; });
+        int numBeams = std::min(config.maxBeams, static_cast<int>(cands.size()));
+        cands.resize(numBeams);
+
+        // Then sort top picks by cy ascending so detector output matches the
+        // existing B0=top, B1=bottom convention; the caller's tracking step
+        // re-orders by prior-frame association.
+        std::sort(cands.begin(), cands.end(),
+                  [](const Cand& a, const Cand& b) { return a.res.d4.cy < b.res.d4.cy; });
+
+        const double halfX = static_cast<double>(width) / 2.0;
+        const double halfY = static_cast<double>(height) / 2.0;
+        for (int bi = 0; bi < numBeams; ++bi) {
+            BeamDetectionResult& res = cands[bi].res;
+            res.label = "B" + std::to_string(bi);
+            const bool right = res.d4.cx >= halfX;
+            const bool visualTop = res.d4.cy >= halfY;
+            if (visualTop) {
+                res.gaLabel = right ? config.gaLabels.q1 : config.gaLabels.q2;
+            } else {
+                res.gaLabel = right ? config.gaLabels.q4 : config.gaLabels.q3;
+            }
+            results.push_back(std::move(res));
+        }
+    } catch (HException& e) {
+        std::cerr << "[RunHalconBeamDetection] Halcon exception: "
+                  << e.ErrorMessage().Text() << std::endl;
+        return {};
+    } catch (...) {
+        std::cerr << "[RunHalconBeamDetection] unknown exception" << std::endl;
+        return {};
+    }
+
+    return results;
+}
+
+#endif // HAS_OPENCV && HAS_HALCON

@@ -20,12 +20,28 @@
     "aspectRatioMax": 10.0,
     "roiSizeFactor": 3.0,
     "rejectEdgeClipped": false,
+    "excludeSaturated": true,
     "micronsPerPixel": 0.17,
     "useBlobDetection": false,
+    "tracking": {
+        "enabled": true,
+        "maxJumpPx": 50.0,
+        "staleFrames": 30
+    },
+    "useHalconDetection": false,
+    "halcon": {
+        "bgKernelSize": 51,
+        "noiseThreshold": 20,
+        "minBeamArea": 10,
+        "maxBeams": 2,
+        "widthFactor": 2.5,
+        "saturationValue": 255,
+        "micronsPerPixel": 0.17
+    },
     "gaQuadrantLabels": {
-        "q1": "GA2",
-        "q2": "GA2",
-        "q3": "GA1",
-        "q4": "GA1"
+        "q1": "GA1",
+        "q2": "GA1",
+        "q3": "GA2",
+        "q4": "GA2"
     }
 }

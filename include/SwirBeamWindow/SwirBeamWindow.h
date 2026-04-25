@@ -181,6 +181,10 @@ private:
     // SWIR Head pneumatic
     void OnSwirHeadToggle();
 
+    // Save current frame to disk
+    void OnSaveImage();
+    bool SaveFrameAsPng(const std::wstring& fullPath);
+
     // Beam detection
     void OnBeamDetectToggle();
     void StartDetectionThread();
@@ -311,6 +315,7 @@ private:
     static constexpr int TAG_BEAM_CONFIG = 910;
     static constexpr int TAG_BEAM_OPTIMIZE = 950;
     static constexpr int TAG_BEAM_FOCUS = 960;
+    static constexpr int TAG_SAVE_IMAGE = 970;
     static constexpr int TAG_TEC_25C = 1000;
     static constexpr int TAG_TEC_30C = 1010;
 
@@ -347,7 +352,9 @@ private:
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
     BlobDetectionConfig m_blobConfig;
-    bool m_useBlobDetection = false;  // false=d4sigma, true=blob
+    HalconBeamDetectionConfig m_halconConfig;
+    bool m_useBlobDetection = false;     // false=d4sigma, true=blob
+    bool m_useHalconDetection = false;   // takes precedence over blob/d4sigma when true
 
     // Beam focus optimization (reusable components)
     std::atomic<bool> m_beamFocusRunning{false};
@@ -363,6 +370,31 @@ private:
     std::array<int, 2> m_ceHistoryIndex = {0, 0};     // next write position (shared CE/EE)
     std::array<int, 2> m_ceHistoryCount = {0, 0};     // filled count (shared CE/EE)
     std::array<int, 2> m_ceRejectCount = {0, 0};      // consecutive outlier rejection count
+
+    // Beam ID tracking: associate each frame's candidates to the previous
+    // frame's slots by nearest-neighbor distance, so labels stay stable when
+    // beams cross or one disappears momentarily.
+    struct PrevBeamSlot {
+        bool   valid = false;
+        double cx = 0.0;
+        double cy = 0.0;
+        int    staleFrames = 0;
+    };
+    std::array<PrevBeamSlot, 2> m_prevBeams{};
+    bool   m_trackingEnabled = true;
+    double m_trackingMaxJumpPx = 50.0;
+    int    m_trackingStaleMax = 30;
+
+    // Diagnostic counters for detection-miss logging (throttled console output)
+    int m_detectMissCount = 0;     // consecutive frames where actual < expected
+    int64_t m_detectionInputDrops = 0;  // frames overwritten before detection consumed prev
+
+    // Detection-time histogram (last N samples; periodic mean+p95 log)
+    static constexpr int DETECT_TIMING_SIZE = 100;
+    std::array<double, DETECT_TIMING_SIZE> m_detectTimings{};
+    int m_detectTimingIdx = 0;
+    int m_detectTimingCount = 0;
+    int m_detectStatsCount = 0;
 
     // Display copy of beam results. Identical to m_beamResults when detection
     // succeeds; preserved across frames where detection misses so the overlay
