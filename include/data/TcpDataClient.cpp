@@ -297,11 +297,16 @@ void TcpDataClient::ReconnectThread()
 
 void TcpDataClient::ProcessBuffer(std::string& buffer)
 {
-  if (m_protocolType == TcpProtocolType::Single) {
-    ProcessSingleChannelBuffer(buffer);
-  }
-  else {
-    ProcessMultiChannelBuffer(buffer);
+  switch (m_protocolType) {
+    case TcpProtocolType::Single:
+      ProcessSingleChannelBuffer(buffer);
+      break;
+    case TcpProtocolType::MultiChannel:
+      ProcessMultiChannelBuffer(buffer);
+      break;
+    case TcpProtocolType::RawCsv:
+      ProcessRawCsvBuffer(buffer);
+      break;
   }
 }
 
@@ -460,5 +465,97 @@ void TcpDataClient::NotifyConnection(bool connected)
     catch (const std::exception& e) {
       std::cerr << "[TcpDataClient] Connection callback exception: " << e.what() << std::endl;
     }
+  }
+}
+
+void TcpDataClient::ProcessRawCsvBuffer(std::string& buffer)
+{
+  // Process newline-delimited CSV lines: "val1,val2,val3,...\n"
+  constexpr int MAX_LINES = 1000; // Safety bound: max lines per buffer parse
+  for (int lineCount = 0; lineCount < MAX_LINES; ++lineCount) {
+    size_t pos = buffer.find('\n');
+    if (pos == std::string::npos) {
+      // Incomplete line, wait for more data
+      break;
+    }
+
+    // Extract complete line
+    std::string line = buffer.substr(0, pos);
+    buffer.erase(0, pos + 1);
+
+    // Skip empty lines
+    if (line.empty()) {
+      continue;
+    }
+
+    // Remove trailing carriage return if present (Windows line endings)
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+
+    try {
+      // Split by comma and parse floats
+      std::vector<float> values;
+      std::stringstream ss(line);
+      std::string token;
+
+      while (std::getline(ss, token, ',')) {
+        try {
+          float value = std::stof(token);
+          values.push_back(value);
+        }
+        catch (const std::exception&) {
+          std::cerr << "[TcpDataClient] Failed to parse value: " << token << std::endl;
+        }
+      }
+
+      if (values.empty()) {
+        continue;
+      }
+
+      // Validate channel count if configured
+      if (m_channelCount > 0 && values.size() != m_channelCount) {
+        std::cerr << "[TcpDataClient] RawCsv channel count mismatch. Expected "
+                  << m_channelCount << ", got " << values.size() << std::endl;
+        // Continue anyway, process what we have
+      }
+
+      // Store latest values
+      {
+        std::lock_guard<std::mutex> lock(m_dataMutex);
+        m_latestValues = values;
+      }
+
+      // Capture timestamp ONCE for entire line (all channels share same timestamp)
+      qint64 messageTimestamp = QDateTime::currentMSecsSinceEpoch();
+
+      // Notify callback for each channel with shared timestamp
+      MultiChannelDataCallback callback;
+      {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        callback = m_multiChannelDataCallback;
+      }
+
+      if (callback) {
+        for (size_t i = 0; i < values.size(); ++i) {
+          try {
+            callback(i, values[i], messageTimestamp);
+          }
+          catch (const std::exception& e) {
+            std::cerr << "[TcpDataClient] RawCsv callback exception: "
+                      << e.what() << std::endl;
+          }
+        }
+      }
+    }
+    catch (const std::exception& e) {
+      std::cerr << "[TcpDataClient] Error processing RawCsv line: "
+                << e.what() << std::endl;
+    }
+  }
+
+  // If we exhausted the line count bound, log a warning
+  if (!buffer.empty() && buffer.find('\n') != std::string::npos) {
+    std::cerr << "[TcpDataClient] Loop safety bound reached in ProcessRawCsvBuffer" << std::endl;
   }
 }

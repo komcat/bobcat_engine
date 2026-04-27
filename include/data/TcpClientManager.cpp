@@ -59,7 +59,7 @@ bool TcpClientManager::LoadConfig(const std::string& configPath)
       clientConfig.description = clientJson.value("description", "");
 
       // Load channel configuration based on protocol type
-      if (clientConfig.protocolType == "multi") {
+      if (clientConfig.protocolType == "multi" || clientConfig.protocolType == "raw_csv") {
         if (clientJson.contains("data_channels") && clientJson["data_channels"].is_array()) {
           for (const auto& channel : clientJson["data_channels"]) {
             clientConfig.dataChannels.push_back(channel.get<std::string>());
@@ -113,7 +113,7 @@ bool TcpClientManager::SaveConfig(const std::string& configPath) const
       clientJson["protocol_type"] = managed.config.protocolType;
 
       // Save channel configuration based on protocol type
-      if (managed.config.protocolType == "multi") {
+      if (managed.config.protocolType == "multi" || managed.config.protocolType == "raw_csv") {
         clientJson["data_channels"] = managed.config.dataChannels;
       }
       else {
@@ -195,6 +195,16 @@ bool TcpClientManager::ConnectClient(const std::string& clientId)
     client->SetChannelCount(config.dataChannels.size());
 
     // Set up multi-channel callback with timestamp
+    client->SetMultiChannelDataCallback(
+      [this, id = clientId, channels = config.dataChannels](size_t channelIndex, float value, qint64 timestamp) {
+        OnMultiChannelDataReceived(id, channels, channelIndex, value, timestamp);
+      });
+  }
+  else if (config.protocolType == "raw_csv") {
+    client->SetProtocolType(TcpProtocolType::RawCsv);
+    client->SetChannelCount(config.dataChannels.size());
+
+    // Set up multi-channel callback with timestamp (same as multi, but different protocol)
     client->SetMultiChannelDataCallback(
       [this, id = clientId, channels = config.dataChannels](size_t channelIndex, float value, qint64 timestamp) {
         OnMultiChannelDataReceived(id, channels, channelIndex, value, timestamp);

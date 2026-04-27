@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build System
 
-This is a **CMake-based C++17 Qt6 application** for industrial motion control and automation. Builds with **MSVC (cl.exe)** and **Ninja** on Windows.
+This is a **CMake-based C++17 Qt6 application** for industrial motion control and automation. Builds with **MSVC (cl.exe)** and **Ninja** on **Windows only** (no cross-platform support).
 
 ### Build Commands
 ```bash
@@ -419,6 +419,12 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 - `include/AppUI/AccuracyTrainer/AccuracyTrainerData.h` - Trainer data structures + transform math
 - `include/AppUI/PlacementCorrectionTrainer/PlacementCorrectionData.h` - Placement correction data + angle math
 - `CMakeLists.txt` - Build configuration (source lists, SDK detection, library linking)
+
+## Testing
+
+This is an industrial automation application without a formal test suite. Testing is done via:
+- **Simulation mode** (`x64-debug` preset) - runs without hardware for UI/logic testing
+- **Manual hardware testing** - connects to physical devices
 
 ## Quick Reference
 
