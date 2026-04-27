@@ -15,6 +15,8 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
+#include <ctime>
 #include <nlohmann/json.hpp>
 #include <shellapi.h>
 #include <QSettings>
@@ -153,6 +155,7 @@ void SwirBeamWindow::Destroy()
     if (m_tecPresetFuture.valid()) {
         m_tecPresetFuture.wait();
     }
+    StopAutoSatAlgorithm();
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
@@ -363,7 +366,10 @@ bool SwirBeamWindow::WantsFramesFromCamera(const std::string& cameraId) const
 
 void SwirBeamWindow::OnNewFrame(const CameraFrameData& frameData)
 {
-    if (!m_hwnd || !IsVisible()) return;
+    // Don't gate on IsVisible() — saves and detection still need fresh
+    // frames even when the window is hidden. The display path elsewhere
+    // skips its expensive paint when the window isn't visible.
+    if (!m_hwnd) return;
     {
         std::lock_guard<std::mutex> lock(m_cameraMutex);
         if (!m_targetCameraId.empty() && frameData.cameraId != m_targetCameraId) return;
@@ -387,6 +393,17 @@ void SwirBeamWindow::OnNewFrame(const CameraFrameData& frameData)
             // Luminance from RGB: use green channel as fast approximation
             for (uint32_t i = 0; i < w * h; ++i) {
                 m_detectionBuffer[i] = src[i * channels + 1];
+            }
+        }
+        // Detection-input drop: writing while previous frame still pending
+        // means the detection thread won't see the older frame at all.
+        if (m_detectionReady.load()) {
+            ++m_detectionInputDrops;
+            if ((m_detectionInputDrops % 30) == 0) {
+                std::cout << "[BeamDetect] detection-input drops total="
+                          << m_detectionInputDrops
+                          << " (detection thread can't keep up with frame rate)"
+                          << std::endl;
             }
         }
         m_detectionReady.store(true);
@@ -673,6 +690,7 @@ void SwirBeamWindow::OnPSUToggle()
 
 void SwirBeamWindow::OnCurrentIncrease()
 {
+    DisableAutoSat();
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
@@ -693,6 +711,7 @@ void SwirBeamWindow::OnCurrentIncrease()
 
 void SwirBeamWindow::OnCurrentDecrease()
 {
+    DisableAutoSat();
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
@@ -714,6 +733,7 @@ void SwirBeamWindow::OnCurrentDecrease()
 
 void SwirBeamWindow::OnCurrentIncreaseSmall()
 {
+    DisableAutoSat();
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
@@ -734,6 +754,7 @@ void SwirBeamWindow::OnCurrentIncreaseSmall()
 
 void SwirBeamWindow::OnCurrentDecreaseSmall()
 {
+    DisableAutoSat();
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
@@ -769,6 +790,414 @@ void SwirBeamWindow::OnAutoExposureToggle()
     std::cout << "[SwirBeamWindow] Auto exposure " << (m_autoExposure ? "ON" : "OFF") << std::endl;
 }
 
+// ============================================================================
+// AUTO SAT — one-shot auto-tune & focus algorithm
+// ============================================================================
+//
+// Click "AUTO SAT" → runs on its own worker thread:
+//   Phase 1: tune exposure (20us steps) then PSU current (5mA, both PSUs)
+//            until max(B0_PK, B1_PK) is in [PK_TARGET_LOW, PK_TARGET_HIGH].
+//   Phase 2: sweep gantry-main Z by ±50 um in 10 um steps; best focus is
+//            the Z with maximum peak. If a peak saturates mid-sweep,
+//            jump back to Phase 1 to re-tune, then resume. Converges
+//            when best-Z is interior to the sweep (or after 3 iterations).
+// While running the button label shows "STOP"; clicking it again aborts.
+// Any manual exposure/current change calls StopAutoSatAlgorithm so the
+// user always wins.
+//
+// Default state: OFF.
+
+namespace {
+constexpr int    AS_PK_TARGET_LOW    = 180;   // tune until pk >= this
+constexpr int    AS_PK_TARGET_HIGH   = 250;   // and pk < this (header room before 255)
+constexpr int    AS_PK_SAT           = 254;   // any pixel >= this counts as saturated
+constexpr double AS_EXP_STEP_COARSE  = 20.0;
+constexpr double AS_EXP_STEP_FINE    = 10.0;  // used after the first oscillation
+constexpr int    AS_CUR_STEP_MA      = 5;
+constexpr double AS_EXP_MIN_US       = 30.0;
+constexpr double AS_EXP_MAX_US       = 1000.0;
+constexpr int    AS_CUR_MIN_MA       = 100;
+constexpr int    AS_CUR_MAX_MA       = 200;
+constexpr int    AS_BEAM_POLL_MS     = 250;   // settle after exp/cur change
+constexpr int    AS_TUNE_MAX_ITERS   = 80;
+constexpr double AS_Z_STEP_MM        = 0.010; // 10 um
+constexpr int    AS_Z_HALF_STEPS     = 5;     // ±50 um
+constexpr int    AS_FOCUS_MAX_ITERS  = 3;
+constexpr int    AS_MOTION_SETTLE_MS = 350;
+constexpr double AS_MOTION_VEL_MMS   = 5.0;   // gentle move for focus search
+}
+
+void SwirBeamWindow::OnAutoSatToggle()
+{
+    if (m_autoSatRunning.load()) {
+        // Click while running → abort.
+        StopAutoSatAlgorithm();
+        return;
+    }
+    EnableAutoSatPrevention(true);
+}
+
+void SwirBeamWindow::EnableAutoSatPrevention(bool enable)
+{
+    if (!enable) {
+        StopAutoSatAlgorithm();
+        return;
+    }
+    if (m_autoSatRunning.load()) return;  // already running
+
+    m_autoSatAbort.store(false);
+    m_autoSatRunning.store(true);
+    InvalidatePanel();
+    std::cout << "[AutoSat] starting algorithm" << std::endl;
+
+    // std::async with std::launch::async returns a future that joins in its
+    // destructor — assigning to a member future cancels (= joins) any prior
+    // run, so a quick double-start is safe.
+    m_autoSatFuture = std::async(std::launch::async, [this]() {
+        try {
+            RunAutoSatAlgorithm();
+        } catch (const std::exception& e) {
+            std::cerr << "[AutoSat] exception: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[AutoSat] unknown exception" << std::endl;
+        }
+        m_autoSatRunning.store(false);
+        m_autoSatAbort.store(false);
+        if (m_hwnd) {
+            // Refresh the button label back to "AUTO SAT".
+            InvalidatePanel();
+            PostMessage(m_hwnd, WM_USER + 1, 0, 0);
+        }
+        std::cout << "[AutoSat] done" << std::endl;
+    });
+}
+
+void SwirBeamWindow::StopAutoSatAlgorithm()
+{
+    if (!m_autoSatRunning.load()) return;
+    m_autoSatAbort.store(true);
+    std::cout << "[AutoSat] abort requested" << std::endl;
+    if (m_autoSatFuture.valid()) {
+        m_autoSatFuture.wait();
+    }
+}
+
+void SwirBeamWindow::EnableBeamDetection(bool enable)
+{
+    if (m_beamDetectionEnabled == enable) return;
+    OnBeamDetectToggle();
+}
+
+std::vector<SwirBeamSnapshot> SwirBeamWindow::GetBeamSnapshots() const
+{
+    std::vector<SwirBeamSnapshot> out;
+    // Pick the right calibration source for the active detection mode.
+    const double upp =
+#ifdef HAS_HALCON
+        m_useHalconDetection ? m_halconConfig.micronsPerPixel :
+#endif
+        m_useBlobDetection   ? m_beamConfig.micronsPerPixel
+                             : m_beamConfig.micronsPerPixel;
+
+    std::lock_guard<std::mutex> lock(m_beamMutex);
+    out.reserve(m_beamDisplayResults.size());
+    for (const auto& r : m_beamDisplayResults) {
+        SwirBeamSnapshot s;
+        s.label = r.label;
+        s.gaLabel = r.gaLabel;
+        s.cx_px = r.d4.cx;
+        s.cy_px = r.d4.cy;
+        s.dx_px = r.d4.dx;
+        s.dy_px = r.d4.dy;
+        s.peakIntensity = static_cast<int>(r.peakIntensity);
+        s.encircledEnergy = r.encircledEnergy;
+        s.saturated = r.saturated;
+        s.saturatedPixelCount = r.saturatedPixelCount;
+        s.totalEnergy = r.totalEnergy;
+        s.circleEnergy = r.circleEnergy;
+        s.micronsPerPixel = upp;
+        out.push_back(std::move(s));
+    }
+    return out;
+}
+
+void SwirBeamWindow::DisableAutoSat()
+{
+    StopAutoSatAlgorithm();
+}
+
+// ----------------------------------------------------------------------------
+// Helpers used by the auto-sat algorithm
+// ----------------------------------------------------------------------------
+
+bool SwirBeamWindow::AutoSatIncreaseCurrent(int stepMa)
+{
+    if (!m_psuManager) return false;
+    std::vector<std::string> names;
+    int curMa = 0;
+    int newMa = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        if (m_psuDevices.empty()) return false;
+        curMa = static_cast<int>(std::round(m_psuDevices[0].setCurrent * 1000.0));
+        newMa = curMa + stepMa;
+        if (newMa > AS_CUR_MAX_MA) return false;
+        const double newAmps = newMa / 1000.0;
+        for (auto& d : m_psuDevices) {
+            names.push_back(d.name);
+            d.setCurrent = newAmps;
+        }
+    }
+    const double newAmps = newMa / 1000.0;
+    for (const auto& name : names) {
+        auto psu = m_psuManager->getPowerSupply(name);
+        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
+    }
+    std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA" << std::endl;
+    InvalidatePanel();
+    return true;
+}
+
+bool SwirBeamWindow::AutoSatDecreaseCurrent(int stepMa)
+{
+    if (!m_psuManager) return false;
+    std::vector<std::string> names;
+    int curMa = 0;
+    int newMa = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_psuMutex);
+        if (m_psuDevices.empty()) return false;
+        curMa = static_cast<int>(std::round(m_psuDevices[0].setCurrent * 1000.0));
+        newMa = curMa - stepMa;
+        if (newMa < AS_CUR_MIN_MA) return false;
+        const double newAmps = newMa / 1000.0;
+        for (auto& d : m_psuDevices) {
+            names.push_back(d.name);
+            d.setCurrent = newAmps;
+        }
+    }
+    const double newAmps = newMa / 1000.0;
+    for (const auto& name : names) {
+        auto psu = m_psuManager->getPowerSupply(name);
+        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
+    }
+    std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA" << std::endl;
+    InvalidatePanel();
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// Algorithm
+// ----------------------------------------------------------------------------
+
+void SwirBeamWindow::RunAutoSatAlgorithm()
+{
+    // Make sure detection is running — algorithm is no-op without it.
+    if (!m_beamDetectionEnabled) {
+        EnableBeamDetection(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    }
+
+    // Phase 1: tune brightness.
+    if (!AutoSatTuneExposureCurrent()) {
+        std::cout << "[AutoSat] phase 1 (tune) failed/aborted — stopping" << std::endl;
+        return;
+    }
+    if (m_autoSatAbort.load()) return;
+
+    // Phase 2: focus search.
+    AutoSatFocusSearch();
+}
+
+bool SwirBeamWindow::AutoSatTuneExposureCurrent()
+{
+    // Oscillation handling: when a single 20us step takes us past the band
+    // (e.g. 30us PK=150 → 50us PK=255 → 30us → 50us …), we (a) shrink the
+    // step to 10us; if the camera still can't land us in band, (b) nudge
+    // the PSU current and reset the step back to 20us. Without this the
+    // tuner can loop forever between two exposures that straddle the band.
+    int prevDir = 0;       // -1 = darken, +1 = brighten, 0 = none yet
+    int flipCount = 0;
+    double expStep = AS_EXP_STEP_COARSE;
+
+    for (int iter = 0; iter < AS_TUNE_MAX_ITERS; ++iter) {
+        if (m_autoSatAbort.load()) return false;
+
+        auto snaps = GetBeamSnapshots();
+        if (snaps.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(AS_BEAM_POLL_MS));
+            continue;
+        }
+        int pkMax = 0;
+        for (const auto& s : snaps) {
+            if (s.peakIntensity > pkMax) pkMax = s.peakIntensity;
+        }
+
+        // Decide which direction we want to push.
+        int wantedDir;
+        if (pkMax >= AS_PK_SAT)             wantedDir = -1;    // dim
+        else if (pkMax < AS_PK_TARGET_LOW)  wantedDir = +1;    // brighten
+        else {                                                 // in band
+            std::cout << "[AutoSat] tune: PK=" << pkMax
+                      << " in band, done" << std::endl;
+            return true;
+        }
+
+        // If we just flipped direction we're bracketing across the band.
+        // Refine the step; if already fine, shift the current rail instead.
+        const bool flipped = (prevDir != 0 && wantedDir != prevDir);
+        if (flipped) {
+            ++flipCount;
+            if (expStep > AS_EXP_STEP_FINE + 0.5) {
+                expStep = AS_EXP_STEP_FINE;
+                std::cout << "[AutoSat] tune: oscillation, narrowing step to "
+                          << expStep << " us" << std::endl;
+            } else {
+                // Even 10us straddles the band → bias the current and reset.
+                bool ok = (wantedDir == -1)
+                            ? AutoSatDecreaseCurrent(AS_CUR_STEP_MA)
+                            : AutoSatIncreaseCurrent(AS_CUR_STEP_MA);
+                if (!ok) {
+                    std::cout << "[AutoSat] tune: oscillation at fine step "
+                              << "and current rail — giving up" << std::endl;
+                    return false;
+                }
+                std::cout << "[AutoSat] tune: oscillation at fine step, "
+                          << "current "
+                          << (wantedDir == -1 ? "-" : "+") << AS_CUR_STEP_MA
+                          << " mA, resetting step" << std::endl;
+                expStep = AS_EXP_STEP_COARSE;
+                prevDir = 0;
+                flipCount = 0;
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(AS_BEAM_POLL_MS));
+                continue;
+            }
+        }
+
+        // Apply an exposure step in the wanted direction; if the rail is
+        // already hit, fall back to current adjustment.
+        const double signedStep = wantedDir * expStep;
+        const double targetExp = m_currentExposure + signedStep;
+        const bool railLow  = (wantedDir == -1) && (targetExp < AS_EXP_MIN_US);
+        const bool railHigh = (wantedDir == +1) && (targetExp > AS_EXP_MAX_US);
+
+        if (railLow) {
+            if (!AutoSatDecreaseCurrent(AS_CUR_STEP_MA)) {
+                std::cout << "[AutoSat] tune: cannot dim further (rails)"
+                          << std::endl;
+                return false;
+            }
+            std::cout << "[AutoSat] tune: PK=" << pkMax
+                      << " exposure floored, current -" << AS_CUR_STEP_MA
+                      << " mA" << std::endl;
+        } else if (railHigh) {
+            if (!AutoSatIncreaseCurrent(AS_CUR_STEP_MA)) {
+                std::cout << "[AutoSat] tune: cannot brighten further (rails)"
+                          << std::endl;
+                return false;
+            }
+            std::cout << "[AutoSat] tune: PK=" << pkMax
+                      << " exposure capped, current +" << AS_CUR_STEP_MA
+                      << " mA" << std::endl;
+        } else {
+            std::cout << "[AutoSat] tune: PK=" << pkMax
+                      << (wantedDir < 0 ? " (sat)" : "")
+                      << " -> exposure " << (wantedDir < 0 ? "-" : "+")
+                      << expStep << " us" << std::endl;
+            OnSetExposure(targetExp);
+        }
+
+        prevDir = wantedDir;
+        std::this_thread::sleep_for(std::chrono::milliseconds(AS_BEAM_POLL_MS));
+    }
+    std::cout << "[AutoSat] tune: max iters reached without converging"
+              << std::endl;
+    return false;
+}
+
+void SwirBeamWindow::AutoSatFocusSearch()
+{
+    if (!m_motionManager) {
+        std::cout << "[AutoSat] focus: no motion manager — skipping focus search"
+                  << std::endl;
+        return;
+    }
+
+    PositionStruct startPos = m_motionManager->GetCurrentPosition("gantry-main");
+    double centerZ = startPos.z;
+    std::cout << "[AutoSat] focus: starting at Z=" << centerZ << " mm" << std::endl;
+
+    double bestZ = centerZ;
+    int bestPk = -1;
+
+    for (int iter = 0; iter < AS_FOCUS_MAX_ITERS; ++iter) {
+        if (m_autoSatAbort.load()) return;
+
+        std::vector<std::pair<double, int>> trace;  // (z, pk)
+        for (int k = -AS_Z_HALF_STEPS; k <= AS_Z_HALF_STEPS; ++k) {
+            if (m_autoSatAbort.load()) return;
+            const double z = centerZ + k * AS_Z_STEP_MM;
+            m_motionManager->MoveToAbs("gantry-main",
+                                       startPos.x, startPos.y, z,
+                                       AS_MOTION_VEL_MMS, true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(AS_MOTION_SETTLE_MS));
+
+            auto snaps = GetBeamSnapshots();
+            if (snaps.empty()) continue;
+            int pk = 0;
+            for (const auto& s : snaps) {
+                if (s.peakIntensity > pk) pk = s.peakIntensity;
+            }
+
+            // Saturated mid-sweep → re-tune, then re-read at this z.
+            if (pk >= AS_PK_SAT) {
+                std::cout << "[AutoSat] focus: PK=" << pk
+                          << " saturated at Z=" << z << " — re-tuning" << std::endl;
+                if (!AutoSatTuneExposureCurrent()) return;
+                if (m_autoSatAbort.load()) return;
+                snaps = GetBeamSnapshots();
+                if (snaps.empty()) continue;
+                pk = 0;
+                for (const auto& s : snaps) {
+                    if (s.peakIntensity > pk) pk = s.peakIntensity;
+                }
+            }
+            std::cout << "[AutoSat] focus iter " << iter
+                      << "  Z=" << z << " mm  PK=" << pk << std::endl;
+            trace.emplace_back(z, pk);
+        }
+        if (trace.empty()) {
+            std::cout << "[AutoSat] focus: no readings — stopping" << std::endl;
+            return;
+        }
+
+        auto best = std::max_element(trace.begin(), trace.end(),
+            [](const auto& a, const auto& b) { return a.second < b.second; });
+        bestZ = best->first;
+        bestPk = best->second;
+
+        const bool atEdge = (best == trace.begin() || best == trace.end() - 1);
+        if (!atEdge) {
+            std::cout << "[AutoSat] focus converged at Z=" << bestZ
+                      << " mm (PK=" << bestPk << ")" << std::endl;
+            break;
+        }
+        std::cout << "[AutoSat] focus iter " << iter
+                  << ": best Z is at sweep edge (Z=" << bestZ
+                  << "), shifting and resweeping" << std::endl;
+        centerZ = bestZ;
+    }
+
+    // Move to the best Z.
+    if (m_autoSatAbort.load()) return;
+    m_motionManager->MoveToAbs("gantry-main",
+                               startPos.x, startPos.y, bestZ,
+                               AS_MOTION_VEL_MMS, true);
+    std::cout << "[AutoSat] moved to best focus Z=" << bestZ
+              << " mm (PK=" << bestPk << ")" << std::endl;
+}
+
 void SwirBeamWindow::OnSetExposure(double microseconds)
 {
     if (!m_cameraManager) return;
@@ -786,6 +1215,7 @@ void SwirBeamWindow::OnSetExposure(double microseconds)
 
 void SwirBeamWindow::OnExposureIncrease()
 {
+    DisableAutoSat();
     double newExposure = m_currentExposure + EXPOSURE_STEP_US;
     OnSetExposure(newExposure);
     InvalidatePanel();
@@ -793,6 +1223,7 @@ void SwirBeamWindow::OnExposureIncrease()
 
 void SwirBeamWindow::OnExposureDecrease()
 {
+    DisableAutoSat();
     double newExposure = m_currentExposure - EXPOSURE_STEP_US;
     if (newExposure < 1.0) newExposure = 1.0;
     OnSetExposure(newExposure);
@@ -880,6 +1311,7 @@ void SwirBeamWindow::OnApplyManualExposure()
         GetModuleHandle(nullptr), dlg, m_hwnd, ExpDlgProc, reinterpret_cast<LPARAM>(&newVal));
 
     if (result == IDOK) {
+        DisableAutoSat();
         OnSetExposure(newVal);
         if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
     }
@@ -1020,13 +1452,13 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
         b1.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
         b1.label = presets[i].label;
         double v1 = presets[i].value;
-        b1.onClick = [this, v1]() { OnSetExposure(v1); };
+        b1.onClick = [this, v1]() { DisableAutoSat(); OnSetExposure(v1); };
         m_buttons.push_back(b1);
         SwirButton b2;
         b2.rect = {btnLeft + halfBtnWidth + btnSpacing, y, btnLeft + btnWidth, y + btnHeight};
         b2.label = presets[i + 1].label;
         double v2 = presets[i + 1].value;
-        b2.onClick = [this, v2]() { OnSetExposure(v2); };
+        b2.onClick = [this, v2]() { DisableAutoSat(); OnSetExposure(v2); };
         m_buttons.push_back(b2);
         y += btnHeight + btnSpacing;
     }
@@ -1139,6 +1571,38 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     }
     y += btnHeight + btnSpacing;
 
+    // Row 4: SAVE IMG (raw only) | SAVE PKG (raw + overlay + beams + collage)
+    {
+        SwirButton saveBtn;
+        saveBtn.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
+        saveBtn.label = L"SAVE IMG";
+        saveBtn.tag = TAG_SAVE_IMAGE;
+        saveBtn.onClick = [this]() { OnSaveImage(); };
+        m_buttons.push_back(saveBtn);
+
+        SwirButton savePkgBtn;
+        savePkgBtn.rect = {btnLeft + halfBtnWidth + btnSpacing, y,
+                           btnLeft + btnWidth, y + btnHeight};
+        savePkgBtn.label = L"SAVE PKG";
+        savePkgBtn.tag = TAG_SAVE_PACKAGE;
+        savePkgBtn.onClick = [this]() { OnSaveImagePackage(); };
+        m_buttons.push_back(savePkgBtn);
+    }
+    y += btnHeight + btnSpacing;
+
+    // Row 5: AUTO SAT (full width toggle)
+    {
+        SwirButton autoSatBtn;
+        autoSatBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
+        autoSatBtn.label = m_autoSatRunning.load() ? L"STOP" : L"AUTO SAT";
+        autoSatBtn.tag = TAG_AUTO_SAT;
+        autoSatBtn.isToggle = true;
+        autoSatBtn.toggled = m_autoSatRunning.load();
+        autoSatBtn.onClick = [this]() { OnAutoSatToggle(); };
+        m_buttons.push_back(autoSatBtn);
+    }
+    y += btnHeight + btnSpacing;
+
     y += groupPad;
 
     y += sectionGap;
@@ -1193,7 +1657,8 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
         } else {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? CLR_BTN_HOVER : CLR_BTN_NORMAL);
         }
-    } else if (btn.tag == TAG_AUTO_EXP || btn.tag == TAG_CLICK_TO_MOVE) {
+    } else if (btn.tag == TAG_AUTO_EXP || btn.tag == TAG_CLICK_TO_MOVE
+               || btn.tag == TAG_AUTO_SAT) {
         if (btn.toggled) {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 35, 195, 110) : CLR_BTN_ON);
         } else {
@@ -1463,6 +1928,10 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
         if (btn.tag == TAG_PSU_TOGGLE) btn.toggled = outputOn;
         if (btn.tag == TAG_AUTO_EXP) btn.toggled = m_autoExposure;
         if (btn.tag == TAG_CLICK_TO_MOVE) btn.toggled = m_clickToMoveEnabled;
+        if (btn.tag == TAG_AUTO_SAT) {
+            btn.toggled = m_autoSatRunning.load();
+            btn.label = btn.toggled ? L"STOP" : L"AUTO SAT";
+        }
         if (btn.tag == TAG_SWIR_HEAD) {
             btn.toggled = swirHeadDown;
             btn.label = swirHeadDown ? L"HEAD UP" : L"HEAD DN";
@@ -1540,6 +2009,8 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += btnHeight + btnSpacing;  // Row 1: HEAD | CLICK MOVE | BF
     y += btnHeight + btnSpacing;  // Row 2: MARKER | CLEAR ALL | SET MAG
     y += btnHeight + btnSpacing;  // Row 3: B DETECT | B CONFIG | B OPTIM
+    y += btnHeight + btnSpacing;  // Row 4: SAVE IMG | SAVE PKG
+    y += btnHeight + btnSpacing;  // Row 5: AUTO SAT
     y += groupPad;
 
     RECT toolsGroupRect = { panelRect.left + margin, toolsGroupTop,
@@ -2063,6 +2534,596 @@ void SwirBeamWindow::OnSetMagnification()
     }
 }
 
+// ============================================================================
+// Save Image
+// ============================================================================
+
+namespace {
+struct SaveImageDlgState {
+    bool useTimestamp = true;
+    std::wstring customName;
+};
+
+constexpr WORD ID_RADIO_TIMESTAMP = 201;
+constexpr WORD ID_RADIO_CUSTOM    = 202;
+constexpr WORD ID_EDIT_NAME       = 203;
+}
+
+static INT_PTR CALLBACK SaveImageDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case WM_INITDIALOG: {
+        auto* state = reinterpret_cast<SaveImageDlgState*>(lParam);
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+        CheckRadioButton(hDlg, ID_RADIO_TIMESTAMP, ID_RADIO_CUSTOM, ID_RADIO_TIMESTAMP);
+        EnableWindow(GetDlgItem(hDlg, ID_EDIT_NAME), FALSE);
+        SetFocus(GetDlgItem(hDlg, ID_RADIO_TIMESTAMP));
+        return FALSE;
+    }
+    case WM_COMMAND: {
+        const WORD id = LOWORD(wParam);
+        if (id == ID_RADIO_TIMESTAMP || id == ID_RADIO_CUSTOM) {
+            BOOL custom = (id == ID_RADIO_CUSTOM);
+            EnableWindow(GetDlgItem(hDlg, ID_EDIT_NAME), custom);
+            if (custom) {
+                SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                SendDlgItemMessageW(hDlg, ID_EDIT_NAME, EM_SETSEL, 0, -1);
+            }
+            return TRUE;
+        }
+        if (id == IDOK) {
+            auto* state = reinterpret_cast<SaveImageDlgState*>(GetWindowLongPtr(hDlg, GWLP_USERDATA));
+            BOOL custom = (IsDlgButtonChecked(hDlg, ID_RADIO_CUSTOM) == BST_CHECKED);
+            state->useTimestamp = !custom;
+            if (custom) {
+                wchar_t buf[256] = {};
+                GetDlgItemTextW(hDlg, ID_EDIT_NAME, buf, 256);
+                std::wstring name(buf);
+                // Trim trailing/leading whitespace
+                while (!name.empty() && iswspace(name.back())) name.pop_back();
+                while (!name.empty() && iswspace(name.front())) name.erase(name.begin());
+                if (name.empty()) {
+                    MessageBoxW(hDlg, L"Please enter a file name.", L"Save Image",
+                                MB_OK | MB_ICONWARNING);
+                    SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                    return TRUE;
+                }
+                // Reject path separators and other illegal chars
+                if (name.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos) {
+                    MessageBoxW(hDlg, L"Name contains illegal characters: \\ / : * ? \" < > |",
+                                L"Save Image", MB_OK | MB_ICONWARNING);
+                    SetFocus(GetDlgItem(hDlg, ID_EDIT_NAME));
+                    return TRUE;
+                }
+                state->customName = name;
+            }
+            EndDialog(hDlg, IDOK);
+            return TRUE;
+        }
+        if (id == IDCANCEL) { EndDialog(hDlg, IDCANCEL); return TRUE; }
+        break;
+    }
+    case WM_CLOSE:
+        EndDialog(hDlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void SwirBeamWindow::OnSaveImage()
+{
+    // Confirm a frame is available before showing the dialog
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
+            MessageBoxW(m_hwnd, L"No camera frame available to save.",
+                        L"Save Image", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+    }
+
+    // Build dialog template: title + 2 radio buttons + edit + OK/Cancel = 6 controls
+    alignas(4) BYTE dlgBuf[1024] = {};
+    DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(dlgBuf);
+    dlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
+    dlg->cdit = 6;
+    dlg->cx = 200;
+    dlg->cy = 90;
+
+    WORD* ptr = reinterpret_cast<WORD*>(dlg + 1);
+    *ptr++ = 0;
+    *ptr++ = 0;
+    const wchar_t* title = L"Save SWIR Image";
+    for (const wchar_t* c = title; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+    *ptr++ = 9;
+    const wchar_t* fontName = L"Segoe UI";
+    for (const wchar_t* c = fontName; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+
+    auto addCtrl = [&](DWORD style, short x, short y, short cx, short cy, WORD id,
+                       const wchar_t* cls, const wchar_t* text) {
+        ptr = reinterpret_cast<WORD*>((reinterpret_cast<uintptr_t>(ptr) + 3) & ~3);
+        DLGITEMTEMPLATE* item = reinterpret_cast<DLGITEMTEMPLATE*>(ptr);
+        item->style = WS_CHILD | WS_VISIBLE | style;
+        item->x = x; item->y = y; item->cx = cx; item->cy = cy;
+        item->id = id;
+        ptr = reinterpret_cast<WORD*>(item + 1);
+        for (const wchar_t* c = cls; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        for (const wchar_t* c = text; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        *ptr++ = 0;
+    };
+
+    addCtrl(SS_LEFT, 8, 6, 184, 10, 0xFFFF, L"Static", L"Choose how to name the saved file:");
+    addCtrl(BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 8, 20, 184, 12,
+            ID_RADIO_TIMESTAMP, L"Button", L"Use timestamp (e.g. swir_20260424_153012.png)");
+    addCtrl(BS_AUTORADIOBUTTON | WS_TABSTOP, 8, 36, 184, 12,
+            ID_RADIO_CUSTOM, L"Button", L"Custom name:");
+    addCtrl(ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, 16, 50, 176, 14,
+            ID_EDIT_NAME, L"Edit", L"");
+    addCtrl(BS_DEFPUSHBUTTON | WS_TABSTOP, 78, 70, 50, 16, IDOK, L"Button", L"Save");
+    addCtrl(WS_TABSTOP, 138, 70, 54, 16, IDCANCEL, L"Button", L"Cancel");
+
+    SaveImageDlgState state;
+    INT_PTR result = DialogBoxIndirectParamW(
+        GetModuleHandle(nullptr), dlg, m_hwnd, SaveImageDlgProc,
+        reinterpret_cast<LPARAM>(&state));
+
+    if (result != IDOK) return;
+
+    // Build output filename
+    std::wstring fileName;
+    if (state.useTimestamp) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        wchar_t buf[64];
+        swprintf_s(buf, L"swir_%04u%02u%02u_%02u%02u%02u.png",
+                   st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        fileName = buf;
+    } else {
+        fileName = state.customName;
+        // Append .png if no extension provided
+        size_t dotPos = fileName.find_last_of(L'.');
+        size_t sepPos = fileName.find_last_of(L"\\/");
+        if (dotPos == std::wstring::npos || (sepPos != std::wstring::npos && dotPos < sepPos)) {
+            fileName += L".png";
+        }
+    }
+
+    // Output directory: logs/swir_captures relative to the executable working dir
+    std::filesystem::path outDir = std::filesystem::path("logs") / "swir_captures";
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+    std::filesystem::path outPath = outDir / fileName;
+
+    if (!SaveFrameAsPng(outPath.wstring())) {
+        std::wstring msg = L"Failed to save image to:\n" + outPath.wstring();
+        MessageBoxW(m_hwnd, msg.c_str(), L"Save Image", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::cout << "[SwirBeamWindow] Saved frame to " << outPath.string() << std::endl;
+}
+
+void SwirBeamWindow::OnSaveImagePackage()
+{
+    // Confirm a frame is available before showing the dialog.
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) {
+            MessageBoxW(m_hwnd, L"No camera frame available to save.",
+                        L"Save Image Package", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+    }
+
+    // Reuse the SAVE IMG dialog: same timestamp/custom-name choice, but the
+    // entered text is interpreted as a *prefix* (no extension) instead of a
+    // full filename, and we save 5 PNGs into a single subfolder.
+    alignas(4) BYTE dlgBuf[1024] = {};
+    DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(dlgBuf);
+    dlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
+    dlg->cdit = 6;
+    dlg->cx = 220;
+    dlg->cy = 90;
+
+    WORD* ptr = reinterpret_cast<WORD*>(dlg + 1);
+    *ptr++ = 0;
+    *ptr++ = 0;
+    const wchar_t* title = L"Save Image Package";
+    for (const wchar_t* c = title; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+    *ptr++ = 9;
+    const wchar_t* fontName = L"Segoe UI";
+    for (const wchar_t* c = fontName; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+
+    auto addCtrl = [&](DWORD style, short x, short y, short cx, short cy, WORD id,
+                       const wchar_t* cls, const wchar_t* text) {
+        ptr = reinterpret_cast<WORD*>((reinterpret_cast<uintptr_t>(ptr) + 3) & ~3);
+        DLGITEMTEMPLATE* item = reinterpret_cast<DLGITEMTEMPLATE*>(ptr);
+        item->style = WS_CHILD | WS_VISIBLE | style;
+        item->x = x; item->y = y; item->cx = cx; item->cy = cy;
+        item->id = id;
+        ptr = reinterpret_cast<WORD*>(item + 1);
+        for (const wchar_t* c = cls; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        for (const wchar_t* c = text; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        *ptr++ = 0;
+    };
+
+    addCtrl(SS_LEFT, 8, 6, 204, 10, 0xFFFF, L"Static",
+            L"Saves raw + overlay + B0 + B1 + collage as 5 PNGs.");
+    addCtrl(BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 8, 20, 204, 12,
+            201, L"Button", L"Use timestamp prefix (e.g. swir_20260425_153012)");
+    addCtrl(BS_AUTORADIOBUTTON | WS_TABSTOP, 8, 36, 204, 12,
+            202, L"Button", L"Custom prefix:");
+    addCtrl(ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, 16, 50, 196, 14,
+            203, L"Edit", L"");
+    addCtrl(BS_DEFPUSHBUTTON | WS_TABSTOP, 88, 70, 60, 16, IDOK, L"Button", L"Save All");
+    addCtrl(WS_TABSTOP, 152, 70, 60, 16, IDCANCEL, L"Button", L"Cancel");
+
+    struct PkgState { bool useTimestamp = true; std::wstring customPrefix; };
+    PkgState state;
+
+    auto pkgProc = [](HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) -> INT_PTR {
+        switch (msg) {
+        case WM_INITDIALOG: {
+            SetWindowLongPtr(hDlg, GWLP_USERDATA, static_cast<LONG_PTR>(lParam));
+            CheckRadioButton(hDlg, 201, 202, 201);
+            EnableWindow(GetDlgItem(hDlg, 203), FALSE);
+            SetFocus(GetDlgItem(hDlg, 201));
+            return FALSE;
+        }
+        case WM_COMMAND: {
+            const WORD id = LOWORD(wParam);
+            if (id == 201 || id == 202) {
+                BOOL custom = (id == 202);
+                EnableWindow(GetDlgItem(hDlg, 203), custom);
+                if (custom) {
+                    SetFocus(GetDlgItem(hDlg, 203));
+                    SendDlgItemMessageW(hDlg, 203, EM_SETSEL, 0, -1);
+                }
+                return TRUE;
+            }
+            if (id == IDOK) {
+                auto* st = reinterpret_cast<PkgState*>(GetWindowLongPtr(hDlg, GWLP_USERDATA));
+                BOOL custom = (IsDlgButtonChecked(hDlg, 202) == BST_CHECKED);
+                st->useTimestamp = !custom;
+                if (custom) {
+                    wchar_t buf[256] = {};
+                    GetDlgItemTextW(hDlg, 203, buf, 256);
+                    std::wstring n(buf);
+                    while (!n.empty() && iswspace(n.back())) n.pop_back();
+                    while (!n.empty() && iswspace(n.front())) n.erase(n.begin());
+                    if (n.empty()) {
+                        MessageBoxW(hDlg, L"Please enter a prefix.",
+                                    L"Save Image Package", MB_OK | MB_ICONWARNING);
+                        SetFocus(GetDlgItem(hDlg, 203));
+                        return TRUE;
+                    }
+                    if (n.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos) {
+                        MessageBoxW(hDlg, L"Prefix contains illegal characters: \\ / : * ? \" < > |",
+                                    L"Save Image Package", MB_OK | MB_ICONWARNING);
+                        SetFocus(GetDlgItem(hDlg, 203));
+                        return TRUE;
+                    }
+                    st->customPrefix = n;
+                }
+                EndDialog(hDlg, IDOK);
+                return TRUE;
+            }
+            if (id == IDCANCEL) { EndDialog(hDlg, IDCANCEL); return TRUE; }
+            break;
+        }
+        case WM_CLOSE: EndDialog(hDlg, IDCANCEL); return TRUE;
+        }
+        return FALSE;
+    };
+
+    INT_PTR result = DialogBoxIndirectParamW(
+        GetModuleHandle(nullptr), dlg, m_hwnd, pkgProc,
+        reinterpret_cast<LPARAM>(&state));
+    if (result != IDOK) return;
+
+    // Build prefix.
+    std::wstring prefix;
+    if (state.useTimestamp) {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        wchar_t buf[64];
+        swprintf_s(buf, L"swir_%04u%02u%02u_%02u%02u%02u",
+                   st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        prefix = buf;
+    } else {
+        prefix = state.customPrefix;
+    }
+
+    // Output directory: logs/swir_captures/<prefix>/
+    std::filesystem::path outDir = std::filesystem::path("logs") / "swir_captures" / prefix;
+    std::vector<std::wstring> savedFiles;
+    bool ok = SaveImagePackage(outDir.wstring(), prefix, &savedFiles);
+
+    if (savedFiles.empty()) {
+        MessageBoxW(m_hwnd,
+                    L"Failed to save image package (no files written).",
+                    L"Save Image Package", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::wstring msg = L"Saved " + std::to_wstring(savedFiles.size()) +
+                       L" file(s) to:\n" + outDir.wstring();
+    if (!ok) msg += L"\n\n(Some files failed — see console.)";
+    MessageBoxW(m_hwnd, msg.c_str(), L"Save Image Package",
+                ok ? MB_OK | MB_ICONINFORMATION : MB_OK | MB_ICONWARNING);
+
+    std::cout << "[SwirBeamWindow] Image package saved to " << outDir.string()
+              << " (" << savedFiles.size() << " files)" << std::endl;
+}
+
+bool SwirBeamWindow::SaveFrameAsPng(const std::wstring& fullPath)
+{
+    // Snapshot the BGR frame buffer under the frame mutex so the grab thread
+    // can't reallocate it mid-encode.
+    std::vector<uint8_t> snapshot;
+    uint32_t width = 0, height = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
+        snapshot = m_frameBuffer;  // copy
+        width = m_frameWidth;
+        height = m_frameHeight;
+    }
+
+    // The buffer is bottom-up BGR24. Point GDI+ at the last row with negative
+    // stride to present a top-down view without copying again.
+    const INT stride = static_cast<INT>(width) * 3;
+    BYTE* scan0 = snapshot.data() + static_cast<size_t>(height - 1) * stride;
+    Gdiplus::Bitmap bitmap(static_cast<INT>(width), static_cast<INT>(height),
+                            -stride, PixelFormat24bppRGB, scan0);
+    if (bitmap.GetLastStatus() != Gdiplus::Ok) return false;
+
+    // Find PNG encoder CLSID
+    UINT num = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&num, &size);
+    if (size == 0) return false;
+    std::vector<BYTE> codecBuf(size);
+    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(codecBuf.data());
+    Gdiplus::GetImageEncoders(num, size, codecs);
+    CLSID pngClsid = {};
+    bool found = false;
+    for (UINT i = 0; i < num; ++i) {
+        if (wcscmp(codecs[i].MimeType, L"image/png") == 0) {
+            pngClsid = codecs[i].Clsid;
+            found = true;
+            break;
+        }
+    }
+    if (!found) return false;
+
+    return bitmap.Save(fullPath.c_str(), &pngClsid, nullptr) == Gdiplus::Ok;
+}
+
+// ----------------------------------------------------------------------------
+// Helpers shared by the save APIs
+// ----------------------------------------------------------------------------
+
+namespace {
+
+bool GetPngEncoderClsid(CLSID& out) {
+    UINT num = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&num, &size);
+    if (size == 0) return false;
+    std::vector<BYTE> buf(size);
+    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
+    Gdiplus::GetImageEncoders(num, size, codecs);
+    for (UINT i = 0; i < num; ++i) {
+        if (wcscmp(codecs[i].MimeType, L"image/png") == 0) {
+            out = codecs[i].Clsid;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SavePng(Gdiplus::Bitmap& bmp, const std::wstring& path) {
+    if (bmp.GetLastStatus() != Gdiplus::Ok) return false;
+    CLSID clsid;
+    if (!GetPngEncoderClsid(clsid)) return false;
+    return bmp.Save(path.c_str(), &clsid, nullptr) == Gdiplus::Ok;
+}
+
+}  // anonymous namespace
+
+bool SwirBeamWindow::SaveFrameWithOverlayAsPng(const std::wstring& fullPath)
+{
+    std::vector<uint8_t> frameSnap;
+    uint32_t fw = 0, fh = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
+        frameSnap = m_frameBuffer;
+        fw = m_frameWidth;
+        fh = m_frameHeight;
+    }
+    std::vector<BeamDetectionResult> beamSnap;
+    {
+        std::lock_guard<std::mutex> lock(m_beamMutex);
+        beamSnap = m_beamDisplayResults;
+    }
+
+    // Native-resolution top-down ARGB canvas. Draw the raw frame first, then
+    // call DrawBeamOverlays at identity transform (renderX/Y=0, renderW/H=fw/fh).
+    Gdiplus::Bitmap canvas(static_cast<INT>(fw), static_cast<INT>(fh),
+                           PixelFormat32bppARGB);
+    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
+
+    {
+        Gdiplus::Graphics gfx(&canvas);
+        const INT stride = static_cast<INT>(fw) * 3;
+        BYTE* scan0 = frameSnap.data() + static_cast<size_t>(fh - 1) * stride;
+        Gdiplus::Bitmap rawBmp(static_cast<INT>(fw), static_cast<INT>(fh),
+                                -stride, PixelFormat24bppRGB, scan0);
+        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+        gfx.DrawImage(&rawBmp, 0, 0,
+                      static_cast<INT>(fw), static_cast<INT>(fh));
+
+        if (!beamSnap.empty()) {
+            DrawBeamOverlays(gfx, beamSnap,
+                             0, 0, static_cast<int>(fw), static_cast<int>(fh),
+                             fw, fh,
+                             m_useBlobDetection,
+                             m_useHalconDetection ? m_halconConfig.micronsPerPixel
+                                                  : m_beamConfig.micronsPerPixel);
+        }
+    }
+
+    return SavePng(canvas, fullPath);
+}
+
+bool SwirBeamWindow::SaveBeamCropAsPng(int slotIndex, const std::wstring& fullPath)
+{
+    if (slotIndex < 0 || slotIndex > 1) return false;
+
+    std::vector<uint8_t> frameSnap;
+    uint32_t fw = 0, fh = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
+        frameSnap = m_frameBuffer;
+        fw = m_frameWidth;
+        fh = m_frameHeight;
+    }
+    BeamDetectionResult beam;
+    bool slotHasBeam = false;
+    {
+        std::lock_guard<std::mutex> lock(m_beamMutex);
+        if (static_cast<size_t>(slotIndex) < m_beamDisplayResults.size()) {
+            beam = m_beamDisplayResults[slotIndex];
+            slotHasBeam = true;
+        }
+    }
+    if (!slotHasBeam) return false;
+
+    constexpr int TILE = 200;
+    Gdiplus::Bitmap canvas(TILE, TILE, PixelFormat32bppARGB);
+    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
+    {
+        Gdiplus::Graphics gfx(&canvas);
+        gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        DrawSingleBeamCropTile(gfx, beam, frameSnap.data(), fw, fh,
+                               0, 0, TILE, slotIndex);
+    }
+    return SavePng(canvas, fullPath);
+}
+
+bool SwirBeamWindow::SaveCollageAsPng(const std::wstring& fullPath)
+{
+    std::vector<uint8_t> frameSnap;
+    uint32_t fw = 0, fh = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_frameMutex);
+        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
+        frameSnap = m_frameBuffer;
+        fw = m_frameWidth;
+        fh = m_frameHeight;
+    }
+    std::vector<BeamDetectionResult> beamSnap;
+    {
+        std::lock_guard<std::mutex> lock(m_beamMutex);
+        beamSnap = m_beamDisplayResults;
+    }
+
+    constexpr int TILE = 200;
+    constexpr int MARGIN = 10;
+    constexpr int STRIP_BAND_H = TILE + 2 * MARGIN;  // 220
+    const int rowMinW = 2 * TILE + 3 * MARGIN;       // 430
+
+    const int collageW = std::max<int>(static_cast<int>(fw), rowMinW);
+    const int collageH = static_cast<int>(fh) + STRIP_BAND_H;
+
+    Gdiplus::Bitmap canvas(collageW, collageH, PixelFormat32bppARGB);
+    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
+
+    {
+        Gdiplus::Graphics gfx(&canvas);
+        Gdiplus::SolidBrush bg(Gdiplus::Color(255, 22, 22, 22));
+        gfx.FillRectangle(&bg, 0, 0, collageW, collageH);
+
+        // Top: raw frame at native resolution, left-aligned.
+        const INT stride = static_cast<INT>(fw) * 3;
+        BYTE* scan0 = frameSnap.data() + static_cast<size_t>(fh - 1) * stride;
+        Gdiplus::Bitmap rawBmp(static_cast<INT>(fw), static_cast<INT>(fh),
+                                -stride, PixelFormat24bppRGB, scan0);
+        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+        gfx.DrawImage(&rawBmp, 0, 0,
+                      static_cast<INT>(fw), static_cast<INT>(fh));
+
+        if (!beamSnap.empty()) {
+            DrawBeamOverlays(gfx, beamSnap,
+                             0, 0, static_cast<int>(fw), static_cast<int>(fh),
+                             fw, fh,
+                             m_useBlobDetection,
+                             m_useHalconDetection ? m_halconConfig.micronsPerPixel
+                                                  : m_beamConfig.micronsPerPixel);
+        }
+
+        // Bottom band: 2 tiles, left-anchored to match the live strip layout.
+        RECT stripRect = {
+            0,
+            static_cast<LONG>(fh),
+            collageW,
+            static_cast<LONG>(fh) + STRIP_BAND_H
+        };
+        DrawBeamCropStrip(gfx, beamSnap, frameSnap.data(), fw, fh, stripRect);
+    }
+
+    return SavePng(canvas, fullPath);
+}
+
+bool SwirBeamWindow::SaveImagePackage(const std::wstring& dirPath,
+                                      const std::wstring& namePrefix,
+                                      std::vector<std::wstring>* outFiles)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(fs::path(dirPath), ec);
+
+    auto join = [&](const wchar_t* suffix) {
+        return (fs::path(dirPath) / (namePrefix + suffix)).wstring();
+    };
+
+    auto record = [&](bool ok, const std::wstring& path) {
+        if (ok && outFiles) outFiles->push_back(path);
+    };
+
+    // Raw is the only required artifact — without a frame buffer the rest
+    // can't produce anything either, so we abort early on raw failure.
+    auto rawPath = join(L"_raw.png");
+    bool rawOk = SaveFrameAsPng(rawPath);
+    record(rawOk, rawPath);
+    if (!rawOk) return false;
+
+    // The remaining files are best-effort: missing beam slots, transient
+    // detection misses, etc. shouldn't fail the whole package.
+    auto p = join(L"_overlay.png");
+    record(SaveFrameWithOverlayAsPng(p), p);
+
+    p = join(L"_B0.png");
+    record(SaveBeamCropAsPng(0, p), p);
+
+    p = join(L"_B1.png");
+    record(SaveBeamCropAsPng(1, p), p);
+
+    p = join(L"_collage.png");
+    record(SaveCollageAsPng(p), p);
+
+    return true;
+}
+
 void SwirBeamWindow::SaveMagnification()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
@@ -2169,7 +3230,24 @@ void SwirBeamWindow::LoadBeamConfig()
     if (j.contains("rejectEdgeClipped") && j["rejectEdgeClipped"].is_boolean()) {
         m_beamConfig.rejectEdgeClipped = j["rejectEdgeClipped"].get<bool>();
     }
+    if (j.contains("excludeSaturated") && j["excludeSaturated"].is_boolean()) {
+        m_beamConfig.excludeSaturated = j["excludeSaturated"].get<bool>();
+    }
     getD("micronsPerPixel", m_beamConfig.micronsPerPixel);
+
+    // Beam ID tracking (caller-side, applies to both d4sigma and blob paths)
+    if (j.contains("tracking") && j["tracking"].is_object()) {
+        auto& tj = j["tracking"];
+        if (tj.contains("enabled") && tj["enabled"].is_boolean()) {
+            m_trackingEnabled = tj["enabled"].get<bool>();
+        }
+        if (tj.contains("maxJumpPx") && tj["maxJumpPx"].is_number()) {
+            m_trackingMaxJumpPx = tj["maxJumpPx"].get<double>();
+        }
+        if (tj.contains("staleFrames") && tj["staleFrames"].is_number_integer()) {
+            m_trackingStaleMax = tj["staleFrames"].get<int>();
+        }
+    }
 
     // Quadrant -> GA label mapping (shared between d4sigma and blob modes).
     // Quadrants are in visual orientation (after display Y-flip):
@@ -2212,8 +3290,35 @@ void SwirBeamWindow::LoadBeamConfig()
         getBD("roiPadding", m_blobConfig.roiPadding);
     }
 
+    // Halcon detection config (HDevelop port)
+    if (j.contains("useHalconDetection") && j["useHalconDetection"].is_boolean()) {
+        m_useHalconDetection = j["useHalconDetection"].get<bool>();
+    }
+    if (j.contains("halcon") && j["halcon"].is_object()) {
+        auto& hj = j["halcon"];
+        auto getHI = [&](const char* key, int& out) {
+            if (hj.contains(key) && hj[key].is_number_integer()) out = hj[key].get<int>();
+        };
+        auto getHD = [&](const char* key, double& out) {
+            if (hj.contains(key) && hj[key].is_number()) out = hj[key].get<double>();
+        };
+        getHI("bgKernelSize", m_halconConfig.bgKernelSize);
+        getHI("noiseThreshold", m_halconConfig.noiseThreshold);
+        getHI("minBeamArea", m_halconConfig.minBeamArea);
+        getHI("maxBeams", m_halconConfig.maxBeams);
+        getHD("widthFactor", m_halconConfig.widthFactor);
+        if (hj.contains("saturationValue") && hj["saturationValue"].is_number_integer()) {
+            m_halconConfig.saturationValue = static_cast<uint8_t>(hj["saturationValue"].get<int>());
+        }
+        getHD("micronsPerPixel", m_halconConfig.micronsPerPixel);
+    }
+    // Halcon shares the GA quadrant labels with the d4sigma path.
+    m_halconConfig.gaLabels = m_beamConfig.gaLabels;
+
+    const char* modeStr = m_useHalconDetection ? "halcon"
+                          : (m_useBlobDetection ? "blob" : "d4sigma");
     std::cout << "[SwirBeamWindow] Beam config loaded from " << path
-              << " (mode: " << (m_useBlobDetection ? "blob" : "d4sigma") << ")" << std::endl;
+              << " (mode: " << modeStr << ")" << std::endl;
 }
 
 void SwirBeamWindow::SaveBeamConfig()
@@ -2236,7 +3341,14 @@ void SwirBeamWindow::SaveBeamConfig()
     j["aspectRatioMax"] = m_beamConfig.aspectRatioMax;
     j["roiSizeFactor"] = m_beamConfig.roiSizeFactor;
     j["rejectEdgeClipped"] = m_beamConfig.rejectEdgeClipped;
+    j["excludeSaturated"] = m_beamConfig.excludeSaturated;
     j["micronsPerPixel"] = m_beamConfig.micronsPerPixel;
+
+    j["tracking"] = {
+        {"enabled", m_trackingEnabled},
+        {"maxJumpPx", m_trackingMaxJumpPx},
+        {"staleFrames", m_trackingStaleMax}
+    };
 
     j["gaQuadrantLabels"] = {
         {"q1", m_beamConfig.gaLabels.q1},
@@ -2256,6 +3368,18 @@ void SwirBeamWindow::SaveBeamConfig()
         {"minBlobArea", m_blobConfig.minBlobArea},
         {"maxBlobArea", m_blobConfig.maxBlobArea},
         {"roiPadding", m_blobConfig.roiPadding}
+    };
+
+    // Halcon detection config (HDevelop port)
+    j["useHalconDetection"] = m_useHalconDetection;
+    j["halcon"] = {
+        {"bgKernelSize", m_halconConfig.bgKernelSize},
+        {"noiseThreshold", m_halconConfig.noiseThreshold},
+        {"minBeamArea", m_halconConfig.minBeamArea},
+        {"maxBeams", m_halconConfig.maxBeams},
+        {"widthFactor", m_halconConfig.widthFactor},
+        {"saturationValue", static_cast<int>(m_halconConfig.saturationValue)},
+        {"micronsPerPixel", m_halconConfig.micronsPerPixel}
     };
 
     std::ofstream ofs("config/beam_detection.local.json");
@@ -2343,7 +3467,9 @@ void SwirBeamWindow::StartDetectionThread()
         m_ceHistoryIndex[i] = 0;
         m_ceHistoryCount[i] = 0;
         m_ceRejectCount[i] = 0;
+        m_prevBeams[i] = PrevBeamSlot{};
     }
+    m_detectMissCount = 0;
 
     m_detectionThread = std::thread([this]() {
 #ifdef HAS_OPENCV
@@ -2376,10 +3502,138 @@ void SwirBeamWindow::StartDetectionThread()
 
             if (localBuffer.empty() || localW == 0 || localH == 0) continue;
 
-            // Run detection on single frame (raw, no averaging)
-            auto results = m_useBlobDetection
-                ? RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig)
-                : RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            // Run detection on single frame (raw, no averaging).
+            // Mode priority: Halcon > Blob > D4sigma (toggled via JSON config).
+            std::vector<BeamDetectionResult> results;
+            const auto detectStart = std::chrono::steady_clock::now();
+#ifdef HAS_HALCON
+            if (m_useHalconDetection) {
+                results = RunHalconBeamDetection(localBuffer.data(), localW, localH, m_halconConfig);
+            } else
+#endif
+            if (m_useBlobDetection) {
+                results = RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig);
+            } else {
+                results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+            }
+            const double detectMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - detectStart).count();
+
+            // Histogram: keep last DETECT_TIMING_SIZE timings, log mean+p95 every 100.
+            m_detectTimings[m_detectTimingIdx] = detectMs;
+            m_detectTimingIdx = (m_detectTimingIdx + 1) % DETECT_TIMING_SIZE;
+            if (m_detectTimingCount < DETECT_TIMING_SIZE) ++m_detectTimingCount;
+            if (++m_detectStatsCount >= 100 && m_detectTimingCount > 0) {
+                m_detectStatsCount = 0;
+                std::vector<double> sorted(m_detectTimings.begin(),
+                                           m_detectTimings.begin() + m_detectTimingCount);
+                std::sort(sorted.begin(), sorted.end());
+                double sum = 0.0;
+                for (double v : sorted) sum += v;
+                double mean = sum / sorted.size();
+                size_t p95idx = static_cast<size_t>(sorted.size() * 0.95);
+                if (p95idx >= sorted.size()) p95idx = sorted.size() - 1;
+                std::cout << "[BeamDetect] detect-time mean=" << std::fixed
+                          << std::setprecision(1) << mean
+                          << "ms  p95=" << sorted[p95idx]
+                          << "ms  max=" << sorted.back()
+                          << "ms  (n=" << sorted.size() << ")"
+                          << std::endl;
+            }
+
+            // Miss tracking (counter retained for stats; per-frame "miss x1"
+            // and "recovered after N" lines are intentionally not logged
+            // — they were too chatty in normal operation).
+            {
+                int expected = m_useHalconDetection ? m_halconConfig.maxBeams
+                             : m_useBlobDetection   ? m_blobConfig.maxBeams
+                                                    : m_beamConfig.maxBeams;
+                int actual = static_cast<int>(results.size());
+                if (actual < expected) ++m_detectMissCount;
+                else if (m_detectMissCount > 0) m_detectMissCount = 0;
+            }
+
+            // Beam ID tracking: re-order `results` so slot 0 / slot 1 keep
+            // following the same physical beam across frames. Detector returns
+            // candidates cy-sorted; the caller decides which slot each one
+            // occupies based on prior-frame centroids. Single-result frames
+            // skip the reorder and stay in slot 0 — preserving the existing
+            // index==slot invariant the CE/EE history loop depends on.
+            auto sqDist = [](double ax, double ay, double bx, double by) {
+                double dx = ax - bx, dy = ay - by;
+                return dx * dx + dy * dy;
+            };
+
+            if (m_trackingEnabled && results.size() >= 2 &&
+                m_prevBeams[0].valid && m_prevBeams[1].valid) {
+                const double d00 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                          m_prevBeams[0].cx, m_prevBeams[0].cy);
+                const double d11 = sqDist(results[1].d4.cx, results[1].d4.cy,
+                                          m_prevBeams[1].cx, m_prevBeams[1].cy);
+                const double d01 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                          m_prevBeams[1].cx, m_prevBeams[1].cy);
+                const double d10 = sqDist(results[1].d4.cx, results[1].d4.cy,
+                                          m_prevBeams[0].cx, m_prevBeams[0].cy);
+                const bool useSwapped = (d01 + d10) < (d00 + d11);
+                const double maxJump2 = m_trackingMaxJumpPx * m_trackingMaxJumpPx;
+                const double chosenWorst = useSwapped
+                    ? std::max(d01, d10) : std::max(d00, d11);
+
+                if (chosenWorst > maxJump2) {
+                    // Even the best pairing is implausibly far — prior is
+                    // stale (e.g. a single-beam frame poisoned a slot).
+                    // Don't trust the swap decision; keep detector cy-sort
+                    // and reset prev so next frame re-seeds clean.
+                    std::cout << "[BeamDetect] tracking jump > " << m_trackingMaxJumpPx
+                              << "px (worst=" << std::sqrt(chosenWorst)
+                              << "px) - prior reset, keeping cy-sort"
+                              << std::endl;
+                    m_prevBeams[0].valid = false;
+                    m_prevBeams[1].valid = false;
+                } else {
+                    if (useSwapped) std::swap(results[0], results[1]);
+                    results[0].label = "B0";
+                    results[1].label = "B1";
+                }
+            }
+
+            // Update prev-beam slots from the (possibly re-ordered) results.
+            // For single-result frames, pick the slot whose prior centroid is
+            // closer to the lone candidate so a missed-top frame doesn't
+            // poison slot 0 with the bottom beam's position.
+            std::array<bool, 2> updated = {false, false};
+            if (results.size() >= 2) {
+                for (int i = 0; i < 2; ++i) {
+                    m_prevBeams[i].cx = results[i].d4.cx;
+                    m_prevBeams[i].cy = results[i].d4.cy;
+                    m_prevBeams[i].valid = true;
+                    m_prevBeams[i].staleFrames = 0;
+                    updated[i] = true;
+                }
+            } else if (results.size() == 1) {
+                int targetSlot = 0;
+                if (m_prevBeams[0].valid && m_prevBeams[1].valid) {
+                    const double d0 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                             m_prevBeams[0].cx, m_prevBeams[0].cy);
+                    const double d1 = sqDist(results[0].d4.cx, results[0].d4.cy,
+                                             m_prevBeams[1].cx, m_prevBeams[1].cy);
+                    targetSlot = (d1 < d0) ? 1 : 0;
+                } else if (m_prevBeams[1].valid && !m_prevBeams[0].valid) {
+                    targetSlot = 1;
+                }
+                m_prevBeams[targetSlot].cx = results[0].d4.cx;
+                m_prevBeams[targetSlot].cy = results[0].d4.cy;
+                m_prevBeams[targetSlot].valid = true;
+                m_prevBeams[targetSlot].staleFrames = 0;
+                updated[targetSlot] = true;
+            }
+            for (int i = 0; i < 2; ++i) {
+                if (!updated[i] && m_prevBeams[i].valid) {
+                    if (++m_prevBeams[i].staleFrames > m_trackingStaleMax) {
+                        m_prevBeams[i].valid = false;
+                    }
+                }
+            }
 
             // Publish raw results to both stores. m_beamResults feeds the score
             // provider; m_beamDisplayResults feeds the overlay. On a detection
@@ -2392,46 +3646,13 @@ void SwirBeamWindow::StartDetectionThread()
                     m_beamDisplayResults = results;
                 }
 
-                // Push peak intensity into history ring buffers (with outlier rejection).
-                // The chart tracks PK only for both detection modes.
+                // Push peak intensity into history ring buffers.
+                // No outlier rejection — every detected sample goes in as-is.
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
-                    double newCE = static_cast<double>(m_beamResults[bi].peakIntensity);
-
-                    // Outlier rejection: if we have enough history, reject values
-                    // that drop below 50% of the recent median (last 5 samples).
-                    // Force-reset history if rejected too many times consecutively
-                    // (handles exposure/current changes that shift CE baseline).
-                    if (m_ceHistoryCount[idx] >= 5) {
-                        double recent[5];
-                        for (int k = 0; k < 5; ++k) {
-                            int hi = (m_ceHistoryIndex[idx] - 1 - k + CE_HISTORY_SIZE) % CE_HISTORY_SIZE;
-                            recent[k] = m_ceHistory[idx][hi];
-                        }
-                        std::sort(recent, recent + 5);
-                        double median = recent[2];
-
-                        if (median > 1.0 && newCE < median * 0.5) {
-                            ++m_ceRejectCount[idx];
-                            // After 10 consecutive rejections, the baseline has
-                            // genuinely shifted — reset history to accept new data
-                            if (m_ceRejectCount[idx] >= 10) {
-                                m_ceHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
-                                m_eeHistory[idx].assign(CE_HISTORY_SIZE, 0.0);
-                                m_ceHistoryIndex[idx] = 0;
-                                m_ceHistoryCount[idx] = 0;
-                                m_ceRejectCount[idx] = 0;
-                            } else {
-                                continue;  // discard outlier, keep previous data
-                            }
-                        } else {
-                            m_ceRejectCount[idx] = 0;
-                        }
-                    }
-
                     int wi = m_ceHistoryIndex[idx];
-                    m_ceHistory[idx][wi] = newCE;
-                    m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;  // store as %
+                    m_ceHistory[idx][wi] = static_cast<double>(m_beamResults[bi].peakIntensity);
+                    m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;
                     m_ceHistoryIndex[idx] = (wi + 1) % CE_HISTORY_SIZE;
                     if (m_ceHistoryCount[idx] < CE_HISTORY_SIZE) ++m_ceHistoryCount[idx];
                 }
@@ -2444,16 +3665,9 @@ void SwirBeamWindow::StartDetectionThread()
                 m_beamResultBroker->Publish(m_beamResults);
             }
 
-            // Auto-adjust exposure/current to avoid saturation or dim beams
-            // Disabled for now — causes lag and jumpy behavior
-            // {
-            //     std::vector<BeamDetectionResult> resultsCopy;
-            //     {
-            //         std::lock_guard<std::mutex> lock(m_beamMutex);
-            //         resultsCopy = m_beamResults;
-            //     }
-            //     CheckAndAdjustSaturation(resultsCopy);
-            // }
+            // AUTO SAT now runs as a one-shot algorithm on its own
+            // worker thread (see RunAutoSatAlgorithm); the detection
+            // thread no longer drives any auto-tuning.
 
             // Request repaint
             if (m_hwnd) {
@@ -2473,193 +3687,7 @@ void SwirBeamWindow::StopDetectionThread()
     }
 }
 
-// ============================================================================
-// Beam Saturation Auto-Adjust
-// ============================================================================
-
-void SwirBeamWindow::CheckAndAdjustSaturation(const std::vector<BeamDetectionResult>& results)
-{
-    if (results.empty() || !m_cameraManager) return;
-
-    // Cooldown: wait at least 1 second between adjustments
-    auto now = std::chrono::steady_clock::now();
-    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - m_lastSatAdjustTime).count();
-    if (elapsedMs < 1000) return;
-
-    // Classify each beam as saturated, dim, or OK
-    struct BeamIssue {
-        int beamIdx;
-        std::string gaLabel;
-        bool saturated;
-        bool dim;
-    };
-    std::vector<BeamIssue> issues;
-    bool anySaturated = false;
-    bool anyDim = false;
-
-    for (size_t i = 0; i < results.size(); ++i) {
-        bool sat = results[i].saturated;
-        bool dim = (results[i].peakIntensity < SAT_MIN_INTENSITY);
-        if (sat || dim) {
-            issues.push_back({static_cast<int>(i), results[i].gaLabel, sat, dim});
-            if (sat) anySaturated = true;
-            if (dim) anyDim = true;
-        }
-    }
-
-    if (!anySaturated && !anyDim) return;  // all beams are fine
-
-    // --- helpers for per-beam PSU current adjustment ---
-
-    // Find PSU device index whose name contains the GA label (e.g. "GA1" or "GA2")
-    auto findPSUByGA = [this](const std::string& gaLabel) -> int {
-        if (gaLabel.empty()) return -1;
-        std::lock_guard<std::mutex> lock(m_psuMutex);
-        for (size_t i = 0; i < m_psuDevices.size(); ++i) {
-            if (m_psuDevices[i].name.find(gaLabel) != std::string::npos) {
-                return static_cast<int>(i);
-            }
-        }
-        return -1;
-    };
-
-    auto getPSUCurrent = [this](int psuIdx) -> double {
-        std::lock_guard<std::mutex> lock(m_psuMutex);
-        if (psuIdx >= 0 && psuIdx < static_cast<int>(m_psuDevices.size())) {
-            return m_psuDevices[psuIdx].setCurrent;
-        }
-        return -1.0;
-    };
-
-    auto setPSUCurrent = [this](int psuIdx, double currentA) {
-        if (!m_psuManager) return;
-        std::string devName;
-        {
-            std::lock_guard<std::mutex> lock(m_psuMutex);
-            if (psuIdx < 0 || psuIdx >= static_cast<int>(m_psuDevices.size())) return;
-            auto& dev = m_psuDevices[psuIdx];
-            dev.setCurrent = currentA;
-            devName = dev.name;
-        }
-        auto psu = m_psuManager->getPowerSupply(devName);
-        if (psu && psu->isConnected()) {
-            psu->setCurrent(currentA, 1);
-            std::cout << "[SatAdjust] " << devName << " current -> "
-                      << (currentA * 1000.0) << " mA" << std::endl;
-        }
-    };
-
-    // --- helper to set camera exposure from detection thread ---
-    auto setExposure = [this](double us) {
-        std::string camId = GetTargetCamera();
-        auto settings = m_cameraManager->GetExposureSettings(camId);
-        settings.exposure_time = us;
-        settings.auto_exposure = false;
-        settings.auto_gain = false;
-        m_autoExposure = false;
-        m_currentExposure = us;
-        m_cameraManager->ApplyExposureSettings(camId, settings);
-    };
-
-    double curExp = m_currentExposure;
-
-    // ------------------------------------------------------------------
-    // Conflict: some beams saturated AND some beams dim simultaneously
-    // → cannot adjust shared exposure, adjust per-beam current only
-    // ------------------------------------------------------------------
-    if (anySaturated && anyDim) {
-        for (const auto& issue : issues) {
-            int psuIdx = findPSUByGA(issue.gaLabel);
-            if (psuIdx < 0) continue;
-            double cur = getPSUCurrent(psuIdx);
-            if (cur < 0.0) continue;
-
-            if (issue.saturated) {
-                double next = cur - SAT_CURRENT_STEP;
-                if (next >= SAT_CURRENT_MIN) {
-                    setPSUCurrent(psuIdx, next);
-                }
-            } else if (issue.dim) {
-                double next = cur + SAT_CURRENT_STEP;
-                if (next <= SAT_CURRENT_MAX) {
-                    setPSUCurrent(psuIdx, next);
-                }
-            }
-        }
-        m_lastSatAdjustTime = now;
-        InvalidatePanel();
-        return;
-    }
-
-    // ------------------------------------------------------------------
-    // Saturated beams: reduce exposure first, then per-beam current
-    // ------------------------------------------------------------------
-    if (anySaturated) {
-        if (curExp > SAT_EXPOSURE_MAX) {
-            // Way above operating range → snap to start value
-            setExposure(SAT_EXPOSURE_START);
-            std::cout << "[SatAdjust] Exposure -> " << SAT_EXPOSURE_START
-                      << " us (snap from " << curExp << " us)" << std::endl;
-        } else if (curExp > SAT_EXPOSURE_MIN) {
-            double next = curExp - SAT_EXPOSURE_STEP;
-            if (next < SAT_EXPOSURE_MIN) next = SAT_EXPOSURE_MIN;
-            setExposure(next);
-            std::cout << "[SatAdjust] Exposure -> " << next
-                      << " us (reduce for saturation)" << std::endl;
-        } else {
-            // Exposure already at minimum → reduce current for saturated beam(s)
-            for (const auto& issue : issues) {
-                if (!issue.saturated) continue;
-                int psuIdx = findPSUByGA(issue.gaLabel);
-                if (psuIdx < 0) continue;
-                double cur = getPSUCurrent(psuIdx);
-                if (cur < 0.0) continue;
-                double next = cur - SAT_CURRENT_STEP;
-                if (next >= SAT_CURRENT_MIN) {
-                    setPSUCurrent(psuIdx, next);
-                }
-            }
-        }
-        m_lastSatAdjustTime = now;
-        InvalidatePanel();
-        return;
-    }
-
-    // ------------------------------------------------------------------
-    // Dim beams (peak < 75): increase exposure first, then per-beam current
-    // ------------------------------------------------------------------
-    if (anyDim) {
-        if (curExp < SAT_EXPOSURE_MIN) {
-            // Below operating range → snap to start value
-            setExposure(SAT_EXPOSURE_START);
-            std::cout << "[SatAdjust] Exposure -> " << SAT_EXPOSURE_START
-                      << " us (snap from " << curExp << " us)" << std::endl;
-        } else if (curExp < SAT_EXPOSURE_MAX) {
-            double next = curExp + SAT_EXPOSURE_STEP;
-            if (next > SAT_EXPOSURE_MAX) next = SAT_EXPOSURE_MAX;
-            setExposure(next);
-            std::cout << "[SatAdjust] Exposure -> " << next
-                      << " us (increase for dim beam)" << std::endl;
-        } else {
-            // Exposure already at maximum → increase current for dim beam(s)
-            for (const auto& issue : issues) {
-                if (!issue.dim) continue;
-                int psuIdx = findPSUByGA(issue.gaLabel);
-                if (psuIdx < 0) continue;
-                double cur = getPSUCurrent(psuIdx);
-                if (cur < 0.0) continue;
-                double next = cur + SAT_CURRENT_STEP;
-                if (next <= SAT_CURRENT_MAX) {
-                    setPSUCurrent(psuIdx, next);
-                }
-            }
-        }
-        m_lastSatAdjustTime = now;
-        InvalidatePanel();
-        return;
-    }
-}
+// (legacy CheckAndAdjustSaturation removed; replaced by RunAutoSatAlgorithm.)
 
 // ============================================================================
 // Beam Optimization (placeholder)
@@ -2859,12 +3887,46 @@ void SwirBeamWindow::OnPaint()
         int panelW = static_cast<int>(totalWidth * PANEL_RATIO);
         if (panelW < 180) panelW = 180;
 
+        // Bottom strip carve-out: only when beam detection is on AND there's
+        // enough vertical room to leave a usable image area above it.
+        constexpr int STRIP_HEIGHT = 220;
+        constexpr int MIN_IMAGE_HEIGHT = 250;
+        const bool drawStrip = m_beamDetectionEnabled &&
+                               (totalHeight - STRIP_HEIGHT) >= MIN_IMAGE_HEIGHT;
+        const int imageBottom = drawStrip ? (totalHeight - STRIP_HEIGHT) : totalHeight;
+
         RECT panelRect = {0, 0, panelW, totalHeight};
-        RECT imageRect = {panelW, 0, totalWidth, totalHeight};
+        RECT imageRect = {panelW, 0, totalWidth, imageBottom};
+        RECT stripRect = {panelW, imageBottom, totalWidth, totalHeight};
 
         RebuildButtons(panelRect);
         RenderFrame(m_memDC, imageRect);
         DrawOverlays(m_memDC);
+
+        // Bottom-strip beam crop tiles
+        if (drawStrip) {
+            Gdiplus::Graphics gfx(m_memDC);
+            gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            Gdiplus::SolidBrush stripBg(Gdiplus::Color(255, 22, 22, 22));
+            gfx.FillRectangle(&stripBg,
+                              static_cast<INT>(stripRect.left),
+                              static_cast<INT>(stripRect.top),
+                              static_cast<INT>(stripRect.right - stripRect.left),
+                              static_cast<INT>(stripRect.bottom - stripRect.top));
+
+            std::vector<BeamDetectionResult> resultsCopy;
+            {
+                std::lock_guard<std::mutex> bLock(m_beamMutex);
+                resultsCopy = m_beamDisplayResults;
+            }
+            std::lock_guard<std::mutex> fLock(m_frameMutex);
+            if (!m_frameBuffer.empty()) {
+                DrawBeamCropStrip(gfx, resultsCopy,
+                                  m_frameBuffer.data(),
+                                  m_frameWidth, m_frameHeight,
+                                  stripRect);
+            }
+        }
 
         // Panel cache: only re-render control panel when state changes (dirty flag)
         {

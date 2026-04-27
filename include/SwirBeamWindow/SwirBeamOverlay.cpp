@@ -535,3 +535,199 @@ void DrawBeamMagnifiers(Gdiplus::Graphics& gfx,
         gfx.DrawLine(&crossPen, cx, cy - 8.0f, cx, cy + 8.0f);
     }
 }
+
+// ============================================================================
+// Beam crop tiles (heatmap-coloured close-ups, aspect-preserving fit)
+// ============================================================================
+
+namespace {
+
+// Jet-style heatmap LUT (blue -> cyan -> green -> yellow -> red),
+// matches the HDevelop script's 'temperature' display style.
+// Indexed by gray value [0..255]; entries are {B, G, R}.
+const uint8_t* HeatLut() {
+    static uint8_t HEAT_LUT[256][3];
+    static bool s_ready = false;
+    if (!s_ready) {
+        auto clamp01 = [](float v) {
+            return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+        };
+        for (int i = 0; i < 256; ++i) {
+            float v = i / 255.0f;
+            float r, g, b;
+            if (v < 0.125f) {              // dark blue -> blue
+                r = 0.0f; g = 0.0f; b = 0.5f + v * 4.0f;
+            } else if (v < 0.375f) {       // blue -> cyan
+                r = 0.0f; g = (v - 0.125f) * 4.0f; b = 1.0f;
+            } else if (v < 0.625f) {       // cyan -> yellow
+                r = (v - 0.375f) * 4.0f; g = 1.0f; b = 1.0f - (v - 0.375f) * 4.0f;
+            } else if (v < 0.875f) {       // yellow -> red
+                r = 1.0f; g = 1.0f - (v - 0.625f) * 4.0f; b = 0.0f;
+            } else {                        // red -> dark red
+                r = 1.0f - (v - 0.875f) * 2.0f; g = 0.0f; b = 0.0f;
+            }
+            HEAT_LUT[i][0] = static_cast<uint8_t>(clamp01(b) * 255.0f);
+            HEAT_LUT[i][1] = static_cast<uint8_t>(clamp01(g) * 255.0f);
+            HEAT_LUT[i][2] = static_cast<uint8_t>(clamp01(r) * 255.0f);
+        }
+        s_ready = true;
+    }
+    return &HEAT_LUT[0][0];
+}
+
+}  // anonymous namespace
+
+void DrawSingleBeamCropTile(Gdiplus::Graphics& gfx,
+                            const BeamDetectionResult& beam,
+                            const uint8_t* frameData,
+                            uint32_t frameW, uint32_t frameH,
+                            int dstX, int dstY, int tileSize,
+                            int slotIndex) {
+    if (tileSize < 8) return;
+
+    // Re-usable thumbnail buffer. Per-call allocation isn't on the hot path.
+    std::vector<uint8_t> tileBuf(static_cast<size_t>(tileSize) * tileSize * 4);
+
+    static Gdiplus::SolidBrush placeholderBrush(Gdiplus::Color(255, 35, 35, 35));
+    static Gdiplus::SolidBrush labelBgBrush(Gdiplus::Color(180, 0, 0, 0));
+    static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
+    static Gdiplus::Font labelFont(L"Consolas", 10.0f, Gdiplus::FontStyleBold);
+
+    // Always paint the placeholder background first so letterbox bands and
+    // edge clipping stay visually consistent with empty slots.
+    gfx.FillRectangle(&placeholderBrush, dstX, dstY, tileSize, tileSize);
+
+    const auto& d4 = beam.d4;
+    const bool hasFrame = (frameData && frameW > 0 && frameH > 0);
+
+    int srcX0 = std::max(d4.roi.x0, 0);
+    int srcY0 = std::max(d4.roi.y0, 0);
+    int srcX1 = std::min(d4.roi.x1, static_cast<int>(frameW));
+    int srcY1 = std::min(d4.roi.y1, static_cast<int>(frameH));
+    int cropW = srcX1 - srcX0;
+    int cropH = srcY1 - srcY0;
+
+    bool slotHasContent = hasFrame && cropW >= 2 && cropH >= 2;
+    if (slotHasContent) {
+        // Aspect-preserving fit into tileSize x tileSize.
+        double srcAR = static_cast<double>(cropW) / cropH;
+        int dstW, dstH;
+        if (srcAR >= 1.0) {
+            dstW = tileSize;
+            dstH = std::max(1, static_cast<int>(tileSize / srcAR));
+        } else {
+            dstH = tileSize;
+            dstW = std::max(1, static_cast<int>(tileSize * srcAR));
+        }
+        int activeX = dstX + (tileSize - dstW) / 2;
+        int activeY = dstY + (tileSize - dstH) / 2;
+
+        const int imgStride = static_cast<int>(frameW) * 3;
+        const int maxRow = static_cast<int>(frameH) - 1;
+        const int maxCol = static_cast<int>(frameW) - 1;
+        const uint8_t* lutBase = HeatLut();
+
+        std::vector<int> colLUT(dstW);
+        for (int dx = 0; dx < dstW; ++dx) {
+            int c = srcX0 + (dx * cropW) / dstW;
+            if (c > maxCol) c = maxCol;
+            colLUT[dx] = c * 3;
+        }
+
+        for (int dy = 0; dy < dstH; ++dy) {
+            int srcRow = srcY0 + (dy * cropH) / dstH;
+            if (srcRow > maxRow) srcRow = maxRow;
+            // BGR DIB is bottom-up, so flip the row index.
+            const uint8_t* srcLine =
+                frameData + static_cast<size_t>(maxRow - srcRow) * imgStride;
+            uint8_t* dstLine = tileBuf.data() + dy * (dstW * 4);
+            for (int dx = 0; dx < dstW; ++dx) {
+                const uint8_t v = srcLine[colLUT[dx]];
+                const uint8_t* lut = lutBase + v * 3;
+                uint8_t* dp = dstLine + dx * 4;
+                dp[0] = lut[0]; dp[1] = lut[1]; dp[2] = lut[2]; dp[3] = 255;
+            }
+        }
+
+        Gdiplus::Bitmap tileBmp(dstW, dstH, dstW * 4,
+                                PixelFormat32bppARGB, tileBuf.data());
+        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+        gfx.DrawImage(&tileBmp, activeX, activeY, dstW, dstH);
+
+        // Centroid crosshair (white — stays visible across the full heatmap).
+        float cx = static_cast<float>(activeX) +
+                   static_cast<float>((d4.cx - srcX0) * dstW) / cropW;
+        float cy = static_cast<float>(activeY) +
+                   static_cast<float>((d4.cy - srcY0) * dstH) / cropH;
+        Gdiplus::Pen crossPen(Gdiplus::Color(220, 255, 255, 255), 1.0f);
+        gfx.DrawLine(&crossPen, cx - 10.0f, cy, cx + 10.0f, cy);
+        gfx.DrawLine(&crossPen, cx, cy - 10.0f, cx, cy + 10.0f);
+    }
+
+    // Border colour: red on saturation, cyan otherwise, gray when no content.
+    Gdiplus::Color borderColor =
+        slotHasContent
+            ? (beam.saturated ? Gdiplus::Color(220, 255, 60, 60)
+                              : Gdiplus::Color(220, 0, 200, 200))
+            : Gdiplus::Color(180, 90, 90, 90);
+    Gdiplus::Pen borderPen(borderColor, 2.0f);
+    gfx.DrawRectangle(&borderPen, dstX, dstY, tileSize, tileSize);
+
+    // Corner label.
+    if (slotIndex >= 0) {
+        const wchar_t* label = (slotIndex == 0) ? L"B0" : L"B1";
+        gfx.FillRectangle(&labelBgBrush,
+                          static_cast<float>(dstX) + 4.0f,
+                          static_cast<float>(dstY) + 4.0f,
+                          26.0f, 16.0f);
+        gfx.DrawString(label, -1, &labelFont,
+                       Gdiplus::PointF(static_cast<float>(dstX) + 6.0f,
+                                       static_cast<float>(dstY) + 4.0f),
+                       &labelBrush);
+    }
+}
+
+void DrawBeamCropStrip(Gdiplus::Graphics& gfx,
+                       const std::vector<BeamDetectionResult>& results,
+                       const uint8_t* frameData,
+                       uint32_t frameW, uint32_t frameH,
+                       const RECT& stripRect) {
+    static constexpr int TILE_SIZE = 200;
+    static constexpr int MARGIN = 10;
+    static constexpr int MAX_TILES = 2;
+
+    static Gdiplus::SolidBrush emptyBrush(Gdiplus::Color(255, 35, 35, 35));
+    static Gdiplus::SolidBrush labelBgBrush(Gdiplus::Color(180, 0, 0, 0));
+    static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
+    static Gdiplus::Font labelFont(L"Consolas", 10.0f, Gdiplus::FontStyleBold);
+    static Gdiplus::Pen emptyBorderPen(Gdiplus::Color(180, 90, 90, 90), 2.0f);
+
+    const int stripH = stripRect.bottom - stripRect.top;
+    const int stripW = stripRect.right - stripRect.left;
+    if (stripH < TILE_SIZE + 4 || stripW < TILE_SIZE + 2 * MARGIN) return;
+
+    const int tileY = stripRect.top + (stripH - TILE_SIZE) / 2;
+
+    for (int bi = 0; bi < MAX_TILES; ++bi) {
+        const int tileX = stripRect.left + MARGIN + bi * (TILE_SIZE + MARGIN);
+        if (tileX + TILE_SIZE > stripRect.right) break;
+
+        if (static_cast<size_t>(bi) < results.size()) {
+            DrawSingleBeamCropTile(gfx, results[bi], frameData, frameW, frameH,
+                                   tileX, tileY, TILE_SIZE, bi);
+        } else {
+            // Empty slot — placeholder + faded label.
+            gfx.FillRectangle(&emptyBrush, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            gfx.DrawRectangle(&emptyBorderPen, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            const wchar_t* label = (bi == 0) ? L"B0" : L"B1";
+            gfx.FillRectangle(&labelBgBrush,
+                              static_cast<float>(tileX) + 4.0f,
+                              static_cast<float>(tileY) + 4.0f,
+                              26.0f, 16.0f);
+            gfx.DrawString(label, -1, &labelFont,
+                           Gdiplus::PointF(static_cast<float>(tileX) + 6.0f,
+                                           static_cast<float>(tileY) + 4.0f),
+                           &labelBrush);
+        }
+    }
+}

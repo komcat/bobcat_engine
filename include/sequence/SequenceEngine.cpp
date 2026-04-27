@@ -582,6 +582,34 @@ void SequenceEngine::SetPlacementRetraceCallback(PlacementRetraceCallback callba
   }
 }
 
+void SequenceEngine::SetSaveSwirPackageCallback(SaveSwirPackageCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetSaveSwirPackageCallback(callback);
+  }
+}
+
+void SequenceEngine::SetBeamDetectToggleCallback(SetSwirToggleCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetBeamDetectToggleCallback(callback);
+  }
+}
+
+void SequenceEngine::SetAutoSatToggleCallback(SetSwirToggleCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetAutoSatToggleCallback(callback);
+  }
+}
+
+void SequenceEngine::SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callback)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetGetSwirBeamStateCallback(callback);
+  }
+}
+
 void SequenceEngine::SetStepStartedCallback(StepStartedCallback callback)
 {
   m_stepStartedCallback = callback;

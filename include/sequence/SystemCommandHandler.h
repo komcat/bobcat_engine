@@ -3,6 +3,8 @@
 
 #include "ICommandHandler.h"
 #include <functional>
+#include <string>
+#include <vector>
 
 // Callback type for user prompts - returns true if user confirmed, false if cancelled
 using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
@@ -52,6 +54,36 @@ struct PlacementRetraceParams {
 // Set by RunProgramPage; see RunProgramPage.cpp "setPlacementRetraceCallback".
 using PlacementRetraceCallback = std::function<bool(const PlacementRetraceParams& params)>;
 
+// Callback for "SaveSwirPackage" command. Wired to the SwirBeamWindowManager
+// so scripts/recipes can dispatch a one-call save of raw + overlay + per-beam
+// crops + collage. Returns true on success.
+using SaveSwirPackageCallback = std::function<bool(const std::string& dirPath,
+                                                    const std::string& namePrefix)>;
+
+// Callbacks for SWIR window toggles ("SetBeamDetect", "SetAutoSat" commands).
+using SetSwirToggleCallback = std::function<void(bool enable)>;
+
+// Snapshot of one beam slot's live state (returned by GetSwirBeamState).
+struct SwirBeamSnapshot {
+    std::string label;        // "B0" / "B1"
+    std::string gaLabel;      // "GA1" / "GA2" / ""
+    double cx_px = 0.0;
+    double cy_px = 0.0;
+    double dx_px = 0.0;       // D4sigma diameter, X
+    double dy_px = 0.0;       // D4sigma diameter, Y
+    int    peakIntensity = 0;
+    double encircledEnergy = 0.0;  // 0..1
+    bool   saturated = false;
+    int    saturatedPixelCount = 0;
+    double totalEnergy = 0.0;
+    double circleEnergy = 0.0;
+    double micronsPerPixel = 1.0;  // for px<->um conversion
+};
+
+// Callback for "GetSwirBeamState" — returns the SWIR window's latest beam
+// results (typically size 0..2 for B0/B1).
+using GetSwirBeamStateCallback = std::function<std::vector<SwirBeamSnapshot>()>;
+
 class SystemCommandHandler : public ICommandHandler
 {
 public:
@@ -96,6 +128,22 @@ public:
     m_placementRetraceCallback = callback;
   }
 
+  // Set the callback for the "SaveSwirPackage" system command.
+  void SetSaveSwirPackageCallback(SaveSwirPackageCallback callback) {
+    m_saveSwirPackageCallback = callback;
+  }
+
+  // Set the callbacks for SWIR window toggles.
+  void SetBeamDetectToggleCallback(SetSwirToggleCallback callback) {
+    m_beamDetectToggleCallback = callback;
+  }
+  void SetAutoSatToggleCallback(SetSwirToggleCallback callback) {
+    m_autoSatToggleCallback = callback;
+  }
+  void SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callback) {
+    m_getSwirBeamStateCallback = callback;
+  }
+
   // Getters — needed by ScriptCommandHandler to save/restore callbacks across
   // recipe.run() invocations from Lua (RecipeWorker clears them on destroy).
   UserPromptCallback GetUserPromptCallback() const { return m_userPromptCallback; }
@@ -108,4 +156,8 @@ private:
   UserInputCallback m_userInputCallback;
   ManualAlignPointCallback m_manualAlignPointCallback;
   PlacementRetraceCallback m_placementRetraceCallback;
+  SaveSwirPackageCallback m_saveSwirPackageCallback;
+  SetSwirToggleCallback m_beamDetectToggleCallback;
+  SetSwirToggleCallback m_autoSatToggleCallback;
+  GetSwirBeamStateCallback m_getSwirBeamStateCallback;
 };

@@ -259,6 +259,10 @@ public:
   UserInputCallback GetUserInputCallback() const;
   void SetManualAlignPointCallback(ManualAlignPointCallback callback);
   void SetPlacementRetraceCallback(PlacementRetraceCallback callback);
+  void SetSaveSwirPackageCallback(SaveSwirPackageCallback callback);
+  void SetBeamDetectToggleCallback(SetSwirToggleCallback callback);
+  void SetAutoSatToggleCallback(SetSwirToggleCallback callback);
+  void SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callback);
 
   // Step execution event callbacks (pub-sub)
   void SetStepStartedCallback(StepStartedCallback callback);

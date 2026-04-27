@@ -1550,6 +1550,26 @@ void Application::initializeSequenceEngine()
     // Build device registry AFTER all managers are loaded
     m_sequenceEngine->BuildDeviceRegistry();
 
+    // Wire SWIR window callbacks so scripts/recipes can drive it:
+    //   SaveSwirPackage  -> mgr->saveImagePackage
+    //   SetBeamDetect    -> mgr->enableBeamDetection
+    //   SetAutoSat       -> mgr->enableAutoSatPrevention
+    // The SwirBeamWindowManager was created earlier in the init order
+    // (initializeSwirBeamWindow runs before initializeSequenceEngine).
+    if (m_swirBeamWindowManager) {
+      auto* mgr = m_swirBeamWindowManager.get();
+      m_sequenceEngine->SetSaveSwirPackageCallback(
+        [mgr](const std::string& dirPath, const std::string& namePrefix) {
+          return mgr->saveImagePackage(dirPath, namePrefix);
+        });
+      m_sequenceEngine->SetBeamDetectToggleCallback(
+        [mgr](bool enable) { mgr->enableBeamDetection(enable); });
+      m_sequenceEngine->SetAutoSatToggleCallback(
+        [mgr](bool enable) { mgr->enableAutoSatPrevention(enable); });
+      m_sequenceEngine->SetGetSwirBeamStateCallback(
+        [mgr]() { return mgr->getBeamSnapshots(); });
+    }
+
     m_logManager->Info("SequenceEngine initialized", "Application");
   }
   catch (const std::exception& e) {
@@ -2179,6 +2199,10 @@ void Application::initializeSwirBeamWindow()
     } else {
       m_logManager->Info("SwirBeamWindow initialized (hidden - restored from last session)", "Application");
     }
+
+    // Note: SaveSwirPackage callback is wired later in
+    // initializeSequenceEngine, since m_sequenceEngine is created after
+    // this function runs.
   } else {
     m_logManager->Warning("SwirBeamWindow failed to initialize", "Application");
   }

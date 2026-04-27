@@ -64,6 +64,23 @@ struct BeamDetectionConfig {
     double roiSizeFactor = 3.0;     // reject beams with d4 > roi * this (diffuse noise)
     bool   rejectEdgeClipped = false; // skip candidates whose EE circle clips the image edge
     double micronsPerPixel = 0.17;  // SWIR camera calibration for overlay (um/px)
+    bool   excludeSaturated = true; // mask saturated pixels from centroid moments
+    GaQuadrantLabels gaLabels;
+};
+
+/// Config for Halcon connected-component beam detection.
+/// Direct port of the HDevelop reference script. Only filter is the area
+/// minimum from the source script — no max area, no D4sigma min, no aspect
+/// ratio cap (script doesn't have those). maxBeams cap is an integration
+/// constraint of the B0/B1 slot pipeline, not part of the algorithm.
+struct HalconBeamDetectionConfig {
+    int    bgKernelSize    = 51;     // mean_image kernel side (px); 0 = no bg sub
+    int    noiseThreshold  = 20;     // gray threshold after bg subtract
+    int    minBeamArea     = 10;     // px^2 minimum to keep a region
+    int    maxBeams        = 2;      // cap on returned beams (B0/B1 slots)
+    double widthFactor     = 2.5;    // ROI half-width factor for crop bounds
+    uint8_t saturationValue = 255;
+    double micronsPerPixel = 0.17;
     GaQuadrantLabels gaLabels;
 };
 
@@ -123,5 +140,15 @@ std::vector<BeamDetectionResult> RunBeamDetection(
 std::vector<BeamDetectionResult> RunBlobDetection(
     const uint8_t* grayData, uint32_t width, uint32_t height,
     const BlobDetectionConfig& config);
+
+#ifdef HAS_HALCON
+/// Halcon connected-component beam detection (HDevelop port).
+/// Local-mean background subtraction (rolling kernel) + threshold +
+/// connection + per-region intensity-weighted centroid and D4sigma.
+/// Falls back to empty result vector if Halcon throws.
+std::vector<BeamDetectionResult> RunHalconBeamDetection(
+    const uint8_t* grayData, uint32_t width, uint32_t height,
+    const HalconBeamDetectionConfig& config);
+#endif // HAS_HALCON
 
 #endif // HAS_OPENCV
