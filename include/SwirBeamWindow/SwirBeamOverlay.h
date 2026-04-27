@@ -68,3 +68,43 @@ void DrawBeamMagnifiers(Gdiplus::Graphics& gfx,
                         const std::vector<BeamDetectionResult>& results,
                         const uint8_t* frameData, uint32_t frameW, uint32_t frameH,
                         int renderX, int renderY, int renderW, int renderH);
+
+/// Draw a horizontal bottom-strip of close-up beam crops, two tiles max.
+/// Each tile is 200x200; the cropped region (BeamDetectionResult.d4.roi) is
+/// scaled to fit while preserving aspect ratio (letterboxed). Empty slots
+/// render as dark placeholders so the strip layout stays stable across miss
+/// frames.
+///
+/// @param gfx        GDI+ graphics context
+/// @param results    Beam detection results (slot 0 = B0, slot 1 = B1)
+/// @param frameData  BGR frame buffer (bottom-up DIB order)
+/// @param frameW     Camera frame width (image pixels)
+/// @param frameH     Camera frame height (image pixels)
+/// @param stripRect  Bottom-strip rect in client coords; tiles are anchored
+///                   to the left edge with a 10px margin
+void DrawBeamCropStrip(Gdiplus::Graphics& gfx,
+                       const std::vector<BeamDetectionResult>& results,
+                       const uint8_t* frameData,
+                       uint32_t frameW, uint32_t frameH,
+                       const RECT& stripRect);
+
+/// Render one beam tile (heatmap-coloured close-up) at (dstX, dstY) with size
+/// `tileSize`. Used both by the live bottom strip and by the still-image save
+/// APIs. Pass `slotIndex` only for the corner label ("B0" / "B1"); the actual
+/// data comes from `beam`.
+///
+/// @param gfx        GDI+ graphics context
+/// @param beam       Beam result whose d4.roi is the source crop
+/// @param frameData  BGR frame buffer (bottom-up DIB order)
+/// @param frameW     Camera frame width
+/// @param frameH     Camera frame height
+/// @param dstX       Tile top-left X in target coordinates
+/// @param dstY       Tile top-left Y in target coordinates
+/// @param tileSize   Square tile side length (e.g. 200)
+/// @param slotIndex  0 -> "B0", 1 -> "B1", -1 -> no label
+void DrawSingleBeamCropTile(Gdiplus::Graphics& gfx,
+                            const BeamDetectionResult& beam,
+                            const uint8_t* frameData,
+                            uint32_t frameW, uint32_t frameH,
+                            int dstX, int dstY, int tileSize,
+                            int slotIndex);

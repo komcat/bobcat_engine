@@ -21,6 +21,7 @@
 #include "SwirBeamDetector.h"
 #include "BeamOptimizer/BeamHillClimb.h"
 #include "BeamOptimizer/BeamScoreProvider.h"
+#include "sequence/SystemCommandHandler.h"  // for SwirBeamSnapshot
 
 enum class SwirMarkerType { VLine, HLine };
 
@@ -181,10 +182,49 @@ private:
     // SWIR Head pneumatic
     void OnSwirHeadToggle();
 
-    // Save current frame to disk
-    void OnSaveImage();
-    bool SaveFrameAsPng(const std::wstring& fullPath);
+    // Auto-tune & focus algorithm (one-shot routine).
+    void OnAutoSatToggle();              // click starts; click again aborts
+    void DisableAutoSat();                // signal abort + join (manual override)
+    void RunAutoSatAlgorithm();           // worker thread entry
+    bool AutoSatTuneExposureCurrent();    // phase 1
+    void AutoSatFocusSearch();            // phase 2
+    void StopAutoSatAlgorithm();          // signal abort, wait for thread
+    bool AutoSatIncreaseCurrent(int stepMa);
+    bool AutoSatDecreaseCurrent(int stepMa);
 
+    // Save current frame to disk (button handlers — private; UI-only)
+    void OnSaveImage();
+    void OnSaveImagePackage();
+
+public:
+    // Save APIs callable from C++/manager; safe to call from any thread.
+    // All methods snapshot the live frame + beam state under the
+    // appropriate mutexes before encoding, so they don't block detection.
+    bool SaveFrameAsPng(const std::wstring& fullPath);
+    bool SaveFrameWithOverlayAsPng(const std::wstring& fullPath);
+    bool SaveBeamCropAsPng(int slotIndex, const std::wstring& fullPath);
+    bool SaveCollageAsPng(const std::wstring& fullPath);
+
+    // One-call: writes <prefix>_raw.png, <prefix>_overlay.png, <prefix>_B0.png,
+    // <prefix>_B1.png, <prefix>_collage.png into dirPath. Returns true if all
+    // requested files saved; populates outFiles with absolute paths written.
+    bool SaveImagePackage(const std::wstring& dirPath,
+                          const std::wstring& namePrefix,
+                          std::vector<std::wstring>* outFiles = nullptr);
+
+    // Programmatic toggles (for scripts/recipes — same effect as clicking the
+    // B DETECT / AUTO SAT buttons). No-op if already in the requested state.
+    void EnableBeamDetection(bool enable);
+    void EnableAutoSatPrevention(bool enable);
+
+    // Returns a snapshot of the current beam display state (size 0..2).
+    // Snapshots `m_beamDisplayResults` under `m_beamMutex`. Each entry is a
+    // POD copy — no live pointers — safe to use from any thread / from
+    // command handlers. Caller-supplied micronsPerPixel is filled in too;
+    // pass `useHalcon` for the right config source.
+    std::vector<SwirBeamSnapshot> GetBeamSnapshots() const;
+
+private:
     // Beam detection
     void OnBeamDetectToggle();
     void StartDetectionThread();
@@ -195,8 +235,7 @@ private:
     void SaveBeamConfig();
     void OnEditBeamConfig();
 
-    // Beam saturation auto-adjust
-    void CheckAndAdjustSaturation(const std::vector<BeamDetectionResult>& results);
+    // (legacy CheckAndAdjustSaturation removed; superseded by AUTO SAT)
 
     // Beam optimization
     void OnBeamOptimize();
@@ -316,6 +355,8 @@ private:
     static constexpr int TAG_BEAM_OPTIMIZE = 950;
     static constexpr int TAG_BEAM_FOCUS = 960;
     static constexpr int TAG_SAVE_IMAGE = 970;
+    static constexpr int TAG_SAVE_PACKAGE = 980;
+    static constexpr int TAG_AUTO_SAT = 990;
     static constexpr int TAG_TEC_25C = 1000;
     static constexpr int TAG_TEC_30C = 1010;
 
@@ -348,7 +389,7 @@ private:
     std::atomic<bool> m_detectionReady{false};
     std::atomic<bool> m_detectionShutdown{false};
 
-    std::mutex m_beamMutex;
+    mutable std::mutex m_beamMutex;
     std::vector<BeamDetectionResult> m_beamResults;
     BeamDetectionConfig m_beamConfig;
     BlobDetectionConfig m_blobConfig;
@@ -401,19 +442,18 @@ private:
     // text stays static instead of flickering.
     std::vector<BeamDetectionResult> m_beamDisplayResults;
 
-    // Saturation auto-adjust state
-    std::chrono::steady_clock::time_point m_lastSatAdjustTime{};
+    // Auto-tune & focus algorithm state. The button kicks off a worker
+    // thread that (1) tunes exposure/current to keep peak in
+    // [PK_TARGET_LOW, PK_TARGET_HIGH], then (2) sweeps gantry-main Z to
+    // find best focus (max peak), then exits. Default OFF; button label
+    // flips to "STOP" while running. Any manual exposure/current change
+    // calls StopAutoSatAlgorithm so the user always wins.
+    std::atomic<bool> m_autoSatRunning{false};
+    std::atomic<bool> m_autoSatAbort{false};
+    std::future<void> m_autoSatFuture;
 
-    // Saturation auto-adjust parameters
-    static constexpr double SAT_EXPOSURE_START = 300.0;   // us - initial snap-to value
-    static constexpr double SAT_EXPOSURE_STEP  = 25.0;    // us
-    static constexpr double SAT_EXPOSURE_MIN   = 30.0;    // us
-    static constexpr double SAT_EXPOSURE_MAX   = 500.0;   // us
-    static constexpr double SAT_CURRENT_START  = 0.250;   // A (250 mA)
-    static constexpr double SAT_CURRENT_STEP   = 0.010;   // A (10 mA)
-    static constexpr double SAT_CURRENT_MIN    = 0.140;   // A (140 mA)
-    static constexpr double SAT_CURRENT_MAX    = 0.400;   // A (400 mA)
-    static constexpr uint8_t SAT_MIN_INTENSITY = 75;      // min peak pixel value
+    // (legacy SAT_* constants removed; AUTO SAT now uses local constants
+    //  in SwirBeamWindow.cpp's anonymous namespace.)
 
     // Paint throttle: track last InvalidateRect time to avoid flooding message queue
     std::chrono::steady_clock::time_point m_lastInvalidateTime{};

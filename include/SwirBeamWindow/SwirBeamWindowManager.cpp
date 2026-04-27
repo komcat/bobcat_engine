@@ -126,6 +126,39 @@ void SwirBeamWindowManager::emergencyStop()
     if (m_window) m_window->EmergencyStop();
 }
 
+bool SwirBeamWindowManager::saveImagePackage(const std::string& dirPath,
+                                              const std::string& namePrefix)
+{
+    if (!m_window) return false;
+    // Convert utf-8 -> wide for the Win32 file APIs the saver uses.
+    auto toWide = [](const std::string& s) {
+        if (s.empty()) return std::wstring();
+        int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(),
+                                     static_cast<int>(s.size()), nullptr, 0);
+        std::wstring w(n, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(),
+                            static_cast<int>(s.size()), w.data(), n);
+        return w;
+    };
+    return m_window->SaveImagePackage(toWide(dirPath), toWide(namePrefix));
+}
+
+void SwirBeamWindowManager::enableBeamDetection(bool enable)
+{
+    if (m_window) m_window->EnableBeamDetection(enable);
+}
+
+void SwirBeamWindowManager::enableAutoSatPrevention(bool enable)
+{
+    if (m_window) m_window->EnableAutoSatPrevention(enable);
+}
+
+std::vector<SwirBeamSnapshot> SwirBeamWindowManager::getBeamSnapshots() const
+{
+    if (!m_window) return {};
+    return m_window->GetBeamSnapshots();
+}
+
 void SwirBeamWindowManager::processMessages()
 {
     if (m_window) SwirBeamWindow::ProcessMessages();

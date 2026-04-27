@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <memory>
 #include <string>
+#include <vector>
+#include "sequence/SystemCommandHandler.h"  // SwirBeamSnapshot
 
 class BeamResultBroker;
 class CameraConfigManager;
@@ -57,6 +59,21 @@ public:
     void setWindowTitle(const std::string& title);
     void setWindowPosition(int x, int y);
     void setWindowSize(int width, int height);
+
+    // Save the live frame + overlays + per-beam crops + collage to disk.
+    // Writes <prefix>_raw.png, _overlay.png, _B0.png, _B1.png, _collage.png
+    // into dirPath. Safe to call from any thread (snapshots state internally).
+    bool saveImagePackage(const std::string& dirPath,
+                          const std::string& namePrefix);
+
+    // Programmatic toggles for scripts/recipes.
+    void enableBeamDetection(bool enable);
+    void enableAutoSatPrevention(bool enable);
+
+    // Snapshot of the latest beam display state (size 0..2). Empty if the
+    // window is not initialised. Includes the configured um/px so callers
+    // can convert pixel→micron without their own lookup.
+    std::vector<SwirBeamSnapshot> getBeamSnapshots() const;
 
     bool isInitialized() const { return m_initialized; }
     bool shouldRestoreVisible() const { return m_restoreVisible; }
