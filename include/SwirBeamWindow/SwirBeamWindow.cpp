@@ -1,6 +1,7 @@
 // SwirBeamWindow.cpp
 #include "SwirBeamWindow.h"
 #include "BeamOptimizer/BeamResultBroker.h"
+#include "SwirBeamConfigStore.h"
 #include "SwirBeamOverlay.h"
 #include "camera/CameraConfigManager.h"
 #include "camera/CameraManager.h"
@@ -3181,214 +3182,18 @@ void SwirBeamWindow::OnSwirHeadToggle()
 
 void SwirBeamWindow::LoadBeamConfig()
 {
-    // Try local override first, then default
-    std::string path = "config/beam_detection.local.json";
-    std::ifstream ifs(path);
-    if (!ifs.is_open()) {
-        path = "config/beam_detection.json";
-        ifs.open(path);
-    }
-    if (!ifs.is_open()) {
-        std::cout << "[SwirBeamWindow] No beam_detection.json found, using defaults" << std::endl;
-        return;
-    }
-
-    auto j = nlohmann::json::parse(ifs, nullptr, false);
-    if (j.is_discarded()) {
-        std::cerr << "[SwirBeamWindow] Failed to parse " << path << std::endl;
-        return;
-    }
-
-    auto getD = [&](const char* key, double& out) {
-        if (j.contains(key) && j[key].is_number()) out = j[key].get<double>();
-    };
-    auto getI = [&](const char* key, int& out) {
-        if (j.contains(key) && j[key].is_number_integer()) out = j[key].get<int>();
-    };
-    auto getPeak = [&](const char* key, PeakFindParams& p) {
-        if (!j.contains(key) || !j[key].is_object()) return;
-        auto& sub = j[key];
-        if (sub.contains("height") && sub["height"].is_number()) p.height = sub["height"].get<double>();
-        if (sub.contains("width") && sub["width"].is_number()) p.width = sub["width"].get<double>();
-        if (sub.contains("distance") && sub["distance"].is_number()) p.distance = sub["distance"].get<double>();
-    };
-
-    getPeak("xpeaks", m_beamConfig.xpeaks);
-    getPeak("ypeaks", m_beamConfig.ypeaks);
-    getD("combineXThresh", m_beamConfig.combineXThresh);
-    getD("combineYThresh", m_beamConfig.combineYThresh);
-    getD("d4sigmaThreshold", m_beamConfig.d4sigmaThreshold);
-    getI("maxBeams", m_beamConfig.maxBeams);
-    if (j.contains("saturationValue") && j["saturationValue"].is_number_integer()) {
-        m_beamConfig.saturationValue = static_cast<uint8_t>(j["saturationValue"].get<int>());
-    }
-    getD("roiWidthFactor", m_beamConfig.roiWidthFactor);
-    getD("minD4Sigma", m_beamConfig.minD4Sigma);
-    getD("minPeakValue", m_beamConfig.minPeakValue);
-    getD("aspectRatioMax", m_beamConfig.aspectRatioMax);
-    getD("roiSizeFactor", m_beamConfig.roiSizeFactor);
-    if (j.contains("rejectEdgeClipped") && j["rejectEdgeClipped"].is_boolean()) {
-        m_beamConfig.rejectEdgeClipped = j["rejectEdgeClipped"].get<bool>();
-    }
-    if (j.contains("excludeSaturated") && j["excludeSaturated"].is_boolean()) {
-        m_beamConfig.excludeSaturated = j["excludeSaturated"].get<bool>();
-    }
-    getD("micronsPerPixel", m_beamConfig.micronsPerPixel);
-
-    // Beam ID tracking (caller-side, applies to both d4sigma and blob paths)
-    if (j.contains("tracking") && j["tracking"].is_object()) {
-        auto& tj = j["tracking"];
-        if (tj.contains("enabled") && tj["enabled"].is_boolean()) {
-            m_trackingEnabled = tj["enabled"].get<bool>();
-        }
-        if (tj.contains("maxJumpPx") && tj["maxJumpPx"].is_number()) {
-            m_trackingMaxJumpPx = tj["maxJumpPx"].get<double>();
-        }
-        if (tj.contains("staleFrames") && tj["staleFrames"].is_number_integer()) {
-            m_trackingStaleMax = tj["staleFrames"].get<int>();
-        }
-    }
-
-    // Quadrant -> GA label mapping (shared between d4sigma and blob modes).
-    // Quadrants are in visual orientation (after display Y-flip):
-    //   q1=right-top, q2=left-top, q3=left-bottom, q4=right-bottom.
-    if (j.contains("gaQuadrantLabels") && j["gaQuadrantLabels"].is_object()) {
-        auto& qj = j["gaQuadrantLabels"];
-        auto getS = [&](const char* key, std::string& out) {
-            if (qj.contains(key) && qj[key].is_string()) out = qj[key].get<std::string>();
-        };
-        getS("q1", m_beamConfig.gaLabels.q1);
-        getS("q2", m_beamConfig.gaLabels.q2);
-        getS("q3", m_beamConfig.gaLabels.q3);
-        getS("q4", m_beamConfig.gaLabels.q4);
-        m_blobConfig.gaLabels = m_beamConfig.gaLabels;
-    }
-
-    // Blob detection config
-    if (j.contains("useBlobDetection") && j["useBlobDetection"].is_boolean()) {
-        m_useBlobDetection = j["useBlobDetection"].get<bool>();
-    }
-    if (j.contains("blob") && j["blob"].is_object()) {
-        auto& bj = j["blob"];
-        auto getBD = [&](const char* key, double& out) {
-            if (bj.contains(key) && bj[key].is_number()) out = bj[key].get<double>();
-        };
-        auto getBI = [&](const char* key, int& out) {
-            if (bj.contains(key) && bj[key].is_number_integer()) out = bj[key].get<int>();
-        };
-        getBI("maxBeams", m_blobConfig.maxBeams);
-        if (bj.contains("saturationValue") && bj["saturationValue"].is_number_integer()) {
-            m_blobConfig.saturationValue = static_cast<uint8_t>(bj["saturationValue"].get<int>());
-        }
-        getBI("gaussianKernel", m_blobConfig.gaussianKernel);
-        getBD("thresholdValue", m_blobConfig.thresholdValue);
-        if (bj.contains("useOtsu") && bj["useOtsu"].is_boolean()) {
-            m_blobConfig.useOtsu = bj["useOtsu"].get<bool>();
-        }
-        getBD("minBlobArea", m_blobConfig.minBlobArea);
-        getBD("maxBlobArea", m_blobConfig.maxBlobArea);
-        getBD("roiPadding", m_blobConfig.roiPadding);
-    }
-
-    // Halcon detection config (HDevelop port)
-    if (j.contains("useHalconDetection") && j["useHalconDetection"].is_boolean()) {
-        m_useHalconDetection = j["useHalconDetection"].get<bool>();
-    }
-    if (j.contains("halcon") && j["halcon"].is_object()) {
-        auto& hj = j["halcon"];
-        auto getHI = [&](const char* key, int& out) {
-            if (hj.contains(key) && hj[key].is_number_integer()) out = hj[key].get<int>();
-        };
-        auto getHD = [&](const char* key, double& out) {
-            if (hj.contains(key) && hj[key].is_number()) out = hj[key].get<double>();
-        };
-        getHI("bgKernelSize", m_halconConfig.bgKernelSize);
-        getHI("noiseThreshold", m_halconConfig.noiseThreshold);
-        getHI("minBeamArea", m_halconConfig.minBeamArea);
-        getHI("maxBeams", m_halconConfig.maxBeams);
-        getHD("widthFactor", m_halconConfig.widthFactor);
-        if (hj.contains("saturationValue") && hj["saturationValue"].is_number_integer()) {
-            m_halconConfig.saturationValue = static_cast<uint8_t>(hj["saturationValue"].get<int>());
-        }
-        getHD("micronsPerPixel", m_halconConfig.micronsPerPixel);
-    }
-    // Halcon shares the GA quadrant labels with the d4sigma path.
-    m_halconConfig.gaLabels = m_beamConfig.gaLabels;
-
-    const char* modeStr = m_useHalconDetection ? "halcon"
-                          : (m_useBlobDetection ? "blob" : "d4sigma");
-    std::cout << "[SwirBeamWindow] Beam config loaded from " << path
-              << " (mode: " << modeStr << ")" << std::endl;
+    SwirBeamConfigStore::Load(m_beamConfig, m_blobConfig, m_halconConfig,
+                              m_useBlobDetection, m_useHalconDetection,
+                              m_trackingEnabled, m_trackingMaxJumpPx,
+                              m_trackingStaleMax);
 }
 
 void SwirBeamWindow::SaveBeamConfig()
 {
-    nlohmann::json j;
-    j["xpeaks"] = {{"height", m_beamConfig.xpeaks.height},
-                    {"width", m_beamConfig.xpeaks.width},
-                    {"distance", m_beamConfig.xpeaks.distance}};
-    j["ypeaks"] = {{"height", m_beamConfig.ypeaks.height},
-                    {"width", m_beamConfig.ypeaks.width},
-                    {"distance", m_beamConfig.ypeaks.distance}};
-    j["combineXThresh"] = m_beamConfig.combineXThresh;
-    j["combineYThresh"] = m_beamConfig.combineYThresh;
-    j["d4sigmaThreshold"] = m_beamConfig.d4sigmaThreshold;
-    j["maxBeams"] = m_beamConfig.maxBeams;
-    j["saturationValue"] = static_cast<int>(m_beamConfig.saturationValue);
-    j["roiWidthFactor"] = m_beamConfig.roiWidthFactor;
-    j["minD4Sigma"] = m_beamConfig.minD4Sigma;
-    j["minPeakValue"] = m_beamConfig.minPeakValue;
-    j["aspectRatioMax"] = m_beamConfig.aspectRatioMax;
-    j["roiSizeFactor"] = m_beamConfig.roiSizeFactor;
-    j["rejectEdgeClipped"] = m_beamConfig.rejectEdgeClipped;
-    j["excludeSaturated"] = m_beamConfig.excludeSaturated;
-    j["micronsPerPixel"] = m_beamConfig.micronsPerPixel;
-
-    j["tracking"] = {
-        {"enabled", m_trackingEnabled},
-        {"maxJumpPx", m_trackingMaxJumpPx},
-        {"staleFrames", m_trackingStaleMax}
-    };
-
-    j["gaQuadrantLabels"] = {
-        {"q1", m_beamConfig.gaLabels.q1},
-        {"q2", m_beamConfig.gaLabels.q2},
-        {"q3", m_beamConfig.gaLabels.q3},
-        {"q4", m_beamConfig.gaLabels.q4}
-    };
-
-    // Blob detection config
-    j["useBlobDetection"] = m_useBlobDetection;
-    j["blob"] = {
-        {"maxBeams", m_blobConfig.maxBeams},
-        {"saturationValue", static_cast<int>(m_blobConfig.saturationValue)},
-        {"gaussianKernel", m_blobConfig.gaussianKernel},
-        {"thresholdValue", m_blobConfig.thresholdValue},
-        {"useOtsu", m_blobConfig.useOtsu},
-        {"minBlobArea", m_blobConfig.minBlobArea},
-        {"maxBlobArea", m_blobConfig.maxBlobArea},
-        {"roiPadding", m_blobConfig.roiPadding}
-    };
-
-    // Halcon detection config (HDevelop port)
-    j["useHalconDetection"] = m_useHalconDetection;
-    j["halcon"] = {
-        {"bgKernelSize", m_halconConfig.bgKernelSize},
-        {"noiseThreshold", m_halconConfig.noiseThreshold},
-        {"minBeamArea", m_halconConfig.minBeamArea},
-        {"maxBeams", m_halconConfig.maxBeams},
-        {"widthFactor", m_halconConfig.widthFactor},
-        {"saturationValue", static_cast<int>(m_halconConfig.saturationValue)},
-        {"micronsPerPixel", m_halconConfig.micronsPerPixel}
-    };
-
-    std::ofstream ofs("config/beam_detection.local.json");
-    if (ofs.is_open()) {
-        ofs << j.dump(4) << std::endl;
-        std::cout << "[SwirBeamWindow] Beam config saved to beam_detection.local.json" << std::endl;
-    } else {
-        std::cerr << "[SwirBeamWindow] Failed to save beam_detection.local.json" << std::endl;
-    }
+    SwirBeamConfigStore::Save(m_beamConfig, m_blobConfig, m_halconConfig,
+                              m_useBlobDetection, m_useHalconDetection,
+                              m_trackingEnabled, m_trackingMaxJumpPx,
+                              m_trackingStaleMax);
 }
 
 void SwirBeamWindow::OnEditBeamConfig()
