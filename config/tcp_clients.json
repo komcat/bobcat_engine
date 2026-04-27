@@ -14,9 +14,9 @@
     {
       "id": "siphog_01",
       "name": "SiPhOG Multi-Channel Monitor",
-      "host": "127.0.0.63",
+      "host": "127.0.0.1",
       "port": 65432,
-      "protocol_type": "multi",
+      "protocol_type": "raw_csv",
       "data_channels": [
         "SLED_Current_mA",
         "Photo_Current_uA",
@@ -25,8 +25,8 @@
         "SAG_PWR_V",
         "TEC_Current_mA"
       ],
-      "auto_connect": false,
-      "auto_reconnect": false,
+      "auto_connect": true,
+      "auto_reconnect": true,
       "description": "SiPhOG FNW Server V08 - 6 channel data stream"
     }
   ]
