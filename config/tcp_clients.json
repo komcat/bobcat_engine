@@ -16,7 +16,7 @@
       "name": "SiPhOG Multi-Channel Monitor",
       "host": "127.0.0.1",
       "port": 65432,
-      "protocol_type": "raw_csv",
+      "protocol_type": "multi",
       "data_channels": [
         "SLED_Current_mA",
         "Photo_Current_uA",

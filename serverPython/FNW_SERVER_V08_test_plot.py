@@ -100,7 +100,7 @@ class RateMonitor:
         return (f"[{self.name}] Rate: {self.get_average_rate():.1f} Hz (instant: {self.get_instant_rate():.1f} Hz), "
                 f"Total: {self.total_count}, Jitter: {self.get_jitter_ms():.2f}ms, "
                 f"Interval: {min_int:.1f}-{max_int:.1f}ms")
-host = "127.0.0.63"
+host = "127.0.0.1"
 port = 65432
 
 # helpers (computing values to be unit tested)
@@ -373,7 +373,7 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.layout = QtWidgets.QVBoxLayout(self)
+        self.layout = QtWidgets.QHBoxLayout(self)
 
         # Percentage display at the top
         self.percent_container = QtWidgets.QWidget()
@@ -398,25 +398,25 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
 
         # Chart for comparing Target vs Actual
         self.chart_widget = pg.GraphicsLayoutWidget()
-        self.chart_widget.setBackground('w')
+        self.chart_widget.setBackground('k')
 
         self.plot = self.chart_widget.addPlot(title="Sagnac Power Comparison")
 
         # Set larger fonts for axis labels
-        label_style = {'color': '#333', 'font-size': '14pt', 'font-weight': 'bold'}
+        label_style = {'color': '#DDD', 'font-size': '14pt', 'font-weight': 'bold'}
         self.plot.setLabel('left', 'Voltage (mV)', **label_style)
         self.plot.setLabel('bottom', 'Sample', **label_style)
 
         # Set larger font for title
-        self.plot.setTitle("Sagnac Power Comparison", size="16pt", color='#333')
+        self.plot.setTitle("Sagnac Power Comparison", size="16pt", color='#DDD')
 
         # Set larger font for tick labels (axis values)
         tick_font = QtGui.QFont()
         tick_font.setPointSize(12)
         self.plot.getAxis('left').setTickFont(tick_font)
         self.plot.getAxis('bottom').setTickFont(tick_font)
-        self.plot.getAxis('left').setTextPen('#333')
-        self.plot.getAxis('bottom').setTextPen('#333')
+        self.plot.getAxis('left').setTextPen('#DDD')
+        self.plot.getAxis('bottom').setTextPen('#DDD')
 
         self.plot.addLegend(labelTextSize='12pt')
         self.plot.showGrid(x=True, y=True)
@@ -445,7 +445,7 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
 
         # Target value display
         self.target_container = QtWidgets.QWidget()
-        self.target_container.setStyleSheet("background-color: #f5f5f5; border-radius: 10px;")
+        self.target_container.setStyleSheet("background-color: #2a2a2a; border-radius: 10px;")
         target_layout = QtWidgets.QVBoxLayout(self.target_container)
 
         target_name = QtWidgets.QLabel("Target SAG_PWR (V)")
@@ -468,7 +468,7 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
 
         # Actual value display
         self.actual_container = QtWidgets.QWidget()
-        self.actual_container.setStyleSheet("background-color: #f5f5f5; border-radius: 10px;")
+        self.actual_container.setStyleSheet("background-color: #2a2a2a; border-radius: 10px;")
         actual_layout = QtWidgets.QVBoxLayout(self.actual_container)
 
         actual_name = QtWidgets.QLabel("Actual SAG_PWR (V)")
@@ -492,10 +492,16 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
         self.values_layout.addWidget(self.target_container)
         self.values_layout.addWidget(self.actual_container)
 
-        # Add all to main layout
-        self.layout.addWidget(self.percent_container)
+        # Left side: percent + values stacked vertically
+        self.left_widget = QtWidgets.QWidget()
+        self.left_layout = QtWidgets.QVBoxLayout(self.left_widget)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_layout.addWidget(self.percent_container, stretch=1)
+        self.left_layout.addWidget(self.values_container)
+
+        # Add left (50%) and right chart (50%) to main horizontal layout
+        self.layout.addWidget(self.left_widget, stretch=1)
         self.layout.addWidget(self.chart_widget, stretch=1)
-        self.layout.addWidget(self.values_container)
 
     def update_data(self, target_sag, actual_sag):
         """Update the comparison display with new data"""
@@ -517,22 +523,22 @@ class SagnacComparisonWidget(QtWidgets.QWidget):
             # Godlike - Cyan
             color = '#00CED1'
             status = "Godlike"
-            bg_color = '#E0FFFF'
+            bg_color = '#0a2a2a'
         elif percentage >= 95:
             # Pass - Green
             color = '#32CD32'
             status = "Pass"
-            bg_color = '#E8F5E9'
+            bg_color = '#0e2a0e'
         elif percentage >= 85:
             # Marginal - Yellow
             color = '#FFD700'
             status = "Marginal"
-            bg_color = '#FFFDE7'
+            bg_color = '#2a2410'
         else:
             # Need work - Red
             color = '#FF4444'
             status = "Need Work"
-            bg_color = '#FFEBEE'
+            bg_color = '#2a0e0e'
 
         self.percent_label.setStyleSheet(f"color: {color}; padding: 10px;")
         self.status_label.setText(status)
@@ -631,7 +637,7 @@ class RealTimePlotWidget(QtWidgets.QWidget):
         for i, key in enumerate(data_key):
             # Create container for this value
             value_container = QtWidgets.QWidget()
-            value_container.setStyleSheet(f"background-color: #f5f5f5; border-radius: 10px;")
+            value_container.setStyleSheet(f"background-color: #2a2a2a; border-radius: 10px;")
             container_layout = QtWidgets.QVBoxLayout(value_container)
 
             # Create label for key name
@@ -641,7 +647,7 @@ class RealTimePlotWidget(QtWidgets.QWidget):
             name_font.setPointSize(12)
             name_font.setBold(True)
             name_label.setFont(name_font)
-            name_label.setStyleSheet("color: #333; padding: 10px;")
+            name_label.setStyleSheet("color: #DDD; padding: 10px;")
 
             # Create large label for displaying value
             value_label = QtWidgets.QLabel("--")
@@ -780,7 +786,35 @@ class RealTimePlotWidget(QtWidgets.QWidget):
 def main():
     app = QtWidgets.QApplication([])
 
+    # Dark theme (match V07 default pyqtgraph black background)
+    pg.setConfigOption('background', 'k')
+    pg.setConfigOption('foreground', '#DDD')
     pg.setConfigOptions(antialias=True)
+
+    app.setStyle("Fusion")
+
+    # Double default UI font size
+    app_font = app.font()
+    app_font.setPointSize(app_font.pointSize() * 2 if app_font.pointSize() > 0 else 18)
+    app.setFont(app_font)
+
+    palette = QtGui.QPalette()
+    palette.setColor(QtGui.QPalette.Window, QtGui.QColor(30, 30, 30))
+    palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor(220, 220, 220))
+    palette.setColor(QtGui.QPalette.Base, QtGui.QColor(25, 25, 25))
+    palette.setColor(QtGui.QPalette.AlternateBase, QtGui.QColor(45, 45, 45))
+    palette.setColor(QtGui.QPalette.ToolTipBase, QtGui.QColor(220, 220, 220))
+    palette.setColor(QtGui.QPalette.ToolTipText, QtGui.QColor(220, 220, 220))
+    palette.setColor(QtGui.QPalette.Text, QtGui.QColor(220, 220, 220))
+    palette.setColor(QtGui.QPalette.Button, QtGui.QColor(45, 45, 45))
+    palette.setColor(QtGui.QPalette.ButtonText, QtGui.QColor(220, 220, 220))
+    palette.setColor(QtGui.QPalette.BrightText, QtGui.QColor(255, 80, 80))
+    palette.setColor(QtGui.QPalette.Link, QtGui.QColor(60, 160, 220))
+    palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(60, 160, 220))
+    palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+    palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.Text, QtGui.QColor(120, 120, 120))
+    palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.ButtonText, QtGui.QColor(120, 120, 120))
+    app.setPalette(palette)
 
     win = RealTimePlotWidget()
     win.setWindowTitle("FNW Server V08 - Real-time Monitor")
