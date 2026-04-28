@@ -28,7 +28,6 @@ struct ApplicationContext;
 class RecipeManager;
 class SequenceEngine;
 class ProcessSequenceFactory;
-class SequenceBuilder;
 class ProcessConfigWidget;
 class RecipeWorker;
 class RecipeProgressWidget;
@@ -43,6 +42,10 @@ class RecipeClipboard;        // NEW: Clipboard for copy/paste
 class ContextVariablePreviewWidget;  // NEW: Shows context variables from recipe
 class RecipeRunWindow;        // NEW: Floating window hosting execution-time widgets
 class ProcessVisibilityDialog;  // NEW: Modal dialog to manage hidden process list
+class RecipeBrowserWidget;     // NEW: Self-contained "Recipes" tab (browse / load / folder ops)
+class ProcessCatalogWidget;    // NEW: Self-contained left-panel "Available Processes" catalog
+class RecipeExecutionController;  // NEW: Owns RecipeWorker lifetime + signal forwarding
+class QuickAddController;       // NEW: Ctrl+B two-key quick-add UX
 
 class RecipePage : public QWidget
 {
@@ -111,9 +114,8 @@ private slots:
   void onCopySelectedSteps();  // ✅ NEW: Copy selected process steps to clipboard
   void onPasteSteps();         // ✅ NEW: Paste copied process steps
 
-  // Middle panel actions
-  void onAddProcess();
-  void onProcessTemplateSelected(QTreeWidgetItem* item, int column);
+  // Process insert (request from ProcessCatalogWidget)
+  void onAddProcessRequested(const QString& processType);
 
   // Right panel actions - from custom widgets
   void onParameterChanged();
@@ -160,40 +162,19 @@ private slots:
   void onShowContextViewer();
   void onContextRefreshRequested();
 
-  // Recipes tab slots
-  void onRecipeListItemDoubleClicked(QTreeWidgetItem* item, int column);
-  void onRecipeListContextMenu(const QPoint& pos);
-  void onRefreshRecipeList();
-  void onLoadSelectedRecipe();
-  void onDeleteSelectedRecipe();
-  void onRenameSelectedRecipe();
-  void onCopyRecipe();
-
-  // Recipe folder management
-  void onCreateFolder();
-  void onRenameFolder(QTreeWidgetItem* folderItem);
-  void onDeleteFolder(QTreeWidgetItem* folderItem);
-  void moveRecipeToFolder(const QString& srcPath, const QString& targetFolderName);
-  bool confirmRecipeMove(const QString& recipeName, const QString& targetFolder);
-
-  // Recipe usage checking
-  QStringList findRecipeUsageInPrograms(const QString& recipeFilePath);
-  QStringList findRecipeUsageAsSubRecipe(const QString& recipeFilePath);
+  // Recipe load (request from RecipeBrowserWidget)
+  void onRecipeLoadRequested(const QString& filePath);
 
 private:
   // Live data injection for Context Viewer
   void injectLiveBeamStreamData();
 
   void setupUI();
-  void createLeftPanel(QWidget* leftPanel);
   void createMiddlePanel(QWidget* middlePanel);
   void createRightPanel(QWidget* rightPanel);
 
   // Middle panel tab creation
-  void createRecipesTab(QWidget* recipesTab);
   void createStepsTab(QWidget* stepsTab);
-  void populateRecipeListWidget();
-  QString getRecipeFolderPath();
 
   // UI refresh
   void refreshRecipeList();
@@ -215,19 +196,18 @@ private:
 
   // Recipe execution
   void setupSequenceEngine();
-  bool executeRecipe();
-  [[nodiscard]] bool buildSequenceFromRecipe(SequenceBuilder* sequence);
 
-  // Settings persistence
-  void saveLastRecipeToSettings(const QString& recipePath);
+  // Installs the 4 user-interaction callbacks (user prompt / manual
+  // adjust / user input) on a freshly-created RecipeWorker. Called via
+  // the WorkerConfigurator passed to RecipeExecutionController::Start.
+  // Lambdas inside reach page-side widgets and event-loop state, so
+  // this stays on the page rather than moving into the controller.
+  void installRecipeWorkerCallbacks(RecipeWorker* worker);
+
+  // Auto-load workflow: reads last-recipe path from RecipePageSettingsStore,
+  // loads the recipe, and refreshes UI / loads associated product file.
+  // The QSettings I/O itself lives in RecipePageSettingsStore.
   void loadLastRecipeFromSettings();
-
-  // Quick add mode (Ctrl+B shortcut)
-  void activateQuickAddMode();
-  void deactivateQuickAddMode();
-  void handleQuickAddCategoryKey(int key);
-  void handleQuickAddProcessKey(int key);
-  void updateQuickAddDisplay();
 
   // Unsaved changes handling
   void onBackButtonClicked();  // Handle back button with unsaved changes check
@@ -263,19 +243,12 @@ private:
 
   // Middle panel widgets
   QTabWidget* m_middleTabWidget;
-  QTreeWidget* m_processTemplateList;
-  QPushButton* m_addButton;
-  QLabel* m_selectedProcessLabel;  // Shows currently selected process type
 
-  // Recipes tab widgets
-  QTreeWidget* m_recipeListWidget;
-  QLineEdit* m_recipeFilterEdit;
-  QPushButton* m_refreshRecipeListButton;
-  QLabel* m_recipeCountLabel;
-  QPushButton* m_createFolderButton;
-  QPushButton* m_removeFolderButton;
-  QPushButton* m_copyRecipeButton;
-  QPushButton* m_deleteRecipeButton;
+  // Left panel "Available Processes" — extracted (see ProcessCatalogWidget.h).
+  ProcessCatalogWidget* m_processCatalog = nullptr;
+
+  // Recipes tab — extracted to its own widget (see RecipeBrowserWidget.h).
+  RecipeBrowserWidget* m_recipeBrowser = nullptr;
 
   // Right panel widgets
   QScrollArea* m_configScrollArea;
@@ -290,17 +263,9 @@ private:
   // across runs.  See include/AppUI/RecipePage/RecipeRunWindow.h.
   RecipeRunWindow* m_runWindow = nullptr;
 
-  // Hidden process types loaded from config/hidden_processes(.local).json.
-  // Mutated by the ProcessVisibilityDialog; consulted in
-  // refreshProcessTemplateList() and quick-add mode.
-  std::unordered_set<std::string> m_hiddenProcesses;
-
-  void loadHiddenProcessesFromDisk();
-  void refreshProcessTemplateList();   // Re-populate the available-processes tree
-  void onShowVisibilityDialog();        // Slot bound to the gear button
-
   QPushButton* m_backButton;
-  RecipeWorker* m_recipeWorker;
+  // RecipeWorker is now owned by m_executionController (see below).
+  RecipeExecutionController* m_executionController = nullptr;
 
   QPushButton* m_loadProductButton;
   QPushButton* m_stopButton;  // ✅ NEW: Emergency stop button
@@ -332,10 +297,8 @@ private:
   std::unique_ptr<RecipeTreeItemFactory> m_treeItemFactory;  // Factory for tree items
   std::unique_ptr<RecipeClipboard> m_clipboard;              // Clipboard for copy/paste
 
-  // Quick add mode state (Ctrl+B shortcut)
-  bool m_quickAddMode;                    // Whether quick add mode is active
-  int m_quickAddSelectedCategory;         // Selected category index (-1 = none)
-  QLabel* m_quickAddOverlay;              // Overlay showing quick add instructions
+  // Quick add mode (Ctrl+B) — extracted to QuickAddController.
+  QuickAddController* m_quickAddController = nullptr;
 
   // Page state management
   PageState m_pageState;                  // Current page state (Editing/Executing)
@@ -345,7 +308,6 @@ protected:
   void keyPressEvent(QKeyEvent* event) override;
   void showEvent(QShowEvent* event) override;  // Hot reload when page becomes visible
   void resizeEvent(QResizeEvent* event) override;  // Enforce fixed 20/55/25 panel widths
-  bool eventFilter(QObject* watched, QEvent* event) override;  // Drag-drop intercept for recipe tree
 
 private:
   QSplitter* m_mainSplitter = nullptr;  // Three-pane splitter (left/middle/right)

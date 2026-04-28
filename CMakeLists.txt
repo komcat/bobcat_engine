@@ -646,6 +646,11 @@ set(SOURCES
     include/AppUI/RecipePage/RecipeRunWindow.cpp
     include/AppUI/RecipePage/ProcessVisibilityDialog.cpp
     include/AppUI/RecipePage/RecipeClipboard.cpp
+    include/AppUI/RecipePage/RecipePageSettingsStore.cpp
+    include/AppUI/RecipePage/RecipeBrowserWidget.cpp
+    include/AppUI/RecipePage/ProcessCatalogWidget.cpp
+    include/AppUI/RecipePage/RecipeExecutionController.cpp
+    include/AppUI/RecipePage/QuickAddController.cpp
     include/AppUI/RecipePage/PropertyTableWidget.cpp
     include/recipe/RecipeManager.cpp
     include/recipe/ProcessSequenceFactory.cpp
@@ -987,6 +992,10 @@ set(HEADERS
     include/sequence/SequencePromptDialog.h
     include/sequence/GripperSequenceHelpers.h 
     include/AppUI/RecipePage/RecipePage.h
+    include/AppUI/RecipePage/RecipeBrowserWidget.h
+    include/AppUI/RecipePage/ProcessCatalogWidget.h
+    include/AppUI/RecipePage/RecipeExecutionController.h
+    include/AppUI/RecipePage/QuickAddController.h
     include/recipe/RecipeManager.h
     include/recipe/ProcessSequenceFactory.h
     include/recipe/IProcessPlugin.h
