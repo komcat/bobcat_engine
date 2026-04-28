@@ -174,8 +174,6 @@ private:
   // typed getters when it needs to wire signals or read state.
   class RunPageLeftPanel* m_leftPanel = nullptr;
 
-  // Right-side execution-view widgets.
-  QProgressBar* m_progressBar;
 
   // Right panel
   QStackedWidget* m_rightStack;
@@ -190,12 +188,14 @@ private:
   class ProgramEditPanel* m_editPanel = nullptr;
   QPushButton* m_saveEditButton;
 
-  // Execution widget components
-  QLabel* m_executionTitleLabel;  // Shows "Program Execution" or program file name
-  QLabel* m_executionStatusLabel;
-  QLabel* m_currentRecipeLabel;
-  QLabel* m_executionLogLabel;
-  QLabel* m_programStatusLabel;   // Shows "Idle", "Running", "Stopped"
+  // Execution view header strip — the 250x150 status badge, program
+  // info labels (title / status / current recipe), the 4-cell
+  // command tracker, the action detail line, and the progress bar
+  // all live in ExecutionStatusWidget. The page accesses inner
+  // widgets via getters when it updates UI in response to execution
+  // events.
+  class ExecutionStatusWidget* m_executionStatus = nullptr;
+
   // Base (non-scan) status snapshot — what the badge should revert to once
   // any active scan ends. Set via setProgramStatus(); paint via applyProgramStatusLabel().
   // Defaults match the "Idle" appearance; setProgramStatus() at runtime reads
@@ -206,18 +206,12 @@ private:
   bool m_isScanActive = false;
   void setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor);
   void applyProgramStatusLabel();
+
+  QLabel* m_executionLogLabel;
   QPlainTextEdit* m_logTextEdit;  // Using QPlainTextEdit for better performance with large logs
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
   CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
 
-  // Command tracker row (4 cells: past, current, next1, next2)
-  QWidget* m_commandTrackerRow;
-  QLabel* m_cmdPastLabel;
-  QLabel* m_cmdCurrentLabel;
-  QLabel* m_cmdNext1Label;
-  QLabel* m_cmdNext2Label;
-  // Single-row human-readable description of the action currently running.
-  QLabel* m_actionDetailLabel = nullptr;
   std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
   // Scanning controls. The widget is the body of the "Scanning" tab so it

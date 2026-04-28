@@ -6,6 +6,7 @@
 #include "ProgramEditPanel.h"
 #include "SlotManagerWidget.h"
 #include "RunPageLeftPanel.h"
+#include "ExecutionStatusWidget.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -469,7 +470,7 @@ void RunProgramPage::createEditWidget()
 }
 
 // Stores the requested base state and re-applies the badge. Use this instead
-// of touching m_programStatusLabel directly so that an active scan overlay
+// of touching m_executionStatus->programStatusLabel() directly so that an active scan overlay
 // can hide the base state without losing it.
 void RunProgramPage::setProgramStatus(const QString& text, const QString& bgColor, const QString& fgColor)
 {
@@ -484,7 +485,7 @@ void RunProgramPage::setProgramStatus(const QString& text, const QString& bgColo
 // and from the ScanActivityTracker signal handler.
 void RunProgramPage::applyProgramStatusLabel()
 {
-  if (!m_programStatusLabel) {
+  if (!m_executionStatus->programStatusLabel()) {
     return;
   }
 
@@ -502,8 +503,8 @@ void RunProgramPage::applyProgramStatusLabel()
     fg = m_baseStatusFgColor;
   }
 
-  m_programStatusLabel->setText(text);
-  m_programStatusLabel->setStyleSheet(
+  m_executionStatus->programStatusLabel()->setText(text);
+  m_executionStatus->programStatusLabel()->setStyleSheet(
     QString(
       "QLabel { "
       "  background-color: %1; "
@@ -523,163 +524,14 @@ void RunProgramPage::createExecutionWidget()
   QVBoxLayout* layout = new QVBoxLayout(m_executionWidget);
   layout->setContentsMargins(20, 20, 20, 20);
 
-  // === HEADER SECTION ===
-  // Header: large status badge on the left (250x150), program info on the right
-  QHBoxLayout* headerRow = new QHBoxLayout();
-  headerRow->setContentsMargins(0, 0, 0, 0);
-  headerRow->setSpacing(15);
+  // Status header strip (status badge + program info + command tracker
+  // + action detail + progress bar). Its inner widgets are accessed
+  // via typed getters where the page reacts to execution events.
+  m_executionStatus = new ExecutionStatusWidget();
+  layout->addWidget(m_executionStatus);
 
-  // Program status indicator (Idle/Running/Stopped/Scanning) — 250x150 badge on the left
-  m_programStatusLabel = new QLabel("Idle");
-  m_programStatusLabel->setFixedSize(250, 150);
-  m_programStatusLabel->setAlignment(Qt::AlignCenter);
-  // Initial state mirrors the "Idle" defaults stored in m_baseStatus*; the
-  // helper paints from those members so a scan overlay can swap in/out
-  // without losing the underlying state.
+  // Initial paint — the badge reads from m_baseStatus* defaults.
   applyProgramStatusLabel();
-  headerRow->addWidget(m_programStatusLabel, 0, Qt::AlignTop);
-
-  // Right side: program title + status line + current recipe (stacked)
-  QVBoxLayout* headerTextLayout = new QVBoxLayout();
-  headerTextLayout->setContentsMargins(0, 0, 0, 0);
-  headerTextLayout->setSpacing(4);
-
-  m_executionTitleLabel = new QLabel("Program Execution");
-  m_executionTitleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;");
-  headerTextLayout->addWidget(m_executionTitleLabel);
-
-  // Status row
-  m_executionStatusLabel = new QLabel("Ready to execute");
-  m_executionStatusLabel->setStyleSheet("font-size: 14px; color: #cccccc;");
-  headerTextLayout->addWidget(m_executionStatusLabel);
-
-  // Current recipe
-  m_currentRecipeLabel = new QLabel("Current Recipe: None");
-  m_currentRecipeLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0e639c;");
-  headerTextLayout->addWidget(m_currentRecipeLabel);
-
-  headerTextLayout->addStretch();
-
-  headerRow->addLayout(headerTextLayout, 1);
-
-  layout->addLayout(headerRow);
-
-  layout->addSpacing(10);
-
-  // === COMMAND TRACKER ROW (4 cells: Past, Current, Next1, Next2) ===
-  m_commandTrackerRow = new QWidget();
-  QHBoxLayout* trackerLayout = new QHBoxLayout(m_commandTrackerRow);
-  trackerLayout->setContentsMargins(0, 0, 0, 0);
-  trackerLayout->setSpacing(4);
-
-  auto createTrackerCell = [](const QString& headerText, QLabel*& label) -> QWidget* {
-    QWidget* cell = new QWidget();
-    QVBoxLayout* cellLayout = new QVBoxLayout(cell);
-    cellLayout->setContentsMargins(8, 4, 8, 4);
-    cellLayout->setSpacing(2);
-
-    QLabel* header = new QLabel(headerText);
-    header->setStyleSheet("font-size: 10px; color: #888888; font-weight: bold;");
-    header->setAlignment(Qt::AlignCenter);
-    cellLayout->addWidget(header);
-
-    label = new QLabel("-");
-    label->setStyleSheet(
-      "QLabel { "
-      "  font-size: 11px; "
-      "  color: #cccccc; "
-      "  padding: 4px; "
-      "}"
-    );
-    label->setAlignment(Qt::AlignCenter);
-    label->setWordWrap(true);
-    label->setMinimumHeight(40);
-    cellLayout->addWidget(label);
-
-    cell->setStyleSheet(
-      "QWidget { "
-      "  background-color: #2d2d2d; "
-      "  border: 1px solid #3f3f46; "
-      "  border-radius: 4px; "
-      "}"
-    );
-    return cell;
-  };
-
-  // Create the 4 cells
-  QWidget* pastCell = createTrackerCell("PREVIOUS", m_cmdPastLabel);
-  QWidget* currentCell = createTrackerCell("CURRENT", m_cmdCurrentLabel);
-  QWidget* next1Cell = createTrackerCell("NEXT", m_cmdNext1Label);
-  QWidget* next2Cell = createTrackerCell("AFTER", m_cmdNext2Label);
-
-  // Style the current cell differently (highlighted)
-  currentCell->setStyleSheet(
-    "QWidget { "
-    "  background-color: #0e4f7c; "
-    "  border: 1px solid #0078d4; "
-    "  border-radius: 4px; "
-    "}"
-  );
-  m_cmdCurrentLabel->setStyleSheet(
-    "QLabel { "
-    "  font-size: 11px; "
-    "  color: #ffffff; "
-    "  font-weight: bold; "
-    "  padding: 4px; "
-    "}"
-  );
-
-  trackerLayout->addWidget(pastCell, 1);
-  trackerLayout->addWidget(currentCell, 1);
-  trackerLayout->addWidget(next1Cell, 1);
-  trackerLayout->addWidget(next2Cell, 1);
-
-  layout->addWidget(m_commandTrackerRow);
-  // Hidden from the UI by request; underlying labels remain wired so
-  // m_cmdPastLabel / m_cmdCurrentLabel / m_cmdNext1Label / m_cmdNext2Label
-  // continue to receive updates and can be re-enabled by removing this line.
-  m_commandTrackerRow->hide();
-
-  // === ACTION DETAIL LINE (human-readable description of current action) ===
-  m_actionDetailLabel = new QLabel("-");
-  m_actionDetailLabel->setStyleSheet(
-    "QLabel { "
-    "  font-size: 12px; "
-    "  color: #cccccc; "
-    "  background-color: #2d2d2d; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  padding: 6px 10px; "
-    "}"
-  );
-  m_actionDetailLabel->setWordWrap(false);
-  m_actionDetailLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  m_actionDetailLabel->setToolTip("Current sequence action");
-  layout->addWidget(m_actionDetailLabel);
-
-  // === PROGRESS BAR (tracks step execution progress) ===
-  m_progressBar = new QProgressBar();
-  m_progressBar->setRange(0, 100);
-  m_progressBar->setValue(0);
-  m_progressBar->setTextVisible(true);
-  m_progressBar->setFixedHeight(18);
-  m_progressBar->setStyleSheet(
-    "QProgressBar { "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "  text-align: center; "
-    "  color: #ffffff; "
-    "  font-weight: bold; "
-    "} "
-    "QProgressBar::chunk { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
-    "      stop:0 #58d68d, stop:1 #27ae60); "
-    "  border-radius: 2px; "
-    "}"
-  );
-  layout->addWidget(m_progressBar);
-  layout->addSpacing(4);
 
   // === TAB WIDGET FOR LOG AND LIVE VIEW ===
   m_executionTabWidget = new QTabWidget();
@@ -1347,7 +1199,7 @@ void RunProgramPage::onStopProgram()
 {
   if (m_executionController && m_executionController->IsExecuting()) {
     m_executionController->RequestStop();
-    m_executionStatusLabel->setText("Stopping program...");
+    m_executionStatus->executionStatusLabel()->setText("Stopping program...");
   }
 }
 
@@ -1357,31 +1209,31 @@ void RunProgramPage::onProgramExecutionStarted(int totalRecipes)
   m_currentRecipeIndex = 0;
 
   // ✅ Set progress bar to percentage mode (0-100) for step-level tracking
-  m_progressBar->setRange(0, 100);
-  m_progressBar->setValue(0);
+  m_executionStatus->progressBar()->setRange(0, 100);
+  m_executionStatus->progressBar()->setValue(0);
 
-  m_executionStatusLabel->setText(QString("Executing program with %1 recipes").arg(totalRecipes));
+  m_executionStatus->executionStatusLabel()->setText(QString("Executing program with %1 recipes").arg(totalRecipes));
 }
 
 void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
 {
   m_currentRecipeIndex = recipeIndex;
-  m_currentRecipeLabel->setText(QString("Current Recipe: %1").arg(recipeName));
-  m_executionStatusLabel->setText(QString("Recipe %1 of %2: %3")
+  m_executionStatus->currentRecipeLabel()->setText(QString("Current Recipe: %1").arg(recipeName));
+  m_executionStatus->executionStatusLabel()->setText(QString("Recipe %1 of %2: %3")
     .arg(recipeIndex + 1).arg(m_totalRecipes).arg(recipeName));
 
   // ✅ Reset step-level tracking for new recipe
   m_currentRecipeTotalSteps = 0;
   m_currentRecipeCompletedSteps = 0;
-  m_progressBar->setValue(0);
+  m_executionStatus->progressBar()->setValue(0);
 
   // ✅ Reset command tracker
   m_recipeStepNames.clear();
-  m_cmdPastLabel->setText("-");
-  m_cmdCurrentLabel->setText("Starting...");
-  m_cmdNext1Label->setText("-");
-  m_cmdNext2Label->setText("-");
-  if (m_actionDetailLabel) m_actionDetailLabel->setText("Starting...");
+  m_executionStatus->cmdPastLabel()->setText("-");
+  m_executionStatus->cmdCurrentLabel()->setText("Starting...");
+  m_executionStatus->cmdNext1Label()->setText("-");
+  m_executionStatus->cmdNext2Label()->setText("-");
+  if (m_executionStatus->actionDetailLabel()) m_executionStatus->actionDetailLabel()->setText("Starting...");
 
   // Update list item to show running state
   QListWidgetItem* item = m_leftPanel->recipeList()->item(recipeIndex);
@@ -1463,7 +1315,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   }
 
   if (!success) {
-    m_executionStatusLabel->setText(QString("Recipe failed: %1").arg(message));
+    m_executionStatus->executionStatusLabel()->setText(QString("Recipe failed: %1").arg(message));
   }
 
   // ✅ Chain Execution: Find and queue dependent recipes
@@ -1755,11 +1607,11 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   // Retrace-edit mode flag lives on the controller; no page-side reset needed.
 
   // ✅ Reset command tracker
-  m_cmdPastLabel->setText("-");
-  m_cmdCurrentLabel->setText(success ? "Completed" : "Failed");
-  m_cmdNext1Label->setText("-");
-  m_cmdNext2Label->setText("-");
-  if (m_actionDetailLabel) m_actionDetailLabel->setText(success ? "Completed" : "Failed");
+  m_executionStatus->cmdPastLabel()->setText("-");
+  m_executionStatus->cmdCurrentLabel()->setText(success ? "Completed" : "Failed");
+  m_executionStatus->cmdNext1Label()->setText("-");
+  m_executionStatus->cmdNext2Label()->setText("-");
+  if (m_executionStatus->actionDetailLabel()) m_executionStatus->actionDetailLabel()->setText(success ? "Completed" : "Failed");
   m_recipeStepNames.clear();
 
   std::cout << "[RunProgramPage] Updating execute button..." << std::endl;
@@ -1822,11 +1674,11 @@ void RunProgramPage::onProgramStopped()
   m_pendingChainRecipeIndex = -1;
 
   // ✅ Reset command tracker
-  m_cmdPastLabel->setText("-");
-  m_cmdCurrentLabel->setText("Stopped");
-  m_cmdNext1Label->setText("-");
-  m_cmdNext2Label->setText("-");
-  if (m_actionDetailLabel) m_actionDetailLabel->setText("Stopped");
+  m_executionStatus->cmdPastLabel()->setText("-");
+  m_executionStatus->cmdCurrentLabel()->setText("Stopped");
+  m_executionStatus->cmdNext1Label()->setText("-");
+  m_executionStatus->cmdNext2Label()->setText("-");
+  if (m_executionStatus->actionDetailLabel()) m_executionStatus->actionDetailLabel()->setText("Stopped");
   m_recipeStepNames.clear();
 
   // ✅ Update status label to "Stopped"
@@ -1879,7 +1731,7 @@ void RunProgramPage::onStepExecutionCompleted(int /*recipeIndex*/, int /*stepInd
 
   if (m_currentRecipeTotalSteps > 0) {
     int progress = (m_currentRecipeCompletedSteps * 100) / m_currentRecipeTotalSteps;
-    m_progressBar->setValue(progress);
+    m_executionStatus->progressBar()->setValue(progress);
   }
 }
 
@@ -1887,23 +1739,23 @@ void RunProgramPage::onActionStarted(int /*recipeIndex*/, QString current, QStri
 {
   // Update the command tracker with the currently executing action and look-ahead
   // The current step (from onStepBuildStarted) becomes the previous
-  QString prevCurrent = m_cmdCurrentLabel->text();
+  QString prevCurrent = m_executionStatus->cmdCurrentLabel()->text();
   if (!prevCurrent.isEmpty() && prevCurrent != "Starting..." && prevCurrent != "-" && prevCurrent != "Completed") {
-    m_cmdPastLabel->setText(prevCurrent);
+    m_executionStatus->cmdPastLabel()->setText(prevCurrent);
   }
 
   // Update current to show the executing action
-  m_cmdCurrentLabel->setText(current);
+  m_executionStatus->cmdCurrentLabel()->setText(current);
 
   // Show next and after-next from look-ahead
-  m_cmdNext1Label->setText(next.isEmpty() ? "-" : next);
-  m_cmdNext2Label->setText(afterNext.isEmpty() ? "-" : afterNext);
+  m_executionStatus->cmdNext1Label()->setText(next.isEmpty() ? "-" : next);
+  m_executionStatus->cmdNext2Label()->setText(afterNext.isEmpty() ? "-" : afterNext);
 
   // Mirror the current action into the visible single-row description.
   // `current` here is already a human-readable string built by
   // ActionInfo::toHumanReadable() in RecipeWorker.
-  if (m_actionDetailLabel) {
-    m_actionDetailLabel->setText(current.isEmpty() ? "-" : current);
+  if (m_executionStatus->actionDetailLabel()) {
+    m_executionStatus->actionDetailLabel()->setText(current.isEmpty() ? "-" : current);
   }
 }
 
@@ -2454,14 +2306,14 @@ void RunProgramPage::onLoopIterationStarted(int iteration)
   m_currentLoopIteration = iteration;
 
   // Update the execution status to show loop iteration
-  m_executionStatusLabel->setText(QString("Loop Iteration %1").arg(iteration));
+  m_executionStatus->executionStatusLabel()->setText(QString("Loop Iteration %1").arg(iteration));
 
   // Update program status indicator
   setProgramStatus(QString("Loop #%1").arg(iteration),
                    Theme::Color::accentSoft, Theme::Color::bgDeep);
 
   // Reset progress bar for new iteration
-  m_progressBar->setValue(0);
+  m_executionStatus->progressBar()->setValue(0);
 }
 
 void RunProgramPage::onLoopIterationCompleted(int iteration)
@@ -2774,9 +2626,9 @@ void RunProgramPage::updateProgramInfo()
 
   // Update execution title label with program file name
   if (!programName.isEmpty() && programName != "Untitled Program") {
-    m_executionTitleLabel->setText("Program file: " + programName);
+    m_executionStatus->executionTitleLabel()->setText("Program file: " + programName);
   } else {
-    m_executionTitleLabel->setText("Program Execution");
+    m_executionStatus->executionTitleLabel()->setText("Program Execution");
   }
 
   // Display program file path
@@ -3162,11 +3014,11 @@ void RunProgramPage::applyTheme()
 {
   applyProgramStatusLabel();
 
-  m_currentRecipeLabel->setStyleSheet(
+  m_executionStatus->currentRecipeLabel()->setStyleSheet(
     QString("font-size: 16px; font-weight: bold; color: %1;")
       .arg(QLatin1String(Theme::Color::primary)));
 
-  m_actionDetailLabel->setStyleSheet(
+  m_executionStatus->actionDetailLabel()->setStyleSheet(
     QString("QLabel { "
             "  font-size: 12px; "
             "  color: %1; "
@@ -3179,7 +3031,7 @@ void RunProgramPage::applyTheme()
            QLatin1String(Theme::Color::bgSurface),
            QLatin1String(Theme::Color::borderSubtle)));
 
-  m_progressBar->setStyleSheet(
+  m_executionStatus->progressBar()->setStyleSheet(
     QString("QProgressBar { "
             "  border: 1px solid %1; "
             "  border-radius: 3px; "
