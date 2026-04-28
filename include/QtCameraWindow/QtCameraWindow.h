@@ -8,7 +8,6 @@
 #include <QScrollArea>
 #include <QLabel>
 #include <QPushButton>
-#include <array>
 
 #include "camera/CameraFrameData.h"
 #include <mutex>
@@ -36,11 +35,17 @@ class DataStore;
 class UnifiedMotionManager;
 class CameraConfigManager;
 class QtCameraViewport;
+class QtCameraQuickMovePanel;
+class QtCameraTrackingPanel;
+class QtCameraChartOverlay;
+#ifdef HAS_OPENCV
+class QtCameraVisionController;
+#endif
+class QtCameraBeamStreamController;
 class BeamServerClient;
 class QListWidget;
 class QPushButton;
 class QTimer;
-class TransformationMatrixLoader;
 struct ApplicationContext;
 
 /**
@@ -90,9 +95,9 @@ public:
     void setMagnification(double mag);
     void setDisplayRotation(int degrees);
 
-    // Chart overlay
+    // Chart overlay (forwards to QtCameraChartOverlay).
     void setChartEnabled(bool enabled);
-    bool isChartEnabled() const { return m_chartEnabled; }
+    bool isChartEnabled() const;
 
     // Beam streaming
     void setBeamServerClient(BeamServerClient* client);
@@ -155,23 +160,6 @@ private slots:
     void onRotationChanged(int index);
     void onImageClicked(int imageX, int imageY);
 
-    // Chart slots
-    void onChartEnableToggled(bool checked);
-    void onChartScaleIncrease();
-    void onChartScaleDecrease();
-    void onChartRefreshChannels();
-
-#ifdef HAS_OPENCV
-    // Vision slots
-    void onVisionEnableToggled(bool checked);
-    void onVisionProfileChanged(int index);
-    void onVisionRefreshProfiles();
-#endif
-
-    // Beam slots
-    void onBeamEnableToggled(bool checked);
-    void onBeamCameraChanged(const QString& cameraId);
-
 private:
     std::string m_instanceId;
     std::string m_subscriberId;
@@ -197,98 +185,27 @@ private:
     QComboBox* m_magnificationCombo = nullptr;
     QComboBox* m_rotationCombo = nullptr;
 
-    // Side panel controls — Chart group
-    QGroupBox*   m_chartGroup       = nullptr;
-    QCheckBox*   m_chartEnableCheck = nullptr;
-    QListWidget* m_chartChannelList = nullptr;
-    QPushButton* m_chartRefreshBtn  = nullptr;
-    QPushButton* m_chartScaleUpBtn  = nullptr;
-    QPushButton* m_chartScaleDnBtn  = nullptr;
+    // Chart overlay — extracted to QtCameraChartOverlay.
+    QtCameraChartOverlay* m_chartOverlay = nullptr;
 
 #ifdef HAS_OPENCV
-    // Side panel controls — Vision group
-    QGroupBox*   m_visionGroup        = nullptr;
-    QCheckBox*   m_visionEnableCheck  = nullptr;
-    QComboBox*   m_visionProfileCombo = nullptr;
-    QPushButton* m_visionRefreshBtn   = nullptr;
+    // Vision processing — extracted to QtCameraVisionController.
+    QtCameraVisionController* m_visionController = nullptr;
 #endif
 
-    // Side panel controls — Beam group
-    QGroupBox* m_beamGroup       = nullptr;
-    QCheckBox* m_beamEnableCheck = nullptr;
-    QComboBox* m_beamCameraCombo = nullptr;
+    // Beam streaming — extracted to QtCameraBeamStreamController.
+    QtCameraBeamStreamController* m_beamController = nullptr;
 
-    // Quick-move panel (second left panel)
-    static constexpr int QUICK_MOVE_ROWS = 6;
-    static constexpr int QUICK_MOVE_COLS = 4;
-    static constexpr int QUICK_MOVE_COUNT = QUICK_MOVE_ROWS * QUICK_MOVE_COLS;
-
-    struct QuickMoveButtonData {
-        bool assigned = false;
-        QString label;           // max 10 chars
-        double relX = 0.0;      // mm
-        double relY = 0.0;      // mm
-        double relZ = 0.0;      // mm
-    };
-
+    // Quick-move panel (left column container hosting QtCameraQuickMovePanel
+    // + the device-tracking group). Container stays here so the tracking
+    // group can sit beneath the quick-move grid.
     QWidget* m_quickMovePanel = nullptr;
-    std::array<QPushButton*, QUICK_MOVE_COUNT> m_quickMoveBtns{};
-    std::array<QuickMoveButtonData, QUICK_MOVE_COUNT> m_quickMoveData{};
+    QtCameraQuickMovePanel* m_quickMoveWidget = nullptr;
 
     void buildQuickMovePanel();
-    void onQuickMoveClicked(int index);
-    void onQuickMoveRightClicked(int index);
-    void showQuickMoveConfigDialog(int index);
-    void updateQuickMoveButton(int index);
-    void saveQuickMoveSettings();
-    void loadQuickMoveSettings();
-    QString quickMoveKey(const QString& key) const;
 
-    // Device tracking (session-only): register a gantry-frame zero point P0
-    // from gantry-main XY, then live-monitor hex-left / hex-right positions
-    // (transformed local -> global) as deltas from P0.
-    QGroupBox*   m_trackingGroup       = nullptr;
-    QPushButton* m_zeroP0Btn           = nullptr;
-    QPushButton* m_setHexLeftBtn       = nullptr;
-    QPushButton* m_setHexRightBtn      = nullptr;
-    QPushButton* m_clearTrackingBtn    = nullptr;
-    QLabel*      m_p0StatusLabel       = nullptr;
-    QLabel*      m_hexLeftStatusLabel  = nullptr;
-    QLabel*      m_hexRightStatusLabel = nullptr;
-    QTimer*      m_trackingTimer       = nullptr;
-    std::unique_ptr<TransformationMatrixLoader> m_matrixLoader;
-    bool   m_p0Set = false;
-    double m_p0X = 0.0, m_p0Y = 0.0;
-    bool   m_hexLeftReg = false;
-    double m_hexLeftRegDX = 0.0, m_hexLeftRegDY = 0.0;
-    double m_hexLeftRegLocalX = 0.0, m_hexLeftRegLocalY = 0.0, m_hexLeftRegLocalZ = 0.0;
-    bool   m_hexRightReg = false;
-    double m_hexRightRegDX = 0.0, m_hexRightRegDY = 0.0;
-    double m_hexRightRegLocalX = 0.0, m_hexRightRegLocalY = 0.0, m_hexRightRegLocalZ = 0.0;
-
-    // Alert thresholds (Euclidean distance in mm). Persisted via QSettings.
-    static constexpr double DEFAULT_HEX_ALERT_THRESHOLD = 0.005;
-    double m_hexLeftAlertThreshold  = DEFAULT_HEX_ALERT_THRESHOLD;
-    double m_hexRightAlertThreshold = DEFAULT_HEX_ALERT_THRESHOLD;
-    bool   m_hexLeftAlertActive  = false;
-    bool   m_hexRightAlertActive = false;
-
-    QGroupBox* buildDeviceTrackingGroup();
-    void onZeroP0Clicked();
-    void onSetHexLeftClicked();
-    void onSetHexRightClicked();
-    void onClearTrackingClicked();
-    void onTrackingTimerTick();
-    bool getGantryMainXY(double& x, double& y) const;
-    bool getHexLocalXYZ(const std::string& hexDevice,
-                        double& lx, double& ly, double& lz) const;
-    void updateTrackingStatusLabels();
-    void onSetHexLeftRightClicked();
-    void onSetHexRightRightClicked();
-    void promptThresholdDialog(const QString& which, double& threshold);
-    void applyHexButtonAlertStyle(QPushButton* btn, bool alert);
-    void loadTrackingSettings();
-    void saveTrackingSettings();
+    // Device tracking — extracted to QtCameraTrackingPanel.
+    QtCameraTrackingPanel* m_trackingPanel = nullptr;
 
     // Dependencies (non-owning)
     CameraManager*       m_cameraManager       = nullptr;
@@ -333,89 +250,9 @@ private:
     int    m_calibRefHeight  = 0;
     void loadCalibrationFactors();
 
-    // ---- Chart overlay data ----
-    struct ChartChannelData {
-        std::deque<double> values;
-        double runningMin = 1e30;
-        double runningMax = -1e30;
-    };
-    mutable std::mutex m_chartMutex;
-    std::map<std::string, ChartChannelData> m_chartChannels;
-    std::set<std::string> m_chartEnabledChannels;
-    bool  m_chartEnabled = false;
-    float m_chartScale   = 1.0f;
-    std::chrono::steady_clock::time_point m_lastChartRepaint;
-    static constexpr size_t CHART_MAX_POINTS = 200;
-    void onDataStoreValueChanged(const std::string& channelId, float value);
-    void refreshChartChannelList();
-    QString chartKey(const QString& key) const;
-
-#ifdef HAS_OPENCV
-    // ---- Vision processing ----
-    std::atomic<bool> m_visionEnabled{false};
-    std::atomic<bool> m_visionThreadRunning{false};
-    std::thread m_visionThread;
-    std::queue<std::vector<uint8_t>> m_visionFrameQueue;
-    uint32_t m_visionQueuedWidth  = 0;
-    uint32_t m_visionQueuedHeight = 0;
-    std::mutex m_visionFrameQueueMutex;
-    std::condition_variable m_visionFrameQueueCV;
-    std::string m_activeVisionProfile;
-    std::mutex m_visionProfileMutex;
-
-    // Vision results (thread-safe)
-    VisionResult m_lastVisionResult;
-    std::string  m_visionProfileName;
-    mutable std::mutex m_visionResultMutex;
-    std::atomic<uint64_t> m_visionResultSequence{0};
-
-    // External vision overlay (from callers outside this window's vision loop)
-    QTimer* m_externalVisionOverlayTimer = nullptr;
-
-    // Profile discovery
-    struct VisionProfileInfo { std::string fullPath; std::string displayName; };
-    std::vector<VisionProfileInfo> m_availableProfiles;
-
-    void startVisionProcessing();
-    void stopVisionProcessing();
-    void visionThreadLoop();
-    void discoverVisionProfiles();
-    void populateVisionProfileCombo();
-    QString visionKey(const QString& key) const;
-#endif
-
-    // ---- Beam streaming ----
+    // Optional beam server client (set by setBeamServerClient(); used
+    // outside the streaming controller for legacy callers).
     BeamServerClient* m_beamServerClient = nullptr;
-    std::unique_ptr<BeamServerClient> m_beamStreamClient;
-    std::atomic<bool> m_beamStreamEnabled{false};
-    std::atomic<bool> m_beamStreamThreadRunning{false};
-    std::thread m_beamStreamThread;
-    std::queue<std::vector<uint8_t>> m_beamStreamQueue;
-    uint32_t m_beamStreamQueuedWidth  = 0;
-    uint32_t m_beamStreamQueuedHeight = 0;
-    std::mutex m_beamStreamQueueMutex;
-    std::condition_variable m_beamStreamQueueCV;
-    std::string m_beamStreamCameraId;
-
-    struct BeamStreamConfig {
-        std::string host   = "127.0.0.1";
-        int    port        = 5567;
-        double umPerPxX    = 0.25;
-        double umPerPxY    = 0.25;
-        bool   rotate180   = false;
-        int    intervalMs  = 100;
-    };
-    BeamStreamConfig m_beamStreamConfig;
-
-    nlohmann::json m_lastBeamResult;
-    mutable std::mutex m_beamResultMutex;
-    std::atomic<uint64_t> m_beamResultSequence{0};
-    std::atomic<double>   m_beamStreamFps{0.0};
-
-    void startBeamStreaming();
-    void stopBeamStreaming();
-    void beamStreamThreadLoop();
-    void loadBeamStreamConfig();
 
     // Current display magnification (for click-to-move distance scaling)
     double m_magnification = 1.0;
@@ -431,9 +268,6 @@ private:
     QWidget*   createExposureTab();
     QWidget*   createToolsPage();
     QWidget*   createViewPage();
-    QGroupBox* createChartGroup();
-    QGroupBox* createVisionGroup();
-    QGroupBox* createBeamGroup();
 
     // Exposure control helpers
     void applyExposureValue(double exposureUs);

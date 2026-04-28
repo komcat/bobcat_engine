@@ -741,6 +741,11 @@ set(SOURCES
     include/GdiWindow/BeamStreamOverlay.cpp
     include/QtCameraWindow/QtCameraViewport.cpp
     include/QtCameraWindow/QtCameraWindow.cpp
+    include/QtCameraWindow/QtCameraQuickMovePanel.cpp
+    include/QtCameraWindow/QtCameraTrackingPanel.cpp
+    include/QtCameraWindow/QtCameraChartOverlay.cpp
+    include/QtCameraWindow/QtCameraVisionController.cpp
+    include/QtCameraWindow/QtCameraBeamStreamController.cpp
     include/SwirBeamWindow/SwirBeamWindow.cpp
     include/SwirBeamWindow/SwirBeamWindowManager.cpp
     include/SwirBeamWindow/SwirPeakFinder.cpp
