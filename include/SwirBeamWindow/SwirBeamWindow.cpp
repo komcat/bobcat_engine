@@ -3,6 +3,7 @@
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "SwirBeamConfigStore.h"
 #include "SwirBeamOverlay.h"
+#include "SwirWorldMarkerStore.h"
 #include "camera/CameraConfigManager.h"
 #include "camera/CameraManager.h"
 #include "motions/unified_motion_manager.h"
@@ -59,6 +60,16 @@ SwirBeamWindow::SwirBeamWindow()
 
     // Bind score provider to beam results
     m_beamScoreProvider.Bind(&m_beamMutex, &m_beamResults);
+
+    // World-marker store: Place() pulls current gantry XY via this lambda.
+    m_markerStore = std::make_unique<SwirWorldMarkerStore>(
+        [this](double& x, double& y) -> bool {
+            if (!m_motionManager) return false;
+            PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
+            x = pos.x;
+            y = pos.y;
+            return true;
+        });
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -110,8 +121,8 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
         std::cerr << "[SwirBeamWindow] Failed to create window" << std::endl;
         return false;
     }
-    m_markerFilePath = "swir_markers.session.json";
-    LoadMarkersFromFile();
+    m_markerStore->SetFilePath("swir_markers.session.json");
+    m_markerStore->LoadFromFile();
     LoadMagnification();
     std::cout << "[SwirBeamWindow] Window created" << std::endl;
     return true;
@@ -2274,8 +2285,9 @@ void SwirBeamWindow::DrawWorldMarkers(Gdiplus::Graphics& gfx)
     Gdiplus::SolidBrush labelBrush(Gdiplus::Color(230, 255, 140, 0));
     Gdiplus::SolidBrush labelBgBrush(Gdiplus::Color(160, 0, 0, 0));
 
-    std::lock_guard<std::mutex> lock(m_markerMutex);
-    for (const auto& marker : m_worldMarkers) {
+    const auto markers = m_markerStore ? m_markerStore->Snapshot()
+                                        : std::vector<SwirWorldMarker>{};
+    for (const auto& marker : markers) {
         double screenX = renderCenterX + (marker.worldX - gantryPos.x) * pxPerMm;
         double screenY = renderCenterY + (marker.worldY - gantryPos.y) * pxPerMm;
 
@@ -2325,27 +2337,10 @@ void SwirBeamWindow::OnPlaceMarker()
     if (result == IDCANCEL) return;
 
     SwirMarkerType type = (result == IDYES) ? SwirMarkerType::VLine : SwirMarkerType::HLine;
-    PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
 
-    SwirWorldMarker marker;
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        marker.id = m_nextMarkerId++;
+    if (m_markerStore && m_markerStore->Place(type)) {
+        m_markerStore->SaveToFile();
     }
-    marker.type = type;
-    marker.worldX = pos.x;
-    marker.worldY = pos.y;
-    marker.label = (type == SwirMarkerType::VLine ? "V" : "H") + std::to_string(marker.id);
-
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        m_worldMarkers.push_back(marker);
-    }
-
-    std::cout << "[SwirBeamWindow] Placed marker " << marker.label
-              << " at (" << marker.worldX << ", " << marker.worldY << ")" << std::endl;
-
-    SaveMarkersToFile();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
@@ -2355,70 +2350,21 @@ void SwirBeamWindow::OnClearAllMarkers()
         L"Clear all markers?", L"Clear Markers", MB_YESNO | MB_ICONQUESTION);
     if (result != IDYES) return;
 
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        m_worldMarkers.clear();
-        m_nextMarkerId = 1;
+    if (m_markerStore) {
+        m_markerStore->ClearAll();
+        m_markerStore->SaveToFile();
     }
-
-    std::cout << "[SwirBeamWindow] All markers cleared" << std::endl;
-    SaveMarkersToFile();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
 }
 
 void SwirBeamWindow::SaveMarkersToFile()
 {
-    if (m_markerFilePath.empty()) return;
-
-    nlohmann::json jArray = nlohmann::json::array();
-    {
-        std::lock_guard<std::mutex> lock(m_markerMutex);
-        for (const auto& m : m_worldMarkers) {
-            nlohmann::json j;
-            j["id"] = m.id;
-            j["type"] = (m.type == SwirMarkerType::VLine) ? "VLine" : "HLine";
-            j["worldX"] = m.worldX;
-            j["worldY"] = m.worldY;
-            j["label"] = m.label;
-            jArray.push_back(j);
-        }
-    }
-
-    std::ofstream ofs(m_markerFilePath);
-    if (ofs.is_open()) {
-        ofs << jArray.dump(2);
-    }
+    if (m_markerStore) m_markerStore->SaveToFile();
 }
 
 void SwirBeamWindow::LoadMarkersFromFile()
 {
-    if (m_markerFilePath.empty()) return;
-
-    std::ifstream ifs(m_markerFilePath);
-    if (!ifs.is_open()) return;
-
-    nlohmann::json jArray;
-    jArray = nlohmann::json::parse(ifs, nullptr, false);
-    if (jArray.is_discarded() || !jArray.is_array()) return;
-
-    std::lock_guard<std::mutex> lock(m_markerMutex);
-    m_worldMarkers.clear();
-    int maxId = 0;
-
-    for (const auto& j : jArray) {
-        SwirWorldMarker marker;
-        marker.id = j.value("id", 0);
-        std::string typeStr = j.value("type", "VLine");
-        marker.type = (typeStr == "HLine") ? SwirMarkerType::HLine : SwirMarkerType::VLine;
-        marker.worldX = j.value("worldX", 0.0);
-        marker.worldY = j.value("worldY", 0.0);
-        marker.label = j.value("label", "");
-        m_worldMarkers.push_back(marker);
-        if (marker.id > maxId) maxId = marker.id;
-    }
-
-    m_nextMarkerId = maxId + 1;
-    std::cout << "[SwirBeamWindow] Loaded " << m_worldMarkers.size() << " markers from file" << std::endl;
+    if (m_markerStore) m_markerStore->LoadFromFile();
 }
 
 // ============================================================================

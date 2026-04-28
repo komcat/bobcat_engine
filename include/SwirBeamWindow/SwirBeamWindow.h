@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <memory>
 #include <mutex>
 #include <atomic>
 #include <functional>
@@ -373,10 +374,9 @@ private:
     double m_magnification = 20.0;
 
     // World-locked markers
-    std::vector<SwirWorldMarker> m_worldMarkers;
-    std::mutex m_markerMutex;
-    int m_nextMarkerId = 1;
-    std::string m_markerFilePath;
+    // World markers are owned by SwirWorldMarkerStore (forward decl above).
+    // Pointer rather than value to avoid pulling its header into this one.
+    std::unique_ptr<class SwirWorldMarkerStore> m_markerStore;
 
     // Beam detection
     bool m_beamDetectionEnabled = false;
