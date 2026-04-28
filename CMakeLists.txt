@@ -772,6 +772,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/SequenceContextViewer.cpp
     include/AppUI/RunProgramPage/ScanController.cpp
     include/AppUI/RunProgramPage/ProgramEditPanel.cpp
+    include/AppUI/RunProgramPage/SlotManagerWidget.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
@@ -1059,6 +1060,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/SequenceContextViewer.h
     include/AppUI/RunProgramPage/ScanController.h
     include/AppUI/RunProgramPage/ProgramEditPanel.h
+    include/AppUI/RunProgramPage/SlotManagerWidget.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
     include/AppUI/RunProgramPage/UserInputWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h

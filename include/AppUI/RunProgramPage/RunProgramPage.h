@@ -16,7 +16,6 @@
 #include <QTimer>  // For periodic channel refresh
 #include <QTabWidget>  // For tab layout
 #include <QGroupBox>  // For vision result group
-#include <QComboBox>  // For slot selector
 #include <vector>
 #include <string>
 #include <memory>
@@ -298,16 +297,11 @@ private:
   bool m_isRetraceEditMode;          // ✅ Currently in retrace edit mode
   int m_retraceEditRecipeIndex;      // ✅ Recipe index being retrace-edited
 
-  // Slot System UI - Execute Tab (left panel)
-  QComboBox* m_slotSelector = nullptr;
-  QLabel* m_slotInfoLabel = nullptr;  // "X recipes in this slot"
-
-  // Slot System UI - Edit Widget
-  QComboBox* m_editSlotSelector = nullptr;
-  QPushButton* m_renameSlotButton = nullptr;
-  QPushButton* m_addSlotButton = nullptr;
-  QPushButton* m_deleteSlotButton = nullptr;
-  QPushButton* m_duplicateSlotButton = nullptr;
+  // Slot System UI. Run-side is a slim selector + info label; edit-side
+  // is a selector + Rename/Add/Copy/Delete buttons. Both flavours live
+  // inside SlotManagerWidget; the page just bridges their signals.
+  class SlotManagerWidget* m_runSlotWidget  = nullptr;
+  class SlotManagerWidget* m_editSlotWidget = nullptr;
 
   // State
   QString m_currentProgramPath;
@@ -328,15 +322,14 @@ private:
   void createEditWidget();
   void createExecutionWidget();
 
-  // Slot System handlers
-  void onSlotSelectionChanged(int index);      // Execute tab slot dropdown
-  void onEditSlotSelectionChanged(int index);  // Edit widget slot dropdown
-  void onRenameSlot();
-  void onAddSlot();
-  void onDeleteSlot();
-  void onDuplicateSlot();
-  void updateSlotSelectors();  // Refresh both slot dropdowns
-  void updateSlotInfo();       // Update "X recipes" label
+  // Slot system bridges. Slot ops happen inside SlotManagerWidget;
+  // these helpers are called from its activeSlotChanged / slotsModified
+  // signals to refresh page-level UI (recipe list, completion tracker,
+  // edit panel, recipe-count label on the run widget).
+  void onSlotChangedFromRun(int index);
+  void onSlotChangedFromEdit(int index);
+  void onSlotsModified();
+  void updateSlotInfo();       // Pushes recipe count to m_runSlotWidget
 
   // Edit widget slots — most of the recipe-list operations live inside
   // ProgramEditPanel now; only the program-level Save button stays here.

@@ -4,6 +4,7 @@
 #include "VisionHistoryWidget.h"
 #include "SequenceContextViewer.h"
 #include "ProgramEditPanel.h"
+#include "SlotManagerWidget.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -678,69 +679,16 @@ void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
 
   executeTabLayout->addWidget(executeGroup, 0);
 
-  // === SLOT SELECTOR (above recipe list) ===
-  QGroupBox* slotGroup = new QGroupBox("Active Slot");
-  slotGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* slotLayout = new QVBoxLayout(slotGroup);
-  slotLayout->setSpacing(5);
-
-  m_slotSelector = new QComboBox();
-  m_slotSelector->setMinimumHeight(30);
-  m_slotSelector->setStyleSheet(
-    "QComboBox { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 5px 10px; "
-    "  font-size: 13px; "
-    "} "
-    "QComboBox:hover { "
-    "  border-color: #0e639c; "
-    "} "
-    "QComboBox::drop-down { "
-    "  border: none; "
-    "  width: 25px; "
-    "} "
-    "QComboBox::down-arrow { "
-    "  image: none; "
-    "  border-left: 5px solid transparent; "
-    "  border-right: 5px solid transparent; "
-    "  border-top: 5px solid #d4d4d4; "
-    "} "
-    "QComboBox QAbstractItemView { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "  selection-background-color: #0e639c; "
-    "  selection-color: white; "
-    "  border: 1px solid #555555; "
-    "}"
-  );
-  connect(m_slotSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &RunProgramPage::onSlotSelectionChanged);
-  slotLayout->addWidget(m_slotSelector);
-
-  m_slotInfoLabel = new QLabel("0 recipes in this slot");
-  m_slotInfoLabel->setStyleSheet("color: #888888; font-size: 11px; font-style: italic;");
-  slotLayout->addWidget(m_slotInfoLabel);
-
-  executeTabLayout->addWidget(slotGroup, 0);
+  // Run-side Active Slot widget (combo + recipe count label).
+  {
+    SlotManagerWidget::Deps deps;
+    deps.manager      = m_programManager;
+    deps.dialogParent = this;
+    m_runSlotWidget = new SlotManagerWidget(SlotManagerWidget::Mode::Run, deps);
+    connect(m_runSlotWidget, &SlotManagerWidget::activeSlotChanged,
+            this, &RunProgramPage::onSlotChangedFromRun);
+    executeTabLayout->addWidget(m_runSlotWidget, 0);
+  }
 
   // === Recipe List ===
   QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
@@ -1136,52 +1084,18 @@ void RunProgramPage::createEditWidget()
   programNameLayout->addLayout(nameAndSaveLayout);
   layout->addWidget(programNameGroup);
 
-  // === SLOT MANAGEMENT BAR ===
-  QGroupBox* slotManageGroup = new QGroupBox("Recipe Slot");
-  slotManageGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
-  QHBoxLayout* slotManageLayout = new QHBoxLayout(slotManageGroup);
-  slotManageLayout->setSpacing(5);
-
-  m_editSlotSelector = new QComboBox();
-  m_editSlotSelector->setMinimumHeight(30);
-  m_editSlotSelector->setMinimumWidth(150);
-  // No local override — global DarkTheme QSS handles QComboBox via Theme palette.
-  connect(m_editSlotSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &RunProgramPage::onEditSlotSelectionChanged);
-  slotManageLayout->addWidget(m_editSlotSelector, 1);
-
-  // Slot management buttons (Rename/Add/Copy) all share the neutral style.
-  const QString slotButtonStyle = Theme::Buttons::bezelNeutral();
-
-  m_renameSlotButton = new QPushButton("Rename");
-  m_renameSlotButton->setMinimumHeight(30);
-  m_renameSlotButton->setStyleSheet(slotButtonStyle);
-  m_renameSlotButton->setToolTip("Rename the current slot");
-  connect(m_renameSlotButton, &QPushButton::clicked, this, &RunProgramPage::onRenameSlot);
-  slotManageLayout->addWidget(m_renameSlotButton);
-
-  m_addSlotButton = new QPushButton("+ Add");
-  m_addSlotButton->setMinimumHeight(30);
-  m_addSlotButton->setStyleSheet(slotButtonStyle);
-  m_addSlotButton->setToolTip("Add a new slot (max 5)");
-  connect(m_addSlotButton, &QPushButton::clicked, this, &RunProgramPage::onAddSlot);
-  slotManageLayout->addWidget(m_addSlotButton);
-
-  m_duplicateSlotButton = new QPushButton("Copy");
-  m_duplicateSlotButton->setMinimumHeight(30);
-  m_duplicateSlotButton->setStyleSheet(slotButtonStyle);
-  m_duplicateSlotButton->setToolTip("Duplicate the current slot");
-  connect(m_duplicateSlotButton, &QPushButton::clicked, this, &RunProgramPage::onDuplicateSlot);
-  slotManageLayout->addWidget(m_duplicateSlotButton);
-
-  m_deleteSlotButton = new QPushButton("Delete");
-  m_deleteSlotButton->setMinimumHeight(30);
-  m_deleteSlotButton->setStyleSheet(Theme::Buttons::bezelDanger());
-  m_deleteSlotButton->setToolTip("Delete the current slot (cannot delete last slot)");
-  connect(m_deleteSlotButton, &QPushButton::clicked, this, &RunProgramPage::onDeleteSlot);
-  slotManageLayout->addWidget(m_deleteSlotButton);
-
-  layout->addWidget(slotManageGroup);
+  // Edit-side Recipe Slot bar (combo + Rename/Add/Copy/Delete buttons).
+  {
+    SlotManagerWidget::Deps deps;
+    deps.manager      = m_programManager;
+    deps.dialogParent = this;
+    m_editSlotWidget = new SlotManagerWidget(SlotManagerWidget::Mode::Edit, deps);
+    connect(m_editSlotWidget, &SlotManagerWidget::activeSlotChanged,
+            this, &RunProgramPage::onSlotChangedFromEdit);
+    connect(m_editSlotWidget, &SlotManagerWidget::slotsModified,
+            this, &RunProgramPage::onSlotsModified);
+    layout->addWidget(m_editSlotWidget);
+  }
 
   // The recipe-list editor (table + preview + Add/Remove/Move/Toggle/Manage Deps).
   ProgramEditPanel::Deps editDeps;
@@ -2006,202 +1920,42 @@ void RunProgramPage::onEditProgram()
 }
 
 // ============================================================================
-// SLOT SYSTEM HANDLERS
+// SLOT SYSTEM BRIDGES
+// SlotManagerWidget owns the slot operations themselves; these slots
+// just propagate the change back to the page-level UI (the other slot
+// widget, the recipe list, the edit panel, completion tracking).
 // ============================================================================
 
-void RunProgramPage::onSlotSelectionChanged(int index)
+void RunProgramPage::onSlotChangedFromRun(int index)
 {
-  if (index < 0 || !m_programManager) return;
-
-  m_programManager->setActiveSlot(index);
+  if (m_editSlotWidget) m_editSlotWidget->SetSelectedSlot(index);
   updateRecipeList();
   updateSlotInfo();
 
-  // Sync edit slot selector if it exists
-  if (m_editSlotSelector) {
-    m_editSlotSelector->blockSignals(true);
-    m_editSlotSelector->setCurrentIndex(index);
-    m_editSlotSelector->blockSignals(false);
-  }
-
-  // Reset completion tracking when slot changes
+  // Reset completion tracking when slot changes.
   m_completedRecipes.clear();
   m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
-
-  std::cout << "[RunProgramPage] Switched to slot: "
-            << m_programManager->getSlotName(index) << std::endl;
 }
 
-void RunProgramPage::onEditSlotSelectionChanged(int index)
+void RunProgramPage::onSlotChangedFromEdit(int index)
 {
-  if (index < 0 || !m_programManager) return;
-
-  m_programManager->setActiveSlot(index);
+  if (m_runSlotWidget) m_runSlotWidget->SetSelectedSlot(index);
   updateRecipeList();
   updateSlotInfo();
-
-  // Sync execute tab slot selector
-  if (m_slotSelector) {
-    m_slotSelector->blockSignals(true);
-    m_slotSelector->setCurrentIndex(index);
-    m_slotSelector->blockSignals(false);
-  }
-
-  // Refresh the edit table after the active slot changed.
   if (m_editPanel) m_editPanel->Reload();
-
-  std::cout << "[RunProgramPage] Edit slot switched to: "
-            << m_programManager->getSlotName(index) << std::endl;
 }
 
-void RunProgramPage::onRenameSlot()
+void RunProgramPage::onSlotsModified()
 {
-  if (!m_programManager) return;
-
-  int currentIndex = m_programManager->getActiveSlotIndex();
-  QString currentName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
-
-  bool ok;
-  QString newName = QInputDialog::getText(this, "Rename Slot",
-    "Enter new name for slot:", QLineEdit::Normal, currentName, &ok);
-
-  if (ok && !newName.isEmpty() && newName != currentName) {
-    m_programManager->renameSlot(currentIndex, newName.toStdString());
-    updateSlotSelectors();
-  }
-}
-
-void RunProgramPage::onAddSlot()
-{
-  if (!m_programManager) return;
-
-  if (m_programManager->getSlotCount() >= MAX_RECIPE_SLOTS) {
-    QMessageBox::warning(this, "Maximum Slots Reached",
-      QString("Cannot add more than %1 slots.").arg(MAX_RECIPE_SLOTS));
-    return;
-  }
-
-  bool ok;
-  QString name = QInputDialog::getText(this, "Add Slot",
-    "Enter name for new slot:", QLineEdit::Normal,
-    QString("Slot %1").arg(m_programManager->getSlotCount() + 1), &ok);
-
-  if (ok && !name.isEmpty()) {
-    int newIndex = m_programManager->createSlot(name.toStdString());
-    if (newIndex >= 0) {
-      updateSlotSelectors();
-      // Switch to the new slot
-      m_programManager->setActiveSlot(newIndex);
-      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
-      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
-      updateRecipeList();
-      updateSlotInfo();
-    }
-  }
-}
-
-void RunProgramPage::onDeleteSlot()
-{
-  if (!m_programManager) return;
-
-  if (m_programManager->getSlotCount() <= 1) {
-    QMessageBox::warning(this, "Cannot Delete",
-      "Cannot delete the last slot. A program must have at least one slot.");
-    return;
-  }
-
-  int currentIndex = m_programManager->getActiveSlotIndex();
-  QString slotName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
-
-  QMessageBox::StandardButton reply = QMessageBox::question(this, "Delete Slot",
-    QString("Delete slot '%1' and all its recipes?\n\nThis cannot be undone.").arg(slotName),
-    QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-
-  if (reply == QMessageBox::Yes) {
-    if (m_programManager->deleteSlot(currentIndex)) {
-      updateSlotSelectors();
-      // Update active slot index in selectors
-      int newIndex = m_programManager->getActiveSlotIndex();
-      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
-      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
-      updateRecipeList();
-      updateSlotInfo();
-    }
-  }
-}
-
-void RunProgramPage::onDuplicateSlot()
-{
-  if (!m_programManager) return;
-
-  if (m_programManager->getSlotCount() >= MAX_RECIPE_SLOTS) {
-    QMessageBox::warning(this, "Maximum Slots Reached",
-      QString("Cannot add more than %1 slots.").arg(MAX_RECIPE_SLOTS));
-    return;
-  }
-
-  int currentIndex = m_programManager->getActiveSlotIndex();
-  QString currentName = QString::fromStdString(m_programManager->getSlotName(currentIndex));
-
-  bool ok;
-  QString name = QInputDialog::getText(this, "Duplicate Slot",
-    "Enter name for the copy:", QLineEdit::Normal,
-    currentName + " (Copy)", &ok);
-
-  if (ok && !name.isEmpty()) {
-    int newIndex = m_programManager->duplicateSlot(currentIndex, name.toStdString());
-    if (newIndex >= 0) {
-      updateSlotSelectors();
-      // Switch to the new slot
-      m_programManager->setActiveSlot(newIndex);
-      if (m_slotSelector) m_slotSelector->setCurrentIndex(newIndex);
-      if (m_editSlotSelector) m_editSlotSelector->setCurrentIndex(newIndex);
-      updateRecipeList();
-      updateSlotInfo();
-    }
-  }
-}
-
-void RunProgramPage::updateSlotSelectors()
-{
-  if (!m_programManager) return;
-
-  auto names = m_programManager->getSlotNames();
-  int activeIndex = m_programManager->getActiveSlotIndex();
-
-  // Update both selectors
-  for (QComboBox* selector : {m_slotSelector, m_editSlotSelector}) {
-    if (!selector) continue;
-    selector->blockSignals(true);
-    selector->clear();
-    for (const auto& name : names) {
-      selector->addItem(QString::fromStdString(name));
-    }
-    selector->setCurrentIndex(activeIndex);
-    selector->blockSignals(false);
-  }
-
-  // Update button states
-  if (m_deleteSlotButton) {
-    m_deleteSlotButton->setEnabled(names.size() > 1);
-  }
-  if (m_addSlotButton) {
-    m_addSlotButton->setEnabled(static_cast<int>(names.size()) < MAX_RECIPE_SLOTS);
-  }
-  if (m_duplicateSlotButton) {
-    m_duplicateSlotButton->setEnabled(static_cast<int>(names.size()) < MAX_RECIPE_SLOTS);
-  }
+  if (m_runSlotWidget)  m_runSlotWidget->Reload();
+  if (m_editSlotWidget) m_editSlotWidget->Reload();
+  updateSlotInfo();
 }
 
 void RunProgramPage::updateSlotInfo()
 {
-  if (!m_slotInfoLabel || !m_programManager) return;
-
-  int recipeCount = m_programManager->getRecipeCount();
-  QString text = QString("%1 recipe%2 in this slot")
-    .arg(recipeCount)
-    .arg(recipeCount == 1 ? "" : "s");
-  m_slotInfoLabel->setText(text);
+  if (!m_runSlotWidget || !m_programManager) return;
+  m_runSlotWidget->SetRecipeCount(m_programManager->getRecipeCount());
 }
 
 // ============================================================================
@@ -4407,8 +4161,9 @@ void RunProgramPage::updateProgramInfo()
     m_programPathLabel->setText("");
   }
 
-  // Update slot system UI
-  updateSlotSelectors();
+  // Update slot system UI (program load brought in a new slot list).
+  if (m_runSlotWidget)  m_runSlotWidget->Reload();
+  if (m_editSlotWidget) m_editSlotWidget->Reload();
   updateSlotInfo();
 }
 
