@@ -27,7 +27,7 @@ public:
     void CreateConfigUI(ProcessConfigWidget* widget,
                         const ProcessInstance* instance) override {
         const auto& params = instance->parameters;
-        widget->addParameterField("script_path", "Script Path",
+        widget->addScriptSelector("script_path", "Script Path",
                                   params.at("script_path"));
     }
 

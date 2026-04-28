@@ -53,9 +53,8 @@ public:
             return "";
         };
 
-        // v1: plain text field for set name (no dedicated browse dialog yet).
-        widget->addParameterField("training_set_name", "Edge Transfer Set",
-                                  getParam("training_set_name"));
+        widget->addEdgeTransferSetSelector("training_set_name", "Edge Transfer Set",
+                                           getParam("training_set_name"));
 
         widget->addCheckboxParameter("apply_corrections", "Apply Corrections to Hex",
                                      getParam("apply_corrections"),

@@ -27,6 +27,7 @@
 #include <future>
 #include <string>
 #include "EdgeTransferData.h"
+#include "../../sequence/EdgeTransferRetrace.h"
 
 struct ApplicationContext;
 
@@ -35,11 +36,30 @@ class EdgeRetraceWidget : public QWidget
     Q_OBJECT
 
 public:
+    // Outcome a recipe driver receives when the widget is used in recipe mode.
+    // Alias the shared enum so signal signatures stay readable.
+    using RecipeOutcome = EdgeTransferRetraceOutcome;
+
     explicit EdgeRetraceWidget(ApplicationContext* context, QWidget* parent = nullptr);
 
     // Seeds the wizard with the taught set. Call whenever the active set
     // changes (New / Load / capture). Resets the wizard to Idle.
     void SetData(const EdgeTransferSet& set);
+
+    // Returns the retraced set in its current state (reference + target edges
+    // filled in by the user's Confirm captures, with deltas/corrections
+    // recomputed on entering Review). Meaningful after the Review state is
+    // reached; before that the retraced edges carry the taught coordinates
+    // with valid=false.
+    const EdgeTransferSet& GetRetracedSet() const { return m_retracedSet; }
+
+    // Switches the widget into "recipe mode" — hides Save/StartOver/Done,
+    // shows Skip Correction + Cancel on the Review page, bypasses the
+    // "recipe running" guards on auto-nav and apply-corrections, and
+    // auto-starts the retrace (WaitRefP1 + auto-nav) as soon as SetData has
+    // valid taught data. Must be called BEFORE SetData for the auto-start to
+    // trigger.
+    void SetRecipeMode(bool enabled);
 
 signals:
     // Emitted when the user accepts the retrace result via
@@ -47,6 +67,13 @@ signals:
     // and targetEdge replaced by the retraced values (Recalculate already
     // called); config is preserved.
     void retraceCompleted(const EdgeTransferSet& updatedSet);
+
+    // Emitted in recipe mode when the user reaches an outcome:
+    //   Applied   → Apply Corrections finished successfully
+    //   Skipped   → user clicked Skip Correction on the Review page
+    //   Cancelled → user clicked Cancel Retrace on a wait page OR Cancel
+    //               on the Review page
+    void recipeOutcomeReady(EdgeTransferRetraceOutcome outcome);
 
 private slots:
     void onStartRetrace();
@@ -58,6 +85,8 @@ private slots:
     void onStartOver();
     void onDone();
     void onApplyCorrections();
+    void onSkipCorrection();
+    void onCancelRecipe();
     void updatePositionDisplay();
 
 private:
@@ -117,7 +146,14 @@ private:
     QPushButton* m_saveRetracedBtn = nullptr;
     QPushButton* m_startOverBtn = nullptr;
     QPushButton* m_doneBtn = nullptr;
+    QPushButton* m_skipCorrectionBtn = nullptr;
+    QPushButton* m_cancelRecipeBtn = nullptr;
     QLabel* m_applyStatusLabel = nullptr;
+
+    // Recipe-mode state: when true, the widget is driven by a recipe
+    // plugin. Cancel + Skip emit recipeOutcomeReady; Apply emits it on
+    // success. Idle is skipped; each Wait state auto-triggers Auto-Nav.
+    bool m_recipeMode = false;
 
     // Async state for Apply Corrections: SetSystemVelocity(0.1) per axis →
     // MoveRelative → SetSystemVelocity(1.0) at the end. Runs the axes

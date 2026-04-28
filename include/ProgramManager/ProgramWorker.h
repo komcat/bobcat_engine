@@ -18,6 +18,7 @@ class RecipeExecutionStateMachine;
 class SequenceContext;  // ✅ Forward declaration for context sharing
 class ScriptEngine;
 struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
+#include "../sequence/EdgeTransferRetrace.h"
 
 /**
  * @brief Worker thread for program execution
@@ -69,6 +70,10 @@ public:
   // Set callback for placement correction retrace (optional)
   using PlacementRetraceCallback = std::function<bool(const PlacementRetraceParams& params)>;
   void setPlacementRetraceCallback(PlacementRetraceCallback callback);
+
+  // Set callback for edge transfer retrace (optional - forwarded to RecipeWorker)
+  using EdgeTransferRetraceCallback = std::function<EdgeTransferRetraceOutcome(const EdgeTransferRetraceParams& params)>;
+  void setEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback);
 
   // ✅ NEW: Configure execution mode
   void setAutoRunMode(bool autoRun);  // true = all recipes, false = single recipe
@@ -187,6 +192,7 @@ private:
   ManualAdjustCallback m_manualAdjustCallback;
   UserInputCallback m_userInputCallback;
   PlacementRetraceCallback m_placementRetraceCallback;
+  EdgeTransferRetraceCallback m_edgeTransferRetraceCallback;
 
   // ✅ NEW: Execution mode
   bool m_autoRunMode;        // true = all recipes, false = single recipe

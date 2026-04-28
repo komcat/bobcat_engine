@@ -78,6 +78,11 @@ void ProgramWorker::setPlacementRetraceCallback(PlacementRetraceCallback callbac
   m_placementRetraceCallback = callback;
 }
 
+void ProgramWorker::setEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback)
+{
+  m_edgeTransferRetraceCallback = callback;
+}
+
 // ✅ NEW: Set execution mode
 void ProgramWorker::setAutoRunMode(bool autoRun)
 {
@@ -595,6 +600,10 @@ bool ProgramWorker::executeRecipe(int recipeIndex, const std::string& recipeFile
 
   if (m_placementRetraceCallback) {
     recipeWorker->setPlacementRetraceCallback(m_placementRetraceCallback);
+  }
+
+  if (m_edgeTransferRetraceCallback) {
+    recipeWorker->setEdgeTransferRetraceCallback(m_edgeTransferRetraceCallback);
   }
 
   // ✅ Set shared context for vision result storage

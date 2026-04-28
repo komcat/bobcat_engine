@@ -30,7 +30,8 @@
  */
 enum class TcpProtocolType {
   Single,      // Single float per line: "1.234\n"
-  MultiChannel // Multi-channel CSV: "$START,val1,val2,...,$END"
+  MultiChannel, // Multi-channel CSV: "$START,val1,val2,...,$END"
+  RawCsv       // Raw CSV per line: "val1,val2,val3,...\n"
 };
 
 /**
@@ -94,6 +95,7 @@ private:
   void ProcessBuffer(std::string& buffer);
   void ProcessSingleChannelBuffer(std::string& buffer);
   void ProcessMultiChannelBuffer(std::string& buffer);
+  void ProcessRawCsvBuffer(std::string& buffer);
   bool AttemptConnection();
   void NotifyConnection(bool connected);
 
