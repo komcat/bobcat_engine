@@ -399,12 +399,13 @@ private:
     bool m_useBlobDetection = false;     // false=d4sigma, true=blob
     bool m_useHalconDetection = false;   // takes precedence over blob/d4sigma when true
 
-    // Beam focus optimization (reusable components)
-    std::atomic<bool> m_beamFocusRunning{false};
-    std::future<void> m_beamFocusFuture;
+    // Beam focus optimization. Worker future + cancel flag live in
+    // SwirBeamFocusController; the score provider and config remain here
+    // because the score provider binds to m_beamMutex/m_beamResults.
     std::future<void> m_configReloadFuture;
     BeamScoreProvider m_beamScoreProvider;
     HillClimbConfig m_beamFocusConfig;  // configurable step sizes, settle time, etc.
+    std::unique_ptr<class SwirBeamFocusController> m_beamFocus;
 
     // CE/EE history for real-time charts (one ring buffer per beam, max 2)
     static constexpr int CE_HISTORY_SIZE = 200;

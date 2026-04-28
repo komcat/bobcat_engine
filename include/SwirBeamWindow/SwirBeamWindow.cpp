@@ -2,6 +2,7 @@
 #include "SwirBeamWindow.h"
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "SwirBeamConfigStore.h"
+#include "SwirBeamFocusController.h"
 #include "SwirBeamOverlay.h"
 #include "SwirImageSaver.h"
 #include "SwirWorldMarkerStore.h"
@@ -95,6 +96,9 @@ SwirBeamWindow::SwirBeamWindow()
     };
     saveDeps.getUseBlobMode = [this]() { return m_useBlobDetection; };
     m_imageSaver = std::make_unique<SwirImageSaver>(std::move(saveDeps));
+
+    // BF (beam focus) hill climb worker.
+    m_beamFocus = std::make_unique<SwirBeamFocusController>();
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -169,9 +173,9 @@ void SwirBeamWindow::CleanupPanelCache()
 
 void SwirBeamWindow::EmergencyStop()
 {
-    if (m_beamFocusRunning.load()) {
+    if (m_beamFocus && m_beamFocus->IsRunning()) {
         std::cout << "[SwirBeamWindow] E-STOP: cancelling beam focus optimization" << std::endl;
-        m_beamFocusRunning.store(false);
+        m_beamFocus->RequestStop();
         InvalidatePanel();
     }
 }
@@ -179,10 +183,7 @@ void SwirBeamWindow::EmergencyStop()
 void SwirBeamWindow::Destroy()
 {
     // Stop beam focus if running
-    m_beamFocusRunning.store(false);
-    if (m_beamFocusFuture.valid()) {
-        m_beamFocusFuture.wait();
-    }
+    if (m_beamFocus) m_beamFocus->StopAndWait();
     if (m_configReloadFuture.valid()) {
         m_configReloadFuture.wait();
     }
@@ -1549,7 +1550,7 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
         bfBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
         bfBtn.label = L"BF";
         bfBtn.isToggle = true;
-        bfBtn.toggled = m_beamFocusRunning.load();
+        bfBtn.toggled = m_beamFocus && m_beamFocus->IsRunning();
         bfBtn.tag = TAG_BEAM_FOCUS;
         bfBtn.onClick = [this]() { OnBeamFocus(); };
         m_buttons.push_back(bfBtn);
@@ -1978,7 +1979,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
             btn.label = m_useBlobDetection ? L"B BLOB" : L"B DETECT";
         }
         if (btn.tag == TAG_BEAM_FOCUS) {
-            btn.toggled = m_beamFocusRunning.load();
+            btn.toggled = m_beamFocus && m_beamFocus->IsRunning();
             btn.label = btn.toggled ? L"STOP" : L"BF";
         }
     }
@@ -3357,15 +3358,15 @@ void SwirBeamWindow::OnBeamOptimize()
 
 void SwirBeamWindow::OnBeamFocus()
 {
-    // Toggle off if already running
-    if (m_beamFocusRunning.load()) {
+    // Toggle off if already running.
+    if (m_beamFocus && m_beamFocus->IsRunning()) {
         std::cout << "[BeamFocus] Stopping beam focus optimization" << std::endl;
-        m_beamFocusRunning.store(false);
+        m_beamFocus->RequestStop();
         InvalidatePanel();
         return;
     }
 
-    // Validate prerequisites
+    // Validate prerequisites.
     if (!m_motionManager) {
         std::cout << "[BeamFocus] Motion manager not available" << std::endl;
         return;
@@ -3382,36 +3383,10 @@ void SwirBeamWindow::OnBeamFocus()
         }
     }
 
-    m_beamFocusRunning.store(true);
+    if (!m_beamFocus) return;
+    m_beamFocus->Start(m_motionManager, &m_beamScoreProvider, m_beamFocusConfig,
+                       [this]() { InvalidatePanel(); });
     InvalidatePanel();
-
-    auto* motionMgr = m_motionManager;
-    HillClimbConfig config = m_beamFocusConfig;
-
-    m_beamFocusFuture = std::async(std::launch::async, [this, motionMgr, config]() {
-        // Wire up the reusable hill-climb optimizer
-        BeamHillClimb climber;
-
-        climber.SetScoreFunc([this]() -> double {
-            return m_beamScoreProvider.GetScore();
-        });
-
-        climber.SetMoveFunc([motionMgr](double distance) -> bool {
-            return motionMgr->MoveRelative("gantry-main", "Z", distance, true);
-        });
-
-        climber.SetCancelFlag(&m_beamFocusRunning);
-
-        HillClimbResult result = climber.Run(config);
-
-        // Log final position
-        double finalZ = 0.0;
-        motionMgr->GetPosition("gantry-main", "Z", finalZ);
-        std::cout << "[BeamFocus] Final Z=" << std::fixed << std::setprecision(4) << finalZ << " mm" << std::endl;
-
-        m_beamFocusRunning.store(false);
-        InvalidatePanel();
-    });
 }
 
 void SwirBeamWindow::OnPaint()
