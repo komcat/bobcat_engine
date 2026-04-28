@@ -768,6 +768,7 @@ set(SOURCES
     include/ProgramManager/ConditionExpressionEvaluator.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/ProgramSettingsStore.cpp
+    include/AppUI/RunProgramPage/VisionHistoryWidget.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp

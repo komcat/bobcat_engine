@@ -370,29 +370,14 @@ private:
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription
 
-  // Vision result image display
-  QGroupBox* m_visionResultGroup;        // ✅ Vision result display group
-  QLabel* m_visionResultImageLabel;      // ✅ Vision result image display
-  SequenceContext* m_currentContext;     // ✅ Current execution context
-  void updateVisionResultImage();        // ✅ Update vision result image from context
-  void clearVisionResult();              // ✅ Clear stale vision result
-
-  // Vision history navigation
-  QWidget* m_visionNavWidget;            // Container for navigation controls
-  QPushButton* m_visionPrevButton;       // Previous result button
-  QPushButton* m_visionNextButton;       // Next result button
-  QLabel* m_visionIndexLabel;            // Shows "3 / 5" index
-  std::vector<QString> m_visionHistory;  // List of history image paths
-  int m_visionHistoryViewIndex;          // Currently viewed index (-1 = latest)
-  static const int MAX_VISION_HISTORY = 10;
-
-  // Vision history methods
+  // Vision result image display + history navigation. The widget owns
+  // its own QLabel/buttons/index label/history buffer; the page just
+  // forwards the worker's "vision result ready" signal into AddImage.
+  class VisionHistoryWidget* m_visionHistoryWidget = nullptr;
+  SequenceContext* m_currentContext;     // Current execution context
   void onVisionResultReady(QString imagePath);  // Slot for new vision result
-  void onVisionPrevious();                      // Show previous result
-  void onVisionNext();                          // Show next result
-  void updateVisionNavigation();                // Update nav button states and label
-  void loadVisionHistoryImage(int index);       // Load specific history image
-  void clearVisionHistory();                    // Clear history on new program run
+  void updateVisionResultImage();        // Refresh from logs/vision_result_temp.png
+  void clearVisionResult();              // Clear stale vision result + history
 
   // Context Tab Components (real-time context variable viewer with tree hierarchy)
   QWidget* m_contextTabWidget;           // Container widget for context tab
