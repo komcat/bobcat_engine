@@ -261,7 +261,26 @@ PlacementCorrectionData.h    - Structs (PlacementLinePoints, PlacementCorrection
 
 ## SWIR Beam Detection (`include/SwirBeamWindow/`)
 
-Real-time beam profiling/tracking shown in a Win32+GDI+ window (not Qt). Three detection modes coexist in `SwirBeamDetector.cpp` and are selected at runtime via `config/beam_detection.json`:
+Real-time beam profiling/tracking shown in a Win32+GDI+ window (not Qt). The window is composed from several focused helpers — touch the helper for the area you're working in, **not** the orchestrator.
+
+### File layout
+| File | Owns |
+|------|------|
+| `SwirBeamWindow.{h,cpp}` | Win32 message pump, frame ingestion (`CameraFrameSubscriber`), detection thread + B0/B1 tracking, panel/button rendering, click-to-move, PSU/TEC actions, magnification dialog. The orchestrator — should stay focused. |
+| `SwirBeamDetector.{h,cpp}` | Three detection algorithms (d4σ / blob / Halcon) — see table below. |
+| `SwirPeakFinder.{h,cpp}` | 1-D peak detection used by the d4sigma path. |
+| `SwirBeamOverlay.{h,cpp}` | All GDI+ overlay drawing: beam ROIs, centroids, EE ellipse, CE/EE charts, bottom-strip beam crops (heatmap-coloured). |
+| `SwirBeamConfigStore.{h,cpp}` | JSON I/O for `config/beam_detection.json` — the d4σ + blob + Halcon configs and tracking flags. Pure load/save. |
+| `SwirWorldMarkerStore.{h,cpp}` | World-locked V/H markers (Place / ClearAll / Snapshot / SaveToFile / LoadFromFile). The window keeps the dialog/render and forwards state mutation here. |
+| `SwirImageSaver.{h,cpp}` | The five save APIs: `SaveFrameAsPng`, `SaveFrameWithOverlayAsPng`, `SaveBeamCropAsPng`, `SaveCollageAsPng`, `SaveImagePackage`. Pulls fresh snapshots via `Deps` callbacks, no window state held. |
+| `SwirBeamFocusController.{h,cpp}` | BF (beam focus) hill-climb worker future + cancel flag. |
+| `SwirAutoSatController.{h,cpp}` | AUTO SAT one-shot algorithm: phase-1 exposure/current bracket tuning + phase-2 ±50 µm gantry-Z focus sweep with mid-sweep retune. Worker future, abort flag, all `AS_*` constants live here. |
+| `SwirBeamWindowManager.{h,cpp}` | Qt-side lifecycle owner. Manages the window's `std::shared_ptr` and exposes the public API (`saveImagePackage`, `enableBeamDetection`, `enableAutoSatPrevention`, `getBeamSnapshots`) wired to the `SystemCommandHandler` callbacks in `Application.cpp`. |
+
+When extending the SWIR window, prefer adding a new helper class over enlarging `SwirBeamWindow.cpp`.
+
+### Detection modes
+Three detection modes coexist in `SwirBeamDetector.cpp` and are selected at runtime via `config/beam_detection.json`:
 
 | Mode | Function | Notes |
 |------|----------|-------|
