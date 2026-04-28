@@ -767,6 +767,7 @@ set(SOURCES
     include/ProgramManager/RecipeExecutionStateMachine.cpp
     include/ProgramManager/ConditionExpressionEvaluator.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
+    include/AppUI/RunProgramPage/ProgramSettingsStore.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp

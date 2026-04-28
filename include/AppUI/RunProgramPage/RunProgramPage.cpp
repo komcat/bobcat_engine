@@ -1,5 +1,6 @@
 ﻿// RunProgramPage.cpp
 #include "RunProgramPage.h"
+#include "ProgramSettingsStore.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -5257,38 +5258,16 @@ void RunProgramPage::updateExecuteButton()
 
 void RunProgramPage::saveLastProgramToSettings(const QString& programPath)
 {
-  QSettings settings("Fabrinet", "BobcatEngine");
-  settings.setValue("RunProgramPage/lastProgram", programPath);
-
+  ProgramSettingsStore::SaveLastProgramPath(programPath);
   std::cout << "[RunProgramPage] Saved last program to settings: "
             << programPath.toStdString() << std::endl;
 }
 
 void RunProgramPage::saveRecentPrograms(const QString& programPath)
 {
-  QSettings settings("Fabrinet", "BobcatEngine");
-
-  // Get existing recent programs list
-  QStringList recentPrograms = settings.value("RunProgramPage/recentPrograms").toStringList();
-
-  // Remove path if it already exists (to avoid duplicates)
-  recentPrograms.removeAll(programPath);
-
-  // Add to front of list
-  recentPrograms.prepend(programPath);
-
-  // Keep only last 10 programs
-  if (recentPrograms.size() > 10) {
-    recentPrograms = recentPrograms.mid(0, 10);
-  }
-
-  // Save back to settings
-  settings.setValue("RunProgramPage/recentPrograms", recentPrograms);
-
-  std::cout << "[RunProgramPage] Updated recent programs list (size: "
-            << recentPrograms.size() << ")" << std::endl;
-
-  // Update UI list
+  ProgramSettingsStore::PrependRecent(programPath, 10);
+  std::cout << "[RunProgramPage] Updated recent programs list" << std::endl;
+  // Re-render the UI list from the store.
   loadRecentProgramsList();
 }
 
@@ -5298,8 +5277,7 @@ void RunProgramPage::loadRecentProgramsList()
 
   m_recentProgramsList->clear();
 
-  QSettings settings("Fabrinet", "BobcatEngine");
-  QStringList recentPrograms = settings.value("RunProgramPage/recentPrograms").toStringList();
+  const QStringList recentPrograms = ProgramSettingsStore::LoadRecent();
 
   for (const QString& programPath : recentPrograms) {
     // Get file info
@@ -5376,8 +5354,7 @@ void RunProgramPage::loadLastProgramFromSettings()
   QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
   std::cout << "[RunProgramPage] Current product: " << productName.toStdString() << std::endl;
 
-  QSettings settings("Fabrinet", "BobcatEngine");
-  QString lastProgramPath = settings.value("RunProgramPage/lastProgram", "").toString();
+  const QString lastProgramPath = ProgramSettingsStore::LoadLastProgramPath();
 
   std::cout << "[RunProgramPage] Saved program path: "
             << (lastProgramPath.isEmpty() ? "(none)" : lastProgramPath.toStdString()) << std::endl;
