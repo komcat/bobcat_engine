@@ -770,6 +770,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/ProgramSettingsStore.cpp
     include/AppUI/RunProgramPage/VisionHistoryWidget.cpp
     include/AppUI/RunProgramPage/SequenceContextViewer.cpp
+    include/AppUI/RunProgramPage/ScanController.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
     include/AppUI/RunProgramPage/UserInputWidget.cpp
     include/AppUI/RunProgramPage/ManualAdjustWidget.cpp
@@ -1055,6 +1056,7 @@ set(HEADERS
     include/ProgramManager/ConditionExpressionEvaluator.h
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/SequenceContextViewer.h
+    include/AppUI/RunProgramPage/ScanController.h
     include/AppUI/RunProgramPage/UserPromptWidget.h
     include/AppUI/RunProgramPage/UserInputWidget.h
     include/AppUI/RunProgramPage/ManualAdjustWidget.h

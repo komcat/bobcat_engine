@@ -15,9 +15,9 @@
 #include "ManualAlignPointWidget.h"
 #include "UserInputWidget.h"
 #include "ScanControlWidget.h"
+#include "ScanController.h"
 #include "RollCorrectionWidget.h"
 #include "MotionInspectorWidget.h"
-#include "ScanExecutor.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -185,7 +185,6 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_userInputAccepted(false)
   , m_userInputText("")
   , m_scanWidget(nullptr)
-  , m_scanExecutor(nullptr)
   , m_dataStore(context->dataStore)
   , m_currentSubscribedChannel("")
   , m_currentRecipeTotalSteps(0)      // ✅ Initialize step tracking
@@ -200,25 +199,25 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
 
-  // Create ScanExecutor
-  m_scanExecutor = new ScanExecutor(this);
-  m_scanExecutor->setMotionManager(m_context->motionManager);
-  m_scanExecutor->setDataStore(m_context->dataStore);
-  if (m_context->logManager) {
-    m_scanExecutor->setLogger(m_context->logManager);
-  }
-  if (m_context->safetyWatchManager) {
-    m_scanExecutor->setSafetyWatchManager(m_context->safetyWatchManager);
-  }
-  // Wire the scan-busy tracker so tab-initiated scans light up the TopBar indicator.
-  m_scanExecutor->setScanActivityTracker(m_context->scanActivityTracker);
-
   // Initialize the status badge defaults from Theme so an "Idle" badge is
   // painted with palette colors before the first setProgramStatus() call.
   m_baseStatusBgColor = QLatin1String(Theme::Color::bgSurface);
   m_baseStatusFgColor = QLatin1String(Theme::Color::textDisabled);
 
   setupUI();
+
+  // Now that setupUI() has built m_scanWidget, hand it to a ScanController
+  // along with the page-level dependencies it needs. The controller owns
+  // the ScanExecutor and forwards user actions / executor results between
+  // them.
+  ScanController::Deps scanDeps;
+  scanDeps.dialogParent = this;
+  scanDeps.context      = m_context;
+  scanDeps.widget       = m_scanWidget;
+  scanDeps.appendLog    = [this](const QString& msg) {
+    if (m_logTextEdit) m_logTextEdit->appendPlainText(msg);
+  };
+  m_scanController = new ScanController(std::move(scanDeps), this);
 
   // Mirror the TopBar scan-busy indicator on the execution status badge so the
   // operator sees a SCANNING overlay on the RunProgramPage even when the TopBar
@@ -266,7 +265,7 @@ RunProgramPage::~RunProgramPage()
     m_programWorker->wait(3000);
   }
 
-  // ScanExecutor cleanup is automatic via QObject parent-child relationship
+  // ScanController + ScanExecutor cleanup is automatic via QObject parenting.
 
   delete m_programManager;
   delete m_processFactory;
@@ -1916,11 +1915,10 @@ void RunProgramPage::createExecutionWidget()
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::clearRequested,
     this, &RunProgramPage::onRollCorrectionClearRequested);
 
-  // Connect scan widget to this page
-  connect(m_scanWidget, &ScanControlWidget::scanRequested,
-    this, &RunProgramPage::onScanRequested);
-  connect(m_scanWidget, &ScanControlWidget::stopRequested,
-    this, &RunProgramPage::onStopScanRequested);
+  // Connect the channel-changed signal here (DataStore subscription
+  // for live channel value display is page-level state). Scan-action
+  // signals (scanRequested / stopRequested) and ScanExecutor result
+  // signals are handled by ScanController, wired up after setupUI().
   connect(m_scanWidget, &ScanControlWidget::channelChanged,
     this, &RunProgramPage::onChannelChanged);
 
@@ -1928,14 +1926,6 @@ void RunProgramPage::createExecutionWidget()
   if (!m_scanWidget->currentChannel().isEmpty()) {
     onChannelChanged(m_scanWidget->currentChannel());
   }
-
-  // Connect executor signals to UI
-  connect(m_scanExecutor, &ScanExecutor::logMessage,
-    this, &RunProgramPage::onScanLogMessage);
-  connect(m_scanExecutor, &ScanExecutor::scanCompleted,
-    this, &RunProgramPage::onScanCompleted);
-  connect(m_scanExecutor, &ScanExecutor::scanError,
-    this, &RunProgramPage::onScanError);
 }
 
 void RunProgramPage::showEditWidget()
@@ -3636,96 +3626,6 @@ namespace {
       return QString("%1 p").arg(value * 1e12, 0, 'f', 3);
     }
   }
-}
-
-// SCANNING INTEGRATION (Refactored)
-// ============================================================================
-
-void RunProgramPage::onScanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel)
-{
-  // Validation
-  if (channel.isEmpty()) {
-    QMessageBox::warning(this, "Scan Error", "Please select a data channel");
-    return;
-  }
-
-  if (!m_context || !m_context->motionManager || !m_context->dataStore) {
-    QMessageBox::warning(this, "Scan Error", "Motion manager or data store not available");
-    return;
-  }
-
-  // Disable scan buttons, enable stop button
-  m_scanWidget->setScanButtonsEnabled(false);
-  m_scanWidget->setStopButtonEnabled(true);
-
-  // Map widget ScanMode to executor ScanMode
-  ScanMode execMode;
-  switch (mode) {
-    case ScanControlWidget::ScanMode::Coarse:    execMode = ScanMode::Coarse;    break;
-    case ScanControlWidget::ScanMode::Fine:       execMode = ScanMode::Fine;      break;
-    case ScanControlWidget::ScanMode::UltraFine:  execMode = ScanMode::UltraFine; break;
-  }
-
-  // Execute scan - all business logic handled by ScanExecutor
-  bool success = m_scanExecutor->executeScan(deviceName, execMode, channel);
-
-  if (!success) {
-    // Re-enable controls if scan failed to start
-    m_scanWidget->setScanButtonsEnabled(true);
-    m_scanWidget->setStopButtonEnabled(false);
-  }
-}
-
-void RunProgramPage::onScanLogMessage(QString message)
-{
-  // Forward log messages to execution log
-  m_logTextEdit->appendPlainText(message);
-}
-
-void RunProgramPage::onScanCompleted(QString deviceName, double peakValue, bool success)
-{
-  // Re-enable scan controls, disable stop button
-  m_scanWidget->setScanButtonsEnabled(true);
-  m_scanWidget->setStopButtonEnabled(false);
-
-  // Show completion notification
-  if (success) {
-    QMessageBox::information(this, "Scan Complete",
-      QString("Scan completed on %1\nPeak value: %2")
-      .arg(deviceName)
-      .arg(peakValue, 0, 'f', 6));
-  }
-  else {
-    QMessageBox::warning(this, "Scan Complete",
-      QString("Scan completed on %1, but no peak found")
-      .arg(deviceName));
-  }
-}
-
-void RunProgramPage::onScanError(QString errorMessage)
-{
-  // Re-enable scan controls, disable stop button
-  m_scanWidget->setScanButtonsEnabled(true);
-  m_scanWidget->setStopButtonEnabled(false);
-
-  // Show error dialog
-  QMessageBox::critical(this, "Scan Error", errorMessage);
-}
-
-void RunProgramPage::onStopScanRequested()
-{
-  // Log the stop action - note: device will return to global peak position
-  m_logTextEdit->appendPlainText("Stopping scan - returning to global peak position...");
-
-  // Stop any active scan (this will block until return to peak is complete)
-  m_scanExecutor->stopScan();
-
-  // Re-enable scan controls, disable stop button
-  m_scanWidget->setScanButtonsEnabled(true);
-  m_scanWidget->setStopButtonEnabled(false);
-
-  // Log completion
-  m_logTextEdit->appendPlainText("Scan stopped - device returned to peak position");
 }
 
 // === ROLL CORRECTION SLOTS ===

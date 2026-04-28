@@ -32,8 +32,6 @@ class ManualAlignPointWidget;
 class UserInputWidget;
 class RetraceEditWidget;
 #include "ScanControlWidget.h"
-class ScanExecutor;
-enum class ScanMode;
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class RollCorrectionWidget;
@@ -137,13 +135,8 @@ private slots:
   // User input handling
   void onUserInputResponse(bool accepted, QString inputText);
 
-  // Scanning integration (refactored)
-  void onScanRequested(QString deviceName, ScanControlWidget::ScanMode mode, QString channel);
-  void onScanLogMessage(QString message);
-  void onScanCompleted(QString deviceName, double peakValue, bool success);
-  void onScanError(QString errorMessage);
-  void onStopScanRequested();
-  void onChannelChanged(QString channel);  // ✅ ADDED
+  // Scan tab — DataStore subscription glue (controller handles executor).
+  void onChannelChanged(QString channel);
 
   // ✅ ADDED: Periodic channel list refresh
   void refreshDataStoreChannels();
@@ -269,9 +262,11 @@ private:
   QLabel* m_actionDetailLabel = nullptr;
   std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
-  // Scanning controls (refactored)
+  // Scanning controls. The widget is the body of the "Scanning" tab so it
+  // lives on the page; the controller owns the ScanExecutor and the
+  // glue between the widget's signals and that executor.
   ScanControlWidget* m_scanWidget;
-  ScanExecutor* m_scanExecutor;
+  class ScanController* m_scanController = nullptr;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   MotionInspectorWidget* m_motionInspectorWidget = nullptr;
