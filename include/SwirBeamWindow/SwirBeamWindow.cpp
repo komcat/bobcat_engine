@@ -3,6 +3,7 @@
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "SwirBeamConfigStore.h"
 #include "SwirBeamOverlay.h"
+#include "SwirImageSaver.h"
 #include "SwirWorldMarkerStore.h"
 #include "camera/CameraConfigManager.h"
 #include "camera/CameraManager.h"
@@ -70,6 +71,30 @@ SwirBeamWindow::SwirBeamWindow()
             y = pos.y;
             return true;
         });
+
+    // Image-save APIs: configured with snapshot callbacks so they don't
+    // hold any window state directly.
+    SwirImageSaver::Deps saveDeps;
+    saveDeps.snapshotFrame =
+        [this](std::vector<uint8_t>& outBuf, uint32_t& outW, uint32_t& outH) {
+            std::lock_guard<std::mutex> lock(m_frameMutex);
+            if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty())
+                return false;
+            outBuf = m_frameBuffer;
+            outW = m_frameWidth;
+            outH = m_frameHeight;
+            return true;
+        };
+    saveDeps.snapshotBeams = [this]() {
+        std::lock_guard<std::mutex> lock(m_beamMutex);
+        return m_beamDisplayResults;
+    };
+    saveDeps.getMicronsPerPixel = [this]() {
+        return m_useHalconDetection ? m_halconConfig.micronsPerPixel
+                                     : m_beamConfig.micronsPerPixel;
+    };
+    saveDeps.getUseBlobMode = [this]() { return m_useBlobDetection; };
+    m_imageSaver = std::make_unique<SwirImageSaver>(std::move(saveDeps));
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -2813,262 +2838,30 @@ void SwirBeamWindow::OnSaveImagePackage()
 
 bool SwirBeamWindow::SaveFrameAsPng(const std::wstring& fullPath)
 {
-    // Snapshot the BGR frame buffer under the frame mutex so the grab thread
-    // can't reallocate it mid-encode.
-    std::vector<uint8_t> snapshot;
-    uint32_t width = 0, height = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
-        snapshot = m_frameBuffer;  // copy
-        width = m_frameWidth;
-        height = m_frameHeight;
-    }
-
-    // The buffer is bottom-up BGR24. Point GDI+ at the last row with negative
-    // stride to present a top-down view without copying again.
-    const INT stride = static_cast<INT>(width) * 3;
-    BYTE* scan0 = snapshot.data() + static_cast<size_t>(height - 1) * stride;
-    Gdiplus::Bitmap bitmap(static_cast<INT>(width), static_cast<INT>(height),
-                            -stride, PixelFormat24bppRGB, scan0);
-    if (bitmap.GetLastStatus() != Gdiplus::Ok) return false;
-
-    // Find PNG encoder CLSID
-    UINT num = 0, size = 0;
-    Gdiplus::GetImageEncodersSize(&num, &size);
-    if (size == 0) return false;
-    std::vector<BYTE> codecBuf(size);
-    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(codecBuf.data());
-    Gdiplus::GetImageEncoders(num, size, codecs);
-    CLSID pngClsid = {};
-    bool found = false;
-    for (UINT i = 0; i < num; ++i) {
-        if (wcscmp(codecs[i].MimeType, L"image/png") == 0) {
-            pngClsid = codecs[i].Clsid;
-            found = true;
-            break;
-        }
-    }
-    if (!found) return false;
-
-    return bitmap.Save(fullPath.c_str(), &pngClsid, nullptr) == Gdiplus::Ok;
+    return m_imageSaver && m_imageSaver->SaveFrameAsPng(fullPath);
 }
-
-// ----------------------------------------------------------------------------
-// Helpers shared by the save APIs
-// ----------------------------------------------------------------------------
-
-namespace {
-
-bool GetPngEncoderClsid(CLSID& out) {
-    UINT num = 0, size = 0;
-    Gdiplus::GetImageEncodersSize(&num, &size);
-    if (size == 0) return false;
-    std::vector<BYTE> buf(size);
-    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-    Gdiplus::GetImageEncoders(num, size, codecs);
-    for (UINT i = 0; i < num; ++i) {
-        if (wcscmp(codecs[i].MimeType, L"image/png") == 0) {
-            out = codecs[i].Clsid;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool SavePng(Gdiplus::Bitmap& bmp, const std::wstring& path) {
-    if (bmp.GetLastStatus() != Gdiplus::Ok) return false;
-    CLSID clsid;
-    if (!GetPngEncoderClsid(clsid)) return false;
-    return bmp.Save(path.c_str(), &clsid, nullptr) == Gdiplus::Ok;
-}
-
-}  // anonymous namespace
 
 bool SwirBeamWindow::SaveFrameWithOverlayAsPng(const std::wstring& fullPath)
 {
-    std::vector<uint8_t> frameSnap;
-    uint32_t fw = 0, fh = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
-        frameSnap = m_frameBuffer;
-        fw = m_frameWidth;
-        fh = m_frameHeight;
-    }
-    std::vector<BeamDetectionResult> beamSnap;
-    {
-        std::lock_guard<std::mutex> lock(m_beamMutex);
-        beamSnap = m_beamDisplayResults;
-    }
-
-    // Native-resolution top-down ARGB canvas. Draw the raw frame first, then
-    // call DrawBeamOverlays at identity transform (renderX/Y=0, renderW/H=fw/fh).
-    Gdiplus::Bitmap canvas(static_cast<INT>(fw), static_cast<INT>(fh),
-                           PixelFormat32bppARGB);
-    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
-
-    {
-        Gdiplus::Graphics gfx(&canvas);
-        const INT stride = static_cast<INT>(fw) * 3;
-        BYTE* scan0 = frameSnap.data() + static_cast<size_t>(fh - 1) * stride;
-        Gdiplus::Bitmap rawBmp(static_cast<INT>(fw), static_cast<INT>(fh),
-                                -stride, PixelFormat24bppRGB, scan0);
-        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
-        gfx.DrawImage(&rawBmp, 0, 0,
-                      static_cast<INT>(fw), static_cast<INT>(fh));
-
-        if (!beamSnap.empty()) {
-            DrawBeamOverlays(gfx, beamSnap,
-                             0, 0, static_cast<int>(fw), static_cast<int>(fh),
-                             fw, fh,
-                             m_useBlobDetection,
-                             m_useHalconDetection ? m_halconConfig.micronsPerPixel
-                                                  : m_beamConfig.micronsPerPixel);
-        }
-    }
-
-    return SavePng(canvas, fullPath);
+    return m_imageSaver && m_imageSaver->SaveFrameWithOverlayAsPng(fullPath);
 }
 
 bool SwirBeamWindow::SaveBeamCropAsPng(int slotIndex, const std::wstring& fullPath)
 {
-    if (slotIndex < 0 || slotIndex > 1) return false;
-
-    std::vector<uint8_t> frameSnap;
-    uint32_t fw = 0, fh = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
-        frameSnap = m_frameBuffer;
-        fw = m_frameWidth;
-        fh = m_frameHeight;
-    }
-    BeamDetectionResult beam;
-    bool slotHasBeam = false;
-    {
-        std::lock_guard<std::mutex> lock(m_beamMutex);
-        if (static_cast<size_t>(slotIndex) < m_beamDisplayResults.size()) {
-            beam = m_beamDisplayResults[slotIndex];
-            slotHasBeam = true;
-        }
-    }
-    if (!slotHasBeam) return false;
-
-    constexpr int TILE = 200;
-    Gdiplus::Bitmap canvas(TILE, TILE, PixelFormat32bppARGB);
-    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
-    {
-        Gdiplus::Graphics gfx(&canvas);
-        gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-        DrawSingleBeamCropTile(gfx, beam, frameSnap.data(), fw, fh,
-                               0, 0, TILE, slotIndex);
-    }
-    return SavePng(canvas, fullPath);
+    return m_imageSaver && m_imageSaver->SaveBeamCropAsPng(slotIndex, fullPath);
 }
 
 bool SwirBeamWindow::SaveCollageAsPng(const std::wstring& fullPath)
 {
-    std::vector<uint8_t> frameSnap;
-    uint32_t fw = 0, fh = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        if (m_frameWidth == 0 || m_frameHeight == 0 || m_frameBuffer.empty()) return false;
-        frameSnap = m_frameBuffer;
-        fw = m_frameWidth;
-        fh = m_frameHeight;
-    }
-    std::vector<BeamDetectionResult> beamSnap;
-    {
-        std::lock_guard<std::mutex> lock(m_beamMutex);
-        beamSnap = m_beamDisplayResults;
-    }
-
-    constexpr int TILE = 200;
-    constexpr int MARGIN = 10;
-    constexpr int STRIP_BAND_H = TILE + 2 * MARGIN;  // 220
-    const int rowMinW = 2 * TILE + 3 * MARGIN;       // 430
-
-    const int collageW = std::max<int>(static_cast<int>(fw), rowMinW);
-    const int collageH = static_cast<int>(fh) + STRIP_BAND_H;
-
-    Gdiplus::Bitmap canvas(collageW, collageH, PixelFormat32bppARGB);
-    if (canvas.GetLastStatus() != Gdiplus::Ok) return false;
-
-    {
-        Gdiplus::Graphics gfx(&canvas);
-        Gdiplus::SolidBrush bg(Gdiplus::Color(255, 22, 22, 22));
-        gfx.FillRectangle(&bg, 0, 0, collageW, collageH);
-
-        // Top: raw frame at native resolution, left-aligned.
-        const INT stride = static_cast<INT>(fw) * 3;
-        BYTE* scan0 = frameSnap.data() + static_cast<size_t>(fh - 1) * stride;
-        Gdiplus::Bitmap rawBmp(static_cast<INT>(fw), static_cast<INT>(fh),
-                                -stride, PixelFormat24bppRGB, scan0);
-        gfx.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
-        gfx.DrawImage(&rawBmp, 0, 0,
-                      static_cast<INT>(fw), static_cast<INT>(fh));
-
-        if (!beamSnap.empty()) {
-            DrawBeamOverlays(gfx, beamSnap,
-                             0, 0, static_cast<int>(fw), static_cast<int>(fh),
-                             fw, fh,
-                             m_useBlobDetection,
-                             m_useHalconDetection ? m_halconConfig.micronsPerPixel
-                                                  : m_beamConfig.micronsPerPixel);
-        }
-
-        // Bottom band: 2 tiles, left-anchored to match the live strip layout.
-        RECT stripRect = {
-            0,
-            static_cast<LONG>(fh),
-            collageW,
-            static_cast<LONG>(fh) + STRIP_BAND_H
-        };
-        DrawBeamCropStrip(gfx, beamSnap, frameSnap.data(), fw, fh, stripRect);
-    }
-
-    return SavePng(canvas, fullPath);
+    return m_imageSaver && m_imageSaver->SaveCollageAsPng(fullPath);
 }
 
 bool SwirBeamWindow::SaveImagePackage(const std::wstring& dirPath,
                                       const std::wstring& namePrefix,
                                       std::vector<std::wstring>* outFiles)
 {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    fs::create_directories(fs::path(dirPath), ec);
-
-    auto join = [&](const wchar_t* suffix) {
-        return (fs::path(dirPath) / (namePrefix + suffix)).wstring();
-    };
-
-    auto record = [&](bool ok, const std::wstring& path) {
-        if (ok && outFiles) outFiles->push_back(path);
-    };
-
-    // Raw is the only required artifact — without a frame buffer the rest
-    // can't produce anything either, so we abort early on raw failure.
-    auto rawPath = join(L"_raw.png");
-    bool rawOk = SaveFrameAsPng(rawPath);
-    record(rawOk, rawPath);
-    if (!rawOk) return false;
-
-    // The remaining files are best-effort: missing beam slots, transient
-    // detection misses, etc. shouldn't fail the whole package.
-    auto p = join(L"_overlay.png");
-    record(SaveFrameWithOverlayAsPng(p), p);
-
-    p = join(L"_B0.png");
-    record(SaveBeamCropAsPng(0, p), p);
-
-    p = join(L"_B1.png");
-    record(SaveBeamCropAsPng(1, p), p);
-
-    p = join(L"_collage.png");
-    record(SaveCollageAsPng(p), p);
-
-    return true;
+    return m_imageSaver
+        && m_imageSaver->SaveImagePackage(dirPath, namePrefix, outFiles);
 }
 
 void SwirBeamWindow::SaveMagnification()

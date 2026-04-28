@@ -377,6 +377,8 @@ private:
     // World markers are owned by SwirWorldMarkerStore (forward decl above).
     // Pointer rather than value to avoid pulling its header into this one.
     std::unique_ptr<class SwirWorldMarkerStore> m_markerStore;
+    // Image-save APIs live in SwirImageSaver. Window keeps thin forwards.
+    std::unique_ptr<class SwirImageSaver> m_imageSaver;
 
     // Beam detection
     bool m_beamDetectionEnabled = false;

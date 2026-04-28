@@ -743,6 +743,7 @@ set(SOURCES
     include/SwirBeamWindow/SwirBeamOverlay.cpp
     include/SwirBeamWindow/SwirBeamConfigStore.cpp
     include/SwirBeamWindow/SwirWorldMarkerStore.cpp
+    include/SwirBeamWindow/SwirImageSaver.cpp
     include/BeamOptimizer/BeamResultBroker.cpp
     include/BeamOptimizer/BeamOptimizerManager.cpp
     include/BeamOptimizer/BeamHillClimb.cpp
