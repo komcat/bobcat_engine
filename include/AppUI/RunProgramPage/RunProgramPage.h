@@ -380,31 +380,17 @@ private:
   void clearVisionResult();              // Clear stale vision result + history
 
   // Context Tab Components (real-time context variable viewer with tree hierarchy)
-  QWidget* m_contextTabWidget;           // Container widget for context tab
-  QTreeWidget* m_contextTree;            // Tree showing context variables (dot-separated hierarchy)
-  QLineEdit* m_contextFilterEdit;        // Filter/search textbox
-  QLabel* m_contextStatusLabel;          // Status label (e.g., "12 variables")
-  QTimer* m_contextRefreshTimer;         // 500ms refresh timer
-  QPushButton* m_contextCopyButton;      // Copy to clipboard button
-  QPushButton* m_contextExportButton;    // Export to CSV button
-  QPushButton* m_contextRefreshCvButton; // Refresh CV inject button
-  QPushButton* m_contextExpandAllButton; // Expand all tree nodes
-  QPushButton* m_contextCollapseAllButton; // Collapse all tree nodes
-  QPushButton* m_contextFontToggleButton = nullptr; // Toggle small/large font
-  bool m_contextLargeFont = false;        // Current font mode (false=small/default, true=large/18pt)
-  std::unique_ptr<SequenceContext> m_standaloneCvContext;  // Standalone context for CV refresh
-  QTimer* m_cvAutoRefreshTimer = nullptr;  // Auto-refresh timer for CV data
+  // Context tab — owned end-to-end by SequenceContextViewer.
+  class SequenceContextViewer* m_contextViewer = nullptr;
 
-  // Context tab methods
-  void createContextTab();                             // Creates the context tab UI
-  void updateContextTable(bool forceUpdate = false);   // Refreshes tree from context
-  void onContextFilterChanged(const QString& filter);  // Handles filter text changes
-  void startContextRefreshTimer();                     // Starts the 500ms timer
-  void stopContextRefreshTimer();                      // Stops the timer
-  void onContextCopyToClipboard();                     // Copy context to clipboard
-  void onContextExportToCsv();                         // Export context to CSV file
-  void onContextRefreshCv();                           // Refresh CV inject into standalone context
-  void displayStandaloneContext();                     // Display standalone context in tree
-  void refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix);  // Shared tree builder
-  void applyContextFontSize();                         // Apply current font size to all context tab widgets
+  // Page-side helper that fills a SequenceContext with cv.* / bs.* /
+  // bs2.* values from the GdiCameraWindowManager(s). Wired into the
+  // viewer via SetCvPopulator() in the page constructor.
+  bool populateCvContext(SequenceContext& target, QString& errorMsgIfFalse);
+
+  // Convenience wrappers (kept so the existing call sites in execution
+  // glue keep their familiar names; each forwards to the viewer).
+  void startContextRefreshTimer();
+  void stopContextRefreshTimer();
+  void updateContextTable(bool forceUpdate = false);
 };

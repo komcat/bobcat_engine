@@ -2,6 +2,7 @@
 #include "RunProgramPage.h"
 #include "ProgramSettingsStore.h"
 #include "VisionHistoryWidget.h"
+#include "SequenceContextViewer.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -190,13 +191,6 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_currentRecipeTotalSteps(0)      // ✅ Initialize step tracking
   , m_currentRecipeCompletedSteps(0)  // ✅ Initialize step tracking
   , m_currentContext(nullptr)          // Execution context
-  , m_contextTabWidget(nullptr)        // Context tab container
-  , m_contextTree(nullptr)             // Context variables tree
-  , m_contextFilterEdit(nullptr)       // Context filter textbox
-  , m_contextStatusLabel(nullptr)      // Context status label
-  , m_contextRefreshTimer(nullptr)     // Context refresh timer
-  , m_contextCopyButton(nullptr)       // Copy to clipboard button
-  , m_contextExportButton(nullptr)     // Export to CSV button
   , m_retraceEditWidget(nullptr)       // ✅ Retrace edit widget
   , m_retraceEditContinue(false)       // ✅ Retrace edit continue status
   , m_retraceEditSave(false)           // ✅ Retrace edit save status
@@ -256,13 +250,11 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
 
 RunProgramPage::~RunProgramPage()
 {
-  // Stop CV auto-refresh timer
-  if (m_cvAutoRefreshTimer) {
-    m_cvAutoRefreshTimer->stop();
+  // Stop the SequenceContextViewer's timers (live polling + CV auto-refresh).
+  if (m_contextViewer) {
+    m_contextViewer->StopLivePolling();
+    m_contextViewer->StopCvAutoRefresh();
   }
-
-  // Stop context refresh timer
-  stopContextRefreshTimer();
 
   // ✅ ADDED: Unsubscribe from DataStore
   if (m_dataStore && !m_currentSubscribedChannel.isEmpty()) {
@@ -1675,8 +1667,12 @@ void RunProgramPage::createExecutionWidget()
   m_executionTabWidget->addTab(liveViewTab, "Live View");
 
   // === CONTEXT TAB (Index 2) ===
-  createContextTab();
-  m_executionTabWidget->addTab(m_contextTabWidget, "Context");
+  m_contextViewer = new SequenceContextViewer();
+  m_contextViewer->SetCvPopulator(
+    [this](SequenceContext& target, QString& err) {
+      return populateCvContext(target, err);
+    });
+  m_executionTabWidget->addTab(m_contextViewer, "Context");
 
   // ✅ Connect tab change to initialize camera when Live View tab is selected
   connect(m_executionTabWidget, &QTabWidget::currentChanged, this, [this](int index) {
@@ -5355,626 +5351,43 @@ void RunProgramPage::onVisionResultReady(QString imagePath)
 }
 
 // ============================================================================
-// CONTEXT TAB - Real-time Sequence Context Variable Viewer
+// CONTEXT TAB — thin forwards into SequenceContextViewer + the CV populator
+// (which lives on the page because it talks to the camera/beam managers).
 // ============================================================================
-
-void RunProgramPage::createContextTab()
-{
-  m_contextTabWidget = new QWidget();
-  QVBoxLayout* contextLayout = new QVBoxLayout(m_contextTabWidget);
-  contextLayout->setContentsMargins(5, 5, 5, 5);
-  contextLayout->setSpacing(8);
-
-  // Header row with filter, expand/collapse, and status
-  QHBoxLayout* headerLayout = new QHBoxLayout();
-
-  QLabel* filterLabel = new QLabel("Filter:");
-  filterLabel->setStyleSheet("color: #d4d4d4; font-weight: bold; font-size: 18pt;");
-  headerLayout->addWidget(filterLabel);
-
-  m_contextFilterEdit = new QLineEdit();
-  m_contextFilterEdit->setPlaceholderText("Type to filter variables...");
-  m_contextFilterEdit->setStyleSheet(
-    "QLineEdit { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 5px; "
-    "  min-width: 200px; "
-    "  font-size: 18pt; "
-    "} "
-    "QLineEdit:focus { "
-    "  border: 1px solid #0e639c; "
-    "}"
-  );
-  headerLayout->addWidget(m_contextFilterEdit, 1);
-
-  // Expand All / Collapse All buttons
-  QString smallButtonStyle =
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 4px 10px; "
-    "  font-size: 14pt; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #606060; "
-    "}";
-
-  m_contextExpandAllButton = new QPushButton("Expand All");
-  m_contextExpandAllButton->setStyleSheet(smallButtonStyle);
-  headerLayout->addWidget(m_contextExpandAllButton);
-
-  m_contextCollapseAllButton = new QPushButton("Collapse All");
-  m_contextCollapseAllButton->setStyleSheet(smallButtonStyle);
-  headerLayout->addWidget(m_contextCollapseAllButton);
-
-  // Font size toggle button (small = app default, large = 18pt)
-  QSettings fontSettings("Fabrinet", "BobcatEngine");
-  m_contextLargeFont = fontSettings.value("ContextTree/LargeFont", false).toBool();
-  m_contextFontToggleButton = new QPushButton(m_contextLargeFont ? "Aa-" : "Aa+");
-  m_contextFontToggleButton->setToolTip(m_contextLargeFont ? "Switch to small font" : "Switch to large font");
-  m_contextFontToggleButton->setStyleSheet(smallButtonStyle);
-  headerLayout->addWidget(m_contextFontToggleButton);
-
-  m_contextStatusLabel = new QLabel("No context data");
-  m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic; font-size: 18pt;");
-  headerLayout->addWidget(m_contextStatusLabel);
-
-  contextLayout->addLayout(headerLayout);
-
-  // Context variables tree (dot-separated hierarchy)
-  m_contextTree = new QTreeWidget();
-  m_contextTree->setColumnCount(3);
-  m_contextTree->setHeaderLabels({"Variable", "Value", "Type"});
-  m_contextTree->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_contextTree->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_contextTree->setAlternatingRowColors(false);
-  m_contextTree->setIndentation(20);
-
-  // Load column widths from settings (with defaults for larger font)
-  QSettings settings("Fabrinet", "BobcatEngine");
-  int col0Width = settings.value("ContextTree/ColumnWidth0", 300).toInt();
-  int col1Width = settings.value("ContextTree/ColumnWidth1", 450).toInt();
-  m_contextTree->setColumnWidth(0, col0Width);  // Variable name (tree column)
-  m_contextTree->setColumnWidth(1, col1Width);  // Value
-  m_contextTree->header()->setStretchLastSection(true);  // Type stretches
-
-  // Save column widths when user resizes them
-  connect(m_contextTree->header(), &QHeaderView::sectionResized,
-    this, [this](int logicalIndex, int /*oldSize*/, int newSize) {
-      if (logicalIndex < 2) {  // Only save Variable and Value columns (Type stretches)
-        QSettings settings("Fabrinet", "BobcatEngine");
-        settings.setValue(QString("ContextTree/ColumnWidth%1").arg(logicalIndex), newSize);
-      }
-    });
-
-  m_contextTree->setStyleSheet(
-    "QTreeWidget { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #d4d4d4; "
-    "  font-size: 18pt; "
-    "} "
-    "QTreeWidget::item { "
-    "  padding: 4px; "
-    "} "
-    "QTreeWidget::item:alternate { "
-    "  background-color: #252526; "
-    "} "
-    "QTreeWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "} "
-    "QTreeWidget::branch { "
-    "  background: transparent; "
-    "  border-image: none; "
-    "  image: none; "
-    "} "
-    "QTreeWidget::branch:has-children:!has-siblings:closed,"
-    "QTreeWidget::branch:closed:has-children:has-siblings { "
-    "  border-image: none; "
-    "  image: url(assets/icons/down_arrow.png); "
-    "} "
-    "QTreeWidget::branch:open:has-children:!has-siblings,"
-    "QTreeWidget::branch:open:has-children:has-siblings { "
-    "  border-image: none; "
-    "  image: url(assets/icons/up_arrow.png); "
-    "} "
-    "QHeaderView::section { "
-    "  background-color: #2d2d30; "
-    "  color: #d4d4d4; "
-    "  padding: 8px; "
-    "  border: 1px solid #3f3f46; "
-    "  font-weight: bold; "
-    "  font-size: 18pt; "
-    "}"
-  );
-
-  contextLayout->addWidget(m_contextTree, 1);
-
-  // Button row for copy/export
-  QHBoxLayout* buttonLayout = new QHBoxLayout();
-
-  // Refresh CV button (left side)
-  m_contextRefreshCvButton = new QPushButton("Refresh CV");
-  m_contextRefreshCvButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #2d5a27; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #3a7d32; "
-    "  border-radius: 3px; "
-    "  padding: 8px 16px; "
-    "  font-size: 18pt; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #3a7d32; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #4a9d42; "
-    "} "
-    "QPushButton:checked { "
-    "  background-color: #4a9d42; "
-    "  border: 2px solid #6abf62; "
-    "}"
-  );
-  m_contextRefreshCvButton->setCheckable(true);
-  m_contextRefreshCvButton->setToolTip("Click to inject cv.* values from continuous vision.\nToggle ON for auto-refresh every 500ms.");
-  buttonLayout->addWidget(m_contextRefreshCvButton);
-
-  buttonLayout->addStretch();
-
-  m_contextCopyButton = new QPushButton("Copy to Clipboard");
-  m_contextCopyButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 8px 16px; "
-    "  font-size: 18pt; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #606060; "
-    "}"
-  );
-  buttonLayout->addWidget(m_contextCopyButton);
-
-  m_contextExportButton = new QPushButton("Export to CSV");
-  m_contextExportButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 8px 16px; "
-    "  font-size: 18pt; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #606060; "
-    "}"
-  );
-  buttonLayout->addWidget(m_contextExportButton);
-
-  contextLayout->addLayout(buttonLayout);
-
-  // Connect filter textbox
-  connect(m_contextFilterEdit, &QLineEdit::textChanged,
-    this, &RunProgramPage::onContextFilterChanged);
-
-  // Connect buttons
-  connect(m_contextCopyButton, &QPushButton::clicked,
-    this, &RunProgramPage::onContextCopyToClipboard);
-  connect(m_contextExportButton, &QPushButton::clicked,
-    this, &RunProgramPage::onContextExportToCsv);
-
-  // Connect Expand All / Collapse All
-  connect(m_contextExpandAllButton, &QPushButton::clicked,
-    this, [this]() { m_contextTree->expandAll(); });
-  connect(m_contextCollapseAllButton, &QPushButton::clicked,
-    this, [this]() { m_contextTree->collapseAll(); });
-
-  // Connect Font Toggle
-  connect(m_contextFontToggleButton, &QPushButton::clicked,
-    this, [this]() {
-      m_contextLargeFont = !m_contextLargeFont;
-      QSettings s("Fabrinet", "BobcatEngine");
-      s.setValue("ContextTree/LargeFont", m_contextLargeFont);
-      m_contextFontToggleButton->setText(m_contextLargeFont ? "Aa-" : "Aa+");
-      m_contextFontToggleButton->setToolTip(m_contextLargeFont ? "Switch to small font" : "Switch to large font");
-      applyContextFontSize();
-    });
-
-  // Connect Refresh CV button (toggle auto-refresh)
-  connect(m_contextRefreshCvButton, &QPushButton::clicked,
-    this, [this](bool checked) {
-      if (checked) {
-        // Toggle ON: do immediate refresh + start auto-refresh timer
-        onContextRefreshCv();
-        if (!m_cvAutoRefreshTimer) {
-          m_cvAutoRefreshTimer = new QTimer(this);
-          m_cvAutoRefreshTimer->setInterval(500);
-          connect(m_cvAutoRefreshTimer, &QTimer::timeout, this, &RunProgramPage::onContextRefreshCv);
-        }
-        m_cvAutoRefreshTimer->start();
-        m_contextRefreshCvButton->setText("Refresh CV (Auto)");
-      } else {
-        // Toggle OFF: stop auto-refresh
-        if (m_cvAutoRefreshTimer) {
-          m_cvAutoRefreshTimer->stop();
-        }
-        m_contextRefreshCvButton->setText("Refresh CV");
-      }
-    });
-
-  // Create refresh timer (but don't start yet)
-  m_contextRefreshTimer = new QTimer(this);
-  m_contextRefreshTimer->setInterval(500);  // 500ms update interval
-  connect(m_contextRefreshTimer, &QTimer::timeout,
-    this, [this]() { updateContextTable(false); });
-
-  // Apply the persisted font size preference
-  applyContextFontSize();
-
-  std::cout << "[RunProgramPage] Context tab created (tree view)" << std::endl;
-}
-
-void RunProgramPage::applyContextFontSize()
-{
-  QString contentSize = m_contextLargeFont ? "18pt" : "9pt";
-  QString buttonSize = m_contextLargeFont ? "14pt" : "9pt";
-  QString headerPad = m_contextLargeFont ? "8px" : "4px";
-  QString btnPad = m_contextLargeFont ? "8px 16px" : "4px 10px";
-
-  // Filter label
-  auto* filterLabel = m_contextTabWidget->findChild<QLabel*>();
-  if (filterLabel && filterLabel->text() == "Filter:") {
-    filterLabel->setStyleSheet(QString("color: #d4d4d4; font-weight: bold; font-size: %1;").arg(contentSize));
-  }
-
-  // Filter edit
-  m_contextFilterEdit->setStyleSheet(
-    QString(
-      "QLineEdit { "
-      "  background-color: #3c3c3c; "
-      "  color: #d4d4d4; "
-      "  border: 1px solid #555555; "
-      "  border-radius: 3px; "
-      "  padding: 5px; "
-      "  min-width: 200px; "
-      "  font-size: %1; "
-      "} "
-      "QLineEdit:focus { "
-      "  border: 1px solid #0e639c; "
-      "}"
-    ).arg(contentSize)
-  );
-
-  // Small header buttons (Expand All, Collapse All, Font Toggle)
-  QString smallBtnStyle = QString(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: 4px 10px; "
-    "  font-size: %1; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #606060; "
-    "}"
-  ).arg(buttonSize);
-  m_contextExpandAllButton->setStyleSheet(smallBtnStyle);
-  m_contextCollapseAllButton->setStyleSheet(smallBtnStyle);
-  m_contextFontToggleButton->setStyleSheet(smallBtnStyle);
-
-  // Status label
-  m_contextStatusLabel->setStyleSheet(QString("color: #888888; font-style: italic; font-size: %1;").arg(contentSize));
-
-  // Tree widget
-  m_contextTree->setStyleSheet(
-    QString(
-      "QTreeWidget { "
-      "  background-color: #1e1e1e; "
-      "  border: 1px solid #3f3f46; "
-      "  color: #d4d4d4; "
-      "  font-size: %1; "
-      "} "
-      "QTreeWidget::item { "
-      "  padding: 4px; "
-      "} "
-      "QTreeWidget::item:alternate { "
-      "  background-color: #252526; "
-      "} "
-      "QTreeWidget::item:selected { "
-      "  background-color: #0e639c; "
-      "  color: white; "
-      "} "
-      "QTreeWidget::branch { "
-      "  background: transparent; "
-      "} "
-      "QTreeWidget::branch:has-children:!has-siblings:closed,"
-      "QTreeWidget::branch:closed:has-children:has-siblings { "
-      "  border-image: none; "
-      "  image: url(assets/icons/down_arrow.png); "
-      "} "
-      "QTreeWidget::branch:open:has-children:!has-siblings,"
-      "QTreeWidget::branch:open:has-children:has-siblings { "
-      "  border-image: none; "
-      "  image: url(assets/icons/up_arrow.png); "
-      "} "
-      "QHeaderView::section { "
-      "  background-color: #2d2d30; "
-      "  color: #d4d4d4; "
-      "  padding: %2; "
-      "  border: 1px solid #3f3f46; "
-      "  font-weight: bold; "
-      "  font-size: %1; "
-      "}"
-    ).arg(contentSize, headerPad)
-  );
-
-  // Bottom action buttons (Refresh CV, Copy, Export)
-  QString actionBtnStyle = QString(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  border-radius: 3px; "
-    "  padding: %1; "
-    "  font-size: %2; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #606060; "
-    "}"
-  ).arg(btnPad, contentSize);
-  m_contextCopyButton->setStyleSheet(actionBtnStyle);
-  m_contextExportButton->setStyleSheet(actionBtnStyle);
-
-  // Refresh CV button (green variant)
-  m_contextRefreshCvButton->setStyleSheet(
-    QString(
-      "QPushButton { "
-      "  background-color: #2d5a27; "
-      "  color: #d4d4d4; "
-      "  border: 1px solid #3a7d32; "
-      "  border-radius: 3px; "
-      "  padding: %1; "
-      "  font-size: %2; "
-      "} "
-      "QPushButton:hover { "
-      "  background-color: #3a7d32; "
-      "} "
-      "QPushButton:pressed { "
-      "  background-color: #4a9d42; "
-      "} "
-      "QPushButton:checked { "
-      "  background-color: #4a9d42; "
-      "  border: 2px solid #6abf62; "
-      "}"
-    ).arg(btnPad, contentSize)
-  );
-}
-
-void RunProgramPage::updateContextTable(bool forceUpdate)
-{
-  // Safety check: Don't access context if worker is not actively running
-  if (!forceUpdate && (!m_programWorker || !m_programWorker->isRunning())) {
-    if (m_contextTree->topLevelItemCount() > 0) {
-      m_contextStatusLabel->setText("variables (last run)");
-      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
-    } else {
-      m_contextStatusLabel->setText("No context data");
-      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
-    }
-    return;
-  }
-
-  // Get context from ProgramWorker (thread-safe)
-  SequenceContext* context = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
-
-  if (!context) {
-    if (m_contextTree->topLevelItemCount() > 0) {
-      m_contextStatusLabel->setText("variables (last run)");
-      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
-    } else {
-      m_contextStatusLabel->setText("No context data");
-      m_contextStatusLabel->setStyleSheet("color: #888888; font-style: italic;");
-    }
-    return;
-  }
-
-  refreshContextTreeDisplay(context, "", "");
-}
-
-void RunProgramPage::onContextFilterChanged(const QString& /*filter*/)
-{
-  // If CV auto-refresh is active, refresh the standalone context display
-  if (m_cvAutoRefreshTimer && m_cvAutoRefreshTimer->isActive() && m_standaloneCvContext) {
-    displayStandaloneContext();
-  } else {
-    // Immediately update the table with new filter
-    updateContextTable();
-  }
-}
 
 void RunProgramPage::startContextRefreshTimer()
 {
-  // Stop CV auto-refresh when recipe execution starts
-  if (m_cvAutoRefreshTimer && m_cvAutoRefreshTimer->isActive()) {
-    m_cvAutoRefreshTimer->stop();
-    m_contextRefreshCvButton->setChecked(false);
-    m_contextRefreshCvButton->setText("Refresh CV");
-  }
-
-  if (m_contextRefreshTimer && !m_contextRefreshTimer->isActive()) {
-    // Use longer interval during loop execution to reduce UI overhead
-    int interval = m_isLoopExecution ? 1000 : 500;
-    m_contextRefreshTimer->setInterval(interval);
-    std::cout << "[RunProgramPage] Starting context refresh timer (" << interval << "ms)" << std::endl;
-    updateContextTable();  // Immediate update
-    m_contextRefreshTimer->start();
-  }
+  if (!m_contextViewer) return;
+  // Make sure the viewer has the latest worker pointer before it starts
+  // polling getCurrentContext() on it.
+  m_contextViewer->SetWorker(m_programWorker);
+  m_contextViewer->StartLivePolling(m_isLoopExecution ? 1000 : 500);
 }
 
 void RunProgramPage::stopContextRefreshTimer()
 {
-  if (m_contextRefreshTimer && m_contextRefreshTimer->isActive()) {
-    std::cout << "[RunProgramPage] Stopping context refresh timer" << std::endl;
-    m_contextRefreshTimer->stop();
-    // Final update to show end state
-    updateContextTable();
-  }
+  if (m_contextViewer) m_contextViewer->StopLivePolling();
 }
 
-void RunProgramPage::onContextCopyToClipboard()
+void RunProgramPage::updateContextTable(bool forceUpdate)
 {
-  if (!m_contextTree || m_contextTree->topLevelItemCount() == 0) {
-    std::cout << "[RunProgramPage] No context data to copy" << std::endl;
-    return;
-  }
-
-  // Recursive helper to collect leaf entries with full dot-separated paths
-  struct Entry { QString variable; QString value; QString type; };
-  std::vector<Entry> entries;
-
-  std::function<void(QTreeWidgetItem*, const QString&)> collectLeaves;
-  collectLeaves = [&](QTreeWidgetItem* item, const QString& prefix) {
-    QString fullPath = prefix.isEmpty() ? item->text(0) : prefix + "." + item->text(0);
-    if (item->childCount() == 0) {
-      // Leaf node
-      entries.push_back({fullPath, item->text(1), item->text(2)});
-    } else {
-      for (int i = 0; i < item->childCount(); ++i) {
-        collectLeaves(item->child(i), fullPath);
-      }
-    }
-  };
-
-  for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
-    collectLeaves(m_contextTree->topLevelItem(i), "");
-  }
-
-  // Build tab-separated text
-  QString clipboardText;
-  clipboardText += "Variable\tValue\tType\n";
-  for (const auto& e : entries) {
-    clipboardText += QString("%1\t%2\t%3\n").arg(e.variable, e.value, e.type);
-  }
-
-  QClipboard* clipboard = QApplication::clipboard();
-  clipboard->setText(clipboardText);
-
-  std::cout << "[RunProgramPage] Copied " << entries.size() << " context variables to clipboard" << std::endl;
-
-  m_contextCopyButton->setText("Copied!");
-  QTimer::singleShot(1500, this, [this]() {
-    m_contextCopyButton->setText("Copy to Clipboard");
-  });
+  if (!m_contextViewer) return;
+  // Hand the worker pointer to the viewer in case it changed since the
+  // last refresh; SetWorker is cheap (just stores a pointer).
+  m_contextViewer->SetWorker(m_programWorker);
+  if (forceUpdate) m_contextViewer->ForceRefresh();
+  // Live polling timer fires its own refresh; we don't need to do it here.
 }
 
-void RunProgramPage::onContextExportToCsv()
-{
-  if (!m_contextTree || m_contextTree->topLevelItemCount() == 0) {
-    std::cout << "[RunProgramPage] No context data to export" << std::endl;
-    return;
-  }
-
-  // Collect leaf entries from tree
-  struct Entry { QString variable; QString value; QString type; };
-  std::vector<Entry> entries;
-
-  std::function<void(QTreeWidgetItem*, const QString&)> collectLeaves;
-  collectLeaves = [&](QTreeWidgetItem* item, const QString& prefix) {
-    QString fullPath = prefix.isEmpty() ? item->text(0) : prefix + "." + item->text(0);
-    if (item->childCount() == 0) {
-      entries.push_back({fullPath, item->text(1), item->text(2)});
-    } else {
-      for (int i = 0; i < item->childCount(); ++i) {
-        collectLeaves(item->child(i), fullPath);
-      }
-    }
-  };
-
-  for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
-    collectLeaves(m_contextTree->topLevelItem(i), "");
-  }
-
-  // Generate default filename with timestamp
-  QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-  QString defaultFileName = QString("context_export_%1.csv").arg(timestamp);
-
-  QString filePath = QFileDialog::getSaveFileName(
-    this,
-    "Export Context to CSV",
-    defaultFileName,
-    "CSV Files (*.csv);;All Files (*)"
-  );
-
-  if (filePath.isEmpty()) {
-    return;  // User cancelled
-  }
-
-  QFile file(filePath);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    std::cerr << "[RunProgramPage] Failed to open file for writing: " << filePath.toStdString() << std::endl;
-    return;
-  }
-
-  QTextStream stream(&file);
-  stream << "Variable,Value,Type\n";
-
-  auto escapeForCsv = [](const QString& str) -> QString {
-    QString escaped = str;
-    escaped.replace("\"", "\"\"");
-    if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n')) {
-      escaped = QString("\"%1\"").arg(escaped);
-    }
-    return escaped;
-  };
-
-  for (const auto& e : entries) {
-    stream << escapeForCsv(e.variable) << "," << escapeForCsv(e.value) << "," << escapeForCsv(e.type) << "\n";
-  }
-
-  file.close();
-
-  std::cout << "[RunProgramPage] Exported " << entries.size() << " context variables to: " << filePath.toStdString() << std::endl;
-
-  m_contextExportButton->setText("Exported!");
-  QTimer::singleShot(1500, this, [this]() {
-    m_contextExportButton->setText("Export to CSV");
-  });
-}
-
-void RunProgramPage::onContextRefreshCv()
+bool RunProgramPage::populateCvContext(SequenceContext& target, QString& errorMsg)
 {
   if (!m_context || !m_context->gdiCameraWindowManager) {
-    m_contextStatusLabel->setText("GDI Camera Window not available");
-    m_contextStatusLabel->setStyleSheet(QString("color: #f44747; font-style: italic; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
-    return;
+    errorMsg = "GDI Camera Window not available";
+    return false;
   }
 
   bool hasVision = false;
-  bool hasBeamStream = m_context->gdiCameraWindowManager->isBeamStreamActive();
+  bool hasBeamStream  = m_context->gdiCameraWindowManager->isBeamStreamActive();
   bool hasBeamStream2 = m_context->gdiCameraWindowManager2 &&
                         m_context->gdiCameraWindowManager2->isBeamStreamActive();
 
@@ -5983,396 +5396,98 @@ void RunProgramPage::onContextRefreshCv()
 #endif
 
   if (!hasVision && !hasBeamStream && !hasBeamStream2) {
-    m_contextStatusLabel->setText("No live data source active (vision / beam stream)");
-    m_contextStatusLabel->setStyleSheet(QString("color: #cca700; font-style: italic; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
-    return;
-  }
-
-  // Create standalone context if needed
-  if (!m_standaloneCvContext) {
-    m_standaloneCvContext = std::make_unique<SequenceContext>();
+    errorMsg = "No live data source active (vision / beam stream)";
+    return false;
   }
 
 #ifdef HAS_OPENCV
   if (hasVision) {
-    // Read latest vision result from GdiCameraWindowManager
     VisionResult result = m_context->gdiCameraWindowManager->getLatestVisionResult();
-
-    // Populate the standalone context with cv.* keys (mirrors InjectContinuousVisionResult)
-    m_standaloneCvContext->SetValue("cv.result.success", result.success ? "true" : "false");
-    m_standaloneCvContext->SetValue("cv.result.plugin", result.pluginName);
-    m_standaloneCvContext->SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
-
-    // Measurements
+    target.SetValue("cv.result.success", result.success ? "true" : "false");
+    target.SetValue("cv.result.plugin", result.pluginName);
+    target.SetValue("cv.result.processing_time_ms", std::to_string(result.processingTimeMs));
     for (const auto& [key, val] : result.measurements) {
-      m_standaloneCvContext->SetValue("cv.result." + key, std::to_string(val));
+      target.SetValue("cv.result." + key, std::to_string(val));
     }
-
-    // Points
-    m_standaloneCvContext->SetValue("cv.point.count", std::to_string(result.points.size()));
+    target.SetValue("cv.point.count", std::to_string(result.points.size()));
     for (size_t i = 0; i < result.points.size(); ++i) {
       std::string prefix = "cv.point." + std::to_string(i) + ".";
       const auto& pt = result.points[i];
-      m_standaloneCvContext->SetValue(prefix + "x", std::to_string(pt.pixelCoord.x));
-      m_standaloneCvContext->SetValue(prefix + "y", std::to_string(pt.pixelCoord.y));
-      m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(pt.mmCoord.x));
-      m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(pt.mmCoord.y));
-      m_standaloneCvContext->SetValue(prefix + "confidence", std::to_string(pt.confidence));
+      target.SetValue(prefix + "x",          std::to_string(pt.pixelCoord.x));
+      target.SetValue(prefix + "y",          std::to_string(pt.pixelCoord.y));
+      target.SetValue(prefix + "mm_x",       std::to_string(pt.mmCoord.x));
+      target.SetValue(prefix + "mm_y",       std::to_string(pt.mmCoord.y));
+      target.SetValue(prefix + "confidence", std::to_string(pt.confidence));
     }
-
-    // Circles
-    m_standaloneCvContext->SetValue("cv.circle.count", std::to_string(result.circles.size()));
+    target.SetValue("cv.circle.count", std::to_string(result.circles.size()));
     for (size_t i = 0; i < result.circles.size(); ++i) {
       std::string prefix = "cv.circle." + std::to_string(i) + ".";
       const auto& c = result.circles[i];
-      m_standaloneCvContext->SetValue(prefix + "x", std::to_string(c.centerPx.x));
-      m_standaloneCvContext->SetValue(prefix + "y", std::to_string(c.centerPx.y));
-      m_standaloneCvContext->SetValue(prefix + "radius", std::to_string(c.radiusPx));
-      m_standaloneCvContext->SetValue(prefix + "mm_x", std::to_string(c.centerMm.x));
-      m_standaloneCvContext->SetValue(prefix + "mm_y", std::to_string(c.centerMm.y));
-      m_standaloneCvContext->SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
+      target.SetValue(prefix + "x",         std::to_string(c.centerPx.x));
+      target.SetValue(prefix + "y",         std::to_string(c.centerPx.y));
+      target.SetValue(prefix + "radius",    std::to_string(c.radiusPx));
+      target.SetValue(prefix + "mm_x",      std::to_string(c.centerMm.x));
+      target.SetValue(prefix + "mm_y",      std::to_string(c.centerMm.y));
+      target.SetValue(prefix + "radius_mm", std::to_string(c.radiusMm));
     }
-
-    // Lines
-    m_standaloneCvContext->SetValue("cv.line.count", std::to_string(result.lines.size()));
+    target.SetValue("cv.line.count", std::to_string(result.lines.size()));
     for (size_t i = 0; i < result.lines.size(); ++i) {
       std::string prefix = "cv.line." + std::to_string(i) + ".";
       const auto& l = result.lines[i];
-      m_standaloneCvContext->SetValue(prefix + "start_x", std::to_string(l.startPx.x));
-      m_standaloneCvContext->SetValue(prefix + "start_y", std::to_string(l.startPx.y));
-      m_standaloneCvContext->SetValue(prefix + "end_x", std::to_string(l.endPx.x));
-      m_standaloneCvContext->SetValue(prefix + "end_y", std::to_string(l.endPx.y));
+      target.SetValue(prefix + "start_x", std::to_string(l.startPx.x));
+      target.SetValue(prefix + "start_y", std::to_string(l.startPx.y));
+      target.SetValue(prefix + "end_x",   std::to_string(l.endPx.x));
+      target.SetValue(prefix + "end_y",   std::to_string(l.endPx.y));
     }
   }
 #endif
 
-  // Inject beam stream data (always available, no HAS_OPENCV dependency)
-  if (hasBeamStream) {
-    nlohmann::json bsResult = m_context->gdiCameraWindowManager->getLatestBeamStreamResult();
-
-    m_standaloneCvContext->SetValue("bs.active", "true");
-    m_standaloneCvContext->SetValue("bs.fps", std::to_string(m_context->gdiCameraWindowManager->getBeamStreamFps()));
-
+  auto injectBeamStream = [&](GdiCameraWindowManager* mgr, const std::string& bsKey) {
+    if (!mgr) return;
+    nlohmann::json bsResult = mgr->getLatestBeamStreamResult();
+    target.SetValue(bsKey + ".active", "true");
+    target.SetValue(bsKey + ".fps", std::to_string(mgr->getBeamStreamFps()));
     if (bsResult.contains("process_ms")) {
-      m_standaloneCvContext->SetValue("bs.process_ms", std::to_string(bsResult["process_ms"].get<double>()));
+      target.SetValue(bsKey + ".process_ms", std::to_string(bsResult["process_ms"].get<double>()));
     }
-
     if (bsResult.contains("beams") && bsResult["beams"].is_array()) {
       const auto& beams = bsResult["beams"];
-      m_standaloneCvContext->SetValue("bs.beam.count", std::to_string(beams.size()));
-
+      target.SetValue(bsKey + ".beam.count", std::to_string(beams.size()));
       for (size_t i = 0; i < beams.size(); ++i) {
-        std::string prefix = "bs.beam." + std::to_string(i) + ".";
+        std::string prefix = bsKey + ".beam." + std::to_string(i) + ".";
         const auto& beam = beams[i];
-
         if (beam.contains("side")) {
-          m_standaloneCvContext->SetValue(prefix + "label", beam["side"].get<std::string>());
+          target.SetValue(prefix + "label", beam["side"].get<std::string>());
         }
-        m_standaloneCvContext->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
-        m_standaloneCvContext->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
-        if (beam.contains("d4sigma_x_px")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
-        }
-        if (beam.contains("d4sigma_y_px")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
-        }
-        if (beam.contains("d4sigma_x_um")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
-        }
-        if (beam.contains("d4sigma_y_um")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
-        }
-        if (beam.contains("peak_intensity")) {
-          m_standaloneCvContext->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
-        }
-        if (beam.contains("roi_x")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
-        }
-        if (beam.contains("roi_y")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
-        }
-        if (beam.contains("roi_w")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
-        }
-        if (beam.contains("roi_h")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
-        }
+        target.SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
+        target.SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
+        if (beam.contains("d4sigma_x_px"))   target.SetValue(prefix + "d4sigma_x_px",   std::to_string(beam["d4sigma_x_px"].get<double>()));
+        if (beam.contains("d4sigma_y_px"))   target.SetValue(prefix + "d4sigma_y_px",   std::to_string(beam["d4sigma_y_px"].get<double>()));
+        if (beam.contains("d4sigma_x_um"))   target.SetValue(prefix + "d4sigma_x_um",   std::to_string(beam["d4sigma_x_um"].get<double>()));
+        if (beam.contains("d4sigma_y_um"))   target.SetValue(prefix + "d4sigma_y_um",   std::to_string(beam["d4sigma_y_um"].get<double>()));
+        if (beam.contains("peak_intensity")) target.SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
+        if (beam.contains("roi_x"))          target.SetValue(prefix + "roi_x",          std::to_string(beam["roi_x"].get<int>()));
+        if (beam.contains("roi_y"))          target.SetValue(prefix + "roi_y",          std::to_string(beam["roi_y"].get<int>()));
+        if (beam.contains("roi_w"))          target.SetValue(prefix + "roi_w",          std::to_string(beam["roi_w"].get<int>()));
+        if (beam.contains("roi_h"))          target.SetValue(prefix + "roi_h",          std::to_string(beam["roi_h"].get<int>()));
       }
-
-      // Convenience aliases for first beam
       if (!beams.empty()) {
-        m_standaloneCvContext->SetValue("bs.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
-        m_standaloneCvContext->SetValue("bs.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
-        if (beams[0].contains("d4sigma_x_px")) {
-          m_standaloneCvContext->SetValue("bs.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
-        }
-        if (beams[0].contains("d4sigma_y_px")) {
-          m_standaloneCvContext->SetValue("bs.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
-        }
-        if (beams[0].contains("side")) {
-          m_standaloneCvContext->SetValue("bs.beam.first.label", beams[0]["side"].get<std::string>());
-        }
+        const auto& first = beams[0];
+        target.SetValue(bsKey + ".beam.first.centroid_x_px", std::to_string(first.value("centroid_x_px", 0.0)));
+        target.SetValue(bsKey + ".beam.first.centroid_y_px", std::to_string(first.value("centroid_y_px", 0.0)));
+        if (first.contains("d4sigma_x_px")) target.SetValue(bsKey + ".beam.first.d4sigma_x_px", std::to_string(first["d4sigma_x_px"].get<double>()));
+        if (first.contains("d4sigma_y_px")) target.SetValue(bsKey + ".beam.first.d4sigma_y_px", std::to_string(first["d4sigma_y_px"].get<double>()));
+        if (first.contains("side"))         target.SetValue(bsKey + ".beam.first.label",        first["side"].get<std::string>());
       }
     } else {
-      m_standaloneCvContext->SetValue("bs.beam.count", "0");
+      target.SetValue(bsKey + ".beam.count", "0");
     }
-  }
+  };
 
-  // Inject beam stream data from second GDI camera window (bs2.* keys)
-  if (hasBeamStream2) {
-    nlohmann::json bsResult = m_context->gdiCameraWindowManager2->getLatestBeamStreamResult();
+  if (hasBeamStream)  injectBeamStream(m_context->gdiCameraWindowManager,  "bs");
+  if (hasBeamStream2) injectBeamStream(m_context->gdiCameraWindowManager2, "bs2");
 
-    m_standaloneCvContext->SetValue("bs2.active", "true");
-    m_standaloneCvContext->SetValue("bs2.fps", std::to_string(m_context->gdiCameraWindowManager2->getBeamStreamFps()));
-
-    if (bsResult.contains("process_ms")) {
-      m_standaloneCvContext->SetValue("bs2.process_ms", std::to_string(bsResult["process_ms"].get<double>()));
-    }
-
-    if (bsResult.contains("beams") && bsResult["beams"].is_array()) {
-      const auto& beams = bsResult["beams"];
-      m_standaloneCvContext->SetValue("bs2.beam.count", std::to_string(beams.size()));
-
-      for (size_t i = 0; i < beams.size(); ++i) {
-        std::string prefix = "bs2.beam." + std::to_string(i) + ".";
-        const auto& beam = beams[i];
-
-        if (beam.contains("side")) {
-          m_standaloneCvContext->SetValue(prefix + "label", beam["side"].get<std::string>());
-        }
-        m_standaloneCvContext->SetValue(prefix + "centroid_x_px", std::to_string(beam.value("centroid_x_px", 0.0)));
-        m_standaloneCvContext->SetValue(prefix + "centroid_y_px", std::to_string(beam.value("centroid_y_px", 0.0)));
-        if (beam.contains("d4sigma_x_px")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_px", std::to_string(beam["d4sigma_x_px"].get<double>()));
-        }
-        if (beam.contains("d4sigma_y_px")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_px", std::to_string(beam["d4sigma_y_px"].get<double>()));
-        }
-        if (beam.contains("d4sigma_x_um")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_x_um", std::to_string(beam["d4sigma_x_um"].get<double>()));
-        }
-        if (beam.contains("d4sigma_y_um")) {
-          m_standaloneCvContext->SetValue(prefix + "d4sigma_y_um", std::to_string(beam["d4sigma_y_um"].get<double>()));
-        }
-        if (beam.contains("peak_intensity")) {
-          m_standaloneCvContext->SetValue(prefix + "peak_intensity", std::to_string(beam["peak_intensity"].get<double>()));
-        }
-        if (beam.contains("roi_x")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_x", std::to_string(beam["roi_x"].get<int>()));
-        }
-        if (beam.contains("roi_y")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_y", std::to_string(beam["roi_y"].get<int>()));
-        }
-        if (beam.contains("roi_w")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_w", std::to_string(beam["roi_w"].get<int>()));
-        }
-        if (beam.contains("roi_h")) {
-          m_standaloneCvContext->SetValue(prefix + "roi_h", std::to_string(beam["roi_h"].get<int>()));
-        }
-      }
-
-      // Convenience aliases for first beam
-      if (!beams.empty()) {
-        m_standaloneCvContext->SetValue("bs2.beam.first.centroid_x_px", std::to_string(beams[0].value("centroid_x_px", 0.0)));
-        m_standaloneCvContext->SetValue("bs2.beam.first.centroid_y_px", std::to_string(beams[0].value("centroid_y_px", 0.0)));
-        if (beams[0].contains("d4sigma_x_px")) {
-          m_standaloneCvContext->SetValue("bs2.beam.first.d4sigma_x_px", std::to_string(beams[0]["d4sigma_x_px"].get<double>()));
-        }
-        if (beams[0].contains("d4sigma_y_px")) {
-          m_standaloneCvContext->SetValue("bs2.beam.first.d4sigma_y_px", std::to_string(beams[0]["d4sigma_y_px"].get<double>()));
-        }
-        if (beams[0].contains("side")) {
-          m_standaloneCvContext->SetValue("bs2.beam.first.label", beams[0]["side"].get<std::string>());
-        }
-      }
-    } else {
-      m_standaloneCvContext->SetValue("bs2.beam.count", "0");
-    }
-  }
-
-  // Display the standalone context in the table
-  displayStandaloneContext();
-}
-
-void RunProgramPage::displayStandaloneContext()
-{
-  if (!m_standaloneCvContext) return;
-  refreshContextTreeDisplay(m_standaloneCvContext.get(), "", " (live)");
-}
-
-void RunProgramPage::refreshContextTreeDisplay(SequenceContext* context, const QString& varLabelPrefix, const QString& varLabelSuffix)
-{
-  if (!context) return;
-
-  QString filterText = m_contextFilterEdit->text().toLower().trimmed();
-  auto summary = context->GetSummary();
-
-  // Save expansion and selection state before rebuilding
-  QSet<QString> expandedPaths;
-  QSet<QString> selectedPaths;
-  QSet<QString> allPreviousPaths;  // Track all known nodes to detect new ones
-  bool wasEmpty = (m_contextTree->topLevelItemCount() == 0);
-
-  if (!wasEmpty) {
-    std::function<void(QTreeWidgetItem*, const QString&)> collectState;
-    collectState = [&](QTreeWidgetItem* item, const QString& path) {
-      allPreviousPaths.insert(path);
-      if (item->isExpanded()) {
-        expandedPaths.insert(path);
-      }
-      if (item->isSelected()) {
-        selectedPaths.insert(path);
-      }
-      for (int i = 0; i < item->childCount(); ++i) {
-        QString childPath = path + "." + item->child(i)->text(0);
-        collectState(item->child(i), childPath);
-      }
-    };
-    for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
-      auto* item = m_contextTree->topLevelItem(i);
-      collectState(item, item->text(0));
-    }
-  }
-
-  m_contextTree->setUpdatesEnabled(false);
-  m_contextTree->clear();
-
-  int totalCount = 0;
-  int shownCount = 0;
-
-  // Map to track created parent nodes by their full dot-path
-  std::map<QString, QTreeWidgetItem*> nodeMap;
-
-  for (const auto& [key, value] : summary.capturedValues) {
-    totalCount++;
-
-    // Apply filter on full key
-    QString keyStr = QString::fromStdString(key);
-    if (!filterText.isEmpty() && !keyStr.toLower().contains(filterText)) {
-      continue;
-    }
-    shownCount++;
-
-    // Split key by '.' to build hierarchy
-    QStringList parts = keyStr.split('.');
-
-    // Navigate/create parent nodes for all segments except the last
-    QTreeWidgetItem* parent = nullptr;
-    QString currentPath;
-
-    for (int i = 0; i < parts.size() - 1; ++i) {
-      currentPath = currentPath.isEmpty() ? parts[i] : currentPath + "." + parts[i];
-
-      auto it = nodeMap.find(currentPath);
-      if (it != nodeMap.end()) {
-        parent = it->second;
-      } else {
-        QTreeWidgetItem* node;
-        if (parent) {
-          node = new QTreeWidgetItem(parent);
-        } else {
-          node = new QTreeWidgetItem(m_contextTree);
-        }
-        node->setText(0, parts[i]);
-        node->setForeground(0, QColor(78, 201, 176));  // Teal for group names
-        QFont font = node->font(0);
-        font.setBold(true);
-        node->setFont(0, font);
-        nodeMap[currentPath] = node;
-        parent = node;
-      }
-    }
-
-    // Create the leaf node (last segment)
-    QTreeWidgetItem* leaf;
-    if (parent) {
-      leaf = new QTreeWidgetItem(parent);
-    } else {
-      leaf = new QTreeWidgetItem(m_contextTree);
-    }
-    leaf->setText(0, parts.last());
-    leaf->setForeground(0, QColor(86, 156, 214));  // Blue for variable names
-
-    // Format value and type
-    QString valueStr;
-    QString typeStr;
-    QColor valueColor;
-
-    switch (value.type) {
-      case SequenceContext::ValueType::NUMERIC:
-        valueStr = QString::number(value.numericValue, 'g', 8);
-        typeStr = "Numeric";
-        valueColor = QColor(181, 206, 168);  // Green
-        break;
-      case SequenceContext::ValueType::STRING:
-        valueStr = QString::fromStdString(value.stringValue);
-        typeStr = "String";
-        valueColor = QColor(206, 145, 120);  // Orange
-        break;
-      case SequenceContext::ValueType::BOOLEAN:
-        valueStr = value.booleanValue ? "true" : "false";
-        typeStr = "Boolean";
-        valueColor = QColor(86, 156, 214);  // Blue
-        break;
-      case SequenceContext::ValueType::IMAGE_FRAME:
-        valueStr = "[Image Frame]";
-        if (!value.tempFilePath.empty()) {
-          valueStr += QString(" (%1)").arg(QString::fromStdString(value.tempFilePath));
-        }
-        typeStr = "Image";
-        valueColor = QColor(220, 220, 170);  // Yellow
-        break;
-      default:
-        valueStr = "(none)";
-        typeStr = "None";
-        valueColor = QColor(128, 128, 128);
-        break;
-    }
-
-    leaf->setText(1, valueStr);
-    leaf->setForeground(1, valueColor);
-    leaf->setText(2, typeStr);
-    leaf->setForeground(2, QColor(128, 128, 128));
-  }
-
-  // Restore expansion and selection state, or expand all on first population
-  // New nodes (not in previous state) are expanded by default
-  if (wasEmpty) {
-    m_contextTree->expandAll();
-  } else {
-    std::function<void(QTreeWidgetItem*, const QString&)> restoreState;
-    restoreState = [&](QTreeWidgetItem* item, const QString& path) {
-      if (allPreviousPaths.contains(path)) {
-        // Existing node - restore previous expand/collapse state
-        item->setExpanded(expandedPaths.contains(path));
-      } else {
-        // New node - expand by default so user can see new data
-        item->setExpanded(true);
-      }
-      // Restore selection state
-      if (selectedPaths.contains(path)) {
-        item->setSelected(true);
-      }
-      for (int i = 0; i < item->childCount(); ++i) {
-        QString childPath = path + "." + item->child(i)->text(0);
-        restoreState(item->child(i), childPath);
-      }
-    };
-    for (int i = 0; i < m_contextTree->topLevelItemCount(); ++i) {
-      auto* item = m_contextTree->topLevelItem(i);
-      restoreState(item, item->text(0));
-    }
-  }
-
-  m_contextTree->setUpdatesEnabled(true);
-
-  // Update status label
-  m_contextStatusLabel->setStyleSheet(QString("color: #4ec9b0; font-size: %1;").arg(m_contextLargeFont ? "18pt" : "9pt"));
-  if (filterText.isEmpty()) {
-    m_contextStatusLabel->setText(QString("%1 %2variables%3").arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
-  } else {
-    m_contextStatusLabel->setText(QString("%1 of %2 %3variables%4").arg(shownCount).arg(totalCount).arg(varLabelPrefix).arg(varLabelSuffix));
-  }
+  return true;
 }
 
 void RunProgramPage::applyTheme()
