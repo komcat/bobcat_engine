@@ -25,11 +25,6 @@ class SequenceContext;
 class ProgramManager;
 class ProgramWorker;
 class ProcessSequenceFactory;
-class UserPromptWidget;
-class ManualAdjustWidget;
-class ManualAlignPointWidget;
-class UserInputWidget;
-class RetraceEditWidget;
 #include "ScanControlWidget.h"
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
@@ -64,18 +59,12 @@ public slots:
 signals:
   void backToMainMenu();
 
-  // User prompt signal
-  void showUserPrompt(QString title, QString message);
-
-  // Manual adjust signal
-  void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                        bool enableX, bool enableY, bool enableZ);
-
-  // Placement correction retrace signal
+  // Cross-thread bridges for the embedded retrace flows. The page's
+  // handlers do data loading (training-set load, store-base resolution)
+  // before switching the overlay's index — these signals let the
+  // recipe worker thread trigger that work on the UI thread.
   void showPlacementRetrace(QString trainingSetName, bool autoStart,
                             bool autoDetect, bool autoSaveContinue);
-
-  // Edge Transfer retrace signal (cross-thread bridge for the callback).
   void showEdgeTransferRetrace(QString trainingSetName);
 
   // Request to navigate to RecipePage and load a recipe for editing
@@ -108,7 +97,6 @@ private slots:
   void onSequenceExecutionStarted(int recipeIndex);
   void onStepExecutionCompleted(int recipeIndex, int stepIndex, bool success);
   void onWaitProgress(int remainingMs, int totalMs);
-  void onWorkerFinished();  // ✅ Handle QThread::finished()
 
   // ✅ Action-level tracking with look-ahead (granular command display)
   void onActionStarted(int recipeIndex, QString current, QString next, QString afterNext);
@@ -119,20 +107,10 @@ private slots:
   void onConfigureLoop();            // Open loop configuration dialog
   void updateLoopStatusLabel();      // Update loop status display
 
-  // User prompt handling
-  void onShowUserPrompt(QString title, QString message);
-  void onPromptResponse(bool accepted);
-
-  // Manual adjust handling
-  void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                          bool enableX, bool enableY, bool enableZ);
-  void onManualAdjustResponse(bool completed);
-
-  // Manual align point handling
-  void onManualAlignPointResponse(bool completed);
-
-  // User input handling
-  void onUserInputResponse(bool accepted, QString inputText);
+  // The 5 simple overlay slots (UserPrompt / ManualAdjust /
+  // ManualAlignPoint / UserInput / RetraceEdit) live inside
+  // UserInteractionOverlay; the page no longer needs onShow*/onResponse
+  // handlers for them.
 
   // Scan tab — DataStore subscription glue (controller handles executor).
   void onChannelChanged(QString channel);
@@ -185,8 +163,11 @@ private:
   ApplicationContext* m_context;
   TransformationMatrixLoader* m_matrixLoader;
   ProgramManager* m_programManager;
-  ProgramWorker* m_programWorker;
   ProcessSequenceFactory* m_processFactory;
+
+  // Owns the ProgramWorker, callback wiring, and execution lifecycle.
+  // Page subscribes to its forwarded signals for UI updates.
+  class ExecutionController* m_executionController = nullptr;
 
   // Left panel widgets
   QWidget* m_leftPanel;
@@ -279,23 +260,18 @@ private:
   bool m_rollCorrectionRunning = false;
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
-  // Prompt system
-  QStackedWidget* m_executionStack;  // Switch between log and prompt/adjust/input
-  UserPromptWidget* m_promptWidget;
-  ManualAdjustWidget* m_manualAdjustWidget;
-  ManualAlignPointWidget* m_manualAlignPointWidget;  // ✅ Manual align point widget
-  UserInputWidget* m_userInputWidget;
-  RetraceEditWidget* m_retraceEditWidget;  // ✅ Retrace edit widget
-  QEventLoop* m_promptEventLoop;     // For blocking until response
-  bool m_promptResponse;             // Store user's response
-  bool m_manualAdjustResponse;       // Store manual adjust response
-  bool m_manualAlignPointResponse;   // ✅ Store manual align point response
-  bool m_userInputAccepted;          // Store user input accepted status
-  QString m_userInputText;           // Store user input text
-  bool m_retraceEditContinue;        // ✅ Store retrace edit continue status
-  bool m_retraceEditSave;            // ✅ Store retrace edit save status
-  bool m_isRetraceEditMode;          // ✅ Currently in retrace edit mode
-  int m_retraceEditRecipeIndex;      // ✅ Recipe index being retrace-edited
+  // Interaction overlay: a QStackedWidget that holds the execution
+  // tabs (index 0) plus the 5 blocking interaction widgets (UserPrompt,
+  // ManualAdjust, ManualAlignPoint, UserInput, RetraceEdit) and the
+  // page-owned PlacementRetrace / EdgeTransferRetrace pages added via
+  // AddExtraPage(). m_promptEventLoop is the page-side QEventLoop used
+  // for the two embedded retrace flows (placement, edge transfer) —
+  // they involve page-side data loading and response state; the
+  // overlay's built-in widgets each run their own internal loop.
+  class UserInteractionOverlay* m_overlay = nullptr;
+  int m_placementRetracePageIndex   = -1;
+  int m_edgeTransferRetracePageIndex = -1;
+  QEventLoop* m_promptEventLoop      = nullptr;  // for embedded retraces
 
   // Slot System UI. Run-side is a slim selector + info label; edit-side
   // is a selector + Rename/Add/Copy/Delete buttons. Both flavours live
@@ -303,21 +279,24 @@ private:
   class SlotManagerWidget* m_runSlotWidget  = nullptr;
   class SlotManagerWidget* m_editSlotWidget = nullptr;
 
-  // State
+  // State.
+  // Note: source-of-truth flags for execution state (running, loop,
+  // retrace edit, completion tracking) live in ExecutionController.
+  // The page mirrors m_isExecuting / m_isLoopExecution from the
+  // controller's signals so existing UI checks stay readable.
   QString m_currentProgramPath;
-  bool m_isExecuting;
-  int m_totalRecipes;
-  int m_currentRecipeIndex;
-  std::vector<bool> m_completedRecipes;  // Track completed recipes (persists across executions)
-  int m_pendingChainRecipeIndex;         // Next recipe to run in chain execution mode (-1 = none)
+  bool m_isExecuting               = false;
+  int m_totalRecipes               = 0;
+  int m_currentRecipeIndex         = 0;
+  int m_pendingChainRecipeIndex    = -1;
 
-  // ✅ Step-level progress tracking
-  int m_currentRecipeTotalSteps;    // Total steps in current recipe
-  int m_currentRecipeCompletedSteps; // Completed steps in current recipe
+  // Step-level progress tracking (page-side counters for the progress bar).
+  int m_currentRecipeTotalSteps    = 0;
+  int m_currentRecipeCompletedSteps = 0;
 
-  // ✅ Loop execution tracking
-  int m_currentLoopIteration;       // Current loop iteration (0 = not looping)
-  bool m_isLoopExecution;           // True when running in loop mode (skip heavy UI updates)
+  // Loop execution tracking.
+  int m_currentLoopIteration       = 0;
+  bool m_isLoopExecution           = false;
 
   void createEditWidget();
   void createExecutionWidget();
@@ -336,9 +315,8 @@ private:
   void onSaveEdit();
   void onRecipeListContextMenu(const QPoint& pos);   // Context menu for the run-side recipe list
 
-  // ✅ Retrace edit mode
-  void onStartRetraceEdit(int recipeIndex);          // Start retrace edit for a recipe
-  void onRetraceEditResponse(bool continueExecution, bool saveRequested);
+  // Retrace edit mode entry + post-run summary dialog.
+  void onStartRetraceEdit(int recipeIndex);
   void showRetraceEditSummary(int positionsVisited, int positionsSaved);
 
   DataStore* m_dataStore;  // Add this

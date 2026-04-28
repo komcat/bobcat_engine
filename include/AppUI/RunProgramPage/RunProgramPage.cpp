@@ -12,10 +12,8 @@
 #include "safety/SafetyWatchManager.h"
 #include "ProgramWorker.h"
 #include "ProcessSequenceFactory.h"
-#include "UserPromptWidget.h"
-#include "ManualAdjustWidget.h"
-#include "ManualAlignPointWidget.h"
-#include "UserInputWidget.h"
+#include "ExecutionController.h"
+#include "UserInteractionOverlay.h"
 #include "ScanControlWidget.h"
 #include "ScanController.h"
 #include "RollCorrectionWidget.h"
@@ -28,7 +26,6 @@
 #include "MotionCommandHandler.h"
 #include "CameraClickToMoveWidget.h"
 #include <future>
-#include "RetraceEditWidget.h"
 #include "PlacementRetraceWidget.h"
 #include "PlacementCorrectionStore.h"
 #include "../EdgeTransferTrainer/EdgeRetraceWidget.h"
@@ -165,36 +162,12 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   , m_context(context)
   , m_matrixLoader(matrixLoader)
   , m_programManager(new ProgramManager())
-  , m_programWorker(nullptr)
   , m_processFactory(nullptr)
-  , m_isExecuting(false)
-  , m_totalRecipes(0)
   , m_currentRecipeIndex(-1)
-  , m_pendingChainRecipeIndex(-1)
-  , m_currentLoopIteration(0)
-  , m_isLoopExecution(false)
-  , m_executionStack(nullptr)
-  , m_promptWidget(nullptr)
-  , m_manualAdjustWidget(nullptr)
-  , m_manualAlignPointWidget(nullptr)
-  , m_userInputWidget(nullptr)
-  , m_promptEventLoop(nullptr)
-  , m_promptResponse(false)
-  , m_manualAdjustResponse(false)
-  , m_manualAlignPointResponse(false)
-  , m_userInputAccepted(false)
-  , m_userInputText("")
   , m_scanWidget(nullptr)
   , m_dataStore(context->dataStore)
   , m_currentSubscribedChannel("")
-  , m_currentRecipeTotalSteps(0)      // ✅ Initialize step tracking
-  , m_currentRecipeCompletedSteps(0)  // ✅ Initialize step tracking
-  , m_currentContext(nullptr)          // Execution context
-  , m_retraceEditWidget(nullptr)       // ✅ Retrace edit widget
-  , m_retraceEditContinue(false)       // ✅ Retrace edit continue status
-  , m_retraceEditSave(false)           // ✅ Retrace edit save status
-  , m_isRetraceEditMode(false)         // ✅ Retrace edit mode flag
-  , m_retraceEditRecipeIndex(-1)       // ✅ Retrace edit recipe index
+  , m_currentContext(nullptr)
 {
   // Create ProcessSequenceFactory
   m_processFactory = new ProcessSequenceFactory();
@@ -218,6 +191,60 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
     if (m_logTextEdit) m_logTextEdit->appendPlainText(msg);
   };
   m_scanController = new ScanController(std::move(scanDeps), this);
+
+  // Build the execution controller now that setupUI() has constructed
+  // the overlay it depends on. Wire its forwarded signals to the
+  // existing page-side execution slots.
+  {
+    ExecutionController::Deps execDeps;
+    execDeps.context        = m_context;
+    execDeps.programManager = m_programManager;
+    execDeps.processFactory = m_processFactory;
+    execDeps.overlay        = m_overlay;
+    m_executionController = new ExecutionController(std::move(execDeps), this);
+
+    connect(m_executionController, &ExecutionController::programExecutionStarted,
+      this, &RunProgramPage::onProgramExecutionStarted);
+    connect(m_executionController, &ExecutionController::recipeStarted,
+      this, &RunProgramPage::onRecipeStarted);
+    connect(m_executionController, &ExecutionController::recipeCompleted,
+      this, &RunProgramPage::onRecipeCompleted);
+    connect(m_executionController, &ExecutionController::recipeSkipped,
+      this, &RunProgramPage::onRecipeSkipped);
+    connect(m_executionController, &ExecutionController::programExecutionCompleted,
+      this, &RunProgramPage::onProgramExecutionCompleted);
+    connect(m_executionController, &ExecutionController::programStopped,
+      this, &RunProgramPage::onProgramStopped);
+    connect(m_executionController, &ExecutionController::logMessage,
+      this, &RunProgramPage::onWorkerLogMessage);
+    connect(m_executionController, &ExecutionController::stepBuildStarted,
+      this, &RunProgramPage::onStepBuildStarted);
+    connect(m_executionController, &ExecutionController::stepBuildCompleted,
+      this, &RunProgramPage::onStepBuildCompleted);
+    connect(m_executionController, &ExecutionController::sequenceExecutionStarted,
+      this, &RunProgramPage::onSequenceExecutionStarted);
+    connect(m_executionController, &ExecutionController::stepExecutionCompleted,
+      this, &RunProgramPage::onStepExecutionCompleted);
+    connect(m_executionController, &ExecutionController::waitProgress,
+      this, &RunProgramPage::onWaitProgress);
+    connect(m_executionController, &ExecutionController::actionStarted,
+      this, &RunProgramPage::onActionStarted);
+    connect(m_executionController, &ExecutionController::loopIterationStarted,
+      this, &RunProgramPage::onLoopIterationStarted);
+    connect(m_executionController, &ExecutionController::loopIterationCompleted,
+      this, &RunProgramPage::onLoopIterationCompleted);
+    connect(m_executionController, &ExecutionController::visionResultReady,
+      this, &RunProgramPage::onVisionResultReady);
+
+    // Snapshot the final SequenceContext just before the worker is
+    // destroyed (so the Context tab shows captured values after exit).
+    connect(m_executionController, &ExecutionController::workerAboutToFinalize,
+      this, [this]() { updateContextTable(true); });
+
+    // Retrace edit summary dialog (page owns the QMessageBox).
+    connect(m_executionController, &ExecutionController::retraceEditSummaryRequested,
+      this, &RunProgramPage::showRetraceEditSummary);
+  }
 
   // Mirror the TopBar scan-busy indicator on the execution status badge so the
   // operator sees a SCANNING overlay on the RunProgramPage even when the TopBar
@@ -260,12 +287,12 @@ RunProgramPage::~RunProgramPage()
     m_dataStore->Unsubscribe(m_currentSubscribedChannel.toStdString());
   }
 
-  if (m_programWorker && m_programWorker->isRunning()) {
-    m_programWorker->requestStop();
-    m_programWorker->wait(3000);
-  }
-
-  // ScanController + ScanExecutor cleanup is automatic via QObject parenting.
+  // Tear down the ExecutionController explicitly BEFORE the
+  // ProgramManager / ProcessSequenceFactory it depends on go away.
+  // Its destructor stops + waits for the worker thread, which still
+  // references the program manager during its final cleanup.
+  delete m_executionController;
+  m_executionController = nullptr;
 
   delete m_programManager;
   delete m_processFactory;
@@ -1117,7 +1144,7 @@ void RunProgramPage::createEditWidget()
                   QString::fromStdString(recipe->recipeFilePath),
                   QString::fromStdString(recipe->displayName));
               showExecutionWidget();
-              m_executionStack->setCurrentIndex(0);
+              m_overlay->ShowDefaultPage();
               m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
             }
           });
@@ -1451,101 +1478,17 @@ void RunProgramPage::createExecutionWidget()
     }
   });
 
-  // Create stacked widget to switch between tabs and prompt/input views
-  m_executionStack = new QStackedWidget();
+  // The right-side overlay holds the execution tabs (default page) plus
+  // 5 built-in interaction widgets (UserPrompt, ManualAdjust,
+  // ManualAlignPoint, UserInput, RetraceEdit) and the page-owned
+  // embedded retraces (Placement, EdgeTransfer) added via AddExtraPage.
+  UserInteractionOverlay::Deps overlayDeps;
+  overlayDeps.context      = m_context;
+  overlayDeps.matrixLoader = m_matrixLoader;
+  m_overlay = new UserInteractionOverlay(overlayDeps);
+  m_overlay->SetDefaultPage(m_executionTabWidget);
 
-  // === PROMPT VIEW (Index 1) ===
-  m_promptWidget = new UserPromptWidget();
-  m_promptWidget->setStyleSheet(
-    "UserPromptWidget { "
-    "  background-color: #1e1e1e; "
-    "}"
-  );
-
-  // Apply prompt alignment from application settings
-  if (m_context && m_context->applicationSettings) {
-    std::string alignStr = m_context->applicationSettings->GetString("UI", "PromptAlignment", "Center");
-    if (alignStr == "TopLeft") {
-      m_promptWidget->setAlignment(UserPromptWidget::Alignment::TopLeft);
-    }
-  }
-
-  // Connect prompt response
-  connect(m_promptWidget, &UserPromptWidget::responseReceived,
-    this, &RunProgramPage::onPromptResponse);
-
-  // === MANUAL ADJUST VIEW (Index 2) ===
-  m_manualAdjustWidget = new ManualAdjustWidget(
-    m_context,
-    m_matrixLoader);
-  m_manualAdjustWidget->setStyleSheet(
-    "ManualAdjustWidget { "
-    "  background-color: #1e1e1e; "
-    "}"
-  );
-
-  // Connect manual adjust response
-  connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,
-    this, &RunProgramPage::onManualAdjustResponse);
-
-  // === MANUAL ALIGN POINT VIEW (Index 3) ===
-  m_manualAlignPointWidget = new ManualAlignPointWidget(
-    m_context->motionManager,
-    m_context
-  );
-  m_manualAlignPointWidget->setStyleSheet(
-    "ManualAlignPointWidget { "
-    "  background-color: #1e1e1e; "
-    "}"
-  );
-
-  // Connect manual align point response
-  connect(m_manualAlignPointWidget, &ManualAlignPointWidget::responseReceived,
-    this, &RunProgramPage::onManualAlignPointResponse);
-
-  // === USER INPUT VIEW (Index 4) ===
-  m_userInputWidget = new UserInputWidget();
-  m_userInputWidget->setStyleSheet(
-    "UserInputWidget { "
-    "  background-color: #1e1e1e; "
-    "}"
-  );
-
-  // Apply input alignment from application settings (same as prompt)
-  if (m_context && m_context->applicationSettings) {
-    std::string alignStr = m_context->applicationSettings->GetString("UI", "PromptAlignment", "Center");
-    if (alignStr == "TopLeft") {
-      m_userInputWidget->setAlignment(UserInputWidget::Alignment::TopLeft);
-    }
-  }
-
-  // Connect user input response
-  connect(m_userInputWidget, &UserInputWidget::responseReceived,
-    this, &RunProgramPage::onUserInputResponse);
-
-  // === RETRACE EDIT VIEW (Index 5) ===
-  m_retraceEditWidget = new RetraceEditWidget(
-    m_context->motionManager,
-    m_matrixLoader);
-  m_retraceEditWidget->setStyleSheet(
-    "RetraceEditWidget { "
-    "  background-color: #1e1e1e; "
-    "}"
-  );
-
-  // Connect retrace edit response
-  connect(m_retraceEditWidget, &RetraceEditWidget::responseReceived,
-    this, &RunProgramPage::onRetraceEditResponse);
-
-  // Add all views to stack
-  m_executionStack->addWidget(m_executionTabWidget);      // Index 0: Tabs (Log + Live View)
-  m_executionStack->addWidget(m_promptWidget);            // Index 1: Prompt
-  m_executionStack->addWidget(m_manualAdjustWidget);      // Index 2: Manual Adjust
-  m_executionStack->addWidget(m_manualAlignPointWidget);  // Index 3: Manual Align Point
-  m_executionStack->addWidget(m_userInputWidget);         // Index 4: User Input
-  m_executionStack->addWidget(m_retraceEditWidget);       // Index 5: Retrace Edit
-
-  // Placement Retrace Widget (reuses PlacementRetraceWidget from trainer module)
+  // Embedded placement retrace (page handles data load + persistence).
   m_placementRetraceWidget = new PlacementRetraceWidget(m_context);
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceCompleted,
     this, &RunProgramPage::onPlacementRetraceCompleted);
@@ -1554,13 +1497,9 @@ void RunProgramPage::createExecutionWidget()
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::retraceEnded,
     this, &RunProgramPage::onPlacementRetraceEnded);
   // Manual tune offsets edited during a retrace — persist the active set
-  // back to its source JSON so the offset is remembered next run.
-  //
-  // Guard: if a recipe is actively executing (m_isExecuting), skip the disk
-  // write to avoid overwriting the set mid-recipe. The offset is still
-  // applied in-memory for the current retrace; it just won't be persisted
-  // until the recipe finishes. This prevents a later recipe step that uses
-  // the same set from silently picking up a freshly-edited offset.
+  // back to its source JSON so the offset is remembered next run. Skip
+  // the disk write while a recipe is running to avoid overwriting the
+  // set mid-recipe; the offset is still applied in memory.
   connect(m_placementRetraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
     this, [this]() {
       if (m_activePlacementStoreBasePath.empty()) return;
@@ -1574,30 +1513,23 @@ void RunProgramPage::createExecutionWidget()
       store.SetBasePath(m_activePlacementStoreBasePath);
       store.SaveSet(m_activePlacementSet);
     });
-  m_executionStack->addWidget(m_placementRetraceWidget);  // Index 6: Placement Retrace
+  m_placementRetracePageIndex = m_overlay->AddExtraPage(m_placementRetraceWidget);
 
-  // Edge Transfer retrace widget (embedded, index 7)
+  // Embedded edge transfer retrace.
   m_edgeRetraceWidget = new EdgeRetraceWidget(m_context);
   m_edgeRetraceWidget->SetRecipeMode(true);
   connect(m_edgeRetraceWidget, &EdgeRetraceWidget::recipeOutcomeReady,
     this, &RunProgramPage::onEdgeTransferRetraceOutcome);
-  m_executionStack->addWidget(m_edgeRetraceWidget);       // Index 7: Edge Transfer Retrace
+  m_edgeTransferRetracePageIndex = m_overlay->AddExtraPage(m_edgeRetraceWidget);
 
-  // Cross-thread signal bridges for recipe callbacks (this → this connections).
-  // Must be connected once here, NOT in onExecuteProgram(), to avoid accumulating
-  // duplicate connections on each execution.
-  connect(this, &RunProgramPage::showUserPrompt,
-    this, &RunProgramPage::onShowUserPrompt);
-  connect(this, &RunProgramPage::showManualAdjust,
-    this, &RunProgramPage::onShowManualAdjust);
+  // Cross-thread bridges for the embedded retrace callbacks (this -> this
+  // connections). Connected once here to avoid duplicates on re-execution.
   connect(this, &RunProgramPage::showPlacementRetrace,
     this, &RunProgramPage::onShowPlacementRetrace);
   connect(this, &RunProgramPage::showEdgeTransferRetrace,
     this, &RunProgramPage::onShowEdgeTransferRetrace);
 
-  m_executionStack->setCurrentIndex(0);                   // Start with tabs
-
-  layout->addWidget(m_executionStack, 1);
+  layout->addWidget(m_overlay, 1);
 
   // === SCANNING TAB (Index 3) ===
   QWidget* scanningTab = new QWidget();
@@ -1819,9 +1751,8 @@ void RunProgramPage::onLoadProgram()
   updateRecipeList();
   updateLoopStatusLabel();  // ✅ Update loop status when loading program
 
-  // ✅ Reset completion tracking when loading new program
-  m_completedRecipes.clear();
-  m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
+  // Reset completion tracking when loading new program.
+  if (m_executionController) m_executionController->ResetCompletedRecipes();
 
   // ✅ Update the program name edit field (for when user switches to edit mode)
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
@@ -1933,8 +1864,7 @@ void RunProgramPage::onSlotChangedFromRun(int index)
   updateSlotInfo();
 
   // Reset completion tracking when slot changes.
-  m_completedRecipes.clear();
-  m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
+  if (m_executionController) m_executionController->ResetCompletedRecipes();
 }
 
 void RunProgramPage::onSlotChangedFromEdit(int index)
@@ -1996,42 +1926,39 @@ void RunProgramPage::onExecuteProgram()
     return;
   }
 
-  // ✅ Initialize completion tracking if needed
-  if (m_completedRecipes.empty() || m_completedRecipes.size() != static_cast<size_t>(m_programManager->getRecipeCount())) {
-    m_completedRecipes.clear();
-    m_completedRecipes.resize(m_programManager->getRecipeCount(), false);
-  }
+  m_executionController->EnsureCompletedRecipesSize();
 
-  // ✅ Reset completion tracking in auto-run mode (fresh start for entire program)
+  // Auto-run resets completion + clears any pending chain trigger so
+  // the whole program runs from a clean slate.
   if (autoRunMode) {
-    std::fill(m_completedRecipes.begin(), m_completedRecipes.end(), false);
-    m_pendingChainRecipeIndex = -1;  // Clear chain execution in auto-run mode
+    m_executionController->ResetCompletedRecipes();
+    m_pendingChainRecipeIndex = -1;
   }
 
-  // ✅ Check prerequisites in single-recipe mode with dependencies enabled
+  // Single-recipe + dependencies: refuse to run if any predecessor has
+  // not completed in this session.
   if (!autoRunMode && m_useDependenciesCheckBox->isChecked()) {
     std::vector<DependencyLink> dependencies = m_programManager->getRecipeDependencies(selectedRecipeIndex);
+    const auto& completed = m_executionController->CompletedRecipes();
 
     if (!dependencies.empty()) {
       QStringList missingPrereqs;
       for (const auto& dep : dependencies) {
         int depIndex = dep.predecessorIndex;
-        if (depIndex >= 0 && depIndex < static_cast<int>(m_completedRecipes.size())) {
-          if (!m_completedRecipes[depIndex]) {
-            const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
-            if (depRecipe) {
-              missingPrereqs << QString("• Recipe %1: %2")
-                .arg(depIndex + 1)
-                .arg(QString::fromStdString(depRecipe->displayName));
-            }
+        if (depIndex >= 0 && depIndex < static_cast<int>(completed.size()) &&
+            !completed[depIndex]) {
+          const RecipeReference* depRecipe = m_programManager->getRecipe(depIndex);
+          if (depRecipe) {
+            missingPrereqs << QString("\xE2\x80\xA2 Recipe %1: %2")
+              .arg(depIndex + 1)
+              .arg(QString::fromStdString(depRecipe->displayName));
           }
         }
       }
-
       if (!missingPrereqs.isEmpty()) {
         const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
-        QString recipeName = recipe ? QString::fromStdString(recipe->displayName) : QString("Recipe %1").arg(selectedRecipeIndex + 1);
-
+        QString recipeName = recipe ? QString::fromStdString(recipe->displayName)
+                                    : QString("Recipe %1").arg(selectedRecipeIndex + 1);
         QMessageBox::warning(this, "Prerequisites Not Met",
           QString("Cannot run '%1'.\n\nThe following prerequisites have not been completed:\n%2\n\nPlease run the prerequisite recipe(s) first.")
           .arg(recipeName)
@@ -2041,346 +1968,71 @@ void RunProgramPage::onExecuteProgram()
     }
   }
 
-  // Confirm execution - DISABLED for production (direct execution)
-  // QString programName = QString::fromStdString(m_programManager->getProgramName());
-  // QString confirmMsg;
+  // Refuse a disabled selection (production mode skips the legacy
+  // "Execute Program?" confirmation dialog).
+  const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
+  if (selectedRecipeIndex >= 0 && recipe && !recipe->enabled) {
+    QMessageBox::warning(this, "Recipe Disabled",
+      QString("Recipe '%1' is disabled. Please enable it first or select a different recipe.")
+        .arg(QString::fromStdString(recipe->displayName)));
+    return;
+  }
 
-  // if (autoRunMode) {
-  //   int enabledCount = 0;
-  //   for (const auto& recipe : m_programManager->getAllRecipes()) {
-  //     if (recipe->enabled) enabledCount++;
-  //   }
-  //   confirmMsg = QString("Execute all %1 enabled recipe(s) in program '%2'?")
-  //     .arg(enabledCount)
-  //     .arg(programName);
-  // }
-  // else {
-    const RecipeReference* recipe = m_programManager->getRecipe(selectedRecipeIndex);
-    if (selectedRecipeIndex >= 0 && recipe) {
-      if (!recipe->enabled) {
-        QMessageBox::warning(this, "Recipe Disabled",
-          QString("Recipe '%1' is disabled. Please enable it first or select a different recipe.")
-          .arg(QString::fromStdString(recipe->displayName)));
-        return;
-      }
-    }
-
-  //   confirmMsg = QString("Execute recipe '%1' only?\n\n"
-  //     "Tip: Check 'Auto-run next recipe' to run all recipes.")
-  //     .arg(QString::fromStdString(recipe->displayName));
-  // }
-
-  // QMessageBox::StandardButton reply = QMessageBox::question(
-  //   this, "Execute Program",
-  //   confirmMsg,
-  //   QMessageBox::Yes | QMessageBox::No
-  // );
-
-  // if (reply != QMessageBox::Yes) return;
-
-  // Switch to execution view
+  // Switch to execution view + update page-level UI state.
   showExecutionWidget();
-
-  // Update UI
   m_isExecuting = true;
-  m_executeButton->setText("⏹ Stop Program");
+  m_executeButton->setText(QString::fromUtf8("\xE2\x8F\xB9 Stop Program"));
   m_executeButton->setStyleSheet(Theme::Buttons::bezelDanger());
-
-  // Update program status indicator
   setProgramStatus("Running", Theme::Color::success, Theme::Color::textPrimary);
-
   m_autoRunNextCheckBox->setEnabled(false);
 
-  // ✅ Set ManualAlignPoint callback on SequenceEngine (thread-aware)
-  m_context->sequenceEngine->SetManualAlignPointCallback(
-    [this](const std::string& pointName, const std::string& message,
-           bool enableX, bool enableY, bool enableZ) -> bool {
-    bool result = false;
-
-    // Must be called on UI thread
-    QMetaObject::invokeMethod(this, [this, pointName, message, enableX, enableY, enableZ, &result]() {
-      // Switch to manual align point view (Index 3)
-      m_executionStack->setCurrentIndex(3);
-
-      // Show the manual align point widget
-      m_manualAlignPointWidget->showAlignment(
-        QString::fromStdString(pointName),
-        QString::fromStdString(message),
-        enableX, enableY, enableZ
-      );
-
-      // Block until user responds (event loop pattern)
-      QEventLoop loop;
-      m_promptEventLoop = &loop;
-      loop.exec();
-      m_promptEventLoop = nullptr;
-
-      result = m_manualAlignPointResponse;
-    }, Qt::BlockingQueuedConnection);
-
-    return result;
-  });
-
-  // Create and start worker
-  m_programWorker = new ProgramWorker(
-    m_context->sequenceEngine,
-    m_programManager,
-    m_processFactory,
-    m_context->productPositionManager,
-    m_context->motionManager,
-    this
-  );
-  std::cout << "[RunProgramPage] Created m_programWorker=" << m_programWorker << std::endl;
-  std::cout.flush();
-
-  if (m_context->scriptEngine) {
-    m_programWorker->setScriptEngine(m_context->scriptEngine);
-  }
-
-  m_programWorker->setAutoRunMode(autoRunMode);
-  if (!autoRunMode) {
-    m_programWorker->setStartRecipeIndex(selectedRecipeIndex);
-  }
-
-  // ✅ Set dependency execution mode
-  m_programWorker->setUseDependencyGraph(m_useDependenciesCheckBox->isChecked());
-
-  // ✅ Set loop execution mode
   bool loopEnabled = m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes();
-  m_programWorker->setLoopMode(loopEnabled);
-  m_isLoopExecution = loopEnabled;  // Track loop mode for UI optimization
-  if (loopEnabled) {
-    m_programWorker->setLoopRecipeIndices(m_programManager->getLoopRecipeIndices());
-    m_programWorker->setIgnoreDependencies(m_ignoreDependenciesCheckBox->isChecked());
-    m_currentLoopIteration = 0;
-  }
+  m_isLoopExecution = loopEnabled;
+  if (loopEnabled) m_currentLoopIteration = 0;
 
-  // Set UserPrompt callback (signal connection is in constructor)
-  m_programWorker->setUserPromptCallback(
-    [this](const std::string& title, const std::string& message) -> bool {
-    emit showUserPrompt(QString::fromStdString(title), QString::fromStdString(message));
+  // Hand off to the controller. The page hooks placement / edge
+  // transfer retrace callbacks via the pre-start hook because they
+  // need page-side state (m_promptEventLoop, response members and
+  // the cross-thread show* signals).
+  ExecutionController::StartParams startParams;
+  startParams.autoRunMode         = autoRunMode;
+  startParams.selectedRecipeIndex = selectedRecipeIndex;
+  startParams.useDependencies     = m_useDependenciesCheckBox->isChecked();
+  startParams.loopEnabled         = loopEnabled;
+  startParams.ignoreDependencies  = m_ignoreDependenciesCheckBox->isChecked();
 
-    QEventLoop loop;
-    m_promptEventLoop = &loop;
-    loop.exec();
-    m_promptEventLoop = nullptr;
-
-    return m_promptResponse;
-  });
-
-  // Set ManualAdjust callback (signal connections are in constructor)
-  m_programWorker->setManualAdjustCallback(
-    [this](const std::string& message, const std::string& deviceName,
-           double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
-    emit showManualAdjust(QString::fromStdString(message), QString::fromStdString(deviceName),
-                          stepSizeUm, enableX, enableY, enableZ);
-
-    QEventLoop loop;
-    m_promptEventLoop = &loop;
-    loop.exec();
-    m_promptEventLoop = nullptr;
-
-    return m_manualAdjustResponse;
-  });
-
-  // Set UserInput callback - uses integrated UserInputWidget
-  m_programWorker->setUserInputCallback(
-    [this](const std::string& title, const std::string& prompt, const std::string& defaultValue) -> std::pair<bool, std::string> {
-    // Show the user input widget (must be called on UI thread)
-    QMetaObject::invokeMethod(this, [this, title, prompt, defaultValue]() {
-      // Switch to user input view (Index 4)
-      m_executionStack->setCurrentIndex(4);
-
-      // Show the user input widget
-      m_userInputWidget->showInput(
-        QString::fromStdString(title),
-        QString::fromStdString(prompt),
-        QString::fromStdString(defaultValue)
-      );
-    }, Qt::QueuedConnection);
-
-    // Block until user responds (event loop pattern)
-    QEventLoop loop;
-    m_promptEventLoop = &loop;
-    loop.exec();
-    m_promptEventLoop = nullptr;
-
-    // Return the stored result
-    return std::make_pair(m_userInputAccepted, m_userInputText.toStdString());
-  });
-
-  // PlacementRetrace callback — bridges the recipe thread to the UI.
-  // Called from SystemCommandHandler on the recipe worker thread.
-  // Emits showPlacementRetrace (cross-thread signal) to trigger
-  // onShowPlacementRetrace on the UI thread, then blocks here in a
-  // QEventLoop until the retrace widget signals completion/skip/end.
-  // The event loop is quit by onPlacementRetraceSkipped or onPlacementRetraceEnded.
-  // NOTE: onPlacementRetraceCompleted does NOT quit the loop — it just records
-  // the save. The user must click "Continue" or "End" to advance the recipe.
-  m_programWorker->setPlacementRetraceCallback(
-    [this](const PlacementRetraceParams& params) -> bool {
-    emit showPlacementRetrace(QString::fromStdString(params.trainingSetName),
-                              params.autoStart, params.autoDetect, params.autoSaveContinue);
-
-    QEventLoop loop;
-    m_promptEventLoop = &loop;
-    loop.exec();
-    m_promptEventLoop = nullptr;
-
-    return m_placementRetraceResponse;
-  });
-
-  // Edge Transfer retrace callback — mirrors the placement pattern: emit a
-  // cross-thread signal to switch to the embedded widget, then block on a
-  // QEventLoop until onEdgeTransferRetraceOutcome stores the response and
-  // quits the loop.
-  m_programWorker->setEdgeTransferRetraceCallback(
-    [this](const EdgeTransferRetraceParams& params) -> EdgeTransferRetraceOutcome {
-    emit showEdgeTransferRetrace(QString::fromStdString(params.trainingSetName));
-
-    QEventLoop loop;
-    m_promptEventLoop = &loop;
-    loop.exec();
-    m_promptEventLoop = nullptr;
-
-    return m_edgeRetraceResponse;
-  });
-
-  // Connect signals (use Qt::QueuedConnection for cross-thread safety)
-  std::cout << "[RunProgramPage] Setting up signal connections..." << std::endl;
-  connect(m_programWorker, &ProgramWorker::programExecutionStarted,
-    this, &RunProgramPage::onProgramExecutionStarted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::recipeStarted,
-    this, &RunProgramPage::onRecipeStarted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::recipeCompleted,
-    this, &RunProgramPage::onRecipeCompleted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::recipeSkipped,
-    this, &RunProgramPage::onRecipeSkipped, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::programExecutionCompleted,
-    this, &RunProgramPage::onProgramExecutionCompleted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::programStopped,
-    this, &RunProgramPage::onProgramStopped, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::logMessage,
-    this, &RunProgramPage::onWorkerLogMessage, Qt::QueuedConnection);
-
-  // ✅ Connect finished() to trigger completion check AND cleanup
-  connect(m_programWorker, &ProgramWorker::finished,
-    this, &RunProgramPage::onWorkerFinished, Qt::QueuedConnection);
-
-  // ✅ Connect step-level signals for progress tracking
-  connect(m_programWorker, &ProgramWorker::stepBuildStarted,
-    this, &RunProgramPage::onStepBuildStarted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::stepBuildCompleted,
-    this, &RunProgramPage::onStepBuildCompleted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::sequenceExecutionStarted,
-    this, &RunProgramPage::onSequenceExecutionStarted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::stepExecutionCompleted,
-    this, &RunProgramPage::onStepExecutionCompleted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::waitProgress,
-    this, &RunProgramPage::onWaitProgress, Qt::QueuedConnection);
-
-  // ✅ Connect action-level signal for granular command tracking
-  connect(m_programWorker, &ProgramWorker::actionStarted,
-    this, &RunProgramPage::onActionStarted, Qt::QueuedConnection);
-
-  // ✅ Connect loop iteration signals
-  connect(m_programWorker, &ProgramWorker::loopIterationStarted,
-    this, &RunProgramPage::onLoopIterationStarted, Qt::QueuedConnection);
-  connect(m_programWorker, &ProgramWorker::loopIterationCompleted,
-    this, &RunProgramPage::onLoopIterationCompleted, Qt::QueuedConnection);
-
-  // ✅ Connect vision result ready for real-time display updates
-  connect(m_programWorker, &ProgramWorker::visionResultReady,
-    this, &RunProgramPage::onVisionResultReady, Qt::QueuedConnection);
-
-  // Safety-critical: DirectConnection ensures immediate stop on the signaling
-  // thread without event loop delay — required for E-stop responsiveness.
-  if (m_context->safetyWatchManager) {
-    connect(m_context->safetyWatchManager, &SafetyWatchManager::safetyTriggered,
-            m_programWorker, [this](QString /*title*/, QString /*message*/, bool critical) {
-      if (critical && m_programWorker) {
-        std::cout << "[RunProgramPage] Critical safety flag - stopping program worker" << std::endl;
-        m_programWorker->requestStop();
-      }
-    }, Qt::DirectConnection);
-  }
-
-  std::cout << "[RunProgramPage] All signals connected, main thread ID: " << QThread::currentThreadId() << std::endl;
-  std::cout.flush();
-
-  // Start execution
-  m_programWorker->start();
-  std::cout << "[RunProgramPage] ProgramWorker started" << std::endl;
-  std::cout.flush();
-
-  // Start context refresh timer for real-time context tab updates
-  startContextRefreshTimer();
-
-  // ✅ Workaround: Poll for thread completion using QTimer::singleShot chain
-  // This is more reliable than regular timer for cross-thread scenarios
-  auto checkCountPtr = std::make_shared<int>(0);
-  auto selfPtr = QPointer<RunProgramPage>(this);  // Safe reference to this
-
-  // Use shared_ptr to hold the function so it can capture itself
-  auto checkCompletionPtr = std::make_shared<std::function<void()>>();
-  *checkCompletionPtr = [this, selfPtr, checkCountPtr, checkCompletionPtr]() {
-    if (!selfPtr) return;  // Widget destroyed
-
-    (*checkCountPtr)++;
-
-    if (m_programWorker && m_programWorker->isFinished()) {
-      std::cout << "[RunProgramPage] Timer detected thread finished after " << *checkCountPtr << " checks" << std::endl;
-      std::cout.flush();
-      if (m_isExecuting) {
-        std::cout << "[RunProgramPage] Forcing completion via timer fallback" << std::endl;
-        std::cout.flush();
-        // ✅ FIX: Check if worker still exists before accessing it
-        if (m_programWorker) {
-          // Get stored result from worker
-          bool success = m_programWorker->getExecutionSuccess();
-          QString message = m_programWorker->getExecutionMessage();
-          if (message.isEmpty()) {
-            message = "Execution completed";
-          }
-          onProgramExecutionCompleted(success, message);
-          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
-          // This allows pending signals (like recipeCompleted with chain execution) to be processed first
-        }
-      }
-    }
-    else if (m_isExecuting && *checkCountPtr < 6000) {  // Max 10 minutes
-      // Schedule next check - only if widget still exists
-      if (selfPtr) {
-        QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
-          if (*checkCompletionPtr) {
-            (*checkCompletionPtr)();
-          }
+  m_executionController->Start(startParams,
+    [this](ProgramWorker* worker) {
+      worker->setPlacementRetraceCallback(
+        [this](const PlacementRetraceParams& params) -> bool {
+          emit showPlacementRetrace(QString::fromStdString(params.trainingSetName),
+                                    params.autoStart, params.autoDetect, params.autoSaveContinue);
+          QEventLoop loop;
+          m_promptEventLoop = &loop;
+          loop.exec();
+          m_promptEventLoop = nullptr;
+          return m_placementRetraceResponse;
         });
-      }
-    }
-  };
 
-  // Start the polling chain - use selfPtr for safety
-  if (selfPtr) {
-    QTimer::singleShot(100, selfPtr.data(), [checkCompletionPtr]() {
-      if (*checkCompletionPtr) {
-        (*checkCompletionPtr)();
-      }
+      worker->setEdgeTransferRetraceCallback(
+        [this](const EdgeTransferRetraceParams& params) -> EdgeTransferRetraceOutcome {
+          emit showEdgeTransferRetrace(QString::fromStdString(params.trainingSetName));
+          QEventLoop loop;
+          m_promptEventLoop = &loop;
+          loop.exec();
+          m_promptEventLoop = nullptr;
+          return m_edgeRetraceResponse;
+        });
     });
-  }
-  std::cout << "[RunProgramPage] Completion checker timer started (singleShot chain)" << std::endl;
-  std::cout.flush();
 
-  // ✅ Force event processing to ensure timer gets scheduled
-  QApplication::processEvents();
-  std::cout << "[RunProgramPage] Initial processEvents() called" << std::endl;
-  std::cout.flush();
+  // Start context refresh timer for real-time context tab updates.
+  startContextRefreshTimer();
 }
 
 void RunProgramPage::onStopProgram()
 {
-  if (m_programWorker && m_programWorker->isRunning()) {
-    m_programWorker->requestStop();
+  if (m_executionController && m_executionController->IsExecuting()) {
+    m_executionController->RequestStop();
     m_executionStatusLabel->setText("Stopping program...");
   }
 }
@@ -2480,10 +2132,8 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
     }
   }
 
-  // ✅ Mark recipe as completed in tracking vector (for prerequisite validation)
-  if (success && recipeIndex >= 0 && recipeIndex < static_cast<int>(m_completedRecipes.size())) {
-    m_completedRecipes[recipeIndex] = true;
-  }
+  // Completion tracking is updated inside ExecutionController before
+  // this signal fires; see CompletedRecipes() below for read access.
 
   // ✅ Update vision result image if available
   // Skip during loop execution to avoid UI freeze - use deferred update instead
@@ -2512,11 +2162,11 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   }
 
   if (success && m_chainExecutionCheckBox->isChecked() && !m_autoRunNextCheckBox->isChecked()) {
-    // Get the current context from the worker for condition evaluation
-    std::cout << "[RunProgramPage] Chain execution: m_programWorker=" << m_programWorker << std::endl;
+    // Read the live context off the controller's worker for condition evaluation.
+    ProgramWorker* liveWorker = m_executionController ? m_executionController->Worker() : nullptr;
+    std::cout << "[RunProgramPage] Chain execution: liveWorker=" << liveWorker << std::endl;
     std::cout.flush();
-
-    SequenceContext* execContext = m_programWorker ? m_programWorker->getCurrentContext() : nullptr;
+    SequenceContext* execContext = liveWorker ? liveWorker->getCurrentContext() : nullptr;
 
     std::cout << "[RunProgramPage] Chain execution ENTERED, context=" << (execContext ? "valid" : "NULL") << std::endl;
     std::cout.flush();
@@ -2543,12 +2193,13 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
       std::string failedCondition;
       QStringList metConditions;  // Collect conditions that were met
 
+      const auto& completed = m_executionController->CompletedRecipes();
       for (const auto& dep : deps) {
         int predIndex = dep.predecessorIndex;
 
         // Check if predecessor is completed
-        if (predIndex < 0 || predIndex >= static_cast<int>(m_completedRecipes.size()) ||
-            !m_completedRecipes[predIndex]) {
+        if (predIndex < 0 || predIndex >= static_cast<int>(completed.size()) ||
+            !completed[predIndex]) {
           allPrereqsMet = false;
           break;
         }
@@ -2785,10 +2436,9 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 
   std::cout << "[RunProgramPage] Setting m_isExecuting to false..." << std::endl;
   std::cout.flush();
-  m_isExecuting = false;
-  m_isLoopExecution = false;  // Reset loop mode flag
-  m_isRetraceEditMode = false;  // ✅ Reset retrace edit mode flag
-  m_retraceEditRecipeIndex = -1;
+  m_isExecuting     = false;
+  m_isLoopExecution = false;
+  // Retrace-edit mode flag lives on the controller; no page-side reset needed.
 
   // ✅ Reset command tracker
   m_cmdPastLabel->setText("-");
@@ -2853,11 +2503,9 @@ void RunProgramPage::onProgramStopped()
   // Stop context refresh timer
   stopContextRefreshTimer();
 
-  m_isExecuting = false;
-  m_isLoopExecution = false;  // Reset loop mode flag
-  m_isRetraceEditMode = false;  // ✅ Reset retrace edit mode flag
-  m_retraceEditRecipeIndex = -1;
-  m_pendingChainRecipeIndex = -1;  // ✅ Clear pending chain execution
+  m_isExecuting             = false;
+  m_isLoopExecution         = false;
+  m_pendingChainRecipeIndex = -1;
 
   // ✅ Reset command tracker
   m_cmdPastLabel->setText("-");
@@ -2880,148 +2528,14 @@ void RunProgramPage::onProgramStopped()
   // No confirmation dialog needed - stop button itself is the confirmation
 }
 
-void RunProgramPage::onWorkerFinished()
-{
-  std::cout << "[RunProgramPage] onWorkerFinished() called" << std::endl;
-  std::cout.flush();
-
-  // If we haven't received programExecutionCompleted yet, trigger it now
-  if (m_isExecuting) {
-    std::cout << "[RunProgramPage] Still executing, forcing completion from finished handler" << std::endl;
-    std::cout.flush();
-
-    // ✅ FIX: Use actual execution result from worker instead of always assuming success
-    bool success = true;
-    QString message = "Execution completed (via finished signal)";
-    if (m_programWorker) {
-      success = m_programWorker->getExecutionSuccess();
-      QString workerMessage = m_programWorker->getExecutionMessage();
-      if (!workerMessage.isEmpty()) {
-        message = workerMessage;
-      }
-    }
-    onProgramExecutionCompleted(success, message);
-  }
-
-  // Clean up worker after signals are processed
-  if (m_programWorker) {
-    // ✅ FIX: Force final context table update before deleting worker
-    // This ensures the context view shows the final captured values
-    std::cout << "[RunProgramPage] Final context table update before worker deletion" << std::endl;
-    std::cout.flush();
-    updateContextTable(true);  // Force update even though worker isn't running
-
-    std::cout << "[RunProgramPage] Scheduling worker deletion" << std::endl;
-    std::cout.flush();
-    m_programWorker->deleteLater();
-    m_programWorker = nullptr;
-  }
-}
-
 void RunProgramPage::onWorkerLogMessage(QString message)
 {
-  // Display in execution log
-  // Note: QPlainTextEdit with setMaximumBlockCount(2000) automatically trims oldest lines
+  // Forwarded by ExecutionController. Append to the execution log;
+  // completion-marker detection / polling fallback / worker deletion
+  // are all handled inside the controller.
   m_logTextEdit->appendPlainText(message);
-
-  // Skip verbose console logging during loop execution to reduce I/O overhead
   if (!m_isLoopExecution) {
     std::cout << "[RunProgramPage] " << message.toStdString() << std::endl;
-  }
-
-  // ✅ WORKAROUND: Detect completion markers since normal signals aren't being delivered
-  // Skip this heavy processing during loop execution - loop uses different completion path
-  if (m_isLoopExecution) {
-    return;  // Loop mode handles completion differently via loopIterationCompleted signal
-  }
-
-  // Check for both program-level and recipe-level completion markers
-  bool shouldComplete = false;
-
-  if (message.startsWith("✅ PROGRAM COMPLETED:") && m_isExecuting) {
-    std::cout << "[RunProgramPage] Detected PROGRAM completion marker!" << std::endl;
-    std::cout.flush();
-    shouldComplete = true;
-  }
-  else if (message.startsWith("✅ RECIPE EXECUTION COMPLETED") && m_isExecuting) {
-    std::cout << "[RunProgramPage] Detected RECIPE completion marker!" << std::endl;
-    std::cout.flush();
-    // Check immediately if worker is done (it should be by now)
-    if (m_programWorker) {
-      std::cout << "[RunProgramPage] Checking worker state: running=" << m_programWorker->isRunning()
-                << ", finished=" << m_programWorker->isFinished() << std::endl;
-      std::cout.flush();
-      // Wait a tiny bit for thread to fully finish
-      if (m_programWorker->isRunning()) {
-        std::cout << "[RunProgramPage] Worker still running, waiting up to 100ms..." << std::endl;
-        std::cout.flush();
-        m_programWorker->wait(100);  // Wait up to 100ms
-      }
-      std::cout << "[RunProgramPage] After wait: running=" << m_programWorker->isRunning()
-                << ", finished=" << m_programWorker->isFinished() << std::endl;
-      std::cout.flush();
-      if (m_programWorker && m_programWorker->isFinished()) {
-        std::cout << "[RunProgramPage] Worker finished after recipe completion, forcing UI update" << std::endl;
-        std::cout.flush();
-        // ✅ FIX: Check worker still exists before accessing
-        if (m_programWorker) {
-          bool success = m_programWorker->getExecutionSuccess();
-          QString actualMessage = m_programWorker->getExecutionMessage();
-          if (actualMessage.isEmpty()) {
-            actualMessage = "Execution completed";
-          }
-          onProgramExecutionCompleted(success, actualMessage);
-          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
-          // This allows pending signals (like recipeCompleted with chain execution) to be processed first
-          // The worker will be cleaned up when the thread finishes via onWorkerFinished
-        }
-      }
-    } else {
-      std::cout << "[RunProgramPage] m_programWorker is null!" << std::endl;
-      std::cout.flush();
-    }
-  }
-  else if (message.contains("Context saved to:") && m_isExecuting) {
-    // Fallback: detect end of context summary (this is the last log from RecipeWorker)
-    std::cout << "[RunProgramPage] Detected context save - execution finishing" << std::endl;
-    std::cout.flush();
-    // Process events and check immediately
-    QApplication::processEvents();
-    if (m_programWorker) {
-      if (m_programWorker->isRunning()) {
-        m_programWorker->wait(500);  // Wait up to 500ms
-      }
-      if (m_programWorker && m_programWorker->isFinished()) {
-        std::cout << "[RunProgramPage] Worker finished after context save, forcing UI update" << std::endl;
-        std::cout.flush();
-        // ✅ FIX: Check worker still exists before accessing
-        if (m_programWorker) {
-          bool success = m_programWorker->getExecutionSuccess();
-          QString actualMessage = m_programWorker->getExecutionMessage();
-          if (actualMessage.isEmpty()) {
-            actualMessage = "Execution completed";
-          }
-          onProgramExecutionCompleted(success, actualMessage);
-          // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
-        }
-      }
-    }
-  }
-
-  if (shouldComplete) {
-    // Get result from worker if available
-    bool success = true;
-    QString actualMessage = "Execution completed";
-    if (m_programWorker) {
-      success = m_programWorker->getExecutionSuccess();
-      actualMessage = m_programWorker->getExecutionMessage();
-    }
-
-    // Force completion handler
-    std::cout << "[RunProgramPage] Forcing completion via log message workaround" << std::endl;
-    std::cout.flush();
-    onProgramExecutionCompleted(success, actualMessage);
-    // ✅ FIX: DON'T delete worker here - let onWorkerFinished handle cleanup
   }
 }
 
@@ -3114,92 +2628,6 @@ void RunProgramPage::onWaitProgress(int remainingMs, int totalMs)
 
   m_executionLogLabel->setText(countdownText);
 }
-
-// ============================================================================
-// USER PROMPT HANDLING
-// ============================================================================
-
-void RunProgramPage::onShowUserPrompt(QString title, QString message)
-{
-  // Switch from log view to prompt view
-  m_executionStack->setCurrentIndex(1);
-
-  // Show the prompt widget
-  m_promptWidget->showPrompt(title, message);
-}
-
-void RunProgramPage::onPromptResponse(bool accepted)
-{
-  // Store the response
-  m_promptResponse = accepted;
-
-  // Switch back to log view
-  m_executionStack->setCurrentIndex(0);
-
-  // Exit the event loop to unblock the callback
-  if (m_promptEventLoop) {
-    m_promptEventLoop->quit();
-  }
-}
-
-// ============================================================================
-// MANUAL ADJUST HANDLING
-// ============================================================================
-
-void RunProgramPage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                                         bool enableX, bool enableY, bool enableZ)
-{
-  // Switch from log view to manual adjust view
-  m_executionStack->setCurrentIndex(2);
-
-  // Show the manual adjust widget
-  m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
-}
-
-void RunProgramPage::onManualAdjustResponse(bool completed)
-{
-  // Store the response
-  m_manualAdjustResponse = completed;
-
-  // Switch back to log view
-  m_executionStack->setCurrentIndex(0);
-
-  // Exit the event loop to unblock the callback
-  if (m_promptEventLoop) {
-    m_promptEventLoop->quit();
-  }
-}
-
-void RunProgramPage::onManualAlignPointResponse(bool completed)
-{
-  // Store the response
-  m_manualAlignPointResponse = completed;
-
-  // Switch back to log view
-  m_executionStack->setCurrentIndex(0);
-
-  // Exit the event loop to unblock the callback
-  if (m_promptEventLoop) {
-    m_promptEventLoop->quit();
-  }
-}
-
-void RunProgramPage::onUserInputResponse(bool accepted, QString inputText)
-{
-  // Store the response
-  m_userInputAccepted = accepted;
-  m_userInputText = inputText;
-
-  // Switch back to log view
-  m_executionStack->setCurrentIndex(0);
-
-  // Exit the event loop to unblock the callback
-  if (m_promptEventLoop) {
-    m_promptEventLoop->quit();
-  }
-}
-
-// ============================================================================
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -3804,7 +3232,7 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
         QString::fromStdString(recipe->recipeFilePath),
         QString::fromStdString(recipe->displayName));
       showExecutionWidget();
-      m_executionStack->setCurrentIndex(0);  // Ensure tabs (not prompt) are visible
+      m_overlay->ShowDefaultPage();
       m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
     }
   }
@@ -3825,7 +3253,6 @@ void RunProgramPage::onStartRetraceEdit(int recipeIndex)
     return;
   }
 
-  // Confirm with user
   int result = QMessageBox::question(this, "Retrace Edit",
     QString("Retrace Edit will run '%1' and pause after each motion move.\n\n"
             "At each pause you can:\n"
@@ -3836,137 +3263,22 @@ void RunProgramPage::onStartRetraceEdit(int recipeIndex)
             "Continue?")
       .arg(QString::fromStdString(recipe->displayName)),
     QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+  if (result != QMessageBox::Yes) return;
 
-  if (result != QMessageBox::Yes) {
-    return;
-  }
-
-  // Switch to execution view
   showExecutionWidget();
-
-  // Clear log
   m_logTextEdit->clear();
   m_logTextEdit->appendPlainText(QString("=== Retrace Edit: %1 ===")
     .arg(QString::fromStdString(recipe->displayName)));
 
-  // Set up retrace edit state
-  m_isRetraceEditMode = true;
-  m_retraceEditRecipeIndex = recipeIndex;
-  m_isExecuting = true;
+  m_isExecuting        = true;
   m_currentRecipeIndex = recipeIndex;
   updateExecuteButton();
 
-  // Create worker
-  m_programWorker = new ProgramWorker(
-    m_context->sequenceEngine,
-    m_programManager,
-    m_processFactory,
-    m_context->productPositionManager,
-    m_context->motionManager,
-    this
-  );
-
-  // Configure for retrace edit mode - single recipe only
-  m_programWorker->setAutoRunMode(false);
-  m_programWorker->setStartRecipeIndex(recipeIndex);
-  m_programWorker->setRetraceEditMode(true);
-
-  // Set up retrace edit callback - this runs in worker thread, so we use signals
-  // ✅ FIX: Use shared_ptr to avoid dangling reference when function returns
-  auto positionCounter = std::make_shared<int>(0);
-  m_programWorker->setRetraceEditCallback(
-    [this, positionCounter](
-      const std::string& deviceName,
-      const std::string& positionName,
-      double origX, double origY, double origZ,
-      double origU, double origV, double origW,
-      double currX, double currY, double currZ,
-      double currU, double currV, double currW,
-      bool& saveRequested) -> bool {
-
-      (*positionCounter)++;
-      int currentPosition = *positionCounter;
-
-      // Show the retrace edit widget (must be done on GUI thread)
-      QMetaObject::invokeMethod(this, [this, deviceName, positionName,
-        origX, origY, origZ, origU, origV, origW,
-        currX, currY, currZ, currU, currV, currW, currentPosition]() {
-
-        m_executionStack->setCurrentIndex(5);  // Index 5 = retrace edit widget
-        m_retraceEditWidget->showRetraceEdit(
-          QString::fromStdString(deviceName),
-          QString::fromStdString(positionName),
-          origX, origY, origZ, origU, origV, origW,
-          currX, currY, currZ, currU, currV, currW,
-          currentPosition, 0);  // 0 = unknown total
-
-      }, Qt::BlockingQueuedConnection);
-
-      // Wait for user response using event loop
-      QEventLoop loop;
-      m_retraceEditContinue = false;
-      m_retraceEditSave = false;
-
-      connect(m_retraceEditWidget, &RetraceEditWidget::responseReceived, &loop,
-        [&loop, this](bool continueExec, bool save) {
-          m_retraceEditContinue = continueExec;
-          m_retraceEditSave = save;
-          loop.quit();
-        });
-
-      loop.exec();
-
-      // Return results
-      saveRequested = m_retraceEditSave;
-
-      // Switch back to log view
-      QMetaObject::invokeMethod(this, [this]() {
-        m_executionStack->setCurrentIndex(0);
-      }, Qt::QueuedConnection);
-
-      return m_retraceEditContinue;
-    }
-  );
-
-  // Connect signals
-  connect(m_programWorker, &ProgramWorker::logMessage,
-    this, &RunProgramPage::onWorkerLogMessage);
-  connect(m_programWorker, &ProgramWorker::recipeStarted,
-    this, &RunProgramPage::onRecipeStarted);
-  connect(m_programWorker, &ProgramWorker::recipeCompleted,
-    this, &RunProgramPage::onRecipeCompleted);
-  connect(m_programWorker, &ProgramWorker::programExecutionCompleted,
-    this, [this](bool success, QString message) {
-      if (m_isRetraceEditMode) {
-        // Show retrace summary
-        showRetraceEditSummary(
-          m_programWorker->getRetracePositionsVisited(),
-          m_programWorker->getRetracePositionsSaved());
-      }
-      onProgramExecutionCompleted(success, message);
-    });
-  connect(m_programWorker, &ProgramWorker::programStopped,
-    this, &RunProgramPage::onProgramStopped);
-  connect(m_programWorker, &QThread::finished,
-    this, &RunProgramPage::onWorkerFinished);
-
-  // Start execution
-  m_programWorker->start();
-}
-
-void RunProgramPage::onRetraceEditResponse(bool continueExecution, bool saveRequested)
-{
-  m_retraceEditContinue = continueExecution;
-  m_retraceEditSave = saveRequested;
-
-  // Log the action
-  if (saveRequested) {
-    m_logTextEdit->appendPlainText("  [SAVE] Position saved");
-  } else if (continueExecution) {
-    m_logTextEdit->appendPlainText("  [SKIP] Position skipped");
-  } else {
-    m_logTextEdit->appendPlainText("  [STOP] Retrace stopped by user");
-  }
+  // Controller takes over: builds the worker in retrace-edit mode,
+  // wires the per-pause callback through the overlay's blocking
+  // RequestRetraceEdit(), and emits programExecutionCompleted +
+  // retraceEditSummaryRequested when done.
+  m_executionController->StartRetraceEdit(recipeIndex);
 }
 
 void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsSaved)
@@ -3987,9 +3299,8 @@ void RunProgramPage::showRetraceEditSummary(int positionsVisited, int positionsS
   }
 
   QMessageBox::information(this, "Retrace Edit Complete", summary);
-
-  m_isRetraceEditMode = false;
-  m_retraceEditRecipeIndex = -1;
+  // Retrace-edit mode flag lives on the controller; it resets on
+  // programExecutionCompleted before this dialog runs.
 }
 
 // ============================================================================
@@ -4035,7 +3346,7 @@ void RunProgramPage::onShowPlacementRetrace(QString trainingSetName, bool autoSt
   m_placementRetraceWidget->SetAutoSaveContinue(autoSaveContinue);
 
   // Switch to placement retrace view (full right panel)
-  m_executionStack->setCurrentIndex(6);
+  m_overlay->setCurrentIndex(m_placementRetracePageIndex);
 
   // Auto-start the wizard if requested (skip Idle page)
   if (autoStart) {
@@ -4061,7 +3372,7 @@ void RunProgramPage::onPlacementRetraceSkipped()
   }
   m_placementRetraceResponse = true;
 
-  m_executionStack->setCurrentIndex(0);
+  m_overlay->ShowDefaultPage();
 
   if (m_promptEventLoop) {
     m_promptEventLoop->quit();
@@ -4076,7 +3387,7 @@ void RunProgramPage::onPlacementRetraceEnded()
   m_logTextEdit->appendPlainText("[PlacementRetrace] Retrace ended without saving");
 
   // Switch back to execution tabs
-  m_executionStack->setCurrentIndex(0);
+  m_overlay->ShowDefaultPage();
 
   if (m_promptEventLoop) {
     m_promptEventLoop->quit();
@@ -4111,7 +3422,7 @@ void RunProgramPage::onShowEdgeTransferRetrace(QString trainingSetName)
   m_activeEdgeTransferSet.Recalculate();
 
   // Switch to the embedded edge transfer retrace view.
-  m_executionStack->setCurrentIndex(7);
+  m_overlay->setCurrentIndex(m_edgeTransferRetracePageIndex);
 
   // SetRecipeMode was already set once at construction; SetData will
   // auto-jump to WaitRefP1 and fire Auto-Nav (0.5 mm/s to taught P1).
@@ -4132,7 +3443,7 @@ void RunProgramPage::onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome out
     QString("[EdgeTransferRetrace] Outcome: %1").arg(outcomeStr));
 
   // Return to execution tabs and unblock the recipe worker.
-  m_executionStack->setCurrentIndex(0);
+  m_overlay->ShowDefaultPage();
   if (m_promptEventLoop) {
     m_promptEventLoop->quit();
   }
@@ -4404,9 +3715,9 @@ void RunProgramPage::onVisionResultReady(QString imagePath)
 void RunProgramPage::startContextRefreshTimer()
 {
   if (!m_contextViewer) return;
-  // Make sure the viewer has the latest worker pointer before it starts
-  // polling getCurrentContext() on it.
-  m_contextViewer->SetWorker(m_programWorker);
+  // Hand the live worker (created by the controller for this run) to the
+  // viewer before live polling starts.
+  m_contextViewer->SetWorker(m_executionController ? m_executionController->Worker() : nullptr);
   m_contextViewer->StartLivePolling(m_isLoopExecution ? 1000 : 500);
 }
 
@@ -4418,11 +3729,8 @@ void RunProgramPage::stopContextRefreshTimer()
 void RunProgramPage::updateContextTable(bool forceUpdate)
 {
   if (!m_contextViewer) return;
-  // Hand the worker pointer to the viewer in case it changed since the
-  // last refresh; SetWorker is cheap (just stores a pointer).
-  m_contextViewer->SetWorker(m_programWorker);
+  m_contextViewer->SetWorker(m_executionController ? m_executionController->Worker() : nullptr);
   if (forceUpdate) m_contextViewer->ForceRefresh();
-  // Live polling timer fires its own refresh; we don't need to do it here.
 }
 
 bool RunProgramPage::populateCvContext(SequenceContext& target, QString& errorMsg)
