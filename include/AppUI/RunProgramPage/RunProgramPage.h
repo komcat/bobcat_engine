@@ -220,16 +220,12 @@ private:
   QWidget* m_editWidget;
   QWidget* m_executionWidget;
 
-  // Edit widget components
+  // Edit widget components. The recipe table, preview pane, and the
+  // Add/Remove/Move/Toggle/ManageDeps buttons all live inside
+  // ProgramEditPanel; the page keeps the program-name field, the slot
+  // management bar, and the top-bar Save button.
   QLineEdit* m_programNameEdit;
-  QPushButton* m_addRecipeButton;
-  QPushButton* m_addScriptButton;
-  QTableWidget* m_editRecipeTable;
-  QTextEdit* m_recipePreviewText;
-  QPushButton* m_removeRecipeButton;
-  QPushButton* m_moveUpButton;
-  QPushButton* m_moveDownButton;
-  QPushButton* m_toggleEnableButton;  // ✅ NEW: Toggle enable/disable
+  class ProgramEditPanel* m_editPanel = nullptr;
   QPushButton* m_saveEditButton;
 
   // Execution widget components
@@ -342,20 +338,10 @@ private:
   void updateSlotSelectors();  // Refresh both slot dropdowns
   void updateSlotInfo();       // Update "X recipes" label
 
-  // Edit widget slots
-  void onAddRecipe();
-  void onAddScript();
-  void onRemoveRecipe();
-  void onMoveRecipeUp();
-  void onMoveRecipeDown();
-  void onToggleRecipeEnabled();  // Toggle enable/disable for selected recipe
-  void onManageDependencies();   // Open dependency management dialog
+  // Edit widget slots — most of the recipe-list operations live inside
+  // ProgramEditPanel now; only the program-level Save button stays here.
   void onSaveEdit();
-  void onEditRecipeSelectionChanged();
-  void loadRecipePreview(const std::string& recipeFilePath);
-  void onRecipeTableContextMenu(const QPoint& pos);  // Context menu for recipe table (edit view)
-  void onRecipeListContextMenu(const QPoint& pos);   // Context menu for recipe list (execution view)
-  void renameRecipe(int recipeIndex);                // Rename recipe dialog
+  void onRecipeListContextMenu(const QPoint& pos);   // Context menu for the run-side recipe list
 
   // ✅ Retrace edit mode
   void onStartRetraceEdit(int recipeIndex);          // Start retrace edit for a recipe

@@ -3,6 +3,7 @@
 #include "ProgramSettingsStore.h"
 #include "VisionHistoryWidget.h"
 #include "SequenceContextViewer.h"
+#include "ProgramEditPanel.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -64,8 +65,6 @@
 #include <QSet>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QTextStream>
 #include <QDir>
 #include <QClipboard>
@@ -1096,10 +1095,10 @@ void RunProgramPage::createEditWidget()
   QVBoxLayout* layout = new QVBoxLayout(m_editWidget);
   layout->setContentsMargins(20, 20, 20, 20);
 
-  // ✅ NEW: Top bar with Close button and Title
+  // Top bar with Close button + title.
   QHBoxLayout* topBarLayout = new QHBoxLayout();
 
-  QPushButton* closeButton = new QPushButton("← Close");
+  QPushButton* closeButton = new QPushButton(QString::fromUtf8("\xE2\x86\x90 Close"));
   closeButton->setMinimumHeight(35);
   closeButton->setStyleSheet(Theme::Buttons::bezelNeutral());
 
@@ -1113,25 +1112,22 @@ void RunProgramPage::createEditWidget()
 
   layout->addLayout(topBarLayout);
 
-  // Connect close button
   connect(closeButton, &QPushButton::clicked, this, &RunProgramPage::showExecutionWidget);
 
-  // === PROGRAM NAME FIELD WITH SAVE BUTTON ===
+  // Program name + Save (page-level: program metadata, not recipe-list edit).
   QGroupBox* programNameGroup = new QGroupBox("Program Name");
   programNameGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
   QVBoxLayout* programNameLayout = new QVBoxLayout(programNameGroup);
 
-  // Horizontal layout for name field and save button
   QHBoxLayout* nameAndSaveLayout = new QHBoxLayout();
 
   m_programNameEdit = new QLineEdit();
   m_programNameEdit->setPlaceholderText("Enter program name...");
   m_programNameEdit->setMinimumHeight(35);
   m_programNameEdit->setStyleSheet("font-size: 14px; padding: 5px;");
-  nameAndSaveLayout->addWidget(m_programNameEdit, 1);  // Stretch factor 1
+  nameAndSaveLayout->addWidget(m_programNameEdit, 1);
 
-  // Save button next to name field
-  m_saveEditButton = new QPushButton("💾 Save");
+  m_saveEditButton = new QPushButton(QString::fromUtf8("\xF0\x9F\x92\xBE Save"));
   m_saveEditButton->setMinimumHeight(35);
   m_saveEditButton->setMinimumWidth(100);
   m_saveEditButton->setStyleSheet(Theme::Buttons::bezelPrimary());
@@ -1187,177 +1183,34 @@ void RunProgramPage::createEditWidget()
 
   layout->addWidget(slotManageGroup);
 
-  // Add Recipe button — success green family
-  auto* addButtonsLayout = new QHBoxLayout();
-  addButtonsLayout->setSpacing(6);
+  // The recipe-list editor (table + preview + Add/Remove/Move/Toggle/Manage Deps).
+  ProgramEditPanel::Deps editDeps;
+  editDeps.context = m_context;
+  editDeps.manager = m_programManager;
+  editDeps.currentProgramPath = [this]() { return m_currentProgramPath; };
+  editDeps.isExecuting        = [this]() { return m_isExecuting; };
+  m_editPanel = new ProgramEditPanel(std::move(editDeps), this);
+  layout->addWidget(m_editPanel, 1);
 
-  m_addRecipeButton = new QPushButton("+ Add Recipe");
-  m_addRecipeButton->setMinimumHeight(40);
-  m_addRecipeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
-  addButtonsLayout->addWidget(m_addRecipeButton);
+  // Page actions emitted by the panel.
+  connect(m_editPanel, &ProgramEditPanel::recipeListChanged,
+          this, [this]() { updateRecipeList(); updateSlotInfo(); });
+  connect(m_editPanel, &ProgramEditPanel::inspectMotionRequested,
+          this, [this](int row) {
+            const RecipeReference* recipe = m_programManager->getRecipe(row);
+            if (recipe && m_motionInspectorWidget && m_motionInspectorTabIndex >= 0) {
+              m_motionInspectorWidget->loadRecipe(
+                  QString::fromStdString(recipe->recipeFilePath),
+                  QString::fromStdString(recipe->displayName));
+              showExecutionWidget();
+              m_executionStack->setCurrentIndex(0);
+              m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
+            }
+          });
+  connect(m_editPanel, &ProgramEditPanel::retraceEditRequested,
+          this, [this](int row) { onStartRetraceEdit(row); });
 
-  m_addScriptButton = new QPushButton("+ Add Script");
-  m_addScriptButton->setMinimumHeight(40);
-  m_addScriptButton->setStyleSheet(Theme::Buttons::bezelPrimary());
-  addButtonsLayout->addWidget(m_addScriptButton);
-
-  layout->addLayout(addButtonsLayout);
-
-  // === RECIPE TABLE AND PREVIEW (side by side) ===
-  QSplitter* recipeSplitter = new QSplitter(Qt::Horizontal);
-
-  // Left: Recipe Table
-  QWidget* tableContainer = new QWidget();
-  QVBoxLayout* tableLayout = new QVBoxLayout(tableContainer);
-  tableLayout->setContentsMargins(0, 0, 0, 0);
-
-  QLabel* tableLabel = new QLabel("Recipes in Program");
-  tableLabel->setStyleSheet(QString("font-weight: bold; font-size: 13px; color: %1;")
-                              .arg(QLatin1String(Theme::Color::textPrimary)));
-  tableLayout->addWidget(tableLabel);
-
-  m_editRecipeTable = new QTableWidget();
-  m_editRecipeTable->setColumnCount(5);
-  m_editRecipeTable->setHorizontalHeaderLabels({"#", "Recipe Name", "File", "Dependencies", "Status"});
-  m_editRecipeTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-  m_editRecipeTable->setSelectionMode(QAbstractItemView::SingleSelection);
-  m_editRecipeTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  m_editRecipeTable->setAlternatingRowColors(true);
-  m_editRecipeTable->verticalHeader()->setVisible(false);
-  m_editRecipeTable->horizontalHeader()->setStretchLastSection(false);
-  m_editRecipeTable->setColumnWidth(0, 40);   // # column
-  m_editRecipeTable->setColumnWidth(1, 200);  // Recipe Name
-  m_editRecipeTable->setColumnWidth(2, 180);  // File
-  m_editRecipeTable->setColumnWidth(3, 120);  // Dependencies
-  m_editRecipeTable->setColumnWidth(4, 80);   // Status
-  m_editRecipeTable->setStyleSheet(QString(
-    "QTableWidget { "
-    "  background-color: %1; "
-    "  border: 1px solid %2; "
-    "  border-radius: 4px; "
-    "  gridline-color: %2; "
-    "  font-size: 16px; "  // larger than the global default
-    "  color: %3; "
-    "  show-decoration-selected: 1; "
-    "} "
-    "QTableWidget::item { "
-    "  border-bottom: 1px solid %2; "
-    "  padding: 10px 8px; "
-    "} "
-    "QTableWidget::item:hover { "
-    "  background-color: %4; "
-    "} "
-    "QTableWidget::item:selected { "
-    "  background-color: %5; "
-    "  color: %6; "
-    "} "
-    "QHeaderView::section { "
-    "  background-color: %7; "
-    "  color: %3; "
-    "  padding: 8px; "
-    "  border: 1px solid %2; "
-    "  font-size: 15px; "
-    "  font-weight: bold; "
-    "}"
-  ).arg(QLatin1String(Theme::Color::bgDeep),         // %1 cell bg
-        QLatin1String(Theme::Color::borderSubtle),   // %2 grid + border
-        QLatin1String(Theme::Color::textPrimary),    // %3 text
-        QLatin1String(Theme::Color::bgHover),        // %4 hover
-        QLatin1String(Theme::Color::primary),        // %5 selected bg
-        QLatin1String(Theme::Color::textOnPrimary),  // %6 selected text
-        QLatin1String(Theme::Color::bgPrimary)));    // %7 header bg
-
-  // Set minimum row height for better readability
-  m_editRecipeTable->verticalHeader()->setDefaultSectionSize(42);
-  m_editRecipeTable->verticalHeader()->setMinimumSectionSize(38);
-
-  // Enable context menu for right-click rename
-  m_editRecipeTable->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(m_editRecipeTable, &QTableWidget::customContextMenuRequested,
-          this, &RunProgramPage::onRecipeTableContextMenu);
-
-  tableLayout->addWidget(m_editRecipeTable);
-
-  recipeSplitter->addWidget(tableContainer);
-
-  // Right: Recipe Preview
-  QWidget* previewContainer = new QWidget();
-  QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
-  previewLayout->setContentsMargins(0, 0, 0, 0);
-
-  QLabel* previewLabel = new QLabel("Recipe Preview");
-  previewLabel->setStyleSheet(QString("font-weight: bold; font-size: 13px; color: %1;")
-                                .arg(QLatin1String(Theme::Color::textPrimary)));
-  previewLayout->addWidget(previewLabel);
-
-  m_recipePreviewText = new QTextEdit();
-  m_recipePreviewText->setReadOnly(true);
-  m_recipePreviewText->setPlaceholderText("Select a recipe to see its steps...");
-  m_recipePreviewText->setStyleSheet(QString(
-    "QTextEdit { "
-    "  font-family: 'Consolas', 'Courier New', monospace; "
-    "  font-size: 12px; "
-    "  background-color: %1; "
-    "  color: %2; "
-    "  border: 1px solid %3; "
-    "  border-radius: 4px; "
-    "}"
-  ).arg(QLatin1String(Theme::Color::bgDeep),
-        QLatin1String(Theme::Color::textPrimary),
-        QLatin1String(Theme::Color::borderSubtle)));
-  previewLayout->addWidget(m_recipePreviewText);
-
-  recipeSplitter->addWidget(previewContainer);
-
-  // Set splitter sizes (60% table, 40% preview)
-  recipeSplitter->setStretchFactor(0, 6);
-  recipeSplitter->setStretchFactor(1, 4);
-
-  layout->addWidget(recipeSplitter, 1);
-
-  // Control buttons — themed by semantic role
-  QHBoxLayout* controlLayout = new QHBoxLayout();
-  m_removeRecipeButton = new QPushButton("Remove");
-  m_removeRecipeButton->setStyleSheet(Theme::Buttons::bezelDanger());
-
-  m_moveUpButton = new QPushButton("↑ Move Up");
-  m_moveUpButton->setStyleSheet(Theme::Buttons::bezelNeutral());
-
-  m_moveDownButton = new QPushButton("↓ Move Down");
-  m_moveDownButton->setStyleSheet(Theme::Buttons::bezelNeutral());
-
-  // ✅ NEW: Toggle Enable/Disable button
-  m_toggleEnableButton = new QPushButton("⇄ Toggle Enable/Disable");
-  m_toggleEnableButton->setStyleSheet(Theme::Buttons::bezelWarning());
-  m_toggleEnableButton->setEnabled(false);
-
-  // ✅ NEW: Manage Dependencies button
-  QPushButton* manageDepsButton = new QPushButton("🔗 Manage Dependencies");
-  // Manage Dependencies — primary blue (no purple in palette; lives at the
-  // far right of the row so it doesn't visually clash with Save at the top).
-  manageDepsButton->setStyleSheet(Theme::Buttons::bezelPrimary());
-  connect(manageDepsButton, &QPushButton::clicked, this, &RunProgramPage::onManageDependencies);
-
-  controlLayout->addWidget(m_removeRecipeButton);
-  controlLayout->addWidget(m_moveUpButton);
-  controlLayout->addWidget(m_moveDownButton);
-  controlLayout->addSpacing(10);
-  controlLayout->addWidget(m_toggleEnableButton);
-  controlLayout->addWidget(manageDepsButton);
-  controlLayout->addStretch();
-
-  layout->addLayout(controlLayout);
-
-  // Connect signals
-  connect(m_addRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onAddRecipe);
-  connect(m_addScriptButton, &QPushButton::clicked, this, &RunProgramPage::onAddScript);
-  connect(m_removeRecipeButton, &QPushButton::clicked, this, &RunProgramPage::onRemoveRecipe);
-  connect(m_moveUpButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeUp);
-  connect(m_moveDownButton, &QPushButton::clicked, this, &RunProgramPage::onMoveRecipeDown);
-  connect(m_toggleEnableButton, &QPushButton::clicked, this, &RunProgramPage::onToggleRecipeEnabled);  // ✅ NEW
   connect(m_saveEditButton, &QPushButton::clicked, this, &RunProgramPage::onSaveEdit);
-  connect(m_editRecipeTable, &QTableWidget::itemSelectionChanged,
-    this, &RunProgramPage::onEditRecipeSelectionChanged);
 }
 
 // Stores the requested base state and re-applies the badge. Use this instead
@@ -2194,10 +2047,8 @@ void RunProgramPage::onEditSlotSelectionChanged(int index)
     m_slotSelector->blockSignals(false);
   }
 
-  // Refresh the edit table
-  if (m_editRecipeTable) {
-    onEditRecipeSelectionChanged();  // This will refresh the table content
-  }
+  // Refresh the edit table after the active slot changed.
+  if (m_editPanel) m_editPanel->Reload();
 
   std::cout << "[RunProgramPage] Edit slot switched to: "
             << m_programManager->getSlotName(index) << std::endl;
@@ -4056,148 +3907,6 @@ void RunProgramPage::onChannelChanged(QString channel)
 // EDIT OPERATIONS
 // ============================================================================
 
-void RunProgramPage::onAddRecipe()
-{
-  // ✅ Check if product is loaded
-  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
-    QMessageBox::warning(this, "No Product Loaded",
-      "Please load a product first before adding recipes.\n\n"
-      "Use the 'Load Product' button in the main menu.");
-    return;
-  }
-
-  // ✅ Get product name and build path to product's recipes folder
-  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
-  QString recipesPath = QString("config/%1/recipes").arg(productName);
-
-  // ✅ Use FileSelectorDialog to restrict to product's recipes folder
-  QString filename = FileSelectorDialog::getOpenFileName(
-    this,
-    recipesPath,  // Folder path: config/[product]/recipes/
-    "*.json",  // File pattern
-    "Add Recipe",  // Dialog title
-    "recipe files",  // File type description
-    true  // Recursive: scan subfolders
-  );
-
-  if (filename.isEmpty()) return;
-
-  QFileInfo fileInfo(filename);
-  QString displayName = fileInfo.baseName();
-
-  m_programManager->addRecipe(filename.toStdString(), displayName.toStdString());
-  updateRecipeList();
-}
-
-void RunProgramPage::onAddScript()
-{
-  if (!m_context->productPositionManager || !m_context->productPositionManager->HasLoadedProduct()) {
-    QMessageBox::warning(this, "No Product Loaded",
-      "Please load a product first before adding scripts.");
-    return;
-  }
-
-  QString productName = QString::fromStdString(m_context->productPositionManager->GetCurrentProductName());
-
-  // Try product scripts folder first, fallback to global
-  QString scriptsPath = QString("config/%1/scripts").arg(productName);
-  if (!QDir(scriptsPath).exists()) {
-    scriptsPath = "scripts";
-  }
-
-  QString filename = QFileDialog::getOpenFileName(
-    this,
-    "Add Script",
-    scriptsPath,
-    "Lua Scripts (*.lua)");
-
-  if (filename.isEmpty()) return;
-
-  QFileInfo fileInfo(filename);
-  QString displayName = fileInfo.baseName();
-
-  m_programManager->addScript(filename.toStdString(), displayName.toStdString());
-  updateRecipeList();
-}
-
-void RunProgramPage::onRemoveRecipe()
-{
-  int selectedRow = m_editRecipeTable->currentRow();
-  if (selectedRow < 0) {
-    QMessageBox::warning(this, "No Selection", "Please select a recipe to remove");
-    return;
-  }
-
-  m_programManager->removeRecipe(selectedRow);
-  updateRecipeList();
-}
-
-void RunProgramPage::onMoveRecipeUp()
-{
-  int selectedRow = m_editRecipeTable->currentRow();
-  if (selectedRow <= 0) return;
-
-  if (m_programManager->moveRecipeUp(selectedRow)) {
-    updateRecipeList();
-    m_editRecipeTable->selectRow(selectedRow - 1);
-  }
-}
-
-void RunProgramPage::onMoveRecipeDown()
-{
-  int selectedRow = m_editRecipeTable->currentRow();
-  if (selectedRow < 0 || selectedRow >= m_programManager->getRecipeCount() - 1) return;
-
-  if (m_programManager->moveRecipeDown(selectedRow)) {
-    updateRecipeList();
-    m_editRecipeTable->selectRow(selectedRow + 1);
-  }
-}
-
-void RunProgramPage::onToggleRecipeEnabled()
-{
-  int selectedRow = m_editRecipeTable->currentRow();
-  if (selectedRow < 0) return;
-
-  // Get current recipe
-  const RecipeReference* recipe = m_programManager->getRecipe(selectedRow);
-  if (!recipe) return;
-
-  // Toggle the enabled state
-  bool newState = !recipe->enabled;
-  m_programManager->setRecipeEnabled(selectedRow, newState);
-
-  // Update the display
-  updateRecipeList();
-
-  // Restore selection
-  m_editRecipeTable->selectRow(selectedRow);
-}
-
-void RunProgramPage::onManageDependencies()
-{
-  int recipeCount = m_programManager->getRecipeCount();
-  if (recipeCount == 0) {
-    QMessageBox::information(this, "No Recipes", "Please add recipes first before managing dependencies");
-    return;
-  }
-
-  // Open the graphical dependency window
-  DependencyGraphWindow* graphWindow = new DependencyGraphWindow(m_programManager, this);
-  graphWindow->setAttribute(Qt::WA_DeleteOnClose);
-  graphWindow->exec();
-
-  // Auto-save program when dialog closes (if we have a save path)
-  if (!m_currentProgramPath.isEmpty()) {
-    if (m_programManager->saveProgram(m_currentProgramPath.toStdString())) {
-      std::cout << "[RunProgramPage] Auto-saved program after dependency changes" << std::endl;
-    }
-  }
-
-  // Refresh the recipe table to show updated dependencies
-  updateRecipeList();
-}
-
 void RunProgramPage::onConfigureLoop()
 {
   int recipeCount = m_programManager->getRecipeCount();
@@ -4282,111 +3991,6 @@ void RunProgramPage::onSaveEdit()
   onSaveProgram();
 }
 
-void RunProgramPage::onRecipeTableContextMenu(const QPoint& pos)
-{
-  QTableWidgetItem* item = m_editRecipeTable->itemAt(pos);
-  if (!item) return;
-
-  int row = item->row();
-  if (row < 0 || row >= m_programManager->getRecipeCount()) return;
-
-  // Create context menu
-  QMenu contextMenu(this);
-  QString menuStyle =
-    "QMenu { "
-    "  background-color: #2d2d30; "
-    "  color: white; "
-    "  border: 1px solid #3c3c3c; "
-    "  padding: 5px; "
-    "} "
-    "QMenu::item { "
-    "  padding: 8px 20px; "
-    "} "
-    "QMenu::item:selected { "
-    "  background-color: #0e639c; "
-    "} "
-    "QMenu::item:disabled { "
-    "  color: #666666; "
-    "}";
-  contextMenu.setStyleSheet(menuStyle);
-
-  QAction* renameAction = contextMenu.addAction("Rename Recipe...");
-  QAction* inspectMotionAction = contextMenu.addAction("Inspect Motion");
-  inspectMotionAction->setToolTip("Show motion-related steps (velocity, axis, distance, position) in a table");
-
-  // Add "Move to Slot" submenu if there are multiple slots
-  QMenu* moveToSlotMenu = nullptr;
-  std::vector<QAction*> slotActions;
-  if (m_programManager->getSlotCount() > 1) {
-    contextMenu.addSeparator();
-    moveToSlotMenu = contextMenu.addMenu("Move to Slot");
-    moveToSlotMenu->setStyleSheet(menuStyle);
-
-    int currentSlot = m_programManager->getActiveSlotIndex();
-    auto slotNames = m_programManager->getSlotNames();
-
-    for (int i = 0; i < static_cast<int>(slotNames.size()); ++i) {
-      if (i != currentSlot) {
-        QAction* slotAction = moveToSlotMenu->addAction(QString::fromStdString(slotNames[i]));
-        slotAction->setData(i);  // Store slot index in action data
-        slotActions.push_back(slotAction);
-      }
-    }
-  }
-
-  // Add retrace edit option (only if not currently running)
-  QAction* retraceAction = nullptr;
-  if (!m_isExecuting) {
-    contextMenu.addSeparator();
-    retraceAction = contextMenu.addAction("Retrace Edit This Recipe...");
-    retraceAction->setToolTip("Run through recipe and pause at each motion for position adjustment");
-  }
-
-  QAction* selectedAction = contextMenu.exec(m_editRecipeTable->viewport()->mapToGlobal(pos));
-
-  if (selectedAction == renameAction) {
-    renameRecipe(row);
-  }
-  else if (selectedAction == inspectMotionAction) {
-    const RecipeReference* recipe = m_programManager->getRecipe(row);
-    if (recipe && m_motionInspectorWidget && m_motionInspectorTabIndex >= 0) {
-      m_motionInspectorWidget->loadRecipe(
-        QString::fromStdString(recipe->recipeFilePath),
-        QString::fromStdString(recipe->displayName));
-      // Switch the right-side view to the execution tabs so the Motion
-      // Inspector tab is visible (it lives in m_executionTabWidget).
-      showExecutionWidget();
-      m_executionStack->setCurrentIndex(0);
-      m_executionTabWidget->setCurrentIndex(m_motionInspectorTabIndex);
-    }
-  }
-  else if (retraceAction && selectedAction == retraceAction) {
-    onStartRetraceEdit(row);
-  }
-  else if (moveToSlotMenu) {
-    // Check if a slot action was selected
-    for (QAction* slotAction : slotActions) {
-      if (selectedAction == slotAction) {
-        int targetSlotIndex = slotAction->data().toInt();
-        QString recipeName = QString::fromStdString(m_programManager->getRecipe(row)->displayName);
-        QString targetSlotName = QString::fromStdString(m_programManager->getSlotName(targetSlotIndex));
-
-        if (m_programManager->moveRecipeToSlot(row, targetSlotIndex)) {
-          updateRecipeList();
-          updateSlotInfo();
-          std::cout << "[RunProgramPage] Moved recipe '" << recipeName.toStdString()
-                    << "' to slot '" << targetSlotName.toStdString() << "'" << std::endl;
-        } else {
-          QMessageBox::warning(this, "Move Failed",
-            QString("Failed to move recipe '%1' to slot '%2'.")
-              .arg(recipeName).arg(targetSlotName));
-        }
-        break;
-      }
-    }
-  }
-}
-
 void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
 {
   QListWidgetItem* item = m_recipeListWidget->itemAt(pos);
@@ -4453,105 +4057,6 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
   else if (retraceAction && selectedAction == retraceAction) {
     onStartRetraceEdit(row);
   }
-}
-
-void RunProgramPage::renameRecipe(int recipeIndex)
-{
-  const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
-  if (!recipe) return;
-
-  QString currentName = QString::fromStdString(recipe->displayName);
-  QString recipeFilePath = QString::fromStdString(recipe->recipeFilePath);
-
-  // Show rename dialog
-  bool ok;
-  QString newName = QInputDialog::getText(
-    this,
-    "Rename Recipe",
-    "Enter new recipe name:",
-    QLineEdit::Normal,
-    currentName,
-    &ok
-  );
-
-  if (!ok || newName.trimmed().isEmpty()) return;
-
-  newName = newName.trimmed();
-  if (newName == currentName) return;  // No change
-
-  // Validate filename characters
-  QString invalidChars = "<>:\"/\\|?*";
-  for (QChar c : invalidChars) {
-    if (newName.contains(c)) {
-      QMessageBox::warning(this, "Invalid Name",
-        "Recipe name contains invalid characters.\n\nInvalid characters: < > : \" / \\ | ? *");
-      return;
-    }
-  }
-
-  // Compute new file path
-  QFileInfo oldFileInfo(recipeFilePath);
-  QString newFilePath = oldFileInfo.absolutePath() + "/" + newName + ".json";
-
-  // Check if target file already exists (and is a different file)
-  if (newFilePath != recipeFilePath && QFile::exists(newFilePath)) {
-    QMessageBox::warning(this, "Name Exists",
-      QString("A recipe file named '%1.json' already exists.").arg(newName));
-    return;
-  }
-
-  // Update the recipe JSON content and rename the file
-  QFile file(recipeFilePath);
-  if (!file.open(QIODevice::ReadOnly)) {
-    QMessageBox::critical(this, "Error", "Failed to open recipe file for reading.");
-    return;
-  }
-  QByteArray fileData = file.readAll();
-  file.close();
-
-  QJsonDocument doc = QJsonDocument::fromJson(fileData);
-  if (!doc.isObject()) {
-    QMessageBox::critical(this, "Error", "Recipe file is not valid JSON.");
-    return;
-  }
-
-  QJsonObject obj = doc.object();
-  obj["recipe_name"] = newName;
-
-  // Write to new file path
-  QFile newFile(newFilePath);
-  if (!newFile.open(QIODevice::WriteOnly)) {
-    QMessageBox::critical(this, "Error", "Failed to write renamed recipe file.");
-    return;
-  }
-  newFile.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
-  newFile.close();
-
-  // Remove old file if the path changed
-  if (newFilePath != recipeFilePath) {
-    QFile::remove(recipeFilePath);
-  }
-
-  // Update ProgramManager with new display name and file path
-  m_programManager->setRecipeDisplayName(recipeIndex, newName.toStdString());
-  RecipeReference* mutableRecipe = m_programManager->getRecipe(recipeIndex);
-  if (mutableRecipe) {
-    mutableRecipe->recipeFilePath = newFilePath.toStdString();
-  }
-
-  // Auto-save program to persist the new file path
-  if (!m_currentProgramPath.isEmpty()) {
-    m_programManager->saveProgram(m_currentProgramPath.toStdString());
-  }
-
-  QMessageBox::information(this, "Recipe Renamed",
-    QString("Recipe renamed to \"%1\" and file saved.").arg(newName));
-
-  // Refresh the table to show new name
-  updateRecipeList();
-
-  // Re-select the same row
-  m_editRecipeTable->selectRow(recipeIndex);
 }
 
 // ============================================================================
@@ -4879,64 +4384,6 @@ void RunProgramPage::onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome out
   }
 }
 
-void RunProgramPage::onEditRecipeSelectionChanged()
-{
-  int currentRow = m_editRecipeTable->currentRow();
-  bool hasSelection = currentRow >= 0;
-
-  m_removeRecipeButton->setEnabled(hasSelection);
-  m_moveUpButton->setEnabled(hasSelection && currentRow > 0);
-  m_moveDownButton->setEnabled(hasSelection && currentRow < m_programManager->getRecipeCount() - 1);
-  m_toggleEnableButton->setEnabled(hasSelection);  // ✅ NEW: Enable toggle button when recipe is selected
-
-  // Load and display recipe preview
-  if (hasSelection) {
-    const RecipeReference* recipe = m_programManager->getRecipe(currentRow);
-    if (recipe) {
-      loadRecipePreview(recipe->recipeFilePath);
-    }
-  } else {
-    m_recipePreviewText->clear();
-    m_recipePreviewText->setPlaceholderText("Select a recipe to see its steps...");
-  }
-}
-
-void RunProgramPage::loadRecipePreview(const std::string& recipeFilePath)
-{
-  RecipeManager tempRecipeManager;
-
-  if (!tempRecipeManager.loadRecipe(recipeFilePath)) {
-    m_recipePreviewText->setPlainText("Error: Failed to load recipe file");
-    return;
-  }
-
-  // Build preview text
-  QString previewText;
-  previewText += QString("Recipe: %1\n").arg(QString::fromStdString(tempRecipeManager.getRecipeName()));
-  previewText += QString("Steps: %1\n").arg(tempRecipeManager.getStepCount());
-  previewText += QString("\n");
-  previewText += QString("═══════════════════════════════════════\n\n");
-
-  int stepNumber = 1;
-  for (const auto& step : tempRecipeManager.getAllSteps()) {
-    if (step->enabled) {
-      previewText += QString("%1. %2\n")
-        .arg(stepNumber, 2, 10, QChar('0'))
-        .arg(QString::fromStdString(step->userNickname));
-      previewText += QString("   Type: %1\n")
-        .arg(QString::fromStdString(step->processType));
-    } else {
-      previewText += QString("%1. %2 (DISABLED)\n")
-        .arg(stepNumber, 2, 10, QChar('0'))
-        .arg(QString::fromStdString(step->userNickname));
-    }
-    previewText += QString("\n");
-    stepNumber++;
-  }
-
-  m_recipePreviewText->setPlainText(previewText);
-}
-
 // ============================================================================
 // UI UPDATES
 // ============================================================================
@@ -4967,7 +4414,7 @@ void RunProgramPage::updateProgramInfo()
 
 void RunProgramPage::updateRecipeList()
 {
-  // Update left panel list widget
+  // Run-side recipe list (the QListWidget on the left).
   m_recipeListWidget->clear();
 
   int recipeNumber = 1;
@@ -5003,64 +4450,8 @@ void RunProgramPage::updateRecipeList()
     recipeNumber++;
   }
 
-  // Update edit widget table
-  m_editRecipeTable->setRowCount(0);  // Clear table
-
-  int rowIndex = 0;
-  for (const auto& recipe : m_programManager->getAllRecipes()) {
-    m_editRecipeTable->insertRow(rowIndex);
-
-    // Column 0: Recipe Number
-    QTableWidgetItem* numItem = new QTableWidgetItem(QString::number(rowIndex + 1));
-    numItem->setTextAlignment(Qt::AlignCenter);
-    m_editRecipeTable->setItem(rowIndex, 0, numItem);
-
-    // Column 1: Recipe Name
-    QTableWidgetItem* nameItem = new QTableWidgetItem(QString::fromStdString(recipe->displayName));
-    m_editRecipeTable->setItem(rowIndex, 1, nameItem);
-
-    // Column 2: File (recipe filename, prefixed with [LUA] for scripts)
-    QFileInfo recipeFileInfo(QString::fromStdString(recipe->recipeFilePath));
-    QString fileDisplay = recipeFileInfo.fileName();
-    if (recipe->type == RecipeReference::SCRIPT) {
-      fileDisplay = "[LUA] " + fileDisplay;
-    }
-    QTableWidgetItem* fileItem = new QTableWidgetItem(fileDisplay);
-    fileItem->setForeground(recipe->type == RecipeReference::SCRIPT ? QColor("#60a5fa") : QColor("#a1a1aa"));
-    fileItem->setToolTip(QString::fromStdString(recipe->recipeFilePath));
-    m_editRecipeTable->setItem(rowIndex, 2, fileItem);
-
-    // Column 3: Dependencies
-    std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(rowIndex);
-    QString depsText;
-    if (deps.empty()) {
-      depsText = "—";  // No dependencies
-    } else {
-      for (size_t i = 0; i < deps.size(); ++i) {
-        if (i > 0) depsText += ", ";
-        depsText += QString::number(deps[i].predecessorIndex + 1);  // Show 1-based index
-      }
-    }
-    QTableWidgetItem* depsItem = new QTableWidgetItem(depsText);
-    depsItem->setTextAlignment(Qt::AlignCenter);
-    depsItem->setForeground(QColor(155, 135, 245));  // Purple color for dependencies
-    m_editRecipeTable->setItem(rowIndex, 3, depsItem);
-
-    // Column 4: Status
-    QString status = recipe->enabled ? "Enabled" : "Disabled";
-    QTableWidgetItem* statusItem = new QTableWidgetItem(status);
-    statusItem->setTextAlignment(Qt::AlignCenter);
-    if (!recipe->enabled) {
-      statusItem->setForeground(QColor(150, 150, 150));
-      numItem->setForeground(QColor(150, 150, 150));
-      nameItem->setForeground(QColor(150, 150, 150));
-      fileItem->setForeground(QColor(150, 150, 150));
-      depsItem->setForeground(QColor(150, 150, 150));
-    }
-    m_editRecipeTable->setItem(rowIndex, 4, statusItem);
-
-    rowIndex++;
-  }
+  // Edit-side table is owned by ProgramEditPanel.
+  if (m_editPanel) m_editPanel->Reload();
 
   updateExecuteButton();
   updateSlotInfo();
