@@ -739,6 +739,8 @@ set(SOURCES
     include/GdiWindow/ChartOverlay.cpp
     include/GdiWindow/VisionResultOverlay.cpp
     include/GdiWindow/BeamStreamOverlay.cpp
+    include/GdiWindow/GdiVisionController.cpp
+    include/GdiWindow/GdiBeamStreamController.cpp
     include/QtCameraWindow/QtCameraViewport.cpp
     include/QtCameraWindow/QtCameraWindow.cpp
     include/QtCameraWindow/QtCameraQuickMovePanel.cpp

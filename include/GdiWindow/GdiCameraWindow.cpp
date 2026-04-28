@@ -37,12 +37,16 @@ GdiCameraWindow::GdiCameraWindow() {
     m_bitmapInfo = reinterpret_cast<BITMAPINFO*>(m_bitmapInfoBuffer.data());
     InitializeGdiPlus();
     LoadCalibrationFactors();
+#ifdef HAS_OPENCV
+    m_visionController = std::make_unique<GdiVisionController>(&m_visionOverlay);
+#endif
+    m_beamController = std::make_unique<GdiBeamStreamController>(&m_beamStreamOverlay);
 }
 
 GdiCameraWindow::~GdiCameraWindow() {
-    StopBeamStreaming();
+    if (m_beamController) m_beamController->Shutdown();
 #ifdef HAS_OPENCV
-    StopVisionProcessing();
+    if (m_visionController) m_visionController->Shutdown();
 #endif
     Destroy();
 }
@@ -136,7 +140,6 @@ bool GdiCameraWindow::Create(const std::string& title, int x, int y, int width, 
 void GdiCameraWindow::CreateMenuBar() {
     m_menuBar = CreateMenu();
     m_showMenu = CreatePopupMenu();
-    m_visionMenu = CreatePopupMenu();
     m_toolsMenu = CreatePopupMenu();
     m_cameraMenu = CreatePopupMenu();
 
@@ -157,16 +160,10 @@ void GdiCameraWindow::CreateMenuBar() {
         AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_showMenu, L"Show");
 
 #ifdef HAS_OPENCV
-        // Vision menu
-        if (m_visionMenu) {
-            AppendMenuW(m_visionMenu, MF_STRING, IDM_VISION_ENABLE, L"Enable Continuous Vision");
-            AppendMenuW(m_visionMenu, MF_STRING, IDM_VISION_REFRESH, L"Refresh Profile List");
-            AppendMenuW(m_visionMenu, MF_SEPARATOR, 0, nullptr);
-            // Profiles will be populated dynamically
-            AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_visionMenu, L"Vision");
-
-            // Discover available profiles
-            DiscoverVisionProfiles();
+        // Vision menu — delegated to GdiVisionController.
+        if (m_visionController) {
+            m_visionController->SetWindowHandle(m_hwnd);
+            m_visionController->BuildMenu(m_menuBar);
         }
 #endif
 
@@ -184,13 +181,10 @@ void GdiCameraWindow::CreateMenuBar() {
             AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_toolsMenu, L"Tools");
         }
 
-        // Beam Stream menu
-        m_beamStreamMenu = CreatePopupMenu();
-        if (m_beamStreamMenu) {
-            AppendMenuA(m_beamStreamMenu, MF_STRING, IDM_BEAM_STREAM_ENABLE, "Enable Beam Stream");
-            AppendMenuA(m_beamStreamMenu, MF_SEPARATOR, 0, nullptr);
-            // Camera selection items populated dynamically in UpdateBeamStreamMenu()
-            AppendMenuW(m_menuBar, MF_POPUP, (UINT_PTR)m_beamStreamMenu, L"Beam Stream");
+        // Beam Stream menu — delegated to GdiBeamStreamController.
+        if (m_beamController) {
+            m_beamController->SetWindowHandle(m_hwnd);
+            m_beamController->BuildMenu(m_menuBar);
         }
 
         SetMenu(m_hwnd, m_menuBar);
@@ -340,216 +334,6 @@ void GdiCameraWindow::UpdateCameraMenu() {
     DrawMenuBar(m_hwnd);
 }
 
-void GdiCameraWindow::UpdateBeamStreamMenu() {
-    if (!m_beamStreamMenu) return;
-
-    // Remove old camera items (keep first 2: "Enable Beam Stream" and separator)
-    int count = GetMenuItemCount(m_beamStreamMenu);
-    while (count > 2) {
-        DeleteMenu(m_beamStreamMenu, count - 1, MF_BYPOSITION);
-        count--;
-    }
-
-    // Update enable checkbox
-    CheckMenuItem(m_beamStreamMenu, IDM_BEAM_STREAM_ENABLE,
-                  m_beamStreamEnabled ? MF_CHECKED : MF_UNCHECKED);
-
-    // Get available cameras
-    std::vector<std::string> cameras;
-    {
-        std::lock_guard<std::mutex> lock(m_cameraListMutex);
-        cameras = m_availableCameraIds;
-    }
-
-    // Get current beam stream camera
-    std::string streamCamera;
-    {
-        std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
-        streamCamera = m_beamStreamCameraId;
-    }
-
-    if (cameras.empty()) {
-        AppendMenuW(m_beamStreamMenu, MF_STRING | MF_GRAYED, 0, L"(No cameras available)");
-    } else {
-        for (size_t i = 0; i < cameras.size() && i < 50; ++i) {
-            std::wstring wCameraId(cameras[i].begin(), cameras[i].end());
-            UINT flags = MF_STRING;
-            if (cameras[i] == streamCamera) {
-                flags |= MF_CHECKED;
-            }
-            AppendMenuW(m_beamStreamMenu, flags,
-                        IDM_BEAM_STREAM_CAMERA_BASE + static_cast<UINT>(i),
-                        wCameraId.c_str());
-        }
-    }
-
-    DrawMenuBar(m_hwnd);
-}
-
-#ifdef HAS_OPENCV
-void GdiCameraWindow::UpdateVisionMenu() {
-    if (!m_visionMenu) return;
-
-    // Remove old profile items (keep first 3: "Enable Continuous Vision", "Refresh Profile List", and separator)
-    int count = GetMenuItemCount(m_visionMenu);
-    while (count > 3) {
-        DeleteMenu(m_visionMenu, count - 1, MF_BYPOSITION);
-        count--;
-    }
-
-    // Update enable checkbox
-    CheckMenuItem(m_visionMenu, IDM_VISION_ENABLE,
-                  m_visionEnabled ? MF_CHECKED : MF_UNCHECKED);
-
-    // Get current active profile
-    std::string activeProfile;
-    {
-        std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-        activeProfile = m_activeVisionProfile;
-    }
-
-    // Add profile items
-    if (m_availableProfiles.empty()) {
-        AppendMenuW(m_visionMenu, MF_STRING | MF_GRAYED, 0, L"(No profiles found)");
-    } else {
-        for (size_t i = 0; i < m_availableProfiles.size() && i < 100; ++i) {
-            std::wstring wName(m_availableProfiles[i].displayName.begin(),
-                               m_availableProfiles[i].displayName.end());
-            UINT flags = MF_STRING;
-            if (m_availableProfiles[i].fullPath == activeProfile) {
-                flags |= MF_CHECKED;
-            }
-            AppendMenuW(m_visionMenu, flags, IDM_VISION_PROFILE_BASE + static_cast<UINT>(i), wName.c_str());
-        }
-    }
-
-    DrawMenuBar(m_hwnd);
-}
-
-void GdiCameraWindow::DiscoverVisionProfiles() {
-    m_availableProfiles.clear();
-
-    // Look for vision profiles in config/vision directory
-    // Try multiple possible paths
-    std::vector<std::string> searchPaths = {
-        "config/vision",
-        "./config/vision",
-        "../config/vision"
-    };
-
-    // Also try machine-specific paths
-    WIN32_FIND_DATAW findData;
-    HANDLE hFind;
-
-    for (const auto& basePath : searchPaths) {
-        std::wstring searchPath(basePath.begin(), basePath.end());
-        searchPath += L"/*.json";
-
-        hFind = FindFirstFileW(searchPath.c_str(), &findData);
-        if (hFind != INVALID_HANDLE_VALUE) {
-            do {
-                std::wstring fileName = findData.cFileName;
-                // Skip recipe files
-                if (fileName.find(L".recipe.json") != std::wstring::npos) {
-                    continue;
-                }
-
-                // Convert to narrow string
-                std::string narrowFileName(fileName.begin(), fileName.end());
-
-                VisionProfileInfo info;
-                info.fullPath = basePath + "/" + narrowFileName;
-                // Display name is filename without .json extension
-                info.displayName = narrowFileName;
-                if (info.displayName.length() > 5 &&
-                    info.displayName.substr(info.displayName.length() - 5) == ".json") {
-                    info.displayName = info.displayName.substr(0, info.displayName.length() - 5);
-                }
-
-                m_availableProfiles.push_back(info);
-            } while (FindNextFileW(hFind, &findData));
-
-            FindClose(hFind);
-
-            // If we found profiles in this path, stop searching
-            if (!m_availableProfiles.empty()) {
-                std::cout << "[GdiCameraWindow] Found " << m_availableProfiles.size()
-                          << " vision profiles in " << basePath << std::endl;
-                break;
-            }
-        }
-    }
-
-    // Also scan machine-specific folders (config/MACHINE/vision)
-    for (const auto& basePath : {"config", "./config", "../config"}) {
-        std::wstring configPath(basePath, basePath + strlen(basePath));
-        configPath += L"/*";
-
-        WIN32_FIND_DATAW dirFindData;
-        hFind = FindFirstFileW(configPath.c_str(), &dirFindData);
-        if (hFind != INVALID_HANDLE_VALUE) {
-            do {
-                if (dirFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                    std::wstring dirName = dirFindData.cFileName;
-                    if (dirName != L"." && dirName != L"..") {
-                        // Check if this directory has a vision subfolder
-                        std::wstring visionPath = configPath.substr(0, configPath.length() - 1);
-                        visionPath += dirName + L"/vision/*.json";
-
-                        WIN32_FIND_DATAW fileFindData;
-                        HANDLE hFind2 = FindFirstFileW(visionPath.c_str(), &fileFindData);
-                        if (hFind2 != INVALID_HANDLE_VALUE) {
-                            do {
-                                std::wstring fileName = fileFindData.cFileName;
-                                if (fileName.find(L".recipe.json") != std::wstring::npos) {
-                                    continue;
-                                }
-
-                                std::string narrowFileName(fileName.begin(), fileName.end());
-                                std::string narrowDirName(dirName.begin(), dirName.end());
-
-                                VisionProfileInfo info;
-                                info.fullPath = std::string(basePath) + "/" + narrowDirName + "/vision/" + narrowFileName;
-                                info.displayName = narrowFileName;
-                                if (info.displayName.length() > 5 &&
-                                    info.displayName.substr(info.displayName.length() - 5) == ".json") {
-                                    info.displayName = info.displayName.substr(0, info.displayName.length() - 5);
-                                }
-
-                                // Avoid duplicates
-                                bool exists = false;
-                                for (const auto& existing : m_availableProfiles) {
-                                    if (existing.displayName == info.displayName) {
-                                        exists = true;
-                                        break;
-                                    }
-                                }
-                                if (!exists) {
-                                    m_availableProfiles.push_back(info);
-                                }
-                            } while (FindNextFileW(hFind2, &fileFindData));
-                            FindClose(hFind2);
-                        }
-                    }
-                }
-            } while (FindNextFileW(hFind, &dirFindData));
-            FindClose(hFind);
-        }
-    }
-
-    // Sort profiles alphabetically by display name
-    std::sort(m_availableProfiles.begin(), m_availableProfiles.end(),
-              [](const VisionProfileInfo& a, const VisionProfileInfo& b) {
-                  return a.displayName < b.displayName;
-              });
-
-    if (!m_availableProfiles.empty()) {
-        std::cout << "[GdiCameraWindow] Total vision profiles discovered: "
-                  << m_availableProfiles.size() << std::endl;
-    }
-}
-#endif
-
 void GdiCameraWindow::OnMenuCommand(WORD commandId) {
     if (commandId == IDM_SHOW_CHART_ENABLED) {
         m_chartOverlay.SetEnabled(!m_chartOverlay.IsEnabled());
@@ -573,52 +357,8 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         }
     }
 #ifdef HAS_OPENCV
-    else if (commandId == IDM_VISION_REFRESH) {
-        std::cout << "[GdiCameraWindow] Refreshing vision profile list..." << std::endl;
-        DiscoverVisionProfiles();
-        UpdateVisionMenu();
-        std::cout << "[GdiCameraWindow] Found " << m_availableProfiles.size() << " profiles after refresh" << std::endl;
-    }
-    else if (commandId == IDM_VISION_ENABLE) {
-        if (m_visionEnabled) {
-            // Disable vision processing
-            StopVisionProcessing();
-            m_visionEnabled = false;
-            m_visionOverlay.SetEnabled(false);
-            m_visionOverlay.Clear();
-        } else {
-            // Check if a profile is selected
-            std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-            if (!m_activeVisionProfile.empty()) {
-                m_visionEnabled = true;
-                m_visionOverlay.SetEnabled(true);
-                StartVisionProcessing();
-            } else {
-                // No profile selected - show message or auto-select first
-                if (!m_availableProfiles.empty()) {
-                    m_activeVisionProfile = m_availableProfiles[0].fullPath;
-                    m_visionEnabled = true;
-                    m_visionOverlay.SetEnabled(true);
-                    StartVisionProcessing();
-                }
-            }
-        }
-        UpdateVisionMenu();
-        InvalidateRect(m_hwnd, nullptr, FALSE);
-    }
-    else if (commandId >= IDM_VISION_PROFILE_BASE && commandId < IDM_VISION_PROFILE_BASE + 100) {
-        size_t index = commandId - IDM_VISION_PROFILE_BASE;
-        if (index < m_availableProfiles.size()) {
-            {
-                std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-                m_activeVisionProfile = m_availableProfiles[index].fullPath;
-            }
-            std::cout << "[GdiCameraWindow] Selected vision profile: "
-                      << m_availableProfiles[index].displayName << std::endl;
-
-            // If vision is enabled, the new profile will be used on next frame
-            UpdateVisionMenu();
-        }
+    else if (m_visionController && m_visionController->HandleMenuCommand(commandId)) {
+        // Handled by GdiVisionController.
     }
 #endif
     // Tools menu commands
@@ -789,48 +529,21 @@ void GdiCameraWindow::OnMenuCommand(WORD commandId) {
         UpdateCameraMenu();
         InvalidateRect(m_hwnd, nullptr, FALSE);
     }
-    // Beam Stream menu commands
-    else if (commandId == IDM_BEAM_STREAM_ENABLE) {
-        if (m_beamStreamEnabled) {
-            StopBeamStreaming();
-        } else {
-            // Auto-select first camera if none selected
-            {
-                std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
-                if (m_beamStreamCameraId.empty()) {
-                    std::lock_guard<std::mutex> camLock(m_cameraListMutex);
-                    if (!m_availableCameraIds.empty()) {
-                        m_beamStreamCameraId = m_availableCameraIds.front();
-                    }
-                }
-            }
-            StartBeamStreaming();
-        }
-        UpdateBeamStreamMenu();
-        InvalidateRect(m_hwnd, nullptr, FALSE);
-    }
-    else if (commandId >= IDM_BEAM_STREAM_CAMERA_BASE && commandId < IDM_BEAM_STREAM_CAMERA_BASE + 50) {
-        size_t index = commandId - IDM_BEAM_STREAM_CAMERA_BASE;
+    // Beam Stream menu commands — delegated to GdiBeamStreamController.
+    else if (m_beamController) {
         std::vector<std::string> cameras;
         {
             std::lock_guard<std::mutex> lock(m_cameraListMutex);
             cameras = m_availableCameraIds;
         }
-        if (index < cameras.size()) {
-            {
-                std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
-                m_beamStreamCameraId = cameras[index];
-            }
-            std::cout << "[GdiCameraWindow] Beam stream camera set to: " << cameras[index] << std::endl;
-            UpdateBeamStreamMenu();
-        }
+        m_beamController->HandleMenuCommand(commandId, cameras);
     }
 }
 
 void GdiCameraWindow::Destroy() {
-    StopBeamStreaming();
+    if (m_beamController) m_beamController->Shutdown();
 #ifdef HAS_OPENCV
-    StopVisionProcessing();
+    if (m_visionController) m_visionController->Shutdown();
 #endif
 
     if (m_memDC) {
@@ -970,9 +683,9 @@ void GdiCameraWindow::OnDataStoreValueChanged(const std::string& channelId, floa
 
 bool GdiCameraWindow::WantsFramesFromCamera(const std::string& cameraId) const {
     // Also accept frames from beam stream camera
-    if (m_beamStreamEnabled) {
-        std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
-        if (!m_beamStreamCameraId.empty() && m_beamStreamCameraId == cameraId) return true;
+    if (m_beamController && m_beamController->IsActive() &&
+        m_beamController->IsStreamCamera(cameraId)) {
+        return true;
     }
 
     std::lock_guard<std::mutex> lock(m_cameraMutex);
@@ -1139,69 +852,24 @@ void GdiCameraWindow::OnNewFrame(const CameraFrameData& frameData) {
     }
 
 #ifdef HAS_OPENCV
-    // Queue frame for vision processing if enabled (only for primary camera)
-    // Vision processes what you see: rotated image when rotation is on
-    if (isPrimaryCamera && m_visionEnabled && m_visionThreadRunning) {
-        std::lock_guard<std::mutex> lock(m_frameQueueMutex);
-        // Keep max 2 frames in queue to avoid lag
-        while (m_frameQueue.size() >= 2) {
-            m_frameQueue.pop();
-        }
-        if (m_displayRotation != 0) {
-            // Build rotated RGB from original frame data
-            uint32_t srcW = frameData.width;
-            uint32_t srcH = frameData.height;
-            uint32_t rotW = srcH;
-            uint32_t rotH = srcW;
-            std::vector<uint8_t> rotatedRgb(rotW * rotH * 3);
-            const uint8_t* src = frameData.imageData.data();
-            for (uint32_t dy = 0; dy < rotH; ++dy) {
-                for (uint32_t dx = 0; dx < rotW; ++dx) {
-                    uint32_t sx, sy;
-                    if (m_displayRotation == -90) {
-                        sx = srcW - 1 - dy;
-                        sy = dx;
-                    }
-                    else {
-                        sx = dy;
-                        sy = srcH - 1 - dx;
-                    }
-                    size_t srcIdx = (sy * srcW + sx) * 3;
-                    size_t dstIdx = (dy * rotW + dx) * 3;
-                    rotatedRgb[dstIdx + 0] = src[srcIdx + 0];
-                    rotatedRgb[dstIdx + 1] = src[srcIdx + 1];
-                    rotatedRgb[dstIdx + 2] = src[srcIdx + 2];
-                }
-            }
-            m_frameQueue.push(std::move(rotatedRgb));
-            m_queuedFrameWidth = rotW;
-            m_queuedFrameHeight = rotH;
-        } else {
-            m_frameQueue.push(frameData.imageData);
-            m_queuedFrameWidth = frameData.width;
-            m_queuedFrameHeight = frameData.height;
-        }
-        m_frameQueueCV.notify_one();
+    // Queue frame for vision processing if enabled (only for primary
+    // camera). Rotation is applied inside the controller so the vision
+    // thread sees what the user sees.
+    if (isPrimaryCamera && m_visionController) {
+        m_visionController->EnqueueFrame(frameData.imageData,
+                                         frameData.width, frameData.height,
+                                         m_displayRotation);
     }
 #endif
 
-    // Queue frame for beam streaming (check against beam stream camera ID)
-    if (m_beamStreamEnabled && m_beamStreamThreadRunning) {
-        std::string streamCamId;
-        {
-            std::lock_guard<std::mutex> lock(m_beamStreamCameraMutex);
-            streamCamId = m_beamStreamCameraId;
+    // Queue frame for beam streaming (controller filters by camera id).
+    if (m_beamController) {
+        if (isPrimaryCamera) {
+            m_beamController->SetCurrentPrimaryFrameSize(frameData.width, frameData.height);
         }
-        if (frameData.cameraId == streamCamId) {
-            std::lock_guard<std::mutex> lock(m_beamStreamQueueMutex);
-            while (m_beamStreamQueue.size() >= 2) {
-                m_beamStreamQueue.pop();
-            }
-            m_beamStreamQueue.push(frameData.imageData);
-            m_beamStreamQueuedWidth = frameData.width;
-            m_beamStreamQueuedHeight = frameData.height;
-            m_beamStreamQueueCV.notify_one();
-        }
+        m_beamController->EnqueueFrame(frameData.imageData,
+                                       frameData.width, frameData.height,
+                                       frameData.cameraId);
     }
 
     if (m_hwnd && IsWindowVisible(m_hwnd)) {
@@ -1305,10 +973,8 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             UpdateShowMenu();
         }
 #ifdef HAS_OPENCV
-        else if ((HMENU)wParam == m_visionMenu) {
-            // Refresh profile list on menu open (allows runtime updates)
-            DiscoverVisionProfiles();
-            UpdateVisionMenu();
+        else if (m_visionController && (HMENU)wParam == m_visionController->GetMenu()) {
+            m_visionController->OnMenuOpening();
         }
 #endif
         else if ((HMENU)wParam == m_toolsMenu) {
@@ -1318,9 +984,14 @@ LRESULT GdiCameraWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             RefreshCameraMenu();
             UpdateCameraMenu();
         }
-        else if ((HMENU)wParam == m_beamStreamMenu) {
+        else if (m_beamController && (HMENU)wParam == m_beamController->GetMenu()) {
             RefreshCameraMenu();
-            UpdateBeamStreamMenu();
+            std::vector<std::string> cameras;
+            {
+                std::lock_guard<std::mutex> lock(m_cameraListMutex);
+                cameras = m_availableCameraIds;
+            }
+            m_beamController->OnMenuOpening(cameras);
         }
         return 0;
 
@@ -1468,9 +1139,11 @@ void GdiCameraWindow::OnPaint() {
 #endif
 
         // Draw beam stream overlay (top-right)
+        const double umPerPxX = m_beamController ? m_beamController->GetUmPerPxX() : 0.25;
+        const double umPerPxY = m_beamController ? m_beamController->GetUmPerPxY() : 0.25;
         m_beamStreamOverlay.Draw(m_memDC, rect, m_frameWidth, m_frameHeight,
                                   m_lastDestX, m_lastDestY, m_lastDestWidth, m_lastDestHeight,
-                                  m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY,
+                                  umPerPxX, umPerPxY,
                                   m_displayRotation,
                                   static_cast<int>(m_originalFrameWidth),
                                   static_cast<int>(m_originalFrameHeight));
@@ -2130,438 +1803,53 @@ void GdiCameraWindow::HandleClickToMove(int mouseX, int mouseY) {
 }
 
 // ============================================================================
-// Vision Processing Thread
+// Vision Processing — public API forwarding to GdiVisionController.
 // ============================================================================
 
 #ifdef HAS_OPENCV
 
-void GdiCameraWindow::StartVisionProcessing() {
-    if (m_visionThreadRunning) return;
-
-    // Suppress verbose logging during continuous vision
-    VisionManager::instance().setVerboseLogging(false);
-
-    m_visionThreadRunning = true;
-    m_visionThread = std::thread(&GdiCameraWindow::VisionThreadLoop, this);
-    std::cout << "[GdiCameraWindow] Vision processing thread started" << std::endl;
+bool GdiCameraWindow::IsVisionProcessingActive() const {
+    return m_visionController && m_visionController->IsActive();
 }
 
-void GdiCameraWindow::StopVisionProcessing() {
-    if (!m_visionThreadRunning) return;
+VisionResult GdiCameraWindow::GetLatestVisionResult() const {
+    return m_visionController ? m_visionController->GetLatestResult() : VisionResult();
+}
 
-    m_visionThreadRunning = false;
-    m_frameQueueCV.notify_all();
-
-    if (m_visionThread.joinable()) {
-        m_visionThread.join();
-    }
-
-    // Clear the frame queue
-    {
-        std::lock_guard<std::mutex> lock(m_frameQueueMutex);
-        while (!m_frameQueue.empty()) {
-            m_frameQueue.pop();
-        }
-    }
-
-    // Restore verbose logging
-    VisionManager::instance().setVerboseLogging(true);
-
-    std::cout << "[GdiCameraWindow] Vision processing thread stopped" << std::endl;
+uint64_t GdiCameraWindow::GetVisionResultSequence() const {
+    return m_visionController ? m_visionController->GetResultSequence() : 0;
 }
 
 void GdiCameraWindow::SetVisionEnabled(bool enabled) {
-    if (enabled == m_visionEnabled.load()) return;
-
-    if (enabled) {
-        std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-        if (m_activeVisionProfile.empty()) {
-            // Auto-select first profile if none selected
-            if (!m_availableProfiles.empty()) {
-                m_activeVisionProfile = m_availableProfiles[0].fullPath;
-            } else {
-                std::cout << "[GdiCameraWindow] SetVisionEnabled: No profile available" << std::endl;
-                return;
-            }
-        }
-        m_visionEnabled = true;
-        m_visionOverlay.SetEnabled(true);
-        StartVisionProcessing();
-    } else {
-        StopVisionProcessing();
-        m_visionEnabled = false;
-        m_visionOverlay.SetEnabled(false);
-        m_visionOverlay.Clear();
-    }
-
-    UpdateVisionMenu();
-    InvalidateRect(m_hwnd, nullptr, FALSE);
-    std::cout << "[GdiCameraWindow] SetVisionEnabled(" << (enabled ? "true" : "false") << ")" << std::endl;
+    if (m_visionController) m_visionController->SetEnabled(enabled);
 }
 
 void GdiCameraWindow::SelectVisionProfile(const std::string& profilePath) {
-    std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-    m_activeVisionProfile = profilePath;
-    std::cout << "[GdiCameraWindow] SelectVisionProfile: " << profilePath << std::endl;
-}
-
-void GdiCameraWindow::VisionThreadLoop() {
-    std::cout << "[GdiCameraWindow] Vision background thread started (ID: "
-              << std::this_thread::get_id() << ")" << std::endl;
-
-    while (m_visionThreadRunning) {
-        std::vector<uint8_t> frameData;
-        uint32_t frameWidth = 0;
-        uint32_t frameHeight = 0;
-        std::string profilePath;
-
-        // Wait for a frame
-        {
-            std::unique_lock<std::mutex> lock(m_frameQueueMutex);
-            m_frameQueueCV.wait_for(lock, std::chrono::milliseconds(100), [this] {
-                return !m_frameQueue.empty() || !m_visionThreadRunning;
-            });
-
-            if (!m_visionThreadRunning) break;
-
-            if (m_frameQueue.empty()) continue;
-
-            frameData = std::move(m_frameQueue.front());
-            m_frameQueue.pop();
-            frameWidth = m_queuedFrameWidth;
-            frameHeight = m_queuedFrameHeight;
-        }
-
-        // Get active profile
-        {
-            std::lock_guard<std::mutex> lock(m_visionProfileMutex);
-            profilePath = m_activeVisionProfile;
-        }
-
-        if (profilePath.empty() || frameData.empty() || frameWidth == 0 || frameHeight == 0) {
-            continue;
-        }
-
-        try {
-            // Convert RGB frame to BGR cv::Mat for OpenCV
-            cv::Mat bgrImage(frameHeight, frameWidth, CV_8UC3);
-            const uint8_t* src = frameData.data();
-            uint8_t* dst = bgrImage.data;
-
-            for (uint32_t y = 0; y < frameHeight; ++y) {
-                for (uint32_t x = 0; x < frameWidth; ++x) {
-                    size_t srcIdx = (y * frameWidth + x) * 3;
-                    size_t dstIdx = (y * frameWidth + x) * 3;
-                    // RGB to BGR
-                    dst[dstIdx + 0] = src[srcIdx + 2];  // B
-                    dst[dstIdx + 1] = src[srcIdx + 1];  // G
-                    dst[dstIdx + 2] = src[srcIdx + 0];  // R
-                }
-            }
-
-            // Load vision profile JSON directly (not as a recipe)
-            std::ifstream profileFile(profilePath);
-            if (!profileFile.is_open()) {
-                std::cerr << "[GdiCameraWindow] Cannot open profile: " << profilePath << std::endl;
-                continue;
-            }
-
-            nlohmann::json profileJson;
-            profileFile >> profileJson;
-            profileFile.close();
-
-            // Extract plugin name and parameters from profile
-            std::string pluginName;
-            nlohmann::json pluginParams;
-
-            if (profileJson.contains("plugin") && profileJson["plugin"].is_object()) {
-                pluginName = profileJson["plugin"].value("name", "");
-                pluginParams = profileJson["plugin"].value("parameters", nlohmann::json::object());
-            }
-
-            if (pluginName.empty()) {
-                std::cerr << "[GdiCameraWindow] Profile missing plugin name: " << profilePath << std::endl;
-                continue;
-            }
-
-            // Set up ROI if specified in profile
-            if (profileJson.contains("roi") && profileJson["roi"].is_object()) {
-                const auto& roiJson = profileJson["roi"];
-                bool roiEnabled = roiJson.value("enabled", false);
-                if (roiEnabled) {
-                    int startX = roiJson.value("startX", 0);
-                    int startY = roiJson.value("startY", 0);
-                    int endX = roiJson.value("endX", 0);
-                    int endY = roiJson.value("endY", 0);
-                    VisionROI roi(startX, startY, endX, endY);
-                    roi.setEnabled(true);
-                    VisionManager::instance().setROI(roi);
-                } else {
-                    VisionManager::instance().setROIEnabled(false);
-                }
-            } else {
-                VisionManager::instance().setROIEnabled(false);
-            }
-
-            // Set input image
-            VisionManager::instance().setInputImage(bgrImage);
-
-            // Execute the plugin directly
-            QString qPluginName = QString::fromStdString(pluginName);
-            VisionResult result = VisionManager::instance().executePlugin(qPluginName, pluginParams);
-
-            // Extract display name from path
-            std::string displayName = profilePath;
-            size_t lastSlash = displayName.find_last_of("/\\");
-            if (lastSlash != std::string::npos) {
-                displayName = displayName.substr(lastSlash + 1);
-            }
-            if (displayName.length() > 5 &&
-                displayName.substr(displayName.length() - 5) == ".json") {
-                displayName = displayName.substr(0, displayName.length() - 5);
-            }
-
-            // Update overlay (thread-safe via mutex in SetResult)
-            m_visionOverlay.SetResult(result, displayName);
-
-            // Post message to UI thread for repaint (safer than direct InvalidateRect)
-            if (m_hwnd) {
-                PostMessage(m_hwnd, WM_VISION_RESULT_READY, 0, 0);
-            }
-        }
-        catch (const std::exception& e) {
-            std::cerr << "[GdiCameraWindow] Vision processing error: " << e.what() << std::endl;
-        }
-    }
-
-    std::cout << "[GdiCameraWindow] Vision thread loop exiting" << std::endl;
+    if (m_visionController) m_visionController->SelectProfile(profilePath);
 }
 
 #endif // HAS_OPENCV
 
 // ============================================================================
-// Beam Stream Implementation
+// Beam Stream — public API forwarding to GdiBeamStreamController.
 // ============================================================================
 
 void GdiCameraWindow::SetBeamServerClient(BeamServerClient* client) {
     m_beamServerClient = client;
 }
 
-void GdiCameraWindow::LoadBeamStreamConfig() {
-    // Primary: read from QSettings (Application Settings page)
-    QSettings settings("Fabrinet", "BobcatEngine");
-    if (settings.contains("BeamServer/Host")) {
-        m_beamStreamConfig.host = settings.value("BeamServer/Host", "127.0.0.1").toString().toStdString();
-        m_beamStreamConfig.port = settings.value("BeamServer/StreamPort", 5567).toInt();
-        m_beamStreamConfig.umPerPxX = settings.value("BeamServer/UmPerPxX", "0.25").toString().toDouble();
-        m_beamStreamConfig.umPerPxY = settings.value("BeamServer/UmPerPxY", "0.25").toString().toDouble();
-        m_beamStreamConfig.rotate180 = settings.value("BeamServer/Rotate180", "false").toString() == "true";
-        m_beamStreamConfig.intervalMs = settings.value("BeamServer/StreamIntervalMs", 100).toInt();
-        std::cout << "[GdiCameraWindow] Loaded beam config from Application Settings"
-                  << " (host=" << m_beamStreamConfig.host
-                  << " port=" << m_beamStreamConfig.port
-                  << " interval=" << m_beamStreamConfig.intervalMs << "ms)" << std::endl;
-        return;
-    }
-
-    // Fallback: read from beam_stream.json
-    std::vector<std::string> configPaths = {
-        "config/beam_stream.json",
-        "./config/beam_stream.json",
-        "../config/beam_stream.json"
-    };
-
-    for (const auto& path : configPaths) {
-        std::ifstream file(path);
-        if (file.is_open()) {
-            try {
-                nlohmann::json cfg;
-                file >> cfg;
-                m_beamStreamConfig.host = cfg.value("host", "127.0.0.1");
-                m_beamStreamConfig.port = cfg.value("port", 5567);
-                m_beamStreamConfig.umPerPxX = cfg.value("um_per_px_x", 0.25);
-                m_beamStreamConfig.umPerPxY = cfg.value("um_per_px_y", 0.25);
-                m_beamStreamConfig.rotate180 = cfg.value("rotate_180", false);
-                m_beamStreamConfig.intervalMs = cfg.value("interval_ms", 100);
-                std::cout << "[GdiCameraWindow] Loaded beam_stream.json from " << path
-                          << " (host=" << m_beamStreamConfig.host
-                          << " port=" << m_beamStreamConfig.port
-                          << " interval=" << m_beamStreamConfig.intervalMs << "ms)" << std::endl;
-                return;
-            } catch (const nlohmann::json::exception& e) {
-                std::cout << "[GdiCameraWindow] Error parsing beam_stream.json: " << e.what() << std::endl;
-            }
-        }
-    }
-    std::cout << "[GdiCameraWindow] beam_stream.json not found, using defaults" << std::endl;
+bool GdiCameraWindow::IsBeamStreamActive() const {
+    return m_beamController && m_beamController->IsActive();
 }
 
-void GdiCameraWindow::StartBeamStreaming() {
-    if (m_beamStreamThreadRunning) return;
-
-    // Join previous thread if it ended on its own (e.g. connection lost)
-    if (m_beamStreamThread.joinable()) {
-        m_beamStreamThread.join();
-    }
-
-    // Load config
-    LoadBeamStreamConfig();
-
-    // Create dedicated stream client (separate from command client on port 5555)
-    m_beamStreamClient = std::make_unique<BeamServerClient>();
-
-    std::cout << "[GdiCameraWindow] Connecting to stream server at "
-              << m_beamStreamConfig.host << ":" << m_beamStreamConfig.port << std::endl;
-    if (!m_beamStreamClient->Connect(m_beamStreamConfig.host, m_beamStreamConfig.port)) {
-        std::cout << "[GdiCameraWindow] Failed to connect to stream server: "
-                  << m_beamStreamClient->GetLastError() << std::endl;
-        m_beamStreamClient.reset();
-        return;
-    }
-
-    // Get frame dimensions from current frame
-    uint32_t width = 0;
-    uint32_t height = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        width = m_frameWidth;
-        height = m_frameHeight;
-    }
-
-    if (width == 0 || height == 0) {
-        std::cout << "[GdiCameraWindow] Cannot start beam streaming: no frame data yet" << std::endl;
-        m_beamStreamClient.reset();
-        return;
-    }
-
-    // Send STREAM_START
-    auto response = m_beamStreamClient->SendStreamStart(
-        static_cast<int>(width), static_cast<int>(height), "mono8",
-        m_beamStreamConfig.rotate180,
-        m_beamStreamConfig.umPerPxX, m_beamStreamConfig.umPerPxY,
-        m_beamStreamConfig.intervalMs);
-
-    if (response.empty() || response.contains("error")) {
-        std::string err = response.value("error", m_beamStreamClient->GetLastError());
-        std::cout << "[GdiCameraWindow] STREAM_START failed: " << err << std::endl;
-        m_beamStreamClient.reset();
-        return;
-    }
-
-    m_beamStreamThreadRunning = true;
-    m_beamStreamEnabled = true;
-    m_beamStreamOverlay.SetEnabled(true);
-
-    m_beamStreamThread = std::thread(&GdiCameraWindow::BeamStreamThreadLoop, this);
-    std::cout << "[GdiCameraWindow] Beam streaming started" << std::endl;
+nlohmann::json GdiCameraWindow::GetLatestBeamStreamResult() const {
+    return m_beamController ? m_beamController->GetLatestResult() : nlohmann::json();
 }
 
-void GdiCameraWindow::StopBeamStreaming() {
-    m_beamStreamThreadRunning = false;
-    m_beamStreamQueueCV.notify_all();
-
-    if (m_beamStreamThread.joinable()) {
-        m_beamStreamThread.join();
-    }
-
-    // Send STREAM_STOP and disconnect dedicated stream client
-    if (m_beamStreamClient && m_beamStreamClient->IsConnected()) {
-        auto response = m_beamStreamClient->SendStreamStop();
-        if (response.contains("total_frames")) {
-            std::cout << "[GdiCameraWindow] Stream stopped. Total frames: "
-                      << response["total_frames"] << " avg_process_ms: "
-                      << response.value("avg_process_ms", 0.0) << std::endl;
-        }
-    }
-    m_beamStreamClient.reset();
-
-    // Clear queue
-    {
-        std::lock_guard<std::mutex> lock(m_beamStreamQueueMutex);
-        while (!m_beamStreamQueue.empty()) {
-            m_beamStreamQueue.pop();
-        }
-    }
-
-    m_beamStreamEnabled = false;
-    m_beamStreamOverlay.SetEnabled(false);
-    m_beamStreamOverlay.Clear();
-
-    std::cout << "[GdiCameraWindow] Beam streaming stopped" << std::endl;
+uint64_t GdiCameraWindow::GetBeamStreamResultSequence() const {
+    return m_beamController ? m_beamController->GetResultSequence() : 0;
 }
 
-void GdiCameraWindow::BeamStreamThreadLoop() {
-    std::cout << "[GdiCameraWindow] Beam stream thread started (ID: "
-              << std::this_thread::get_id() << ")" << std::endl;
-
-    static constexpr int MAX_STREAM_ITERATIONS = 10000000;
-    uint32_t seqNum = 0;
-    auto lastFrameTime = std::chrono::steady_clock::now();
-    int frameCount = 0;
-
-    for (int i = 0; i < MAX_STREAM_ITERATIONS && m_beamStreamThreadRunning; ++i) {
-        std::vector<uint8_t> rgbData;
-        uint32_t frameWidth = 0;
-        uint32_t frameHeight = 0;
-
-        // Wait for a frame
-        {
-            std::unique_lock<std::mutex> lock(m_beamStreamQueueMutex);
-            m_beamStreamQueueCV.wait_for(lock,
-                std::chrono::milliseconds(m_beamStreamConfig.intervalMs),
-                [this] { return !m_beamStreamQueue.empty() || !m_beamStreamThreadRunning; });
-
-            if (!m_beamStreamThreadRunning) break;
-            if (m_beamStreamQueue.empty()) continue;
-
-            rgbData = std::move(m_beamStreamQueue.front());
-            m_beamStreamQueue.pop();
-            frameWidth = m_beamStreamQueuedWidth;
-            frameHeight = m_beamStreamQueuedHeight;
-        }
-
-        if (rgbData.empty() || frameWidth == 0 || frameHeight == 0) continue;
-
-        // Convert RGB to grayscale mono8
-        size_t pixelCount = static_cast<size_t>(frameWidth) * frameHeight;
-        std::vector<uint8_t> grayData(pixelCount);
-        const uint8_t* src = rgbData.data();
-        for (size_t j = 0; j < pixelCount; ++j) {
-            size_t idx = j * 3;
-            grayData[j] = static_cast<uint8_t>(
-                (static_cast<int>(src[idx]) + static_cast<int>(src[idx + 1]) + static_cast<int>(src[idx + 2])) / 3);
-        }
-
-        // Send frame
-        auto response = m_beamStreamClient->SendStreamFrame(grayData, seqNum++);
-
-        if (response.empty()) {
-            std::cout << "[GdiCameraWindow] Stream frame send failed: "
-                      << m_beamStreamClient->GetLastError() << std::endl;
-            // Connection lost - stop streaming
-            m_beamStreamThreadRunning = false;
-            break;
-        }
-
-        // Calculate FPS
-        frameCount++;
-        auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(now - lastFrameTime).count();
-        if (elapsed >= 1.0) {
-            double fps = frameCount / elapsed;
-            m_beamStreamOverlay.SetFps(fps);
-            frameCount = 0;
-            lastFrameTime = now;
-        }
-
-        // Update overlay with result
-        m_beamStreamOverlay.SetResult(response);
-
-        // Trigger repaint
-        if (m_hwnd) {
-            PostMessage(m_hwnd, WM_BEAM_STREAM_RESULT_READY, 0, 0);
-        }
-    }
-
-    std::cout << "[GdiCameraWindow] Beam stream thread loop exiting" << std::endl;
+double GdiCameraWindow::GetBeamStreamFps() const {
+    return m_beamController ? m_beamController->GetFps() : 0.0;
 }

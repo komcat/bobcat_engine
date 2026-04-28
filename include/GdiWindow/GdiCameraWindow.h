@@ -77,8 +77,10 @@ class BeamServerClient;
 #include "ChartOverlay.h"
 #ifdef HAS_OPENCV
 #include "VisionResultOverlay.h"
+#include "GdiVisionController.h"
 #endif
 #include "BeamStreamOverlay.h"
+#include "GdiBeamStreamController.h"
 
 /**
  * @brief Pure Win32 GDI window for camera live streaming with data chart overlay
@@ -173,10 +175,11 @@ public:
     float GetOverlayScale() const { return m_chartOverlay.GetScale(); }
 
 #ifdef HAS_OPENCV
-    // Continuous vision result access (for SequenceContext injection)
-    bool IsVisionProcessingActive() const { return m_visionEnabled.load() && m_visionThreadRunning.load(); }
-    VisionResult GetLatestVisionResult() const { return m_visionOverlay.GetResult(); }
-    uint64_t GetVisionResultSequence() const { return m_visionOverlay.GetResultSequence(); }
+    // Continuous vision result access (for SequenceContext injection).
+    // All forward to GdiVisionController.
+    bool IsVisionProcessingActive() const;
+    VisionResult GetLatestVisionResult() const;
+    uint64_t GetVisionResultSequence() const;
 
     // Programmatic continuous vision control (for recipe commands)
     void SetVisionEnabled(bool enabled);
@@ -187,10 +190,10 @@ public:
     void SetBeamServerClient(BeamServerClient* client);
 
     // Beam stream result access (for SequenceContext injection)
-    bool IsBeamStreamActive() const { return m_beamStreamEnabled.load() && m_beamStreamThreadRunning.load(); }
-    nlohmann::json GetLatestBeamStreamResult() const { return m_beamStreamOverlay.GetResult(); }
-    uint64_t GetBeamStreamResultSequence() const { return m_beamStreamOverlay.GetResultSequence(); }
-    double GetBeamStreamFps() const { return m_beamStreamOverlay.GetFps(); }
+    bool IsBeamStreamActive() const;
+    nlohmann::json GetLatestBeamStreamResult() const;
+    uint64_t GetBeamStreamResultSequence() const;
+    double GetBeamStreamFps() const;
 
     // Display rotation (0 = none, -90 = CCW, +90 = CW)
     void SetDisplayRotation(int degrees);
@@ -215,9 +218,6 @@ private:
     void UpdateShowMenu();
     void UpdateToolsMenu();
     void UpdateCameraMenu();
-#ifdef HAS_OPENCV
-    void UpdateVisionMenu();
-#endif
     void OnMenuCommand(WORD commandId);
 
     // Click-to-move
@@ -225,20 +225,6 @@ private:
     void LoadCalibrationFactors();
     void DrawCrosshairs(HDC hDC, const RECT& windowRect);
 
-    // Beam streaming
-    void UpdateBeamStreamMenu();
-    void LoadBeamStreamConfig();
-    void StartBeamStreaming();
-    void StopBeamStreaming();
-    void BeamStreamThreadLoop();
-
-    // Vision processing
-#ifdef HAS_OPENCV
-    void DiscoverVisionProfiles();
-    void StartVisionProcessing();
-    void StopVisionProcessing();
-    void VisionThreadLoop();
-#endif
 
     // Rendering
     void OnPaint();
@@ -266,9 +252,9 @@ private:
     HWND m_hwnd = nullptr;
     HMENU m_menuBar = nullptr;
     HMENU m_showMenu = nullptr;
-    HMENU m_visionMenu = nullptr;
     HMENU m_toolsMenu = nullptr;
     HMENU m_cameraMenu = nullptr;
+    // m_visionMenu HMENU is owned by m_visionController (HAS_OPENCV).
 
     // Frame data (thread-safe)
     mutable std::mutex m_frameMutex;
@@ -367,56 +353,15 @@ private:
     int m_lastSecondaryDestWidth = 0;
     int m_lastSecondaryDestHeight = 0;
 
-    // Beam streaming
-    BeamServerClient* m_beamServerClient = nullptr;           // Injected command client (port 5555)
-    std::unique_ptr<BeamServerClient> m_beamStreamClient;     // Owned stream client (port 5567)
+    // Beam streaming — extracted to GdiBeamStreamController.
+    BeamServerClient* m_beamServerClient = nullptr;  // Injected command client (port 5555); separate from streaming client owned by m_beamController.
     BeamStreamOverlay m_beamStreamOverlay;
-    HMENU m_beamStreamMenu = nullptr;
+    std::unique_ptr<GdiBeamStreamController> m_beamController;
 
-    std::atomic<bool> m_beamStreamEnabled{false};
-    std::atomic<bool> m_beamStreamThreadRunning{false};
-    std::thread m_beamStreamThread;
-
-    std::queue<std::vector<uint8_t>> m_beamStreamQueue;  // RGB frame data
-    uint32_t m_beamStreamQueuedWidth = 0;
-    uint32_t m_beamStreamQueuedHeight = 0;
-    std::mutex m_beamStreamQueueMutex;
-    std::condition_variable m_beamStreamQueueCV;
-
-    std::string m_beamStreamCameraId;
-    mutable std::mutex m_beamStreamCameraMutex;
-
-    struct BeamStreamConfig {
-        std::string host = "127.0.0.1";
-        int port = 5567;
-        double umPerPxX = 0.25;
-        double umPerPxY = 0.25;
-        bool rotate180 = false;
-        int intervalMs = 100;
-    };
-    BeamStreamConfig m_beamStreamConfig;
-
-    // Vision overlay and processing
+    // Vision overlay (owned by GdiVisionController under HAS_OPENCV;
+    // unused otherwise). The overlay must outlive the controller.
 #ifdef HAS_OPENCV
     VisionResultOverlay m_visionOverlay;
-    std::atomic<bool> m_visionEnabled{false};
-    std::string m_activeVisionProfile;
-    mutable std::mutex m_visionProfileMutex;
-
-    // Available vision profiles (path -> display name)
-    struct VisionProfileInfo {
-        std::string fullPath;
-        std::string displayName;
-    };
-    std::vector<VisionProfileInfo> m_availableProfiles;
-
-    // Vision processing thread
-    std::thread m_visionThread;
-    std::atomic<bool> m_visionThreadRunning{false};
-    std::queue<std::vector<uint8_t>> m_frameQueue;
-    uint32_t m_queuedFrameWidth = 0;
-    uint32_t m_queuedFrameHeight = 0;
-    std::mutex m_frameQueueMutex;
-    std::condition_variable m_frameQueueCV;
+    std::unique_ptr<GdiVisionController> m_visionController;
 #endif
 };
