@@ -190,6 +190,7 @@ void MainWindow::setupUI()
   connect(m_topBar, &TopBar::rtlmButtonClicked, this, &MainWindow::onToggleRtlmWindow);
   connect(m_topBar, &TopBar::rtlm2ButtonClicked, this, &MainWindow::onToggleRtlmWindow2);
   connect(m_topBar, &TopBar::swirWindowButtonClicked, this, &MainWindow::onToggleSwirWindow);
+  connect(m_topBar, &TopBar::gdiButtonClicked, this, &MainWindow::onToggleGdiWindow);
   // Wire the scan-busy badge to the tracker so recipe/tab scans light it up.
   m_topBar->connectScanActivityTracker(m_context->scanActivityTracker);
   mainLayout->addWidget(m_topBar, 0);
@@ -854,6 +855,24 @@ void MainWindow::onToggleSwirWindow()
     if (m_context->logManager) {
       m_context->logManager->Info("SWIR Beam window shown", "MainWindow");
     }
+  }
+}
+
+void MainWindow::onToggleGdiWindow()
+{
+  // Force-show the native GDI camera monitor (#1). Distinct from
+  // Rltm/Rltm2 which prefer the Qt camera window when present.
+  if (!m_context || !m_context->gdiCameraWindowManager) {
+    std::cerr << "[MainWindow] GDI camera window manager not initialized!" << std::endl;
+    return;
+  }
+
+  if (m_context->gdiCameraWindowManager->isVisible()) {
+    m_context->gdiCameraWindowManager->hide();
+    std::cout << "[MainWindow] GDI camera monitor hidden" << std::endl;
+  } else {
+    m_context->gdiCameraWindowManager->show();
+    std::cout << "[MainWindow] GDI camera monitor shown" << std::endl;
   }
 }
 

@@ -64,6 +64,7 @@ private slots:
   void onToggleRtlmWindow();  // Toggle realtime camera monitor (GDI)
   void onToggleRtlmWindow2(); // Toggle second realtime camera monitor (GDI)
   void onToggleSwirWindow();  // Toggle SWIR beam processing window
+  void onToggleGdiWindow();   // Force-toggle native GDI camera monitor (skips Qt fallback)
 
 private:
   void setupUI();

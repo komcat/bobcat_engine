@@ -314,6 +314,19 @@ void TopBar::setupUI()
   connect(m_rtlm2Button, &QPushButton::clicked, this, &TopBar::rtlm2ButtonClicked);
   layout->addWidget(m_rtlm2Button);
 
+  // GDI button — accent teal family (force-shows the native Win32+GDI
+  // camera monitor, distinct from the Qt-preferring Rltm/Rltm2 buttons).
+  m_gdiButton = new QPushButton("GDI", this);
+  m_gdiButton->setFixedSize(70, 35);
+  m_gdiButton->setStyleSheet(Theme::Buttons::bezel(
+    Theme::Palette::teal400,        // light
+    Theme::Color::accentSoft,       // dark
+    Theme::Palette::blue700         // pressed
+  ));
+  m_gdiButton->setToolTip("Toggle native GDI Camera Monitor");
+  connect(m_gdiButton, &QPushButton::clicked, this, &TopBar::gdiButtonClicked);
+  layout->addWidget(m_gdiButton);
+
   // TEC temperature indicator (next to JOG button)
   m_tecTemperatureLabel = new QLabel("TEC: --", this);
   m_tecTemperatureLabel->setStyleSheet(QString(
@@ -585,6 +598,15 @@ void TopBar::applyTheme()
       Theme::Color::successHover,
       Theme::Color::success,
       Theme::Palette::green700
+    ));
+  }
+
+  // GDI button — accent teal family.
+  if (m_gdiButton) {
+    m_gdiButton->setStyleSheet(Theme::Buttons::bezel(
+      Theme::Palette::teal400,
+      Theme::Color::accentSoft,
+      Theme::Palette::blue700
     ));
   }
 

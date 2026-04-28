@@ -114,6 +114,7 @@ signals:
   void rtlmButtonClicked();
   void rtlm2ButtonClicked();
   void swirWindowButtonClicked();
+  void gdiButtonClicked();
 
 public slots:
   /**
@@ -133,6 +134,7 @@ private:
   QPushButton* m_auxWindowButton;
   QPushButton* m_rtlmButton;
   QPushButton* m_rtlm2Button;
+  QPushButton* m_gdiButton;
   QPushButton* m_swirButton;
   SafetyIndicatorWidget* m_safetyIndicator;
   QLabel* m_scanBusyLabel;       // ⚡ SCANNING badge, hidden when idle
