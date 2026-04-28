@@ -1,6 +1,7 @@
 // SwirBeamWindow.cpp
 #include "SwirBeamWindow.h"
 #include "BeamOptimizer/BeamResultBroker.h"
+#include "SwirAutoSatController.h"
 #include "SwirBeamConfigStore.h"
 #include "SwirBeamFocusController.h"
 #include "SwirBeamOverlay.h"
@@ -99,6 +100,9 @@ SwirBeamWindow::SwirBeamWindow()
 
     // BF (beam focus) hill climb worker.
     m_beamFocus = std::make_unique<SwirBeamFocusController>();
+
+    // AUTO SAT one-shot algorithm worker.
+    m_autoSat = std::make_unique<SwirAutoSatController>();
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -193,7 +197,7 @@ void SwirBeamWindow::Destroy()
     if (m_tecPresetFuture.valid()) {
         m_tecPresetFuture.wait();
     }
-    StopAutoSatAlgorithm();
+    if (m_autoSat) m_autoSat->Stop();
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
@@ -829,95 +833,41 @@ void SwirBeamWindow::OnAutoExposureToggle()
 }
 
 // ============================================================================
-// AUTO SAT — one-shot auto-tune & focus algorithm
+// AUTO SAT — thin button wrappers; algorithm lives in SwirAutoSatController
 // ============================================================================
-//
-// Click "AUTO SAT" → runs on its own worker thread:
-//   Phase 1: tune exposure (20us steps) then PSU current (5mA, both PSUs)
-//            until max(B0_PK, B1_PK) is in [PK_TARGET_LOW, PK_TARGET_HIGH].
-//   Phase 2: sweep gantry-main Z by ±50 um in 10 um steps; best focus is
-//            the Z with maximum peak. If a peak saturates mid-sweep,
-//            jump back to Phase 1 to re-tune, then resume. Converges
-//            when best-Z is interior to the sweep (or after 3 iterations).
-// While running the button label shows "STOP"; clicking it again aborts.
-// Any manual exposure/current change calls StopAutoSatAlgorithm so the
-// user always wins.
-//
-// Default state: OFF.
 
-namespace {
-constexpr int    AS_PK_TARGET_LOW    = 180;   // tune until pk >= this
-constexpr int    AS_PK_TARGET_HIGH   = 250;   // and pk < this (header room before 255)
-constexpr int    AS_PK_SAT           = 254;   // any pixel >= this counts as saturated
-constexpr double AS_EXP_STEP_COARSE  = 20.0;
-constexpr double AS_EXP_STEP_FINE    = 10.0;  // used after the first oscillation
-constexpr int    AS_CUR_STEP_MA      = 5;
-constexpr double AS_EXP_MIN_US       = 30.0;
-constexpr double AS_EXP_MAX_US       = 1000.0;
-constexpr int    AS_CUR_MIN_MA       = 100;
-constexpr int    AS_CUR_MAX_MA       = 200;
-constexpr int    AS_BEAM_POLL_MS     = 250;   // settle after exp/cur change
-constexpr int    AS_TUNE_MAX_ITERS   = 80;
-constexpr double AS_Z_STEP_MM        = 0.010; // 10 um
-constexpr int    AS_Z_HALF_STEPS     = 5;     // ±50 um
-constexpr int    AS_FOCUS_MAX_ITERS  = 3;
-constexpr int    AS_MOTION_SETTLE_MS = 350;
-constexpr double AS_MOTION_VEL_MMS   = 5.0;   // gentle move for focus search
+void SwirBeamWindow::WireAutoSatDeps()
+{
+    if (!m_autoSat) return;
+    SwirAutoSatController::Deps d;
+    d.motion       = m_motionManager;
+    d.psu          = m_psuManager;
+    d.psuMutex     = &m_psuMutex;
+    d.psuDevices   = &m_psuDevices;
+    d.snapshotBeams      = [this]() { return GetBeamSnapshots(); };
+    d.getCurrentExposure = [this]() { return m_currentExposure; };
+    d.setExposure        = [this](double us) { OnSetExposure(us); };
+    d.ensureBeamDetect   = [this](bool on) { EnableBeamDetection(on); };
+    d.invalidatePanel    = [this]() {
+        InvalidatePanel();
+        if (m_hwnd) PostMessage(m_hwnd, WM_USER + 1, 0, 0);
+    };
+    m_autoSat->SetDeps(std::move(d));
 }
 
 void SwirBeamWindow::OnAutoSatToggle()
 {
-    if (m_autoSatRunning.load()) {
-        // Click while running → abort.
-        StopAutoSatAlgorithm();
-        return;
-    }
-    EnableAutoSatPrevention(true);
+    if (!m_autoSat) return;
+    WireAutoSatDeps();
+    m_autoSat->Toggle();
 }
 
 void SwirBeamWindow::EnableAutoSatPrevention(bool enable)
 {
-    if (!enable) {
-        StopAutoSatAlgorithm();
-        return;
-    }
-    if (m_autoSatRunning.load()) return;  // already running
-
-    m_autoSatAbort.store(false);
-    m_autoSatRunning.store(true);
-    InvalidatePanel();
-    std::cout << "[AutoSat] starting algorithm" << std::endl;
-
-    // std::async with std::launch::async returns a future that joins in its
-    // destructor — assigning to a member future cancels (= joins) any prior
-    // run, so a quick double-start is safe.
-    m_autoSatFuture = std::async(std::launch::async, [this]() {
-        try {
-            RunAutoSatAlgorithm();
-        } catch (const std::exception& e) {
-            std::cerr << "[AutoSat] exception: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "[AutoSat] unknown exception" << std::endl;
-        }
-        m_autoSatRunning.store(false);
-        m_autoSatAbort.store(false);
-        if (m_hwnd) {
-            // Refresh the button label back to "AUTO SAT".
-            InvalidatePanel();
-            PostMessage(m_hwnd, WM_USER + 1, 0, 0);
-        }
-        std::cout << "[AutoSat] done" << std::endl;
-    });
-}
-
-void SwirBeamWindow::StopAutoSatAlgorithm()
-{
-    if (!m_autoSatRunning.load()) return;
-    m_autoSatAbort.store(true);
-    std::cout << "[AutoSat] abort requested" << std::endl;
-    if (m_autoSatFuture.valid()) {
-        m_autoSatFuture.wait();
-    }
+    if (!m_autoSat) return;
+    WireAutoSatDeps();
+    if (enable) m_autoSat->Start();
+    else        m_autoSat->Stop();
 }
 
 void SwirBeamWindow::EnableBeamDetection(bool enable)
@@ -961,280 +911,12 @@ std::vector<SwirBeamSnapshot> SwirBeamWindow::GetBeamSnapshots() const
 
 void SwirBeamWindow::DisableAutoSat()
 {
-    StopAutoSatAlgorithm();
+    if (m_autoSat) m_autoSat->Stop();
 }
 
-// ----------------------------------------------------------------------------
-// Helpers used by the auto-sat algorithm
-// ----------------------------------------------------------------------------
+// Algorithm helpers (AutoSatIncreaseCurrent / DecreaseCurrent / TuneExposureCurrent /
+// FocusSearch / RunAutoSatAlgorithm) moved to SwirAutoSatController.
 
-bool SwirBeamWindow::AutoSatIncreaseCurrent(int stepMa)
-{
-    if (!m_psuManager) return false;
-    std::vector<std::string> names;
-    int curMa = 0;
-    int newMa = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_psuMutex);
-        if (m_psuDevices.empty()) return false;
-        curMa = static_cast<int>(std::round(m_psuDevices[0].setCurrent * 1000.0));
-        newMa = curMa + stepMa;
-        if (newMa > AS_CUR_MAX_MA) return false;
-        const double newAmps = newMa / 1000.0;
-        for (auto& d : m_psuDevices) {
-            names.push_back(d.name);
-            d.setCurrent = newAmps;
-        }
-    }
-    const double newAmps = newMa / 1000.0;
-    for (const auto& name : names) {
-        auto psu = m_psuManager->getPowerSupply(name);
-        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
-    }
-    std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA" << std::endl;
-    InvalidatePanel();
-    return true;
-}
-
-bool SwirBeamWindow::AutoSatDecreaseCurrent(int stepMa)
-{
-    if (!m_psuManager) return false;
-    std::vector<std::string> names;
-    int curMa = 0;
-    int newMa = 0;
-    {
-        std::lock_guard<std::mutex> lock(m_psuMutex);
-        if (m_psuDevices.empty()) return false;
-        curMa = static_cast<int>(std::round(m_psuDevices[0].setCurrent * 1000.0));
-        newMa = curMa - stepMa;
-        if (newMa < AS_CUR_MIN_MA) return false;
-        const double newAmps = newMa / 1000.0;
-        for (auto& d : m_psuDevices) {
-            names.push_back(d.name);
-            d.setCurrent = newAmps;
-        }
-    }
-    const double newAmps = newMa / 1000.0;
-    for (const auto& name : names) {
-        auto psu = m_psuManager->getPowerSupply(name);
-        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
-    }
-    std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA" << std::endl;
-    InvalidatePanel();
-    return true;
-}
-
-// ----------------------------------------------------------------------------
-// Algorithm
-// ----------------------------------------------------------------------------
-
-void SwirBeamWindow::RunAutoSatAlgorithm()
-{
-    // Make sure detection is running — algorithm is no-op without it.
-    if (!m_beamDetectionEnabled) {
-        EnableBeamDetection(true);
-        std::this_thread::sleep_for(std::chrono::milliseconds(800));
-    }
-
-    // Phase 1: tune brightness.
-    if (!AutoSatTuneExposureCurrent()) {
-        std::cout << "[AutoSat] phase 1 (tune) failed/aborted — stopping" << std::endl;
-        return;
-    }
-    if (m_autoSatAbort.load()) return;
-
-    // Phase 2: focus search.
-    AutoSatFocusSearch();
-}
-
-bool SwirBeamWindow::AutoSatTuneExposureCurrent()
-{
-    // Oscillation handling: when a single 20us step takes us past the band
-    // (e.g. 30us PK=150 → 50us PK=255 → 30us → 50us …), we (a) shrink the
-    // step to 10us; if the camera still can't land us in band, (b) nudge
-    // the PSU current and reset the step back to 20us. Without this the
-    // tuner can loop forever between two exposures that straddle the band.
-    int prevDir = 0;       // -1 = darken, +1 = brighten, 0 = none yet
-    int flipCount = 0;
-    double expStep = AS_EXP_STEP_COARSE;
-
-    for (int iter = 0; iter < AS_TUNE_MAX_ITERS; ++iter) {
-        if (m_autoSatAbort.load()) return false;
-
-        auto snaps = GetBeamSnapshots();
-        if (snaps.empty()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(AS_BEAM_POLL_MS));
-            continue;
-        }
-        int pkMax = 0;
-        for (const auto& s : snaps) {
-            if (s.peakIntensity > pkMax) pkMax = s.peakIntensity;
-        }
-
-        // Decide which direction we want to push.
-        int wantedDir;
-        if (pkMax >= AS_PK_SAT)             wantedDir = -1;    // dim
-        else if (pkMax < AS_PK_TARGET_LOW)  wantedDir = +1;    // brighten
-        else {                                                 // in band
-            std::cout << "[AutoSat] tune: PK=" << pkMax
-                      << " in band, done" << std::endl;
-            return true;
-        }
-
-        // If we just flipped direction we're bracketing across the band.
-        // Refine the step; if already fine, shift the current rail instead.
-        const bool flipped = (prevDir != 0 && wantedDir != prevDir);
-        if (flipped) {
-            ++flipCount;
-            if (expStep > AS_EXP_STEP_FINE + 0.5) {
-                expStep = AS_EXP_STEP_FINE;
-                std::cout << "[AutoSat] tune: oscillation, narrowing step to "
-                          << expStep << " us" << std::endl;
-            } else {
-                // Even 10us straddles the band → bias the current and reset.
-                bool ok = (wantedDir == -1)
-                            ? AutoSatDecreaseCurrent(AS_CUR_STEP_MA)
-                            : AutoSatIncreaseCurrent(AS_CUR_STEP_MA);
-                if (!ok) {
-                    std::cout << "[AutoSat] tune: oscillation at fine step "
-                              << "and current rail — giving up" << std::endl;
-                    return false;
-                }
-                std::cout << "[AutoSat] tune: oscillation at fine step, "
-                          << "current "
-                          << (wantedDir == -1 ? "-" : "+") << AS_CUR_STEP_MA
-                          << " mA, resetting step" << std::endl;
-                expStep = AS_EXP_STEP_COARSE;
-                prevDir = 0;
-                flipCount = 0;
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(AS_BEAM_POLL_MS));
-                continue;
-            }
-        }
-
-        // Apply an exposure step in the wanted direction; if the rail is
-        // already hit, fall back to current adjustment.
-        const double signedStep = wantedDir * expStep;
-        const double targetExp = m_currentExposure + signedStep;
-        const bool railLow  = (wantedDir == -1) && (targetExp < AS_EXP_MIN_US);
-        const bool railHigh = (wantedDir == +1) && (targetExp > AS_EXP_MAX_US);
-
-        if (railLow) {
-            if (!AutoSatDecreaseCurrent(AS_CUR_STEP_MA)) {
-                std::cout << "[AutoSat] tune: cannot dim further (rails)"
-                          << std::endl;
-                return false;
-            }
-            std::cout << "[AutoSat] tune: PK=" << pkMax
-                      << " exposure floored, current -" << AS_CUR_STEP_MA
-                      << " mA" << std::endl;
-        } else if (railHigh) {
-            if (!AutoSatIncreaseCurrent(AS_CUR_STEP_MA)) {
-                std::cout << "[AutoSat] tune: cannot brighten further (rails)"
-                          << std::endl;
-                return false;
-            }
-            std::cout << "[AutoSat] tune: PK=" << pkMax
-                      << " exposure capped, current +" << AS_CUR_STEP_MA
-                      << " mA" << std::endl;
-        } else {
-            std::cout << "[AutoSat] tune: PK=" << pkMax
-                      << (wantedDir < 0 ? " (sat)" : "")
-                      << " -> exposure " << (wantedDir < 0 ? "-" : "+")
-                      << expStep << " us" << std::endl;
-            OnSetExposure(targetExp);
-        }
-
-        prevDir = wantedDir;
-        std::this_thread::sleep_for(std::chrono::milliseconds(AS_BEAM_POLL_MS));
-    }
-    std::cout << "[AutoSat] tune: max iters reached without converging"
-              << std::endl;
-    return false;
-}
-
-void SwirBeamWindow::AutoSatFocusSearch()
-{
-    if (!m_motionManager) {
-        std::cout << "[AutoSat] focus: no motion manager — skipping focus search"
-                  << std::endl;
-        return;
-    }
-
-    PositionStruct startPos = m_motionManager->GetCurrentPosition("gantry-main");
-    double centerZ = startPos.z;
-    std::cout << "[AutoSat] focus: starting at Z=" << centerZ << " mm" << std::endl;
-
-    double bestZ = centerZ;
-    int bestPk = -1;
-
-    for (int iter = 0; iter < AS_FOCUS_MAX_ITERS; ++iter) {
-        if (m_autoSatAbort.load()) return;
-
-        std::vector<std::pair<double, int>> trace;  // (z, pk)
-        for (int k = -AS_Z_HALF_STEPS; k <= AS_Z_HALF_STEPS; ++k) {
-            if (m_autoSatAbort.load()) return;
-            const double z = centerZ + k * AS_Z_STEP_MM;
-            m_motionManager->MoveToAbs("gantry-main",
-                                       startPos.x, startPos.y, z,
-                                       AS_MOTION_VEL_MMS, true);
-            std::this_thread::sleep_for(std::chrono::milliseconds(AS_MOTION_SETTLE_MS));
-
-            auto snaps = GetBeamSnapshots();
-            if (snaps.empty()) continue;
-            int pk = 0;
-            for (const auto& s : snaps) {
-                if (s.peakIntensity > pk) pk = s.peakIntensity;
-            }
-
-            // Saturated mid-sweep → re-tune, then re-read at this z.
-            if (pk >= AS_PK_SAT) {
-                std::cout << "[AutoSat] focus: PK=" << pk
-                          << " saturated at Z=" << z << " — re-tuning" << std::endl;
-                if (!AutoSatTuneExposureCurrent()) return;
-                if (m_autoSatAbort.load()) return;
-                snaps = GetBeamSnapshots();
-                if (snaps.empty()) continue;
-                pk = 0;
-                for (const auto& s : snaps) {
-                    if (s.peakIntensity > pk) pk = s.peakIntensity;
-                }
-            }
-            std::cout << "[AutoSat] focus iter " << iter
-                      << "  Z=" << z << " mm  PK=" << pk << std::endl;
-            trace.emplace_back(z, pk);
-        }
-        if (trace.empty()) {
-            std::cout << "[AutoSat] focus: no readings — stopping" << std::endl;
-            return;
-        }
-
-        auto best = std::max_element(trace.begin(), trace.end(),
-            [](const auto& a, const auto& b) { return a.second < b.second; });
-        bestZ = best->first;
-        bestPk = best->second;
-
-        const bool atEdge = (best == trace.begin() || best == trace.end() - 1);
-        if (!atEdge) {
-            std::cout << "[AutoSat] focus converged at Z=" << bestZ
-                      << " mm (PK=" << bestPk << ")" << std::endl;
-            break;
-        }
-        std::cout << "[AutoSat] focus iter " << iter
-                  << ": best Z is at sweep edge (Z=" << bestZ
-                  << "), shifting and resweeping" << std::endl;
-        centerZ = bestZ;
-    }
-
-    // Move to the best Z.
-    if (m_autoSatAbort.load()) return;
-    m_motionManager->MoveToAbs("gantry-main",
-                               startPos.x, startPos.y, bestZ,
-                               AS_MOTION_VEL_MMS, true);
-    std::cout << "[AutoSat] moved to best focus Z=" << bestZ
-              << " mm (PK=" << bestPk << ")" << std::endl;
-}
 
 void SwirBeamWindow::OnSetExposure(double microseconds)
 {
@@ -1632,10 +1314,11 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     {
         SwirButton autoSatBtn;
         autoSatBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
-        autoSatBtn.label = m_autoSatRunning.load() ? L"STOP" : L"AUTO SAT";
+        const bool asRunning = m_autoSat && m_autoSat->IsRunning();
+        autoSatBtn.label = asRunning ? L"STOP" : L"AUTO SAT";
         autoSatBtn.tag = TAG_AUTO_SAT;
         autoSatBtn.isToggle = true;
-        autoSatBtn.toggled = m_autoSatRunning.load();
+        autoSatBtn.toggled = asRunning;
         autoSatBtn.onClick = [this]() { OnAutoSatToggle(); };
         m_buttons.push_back(autoSatBtn);
     }
@@ -1967,7 +1650,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
         if (btn.tag == TAG_AUTO_EXP) btn.toggled = m_autoExposure;
         if (btn.tag == TAG_CLICK_TO_MOVE) btn.toggled = m_clickToMoveEnabled;
         if (btn.tag == TAG_AUTO_SAT) {
-            btn.toggled = m_autoSatRunning.load();
+            btn.toggled = m_autoSat && m_autoSat->IsRunning();
             btn.label = btn.toggled ? L"STOP" : L"AUTO SAT";
         }
         if (btn.tag == TAG_SWIR_HEAD) {

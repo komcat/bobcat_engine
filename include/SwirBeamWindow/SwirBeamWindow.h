@@ -183,15 +183,11 @@ private:
     // SWIR Head pneumatic
     void OnSwirHeadToggle();
 
-    // Auto-tune & focus algorithm (one-shot routine).
-    void OnAutoSatToggle();              // click starts; click again aborts
-    void DisableAutoSat();                // signal abort + join (manual override)
-    void RunAutoSatAlgorithm();           // worker thread entry
-    bool AutoSatTuneExposureCurrent();    // phase 1
-    void AutoSatFocusSearch();            // phase 2
-    void StopAutoSatAlgorithm();          // signal abort, wait for thread
-    bool AutoSatIncreaseCurrent(int stepMa);
-    bool AutoSatDecreaseCurrent(int stepMa);
+    // Auto-tune & focus algorithm: button click handler + manual-override
+    // helper. The actual algorithm lives in SwirAutoSatController.
+    void OnAutoSatToggle();
+    void DisableAutoSat();   // called by manual exposure/current changes
+    void WireAutoSatDeps();  // populate controller deps from current state
 
     // Save current frame to disk (button handlers — private; UI-only)
     void OnSaveImage();
@@ -445,15 +441,12 @@ private:
     // text stays static instead of flickering.
     std::vector<BeamDetectionResult> m_beamDisplayResults;
 
-    // Auto-tune & focus algorithm state. The button kicks off a worker
-    // thread that (1) tunes exposure/current to keep peak in
-    // [PK_TARGET_LOW, PK_TARGET_HIGH], then (2) sweeps gantry-main Z to
-    // find best focus (max peak), then exits. Default OFF; button label
-    // flips to "STOP" while running. Any manual exposure/current change
-    // calls StopAutoSatAlgorithm so the user always wins.
-    std::atomic<bool> m_autoSatRunning{false};
-    std::atomic<bool> m_autoSatAbort{false};
-    std::future<void> m_autoSatFuture;
+    // Auto-tune & focus algorithm. Worker thread + state live in
+    // SwirAutoSatController (forward-declared via unique_ptr to keep
+    // its header out of this one). Default OFF; clicking flips to
+    // "STOP". Any manual exposure/current change calls DisableAutoSat
+    // → controller.Stop() so the user always wins.
+    std::unique_ptr<class SwirAutoSatController> m_autoSat;
 
     // (legacy SAT_* constants removed; AUTO SAT now uses local constants
     //  in SwirBeamWindow.cpp's anonymous namespace.)
