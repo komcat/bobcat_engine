@@ -773,6 +773,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/ScanController.cpp
     include/AppUI/RunProgramPage/ProgramEditPanel.cpp
     include/AppUI/RunProgramPage/SlotManagerWidget.cpp
+    include/AppUI/RunProgramPage/RunPageLeftPanel.cpp
     include/AppUI/RunProgramPage/UserInteractionOverlay.cpp
     include/AppUI/RunProgramPage/ExecutionController.cpp
     include/AppUI/RunProgramPage/UserPromptWidget.cpp
@@ -1063,6 +1064,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/ScanController.h
     include/AppUI/RunProgramPage/ProgramEditPanel.h
     include/AppUI/RunProgramPage/SlotManagerWidget.h
+    include/AppUI/RunProgramPage/RunPageLeftPanel.h
     include/AppUI/RunProgramPage/UserInteractionOverlay.h
     include/AppUI/RunProgramPage/ExecutionController.h
     include/AppUI/RunProgramPage/UserPromptWidget.h

@@ -143,7 +143,6 @@ private slots:
 
 private:
   void setupUI();
-  void createLeftPanel(QVBoxLayout* leftLayout);
   void createRightPanel();
 
   void showEditWidget();
@@ -169,31 +168,14 @@ private:
   // Page subscribes to its forwarded signals for UI updates.
   class ExecutionController* m_executionController = nullptr;
 
-  // Left panel widgets
-  QWidget* m_leftPanel;
-  QTabWidget* m_tabWidget;  // ✅ ADDED: Tab widget for File/Execute tabs
-  QLabel* m_currentProductLabel;  // Product display
-  QLabel* m_chainIndicator;       // Chain execution indicator (orange dot)
-  QLabel* m_loopIndicator;        // Loop execution indicator (teal dot)
-  QPushButton* m_newButton;
-  QPushButton* m_loadButton;
-  QPushButton* m_saveButton;
-  QPushButton* m_saveAsButton;
-  QPushButton* m_editButton;
-  QListWidget* m_recentProgramsList;  // Recent programs list in File tab
-  QPushButton* m_executeButton;
+  // Left panel — owns its own widgets (back button, product banner,
+  // 3-tab pane with file actions / execute button + recipe list /
+  // option checkboxes). The page accesses the inner widgets via
+  // typed getters when it needs to wire signals or read state.
+  class RunPageLeftPanel* m_leftPanel = nullptr;
+
+  // Right-side execution-view widgets.
   QProgressBar* m_progressBar;
-  QLabel* m_programNameLabel;
-  QLabel* m_programPathLabel;  // ✅ ADDED: Display program file path
-  QListWidget* m_recipeListWidget;
-  QPushButton* m_backButton;
-  QCheckBox* m_autoRunNextCheckBox;
-  QCheckBox* m_useDependenciesCheckBox;  // ✅ NEW: Enable dependency-based execution
-  QCheckBox* m_chainExecutionCheckBox;   // ✅ NEW: Auto-trigger dependent recipes after completion
-  QCheckBox* m_loopEnabledCheckBox;      // ✅ NEW: Enable infinite loop execution
-  QCheckBox* m_ignoreDependenciesCheckBox; // ✅ NEW: Ignore dependencies, force sequential
-  QPushButton* m_configureLoopButton;    // ✅ NEW: Open loop configuration dialog
-  QLabel* m_loopStatusLabel;             // ✅ NEW: Shows loop status (e.g., "3 recipes in loop")
 
   // Right panel
   QStackedWidget* m_rightStack;

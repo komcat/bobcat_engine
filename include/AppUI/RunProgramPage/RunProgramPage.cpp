@@ -5,6 +5,7 @@
 #include "SequenceContextViewer.h"
 #include "ProgramEditPanel.h"
 #include "SlotManagerWidget.h"
+#include "RunPageLeftPanel.h"
 #include "ApplicationContext.h"
 #include "settings/ApplicationSettings.h"
 #include "ProgramManager.h"
@@ -264,7 +265,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   // Update product display
   if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
-    m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
+    m_leftPanel->productLabel()->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
   }
 
   // ✅ Auto-load last program from settings
@@ -329,17 +330,35 @@ void RunProgramPage::setupUI()
   mainLayout->setContentsMargins(0, 0, 0, 0);
   mainLayout->setSpacing(0);
 
-  // Left panel (20%) - Execution controls
-  m_leftPanel = new QWidget();
-  m_leftPanel->setMinimumWidth(500);
-  m_leftPanel->setMaximumWidth(700);
-  QVBoxLayout* leftLayout = new QVBoxLayout(m_leftPanel);
-  createLeftPanel(leftLayout);
+  // Left panel (the back button, product banner, and File/Execute/Option
+  // tabs all live inside RunPageLeftPanel; the page wires its widgets'
+  // signals below).
+  RunPageLeftPanel::Deps leftDeps;
+  leftDeps.manager      = m_programManager;
+  leftDeps.dialogParent = this;
+  m_leftPanel = new RunPageLeftPanel(std::move(leftDeps));
+  m_runSlotWidget = m_leftPanel->slotWidget();
+
+  // Wire the inner widgets to page slots.
+  connect(m_leftPanel->backButton(),    &QPushButton::clicked, this, &RunProgramPage::backToMainMenu);
+  connect(m_leftPanel->newButton(),     &QPushButton::clicked, this, &RunProgramPage::onNewProgram);
+  connect(m_leftPanel->loadButton(),    &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
+  connect(m_leftPanel->saveButton(),    &QPushButton::clicked, this, &RunProgramPage::onSaveProgram);
+  connect(m_leftPanel->saveAsButton(),  &QPushButton::clicked, this, &RunProgramPage::onSaveAsProgram);
+  connect(m_leftPanel->editButton(),    &QPushButton::clicked, this, &RunProgramPage::onEditProgram);
+  connect(m_leftPanel->executeButton(), &QPushButton::clicked, this, &RunProgramPage::onExecuteProgram);
+  connect(m_leftPanel->configureLoopButton(), &QPushButton::clicked,
+          this, &RunProgramPage::onConfigureLoop);
+  connect(m_leftPanel->recentProgramsList(), &QListWidget::itemDoubleClicked,
+          this, &RunProgramPage::onRecentProgramClicked);
+  connect(m_leftPanel->recipeList(), &QListWidget::customContextMenuRequested,
+          this, &RunProgramPage::onRecipeListContextMenu);
+  connect(m_runSlotWidget, &SlotManagerWidget::activeSlotChanged,
+          this, &RunProgramPage::onSlotChangedFromRun);
 
   // Center panel - Execution view (scanning is now a tab inside)
   createRightPanel();
 
-  // Add to main layout with stretch factors (25/75 split - no right panel)
   mainLayout->addWidget(m_leftPanel, 1);     // Left: 25%
   mainLayout->addWidget(m_rightStack, 3);    // Center: 75%
 
@@ -347,711 +366,6 @@ void RunProgramPage::setupUI()
   showEditWidget();
 }
 
-void RunProgramPage::createLeftPanel(QVBoxLayout* leftLayout)
-{
-  leftLayout->setSpacing(10);
-  leftLayout->setContentsMargins(10, 10, 10, 10);
-
-  // === BACK BUTTON (at the very top) ===
-  m_backButton = new QPushButton("← Back to Main Menu");
-  m_backButton->setMinimumHeight(35);
-  m_backButton->setStyleSheet(Theme::Buttons::bezelPrimary());
-  leftLayout->addWidget(m_backButton);
-
-  // === Product Display with Chain Indicator ===
-  QWidget* productRow = new QWidget();
-  QHBoxLayout* productRowLayout = new QHBoxLayout(productRow);
-  productRowLayout->setContentsMargins(0, 0, 0, 0);
-  productRowLayout->setSpacing(8);
-
-  m_currentProductLabel = new QLabel("Product: None");
-  m_currentProductLabel->setStyleSheet(
-    "QLabel {"
-    "  color: #cccccc;"
-    "  font-weight: bold;"
-    "  padding: 5px;"
-    "}"
-  );
-  m_currentProductLabel->setWordWrap(true);
-  productRowLayout->addWidget(m_currentProductLabel);
-
-  // Chain execution indicator (orange circle when enabled)
-  m_chainIndicator = new QLabel();
-  m_chainIndicator->setFixedSize(16, 16);
-  m_chainIndicator->setToolTip("Chain execution enabled");
-  m_chainIndicator->setVisible(false);  // Hidden by default
-  m_chainIndicator->setStyleSheet(
-    "QLabel {"
-    "  background-color: #e69500;"
-    "  border-radius: 8px;"
-    "  border: 2px solid #ffaa00;"
-    "}"
-  );
-  productRowLayout->addWidget(m_chainIndicator);
-
-  // Loop execution indicator (teal circle when enabled)
-  m_loopIndicator = new QLabel();
-  m_loopIndicator->setFixedSize(16, 16);
-  m_loopIndicator->setToolTip("Loop execution enabled");
-  m_loopIndicator->setVisible(false);  // Hidden by default
-  m_loopIndicator->setStyleSheet(
-    "QLabel {"
-    "  background-color: #4ec9b0;"
-    "  border-radius: 8px;"
-    "  border: 2px solid #5fd9c0;"
-    "}"
-  );
-  productRowLayout->addWidget(m_loopIndicator);
-  productRowLayout->addStretch();
-
-  leftLayout->addWidget(productRow);
-
-  // === TAB WIDGET ===
-  m_tabWidget = new QTabWidget();
-  m_tabWidget->setStyleSheet(
-    "QTabWidget::pane { "
-    "  border: 1px solid #3f3f46; "
-    "  background-color: #1e1e1e; "
-    "} "
-    "QTabBar::tab { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  padding: 8px 16px; "
-    "  margin-right: 2px; "
-    "  border-top-left-radius: 3px; "
-    "  border-top-right-radius: 3px; "
-    "} "
-    "QTabBar::tab:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "  font-weight: bold; "
-    "} "
-    "QTabBar::tab:hover:!selected { "
-    "  background-color: #4a4a4a; "
-    "}"
-  );
-
-  // === FILE TAB ===
-  QWidget* fileTab = new QWidget();
-  QVBoxLayout* fileTabLayout = new QVBoxLayout(fileTab);
-  fileTabLayout->setContentsMargins(5, 10, 5, 5);
-  fileTabLayout->setSpacing(10);
-
-  QGroupBox* fileGroup = new QGroupBox("Program File");
-  fileGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* fileLayout = new QVBoxLayout(fileGroup);
-
-  m_programNameLabel = new QLabel("No program loaded");
-  m_programNameLabel->setWordWrap(true);
-  m_programNameLabel->setStyleSheet("font-weight: bold; color: #2196F3;");
-  fileLayout->addWidget(m_programNameLabel);
-
-  // ✅ ADD: Program file path label
-  m_programPathLabel = new QLabel("");
-  m_programPathLabel->setWordWrap(true);
-  m_programPathLabel->setStyleSheet("font-size: 9px; color: #888888; font-style: italic;");
-  m_programPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);  // Allow text selection
-  fileLayout->addWidget(m_programPathLabel);
-
-  QVBoxLayout* fileButtonLayout = new QVBoxLayout();
-  fileButtonLayout->setSpacing(5);
-  m_newButton = new QPushButton("New");
-  m_newButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 12px; "
-    "}"
-  );
-  m_loadButton = new QPushButton("Load");
-  m_loadButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 12px; "
-    "}"
-  );
-  m_saveButton = new QPushButton("Save");
-  m_saveButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 12px; "
-    "}"
-  );
-  m_saveAsButton = new QPushButton("Save As");
-  m_saveAsButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 12px; "
-    "}"
-  );
-  m_editButton = new QPushButton("Edit");
-  m_editButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5a5a5a, stop:1 #3c3c3c); "
-    "  color: #d4d4d4; "
-    "  padding: 5px 10px; "
-    "  font-weight: bold; "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.4); "
-    "  border-bottom: 2px solid rgba(0, 0, 0, 0.4); "
-    "  border-right: 2px solid rgba(0, 0, 0, 0.4); "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6a6a6a, stop:1 #4a4a4a); "
-    "  border-top: 2px solid rgba(255, 255, 255, 0.5); "
-    "  border-left: 2px solid rgba(255, 255, 255, 0.5); "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #2c2c2c; "
-    "  border-top: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-left: 2px solid rgba(0, 0, 0, 0.5); "
-    "  border-bottom: 2px solid rgba(255, 255, 255, 0.3); "
-    "  border-right: 2px solid rgba(255, 255, 255, 0.3); "
-    "  padding-top: 7px; "
-    "  padding-left: 12px; "
-    "}"
-  );
-
-  fileButtonLayout->addWidget(m_newButton);
-  fileButtonLayout->addWidget(m_loadButton);
-  fileButtonLayout->addWidget(m_saveButton);
-  fileButtonLayout->addWidget(m_saveAsButton);
-  fileButtonLayout->addWidget(m_editButton);
-  fileLayout->addLayout(fileButtonLayout);
-
-  fileTabLayout->addWidget(fileGroup);
-
-  // === RECENT PROGRAMS LIST ===
-  QGroupBox* recentGroup = new QGroupBox("Recent Programs");
-  recentGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* recentLayout = new QVBoxLayout(recentGroup);
-  recentLayout->setContentsMargins(5, 5, 5, 5);
-  recentLayout->setSpacing(0);
-
-  m_recentProgramsList = new QListWidget();
-  m_recentProgramsList->setStyleSheet(
-    "QListWidget { "
-    "  background-color: #2d2d30; "
-    "  border: 1px solid #3f3f46; "
-    "  color: #d4d4d4; "
-    "  font-size: 10px; "
-    "} "
-    "QListWidget::item { "
-    "  padding: 4px 6px; "
-    "  border-bottom: 1px solid #3f3f46; "
-    "} "
-    "QListWidget::item:hover { "
-    "  background-color: #3c3c3c; "
-    "} "
-    "QListWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "}"
-  );
-  m_recentProgramsList->setMaximumHeight(200);
-  m_recentProgramsList->setToolTip("Double-click to load a recent program");
-  connect(m_recentProgramsList, &QListWidget::itemDoubleClicked,
-          this, &RunProgramPage::onRecentProgramClicked);
-  recentLayout->addWidget(m_recentProgramsList);
-
-  fileTabLayout->addWidget(recentGroup);
-  fileTabLayout->addStretch();
-
-  m_tabWidget->addTab(fileTab, "File");
-
-  // === EXECUTE TAB ===
-  QWidget* executeTab = new QWidget();
-  QVBoxLayout* executeTabLayout = new QVBoxLayout(executeTab);
-  executeTabLayout->setContentsMargins(5, 10, 5, 5);
-  executeTabLayout->setSpacing(10);
-
-  // === Execute Controls ===
-  QGroupBox* executeGroup = new QGroupBox("Execution");
-  executeGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* executeLayout = new QVBoxLayout(executeGroup);
-
-  m_executeButton = new QPushButton("▶ Execute Program");
-  m_executeButton->setMinimumHeight(50);
-  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
-  executeLayout->addWidget(m_executeButton);
-
-  // Progress bar moved to right panel (execution widget) for better visibility
-
-  executeTabLayout->addWidget(executeGroup, 0);
-
-  // Run-side Active Slot widget (combo + recipe count label).
-  {
-    SlotManagerWidget::Deps deps;
-    deps.manager      = m_programManager;
-    deps.dialogParent = this;
-    m_runSlotWidget = new SlotManagerWidget(SlotManagerWidget::Mode::Run, deps);
-    connect(m_runSlotWidget, &SlotManagerWidget::activeSlotChanged,
-            this, &RunProgramPage::onSlotChangedFromRun);
-    executeTabLayout->addWidget(m_runSlotWidget, 0);
-  }
-
-  // === Recipe List ===
-  QGroupBox* recipeGroup = new QGroupBox("Recipes in Program");
-  recipeGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* recipeLayout = new QVBoxLayout(recipeGroup);
-
-  m_recipeListWidget = new QListWidget();
-  m_recipeListWidget->setAlternatingRowColors(false);  // Disabled for consistent dark theme
-
-  m_recipeListWidget->setStyleSheet(
-    "QListWidget { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  font-size: 16px; "  // Increased from 14px to 16px for better readability
-    "  padding: 2px; "
-    "  color: #d4d4d4; "
-    "  gridline-color: #3f3f46; "
-    "} "
-    "QListWidget::item { "
-    "  padding: 10px 8px; "
-    "  border-bottom: 1px solid #3f3f46; "
-    "  background-color: #1e1e1e; "
-    "} "
-    "QListWidget::item:selected { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "} "
-    "QListWidget::item:hover { "
-    "  background-color: #2a2d2e; "
-    "} "
-    "QListWidget::item:selected:hover { "
-    "  background-color: #0e639c; "
-    "  color: white; "
-    "}"
-  );
-
-  // Enable context menu for retrace edit
-  m_recipeListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(m_recipeListWidget, &QListWidget::customContextMenuRequested,
-          this, &RunProgramPage::onRecipeListContextMenu);
-
-  recipeLayout->addWidget(m_recipeListWidget);
-
-  executeTabLayout->addWidget(recipeGroup, 1);
-
-  m_tabWidget->addTab(executeTab, "Execute");
-
-  // === OPTION TAB ===
-  QWidget* optionTab = new QWidget();
-  QVBoxLayout* optionTabLayout = new QVBoxLayout(optionTab);
-  optionTabLayout->setContentsMargins(5, 10, 5, 5);
-  optionTabLayout->setSpacing(10);
-
-  QGroupBox* optionGroup = new QGroupBox("Execution Options");
-  optionGroup->setStyleSheet(
-    "QGroupBox { "
-    "  background-color: #1e1e1e; "
-    "  border: 1px solid #3f3f46; "
-    "  border-radius: 4px; "
-    "  margin-top: 10px; "
-    "  padding-top: 15px; "
-    "  color: #d4d4d4; "
-    "  font-weight: bold; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  subcontrol-position: top left; "
-    "  padding: 2px 5px; "
-    "  color: #ffffff; "
-    "}"
-  );
-  QVBoxLayout* optionLayout = new QVBoxLayout(optionGroup);
-
-  m_autoRunNextCheckBox = new QCheckBox("Auto-run next recipe");
-  m_autoRunNextCheckBox->setChecked(false);
-  m_autoRunNextCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #0e639c; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #27ae60; "
-    "  border-color: #27ae60; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #2ecc71; "
-    "  border-color: #2ecc71; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
-  optionLayout->addWidget(m_autoRunNextCheckBox);
-
-  m_useDependenciesCheckBox = new QCheckBox("Use recipe dependencies (advanced)");
-  m_useDependenciesCheckBox->setChecked(false);
-  m_useDependenciesCheckBox->setToolTip("Enable dependency-based execution where recipes run based on prerequisites");
-  m_useDependenciesCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #9b59b6; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #9b59b6; "
-    "  border-color: #9b59b6; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #a06fbd; "
-    "  border-color: #a06fbd; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
-  optionLayout->addWidget(m_useDependenciesCheckBox);
-
-  // Chain Execution checkbox - auto-trigger dependent recipes after manual execution
-  m_chainExecutionCheckBox = new QCheckBox("Enable chain execution");
-  m_chainExecutionCheckBox->setChecked(false);
-  m_chainExecutionCheckBox->setToolTip("When enabled, completing a recipe will automatically trigger dependent recipes if conditions are met");
-  m_chainExecutionCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #e67e22; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #e67e22; "
-    "  border-color: #e67e22; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #f39c12; "
-    "  border-color: #f39c12; "
-    "} "
-    "QCheckBox::indicator:unchecked { "
-    "  background-color: #2d2d30; "
-    "  border-color: #555555; "
-    "}"
-  );
-  optionLayout->addWidget(m_chainExecutionCheckBox);
-
-  // Connect checkbox to show/hide the chain indicator
-  connect(m_chainExecutionCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
-    m_chainIndicator->setVisible(checked);
-  });
-
-  // Loop Execution section
-  QGroupBox* loopGroup = new QGroupBox("Loop Execution");
-  loopGroup->setStyleSheet(
-    "QGroupBox { "
-    "  color: #4ec9b0; "
-    "  font-weight: bold; "
-    "  border: 1px solid #3c3c3c; "
-    "  border-radius: 5px; "
-    "  margin-top: 10px; "
-    "  padding-top: 10px; "
-    "} "
-    "QGroupBox::title { "
-    "  subcontrol-origin: margin; "
-    "  left: 10px; "
-    "  padding: 0 5px; "
-    "}"
-  );
-  QVBoxLayout* loopLayout = new QVBoxLayout(loopGroup);
-  loopLayout->setContentsMargins(10, 15, 10, 10);
-  loopLayout->setSpacing(8);
-
-  // Loop enabled checkbox
-  m_loopEnabledCheckBox = new QCheckBox("Enable infinite loop");
-  m_loopEnabledCheckBox->setChecked(false);
-  m_loopEnabledCheckBox->setToolTip("Run selected recipes in an infinite loop until stopped");
-  m_loopEnabledCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 20px; "
-    "  height: 20px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #4ec9b0; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #4ec9b0; "
-    "  border-color: #4ec9b0; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #5fd9c0; "
-    "  border-color: #5fd9c0; "
-    "}"
-  );
-  loopLayout->addWidget(m_loopEnabledCheckBox);
-
-  // Connect checkbox to show/hide the loop indicator
-  connect(m_loopEnabledCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
-    // Only show indicator if loop is enabled AND there are loop recipes configured
-    m_loopIndicator->setVisible(checked && m_programManager->hasLoopRecipes());
-  });
-
-  // Configure loop button
-  m_configureLoopButton = new QPushButton("Configure Loop Recipes...");
-  m_configureLoopButton->setToolTip("Select which recipes to include in the loop");
-  m_configureLoopButton->setStyleSheet(
-    "QPushButton { "
-    "  background-color: #3c3c3c; "
-    "  color: #d4d4d4; "
-    "  border: 1px solid #555555; "
-    "  padding: 6px 12px; "
-    "  border-radius: 4px; "
-    "} "
-    "QPushButton:hover { "
-    "  background-color: #505050; "
-    "  border-color: #4ec9b0; "
-    "} "
-    "QPushButton:pressed { "
-    "  background-color: #4ec9b0; "
-    "}"
-  );
-  connect(m_configureLoopButton, &QPushButton::clicked, this, &RunProgramPage::onConfigureLoop);
-  loopLayout->addWidget(m_configureLoopButton);
-
-  // Loop status label
-  m_loopStatusLabel = new QLabel("No recipes configured for loop");
-  m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
-  loopLayout->addWidget(m_loopStatusLabel);
-
-  // Ignore dependencies checkbox
-  m_ignoreDependenciesCheckBox = new QCheckBox("Ignore dependencies");
-  m_ignoreDependenciesCheckBox->setChecked(false);
-  m_ignoreDependenciesCheckBox->setToolTip("Force sequential execution without checking dependency conditions");
-  m_ignoreDependenciesCheckBox->setStyleSheet(
-    "QCheckBox { "
-    "  spacing: 8px; "
-    "  padding: 5px; "
-    "  color: #d4d4d4; "
-    "} "
-    "QCheckBox::indicator { "
-    "  width: 18px; "
-    "  height: 18px; "
-    "  border: 2px solid #555555; "
-    "  border-radius: 3px; "
-    "  background-color: #2d2d30; "
-    "} "
-    "QCheckBox::indicator:hover { "
-    "  border-color: #e8a838; "
-    "} "
-    "QCheckBox::indicator:checked { "
-    "  background-color: #e8a838; "
-    "  border-color: #e8a838; "
-    "} "
-    "QCheckBox::indicator:checked:hover { "
-    "  background-color: #f0b848; "
-    "  border-color: #f0b848; "
-    "}"
-  );
-  loopLayout->addWidget(m_ignoreDependenciesCheckBox);
-
-  optionLayout->addWidget(loopGroup);
-
-  optionLayout->addStretch();
-  optionTabLayout->addWidget(optionGroup);
-  optionTabLayout->addStretch();
-
-  m_tabWidget->addTab(optionTab, "Option");
-
-  // Set Execute tab as default
-  m_tabWidget->setCurrentIndex(1);
-
-  // Add tab widget to left layout
-  leftLayout->addWidget(m_tabWidget, 1);
-
-  // Connect signals
-  connect(m_newButton, &QPushButton::clicked, this, &RunProgramPage::onNewProgram);
-  connect(m_loadButton, &QPushButton::clicked, this, &RunProgramPage::onLoadProgram);
-  connect(m_saveButton, &QPushButton::clicked, this, &RunProgramPage::onSaveProgram);
-  connect(m_saveAsButton, &QPushButton::clicked, this, &RunProgramPage::onSaveAsProgram);
-  connect(m_editButton, &QPushButton::clicked, this, &RunProgramPage::onEditProgram);
-  connect(m_executeButton, &QPushButton::clicked, this, &RunProgramPage::onExecuteProgram);
-  connect(m_backButton, &QPushButton::clicked, this, &RunProgramPage::backToMainMenu);
-}
 
 void RunProgramPage::createRightPanel()
 {
@@ -1650,7 +964,7 @@ void RunProgramPage::onProductChanged()
   // Update product display
   if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
-    m_currentProductLabel->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
+    m_leftPanel->productLabel()->setText(QString("Product: %1").arg(QString::fromStdString(productName)));
 
     std::cout << "[RunProgramPage] Product changed to: " << productName << std::endl;
 
@@ -1660,7 +974,7 @@ void RunProgramPage::onProductChanged()
     // ✅ Auto-load last program when product is loaded
     loadLastProgramFromSettings();
   } else {
-    m_currentProductLabel->setText("Product: None");
+    m_leftPanel->productLabel()->setText("Product: None");
     std::cout << "[RunProgramPage] No product loaded" << std::endl;
 
     // Clear current program when no product loaded
@@ -1902,8 +1216,8 @@ void RunProgramPage::onExecuteProgram()
   // ✅ Clear stale vision results before starting new execution
   clearVisionResult();
 
-  bool autoRunMode = m_autoRunNextCheckBox->isChecked();
-  int selectedRecipeIndex = m_recipeListWidget->currentRow();
+  bool autoRunMode = m_leftPanel->autoRunNextCheckBox()->isChecked();
+  int selectedRecipeIndex = m_leftPanel->recipeList()->currentRow();
 
   // Validate based on mode
   if (!autoRunMode) {
@@ -1937,7 +1251,7 @@ void RunProgramPage::onExecuteProgram()
 
   // Single-recipe + dependencies: refuse to run if any predecessor has
   // not completed in this session.
-  if (!autoRunMode && m_useDependenciesCheckBox->isChecked()) {
+  if (!autoRunMode && m_leftPanel->useDependenciesCheckBox()->isChecked()) {
     std::vector<DependencyLink> dependencies = m_programManager->getRecipeDependencies(selectedRecipeIndex);
     const auto& completed = m_executionController->CompletedRecipes();
 
@@ -1981,12 +1295,12 @@ void RunProgramPage::onExecuteProgram()
   // Switch to execution view + update page-level UI state.
   showExecutionWidget();
   m_isExecuting = true;
-  m_executeButton->setText(QString::fromUtf8("\xE2\x8F\xB9 Stop Program"));
-  m_executeButton->setStyleSheet(Theme::Buttons::bezelDanger());
+  m_leftPanel->executeButton()->setText(QString::fromUtf8("\xE2\x8F\xB9 Stop Program"));
+  m_leftPanel->executeButton()->setStyleSheet(Theme::Buttons::bezelDanger());
   setProgramStatus("Running", Theme::Color::success, Theme::Color::textPrimary);
-  m_autoRunNextCheckBox->setEnabled(false);
+  m_leftPanel->autoRunNextCheckBox()->setEnabled(false);
 
-  bool loopEnabled = m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes();
+  bool loopEnabled = m_leftPanel->loopEnabledCheckBox()->isChecked() && m_programManager->hasLoopRecipes();
   m_isLoopExecution = loopEnabled;
   if (loopEnabled) m_currentLoopIteration = 0;
 
@@ -1997,9 +1311,9 @@ void RunProgramPage::onExecuteProgram()
   ExecutionController::StartParams startParams;
   startParams.autoRunMode         = autoRunMode;
   startParams.selectedRecipeIndex = selectedRecipeIndex;
-  startParams.useDependencies     = m_useDependenciesCheckBox->isChecked();
+  startParams.useDependencies     = m_leftPanel->useDependenciesCheckBox()->isChecked();
   startParams.loopEnabled         = loopEnabled;
-  startParams.ignoreDependencies  = m_ignoreDependenciesCheckBox->isChecked();
+  startParams.ignoreDependencies  = m_leftPanel->ignoreDependenciesCheckBox()->isChecked();
 
   m_executionController->Start(startParams,
     [this](ProgramWorker* worker) {
@@ -2070,14 +1384,14 @@ void RunProgramPage::onRecipeStarted(int recipeIndex, QString recipeName)
   if (m_actionDetailLabel) m_actionDetailLabel->setText("Starting...");
 
   // Update list item to show running state
-  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  QListWidgetItem* item = m_leftPanel->recipeList()->item(recipeIndex);
   if (item) {
     QString baseText = QString("%1    %2")
       .arg(recipeIndex + 1, 2, 10, QChar('0'))
       .arg(recipeName);
 
     // Show dependencies if using dependency mode
-    if (m_useDependenciesCheckBox->isChecked()) {
+    if (m_leftPanel->useDependenciesCheckBox()->isChecked()) {
       std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
       if (!deps.empty()) {
         QString depsStr = " [Deps: ";
@@ -2100,7 +1414,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   // Progress bar reaches 100% naturally via stepExecutionCompleted signals
 
   // Update list item to show completed/failed state
-  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  QListWidgetItem* item = m_leftPanel->recipeList()->item(recipeIndex);
   if (item) {
     const RecipeReference* recipe = m_programManager->getRecipe(recipeIndex);
     if (recipe) {
@@ -2109,7 +1423,7 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
         .arg(QString::fromStdString(recipe->displayName));
 
       // Show dependencies if using dependency mode
-      if (m_useDependenciesCheckBox->isChecked()) {
+      if (m_leftPanel->useDependenciesCheckBox()->isChecked()) {
         std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
         if (!deps.empty()) {
           QString depsStr = " [Deps: ";
@@ -2156,12 +1470,12 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
   // Skip verbose logging during loop execution
   if (!m_isLoopExecution) {
     std::cout << "[RunProgramPage] Chain execution check: success=" << success
-              << ", chainEnabled=" << m_chainExecutionCheckBox->isChecked()
-              << ", autoRunNext=" << m_autoRunNextCheckBox->isChecked() << std::endl;
+              << ", chainEnabled=" << m_leftPanel->chainExecutionCheckBox()->isChecked()
+              << ", autoRunNext=" << m_leftPanel->autoRunNextCheckBox()->isChecked() << std::endl;
     std::cout.flush();
   }
 
-  if (success && m_chainExecutionCheckBox->isChecked() && !m_autoRunNextCheckBox->isChecked()) {
+  if (success && m_leftPanel->chainExecutionCheckBox()->isChecked() && !m_leftPanel->autoRunNextCheckBox()->isChecked()) {
     // Read the live context off the controller's worker for condition evaluation.
     ProgramWorker* liveWorker = m_executionController ? m_executionController->Worker() : nullptr;
     std::cout << "[RunProgramPage] Chain execution: liveWorker=" << liveWorker << std::endl;
@@ -2355,14 +1669,14 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
           // Trigger chain execution directly (don't wait for onProgramExecutionCompleted)
           // Use QTimer::singleShot to allow current event processing to complete first
           QTimer::singleShot(200, this, [this, chainRecipeIndex]() {
-            if (!m_isExecuting && m_chainExecutionCheckBox->isChecked()) {
+            if (!m_isExecuting && m_leftPanel->chainExecutionCheckBox()->isChecked()) {
               const RecipeReference* nextRecipe = m_programManager->getRecipe(chainRecipeIndex);
               std::cout << "[RunProgramPage] Chain execution: Starting Recipe " << (chainRecipeIndex + 1)
                         << " (" << (nextRecipe ? nextRecipe->displayName : "unknown") << ")" << std::endl;
               std::cout.flush();
 
               // Select the recipe in the list
-              m_recipeListWidget->setCurrentRow(chainRecipeIndex);
+              m_leftPanel->recipeList()->setCurrentRow(chainRecipeIndex);
 
               // Start execution
               QTimer::singleShot(100, this, [this]() {
@@ -2400,14 +1714,14 @@ void RunProgramPage::onRecipeCompleted(int recipeIndex, bool success, QString me
 void RunProgramPage::onRecipeSkipped(int recipeIndex, QString recipeName)
 {
   // Update list item to show skipped state
-  QListWidgetItem* item = m_recipeListWidget->item(recipeIndex);
+  QListWidgetItem* item = m_leftPanel->recipeList()->item(recipeIndex);
   if (item) {
     QString baseText = QString("%1    %2")
       .arg(recipeIndex + 1, 2, 10, QChar('0'))
       .arg(recipeName);
 
     // Show dependencies if using dependency mode
-    if (m_useDependenciesCheckBox->isChecked()) {
+    if (m_leftPanel->useDependenciesCheckBox()->isChecked()) {
       std::vector<DependencyLink> deps = m_programManager->getRecipeDependencies(recipeIndex);
       if (!deps.empty()) {
         QString depsStr = " [Deps: ";
@@ -2453,15 +1767,15 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
 
   // Re-enable execute button
   updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
-  m_executeButton->setText("▶ Execute Program");
-  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
+  m_leftPanel->executeButton()->setText("▶ Execute Program");
+  m_leftPanel->executeButton()->setStyleSheet(Theme::Buttons::bezelSuccess());
 
   // Update program status indicator
   setProgramStatus("Idle", Theme::Color::bgSurface, Theme::Color::textDisabled);
 
   std::cout << "[RunProgramPage] Enabling auto-run checkbox..." << std::endl;
   std::cout.flush();
-  m_autoRunNextCheckBox->setEnabled(true);
+  m_leftPanel->autoRunNextCheckBox()->setEnabled(true);
 
   // Show result - only show errors, not success notifications
   if (!success) {
@@ -2483,8 +1797,8 @@ void RunProgramPage::onProgramExecutionCompleted(bool success, QString message)
   // ✅ CRITICAL: Force UI repaint to ensure changes are visible
   std::cout << "[RunProgramPage] Forcing repaint..." << std::endl;
   std::cout.flush();
-  m_executeButton->update();
-  m_executeButton->repaint();
+  m_leftPanel->executeButton()->update();
+  m_leftPanel->executeButton()->repaint();
   this->update();
 
   // ⚠️ Don't call processEvents() here - it causes reentrancy issues
@@ -2520,10 +1834,10 @@ void RunProgramPage::onProgramStopped()
 
   // Re-enable execute button
   updateExecuteButton();  // This sets setEnabled based on m_isExecuting flag
-  m_executeButton->setText("▶ Execute Program");
-  m_executeButton->setStyleSheet(Theme::Buttons::bezelSuccess());
+  m_leftPanel->executeButton()->setText("▶ Execute Program");
+  m_leftPanel->executeButton()->setStyleSheet(Theme::Buttons::bezelSuccess());
 
-  m_autoRunNextCheckBox->setEnabled(true);
+  m_leftPanel->autoRunNextCheckBox()->setEnabled(true);
 
   // No confirmation dialog needed - stop button itself is the confirmation
 }
@@ -3106,7 +2420,7 @@ void RunProgramPage::onConfigureLoop()
     updateLoopStatusLabel();
 
     // Update the loop indicator visibility
-    m_loopIndicator->setVisible(m_loopEnabledCheckBox->isChecked() && m_programManager->hasLoopRecipes());
+    m_leftPanel->loopIndicator()->setVisible(m_leftPanel->loopEnabledCheckBox()->isChecked() && m_programManager->hasLoopRecipes());
 
     // Refresh the recipe list to show loop indicators
     updateRecipeList();
@@ -3116,22 +2430,22 @@ void RunProgramPage::onConfigureLoop()
 void RunProgramPage::updateLoopStatusLabel()
 {
   if (!m_programManager) {
-    m_loopStatusLabel->setText("No program loaded");
-    m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
+    m_leftPanel->loopStatusLabel()->setText("No program loaded");
+    m_leftPanel->loopStatusLabel()->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
     return;
   }
 
   std::vector<int> loopRecipes = m_programManager->getLoopRecipeIndices();
 
   if (loopRecipes.empty()) {
-    m_loopStatusLabel->setText("No recipes configured for loop");
-    m_loopStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
+    m_leftPanel->loopStatusLabel()->setText("No recipes configured for loop");
+    m_leftPanel->loopStatusLabel()->setStyleSheet("color: #888888; font-size: 11px; padding: 2px 5px;");
   } else if (loopRecipes.size() == 1) {
-    m_loopStatusLabel->setText("1 recipe in loop");
-    m_loopStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
+    m_leftPanel->loopStatusLabel()->setText("1 recipe in loop");
+    m_leftPanel->loopStatusLabel()->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
   } else {
-    m_loopStatusLabel->setText(QString("%1 recipes in loop").arg(loopRecipes.size()));
-    m_loopStatusLabel->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
+    m_leftPanel->loopStatusLabel()->setText(QString("%1 recipes in loop").arg(loopRecipes.size()));
+    m_leftPanel->loopStatusLabel()->setStyleSheet("color: #4ec9b0; font-size: 11px; padding: 2px 5px;");
   }
 }
 
@@ -3175,10 +2489,10 @@ void RunProgramPage::onSaveEdit()
 
 void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
 {
-  QListWidgetItem* item = m_recipeListWidget->itemAt(pos);
+  QListWidgetItem* item = m_leftPanel->recipeList()->itemAt(pos);
   if (!item) return;
 
-  int row = m_recipeListWidget->row(item);
+  int row = m_leftPanel->recipeList()->row(item);
   if (row < 0 || row >= m_programManager->getRecipeCount()) return;
 
   // Create context menu
@@ -3217,7 +2531,7 @@ void RunProgramPage::onRecipeListContextMenu(const QPoint& pos)
     disabledAction->setEnabled(false);
   }
 
-  QAction* selectedAction = contextMenu.exec(m_recipeListWidget->viewport()->mapToGlobal(pos));
+  QAction* selectedAction = contextMenu.exec(m_leftPanel->recipeList()->viewport()->mapToGlobal(pos));
 
   if (selectedAction == editAction) {
     const RecipeReference* recipe = m_programManager->getRecipe(row);
@@ -3456,7 +2770,7 @@ void RunProgramPage::onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome out
 void RunProgramPage::updateProgramInfo()
 {
   QString programName = QString::fromStdString(m_programManager->getProgramName());
-  m_programNameLabel->setText(programName);
+  m_leftPanel->programNameLabel()->setText(programName);
 
   // Update execution title label with program file name
   if (!programName.isEmpty() && programName != "Untitled Program") {
@@ -3467,9 +2781,9 @@ void RunProgramPage::updateProgramInfo()
 
   // Display program file path
   if (!m_currentProgramPath.isEmpty()) {
-    m_programPathLabel->setText("Path: " + m_currentProgramPath);
+    m_leftPanel->programPathLabel()->setText("Path: " + m_currentProgramPath);
   } else {
-    m_programPathLabel->setText("");
+    m_leftPanel->programPathLabel()->setText("");
   }
 
   // Update slot system UI (program load brought in a new slot list).
@@ -3481,7 +2795,7 @@ void RunProgramPage::updateProgramInfo()
 void RunProgramPage::updateRecipeList()
 {
   // Run-side recipe list (the QListWidget on the left).
-  m_recipeListWidget->clear();
+  m_leftPanel->recipeList()->clear();
 
   int recipeNumber = 1;
   for (const auto& recipe : m_programManager->getAllRecipes()) {
@@ -3503,7 +2817,7 @@ void RunProgramPage::updateRecipeList()
 
       QListWidgetItem* item = new QListWidgetItem(displayText);
       item->setForeground(QColor(150, 150, 150));
-      m_recipeListWidget->addItem(item);
+      m_leftPanel->recipeList()->addItem(item);
       recipeNumber++;
       continue;
     }
@@ -3512,7 +2826,7 @@ void RunProgramPage::updateRecipeList()
     if (recipe->includeInLoop) {
       item->setForeground(QColor(78, 201, 176));  // Teal color for loop recipes
     }
-    m_recipeListWidget->addItem(item);
+    m_leftPanel->recipeList()->addItem(item);
     recipeNumber++;
   }
 
@@ -3526,7 +2840,7 @@ void RunProgramPage::updateRecipeList()
 void RunProgramPage::updateExecuteButton()
 {
   bool hasRecipes = m_programManager->getRecipeCount() > 0;
-  m_executeButton->setEnabled(hasRecipes && !m_isExecuting);
+  m_leftPanel->executeButton()->setEnabled(hasRecipes && !m_isExecuting);
 }
 
 // ============================================================================
@@ -3550,9 +2864,9 @@ void RunProgramPage::saveRecentPrograms(const QString& programPath)
 
 void RunProgramPage::loadRecentProgramsList()
 {
-  if (!m_recentProgramsList) return;
+  if (!m_leftPanel->recentProgramsList()) return;
 
-  m_recentProgramsList->clear();
+  m_leftPanel->recentProgramsList()->clear();
 
   const QStringList recentPrograms = ProgramSettingsStore::LoadRecent();
 
@@ -3571,10 +2885,10 @@ void RunProgramPage::loadRecentProgramsList()
     item->setData(Qt::UserRole, programPath);  // Store full path
     item->setToolTip(programPath);
 
-    m_recentProgramsList->addItem(item);
+    m_leftPanel->recentProgramsList()->addItem(item);
   }
 
-  std::cout << "[RunProgramPage] Loaded " << m_recentProgramsList->count()
+  std::cout << "[RunProgramPage] Loaded " << m_leftPanel->recentProgramsList()->count()
             << " recent programs" << std::endl;
 }
 
@@ -3883,6 +3197,6 @@ void RunProgramPage::applyTheme()
            QLatin1String(Theme::Color::bgDeep),
            QLatin1String(Theme::Color::textPrimary)));
 
-  m_backButton->setStyleSheet(Theme::Buttons::bezelPrimary());
-  m_executeButton->setStyleSheet(m_isExecuting ? Theme::Buttons::bezelDanger() : Theme::Buttons::bezelSuccess());
+  m_leftPanel->backButton()->setStyleSheet(Theme::Buttons::bezelPrimary());
+  m_leftPanel->executeButton()->setStyleSheet(m_isExecuting ? Theme::Buttons::bezelDanger() : Theme::Buttons::bezelSuccess());
 }
