@@ -61,6 +61,7 @@ public:
    * It should return true to continue, false to stop.
    */
   void SetRetraceEditCallback(RetraceEditCallback callback) { m_retraceEditCallback = callback; }
+  bool HasRetraceEditCallback() const { return static_cast<bool>(m_retraceEditCallback); }
 
   /**
    * @brief Get retrace statistics
@@ -69,7 +70,13 @@ public:
   int GetRetracePositionsSaved() const { return m_retracePositionsSaved; }
   void ResetRetraceStatistics() { m_retracePositionsVisited = 0; m_retracePositionsSaved = 0; }
 
-private:
+  // ============================================================================
+  // SHARED HELPERS (exposed for split helper classes under include/sequence/motion/)
+  // These are public so the per-family helper classes (MotionBasicCommands,
+  // MotionParallelCommands, etc.) can call back through deps.parent. Not part
+  // of the external API — treat as internal.
+  // ============================================================================
+
   // Helper to resolve context: references or parse direct values
   double ResolveNumericValue(const std::string& valueStr, SequenceContext* context);
 
@@ -78,16 +85,19 @@ private:
     bool hasX = false;
     bool hasY = false;
     bool hasZ = false;
-    bool hasU = false;  // ✅ NEW: For hexapod rotation axes
-    bool hasV = false;  // ✅ NEW: For hexapod rotation axes
-    bool hasW = false;  // ✅ NEW: For hexapod rotation axes
+    bool hasU = false;  // For hexapod rotation axes
+    bool hasV = false;
+    bool hasW = false;
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
-    double u = 0.0;  // ✅ NEW: For hexapod rotation axes
-    double v = 0.0;  // ✅ NEW: For hexapod rotation axes
-    double w = 0.0;  // ✅ NEW: For hexapod rotation axes
+    double u = 0.0;
+    double v = 0.0;
+    double w = 0.0;
   };
+
+  // (ParallelMoveSpec / ParallelRelativeMoveSpec moved to motion/MotionParallelCommands.h
+  //  in Step 10 cleanup — they have no orchestrator-side consumer anymore.)
 
   // Helper to wait for motion complete with safety stop checking and position verification
   // Returns false if stop requested, timeout, or position verification failed
@@ -99,55 +109,14 @@ private:
     int timeoutMs = 30000,
     const TargetPosition* targetPos = nullptr);
 
-  // ✅ NEW: Structure for parallel move specification
-  struct ParallelMoveSpec {
-    std::string deviceName;
-    std::string moveType;      // "position" or "graphNode"
-    std::string targetName;    // Named position or node name
-    std::string graphName;     // Only for graphNode type
-  };
-
-  // ✅ NEW: Structure for parallel relative move specification
-  struct ParallelRelativeMoveSpec {
-    std::string deviceName;
-    std::string axis;          // "X", "Y", "Z", "U", "V", "W"
-    double distance;           // Distance to move
-  };
-
-  // ✅ NEW: Helper to wait for multiple motions to complete with safety stop checking
-  // Returns false if stop requested, timeout, or any position verification failed
-  bool WaitForMultipleMotionsWithStopCheck(
-    void* motionManager,
-    const std::vector<ParallelMoveSpec>& moves,
-    SequenceContext* context,
-    int timeoutMs = 60000);
-
-  // ✅ NEW: Helper to wait for multiple relative motions to complete
+  // Helper to wait for multiple relative motions to complete
   bool WaitForMultipleRelativeMotionsWithStopCheck(
     void* motionManager,
     const std::vector<std::string>& deviceNames,
     SequenceContext* context,
     int timeoutMs = 60000);
 
-  // ✅ NEW: DataStore for XCAN command
-  DataStore* m_dataStore = nullptr;
-
-  // ✅ NEW: ProductPositionManager for MoveToGraphNode command
-  ProductPositionManager* m_positionManager = nullptr;
-
-  // DeviceLinkManager for linked device commands
-  DeviceLinkManager* m_linkManager = nullptr;
-
-  // Scan-busy broadcaster for TopBar indicator (optional, no-op if null)
-  ScanActivityTracker* m_scanActivityTracker = nullptr;
-
-  // ✅ Retrace edit mode
-  std::atomic<bool> m_retraceEditMode{false};
-  RetraceEditCallback m_retraceEditCallback;
-  int m_retracePositionsVisited = 0;
-  int m_retracePositionsSaved = 0;
-
-  // ✅ Helper to invoke retrace edit callback after motion completes
+  // Helper to invoke retrace edit callback after motion completes
   // Returns true to continue, false to stop execution
   bool InvokeRetraceEditCallback(
     void* motionManager,
@@ -158,4 +127,23 @@ private:
     double originalX, double originalY, double originalZ,
     double originalU, double originalV, double originalW
   );
+
+private:
+  // DataStore for XCAN command
+  DataStore* m_dataStore = nullptr;
+
+  // ProductPositionManager for MoveToGraphNode command
+  ProductPositionManager* m_positionManager = nullptr;
+
+  // DeviceLinkManager for linked device commands
+  DeviceLinkManager* m_linkManager = nullptr;
+
+  // Scan-busy broadcaster for TopBar indicator (optional, no-op if null)
+  ScanActivityTracker* m_scanActivityTracker = nullptr;
+
+  // Retrace edit mode
+  std::atomic<bool> m_retraceEditMode{false};
+  RetraceEditCallback m_retraceEditCallback;
+  int m_retracePositionsVisited = 0;
+  int m_retracePositionsSaved = 0;
 };

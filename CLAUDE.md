@@ -14,9 +14,13 @@ cmake --preset x64-debug
 # Build the project
 cmake --build out/build/x64-debug
 
-# Run the executable
+# Run the executable (bash)
 ./out/build/x64-debug/bobcat_engine.exe
+# Run the executable (PowerShell)
+.\out\build\x64-debug\bobcat_engine.exe
 ```
+
+**Agent note:** the user compiles themselves — do not invoke `cmake --build` from an agent session. Configure (`cmake --preset ...`) is fine; trigger an actual build only on explicit request.
 
 ### Version System
 The build version auto-increments via `build_number.txt` on every configure. Override with:
@@ -177,7 +181,7 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 - **Calculated positions** - offset notation: `"lensgrip+Y1"`, `"safe+X-2+Z5"`
 - **Graph navigation** - `include/graph/MotionGraph*.cpp` provides graph-based pathfinding between positions
 - **6-axis support** - XYZUVW (position + rotation)
-- **Interlock enforcement** - `InterlockManager::CheckMove()` called in all 5 move methods; blocks moves when monitored device axis meets a condition
+- **Interlock enforcement** - `InterlockManager::CheckMove()` called inside the 5 move methods of `UnifiedMotionManager` itself (not the command handler); blocks moves when monitored device axis meets a condition. Anything that goes through `UnifiedMotionManager::Move*()` is automatically protected — split helper command files do not need their own interlock checks.
 
 ### Motion Interlock System
 `InterlockManager` (`include/motions/InterlockManager.h`) provides position-based motion safety rules:
@@ -186,6 +190,28 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 - Operators: `<`, `>`, `<=`, `>=`
 - Config persisted to `config/interlocks.json` (local-first pattern)
 - UI widget: `InterlockWidget` in `include/AppUI/MotionPages/`
+
+### MotionCommandHandler Layout (`include/sequence/MotionCommandHandler.{h,cpp}` + `include/sequence/motion/`)
+
+The motion command handler is split into a thin orchestrator plus 9 per-family helpers. Touch the helper for the command family you're working in — **not** the orchestrator.
+
+| File | Owns |
+|------|------|
+| `MotionCommandHandler.{h,cpp}` | Public `ExecuteCommand` API, the dispatch ladder (9 `TryExecute` calls), shared cross-family helpers (`ResolveNumericValue`, `WaitForMotionWithStopCheck`, `WaitForMultipleRelativeMotionsWithStopCheck`, `InvokeRetraceEditCallback`), the nested `TargetPosition` type, retrace-edit-mode state. The orchestrator — keep it thin (~650 lines). |
+| `motion/MotionCommandDeps.h` | `struct MotionCommandDeps` — bundles the manager pointers + `parent` callback handle that every helper receives. Built once at the top of `ExecuteCommand` and reused. |
+| `motion/MotionBasicCommands.{h,cpp}` | Family A: `MoveToPosition`, `MoveToAbs`, `MoveRelative`, `MoveToNamedPosition`, `StopAxis`, `EmergencyStop`, `HomeAxis`, `EnableServo`, `WaitForMotionComplete`. Calls `deps.parent->WaitForMotionWithStopCheck` / `ResolveNumericValue` / `InvokeRetraceEditCallback`. |
+| `motion/MotionVelocityCommands.{h,cpp}` | Family B: `SetVelocity`, `SetAllAxisVelocity`, `SetSystemVelocity`, `GetSystemVelocity`. Self-contained. |
+| `motion/MotionScanCommands.{h,cpp}` | Family C: `XCAN`, `XCANExtended`, `AxisScan` — 1D adaptive scans backed by `AdaptiveScanController` + `DataStore`. |
+| `motion/MotionGridScanCommands.{h,cpp}` | Family D: `GridScan`, `GridScanExtended`, `GridScanDualChannel` — 2D grid scans. Owns the `FormatSI` / `MakeTimestamp` / `FormatTime` / `WriteGridScanFiles` file-static helpers (JSON + summary text written under `logs/scanning/grid/`). |
+| `motion/MotionGraphContextCommands.{h,cpp}` | Family E: `MoveToGraphNode`, `MoveToContextPosition`, `SavePositionToContext`, `MoveToAbsFromContext`, `MoveToContextXY`. Touches `MotionGraphManager`, `ProductPositionManager`, `VisionManager`. |
+| `motion/MotionParallelCommands.{h,cpp}` | Family F: `ParallelMove`, `ParallelMoveRelative`. Owns `ParallelMoveSpec` + `ParallelRelativeMoveSpec` data types. Uses `GraphMoveWorker` for true parallel graph-node execution. |
+| `motion/MotionPositionFileCommands.{h,cpp}` | Family G: `UpdatePositionAxis`, `UpdatePositionAll` — edit named positions in the product file. |
+| `motion/MotionLinkedDeviceCommands.{h,cpp}` | Family H: `RegisterDeviceLink`, `CompensateDeviceLink` — primary↔linked device offset registration and compensation moves. Touches `DeviceLinkManager` + `CoordinateTransformer`. |
+| `motion/MotionFastAlignCommands.{h,cpp}` | Family I: `FastAlignXY`, `FastAlignZXY`. PI-only commands that bypass `UnifiedMotionManager` and talk directly to `PIController` (FSM/GetFastScanStatus/GetAnalogVoltage primitives). |
+
+**Helper contract:** every helper exposes a single `static std::optional<bool> TryExecute(deviceName, methodName, params, errorMessage, context, deps)`. Returning `std::nullopt` means "method isn't mine" (orchestrator falls through to the next helper); returning `true`/`false` means "handled — that was the success result." This lets the orchestrator's `ExecuteCommand` body stay flat (`if (auto r = HelperX::TryExecute(...)) return *r;` × 9, then "Unknown method" fallthrough) without nesting or chained `else if`.
+
+**Adding a new motion command:** add an `if (methodName == "YourCommand")` branch inside the helper that owns the relevant family — do not add it to the orchestrator. If the command starts a new family, add a new helper file under `motion/`, register it in CMakeLists.txt next to its siblings, add `#include "motion/YourHelper.h"` to the orchestrator and one `if (auto r = YourHelper::TryExecute(...))` call to the dispatch ladder.
 
 ### Recipe Plugin System
 Plugin-based architecture for process types. See `docs/creating_recipe_plugins.md`.
@@ -545,7 +571,7 @@ Same teach-then-run pattern as Accuracy / Placement trainers (8 widgets + `EdgeT
 
 ## Coding Conventions (MISRA-Aligned)
 
-This codebase follows MISRA-inspired safety conventions. When modifying code, follow these patterns:
+This codebase follows MISRA-inspired safety conventions. The rules below are **enforced invariants**, not aspirational — Phases 1–5 (completed Feb 2026) swept the codebase to comply, so new code that re-introduces `while(true)`, `throw`, raw socket lifetime management, or generic error returns is a regression. When modifying code, follow these patterns:
 
 ### Error Handling — No Exceptions
 - **Do NOT use `throw`** — the codebase has been purged of exceptions
@@ -623,9 +649,12 @@ A `.clang-tidy` configuration exists at project root. Enabled check families: `b
 
 ## Testing
 
-This is an industrial automation application without a formal test suite. Testing is done via:
+This is an industrial automation application without a formal automated test suite — there are no unit/integration tests to run, and no `ctest` target. The verification loop is:
+- **Build cleanly** under `/W4` (zero warnings is the bar — see Phase 2 Part A)
 - **Simulation mode** (`x64-debug` preset) - runs without hardware for UI/logic testing
-- **Manual hardware testing** - connects to physical devices
+- **Manual hardware testing** - connects to physical devices via a hardware preset
+
+Do not claim "tests pass" or fabricate a test command — when asked to verify a change, build + (where possible) run in simulation, and report exactly what was exercised.
 
 ## Quick Reference
 

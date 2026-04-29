@@ -588,6 +588,15 @@ set(SOURCES
     include/sequence/SequenceWorker.cpp
     include/sequence/GraphMoveWorker.cpp
     include/sequence/MotionCommandHandler.cpp
+    include/sequence/motion/MotionPositionFileCommands.cpp
+    include/sequence/motion/MotionLinkedDeviceCommands.cpp
+    include/sequence/motion/MotionVelocityCommands.cpp
+    include/sequence/motion/MotionFastAlignCommands.cpp
+    include/sequence/motion/MotionGridScanCommands.cpp
+    include/sequence/motion/MotionScanCommands.cpp
+    include/sequence/motion/MotionGraphContextCommands.cpp
+    include/sequence/motion/MotionParallelCommands.cpp
+    include/sequence/motion/MotionBasicCommands.cpp
     include/sequence/IOCommandHandler.cpp
     include/sequence/PneumaticCommandHandler.cpp
     include/sequence/CameraCommandHandler.cpp
