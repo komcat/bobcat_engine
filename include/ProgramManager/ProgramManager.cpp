@@ -7,6 +7,86 @@
 #include <QFile>
 #include <QFileInfo>
 
+namespace {
+
+// Swap dependency / graph-position references for two adjacent recipe
+// indices. Called after moveRecipeUp/Down's std::swap on the recipes
+// vector so the dependency expressions follow the recipes they were
+// authored against.
+void RemapDependenciesAfterSwap(RecipeSlot& slot, int a, int b)
+{
+  if (a == b) return;
+
+  for (auto& depSet : slot.dependencySets) {
+    std::map<int, std::vector<DependencyLink>> updated;
+    for (auto& [recipeIdx, links] : depSet.dependencies) {
+      int newKey = recipeIdx;
+      if (recipeIdx == a)      newKey = b;
+      else if (recipeIdx == b) newKey = a;
+
+      std::vector<DependencyLink> updatedLinks;
+      updatedLinks.reserve(links.size());
+      for (auto& link : links) {
+        int newPred = link.predecessorIndex;
+        if (link.predecessorIndex == a)      newPred = b;
+        else if (link.predecessorIndex == b) newPred = a;
+        updatedLinks.emplace_back(newPred, link.condition);
+      }
+      updated[newKey] = std::move(updatedLinks);
+    }
+    depSet.dependencies = std::move(updated);
+  }
+
+  // Graph positions key-swap.
+  std::map<int, GraphNodePosition> updatedPos;
+  for (auto& [posIdx, pos] : slot.graphPositions) {
+    int newKey = posIdx;
+    if (posIdx == a)      newKey = b;
+    else if (posIdx == b) newKey = a;
+    updatedPos[newKey] = pos;
+  }
+  slot.graphPositions = std::move(updatedPos);
+}
+
+// Drop dependencies referencing the removed recipe, and shift any
+// indices > removedIdx down by 1. Mirrors moveRecipeToSlot's existing
+// remap logic. Called after removeRecipe's vector erase.
+void RemapDependenciesAfterRemove(RecipeSlot& slot, int removedIdx)
+{
+  for (auto& depSet : slot.dependencySets) {
+    std::map<int, std::vector<DependencyLink>> updated;
+    for (auto& [recipeIdx, links] : depSet.dependencies) {
+      if (recipeIdx == removedIdx) continue;  // drop entries for the removed recipe
+      int newKey = (recipeIdx > removedIdx) ? recipeIdx - 1 : recipeIdx;
+
+      std::vector<DependencyLink> updatedLinks;
+      updatedLinks.reserve(links.size());
+      for (auto& link : links) {
+        if (link.predecessorIndex == removedIdx) continue;  // drop link to removed recipe
+        int newPred = (link.predecessorIndex > removedIdx)
+                          ? link.predecessorIndex - 1
+                          : link.predecessorIndex;
+        updatedLinks.emplace_back(newPred, link.condition);
+      }
+      if (!updatedLinks.empty()) {
+        updated[newKey] = std::move(updatedLinks);
+      }
+    }
+    depSet.dependencies = std::move(updated);
+  }
+
+  // Graph positions: drop the removed key, shift higher keys down.
+  std::map<int, GraphNodePosition> updatedPos;
+  for (auto& [posIdx, pos] : slot.graphPositions) {
+    if (posIdx == removedIdx) continue;
+    int newKey = (posIdx > removedIdx) ? posIdx - 1 : posIdx;
+    updatedPos[newKey] = pos;
+  }
+  slot.graphPositions = std::move(updatedPos);
+}
+
+}  // namespace
+
 ProgramManager::ProgramManager()
   : m_currentFilePath("")
 {
@@ -337,6 +417,10 @@ void ProgramManager::removeRecipe(int index)
   std::string removedName = activeSlot.recipes[index]->displayName;
   activeSlot.recipes.erase(activeSlot.recipes.begin() + index);
 
+  // Keep dependency expressions and graph positions aligned with the
+  // recipe vector after the erase.
+  RemapDependenciesAfterRemove(activeSlot, index);
+
   std::cout << "[ProgramManager] Removed recipe at index " << index
     << " (" << removedName << ") from slot '" << activeSlot.name << "'" << std::endl;
 }
@@ -354,6 +438,10 @@ bool ProgramManager::moveRecipeUp(int index)
   }
 
   std::swap(activeSlot.recipes[index], activeSlot.recipes[index - 1]);
+  // Keep dependency expressions and graph positions attached to the
+  // recipes they were authored against — without this, reordering
+  // silently re-targets every dependency.
+  RemapDependenciesAfterSwap(activeSlot, index, index - 1);
   std::cout << "[ProgramManager] Moved recipe " << index << " up in slot '" << activeSlot.name << "'" << std::endl;
   return true;
 }
@@ -371,6 +459,7 @@ bool ProgramManager::moveRecipeDown(int index)
   }
 
   std::swap(activeSlot.recipes[index], activeSlot.recipes[index + 1]);
+  RemapDependenciesAfterSwap(activeSlot, index, index + 1);
   std::cout << "[ProgramManager] Moved recipe " << index << " down in slot '" << activeSlot.name << "'" << std::endl;
   return true;
 }
@@ -980,8 +1069,7 @@ void ProgramManager::setNodePosition(int recipeIndex, double x, double y)
     return;
   }
   activeSlot->graphPositions[recipeIndex] = GraphNodePosition(x, y);
-  std::cout << "[ProgramManager] Set node position for recipe " << recipeIndex
-            << " to (" << x << ", " << y << ") in slot '" << activeSlot->name << "'" << std::endl;
+  // Intentionally no log: this fires on every drag tick of a graph node.
 }
 
 GraphNodePosition ProgramManager::getNodePosition(int recipeIndex) const
