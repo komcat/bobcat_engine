@@ -1360,6 +1360,10 @@ if(OPENCV_FOUND)
         include/vision/plugins/CalibrationPlatePlugin.cpp
         include/vision/VisionProcessingWorker.cpp
         include/sequence/VisionCommandHandler.cpp
+        include/sequence/vision/VisionContinuousCommands.cpp
+        include/sequence/vision/VisionTestCommands.cpp
+        include/sequence/vision/VisionAutoFocusCommands.cpp
+        include/sequence/vision/VisionProfileCommands.cpp
         include/sequence/ContextImageViewer.cpp
         include/recipe/processes/VisionProcesses.cpp
         # UI files (Phase 2)
@@ -1393,6 +1397,11 @@ if(OPENCV_FOUND)
         include/vision/plugins/CalibrationPlatePlugin.h
         include/vision/VisionProcessingWorker.h
         include/sequence/VisionCommandHandler.h
+        include/sequence/vision/VisionCommandDeps.h
+        include/sequence/vision/VisionContinuousCommands.h
+        include/sequence/vision/VisionTestCommands.h
+        include/sequence/vision/VisionAutoFocusCommands.h
+        include/sequence/vision/VisionProfileCommands.h
         include/sequence/ContextImageViewer.h
         # UI headers (Phase 2)
         include/vision/ui/VisionManagerPage.h
