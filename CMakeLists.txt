@@ -697,6 +697,10 @@ set(SOURCES
     include/recipe/processes/CustomServerProcesses.cpp
     include/customserver/BeamServerClient.cpp
     include/sequence/CustomServerCommandHandler.cpp
+    include/sequence/customserver/CustomServerConnectionCommands.cpp
+    include/sequence/customserver/CustomServerAnalysisCommands.cpp
+    include/sequence/customserver/CustomServerFitCommands.cpp
+    include/sequence/customserver/CustomServerDetectionCommands.cpp
     include/AppUI/RecipePage/ProcessConfigWidget.cpp
     include/AppUI/RecipePage/DeviceSelectorWidgets.cpp
     include/recipe/RecipeWorker.cpp
@@ -1049,6 +1053,11 @@ set(HEADERS
     include/sequence/YawTrainerCommandHandler.h
     include/sequence/CameraOffsetCommandHandler.h
     include/sequence/CustomServerCommandHandler.h
+    include/sequence/customserver/CustomServerCommandDeps.h
+    include/sequence/customserver/CustomServerConnectionCommands.h
+    include/sequence/customserver/CustomServerAnalysisCommands.h
+    include/sequence/customserver/CustomServerFitCommands.h
+    include/sequence/customserver/CustomServerDetectionCommands.h
     include/customserver/BeamServerClient.h
     include/AppUI/Common/FileSelectorDialog.h
     include/AppUI/Common/RecipeSaveAsDialog.h

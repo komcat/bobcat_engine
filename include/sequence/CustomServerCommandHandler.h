@@ -1,6 +1,6 @@
 // CustomServerCommandHandler.h
-// Command handler for beam detection server integration.
-// Routes Connect/Disconnect/Detect/Fit/Reset commands to BeamServerClient.
+// Thin orchestrator for beam-server / beam-detection commands. Per-family
+// implementations live in include/sequence/customserver/Custom*.{h,cpp}.
 #pragma once
 
 #include "ICommandHandler.h"
@@ -26,27 +26,6 @@ public:
   void SetContext(ApplicationContext* ctx) { m_context = ctx; }
 
 private:
-  bool HandleConnect(const std::map<std::string, std::string>& params, std::string& errorMessage);
-  bool HandleDisconnect(std::string& errorMessage);
-  bool HandleDetect(const std::map<std::string, std::string>& params,
-                    std::string& errorMessage, SequenceContext* context);
-  bool HandleDetectN(const std::map<std::string, std::string>& params,
-                     std::string& errorMessage, SequenceContext* context);
-  bool HandleFit(const std::map<std::string, std::string>& params,
-                 std::string& errorMessage, SequenceContext* context);
-  bool HandleDetectFile(const std::map<std::string, std::string>& params,
-                        std::string& errorMessage, SequenceContext* context);
-  bool HandleDetectFolder(const std::map<std::string, std::string>& params,
-                          std::string& errorMessage, SequenceContext* context);
-  bool HandleSave(const std::map<std::string, std::string>& params,
-                  std::string& errorMessage, SequenceContext* context);
-  bool HandleReset(std::string& errorMessage);
-
-  // Native handlers (no TCP server needed)
-  bool HandleFitSlices(const std::map<std::string, std::string>& params,
-                       std::string& errorMessage, SequenceContext* context);
-  bool HandleD4SigmaZScanFolder(const std::map<std::string, std::string>& params,
-                                 std::string& errorMessage, SequenceContext* context);
-
+  // (All Handle* implementations moved to customserver/Custom*.{h,cpp}.)
   ApplicationContext* m_context = nullptr;
 };
