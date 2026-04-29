@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Detail docs**: per-subsystem file layouts and helper contracts live under `docs/architecture/`. Each section below links to the relevant file when one exists.
+
 ## Build System
 
 This is a **CMake-based C++17 Qt6 application** for industrial motion control and automation. Builds with **MSVC (cl.exe)** and **Ninja** on **Windows only** (no cross-platform support).
@@ -85,7 +87,7 @@ bobcat_engine/
 ├── src/                                   # Sparse - only dut, lighting, motions
 ├── config/                                # JSON hardware configuration
 ├── tools/                                 # Standalone utility apps
-└── docs/                                  # 40+ documentation files
+└── docs/                                  # 40+ documentation files (incl. docs/architecture/)
 ```
 
 ## High-Level Architecture
@@ -173,6 +175,12 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 | SequenceContextCommandHandler | Context vars | SetVariable, GetVariable, Evaluate |
 | AccuracyTrainerCommandHandler | Accuracy training | RunAlignment (headless, no Qt dependency) |
 
+The three biggest handlers are split into a thin orchestrator + per-family helpers — touch the helper, not the orchestrator:
+
+- **Motion** — 9 helpers under `include/sequence/motion/`. See [docs/architecture/motion_command_handler.md](docs/architecture/motion_command_handler.md).
+- **Vision** — 4 helpers under `include/sequence/vision/`. See [docs/architecture/vision_command_handler.md](docs/architecture/vision_command_handler.md).
+- **CustomServer** — 4 helpers under `include/sequence/customserver/`. See [docs/architecture/customserver_command_handler.md](docs/architecture/customserver_command_handler.md).
+
 ### Motion Control System
 - **UnifiedMotionManager** (`include/motions/unified_motion_manager.h`) - requires both ACS and PI SDKs
 - Routes commands to correct controller based on device type from `config/motor_devices.json`
@@ -191,64 +199,6 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 - Config persisted to `config/interlocks.json` (local-first pattern)
 - UI widget: `InterlockWidget` in `include/AppUI/MotionPages/`
 
-### MotionCommandHandler Layout (`include/sequence/MotionCommandHandler.{h,cpp}` + `include/sequence/motion/`)
-
-The motion command handler is split into a thin orchestrator plus 9 per-family helpers. Touch the helper for the command family you're working in — **not** the orchestrator.
-
-| File | Owns |
-|------|------|
-| `MotionCommandHandler.{h,cpp}` | Public `ExecuteCommand` API, the dispatch ladder (9 `TryExecute` calls), shared cross-family helpers (`ResolveNumericValue`, `WaitForMotionWithStopCheck`, `WaitForMultipleRelativeMotionsWithStopCheck`, `InvokeRetraceEditCallback`), the nested `TargetPosition` type, retrace-edit-mode state. The orchestrator — keep it thin (~650 lines). |
-| `motion/MotionCommandDeps.h` | `struct MotionCommandDeps` — bundles the manager pointers + `parent` callback handle that every helper receives. Built once at the top of `ExecuteCommand` and reused. |
-| `motion/MotionBasicCommands.{h,cpp}` | Family A: `MoveToPosition`, `MoveToAbs`, `MoveRelative`, `MoveToNamedPosition`, `StopAxis`, `EmergencyStop`, `HomeAxis`, `EnableServo`, `WaitForMotionComplete`. Calls `deps.parent->WaitForMotionWithStopCheck` / `ResolveNumericValue` / `InvokeRetraceEditCallback`. |
-| `motion/MotionVelocityCommands.{h,cpp}` | Family B: `SetVelocity`, `SetAllAxisVelocity`, `SetSystemVelocity`, `GetSystemVelocity`. Self-contained. |
-| `motion/MotionScanCommands.{h,cpp}` | Family C: `XCAN`, `XCANExtended`, `AxisScan` — 1D adaptive scans backed by `AdaptiveScanController` + `DataStore`. |
-| `motion/MotionGridScanCommands.{h,cpp}` | Family D: `GridScan`, `GridScanExtended`, `GridScanDualChannel` — 2D grid scans. Owns the `FormatSI` / `MakeTimestamp` / `FormatTime` / `WriteGridScanFiles` file-static helpers (JSON + summary text written under `logs/scanning/grid/`). |
-| `motion/MotionGraphContextCommands.{h,cpp}` | Family E: `MoveToGraphNode`, `MoveToContextPosition`, `SavePositionToContext`, `MoveToAbsFromContext`, `MoveToContextXY`. Touches `MotionGraphManager`, `ProductPositionManager`, `VisionManager`. |
-| `motion/MotionParallelCommands.{h,cpp}` | Family F: `ParallelMove`, `ParallelMoveRelative`. Owns `ParallelMoveSpec` + `ParallelRelativeMoveSpec` data types. Uses `GraphMoveWorker` for true parallel graph-node execution. |
-| `motion/MotionPositionFileCommands.{h,cpp}` | Family G: `UpdatePositionAxis`, `UpdatePositionAll` — edit named positions in the product file. |
-| `motion/MotionLinkedDeviceCommands.{h,cpp}` | Family H: `RegisterDeviceLink`, `CompensateDeviceLink` — primary↔linked device offset registration and compensation moves. Touches `DeviceLinkManager` + `CoordinateTransformer`. |
-| `motion/MotionFastAlignCommands.{h,cpp}` | Family I: `FastAlignXY`, `FastAlignZXY`. PI-only commands that bypass `UnifiedMotionManager` and talk directly to `PIController` (FSM/GetFastScanStatus/GetAnalogVoltage primitives). |
-
-**Helper contract:** every helper exposes a single `static std::optional<bool> TryExecute(deviceName, methodName, params, errorMessage, context, deps)`. Returning `std::nullopt` means "method isn't mine" (orchestrator falls through to the next helper); returning `true`/`false` means "handled — that was the success result." This lets the orchestrator's `ExecuteCommand` body stay flat (`if (auto r = HelperX::TryExecute(...)) return *r;` × 9, then "Unknown method" fallthrough) without nesting or chained `else if`.
-
-**Adding a new motion command:** add an `if (methodName == "YourCommand")` branch inside the helper that owns the relevant family — do not add it to the orchestrator. If the command starts a new family, add a new helper file under `motion/`, register it in CMakeLists.txt next to its siblings, add `#include "motion/YourHelper.h"` to the orchestrator and one `if (auto r = YourHelper::TryExecute(...))` call to the dispatch ladder.
-
-### VisionCommandHandler Layout (`include/sequence/VisionCommandHandler.{h,cpp}` + `include/sequence/vision/`)
-
-Same pattern as MotionCommandHandler, but smaller — 4 helpers instead of 9, and the orchestrator is just a 60-line dispatch ladder. The whole handler is `#ifdef HAS_OPENCV`-gated; with no OpenCV, every TU compiles to nothing (CMake also gates the source list with `if(OPENCV_FOUND)`).
-
-| File | Owns |
-|------|------|
-| `VisionCommandHandler.{h,cpp}` | `ExecuteCommand` dispatch ladder (4 `TryExecute` calls + "Unknown vision command" fallthrough), the `m_context` pointer that helpers reach via `deps.app`. ~60 lines, no per-command logic. |
-| `vision/VisionCommandDeps.h` | `struct VisionCommandDeps` — bundles `ApplicationContext* app` (covers all manager pointers) + `VisionCommandHandler* parent` (callback handle, mirrors Motion's `deps.parent`). Built once in `ExecuteCommand` and reused. |
-| `vision/VisionContinuousCommands.{h,cpp}` | `start_continuous`, `stop_continuous`, `enable_cv_inject`, `disable_cv_inject`. Touches `GdiCameraWindowManager` + `SequenceEngine`. No OpenCV headers needed in this file. |
-| `vision/VisionTestCommands.{h,cpp}` | `load_image_from_file` — test seam that loads an image from disk into `VisionManager` to bypass live camera capture. |
-| `vision/VisionAutoFocusCommands.{h,cpp}` | `auto_focus` — Z-axis sweep using Laplacian-variance focus measure. Owns the file-static `CalculateFocusMeasure` helper (anon namespace) + `ExecuteAutoFocus` implementation. Self-contained — does its own capture loop via `LiveVideoSubscriber`, no parent callbacks. |
-| `vision/VisionProfileCommands.{h,cpp}` | The big one (1259 LOC): `load_profile`, `execute_profile`, `execute`, `capture_and_execute`, `get_result`, `show_context_image`. Owns the implementation methods (`LoadProfile`, `Execute`, `CaptureAndExecute`, `GetResult`, `StoreResultInContext`, `ShowContextImage`, `SaveVisionResultWithHistory`), the file-static history-rotation state (`s_historyIndex` + `MAX_HISTORY` + `HISTORY_DIR`), and `ApplyNoMatchGuardToContext` in an anon namespace. |
-
-Helper contract is identical to Motion's: `static std::optional<bool> TryExecute(...)` returning `std::nullopt` (not mine), `true` (success), or `false` (handled failure with `errorMessage`). The orchestrator stays flat — no `else if` chain.
-
-**Adding a new vision command:** put it inside the helper that owns the matching family. If it touches profile execution, results, or images, that's `VisionProfileCommands`. If it starts a brand-new family, mirror Motion's playbook: new helper under `vision/`, add to CMakeLists `if(OPENCV_FOUND)` block, include in orchestrator, one `TryExecute` call in the dispatch ladder.
-
-### CustomServerCommandHandler Layout (`include/sequence/CustomServerCommandHandler.{h,cpp}` + `include/sequence/customserver/`)
-
-Same pattern again — orchestrator stays thin (~70 lines), per-family helpers under `customserver/`. The orchestrator preserves a two-tier dispatch: **native** handlers (no TCP server needed) run first, then the `m_context->beamServerClient` null check, then the **TCP-based** families.
-
-| File | Owns |
-|------|------|
-| `CustomServerCommandHandler.{h,cpp}` | Two-tier dispatch ladder + `m_context` pointer + the `beamServerClient` null guard. ~70 lines. No per-command logic. |
-| `customserver/CustomServerCommandDeps.h` | `struct CustomServerCommandDeps` — `ApplicationContext* app` + `CustomServerCommandHandler* parent`. Mirrors Vision's compressed shape (single context pointer covers all manager access). |
-| `customserver/CustomServerAnalysisCommands.{h,cpp}` | "Native" family (no TCP needed): `FitSlices` (Gaussian M² beam fit from context data), `D4SigmaZScanFolder` (process a folder of Z-scan images through the vision pipeline). Owns the file-static `d4sigma_crop` helper (HAS_OPENCV-gated). Uses `LevenbergMarquardt` + optional opencv. |
-| `customserver/CustomServerConnectionCommands.{h,cpp}` | `Connect`, `Disconnect` — TCP connection lifecycle to the beam server. |
-| `customserver/CustomServerFitCommands.{h,cpp}` | `Fit`, `Save`, `Reset` — TCP-based fit operations + persistence. |
-| `customserver/CustomServerDetectionCommands.{h,cpp}` | `Detect`, `DetectN`, `DetectFile`, `DetectFolder` — beam detection (live + file + folder). Largest helper (~970 LOC). Touches camera + filesystem + regex. |
-
-Helper contract identical to Motion/Vision: `static std::optional<bool> TryExecute(...)`. Each helper bundles its own private static `Handle*` methods + a small anon-namespace `safeStod` / `safeStoi` (intentionally duplicated rather than shared via a header — keeps each helper self-contained, total cost ~15 LOC × 3 = trivial).
-
-`m_logger` is reached as `deps.app->logManager` (the ApplicationContext field, same instance the dispatcher injects into `ICommandHandler::m_logger`).
-
-**Adding a new beam-server command:** if it doesn't need TCP, add it to `Analysis`. If it manages connection state, `Connection`. If it operates on the fit state, `Fit`. Otherwise `Detection`. New family → new helper under `customserver/`, mirror the existing wiring.
-
 ### Recipe Plugin System
 Plugin-based architecture for process types. See `docs/creating_recipe_plugins.md`.
 
@@ -264,226 +214,28 @@ Plugin files are organized by category: `MotionProcesses.cpp`, `IOProcesses.cpp`
 ### Adding New Commands
 See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for the full guide on extending the sequence system with new command handlers.
 
-## Accuracy Trainer Module
+## Trainer Modules
 
-Located in `include/AppUI/AccuracyTrainer/` (10 files). Teaches and corrects bonding position accuracy using a local coordinate frame. Activated via F7 shortcut in MainWindow.
+Three trainer modules share a teach-then-run pattern (data structs + JSON store + teach widgets + run widget + optional headless `*CommandHandler`):
 
-### Architecture
-```
-AccuracyTrainerPage (main container, 30% left nav + 70% right content)
-├── TeachBondingWidget      - Teach 2-3 corner positions → compute bonding center
-├── TeachReferenceWidget    - Teach 2-3 reference landmarks → compute local coordinate frame
-├── TeachMultiDeviceWidget  - Teach hex device 6-axis + gantry viewing positions + corners + Z offsets
-├── EditZOffsetWidget       - Edit Z offset parameters (component/bondline thickness)
-├── RunAlignmentWidget      - Single-device: capture refs → rigid transform → corrected bonding moves
-└── MultiDeviceRunAlignmentWidget - Multi-device: refs + hex registration + coordinate transforms
+- **Accuracy Trainer** — `include/AppUI/AccuracyTrainer/`. Bonding-position correction via local coordinate frame. F7 in MainWindow. See [docs/architecture/accuracy_trainer_module.md](docs/architecture/accuracy_trainer_module.md).
+- **Placement Correction Trainer** — `include/AppUI/PlacementCorrectionTrainer/`. Hexapod placement angle correction by gantry-measured line angles. See [docs/architecture/placement_correction_trainer.md](docs/architecture/placement_correction_trainer.md).
+- **Edge Transfer Trainer** — `include/AppUI/EdgeTransferTrainer/`. Same teach-then-run shape as the other two (8 widgets + `EdgeTransferStore` + `EdgeTransferData`); treat as a peer.
 
-AccuracyTrainerStore       - JSON persistence (v2 format) to {productDir}/accuracy_trainer/
-AccuracyTrainerData.h      - Data structs (ReferencePoint, BondingPoint, HexDeviceTeachData, TrainingSet) + math
-AccuracyTrainerLogger      - SQLite3 logging of corner confirmations with taught vs confirmed deltas
-```
+## UI Pages and Windows
 
-### Data Flow
-1. **Teach Phase**: User teaches reference points (Ref1/Ref2/Ref3) to define a local coordinate frame. Origin = Ref1, X-axis = Ref1→Ref2, Y-axis = perpendicular (CCW 90deg). Bonding points are taught by 2-3 corners, center computed automatically. All stored as `TrainingSet`.
-2. **Run Phase**: Move to taught reference positions, user adjusts to actual positions (or vision auto-detects). Compute rigid 2D transform (rotation + translation) from taught→actual. Apply transform to all bonding points, move to corrected positions.
-3. **Multi-Device Run**: Additionally registers hex devices by 3-corner capture in gantry frame, uses `TransformationMatrixLoader` to transform bonding positions between gantry and hex coordinate systems.
+Each of these is composed from focused helpers — touch the helper for the area you're working in, **not** the orchestrator. Linked docs list the helper file table and any construction-order constraints.
 
-### Headless Execution
-`AccuracyTrainerCommandHandler` (device type `"accuracytrainer"`) runs alignment without Qt widgets. Parameters: `training_set_name`, `register_hex_left`, `register_hex_right`, `move_to_bonding`. Results stored in SequenceContext as `accuracy_trainer.result.*` (success, corrected positions, deltas).
+| Subsystem | Path | Detail doc |
+|-----------|------|-----------|
+| F1 Process page | `include/AppUI/RunProgramPage/` (incl. `RollCorrectionWidget`) | [docs/architecture/run_program_page.md](docs/architecture/run_program_page.md) |
+| F2 Recipe page | `include/AppUI/RecipePage/` | [docs/architecture/recipe_page.md](docs/architecture/recipe_page.md) |
+| Qt camera monitor (x2) | `include/QtCameraWindow/` | [docs/architecture/qt_camera_window.md](docs/architecture/qt_camera_window.md) |
+| GDI camera monitor (x2) | `include/GdiWindow/` | [docs/architecture/gdi_camera_window.md](docs/architecture/gdi_camera_window.md) |
+| SWIR beam window | `include/SwirBeamWindow/` (Win32+GDI+) | [docs/architecture/swir_beam_window.md](docs/architecture/swir_beam_window.md) |
+| F8 Data Backup | `include/AppUI/DataBackupPage.{h,cpp}` | [docs/architecture/data_backup.md](docs/architecture/data_backup.md) |
 
-### Key Design Decisions
-- **Re-entrancy guard**: `TeachMultiDeviceWidget` is NOT refreshed in `updateCurrentTrainingSet()` to prevent data loss during teaching
-- **Vision integration** (conditional `HAS_OPENCV`): `VisionCommandHandler::execute_profile` + `calculate_world_position` for auto-detect in reference and hex corner teaching
-- **File format v2**: Includes UUID, Z parameters, hex corner data. v1 files auto-upgraded on load with sensible defaults
-- **SQLite logging**: Corner confirmations logged to `logs/accuracy_trainer/accuracy_trainer_log.db` with unique point UIDs (`ref_{name}`, `hex_{device}_{corner}`)
-
-## Placement Correction Trainer Module
-
-Located in `include/AppUI/PlacementCorrectionTrainer/` (9 files). Corrects hexapod placement angle by comparing reference and target line angles measured on the gantry.
-
-### Architecture
-```
-PlacementCorrectionPage (main container)
-├── TeachPlacementLineWidget  - Teach 2 points each for reference and target lines
-├── PlacementResultWidget     - Show angle delta and corrected U value
-├── PlacementRetraceWidget    - Re-measure and validate correction
-├── ExposureAdjustWidget      - Camera exposure controls during measurement
-├── ImageGalleryWidget        - Captured placement images
-└── SummaryDiagramWidget      - Visual summary of corrections
-
-PlacementCorrectionStore     - JSON persistence to {productDir}/placement_correction/
-PlacementCorrectionData.h    - Structs (PlacementLinePoints, PlacementCorrectionConfig, PlacementCorrectionSet) + math
-```
-
-### Data Flow
-1. **Teach**: Capture 2 gantry XY points each for a reference line and target line
-2. **Compute**: `PlacementCorrectionMath::ComputeLineAngle()` for each line, delta angle = target - reference
-3. **Correct**: Apply delta to hex device U axis: `correctedU = masterU + deltaAngle` (with optional sign reversal)
-4. **Config**: `PlacementCorrectionConfig` maps a master position (golden reference, never modified) to a target position that receives the corrected values
-
-## SWIR Beam Detection (`include/SwirBeamWindow/`)
-
-Real-time beam profiling/tracking shown in a Win32+GDI+ window (not Qt). The window is composed from several focused helpers — touch the helper for the area you're working in, **not** the orchestrator.
-
-### File layout
-| File | Owns |
-|------|------|
-| `SwirBeamWindow.{h,cpp}` | Win32 message pump, frame ingestion (`CameraFrameSubscriber`), detection thread + B0/B1 tracking, panel/button rendering, click-to-move, PSU/TEC actions, magnification dialog. The orchestrator — should stay focused. |
-| `SwirBeamDetector.{h,cpp}` | Three detection algorithms (d4σ / blob / Halcon) — see table below. |
-| `SwirPeakFinder.{h,cpp}` | 1-D peak detection used by the d4sigma path. |
-| `SwirBeamOverlay.{h,cpp}` | All GDI+ overlay drawing: beam ROIs, centroids, EE ellipse, CE/EE charts, bottom-strip beam crops (heatmap-coloured). |
-| `SwirBeamConfigStore.{h,cpp}` | JSON I/O for `config/beam_detection.json` — the d4σ + blob + Halcon configs and tracking flags. Pure load/save. |
-| `SwirWorldMarkerStore.{h,cpp}` | World-locked V/H markers (Place / ClearAll / Snapshot / SaveToFile / LoadFromFile). The window keeps the dialog/render and forwards state mutation here. |
-| `SwirImageSaver.{h,cpp}` | The five save APIs: `SaveFrameAsPng`, `SaveFrameWithOverlayAsPng`, `SaveBeamCropAsPng`, `SaveCollageAsPng`, `SaveImagePackage`. Pulls fresh snapshots via `Deps` callbacks, no window state held. |
-| `SwirBeamFocusController.{h,cpp}` | BF (beam focus) hill-climb worker future + cancel flag. |
-| `SwirAutoSatController.{h,cpp}` | AUTO SAT one-shot algorithm: phase-1 exposure/current bracket tuning + phase-2 ±50 µm gantry-Z focus sweep with mid-sweep retune. Worker future, abort flag, all `AS_*` constants live here. |
-| `SwirBeamWindowManager.{h,cpp}` | Qt-side lifecycle owner. Manages the window's `std::shared_ptr` and exposes the public API (`saveImagePackage`, `enableBeamDetection`, `enableAutoSatPrevention`, `getBeamSnapshots`) wired to the `SystemCommandHandler` callbacks in `Application.cpp`. |
-
-When extending the SWIR window, prefer adding a new helper class over enlarging `SwirBeamWindow.cpp`.
-
-### Detection modes
-Three detection modes coexist in `SwirBeamDetector.cpp` and are selected at runtime via `config/beam_detection.json`:
-
-| Mode | Function | Notes |
-|------|----------|-------|
-| `halcon` (plan of record) | `RunHalconBeamDetection` | HDevelop port: local-mean BG (51×51) + threshold + connected components + per-region first-moment D4σ. Requires `HAS_HALCON`. Toggle: `useHalconDetection: true`. |
-| `blob` | `RunBlobDetection` | OpenCV threshold + contour. Toggle: `useBlobDetection: true`. |
-| `d4sigma` (legacy) | `RunBeamDetection` | OpenCV X/Y projection peak finding + corner-patch BG. Default if neither flag is set. Has known robustness issues vs Halcon. |
-
-For new tuning/fixes prefer the Halcon path. Don't propose tuning d4sigma thresholds (`minPeakValue`, `aspectRatioMax`, etc.) unless the miss log shows `mode=d4sigma`.
-
-### Frame pipeline (single-slot, latest-wins)
-- `CameraManager` rate-limits broadcasts to subscribers (`GetMinFrameIntervalMs()` returns 33 ms — ~30 fps cap).
-- `SwirBeamWindow::OnNewFrame` writes two single-slot buffers under separate mutexes:
-  - `m_detectionBuffer` (gray) — overwritten if detection thread hasn't consumed previous frame; tracked by `m_detectionInputDrops`.
-  - `m_frameBuffer` (BGR) — write skipped entirely (`m_hasNewFrame` flag) when UI repaint hasn't completed.
-- Detection runs on its own `std::thread` at `THREAD_PRIORITY_BELOW_NORMAL`, sleeping on `m_detectionCV` between frames.
-- No queue. Frame drops at the detection input are silent except for the `[BeamDetect] detection-input drops total=...` console line.
-
-### Beam ID stability
-After detection, the caller in `SwirBeamWindow.cpp` (the detection thread lambda) re-orders the result vector via nearest-neighbour association to `m_prevBeams[2]` so that slot 0 / slot 1 keep following the same physical beam across frames. CE/EE history, broker publishing, and overlay rendering all depend on this slot identity. Single-beam frames are slot-aware: the lone candidate is matched to the closer prior slot rather than always overwriting slot 0.
-
-### GA quadrant labels
-`gaQuadrantLabels` in `beam_detection.json` maps each visual quadrant to a GA channel string. With the current Y-flip convention used by the labeling code, **set top-quadrants (`q1`, `q2`) to the GA channel that is physically at the bottom of the image** and vice versa — verify against the live overlay before committing changes.
-
-## Roll Correction Widget
-
-Located in `include/AppUI/RunProgramPage/RollCorrectionWidget.h/.cpp`. Corrects hexapod roll (W axis) using dual-channel peak position measurement.
-
-### Workflow
-1. Register CH1/CH2 peak X positions per hex device (hex-left, hex-right)
-2. Compute roll angle: `arctan(deltaX / spacing)`
-3. Apply 3-step correction: move to CH1 peak, shift X halfway, rotate W per direction table
-4. All moves use 1mm/s safe velocity with automatic restore
-5. "Fine Grid Scan" button runs `GridScanDualChannel` on background thread; "STOP Scan" uses SequenceContext-based stop control
-
-## RunProgramPage Layout (`include/AppUI/RunProgramPage/`)
-
-The F1 "Process" page is composed from focused helpers — touch the helper for the area you're working in, **not** the orchestrator.
-
-| File | Owns |
-|------|------|
-| `RunProgramPage.{h,cpp}` | Top-level page, layout assembly, signal wiring. The orchestrator — keep it thin. |
-| `RunPageLeftPanel` | Left-side navigation/control panel. |
-| `ProgramEditPanel` | Program (recipe sequence) editing UI. |
-| `ProgramSettingsStore` | Per-program UI settings persistence (QSettings-backed). |
-| `ExecutionController` | Run/pause/stop/step orchestration against `ProgramManager` + `SequenceEngine`. |
-| `ExecutionStatusWidget` | Live execution status display. |
-| `UserInteractionOverlay` | Modal overlays for prompts, manual alignment, capture confirm, etc. |
-| `ScanController` + `ScanControlWidget` | Background scan kickoff/stop (uses SequenceContext stop flag). |
-| `SequenceContextViewer` | Live key/value view of `SequenceContext`. |
-| `VisionHistoryWidget` | Captured vision results history. |
-| `SlotManagerWidget` | DUT slot selection/management. |
-| `RollCorrectionWidget` | Hex W-axis roll correction (see "Roll Correction Widget" section above). |
-| `RetraceEditWidget`, `ManualAdjustWidget`, `ManualAlignPointWidget`, `UserPromptWidget`, `UserInputWidget`, `CaptureConfirmWidget` | User-interaction dialogs/widgets used during recipe execution. |
-| `MotionInspectorWidget` | Live motion state inspection. |
-| `DependencyGraphScene/Window`, `DependencyEdgeItem`, `RecipeNodeItem`, `LoopConfigDialog` | Recipe dependency graph view + loop config dialog. |
-
-When extending the run page, prefer adding/expanding a helper over enlarging `RunProgramPage.cpp`.
-
-## RecipePage Layout (`include/AppUI/RecipePage/`)
-
-The F2 "Recipe" page is composed from focused helpers — touch the helper for the area you're working in, **not** the orchestrator.
-
-| File | Owns |
-|------|------|
-| `RecipePage.{h,cpp}` | Top-level page, three-panel splitter, dropdown menus, recipe step tree (`m_recipeTree`), file ops (new/load/save/save-as), `setPageState`, theme refresh, signal wiring between helpers. The orchestrator — keep it thin. |
-| `ProcessCatalogWidget` | Left panel "Available Processes" tree: search box, gear/visibility dialog, "+" add button, hidden-process set. Emits `addProcessRequested(processType)`. |
-| `RecipeBrowserWidget` | "Recipes" tab in the middle panel: lists recipe JSON files in `config/{product}/recipes/`, folder CRUD, drag-drop move, usage-finder (programs + sub-recipes) on delete. Emits `loadRecipeRequested(filePath)`. |
-| `RecipeExecutionController` | Owns `RecipeWorker` lifetime; forwards its 11 output signals so the page connects once instead of re-wiring per execution; installs the safety-stop `DirectConnection`; `Start()` / `RequestStop()` / `IsRunning()` / `ShutdownSync()`. |
-| `QuickAddController` | Ctrl+B two-key UX: floating overlay shows numbered category list (1-9), then numbered process list. Emits `processSelected(processType)`. Filters by `ProcessCatalogWidget::hiddenProcesses()` so quick-add indexing matches the visible catalog. |
-| `RecipePageSettingsStore` | Pure QSettings I/O for `RecipePage/lastRecipe` (auto-load target on startup). |
-| `ProcessConfigWidget` | Right panel: dynamic config form for the selected step. |
-| `RecipeProgressWidget` | Right panel during execution: progress bar + status text. Hosted in `RecipeRunWindow`. |
-| `RecipeRunWindow` | Floating window that hosts execution-time widgets (progress / manual adjust / manual align / user input). Reused across runs. |
-| `RecipeTreeItemFactory` | Builds the `m_recipeTree` step rows (number, enable checkbox, breakpoint, run-once button). |
-| `RecipeStepDelegate` | Custom QStyledItemDelegate for the step tree. |
-| `RecipeClipboard` | In-process clipboard for copy/paste of process steps. |
-| `ContextViewerWindow` + `ContextVariablePreviewWidget` | Live `SequenceContext` inspection (variables captured during execution) and a static preview of variables a recipe will produce. |
-| `ProcessVisibilityDialog` | Modal dialog managing `config/hidden_processes(.local).json`. |
-| `PropertyTableWidget`, `DeviceSelectorWidgets`, `MotionDeviceSelectorDialog`, `PneumaticSlideSelectorDialog` | Form helpers consumed by `ProcessConfigWidget`. |
-| `ProcessSummary`, `RecipePageStyles` | Shared formatters / themed QSS strings. |
-
-When extending the recipe page, prefer adding/expanding a helper over enlarging `RecipePage.cpp`. The page should not own recipe-library file ops, process-catalog state, RecipeWorker callbacks, or quick-add state — those have homes already.
-
-## QtCameraWindow Layout (`include/QtCameraWindow/`)
-
-The Qt-based camera monitor (`QtCameraWindow`, instantiated x2 — toggled with Ctrl+R / Ctrl+T) is composed from focused helpers — touch the helper for the area you're working in, **not** the orchestrator.
-
-| File | Owns |
-|------|------|
-| `QtCameraWindow.{h,cpp}` | Top-level window, side-panel layout assembly, frame ingestion (`OnNewFrame` / `OnCameraStatusChanged` — `CameraFrameSubscriber` impl), `updateViewport()` per-frame push to the viewport, click-to-move, calibration loading, auto-focus, top-level QSettings (geometry / camera selection / tools). The orchestrator — keep it thin. |
-| `QtCameraViewport` | The QPainter-based image surface. Renders the live frame plus all overlays (chart / vision / beam / device-tracking / crosshair / EE). Owned and updated by the window. |
-| `QtCameraQuickMovePanel` | Left column 6×4 grid of "quick move" buttons that issue relative gantry moves via `UnifiedMotionManager`. Per-button label + ΔX/ΔY/ΔZ configurable via right-click; persisted to QSettings (`QtCameraWindow[/<instanceId>]/QuickMove/...`). |
-| `QtCameraTrackingPanel` | Session-only device tracking: register P0 from gantry-main XY, register hex-left/hex-right, transform local-Δ to global via `transformation_matrix.json`, polling QTimer at 10 Hz, alert thresholds with hysteresis, button colour change on alert. |
-| `QtCameraChartOverlay` | "Chart Overlay" tab: subscribes to `DataStore`, accumulates 200-point ring buffers per channel, throttled (~20 Hz) viewport push + per-frame push from `updateViewport()`. Settings: `ChartOverlay[<instanceId>]/...`. |
-| `QtCameraVisionController` (HAS_OPENCV) | "Vision" tab: profile combo + enable checkbox. Owns the worker thread that drains a 2-deep RGB queue (fed by `OnNewFrame`), runs the active profile through `VisionManager`, hands `VisionResult` to the viewport. Also exposes `showExternalOverlay(...)` for callers like `VisionCommandHandler::execute_profile`. Settings: `Vision[<instanceId>]/...`. |
-| `QtCameraBeamStreamController` | "Beam" tab: enable + camera-select. Owns the worker thread that ships mono8 frames over TCP via `BeamServerClient`. Settings: `BeamServer/...` (global) + fallback `config/beam_stream.json`. |
-
-When extending the camera window, prefer adding/expanding a helper over enlarging `QtCameraWindow.cpp`. The window should not own quick-move data, tracking state, chart channel buffers, vision threads, or beam-stream sockets — those have homes already.
-
-**Construction order constraint:** the viewport must be created *before* `buildSidePanel()` and `buildQuickMovePanel()` because the chart / tracking / vision / beam helpers all observe it at construction. Layout-add order is independent of construction order.
-
-## GdiCameraWindow Layout (`include/GdiWindow/`)
-
-The native Win32+GDI camera monitor (sibling of `QtCameraWindow`, instantiated x2 — toggled with the **GDI** button in the top bar, plus Ctrl+R / Ctrl+T which prefer the Qt window first then fall back to GDI). Uses raw Win32 menus instead of side-panel widgets, so the helper shape differs from `QtCameraWindow`.
-
-| File | Owns |
-|------|------|
-| `GdiCameraWindow.{h,cpp}` | Top-level window: `WindowProc` / `HandleMessage`, menu bar construction, GDI rendering pipeline (`OnPaint`, `RenderFrame`, `PrepareBackBuffer`, double-buffering), camera-frame ingestion (`OnNewFrame` / `OnCameraStatusChanged`), display rotation, click-to-move, crosshair drawing, calibration loading, FPS overlay, dual-camera mode. The orchestrator — keep it thin. |
-| `ChartOverlay` | Live chart overlay drawn on top of the camera frame. DataStore subscription + per-channel ring buffers + scale. Owned by the window, fed via `OnDataStoreValueChanged`. |
-| `VisionResultOverlay` (HAS_OPENCV) | Renders the latest `VisionResult` (boxes, text, profile name) on top of the camera frame. Owned by the window, written by `GdiVisionController`. |
-| `BeamStreamOverlay` | Renders beam-detection results received from the beam server. Owned by the window, written by `GdiBeamStreamController`. |
-| `GdiVisionController` (HAS_OPENCV) | Vision worker thread + profile discovery + "Vision" Win32 popup menu. Frame ingestion via `EnqueueFrame()` (rotation-aware so the vision thread sees what the user sees). Posts `WM_VISION_RESULT_READY` after each profile execution. Settings: same as `QtCameraVisionController` (HAS_OPENCV section in profile JSON, no per-instance QSettings). |
-| `GdiBeamStreamController` | Beam-stream worker thread + `BeamServerClient` lifecycle + "Beam Stream" Win32 popup menu. Settings: `BeamServer/Host`, `StreamPort`, `UmPerPxX`, `UmPerPxY`, `Rotate180`, `StreamIntervalMs` (QSettings); fallback `config/beam_stream.json`. Frames are filtered by camera id inside `EnqueueFrame()`. |
-| `GdiCameraWindowManager` | Qt-side lifecycle owner of the `GdiCameraWindow`. The two camera-monitor instances are addressed as `gdiCameraWindowManager` and `gdiCameraWindowManager2` in `ApplicationContext`. |
-
-When extending the GDI window, prefer adding/expanding a helper over enlarging `GdiCameraWindow.cpp`. The window should not own vision threads, beam-stream sockets, or beam-server config — those have homes already.
-
-**Menu integration pattern:** each controller exposes `BuildMenu(HMENU menuBar)` (creates and attaches its popup), `GetMenu()` (for `WM_INITMENUPOPUP` routing), `OnMenuOpening(...)` (refresh items on open), and `HandleMenuCommand(WORD)` (returns true if the ID was handled). The window's `OnMenuCommand` dispatches by attempting each controller in turn, falling through to its own (Tools/Camera/Show) handlers if none claims it.
-
-## Data Backup System
-
-Located in `include/AppUI/DataBackupPage.h/.cpp`. Product-scoped file backup with SHA-256 integrity verification. Accessed via "Data Backup" button on main menu (F8).
-
-### Backup Storage
-Backups are stored per-product in `config/{productName}/backups/{timestamp}_{type}[_{name}]/`. Each backup copies the entire product directory (positions, recipes, programs, trainer datasets) except the `backups/` subfolder itself.
-
-### Backup Types
-| Type | Trigger | Retention |
-|------|---------|-----------|
-| `save_point` | User clicks "Create Save Point" | Never auto-pruned |
-| `auto` | QTimer at configurable interval (default 30 min) | Keep last 10 |
-| `pre_revert` | Automatically before any restore | Keep last 3 |
-
-### Key Features
-- **SHA-256 manifest** (`manifest.json`) stores per-file hash and size for integrity verification
-- **Smart auto-backup** skips if no files changed since last backup (hash comparison)
-- **Show Changes** compares current product files against any backup: reports `[M]` modified, `[+]` added, `[-]` deleted files
-- **Pre-revert safety** always snapshots current state before restoring
-- Auto-backup settings persist in QSettings (`Backup/AutoEnabled`, `Backup/AutoIntervalMin`)
-
-## UI Page Navigation
+### UI Page Navigation
 
 MainWindow uses a `QStackedWidget` with F-key shortcuts for page switching:
 
@@ -576,10 +328,6 @@ sequence->AddAction(device, "MoveToAbs", {
 - Low-level escape hatch: `_dispatch(deviceName, methodName, paramsTable)` calls any `*CommandHandler` method directly. Use this when a wrapper is missing or doesn't pass the parameter you need (e.g. `camera.captureToFile` doesn't forward `product_name`, so call `_dispatch(camera, "CaptureToFile", {product_name=..., filename=...})` instead).
 - `recipe.run(name, opts)` runs a recipe end-to-end and blocks until completion; respects `fail_on_error` flag.
 - Files written via `file.appendCsv` etc. are relative to the executable's working directory (`out/build/<preset>/`), not the source tree.
-
-## Edge Transfer Trainer (`include/AppUI/EdgeTransferTrainer/`)
-
-Same teach-then-run pattern as Accuracy / Placement trainers (8 widgets + `EdgeTransferStore` + `EdgeTransferData`). When working on trainer features, treat this as a peer of the other two — the data layout, JSON store, and run-time correction flow follow the same conventions.
 
 ## External Dependencies
 
@@ -703,8 +451,8 @@ Do not claim "tests pass" or fabricate a test command — when asked to verify a
 4. Add source to CMakeLists.txt
 
 **Add a new command to existing handler:**
-1. Add `else if (methodName == "YourCommand")` block in `*CommandHandler.cpp`
-2. Validate parameters, execute logic, return success/failure
+1. For Motion / Vision / CustomServer: add the `if (methodName == "...")` branch inside the appropriate per-family helper (see linked docs in the Command Handlers section). Do NOT modify the orchestrator unless starting a new family.
+2. For other handlers: add `else if (methodName == "YourCommand")` block in `*CommandHandler.cpp`, validate parameters, execute, return success/failure.
 
 **Add machine-specific config:**
 1. Copy `config/xxx.json` to `config/xxx.local.json`
