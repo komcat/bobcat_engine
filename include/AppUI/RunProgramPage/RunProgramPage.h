@@ -187,6 +187,11 @@ private:
   QLineEdit* m_programNameEdit;
   class ProgramEditPanel* m_editPanel = nullptr;
   QPushButton* m_saveEditButton;
+  // Wraps m_programNameEdit so we can rewrite its title to "Program
+  // Name *" when there are unsaved edits. setProgramDirty() drives this.
+  class QGroupBox* m_programNameGroup = nullptr;
+  bool m_programDirty = false;
+  void setProgramDirty(bool dirty);
 
   // Execution view header strip — the 250x150 status badge, program
   // info labels (title / status / current recipe), the 4-cell

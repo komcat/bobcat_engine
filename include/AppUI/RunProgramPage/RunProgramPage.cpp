@@ -405,9 +405,9 @@ void RunProgramPage::createEditWidget()
   connect(closeButton, &QPushButton::clicked, this, &RunProgramPage::showExecutionWidget);
 
   // Program name + Save (page-level: program metadata, not recipe-list edit).
-  QGroupBox* programNameGroup = new QGroupBox("Program Name");
-  programNameGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
-  QVBoxLayout* programNameLayout = new QVBoxLayout(programNameGroup);
+  m_programNameGroup = new QGroupBox("Program Name");
+  m_programNameGroup->setStyleSheet(Theme::Boxes::groupBoxDark());
+  QVBoxLayout* programNameLayout = new QVBoxLayout(m_programNameGroup);
 
   QHBoxLayout* nameAndSaveLayout = new QHBoxLayout();
 
@@ -424,7 +424,13 @@ void RunProgramPage::createEditWidget()
   nameAndSaveLayout->addWidget(m_saveEditButton);
 
   programNameLayout->addLayout(nameAndSaveLayout);
-  layout->addWidget(programNameGroup);
+  layout->addWidget(m_programNameGroup);
+
+  // textEdited fires only on user input (not setText), so it cleanly
+  // distinguishes "user typed in the field" from "we re-populated the
+  // field after a load/save".
+  connect(m_programNameEdit, &QLineEdit::textEdited,
+          this, [this](const QString&) { setProgramDirty(true); });
 
   // Edit-side Recipe Slot bar (combo + Rename/Add/Copy/Delete buttons).
   {
@@ -450,7 +456,11 @@ void RunProgramPage::createEditWidget()
 
   // Page actions emitted by the panel.
   connect(m_editPanel, &ProgramEditPanel::recipeListChanged,
-          this, [this]() { updateRecipeList(); updateSlotInfo(); });
+          this, [this]() {
+            updateRecipeList();
+            updateSlotInfo();
+            setProgramDirty(true);
+          });
   connect(m_editPanel, &ProgramEditPanel::inspectMotionRequested,
           this, [this](int row) {
             const RecipeReference* recipe = m_programManager->getRecipe(row);
@@ -923,6 +933,9 @@ void RunProgramPage::onLoadProgram()
   // ✅ Update the program name edit field (for when user switches to edit mode)
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
 
+  // Freshly-loaded program is by definition clean (matches disk).
+  setProgramDirty(false);
+
   // ✅ Clear stale vision results when loading new program
   clearVisionResult();
 
@@ -965,6 +978,8 @@ void RunProgramPage::onSaveProgram()
     return;
   }
 
+  setProgramDirty(false);
+
   QMessageBox::information(this, "Success",
     QString("Program saved to:\n%1").arg(m_currentProgramPath));
 }
@@ -1003,6 +1018,8 @@ void RunProgramPage::onSaveAsProgram()
     QMessageBox::critical(this, "Save Error", "Failed to save program");
     return;
   }
+
+  setProgramDirty(false);
 
   // Update UI to reflect new file
   updateProgramInfo();
@@ -1046,6 +1063,7 @@ void RunProgramPage::onSlotsModified()
   if (m_runSlotWidget)  m_runSlotWidget->Reload();
   if (m_editSlotWidget) m_editSlotWidget->Reload();
   updateSlotInfo();
+  setProgramDirty(true);
 }
 
 void RunProgramPage::updateSlotInfo()
@@ -2324,6 +2342,16 @@ void RunProgramPage::onLoopIterationCompleted(int iteration)
   std::cout << "[RunProgramPage] Loop iteration " << iteration << " completed" << std::endl;
 }
 
+void RunProgramPage::setProgramDirty(bool dirty)
+{
+  if (m_programDirty == dirty) return;
+  m_programDirty = dirty;
+  if (m_programNameGroup) {
+    // Standard convention: trailing asterisk means "unsaved changes".
+    m_programNameGroup->setTitle(dirty ? "Program Name *" : "Program Name");
+  }
+}
+
 void RunProgramPage::onSaveEdit()
 {
   // Save program name from edit field
@@ -2779,6 +2807,7 @@ void RunProgramPage::onRecentProgramClicked(QListWidgetItem* item)
   updateProgramInfo();
   updateRecipeList();
   updateLoopStatusLabel();
+  setProgramDirty(false);
 
   std::cout << "[RunProgramPage] Successfully loaded recent program" << std::endl;
 }
@@ -2845,6 +2874,7 @@ void RunProgramPage::loadLastProgramFromSettings()
 
   // ✅ IMPORTANT: Also update the program name edit field in the edit widget
   m_programNameEdit->setText(QString::fromStdString(m_programManager->getProgramName()));
+  setProgramDirty(false);
 
   std::cout << "[RunProgramPage] ✅ Successfully auto-loaded: "
             << m_programManager->getProgramName() << std::endl;
