@@ -41,38 +41,89 @@ MainMenuPage::MainMenuPage(ApplicationContext* context, QWidget* parent)
 void MainMenuPage::setupUI()
 {
   QVBoxLayout* mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(50, 50, 50, 50);
-  mainLayout->setSpacing(30);
+  mainLayout->setContentsMargins(50, 30, 50, 50);
+  mainLayout->setSpacing(20);
 
-  // Title row with version + changelog button
-  QHBoxLayout* titleRow = new QHBoxLayout();
-  titleRow->setSpacing(10);
+  // ========================================
+  // Compact header row: thumbnail | product label + version | action buttons
+  // (Replaces the previous separate title row + big product frame.)
+  // ========================================
+  QFrame* headerFrame = new QFrame();
+  headerFrame->setStyleSheet(
+    "QFrame {"
+    "  background-color: #2d3e5f;"
+    "  border: 2px solid #3d5a8c;"
+    "  border-radius: 8px;"
+    "  padding: 8px;"
+    "}"
+  );
 
-  titleRow->addStretch();
+  QHBoxLayout* headerLayout = new QHBoxLayout(headerFrame);
+  headerLayout->setSpacing(15);
+  headerLayout->setContentsMargins(8, 4, 8, 4);
 
-  QString titleText = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
-  QLabel* titleLabel = new QLabel(titleText);
-  titleLabel->setAlignment(Qt::AlignCenter);
-  titleLabel->setStyleSheet(
-    "QLabel { "
-    "  font-size: 24px; "
-    "  font-weight: bold; "
-    "  color: #ffffff; "
-    "  padding: 10px; "
-    "}");
-  titleRow->addWidget(titleLabel);
+  // -- (1) Product image thumbnail (was 250×250 big tile, now 80×80 chip)
+  m_productImage = new QLabel();
+  m_productImage->setFixedSize(80, 80);
+  m_productImage->setAlignment(Qt::AlignCenter);
+  m_productImage->setText("No\nImage");
+  m_productImage->setStyleSheet(
+    "QLabel {"
+    "  background-color: #1a2540;"
+    "  color: #556688;"
+    "  font-size: 10px;"
+    "  border: 2px dashed #3d5a8c;"
+    "  border-radius: 4px;"
+    "}"
+  );
+  headerLayout->addWidget(m_productImage);
+
+  // -- (2) Center: product label (big) + version/changelog (small) stacked
+  QVBoxLayout* centerCol = new QVBoxLayout();
+  centerCol->setSpacing(2);
+  centerCol->setContentsMargins(0, 0, 0, 0);
+
+  m_productLabel = new QLabel("Product: None");
+  m_productLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  m_productLabel->setStyleSheet(
+    "QLabel {"
+    "  font-size: 22px;"
+    "  font-weight: bold;"
+    "  color: #ffffff;"
+    "  background-color: transparent;"
+    "  border: none;"
+    "  padding: 2px;"
+    "}"
+  );
+  centerCol->addWidget(m_productLabel);
+
+  // Version + changelog button row beneath the product label
+  QHBoxLayout* versionRow = new QHBoxLayout();
+  versionRow->setSpacing(8);
+  versionRow->setContentsMargins(2, 0, 0, 0);
+  QString versionText = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
+  QLabel* versionLabel = new QLabel(versionText);
+  versionLabel->setStyleSheet(
+    "QLabel {"
+    "  font-size: 11px;"
+    "  color: #aaccff;"
+    "  background-color: transparent;"
+    "  border: none;"
+    "}"
+  );
+  versionRow->addWidget(versionLabel);
 
   QPushButton* changelogBtn = new QPushButton("Changelog");
-  changelogBtn->setFixedHeight(30);
+  changelogBtn->setFixedHeight(22);
   changelogBtn->setStyleSheet(
     "QPushButton {"
     "  background-color: #3d5a8c;"
     "  color: #aaccff;"
-    "  font-size: 11px;"
+    "  font-size: 10px;"
     "  font-weight: bold;"
-    "  padding: 4px 12px;"
+    "  padding: 2px 10px;"
     "  border: 1px solid #5577aa;"
-    "  border-radius: 4px;"
+    "  border-radius: 3px;"
     "}"
     "QPushButton:hover {"
     "  background-color: #4d6a9c;"
@@ -82,77 +133,25 @@ void MainMenuPage::setupUI()
   connect(changelogBtn, &QPushButton::clicked, this, [this]() {
     showChangelogDialog();
   });
-  titleRow->addWidget(changelogBtn);
+  versionRow->addWidget(changelogBtn);
+  versionRow->addStretch();
+  centerCol->addLayout(versionRow);
 
-  titleRow->addStretch();
+  headerLayout->addLayout(centerCol, /*stretch=*/1);
 
-  mainLayout->addLayout(titleRow);
-
-  // ========================================
-  // Product Controls Section
-  // ========================================
-  QFrame* productFrame = new QFrame();
-  productFrame->setStyleSheet(
-    "QFrame {"
-    "  background-color: #2d3e5f;"
-    "  border: 2px solid #3d5a8c;"
-    "  border-radius: 8px;"
-    "  padding: 15px;"
-    "}"
-  );
-
-  QHBoxLayout* productOuterLayout = new QHBoxLayout(productFrame);
-  productOuterLayout->setSpacing(15);
-
-  // Product image placeholder (250x250)
-  m_productImage = new QLabel();
-  m_productImage->setFixedSize(250, 250);
-  m_productImage->setAlignment(Qt::AlignCenter);
-  m_productImage->setText("No Image");
-  m_productImage->setStyleSheet(
-    "QLabel {"
-    "  background-color: #1a2540;"
-    "  color: #556688;"
-    "  font-size: 14px;"
-    "  border: 2px dashed #3d5a8c;"
-    "  border-radius: 6px;"
-    "}"
-  );
-  productOuterLayout->addWidget(m_productImage);
-
-  // Right side: label + buttons
-  QVBoxLayout* productLayout = new QVBoxLayout();
-  productLayout->setSpacing(10);
-  productOuterLayout->addLayout(productLayout);
-
-  // Product label
-  m_productLabel = new QLabel("Product: None");
-  m_productLabel->setAlignment(Qt::AlignCenter);
-  m_productLabel->setStyleSheet(
-    "QLabel {"
-    "  font-size: 16px;"
-    "  font-weight: bold;"
-    "  color: #ffffff;"
-    "  background-color: transparent;"
-    "  border: none;"
-    "  padding: 5px;"
-    "}"
-  );
-  productLayout->addWidget(m_productLabel);
-
-  // Buttons row
+  // -- (3) Right: action buttons row
   QHBoxLayout* buttonLayout = new QHBoxLayout();
-  buttonLayout->setSpacing(15);
+  buttonLayout->setSpacing(8);
 
   m_newProductBtn = new QPushButton("New Product");
-  m_newProductBtn->setMinimumHeight(40);
+  m_newProductBtn->setMinimumHeight(32);
   m_newProductBtn->setStyleSheet(
     "QPushButton {"
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ab69c6, stop:1 #9b59b6);"
     "  color: white;"
-    "  font-size: 14px;"
+    "  font-size: 12px;"
     "  font-weight: bold;"
-    "  padding: 8px 20px;"
+    "  padding: 4px 12px;"
     "  border-top: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-left: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-bottom: 2px solid rgba(0, 0, 0, 0.5);"
@@ -175,14 +174,14 @@ void MainMenuPage::setupUI()
   );
 
   m_loadProductBtn = new QPushButton("Load Product");
-  m_loadProductBtn->setMinimumHeight(40);
+  m_loadProductBtn->setMinimumHeight(32);
   m_loadProductBtn->setStyleSheet(
     "QPushButton {"
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5dade2, stop:1 #3498db);"
     "  color: white;"
-    "  font-size: 14px;"
+    "  font-size: 12px;"
     "  font-weight: bold;"
-    "  padding: 8px 20px;"
+    "  padding: 4px 12px;"
     "  border-top: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-left: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-bottom: 2px solid rgba(0, 0, 0, 0.5);"
@@ -205,15 +204,15 @@ void MainMenuPage::setupUI()
   );
 
   m_saveProductBtn = new QPushButton("Save");
-  m_saveProductBtn->setMinimumHeight(40);
+  m_saveProductBtn->setMinimumHeight(32);
   m_saveProductBtn->setEnabled(false);
   m_saveProductBtn->setStyleSheet(
     "QPushButton {"
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2ecc71, stop:1 #27ae60);"
     "  color: white;"
-    "  font-size: 14px;"
+    "  font-size: 12px;"
     "  font-weight: bold;"
-    "  padding: 8px 20px;"
+    "  padding: 4px 12px;"
     "  border-top: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-left: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-bottom: 2px solid rgba(0, 0, 0, 0.5);"
@@ -244,14 +243,14 @@ void MainMenuPage::setupUI()
   );
 
   m_saveProductAsBtn = new QPushButton("Save As...");
-  m_saveProductAsBtn->setMinimumHeight(40);
+  m_saveProductAsBtn->setMinimumHeight(32);
   m_saveProductAsBtn->setStyleSheet(
     "QPushButton {"
     "  background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f1c40f, stop:1 #f39c12);"
     "  color: white;"
-    "  font-size: 14px;"
+    "  font-size: 12px;"
     "  font-weight: bold;"
-    "  padding: 8px 20px;"
+    "  padding: 4px 12px;"
     "  border-top: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-left: 2px solid rgba(255, 255, 255, 0.5);"
     "  border-bottom: 2px solid rgba(0, 0, 0, 0.5);"
@@ -273,15 +272,13 @@ void MainMenuPage::setupUI()
     "}"
   );
 
-  buttonLayout->addStretch();
   buttonLayout->addWidget(m_newProductBtn);
   buttonLayout->addWidget(m_loadProductBtn);
   buttonLayout->addWidget(m_saveProductBtn);
   buttonLayout->addWidget(m_saveProductAsBtn);
-  buttonLayout->addStretch();
 
-  productLayout->addLayout(buttonLayout);
-  mainLayout->addWidget(productFrame);
+  headerLayout->addLayout(buttonLayout);
+  mainLayout->addWidget(headerFrame);
 
   // Connect product button signals
   connect(m_newProductBtn, &QPushButton::clicked, this, &MainMenuPage::onNewProduct);
