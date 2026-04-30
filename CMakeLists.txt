@@ -731,6 +731,10 @@ set(SOURCES
     include/sequence/AuxWindowCommandHandler.cpp
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
+    include/sequence/coordalign/CoordAlignTeachCommands.cpp
+    include/sequence/coordalign/CoordAlignAlignCommands.cpp
+    include/sequence/coordalign/CoordAlignLocalPointCommands.cpp
+    include/sequence/coordalign/CoordAlignTransformCommands.cpp
     include/sequence/AccuracyTrainerCommandHandler.cpp
     include/sequence/EdgeTransferCommandHandler.cpp
     include/sequence/PlanarAdjustmentCommandHandler.cpp
@@ -989,6 +993,14 @@ set(HEADERS
     include/sequence/calibration/CalibDispenseZCommands.h
     include/sequence/calibration/CalibYawCorrectionCommands.h
     include/sequence/calibration/CalibYawToTemplateCommands.h
+    include/sequence/CoordinateAlignCommandHandler.h
+    include/sequence/coordalign/CoordAlignTypes.h
+    include/sequence/coordalign/CoordAlignMath.h
+    include/sequence/coordalign/CoordAlignCommandDeps.h
+    include/sequence/coordalign/CoordAlignTeachCommands.h
+    include/sequence/coordalign/CoordAlignAlignCommands.h
+    include/sequence/coordalign/CoordAlignLocalPointCommands.h
+    include/sequence/coordalign/CoordAlignTransformCommands.h
     include/sequence/CommandDispatcher.h
     include/motions/TransformationMatrixLoader.h
     include/motions/CoordinateTransformer.h
