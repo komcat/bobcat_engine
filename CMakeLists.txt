@@ -601,6 +601,12 @@ set(SOURCES
     include/sequence/PneumaticCommandHandler.cpp
     include/sequence/CameraCommandHandler.cpp
     include/sequence/CalibrationCommandHandler.cpp
+    include/sequence/calibration/CalibNavigationCommands.cpp
+    include/sequence/calibration/CalibNeedleZCommands.cpp
+    include/sequence/calibration/CalibCameraOffsetCommands.cpp
+    include/sequence/calibration/CalibDispenseZCommands.cpp
+    include/sequence/calibration/CalibYawCorrectionCommands.cpp
+    include/sequence/calibration/CalibYawToTemplateCommands.cpp
     include/sequence/CommandDispatcher.cpp
     include/motions/TransformationMatrixLoader.cpp
     include/motions/CoordinateTransformer.cpp
@@ -975,6 +981,14 @@ set(HEADERS
     include/sequence/PneumaticCommandHandler.h
     include/sequence/CameraCommandHandler.h
     include/sequence/CalibrationCommandHandler.h
+    include/sequence/calibration/CalibCommandDeps.h
+    include/sequence/calibration/CalibYawMath.h
+    include/sequence/calibration/CalibNavigationCommands.h
+    include/sequence/calibration/CalibNeedleZCommands.h
+    include/sequence/calibration/CalibCameraOffsetCommands.h
+    include/sequence/calibration/CalibDispenseZCommands.h
+    include/sequence/calibration/CalibYawCorrectionCommands.h
+    include/sequence/calibration/CalibYawToTemplateCommands.h
     include/sequence/CommandDispatcher.h
     include/motions/TransformationMatrixLoader.h
     include/motions/CoordinateTransformer.h

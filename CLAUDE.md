@@ -175,11 +175,12 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 | SequenceContextCommandHandler | Context vars | SetVariable, GetVariable, Evaluate |
 | AccuracyTrainerCommandHandler | Accuracy training | RunAlignment (headless, no Qt dependency) |
 
-The three biggest handlers are split into a thin orchestrator + per-family helpers — touch the helper, not the orchestrator:
+The four biggest handlers are split into a thin orchestrator + per-family helpers — touch the helper, not the orchestrator:
 
 - **Motion** — 9 helpers under `include/sequence/motion/`. See [docs/architecture/motion_command_handler.md](docs/architecture/motion_command_handler.md).
 - **Vision** — 4 helpers under `include/sequence/vision/`. See [docs/architecture/vision_command_handler.md](docs/architecture/vision_command_handler.md).
 - **CustomServer** — 4 helpers under `include/sequence/customserver/`. See [docs/architecture/customserver_command_handler.md](docs/architecture/customserver_command_handler.md).
+- **Calibration** — 6 helpers under `include/sequence/calibration/`. See [docs/architecture/calibration_command_handler.md](docs/architecture/calibration_command_handler.md).
 
 ### Motion Control System
 - **UnifiedMotionManager** (`include/motions/unified_motion_manager.h`) - requires both ACS and PI SDKs
@@ -451,7 +452,7 @@ Do not claim "tests pass" or fabricate a test command — when asked to verify a
 4. Add source to CMakeLists.txt
 
 **Add a new command to existing handler:**
-1. For Motion / Vision / CustomServer: add the `if (methodName == "...")` branch inside the appropriate per-family helper (see linked docs in the Command Handlers section). Do NOT modify the orchestrator unless starting a new family.
+1. For Motion / Vision / CustomServer / Calibration: add the `if (methodName == "...")` branch inside the appropriate per-family helper (see linked docs in the Command Handlers section). Do NOT modify the orchestrator unless starting a new family.
 2. For other handlers: add `else if (methodName == "YourCommand")` block in `*CommandHandler.cpp`, validate parameters, execute, return success/failure.
 
 **Add machine-specific config:**
