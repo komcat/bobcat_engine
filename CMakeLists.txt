@@ -652,6 +652,11 @@ set(SOURCES
     include/logger/ILogger.cpp
     include/AppUI/MotionPages/ScanControlPanel.cpp
     include/sequence/SystemCommandHandler.cpp
+    include/sequence/system/SysCommandUtils.cpp
+    include/sequence/system/SysControlCommands.cpp
+    include/sequence/system/SysDialogCommands.cpp
+    include/sequence/system/SysSwirCommands.cpp
+    include/sequence/system/SysPersistenceCommands.cpp
     include/sequence/SequencePromptDialog.cpp
     include/sequence/GripperSequenceHelpers.cpp
     include/AppUI/RecipePage/RecipePage.cpp
@@ -1035,6 +1040,12 @@ set(HEADERS
     include/motions/scanning/RotationScanController.h
     include/AppUI/MotionPages/ScanControlPanel.h 
     include/sequence/SystemCommandHandler.h
+    include/sequence/system/SysCommandDeps.h
+    include/sequence/system/SysCommandUtils.h
+    include/sequence/system/SysControlCommands.h
+    include/sequence/system/SysDialogCommands.h
+    include/sequence/system/SysSwirCommands.h
+    include/sequence/system/SysPersistenceCommands.h
     include/sequence/SequencePromptDialog.h
     include/sequence/GripperSequenceHelpers.h 
     include/AppUI/RecipePage/RecipePage.h

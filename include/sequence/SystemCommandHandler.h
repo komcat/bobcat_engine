@@ -145,9 +145,19 @@ public:
   }
 
   // Getters — needed by ScriptCommandHandler to save/restore callbacks across
-  // recipe.run() invocations from Lua (RecipeWorker clears them on destroy).
-  UserPromptCallback GetUserPromptCallback() const { return m_userPromptCallback; }
-  UserInputCallback  GetUserInputCallback()  const { return m_userInputCallback;  }
+  // recipe.run() invocations from Lua (RecipeWorker clears them on destroy);
+  // also consumed by per-family helpers under include/sequence/system/ via
+  // SysCommandDeps::parent->GetXxxCallback().
+  UserPromptCallback        GetUserPromptCallback()        const { return m_userPromptCallback; }
+  UserInputCallback         GetUserInputCallback()         const { return m_userInputCallback;  }
+  UserNotificationCallback  GetUserNotificationCallback()  const { return m_userNotificationCallback; }
+  ManualAdjustCallback      GetManualAdjustCallback()      const { return m_manualAdjustCallback; }
+  ManualAlignPointCallback  GetManualAlignPointCallback()  const { return m_manualAlignPointCallback; }
+  PlacementRetraceCallback  GetPlacementRetraceCallback()  const { return m_placementRetraceCallback; }
+  SaveSwirPackageCallback   GetSaveSwirPackageCallback()   const { return m_saveSwirPackageCallback; }
+  SetSwirToggleCallback     GetBeamDetectToggleCallback()  const { return m_beamDetectToggleCallback; }
+  SetSwirToggleCallback     GetAutoSatToggleCallback()     const { return m_autoSatToggleCallback; }
+  GetSwirBeamStateCallback  GetGetSwirBeamStateCallback()  const { return m_getSwirBeamStateCallback; }
 
 private:
   UserPromptCallback m_userPromptCallback;
