@@ -731,6 +731,9 @@ set(SOURCES
     include/AppUI/TECPage/TECControlPage.cpp
     include/sequence/DataStoreCommandHandler.cpp
     include/sequence/DUTCommandHandler.cpp
+    include/sequence/dut/DutLifecycleCommands.cpp
+    include/sequence/dut/DutInsertCommands.cpp
+    include/sequence/dut/DutDeleteCommands.cpp
     include/sequence/PSUCommandHandler.cpp
     include/sequence/SMUCommandHandler.cpp
     include/sequence/AuxWindowCommandHandler.cpp
@@ -1079,6 +1082,10 @@ set(HEADERS
     include/AppUI/TECPage/TECControlPage.h
     include/sequence/DataStoreCommandHandler.h
     include/sequence/DUTCommandHandler.h
+    include/sequence/dut/DutCommandDeps.h
+    include/sequence/dut/DutLifecycleCommands.h
+    include/sequence/dut/DutInsertCommands.h
+    include/sequence/dut/DutDeleteCommands.h
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
     include/sequence/AuxWindowCommandHandler.h

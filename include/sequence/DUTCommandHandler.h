@@ -11,10 +11,14 @@
  * @brief Command handler for Device Under Test (DUT) operations
  *
  * Manages DUT lifecycle and data entry operations through the sequence engine.
+ * The actual command logic lives in per-family helpers under
+ * include/sequence/dut/ (Lifecycle, Insert, Delete); this class is a thin
+ * dispatcher.
  *
  * Supported Methods:
  * - Create: Create new DUT (params: productName, serialNumber)
  * - Load: Load existing DUT (params: productName, serialNumber)
+ * - LoadOrCreate: Load if exists, else create
  * - Close: Close current DUT
  * - InsertString: Insert string value (params: key, value)
  * - InsertDouble: Insert double value (params: key, value)
@@ -50,24 +54,12 @@ public:
 
   std::string GetManagerType() const override { return "dut"; }
 
+  // Cross-family utilities — public so per-family helpers under
+  // include/sequence/dut/ can reach them via DutCommandDeps::parent->.
+  bool EnsureDUTActive(std::string& errorMessage) const;
+  std::string GetParam(const std::map<std::string, std::string>& params, const std::string& key) const;
+
 private:
   ApplicationContext* m_context;
   bool m_valid = true;
-
-  // Command implementations
-  bool ExecuteCreate(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
-  bool ExecuteLoad(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
-  bool ExecuteLoadOrCreate(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
-  bool ExecuteClose(std::string& errorMessage);
-  bool ExecuteInsertString(const std::map<std::string, std::string>& params, std::string& errorMessage);
-  bool ExecuteInsertDouble(const std::map<std::string, std::string>& params, std::string& errorMessage);
-  bool ExecuteInsertInteger(const std::map<std::string, std::string>& params, std::string& errorMessage);
-  bool ExecuteInsertFromContext(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
-  bool ExecuteBulkInsertFromContext(const std::map<std::string, std::string>& params, std::string& errorMessage, SequenceContext* context);
-  bool ExecuteDeleteEntry(const std::map<std::string, std::string>& params, std::string& errorMessage);
-  bool ExecuteDeleteEntriesByKey(const std::map<std::string, std::string>& params, std::string& errorMessage);
-
-  // Helper methods
-  bool EnsureDUTActive(std::string& errorMessage) const;
-  std::string GetParam(const std::map<std::string, std::string>& params, const std::string& key) const;
 };
