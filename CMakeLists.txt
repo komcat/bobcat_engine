@@ -598,6 +598,9 @@ set(SOURCES
     include/sequence/motion/MotionParallelCommands.cpp
     include/sequence/motion/MotionBasicCommands.cpp
     include/sequence/IOCommandHandler.cpp
+    include/sequence/io/IoOutputCommands.cpp
+    include/sequence/io/IoInputCommands.cpp
+    include/sequence/io/IoTimingCommands.cpp
     include/sequence/PneumaticCommandHandler.cpp
     include/sequence/CameraCommandHandler.cpp
     include/sequence/CalibrationCommandHandler.cpp
@@ -994,6 +997,10 @@ set(HEADERS
     include/sequence/ICommandHandler.h
     include/sequence/MotionCommandHandler.h
     include/sequence/IOCommandHandler.h
+    include/sequence/io/IoCommandDeps.h
+    include/sequence/io/IoOutputCommands.h
+    include/sequence/io/IoInputCommands.h
+    include/sequence/io/IoTimingCommands.h
     include/sequence/PneumaticCommandHandler.h
     include/sequence/CameraCommandHandler.h
     include/sequence/CalibrationCommandHandler.h
