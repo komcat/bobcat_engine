@@ -9,6 +9,36 @@
 #include <cstdint>
 #include <thread>
 
+namespace {
+
+// Trim leading/trailing whitespace and report whether the result parses as
+// a positive decimal integer. Returns isNumeric=true and trimmed.empty()=true
+// for an all-whitespace input — callers must combine the two checks
+// (isNumeric && !trimmed.empty()) to gate the numeric path, mirroring the
+// original inline logic in SetOutput / SetOutputPin.
+struct PinParseResult { std::string trimmed; bool isNumeric; };
+
+PinParseResult ParsePinName(const std::string& pinValue)
+{
+  std::string trimmed = pinValue;
+  size_t start = trimmed.find_first_not_of(" \t\n\r");
+  size_t end = trimmed.find_last_not_of(" \t\n\r");
+  if (start != std::string::npos && end != std::string::npos) {
+    trimmed = trimmed.substr(start, end - start + 1);
+  }
+
+  bool isNumeric = true;
+  for (char c : trimmed) {
+    if (!std::isdigit(static_cast<unsigned char>(c))) {
+      isNumeric = false;
+      break;
+    }
+  }
+  return {trimmed, isNumeric};
+}
+
+}  // namespace
+
 std::optional<bool> IoOutputCommands::TryExecute(
     const std::string& deviceName,
     const std::string& methodName,
@@ -40,21 +70,7 @@ std::optional<bool> IoOutputCommands::TryExecute(
 
     // ✅ If failed and pinValue is numeric, try as numeric pin (for backward compatibility)
     if (result != EziIOError::SUCCESS) {
-      // Check if pinValue is numeric
-      bool isNumeric = true;
-      std::string trimmed = pinValue;
-      size_t start = trimmed.find_first_not_of(" \t\n\r");
-      size_t end = trimmed.find_last_not_of(" \t\n\r");
-      if (start != std::string::npos && end != std::string::npos) {
-        trimmed = trimmed.substr(start, end - start + 1);
-      }
-
-      for (char c : trimmed) {
-        if (!std::isdigit(c)) {
-          isNumeric = false;
-          break;
-        }
-      }
+      auto [trimmed, isNumeric] = ParsePinName(pinValue);
 
       if (isNumeric && !trimmed.empty()) {
         // Try as numeric pin
@@ -163,21 +179,7 @@ std::optional<bool> IoOutputCommands::TryExecute(
 
     // ✅ Check if pin is numeric or a name
     // If it contains non-digit characters (except leading/trailing spaces), treat as name
-    bool isNumeric = true;
-    std::string trimmed = pinValue;
-    // Simple trim
-    size_t start = trimmed.find_first_not_of(" \t\n\r");
-    size_t end = trimmed.find_last_not_of(" \t\n\r");
-    if (start != std::string::npos && end != std::string::npos) {
-      trimmed = trimmed.substr(start, end - start + 1);
-    }
-
-    for (char c : trimmed) {
-      if (!std::isdigit(c)) {
-        isNumeric = false;
-        break;
-      }
-    }
+    auto [trimmed, isNumeric] = ParsePinName(pinValue);
 
     EziIOError result;
 
