@@ -736,6 +736,10 @@ set(SOURCES
     include/sequence/dut/DutDeleteCommands.cpp
     include/sequence/PSUCommandHandler.cpp
     include/sequence/SMUCommandHandler.cpp
+    include/sequence/smu/SmuConnectionCommands.cpp
+    include/sequence/smu/SmuOutputMeasureCommands.cpp
+    include/sequence/smu/SmuConfigurationCommands.cpp
+    include/sequence/smu/SmuPollingCommands.cpp
     include/sequence/AuxWindowCommandHandler.cpp
     include/sequence/RelativePositionCommandHandler.cpp
     include/sequence/CoordinateAlignCommandHandler.cpp
@@ -1088,6 +1092,11 @@ set(HEADERS
     include/sequence/dut/DutDeleteCommands.h
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
+    include/sequence/smu/SmuCommandDeps.h
+    include/sequence/smu/SmuConnectionCommands.h
+    include/sequence/smu/SmuOutputMeasureCommands.h
+    include/sequence/smu/SmuConfigurationCommands.h
+    include/sequence/smu/SmuPollingCommands.h
     include/sequence/AuxWindowCommandHandler.h
     include/sequence/AccuracyTrainerCommandHandler.h
     include/sequence/EdgeTransferCommandHandler.h
@@ -1525,6 +1534,28 @@ add_executable(bobcat_engine ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE} icons.qr
 if(WIN32)
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
                  PROPERTY OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+endif()
+
+# PDB sizing for the full hardware build (all SDKs + Halcon + Qt + 1500+ TUs).
+# Without these flags x64-debug-hardware fails with:
+#   LNK1318: Unexpected PDB error; LIMIT (12).
+#
+# - /pdbpagesize:16384 raises the PDB page-count limit (default page size 4096
+#   tops out around ~4 GB of debug info); 16384 is the maximum.
+# - /DEBUG:FASTLINK uses an alternate PDB layout that doesn't hit the
+#   section-contribution limit /pdbpagesize cannot fix. Trade-off: the PDB
+#   embeds references to the .obj files instead of inlining their debug info,
+#   so it's not portable to other machines but is fine for local debugging.
+#
+# Apply only to debug builds — release uses the default /DEBUG:FULL layout so
+# crash dumps from deployed machines remain self-contained.
+# See https://learn.microsoft.com/cpp/build/reference/debug-generate-debug-info
+# and https://learn.microsoft.com/cpp/build/reference/pdbpagesize-set-pdb-page-size
+if(MSVC)
+    target_link_options(bobcat_engine PRIVATE
+        "/pdbpagesize:16384"
+        "$<$<CONFIG:Debug>:/DEBUG:FASTLINK>"
+    )
 endif()
 
 # ============================================================================
