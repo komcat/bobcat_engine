@@ -1,12 +1,12 @@
 // SmuOutputMeasureCommands.cpp — see header for description.
 #include "SmuOutputMeasureCommands.h"
 
-#include "Keithley6482Adapter.h"
+#include "SmuChannelSelect.h"
+
 #include "LogManager.h"
 #include "SMUManager.h"
 #include "SequenceContext.h"
 
-#include <memory>
 #include <string>
 
 std::optional<bool> SmuOutputMeasureCommands::TryExecute(
@@ -79,11 +79,7 @@ std::optional<bool> SmuOutputMeasureCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Reading voltage from " + deviceName + " channel " + std::to_string(channel),
@@ -126,11 +122,7 @@ std::optional<bool> SmuOutputMeasureCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Turning output ON for " + deviceName + " channel " + std::to_string(channel),
@@ -161,11 +153,7 @@ std::optional<bool> SmuOutputMeasureCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Turning output OFF for " + deviceName + " channel " + std::to_string(channel),

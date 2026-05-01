@@ -1,7 +1,9 @@
 // SmuConfigurationCommands.cpp — see header for description.
 #include "SmuConfigurationCommands.h"
 
-#include "Keithley6482Adapter.h"
+#include "SmuChannelSelect.h"
+
+#include "Keithley6482Adapter.h"  // SetMode still uses Keithley6482Adapter directly
 #include "LogManager.h"
 #include "SMUManager.h"
 #include "SequenceContext.h"
@@ -50,11 +52,7 @@ std::optional<bool> SmuConfigurationCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Setting voltage on " + deviceName + " channel " + std::to_string(channel) +
@@ -99,11 +97,7 @@ std::optional<bool> SmuConfigurationCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Setting current on " + deviceName + " channel " + std::to_string(channel) +
@@ -221,11 +215,7 @@ std::optional<bool> SmuConfigurationCommands::TryExecute(
       }
     }
 
-    // Select channel if device supports it
-    auto keithley6482 = std::dynamic_pointer_cast<Keithley6482Adapter>(device);
-    if (keithley6482) {
-      keithley6482->SelectChannel(channel);
-    }
+    SmuHelpers::SelectChannelIfSupported(device, channel);
 
     if (m_logger) {
       m_logger->Info("Setting compliance (current) on " + deviceName + " channel " + std::to_string(channel) +

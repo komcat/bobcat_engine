@@ -1100,6 +1100,7 @@ set(HEADERS
     include/sequence/PSUCommandHandler.h
     include/sequence/SMUCommandHandler.h
     include/sequence/smu/SmuCommandDeps.h
+    include/sequence/smu/SmuChannelSelect.h
     include/sequence/smu/SmuConnectionCommands.h
     include/sequence/smu/SmuOutputMeasureCommands.h
     include/sequence/smu/SmuConfigurationCommands.h
