@@ -280,7 +280,11 @@ void VisionManagerPage::connectSignals()
     connect(m_executeStep, &ExecuteTuneStepWidget::reliabilityTestClicked,
             this, &VisionManagerPage::onReliabilityTestRequested);
 
-    // Image widget signals (ROI/SearchBox/Template drag events)
+    // Image widget signals (Capture/Clear buttons + ROI/SearchBox/Template drag events)
+    connect(m_imageWidget, &VisionImageWidget::captureClicked,
+            this, &VisionManagerPage::onCaptureClicked);
+    connect(m_imageWidget, &VisionImageWidget::clearClicked,
+            this, &VisionManagerPage::onClearClicked);
     connect(m_imageWidget, &VisionImageWidget::roiDragged,
             this, [this](int sx, int sy, int ex, int ey) {
         m_captureStep->setROI(sx, sy, ex, ey);

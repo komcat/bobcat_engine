@@ -18,6 +18,10 @@
 #include <functional>
 #include <string>
 
+// Forward declaration — TemplateManagerDialog needs friend access to call the
+// protected post-teach + anchor helpers from outside the inheritance chain.
+class TemplateManagerDialog;
+
 /**
  * @brief Base class providing common template management functionality
  *
@@ -32,6 +36,7 @@
  * - Common UI widgets for template section
  */
 class TemplateMatchingBase : public VisionPluginBase {
+    friend class TemplateManagerDialog;
 public:
     TemplateMatchingBase(const std::string& name, const std::string& category, const std::string& description);
     virtual ~TemplateMatchingBase();

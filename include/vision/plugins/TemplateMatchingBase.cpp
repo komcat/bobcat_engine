@@ -4,6 +4,7 @@
 #ifdef HAS_OPENCV
 
 #include "TemplateMatchingBase.h"
+#include "TemplateManagerDialog.h"
 #include "../ui/VisionManagerPage.h"
 #include "../VisionManager.h"
 #include <opencv2/imgproc.hpp>
@@ -246,11 +247,11 @@ QGroupBox* TemplateMatchingBase::createTemplateGroupWidget(QWidget* parent) {
         resetTemplateWidgetPointers();
     });
 
-    // Preview label — fixed 350x350, top-left aligned. Size and filename
+    // Preview label — fixed 250x250, top-left aligned. Size and filename
     // are painted as overlays on the pixmap itself (see updatePreviewLabel),
     // so no separate info labels are needed in the layout.
     m_previewLabel = new QLabel("No template", templateGroup);
-    m_previewLabel->setFixedSize(350, 350);
+    m_previewLabel->setFixedSize(250, 250);
     m_previewLabel->setAlignment(Qt::AlignCenter);
     m_previewLabel->setStyleSheet("QLabel { background-color: #2a2a2a; border: 1px solid #555; }");
     templateLayout->addWidget(m_previewLabel, 0, Qt::AlignTop | Qt::AlignLeft);
@@ -263,110 +264,31 @@ QGroupBox* TemplateMatchingBase::createTemplateGroupWidget(QWidget* parent) {
     m_templatePathLabel = new QLabel("File: Not saved", templateGroup);
     m_templatePathLabel->hide();
 
-    // Button column on the right — compact, fixed-width buttons
+    // Right column: a single "Teach..." button that opens TemplateManagerDialog.
+    // The dialog now owns the teach / clear / save / load / anchor controls and
+    // hosts its own image view for rectangle selection — keeps the main page
+    // free of multi-purpose buttons.
     QVBoxLayout* buttonCol = new QVBoxLayout();
     buttonCol->setContentsMargins(0, 0, 0, 0);
     buttonCol->setSpacing(3);
 
-    const int kBtnWidth = 100;
-    const char* kCompactBtnStyle =
-        "QPushButton { padding: 4px 6px; font-size: 11px; }";
-
-    // Teach button — label swaps to "Confirm" while in selection mode.
-    m_teachBtn = new QPushButton("Teach", templateGroup);
-    m_teachBtn->setFixedWidth(kBtnWidth);
+    m_teachBtn = new QPushButton("Teach...", templateGroup);
+    m_teachBtn->setFixedWidth(110);
     m_teachBtn->setStyleSheet(
         "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
-        "padding: 4px 6px; font-size: 11px; }");
-    m_teachBtn->setToolTip("Draw a red rectangle on the image to select the template area");
+        "padding: 6px; font-size: 12px; }");
+    m_teachBtn->setToolTip("Open Template Manager to teach / clear / save / load / set anchor");
     buttonCol->addWidget(m_teachBtn);
-
-    // Clear
-    m_clearTemplateBtn = new QPushButton("Clear", templateGroup);
-    m_clearTemplateBtn->setFixedWidth(kBtnWidth);
-    m_clearTemplateBtn->setStyleSheet(
-        "QPushButton { background-color: #C62828; color: white; padding: 4px 6px; font-size: 11px; }");
-    buttonCol->addWidget(m_clearTemplateBtn);
-
-    // Save
-    m_saveTemplateBtn = new QPushButton("Save", templateGroup);
-    m_saveTemplateBtn->setFixedWidth(kBtnWidth);
-    m_saveTemplateBtn->setStyleSheet(kCompactBtnStyle);
-    m_saveTemplateBtn->setToolTip("Save template to PNG file");
-    buttonCol->addWidget(m_saveTemplateBtn);
-
-    // Load
-    m_loadTemplateBtn = new QPushButton("Load", templateGroup);
-    m_loadTemplateBtn->setFixedWidth(kBtnWidth);
-    m_loadTemplateBtn->setStyleSheet(kCompactBtnStyle);
-    m_loadTemplateBtn->setToolTip("Load template from PNG file");
-    buttonCol->addWidget(m_loadTemplateBtn);
-
-    // Anchor point
-    m_setAnchorBtn = new QPushButton("Anchor", templateGroup);
-    m_setAnchorBtn->setFixedWidth(kBtnWidth);
-    m_setAnchorBtn->setStyleSheet(
-        "QPushButton { background-color: #388E3C; color: white; padding: 4px 6px; font-size: 11px; }");
-    m_setAnchorBtn->setToolTip("Set custom anchor point for pattern match reporting");
-    buttonCol->addWidget(m_setAnchorBtn);
 
     buttonCol->addStretch();
     templateLayout->addLayout(buttonCol, 0);
 
-    // Connect signals
     QObject::connect(m_teachBtn, &QPushButton::clicked, [this]() {
-        startTemplateSelection();
-    });
-
-    QObject::connect(m_clearTemplateBtn, &QPushButton::clicked, [this]() {
-        clearTemplate();
-    });
-
-    QObject::connect(m_saveTemplateBtn, &QPushButton::clicked, [this]() {
-        if (!hasTemplate()) {
-            if (m_templateConfigWidget) {
-                QMessageBox::warning(m_templateConfigWidget, "Save Error",
-                                     "No template to save. Please teach a template first.");
-            }
-            return;
-        }
-
-        QString fileName = QFileDialog::getSaveFileName(m_templateConfigWidget,
-            "Save Template", "", "PNG Images (*.png)");
-
-        if (!fileName.isEmpty()) {
-            if (saveTemplateToFile(fileName.toStdString())) {
-                QMessageBox::information(m_templateConfigWidget, "Template Saved", "Template saved successfully.");
-                updatePreviewLabel();
-            } else {
-                QMessageBox::warning(m_templateConfigWidget, "Save Error", "Failed to save template file.");
-            }
-        }
-    });
-
-    QObject::connect(m_loadTemplateBtn, &QPushButton::clicked, [this]() {
-        QString fileName = QFileDialog::getOpenFileName(m_templateConfigWidget,
-            "Load Template", "", "PNG Images (*.png)");
-
-        if (!fileName.isEmpty()) {
-            if (loadTemplateFromFile(fileName.toStdString())) {
-                QMessageBox::information(m_templateConfigWidget, "Template Loaded", "Template loaded successfully.");
-            } else {
-                QMessageBox::warning(m_templateConfigWidget, "Load Error",
-                                     QString("Failed to load template.\n%1").arg(QString::fromStdString(m_lastError)));
-            }
-        }
-    });
-
-    QObject::connect(m_setAnchorBtn, &QPushButton::clicked, [this]() {
-        if (!hasTemplate()) {
-            if (m_templateConfigWidget) {
-                QMessageBox::warning(m_templateConfigWidget, "Anchor Point Error",
-                                     "No template taught. Please teach a template first.");
-            }
-            return;
-        }
-        showAnchorPointDialog();
+        TemplateManagerDialog dialog(this, m_templateConfigWidget);
+        dialog.exec();
+        // After the dialog closes, refresh the main-page preview so it reflects
+        // any teach / clear / load actions performed inside the dialog.
+        updatePreviewLabel();
     });
 
     // Update preview if we already have a template
@@ -403,9 +325,9 @@ void TemplateMatchingBase::updatePreviewLabel() {
     QImage qImage(display.data, display.cols, display.rows, display.step, QImage::Format_RGB888);
     QPixmap rawPixmap = QPixmap::fromImage(qImage.copy());
 
-    // Scale to the label size — always grow/shrink to fill the 350x350 box
-    // while preserving aspect ratio. Unlike getTemplatePreview(), QPixmap::scaled
-    // upscales small templates instead of leaving them tiny.
+    // Scale to the label's fixed size while preserving aspect ratio. Unlike
+    // getTemplatePreview(), QPixmap::scaled upscales small templates instead
+    // of leaving them tiny.
     const QSize labelSize = m_previewLabel->size();
     QPixmap scaledPixmap = rawPixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
