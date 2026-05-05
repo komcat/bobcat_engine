@@ -2106,8 +2106,13 @@ void RecipePage::setupSequenceEngine()
   // Set manual adjust callback - uses integrated ManualAdjustWidget (thread-aware)
   m_sequenceEngine->SetManualAdjustCallback(
     [this](const std::string& message, const std::string& deviceName,
-           double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+           double stepSizeUm, bool enableX, bool enableY, bool enableZ,
+           const std::vector<std::string>& imagePaths) -> bool {
     bool result = false;
+
+    QStringList qpaths;
+    qpaths.reserve(static_cast<int>(imagePaths.size()));
+    for (const auto& p : imagePaths) qpaths << QString::fromStdString(p);
 
     // Check if we're already on the UI thread
     if (QThread::currentThread() == QApplication::instance()->thread()) {
@@ -2120,7 +2125,8 @@ void RecipePage::setupSequenceEngine()
         QString::fromStdString(message),
         QString::fromStdString(deviceName),
         stepSizeUm,
-        enableX, enableY, enableZ
+        enableX, enableY, enableZ,
+        qpaths
       );
 
       std::cout << "[RecipePage] Showing manual adjust widget (UI thread)" << std::endl;
@@ -2137,7 +2143,7 @@ void RecipePage::setupSequenceEngine()
       result = m_manualAdjustResponse;
     } else {
       // Called from worker thread - use BlockingQueuedConnection
-      QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, &result]() {
+      QMetaObject::invokeMethod(this, [this, message, deviceName, stepSizeUm, enableX, enableY, enableZ, qpaths, &result]() {
         // Show the manual adjust widget in the floating run window
         if (m_runWindow) {
           m_runWindow->setActiveWidget(m_manualAdjustWidget);
@@ -2146,7 +2152,8 @@ void RecipePage::setupSequenceEngine()
           QString::fromStdString(message),
           QString::fromStdString(deviceName),
           stepSizeUm,
-          enableX, enableY, enableZ
+          enableX, enableY, enableZ,
+          qpaths
         );
 
         std::cout << "[RecipePage] Showing manual adjust widget (worker thread)" << std::endl;
@@ -2195,10 +2202,14 @@ void RecipePage::installRecipeWorkerCallbacks(RecipeWorker* worker)
 
   worker->setManualAdjustCallback(
     [this](const std::string& message, const std::string& deviceName, double stepSizeUm,
-           bool enableX, bool enableY, bool enableZ) -> bool {
+           bool enableX, bool enableY, bool enableZ,
+           const std::vector<std::string>& imagePaths) -> bool {
+      QStringList qpaths;
+      qpaths.reserve(static_cast<int>(imagePaths.size()));
+      for (const auto& p : imagePaths) qpaths << QString::fromStdString(p);
       emit showManualAdjust(QString::fromStdString(message),
                             QString::fromStdString(deviceName),
-                            stepSizeUm, enableX, enableY, enableZ);
+                            stepSizeUm, enableX, enableY, enableZ, qpaths);
       QEventLoop loop;
       m_promptEventLoop = &loop;
       loop.exec();
@@ -3157,13 +3168,15 @@ void RecipePage::loadLastRecipeFromSettings()
 // ============================================================================
 
 void RecipePage::onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                                    bool enableX, bool enableY, bool enableZ)
+                                    bool enableX, bool enableY, bool enableZ,
+                                    QStringList imagePaths)
 {
   // Show the manual adjust widget in the floating run window
   if (m_runWindow) {
     m_runWindow->setActiveWidget(m_manualAdjustWidget);
   }
-  m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm, enableX, enableY, enableZ);
+  m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm,
+                                        enableX, enableY, enableZ, imagePaths);
 
   std::cout << "[RecipePage] Showing manual adjust widget" << std::endl;
 }

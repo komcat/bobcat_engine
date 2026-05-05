@@ -13,11 +13,14 @@
 #include <QApplication>
 #include <QMetaObject>
 #include <QPointer>
+#include <QStringList>
 #include <QThread>
 #include <QTimer>
 
 #include <functional>
 #include <iostream>
+#include <string>
+#include <vector>
 #include <memory>
 #include <string>
 #include <utility>
@@ -227,11 +230,15 @@ void ExecutionController::wireWorkerCallbacks()
 
     m_worker->setManualAdjustCallback(
         [overlay](const std::string& message, const std::string& deviceName,
-                  double stepSizeUm, bool enableX, bool enableY, bool enableZ) -> bool {
+                  double stepSizeUm, bool enableX, bool enableY, bool enableZ,
+                  const std::vector<std::string>& imagePaths) -> bool {
+            QStringList qpaths;
+            qpaths.reserve(static_cast<int>(imagePaths.size()));
+            for (const auto& p : imagePaths) qpaths << QString::fromStdString(p);
             return overlay->RequestManualAdjust(
                 QString::fromStdString(message),
                 QString::fromStdString(deviceName),
-                stepSizeUm, enableX, enableY, enableZ);
+                stepSizeUm, enableX, enableY, enableZ, qpaths);
         });
 
     m_worker->setUserInputCallback(

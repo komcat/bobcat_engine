@@ -7,6 +7,8 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 class SequenceEngine;
 class ProgramManager;
@@ -55,7 +57,8 @@ public:
     double stepSizeUm,
     bool enableX,
     bool enableY,
-    bool enableZ
+    bool enableZ,
+    const std::vector<std::string>& imagePaths
   )>;
   void setManualAdjustCallback(ManualAdjustCallback callback);
 

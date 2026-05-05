@@ -12,14 +12,16 @@ using UserPromptCallback = std::function<bool(const std::string& title, const st
 // Callback type for non-blocking notifications - just shows, doesn't wait for response
 using UserNotificationCallback = std::function<void(const std::string& title, const std::string& message)>;
 
-// Callback type for manual adjustment - returns true if user clicked OK, false if cancelled
+// Callback type for manual adjustment - returns true if user clicked OK, false if cancelled.
+// imagePaths: up to 3 absolute paths to reference images (already copied to product folder).
 using ManualAdjustCallback = std::function<bool(
   const std::string& message,
   const std::string& deviceName,
   double stepSizeUm,
   bool enableX,
   bool enableY,
-  bool enableZ
+  bool enableZ,
+  const std::vector<std::string>& imagePaths
 )>;
 
 // Callback type for text input - returns pair<accepted, inputText>

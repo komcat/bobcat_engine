@@ -21,6 +21,7 @@
 
 #include <QStackedWidget>
 #include <QString>
+#include <QStringList>
 #include <utility>
 
 class ApplicationContext;
@@ -68,7 +69,8 @@ public:
     bool RequestManualAdjust(const QString& message,
                              const QString& deviceName,
                              double stepSizeUm,
-                             bool enableX, bool enableY, bool enableZ);
+                             bool enableX, bool enableY, bool enableZ,
+                             const QStringList& imagePaths = QStringList());
 
     bool RequestManualAlignPoint(const QString& pointName,
                                  const QString& message,

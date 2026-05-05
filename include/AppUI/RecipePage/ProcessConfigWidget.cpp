@@ -29,6 +29,7 @@
 #include <QMessageBox>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUuid>
 #include <iostream>
 #include <filesystem>
 
@@ -1446,6 +1447,100 @@ void ProcessConfigWidget::addFileSelector(const std::string& key,
   });
 
   layout->addWidget(browseBtn);
+
+  m_formLayout->addRow(QString::fromStdString(label) + ":", container);
+  m_parameterEdits[key] = edit;
+}
+
+void ProcessConfigWidget::addImageSelector(const std::string& key,
+  const std::string& label,
+  const std::string& value)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(5);
+
+  QLineEdit* edit = new QLineEdit(QString::fromStdString(value));
+  edit->setReadOnly(true);
+  edit->setStyleSheet(
+    "padding: 5px; "
+    "background-color: #3c3c3c; "
+    "color: #d4d4d4; "
+    "border: 1px solid #555555; "
+    "border-radius: 3px;"
+  );
+  edit->setPlaceholderText("(no image)");
+  connect(edit, &QLineEdit::textChanged,
+    this, &ProcessConfigWidget::parameterChanged);
+  layout->addWidget(edit);
+
+  QPushButton* browseBtn = new QPushButton("Browse...");
+  browseBtn->setFixedWidth(80);
+  browseBtn->setStyleSheet(
+    "QPushButton { background-color: #5a8fd6; color: white; "
+    "border-radius: 3px; padding: 5px; } "
+    "QPushButton:hover { background-color: #4a7fc6; }");
+
+  ApplicationContext* ctx = m_context;
+  connect(browseBtn, &QPushButton::clicked, [this, edit, ctx]() {
+    QString selected = QFileDialog::getOpenFileName(
+      this->window(), "Select Image", QString(),
+      "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)");
+    if (selected.isEmpty()) return;
+
+    // Resolve product directory (recipe_images lives next to positions.json).
+    std::filesystem::path productDir;
+    if (ctx && ctx->productPositionManager &&
+        ctx->productPositionManager->HasLoadedProduct()) {
+      std::filesystem::path posPath(ctx->productPositionManager->GetCurrentProductPath());
+      productDir = posPath.parent_path();
+    } else {
+      QMessageBox::warning(this->window(), "No Product Loaded",
+        "Load a product before adding images so the copy can be stored under it.");
+      return;
+    }
+
+    std::filesystem::path destDir = productDir / "recipe_images";
+    std::error_code ec;
+    std::filesystem::create_directories(destDir, ec);
+    if (ec) {
+      QMessageBox::warning(this->window(), "Image Copy Failed",
+        QString("Could not create directory:\n%1\n%2")
+          .arg(QString::fromStdString(destDir.string()))
+          .arg(QString::fromStdString(ec.message())));
+      return;
+    }
+
+    QString uid = QUuid::createUuid().toString(QUuid::Id128).left(12);
+    QString ext = QFileInfo(selected).suffix().toLower();
+    if (ext.isEmpty()) ext = "png";
+    QString destName = uid + "." + ext;
+    std::filesystem::path destFull = destDir / destName.toStdString();
+
+    std::filesystem::copy_file(
+      std::filesystem::path(selected.toStdString()),
+      destFull,
+      std::filesystem::copy_options::overwrite_existing,
+      ec);
+    if (ec) {
+      QMessageBox::warning(this->window(), "Image Copy Failed",
+        QString("Could not copy image:\n%1").arg(QString::fromStdString(ec.message())));
+      return;
+    }
+
+    edit->setText(QString::fromStdString(destFull.string()));
+  });
+  layout->addWidget(browseBtn);
+
+  QPushButton* clearBtn = new QPushButton("Clear");
+  clearBtn->setFixedWidth(60);
+  clearBtn->setStyleSheet(
+    "QPushButton { background-color: #6c757d; color: white; "
+    "border-radius: 3px; padding: 5px; } "
+    "QPushButton:hover { background-color: #5a6268; }");
+  connect(clearBtn, &QPushButton::clicked, [edit]() { edit->clear(); });
+  layout->addWidget(clearBtn);
 
   m_formLayout->addRow(QString::fromStdString(label) + ":", container);
   m_parameterEdits[key] = edit;

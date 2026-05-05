@@ -144,7 +144,7 @@ bool PlanarAdjustmentCommandHandler::HandleRunPlanarAdjustment(
               << "  Z=" << set.point1.z
               << "\n\nVerify position, then click OK.";
 
-        bool p1Ok = m_manualAdjustCallback(p1Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool p1Ok = m_manualAdjustCallback(p1Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!p1Ok) {
             errorMessage = "User cancelled retrace at Point 1";
             if (context) context->SetValue("planar_adjustment.result.success", false);
@@ -183,7 +183,7 @@ bool PlanarAdjustmentCommandHandler::HandleRunPlanarAdjustment(
               << "  Z=" << taughtP2Z
               << "\n\nVerify position, then click OK.";
 
-        bool p2Ok = m_manualAdjustCallback(p2Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool p2Ok = m_manualAdjustCallback(p2Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!p2Ok) {
             errorMessage = "User cancelled retrace at Point 2";
             if (context) context->SetValue("planar_adjustment.result.success", false);

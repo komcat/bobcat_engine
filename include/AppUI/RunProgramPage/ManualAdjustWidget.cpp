@@ -13,6 +13,9 @@
 #include <QGridLayout>
 #include <QFrame>
 #include <QTimer>
+#include <QScrollArea>
+#include <QPixmap>
+#include <QFileInfo>
 #include <cmath>
 #include <iostream>
 
@@ -109,6 +112,9 @@ void ManualAdjustWidget::setupUI()
 
   infoLayout->addStretch();
   containerLayout->addLayout(infoLayout);
+
+  // Preset step size buttons (override the parameter-config step size at runtime)
+  createPresetStepSizePanel(containerLayout);
 
   // Current position display
   m_positionLabel = new QLabel("Position: X: 0.000 | Y: 0.000 | Z: 0.000 mm");
@@ -254,6 +260,9 @@ void ManualAdjustWidget::setupUI()
 
   containerLayout->addLayout(actionLayout);
 
+  // Image gallery under OK/Cancel: up to 3 images at 400x300, horizontally scrollable
+  createImageGallery(containerLayout);
+
   // Center the container
   mainLayout->addStretch();
   QHBoxLayout* centerLayout = new QHBoxLayout();
@@ -273,17 +282,19 @@ void ManualAdjustWidget::showAdjustment(
   double stepSizeUm,
   bool enableX,
   bool enableY,
-  bool enableZ)
+  bool enableZ,
+  const QStringList& imagePaths)
 {
   m_messageLabel->setText(message);
   m_deviceLabel->setText("Device: " + deviceName);
-  m_stepSizeLabel->setText(QString("Step: %1 μm").arg(stepSizeUm, 0, 'f', 1));
+  applyStepSize(stepSizeUm);
 
   m_currentDevice = deviceName.toStdString();
-  m_stepSizeUm = stepSizeUm;
   m_enableX = enableX;
   m_enableY = enableY;
   m_enableZ = enableZ;
+
+  setAdjustmentImages(imagePaths);
 
   // Debug output
   std::cout << "[ManualAdjustWidget] showAdjustment called:" << std::endl;
@@ -594,4 +605,137 @@ void ManualAdjustWidget::runAutoFocus(const std::string& camera, const std::stri
         }, Qt::QueuedConnection);
       }
     });
+}
+
+void ManualAdjustWidget::createPresetStepSizePanel(QVBoxLayout* containerLayout)
+{
+  static const QList<double> kPresets = {0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0};
+
+  QHBoxLayout* presetLayout = new QHBoxLayout();
+  presetLayout->setSpacing(5);
+  presetLayout->setContentsMargins(0, 0, 0, 0);
+
+  QLabel* label = new QLabel("Preset:");
+  label->setStyleSheet(
+    "QLabel { "
+    "  font-size: 12px; "
+    "  font-weight: bold; "
+    "  color: #ffffff; "
+    "  background: transparent; "
+    "  border: none; "
+    "}");
+  presetLayout->addWidget(label);
+
+  QString presetStyle =
+    "QPushButton { "
+    "  background-color: #3c3c3c; "
+    "  color: #d4d4d4; "
+    "  font-size: 11px; "
+    "  font-weight: normal; "
+    "  border: 1px solid #555555; "
+    "  padding: 3px 8px; "
+    "  min-width: 40px; "
+    "  min-height: 22px; "
+    "} "
+    "QPushButton:hover { "
+    "  background-color: #4a4a4a; "
+    "  border: 1px solid #1177bb; "
+    "} "
+    "QPushButton:pressed { "
+    "  background-color: #1177bb; "
+    "  color: white; "
+    "}";
+
+  m_presetStepButtons.clear();
+  for (double um : kPresets) {
+    QString text = (um < 1.0)
+      ? QString::number(um, 'f', 1) + " μm"
+      : QString::number(um, 'f', 0) + " μm";
+    QPushButton* btn = new QPushButton(text);
+    btn->setStyleSheet(presetStyle);
+    btn->setCursor(Qt::PointingHandCursor);
+    connect(btn, &QPushButton::clicked, this, [this, um]() {
+      applyStepSize(um);
+    });
+    presetLayout->addWidget(btn);
+    m_presetStepButtons.append(btn);
+  }
+
+  presetLayout->addStretch();
+  containerLayout->addLayout(presetLayout);
+}
+
+void ManualAdjustWidget::createImageGallery(QVBoxLayout* containerLayout)
+{
+  m_imageContainer = new QWidget();
+  m_imageContainer->setStyleSheet("QWidget { background: transparent; border: none; }");
+
+  m_imageLayout = new QHBoxLayout(m_imageContainer);
+  m_imageLayout->setContentsMargins(0, 0, 0, 0);
+  m_imageLayout->setSpacing(8);
+  m_imageLayout->addStretch();
+
+  m_imageScrollArea = new QScrollArea();
+  m_imageScrollArea->setWidget(m_imageContainer);
+  m_imageScrollArea->setWidgetResizable(true);
+  m_imageScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  m_imageScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  m_imageScrollArea->setFixedHeight(320);  // 300 image + scrollbar/padding
+  m_imageScrollArea->setStyleSheet(
+    "QScrollArea { background: #1e1e1e; border: 1px solid #3c3c3c; }"
+    "QScrollBar:horizontal { background: #2a2a2a; height: 12px; }"
+    "QScrollBar::handle:horizontal { background: #555555; min-width: 20px; }"
+    "QScrollBar::handle:horizontal:hover { background: #1177bb; }");
+
+  m_imageScrollArea->hide();  // Hidden until images are set
+  containerLayout->addWidget(m_imageScrollArea);
+}
+
+void ManualAdjustWidget::setAdjustmentImages(const QStringList& imagePaths)
+{
+  if (!m_imageScrollArea || !m_imageLayout) return;
+
+  // Remove all existing image labels (keep the trailing stretch)
+  QLayoutItem* item = nullptr;
+  while ((item = m_imageLayout->takeAt(0)) != nullptr) {
+    if (QWidget* w = item->widget()) {
+      w->deleteLater();
+    }
+    delete item;
+  }
+
+  const int kMaxImages = 3;
+  int added = 0;
+  for (const QString& path : imagePaths) {
+    if (added >= kMaxImages) break;
+
+    QPixmap pixmap(path);
+    QLabel* imgLabel = new QLabel();
+    imgLabel->setFixedSize(400, 300);
+    imgLabel->setAlignment(Qt::AlignCenter);
+    imgLabel->setStyleSheet(
+      "QLabel { background: #2a2a2a; border: 1px solid #555555; color: #888888; }");
+
+    if (pixmap.isNull()) {
+      QFileInfo fi(path);
+      imgLabel->setText("Image not found:\n" + (fi.fileName().isEmpty() ? path : fi.fileName()));
+    }
+    else {
+      imgLabel->setPixmap(pixmap.scaled(400, 300, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+    m_imageLayout->addWidget(imgLabel);
+    ++added;
+  }
+  m_imageLayout->addStretch();
+
+  m_imageScrollArea->setVisible(added > 0);
+}
+
+void ManualAdjustWidget::applyStepSize(double stepUm)
+{
+  m_stepSizeUm = stepUm;
+  if (m_stepSizeLabel) {
+    m_stepSizeLabel->setText(QString("Step: %1 μm").arg(stepUm, 0, 'f', 1));
+  }
 }

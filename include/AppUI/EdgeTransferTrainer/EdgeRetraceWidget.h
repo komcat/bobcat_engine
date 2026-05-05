@@ -103,6 +103,9 @@ private:
     void setState(WizardState s);
     void refreshWaitPage();          // fills instruction / taught / confirm text for current state
     void refreshReview();
+    void refreshTemplateImage();     // loads p?ImageFile thumbnail for the current state
+    std::string imageFileForCurrentState() const;
+    std::string getImageDirectory() const;  // <product>/images/trainer or config fallback
 
     // Background safe-move: SetSystemVelocity(0.5) -> MoveToAbs -> SetSystemVelocity(50).
     void startAutoNavAsync(double tx, double ty, double tz, const QString& which);
@@ -111,6 +114,11 @@ private:
     bool taughtForCurrentState(double& tx, double& ty, double& tz) const;
     // Writes captured XYZ back to the right retraced-edge point.
     void storeCurrentCapture(double x, double y, double z);
+
+    // Embedded jog controls (gantry-main, machine coords, MoveRelative non-blocking).
+    void jogGantry(const QString& axis, double sign);
+    void setJogStepUm(double um);
+    void setJogPanelEnabled(bool enabled);
 
     ApplicationContext* m_context;
 
@@ -134,11 +142,23 @@ private:
     QLabel* m_waitTitleLabel = nullptr;
     QLabel* m_waitTaughtLabel = nullptr;
     QLabel* m_waitLiveLabel = nullptr;
+    QLabel* m_waitTemplateImageLabel = nullptr;
     QLabel* m_confirmHeaderLabel = nullptr;
     QPushButton* m_autoNavBtn = nullptr;
     QPushButton* m_stopBtn = nullptr;
     QPushButton* m_confirmBtn = nullptr;
     QPushButton* m_cancelBtn = nullptr;
+
+    // Embedded jog panel (visible during Wait* states, gantry-main only)
+    QLabel*      m_jogStepLabel = nullptr;
+    QList<QPushButton*> m_jogStepPresetBtns;
+    QPushButton* m_jogXMinusBtn = nullptr;
+    QPushButton* m_jogXPlusBtn  = nullptr;
+    QPushButton* m_jogYMinusBtn = nullptr;
+    QPushButton* m_jogYPlusBtn  = nullptr;
+    QPushButton* m_jogZMinusBtn = nullptr;
+    QPushButton* m_jogZPlusBtn  = nullptr;
+    double       m_jogStepUm    = 5.0;
 
     // -------- Page 5: Review --------
     QLabel* m_reviewLabel = nullptr;
